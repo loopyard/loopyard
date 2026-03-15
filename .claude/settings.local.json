@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(which cloudflared:*)",
+      "Bash(jobs:*)",
+      "Bash(cloudflared tunnel:*)",
+      "WebFetch(domain:gist.github.com)",
+      "Bash(kill:*)"
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+# Dependencies and build
+/deps
+/_build
+/.mix_home
+/.hex_home
+
+# Static artifacts
+/priv/static/assets/
+
+# Editor
+.elixir_ls/
+
+# OS
+.DS_Store
