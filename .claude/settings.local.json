@@ -23,7 +23,8 @@
       "Bash(lsof -ti:4000)",
       "Bash(pkill -f cloudflared)",
       "Bash(ipconfig getifaddr:*)",
-      "Bash(mix deps.clean expty --build)"
+      "Bash(mix deps.clean expty --build)",
+      "Bash(grep -r \"agent\\\\|pty\\\\|ring_buffer\" /Users/bradgessler/Projects/bradgessler/hive/assets --include=*.js)"
     ]
   }
 }

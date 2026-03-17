@@ -16,21 +16,6 @@
   * { scrollbar-color: rgba(255, 255, 255, 0.1) transparent; }
 }
 
-/* Connection banner */
-.connection-banner {
-  position: fixed; top: 0; left: 0; right: 0; z-index: 50;
-  padding: 8px 16px; text-align: center; font-size: 13px; font-weight: 500;
-  background: #f59e0b; color: #451a03;
-  animation: slide-down 0.3s ease-out;
-}
-@keyframes slide-down {
-  from { transform: translateY(-100%); }
-  to { transform: translateY(0); }
-}
-@media (prefers-color-scheme: dark) {
-  .connection-banner { background: #d97706; color: #fffbeb; }
-}
-
 /* Safe area for notched devices */
 @supports (padding: env(safe-area-inset-top)) {
   .safe-area-top { padding-top: env(safe-area-inset-top); }

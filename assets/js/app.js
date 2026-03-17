@@ -32,19 +32,6 @@ Hooks.ChatForm = {
   }
 }
 
-// Connection status banner
-Hooks.ConnectionStatus = {
-  mounted() {
-    this.banner = this.el
-    window.addEventListener("phx:disconnect", () => {
-      this.banner.classList.remove("hidden")
-    })
-    window.addEventListener("phx:connect", () => {
-      this.banner.classList.add("hidden")
-    })
-  }
-}
-
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 let liveSocket = new LiveSocket("/live", Socket, {
   hooks: Hooks,

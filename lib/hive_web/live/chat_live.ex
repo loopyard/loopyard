@@ -241,12 +241,6 @@ defmodule HiveWeb.ChatLive do
   defp format_tool_input(input) when is_map(input), do: Jason.encode!(input, pretty: true)
   defp format_tool_input(input), do: inspect(input)
 
-  defp truncate(str, max) when is_binary(str) and byte_size(str) > max do
-    String.slice(str, 0, max) <> "\n... (truncated)"
-  end
-
-  defp truncate(str, _max) when is_binary(str), do: str
-  defp truncate(other, _max), do: inspect(other)
 
   # --- Render ---
 
@@ -442,17 +436,6 @@ defmodule HiveWeb.ChatLive do
       <div class="max-w-[85%] rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200/60 dark:border-blue-800/60 px-4 py-2.5">
         <p class="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1">{@msg.tool}</p>
         <pre class="text-xs text-blue-600/80 dark:text-blue-400/80 overflow-x-auto whitespace-pre-wrap">{format_tool_input(@msg.input)}</pre>
-      </div>
-    </div>
-    <%!-- Tool result --%>
-    <div :if={@msg.role == :tool_result} class="flex gap-3">
-      <div class="flex-none w-7 h-7 rounded-full bg-green-100 dark:bg-green-900/40 flex items-center justify-center mt-0.5">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3.5 h-3.5 text-green-600 dark:text-green-400">
-          <path fill-rule="evenodd" d="M12.416 3.376a.75.75 0 0 1 .208 1.04l-5 7.5a.75.75 0 0 1-1.154.114l-3-3a.75.75 0 0 1 1.06-1.06l2.353 2.353 4.493-6.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd" />
-        </svg>
-      </div>
-      <div class="max-w-[85%] rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200/60 dark:border-green-800/60 px-4 py-2.5">
-        <pre class="text-xs text-green-700 dark:text-green-300 overflow-x-auto whitespace-pre-wrap max-h-48 overflow-y-auto">{truncate(@msg.output, 500)}</pre>
       </div>
     </div>
     <%!-- Error --%>
