@@ -51,6 +51,29 @@ defmodule Hive.Tools.Container do
     {:ok, "Container and volumes destroyed"}
   end
 
+  def do_inspect(agent_id) do
+    checks = [
+      {"Dockerfile", "cat /workspace/Dockerfile 2>/dev/null || echo '[none]'"},
+      {"Running processes", "ps aux --no-headers 2>/dev/null || ps 2>/dev/null"},
+      {"Listening ports", "ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null || echo '[ss/netstat not available]'"},
+      {"Installed languages", "for cmd in node python3 ruby go java elixir; do which $cmd 2>/dev/null && $cmd --version 2>&1 | head -1; done"},
+      {"Installed databases", "for cmd in psql mysql redis-cli mongosh sqlite3; do which $cmd 2>/dev/null && echo \"  $cmd available\"; done"},
+      {"Installed tools", "for cmd in git curl wget make gcc npm yarn pip cargo mix bundle; do which $cmd 2>/dev/null; done"},
+      {"Disk usage", "df -h /workspace 2>/dev/null | tail -1"}
+    ]
+
+    results =
+      Enum.map(checks, fn {label, cmd} ->
+        output = case Docker.exec(agent_id, cmd) do
+          {:ok, out} -> String.trim(out)
+          {:error, _} -> "[error]"
+        end
+        "## #{label}\n#{output}"
+      end)
+
+    {:ok, Enum.join(results, "\n\n")}
+  end
+
   def do_list do
     case System.cmd("docker", ["ps", "--filter", "name=hive-dev", "--format", "{{.Names}}\t{{.Status}}\t{{.Ports}}"],
            stderr_to_stdout: true) do
@@ -96,6 +119,14 @@ defmodule Hive.Tools.Container do
 
     def execute(%{agent_id: agent_id}) do
       Hive.Tools.Container.do_rebuild(agent_id)
+    end
+  end
+
+  tool :inspect_env, "Inspect the container environment: installed languages, databases, tools, running processes, listening ports, and the current Dockerfile" do
+    field :agent_id, :string, required: true
+
+    def execute(%{agent_id: agent_id}) do
+      Hive.Tools.Container.do_inspect(agent_id)
     end
   end
 

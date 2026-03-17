@@ -11,7 +11,7 @@ defmodule Hive.Tools.ContainerTest do
     test "has correct server name and tools" do
       info = Container.__tool_server__()
       assert info.name == "hive-container"
-      assert length(info.tools) == 6
+      assert length(info.tools) == 7
     end
 
     test "tool names match expected" do
@@ -19,6 +19,7 @@ defmodule Hive.Tools.ContainerTest do
       assert "create" in tool_names
       assert "exec" in tool_names
       assert "rebuild" in tool_names
+      assert "inspect_env" in tool_names
       assert "stop" in tool_names
       assert "destroy" in tool_names
       assert "list" in tool_names
