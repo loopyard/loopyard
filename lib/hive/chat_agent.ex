@@ -1,0 +1,240 @@
+defmodule Hive.ChatAgent do
+  @moduledoc """
+  GenServer wrapping a Claude Code SDK session.
+  Streams structured messages to viewers via PubSub.
+  Unlike the PTY-based Agent, this uses the JSON protocol
+  for a proper multiplayer chat experience.
+  """
+  use GenServer, restart: :temporary
+  require Logger
+
+  defstruct [
+    :id,
+    :name,
+    :session,
+    :working_dir,
+    :started_at,
+    :started_by,
+    status: :idle,
+    messages: []
+  ]
+
+  @topic "chat_agents"
+
+  # --- Public API ---
+
+  def start_link(opts) do
+    id = Keyword.fetch!(opts, :id)
+    GenServer.start_link(__MODULE__, opts, name: via(id))
+  end
+
+  def send_message(id, text) do
+    GenServer.cast(via(id), {:send_message, text})
+  end
+
+  def get_state(id) do
+    GenServer.call(via(id), :get_state)
+  end
+
+  def stop_agent(id) do
+    GenServer.cast(via(id), :stop)
+  end
+
+  def list_agents do
+    Registry.select(Hive.ChatAgentRegistry, [{{:"$1", :"$2", :"$3"}, [], [{{:"$1", :"$2"}}]}])
+    |> Enum.map(fn {_id, pid} ->
+      try do
+        GenServer.call(pid, :get_state, 2000)
+      catch
+        :exit, _ -> nil
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  def subscribe do
+    Phoenix.PubSub.subscribe(Hive.PubSub, @topic)
+  end
+
+  def subscribe(agent_id) do
+    Phoenix.PubSub.subscribe(Hive.PubSub, "chat_agent:#{agent_id}")
+  end
+
+  def unsubscribe(agent_id) do
+    Phoenix.PubSub.unsubscribe(Hive.PubSub, "chat_agent:#{agent_id}")
+  end
+
+  # --- Callbacks ---
+
+  @impl true
+  def init(opts) do
+    id = Keyword.fetch!(opts, :id)
+    name = Keyword.get(opts, :name, "Chat #{id |> String.slice(0..7)}")
+    working_dir = Keyword.get(opts, :working_dir, File.cwd!())
+    started_by = Keyword.get(opts, :started_by, "anonymous")
+
+    {:ok, session} =
+      ClaudeCode.start_link(
+        working_directory: working_dir,
+        permission_mode: :default,
+        system_prompt: Keyword.get(opts, :system_prompt, "")
+      )
+
+    state = %__MODULE__{
+      id: id,
+      name: name,
+      session: session,
+      working_dir: working_dir,
+      started_at: DateTime.utc_now(),
+      started_by: started_by,
+      status: :idle,
+      messages: []
+    }
+
+    broadcast(@topic, {:chat_agent_started, summary(state)})
+
+    {:ok, state}
+  end
+
+  @impl true
+  def handle_cast({:send_message, text}, state) do
+    # Add user message
+    user_msg = %{role: :user, content: text, timestamp: DateTime.utc_now()}
+    state = %{state | messages: state.messages ++ [user_msg], status: :thinking}
+
+    broadcast("chat_agent:#{state.id}", {:chat_message, state.id, user_msg})
+    broadcast(@topic, {:chat_agent_status_changed, state.id, :thinking})
+
+    # Stream the response in a Task linked to this GenServer
+    me = self()
+    agent_id = state.id
+    session = state.session
+
+    Task.start_link(fn ->
+      try do
+        session
+        |> ClaudeCode.stream(text)
+        |> Enum.each(fn msg ->
+          send(me, {:stream_event, agent_id, msg})
+        end)
+
+        send(me, {:stream_done, agent_id})
+      rescue
+        e ->
+          send(me, {:stream_error, agent_id, Exception.message(e)})
+      end
+    end)
+
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_cast(:stop, state) do
+    if state.session do
+      ClaudeCode.stop(state.session)
+    end
+
+    broadcast(@topic, {:chat_agent_stopped, summary(%{state | status: :stopped})})
+    {:stop, :normal, %{state | status: :stopped}}
+  end
+
+  @impl true
+  def handle_call(:get_state, _from, state) do
+    {:reply, summary(state), state}
+  end
+
+  @impl true
+  def handle_info({:stream_event, id, msg}, %{id: id} = state) do
+    case classify_message(msg) do
+      {:assistant_message, content} ->
+        assistant_msg = %{role: :assistant, content: content, timestamp: DateTime.utc_now()}
+        state = %{state | messages: state.messages ++ [assistant_msg]}
+        broadcast("chat_agent:#{id}", {:chat_message, id, assistant_msg})
+        {:noreply, state}
+
+      {:tool_use, tool_name, tool_input} ->
+        tool_msg = %{role: :tool, tool: tool_name, input: tool_input, timestamp: DateTime.utc_now()}
+        state = %{state | messages: state.messages ++ [tool_msg]}
+        broadcast("chat_agent:#{id}", {:chat_message, id, tool_msg})
+        {:noreply, state}
+
+      {:tool_result, tool_name, output} ->
+        result_msg = %{role: :tool_result, tool: tool_name, output: output, timestamp: DateTime.utc_now()}
+        state = %{state | messages: state.messages ++ [result_msg]}
+        broadcast("chat_agent:#{id}", {:chat_message, id, result_msg})
+        {:noreply, state}
+
+      :ignored ->
+        {:noreply, state}
+    end
+  end
+
+  def handle_info({:stream_done, id}, %{id: id} = state) do
+    state = %{state | status: :idle}
+    broadcast(@topic, {:chat_agent_status_changed, id, :idle})
+    {:noreply, state}
+  end
+
+  def handle_info({:stream_error, id, reason}, %{id: id} = state) do
+    error_msg = %{role: :error, content: reason, timestamp: DateTime.utc_now()}
+    state = %{state | messages: state.messages ++ [error_msg], status: :idle}
+    broadcast("chat_agent:#{id}", {:chat_message, id, error_msg})
+    broadcast(@topic, {:chat_agent_status_changed, id, :idle})
+    {:noreply, state}
+  end
+
+  def handle_info(_msg, state), do: {:noreply, state}
+
+  # --- Private ---
+
+  defp via(id), do: {:via, Registry, {Hive.ChatAgentRegistry, id}}
+
+  defp summary(state) do
+    %{
+      id: state.id,
+      name: state.name,
+      working_dir: state.working_dir,
+      started_at: state.started_at,
+      started_by: state.started_by,
+      status: state.status,
+      messages: state.messages
+    }
+  end
+
+  defp broadcast(topic, message) do
+    Phoenix.PubSub.broadcast(Hive.PubSub, topic, message)
+  end
+
+  # Classify SDK messages into simple categories for the UI
+  defp classify_message(%ClaudeCode.Message.AssistantMessage{message: message}) do
+    content = message.content || []
+
+    text =
+      content
+      |> Enum.filter(&match?(%ClaudeCode.Content.TextBlock{}, &1))
+      |> Enum.map_join("", & &1.text)
+
+    tool_uses =
+      content
+      |> Enum.filter(&match?(%ClaudeCode.Content.ToolUseBlock{}, &1))
+
+    cond do
+      text != "" ->
+        {:assistant_message, text}
+
+      tool_uses != [] ->
+        tool = hd(tool_uses)
+        {:tool_use, tool.name, tool.input}
+
+      true ->
+        :ignored
+    end
+  end
+
+  defp classify_message(%ClaudeCode.Message.ResultMessage{} = msg) do
+    result_text = msg.result || ""
+    {:tool_result, "result", result_text}
+  end
+
+  defp classify_message(_), do: :ignored
+end

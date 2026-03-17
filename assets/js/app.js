@@ -5,6 +5,17 @@ import {Terminal} from "@xterm/xterm"
 
 let Hooks = {}
 
+// --- Scroll Bottom Hook ---
+// Auto-scrolls a container to the bottom when new content arrives
+Hooks.ScrollBottom = {
+  mounted() {
+    this.handleEvent("scroll_bottom", () => {
+      const el = document.getElementById("messages")
+      if (el) el.scrollTop = el.scrollHeight
+    })
+  }
+}
+
 // --- Screen Size Hook ---
 // Measures available space and reports ideal terminal cols/rows to the server.
 // This runs on the main container so it's always mounted.

@@ -5,7 +5,24 @@
       "Bash(jobs:*)",
       "Bash(cloudflared tunnel:*)",
       "WebFetch(domain:gist.github.com)",
-      "Bash(kill:*)"
+      "Bash(kill:*)",
+      "Bash(export MIX_HOME=\"$PWD/.mix_home\")",
+      "Bash(export HEX_HOME=\"$PWD/.hex_home\")",
+      "Bash(mix test:*)",
+      "Bash(mix deps.get)",
+      "Bash(export ELIXIR_MAKE_CACHE_DIR=\"$PWD/.cache/elixir_make\")",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:hex.pm)",
+      "WebFetch(domain:hexdocs.pm)",
+      "Bash(pkill -f \"mix phx.server\")",
+      "Bash(pkill -f \"beam.smp\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:4000)",
+      "Bash(lsof -ti:4000)",
+      "Bash(pkill -f cloudflared)",
+      "Bash(ipconfig getifaddr:*)"
     ]
   }
 }
