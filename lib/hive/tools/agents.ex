@@ -7,15 +7,54 @@ defmodule Hive.Tools.Agents do
 
   alias Hive.ChatAgent
 
+  # --- Public API (callable from tests and other modules) ---
+
+  def do_list do
+    ChatAgent.list_agents()
+    |> Enum.map(fn a ->
+      %{id: a.id, name: a.name, status: to_string(a.status), working_dir: a.working_dir}
+    end)
+  end
+
+  def do_spawn(name, working_dir) do
+    id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
+
+    case Hive.ChatAgentSupervisor.start_agent(
+           id: id,
+           name: name,
+           working_dir: working_dir,
+           started_by: "agent"
+         ) do
+      {:ok, _pid} -> {:ok, %{id: id, name: name}}
+      {:error, reason} -> {:error, "Failed to spawn: #{inspect(reason)}"}
+    end
+  end
+
+  def do_send_message(agent_id, message) do
+    case Registry.lookup(Hive.ChatAgentRegistry, agent_id) do
+      [{_pid, _}] ->
+        ChatAgent.send_message(agent_id, message)
+        {:ok, "Message sent to agent #{agent_id}"}
+      [] ->
+        {:error, "Agent #{agent_id} not found"}
+    end
+  end
+
+  def do_stop(agent_id) do
+    case Registry.lookup(Hive.ChatAgentRegistry, agent_id) do
+      [{_pid, _}] ->
+        ChatAgent.stop_agent(agent_id)
+        {:ok, "Agent #{agent_id} stopped"}
+      [] ->
+        {:error, "Agent #{agent_id} not found"}
+    end
+  end
+
+  # --- Tool definitions (SDK interface) ---
+
   tool :list_agents, "List all running agents with their IDs, names, and status" do
     def execute(_params) do
-      agents =
-        ChatAgent.list_agents()
-        |> Enum.map(fn a ->
-          %{id: a.id, name: a.name, status: to_string(a.status), working_dir: a.working_dir}
-        end)
-
-      {:ok, agents}
+      {:ok, Hive.Tools.Agents.do_list()}
     end
   end
 
@@ -24,31 +63,16 @@ defmodule Hive.Tools.Agents do
     field :working_dir, :string, required: true
 
     def execute(%{name: name, working_dir: working_dir}) do
-      id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
-
-      case Hive.ChatAgentSupervisor.start_agent(
-             id: id,
-             name: name,
-             working_dir: working_dir,
-             started_by: "agent"
-           ) do
-        {:ok, _pid} -> {:ok, %{id: id, name: name}}
-        {:error, reason} -> {:error, "Failed to spawn: #{inspect(reason)}"}
-      end
+      Hive.Tools.Agents.do_spawn(name, working_dir)
     end
   end
 
-  tool :send_message_to_agent, "Send a message to another agent and get the response" do
+  tool :send_message_to_agent, "Send a message to another agent" do
     field :agent_id, :string, required: true
     field :message, :string, required: true
 
     def execute(%{agent_id: agent_id, message: message}) do
-      try do
-        ChatAgent.send_message(agent_id, message)
-        {:ok, "Message sent to agent #{agent_id}"}
-      catch
-        :exit, _ -> {:error, "Agent #{agent_id} not found"}
-      end
+      Hive.Tools.Agents.do_send_message(agent_id, message)
     end
   end
 
@@ -56,12 +80,7 @@ defmodule Hive.Tools.Agents do
     field :agent_id, :string, required: true
 
     def execute(%{agent_id: agent_id}) do
-      try do
-        ChatAgent.stop_agent(agent_id)
-        {:ok, "Agent #{agent_id} stopped"}
-      catch
-        :exit, _ -> {:error, "Agent #{agent_id} not found"}
-      end
+      Hive.Tools.Agents.do_stop(agent_id)
     end
   end
 end
