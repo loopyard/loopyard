@@ -8,7 +8,7 @@ defmodule Hive.Tools.ContainerTest do
       assert ClaudeCode.MCP.Server.sdk_server?(Container)
     end
 
-    test "has correct server name and 6 tools" do
+    test "has correct server name and tools" do
       info = Container.__tool_server__()
       assert info.name == "hive-container"
       assert length(info.tools) == 6
@@ -18,16 +18,10 @@ defmodule Hive.Tools.ContainerTest do
       tool_names = Container.__tool_server__().tools |> Enum.map(& &1.__tool_name__())
       assert "create" in tool_names
       assert "exec" in tool_names
-      assert "copy_in" in tool_names
-      assert "copy_out" in tool_names
+      assert "rebuild" in tool_names
       assert "stop" in tool_names
+      assert "destroy" in tool_names
       assert "list" in tool_names
-    end
-  end
-
-  describe "container_name/1" do
-    test "generates correct name" do
-      assert Container.container_name("abc123") == "hive-dev-abc123"
     end
   end
 
@@ -39,22 +33,62 @@ defmodule Hive.Tools.ContainerTest do
       agent_id = "test-#{:rand.uniform(100_000)}"
 
       on_exit(fn ->
-        System.cmd("docker", ["rm", "-f", Container.container_name(agent_id)],
-          stderr_to_stdout: true
-        )
+        Hive.Docker.destroy(agent_id)
       end)
 
       %{agent_id: agent_id}
     end
 
-    test "create, exec, and stop", %{agent_id: agent_id} do
-      assert {:ok, %{container_name: name}} = Container.do_create(agent_id)
-      assert name == Container.container_name(agent_id)
+    test "create, exec, and destroy", %{agent_id: agent_id} do
+      assert {:ok, %{container: _, port: port, workspace: "/workspace"}} =
+               Container.do_create(agent_id)
+      assert is_integer(port)
 
       assert {:ok, output} = Container.do_exec(agent_id, "echo hello")
       assert String.contains?(output, "hello")
 
-      assert {:ok, _} = Container.do_stop(agent_id)
+      assert {:ok, _} = Container.do_destroy(agent_id)
+    end
+
+    test "rebuild preserves workspace files", %{agent_id: agent_id} do
+      {:ok, _} = Container.do_create(agent_id)
+
+      # Create a file
+      Container.do_exec(agent_id, "echo 'test content' > /workspace/myfile.txt")
+
+      # Rebuild
+      assert {:ok, _} = Container.do_rebuild(agent_id)
+
+      # File should survive
+      assert {:ok, output} = Container.do_exec(agent_id, "cat /workspace/myfile.txt")
+      assert String.contains?(output, "test content")
+    end
+
+    test "agent can edit Dockerfile and rebuild", %{agent_id: agent_id} do
+      {:ok, _} = Container.do_create(agent_id)
+
+      # Verify python is NOT installed
+      assert {:error, _} = Container.do_exec(agent_id, "python3 --version")
+
+      # Edit Dockerfile to add python
+      Container.do_exec(agent_id, """
+      cat > /workspace/Dockerfile << 'DOCKERFILE'
+      FROM ubuntu:22.04
+      ENV DEBIAN_FRONTEND=noninteractive
+      RUN apt-get update && apt-get install -y curl git build-essential python3 && rm -rf /var/lib/apt/lists/*
+      RUN curl -fsSL https://cli.anthropic.com/install.sh | sh
+      ENV PATH="/root/.claude/local/bin:${PATH}"
+      WORKDIR /workspace
+      CMD ["sleep", "infinity"]
+      DOCKERFILE
+      """)
+
+      # Rebuild
+      assert {:ok, _} = Container.do_rebuild(agent_id)
+
+      # Now python should work
+      assert {:ok, output} = Container.do_exec(agent_id, "python3 --version")
+      assert String.contains?(output, "Python")
     end
 
     test "exec fails on non-existent container" do
@@ -62,7 +96,7 @@ defmodule Hive.Tools.ContainerTest do
     end
 
     test "list shows running containers", %{agent_id: agent_id} do
-      Container.do_create(agent_id)
+      {:ok, _} = Container.do_create(agent_id)
       assert {:ok, containers} = Container.do_list()
       assert Enum.any?(containers, &String.contains?(&1.name, agent_id))
     end

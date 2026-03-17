@@ -79,14 +79,29 @@ defmodule Hive.ChatAgent do
 
     # Tool modules the agent has access to
     tools = Keyword.get(opts, :tools, default_tools())
+    use_docker = Keyword.get(opts, :docker, false)
 
-    session_opts = [
-      cwd: working_dir,
-      permission_mode: :accept_edits,
-      dangerously_skip_permissions: true,
-      mcp_servers: build_mcp_servers(tools),
-      allowed_tools: build_allowed_tools(tools)
-    ]
+    # If Docker mode, create container and use CLI wrapper
+    docker_opts =
+      if use_docker do
+        case Hive.Docker.create(id, Keyword.take(opts, [:dockerfile])) do
+          {:ok, _} ->
+            [cli_path: Hive.Docker.cli_wrapper_path(id)]
+          {:error, reason} ->
+            raise "Docker container failed: #{reason}"
+        end
+      else
+        []
+      end
+
+    session_opts =
+      [
+        cwd: working_dir,
+        permission_mode: :accept_edits,
+        dangerously_skip_permissions: true,
+        mcp_servers: build_mcp_servers(tools),
+        allowed_tools: build_allowed_tools(tools)
+      ] ++ docker_opts
 
     session_opts =
       case Keyword.get(opts, :system_prompt) do
