@@ -78,26 +78,40 @@ Hooks.Terminal = {
 
     this.term.open(this.el)
 
-    // Send every keystroke to the server as raw input
+    // Send every keystroke to the server as raw input.
+    // Filter out focus report sequences (\e[I = focus in, \e[O = focus out)
+    // which xterm.js sends but confuse the PTY on mobile.
     this.term.onData((data) => {
+      if (data === "\x1b[I" || data === "\x1b[O") return
       this.pushEvent("terminal_input", {data: data})
     })
 
-    // Focus terminal on click/tap
-    this.el.addEventListener("click", () => this.term.focus())
+    // Prevent ALL click/touch events inside the terminal from bubbling
+    // up to LiveView (which would trigger phx-click handlers like toggle_sidebar).
+    // This is critical on mobile where taps near the keyboard can propagate.
+    this.el.addEventListener("click", (e) => {
+      e.stopPropagation()
+      this.term.focus()
+    })
     this.el.addEventListener("touchend", (e) => {
-      // Only focus if it was a simple tap (not a scroll)
+      e.stopPropagation()
       if (!this._touchMoved) {
         this.term.focus()
       }
       this._touchMoved = false
     })
-    this.el.addEventListener("touchmove", () => {
+    this.el.addEventListener("touchmove", (e) => {
       this._touchMoved = true
     })
-    this.el.addEventListener("touchstart", () => {
+    this.el.addEventListener("touchstart", (e) => {
+      e.stopPropagation()
       this._touchMoved = false
     })
+
+    // Also prevent keyboard events from bubbling out of the terminal
+    this.el.addEventListener("keydown", (e) => e.stopPropagation())
+    this.el.addEventListener("keyup", (e) => e.stopPropagation())
+    this.el.addEventListener("keypress", (e) => e.stopPropagation())
 
     // Drag-and-drop visual indicator
     let dragCounter = 0
