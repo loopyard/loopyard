@@ -40,6 +40,10 @@ defmodule Hive.ChatAgent do
     GenServer.cast(via(id), :stop)
   end
 
+  def rename(id, new_name) do
+    GenServer.cast(via(id), {:rename, new_name})
+  end
+
   def list_agents do
     Registry.select(Hive.ChatAgentRegistry, [{{:"$1", :"$2", :"$3"}, [], [{{:"$1", :"$2"}}]}])
     |> Enum.map(fn {_id, pid} ->
@@ -73,12 +77,19 @@ defmodule Hive.ChatAgent do
     working_dir = Keyword.get(opts, :working_dir, File.cwd!())
     started_by = Keyword.get(opts, :started_by, "anonymous")
 
-    {:ok, session} =
-      ClaudeCode.start_link(
-        working_directory: working_dir,
-        permission_mode: :default,
-        system_prompt: Keyword.get(opts, :system_prompt, "")
-      )
+    session_opts = [
+      cwd: working_dir,
+      permission_mode: :default
+    ]
+
+    session_opts =
+      case Keyword.get(opts, :system_prompt) do
+        nil -> session_opts
+        "" -> session_opts
+        prompt -> Keyword.put(session_opts, :system_prompt, prompt)
+      end
+
+    {:ok, session} = ClaudeCode.start_link(session_opts)
 
     state = %__MODULE__{
       id: id,
@@ -139,6 +150,13 @@ defmodule Hive.ChatAgent do
   end
 
   @impl true
+  def handle_cast({:rename, new_name}, state) do
+    state = %{state | name: new_name}
+    broadcast(@topic, {:chat_agent_renamed, state.id, new_name})
+    {:noreply, state}
+  end
+
+  @impl true
   def handle_call(:get_state, _from, state) do
     {:reply, summary(state), state}
   end
@@ -156,12 +174,6 @@ defmodule Hive.ChatAgent do
         tool_msg = %{role: :tool, tool: tool_name, input: tool_input, timestamp: DateTime.utc_now()}
         state = %{state | messages: state.messages ++ [tool_msg]}
         broadcast("chat_agent:#{id}", {:chat_message, id, tool_msg})
-        {:noreply, state}
-
-      {:tool_result, tool_name, output} ->
-        result_msg = %{role: :tool_result, tool: tool_name, output: output, timestamp: DateTime.utc_now()}
-        state = %{state | messages: state.messages ++ [result_msg]}
-        broadcast("chat_agent:#{id}", {:chat_message, id, result_msg})
         {:noreply, state}
 
       :ignored ->
@@ -231,10 +243,9 @@ defmodule Hive.ChatAgent do
     end
   end
 
-  defp classify_message(%ClaudeCode.Message.ResultMessage{} = msg) do
-    result_text = msg.result || ""
-    {:tool_result, "result", result_text}
-  end
+  # ResultMessage is a summary of the full turn — the text is already
+  # in the AssistantMessage, so we skip it to avoid duplicates.
+  defp classify_message(%ClaudeCode.Message.ResultMessage{}), do: :ignored
 
   defp classify_message(_), do: :ignored
 end

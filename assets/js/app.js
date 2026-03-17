@@ -16,6 +16,19 @@ Hooks.ScrollBottom = {
   }
 }
 
+// --- Chat Form Hook ---
+// Clears the input field after form submit
+Hooks.ChatForm = {
+  mounted() {
+    this.el.addEventListener("submit", () => {
+      const input = this.el.querySelector("#chat-input")
+      if (input) {
+        setTimeout(() => { input.value = ""; input.focus() }, 10)
+      }
+    })
+  }
+}
+
 // --- Screen Size Hook ---
 // Measures available space and reports ideal terminal cols/rows to the server.
 // This runs on the main container so it's always mounted.

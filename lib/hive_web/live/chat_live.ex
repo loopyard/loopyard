@@ -53,7 +53,7 @@ defmodule HiveWeb.ChatLive do
 
     name =
       Map.get(params, "name", "")
-      |> then(fn n -> if n == "", do: "Chat #{String.slice(id, 0..5)}", else: n end)
+      |> then(fn n -> if n == "", do: auto_name(), else: n end)
 
     case Hive.ChatAgentSupervisor.start_agent(
            id: id,
@@ -87,6 +87,15 @@ defmodule HiveWeb.ChatLive do
     {:noreply, socket}
   end
 
+  @impl true
+  def handle_event("rename_agent", %{"name" => name}, socket) do
+    if socket.assigns.selected_id && String.trim(name) != "" do
+      ChatAgent.rename(socket.assigns.selected_id, String.trim(name))
+    end
+
+    {:noreply, socket}
+  end
+
   # PubSub: global
   @impl true
   def handle_info({:chat_agent_started, _}, socket) do
@@ -102,6 +111,26 @@ defmodule HiveWeb.ChatLive do
         do: Enum.find(agents, &(&1.id == socket.assigns.selected_id))
 
     {:noreply, socket |> assign(:agents, agents) |> assign(:selected_agent, selected)}
+  end
+
+  @impl true
+  def handle_info({:chat_agent_renamed, id, new_name}, socket) do
+    agents =
+      Enum.map(socket.assigns.agents, fn a ->
+        if a.id == id, do: %{a | name: new_name}, else: a
+      end)
+
+    socket = assign(socket, :agents, agents)
+
+    socket =
+      if id == socket.assigns.selected_id do
+        selected = Enum.find(agents, &(&1.id == id))
+        assign(socket, :selected_agent, selected)
+      else
+        socket
+      end
+
+    {:noreply, socket}
   end
 
   @impl true
@@ -169,6 +198,15 @@ defmodule HiveWeb.ChatLive do
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   # --- Helpers ---
+
+  @adjectives ~w(Swift Bright Calm Deep Quick Sharp Keen Bold Clear True)
+  @nouns ~w(Spark Drift Pulse Wave Bloom Forge Sage Fern Tide Mesa)
+
+  defp auto_name do
+    adj = Enum.random(@adjectives)
+    noun = Enum.random(@nouns)
+    "#{adj} #{noun}"
+  end
 
   defp status_label(:idle), do: "Idle"
   defp status_label(:thinking), do: "Thinking..."
@@ -294,7 +332,13 @@ defmodule HiveWeb.ChatLive do
             <div class="flex-none flex items-center justify-between px-4 md:px-5 h-12 border-b border-zinc-200 dark:border-zinc-700/80">
               <div class="flex items-center gap-3">
                 <div class={"w-2 h-2 rounded-full #{status_dot(@selected_agent.status)}"}></div>
-                <span class="text-sm font-semibold">{@selected_agent.name}</span>
+                <form phx-submit="rename_agent" class="inline">
+                  <input type="text" name="name" value={@selected_agent.name}
+                    class="text-sm font-semibold bg-transparent border-none p-0 focus:outline-none focus:ring-0
+                           text-zinc-900 dark:text-zinc-100 w-auto
+                           hover:text-violet-600 dark:hover:text-violet-400 cursor-text"
+                    style={"width: #{max(String.length(@selected_agent.name) * 8, 60)}px"} />
+                </form>
                 <span class="text-xs text-zinc-400 dark:text-zinc-500">{status_label(@selected_agent.status)}</span>
               </div>
               <button phx-click="stop_agent" phx-value-id={@selected_agent.id}
@@ -334,11 +378,11 @@ defmodule HiveWeb.ChatLive do
 
             <%!-- Input --%>
             <div class="flex-none border-t border-zinc-200 dark:border-zinc-700/80 p-3 md:p-4 safe-area-bottom">
-              <form phx-submit="send_message" class="flex gap-2">
+              <form id="chat-form" phx-submit="send_message" phx-hook="ChatForm" class="flex gap-2">
                 <input
                   type="text"
                   name="message"
-                  value={@input}
+                  id="chat-input"
                   placeholder={if @selected_agent.status == :thinking, do: "Claude is thinking...", else: "Type a message..."}
                   autocomplete="off"
                   class="flex-1 rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-2.5 text-sm
