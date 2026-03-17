@@ -1,5 +1,19 @@
 import Config
 
+# Load .env file if present (dev/test convenience, not used in prod deploys)
+if config_env() in [:dev, :test] do
+  Dotenvy.source([".env", ".env.#{config_env()}"])
+end
+
+# --- 12-Factor Configuration ---
+# All runtime config comes from environment variables.
+
+# Auth — set HIVE_AUTH_PASSWORD to enable HTTP Basic Auth
+# HIVE_AUTH_USERNAME is optional (defaults to accepting any username)
+config :hive,
+  auth_password: System.get_env("HIVE_AUTH_PASSWORD"),
+  auth_username: System.get_env("HIVE_AUTH_USERNAME")
+
 if config_env() == :prod do
   secret_key_base =
     System.get_env("SECRET_KEY_BASE") ||

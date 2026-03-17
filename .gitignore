@@ -10,5 +10,13 @@
 # Editor
 .elixir_ls/
 
+# Environment (never commit secrets)
+.env
+.env.*
+!.env.example
+
+# Build cache
+/.cache
+
 # OS
 .DS_Store
