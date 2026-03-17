@@ -38,8 +38,7 @@ defmodule HiveWeb.ChatLive do
 
   @impl true
   def handle_event("select_agent", %{"id" => id}, socket) do
-    # Use push_patch to update URL without full remount
-    {:noreply, push_patch(socket, to: "/chat/#{id}")}
+    {:noreply, push_patch(socket, to: "/chat/#{id}") |> push_event("focus_input", %{})}
   end
 
   @impl true

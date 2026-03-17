@@ -17,7 +17,7 @@ Hooks.ScrollBottom = {
 }
 
 // --- Chat Form Hook ---
-// Clears the input field after form submit
+// Clears input after submit, focuses on select
 Hooks.ChatForm = {
   mounted() {
     this.el.addEventListener("submit", () => {
@@ -25,6 +25,12 @@ Hooks.ChatForm = {
       if (input) {
         setTimeout(() => { input.value = ""; input.focus() }, 10)
       }
+    })
+    this.handleEvent("focus_input", () => {
+      setTimeout(() => {
+        const input = document.getElementById("chat-input")
+        if (input) input.focus()
+      }, 100)
     })
   }
 }
