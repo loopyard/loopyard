@@ -2,7 +2,7 @@ defmodule Hive.Agent do
   @moduledoc """
   GenServer wrapping a Claude Code CLI process.
   Streams raw stdio to/from the browser via PubSub.
-  Uses `script` to allocate a PTY so Claude runs in interactive mode.
+  Uses ExPTY for proper PTY allocation with resize support.
   """
   use GenServer, restart: :temporary
   require Logger
@@ -12,8 +12,7 @@ defmodule Hive.Agent do
   defstruct [
     :id,
     :name,
-    :port,
-    :os_pid,
+    :pty,
     :working_dir,
     :started_at,
     :started_by,
@@ -25,17 +24,13 @@ defmodule Hive.Agent do
   ]
 
   # Patterns that indicate Claude is waiting for user input
-  # These are ANSI-stripped patterns found in Claude Code's interactive prompts
   @attention_patterns [
-    # Claude's "do you want to proceed" style prompts
     ~r/\(y\/n\)/,
     ~r/\(Y\/n\)/,
     ~r/\[Y\/n\]/,
     ~r/\[yes\/no\]/i,
-    # Claude's permission prompts
     ~r/Allow\?/,
     ~r/Proceed\?/,
-    # Generic prompt ending with ? on its own line
     ~r/\?\s*$/m
   ]
 
@@ -134,29 +129,25 @@ defmodule Hive.Agent do
     end
 
     claude_path = System.find_executable("claude") || raise "claude CLI not found in PATH"
-    {script_path, script_args} = Hive.PTY.wrap_command(claude_path)
 
-    port =
-      Port.open({:spawn_executable, script_path}, [
-        :binary,
-        :exit_status,
-        :use_stdio,
-        {:args, script_args},
-        {:cd, working_dir},
-        {:env, Hive.PTY.terminal_env(cols, rows)}
+    # Use ExPTY for proper PTY with resize support
+    me = self()
+
+    {:ok, pty} =
+      ExPTY.spawn(claude_path, [], [
+        {:name, "xterm-256color"},
+        {:cols, cols},
+        {:rows, rows},
+        {:cwd, working_dir},
+        {:env, %{"TERM" => "xterm-256color", "COLUMNS" => "#{cols}", "LINES" => "#{rows}"}},
+        {:on_data, fn _pty, _pid, data -> send(me, {:pty_data, data}) end},
+        {:on_exit, fn _pty, _pid, exit_code, _signal -> send(me, {:pty_exit, exit_code}) end}
       ])
-
-    os_pid =
-      case Port.info(port, :os_pid) do
-        {:os_pid, pid} -> pid
-        _ -> nil
-      end
 
     state = %__MODULE__{
       id: id,
       name: name,
-      port: port,
-      os_pid: os_pid,
+      pty: pty,
       working_dir: working_dir,
       started_at: DateTime.utc_now(),
       started_by: started_by,
@@ -174,7 +165,7 @@ defmodule Hive.Agent do
   @impl true
   def handle_cast({:input, text}, state) do
     if state.status == :running do
-      Port.command(state.port, text <> "\n")
+      ExPTY.write(state.pty, text <> "\n")
     end
 
     {:noreply, state}
@@ -183,7 +174,7 @@ defmodule Hive.Agent do
   @impl true
   def handle_cast({:raw_input, data}, state) do
     if state.status == :running do
-      Port.command(state.port, data)
+      ExPTY.write(state.pty, data)
     end
 
     # Clear attention flag when user sends input
@@ -198,7 +189,7 @@ defmodule Hive.Agent do
   @impl true
   def handle_cast(:stop, state) do
     if state.status == :running do
-      Port.command(state.port, <<3>>)
+      ExPTY.write(state.pty, <<3>>)
       Process.send_after(self(), :force_close, 2000)
     end
 
@@ -207,15 +198,7 @@ defmodule Hive.Agent do
 
   @impl true
   def handle_cast(:kill, state) do
-    kill_process_tree(state.os_pid)
-
-    if state.port do
-      try do
-        Port.close(state.port)
-      catch
-        _, _ -> :ok
-      end
-    end
+    ExPTY.kill(state.pty, 9)
 
     broadcast(@topic, {:agent_stopped, summary(%{state | status: :stopped})})
     {:stop, :normal, %{state | status: :stopped}}
@@ -223,9 +206,8 @@ defmodule Hive.Agent do
 
   @impl true
   def handle_cast({:resize, cols, rows}, %{status: :running} = state) do
-    # Send SIGWINCH-style resize by updating stty on the PTY
-    # We can't directly resize the script PTY, but we can update env for new processes
-    # For now, broadcast the new size to all viewers
+    # Real PTY resize with SIGWINCH via ExPTY
+    ExPTY.resize(state.pty, cols, rows)
     new_state = %{state | cols: cols, rows: rows}
     broadcast("agent:#{state.id}", {:agent_resized, state.id, cols, rows})
     {:noreply, new_state}
@@ -238,8 +220,9 @@ defmodule Hive.Agent do
     {:reply, summary(state), state}
   end
 
+  # ExPTY data callback
   @impl true
-  def handle_info({port, {:data, data}}, %{port: port} = state) do
+  def handle_info({:pty_data, data}, state) do
     attention = detect_attention(data, state.needs_attention)
     new_state = %{state | output: RingBuffer.append(state.output, data), needs_attention: attention}
 
@@ -252,8 +235,9 @@ defmodule Hive.Agent do
     {:noreply, new_state}
   end
 
+  # ExPTY exit callback
   @impl true
-  def handle_info({port, {:exit_status, code}}, %{port: port} = state) do
+  def handle_info({:pty_exit, code}, state) do
     new_state = %{state | status: {:exited, code}}
     broadcast(@topic, {:agent_stopped, summary(new_state)})
     broadcast("agent:#{state.id}", {:agent_exited, state.id, code})
@@ -265,15 +249,7 @@ defmodule Hive.Agent do
 
   @impl true
   def handle_info(:force_close, %{status: :stopping} = state) do
-    kill_process_tree(state.os_pid)
-
-    if state.port do
-      try do
-        Port.close(state.port)
-      catch
-        _, _ -> :ok
-      end
-    end
+    ExPTY.kill(state.pty, 9)
 
     broadcast(@topic, {:agent_stopped, summary(%{state | status: :stopped})})
     {:stop, :normal, %{state | status: :stopped}}
@@ -287,6 +263,10 @@ defmodule Hive.Agent do
     {:stop, :normal, state}
   end
 
+  # Catch-all for any unexpected messages (e.g. old Port messages during transition)
+  @impl true
+  def handle_info(_msg, state), do: {:noreply, state}
+
   # --- Private ---
 
   defp via(id), do: {:via, Registry, {Hive.AgentRegistry, id}}
@@ -295,7 +275,6 @@ defmodule Hive.Agent do
     %{
       id: state.id,
       name: state.name,
-      os_pid: state.os_pid,
       working_dir: state.working_dir,
       started_at: state.started_at,
       started_by: state.started_by,
@@ -321,7 +300,6 @@ defmodule Hive.Agent do
   defp detect_attention(data, _prev_attention) do
     clean = strip_ansi(data)
 
-    # If we see a working pattern, Claude is busy, not waiting
     is_working = Enum.any?(@working_patterns, &Regex.match?(&1, clean))
 
     if is_working do
@@ -329,36 +307,5 @@ defmodule Hive.Agent do
     else
       Enum.any?(@attention_patterns, &Regex.match?(&1, clean))
     end
-  end
-
-  @doc false
-  def kill_process_tree(nil), do: :ok
-
-  def kill_process_tree(pid) do
-    pid_str = to_string(pid)
-
-    # First try to kill the entire process group
-    case System.cmd("kill", ["-9", "-#{pid_str}"], stderr_to_stdout: true) do
-      {_, 0} ->
-        :ok
-
-      _ ->
-        # Fallback: find and kill child processes, then the parent
-        case System.cmd("pgrep", ["-P", pid_str], stderr_to_stdout: true) do
-          {output, 0} ->
-            output
-            |> String.split("\n", trim: true)
-            |> Enum.each(fn child_pid ->
-              System.cmd("kill", ["-9", child_pid], stderr_to_stdout: true)
-            end)
-
-          _ ->
-            :ok
-        end
-
-        System.cmd("kill", ["-9", pid_str], stderr_to_stdout: true)
-    end
-
-    :ok
   end
 end

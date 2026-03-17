@@ -13,7 +13,6 @@ defmodule Hive.AgentTest do
     end
 
     test "returns error for a file (not directory)" do
-      # Create a temp file
       path = Path.join(System.tmp_dir!(), "hive_test_file_#{:rand.uniform(100_000)}")
       File.write!(path, "test")
 
@@ -25,15 +24,8 @@ defmodule Hive.AgentTest do
     end
   end
 
-  describe "agent lifecycle with echo" do
-    setup do
-      # Use a simple command instead of claude for testing
-      # We'll test the GenServer lifecycle using the existing infrastructure
-      :ok
-    end
-
-    test "list_agents returns empty list when no agents running" do
-      # This relies on no other tests spawning agents concurrently
+  describe "agent lifecycle" do
+    test "list_agents returns a list" do
       agents = HiveAgent.list_agents()
       assert is_list(agents)
     end
@@ -49,16 +41,6 @@ defmodule Hive.AgentTest do
     test "unsubscribe/1 unsubscribes from a specific agent topic" do
       HiveAgent.subscribe("test-agent-id")
       assert :ok = HiveAgent.unsubscribe("test-agent-id")
-    end
-  end
-
-  describe "kill_process_tree/1" do
-    test "handles nil pid gracefully" do
-      assert :ok = HiveAgent.kill_process_tree(nil)
-    end
-
-    test "handles non-existent pid gracefully" do
-      assert :ok = HiveAgent.kill_process_tree(999_999_999)
     end
   end
 end

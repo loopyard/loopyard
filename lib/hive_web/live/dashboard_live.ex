@@ -183,13 +183,18 @@ defmodule HiveWeb.DashboardLive do
     {:noreply, socket}
   end
 
-  # Auto-detect ideal terminal size from the client's screen
+  # Auto-detect ideal terminal size from the client's screen.
+  # Also live-resizes the PTY if an agent is selected.
   @impl true
   def handle_event("screen_size", %{"cols" => cols, "rows" => rows}, socket) do
-    {:noreply,
-     socket
-     |> assign(:new_cols, cols)
-     |> assign(:new_rows, rows)}
+    socket = socket |> assign(:new_cols, cols) |> assign(:new_rows, rows)
+
+    # If an agent is selected and running, resize its PTY to fit this viewer
+    if socket.assigns.selected_agent_id do
+      HiveAgent.resize(socket.assigns.selected_agent_id, cols, rows)
+    end
+
+    {:noreply, socket}
   end
 
   # PubSub handlers
@@ -568,9 +573,6 @@ defmodule HiveWeb.DashboardLive do
           <div class={"w-2 h-2 rounded-full flex-none #{status_bg(@agent.status)}"}></div>
           <span class="text-sm font-semibold truncate">{@agent.name}</span>
           <span class="hidden sm:inline text-xs text-zinc-400 dark:text-zinc-500 font-mono truncate">{shorten_path(@agent.working_dir)}</span>
-          <span :if={@agent.os_pid} class="hidden lg:inline text-xs text-zinc-400 dark:text-zinc-600 font-mono">
-            PID {@agent.os_pid}
-          </span>
           <span class="hidden sm:inline text-xs text-zinc-400 dark:text-zinc-600 font-mono">
             {@agent.cols}&times;{@agent.rows}
           </span>
