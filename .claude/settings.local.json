@@ -24,7 +24,8 @@
       "Bash(pkill -f cloudflared)",
       "Bash(ipconfig getifaddr:*)",
       "Bash(mix deps.clean expty --build)",
-      "Bash(grep -r \"agent\\\\|pty\\\\|ring_buffer\" /Users/bradgessler/Projects/bradgessler/hive/assets --include=*.js)"
+      "Bash(grep -r \"agent\\\\|pty\\\\|ring_buffer\" /Users/bradgessler/Projects/bradgessler/hive/assets --include=*.js)",
+      "Bash(mix compile:*)"
     ]
   }
 }

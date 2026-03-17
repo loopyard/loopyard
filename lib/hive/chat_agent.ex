@@ -77,10 +77,15 @@ defmodule Hive.ChatAgent do
     working_dir = Keyword.get(opts, :working_dir, File.cwd!())
     started_by = Keyword.get(opts, :started_by, "anonymous")
 
+    # Tool modules the agent has access to
+    tools = Keyword.get(opts, :tools, default_tools())
+
     session_opts = [
       cwd: working_dir,
       permission_mode: :accept_edits,
-      dangerously_skip_permissions: true
+      dangerously_skip_permissions: true,
+      mcp_servers: build_mcp_servers(tools),
+      allowed_tools: build_allowed_tools(tools)
     ]
 
     session_opts =
@@ -249,4 +254,28 @@ defmodule Hive.ChatAgent do
   defp classify_message(%ClaudeCode.Message.ResultMessage{}), do: :ignored
 
   defp classify_message(_), do: :ignored
+
+  # --- Tool Configuration ---
+
+  defp default_tools do
+    [Hive.Tools.Agents, Hive.Tools.Container]
+  end
+
+  defp build_mcp_servers(tool_modules) do
+    Map.new(tool_modules, fn mod ->
+      info = mod.__tool_server__()
+      {info.name, mod}
+    end)
+  end
+
+  defp build_allowed_tools(tool_modules) do
+    Enum.flat_map(tool_modules, fn mod ->
+      info = mod.__tool_server__()
+      server_name = info.name
+
+      Enum.map(info.tools, fn tool_mod ->
+        "mcp__#{server_name}__#{tool_mod.__tool_name__()}"
+      end)
+    end)
+  end
 end
