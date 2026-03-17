@@ -24,24 +24,14 @@ Hooks.ConnectionStatus = {
 // --- Terminal Hook ---
 Hooks.Terminal = {
   mounted() {
-    // The PTY is 120 cols wide. On narrow screens, we shrink the font so
-    // all 120 columns fit without wrapping (avoids garbled TUI output).
-    // We calculate the font size needed to fit 120 chars in the viewport.
-    const PTY_COLS = 120
-    const containerWidth = this.el.clientWidth - 16 // 8px padding each side
-    // Measure approximate char width at font size 13
-    const baseCharWidth = 7.8 // JetBrains Mono at 13px ≈ 7.8px per char
-    const neededWidth = PTY_COLS * baseCharWidth
-    let fontSize = 13
-    if (containerWidth < neededWidth) {
-      // Scale font down to fit all 120 cols
-      fontSize = Math.max(6, Math.floor(13 * containerWidth / neededWidth))
-    }
+    // Default size — will be updated by init_terminal with actual PTY dimensions
+    this._ptyCols = 120
+    this._ptyRows = 40
 
     this.term = new Terminal({
-      cols: PTY_COLS,
-      rows: 40,
-      fontSize,
+      cols: this._ptyCols,
+      rows: this._ptyRows,
+      fontSize: this._calcFontSize(this._ptyCols),
       fontFamily: '"JetBrains Mono", "SF Mono", "Menlo", monospace',
       theme: this.getTheme(),
       cursorBlink: true,
@@ -124,10 +114,11 @@ Hooks.Terminal = {
     // Handle server push events
     this.handleEvent("init_terminal", ({output, cols, rows}) => {
       if (cols && rows) {
+        this._ptyCols = cols
+        this._ptyRows = rows
+        this.term.options.fontSize = this._calcFontSize(cols)
         this.term.resize(cols, rows)
       }
-      // Re-fit after setting initial size
-      this._fit()
       this.term.clear()
       if (output) {
         this.term.write(output)
@@ -140,6 +131,9 @@ Hooks.Terminal = {
     })
 
     this.handleEvent("terminal_resize", ({cols, rows}) => {
+      this._ptyCols = cols
+      this._ptyRows = rows
+      this.term.options.fontSize = this._calcFontSize(cols)
       this.term.resize(cols, rows)
     })
   },
@@ -157,6 +151,17 @@ Hooks.Terminal = {
     } catch(_) {
       // Can fail if element is not visible yet
     }
+  },
+
+  // Calculate font size to fit ptyCols in the container width
+  _calcFontSize(ptyCols) {
+    const containerWidth = this.el.clientWidth - 16 // 8px padding each side
+    const baseCharWidth = 7.8 // JetBrains Mono at 13px ≈ 7.8px per char
+    const neededWidth = ptyCols * baseCharWidth
+    if (containerWidth > 0 && containerWidth < neededWidth) {
+      return Math.max(6, Math.floor(13 * containerWidth / neededWidth))
+    }
+    return 13
   },
 
   getTheme() {

@@ -4,10 +4,14 @@ defmodule HiveWeb.DashboardLive do
   alias Hive.Agent, as: HiveAgent
   alias HiveWeb.Presence
 
+  @default_cols 120
+  @default_rows 40
+
   @default_templates [
-    %{name: "General Assistant", working_dir: "", description: "General-purpose Claude agent"},
-    %{name: "Code Review", working_dir: "", description: "Review code in a project"},
-    %{name: "Bug Fix", working_dir: "", description: "Debug and fix issues"}
+    %{name: "General Assistant", working_dir: "", description: "General-purpose Claude agent", cols: 120, rows: 40},
+    %{name: "Code Review", working_dir: "", description: "Review code in a project", cols: 120, rows: 40},
+    %{name: "Bug Fix", working_dir: "", description: "Debug and fix issues", cols: 120, rows: 40},
+    %{name: "Mobile (compact)", working_dir: "", description: "Narrower terminal for small screens", cols: 80, rows: 24}
   ]
 
   @impl true
@@ -28,6 +32,8 @@ defmodule HiveWeb.DashboardLive do
      |> assign(:show_sidebar, false)
      |> assign(:new_name, "")
      |> assign(:new_working_dir, File.cwd!())
+     |> assign(:new_cols, @default_cols)
+     |> assign(:new_rows, @default_rows)
      |> assign(:viewer_counts, build_viewer_counts(agents))
      |> assign(:templates, @default_templates)
      |> assign(:attention_agents, MapSet.new())
@@ -101,7 +107,9 @@ defmodule HiveWeb.DashboardLive do
      |> assign(:show_templates, false)
      |> assign(:show_new_form, true)
      |> assign(:new_name, template.name)
-     |> assign(:new_working_dir, working_dir)}
+     |> assign(:new_working_dir, working_dir)
+     |> assign(:new_cols, Map.get(template, :cols, @default_cols))
+     |> assign(:new_rows, Map.get(template, :rows, @default_rows))}
   end
 
   @impl true
@@ -112,12 +120,17 @@ defmodule HiveWeb.DashboardLive do
       :ok ->
         id = generate_id()
 
+        cols = params |> Map.get("cols", "#{@default_cols}") |> parse_int(@default_cols) |> clamp(40, 300)
+        rows = params |> Map.get("rows", "#{@default_rows}") |> parse_int(@default_rows) |> clamp(10, 100)
+
         opts = [
           id: id,
           name:
             Map.get(params, "name", "")
             |> then(fn n -> if n == "", do: "Agent #{String.slice(id, 0..5)}", else: n end),
           working_dir: working_dir,
+          cols: cols,
+          rows: rows,
           started_by: "browser"
         ]
 
@@ -298,6 +311,17 @@ defmodule HiveWeb.DashboardLive do
 
   # --- Helpers ---
 
+  defp parse_int(str, default) when is_binary(str) do
+    case Integer.parse(str) do
+      {n, _} -> n
+      :error -> default
+    end
+  end
+
+  defp parse_int(_, default), do: default
+
+  defp clamp(n, min, max), do: n |> max(min) |> min(max)
+
   defp generate_id do
     :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
   end
@@ -441,6 +465,33 @@ defmodule HiveWeb.DashboardLive do
                    focus:outline-none focus:ring-2 focus:ring-zinc-900/10 dark:focus:ring-zinc-400/20 focus:border-zinc-400 dark:focus:border-zinc-500"
           />
         </div>
+        <div>
+          <label class="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1">Terminal Size</label>
+          <div class="flex gap-2 items-center">
+            <input
+              type="number"
+              name="cols"
+              value={@new_cols}
+              min="40"
+              max="300"
+              class="w-20 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2.5 py-2 text-sm font-mono text-center
+                     text-zinc-600 dark:text-zinc-300
+                     focus:outline-none focus:ring-2 focus:ring-zinc-900/10 dark:focus:ring-zinc-400/20 focus:border-zinc-400 dark:focus:border-zinc-500"
+            />
+            <span class="text-xs text-zinc-400 dark:text-zinc-500">&times;</span>
+            <input
+              type="number"
+              name="rows"
+              value={@new_rows}
+              min="10"
+              max="100"
+              class="w-20 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2.5 py-2 text-sm font-mono text-center
+                     text-zinc-600 dark:text-zinc-300
+                     focus:outline-none focus:ring-2 focus:ring-zinc-900/10 dark:focus:ring-zinc-400/20 focus:border-zinc-400 dark:focus:border-zinc-500"
+            />
+            <span class="text-xs text-zinc-400 dark:text-zinc-500">cols &times; rows</span>
+          </div>
+        </div>
         <div class="flex gap-2 pt-1">
           <button
             type="submit"
@@ -510,6 +561,9 @@ defmodule HiveWeb.DashboardLive do
           <span class="hidden sm:inline text-xs text-zinc-400 dark:text-zinc-500 font-mono truncate">{shorten_path(@agent.working_dir)}</span>
           <span :if={@agent.os_pid} class="hidden lg:inline text-xs text-zinc-400 dark:text-zinc-600 font-mono">
             PID {@agent.os_pid}
+          </span>
+          <span class="hidden sm:inline text-xs text-zinc-400 dark:text-zinc-600 font-mono">
+            {@agent.cols}&times;{@agent.rows}
           </span>
           <.viewer_badge count={@viewer_count} />
         </div>
@@ -586,7 +640,7 @@ defmodule HiveWeb.DashboardLive do
 
   defp sidebar_content(assigns) do
     ~H"""
-    <.new_agent_form :if={@show_new_form} new_name={@new_name} new_working_dir={@new_working_dir} />
+    <.new_agent_form :if={@show_new_form} new_name={@new_name} new_working_dir={@new_working_dir} new_cols={@new_cols} new_rows={@new_rows} />
     <.template_picker :if={@show_templates} templates={@templates} />
     <.agent_list agents={@agents} selected_agent_id={@selected_agent_id} viewer_counts={@viewer_counts} attention_agents={@attention_agents} />
     """
@@ -672,6 +726,8 @@ defmodule HiveWeb.DashboardLive do
             show_templates={@show_templates}
             new_name={@new_name}
             new_working_dir={@new_working_dir}
+            new_cols={@new_cols}
+            new_rows={@new_rows}
             templates={@templates}
             agents={@agents}
             selected_agent_id={@selected_agent_id}
