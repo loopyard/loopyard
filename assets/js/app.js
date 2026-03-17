@@ -2,19 +2,33 @@ import "phoenix_html"
 import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import {Terminal} from "@xterm/xterm"
-
-// Fixed terminal size — must match PTY size in agent.ex
-const COLS = 120
-const ROWS = 40
+import {FitAddon} from "@xterm/addon-fit"
 
 let Hooks = {}
 
+// --- Connection Status Hook ---
+// Shows a banner when the WebSocket disconnects and auto-recovers
+Hooks.ConnectionStatus = {
+  mounted() {
+    this.banner = this.el
+    // LiveSocket fires phx:disconnect / phx:connect on the window
+    window.addEventListener("phx:disconnect", () => {
+      this.banner.classList.remove("hidden")
+    })
+    window.addEventListener("phx:connect", () => {
+      this.banner.classList.add("hidden")
+    })
+  }
+}
+
+// --- Terminal Hook ---
 Hooks.Terminal = {
   mounted() {
+    // Responsive font size: smaller on narrow screens
+    const fontSize = window.innerWidth < 640 ? 10 : 13
+
     this.term = new Terminal({
-      cols: COLS,
-      rows: ROWS,
-      fontSize: 13,
+      fontSize,
       fontFamily: '"JetBrains Mono", "SF Mono", "Menlo", monospace',
       theme: this.getTheme(),
       cursorBlink: true,
@@ -23,15 +37,47 @@ Hooks.Terminal = {
       convertEol: true,
     })
 
+    this.fitAddon = new FitAddon()
+    this.term.loadAddon(this.fitAddon)
+
     this.term.open(this.el)
+
+    // Fit terminal to container after open
+    this._fit()
 
     // Send every keystroke to the server as raw input
     this.term.onData((data) => {
       this.pushEvent("terminal_input", {data: data})
     })
 
-    // Focus terminal on click
+    // Focus terminal on click/tap
     this.el.addEventListener("click", () => this.term.focus())
+    this.el.addEventListener("touchend", (e) => {
+      // Only focus if it was a simple tap (not a scroll)
+      if (!this._touchMoved) {
+        this.term.focus()
+      }
+      this._touchMoved = false
+    })
+    this.el.addEventListener("touchmove", () => {
+      this._touchMoved = true
+    })
+    this.el.addEventListener("touchstart", () => {
+      this._touchMoved = false
+    })
+
+    // Resize terminal when container size changes
+    this._resizeObserver = new ResizeObserver(() => {
+      this._fit()
+    })
+    this._resizeObserver.observe(this.el)
+
+    // Also re-fit on orientation change (mobile)
+    this._orientationHandler = () => {
+      // Small delay to let the browser finish layout
+      setTimeout(() => this._fit(), 150)
+    }
+    window.addEventListener("orientationchange", this._orientationHandler)
 
     // Listen for dark mode changes
     this.darkModeQuery = window.matchMedia("(prefers-color-scheme: dark)")
@@ -41,7 +87,12 @@ Hooks.Terminal = {
     this.darkModeQuery.addEventListener("change", this.darkModeListener)
 
     // Handle server push events
-    this.handleEvent("init_terminal", ({output}) => {
+    this.handleEvent("init_terminal", ({output, cols, rows}) => {
+      if (cols && rows) {
+        this.term.resize(cols, rows)
+      }
+      // Re-fit after setting initial size
+      this._fit()
       this.term.clear()
       if (output) {
         this.term.write(output)
@@ -52,11 +103,25 @@ Hooks.Terminal = {
     this.handleEvent("terminal_data", ({data}) => {
       this.term.write(data)
     })
+
+    this.handleEvent("terminal_resize", ({cols, rows}) => {
+      this.term.resize(cols, rows)
+    })
   },
 
   destroyed() {
+    if (this._resizeObserver) this._resizeObserver.disconnect()
+    if (this._orientationHandler) window.removeEventListener("orientationchange", this._orientationHandler)
     if (this.darkModeQuery) this.darkModeQuery.removeEventListener("change", this.darkModeListener)
     if (this.term) this.term.dispose()
+  },
+
+  _fit() {
+    try {
+      this.fitAddon.fit()
+    } catch(_) {
+      // Can fail if element is not visible yet
+    }
   },
 
   getTheme() {
