@@ -51,6 +51,97 @@ defmodule Hive.Tools.Container do
     {:ok, "Container and volumes destroyed"}
   end
 
+  def do_logs(agent_id, opts \\ %{}) do
+    service = Map.get(opts, :service)
+    lines = Map.get(opts, :lines, 100)
+    tail_flag = "-n #{lines}"
+
+    # If a specific service is requested, look for its log
+    # Otherwise, show all recent log activity
+    cmd = cond do
+      service ->
+        """
+        for f in \
+          /var/log/#{service}/*.log \
+          /var/log/#{service}.log \
+          /var/log/syslog; do
+          [ -f "$f" ] && echo "=== $f ===" && tail #{tail_flag} "$f" 2>/dev/null
+        done
+        # Also check journalctl if available
+        which journalctl >/dev/null 2>&1 && journalctl -u #{service} #{tail_flag} --no-pager 2>/dev/null || true
+        """
+
+      true ->
+        """
+        echo "=== Recent log activity ==="
+        for f in /var/log/*.log /var/log/postgresql/*.log /var/log/mysql/*.log /var/log/redis/*.log /var/log/nginx/*.log; do
+          [ -f "$f" ] && echo "--- $f ---" && tail -n 20 "$f" 2>/dev/null
+        done
+        echo ""
+        echo "=== Running processes ==="
+        ps aux --no-headers 2>/dev/null | grep -v 'sleep infinity' || ps 2>/dev/null
+        echo ""
+        echo "=== Listening ports ==="
+        ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null || echo "[not available]"
+        """
+    end
+
+    Docker.exec(agent_id, cmd)
+  end
+
+  def do_start_service(agent_id, command, opts \\ %{}) do
+    name = Map.get(opts, :name, "service")
+    log_file = "/var/log/#{name}.log"
+
+    # Start as a background process, redirect output to log file
+    start_cmd = "mkdir -p /var/log && nohup sh -c '#{command}' > #{log_file} 2>&1 & echo $!"
+
+    case Docker.exec(agent_id, start_cmd) do
+      {:ok, pid_str} ->
+        pid = String.trim(pid_str)
+        {:ok, %{pid: pid, name: name, log_file: log_file}}
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  def do_stop_service(agent_id, opts \\ %{}) do
+    cond do
+      Map.has_key?(opts, :pid) ->
+        Docker.exec(agent_id, "kill #{opts.pid} 2>/dev/null; echo stopped")
+
+      Map.has_key?(opts, :name) ->
+        # Find process by name in its log path or command
+        Docker.exec(agent_id, "pkill -f '#{opts.name}' 2>/dev/null; echo stopped")
+
+      Map.has_key?(opts, :port) ->
+        # Kill whatever is listening on this port
+        Docker.exec(agent_id, "fuser -k #{opts.port}/tcp 2>/dev/null; echo stopped")
+
+      true ->
+        {:error, "Provide pid, name, or port to identify the service"}
+    end
+  end
+
+  def do_ports(agent_id) do
+    Docker.exec(agent_id, """
+    echo "=== Listening ports ==="
+    ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null || echo "[not available]"
+    echo ""
+    echo "=== Mapped host port ==="
+    echo "Host port #{Docker.host_port(agent_id)} -> container port 3000"
+    """)
+  end
+
+  def do_volumes(agent_id) do
+    {:ok, %{
+      workspace: "/workspace (persists across rebuilds)",
+      cache: "/root/.cache (package caches)",
+      workspace_volume: Docker.workspace_volume(agent_id),
+      cache_volume: Docker.cache_volume(agent_id)
+    }}
+  end
+
   def do_inspect(agent_id) do
     checks = [
       {"Dockerfile", "cat /workspace/Dockerfile 2>/dev/null || echo '[none]'"},
@@ -122,11 +213,58 @@ defmodule Hive.Tools.Container do
     end
   end
 
+  tool :logs, "View log output from services running in the container. Call with no service to see all recent logs, running processes, and listening ports." do
+    field :agent_id, :string, required: true
+    field :service, :string, required: false
+    field :lines, :integer, required: false
+
+    def execute(%{agent_id: agent_id} = params) do
+      Hive.Tools.Container.do_logs(agent_id, params)
+    end
+  end
+
   tool :inspect_env, "Inspect the container environment: installed languages, databases, tools, running processes, listening ports, and the current Dockerfile" do
     field :agent_id, :string, required: true
 
     def execute(%{agent_id: agent_id}) do
       Hive.Tools.Container.do_inspect(agent_id)
+    end
+  end
+
+  tool :start_service, "Start a background service/process in the container. Returns the PID and log file path." do
+    field :agent_id, :string, required: true
+    field :command, :string, required: true
+    field :name, :string, required: true
+
+    def execute(%{agent_id: agent_id, command: command} = params) do
+      Hive.Tools.Container.do_start_service(agent_id, command, params)
+    end
+  end
+
+  tool :stop_service, "Stop a running service by PID, name, or port" do
+    field :agent_id, :string, required: true
+    field :pid, :string, required: false
+    field :name, :string, required: false
+    field :port, :integer, required: false
+
+    def execute(%{agent_id: agent_id} = params) do
+      Hive.Tools.Container.do_stop_service(agent_id, params)
+    end
+  end
+
+  tool :ports, "Show all listening ports in the container and the host port mapping" do
+    field :agent_id, :string, required: true
+
+    def execute(%{agent_id: agent_id}) do
+      Hive.Tools.Container.do_ports(agent_id)
+    end
+  end
+
+  tool :volumes, "Show volume mounts and what persists across rebuilds" do
+    field :agent_id, :string, required: true
+
+    def execute(%{agent_id: agent_id}) do
+      Hive.Tools.Container.do_volumes(agent_id)
     end
   end
 

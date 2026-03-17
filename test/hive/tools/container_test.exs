@@ -8,21 +8,17 @@ defmodule Hive.Tools.ContainerTest do
       assert ClaudeCode.MCP.Server.sdk_server?(Container)
     end
 
-    test "has correct server name and tools" do
+    test "has correct server name" do
       info = Container.__tool_server__()
       assert info.name == "hive-container"
-      assert length(info.tools) == 7
     end
 
-    test "tool names match expected" do
-      tool_names = Container.__tool_server__().tools |> Enum.map(& &1.__tool_name__())
-      assert "create" in tool_names
-      assert "exec" in tool_names
-      assert "rebuild" in tool_names
-      assert "inspect_env" in tool_names
-      assert "stop" in tool_names
-      assert "destroy" in tool_names
-      assert "list" in tool_names
+    test "has all expected tools" do
+      tool_names = Container.__tool_server__().tools |> Enum.map(& &1.__tool_name__()) |> MapSet.new()
+      expected = ~w(create exec rebuild logs inspect_env start_service stop_service ports volumes stop destroy list)
+      for name <- expected do
+        assert name in tool_names, "missing tool: #{name}"
+      end
     end
   end
 
