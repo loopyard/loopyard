@@ -26,7 +26,8 @@
       "Bash(mix deps.clean expty --build)",
       "Bash(grep -r \"agent\\\\|pty\\\\|ring_buffer\" /Users/bradgessler/Projects/bradgessler/hive/assets --include=*.js)",
       "Bash(mix compile:*)",
-      "Bash(docker info:*)"
+      "Bash(docker info:*)",
+      "Bash(git checkout:*)"
     ]
   }
 }

@@ -7,7 +7,7 @@ defmodule HiveWeb.ChatLiveTest do
     test "renders the chat page at /", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/")
 
-      assert html =~ "Hive"
+      assert html =~ "Boom Looper"
       assert html =~ "New Agent"
     end
   end

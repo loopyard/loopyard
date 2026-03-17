@@ -325,7 +325,7 @@ defmodule HiveWeb.ChatLive do
       <%!-- Header --%>
       <header class="flex-none h-14 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center justify-between px-4 md:px-5">
         <div class="flex items-center gap-3">
-          <h1 class="text-lg font-semibold tracking-tight">Hive</h1>
+          <h1 class="text-lg font-semibold tracking-tight">Boom Looper</h1>
           <span class="text-sm text-zinc-400 dark:text-zinc-500">{length(@agents)} agent{if length(@agents) != 1, do: "s"}</span>
         </div>
       </header>
