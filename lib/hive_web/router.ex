@@ -15,8 +15,7 @@ defmodule HiveWeb.Router do
     pipe_through :browser
 
     live "/", ChatLive, :index
-    live "/chat/:id", ChatLive, :show
-    live "/ops", OpsLive, :index
-    live "/ops/:id", OpsLive, :show
+    live "/chat/:id", ChatLive, :chat
+    live "/chat/:id/ops", ChatLive, :ops
   end
 end

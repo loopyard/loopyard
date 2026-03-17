@@ -21,24 +21,37 @@ defmodule HiveWeb.ChatLive do
      |> assign(:input, "")
      |> assign(:show_new_form, false)
      |> assign(:new_name, "")
-     |> assign(:new_working_dir, File.cwd!())}
+     |> assign(:new_working_dir, File.cwd!())
+     |> assign(:tab, :chat)
+     |> assign(:ops_logs, "")
+     |> assign(:ops_env, nil)
+     |> assign(:ops_log_service, nil)}
   end
 
-  # Handle URL params — select agent from URL on navigation/refresh
   @impl true
-  def handle_params(%{"id" => id}, _uri, socket) do
-    if socket.assigns.selected_id != id do
-      select_agent(socket, id)
-    else
-      {:noreply, socket}
-    end
+  def handle_params(%{"id" => id}, _uri, %{assigns: %{live_action: action}} = socket) do
+    tab = if action == :ops, do: :ops, else: :chat
+
+    socket =
+      if socket.assigns.selected_id != id do
+        {:noreply, s} = select_agent(socket, id)
+        s
+      else
+        socket
+      end
+
+    socket = assign(socket, :tab, tab)
+    socket = if tab == :ops, do: fetch_ops_data(socket), else: socket
+    {:noreply, socket}
   end
 
-  def handle_params(_params, _uri, socket), do: {:noreply, socket}
+  def handle_params(_params, _uri, socket), do: {:noreply, assign(socket, :tab, :chat)}
 
   @impl true
   def handle_event("select_agent", %{"id" => id}, socket) do
-    {:noreply, push_patch(socket, to: "/chat/#{id}") |> push_event("focus_input", %{})}
+    tab = socket.assigns.tab
+    path = if tab == :ops, do: "/chat/#{id}/ops", else: "/chat/#{id}"
+    {:noreply, push_patch(socket, to: path) |> push_event("focus_input", %{})}
   end
 
   @impl true
@@ -94,6 +107,32 @@ defmodule HiveWeb.ChatLive do
     end
 
     {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("switch_tab", %{"tab" => tab}, socket) do
+    tab = String.to_existing_atom(tab)
+
+    path =
+      case {socket.assigns.selected_id, tab} do
+        {nil, _} -> "/"
+        {id, :ops} -> "/chat/#{id}/ops"
+        {id, _} -> "/chat/#{id}"
+      end
+
+    {:noreply, push_patch(socket, to: path)}
+  end
+
+  @impl true
+  def handle_event("refresh_ops", _params, socket) do
+    {:noreply, fetch_ops_data(socket)}
+  end
+
+  @impl true
+  def handle_event("filter_ops_service", %{"service" => service}, socket) do
+    service = if service == "", do: nil, else: service
+    socket = assign(socket, :ops_log_service, service)
+    {:noreply, fetch_ops_data(socket)}
   end
 
   # PubSub: global
@@ -214,6 +253,33 @@ defmodule HiveWeb.ChatLive do
     end
   end
 
+  defp fetch_ops_data(socket) do
+    case socket.assigns.selected_id do
+      nil ->
+        socket
+
+      id ->
+        log_opts = %{lines: 100}
+        log_opts = if socket.assigns.ops_log_service, do: Map.put(log_opts, :service, socket.assigns.ops_log_service), else: log_opts
+
+        logs =
+          case Hive.Tools.Container.do_logs(id, log_opts) do
+            {:ok, output} -> output
+            {:error, err} -> "Error: #{err}"
+          end
+
+        env =
+          case Hive.Tools.Container.do_inspect(id) do
+            {:ok, output} -> output
+            _ -> nil
+          end
+
+        socket
+        |> assign(:ops_logs, logs)
+        |> assign(:ops_env, env)
+    end
+  end
+
   @adjectives ~w(Swift Bright Calm Deep Quick Sharp Keen Bold Clear True)
   @nouns ~w(Spark Drift Pulse Wave Bloom Forge Sage Fern Tide Mesa)
 
@@ -222,11 +288,6 @@ defmodule HiveWeb.ChatLive do
     noun = Enum.random(@nouns)
     "#{adj} #{noun}"
   end
-
-  defp status_label(:idle), do: "Idle"
-  defp status_label(:thinking), do: "Thinking..."
-  defp status_label(:stopped), do: "Stopped"
-  defp status_label(_), do: ""
 
   defp status_dot(:idle), do: "bg-green-500"
   defp status_dot(:thinking), do: "bg-amber-400 animate-pulse"
@@ -241,6 +302,19 @@ defmodule HiveWeb.ChatLive do
   defp format_tool_input(input) when is_map(input), do: Jason.encode!(input, pretty: true)
   defp format_tool_input(input), do: inspect(input)
 
+  defp time_ago(nil), do: ""
+
+  defp time_ago(dt) do
+    diff = DateTime.diff(DateTime.utc_now(), dt, :second)
+
+    cond do
+      diff < 5 -> "just now"
+      diff < 60 -> "#{diff}s ago"
+      diff < 3600 -> "#{div(diff, 60)}m ago"
+      true -> "#{div(diff, 3600)}h ago"
+    end
+  end
+
 
   # --- Render ---
 
@@ -254,9 +328,6 @@ defmodule HiveWeb.ChatLive do
           <h1 class="text-lg font-semibold tracking-tight">Hive</h1>
           <span class="text-sm text-zinc-400 dark:text-zinc-500">{length(@agents)} agent{if length(@agents) != 1, do: "s"}</span>
         </div>
-        <a href="/ops" class="text-sm text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">
-          Ops
-        </a>
       </header>
 
       <div class="flex-1 flex min-h-0">
@@ -335,28 +406,48 @@ defmodule HiveWeb.ChatLive do
             </div>
           </div>
 
-          <%!-- Chat view --%>
+          <%!-- Agent view --%>
           <div :if={@selected_agent} class="flex-1 flex flex-col min-h-0">
-            <%!-- Agent header --%>
-            <div class="flex-none flex items-center justify-between px-4 md:px-5 h-12 border-b border-zinc-200 dark:border-zinc-700/80">
-              <div class="flex items-center gap-3">
-                <div class={"w-2 h-2 rounded-full #{status_dot(@selected_agent.status)}"}></div>
-                <form phx-submit="rename_agent" class="inline">
-                  <input type="text" name="name" value={@selected_agent.name}
-                    class="text-sm font-semibold bg-transparent border-none p-0 focus:outline-none focus:ring-0
-                           text-zinc-900 dark:text-zinc-100 w-auto
-                           hover:text-violet-600 dark:hover:text-violet-400 cursor-text"
-                    style={"width: #{max(String.length(@selected_agent.name) * 8, 60)}px"} />
-                </form>
-                <span class="text-xs text-zinc-400 dark:text-zinc-500">{status_label(@selected_agent.status)}</span>
+            <%!-- Agent header with tabs --%>
+            <div class="flex-none border-b border-zinc-200 dark:border-zinc-700/80">
+              <div class="flex items-center justify-between px-4 md:px-5 h-12">
+                <div class="flex items-center gap-3">
+                  <div class={"w-2 h-2 rounded-full #{status_dot(@selected_agent.status)}"}></div>
+                  <form phx-submit="rename_agent" class="inline">
+                    <input type="text" name="name" value={@selected_agent.name}
+                      class="text-sm font-semibold bg-transparent border-none p-0 focus:outline-none focus:ring-0
+                             text-zinc-900 dark:text-zinc-100 w-auto
+                             hover:text-violet-600 dark:hover:text-violet-400 cursor-text"
+                      style={"width: #{max(String.length(@selected_agent.name) * 8, 60)}px"} />
+                  </form>
+                  <span :if={@selected_agent[:last_activity_at]} class="text-xs text-zinc-400 dark:text-zinc-500">
+                    {time_ago(@selected_agent[:last_activity_at])}
+                  </span>
+                </div>
+                <button phx-click="stop_agent" phx-value-id={@selected_agent.id}
+                  class="text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-md px-2 py-1">
+                  Stop
+                </button>
               </div>
-              <button phx-click="stop_agent" phx-value-id={@selected_agent.id}
-                class="text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-md px-2 py-1">
-                Stop
-              </button>
+              <%!-- Tabs --%>
+              <div class="flex gap-0 px-4">
+                <button phx-click="switch_tab" phx-value-tab="chat"
+                  class={"px-3 py-1.5 text-xs font-medium border-b-2 transition-colors #{if @tab == :chat, do: "border-violet-500 text-violet-600 dark:text-violet-400", else: "border-transparent text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"}"}>
+                  Chat
+                </button>
+                <button phx-click="switch_tab" phx-value-tab="ops"
+                  class={"px-3 py-1.5 text-xs font-medium border-b-2 transition-colors #{if @tab == :ops, do: "border-violet-500 text-violet-600 dark:text-violet-400", else: "border-transparent text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"}"}>
+                  Ops
+                  <span :if={@selected_agent[:errors] && @selected_agent.errors > 0}
+                    class="ml-1 inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold text-white bg-red-500 rounded-full">
+                    {@selected_agent.errors}
+                  </span>
+                </button>
+              </div>
             </div>
 
-            <%!-- Messages --%>
+            <%!-- Chat tab --%>
+            <div :if={@tab == :chat} class="flex-1 flex flex-col min-h-0">
             <div id="messages" class="flex-1 overflow-y-auto px-4 md:px-6 py-4 space-y-3">
               <div :for={msg <- @messages}>
                 <.msg_bubble msg={msg} />
@@ -403,6 +494,56 @@ defmodule HiveWeb.ChatLive do
                   Send
                 </button>
               </form>
+            </div>
+            </div>
+
+            <%!-- Ops tab --%>
+            <div :if={@tab == :ops} class="flex-1 flex flex-col min-h-0 overflow-y-auto">
+              <%!-- Quick stats --%>
+              <div class="flex gap-4 px-4 py-3 border-b border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50">
+                <div class="text-center">
+                  <div class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{@selected_agent[:tool_calls] || 0}</div>
+                  <div class="text-[10px] uppercase tracking-wider text-zinc-400">Tools</div>
+                </div>
+                <div class="text-center">
+                  <div class={"text-lg font-semibold #{if (@selected_agent[:errors] || 0) > 0, do: "text-red-500", else: "text-zinc-900 dark:text-zinc-100"}"}>{@selected_agent[:errors] || 0}</div>
+                  <div class="text-[10px] uppercase tracking-wider text-zinc-400">Errors</div>
+                </div>
+                <div class="text-center">
+                  <div class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{length(@messages)}</div>
+                  <div class="text-[10px] uppercase tracking-wider text-zinc-400">Messages</div>
+                </div>
+                <div class="flex-1"></div>
+                <button phx-click="refresh_ops"
+                  class="self-center text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">
+                  Refresh
+                </button>
+              </div>
+
+              <%!-- Environment --%>
+              <div :if={@ops_env} class="border-b border-zinc-200 dark:border-zinc-700/80">
+                <div class="px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50">
+                  <h3 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Environment</h3>
+                </div>
+                <pre class="px-4 py-3 text-xs font-mono text-zinc-600 dark:text-zinc-400 overflow-x-auto whitespace-pre-wrap max-h-48 overflow-y-auto">{@ops_env}</pre>
+              </div>
+
+              <div :if={!@ops_env} class="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700/80">
+                <p class="text-xs text-zinc-400">No container running</p>
+              </div>
+
+              <%!-- Logs --%>
+              <div class="flex-1 flex flex-col min-h-0">
+                <div class="flex items-center justify-between px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
+                  <h3 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Logs</h3>
+                  <form phx-change="filter_ops_service" class="inline">
+                    <input type="text" name="service" value={@ops_log_service || ""} placeholder="Filter service..."
+                      class="text-xs rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-1 w-28
+                             focus:outline-none focus:ring-1 focus:ring-violet-500/30" />
+                  </form>
+                </div>
+                <pre class="flex-1 px-4 py-3 text-xs font-mono overflow-auto whitespace-pre-wrap bg-zinc-950 text-green-400 min-h-[200px]">{@ops_logs}</pre>
+              </div>
             </div>
           </div>
         </main>

@@ -15,8 +15,11 @@ defmodule Hive.ChatAgent do
     :working_dir,
     :started_at,
     :started_by,
+    :last_activity_at,
     status: :idle,
-    messages: []
+    messages: [],
+    tool_calls: 0,
+    errors: 0
   ]
 
   @topic "chat_agents"
@@ -112,13 +115,16 @@ defmodule Hive.ChatAgent do
 
     {:ok, session} = ClaudeCode.start_link(session_opts)
 
+    now = DateTime.utc_now()
+
     state = %__MODULE__{
       id: id,
       name: name,
       session: session,
       working_dir: working_dir,
-      started_at: DateTime.utc_now(),
+      started_at: now,
       started_by: started_by,
+      last_activity_at: now,
       status: :idle,
       messages: []
     }
@@ -186,14 +192,16 @@ defmodule Hive.ChatAgent do
   def handle_info({:stream_event, id, msg}, %{id: id} = state) do
     case classify_message(msg) do
       {:assistant_message, content} ->
-        assistant_msg = %{role: :assistant, content: content, timestamp: DateTime.utc_now()}
-        state = %{state | messages: state.messages ++ [assistant_msg]}
+        now = DateTime.utc_now()
+        assistant_msg = %{role: :assistant, content: content, timestamp: now}
+        state = %{state | messages: state.messages ++ [assistant_msg], last_activity_at: now}
         broadcast("chat_agent:#{id}", {:chat_message, id, assistant_msg})
         {:noreply, state}
 
       {:tool_use, tool_name, tool_input} ->
-        tool_msg = %{role: :tool, tool: tool_name, input: tool_input, timestamp: DateTime.utc_now()}
-        state = %{state | messages: state.messages ++ [tool_msg]}
+        now = DateTime.utc_now()
+        tool_msg = %{role: :tool, tool: tool_name, input: tool_input, timestamp: now}
+        state = %{state | messages: state.messages ++ [tool_msg], last_activity_at: now, tool_calls: state.tool_calls + 1}
         broadcast("chat_agent:#{id}", {:chat_message, id, tool_msg})
         {:noreply, state}
 
@@ -209,8 +217,9 @@ defmodule Hive.ChatAgent do
   end
 
   def handle_info({:stream_error, id, reason}, %{id: id} = state) do
-    error_msg = %{role: :error, content: reason, timestamp: DateTime.utc_now()}
-    state = %{state | messages: state.messages ++ [error_msg], status: :idle}
+    now = DateTime.utc_now()
+    error_msg = %{role: :error, content: reason, timestamp: now}
+    state = %{state | messages: state.messages ++ [error_msg], status: :idle, last_activity_at: now, errors: state.errors + 1}
     broadcast("chat_agent:#{id}", {:chat_message, id, error_msg})
     broadcast(@topic, {:chat_agent_status_changed, id, :idle})
     {:noreply, state}
@@ -229,8 +238,11 @@ defmodule Hive.ChatAgent do
       working_dir: state.working_dir,
       started_at: state.started_at,
       started_by: state.started_by,
+      last_activity_at: state.last_activity_at,
       status: state.status,
-      messages: state.messages
+      messages: state.messages,
+      tool_calls: state.tool_calls,
+      errors: state.errors
     }
   end
 
