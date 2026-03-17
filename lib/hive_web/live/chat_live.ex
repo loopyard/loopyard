@@ -25,7 +25,8 @@ defmodule HiveWeb.ChatLive do
      |> assign(:tab, :chat)
      |> assign(:ops_logs, "")
      |> assign(:ops_env, nil)
-     |> assign(:ops_log_service, nil)}
+     |> assign(:ops_log_service, nil)
+     |> assign(:ops_has_container, false)}
   end
 
   @impl true
@@ -259,24 +260,35 @@ defmodule HiveWeb.ChatLive do
         socket
 
       id ->
-        log_opts = %{lines: 100}
-        log_opts = if socket.assigns.ops_log_service, do: Map.put(log_opts, :service, socket.assigns.ops_log_service), else: log_opts
+        # Only fetch Docker data if the agent has a running container
+        has_container = Hive.Docker.running?(id)
 
-        logs =
-          case Hive.Tools.Container.do_logs(id, log_opts) do
-            {:ok, output} -> output
-            {:error, err} -> "Error: #{err}"
-          end
+        if has_container do
+          log_opts = %{lines: 100}
+          log_opts = if socket.assigns.ops_log_service, do: Map.put(log_opts, :service, socket.assigns.ops_log_service), else: log_opts
 
-        env =
-          case Hive.Tools.Container.do_inspect(id) do
-            {:ok, output} -> output
-            _ -> nil
-          end
+          logs =
+            case Hive.Tools.Container.do_logs(id, log_opts) do
+              {:ok, output} -> output
+              {:error, err} -> "Error: #{err}"
+            end
 
-        socket
-        |> assign(:ops_logs, logs)
-        |> assign(:ops_env, env)
+          env =
+            case Hive.Tools.Container.do_inspect(id) do
+              {:ok, output} -> output
+              _ -> nil
+            end
+
+          socket
+          |> assign(:ops_logs, logs)
+          |> assign(:ops_env, env)
+          |> assign(:ops_has_container, true)
+        else
+          socket
+          |> assign(:ops_logs, "")
+          |> assign(:ops_env, nil)
+          |> assign(:ops_has_container, false)
+        end
     end
   end
 
@@ -520,29 +532,49 @@ defmodule HiveWeb.ChatLive do
                 </button>
               </div>
 
-              <%!-- Environment --%>
-              <div :if={@ops_env} class="border-b border-zinc-200 dark:border-zinc-700/80">
-                <div class="px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50">
-                  <h3 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Environment</h3>
+              <%!-- Container section — only if container exists --%>
+              <div :if={@ops_has_container}>
+                <div :if={@ops_env} class="border-b border-zinc-200 dark:border-zinc-700/80">
+                  <div class="px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50">
+                    <h3 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Environment</h3>
+                  </div>
+                  <pre class="px-4 py-3 text-xs font-mono text-zinc-600 dark:text-zinc-400 overflow-x-auto whitespace-pre-wrap max-h-48 overflow-y-auto">{@ops_env}</pre>
                 </div>
-                <pre class="px-4 py-3 text-xs font-mono text-zinc-600 dark:text-zinc-400 overflow-x-auto whitespace-pre-wrap max-h-48 overflow-y-auto">{@ops_env}</pre>
+
+                <div class="flex-1 flex flex-col min-h-0">
+                  <div class="flex items-center justify-between px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
+                    <h3 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Logs</h3>
+                    <form phx-change="filter_ops_service" class="inline">
+                      <input type="text" name="service" value={@ops_log_service || ""} placeholder="Filter service..."
+                        class="text-xs rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-1 w-28
+                               focus:outline-none focus:ring-1 focus:ring-violet-500/30" />
+                    </form>
+                  </div>
+                  <pre class="flex-1 px-4 py-3 text-xs font-mono overflow-auto whitespace-pre-wrap bg-zinc-950 text-green-400 min-h-[200px]">{@ops_logs}</pre>
+                </div>
               </div>
 
-              <div :if={!@ops_env} class="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700/80">
-                <p class="text-xs text-zinc-400">No container running</p>
-              </div>
-
-              <%!-- Logs --%>
-              <div class="flex-1 flex flex-col min-h-0">
-                <div class="flex items-center justify-between px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
-                  <h3 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Logs</h3>
-                  <form phx-change="filter_ops_service" class="inline">
-                    <input type="text" name="service" value={@ops_log_service || ""} placeholder="Filter service..."
-                      class="text-xs rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-1 w-28
-                             focus:outline-none focus:ring-1 focus:ring-violet-500/30" />
-                  </form>
+              <%!-- No container — show recent activity --%>
+              <div :if={!@ops_has_container} class="flex-1 overflow-y-auto">
+                <div class="px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
+                  <h3 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Recent Activity</h3>
                 </div>
-                <pre class="flex-1 px-4 py-3 text-xs font-mono overflow-auto whitespace-pre-wrap bg-zinc-950 text-green-400 min-h-[200px]">{@ops_logs}</pre>
+                <div class="divide-y divide-zinc-100 dark:divide-zinc-800">
+                  <div :for={msg <- Enum.reverse(Enum.take(Enum.reverse(@messages), 20))} class="px-4 py-2">
+                    <div :if={msg.role == :tool} class="flex items-center gap-2">
+                      <span class="text-[10px] text-zinc-400 font-mono">{Calendar.strftime(msg.timestamp, "%H:%M:%S")}</span>
+                      <span class="text-xs font-medium text-blue-600 dark:text-blue-400">{msg.tool}</span>
+                    </div>
+                    <div :if={msg.role == :error} class="flex items-center gap-2">
+                      <span class="text-[10px] text-zinc-400 font-mono">{Calendar.strftime(msg.timestamp, "%H:%M:%S")}</span>
+                      <span class="text-xs text-red-500">{String.slice(msg.content, 0..80)}</span>
+                    </div>
+                    <div :if={msg.role == :assistant} class="flex items-center gap-2">
+                      <span class="text-[10px] text-zinc-400 font-mono">{Calendar.strftime(msg.timestamp, "%H:%M:%S")}</span>
+                      <span class="text-xs text-zinc-500 truncate">{String.slice(msg.content, 0..80)}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
