@@ -81,6 +81,13 @@ mix test --trace            # Verbose output
 - **Test behavior, not implementation.** Test what functions return and what side effects they produce.
 - **Tests must be fast.** No sleeps, no external API calls. Use the ClaudeCode test stubs for SDK interactions.
 - **LiveView tests cover user flows.** Mount, click, submit, assert. Use `Phoenix.LiveViewTest`.
+- **Plans require tests.** When implementing work from `./plans/*`, the plan is not done until there are comprehensive tests that verify the behavior end-to-end and catch regressions. If a plan involves Docker, browser, or other external deps, write tests that exercise the real thing (tagged for conditional execution) AND unit tests that run without the dependency.
+
+### Test tags
+
+- Default: all tests run with `mix test`
+- `@tag :docker` — requires Docker daemon. Excluded by default, run with `mix test --include docker`
+- Always write both: unit tests (no deps, always run) AND integration tests (tagged, exercise the real system)
 
 ### Test file organization
 
