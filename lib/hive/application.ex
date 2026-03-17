@@ -7,6 +7,7 @@ defmodule Hive.Application do
     children = [
       {Phoenix.PubSub, name: Hive.PubSub},
       {Registry, keys: :unique, name: Hive.AgentRegistry},
+      HiveWeb.Presence,
       Hive.AgentSupervisor,
       HiveWeb.Endpoint
     ]
