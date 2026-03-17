@@ -21,4 +21,45 @@ defmodule Hive.ChatAgentTest do
       assert :ok = ChatAgent.unsubscribe("test-id")
     end
   end
+
+  describe "get_state/1" do
+    setup do
+      id = "state-test-#{:rand.uniform(100_000)}"
+
+      {:ok, _pid} =
+        Hive.ChatAgentSupervisor.start_agent(
+          id: id,
+          name: "State Test",
+          working_dir: File.cwd!(),
+          started_by: "test"
+        )
+
+      on_exit(fn ->
+        try do
+          ChatAgent.stop_agent(id)
+        catch
+          :exit, _ -> :ok
+        end
+
+        Process.sleep(50)
+      end)
+
+      %{id: id}
+    end
+
+    test "returns agent summary with all fields", %{id: id} do
+      state = ChatAgent.get_state(id)
+
+      assert state.id == id
+      assert state.name == "State Test"
+      assert state.working_dir == File.cwd!()
+      assert state.started_by == "test"
+      assert state.status == :idle
+      assert state.messages == []
+      assert state.tool_calls == 0
+      assert state.errors == 0
+      assert %DateTime{} = state.started_at
+      assert %DateTime{} = state.last_activity_at
+    end
+  end
 end

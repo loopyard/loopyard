@@ -58,4 +58,38 @@ defmodule HiveWeb.ChatLiveTest do
       assert {:error, {:live_redirect, %{to: "/"}}} = live(conn, "/chat/nonexistent123")
     end
   end
+
+  describe "tabs" do
+    test "defaults to chat tab", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/")
+
+      # Spawn an agent
+      view |> element("button", "New Agent") |> render_click()
+      view |> element("form[phx-submit='spawn_agent']") |> render_submit(%{"name" => "Tab Test", "working_dir" => File.cwd!()})
+      assert_patch(view)
+
+      # Chat tab should be active by default
+      html = render(view)
+      assert html =~ "Chat"
+      assert html =~ "Ops"
+    end
+
+    test "switch to ops tab", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/")
+
+      # Spawn an agent
+      view |> element("button", "New Agent") |> render_click()
+      view |> element("form[phx-submit='spawn_agent']") |> render_submit(%{"name" => "Ops Tab Test", "working_dir" => File.cwd!()})
+      assert_patch(view)
+
+      # Switch to ops tab
+      view |> element("button[phx-click='switch_tab'][phx-value-tab='ops']") |> render_click()
+      assert_patch(view)
+
+      html = render(view)
+      assert html =~ "Tools"
+      assert html =~ "Errors"
+      assert html =~ "Messages"
+    end
+  end
 end
