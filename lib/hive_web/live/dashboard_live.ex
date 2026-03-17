@@ -183,6 +183,15 @@ defmodule HiveWeb.DashboardLive do
     {:noreply, socket}
   end
 
+  # Auto-detect ideal terminal size from the client's screen
+  @impl true
+  def handle_event("screen_size", %{"cols" => cols, "rows" => rows}, socket) do
+    {:noreply,
+     socket
+     |> assign(:new_cols, cols)
+     |> assign(:new_rows, rows)}
+  end
+
   # PubSub handlers
   @impl true
   def handle_info({:agent_started, _}, socket) do
@@ -649,7 +658,7 @@ defmodule HiveWeb.DashboardLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 safe-area-top">
+    <div id="screen-sizer" phx-hook="ScreenSize" class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 safe-area-top">
       <%!-- Connection status banner --%>
       <div id="connection-status" phx-hook="ConnectionStatus" class="connection-banner hidden">
         Reconnecting...

@@ -6,6 +6,44 @@ import {FitAddon} from "@xterm/addon-fit"
 
 let Hooks = {}
 
+// --- Screen Size Hook ---
+// Measures available space and reports ideal terminal cols/rows to the server.
+// This runs on the main container so it's always mounted.
+Hooks.ScreenSize = {
+  mounted() {
+    this._report()
+    this._resizeObserver = new ResizeObserver(() => this._report())
+    this._resizeObserver.observe(this.el)
+    window.addEventListener("orientationchange", () => {
+      setTimeout(() => this._report(), 200)
+    })
+  },
+  destroyed() {
+    if (this._resizeObserver) this._resizeObserver.disconnect()
+  },
+  _report() {
+    // Estimate how many cols/rows fit in the main panel area.
+    // Main panel = screen width minus sidebar (320px on md+, 0 on mobile)
+    const isMobile = window.innerWidth < 768
+    const sidebarWidth = isMobile ? 0 : 320
+    const availWidth = window.innerWidth - sidebarWidth - 32 // 16px padding
+    const availHeight = window.innerHeight - 140 // header + agent header + padding
+
+    // Character cell size at font size 13 (JetBrains Mono)
+    const charWidth = 7.8
+    const charHeight = 17
+
+    // At minimum font size 11, chars are proportionally smaller
+    const minFontSize = 11
+    const scaledCharWidth = charWidth * (minFontSize / 13)
+
+    const cols = Math.max(40, Math.min(300, Math.floor(availWidth / scaledCharWidth)))
+    const rows = Math.max(10, Math.min(100, Math.floor(availHeight / charHeight)))
+
+    this.pushEvent("screen_size", {cols, rows})
+  }
+}
+
 // --- Connection Status Hook ---
 // Shows a banner when the WebSocket disconnects and auto-recovers
 Hooks.ConnectionStatus = {
@@ -153,13 +191,14 @@ Hooks.Terminal = {
     }
   },
 
-  // Calculate font size to fit ptyCols in the container width
+  // Calculate font size — never go below 11px (readability floor).
+  // If 120 cols can't fit at 11px, the terminal scrolls horizontally instead.
   _calcFontSize(ptyCols) {
     const containerWidth = this.el.clientWidth - 16 // 8px padding each side
     const baseCharWidth = 7.8 // JetBrains Mono at 13px ≈ 7.8px per char
     const neededWidth = ptyCols * baseCharWidth
     if (containerWidth > 0 && containerWidth < neededWidth) {
-      return Math.max(6, Math.floor(13 * containerWidth / neededWidth))
+      return Math.max(11, Math.floor(13 * containerWidth / neededWidth))
     }
     return 13
   },
