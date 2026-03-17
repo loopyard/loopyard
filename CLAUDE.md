@@ -105,6 +105,34 @@ test/
       chat_live_test.exs     # LiveView rendering, events, navigation
 ```
 
+## Code style
+
+### Composition over conditionals
+
+Use functional composition — small, focused components and functions. Do NOT:
+- Jam everything into mega-views with `if/else` scattered throughout templates
+- Use `:if` guards to switch between completely different UIs in one template
+- Build god-modules that handle every case
+
+Instead:
+- Extract LiveView function components for distinct UI sections
+- Use separate LiveView modules when views have different data needs
+- Compose with `render_slot`, function components, and pattern matching
+- Each component should do one thing
+
+```elixir
+# Bad — one template with conditionals everywhere
+<div :if={@tab == :chat}>... 100 lines ...</div>
+<div :if={@tab == :ops && @has_container}>... 80 lines ...</div>
+<div :if={@tab == :ops && !@has_container}>... 60 lines ...</div>
+
+# Good — composed components
+<.chat_panel :if={@tab == :chat} messages={@messages} ... />
+<.ops_panel :if={@tab == :ops} agent={@selected_agent} has_container={@ops_has_container} ... />
+```
+
+This applies to tools and GenServers too — compose behaviours, don't branch.
+
 ## Git workflow
 
 - **Atomic commits.** Each commit is a self-contained, working change.
