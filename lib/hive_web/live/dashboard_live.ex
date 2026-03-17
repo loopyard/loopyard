@@ -184,17 +184,10 @@ defmodule HiveWeb.DashboardLive do
   end
 
   # Auto-detect ideal terminal size from the client's screen.
-  # Also live-resizes the PTY if an agent is selected.
+  # Only used as defaults for the new agent form — does NOT resize running agents.
   @impl true
   def handle_event("screen_size", %{"cols" => cols, "rows" => rows}, socket) do
-    socket = socket |> assign(:new_cols, cols) |> assign(:new_rows, rows)
-
-    # If an agent is selected and running, resize its PTY to fit this viewer
-    if socket.assigns.selected_agent_id do
-      HiveAgent.resize(socket.assigns.selected_agent_id, cols, rows)
-    end
-
-    {:noreply, socket}
+    {:noreply, socket |> assign(:new_cols, cols) |> assign(:new_rows, rows)}
   end
 
   # PubSub handlers

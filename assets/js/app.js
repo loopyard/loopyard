@@ -2,7 +2,6 @@ import "phoenix_html"
 import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import {Terminal} from "@xterm/xterm"
-import {FitAddon} from "@xterm/addon-fit"
 
 let Hooks = {}
 
@@ -11,15 +10,14 @@ let Hooks = {}
 // This runs on the main container so it's always mounted.
 Hooks.ScreenSize = {
   mounted() {
+    // Report once on mount so the new-agent form gets good defaults
     this._report()
-    this._resizeObserver = new ResizeObserver(() => this._report())
-    this._resizeObserver.observe(this.el)
-    window.addEventListener("orientationchange", () => {
-      setTimeout(() => this._report(), 200)
-    })
+    // Re-report on orientation change (mobile rotation)
+    this._orientationHandler = () => setTimeout(() => this._report(), 200)
+    window.addEventListener("orientationchange", this._orientationHandler)
   },
   destroyed() {
-    if (this._resizeObserver) this._resizeObserver.disconnect()
+    if (this._orientationHandler) window.removeEventListener("orientationchange", this._orientationHandler)
   },
   _report() {
     // Estimate how many cols/rows fit in the main panel area.
@@ -78,9 +76,6 @@ Hooks.Terminal = {
       convertEol: true,
     })
 
-    this.fitAddon = new FitAddon()
-    this.term.loadAddon(this.fitAddon)
-
     this.term.open(this.el)
 
     // Send every keystroke to the server as raw input
@@ -129,18 +124,14 @@ Hooks.Terminal = {
       if (indicator) indicator.classList.add("hidden")
     })
 
-    // Resize terminal when container size changes
+    // Recalculate font size when container changes (e.g. orientation change)
     this._resizeObserver = new ResizeObserver(() => {
-      this._fit()
+      const newSize = this._calcFontSize(this._ptyCols)
+      if (this.term.options.fontSize !== newSize) {
+        this.term.options.fontSize = newSize
+      }
     })
     this._resizeObserver.observe(this.el)
-
-    // Also re-fit on orientation change (mobile)
-    this._orientationHandler = () => {
-      // Small delay to let the browser finish layout
-      setTimeout(() => this._fit(), 150)
-    }
-    window.addEventListener("orientationchange", this._orientationHandler)
 
     // Listen for dark mode changes
     this.darkModeQuery = window.matchMedia("(prefers-color-scheme: dark)")
@@ -178,17 +169,8 @@ Hooks.Terminal = {
 
   destroyed() {
     if (this._resizeObserver) this._resizeObserver.disconnect()
-    if (this._orientationHandler) window.removeEventListener("orientationchange", this._orientationHandler)
     if (this.darkModeQuery) this.darkModeQuery.removeEventListener("change", this.darkModeListener)
     if (this.term) this.term.dispose()
-  },
-
-  _fit() {
-    try {
-      this.fitAddon.fit()
-    } catch(_) {
-      // Can fail if element is not visible yet
-    }
   },
 
   // Calculate font size — never go below 11px (readability floor).
