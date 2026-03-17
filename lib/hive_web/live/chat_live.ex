@@ -260,9 +260,6 @@ defmodule HiveWeb.ChatLive do
           <h1 class="text-lg font-semibold tracking-tight">Hive</h1>
           <span class="text-sm text-zinc-400 dark:text-zinc-500">{length(@agents)} agent{if length(@agents) != 1, do: "s"}</span>
         </div>
-        <a href="/terminal" class="text-sm text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">
-          Terminal mode &rarr;
-        </a>
       </header>
 
       <div class="flex-1 flex min-h-0">

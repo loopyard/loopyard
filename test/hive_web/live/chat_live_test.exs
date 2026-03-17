@@ -10,7 +10,6 @@ defmodule HiveWeb.ChatLiveTest do
       assert html =~ "Hive"
       assert html =~ "New Agent"
       assert html =~ "No agents yet"
-      assert html =~ "Terminal mode"
     end
 
     test "shows agent count", %{conn: conn} do

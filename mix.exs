@@ -36,7 +36,6 @@ defmodule Hive.MixProject do
       {:telemetry_poller, "~> 1.0"},
       {:jason, "~> 1.2"},
       {:bandit, "~> 1.6"},
-      {:expty, "~> 0.2"},
       {:claude_code, "~> 0.32"},
       {:dotenvy, "~> 0.9"},
       {:lazy_html, ">= 0.1.0", only: :test}

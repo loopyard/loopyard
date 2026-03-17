@@ -6,10 +6,7 @@ defmodule Hive.Application do
   def start(_type, _args) do
     children = [
       {Phoenix.PubSub, name: Hive.PubSub},
-      {Registry, keys: :unique, name: Hive.AgentRegistry},
       {Registry, keys: :unique, name: Hive.ChatAgentRegistry},
-      HiveWeb.Presence,
-      Hive.AgentSupervisor,
       Hive.ChatAgentSupervisor,
       HiveWeb.Endpoint
     ]

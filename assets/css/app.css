@@ -2,71 +2,25 @@
 @import "tailwindcss/components";
 @import "tailwindcss/utilities";
 
-/* --- Scrollbar --- */
-::-webkit-scrollbar {
-  width: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.1);
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.2);
-}
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.1); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.2); }
 @media (prefers-color-scheme: dark) {
-  ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.2);
-  }
+  ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
 }
-/* Firefox */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
-}
+* { scrollbar-width: thin; scrollbar-color: rgba(0, 0, 0, 0.1) transparent; }
 @media (prefers-color-scheme: dark) {
-  * {
-    scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
-  }
+  * { scrollbar-color: rgba(255, 255, 255, 0.1) transparent; }
 }
 
-/* --- Terminal --- */
-#terminal-container {
-  overflow: auto;
-  -webkit-overflow-scrolling: touch;
-  position: relative;
-}
-#terminal-container .xterm {
-  padding: 8px;
-  height: 100%;
-}
-/* On mobile, allow horizontal scroll if terminal is wider than screen */
-#terminal-container .xterm-viewport {
-  overflow-y: auto !important;
-  -webkit-overflow-scrolling: touch;
-}
-#terminal-container .xterm-screen {
-  min-width: fit-content;
-}
-
-/* --- Connection status banner --- */
+/* Connection banner */
 .connection-banner {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 50;
-  padding: 8px 16px;
-  text-align: center;
-  font-size: 13px;
-  font-weight: 500;
-  background: #f59e0b;
-  color: #451a03;
+  position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+  padding: 8px 16px; text-align: center; font-size: 13px; font-weight: 500;
+  background: #f59e0b; color: #451a03;
   animation: slide-down 0.3s ease-out;
 }
 @keyframes slide-down {
@@ -74,47 +28,11 @@
   to { transform: translateY(0); }
 }
 @media (prefers-color-scheme: dark) {
-  .connection-banner {
-    background: #d97706;
-    color: #fffbeb;
-  }
+  .connection-banner { background: #d97706; color: #fffbeb; }
 }
 
-/* --- Mobile sidebar overlay --- */
-@media (max-width: 767px) {
-  .sidebar-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 40;
-    background: rgba(0, 0, 0, 0.4);
-    animation: fade-in 0.2s ease-out;
-  }
-  .sidebar-mobile {
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    width: 320px;
-    max-width: 85vw;
-    z-index: 41;
-    animation: slide-right 0.2s ease-out;
-  }
-  @keyframes fade-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-  @keyframes slide-right {
-    from { transform: translateX(-100%); }
-    to { transform: translateX(0); }
-  }
-}
-
-/* --- Safe area insets for notched devices (iPhone etc) --- */
+/* Safe area for notched devices */
 @supports (padding: env(safe-area-inset-top)) {
-  .safe-area-top {
-    padding-top: env(safe-area-inset-top);
-  }
-  .safe-area-bottom {
-    padding-bottom: env(safe-area-inset-bottom);
-  }
+  .safe-area-top { padding-top: env(safe-area-inset-top); }
+  .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
 }
