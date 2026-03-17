@@ -24,21 +24,22 @@ defmodule HiveWeb.ChatLive do
      |> assign(:new_working_dir, File.cwd!())}
   end
 
+  # Handle URL params — select agent from URL on navigation/refresh
+  @impl true
+  def handle_params(%{"id" => id}, _uri, socket) do
+    if socket.assigns.selected_id != id do
+      select_agent(socket, id)
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
+
   @impl true
   def handle_event("select_agent", %{"id" => id}, socket) do
-    if prev = socket.assigns.selected_id do
-      ChatAgent.unsubscribe(prev)
-    end
-
-    ChatAgent.subscribe(id)
-    agent = ChatAgent.get_state(id)
-
-    {:noreply,
-     socket
-     |> assign(:selected_id, id)
-     |> assign(:selected_agent, agent)
-     |> assign(:messages, agent.messages)
-     |> assign(:streaming_text, "")}
+    # Use push_patch to update URL without full remount
+    {:noreply, push_patch(socket, to: "/chat/#{id}")}
   end
 
   @impl true
@@ -181,23 +182,38 @@ defmodule HiveWeb.ChatLive do
 
   @impl true
   def handle_info({:auto_select, id}, socket) do
-    ChatAgent.subscribe(id)
-    agent = ChatAgent.get_state(id)
-    agents = ChatAgent.list_agents()
-
-    {:noreply,
-     socket
-     |> assign(:agents, agents)
-     |> assign(:selected_id, id)
-     |> assign(:selected_agent, agent)
-     |> assign(:messages, agent.messages)
-     |> assign(:streaming_text, "")}
+    {:noreply, push_patch(socket, to: "/chat/#{id}")}
   end
 
   @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   # --- Helpers ---
+
+  defp select_agent(socket, id) do
+    # Unsubscribe from previous
+    if prev = socket.assigns.selected_id do
+      ChatAgent.unsubscribe(prev)
+    end
+
+    try do
+      ChatAgent.subscribe(id)
+      agent = ChatAgent.get_state(id)
+      agents = ChatAgent.list_agents()
+
+      {:noreply,
+       socket
+       |> assign(:agents, agents)
+       |> assign(:selected_id, id)
+       |> assign(:selected_agent, agent)
+       |> assign(:messages, agent.messages)
+       |> assign(:streaming_text, "")}
+    catch
+      :exit, _ ->
+        # Agent doesn't exist (maybe expired) — redirect to index
+        {:noreply, push_patch(socket, to: "/")}
+    end
+  end
 
   @adjectives ~w(Swift Bright Calm Deep Quick Sharp Keen Bold Clear True)
   @nouns ~w(Spark Drift Pulse Wave Bloom Forge Sage Fern Tide Mesa)
