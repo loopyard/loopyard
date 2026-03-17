@@ -14,7 +14,7 @@ defmodule HiveWeb.Router do
   scope "/", HiveWeb do
     pipe_through :browser
 
-    live "/", DashboardLive, :index
-    live "/chat", ChatLive, :index
+    live "/", ChatLive, :index
+    live "/terminal", DashboardLive, :index
   end
 end
