@@ -29,7 +29,15 @@ defmodule HiveWeb.DashboardLive do
      |> assign(:new_name, "")
      |> assign(:new_working_dir, File.cwd!())
      |> assign(:viewer_counts, build_viewer_counts(agents))
-     |> assign(:templates, @default_templates)}
+     |> assign(:templates, @default_templates)
+     |> assign(:attention_agents, MapSet.new())
+     |> allow_upload(:files,
+       accept: :any,
+       max_entries: 10,
+       max_file_size: 50_000_000,
+       auto_upload: true,
+       progress: &handle_upload_progress/3
+     )}
   end
 
   @impl true
@@ -61,12 +69,14 @@ defmodule HiveWeb.DashboardLive do
 
   @impl true
   def handle_event("toggle_new_form", _params, socket) do
-    {:noreply, assign(socket, show_new_form: !socket.assigns.show_new_form, show_templates: false)}
+    new_show = !socket.assigns.show_new_form
+    {:noreply, assign(socket, show_new_form: new_show, show_templates: false, show_sidebar: new_show || socket.assigns.show_sidebar)}
   end
 
   @impl true
   def handle_event("toggle_templates", _params, socket) do
-    {:noreply, assign(socket, show_templates: !socket.assigns.show_templates, show_new_form: false)}
+    new_show = !socket.assigns.show_templates
+    {:noreply, assign(socket, show_templates: new_show, show_new_form: false, show_sidebar: new_show || socket.assigns.show_sidebar)}
   end
 
   @impl true
@@ -113,10 +123,16 @@ defmodule HiveWeb.DashboardLive do
 
         case Hive.AgentSupervisor.start_agent(opts) do
           {:ok, _pid} ->
-            {:noreply,
-             socket
+            # Auto-select the new agent
+            socket = socket
              |> assign(:show_new_form, false)
-             |> assign(:new_name, "")}
+             |> assign(:show_sidebar, false)
+             |> assign(:new_name, "")
+
+            # Select the new agent (reuse the select logic)
+            send(self(), {:auto_select_agent, id})
+
+            {:noreply, socket}
 
           {:error, reason} ->
             {:noreply, put_flash(socket, :error, "Failed to start: #{inspect(reason)}")}
@@ -145,6 +161,12 @@ defmodule HiveWeb.DashboardLive do
       HiveAgent.send_raw(socket.assigns.selected_agent_id, data)
     end
 
+    {:noreply, socket}
+  end
+
+  # LiveView requires a validate event for uploads even with auto_upload
+  @impl true
+  def handle_event("validate_upload", _params, socket) do
     {:noreply, socket}
   end
 
@@ -203,11 +225,75 @@ defmodule HiveWeb.DashboardLive do
     end
   end
 
+  # Auto-select a newly spawned agent
+  @impl true
+  def handle_info({:auto_select_agent, id}, socket) do
+    socket_id = socket.id
+
+    # Untrack previous
+    if prev = socket.assigns.selected_agent_id do
+      Presence.untrack_viewer(self(), prev, socket_id)
+      Presence.unsubscribe(prev)
+      HiveAgent.unsubscribe(prev)
+    end
+
+    HiveAgent.subscribe(id)
+    Presence.subscribe(id)
+    Presence.track_viewer(self(), id, socket_id)
+
+    agent = HiveAgent.get_state(id)
+    agents = HiveAgent.list_agents()
+
+    {:noreply,
+     socket
+     |> assign(:agents, agents)
+     |> assign(:selected_agent_id, id)
+     |> assign(:selected_agent, agent)
+     |> assign(:viewer_counts, build_viewer_counts(agents))
+     |> push_event("init_terminal", %{output: agent.output, cols: agent.cols, rows: agent.rows})}
+  end
+
   # Presence diff updates
   @impl true
   def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff"}, socket) do
     agents = socket.assigns.agents
     {:noreply, assign(socket, :viewer_counts, build_viewer_counts(agents))}
+  end
+
+  # Agent attention state changed
+  @impl true
+  def handle_info({:agent_attention_changed, id, needs_attention}, socket) do
+    attention_agents =
+      if needs_attention do
+        MapSet.put(socket.assigns.attention_agents, id)
+      else
+        MapSet.delete(socket.assigns.attention_agents, id)
+      end
+
+    {:noreply, assign(socket, :attention_agents, attention_agents)}
+  end
+
+  # File upload progress callback — when 100%, save file and send path to terminal
+  defp handle_upload_progress(:files, entry, socket) do
+    if entry.done? do
+      agent = socket.assigns.selected_agent
+      if agent do
+        consumed =
+          consume_uploaded_entries(socket, :files, fn %{path: tmp_path}, entry ->
+            dest = Path.join(agent.working_dir, entry.client_name)
+            File.cp!(tmp_path, dest)
+            {:ok, dest}
+          end)
+
+        # Send the file paths as text input to the terminal
+        paths = Enum.join(consumed, " ")
+        HiveAgent.send_raw(agent.id, paths)
+      end
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
   end
 
   # --- Helpers ---
@@ -290,8 +376,12 @@ defmodule HiveWeb.DashboardLive do
         >
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2.5 min-w-0">
-              <div class={"w-2 h-2 rounded-full flex-none #{status_bg(agent.status)}"}></div>
+              <div class="relative flex-none w-2 h-2">
+                <div :if={MapSet.member?(@attention_agents, agent.id)} class="absolute inset-0 rounded-full bg-amber-400 animate-ping"></div>
+                <div class={"relative w-2 h-2 rounded-full #{if MapSet.member?(@attention_agents, agent.id), do: "bg-amber-400", else: status_bg(agent.status)}"}></div>
+              </div>
               <span class="text-sm font-medium truncate">{agent.name}</span>
+              <span :if={MapSet.member?(@attention_agents, agent.id)} class="text-xs font-medium text-amber-600 dark:text-amber-400 flex-none">Waiting</span>
             </div>
             <div class="flex items-center gap-2 flex-none ml-2">
               <.viewer_badge count={Map.get(@viewer_counts, agent.id, 0)} />
@@ -332,6 +422,8 @@ defmodule HiveWeb.DashboardLive do
             value={@new_name}
             placeholder="e.g. Fix auth bug"
             autocomplete="off"
+            autofocus
+            phx-mounted={Phoenix.LiveView.JS.focus()}
             class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm
                    text-zinc-900 dark:text-zinc-100
                    placeholder:text-zinc-400 dark:placeholder:text-zinc-500
@@ -445,13 +537,22 @@ defmodule HiveWeb.DashboardLive do
         </div>
       </div>
 
-      <%!-- Terminal --%>
+      <%!-- Terminal with drop target --%>
       <div
         id="terminal-container"
         phx-hook="Terminal"
         phx-update="ignore"
-        class="flex-1 min-h-0"
+        phx-drop-target={@uploads.ref}
+        class="flex-1 min-h-0 relative"
       >
+      </div>
+      <%!-- Hidden file input for LiveView uploads --%>
+      <form id="upload-form" phx-change="validate_upload" class="hidden">
+        <.live_file_input upload={@uploads} />
+      </form>
+      <%!-- Drop zone visual indicator (shown by JS during drag) --%>
+      <div id="drop-indicator" class="hidden absolute inset-0 z-10 bg-blue-500/10 border-2 border-dashed border-blue-400 rounded-lg flex items-center justify-center pointer-events-none">
+        <span class="text-sm font-medium text-blue-500 dark:text-blue-400 bg-white dark:bg-zinc-900 px-3 py-1.5 rounded-lg shadow">Drop files here</span>
       </div>
     </div>
     """
@@ -487,7 +588,7 @@ defmodule HiveWeb.DashboardLive do
     ~H"""
     <.new_agent_form :if={@show_new_form} new_name={@new_name} new_working_dir={@new_working_dir} />
     <.template_picker :if={@show_templates} templates={@templates} />
-    <.agent_list agents={@agents} selected_agent_id={@selected_agent_id} viewer_counts={@viewer_counts} />
+    <.agent_list agents={@agents} selected_agent_id={@selected_agent_id} viewer_counts={@viewer_counts} attention_agents={@attention_agents} />
     """
   end
 
@@ -543,28 +644,19 @@ defmodule HiveWeb.DashboardLive do
       </header>
 
       <div class="flex-1 flex min-h-0">
-        <%!-- Desktop sidebar (always visible on md+) --%>
-        <aside class="hidden md:flex w-80 flex-none border-r border-zinc-200 dark:border-zinc-700/80 flex-col bg-zinc-50 dark:bg-zinc-900/50">
-          <.sidebar_content
-            show_new_form={@show_new_form}
-            show_templates={@show_templates}
-            new_name={@new_name}
-            new_working_dir={@new_working_dir}
-            templates={@templates}
-            agents={@agents}
-            selected_agent_id={@selected_agent_id}
-            viewer_counts={@viewer_counts}
-          />
-        </aside>
-
-        <%!-- Mobile sidebar overlay --%>
+        <%!-- Sidebar overlay backdrop (mobile only) --%>
         <div :if={@show_sidebar} class="md:hidden sidebar-overlay" phx-click="hide_sidebar"></div>
-        <aside
-          :if={@show_sidebar}
-          class="md:hidden sidebar-mobile flex flex-col bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-700/80"
-        >
-          <%!-- Close button --%>
-          <div class="flex items-center justify-between px-4 h-12 border-b border-zinc-200 dark:border-zinc-700/80">
+
+        <%!-- Single sidebar: inline on desktop, overlay on mobile --%>
+        <aside class={
+          "w-80 flex-none border-r border-zinc-200 dark:border-zinc-700/80 flex flex-col bg-zinc-50 dark:bg-zinc-900/50 " <>
+          if(@show_sidebar,
+            do: "sidebar-mobile md:relative md:inset-auto md:z-auto md:w-80 md:max-w-none md:animate-none",
+            else: "hidden md:flex"
+          )
+        }>
+          <%!-- Close button (mobile only) --%>
+          <div :if={@show_sidebar} class="md:hidden flex items-center justify-between px-4 h-12 border-b border-zinc-200 dark:border-zinc-700/80">
             <span class="text-sm font-semibold">Agents</span>
             <button
               phx-click="hide_sidebar"
@@ -584,6 +676,7 @@ defmodule HiveWeb.DashboardLive do
             agents={@agents}
             selected_agent_id={@selected_agent_id}
             viewer_counts={@viewer_counts}
+            attention_agents={@attention_agents}
           />
         </aside>
 
@@ -594,6 +687,7 @@ defmodule HiveWeb.DashboardLive do
             :if={@selected_agent}
             agent={@selected_agent}
             viewer_count={Map.get(@viewer_counts, @selected_agent_id, 0)}
+            uploads={@uploads.files}
           />
         </main>
       </div>

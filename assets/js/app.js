@@ -24,10 +24,23 @@ Hooks.ConnectionStatus = {
 // --- Terminal Hook ---
 Hooks.Terminal = {
   mounted() {
-    // Responsive font size: smaller on narrow screens
-    const fontSize = window.innerWidth < 640 ? 10 : 13
+    // The PTY is 120 cols wide. On narrow screens, we shrink the font so
+    // all 120 columns fit without wrapping (avoids garbled TUI output).
+    // We calculate the font size needed to fit 120 chars in the viewport.
+    const PTY_COLS = 120
+    const containerWidth = this.el.clientWidth - 16 // 8px padding each side
+    // Measure approximate char width at font size 13
+    const baseCharWidth = 7.8 // JetBrains Mono at 13px ≈ 7.8px per char
+    const neededWidth = PTY_COLS * baseCharWidth
+    let fontSize = 13
+    if (containerWidth < neededWidth) {
+      // Scale font down to fit all 120 cols
+      fontSize = Math.max(6, Math.floor(13 * containerWidth / neededWidth))
+    }
 
     this.term = new Terminal({
+      cols: PTY_COLS,
+      rows: 40,
       fontSize,
       fontFamily: '"JetBrains Mono", "SF Mono", "Menlo", monospace',
       theme: this.getTheme(),
@@ -41,9 +54,6 @@ Hooks.Terminal = {
     this.term.loadAddon(this.fitAddon)
 
     this.term.open(this.el)
-
-    // Fit terminal to container after open
-    this._fit()
 
     // Send every keystroke to the server as raw input
     this.term.onData((data) => {
@@ -64,6 +74,31 @@ Hooks.Terminal = {
     })
     this.el.addEventListener("touchstart", () => {
       this._touchMoved = false
+    })
+
+    // Drag-and-drop visual indicator
+    let dragCounter = 0
+    this.el.addEventListener("dragenter", (e) => {
+      e.preventDefault()
+      dragCounter++
+      const indicator = document.getElementById("drop-indicator")
+      if (indicator) indicator.classList.remove("hidden")
+    })
+    this.el.addEventListener("dragleave", (e) => {
+      dragCounter--
+      if (dragCounter <= 0) {
+        dragCounter = 0
+        const indicator = document.getElementById("drop-indicator")
+        if (indicator) indicator.classList.add("hidden")
+      }
+    })
+    this.el.addEventListener("dragover", (e) => {
+      e.preventDefault()
+    })
+    this.el.addEventListener("drop", () => {
+      dragCounter = 0
+      const indicator = document.getElementById("drop-indicator")
+      if (indicator) indicator.classList.add("hidden")
     })
 
     // Resize terminal when container size changes

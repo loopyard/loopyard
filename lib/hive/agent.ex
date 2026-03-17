@@ -20,7 +20,29 @@ defmodule Hive.Agent do
     :cols,
     :rows,
     status: :running,
-    output: RingBuffer.new()
+    output: RingBuffer.new(),
+    needs_attention: false
+  ]
+
+  # Patterns that indicate Claude is waiting for user input
+  # These are ANSI-stripped patterns found in Claude Code's interactive prompts
+  @attention_patterns [
+    # Claude's "do you want to proceed" style prompts
+    ~r/\(y\/n\)/,
+    ~r/\(Y\/n\)/,
+    ~r/\[Y\/n\]/,
+    ~r/\[yes\/no\]/i,
+    # Claude's permission prompts
+    ~r/Allow\?/,
+    ~r/Proceed\?/,
+    # Generic prompt ending with ? on its own line
+    ~r/\?\s*$/m
+  ]
+
+  # Patterns that indicate Claude is actively working (not waiting)
+  @working_patterns [
+    ~r/⠋|⠙|⠹|⠸|⠼|⠴|⠦|⠧|⠇|⠏/,
+    ~r/\.\.\./
   ]
 
   @default_cols 120
@@ -164,7 +186,13 @@ defmodule Hive.Agent do
       Port.command(state.port, data)
     end
 
-    {:noreply, state}
+    # Clear attention flag when user sends input
+    if state.needs_attention do
+      broadcast(@topic, {:agent_attention_changed, state.id, false})
+      {:noreply, %{state | needs_attention: false}}
+    else
+      {:noreply, state}
+    end
   end
 
   @impl true
@@ -212,8 +240,15 @@ defmodule Hive.Agent do
 
   @impl true
   def handle_info({port, {:data, data}}, %{port: port} = state) do
-    new_state = %{state | output: RingBuffer.append(state.output, data)}
+    attention = detect_attention(data, state.needs_attention)
+    new_state = %{state | output: RingBuffer.append(state.output, data), needs_attention: attention}
+
     broadcast("agent:#{state.id}", {:agent_output, state.id, data})
+
+    if attention != state.needs_attention do
+      broadcast(@topic, {:agent_attention_changed, state.id, attention})
+    end
+
     {:noreply, new_state}
   end
 
@@ -267,12 +302,33 @@ defmodule Hive.Agent do
       status: state.status,
       output: RingBuffer.to_binary(state.output),
       cols: state.cols,
-      rows: state.rows
+      rows: state.rows,
+      needs_attention: state.needs_attention
     }
   end
 
   defp broadcast(topic, message) do
     Phoenix.PubSub.broadcast(Hive.PubSub, topic, message)
+  end
+
+  # Strip ANSI escape sequences for pattern matching
+  defp strip_ansi(data) do
+    data
+    |> String.replace(~r/\e\[[0-9;]*[a-zA-Z]/, "")
+    |> String.replace(~r/\e\][^\a]*\a/, "")
+  end
+
+  defp detect_attention(data, _prev_attention) do
+    clean = strip_ansi(data)
+
+    # If we see a working pattern, Claude is busy, not waiting
+    is_working = Enum.any?(@working_patterns, &Regex.match?(&1, clean))
+
+    if is_working do
+      false
+    else
+      Enum.any?(@attention_patterns, &Regex.match?(&1, clean))
+    end
   end
 
   @doc false

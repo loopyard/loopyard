@@ -37,17 +37,21 @@
 
 /* --- Terminal --- */
 #terminal-container {
-  overflow: hidden;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
   position: relative;
 }
 #terminal-container .xterm {
   padding: 8px;
   height: 100%;
 }
-/* On mobile, ensure terminal viewport fills container */
+/* On mobile, allow horizontal scroll if terminal is wider than screen */
 #terminal-container .xterm-viewport {
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch;
+}
+#terminal-container .xterm-screen {
+  min-width: fit-content;
 }
 
 /* --- Connection status banner --- */
