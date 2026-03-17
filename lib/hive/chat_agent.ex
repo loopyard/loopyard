@@ -79,7 +79,8 @@ defmodule Hive.ChatAgent do
 
     session_opts = [
       cwd: working_dir,
-      permission_mode: :default
+      permission_mode: :accept_edits,
+      dangerously_skip_permissions: true
     ]
 
     session_opts =
