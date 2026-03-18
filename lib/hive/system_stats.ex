@@ -153,46 +153,6 @@ defmodule Hive.SystemStats do
     end)
   end
 
-  # --- Docker totals ---
-
-  @doc "Aggregate Docker resource usage across all hive containers"
-  def docker_totals do
-    stats = docker_stats()
-
-    hive_stats =
-      stats
-      |> Enum.filter(fn {name, _} -> String.starts_with?(name, "hive-dev-") end)
-      |> Enum.map(fn {_, v} -> v end)
-      |> Enum.reject(&is_nil/1)
-
-    %{
-      container_count: length(hive_stats),
-      total_mem: Enum.map(hive_stats, &parse_mem_usage/1) |> Enum.sum(),
-      total_cpu: Enum.map(hive_stats, &parse_cpu/1) |> Enum.sum()
-    }
-  end
-
-  defp parse_mem_usage(%{mem_usage: usage}) do
-    # Format: "123.4MiB / 7.656GiB" — extract the first number
-    case Regex.run(~r/([\d.]+)(KiB|MiB|GiB)/, usage) do
-      [_, num, "GiB"] -> parse_float(num) * 1024 * 1024 * 1024
-      [_, num, "MiB"] -> parse_float(num) * 1024 * 1024
-      [_, num, "KiB"] -> parse_float(num) * 1024
-      _ -> 0
-    end
-  end
-
-  defp parse_cpu(%{cpu: cpu}) do
-    cpu |> String.replace("%", "") |> parse_float()
-  end
-
-  defp parse_float(str) do
-    case Float.parse(str) do
-      {f, _} -> f
-      :error -> 0.0
-    end
-  end
-
   # --- Docker container stats ---
 
   defp docker_stats do

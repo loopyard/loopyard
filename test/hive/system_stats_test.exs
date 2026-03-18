@@ -38,13 +38,4 @@ defmodule Hive.SystemStatsTest do
       assert is_list(stats)
     end
   end
-
-  describe "docker_totals" do
-    test "returns aggregate stats" do
-      totals = SystemStats.docker_totals()
-      assert is_integer(totals.container_count)
-      assert is_number(totals.total_mem)
-      assert is_number(totals.total_cpu)
-    end
-  end
 end
