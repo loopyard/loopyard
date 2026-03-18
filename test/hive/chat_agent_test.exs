@@ -31,7 +31,8 @@ defmodule Hive.ChatAgentTest do
           id: id,
           name: "State Test",
           working_dir: File.cwd!(),
-          started_by: "test"
+          started_by: "test",
+          docker_ready: true
         )
 
       on_exit(fn ->

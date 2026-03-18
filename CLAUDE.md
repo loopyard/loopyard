@@ -2,6 +2,8 @@
 
 A Phoenix LiveView app that lets a team share and interact with Claude Code agents in real-time through a chat interface.
 
+**This is a multiplayer app.** Multiple people watch and interact with agents simultaneously from laptops, iPads, iPhones, etc. All UI state that matters must be server-driven (assigns, PubSub) — never rely on client-side state like `<details>` open/closed, JS toggles, or localStorage for anything that should be consistent across viewers. If you can't sync it, just show it.
+
 ## What it does
 
 - Left sidebar: list of running Claude agents with status indicators
@@ -9,6 +11,7 @@ A Phoenix LiveView app that lets a team share and interact with Claude Code agen
 - Any connected browser can send messages to any agent — responses broadcast to all viewers
 - Agents auto-name themselves, names are editable inline
 - URL-based routing: `/chat/:id` — bookmarkable, survives refresh
+- Responsive: works on phones, tablets, and desktops
 
 ## Architecture
 
@@ -31,6 +34,26 @@ Browser → LiveView → ChatAgent GenServer → ClaudeCode SDK → claude CLI s
 ```
 
 Permissions are skipped (`dangerously_skip_permissions: true`) because the security model is container isolation, not per-tool approval.
+
+### Container model
+
+All agents run inside Docker containers. Claude CLI runs on the host but interacts with containers exclusively through MCP container tools (`exec`, `rebuild`, `start_service`, etc.). The only variable is the workspace volume strategy:
+
+- **Bind mount** (default) — host directory mounted at `/workspace`. Edits inside the container appear on the host immediately. Used for working on existing projects.
+- **Named volume** — isolated `/workspace` volume. Agent starts with an empty workspace. Used for sandboxed/greenfield work (not yet exposed in UI).
+
+The Dockerfile controls what's pre-installed in the container (e.g., `elixir:1.18` base for Elixir projects, `ubuntu:22.04` for general use). Cache volume (`/root/.cache`) always persists across rebuilds.
+
+### Agent lifecycle & UI states
+
+Agents go through lifecycle states that the UI must reflect:
+
+- **Booting** — Agent spawn is async. The LiveView navigates to `/chat/:id` immediately and shows a spinner/status screen while the GenServer initializes (Docker image build, container creation, SDK session start). The `chat_agent_started` PubSub event transitions the UI to the running state.
+- **Idle** — Green dot. Agent is ready, waiting for input.
+- **Thinking** — Amber pulsing dot. Agent is processing a message.
+- **Stopped** — Grey dot. Agent was stopped.
+
+When adding new agent types or initialization steps, always ensure the UI shows progress. Never block the LiveView process on slow operations — spawn async and let PubSub drive state transitions.
 
 ## Configuration (12-Factor)
 
@@ -79,7 +102,7 @@ mix test --trace            # Verbose output
 - **Every new feature must have tests.** No exceptions. If you add a module, add a test file.
 - **Every bug fix starts with a failing test.** Reproduce it in a test, then fix it.
 - **Test behavior, not implementation.** Test what functions return and what side effects they produce.
-- **Tests must be fast.** No sleeps, no external API calls. Use the ClaudeCode test stubs for SDK interactions.
+- **Tests must be fast.** No `Process.sleep` hacks. Use PubSub, `assert_receive`, or poll-with-timeout patterns to wait for async events. If you must sleep, you need a very good reason and a comment explaining why. No external API calls. Use the ClaudeCode test stubs for SDK interactions.
 - **LiveView tests cover user flows.** Mount, click, submit, assert. Use `Phoenix.LiveViewTest`.
 - **Plans require tests.** When implementing work from `./plans/*`, the plan is not done until there are comprehensive tests that verify the behavior end-to-end and catch regressions. If a plan involves Docker, browser, or other external deps, write tests that exercise the real thing (tagged for conditional execution) AND unit tests that run without the dependency.
 
@@ -133,6 +156,29 @@ Instead:
 
 This applies to tools and GenServers too — compose behaviours, don't branch.
 
+### One concept, one code path
+
+Don't create parallel implementations for things that are really the same thing with different config. If two "types" share 90% of their logic, they're one type with an option — not two types.
+
+```elixir
+# Bad — two types with parallel code paths
+if is_root do
+  create_root(id, dir)
+else
+  create(id)
+end
+
+# Good — one function, options control behavior
+Docker.create(id, bind_mount: dir)
+Docker.create(id)  # named volume by default
+```
+
+When you find yourself adding `root` / `docker` / `type` branches everywhere, stop and ask: "what's the actual parameter that differs?" Usually it's one thing (a path, a flag, a config value). Make that the option and delete the branching.
+
+### Tests skip external dependencies by default
+
+Unit tests that start `ChatAgent` (or other GenServers that touch Docker in init) must pass `docker_ready: true` to skip container creation. Only tests tagged `@tag :docker` should actually create containers. This keeps `mix test` fast and Docker-free.
+
 ## Git workflow
 
 - **Atomic commits.** Each commit is a self-contained, working change.
@@ -151,6 +197,6 @@ This applies to tools and GenServers too — compose behaviours, don't branch.
 ## Known issues / TODOs
 
 - No persistence — all agents lost on server restart
-- No Docker container isolation yet (planned — will be the security sandbox)
 - Agent message history grows unbounded in memory
 - No markdown rendering in chat bubbles (messages are plain text)
+- Workspaces — planned feature to let agents target different host directories (or named volumes for sandboxed work)

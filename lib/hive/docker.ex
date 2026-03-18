@@ -15,18 +15,37 @@ defmodule Hive.Docker do
   @base_port 10_000
   @container_internal_port 3000
 
+  @network_name "hive-net"
+
   @base_dockerfile """
   FROM ubuntu:22.04
-
   ENV DEBIAN_FRONTEND=noninteractive
 
   RUN apt-get update && apt-get install -y \\
-      curl git build-essential ca-certificates \\
+      curl git build-essential ca-certificates gnupg \\
+      && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \\
+         | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg \\
+      && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \\
+         | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \\
+      && apt-get update && apt-get install -y gh \\
       && rm -rf /var/lib/apt/lists/*
 
-  # Install claude CLI
-  RUN curl -fsSL https://cli.anthropic.com/install.sh | sh
-  ENV PATH="/root/.claude/local/bin:${PATH}"
+  WORKDIR #{@workspace_mount}
+  CMD ["sleep", "infinity"]
+  """
+
+  @root_dockerfile """
+  FROM elixir:1.18
+  ENV DEBIAN_FRONTEND=noninteractive
+
+  RUN apt-get update && apt-get install -y \\
+      git build-essential ca-certificates gnupg curl \\
+      && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \\
+         | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg \\
+      && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \\
+         | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \\
+      && apt-get update && apt-get install -y gh \\
+      && rm -rf /var/lib/apt/lists/*
 
   WORKDIR #{@workspace_mount}
   CMD ["sleep", "infinity"]
@@ -45,7 +64,6 @@ defmodule Hive.Docker do
 
   @doc "Host port for an agent's web server"
   def host_port(agent_id) do
-    # Deterministic port from agent_id hash
     hash = :erlang.phash2(agent_id, 5000)
     @base_port + hash
   end
@@ -53,125 +71,147 @@ defmodule Hive.Docker do
   @doc "Returns the base Dockerfile content"
   def base_dockerfile, do: @base_dockerfile
 
+  @doc "Returns the root Dockerfile content (Elixir/Erlang pre-installed)"
+  def root_dockerfile, do: @root_dockerfile
+
+  @doc "Returns the Docker network name used by all Hive containers"
+  def network_name, do: @network_name
+
   @doc """
   Create and start a container for an agent.
 
-  Creates workspace + cache volumes, builds image from Dockerfile
-  (or uses base), and starts the container.
+  Options:
+  - `:dockerfile` — Dockerfile content (defaults to `base_dockerfile`)
+  - `:bind_mount` — host directory to bind-mount as /workspace. When set,
+    no workspace volume is created and no Dockerfile is seeded into workspace.
   """
   def create(agent_id, opts \\ []) do
+    dockerfile = Keyword.get(opts, :dockerfile, @base_dockerfile)
+    bind_mount = Keyword.get(opts, :bind_mount)
+
+    create_volumes(agent_id, bind_mount: bind_mount)
+
+    with {:ok, _} <- build_image(agent_id, dockerfile),
+         {:ok, _} = ok <- start_container(agent_id, bind_mount: bind_mount) do
+      unless bind_mount, do: seed_dockerfile(agent_id, dockerfile)
+      ok
+    end
+  end
+
+  @doc "Create volumes for an agent. Skips workspace volume when bind_mount is set."
+  def create_volumes(agent_id, opts \\ []) do
+    unless Keyword.get(opts, :bind_mount), do: docker(["volume", "create", workspace_volume(agent_id)])
+    docker(["volume", "create", cache_volume(agent_id)])
+    :ok
+  end
+
+  @doc "Build the Docker image from the base Dockerfile (or custom)"
+  def build_image(agent_id, dockerfile \\ @base_dockerfile) do
+    build_from_string(container_name(agent_id), dockerfile)
+  end
+
+  @doc """
+  Start the container from its built image.
+
+  Options:
+  - `:bind_mount` — host directory to bind-mount as /workspace instead of using a named volume
+  """
+  def start_container(agent_id, opts \\ []) do
+    ensure_network()
+
     name = container_name(agent_id)
-    ws_vol = workspace_volume(agent_id)
     cache_vol = cache_volume(agent_id)
     port = host_port(agent_id)
+    bind_mount = Keyword.get(opts, :bind_mount)
 
-    # Create volumes
-    docker(["volume", "create", ws_vol])
-    docker(["volume", "create", cache_vol])
+    workspace_args =
+      if bind_mount do
+        ["--mount", "type=bind,src=#{bind_mount},dst=#{@workspace_mount}"]
+      else
+        ["-v", "#{workspace_volume(agent_id)}:#{@workspace_mount}"]
+      end
 
-    # Seed base Dockerfile into workspace if not present
-    seed_dockerfile(agent_id, opts)
+    base_args = [
+      "run", "-d",
+      "--name", name,
+      "--network", @network_name
+    ] ++ workspace_args ++ [
+      "-v", "#{cache_vol}:#{@cache_mount}",
+      "-p", "#{port}:#{@container_internal_port}",
+      "-w", @workspace_mount
+    ]
 
-    # Build image
-    case build(agent_id) do
-      {:ok, _} -> :ok
-      error -> error
-    end
-    |> case do
-      :ok ->
-        # Run container
-        docker([
-          "run", "-d",
-          "--name", name,
-          "-v", "#{ws_vol}:#{@workspace_mount}",
-          "-v", "#{cache_vol}:#{@cache_mount}",
-          "-p", "#{port}:#{@container_internal_port}",
-          "-w", @workspace_mount,
-          name,
-          "sleep", "infinity"
-        ])
+    env_args = container_env_args()
+
+    result = docker(base_args ++ env_args ++ [name, "sleep", "infinity"])
+
+    case result do
+      {:ok, _} = ok ->
+        setup_git_config(agent_id)
+        ok
 
       error ->
         error
     end
   end
 
-  @doc """
-  Build (or rebuild) the container image from the agent's Dockerfile.
-  """
-  def build(agent_id) do
-    name = container_name(agent_id)
-    ws_vol = workspace_volume(agent_id)
-
-    # We need to get the Dockerfile out of the volume to build.
-    # Use a temp container to read it.
-    tmp = "#{name}-build-#{:rand.uniform(100_000)}"
-
-    try do
-      # Start temp container with the workspace volume
-      case docker(["run", "-d", "--name", tmp, "-v", "#{ws_vol}:#{@workspace_mount}", "ubuntu:22.04", "sleep", "60"]) do
-        {:ok, _} -> :ok
-        {:error, msg} -> throw({:build_error, "Failed to start build container: #{msg}"})
-      end
-
-      # Check if Dockerfile exists in workspace
-      case docker(["exec", tmp, "cat", "#{@workspace_mount}/Dockerfile"]) do
-        {:ok, dockerfile_content} ->
-          # Write to temp dir on host and build
-          tmp_dir = Path.join(System.tmp_dir!(), "hive-build-#{agent_id}")
-          File.mkdir_p!(tmp_dir)
-          File.write!(Path.join(tmp_dir, "Dockerfile"), dockerfile_content)
-
-          result = docker(["build", "-t", name, tmp_dir])
-          File.rm_rf!(tmp_dir)
-          result
-
-        {:error, _} ->
-          # No Dockerfile yet — use base
-          tmp_dir = Path.join(System.tmp_dir!(), "hive-build-#{agent_id}")
-          File.mkdir_p!(tmp_dir)
-          File.write!(Path.join(tmp_dir, "Dockerfile"), @base_dockerfile)
-
-          result = docker(["build", "-t", name, tmp_dir])
-          File.rm_rf!(tmp_dir)
-          result
-      end
-    catch
-      {:build_error, msg} -> {:error, msg}
-    after
-      docker(["rm", "-f", tmp])
-    end
+  @doc "Seed the Dockerfile into the workspace so the agent can edit and rebuild"
+  def seed_dockerfile(agent_id, dockerfile \\ @base_dockerfile) do
+    exec(agent_id, "test -f #{@workspace_mount}/Dockerfile || cat > #{@workspace_mount}/Dockerfile << 'DOCKERFILE'\n#{dockerfile}\nDOCKERFILE")
   end
 
   @doc """
-  Rebuild: stop container, rebuild image, start fresh container with same volumes.
+  Rebuild: read Dockerfile from container's workspace, rebuild image, restart.
+  This is the self-improving path — agent edits Dockerfile, calls rebuild.
   """
   def rebuild(agent_id) do
+    name = container_name(agent_id)
+
+    # Read the (possibly modified) Dockerfile from the running container
+    dockerfile =
+      case exec(agent_id, "cat #{@workspace_mount}/Dockerfile") do
+        {:ok, content} -> content
+        {:error, _} -> @base_dockerfile
+      end
+
     stop(agent_id)
-    build(agent_id)
-    |> case do
-      {:ok, _} -> start(agent_id)
-      error -> error
+
+    with {:ok, _} <- build_from_string(name, dockerfile) do
+      start(agent_id)
     end
   end
 
-  @doc "Start a stopped container (or create a new one with existing volumes)"
+  @doc "Start a new container from existing image and volumes"
   def start(agent_id) do
+    ensure_network()
+
     name = container_name(agent_id)
     ws_vol = workspace_volume(agent_id)
     cache_vol = cache_volume(agent_id)
     port = host_port(agent_id)
 
-    docker([
+    base_args = [
       "run", "-d",
       "--name", name,
+      "--network", @network_name,
       "-v", "#{ws_vol}:#{@workspace_mount}",
       "-v", "#{cache_vol}:#{@cache_mount}",
       "-p", "#{port}:#{@container_internal_port}",
-      "-w", @workspace_mount,
-      name,
-      "sleep", "infinity"
-    ])
+      "-w", @workspace_mount
+    ]
+
+    env_args = container_env_args()
+
+    result = docker(base_args ++ env_args ++ [name, "sleep", "infinity"])
+
+    case result do
+      {:ok, _} = ok ->
+        setup_git_config(agent_id)
+        ok
+
+      error ->
+        error
+    end
   end
 
   @doc "Stop and remove the container (volumes preserved)"
@@ -188,30 +228,15 @@ defmodule Hive.Docker do
   end
 
   @doc "Execute a command in the container"
-  def exec(agent_id, command) do
-    docker(["exec", container_name(agent_id), "sh", "-c", command])
-  end
+  def exec(agent_id, command, opts \\ []) do
+    workdir = Keyword.get(opts, :workdir)
+    timeout = Keyword.get(opts, :timeout, 120_000)
 
-  @doc """
-  Generate a CLI wrapper script that runs claude inside the container.
+    args = ["exec"]
+    args = if workdir, do: args ++ ["-w", workdir], else: args
+    args = args ++ [container_name(agent_id), "sh", "-c", command]
 
-  The SDK uses `cli_path` to find the claude binary. We give it this
-  script, which does `docker exec -i {container} claude "$@"`.
-  Returns the path to the wrapper script.
-  """
-  def cli_wrapper_path(agent_id) do
-    dir = Path.join(System.tmp_dir!(), "hive-wrappers")
-    File.mkdir_p!(dir)
-    path = Path.join(dir, "claude-#{agent_id}")
-
-    script = """
-    #!/bin/sh
-    exec docker exec -i #{container_name(agent_id)} claude "$@"
-    """
-
-    File.write!(path, script)
-    File.chmod!(path, 0o755)
-    path
+    docker(args, timeout: timeout)
   end
 
   @doc "Check if a container is running"
@@ -224,49 +249,64 @@ defmodule Hive.Docker do
 
   # --- Private ---
 
-  defp seed_dockerfile(agent_id, opts) do
-    ws_vol = workspace_volume(agent_id)
-    dockerfile_content = Keyword.get(opts, :dockerfile, @base_dockerfile)
-
-    # Use a temp container to write the Dockerfile into the volume
-    tmp = "#{container_name(agent_id)}-seed-#{:rand.uniform(100_000)}"
-
-    docker(["run", "-d", "--name", tmp, "-v", "#{ws_vol}:#{@workspace_mount}", "ubuntu:22.04", "sleep", "30"])
-
-    # Only seed if no Dockerfile exists yet
-    case docker(["exec", tmp, "test", "-f", "#{@workspace_mount}/Dockerfile"]) do
-      {:ok, _} ->
-        :ok
-
-      {:error, _} ->
-        # Write Dockerfile via stdin
-        docker_stdin(["exec", "-i", tmp, "tee", "#{@workspace_mount}/Dockerfile"], dockerfile_content)
+  defp ensure_network do
+    case docker(["network", "inspect", @network_name]) do
+      {:ok, _} -> :ok
+      {:error, _} -> docker(["network", "create", @network_name])
     end
 
-    docker(["rm", "-f", tmp])
-  end
-
-  defp docker(args) do
-    case System.cmd("docker", args, stderr_to_stdout: true) do
-      {output, 0} -> {:ok, String.trim(output)}
-      {output, _code} -> {:error, String.trim(output)}
-    end
-  end
-
-  defp docker_stdin(args, input) do
-    port = Port.open({:spawn_executable, docker_path()}, [
-      :binary, :exit_status,
-      {:args, args},
-      :stderr_to_stdout
-    ])
-
-    Port.command(port, input)
-    Port.command(port, "")
-    Port.close(port)
     :ok
   end
 
-  defp docker_path do
-    System.find_executable("docker") || raise "docker not found in PATH"
+  @env_vars_to_pass ~w(GITHUB_TOKEN GH_TOKEN GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL)
+
+  defp container_env_args do
+    Enum.flat_map(@env_vars_to_pass, fn var ->
+      case System.get_env(var) do
+        nil -> []
+        val -> ["-e", "#{var}=#{val}"]
+      end
+    end)
+  end
+
+  defp setup_git_config(agent_id) do
+    git_name = System.get_env("GIT_AUTHOR_NAME") || "Hive Agent"
+    git_email = System.get_env("GIT_AUTHOR_EMAIL") || "agent@hive.local"
+
+    git_setup = """
+    git config --global user.name "#{git_name}" && \
+    git config --global user.email "#{git_email}" && \
+    if [ -n "$GH_TOKEN" ] || [ -n "$GITHUB_TOKEN" ]; then
+      TOKEN="${GH_TOKEN:-$GITHUB_TOKEN}"
+      git config --global credential.helper '!f() { echo "password=$TOKEN"; }; f'
+    fi
+    """
+
+    exec(agent_id, git_setup)
+  end
+
+  defp build_from_string(image_name, dockerfile_content) do
+    tmp_dir = Path.join(System.tmp_dir!(), "hive-build-#{image_name}-#{:rand.uniform(100_000)}")
+    File.mkdir_p!(tmp_dir)
+    File.write!(Path.join(tmp_dir, "Dockerfile"), dockerfile_content)
+
+    result = docker(["build", "-t", image_name, tmp_dir])
+    File.rm_rf!(tmp_dir)
+    result
+  end
+
+  defp docker(args, opts \\ []) do
+    timeout = Keyword.get(opts, :timeout, 120_000)
+
+    task =
+      Task.async(fn ->
+        System.cmd("docker", args, stderr_to_stdout: true)
+      end)
+
+    case Task.yield(task, timeout) || Task.shutdown(task) do
+      {:ok, {output, 0}} -> {:ok, String.trim(output)}
+      {:ok, {output, _code}} -> {:error, String.trim(output)}
+      nil -> {:error, "Command timed out after #{timeout}ms"}
+    end
   end
 end

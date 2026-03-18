@@ -8,10 +8,13 @@ defmodule Hive.ChatAgent do
   use GenServer, restart: :temporary
   require Logger
 
+  alias Hive.Agent.Event
+
   defstruct [
     :id,
     :name,
     :session,
+    :backend,
     :working_dir,
     :started_at,
     :started_by,
@@ -23,6 +26,7 @@ defmodule Hive.ChatAgent do
   ]
 
   @topic "chat_agents"
+  @ets_table :chat_agents
 
   # --- Public API ---
 
@@ -36,7 +40,18 @@ defmodule Hive.ChatAgent do
   end
 
   def get_state(id) do
-    GenServer.call(via(id), :get_state)
+    # Try live GenServer first, fall back to ETS
+    try do
+      GenServer.call(via(id), :get_state)
+    catch
+      :exit, _ ->
+        ensure_ets_table()
+
+        case :ets.lookup(@ets_table, id) do
+          [{^id, summary}] -> summary
+          [] -> nil
+        end
+    end
   end
 
   def stop_agent(id) do
@@ -47,16 +62,38 @@ defmodule Hive.ChatAgent do
     GenServer.cast(via(id), {:rename, new_name})
   end
 
+  @doc "Remove a stopped/crashed agent from the sidebar"
+  def remove_agent(id) do
+    ensure_ets_table()
+    :ets.delete(@ets_table, id)
+    broadcast(@topic, {:chat_agent_removed, id})
+  end
+
   def list_agents do
-    Registry.select(Hive.ChatAgentRegistry, [{{:"$1", :"$2", :"$3"}, [], [{{:"$1", :"$2"}}]}])
-    |> Enum.map(fn {_id, pid} ->
-      try do
-        GenServer.call(pid, :get_state, 2000)
-      catch
-        :exit, _ -> nil
+    ensure_ets_table()
+
+    :ets.tab2list(@ets_table)
+    |> Enum.map(fn {_id, summary} ->
+      # If agent is still alive, get fresh state
+      case Registry.lookup(Hive.ChatAgentRegistry, summary.id) do
+        [{pid, _}] ->
+          try do
+            GenServer.call(pid, :get_state, 2000)
+          catch
+            :exit, _ -> summary
+          end
+        [] -> summary
       end
     end)
-    |> Enum.reject(&is_nil/1)
+    |> Enum.sort_by(& &1.started_at, {:desc, DateTime})
+  end
+
+  def ensure_ets_table do
+    if :ets.whereis(@ets_table) == :undefined do
+      :ets.new(@ets_table, [:named_table, :public, :set])
+    end
+
+    :ok
   end
 
   def subscribe do
@@ -82,20 +119,25 @@ defmodule Hive.ChatAgent do
 
     # Tool modules the agent has access to
     tools = Keyword.get(opts, :tools, default_tools())
-    use_docker = Keyword.get(opts, :docker, false)
+    bind_mount = Keyword.get(opts, :bind_mount)
+    docker_ready = Keyword.get(opts, :docker_ready, false)
 
-    # If Docker mode, create container and use CLI wrapper
-    docker_opts =
-      if use_docker do
-        case Hive.Docker.create(id, Keyword.take(opts, [:dockerfile])) do
-          {:ok, _} ->
-            [cli_path: Hive.Docker.cli_wrapper_path(id)]
-          {:error, reason} ->
-            raise "Docker container failed: #{reason}"
-        end
-      else
-        []
+    # All agents are containerized. The async boot Task in ChatLive handles
+    # container creation before starting this GenServer (docker_ready: true).
+    # If docker_ready is false, create the container synchronously as fallback.
+    unless docker_ready do
+      docker_opts = Keyword.take(opts, [:dockerfile])
+      docker_opts = if bind_mount, do: Keyword.put(docker_opts, :bind_mount, bind_mount), else: docker_opts
+
+      case Hive.Docker.create(id, docker_opts) do
+        {:ok, _} -> :ok
+        {:error, reason} -> raise "Docker container failed: #{reason}"
       end
+    end
+
+    system_prompt = container_system_prompt(id, bind_mount)
+
+    backend = Keyword.get(opts, :backend, Hive.Agent.Backend.ClaudeCode)
 
     session_opts =
       [
@@ -104,16 +146,11 @@ defmodule Hive.ChatAgent do
         dangerously_skip_permissions: true,
         mcp_servers: build_mcp_servers(tools),
         allowed_tools: build_allowed_tools(tools)
-      ] ++ docker_opts
+      ]
 
-    session_opts =
-      case Keyword.get(opts, :system_prompt) do
-        nil -> session_opts
-        "" -> session_opts
-        prompt -> Keyword.put(session_opts, :system_prompt, prompt)
-      end
+    session_opts = Keyword.put(session_opts, :system_prompt, system_prompt)
 
-    {:ok, session} = ClaudeCode.start_link(session_opts)
+    {:ok, session} = backend.start_session(session_opts)
 
     now = DateTime.utc_now()
 
@@ -121,6 +158,7 @@ defmodule Hive.ChatAgent do
       id: id,
       name: name,
       session: session,
+      backend: backend,
       working_dir: working_dir,
       started_at: now,
       started_by: started_by,
@@ -129,7 +167,9 @@ defmodule Hive.ChatAgent do
       messages: []
     }
 
-    broadcast(@topic, {:chat_agent_started, summary(state)})
+    summary = summary(state)
+    :ets.insert(@ets_table, {id, summary})
+    broadcast(@topic, {:chat_agent_started, summary})
 
     {:ok, state}
   end
@@ -147,13 +187,13 @@ defmodule Hive.ChatAgent do
     me = self()
     agent_id = state.id
     session = state.session
+    backend = state.backend
 
     Task.start_link(fn ->
       try do
-        session
-        |> ClaudeCode.stream(text)
-        |> Enum.each(fn msg ->
-          send(me, {:stream_event, agent_id, msg})
+        backend.stream(session, text)
+        |> Enum.each(fn event ->
+          send(me, {:stream_event, agent_id, event})
         end)
 
         send(me, {:stream_done, agent_id})
@@ -169,11 +209,13 @@ defmodule Hive.ChatAgent do
   @impl true
   def handle_cast(:stop, state) do
     if state.session do
-      ClaudeCode.stop(state.session)
+      state.backend.stop(state.session)
     end
 
-    broadcast(@topic, {:chat_agent_stopped, summary(%{state | status: :stopped})})
-    {:stop, :normal, %{state | status: :stopped}}
+    stopped = %{state | status: :stopped}
+    :ets.insert(@ets_table, {state.id, summary(stopped)})
+    broadcast(@topic, {:chat_agent_stopped, summary(stopped)})
+    {:stop, :normal, stopped}
   end
 
   @impl true
@@ -189,25 +231,38 @@ defmodule Hive.ChatAgent do
   end
 
   @impl true
-  def handle_info({:stream_event, id, msg}, %{id: id} = state) do
-    case classify_message(msg) do
-      {:assistant_message, content} ->
-        now = DateTime.utc_now()
-        assistant_msg = %{role: :assistant, content: content, timestamp: now}
-        state = %{state | messages: state.messages ++ [assistant_msg], last_activity_at: now}
-        broadcast("chat_agent:#{id}", {:chat_message, id, assistant_msg})
-        {:noreply, state}
+  def handle_info({:stream_event, id, event}, %{id: id} = state) do
+    now = DateTime.utc_now()
 
-      {:tool_use, tool_name, tool_input} ->
-        now = DateTime.utc_now()
-        tool_msg = %{role: :tool, tool: tool_name, input: tool_input, timestamp: now}
-        state = %{state | messages: state.messages ++ [tool_msg], last_activity_at: now, tool_calls: state.tool_calls + 1}
-        broadcast("chat_agent:#{id}", {:chat_message, id, tool_msg})
-        {:noreply, state}
+    state =
+      case event do
+        %Event.Text{text: content} ->
+          assistant_msg = %{role: :assistant, content: content, timestamp: now}
+          state = %{state | messages: state.messages ++ [assistant_msg], last_activity_at: now}
+          broadcast("chat_agent:#{id}", {:chat_message, id, assistant_msg})
+          state
 
-      :ignored ->
-        {:noreply, state}
-    end
+        %Event.ToolCall{name: tool_name, input: tool_input} ->
+          tool_msg = %{role: :tool, tool: tool_name, input: tool_input, timestamp: now}
+          state = %{state | messages: state.messages ++ [tool_msg], last_activity_at: now, tool_calls: state.tool_calls + 1}
+          broadcast("chat_agent:#{id}", {:chat_message, id, tool_msg})
+          state
+
+        %Event.ToolResult{content: content, is_error: is_error} ->
+          result_msg = %{role: :tool_result, content: content, is_error: is_error, timestamp: now}
+          state = %{state | messages: state.messages ++ [result_msg], last_activity_at: now}
+          broadcast("chat_agent:#{id}", {:chat_message, id, result_msg})
+          state
+
+        %Event.TextDelta{text: text} ->
+          broadcast("chat_agent:#{id}", {:chat_text_delta, id, text})
+          state
+
+        _ ->
+          state
+      end
+
+    {:noreply, state}
   end
 
   def handle_info({:stream_done, id}, %{id: id} = state) do
@@ -226,6 +281,15 @@ defmodule Hive.ChatAgent do
   end
 
   def handle_info(_msg, state), do: {:noreply, state}
+
+  @impl true
+  def terminate(:normal, _state), do: :ok
+
+  def terminate(_reason, state) do
+    crashed = %{state | status: :crashed}
+    :ets.insert(@ets_table, {state.id, summary(crashed)})
+    broadcast(@topic, {:chat_agent_stopped, summary(crashed)})
+  end
 
   # --- Private ---
 
@@ -250,37 +314,48 @@ defmodule Hive.ChatAgent do
     Phoenix.PubSub.broadcast(Hive.PubSub, topic, message)
   end
 
-  # Classify SDK messages into simple categories for the UI
-  defp classify_message(%ClaudeCode.Message.AssistantMessage{message: message}) do
-    content = message.content || []
+  # --- System Prompt ---
 
-    text =
-      content
-      |> Enum.filter(&match?(%ClaudeCode.Content.TextBlock{}, &1))
-      |> Enum.map_join("", & &1.text)
+  defp container_system_prompt(agent_id, bind_mount) do
+    container = Hive.Docker.container_name(agent_id)
+    port = Hive.Docker.host_port(agent_id)
 
-    tool_uses =
-      content
-      |> Enum.filter(&match?(%ClaudeCode.Content.ToolUseBlock{}, &1))
+    workspace_info =
+      if bind_mount do
+        """
+        - /workspace is a bind mount of #{bind_mount} — edits appear on the host immediately
+        - Do NOT use `rebuild` — the workspace is a live bind mount, not a volume
+        """
+      else
+        """
+        - /workspace persists across rebuilds (it's a Docker volume)
+        - The Dockerfile at /workspace/Dockerfile controls the container image — edit it to add system packages, languages, or databases, then rebuild
+        """
+      end
 
-    cond do
-      text != "" ->
-        {:assistant_message, text}
+    """
+    You have a running container "#{container}" with your workspace at /workspace.
 
-      tool_uses != [] ->
-        tool = hd(tool_uses)
-        {:tool_use, tool.name, tool.input}
+    YOUR AGENT ID: #{agent_id}
 
-      true ->
-        :ignored
-    end
+    IMPORTANT: Use the hive-container MCP tools for ALL work. Pass your agent_id "#{agent_id}" to every container tool call.
+
+    ## How to work
+
+    - **Run commands**: Use `exec` to run shell commands inside your container
+    - **Edit files**: Use `exec` with shell commands (cat, sed, tee, etc.) to read/write files in /workspace
+    - **Install dependencies**: Use `exec` to run apt-get, npm, pip, etc. inside the container
+    - **Run services**: Use `start_service` to launch background processes (web servers, databases). They log to /var/log/<name>.log
+    - **Check status**: Use `logs` to see what's running, `ports` to see listeners, `inspect_env` for full environment info
+
+    ## Container details
+
+    - Host port #{port} maps to container port 3000 (for web servers)
+    #{workspace_info}- /root/.cache persists (package caches)
+
+    Do NOT use your local Bash/Read/Write tools for project work — everything goes through the container tools.
+    """
   end
-
-  # ResultMessage is a summary of the full turn — the text is already
-  # in the AssistantMessage, so we skip it to avoid duplicates.
-  defp classify_message(%ClaudeCode.Message.ResultMessage{}), do: :ignored
-
-  defp classify_message(_), do: :ignored
 
   # --- Tool Configuration ---
 

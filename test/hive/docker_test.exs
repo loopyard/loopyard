@@ -37,21 +37,39 @@ defmodule Hive.DockerTest do
       assert Docker.base_dockerfile() =~ "FROM ubuntu"
     end
 
-    test "installs claude CLI" do
-      assert Docker.base_dockerfile() =~ "cli.anthropic.com"
+    test "is a minimal runtime image without claude CLI" do
+      refute Docker.base_dockerfile() =~ "claude"
+      assert Docker.base_dockerfile() =~ "build-essential"
+    end
+
+    test "includes gh CLI installation" do
+      assert Docker.base_dockerfile() =~ "gh"
+      assert Docker.base_dockerfile() =~ "githubcli-archive-keyring"
+    end
+
+    test "includes gnupg for key management" do
+      assert Docker.base_dockerfile() =~ "gnupg"
     end
   end
 
-  describe "cli_wrapper_path" do
-    test "creates an executable script" do
-      path = Docker.cli_wrapper_path("test-wrapper")
-      assert File.exists?(path)
-      content = File.read!(path)
-      assert content =~ "docker exec -i hive-dev-test-wrapper claude"
-      assert content =~ "#!/bin/sh"
+  describe "root_dockerfile" do
+    test "uses elixir base image" do
+      assert Docker.root_dockerfile() =~ "FROM elixir"
+    end
 
-      # Clean up
-      File.rm(path)
+    test "includes build-essential and gh CLI" do
+      assert Docker.root_dockerfile() =~ "build-essential"
+      assert Docker.root_dockerfile() =~ "gh"
+    end
+
+    test "does not include ubuntu base" do
+      refute Docker.root_dockerfile() =~ "FROM ubuntu"
+    end
+  end
+
+  describe "network_name" do
+    test "returns the shared network name" do
+      assert Docker.network_name() == "hive-net"
     end
   end
 
@@ -78,6 +96,17 @@ defmodule Hive.DockerTest do
       assert {:ok, df} = Docker.exec(agent_id, "cat /workspace/Dockerfile")
       assert df =~ "FROM ubuntu"
 
+      # gh CLI is available
+      assert {:ok, gh_output} = Docker.exec(agent_id, "which gh")
+      assert gh_output =~ "gh"
+
+      # git config is set up
+      assert {:ok, git_name} = Docker.exec(agent_id, "git config --global user.name")
+      assert git_name != ""
+
+      assert {:ok, git_email} = Docker.exec(agent_id, "git config --global user.email")
+      assert git_email != ""
+
       # Rebuild
       assert {:ok, _} = Docker.rebuild(agent_id)
       assert Docker.running?(agent_id)
@@ -85,6 +114,72 @@ defmodule Hive.DockerTest do
       # Destroy
       Docker.destroy(agent_id)
       refute Docker.running?(agent_id)
+    end
+
+    test "exec with workdir option", %{agent_id: agent_id} do
+      assert {:ok, _} = Docker.create(agent_id)
+
+      # Create a subdirectory
+      Docker.exec(agent_id, "mkdir -p /workspace/subdir")
+
+      # Run pwd in the subdirectory
+      assert {:ok, output} = Docker.exec(agent_id, "pwd", workdir: "/workspace/subdir")
+      assert String.trim(output) == "/workspace/subdir"
+    end
+
+    test "container joins hive-net network", %{agent_id: agent_id} do
+      assert {:ok, _} = Docker.create(agent_id)
+
+      # Inspect the container's network
+      name = Docker.container_name(agent_id)
+      {output, 0} = System.cmd("docker", ["inspect", "-f", "{{json .NetworkSettings.Networks}}", name], stderr_to_stdout: true)
+      assert output =~ "hive-net"
+    end
+  end
+
+  describe "create with bind_mount" do
+    @describetag :docker
+
+    setup do
+      agent_id = "bind-test-#{:rand.uniform(100_000)}"
+      tmp_dir = Path.join(System.tmp_dir!(), "hive-bind-test-#{agent_id}")
+      File.mkdir_p!(tmp_dir)
+
+      on_exit(fn ->
+        Docker.destroy(agent_id)
+        File.rm_rf!(tmp_dir)
+      end)
+
+      %{agent_id: agent_id, tmp_dir: tmp_dir}
+    end
+
+    test "creates container with bind-mounted workspace", %{agent_id: agent_id, tmp_dir: tmp_dir} do
+      assert {:ok, _} = Docker.create(agent_id, bind_mount: tmp_dir, dockerfile: Docker.root_dockerfile())
+      assert Docker.running?(agent_id)
+
+      # Verify elixir is available (root dockerfile has it pre-installed)
+      assert {:ok, output} = Docker.exec(agent_id, "elixir --version")
+      assert output =~ "Elixir"
+    end
+
+    test "bind mount is bidirectional", %{agent_id: agent_id, tmp_dir: tmp_dir} do
+      assert {:ok, _} = Docker.create(agent_id, bind_mount: tmp_dir)
+
+      # Write a file on the host, read it from the container
+      File.write!(Path.join(tmp_dir, "host-file.txt"), "hello from host")
+      assert {:ok, content} = Docker.exec(agent_id, "cat /workspace/host-file.txt")
+      assert content =~ "hello from host"
+
+      # Write a file in the container, read it on the host
+      Docker.exec(agent_id, "echo 'hello from container' > /workspace/container-file.txt")
+      assert File.read!(Path.join(tmp_dir, "container-file.txt")) =~ "hello from container"
+    end
+
+    test "does not seed Dockerfile into workspace", %{agent_id: agent_id, tmp_dir: tmp_dir} do
+      assert {:ok, _} = Docker.create(agent_id, bind_mount: tmp_dir)
+
+      # No Dockerfile should be seeded — workspace is the host directory
+      refute File.exists?(Path.join(tmp_dir, "Dockerfile"))
     end
   end
 end

@@ -19,30 +19,39 @@ defmodule HiveWeb.ChatLive do
      |> assign(:messages, [])
      |> assign(:streaming_text, "")
      |> assign(:input, "")
-     |> assign(:show_new_form, false)
-     |> assign(:new_name, "")
-     |> assign(:new_working_dir, File.cwd!())
      |> assign(:tab, :chat)
-     |> assign(:ops_logs, "")
-     |> assign(:ops_env, nil)
-     |> assign(:ops_log_service, nil)
-     |> assign(:ops_has_container, false)}
+     |> assign(:container_logs, "")
+     |> assign(:container_env, nil)
+     |> assign(:container_log_service, nil)
+     |> assign(:has_container, false)
+     |> assign(:booting_agent_id, nil)
+     |> assign(:booting_agent_name, nil)
+     |> assign(:boot_status, "Initializing...")}
   end
 
   @impl true
   def handle_params(%{"id" => id}, _uri, %{assigns: %{live_action: action}} = socket) do
-    tab = if action == :ops, do: :ops, else: :chat
+    tab = if action == :container, do: :container, else: :chat
 
     socket =
       if socket.assigns.selected_id != id do
-        {:noreply, s} = select_agent(socket, id)
-        s
+        case select_agent(socket, id) do
+          {:noreply, s} -> s
+          :not_found ->
+            # Agent doesn't exist yet — it's booting
+            subscribe_boot(id)
+            assign(socket, booting_agent_id: id, selected_id: id, selected_agent: nil)
+        end
       else
         socket
       end
 
     socket = assign(socket, :tab, tab)
-    socket = if tab == :ops, do: fetch_ops_data(socket), else: socket
+    socket = if tab == :container, do: fetch_container_data(socket), else: socket
+    {:noreply, socket}
+  end
+
+  def handle_params(_params, _uri, %{assigns: %{live_action: :new}} = socket) do
     {:noreply, socket}
   end
 
@@ -53,13 +62,8 @@ defmodule HiveWeb.ChatLive do
   @impl true
   def handle_event("select_agent", %{"id" => id}, socket) do
     tab = socket.assigns.tab
-    path = if tab == :ops, do: "/chat/#{id}/ops", else: "/chat/#{id}"
+    path = if tab == :container, do: "/chat/#{id}/container", else: "/chat/#{id}"
     {:noreply, push_patch(socket, to: path) |> push_event("focus_input", %{})}
-  end
-
-  @impl true
-  def handle_event("toggle_new_form", _params, socket) do
-    {:noreply, assign(socket, :show_new_form, !socket.assigns.show_new_form)}
   end
 
   @impl true
@@ -71,19 +75,54 @@ defmodule HiveWeb.ChatLive do
       Map.get(params, "name", "")
       |> then(fn n -> if n == "", do: auto_name(), else: n end)
 
-    case Hive.ChatAgentSupervisor.start_agent(
-           id: id,
-           name: name,
-           working_dir: working_dir,
-           started_by: "browser"
-         ) do
-      {:ok, _pid} ->
-        send(self(), {:auto_select, id})
-        {:noreply, socket |> assign(:show_new_form, false) |> assign(:new_name, "")}
+    agent_opts = [
+      id: id,
+      name: name,
+      working_dir: working_dir,
+      started_by: "browser",
+      bind_mount: working_dir
+    ]
 
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to start: #{inspect(reason)}")}
-    end
+    # Spawn async so the UI stays responsive during Docker setup
+    boot_topic = "boot:#{id}"
+
+    Task.start(fn ->
+      try do
+        boot = fn status -> broadcast(boot_topic, {:boot_status, id, name, status}) end
+
+        boot.("Creating volumes...")
+        Hive.Docker.create_volumes(id, bind_mount: working_dir)
+
+        boot.("Building container image...")
+        case Hive.Docker.build_image(id, Hive.Docker.root_dockerfile()) do
+          {:ok, _} -> :ok
+          {:error, reason} -> throw({:docker_failed, reason})
+        end
+
+        boot.("Starting container...")
+        case Hive.Docker.start_container(id, bind_mount: working_dir) do
+          {:ok, _} -> :ok
+          {:error, reason} -> throw({:docker_failed, reason})
+        end
+
+        boot.("Connecting to Claude...")
+        agent_opts = Keyword.put(agent_opts, :docker_ready, true)
+
+        case Hive.ChatAgentSupervisor.start_agent(agent_opts) do
+          {:ok, _pid} ->
+            broadcast(boot_topic, {:agent_spawned, id})
+
+          {:error, reason} ->
+            broadcast(boot_topic, {:agent_spawn_failed, reason})
+        end
+      catch
+        {:docker_failed, reason} ->
+          Hive.Docker.destroy(id)
+          broadcast(boot_topic, {:agent_spawn_failed, "Docker setup failed: #{reason}"})
+      end
+    end)
+
+    {:noreply, push_navigate(socket, to: "/chat/#{id}")}
   end
 
   @impl true
@@ -104,6 +143,18 @@ defmodule HiveWeb.ChatLive do
   end
 
   @impl true
+  def handle_event("remove_agent", %{"id" => id}, socket) do
+    ChatAgent.remove_agent(id)
+    socket =
+      if socket.assigns.selected_id == id do
+        assign(socket, selected_id: nil, selected_agent: nil, messages: [])
+      else
+        socket
+      end
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_event("rename_agent", %{"name" => name}, socket) do
     if socket.assigns.selected_id && String.trim(name) != "" do
       ChatAgent.rename(socket.assigns.selected_id, String.trim(name))
@@ -119,7 +170,7 @@ defmodule HiveWeb.ChatLive do
     path =
       case {socket.assigns.selected_id, tab} do
         {nil, _} -> "/"
-        {id, :ops} -> "/chat/#{id}/ops"
+        {id, :container} -> "/chat/#{id}/container"
         {id, _} -> "/chat/#{id}"
       end
 
@@ -127,22 +178,60 @@ defmodule HiveWeb.ChatLive do
   end
 
   @impl true
-  def handle_event("refresh_ops", _params, socket) do
-    {:noreply, fetch_ops_data(socket)}
+  def handle_event("refresh_container", _params, socket) do
+    {:noreply, fetch_container_data(socket)}
   end
 
   @impl true
-  def handle_event("filter_ops_service", %{"service" => service}, socket) do
+  def handle_event("filter_container_service", %{"service" => service}, socket) do
     service = if service == "", do: nil, else: service
-    socket = assign(socket, :ops_log_service, service)
-    {:noreply, fetch_ops_data(socket)}
+    socket = assign(socket, :container_log_service, service)
+    {:noreply, fetch_container_data(socket)}
   end
 
   # --- PubSub ---
 
   @impl true
-  def handle_info({:chat_agent_started, _}, socket) do
-    {:noreply, assign(socket, :agents, ChatAgent.list_agents())}
+  def handle_info({:chat_agent_started, agent_summary}, socket) do
+    socket = assign(socket, :agents, ChatAgent.list_agents())
+
+    # If this is the agent we were waiting for, clear booting state
+    if socket.assigns.booting_agent_id && agent_summary.id == socket.assigns.booting_agent_id do
+      socket = assign(socket, :booting_agent_id, nil)
+
+      # If the user is still viewing this agent, select it properly
+      if socket.assigns.selected_id == agent_summary.id do
+        case select_agent(socket, agent_summary.id) do
+          {:noreply, s} -> {:noreply, s}
+          :not_found -> {:noreply, socket}
+        end
+      else
+        {:noreply, socket}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info({:boot_status, id, name, status}, socket) do
+    if socket.assigns.booting_agent_id == id do
+      {:noreply, assign(socket, boot_status: status, booting_agent_name: name)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info({:agent_spawned, _id}, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_info({:agent_spawn_failed, reason}, socket) do
+    {:noreply,
+     socket
+     |> assign(:booting_agent_id, nil)
+     |> put_flash(:error, "Failed to start agent: #{inspect(reason)}")
+     |> push_navigate(to: "/")}
   end
 
   @impl true
@@ -154,6 +243,11 @@ defmodule HiveWeb.ChatLive do
         do: Enum.find(agents, &(&1.id == socket.assigns.selected_id))
 
     {:noreply, socket |> assign(:agents, agents) |> assign(:selected_agent, selected)}
+  end
+
+  @impl true
+  def handle_info({:chat_agent_removed, _id}, socket) do
+    {:noreply, assign(socket, :agents, ChatAgent.list_agents())}
   end
 
   @impl true
@@ -188,17 +282,7 @@ defmodule HiveWeb.ChatLive do
     socket =
       if id == socket.assigns.selected_id do
         selected = Enum.find(agents, &(&1.id == id))
-        socket = assign(socket, :selected_agent, selected)
-
-        if status == :idle && socket.assigns.streaming_text != "" do
-          msg = %{role: :assistant, content: socket.assigns.streaming_text, timestamp: DateTime.utc_now()}
-
-          socket
-          |> assign(:messages, socket.assigns.messages ++ [msg])
-          |> assign(:streaming_text, "")
-        else
-          socket
-        end
+        assign(socket, :selected_agent, selected)
       else
         socket
       end
@@ -208,6 +292,9 @@ defmodule HiveWeb.ChatLive do
 
   @impl true
   def handle_info({:chat_message, id, msg}, socket) when id == socket.assigns.selected_id do
+    # When a full assistant message arrives, clear streaming text (it's now in the complete message)
+    socket = if msg.role == :assistant, do: assign(socket, :streaming_text, ""), else: socket
+
     {:noreply,
      socket
      |> assign(:messages, socket.assigns.messages ++ [msg])
@@ -223,11 +310,6 @@ defmodule HiveWeb.ChatLive do
   end
 
   @impl true
-  def handle_info({:auto_select, id}, socket) do
-    {:noreply, push_patch(socket, to: "/chat/#{id}")}
-  end
-
-  @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   # --- Private ---
@@ -237,25 +319,35 @@ defmodule HiveWeb.ChatLive do
       ChatAgent.unsubscribe(prev)
     end
 
-    try do
-      ChatAgent.subscribe(id)
-      agent = ChatAgent.get_state(id)
-      agents = ChatAgent.list_agents()
+    case ChatAgent.get_state(id) do
+      nil ->
+        :not_found
 
-      {:noreply,
-       socket
-       |> assign(:agents, agents)
-       |> assign(:selected_id, id)
-       |> assign(:selected_agent, agent)
-       |> assign(:messages, agent.messages)
-       |> assign(:streaming_text, "")}
-    catch
-      :exit, _ ->
-        {:noreply, push_patch(socket, to: "/")}
+      agent ->
+        ChatAgent.subscribe(id)
+        agents = ChatAgent.list_agents()
+
+        socket =
+          socket
+          |> assign(:agents, agents)
+          |> assign(:selected_id, id)
+          |> assign(:selected_agent, agent)
+          |> assign(:messages, agent.messages)
+          |> assign(:streaming_text, "")
+
+        # Only clear booting state if we're selecting the agent that was booting
+        socket =
+          if socket.assigns.booting_agent_id == id do
+            assign(socket, :booting_agent_id, nil)
+          else
+            socket
+          end
+
+        {:noreply, socket}
     end
   end
 
-  defp fetch_ops_data(socket) do
+  defp fetch_container_data(socket) do
     case socket.assigns.selected_id do
       nil ->
         socket
@@ -265,7 +357,7 @@ defmodule HiveWeb.ChatLive do
 
         if has_container do
           log_opts = %{lines: 100}
-          log_opts = if socket.assigns.ops_log_service, do: Map.put(log_opts, :service, socket.assigns.ops_log_service), else: log_opts
+          log_opts = if socket.assigns.container_log_service, do: Map.put(log_opts, :service, socket.assigns.container_log_service), else: log_opts
 
           logs =
             case Hive.Tools.Container.do_logs(id, log_opts) do
@@ -280,14 +372,14 @@ defmodule HiveWeb.ChatLive do
             end
 
           socket
-          |> assign(:ops_logs, logs)
-          |> assign(:ops_env, env)
-          |> assign(:ops_has_container, true)
+          |> assign(:container_logs, logs)
+          |> assign(:container_env, env)
+          |> assign(:has_container, true)
         else
           socket
-          |> assign(:ops_logs, "")
-          |> assign(:ops_env, nil)
-          |> assign(:ops_has_container, false)
+          |> assign(:container_logs, "")
+          |> assign(:container_env, nil)
+          |> assign(:has_container, false)
         end
     end
   end
@@ -304,15 +396,21 @@ defmodule HiveWeb.ChatLive do
   defp status_dot(:idle), do: "bg-green-500"
   defp status_dot(:thinking), do: "bg-amber-400 animate-pulse"
   defp status_dot(:stopped), do: "bg-zinc-400"
+  defp status_dot(:crashed), do: "bg-red-500"
   defp status_dot(_), do: "bg-zinc-400"
+
+  defp broadcast(topic, msg) do
+    Phoenix.PubSub.broadcast(Hive.PubSub, topic, msg)
+  end
+
+  defp subscribe_boot(id) do
+    Phoenix.PubSub.subscribe(Hive.PubSub, "boot:#{id}")
+  end
 
   defp shorten_path(path) do
     home = System.user_home!()
     String.replace_prefix(path, home, "~")
   end
-
-  defp format_tool_input(input) when is_map(input), do: Jason.encode!(input, pretty: true)
-  defp format_tool_input(input), do: inspect(input)
 
   defp time_ago(nil), do: ""
 
@@ -327,8 +425,43 @@ defmodule HiveWeb.ChatLive do
     end
   end
 
-  defp recent_messages(messages, count) do
-    messages |> Enum.reverse() |> Enum.take(count) |> Enum.reverse()
+  # Human-readable tool summaries
+  defp tool_summary(tool_name, input) when is_map(input) do
+    clean_name = tool_name |> String.replace(~r/^mcp__[\w-]+__/, "")
+
+    case {clean_name, input} do
+      {"Read", %{"file_path" => path}} -> "Read #{shorten_path(path)}"
+      {"Write", %{"file_path" => path}} -> "Wrote #{shorten_path(path)}"
+      {"Edit", %{"file_path" => path}} -> "Edited #{shorten_path(path)}"
+      {"Bash", %{"command" => cmd}} -> "$ #{String.slice(cmd, 0..80)}"
+      {"Grep", %{"pattern" => pat}} -> "Searched for \"#{pat}\""
+      {"Glob", %{"pattern" => pat}} -> "Found files matching #{pat}"
+      {"Agent", %{"prompt" => p}} -> "Spawned agent: #{String.slice(p, 0..60)}"
+      {"list_agents", _} -> "Listed all agents"
+      {"spawn_agent", %{"name" => n}} -> "Spawned agent #{n}"
+      {"send_message_to_agent", %{"agent_id" => id}} -> "Sent message to agent #{String.slice(id, 0..8)}"
+      {"stop_agent", %{"agent_id" => id}} -> "Stopped agent #{String.slice(id, 0..8)}"
+      {"exec", %{"command" => cmd}} -> "container $ #{String.slice(cmd, 0..80)}"
+      {"rebuild", _} -> "Rebuilt container image"
+      {"logs", _} -> "Checked container logs"
+      {"inspect_env", _} -> "Inspected container environment"
+      {"start_service", %{"name" => n, "command" => cmd}} -> "Started service #{n}: #{String.slice(cmd, 0..60)}"
+      {"start_service", %{"name" => n}} -> "Started service #{n}"
+      {"ports", _} -> "Listed container ports"
+      {name, _} -> name |> String.replace("_", " ") |> String.capitalize()
+    end
+  end
+
+  defp tool_summary(tool_name, _input), do: tool_name
+
+  # Pretty-print JSON tool results, pass through everything else
+  defp format_tool_result(content) do
+    case Jason.decode(content) do
+      {:ok, parsed} when is_map(parsed) ->
+        Jason.encode!(parsed, pretty: true)
+      _ ->
+        content
+    end
   end
 
   # =============================================
@@ -341,10 +474,12 @@ defmodule HiveWeb.ChatLive do
     <div id="chat-page" phx-hook="ScrollBottom" class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
       <.header agent_count={length(@agents)} />
       <div class="flex-1 flex min-h-0">
-        <.sidebar agents={@agents} selected_id={@selected_id} show_new_form={@show_new_form} new_name={@new_name} new_working_dir={@new_working_dir} />
+        <.sidebar agents={@agents} selected_id={@selected_id} booting_agent_id={@booting_agent_id} booting_agent_name={@booting_agent_name} boot_status={@boot_status} />
         <main class="flex-1 flex flex-col min-w-0">
-          <.empty_state :if={!@selected_agent} />
-          <.agent_view :if={@selected_agent} {assigns} />
+          <.new_agent_screen :if={@live_action == :new} />
+          <.booting_screen :if={@live_action != :new && @booting_agent_id && !@selected_agent} agent_id={@booting_agent_id} status={@boot_status} />
+          <.empty_state :if={@live_action != :new && !@booting_agent_id && !@selected_agent} />
+          <.agent_view :if={@live_action != :new && @selected_agent} {assigns} />
         </main>
       </div>
     </div>
@@ -366,9 +501,8 @@ defmodule HiveWeb.ChatLive do
     ~H"""
     <aside class="w-72 md:w-80 flex-none border-r border-zinc-200 dark:border-zinc-700/80 flex flex-col bg-zinc-50 dark:bg-zinc-900/50">
       <div class="flex-none p-3 border-b border-zinc-200 dark:border-zinc-700/80">
-        <button
-          :if={!@show_new_form}
-          phx-click="toggle_new_form"
+        <.link
+          navigate="/new"
           class="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-3.5 py-2 text-sm font-medium text-white dark:text-zinc-900
                  hover:bg-zinc-700 dark:hover:bg-zinc-300 transition-colors"
         >
@@ -376,12 +510,20 @@ defmodule HiveWeb.ChatLive do
             <path d="M8.75 3.75a.75.75 0 0 0-1.5 0v3.5h-3.5a.75.75 0 0 0 0 1.5h3.5v3.5a.75.75 0 0 0 1.5 0v-3.5h3.5a.75.75 0 0 0 0-1.5h-3.5v-3.5Z" />
           </svg>
           New Agent
-        </button>
-        <.new_agent_form :if={@show_new_form} new_name={@new_name} new_working_dir={@new_working_dir} />
+        </.link>
       </div>
       <div class="flex-1 overflow-y-auto">
-        <div :if={@agents == []} class="flex flex-col items-center justify-center h-full px-6 text-center">
+        <div :if={@agents == [] && !@booting_agent_id} class="flex flex-col items-center justify-center h-full px-6 text-center">
           <p class="text-sm text-zinc-400 dark:text-zinc-500">No agents yet</p>
+        </div>
+        <div :if={@booting_agent_id}
+          class={"w-full text-left px-4 py-3 border-b border-zinc-200/80 dark:border-zinc-700/50
+                  #{if @selected_id == @booting_agent_id, do: "bg-white dark:bg-zinc-800 shadow-sm", else: ""}"}>
+          <div class="flex items-center gap-2.5">
+            <div class="w-2 h-2 rounded-full flex-none bg-violet-400 animate-pulse"></div>
+            <span class="text-sm font-medium truncate">{@booting_agent_name || "Starting..."}</span>
+          </div>
+          <div class="mt-1 ml-[18px] text-xs text-zinc-400 dark:text-zinc-500 truncate">{@boot_status}</div>
         </div>
         <.agent_list_item :for={agent <- @agents} agent={agent} selected={@selected_id == agent.id} />
       </div>
@@ -389,30 +531,47 @@ defmodule HiveWeb.ChatLive do
     """
   end
 
-  defp new_agent_form(assigns) do
+  # --- New Agent Screen ---
+
+  defp new_agent_screen(assigns) do
     ~H"""
-    <form phx-submit="spawn_agent" class="space-y-2.5">
-      <input type="text" name="name" value={@new_name} placeholder="Agent name" autocomplete="off" autofocus
-        class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm
-               text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400
-               focus:outline-none focus:ring-2 focus:ring-zinc-900/10 dark:focus:ring-zinc-400/20" />
-      <input type="text" name="working_dir" value={@new_working_dir}
-        class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm font-mono
-               text-zinc-600 dark:text-zinc-300
-               focus:outline-none focus:ring-2 focus:ring-zinc-900/10 dark:focus:ring-zinc-400/20" />
-      <div class="flex gap-2">
-        <button type="submit" class="flex-1 rounded-lg bg-zinc-900 dark:bg-zinc-100 px-3 py-2 text-sm font-medium text-white dark:text-zinc-900
-               hover:bg-zinc-700 dark:hover:bg-zinc-300 transition-colors">
-          Launch
-        </button>
-        <button type="button" phx-click="toggle_new_form"
-          class="rounded-lg px-3 py-2 text-sm text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors">
-          Cancel
-        </button>
+    <div class="flex-1 flex items-center justify-center p-8">
+      <div class="w-full max-w-lg">
+        <h2 class="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mb-1">New Agent</h2>
+        <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-6">Runs in a container with the working directory mounted.</p>
+        <form phx-submit="spawn_agent" class="space-y-4">
+          <div>
+            <label class="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">Name</label>
+            <input type="text" name="name" placeholder="Auto-generated if blank" autocomplete="off" autofocus
+              class="w-full rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-3 text-sm
+                     text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400
+                     focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">Working Directory</label>
+            <input type="text" name="working_dir" value={File.cwd!()}
+              class="w-full rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-3 text-sm font-mono
+                     text-zinc-600 dark:text-zinc-300
+                     focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400" />
+          </div>
+          <div class="flex gap-3 pt-2">
+            <button type="submit"
+              class="flex-1 rounded-xl bg-zinc-900 dark:bg-zinc-100 px-4 py-3 text-sm font-medium text-white dark:text-zinc-900
+                     hover:bg-zinc-700 dark:hover:bg-zinc-300 transition-colors">
+              Launch
+            </button>
+            <.link navigate="/"
+              class="rounded-xl px-4 py-3 text-sm font-medium text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors">
+              Cancel
+            </.link>
+          </div>
+        </form>
       </div>
-    </form>
+    </div>
     """
   end
+
+  # --- Sidebar ---
 
   defp agent_list_item(assigns) do
     ~H"""
@@ -426,9 +585,33 @@ defmodule HiveWeb.ChatLive do
         <div class={"w-2 h-2 rounded-full flex-none #{status_dot(@agent.status)}"}></div>
         <span class="text-sm font-medium truncate">{@agent.name}</span>
         <span :if={@agent.status == :thinking} class="text-xs text-amber-500 flex-none">thinking</span>
+        <span :if={@agent.status in [:stopped, :crashed]}
+          phx-click="remove_agent" phx-value-id={@agent.id}
+          class="ml-auto text-xs text-zinc-400 hover:text-red-500 dark:hover:text-red-400 flex-none transition-colors"
+          title="Remove agent">
+          &times;
+        </span>
       </div>
       <div class="mt-1 ml-[18px] text-xs text-zinc-400 dark:text-zinc-500 font-mono truncate">{shorten_path(@agent.working_dir)}</div>
     </button>
+    """
+  end
+
+  defp booting_screen(assigns) do
+    ~H"""
+    <div class="flex-1 flex items-center justify-center">
+      <div class="text-center max-w-sm">
+        <div class="w-16 h-16 rounded-2xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center mx-auto mb-4">
+          <svg class="w-7 h-7 text-violet-500 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+        </div>
+        <h3 class="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-1">Starting agent</h3>
+        <p class="text-xs text-zinc-400 dark:text-zinc-500 font-mono mb-3">{@agent_id}</p>
+        <p class="text-sm text-zinc-500 dark:text-zinc-400">{@status}</p>
+      </div>
+    </div>
     """
   end
 
@@ -447,17 +630,22 @@ defmodule HiveWeb.ChatLive do
     """
   end
 
+  # --- Agent View ---
+
   defp agent_view(assigns) do
     ~H"""
     <div class="flex-1 flex flex-col min-h-0">
-      <.agent_header agent={@selected_agent} tab={@tab} />
+      <.agent_header agent={@selected_agent} tab={@tab} has_container={@has_container} />
       <.chat_panel :if={@tab == :chat} messages={@messages} streaming_text={@streaming_text} agent={@selected_agent} />
-      <.ops_panel :if={@tab == :ops} agent={@selected_agent} messages={@messages} has_container={@ops_has_container} env={@ops_env} logs={@ops_logs} log_service={@ops_log_service} />
+      <.container_panel :if={@tab == :container} env={@container_env} logs={@container_logs} log_service={@container_log_service} has_container={@has_container} />
     </div>
     """
   end
 
   defp agent_header(assigns) do
+    port = if assigns.has_container, do: Hive.Docker.host_port(assigns.agent.id), else: nil
+    assigns = assign(assigns, :container_port, port)
+
     ~H"""
     <div class="flex-none border-b border-zinc-200 dark:border-zinc-700/80">
       <div class="flex items-center justify-between px-4 md:px-5 h-12">
@@ -470,39 +658,45 @@ defmodule HiveWeb.ChatLive do
                      hover:text-violet-600 dark:hover:text-violet-400 cursor-text"
               style={"width: #{max(String.length(@agent.name) * 8, 60)}px"} />
           </form>
+          <a :if={@container_port} href={"http://localhost:#{@container_port}"} target="_blank"
+            class="text-xs font-mono text-violet-500 hover:text-violet-400 transition-colors">
+            localhost:{@container_port}
+          </a>
           <span :if={@agent[:last_activity_at]} class="text-xs text-zinc-400 dark:text-zinc-500">
             {time_ago(@agent[:last_activity_at])}
           </span>
         </div>
-        <button phx-click="stop_agent" phx-value-id={@agent.id}
+        <button :if={@agent.status in [:idle, :thinking]} phx-click="stop_agent" phx-value-id={@agent.id}
           class="text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-md px-2 py-1">
           Stop
         </button>
+        <button :if={@agent.status in [:stopped, :crashed]} phx-click="remove_agent" phx-value-id={@agent.id}
+          class="text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded-md px-2 py-1">
+          Remove
+        </button>
       </div>
-      <div class="flex gap-0 px-4">
+      <div :if={@has_container} class="flex gap-0 px-4">
         <button phx-click="switch_tab" phx-value-tab="chat"
           class={"px-3 py-1.5 text-xs font-medium border-b-2 transition-colors #{if @tab == :chat, do: "border-violet-500 text-violet-600 dark:text-violet-400", else: "border-transparent text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"}"}>
           Chat
         </button>
-        <button phx-click="switch_tab" phx-value-tab="ops"
-          class={"px-3 py-1.5 text-xs font-medium border-b-2 transition-colors #{if @tab == :ops, do: "border-violet-500 text-violet-600 dark:text-violet-400", else: "border-transparent text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"}"}>
-          Ops
-          <span :if={@agent[:errors] && @agent.errors > 0}
-            class="ml-1 inline-flex items-center justify-center w-4 h-4 text-[10px] font-bold text-white bg-red-500 rounded-full">
-            {@agent.errors}
-          </span>
+        <button phx-click="switch_tab" phx-value-tab="container"
+          class={"px-3 py-1.5 text-xs font-medium border-b-2 transition-colors #{if @tab == :container, do: "border-violet-500 text-violet-600 dark:text-violet-400", else: "border-transparent text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"}"}>
+          Container
         </button>
       </div>
     </div>
     """
   end
 
+  # --- Chat Panel (unified activity feed) ---
+
   defp chat_panel(assigns) do
     ~H"""
     <div class="flex-1 flex flex-col min-h-0">
-      <div id="messages" class="flex-1 overflow-y-auto px-4 md:px-6 py-4 space-y-3">
+      <div id="messages" class="flex-1 overflow-y-auto px-4 md:px-6 py-4 space-y-1">
         <div :for={msg <- @messages}>
-          <.msg_bubble msg={msg} />
+          <.chat_msg msg={msg} />
         </div>
         <.streaming_bubble :if={@streaming_text != ""} text={@streaming_text} />
         <.thinking_indicator :if={@agent.status == :thinking && @streaming_text == "" && @messages != [] && List.last(@messages).role != :assistant} />
@@ -526,114 +720,10 @@ defmodule HiveWeb.ChatLive do
     """
   end
 
-  defp ops_panel(assigns) do
+  # User message — full chat bubble, right-aligned
+  defp chat_msg(%{msg: %{role: :user}} = assigns) do
     ~H"""
-    <div class="flex-1 flex flex-col min-h-0 overflow-y-auto">
-      <.ops_stats agent={@agent} message_count={length(@messages)} />
-      <.container_ops :if={@has_container} env={@env} logs={@logs} log_service={@log_service} />
-      <.activity_feed :if={!@has_container} messages={@messages} />
-    </div>
-    """
-  end
-
-  defp ops_stats(assigns) do
-    ~H"""
-    <div class="flex gap-4 px-4 py-3 border-b border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50">
-      <div class="text-center">
-        <div class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{@agent[:tool_calls] || 0}</div>
-        <div class="text-[10px] uppercase tracking-wider text-zinc-400">Tools</div>
-      </div>
-      <div class="text-center">
-        <div class={"text-lg font-semibold #{if (@agent[:errors] || 0) > 0, do: "text-red-500", else: "text-zinc-900 dark:text-zinc-100"}"}>{@agent[:errors] || 0}</div>
-        <div class="text-[10px] uppercase tracking-wider text-zinc-400">Errors</div>
-      </div>
-      <div class="text-center">
-        <div class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">{@message_count}</div>
-        <div class="text-[10px] uppercase tracking-wider text-zinc-400">Messages</div>
-      </div>
-      <div class="flex-1"></div>
-      <button phx-click="refresh_ops" class="self-center text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">
-        Refresh
-      </button>
-    </div>
-    """
-  end
-
-  defp container_ops(assigns) do
-    ~H"""
-    <div>
-      <div :if={@env} class="border-b border-zinc-200 dark:border-zinc-700/80">
-        <div class="px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50">
-          <h3 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Environment</h3>
-        </div>
-        <pre class="px-4 py-3 text-xs font-mono text-zinc-600 dark:text-zinc-400 overflow-x-auto whitespace-pre-wrap max-h-48 overflow-y-auto">{@env}</pre>
-      </div>
-      <div class="flex-1 flex flex-col min-h-0">
-        <div class="flex items-center justify-between px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
-          <h3 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Logs</h3>
-          <form phx-change="filter_ops_service" class="inline">
-            <input type="text" name="service" value={@log_service || ""} placeholder="Filter service..."
-              class="text-xs rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-1 w-28
-                     focus:outline-none focus:ring-1 focus:ring-violet-500/30" />
-          </form>
-        </div>
-        <pre class="flex-1 px-4 py-3 text-xs font-mono overflow-auto whitespace-pre-wrap bg-zinc-950 text-green-400 min-h-[200px]">{@logs}</pre>
-      </div>
-    </div>
-    """
-  end
-
-  defp activity_feed(assigns) do
-    assigns = assign(assigns, :recent, recent_messages(assigns.messages, 20))
-
-    ~H"""
-    <div class="flex-1 overflow-y-auto">
-      <div class="px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
-        <h3 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Recent Activity</h3>
-      </div>
-      <div class="divide-y divide-zinc-100 dark:divide-zinc-800">
-        <.activity_item :for={msg <- @recent} msg={msg} />
-      </div>
-    </div>
-    """
-  end
-
-  defp activity_item(%{msg: %{role: :tool}} = assigns) do
-    ~H"""
-    <div class="px-4 py-2 flex items-center gap-2">
-      <span class="text-[10px] text-zinc-400 font-mono">{Calendar.strftime(@msg.timestamp, "%H:%M:%S")}</span>
-      <span class="text-xs font-medium text-blue-600 dark:text-blue-400">{@msg.tool}</span>
-    </div>
-    """
-  end
-
-  defp activity_item(%{msg: %{role: :error}} = assigns) do
-    ~H"""
-    <div class="px-4 py-2 flex items-center gap-2">
-      <span class="text-[10px] text-zinc-400 font-mono">{Calendar.strftime(@msg.timestamp, "%H:%M:%S")}</span>
-      <span class="text-xs text-red-500">{String.slice(@msg.content, 0..80)}</span>
-    </div>
-    """
-  end
-
-  defp activity_item(%{msg: %{role: :assistant}} = assigns) do
-    ~H"""
-    <div class="px-4 py-2 flex items-center gap-2">
-      <span class="text-[10px] text-zinc-400 font-mono">{Calendar.strftime(@msg.timestamp, "%H:%M:%S")}</span>
-      <span class="text-xs text-zinc-500 truncate">{String.slice(@msg.content, 0..80)}</span>
-    </div>
-    """
-  end
-
-  defp activity_item(assigns) do
-    ~H"""
-    <div></div>
-    """
-  end
-
-  defp msg_bubble(%{msg: %{role: :user}} = assigns) do
-    ~H"""
-    <div class="flex justify-end">
+    <div class="flex justify-end mt-3 mb-1">
       <div class="max-w-[85%] rounded-2xl rounded-tr-sm bg-violet-600 text-white px-4 py-2.5">
         <p class="text-sm whitespace-pre-wrap">{@msg.content}</p>
       </div>
@@ -641,9 +731,10 @@ defmodule HiveWeb.ChatLive do
     """
   end
 
-  defp msg_bubble(%{msg: %{role: :assistant}} = assigns) do
+  # Assistant message — full chat bubble with avatar
+  defp chat_msg(%{msg: %{role: :assistant}} = assigns) do
     ~H"""
-    <div class="flex gap-3">
+    <div class="flex gap-3 mt-3 mb-1">
       <div class="flex-none w-7 h-7 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center mt-0.5">
         <span class="text-xs font-bold text-violet-600 dark:text-violet-400">C</span>
       </div>
@@ -654,37 +745,55 @@ defmodule HiveWeb.ChatLive do
     """
   end
 
-  defp msg_bubble(%{msg: %{role: :tool}} = assigns) do
+  # Tool call — compact inline status row (like a Slack bot message)
+  defp chat_msg(%{msg: %{role: :tool}} = assigns) do
+    assigns = assign(assigns, :summary, tool_summary(assigns.msg.tool, assigns.msg.input))
+
     ~H"""
-    <div class="flex gap-3">
-      <div class="flex-none w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center mt-0.5">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3.5 h-3.5 text-blue-600 dark:text-blue-400">
-          <path fill-rule="evenodd" d="M11.986 3H12a2 2 0 0 1 2 2v6a2 2 0 0 1-1.5 1.937V7A2.5 2.5 0 0 0 10 4.5H4.063A2 2 0 0 1 6 3h.014A2.25 2.25 0 0 1 8.25 1h-.5a2.25 2.25 0 0 1 2.236 2ZM10.5 4v-.75a.75.75 0 0 0-.75-.75h-3.5a.75.75 0 0 0-.75.75V4h5Z" clip-rule="evenodd" />
-          <path fill-rule="evenodd" d="M2 7a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V7Zm6.585 1.08a.75.75 0 0 1 .336 1.005l-1.75 3.5a.75.75 0 0 1-1.16.234l-1.75-1.5a.75.75 0 0 1 .977-1.139l1.02.875 1.321-2.64a.75.75 0 0 1 1.006-.335Z" clip-rule="evenodd" />
+    <div class="flex items-center gap-2 py-0.5 pl-10">
+      <div class="w-4 h-4 rounded bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-none">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-2.5 h-2.5 text-blue-500 dark:text-blue-400">
+          <path fill-rule="evenodd" d="M6.955 1.45A.5.5 0 0 1 7.452 1h1.096a.5.5 0 0 1 .497.45l.17 1.699c.484.12.94.312 1.356.562l1.321-.916a.5.5 0 0 1 .67.033l.774.775a.5.5 0 0 1 .034.67l-.916 1.32c.25.417.443.873.563 1.357l1.699.17a.5.5 0 0 1 .45.497v1.096a.5.5 0 0 1-.45.497l-1.699.17c-.12.484-.312.94-.562 1.356l.916 1.321a.5.5 0 0 1-.034.67l-.774.774a.5.5 0 0 1-.67.033l-1.32-.916c-.417.25-.874.443-1.357.563l-.17 1.699a.5.5 0 0 1-.497.45H7.452a.5.5 0 0 1-.497-.45l-.17-1.699a4.973 4.973 0 0 1-1.356-.562l-1.321.916a.5.5 0 0 1-.67-.033l-.774-.775a.5.5 0 0 1-.034-.67l.916-1.32a4.971 4.971 0 0 1-.562-1.357l-1.699-.17A.5.5 0 0 1 1 8.548V7.452a.5.5 0 0 1 .45-.497l1.699-.17c.12-.484.312-.94.562-1.356l-.916-1.321a.5.5 0 0 1 .034-.67l.774-.774a.5.5 0 0 1 .67-.033l1.32.916c.417-.25.874-.443 1.357-.563l.17-1.699ZM8 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" clip-rule="evenodd" />
         </svg>
       </div>
-      <div class="max-w-[85%] rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200/60 dark:border-blue-800/60 px-4 py-2.5">
-        <p class="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1">{@msg.tool}</p>
-        <pre class="text-xs text-blue-600/80 dark:text-blue-400/80 overflow-x-auto whitespace-pre-wrap">{format_tool_input(@msg.input)}</pre>
-      </div>
+      <span class="text-xs text-zinc-500 dark:text-zinc-400">{@summary}</span>
+      <span class="text-[10px] text-zinc-300 dark:text-zinc-600">{Calendar.strftime(@msg.timestamp, "%H:%M:%S")}</span>
     </div>
     """
   end
 
-  defp msg_bubble(%{msg: %{role: :error}} = assigns) do
+  # Tool result — inline output block (always visible, no collapse state to sync across clients)
+  defp chat_msg(%{msg: %{role: :tool_result}} = assigns) do
+    content = assigns.msg.content
+    display = format_tool_result(content)
+    lines = String.split(display, "\n")
+    truncated = length(lines) > 40
+    display = if truncated, do: Enum.take(lines, 40) |> Enum.join("\n"), else: display
+    assigns = assign(assigns, display: display, truncated: truncated, is_error: assigns.msg.is_error, line_count: length(lines))
+
     ~H"""
-    <div class="flex gap-3">
-      <div class="flex-none w-7 h-7 rounded-full bg-red-100 dark:bg-red-900/40 flex items-center justify-center mt-0.5">
-        <span class="text-xs font-bold text-red-600 dark:text-red-400">!</span>
-      </div>
-      <div class="max-w-[85%] rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200/60 dark:border-red-800/60 px-4 py-2.5">
-        <p class="text-sm text-red-700 dark:text-red-300">{@msg.content}</p>
-      </div>
+    <div class="pl-10 py-0.5">
+      <pre class={"p-3 rounded-lg text-xs font-mono overflow-x-auto max-h-80 overflow-y-auto whitespace-pre-wrap
+                   #{if @is_error, do: "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300", else: "bg-zinc-950 text-green-400"}"}>{@display}</pre>
+      <p :if={@truncated} class="mt-1 text-[10px] text-zinc-400 dark:text-zinc-500">... truncated ({@line_count - 40} more lines)</p>
     </div>
     """
   end
 
-  defp msg_bubble(assigns) do
+  # Error — compact inline alert (like a Slack system message)
+  defp chat_msg(%{msg: %{role: :error}} = assigns) do
+    ~H"""
+    <div class="flex items-start gap-2 py-1 pl-10">
+      <div class="w-4 h-4 rounded bg-red-100 dark:bg-red-900/30 flex items-center justify-center flex-none mt-0.5">
+        <span class="text-[10px] font-bold text-red-500">!</span>
+      </div>
+      <span class="text-xs text-red-600 dark:text-red-400">{@msg.content}</span>
+      <span class="text-[10px] text-zinc-300 dark:text-zinc-600 flex-none">{Calendar.strftime(@msg.timestamp, "%H:%M:%S")}</span>
+    </div>
+    """
+  end
+
+  defp chat_msg(assigns) do
     ~H"""
     <div></div>
     """
@@ -692,7 +801,7 @@ defmodule HiveWeb.ChatLive do
 
   defp streaming_bubble(assigns) do
     ~H"""
-    <div class="flex gap-3">
+    <div class="flex gap-3 mt-3">
       <div class="flex-none w-7 h-7 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center mt-0.5">
         <span class="text-xs font-bold text-violet-600 dark:text-violet-400">C</span>
       </div>
@@ -705,7 +814,7 @@ defmodule HiveWeb.ChatLive do
 
   defp thinking_indicator(assigns) do
     ~H"""
-    <div class="flex gap-3">
+    <div class="flex gap-3 mt-3">
       <div class="flex-none w-7 h-7 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center mt-0.5">
         <span class="text-xs font-bold text-violet-600 dark:text-violet-400">C</span>
       </div>
@@ -715,6 +824,45 @@ defmodule HiveWeb.ChatLive do
           <div class="w-2 h-2 rounded-full bg-zinc-400 animate-bounce" style="animation-delay: 150ms"></div>
           <div class="w-2 h-2 rounded-full bg-zinc-400 animate-bounce" style="animation-delay: 300ms"></div>
         </div>
+      </div>
+    </div>
+    """
+  end
+
+  # --- Container Panel ---
+
+  defp container_panel(%{has_container: false} = assigns) do
+    ~H"""
+    <div class="flex-1 flex items-center justify-center">
+      <p class="text-sm text-zinc-400 dark:text-zinc-500">No container running</p>
+    </div>
+    """
+  end
+
+  defp container_panel(assigns) do
+    ~H"""
+    <div class="flex-1 flex flex-col min-h-0 overflow-y-auto">
+      <div class="flex items-center justify-end px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
+        <button phx-click="refresh_container" class="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">
+          Refresh
+        </button>
+      </div>
+      <div :if={@env} class="border-b border-zinc-200 dark:border-zinc-700/80">
+        <div class="px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50">
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Environment</h3>
+        </div>
+        <pre class="px-4 py-3 text-xs font-mono text-zinc-600 dark:text-zinc-400 overflow-x-auto whitespace-pre-wrap max-h-48 overflow-y-auto">{@env}</pre>
+      </div>
+      <div class="flex-1 flex flex-col min-h-0">
+        <div class="flex items-center justify-between px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Logs</h3>
+          <form phx-change="filter_container_service" class="inline">
+            <input type="text" name="service" value={@log_service || ""} placeholder="Filter service..."
+              class="text-xs rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-1 w-28
+                     focus:outline-none focus:ring-1 focus:ring-violet-500/30" />
+          </form>
+        </div>
+        <pre class="flex-1 px-4 py-3 text-xs font-mono overflow-auto whitespace-pre-wrap bg-zinc-950 text-green-400 min-h-[200px]">{@logs}</pre>
       </div>
     </div>
     """
