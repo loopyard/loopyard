@@ -18,7 +18,6 @@ defmodule HiveWeb.ChatLive do
      |> assign(:selected_agent, nil)
      |> assign(:messages, [])
      |> assign(:streaming_text, "")
-     |> assign(:input, "")
      |> assign(:tab, :chat)
      |> assign(:container_logs, "")
      |> assign(:container_env, nil)
@@ -94,7 +93,7 @@ defmodule HiveWeb.ChatLive do
         Hive.Docker.create_volumes(id, bind_mount: working_dir)
 
         boot.("Building container image...")
-        case Hive.Docker.build_image(id, Hive.Docker.root_dockerfile()) do
+        case Hive.Docker.build_image(id) do
           {:ok, _} -> :ok
           {:error, reason} -> throw({:docker_failed, reason})
         end
@@ -133,7 +132,7 @@ defmodule HiveWeb.ChatLive do
       ChatAgent.send_message(socket.assigns.selected_id, message)
     end
 
-    {:noreply, assign(socket, :input, "")}
+    {:noreply, socket}
   end
 
   @impl true
@@ -442,7 +441,6 @@ defmodule HiveWeb.ChatLive do
       {"send_message_to_agent", %{"agent_id" => id}} -> "Sent message to agent #{String.slice(id, 0..8)}"
       {"stop_agent", %{"agent_id" => id}} -> "Stopped agent #{String.slice(id, 0..8)}"
       {"exec", %{"command" => cmd}} -> "container $ #{String.slice(cmd, 0..80)}"
-      {"rebuild", _} -> "Rebuilt container image"
       {"logs", _} -> "Checked container logs"
       {"inspect_env", _} -> "Inspected container environment"
       {"start_service", %{"name" => n, "command" => cmd}} -> "Started service #{n}: #{String.slice(cmd, 0..60)}"

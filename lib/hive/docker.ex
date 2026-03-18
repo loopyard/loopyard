@@ -3,10 +3,9 @@ defmodule Hive.Docker do
   Docker container lifecycle management for Hive agents.
 
   Each agent gets a container with:
-  - A workspace volume (persists across rebuilds)
-  - A cache volume (npm/pip/apt caches)
+  - A workspace (bind-mounted host directory or named volume)
+  - A cache volume (npm/pip/apt caches, persists across rebuilds)
   - A port mapped for web server access
-  - A wrapper script so the Claude SDK spawns claude inside the container
   """
 
   @prefix "hive-dev"
@@ -17,24 +16,7 @@ defmodule Hive.Docker do
 
   @network_name "hive-net"
 
-  @base_dockerfile """
-  FROM ubuntu:22.04
-  ENV DEBIAN_FRONTEND=noninteractive
-
-  RUN apt-get update && apt-get install -y \\
-      curl git build-essential ca-certificates gnupg \\
-      && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \\
-         | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg \\
-      && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \\
-         | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \\
-      && apt-get update && apt-get install -y gh \\
-      && rm -rf /var/lib/apt/lists/*
-
-  WORKDIR #{@workspace_mount}
-  CMD ["sleep", "infinity"]
-  """
-
-  @root_dockerfile """
+  @dockerfile """
   FROM elixir:1.18
   ENV DEBIAN_FRONTEND=noninteractive
 
@@ -68,11 +50,8 @@ defmodule Hive.Docker do
     @base_port + hash
   end
 
-  @doc "Returns the base Dockerfile content"
-  def base_dockerfile, do: @base_dockerfile
-
-  @doc "Returns the root Dockerfile content (Elixir/Erlang pre-installed)"
-  def root_dockerfile, do: @root_dockerfile
+  @doc "Returns the default Dockerfile content"
+  def dockerfile, do: @dockerfile
 
   @doc "Returns the Docker network name used by all Hive containers"
   def network_name, do: @network_name
@@ -81,19 +60,17 @@ defmodule Hive.Docker do
   Create and start a container for an agent.
 
   Options:
-  - `:dockerfile` — Dockerfile content (defaults to `base_dockerfile`)
-  - `:bind_mount` — host directory to bind-mount as /workspace. When set,
-    no workspace volume is created and no Dockerfile is seeded into workspace.
+  - `:dockerfile` — Dockerfile content (defaults to the built-in Elixir image)
+  - `:bind_mount` — host directory to bind-mount as /workspace
   """
   def create(agent_id, opts \\ []) do
-    dockerfile = Keyword.get(opts, :dockerfile, @base_dockerfile)
+    df = Keyword.get(opts, :dockerfile, @dockerfile)
     bind_mount = Keyword.get(opts, :bind_mount)
 
     create_volumes(agent_id, bind_mount: bind_mount)
 
-    with {:ok, _} <- build_image(agent_id, dockerfile),
+    with {:ok, _} <- build_image(agent_id, df),
          {:ok, _} = ok <- start_container(agent_id, bind_mount: bind_mount) do
-      unless bind_mount, do: seed_dockerfile(agent_id, dockerfile)
       ok
     end
   end
@@ -105,9 +82,9 @@ defmodule Hive.Docker do
     :ok
   end
 
-  @doc "Build the Docker image from the base Dockerfile (or custom)"
-  def build_image(agent_id, dockerfile \\ @base_dockerfile) do
-    build_from_string(container_name(agent_id), dockerfile)
+  @doc "Build the Docker image"
+  def build_image(agent_id, df \\ @dockerfile) do
+    build_from_string(container_name(agent_id), df)
   end
 
   @doc """
@@ -136,65 +113,6 @@ defmodule Hive.Docker do
       "--name", name,
       "--network", @network_name
     ] ++ workspace_args ++ [
-      "-v", "#{cache_vol}:#{@cache_mount}",
-      "-p", "#{port}:#{@container_internal_port}",
-      "-w", @workspace_mount
-    ]
-
-    env_args = container_env_args()
-
-    result = docker(base_args ++ env_args ++ [name, "sleep", "infinity"])
-
-    case result do
-      {:ok, _} = ok ->
-        setup_git_config(agent_id)
-        ok
-
-      error ->
-        error
-    end
-  end
-
-  @doc "Seed the Dockerfile into the workspace so the agent can edit and rebuild"
-  def seed_dockerfile(agent_id, dockerfile \\ @base_dockerfile) do
-    exec(agent_id, "test -f #{@workspace_mount}/Dockerfile || cat > #{@workspace_mount}/Dockerfile << 'DOCKERFILE'\n#{dockerfile}\nDOCKERFILE")
-  end
-
-  @doc """
-  Rebuild: read Dockerfile from container's workspace, rebuild image, restart.
-  This is the self-improving path — agent edits Dockerfile, calls rebuild.
-  """
-  def rebuild(agent_id) do
-    name = container_name(agent_id)
-
-    # Read the (possibly modified) Dockerfile from the running container
-    dockerfile =
-      case exec(agent_id, "cat #{@workspace_mount}/Dockerfile") do
-        {:ok, content} -> content
-        {:error, _} -> @base_dockerfile
-      end
-
-    stop(agent_id)
-
-    with {:ok, _} <- build_from_string(name, dockerfile) do
-      start(agent_id)
-    end
-  end
-
-  @doc "Start a new container from existing image and volumes"
-  def start(agent_id) do
-    ensure_network()
-
-    name = container_name(agent_id)
-    ws_vol = workspace_volume(agent_id)
-    cache_vol = cache_volume(agent_id)
-    port = host_port(agent_id)
-
-    base_args = [
-      "run", "-d",
-      "--name", name,
-      "--network", @network_name,
-      "-v", "#{ws_vol}:#{@workspace_mount}",
       "-v", "#{cache_vol}:#{@cache_mount}",
       "-p", "#{port}:#{@container_internal_port}",
       "-w", @workspace_mount

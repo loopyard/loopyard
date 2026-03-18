@@ -320,17 +320,11 @@ defmodule Hive.ChatAgent do
     container = Hive.Docker.container_name(agent_id)
     port = Hive.Docker.host_port(agent_id)
 
-    workspace_info =
+    workspace_note =
       if bind_mount do
-        """
-        - /workspace is a bind mount of #{bind_mount} — edits appear on the host immediately
-        - Do NOT use `rebuild` — the workspace is a live bind mount, not a volume
-        """
+        "/workspace is a bind mount of #{bind_mount} — edits appear on the host immediately"
       else
-        """
-        - /workspace persists across rebuilds (it's a Docker volume)
-        - The Dockerfile at /workspace/Dockerfile controls the container image — edit it to add system packages, languages, or databases, then rebuild
-        """
+        "/workspace is a Docker volume that persists independently"
       end
 
     """
@@ -344,14 +338,16 @@ defmodule Hive.ChatAgent do
 
     - **Run commands**: Use `exec` to run shell commands inside your container
     - **Edit files**: Use `exec` with shell commands (cat, sed, tee, etc.) to read/write files in /workspace
-    - **Install dependencies**: Use `exec` to run apt-get, npm, pip, etc. inside the container
+    - **Install dependencies**: Use `exec` to run apt-get, mix, npm, pip, etc. inside the container
     - **Run services**: Use `start_service` to launch background processes (web servers, databases). They log to /var/log/<name>.log
     - **Check status**: Use `logs` to see what's running, `ports` to see listeners, `inspect_env` for full environment info
 
     ## Container details
 
+    - #{workspace_note}
     - Host port #{port} maps to container port 3000 (for web servers)
-    #{workspace_info}- /root/.cache persists (package caches)
+    - /root/.cache persists (package caches)
+    - Elixir and Erlang are pre-installed
 
     Do NOT use your local Bash/Read/Write tools for project work — everything goes through the container tools.
     """
