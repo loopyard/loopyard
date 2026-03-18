@@ -72,10 +72,21 @@ defmodule HiveWeb.ChatLive do
   def handle_event("spawn_agent", params, socket) do
     working_dir = Map.get(params, "working_dir", File.cwd!())
     id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
+    user_name = Map.get(params, "name", "") |> String.trim()
 
+    workspace =
+      case Hive.Workspace.load(working_dir) do
+        {:ok, ws} -> ws
+        _ -> nil
+      end
+
+    # Prefer user-provided name, then workspace name, then auto-generated
     name =
-      Map.get(params, "name", "")
-      |> then(fn n -> if n == "", do: auto_name(), else: n end)
+      cond do
+        user_name != "" -> user_name
+        workspace && workspace.name -> workspace.name
+        true -> auto_name()
+      end
 
     agent_opts = [
       id: id,
@@ -85,40 +96,8 @@ defmodule HiveWeb.ChatLive do
       bind_mount: working_dir
     ]
 
-    # Register in ETS immediately so all viewers can see the booting state
     ChatAgent.register_booting(id, name, working_dir)
-
-    # Spawn async so the UI stays responsive during Docker setup
-    Task.start(fn ->
-      try do
-        ChatAgent.update_boot_status(id, "Creating volumes...")
-        Hive.Docker.create_volumes(id, bind_mount: working_dir)
-
-        ChatAgent.update_boot_status(id, "Building container image...")
-        case Hive.Docker.build_image(id) do
-          {:ok, _} -> :ok
-          {:error, reason} -> throw({:docker_failed, reason})
-        end
-
-        ChatAgent.update_boot_status(id, "Starting container...")
-        case Hive.Docker.start_container(id, bind_mount: working_dir) do
-          {:ok, _} -> :ok
-          {:error, reason} -> throw({:docker_failed, reason})
-        end
-
-        ChatAgent.update_boot_status(id, "Connecting to Claude...")
-        agent_opts = Keyword.put(agent_opts, :docker_ready, true)
-
-        case Hive.ChatAgentSupervisor.start_agent(agent_opts) do
-          {:ok, _pid} -> :ok
-          {:error, reason} -> ChatAgent.boot_failed(id, reason)
-        end
-      catch
-        {:docker_failed, reason} ->
-          Hive.Docker.destroy(id)
-          ChatAgent.boot_failed(id, "Docker setup failed: #{reason}")
-      end
-    end)
+    Task.start(fn -> boot_agent(id, agent_opts, workspace, working_dir) end)
 
     {:noreply, push_navigate(socket, to: "/chat/#{id}")}
   end
@@ -420,6 +399,51 @@ defmodule HiveWeb.ChatLive do
     end
   end
 
+  defp boot_agent(id, agent_opts, workspace, working_dir) do
+    ChatAgent.update_boot_status(id, "Creating volumes...")
+    Hive.Docker.create_volumes(id, bind_mount: working_dir)
+
+    dockerfile = if workspace, do: workspace.dockerfile, else: nil
+    env_vars = if workspace, do: workspace.env_vars || %{}, else: %{}
+
+    ChatAgent.update_boot_status(id, "Building image...")
+    build_opts = if dockerfile, do: dockerfile, else: Hive.Docker.dockerfile()
+    case Hive.Docker.build_image(id, build_opts) do
+      {:ok, _} -> :ok
+      {:error, reason} ->
+        ChatAgent.boot_failed(id, reason)
+        raise "Docker build failed: #{reason}"
+    end
+
+    ChatAgent.update_boot_status(id, "Starting container...")
+    start_opts = [bind_mount: working_dir, env_vars: env_vars]
+    case Hive.Docker.start_container(id, start_opts) do
+      {:ok, _} -> :ok
+      {:error, reason} ->
+        ChatAgent.boot_failed(id, reason)
+        raise "Container start failed: #{reason}"
+    end
+
+    if workspace do
+      ChatAgent.update_boot_status(id, "Starting services...")
+      Hive.Workspace.ServiceManager.start_services(working_dir)
+    end
+
+    ChatAgent.update_boot_status(id, "Starting Claude session...")
+    case Hive.ChatAgentSupervisor.start_agent(agent_opts ++ [docker_ready: true]) do
+      {:ok, _pid} ->
+        unless workspace do
+          ChatAgent.send_message(id, "Look at the project in /workspace and help me set up a development environment. Examine the project files to understand what language, framework, and tools are needed.")
+        end
+
+      {:error, reason} ->
+        ChatAgent.boot_failed(id, reason)
+    end
+  rescue
+    e ->
+      ChatAgent.boot_failed(id, Exception.message(e))
+  end
+
   @adjectives ~w(Swift Bright Calm Deep Quick Sharp Keen Bold Clear True)
   @nouns ~w(Spark Drift Pulse Wave Bloom Forge Sage Fern Tide Mesa)
 
@@ -436,6 +460,10 @@ defmodule HiveWeb.ChatLive do
   defp status_dot(:crashed), do: "bg-red-500"
   defp status_dot(:destroying), do: "bg-red-400 animate-pulse"
   defp status_dot(_), do: "bg-zinc-400"
+
+  defp hash_content(content) when is_binary(content) do
+    :erlang.phash2(content, 0xFFFFFF) |> Integer.to_string(16)
+  end
 
   defp shorten_path(path) do
     home = System.user_home!()
@@ -477,6 +505,12 @@ defmodule HiveWeb.ChatLive do
       {"start_service", %{"name" => n, "command" => cmd}} -> "Started service #{n}: #{String.slice(cmd, 0..60)}"
       {"start_service", %{"name" => n}} -> "Started service #{n}"
       {"ports", _} -> "Listed container ports"
+      {"save_workspace", _} -> "Saved workspace config"
+      {"load_workspace", _} -> "Loaded workspace config"
+      {"start_services", _} -> "Started workspace services"
+      {"stop_services", _} -> "Stopped workspace services"
+      {"rebuild", _} -> "Rebuilding container..."
+      {"service_status", _} -> "Checked service status"
       {name, _} -> name |> String.replace("_", " ") |> String.capitalize()
     end
   end
@@ -758,15 +792,26 @@ defmodule HiveWeb.ChatLive do
     """
   end
 
-  # Assistant message — full chat bubble with avatar
+  # Assistant message — full chat bubble with avatar, markdown rendering, copy button
   defp chat_msg(%{msg: %{role: :assistant}} = assigns) do
     ~H"""
-    <div class="flex gap-3 mt-3 mb-1">
+    <div class="flex gap-3 mt-3 mb-1 group/msg">
       <div class="flex-none w-7 h-7 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center mt-0.5">
         <span class="text-xs font-bold text-violet-600 dark:text-violet-400">C</span>
       </div>
-      <div class="max-w-[85%] rounded-2xl rounded-tl-sm bg-zinc-100 dark:bg-zinc-800 px-4 py-2.5">
-        <p class="text-sm whitespace-pre-wrap text-zinc-900 dark:text-zinc-100">{@msg.content}</p>
+      <div class="relative max-w-[85%] rounded-2xl rounded-tl-sm bg-zinc-100 dark:bg-zinc-800 px-4 py-2.5" id={"msg-#{hash_content(@msg.content)}"} phx-hook="Markdown" data-source={@msg.content}>
+        <button phx-hook="CopySource" id={"copy-#{hash_content(@msg.content)}"} data-source={@msg.content}
+          class="absolute top-2 right-2 p-1 rounded-md text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 opacity-0 group-hover/msg:opacity-100 transition-opacity"
+          title="Copy markdown source">
+          <svg class="w-3.5 h-3.5 copy-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M5.5 3.5A1.5 1.5 0 0 1 7 2h2.879a1.5 1.5 0 0 1 1.06.44l2.122 2.12a1.5 1.5 0 0 1 .439 1.061V9.5A1.5 1.5 0 0 1 12 11V8.621a3 3 0 0 0-.879-2.121L9 4.379A3 3 0 0 0 6.879 3.5H5.5Z" />
+            <path d="M4 5a1.5 1.5 0 0 0-1.5 1.5v6A1.5 1.5 0 0 0 4 14h5a1.5 1.5 0 0 0 1.5-1.5V8.621a1.5 1.5 0 0 0-.44-1.06L7.94 5.439A1.5 1.5 0 0 0 6.878 5H4Z" />
+          </svg>
+          <svg class="w-3.5 h-3.5 check-icon hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
+            <path fill-rule="evenodd" d="M12.416 3.376a.75.75 0 0 1 .208 1.04l-5 7.5a.75.75 0 0 1-1.154.114l-3-3a.75.75 0 0 1 1.06-1.06l2.353 2.353 4.493-6.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd" />
+          </svg>
+        </button>
+        <div class="markdown-body text-sm text-zinc-900 dark:text-zinc-100"></div>
       </div>
     </div>
     """
@@ -832,8 +877,9 @@ defmodule HiveWeb.ChatLive do
       <div class="flex-none w-7 h-7 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center mt-0.5">
         <span class="text-xs font-bold text-violet-600 dark:text-violet-400">C</span>
       </div>
-      <div class="max-w-[85%] rounded-2xl rounded-tl-sm bg-zinc-100 dark:bg-zinc-800 px-4 py-2.5">
-        <p class="text-sm whitespace-pre-wrap text-zinc-900 dark:text-zinc-100">{@text}<span class="inline-block w-1.5 h-4 bg-violet-500 animate-pulse ml-0.5 align-middle"></span></p>
+      <div class="max-w-[85%] rounded-2xl rounded-tl-sm bg-zinc-100 dark:bg-zinc-800 px-4 py-2.5" id="streaming-msg" phx-hook="Markdown" data-source={@text}>
+        <div class="markdown-body text-sm text-zinc-900 dark:text-zinc-100"></div>
+        <span class="inline-block w-1.5 h-4 bg-violet-500 animate-pulse ml-0.5 align-middle"></span>
       </div>
     </div>
     """

@@ -16,6 +16,7 @@ defmodule Hive.ChatAgent do
     :session,
     :backend,
     :working_dir,
+    :bind_mount,
     :started_at,
     :started_by,
     :last_activity_at,
@@ -55,7 +56,27 @@ defmodule Hive.ChatAgent do
   end
 
   def stop_agent(id) do
-    GenServer.cast(via(id), :stop)
+    case Registry.lookup(Hive.ChatAgentRegistry, id) do
+      [{pid, _}] ->
+        # Update ETS and broadcast before stopping, since terminate(:normal) is a no-op
+        ensure_ets_table()
+
+        case :ets.lookup(@ets_table, id) do
+          [{^id, summary}] ->
+            stopped = %{summary | status: :stopped}
+            :ets.insert(@ets_table, {id, stopped})
+            broadcast(@topic, {:chat_agent_stopped, stopped})
+
+          [] ->
+            :ok
+        end
+
+        # Force-stop the GenServer (kills linked streaming task too)
+        GenServer.stop(pid, :normal, 5_000)
+
+      [] ->
+        :ok
+    end
   end
 
   def rename(id, new_name) do
@@ -183,12 +204,17 @@ defmodule Hive.ChatAgent do
     bind_mount = Keyword.get(opts, :bind_mount)
     docker_ready = Keyword.get(opts, :docker_ready, false)
 
+    # Load workspace config if a bind mount exists
+    workspace = if bind_mount, do: load_workspace_config(bind_mount), else: nil
+
     # All agents are containerized. The async boot Task in ChatLive handles
     # container creation before starting this GenServer (docker_ready: true).
     # If docker_ready is false, create the container synchronously as fallback.
     unless docker_ready do
-      docker_opts = Keyword.take(opts, [:dockerfile])
+      dockerfile = if workspace, do: workspace.dockerfile, else: nil
+      docker_opts = if dockerfile, do: [dockerfile: dockerfile], else: Keyword.take(opts, [:dockerfile])
       docker_opts = if bind_mount, do: Keyword.put(docker_opts, :bind_mount, bind_mount), else: docker_opts
+      docker_opts = if workspace, do: Keyword.put(docker_opts, :env_vars, workspace.env_vars || %{}), else: docker_opts
 
       case Hive.Docker.create(id, docker_opts) do
         {:ok, _} -> :ok
@@ -196,7 +222,7 @@ defmodule Hive.ChatAgent do
       end
     end
 
-    system_prompt = container_system_prompt(id, bind_mount)
+    system_prompt = build_system_prompt(id, bind_mount, workspace)
 
     backend = Keyword.get(opts, :backend, Hive.Agent.Backend.ClaudeCode)
 
@@ -221,6 +247,7 @@ defmodule Hive.ChatAgent do
       session: session,
       backend: backend,
       working_dir: working_dir,
+      bind_mount: bind_mount,
       started_at: now,
       started_by: started_by,
       last_activity_at: now,
@@ -270,7 +297,9 @@ defmodule Hive.ChatAgent do
   @impl true
   def handle_cast(:stop, state) do
     if state.session do
-      state.backend.stop(state.session)
+      # Stop in a task with timeout — backend.stop can hang if mid-stream
+      task = Task.async(fn -> state.backend.stop(state.session) end)
+      Task.yield(task, 3_000) || Task.shutdown(task, :brutal_kill)
     end
 
     stopped = %{state | status: :stopped}
@@ -354,6 +383,13 @@ defmodule Hive.ChatAgent do
 
   # --- Private ---
 
+  defp load_workspace_config(project_dir) do
+    case Hive.Workspace.load(project_dir) do
+      {:ok, workspace} -> workspace
+      _ -> nil
+    end
+  end
+
   defp via(id), do: {:via, Registry, {Hive.ChatAgentRegistry, id}}
 
   defp summary(state) do
@@ -361,6 +397,7 @@ defmodule Hive.ChatAgent do
       id: state.id,
       name: state.name,
       working_dir: state.working_dir,
+      bind_mount: state.bind_mount,
       started_at: state.started_at,
       started_by: state.started_by,
       last_activity_at: state.last_activity_at,
@@ -377,7 +414,20 @@ defmodule Hive.ChatAgent do
 
   # --- System Prompt ---
 
-  defp container_system_prompt(agent_id, bind_mount) do
+  defp build_system_prompt(agent_id, bind_mount, workspace) do
+    base = container_base_prompt(agent_id, bind_mount)
+
+    workspace_section =
+      if workspace do
+        workspace_prompt(workspace, bind_mount)
+      else
+        setup_prompt(bind_mount)
+      end
+
+    base <> "\n" <> workspace_section
+  end
+
+  defp container_base_prompt(agent_id, bind_mount) do
     container = Hive.Docker.container_name(agent_id)
     port = Hive.Docker.host_port(agent_id)
 
@@ -408,16 +458,63 @@ defmodule Hive.ChatAgent do
     - #{workspace_note}
     - Host port #{port} maps to container port 3000 (for web servers)
     - /root/.cache persists (package caches)
-    - Elixir and Erlang are pre-installed
 
     Do NOT use your local Bash/Read/Write tools for project work — everything goes through the container tools.
+    """
+  end
+
+  defp workspace_prompt(workspace, _bind_mount) do
+    services_section =
+      case workspace.services do
+        [] -> ""
+        services ->
+          lines = Enum.map(services, fn s ->
+            ports = s.ports || %{}
+            "- #{s.name}: #{s.image}" <>
+            if(is_map(ports) && map_size(ports) > 0, do: " (ports: #{inspect(ports)})", else: "")
+          end)
+          "\nServices running on the Docker network:\n#{Enum.join(lines, "\n")}\n"
+      end
+
+    processes_section =
+      case workspace.processes do
+        [] -> ""
+        procs ->
+          lines = Enum.map(procs, fn p -> "- #{p.name}: #{p.command}" end)
+          "\nAvailable dev processes (start with start_service tool):\n#{Enum.join(lines, "\n")}\n"
+      end
+
+    custom = if workspace.system_prompt, do: "\n#{workspace.system_prompt}\n", else: ""
+
+    """
+    ## Workspace: #{workspace.name || "Unnamed"}
+    #{services_section}#{processes_section}#{custom}
+    """
+  end
+
+  defp setup_prompt(bind_mount) do
+    path_note = if bind_mount, do: " at #{bind_mount}", else: ""
+
+    """
+    ## Workspace Setup
+
+    This is a new project#{path_note}. No workspace config exists yet.
+    Examine the project files to understand what language, framework, services, and tools are needed.
+    Use the save_workspace tool to create .hive/workspace.json with:
+    - A Dockerfile for the dev container (install the right language, tools, system deps)
+    - Service containers needed (databases, caches)
+    - Dev processes from Procfile or similar
+    - Environment variables
+    - A system prompt fragment for future agents
+
+    After saving config, use rebuild to get the right container image, then start_services to boot databases, then run project setup commands.
     """
   end
 
   # --- Tool Configuration ---
 
   defp default_tools do
-    [Hive.Tools.Agents, Hive.Tools.Container]
+    [Hive.Tools.Agents, Hive.Tools.Container, Hive.Tools.Workspace]
   end
 
   defp build_mcp_servers(tool_modules) do

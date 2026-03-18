@@ -228,6 +228,7 @@ defmodule HiveWeb.ChatLiveTest do
       assert html =~ "Destroying"
     end
 
+    @tag :docker
     test "destroying agent is eventually removed after cleanup", %{agent_id: id} do
       Hive.ChatAgent.stop_agent(id)
       Process.sleep(50)
@@ -287,6 +288,63 @@ defmodule HiveWeb.ChatLiveTest do
 
       assert html =~ "Tab Test"
       assert has_element?(view, "button[phx-click='stop_agent']")
+    end
+  end
+
+  describe "workspace-aware boot" do
+    test "launching agent with workspace config uses workspace name", %{conn: conn} do
+      # Create a temp dir with workspace config
+      tmp_dir = Path.join(System.tmp_dir!(), "hive-live-ws-test-#{:rand.uniform(100_000)}")
+      File.mkdir_p!(tmp_dir)
+
+      ws = %Hive.Workspace{
+        name: "Rails App",
+        dockerfile: "FROM ruby:3.4\nCMD [\"sleep\", \"infinity\"]",
+        services: [],
+        processes: [%{name: "web", command: "bin/rails server"}],
+        env_vars: %{"RAILS_ENV" => "development"},
+        system_prompt: "Rails 8 project"
+      }
+
+      Hive.Workspace.save(tmp_dir, ws)
+
+      on_exit(fn -> File.rm_rf!(tmp_dir) end)
+
+      {:ok, view, _html} = live(conn, "/new")
+
+      view
+      |> element("form[phx-submit='spawn_agent']")
+      |> render_submit(%{"name" => "", "working_dir" => tmp_dir})
+
+      {path, _flash} = assert_redirect(view)
+      assert path =~ "/chat/"
+    end
+
+    test "agent includes workspace tools", %{conn: _conn} do
+      id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
+
+      {:ok, _pid} =
+        Hive.ChatAgentSupervisor.start_agent(
+          id: id,
+          name: "WS Tools Test",
+          working_dir: File.cwd!(),
+          bind_mount: File.cwd!(),
+          started_by: "test",
+          docker_ready: true
+        )
+
+      on_exit(fn ->
+        try do
+          Hive.ChatAgent.stop_agent(id)
+        catch
+          :exit, _ -> :ok
+        end
+
+        Process.sleep(50)
+      end)
+
+      state = Hive.ChatAgent.get_state(id)
+      assert state.bind_mount == File.cwd!()
     end
   end
 end

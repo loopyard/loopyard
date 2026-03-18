@@ -17,7 +17,7 @@ defmodule Hive.Docker do
   @network_name "hive-net"
 
   @dockerfile """
-  FROM elixir:1.18
+  FROM ubuntu:24.04
   ENV DEBIAN_FRONTEND=noninteractive
 
   RUN apt-get update && apt-get install -y \\
@@ -60,17 +60,22 @@ defmodule Hive.Docker do
   Create and start a container for an agent.
 
   Options:
-  - `:dockerfile` — Dockerfile content (defaults to the built-in Elixir image)
+  - `:dockerfile` — Dockerfile content (defaults to the built-in Ubuntu image)
   - `:bind_mount` — host directory to bind-mount as /workspace
+  - `:env_vars` — map of additional environment variables
   """
   def create(agent_id, opts \\ []) do
     df = Keyword.get(opts, :dockerfile, @dockerfile)
     bind_mount = Keyword.get(opts, :bind_mount)
+    env_vars = Keyword.get(opts, :env_vars, %{})
 
     create_volumes(agent_id, bind_mount: bind_mount)
 
+    start_opts = [bind_mount: bind_mount, env_vars: env_vars]
+    start_opts = Enum.reject(start_opts, fn {_k, v} -> is_nil(v) end)
+
     with {:ok, _} <- build_image(agent_id, df),
-         {:ok, _} = ok <- start_container(agent_id, bind_mount: bind_mount) do
+         {:ok, _} = ok <- start_container(agent_id, start_opts) do
       ok
     end
   end
@@ -92,6 +97,7 @@ defmodule Hive.Docker do
 
   Options:
   - `:bind_mount` — host directory to bind-mount as /workspace instead of using a named volume
+  - `:env_vars` — map of additional environment variables to pass to the container
   """
   def start_container(agent_id, opts \\ []) do
     ensure_network()
@@ -100,6 +106,7 @@ defmodule Hive.Docker do
     cache_vol = cache_volume(agent_id)
     port = host_port(agent_id)
     bind_mount = Keyword.get(opts, :bind_mount)
+    extra_env = Keyword.get(opts, :env_vars, %{})
 
     workspace_args =
       if bind_mount do
@@ -118,7 +125,7 @@ defmodule Hive.Docker do
       "-w", @workspace_mount
     ]
 
-    env_args = container_env_args()
+    env_args = container_env_args() ++ extra_env_args(extra_env)
 
     result = docker(base_args ++ env_args ++ [name, "sleep", "infinity"])
 
@@ -129,6 +136,29 @@ defmodule Hive.Docker do
 
       error ->
         error
+    end
+  end
+
+  @doc """
+  Rebuild an agent's container with a new Dockerfile.
+  Stops the old container, builds a new image, starts a new container
+  with the same mounts and network. The Claude CLI session stays alive.
+
+  Options:
+  - `:bind_mount` — host directory to bind-mount
+  - `:env_vars` — map of extra environment variables
+  """
+  def rebuild(agent_id, dockerfile, opts \\ []) do
+    bind_mount = Keyword.get(opts, :bind_mount)
+    env_vars = Keyword.get(opts, :env_vars, %{})
+
+    # Build the new image FIRST, before stopping the old container.
+    # If the build fails, the old container is still running.
+    with {:ok, _} <- build_image(agent_id, dockerfile),
+         {:ok, _} <- stop(agent_id) do
+      start_opts = [env_vars: env_vars]
+      start_opts = if bind_mount, do: Keyword.put(start_opts, :bind_mount, bind_mount), else: start_opts
+      start_container(agent_id, start_opts)
     end
   end
 
@@ -168,7 +198,8 @@ defmodule Hive.Docker do
 
   # --- Private ---
 
-  defp ensure_network do
+  @doc "Ensure the Docker network exists"
+  def ensure_network do
     case docker(["network", "inspect", @network_name]) do
       {:ok, _} -> :ok
       {:error, _} -> docker(["network", "create", @network_name])
@@ -186,6 +217,10 @@ defmodule Hive.Docker do
         val -> ["-e", "#{var}=#{val}"]
       end
     end)
+  end
+
+  defp extra_env_args(env_map) when is_map(env_map) do
+    Enum.flat_map(env_map, fn {k, v} -> ["-e", "#{k}=#{v}"] end)
   end
 
   defp setup_git_config(agent_id) do
@@ -209,12 +244,13 @@ defmodule Hive.Docker do
     File.mkdir_p!(tmp_dir)
     File.write!(Path.join(tmp_dir, "Dockerfile"), dockerfile_content)
 
-    result = docker(["build", "-t", image_name, tmp_dir])
+    result = docker(["build", "-t", image_name, tmp_dir], timeout: 600_000)
     File.rm_rf!(tmp_dir)
     result
   end
 
-  defp docker(args, opts \\ []) do
+  @doc "Execute a raw docker CLI command. Returns {:ok, output} or {:error, output}."
+  def docker(args, opts \\ []) do
     timeout = Keyword.get(opts, :timeout, 120_000)
 
     task =

@@ -9,7 +9,9 @@ defmodule Hive.Application do
     children = [
       {Phoenix.PubSub, name: Hive.PubSub},
       {Registry, keys: :unique, name: Hive.ChatAgentRegistry},
+      {Registry, keys: :unique, name: Hive.ServiceManagerRegistry},
       Hive.ChatAgentSupervisor,
+      {DynamicSupervisor, name: Hive.ServiceManagerSupervisor, strategy: :one_for_one},
       HiveWeb.Endpoint
     ]
 

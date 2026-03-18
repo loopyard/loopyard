@@ -3,6 +3,9 @@ defmodule HiveWeb.SystemLiveTest do
 
   import Phoenix.LiveViewTest
 
+  # SystemLive calls docker stats on mount, which is slow and can hang
+  @moduletag :docker
+
   describe "mount" do
     test "renders the system page", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/system")

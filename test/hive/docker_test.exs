@@ -32,8 +32,8 @@ defmodule Hive.DockerTest do
   end
 
   describe "dockerfile" do
-    test "uses elixir base image" do
-      assert Docker.dockerfile() =~ "FROM elixir"
+    test "uses generic ubuntu base image" do
+      assert Docker.dockerfile() =~ "FROM ubuntu:24.04"
     end
 
     test "includes build-essential and gh CLI" do
@@ -71,9 +71,9 @@ defmodule Hive.DockerTest do
       assert {:ok, output} = Docker.exec(agent_id, "pwd")
       assert String.contains?(output, "/workspace")
 
-      # elixir is available
-      assert {:ok, elixir_output} = Docker.exec(agent_id, "elixir --version")
-      assert elixir_output =~ "Elixir"
+      # git is available
+      assert {:ok, git_output} = Docker.exec(agent_id, "which git")
+      assert git_output =~ "git"
 
       # gh CLI is available
       assert {:ok, gh_output} = Docker.exec(agent_id, "which gh")

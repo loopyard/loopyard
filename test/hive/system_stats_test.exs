@@ -33,6 +33,9 @@ defmodule Hive.SystemStatsTest do
   end
 
   describe "agent_stats" do
+    # agent_stats calls docker stats, which is slow/can hang
+    @describetag :docker
+
     test "returns list (possibly empty)" do
       stats = SystemStats.agent_stats()
       assert is_list(stats)

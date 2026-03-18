@@ -31,6 +31,9 @@ defmodule Hive.Tools.AgentsTest do
   end
 
   describe "do_spawn/2" do
+    # do_spawn creates real Docker containers
+    @describetag :docker
+
     test "spawns an agent and returns id and name" do
       assert {:ok, %{id: id, name: "Test Spawn"}} =
                Agents.do_spawn("Test Spawn", File.cwd!())
@@ -48,6 +51,8 @@ defmodule Hive.Tools.AgentsTest do
   end
 
   describe "do_stop/1" do
+    @describetag :docker
+
     test "stops a running agent" do
       {:ok, %{id: id}} = Agents.do_spawn("To Stop", File.cwd!())
       assert {:ok, _} = Agents.do_stop(id)

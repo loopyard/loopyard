@@ -32,6 +32,48 @@ Hooks.ChatForm = {
   }
 }
 
+// Renders markdown content and provides a copy-source button
+Hooks.Markdown = {
+  mounted() {
+    this.render()
+  },
+  updated() {
+    this.render()
+  },
+  render() {
+    const source = this.el.dataset.source
+    if (!source || !window.marked) return
+
+    const container = this.el.querySelector(".markdown-body")
+    if (container) {
+      container.innerHTML = marked.parse(source, { breaks: true })
+    }
+  }
+}
+
+Hooks.CopySource = {
+  mounted() {
+    this.el.addEventListener("click", (e) => {
+      e.preventDefault()
+      const source = this.el.dataset.source
+      if (source) {
+        navigator.clipboard.writeText(source).then(() => {
+          const icon = this.el.querySelector(".copy-icon")
+          const check = this.el.querySelector(".check-icon")
+          if (icon && check) {
+            icon.classList.add("hidden")
+            check.classList.remove("hidden")
+            setTimeout(() => {
+              icon.classList.remove("hidden")
+              check.classList.add("hidden")
+            }, 1500)
+          }
+        })
+      }
+    })
+  }
+}
+
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 let liveSocket = new LiveSocket("/live", Socket, {
   hooks: Hooks,
