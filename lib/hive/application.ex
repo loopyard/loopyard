@@ -4,6 +4,8 @@ defmodule Hive.Application do
 
   @impl true
   def start(_type, _args) do
+    Hive.ChatAgent.ensure_ets_table()
+
     children = [
       {Phoenix.PubSub, name: Hive.PubSub},
       {Registry, keys: :unique, name: Hive.ChatAgentRegistry},

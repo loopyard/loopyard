@@ -28,8 +28,12 @@ defmodule Hive.Tools.Container do
     end
   end
 
-  def do_exec(agent_id, command) do
-    Docker.exec(agent_id, command)
+  def do_exec(agent_id, command, opts \\ %{}) do
+    exec_opts = []
+    exec_opts = if Map.has_key?(opts, :workdir), do: Keyword.put(exec_opts, :workdir, opts.workdir), else: exec_opts
+    exec_opts = if Map.has_key?(opts, :timeout), do: Keyword.put(exec_opts, :timeout, opts.timeout), else: exec_opts
+
+    Docker.exec(agent_id, command, exec_opts)
   end
 
   def do_rebuild(agent_id) do
@@ -196,12 +200,14 @@ defmodule Hive.Tools.Container do
     end
   end
 
-  tool :exec, "Run a shell command inside the agent's container" do
+  tool :exec, "Run a shell command inside the agent's container. Use timeout for long commands like bundle install." do
     field :agent_id, :string, required: true
     field :command, :string, required: true
+    field :workdir, :string, required: false
+    field :timeout, :integer, required: false
 
-    def execute(%{agent_id: agent_id, command: command}) do
-      Hive.Tools.Container.do_exec(agent_id, command)
+    def execute(%{agent_id: agent_id, command: command} = params) do
+      Hive.Tools.Container.do_exec(agent_id, command, params)
     end
   end
 

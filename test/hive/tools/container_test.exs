@@ -88,6 +88,21 @@ defmodule Hive.Tools.ContainerTest do
       assert String.contains?(output, "Python")
     end
 
+    test "exec with workdir runs in specified directory", %{agent_id: agent_id} do
+      {:ok, _} = Container.do_create(agent_id)
+      Container.do_exec(agent_id, "mkdir -p /workspace/myapp")
+
+      assert {:ok, output} = Container.do_exec(agent_id, "pwd", %{workdir: "/workspace/myapp"})
+      assert String.trim(output) == "/workspace/myapp"
+    end
+
+    test "exec with timeout option", %{agent_id: agent_id} do
+      {:ok, _} = Container.do_create(agent_id)
+
+      # Should succeed with a generous timeout
+      assert {:ok, _} = Container.do_exec(agent_id, "echo hello", %{timeout: 30_000})
+    end
+
     test "exec fails on non-existent container" do
       assert {:error, _} = Container.do_exec("nonexistent-#{:rand.uniform(100_000)}", "echo hi")
     end
