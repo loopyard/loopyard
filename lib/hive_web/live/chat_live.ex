@@ -35,11 +35,14 @@ defmodule HiveWeb.ChatLive do
     socket =
       if socket.assigns.selected_id != id do
         case select_agent(socket, id) do
-          {:noreply, s} -> s
+          {:noreply, s} ->
+            s
+
           :not_found ->
-            # Agent doesn't exist yet — it's booting
-            subscribe_boot(id)
-            assign(socket, booting_agent_id: id, selected_id: id, selected_agent: nil)
+            # Agent truly doesn't exist — redirect
+            socket
+            |> put_flash(:error, "Agent not found")
+            |> push_navigate(to: "/")
         end
       else
         socket
@@ -82,42 +85,38 @@ defmodule HiveWeb.ChatLive do
       bind_mount: working_dir
     ]
 
-    # Spawn async so the UI stays responsive during Docker setup
-    boot_topic = "boot:#{id}"
+    # Register in ETS immediately so all viewers can see the booting state
+    ChatAgent.register_booting(id, name, working_dir)
 
+    # Spawn async so the UI stays responsive during Docker setup
     Task.start(fn ->
       try do
-        boot = fn status -> broadcast(boot_topic, {:boot_status, id, name, status}) end
-
-        boot.("Creating volumes...")
+        ChatAgent.update_boot_status(id, "Creating volumes...")
         Hive.Docker.create_volumes(id, bind_mount: working_dir)
 
-        boot.("Building container image...")
+        ChatAgent.update_boot_status(id, "Building container image...")
         case Hive.Docker.build_image(id) do
           {:ok, _} -> :ok
           {:error, reason} -> throw({:docker_failed, reason})
         end
 
-        boot.("Starting container...")
+        ChatAgent.update_boot_status(id, "Starting container...")
         case Hive.Docker.start_container(id, bind_mount: working_dir) do
           {:ok, _} -> :ok
           {:error, reason} -> throw({:docker_failed, reason})
         end
 
-        boot.("Connecting to Claude...")
+        ChatAgent.update_boot_status(id, "Connecting to Claude...")
         agent_opts = Keyword.put(agent_opts, :docker_ready, true)
 
         case Hive.ChatAgentSupervisor.start_agent(agent_opts) do
-          {:ok, _pid} ->
-            broadcast(boot_topic, {:agent_spawned, id})
-
-          {:error, reason} ->
-            broadcast(boot_topic, {:agent_spawn_failed, reason})
+          {:ok, _pid} -> :ok
+          {:error, reason} -> ChatAgent.boot_failed(id, reason)
         end
       catch
         {:docker_failed, reason} ->
           Hive.Docker.destroy(id)
-          broadcast(boot_topic, {:agent_spawn_failed, "Docker setup failed: #{reason}"})
+          ChatAgent.boot_failed(id, "Docker setup failed: #{reason}")
       end
     end)
 
@@ -144,12 +143,6 @@ defmodule HiveWeb.ChatLive do
   @impl true
   def handle_event("remove_agent", %{"id" => id}, socket) do
     ChatAgent.remove_agent(id)
-    socket =
-      if socket.assigns.selected_id == id do
-        assign(socket, selected_id: nil, selected_agent: nil, messages: [])
-      else
-        socket
-      end
     {:noreply, socket}
   end
 
@@ -213,24 +206,51 @@ defmodule HiveWeb.ChatLive do
   end
 
   @impl true
-  def handle_info({:boot_status, id, name, status}, socket) do
-    if socket.assigns.booting_agent_id == id do
-      {:noreply, assign(socket, boot_status: status, booting_agent_name: name)}
-    else
-      {:noreply, socket}
-    end
+  def handle_info({:chat_agent_booting, summary}, socket) do
+    {:noreply, assign(socket, :agents, ChatAgent.list_agents())
+     |> then(fn s ->
+       if s.assigns.selected_id == summary.id do
+         assign(s, booting_agent_id: summary.id, booting_agent_name: summary.name, boot_status: summary[:boot_status] || "Initializing...")
+       else
+         s
+       end
+     end)}
   end
 
   @impl true
-  def handle_info({:agent_spawned, _id}, socket), do: {:noreply, socket}
+  def handle_info({:chat_agent_boot_status, id, status_text}, socket) do
+    agents =
+      Enum.map(socket.assigns.agents, fn a ->
+        if a.id == id, do: Map.put(a, :boot_status, status_text), else: a
+      end)
+
+    socket = assign(socket, :agents, agents)
+
+    socket =
+      if socket.assigns.booting_agent_id == id do
+        assign(socket, :boot_status, status_text)
+      else
+        socket
+      end
+
+    {:noreply, socket}
+  end
 
   @impl true
-  def handle_info({:agent_spawn_failed, reason}, socket) do
-    {:noreply,
-     socket
-     |> assign(:booting_agent_id, nil)
-     |> put_flash(:error, "Failed to start agent: #{inspect(reason)}")
-     |> push_navigate(to: "/")}
+  def handle_info({:chat_agent_boot_failed, id, reason}, socket) do
+    socket = assign(socket, :agents, ChatAgent.list_agents())
+
+    socket =
+      if socket.assigns.booting_agent_id == id || socket.assigns.selected_id == id do
+        socket
+        |> assign(:booting_agent_id, nil)
+        |> put_flash(:error, "Failed to start agent: #{inspect(reason)}")
+        |> push_navigate(to: "/")
+      else
+        socket
+      end
+
+    {:noreply, socket}
   end
 
   @impl true
@@ -245,8 +265,17 @@ defmodule HiveWeb.ChatLive do
   end
 
   @impl true
-  def handle_info({:chat_agent_removed, _id}, socket) do
-    {:noreply, assign(socket, :agents, ChatAgent.list_agents())}
+  def handle_info({:chat_agent_removed, id}, socket) do
+    socket = assign(socket, :agents, ChatAgent.list_agents())
+
+    socket =
+      if socket.assigns.selected_id == id do
+        assign(socket, selected_id: nil, selected_agent: nil, messages: [])
+      else
+        socket
+      end
+
+    {:noreply, socket}
   end
 
   @impl true
@@ -322,6 +351,21 @@ defmodule HiveWeb.ChatLive do
       nil ->
         :not_found
 
+      %{status: :booting} = summary ->
+        # Agent is still booting — show booting screen, not chat
+        agents = ChatAgent.list_agents()
+
+        socket =
+          socket
+          |> assign(:agents, agents)
+          |> assign(:selected_id, id)
+          |> assign(:selected_agent, nil)
+          |> assign(:booting_agent_id, id)
+          |> assign(:booting_agent_name, summary.name)
+          |> assign(:boot_status, summary[:boot_status] || "Initializing...")
+
+        {:noreply, socket}
+
       agent ->
         ChatAgent.subscribe(id)
         agents = ChatAgent.list_agents()
@@ -333,14 +377,7 @@ defmodule HiveWeb.ChatLive do
           |> assign(:selected_agent, agent)
           |> assign(:messages, agent.messages)
           |> assign(:streaming_text, "")
-
-        # Only clear booting state if we're selecting the agent that was booting
-        socket =
-          if socket.assigns.booting_agent_id == id do
-            assign(socket, :booting_agent_id, nil)
-          else
-            socket
-          end
+          |> assign(:booting_agent_id, nil)
 
         {:noreply, socket}
     end
@@ -392,19 +429,13 @@ defmodule HiveWeb.ChatLive do
     "#{adj} #{noun}"
   end
 
+  defp status_dot(:booting), do: "bg-violet-400 animate-pulse"
   defp status_dot(:idle), do: "bg-green-500"
   defp status_dot(:thinking), do: "bg-amber-400 animate-pulse"
   defp status_dot(:stopped), do: "bg-zinc-400"
   defp status_dot(:crashed), do: "bg-red-500"
+  defp status_dot(:destroying), do: "bg-red-400 animate-pulse"
   defp status_dot(_), do: "bg-zinc-400"
-
-  defp broadcast(topic, msg) do
-    Phoenix.PubSub.broadcast(Hive.PubSub, topic, msg)
-  end
-
-  defp subscribe_boot(id) do
-    Phoenix.PubSub.subscribe(Hive.PubSub, "boot:#{id}")
-  end
 
   defp shorten_path(path) do
     home = System.user_home!()
@@ -472,7 +503,7 @@ defmodule HiveWeb.ChatLive do
     <div id="chat-page" phx-hook="ScrollBottom" class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
       <.header agent_count={length(@agents)} />
       <div class="flex-1 flex min-h-0">
-        <.sidebar agents={@agents} selected_id={@selected_id} booting_agent_id={@booting_agent_id} booting_agent_name={@booting_agent_name} boot_status={@boot_status} />
+        <.sidebar agents={@agents} selected_id={@selected_id} />
         <main class="flex-1 flex flex-col min-w-0">
           <.new_agent_screen :if={@live_action == :new} />
           <.booting_screen :if={@live_action != :new && @booting_agent_id && !@selected_agent} agent_id={@booting_agent_id} status={@boot_status} />
@@ -511,17 +542,8 @@ defmodule HiveWeb.ChatLive do
         </.link>
       </div>
       <div class="flex-1 overflow-y-auto">
-        <div :if={@agents == [] && !@booting_agent_id} class="flex flex-col items-center justify-center h-full px-6 text-center">
+        <div :if={@agents == []} class="flex flex-col items-center justify-center h-full px-6 text-center">
           <p class="text-sm text-zinc-400 dark:text-zinc-500">No agents yet</p>
-        </div>
-        <div :if={@booting_agent_id}
-          class={"w-full text-left px-4 py-3 border-b border-zinc-200/80 dark:border-zinc-700/50
-                  #{if @selected_id == @booting_agent_id, do: "bg-white dark:bg-zinc-800 shadow-sm", else: ""}"}>
-          <div class="flex items-center gap-2.5">
-            <div class="w-2 h-2 rounded-full flex-none bg-violet-400 animate-pulse"></div>
-            <span class="text-sm font-medium truncate">{@booting_agent_name || "Starting..."}</span>
-          </div>
-          <div class="mt-1 ml-[18px] text-xs text-zinc-400 dark:text-zinc-500 truncate">{@boot_status}</div>
         </div>
         <.agent_list_item :for={agent <- @agents} agent={agent} selected={@selected_id == agent.id} />
       </div>
@@ -582,7 +604,9 @@ defmodule HiveWeb.ChatLive do
       <div class="flex items-center gap-2.5">
         <div class={"w-2 h-2 rounded-full flex-none #{status_dot(@agent.status)}"}></div>
         <span class="text-sm font-medium truncate">{@agent.name}</span>
+        <span :if={@agent.status == :booting} class="text-xs text-violet-400 flex-none">booting</span>
         <span :if={@agent.status == :thinking} class="text-xs text-amber-500 flex-none">thinking</span>
+        <span :if={@agent.status == :destroying} class="text-xs text-red-400 flex-none">destroying</span>
         <span :if={@agent.status in [:stopped, :crashed]}
           phx-click="remove_agent" phx-value-id={@agent.id}
           class="ml-auto text-xs text-zinc-400 hover:text-red-500 dark:hover:text-red-400 flex-none transition-colors"
@@ -590,7 +614,8 @@ defmodule HiveWeb.ChatLive do
           &times;
         </span>
       </div>
-      <div class="mt-1 ml-[18px] text-xs text-zinc-400 dark:text-zinc-500 font-mono truncate">{shorten_path(@agent.working_dir)}</div>
+      <div :if={@agent.status == :booting} class="mt-1 ml-[18px] text-xs text-zinc-400 dark:text-zinc-500 truncate">{@agent[:boot_status] || "Initializing..."}</div>
+      <div :if={@agent.status != :booting} class="mt-1 ml-[18px] text-xs text-zinc-400 dark:text-zinc-500 font-mono truncate">{shorten_path(@agent.working_dir)}</div>
     </button>
     """
   end
@@ -672,6 +697,10 @@ defmodule HiveWeb.ChatLive do
           class="text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded-md px-2 py-1">
           Remove
         </button>
+        <span :if={@agent.status == :destroying}
+          class="text-xs font-medium text-red-400 px-2 py-1">
+          Destroying...
+        </span>
       </div>
       <div :if={@has_container} class="flex gap-0 px-4">
         <button phx-click="switch_tab" phx-value-tab="chat"

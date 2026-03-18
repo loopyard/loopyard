@@ -62,11 +62,72 @@ defmodule Hive.ChatAgent do
     GenServer.cast(via(id), {:rename, new_name})
   end
 
-  @doc "Remove a stopped/crashed agent from the sidebar"
+  @doc "Remove a stopped/crashed agent — transitions to :destroying, cleans up Docker, then removes from sidebar"
   def remove_agent(id) do
     ensure_ets_table()
+
+    # Transition to :destroying so all viewers see the state
+    case :ets.lookup(@ets_table, id) do
+      [{^id, summary}] ->
+        destroying = %{summary | status: :destroying}
+        :ets.insert(@ets_table, {id, destroying})
+        broadcast(@topic, {:chat_agent_status_changed, id, :destroying})
+
+      [] ->
+        :ok
+    end
+
+    # Clean up Docker resources async, then remove from sidebar
+    Task.start(fn ->
+      Hive.Docker.destroy(id)
+      :ets.delete(@ets_table, id)
+      broadcast(@topic, {:chat_agent_removed, id})
+    end)
+  end
+
+  @doc "Register an agent as booting in ETS so all viewers can see it"
+  def register_booting(id, name, working_dir) do
+    ensure_ets_table()
+
+    summary = %{
+      id: id,
+      name: name,
+      working_dir: working_dir,
+      started_at: DateTime.utc_now(),
+      started_by: "browser",
+      last_activity_at: DateTime.utc_now(),
+      status: :booting,
+      messages: [],
+      tool_calls: 0,
+      errors: 0,
+      boot_status: "Initializing..."
+    }
+
+    :ets.insert(@ets_table, {id, summary})
+    broadcast(@topic, {:chat_agent_booting, summary})
+    summary
+  end
+
+  @doc "Update boot status in ETS and broadcast to all viewers"
+  def update_boot_status(id, status_text) do
+    ensure_ets_table()
+
+    case :ets.lookup(@ets_table, id) do
+      [{^id, summary}] ->
+        updated = %{summary | boot_status: status_text, last_activity_at: DateTime.utc_now()}
+        :ets.insert(@ets_table, {id, updated})
+        broadcast(@topic, {:chat_agent_boot_status, id, status_text})
+
+      [] ->
+        :ok
+    end
+  end
+
+  @doc "Mark a booting agent as failed and remove it"
+  def boot_failed(id, reason) do
+    ensure_ets_table()
     :ets.delete(@ets_table, id)
-    broadcast(@topic, {:chat_agent_removed, id})
+    broadcast(@topic, {:chat_agent_boot_failed, id, reason})
   end
 
   def list_agents do

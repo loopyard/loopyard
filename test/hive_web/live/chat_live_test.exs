@@ -82,37 +82,54 @@ defmodule HiveWeb.ChatLiveTest do
   end
 
   describe "booting state" do
-    test "unknown id shows booting screen", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/chat/nonexistent123")
-      assert html =~ "Starting agent"
-      assert html =~ "nonexistent123"
+    test "unknown id redirects to home with error", %{conn: conn} do
+      assert {:error, {:live_redirect, %{to: "/", flash: %{"error" => "Agent not found"}}}} =
+               live(conn, "/chat/nonexistent123")
     end
 
-    test "booting screen shows in sidebar", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/chat/nonexistent123")
-      # Sidebar should show a booting entry with pulsing dot
+    test "booting agent shows booting screen and sidebar entry", %{conn: conn} do
+      id = "boot-test-#{:rand.uniform(100_000)}"
+      Hive.ChatAgent.register_booting(id, "My Agent", File.cwd!())
+
+      on_exit(fn ->
+        Hive.ChatAgent.ensure_ets_table()
+        :ets.delete(:chat_agents, id)
+      end)
+
+      {:ok, view, html} = live(conn, "/chat/#{id}")
+      assert html =~ "Starting agent"
+      assert html =~ "My Agent"
+      # Sidebar shows booting entry with pulsing dot
       assert has_element?(view, "div.animate-pulse")
     end
 
-    test "boot_status updates are shown", %{conn: conn} do
-      id = "boot-test-123"
+    test "boot_status updates are shown to all viewers", %{conn: conn} do
+      id = "boot-test-#{:rand.uniform(100_000)}"
+      Hive.ChatAgent.register_booting(id, "My Agent", File.cwd!())
+
+      on_exit(fn ->
+        Hive.ChatAgent.ensure_ets_table()
+        :ets.delete(:chat_agents, id)
+      end)
+
       {:ok, view, _html} = live(conn, "/chat/#{id}")
 
-      # Simulate boot status via PubSub
-      Phoenix.PubSub.broadcast(Hive.PubSub, "boot:#{id}", {:boot_status, id, "My Agent", "Building container image..."})
+      # Simulate boot status update via the multiplayer API
+      Hive.ChatAgent.update_boot_status(id, "Building container image...")
       Process.sleep(50)
 
       html = render(view)
       assert html =~ "Building container image..."
-      assert html =~ "My Agent"
     end
 
     test "booting transitions to chat when agent starts", %{conn: conn} do
       id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
+      Hive.ChatAgent.register_booting(id, "Boot Transition Test", File.cwd!())
+
       {:ok, view, html} = live(conn, "/chat/#{id}")
       assert html =~ "Starting agent"
 
-      # Start the agent (which broadcasts chat_agent_started)
+      # Start the agent (which overwrites the booting ETS entry and broadcasts chat_agent_started)
       {:ok, _pid} =
         Hive.ChatAgentSupervisor.start_agent(
           id: id,
@@ -122,7 +139,6 @@ defmodule HiveWeb.ChatLiveTest do
           docker_ready: true
         )
 
-      # Give PubSub time to deliver
       Process.sleep(100)
 
       html = render(view)
@@ -138,14 +154,90 @@ defmodule HiveWeb.ChatLiveTest do
       end
     end
 
-    test "spawn failure shows error and redirects", %{conn: conn} do
-      id = "fail-test-123"
+    test "boot failure removes agent and shows error", %{conn: conn} do
+      id = "fail-test-#{:rand.uniform(100_000)}"
+      Hive.ChatAgent.register_booting(id, "Fail Agent", File.cwd!())
+
       {:ok, view, _html} = live(conn, "/chat/#{id}")
 
-      # Simulate spawn failure
-      Phoenix.PubSub.broadcast(Hive.PubSub, "boot:#{id}", {:agent_spawn_failed, "container exploded"})
+      # Simulate boot failure via the multiplayer API
+      Hive.ChatAgent.boot_failed(id, "container exploded")
 
       assert_redirect(view, "/")
+    end
+  end
+
+  describe "agent lifecycle states" do
+    setup %{conn: conn} do
+      id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
+
+      {:ok, _pid} =
+        Hive.ChatAgentSupervisor.start_agent(
+          id: id,
+          name: "Lifecycle Test",
+          working_dir: File.cwd!(),
+          started_by: "test",
+          docker_ready: true
+        )
+
+      on_exit(fn ->
+        try do
+          Hive.ChatAgent.stop_agent(id)
+        catch
+          :exit, _ -> :ok
+        end
+
+        Hive.ChatAgent.ensure_ets_table()
+        :ets.delete(:chat_agents, id)
+        Process.sleep(50)
+      end)
+
+      %{conn: conn, agent_id: id}
+    end
+
+    test "idle agent shows green dot and stop button", %{conn: conn, agent_id: id} do
+      {:ok, view, _html} = live(conn, "/chat/#{id}")
+      assert has_element?(view, "div.bg-green-500")
+      assert has_element?(view, "button[phx-click='stop_agent']")
+    end
+
+    test "stopped agent shows remove button", %{conn: conn, agent_id: id} do
+      Hive.ChatAgent.stop_agent(id)
+      Process.sleep(50)
+
+      {:ok, view, _html} = live(conn, "/chat/#{id}")
+      assert has_element?(view, "button[phx-click='remove_agent']")
+    end
+
+    test "destroying state is broadcast to all viewers", %{conn: conn, agent_id: id} do
+      # Stop first so we can remove
+      Hive.ChatAgent.stop_agent(id)
+      Process.sleep(50)
+
+      {:ok, view, _html} = live(conn, "/chat/#{id}")
+
+      # Subscribe to see status changes
+      Hive.ChatAgent.subscribe()
+
+      # Trigger remove — should transition to :destroying
+      Hive.ChatAgent.remove_agent(id)
+      assert_receive {:chat_agent_status_changed, ^id, :destroying}, 1000
+
+      # The view should show the destroying state
+      html = render(view)
+      assert html =~ "Destroying"
+    end
+
+    test "destroying agent is eventually removed after cleanup", %{agent_id: id} do
+      Hive.ChatAgent.stop_agent(id)
+      Process.sleep(50)
+
+      Hive.ChatAgent.subscribe()
+      Hive.ChatAgent.remove_agent(id)
+
+      # Should receive both status change and removal
+      assert_receive {:chat_agent_status_changed, ^id, :destroying}, 1000
+      assert_receive {:chat_agent_removed, ^id}, 5000
     end
   end
 

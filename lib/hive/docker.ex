@@ -137,11 +137,12 @@ defmodule Hive.Docker do
     docker(["rm", "-f", container_name(agent_id)])
   end
 
-  @doc "Destroy everything: container + volumes"
+  @doc "Destroy everything: container, volumes, and image"
   def destroy(agent_id) do
     stop(agent_id)
     docker(["volume", "rm", "-f", workspace_volume(agent_id)])
     docker(["volume", "rm", "-f", cache_volume(agent_id)])
+    docker(["rmi", "-f", container_name(agent_id)])
     :ok
   end
 
