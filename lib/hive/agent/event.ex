@@ -28,23 +28,9 @@ defmodule Hive.Agent.Event do
     @type t :: %__MODULE__{id: String.t() | nil, content: String.t(), is_error: boolean()}
   end
 
-  defmodule Done do
-    @moduledoc "The turn is complete."
-    defstruct [:session_id]
-    @type t :: %__MODULE__{session_id: term()}
-  end
-
-  defmodule Error do
-    @moduledoc "Something went wrong during the turn."
-    defstruct [:reason]
-    @type t :: %__MODULE__{reason: String.t()}
-  end
-
   @type t ::
           TextDelta.t()
           | Text.t()
           | ToolCall.t()
           | ToolResult.t()
-          | Done.t()
-          | Error.t()
 end

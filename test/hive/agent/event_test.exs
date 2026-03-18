@@ -44,17 +44,4 @@ defmodule Hive.Agent.EventTest do
     end
   end
 
-  describe "Done" do
-    test "creates struct with session_id" do
-      done = %Event.Done{session_id: "sess_123"}
-      assert done.session_id == "sess_123"
-    end
-  end
-
-  describe "Error" do
-    test "creates struct with reason" do
-      error = %Event.Error{reason: "timeout"}
-      assert error.reason == "timeout"
-    end
-  end
 end
