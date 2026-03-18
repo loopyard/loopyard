@@ -18,5 +18,6 @@ defmodule HiveWeb.Router do
     live "/new", ChatLive, :new
     live "/chat/:id", ChatLive, :chat
     live "/chat/:id/container", ChatLive, :container
+    live "/system", SystemLive, :index
   end
 end
