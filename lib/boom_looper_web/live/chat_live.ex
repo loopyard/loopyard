@@ -1117,10 +1117,10 @@ defmodule BoomLooperWeb.ChatLive do
       <div class="flex items-center gap-2 px-3 py-1.5 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
         <div class={"w-1.5 h-1.5 rounded-full flex-none #{@dot_class}"}></div>
         <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">{@label}</span>
-        <a :if={@msg_url} href={@msg_url} target="_blank"
+        <button :if={@msg_url} phx-hook="CopySource" id={"copy-build-#{System.unique_integer([:positive])}"} data-source={@msg_url}
           class="ml-auto text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors">
-          open
-        </a>
+          copy link
+        </button>
       </div>
       <pre class={"px-3 py-2 text-xs font-mono text-green-400 dark:text-green-400 bg-zinc-950 whitespace-pre-wrap overflow-y-auto #{if @status == :building, do: "max-h-64", else: "max-h-32"}"}>{@content}</pre>
     </div>
@@ -1283,13 +1283,17 @@ defmodule BoomLooperWeb.ChatLive do
         <span class="text-xs font-bold text-violet-600 dark:text-violet-400">C</span>
       </div>
       <div class="relative max-w-[85%] rounded-2xl rounded-tl-sm bg-zinc-100 dark:bg-zinc-800 px-4 py-2.5" id={"msg-#{hash_content(@msg.content)}"} phx-hook="Markdown" data-source={@msg.content}>
-        <a href={@url} target="_blank"
+        <button phx-hook="CopySource" id={"copy-#{hash_content(@msg.content)}"} data-source={@url}
           class="absolute top-2 right-2 p-1 rounded-md text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 opacity-0 group-hover/msg:opacity-100 transition-opacity"
-          title="Open as text">
-          <svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M8.914 2.914a.75.75 0 0 1 1.06 0l4.243 4.243a.75.75 0 0 1 0 1.06l-4.243 4.243a.75.75 0 0 1-1.06-1.06l2.963-2.963H2.75a.75.75 0 0 1 0-1.5h9.127L8.914 3.974a.75.75 0 0 1 0-1.06Z" />
+          title="Copy link">
+          <svg class="w-3.5 h-3.5 copy-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M5.5 3.5A1.5 1.5 0 0 1 7 2h2.879a1.5 1.5 0 0 1 1.06.44l2.122 2.12a1.5 1.5 0 0 1 .439 1.061V9.5A1.5 1.5 0 0 1 12 11V8.621a3 3 0 0 0-.879-2.121L9 4.379A3 3 0 0 0 6.879 3.5H5.5Z" />
+            <path d="M4 5a1.5 1.5 0 0 0-1.5 1.5v6A1.5 1.5 0 0 0 4 14h5a1.5 1.5 0 0 0 1.5-1.5V8.621a1.5 1.5 0 0 0-.44-1.06L7.94 5.439A1.5 1.5 0 0 0 6.878 5H4Z" />
           </svg>
-        </a>
+          <svg class="w-3.5 h-3.5 check-icon hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
+            <path fill-rule="evenodd" d="M12.416 3.376a.75.75 0 0 1 .208 1.04l-5 7.5a.75.75 0 0 1-1.154.114l-3-3a.75.75 0 0 1 1.06-1.06l2.353 2.353 4.493-6.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd" />
+          </svg>
+        </button>
         <div class="markdown-body text-sm text-zinc-900 dark:text-zinc-100"></div>
       </div>
     </div>
@@ -1327,7 +1331,8 @@ defmodule BoomLooperWeb.ChatLive do
                    #{if @is_error, do: "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300", else: "bg-zinc-950 text-green-400"}"}>{@display}</pre>
       <div class="flex items-center gap-2 mt-1">
         <p :if={@truncated} class="text-[10px] text-zinc-400 dark:text-zinc-500">... truncated ({@line_count - 40} more lines)</p>
-        <a :if={@msg_url} href={@msg_url} target="_blank" class="text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors">open</a>
+        <button :if={@msg_url} phx-hook="CopySource" id={"copy-result-#{@idx}"} data-source={@msg_url}
+          class="text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors">copy link</button>
       </div>
     </div>
     """

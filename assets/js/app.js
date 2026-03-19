@@ -56,8 +56,10 @@ Hooks.CopySource = {
     this.el.addEventListener("click", (e) => {
       e.preventDefault()
       const source = this.el.dataset.source
-      if (source) {
-        navigator.clipboard.writeText(source).then(() => {
+      if (!source) return
+
+      const copyText = (text) => {
+        navigator.clipboard.writeText(text).then(() => {
           const icon = this.el.querySelector(".copy-icon")
           const check = this.el.querySelector(".check-icon")
           if (icon && check) {
@@ -68,7 +70,19 @@ Hooks.CopySource = {
               check.classList.add("hidden")
             }, 1500)
           }
+          const orig = this.el.textContent.trim()
+          if (!icon && orig) {
+            this.el.textContent = "Copied!"
+            setTimeout(() => { this.el.textContent = orig }, 1500)
+          }
         })
+      }
+
+      // If source is a URL path, fetch the content first
+      if (source.startsWith("/")) {
+        fetch(source).then(r => r.text()).then(copyText)
+      } else {
+        copyText(source)
       }
     })
   }

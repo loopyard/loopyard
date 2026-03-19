@@ -10,9 +10,14 @@ defmodule BoomLooperWeb.WorkspaceLive do
       ChatAgent.subscribe()
     end
 
+    secret = Application.get_env(:boom_looper, :launch_secret, "")
+    port = Application.get_env(:boom_looper, BoomLooperWeb.Endpoint)[:http][:port] || 4000
+    launch_cmd = "open \"http://localhost:#{port}/launch/#{secret}?path=$(pwd)\""
+
     {:ok,
      socket
-     |> assign(:workspaces, load_workspaces())}
+     |> assign(:workspaces, load_workspaces())
+     |> assign(:launch_cmd, launch_cmd)}
   end
 
   @impl true
@@ -73,6 +78,20 @@ defmodule BoomLooperWeb.WorkspaceLive do
           </p>
           <h2 class="text-xl font-semibold mb-1">Workspaces</h2>
           <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-6">Each workspace is a project directory. Agents run inside containers with the directory mounted.</p>
+
+          <%!-- Launch command --%>
+          <div class="mb-8 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 p-4">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Launch from any project directory</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <code class="flex-1 text-sm font-mono text-zinc-600 dark:text-zinc-300 bg-zinc-950 rounded-lg px-3 py-2.5 overflow-x-auto whitespace-nowrap">{@launch_cmd}</code>
+              <button id="copy-launch" phx-hook="CopySource" data-source={@launch_cmd}
+                class="flex-none rounded-lg bg-violet-600 hover:bg-violet-500 text-white px-4 py-2.5 text-sm font-medium transition-colors">
+                Copy
+              </button>
+            </div>
+          </div>
 
           <div class="space-y-2 mb-8">
             <.link :for={ws <- @workspaces} navigate={"/w/#{ws.id}"}
