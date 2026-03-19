@@ -1,4 +1,4 @@
-# Hive — Multi-Player Claude Code Runner
+# Boom Looper — Multi-Player Claude Code Runner
 
 A Phoenix LiveView app that lets a team share and interact with Claude Code agents in real-time through a chat interface.
 
@@ -17,10 +17,10 @@ A Phoenix LiveView app that lets a team share and interact with Claude Code agen
 
 ### Key files
 
-- `lib/hive/chat_agent.ex` — GenServer wrapping a `ClaudeCode` SDK session. Streams structured messages (text, tool use, errors) to viewers via PubSub.
-- `lib/hive/chat_agent_supervisor.ex` — DynamicSupervisor for chat agent processes
-- `lib/hive_web/live/chat_live.ex` — LiveView with chat UI. Handles agent CRUD, message send/receive, PubSub subscriptions, URL routing.
-- `lib/hive_web/plugs/basic_auth.ex` — Optional HTTP Basic Auth (enabled via env vars)
+- `lib/boom_looper/chat_agent.ex` — GenServer wrapping a `ClaudeCode` SDK session. Streams structured messages (text, tool use, errors) to viewers via PubSub.
+- `lib/boom_looper/chat_agent_supervisor.ex` — DynamicSupervisor for chat agent processes
+- `lib/boom_looper_web/live/chat_live.ex` — LiveView with chat UI. Handles agent CRUD, message send/receive, PubSub subscriptions, URL routing.
+- `lib/boom_looper_web/plugs/basic_auth.ex` — Optional HTTP Basic Auth (enabled via env vars)
 - `assets/js/app.js` — Minimal: ScrollBottom hook (auto-scroll messages), ChatForm hook (clear input after send)
 
 ### How it works
@@ -177,7 +177,7 @@ When you find yourself adding `root` / `docker` / `type` branches everywhere, st
 
 ### Tests skip external dependencies by default
 
-Unit tests that start `ChatAgent` (or other GenServers that touch Docker in init) must pass `docker_ready: true` to skip container creation. Only tests tagged `@tag :docker` should actually create containers. This keeps `mix test` fast and Docker-free.
+`ChatAgent` no longer creates Docker containers on init — the workspace container is managed by `ServiceManager`. Only tests tagged `@tag :docker` should actually create containers. This keeps `mix test` fast and Docker-free.
 
 ## Git workflow
 

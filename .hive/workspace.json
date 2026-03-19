@@ -1,0 +1,20 @@
+{
+  "dockerfile": "FROM elixir:1.18\n\n# Install build deps and Node.js (needed for esbuild/tailwind)\nRUN apt-get update && apt-get install -y \\\n    build-essential \\\n    git \\\n    curl \\\n    inotify-tools \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Set mix/hex homes inside workspace for caching\nENV MIX_HOME=/workspace/.mix_home\nENV HEX_HOME=/workspace/.hex_home\n\nWORKDIR /workspace\n",
+  "env_vars": {
+    "MIX_ENV": "dev",
+    "PHX_HOST": "localhost",
+    "PORT": "4000"
+  },
+  "name": "Boom Looper",
+  "processes": [
+    {
+      "command": "mix phx.server",
+      "name": "dev",
+      "ports": [
+        "4000:4000"
+      ]
+    }
+  ],
+  "services": [],
+  "system_prompt": null
+}

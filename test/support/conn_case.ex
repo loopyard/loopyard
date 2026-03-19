@@ -1,4 +1,4 @@
-defmodule HiveWeb.ConnCase do
+defmodule BoomLooperWeb.ConnCase do
   @moduledoc """
   This module defines the test case to be used by
   tests that require setting up a connection.
@@ -7,9 +7,9 @@ defmodule HiveWeb.ConnCase do
 
   using do
     quote do
-      @endpoint HiveWeb.Endpoint
+      @endpoint BoomLooperWeb.Endpoint
 
-      use HiveWeb, :verified_routes
+      use BoomLooperWeb, :verified_routes
 
       import Plug.Conn
       import Phoenix.ConnTest

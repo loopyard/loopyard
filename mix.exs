@@ -1,9 +1,9 @@
-defmodule Hive.MixProject do
+defmodule BoomLooper.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :hive,
+      app: :boom_looper,
       version: "0.1.0",
       elixir: "~> 1.17",
       elixirc_paths: elixirc_paths(Mix.env()),
@@ -15,7 +15,7 @@ defmodule Hive.MixProject do
 
   def application do
     [
-      mod: {Hive.Application, []},
+      mod: {BoomLooper.Application, []},
       extra_applications: [:logger, :runtime_tools]
     ]
   end
@@ -46,10 +46,10 @@ defmodule Hive.MixProject do
     [
       setup: ["deps.get", "assets.setup", "assets.build"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
-      "assets.build": ["tailwind hive", "esbuild hive"],
+      "assets.build": ["tailwind boom_looper", "esbuild boom_looper"],
       "assets.deploy": [
-        "tailwind hive --minify",
-        "esbuild hive --minify",
+        "tailwind boom_looper --minify",
+        "esbuild boom_looper --minify",
         "phx.digest"
       ]
     ]

@@ -8,11 +8,11 @@ end
 # --- 12-Factor Configuration ---
 # All runtime config comes from environment variables.
 
-# Auth — set HIVE_AUTH_PASSWORD to enable HTTP Basic Auth
-# HIVE_AUTH_USERNAME is optional (defaults to accepting any username)
-config :hive,
-  auth_password: System.get_env("HIVE_AUTH_PASSWORD"),
-  auth_username: System.get_env("HIVE_AUTH_USERNAME")
+# Auth — set BOOM_LOOPER_AUTH_PASSWORD to enable HTTP Basic Auth
+# BOOM_LOOPER_AUTH_USERNAME is optional (defaults to accepting any username)
+config :boom_looper,
+  auth_password: System.get_env("BOOM_LOOPER_AUTH_PASSWORD"),
+  auth_username: System.get_env("BOOM_LOOPER_AUTH_USERNAME")
 
 if config_env() == :prod do
   secret_key_base =
@@ -25,7 +25,7 @@ if config_env() == :prod do
   host = System.get_env("PHX_HOST") || "example.com"
   port = String.to_integer(System.get_env("PORT") || "4000")
 
-  config :hive, HiveWeb.Endpoint,
+  config :boom_looper, BoomLooperWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
     http: [ip: {0, 0, 0, 0, 0, 0, 0, 0}, port: port],
     secret_key_base: secret_key_base

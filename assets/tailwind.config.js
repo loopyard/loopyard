@@ -6,8 +6,8 @@ module.exports = {
   darkMode: 'media',
   content: [
     "./js/**/*.js",
-    "../lib/hive_web.ex",
-    "../lib/hive_web/**/*.*ex"
+    "../lib/boom_looper_web.ex",
+    "../lib/boom_looper_web/**/*.*ex"
   ],
   theme: {
     extend: {

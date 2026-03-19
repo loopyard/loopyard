@@ -27,7 +27,10 @@
       "Bash(grep -r \"agent\\\\|pty\\\\|ring_buffer\" /Users/bradgessler/Projects/bradgessler/hive/assets --include=*.js)",
       "Bash(mix compile:*)",
       "Bash(docker info:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(ls:*)",
+      "Bash(grep:*)",
+      "Bash(git stash:*)"
     ]
   }
 }
