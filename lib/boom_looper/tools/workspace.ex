@@ -285,13 +285,16 @@ defmodule BoomLooper.Tools.Workspace do
     end
   end
 
-  defp forward_build_output(agent_id, build_topic) do
+  defp forward_build_output(agent_id, build_topic, acc \\ "") do
     receive do
       {:build_output, data} ->
+        acc = acc <> data
+        # Store in ETS so OutputController can serve it
+        BoomLooper.ChatAgent.update_build_log(agent_id, acc)
         Phoenix.PubSub.broadcast(BoomLooper.PubSub,
           "chat_agent:#{agent_id}",
           {:build_output, agent_id, data})
-        forward_build_output(agent_id, build_topic)
+        forward_build_output(agent_id, build_topic, acc)
 
       :build_complete ->
         Phoenix.PubSub.unsubscribe(BoomLooper.PubSub, build_topic)

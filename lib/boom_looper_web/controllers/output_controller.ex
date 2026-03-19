@@ -27,16 +27,26 @@ defmodule BoomLooperWeb.OutputController do
   end
 
   defp serve_message(conn, agent_id, index) do
-    case BoomLooper.ChatAgent.get_state(agent_id) do
-      %{messages: messages} when is_list(messages) ->
-        case Enum.at(messages, index) do
-          %{content: content} when is_binary(content) ->
-            conn
-            |> put_resp_content_type("text/plain")
-            |> send_resp(200, content)
+    state = BoomLooper.ChatAgent.get_state(agent_id)
 
-          _ ->
-            send_resp(conn, 404, "Message not found")
+    case state do
+      %{messages: messages} when is_list(messages) ->
+        msg = Enum.at(messages, index)
+
+        content = cond do
+          # Regular message with content
+          is_map(msg) && is_binary(msg[:content]) -> msg.content
+          # Build log stored separately in ETS
+          is_nil(msg) && state[:build_log] -> state.build_log
+          true -> nil
+        end
+
+        if content do
+          conn
+          |> put_resp_content_type("text/plain")
+          |> send_resp(200, content)
+        else
+          send_resp(conn, 404, "Message not found")
         end
 
       _ ->

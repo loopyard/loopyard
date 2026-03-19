@@ -87,6 +87,16 @@ defmodule BoomLooper.ChatAgent do
     GenServer.cast(via(id), {:rename, new_name})
   end
 
+  @doc "Store build log output for this agent (called from workspace tools)"
+  def update_build_log(id, content) do
+    ensure_ets_table()
+    case :ets.lookup(@ets_table, id) do
+      [{^id, summary}] ->
+        :ets.insert(@ets_table, {id, Map.put(summary, :build_log, content)})
+      [] -> :ok
+    end
+  end
+
   @doc "Restart the Claude CLI session without losing the agent or its messages"
   def restart_session(id) do
     GenServer.cast(via(id), :restart_session)
