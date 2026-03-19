@@ -26,7 +26,11 @@ defmodule BoomLooperWeb.WorkspaceLive do
 
     case WorkspaceRegistry.add(path) do
       {:ok, ws} ->
-        {:noreply, push_navigate(socket, to: "/w/#{ws.id}")}
+        dest = case BoomLooper.Workspace.load(path) do
+          {:ok, _} -> "/w/#{ws.id}"
+          _ -> "/w/#{ws.id}/new"
+        end
+        {:noreply, push_navigate(socket, to: dest)}
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, reason)}

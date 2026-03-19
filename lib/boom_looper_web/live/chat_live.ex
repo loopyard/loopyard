@@ -74,8 +74,34 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   def handle_params(_params, _uri, %{assigns: %{live_action: :new}} = socket) do
-    checklists = BoomLooper.Checklist.available(socket.assigns.workspace.path)
-    {:noreply, assign(socket, available_checklists: checklists, selected_checklist: nil)}
+    workspace = socket.assigns.workspace
+
+    # Auto-spawn Setup if no config and no agents running
+    has_config = match?({:ok, _}, BoomLooper.Workspace.load(workspace.path))
+    has_agents = socket.assigns.agents != []
+
+    if !has_config && !has_agents do
+      # Auto-launch Setup checklist
+      id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
+      setup = BoomLooper.Checklist.available(workspace.path) |> Enum.find(&(&1.id == "setup"))
+      name = if setup, do: setup.name, else: "Setup"
+
+      agent_opts = [
+        id: id,
+        name: name,
+        working_dir: workspace.path,
+        started_by: "browser",
+        bind_mount: workspace.path
+      ]
+
+      ChatAgent.register_booting(id, name, workspace.path)
+      Task.start(fn -> boot_agent(id, agent_opts, nil, workspace.path, if(setup, do: "setup")) end)
+
+      {:noreply, push_navigate(socket, to: "/w/#{workspace.id}/chat/#{id}")}
+    else
+      checklists = BoomLooper.Checklist.available(workspace.path)
+      {:noreply, assign(socket, available_checklists: checklists, selected_checklist: nil)}
+    end
   end
 
   def handle_params(%{"service_name" => service_name}, _uri, %{assigns: %{live_action: :service}} = socket) do

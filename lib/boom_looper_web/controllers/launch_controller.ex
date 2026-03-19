@@ -9,7 +9,13 @@ defmodule BoomLooperWeb.LaunchController do
 
       case BoomLooper.WorkspaceRegistry.add(path) do
         {:ok, workspace} ->
-          redirect(conn, to: "/w/#{workspace.id}/new")
+          # If workspace config exists, go straight to workspace
+          # Otherwise redirect to new agent (will auto-spawn Setup)
+          dest = case BoomLooper.Workspace.load(path) do
+            {:ok, _} -> "/w/#{workspace.id}"
+            _ -> "/w/#{workspace.id}/new"
+          end
+          redirect(conn, to: dest)
 
         {:error, reason} ->
           conn
