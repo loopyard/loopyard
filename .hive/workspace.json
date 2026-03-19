@@ -5,7 +5,7 @@
     "PHX_HOST": "localhost",
     "PORT": "4000"
   },
-  "name": "Boom Looper",
+  "name": "Fallback",
   "processes": [
     {
       "command": "mix phx.server",

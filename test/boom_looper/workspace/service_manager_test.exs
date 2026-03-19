@@ -29,7 +29,7 @@ defmodule BoomLooper.Workspace.ServiceManagerTest do
 
   describe "service_status/1" do
     test "returns empty list for unknown workspace" do
-      assert {:ok, [], _ws_status} = ServiceManager.service_status("/nonexistent/path/#{:rand.uniform(100_000)}")
+      assert {:ok, []} = ServiceManager.service_status("/nonexistent/path/#{:rand.uniform(100_000)}")
     end
   end
 
@@ -188,7 +188,7 @@ defmodule BoomLooper.Workspace.ServiceManagerTest do
       assert {:ok, results} = ServiceManager.start_services(tmp_dir)
       assert length(results) == 1
 
-      assert {:ok, statuses, _ws_status} = ServiceManager.service_status(tmp_dir)
+      assert {:ok, statuses} = ServiceManager.service_status(tmp_dir)
       assert length(statuses) == 1
       assert hd(statuses).name == "redis"
       assert hd(statuses).running == true

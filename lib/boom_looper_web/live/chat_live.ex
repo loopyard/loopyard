@@ -13,9 +13,6 @@ defmodule BoomLooperWeb.ChatLive do
       if connected?(socket) do
         ChatAgent.subscribe()
         BoomLooper.Workspace.ServiceManager.subscribe()
-        # Subscribe to Docker build output for this workspace
-        build_topic = "docker_build:#{BoomLooper.Docker.workspace_image_name(workspace_id)}"
-        Phoenix.PubSub.subscribe(BoomLooper.PubSub, build_topic)
         maybe_start_services(workspace.path)
       end
 
@@ -425,6 +422,18 @@ defmodule BoomLooperWeb.ChatLive do
   def handle_info({:chat_message, id, msg}, socket) when id == socket.assigns.selected_id do
     socket = if msg.role == :assistant, do: assign(socket, :streaming_text, ""), else: socket
 
+    # If build was running and we get a post-build message, mark build as done
+    socket =
+      if socket.assigns.building && msg.role in [:system, :error] do
+        messages = Enum.map(socket.assigns.messages, fn
+          %{role: :build} = m -> %{m | role: :build_done}
+          other -> other
+        end)
+        socket |> assign(:messages, messages) |> assign(:building, false)
+      else
+        socket
+      end
+
     {:noreply,
      socket
      |> assign(:messages, socket.assigns.messages ++ [msg])
@@ -455,7 +464,7 @@ defmodule BoomLooperWeb.ChatLive do
   def handle_info({:services_updated, path, statuses}, socket) do
     if path == socket.assigns.workspace.path do
       # Workspace container is infrastructure — never show in sidebar
-      visible = Enum.reject(statuses, &(&1.type == :workspace))
+      visible = Enum.reject(statuses, &(Map.get(&1, :type) == :workspace))
       {:noreply, assign(socket, :service_statuses, visible)}
     else
       {:noreply, socket}
@@ -463,16 +472,10 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   @impl true
-  def handle_info({:build_output, _data}, %{assigns: %{selected_agent: nil}} = socket) do
-    {:noreply, socket}
-  end
-
-  def handle_info({:build_output, data}, socket) do
+  def handle_info({:build_output, id, data}, socket) when id == socket.assigns.selected_id do
     build_log = socket.assigns.build_log <> data
-    # Keep last 8000 chars
     build_log = if byte_size(build_log) > 8000, do: String.slice(build_log, -8000..-1//1), else: build_log
 
-    # Update or insert the build message in the messages list
     messages = socket.assigns.messages
     build_msg = %{role: :build, content: build_log, timestamp: DateTime.utc_now()}
 
@@ -487,23 +490,6 @@ defmodule BoomLooperWeb.ChatLive do
       end
 
     {:noreply, socket |> assign(:messages, messages) |> assign(:build_log, build_log) |> assign(:building, true) |> push_event("scroll_bottom", %{})}
-  end
-
-  def handle_info(:build_complete, socket) do
-    # Convert build message to a completed build result
-    messages = Enum.map(socket.assigns.messages, fn
-      %{role: :build} = msg -> %{msg | role: :build_done}
-      other -> other
-    end)
-    {:noreply, socket |> assign(:messages, messages) |> assign(building: false)}
-  end
-
-  def handle_info(:build_failed, socket) do
-    messages = Enum.map(socket.assigns.messages, fn
-      %{role: :build} = msg -> %{msg | role: :build_failed}
-      other -> other
-    end)
-    {:noreply, socket |> assign(:messages, messages) |> assign(building: false)}
   end
 
   @impl true
@@ -823,8 +809,13 @@ defmodule BoomLooperWeb.ChatLive do
     "rerouting encryption", "mainframing", "burning tokens", "foxtrotting",
     "beep boop beep boop", "reverse engineering gravity", "consulting the oracle",
     "asking the magic 8-ball", "stacking tokens", "defragmenting thoughts",
-    "compiling vibes", "reticulating splines"
+    "compiling vibes", "reticulating splines", "makin' bacon", "fishing",
+    "cruisin'", "chillaxing", "twirling", "whirling"
   ]
+  defp msg_url(assigns) do
+    BoomLooperWeb.OutputController.signed_url(assigns.workspace_id, assigns.agent_id, assigns.idx)
+  end
+
   defp thinking_word(agent_id) do
     idx = :erlang.phash2({agent_id, div(System.system_time(:second), 3)}, length(@thinking_words))
     Enum.at(@thinking_words, idx)
@@ -1126,6 +1117,10 @@ defmodule BoomLooperWeb.ChatLive do
       <div class="flex items-center gap-2 px-3 py-1.5 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
         <div class={"w-1.5 h-1.5 rounded-full flex-none #{@dot_class}"}></div>
         <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">{@label}</span>
+        <a :if={@msg_url} href={@msg_url} target="_blank"
+          class="ml-auto text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors">
+          open
+        </a>
       </div>
       <pre class={"px-3 py-2 text-xs font-mono text-green-400 dark:text-green-400 bg-zinc-950 whitespace-pre-wrap overflow-y-auto #{if @status == :building, do: "max-h-64", else: "max-h-32"}"}>{@content}</pre>
     </div>
@@ -1178,7 +1173,7 @@ defmodule BoomLooperWeb.ChatLive do
     <div class="flex-1 flex min-h-0">
       <div class="flex-1 flex flex-col min-w-0 min-h-0">
         <.agent_header agent={@selected_agent} tab={@tab} has_container={@has_container} checklist_progress={@checklist_progress} />
-        <.chat_panel :if={@tab == :chat} messages={@messages} streaming_text={@streaming_text} agent={@selected_agent} />
+        <.chat_panel :if={@tab == :chat} messages={@messages} streaming_text={@streaming_text} agent={@selected_agent} workspace_id={@workspace.id} />
         <.container_panel :if={@tab == :container} env={@container_env} logs={@container_logs} log_service={@container_log_service} has_container={@has_container} />
       </div>
       <.context_panel agent={@selected_agent} checklist_progress={@checklist_progress} has_container={@has_container} container_env={@container_env} container_logs={@container_logs} editing_name={@editing_name} />
@@ -1244,8 +1239,8 @@ defmodule BoomLooperWeb.ChatLive do
     ~H"""
     <div class="flex-1 flex flex-col min-h-0">
       <div id="messages" class="flex-1 overflow-y-auto px-4 md:px-6 py-4 space-y-1">
-        <div :for={msg <- @messages}>
-          <.chat_msg msg={msg} />
+        <div :for={{msg, idx} <- Enum.with_index(@messages)}>
+          <.chat_msg msg={msg} idx={idx} agent_id={@agent.id} workspace_id={@workspace_id} />
         </div>
         <.streaming_bubble :if={@streaming_text != ""} text={@streaming_text} />
         <.thinking_indicator :if={@agent.status == :thinking && @streaming_text == "" && @messages != [] && List.last(@messages).role != :assistant} />
@@ -1280,23 +1275,21 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   defp chat_msg(%{msg: %{role: :assistant}} = assigns) do
+    assigns = assign(assigns, :url, msg_url(assigns))
+
     ~H"""
     <div class="flex gap-3 mt-3 mb-1 group/msg">
       <div class="flex-none w-7 h-7 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center mt-0.5">
         <span class="text-xs font-bold text-violet-600 dark:text-violet-400">C</span>
       </div>
       <div class="relative max-w-[85%] rounded-2xl rounded-tl-sm bg-zinc-100 dark:bg-zinc-800 px-4 py-2.5" id={"msg-#{hash_content(@msg.content)}"} phx-hook="Markdown" data-source={@msg.content}>
-        <button phx-hook="CopySource" id={"copy-#{hash_content(@msg.content)}"} data-source={@msg.content}
+        <a href={@url} target="_blank"
           class="absolute top-2 right-2 p-1 rounded-md text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 opacity-0 group-hover/msg:opacity-100 transition-opacity"
-          title="Copy markdown source">
-          <svg class="w-3.5 h-3.5 copy-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M5.5 3.5A1.5 1.5 0 0 1 7 2h2.879a1.5 1.5 0 0 1 1.06.44l2.122 2.12a1.5 1.5 0 0 1 .439 1.061V9.5A1.5 1.5 0 0 1 12 11V8.621a3 3 0 0 0-.879-2.121L9 4.379A3 3 0 0 0 6.879 3.5H5.5Z" />
-            <path d="M4 5a1.5 1.5 0 0 0-1.5 1.5v6A1.5 1.5 0 0 0 4 14h5a1.5 1.5 0 0 0 1.5-1.5V8.621a1.5 1.5 0 0 0-.44-1.06L7.94 5.439A1.5 1.5 0 0 0 6.878 5H4Z" />
+          title="Open as text">
+          <svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8.914 2.914a.75.75 0 0 1 1.06 0l4.243 4.243a.75.75 0 0 1 0 1.06l-4.243 4.243a.75.75 0 0 1-1.06-1.06l2.963-2.963H2.75a.75.75 0 0 1 0-1.5h9.127L8.914 3.974a.75.75 0 0 1 0-1.06Z" />
           </svg>
-          <svg class="w-3.5 h-3.5 check-icon hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
-            <path fill-rule="evenodd" d="M12.416 3.376a.75.75 0 0 1 .208 1.04l-5 7.5a.75.75 0 0 1-1.154.114l-3-3a.75.75 0 0 1 1.06-1.06l2.353 2.353 4.493-6.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd" />
-          </svg>
-        </button>
+        </a>
         <div class="markdown-body text-sm text-zinc-900 dark:text-zinc-100"></div>
       </div>
     </div>
@@ -1325,13 +1318,17 @@ defmodule BoomLooperWeb.ChatLive do
     lines = String.split(display, "\n")
     truncated = length(lines) > 40
     display = if truncated, do: Enum.take(lines, 40) |> Enum.join("\n"), else: display
-    assigns = assign(assigns, display: display, truncated: truncated, is_error: assigns.msg.is_error, line_count: length(lines))
+    url = msg_url(assigns)
+    assigns = assign(assigns, display: display, truncated: truncated, is_error: assigns.msg.is_error, line_count: length(lines), msg_url: url)
 
     ~H"""
     <div class="pl-10 py-0.5">
       <pre class={"p-3 rounded-lg text-xs font-mono overflow-x-auto max-h-80 overflow-y-auto whitespace-pre-wrap
                    #{if @is_error, do: "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300", else: "bg-zinc-950 text-green-400"}"}>{@display}</pre>
-      <p :if={@truncated} class="mt-1 text-[10px] text-zinc-400 dark:text-zinc-500">... truncated ({@line_count - 40} more lines)</p>
+      <div class="flex items-center gap-2 mt-1">
+        <p :if={@truncated} class="text-[10px] text-zinc-400 dark:text-zinc-500">... truncated ({@line_count - 40} more lines)</p>
+        <a :if={@msg_url} href={@msg_url} target="_blank" class="text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors">open</a>
+      </div>
     </div>
     """
   end
@@ -1349,20 +1346,23 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   defp chat_msg(%{msg: %{role: :build}} = assigns) do
+    assigns = assign(assigns, :msg_url, msg_url(assigns))
     ~H"""
-    <.build_log_inline content={@msg.content} status={:building} />
+    <.build_log_inline content={@msg.content} status={:building} msg_url={@msg_url} />
     """
   end
 
   defp chat_msg(%{msg: %{role: :build_done}} = assigns) do
+    assigns = assign(assigns, :msg_url, msg_url(assigns))
     ~H"""
-    <.build_log_inline content={@msg.content} status={:done} />
+    <.build_log_inline content={@msg.content} status={:done} msg_url={@msg_url} />
     """
   end
 
   defp chat_msg(%{msg: %{role: :build_failed}} = assigns) do
+    assigns = assign(assigns, :msg_url, msg_url(assigns))
     ~H"""
-    <.build_log_inline content={@msg.content} status={:failed} />
+    <.build_log_inline content={@msg.content} status={:failed} msg_url={@msg_url} />
     """
   end
 

@@ -15,14 +15,14 @@ defmodule BoomLooper.Tools.WorkspaceTest do
 
     test "has all expected tools" do
       tool_names = WorkspaceTools.__tool_server__().tools |> Enum.map(& &1.__tool_name__()) |> MapSet.new()
-      expected = ~w(save_workspace load_workspace start_services stop_services rebuild service_status service_exec)
+      expected = ~w(set_dockerfile set_dev_command add_service remove_service set_env_vars set_workspace_name set_system_prompt rebuild start_services stop_services service_status service_exec)
       for name <- expected do
         assert name in tool_names, "missing tool: #{name}"
       end
     end
   end
 
-  describe "save and load workspace" do
+  describe "granular workspace tools" do
     setup do
       tmp_dir = Path.join(System.tmp_dir!(), "boom-looper-ws-tool-test-#{:rand.uniform(100_000)}")
       File.mkdir_p!(tmp_dir)
@@ -52,48 +52,55 @@ defmodule BoomLooper.Tools.WorkspaceTest do
       %{agent_id: id, tmp_dir: tmp_dir}
     end
 
-    test "save_workspace writes config file", %{agent_id: id, tmp_dir: tmp_dir} do
-      config = %{
-        "name" => "Test Project",
-        "dockerfile" => "FROM ruby:3.4",
-        "services" => "[]",
-        "processes" => "[]",
-        "env_vars" => "{}",
-        "system_prompt" => "A test project"
-      }
-
-      assert {:ok, _msg} = WorkspaceTools.do_save_workspace(id, config)
+    test "set_workspace_name creates config", %{agent_id: id, tmp_dir: tmp_dir} do
+      assert {:ok, _} = WorkspaceTools.do_update_config(id, fn ws -> %{ws | name: "Test"} end, "ok")
       assert File.exists?(BoomLooper.Workspace.config_path(tmp_dir))
+
+      {:ok, ws} = BoomLooper.Workspace.load(tmp_dir)
+      assert ws.name == "Test"
     end
 
-    test "load_workspace returns saved config", %{agent_id: id} do
-      config = %{
-        "name" => "Roundtrip Test",
-        "dockerfile" => "FROM node:20",
-        "services" => Jason.encode!([
-          %{"name" => "redis", "image" => "redis:7", "env" => %{}, "volumes" => [], "ports" => %{}}
-        ]),
-        "processes" => Jason.encode!([%{"name" => "web", "command" => "npm start"}]),
-        "env_vars" => Jason.encode!(%{"NODE_ENV" => "development"}),
-        "system_prompt" => "Node project"
-      }
+    test "set_dockerfile updates config", %{agent_id: id, tmp_dir: tmp_dir} do
+      WorkspaceTools.do_update_config(id, fn ws -> %{ws | name: "Test"} end, "ok")
+      WorkspaceTools.do_update_config(id, fn ws -> %{ws | dockerfile: "FROM ruby:3.4"} end, "ok")
 
-      assert {:ok, _} = WorkspaceTools.do_save_workspace(id, config)
-      assert {:ok, loaded} = WorkspaceTools.do_load_workspace(id)
-      assert loaded["name"] == "Roundtrip Test"
-      # Stock services and processes are now separate
-      assert length(loaded["services"]) == 1
-      redis = hd(loaded["services"])
-      assert redis["name"] == "redis"
-      assert redis["image"] == "redis:7"
-      assert length(loaded["processes"]) == 1
-      web = hd(loaded["processes"])
-      assert web["name"] == "web"
-      assert web["command"] == "npm start"
+      {:ok, ws} = BoomLooper.Workspace.load(tmp_dir)
+      assert ws.name == "Test"
+      assert ws.dockerfile == "FROM ruby:3.4"
     end
 
-    test "load_workspace returns nil when no config exists", %{agent_id: id} do
-      assert {:ok, nil} = WorkspaceTools.do_load_workspace(id)
+    test "add_service adds to existing config", %{agent_id: id, tmp_dir: tmp_dir} do
+      WorkspaceTools.do_update_config(id, fn ws -> %{ws | name: "Test"} end, "ok")
+      WorkspaceTools.do_update_config(id, fn ws ->
+        %{ws | services: ws.services ++ [%{name: "redis", image: "redis:7", env: %{}, volumes: [], ports: %{}}]}
+      end, "ok")
+
+      {:ok, ws} = BoomLooper.Workspace.load(tmp_dir)
+      assert length(ws.services) == 1
+      assert hd(ws.services).name == "redis"
+    end
+
+    test "remove_service removes from config", %{agent_id: id, tmp_dir: tmp_dir} do
+      WorkspaceTools.do_update_config(id, fn ws ->
+        %{ws | services: [%{name: "redis", image: "redis:7", env: %{}, volumes: [], ports: %{}}]}
+      end, "ok")
+      WorkspaceTools.do_update_config(id, fn ws ->
+        %{ws | services: Enum.reject(ws.services, &(&1.name == "redis"))}
+      end, "ok")
+
+      {:ok, ws} = BoomLooper.Workspace.load(tmp_dir)
+      assert ws.services == []
+    end
+
+    test "set_dev_command adds process", %{agent_id: id, tmp_dir: tmp_dir} do
+      WorkspaceTools.do_update_config(id, fn ws ->
+        %{ws | processes: [%{name: "dev", command: "bin/dev", ports: ["3000:3000"]}]}
+      end, "ok")
+
+      {:ok, ws} = BoomLooper.Workspace.load(tmp_dir)
+      assert length(ws.processes) == 1
+      assert hd(ws.processes).name == "dev"
+      assert hd(ws.processes).command == "bin/dev"
     end
   end
 
@@ -122,11 +129,8 @@ defmodule BoomLooper.Tools.WorkspaceTest do
       %{agent_id: id}
     end
 
-    test "save_workspace falls back to working_dir", %{agent_id: id} do
-      # Without bind_mount, it uses working_dir as fallback
-      config = %{"name" => "Fallback Test", "dockerfile" => "FROM ubuntu:24.04"}
-      result = WorkspaceTools.do_save_workspace(id, config)
-      # Should succeed using working_dir
+    test "do_update_config falls back to working_dir", %{agent_id: id} do
+      result = WorkspaceTools.do_update_config(id, fn ws -> %{ws | name: "Fallback"} end, "ok")
       assert {:ok, _} = result
     end
   end

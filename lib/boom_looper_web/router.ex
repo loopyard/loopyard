@@ -22,5 +22,7 @@ defmodule BoomLooperWeb.Router do
     live "/w/:workspace_id/services", ChatLive, :services
     live "/w/:workspace_id/service/:service_name", ChatLive, :service
     live "/system", SystemLive, :index
+
+    get "/w/:workspace_id/chat/:id/msg/:index", OutputController, :show
   end
 end

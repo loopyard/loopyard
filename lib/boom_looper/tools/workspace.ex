@@ -171,24 +171,42 @@ defmodule BoomLooper.Tools.Workspace do
       case Workspace.load(project_dir) do
         {:ok, ws} when ws.dockerfile != nil ->
           workspace_id = Workspace.workspace_id(project_dir)
+          image_name = BoomLooper.Docker.workspace_image_name(workspace_id)
+          build_topic = "docker_build:#{image_name}"
 
-          # Run build async so the MCP tool returns immediately
-          # and the CLI doesn't timeout waiting
+          # Run build async and forward output to this agent's chat
           Task.start(fn ->
-            case BoomLooper.Docker.build_workspace_image(workspace_id, ws.dockerfile) do
+            # Subscribe to build output from Docker
+            Phoenix.PubSub.subscribe(BoomLooper.PubSub, build_topic)
+
+            # Kick off the build (streams output via PubSub)
+            build_task = Task.async(fn ->
+              BoomLooper.Docker.build_workspace_image(workspace_id, ws.dockerfile)
+            end)
+
+            # Forward build output to the agent's chat as build messages
+            forward_build_output(agent_id, build_topic)
+
+            # Wait for build result
+            case Task.await(build_task, 600_000) do
               {:ok, _} ->
+                Phoenix.PubSub.broadcast(BoomLooper.PubSub,
+                  "chat_agent:#{agent_id}",
+                  {:chat_message, agent_id, %{role: :system, content: "Build complete. Restarting services...", timestamp: DateTime.utc_now()}})
+
                 ServiceManager.restart_workspace_container(project_dir)
 
                 agent_ids = find_workspace_agent_ids(project_dir) -- [agent_id]
                 Enum.each(agent_ids, &BoomLooper.ChatAgent.restart_session/1)
 
               {:error, reason} ->
-                require Logger
-                Logger.error("[rebuild] Build failed for #{workspace_id}: #{reason}")
+                Phoenix.PubSub.broadcast(BoomLooper.PubSub,
+                  "chat_agent:#{agent_id}",
+                  {:chat_message, agent_id, %{role: :error, content: "Build failed: #{reason}", timestamp: DateTime.utc_now()}})
             end
           end)
 
-          {:ok, "Build started. You'll see progress in the build log. Continue with other tasks — the build runs in the background."}
+          {:ok, "Build started — output will stream below."}
 
         {:ok, _} ->
           {:error, "No Dockerfile set. Use set_dockerfile first."}
@@ -264,6 +282,24 @@ defmodule BoomLooper.Tools.Workspace do
       %{bind_mount: dir} when is_binary(dir) -> {:ok, dir}
       %{working_dir: dir} when is_binary(dir) -> {:ok, dir}
       _ -> :error
+    end
+  end
+
+  defp forward_build_output(agent_id, build_topic) do
+    receive do
+      {:build_output, data} ->
+        Phoenix.PubSub.broadcast(BoomLooper.PubSub,
+          "chat_agent:#{agent_id}",
+          {:build_output, agent_id, data})
+        forward_build_output(agent_id, build_topic)
+
+      :build_complete ->
+        Phoenix.PubSub.unsubscribe(BoomLooper.PubSub, build_topic)
+
+      :build_failed ->
+        Phoenix.PubSub.unsubscribe(BoomLooper.PubSub, build_topic)
+    after
+      600_000 -> :timeout
     end
   end
 
