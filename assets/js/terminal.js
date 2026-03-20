@@ -52,16 +52,28 @@ export function createTerminalHook() {
 
       channel.on("exit", ({ code }) => {
         term.write(`\r\n\x1b[33mSession exited (code ${code})\x1b[0m\r\n`)
+        // Don't reconnect — session is done
+        channel.leave()
       })
 
-      // Handle resize
+      // Handle resize — debounce to prevent feedback loops
+      let resizeTimer = null
+      let lastCols = 0, lastRows = 0
       const handleResize = () => {
-        fitAddon.fit()
-        channel.push("resize", { cols: term.cols, rows: term.rows })
+        clearTimeout(resizeTimer)
+        resizeTimer = setTimeout(() => {
+          fitAddon.fit()
+          if (term.cols !== lastCols || term.rows !== lastRows) {
+            lastCols = term.cols
+            lastRows = term.rows
+            channel.push("resize", { cols: term.cols, rows: term.rows })
+          }
+        }, 150)
       }
 
       window.addEventListener("resize", handleResize)
-      new ResizeObserver(handleResize).observe(this.el)
+      // Only observe the parent container, not the terminal itself
+      new ResizeObserver(handleResize).observe(this.el.parentElement)
 
       // Store for cleanup
       this._term = term

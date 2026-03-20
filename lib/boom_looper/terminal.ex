@@ -59,9 +59,10 @@ defmodule BoomLooper.Terminal do
     unless BoomLooper.Docker.container_running?(container) do
       {:stop, :container_not_running}
     else
+      # Try sh first (works on minimal images like redis/alpine)
       port = Port.open(
         {:spawn_executable, System.find_executable("docker")},
-        [:binary, :exit_status, {:args, ["exec", "-it", container, "/bin/sh", "-l"]}]
+        [:binary, :exit_status, {:args, ["exec", "-it", container, "sh"]}]
       )
 
       {:ok, %{
