@@ -277,7 +277,7 @@ defmodule BoomLooper.ChatAgent do
   def handle_cast({:send_message, text}, state) do
     # Add user message
     user_msg = %{role: :user, content: text, timestamp: DateTime.utc_now()}
-    state = %{state | messages: state.messages ++ [user_msg], status: :thinking}
+    state = %{append_message(state, user_msg) | status: :thinking}
 
     broadcast("chat_agent:#{state.id}", {:chat_message, state.id, user_msg})
     broadcast(@topic, {:chat_agent_status_changed, state.id, :thinking})
@@ -338,13 +338,13 @@ defmodule BoomLooper.ChatAgent do
         broadcast(@topic, {:chat_agent_status_changed, state.id, :idle})
 
         restart_msg = %{role: :system, content: "CLI session restarted", timestamp: DateTime.utc_now()}
-        state = %{state | messages: state.messages ++ [restart_msg]}
+        state = append_message(state, restart_msg)
         broadcast("chat_agent:#{state.id}", {:chat_message, state.id, restart_msg})
         {:noreply, state}
 
       {:error, reason} ->
         error_msg = %{role: :error, content: "Failed to restart session: #{inspect(reason)}", timestamp: DateTime.utc_now()}
-        state = %{state | messages: state.messages ++ [error_msg], errors: state.errors + 1}
+        state = %{append_message(state, error_msg) | errors: state.errors + 1}
         broadcast("chat_agent:#{state.id}", {:chat_message, state.id, error_msg})
         {:noreply, state}
     end
@@ -370,19 +370,19 @@ defmodule BoomLooper.ChatAgent do
       case event do
         %Event.Text{text: content} ->
           assistant_msg = %{role: :assistant, content: content, timestamp: now}
-          state = %{state | messages: state.messages ++ [assistant_msg], last_activity_at: now}
+          state = %{append_message(state, assistant_msg) | last_activity_at: now}
           broadcast("chat_agent:#{id}", {:chat_message, id, assistant_msg})
           state
 
         %Event.ToolCall{name: tool_name, input: tool_input} ->
           tool_msg = %{role: :tool, tool: tool_name, input: tool_input, timestamp: now}
-          state = %{state | messages: state.messages ++ [tool_msg], last_activity_at: now, tool_calls: state.tool_calls + 1}
+          state = %{append_message(state, tool_msg) | last_activity_at: now, tool_calls: state.tool_calls + 1}
           broadcast("chat_agent:#{id}", {:chat_message, id, tool_msg})
           state
 
         %Event.ToolResult{content: content, is_error: is_error} ->
           result_msg = %{role: :tool_result, content: content, is_error: is_error, timestamp: now}
-          state = %{state | messages: state.messages ++ [result_msg], last_activity_at: now}
+          state = %{append_message(state, result_msg) | last_activity_at: now}
           broadcast("chat_agent:#{id}", {:chat_message, id, result_msg})
           state
 
@@ -419,21 +419,21 @@ defmodule BoomLooper.ChatAgent do
       case state.backend.start_session(state.session_opts) do
         {:ok, new_session} ->
           recovered_msg = %{role: :system, content: "Agent session restarted. Send a message to continue.", timestamp: DateTime.utc_now()}
-          state = %{state | session: new_session, messages: state.messages ++ [recovered_msg], status: :idle}
+          state = append_message(%{state | session: new_session, status: :idle}, recovered_msg)
           broadcast("chat_agent:#{id}", {:chat_message, id, recovered_msg})
           broadcast(@topic, {:chat_agent_status_changed, id, :idle})
           {:noreply, state}
 
         {:error, _} ->
           fail_msg = %{role: :error, content: "Agent session crashed and failed to restart", timestamp: DateTime.utc_now()}
-          state = %{state | messages: state.messages ++ [fail_msg], status: :idle}
+          state = %{append_message(state, fail_msg) | status: :idle}
           broadcast("chat_agent:#{id}", {:chat_message, id, fail_msg})
           broadcast(@topic, {:chat_agent_status_changed, id, :idle})
           {:noreply, state}
       end
     else
       error_msg = %{role: :error, content: reason, timestamp: now}
-      state = %{state | messages: state.messages ++ [error_msg], status: :idle, last_activity_at: now, errors: state.errors + 1}
+      state = %{append_message(state, error_msg) | status: :idle, last_activity_at: now, errors: state.errors + 1}
       broadcast("chat_agent:#{id}", {:chat_message, id, error_msg})
       broadcast(@topic, {:chat_agent_status_changed, id, :idle})
       {:noreply, state}
@@ -458,6 +458,10 @@ defmodule BoomLooper.ChatAgent do
       {:ok, workspace} -> workspace
       _ -> nil
     end
+  end
+
+  defp append_message(state, msg) do
+    %{state | messages: state.messages ++ [msg]}
   end
 
   defp via(id), do: {:via, Registry, {BoomLooper.ChatAgentRegistry, id}}

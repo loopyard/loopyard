@@ -21,7 +21,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
   @prefix "boom-looper-svc"
   @services_topic "workspace_services"
 
-  defstruct [:project_dir, :workspace_id, services: %{}, processes: [], workspace_container_running: false]
+  defstruct [:project_dir, :workspace_id, services: %{}, processes: [], workspace_container_running: false, rebuilding: false]
 
   # --- Public API ---
 
@@ -103,6 +103,10 @@ defmodule BoomLooper.Workspace.ServiceManager do
   end
 
   @impl true
+  def handle_call(:start_services, _from, %{rebuilding: true} = state) do
+    {:reply, {:error, "A rebuild is in progress. Wait for it to finish."}, state}
+  end
+
   def handle_call(:start_services, _from, state) do
     case BoomLooper.Workspace.load(state.project_dir) do
       {:ok, workspace} ->
@@ -162,6 +166,8 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
   @impl true
   def handle_call(:restart_workspace_container, _from, state) do
+    state = %{state | rebuilding: true}
+
     # Stop process containers
     Enum.each(state.processes, fn p ->
       Docker.docker(["rm", "-f", process_container_name(state.workspace_id, p.name)])
@@ -174,12 +180,12 @@ defmodule BoomLooper.Workspace.ServiceManager do
       {:ok, workspace} ->
         ensure_workspace_image(state.workspace_id, workspace)
         ws_running = start_ops_container(state, workspace) && start_process_containers(state, workspace)
-        new_state = %{state | processes: workspace.processes, workspace_container_running: ws_running}
+        new_state = %{state | processes: workspace.processes, workspace_container_running: ws_running, rebuilding: false}
         broadcast_service_update(new_state)
         {:reply, :ok, new_state}
 
       _ ->
-        {:reply, :ok, state}
+        {:reply, :ok, %{state | rebuilding: false}}
     end
   end
 
