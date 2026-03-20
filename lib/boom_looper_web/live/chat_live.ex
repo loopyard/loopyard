@@ -18,12 +18,22 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   def mount(%{"workspace_id" => workspace_id}, _session, socket) do
-    workspace = BoomLooper.WorkspaceRegistry.get(workspace_id)
+    # Legacy /w/ route — look up as a branch in ProjectRegistry
+    branch = BoomLooper.ProjectRegistry.get_branch(workspace_id)
+    project = if branch, do: BoomLooper.ProjectRegistry.get_project(branch.project_id)
 
-    unless workspace do
-      {:ok, push_navigate(socket, to: "/")}
+    if project && branch do
+      workspace = %{id: branch.id, path: branch.path, name: project.name}
+      mount_with_workspace(socket, workspace, %{project: project, branch: branch})
     else
-      mount_with_workspace(socket, workspace)
+      # Fall back to old WorkspaceRegistry for backwards compat
+      workspace = BoomLooper.WorkspaceRegistry.get(workspace_id)
+
+      unless workspace do
+        {:ok, push_navigate(socket, to: "/")}
+      else
+        mount_with_workspace(socket, workspace)
+      end
     end
   end
 
@@ -957,12 +967,12 @@ defmodule BoomLooperWeb.ChatLive do
   def render(assigns) do
     ~H"""
     <div id="chat-page" phx-hook="ScrollBottom" class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
-      <.header workspace={@workspace} agent_count={length(@agents)} />
+      <.header workspace={@workspace} project={@project} branch={@branch} agent_count={length(@agents)} />
       <p :if={@flash["error"]} class="mx-4 mt-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300">
         {@flash["error"]}
       </p>
       <div class="flex-1 flex min-h-0">
-        <.sidebar agents={@agents} selected_id={@selected_id} workspace_id={@workspace.id} service_statuses={@service_statuses} selected_service={@selected_service} />
+        <.sidebar agents={@agents} selected_id={@selected_id} workspace_id={@workspace.id} project={@project} branch={@branch} service_statuses={@service_statuses} selected_service={@selected_service} />
         <main class="flex-1 flex flex-col min-w-0">
           <.new_agent_screen :if={@live_action == :new} available_checklists={@available_checklists} selected_checklist={@selected_checklist} workspace={@workspace} />
           <.service_log_view :if={@live_action == :service} service_name={@selected_service} service_statuses={@service_statuses} logs={@service_logs} />
@@ -982,7 +992,10 @@ defmodule BoomLooperWeb.ChatLive do
       <div class="flex items-center gap-3">
         <.link navigate="/" class="text-lg font-semibold tracking-tight hover:text-violet-600 dark:hover:text-violet-400 transition-colors">Boom Looper</.link>
         <span class="text-zinc-300 dark:text-zinc-600">/</span>
-        <span class="text-sm font-medium">{@workspace.name}</span>
+        <.link :if={@project} navigate={"/p/#{@project.id}"} class="text-sm font-medium hover:text-violet-600 dark:hover:text-violet-400 transition-colors">{@workspace.name}</.link>
+        <span :if={!@project} class="text-sm font-medium">{@workspace.name}</span>
+        <span :if={@branch && !@branch.is_main} class="text-zinc-300 dark:text-zinc-600">/</span>
+        <span :if={@branch && !@branch.is_main} class="text-sm text-zinc-500 dark:text-zinc-400">{@branch.name}</span>
         <span class="text-sm text-zinc-400 dark:text-zinc-500">{@agent_count} agent{if @agent_count != 1, do: "s"}</span>
       </div>
     </header>
@@ -990,11 +1003,18 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   defp sidebar(assigns) do
+    base_path = if assigns.project do
+      "/p/#{assigns.project.id}/b/#{assigns.branch.id}"
+    else
+      "/w/#{assigns.workspace_id}"
+    end
+    assigns = assign(assigns, :base_path, base_path)
+
     ~H"""
     <aside class="w-72 md:w-80 flex-none border-r border-zinc-200 dark:border-zinc-700/80 flex flex-col bg-zinc-50 dark:bg-zinc-900/50">
       <div class="flex-none p-3 border-b border-zinc-200 dark:border-zinc-700/80">
         <.link
-          navigate={"/w/#{@workspace_id}/new"}
+          navigate={"#{@base_path}/new"}
           class="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 px-3.5 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-400
                  hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
         >
