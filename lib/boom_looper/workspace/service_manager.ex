@@ -153,7 +153,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
     # Stop ops container
     Docker.stop_workspace_container(state.workspace_id)
 
-    new_state = %{state | services: %{}, processes: [], workspace_container_running: false}
+    new_state = %{state | workspace_container_running: false}
     broadcast_service_update(new_state)
     {:reply, :ok, new_state}
   end

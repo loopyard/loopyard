@@ -804,6 +804,12 @@ defmodule BoomLooperWeb.ChatLive do
 
   defp first_host_port(_), do: nil
 
+  # Green = running, red = crashed/error, grey = stopped
+  defp service_dot(%{running: true}), do: "bg-green-500"
+  defp service_dot(%{exit_info: %{exit_code: code}}) when code > 0, do: "bg-red-500"
+  defp service_dot(%{exit_info: %{oom_killed: true}}), do: "bg-red-500"
+  defp service_dot(_), do: "bg-zinc-400"
+
   defp exit_reason(%{oom_killed: true}), do: "OOM killed"
   defp exit_reason(%{error: error}) when is_binary(error), do: error
   defp exit_reason(%{exit_code: 0}), do: "exited cleanly"
@@ -1107,7 +1113,7 @@ defmodule BoomLooperWeb.ChatLive do
     ~H"""
     <div class={"flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors #{if @selected, do: "bg-white dark:bg-zinc-800 shadow-sm", else: "hover:bg-white/60 dark:hover:bg-zinc-800/40"}"}>
       <.link navigate={"#{@base_path}/service/#{@svc.name}"} class="flex items-center gap-2 min-w-0 flex-1">
-        <div class={"w-1.5 h-1.5 rounded-full flex-none #{if @svc.running, do: "bg-green-500", else: "bg-red-500"}"}></div>
+        <div class={"w-1.5 h-1.5 rounded-full flex-none #{service_dot(@svc)}"}></div>
         <span class="truncate text-zinc-600 dark:text-zinc-400">{@svc.name}</span>
       </.link>
       <a :if={@first_port} href={"http://localhost:#{@first_port}"} target="_blank"
@@ -1471,7 +1477,7 @@ defmodule BoomLooperWeb.ChatLive do
     ~H"""
     <div class="flex-1 flex flex-col min-h-0">
       <div class="flex-none border-b border-zinc-200 dark:border-zinc-700/80 px-4 md:px-5 h-12 flex items-center gap-3">
-        <div :if={@svc} class={"w-2 h-2 rounded-full flex-none #{if @svc.running, do: "bg-green-500", else: "bg-red-500"}"}></div>
+        <div :if={@svc} class={"w-2 h-2 rounded-full flex-none #{service_dot(@svc)}"}></div>
         <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{@service_name}</span>
         <span :if={@svc} class="text-xs text-zinc-400 dark:text-zinc-500 font-mono">{service_detail(@svc)}</span>
         <a :if={@first_port} href={"http://localhost:#{@first_port}"} target="_blank"
