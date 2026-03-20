@@ -576,7 +576,9 @@ defmodule BoomLooper.ChatAgent do
 
     - #{workspace_note}
     - /root/.cache persists (package caches)
-    - Project processes (web server, CSS watcher, etc.) run inside this container automatically
+    - The dev server runs in a SEPARATE container. To reach it from exec, use the container hostname (e.g. `curl http://boom-looper-ws-XXXX-dev:PORT/`)
+    - Use `service_status` to see container names and ports
+    - Use `logs` with `service: "dev"` to see the dev server output
 
     Do NOT use your local Bash/Read/Write tools for project work — everything goes through the container tools.
     """

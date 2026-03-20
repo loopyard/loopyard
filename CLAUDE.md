@@ -6,54 +6,85 @@ A Phoenix LiveView app that lets a team share and interact with Claude Code agen
 
 ## What it does
 
-- Left sidebar: list of running Claude agents with status indicators
+- **Projects** are git repos. Each project can have multiple **branches** (git worktrees).
+- Each branch gets its own set of Docker containers (workspace, dev server, services) and agents.
+- Left sidebar: agents and services for the current branch
 - Right panel: chat interface with message bubbles, tool call cards, streaming responses
 - Any connected browser can send messages to any agent — responses broadcast to all viewers
-- Agents auto-name themselves, names are editable inline
-- URL-based routing: `/chat/:id` — bookmarkable, survives refresh
+- URL-based routing: `/p/:project_id/b/:branch_id/chat/:id`
 - Responsive: works on phones, tablets, and desktops
+- Launch from terminal: `open "http://localhost:4000/launch/SECRET?path=$(pwd)"`
 
 ## Architecture
 
-### Key files
-
-- `lib/boom_looper/chat_agent.ex` — GenServer wrapping a `ClaudeCode` SDK session. Streams structured messages (text, tool use, errors) to viewers via PubSub.
-- `lib/boom_looper/chat_agent_supervisor.ex` — DynamicSupervisor for chat agent processes
-- `lib/boom_looper_web/live/chat_live.ex` — LiveView with chat UI. Handles agent CRUD, message send/receive, PubSub subscriptions, URL routing.
-- `lib/boom_looper_web/plugs/basic_auth.ex` — Optional HTTP Basic Auth (enabled via env vars)
-- `assets/js/app.js` — Minimal: ScrollBottom hook (auto-scroll messages), ChatForm hook (clear input after send)
-
-### How it works
-
-Each agent is a GenServer that owns a `ClaudeCode` SDK session. The SDK spawns `claude` CLI as a subprocess and communicates via NDJSON (newline-delimited JSON) over stdin/stdout. When a user sends a message, the agent streams the response and broadcasts each event via PubSub. The LiveView subscribes to the agent's topic and renders messages as they arrive.
+### Data model
 
 ```
-Browser → LiveView → ChatAgent GenServer → ClaudeCode SDK → claude CLI subprocess
-                  ↑                     ↓
-                  └── PubSub broadcast ←┘
+Project (git repo)
+  ├── Branch "main"        → workspace container + dev container + services + agents
+  ├── Branch "feature-x"   → separate set of containers + agents
+  └── .hive/workspace.json → shared config (Dockerfile, services, env vars)
 ```
 
-Permissions are skipped (`dangerously_skip_permissions: true`) because the security model is container isolation, not per-tool approval.
+### Supervisor tree
+
+```
+BoomLooper.Supervisor
+  ├── Phoenix.PubSub
+  ├── Registry (ChatAgentRegistry, ServiceManagerRegistry, BranchRegistry, BranchAgentRegistry)
+  ├── BranchSupervisor (DynamicSupervisor)
+  │   ├── Branch "main" (Supervisor, :one_for_all)
+  │   │   ├── ServiceManager (manages Docker containers)
+  │   │   └── AgentSupervisor (DynamicSupervisor)
+  │   │       ├── ChatAgent "Setup"
+  │   │       └── ChatAgent "dev-agent"
+  │   └── Branch "feature-x" (Supervisor)
+  │       ├── ServiceManager
+  │       └── AgentSupervisor
+  └── BoomLooperWeb.Endpoint
+```
+
+Stopping a branch = `Supervisor.stop` cascades → ServiceManager.terminate cleans up all Docker containers → agents die. No orphan containers.
 
 ### Container model
 
-All agents run inside Docker containers. Claude CLI runs on the host but interacts with containers exclusively through MCP container tools (`exec`, `rebuild`, `start_service`, etc.). The only variable is the workspace volume strategy:
+Each branch has:
+- **Workspace container** — always running `sleep infinity`, agents exec here. Never crashes. The escape hatch.
+- **Dev container** — runs from the workspace image with the dev command (e.g. `bin/dev`). Has its own `docker logs`.
+- **Stock services** — postgres, redis, etc. in their own containers with their own images.
 
-- **Bind mount** (default) — host directory mounted at `/workspace`. Edits inside the container appear on the host immediately. Used for working on existing projects.
-- **Named volume** — isolated `/workspace` volume. Agent starts with an empty workspace. Used for sandboxed/greenfield work (not yet exposed in UI).
+All containers share a Docker network. Agents exec into the workspace container for code changes. The dev server in the dev container picks up changes because both mount the same host directory.
 
-The Dockerfile controls what's pre-installed in the container (e.g., `elixir:1.18` base for Elixir projects, `ubuntu:22.04` for general use). Cache volume (`/root/.cache`) always persists across rebuilds.
+Port allocation is dynamic (`-p 0:container_port`) — Docker picks host ports. Multiple branches run without port conflicts.
 
-### Agent lifecycle & UI states
+### Key files
 
-Agents go through lifecycle states that the UI must reflect:
+- `lib/boom_looper/branch.ex` — Per-branch Supervisor (ServiceManager + AgentSupervisor)
+- `lib/boom_looper/branch_supervisor.ex` — DynamicSupervisor for branch subtrees
+- `lib/boom_looper/project_registry.ex` — Projects and branches registry (ETS)
+- `lib/boom_looper/git.ex` — Git CLI wrapper (worktree add/remove/list)
+- `lib/boom_looper/chat_agent.ex` — GenServer wrapping a Claude Code SDK session
+- `lib/boom_looper/workspace/service_manager.ex` — Manages Docker containers per branch
+- `lib/boom_looper/docker.ex` — Docker CLI wrapper
+- `lib/boom_looper_web/live/chat_live.ex` — Branch-level chat UI
+- `lib/boom_looper_web/live/project_list_live.ex` — Home page (projects)
+- `lib/boom_looper_web/live/project_live.ex` — Project page (branches)
+- `lib/boom_looper/tools/workspace.ex` — MCP tools: set_dockerfile, set_dev_command, add_service, rebuild, etc.
+- `lib/boom_looper/tools/container.ex` — MCP tools: exec, logs, inspect, ports
 
-- **Booting** — Agent spawn is async. The LiveView navigates to `/chat/:id` immediately and shows a spinner/status screen while the GenServer initializes (Docker image build, container creation, SDK session start). The `chat_agent_started` PubSub event transitions the UI to the running state.
-- **Idle** — Green dot. Agent is ready, waiting for input.
-- **Thinking** — Amber pulsing dot. Agent is processing a message.
-- **Stopped** — Grey dot. Agent was stopped.
+### How agents work
 
-When adding new agent types or initialization steps, always ensure the UI shows progress. Never block the LiveView process on slow operations — spawn async and let PubSub drive state transitions.
+Each agent is a GenServer that owns a `ClaudeCode` SDK session. The SDK spawns `claude` CLI as a subprocess. When a user sends a message, the agent streams the response via PubSub.
+
+Agents exec into the workspace container (sleep infinity) for code changes, tests, installs. The dev server runs in a separate container. Agents reach it via Docker network hostname (e.g. `curl http://boom-looper-ws-XXXX-dev:3000/`).
+
+### What is a service?
+
+A **service** is something with a port that you connect to. It runs in its own Docker container.
+- postgres on 5432, redis on 6379, the dev server on 3000
+- Each gets its own container, its own `docker logs`, its own lifecycle
+
+A service is NOT a CSS watcher, JS bundler, or background worker. Those run inside the dev command (e.g. `bin/dev` which uses foreman/overmind internally).
 
 ## Configuration (12-Factor)
 
@@ -68,8 +99,8 @@ cp .env.example .env
 | `SECRET_KEY_BASE` | prod only | — | `mix phx.gen.secret` |
 | `PHX_HOST` | prod only | `example.com` | Production hostname |
 | `PORT` | no | `4000` | HTTP port |
-| `HIVE_AUTH_PASSWORD` | no | — | Enable HTTP Basic Auth |
-| `HIVE_AUTH_USERNAME` | no | *(any)* | Require specific username |
+| `BOOM_LOOPER_AUTH_PASSWORD` | no | — | Enable HTTP Basic Auth |
+| `BOOM_LOOPER_AUTH_USERNAME` | no | *(any)* | Require specific username |
 
 ## Running
 
@@ -86,11 +117,11 @@ mix phx.server
 # http://localhost:4000
 ```
 
+On startup, a launch command is printed to the terminal. Run it from any project directory to register the project and start working.
+
 ## Testing
 
-**Test coverage is critical.** We rely on tests to iterate fast with high confidence. Every change must be backed by tests. If you're unsure whether something works, write a test first.
-
-### Running tests
+**Test coverage is critical.** Every change must be backed by tests.
 
 ```bash
 mix test                    # Run all tests
@@ -99,85 +130,36 @@ mix test --trace            # Verbose output
 
 ### Test philosophy
 
-- **Every new feature must have tests.** No exceptions. If you add a module, add a test file.
-- **Every bug fix starts with a failing test.** Reproduce it in a test, then fix it.
-- **Test behavior, not implementation.** Test what functions return and what side effects they produce.
-- **Tests must be fast.** No `Process.sleep` hacks. Use PubSub, `assert_receive`, or poll-with-timeout patterns to wait for async events. If you must sleep, you need a very good reason and a comment explaining why. No external API calls. Use the ClaudeCode test stubs for SDK interactions.
-- **LiveView tests cover user flows.** Mount, click, submit, assert. Use `Phoenix.LiveViewTest`.
-- **Plans require tests.** When implementing work from `./plans/*`, the plan is not done until there are comprehensive tests that verify the behavior end-to-end and catch regressions. If a plan involves Docker, browser, or other external deps, write tests that exercise the real thing (tagged for conditional execution) AND unit tests that run without the dependency.
+- Every new feature must have tests
+- Every bug fix starts with a failing test
+- Test behavior, not implementation
+- Tests must be fast — no `Process.sleep` hacks
+- LiveView tests cover user flows
+- Plans require tests
 
 ### Test tags
 
 - Default: all tests run with `mix test`
-- `@tag :docker` — requires Docker daemon. Excluded by default, run with `mix test --include docker`
-- Always write both: unit tests (no deps, always run) AND integration tests (tagged, exercise the real system)
+- `@tag :docker` — requires Docker daemon
+- `@tag :worktree` — creates git worktrees
 
-### Test file organization
+### Test helpers
 
-```
-test/
-  test_helper.exs
-  support/
-    conn_case.ex
-  hive/
-    chat_agent_test.exs      # ChatAgent GenServer tests
-  hive_web/
-    plugs/
-      basic_auth_test.exs    # Auth plug tests
-    live/
-      chat_live_test.exs     # LiveView rendering, events, navigation
-```
+Use `BoomLooper.TestHelpers.ensure_branch(path)` to start a branch subtree before starting agents in tests. Use `BoomLooper.TestHelpers.start_agent(opts)` instead of the old `ChatAgentSupervisor.start_agent`.
 
 ## Code style
 
 ### Composition over conditionals
 
-Use functional composition — small, focused components and functions. Do NOT:
-- Jam everything into mega-views with `if/else` scattered throughout templates
-- Use `:if` guards to switch between completely different UIs in one template
-- Build god-modules that handle every case
-
-Instead:
-- Extract LiveView function components for distinct UI sections
-- Use separate LiveView modules when views have different data needs
-- Compose with `render_slot`, function components, and pattern matching
-- Each component should do one thing
-
-```elixir
-# Bad — one template with conditionals everywhere
-<div :if={@tab == :chat}>... 100 lines ...</div>
-<div :if={@tab == :ops && @has_container}>... 80 lines ...</div>
-<div :if={@tab == :ops && !@has_container}>... 60 lines ...</div>
-
-# Good — composed components
-<.chat_panel :if={@tab == :chat} messages={@messages} ... />
-<.ops_panel :if={@tab == :ops} agent={@selected_agent} has_container={@ops_has_container} ... />
-```
-
-This applies to tools and GenServers too — compose behaviours, don't branch.
+Use functional composition — small, focused components and functions. Each component does one thing.
 
 ### One concept, one code path
 
-Don't create parallel implementations for things that are really the same thing with different config. If two "types" share 90% of their logic, they're one type with an option — not two types.
-
-```elixir
-# Bad — two types with parallel code paths
-if is_root do
-  create_root(id, dir)
-else
-  create(id)
-end
-
-# Good — one function, options control behavior
-Docker.create(id, bind_mount: dir)
-Docker.create(id)  # named volume by default
-```
-
-When you find yourself adding `root` / `docker` / `type` branches everywhere, stop and ask: "what's the actual parameter that differs?" Usually it's one thing (a path, a flag, a config value). Make that the option and delete the branching.
+Don't create parallel implementations for things that are really the same thing with different config.
 
 ### Tests skip external dependencies by default
 
-`ChatAgent` no longer creates Docker containers on init — the workspace container is managed by `ServiceManager`. Only tests tagged `@tag :docker` should actually create containers. This keeps `mix test` fast and Docker-free.
+`ChatAgent` does not create Docker containers on init — containers are managed by `ServiceManager` within the branch supervisor tree. Only tests tagged `@tag :docker` should actually create containers.
 
 ## Git workflow
 
@@ -192,11 +174,11 @@ When you find yourself adding `root` / `docker` / `type` branches everywhere, st
 - Claude Code SDK (`claude_code` hex package) for structured agent communication
 - Tailwind CSS (dark mode via `prefers-color-scheme`)
 - Bandit (HTTP server)
-- No database (all state in-memory in GenServer processes)
+- No database (all state in-memory — ETS for agent state, GenServers for lifecycle)
+- Docker for container management
 
 ## Known issues / TODOs
 
-- No persistence — all agents lost on server restart
+- No persistence across server restarts — projects/agents reconstructed on launch
 - Agent message history grows unbounded in memory
-- No markdown rendering in chat bubbles (messages are plain text)
-- Workspaces — planned feature to let agents target different host directories (or named volumes for sandboxed work)
+- Service logs flash briefly when containers restart
