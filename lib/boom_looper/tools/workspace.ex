@@ -40,20 +40,22 @@ defmodule BoomLooper.Tools.Workspace do
     end
   end
 
-  tool :add_service, "Add a stock service (e.g. postgres, redis) that runs as its own container." do
+  tool :add_service, "Add a stock service (e.g. postgres, redis) that runs as its own container. Use {data} in volume specs for a branch-scoped persistent volume." do
     field :agent_id, :string, required: true
     field :name, :string, required: true, description: "Service name (e.g. postgres, redis)"
-    field :image, :string, required: true, description: "Docker image (e.g. postgres:16, redis:7)"
+    field :image, :string, required: true, description: "Docker image (e.g. postgres:16, pgvector/pgvector:pg16, redis:7)"
     field :env, :string, required: false, description: "JSON object of env vars for the service"
-    field :ports, :string, required: false, description: "JSON array of port mappings"
+    field :ports, :string, required: false, description: "JSON array of port mappings (e.g. [\"5432\"])"
+    field :volumes, :string, required: false, description: "JSON array of volume mounts. Use {data} for persistent branch-scoped volume (e.g. [\"{data}:/var/lib/postgresql/data\"])"
 
     def execute(%{agent_id: agent_id, name: name, image: image} = params) do
       env = BoomLooper.Tools.Workspace.parse_json_field(params[:env], %{})
       ports = BoomLooper.Tools.Workspace.parse_json_field(params[:ports], [])
+      volumes = BoomLooper.Tools.Workspace.parse_json_field(params[:volumes], [])
 
       BoomLooper.Tools.Workspace.do_update_config(agent_id, fn ws ->
         services = Enum.reject(ws.services, &(&1.name == name))
-        %{ws | services: services ++ [%{name: name, image: image, env: env, volumes: [], ports: ports}]}
+        %{ws | services: services ++ [%{name: name, image: image, env: env, volumes: volumes, ports: ports}]}
       end, "Service added: #{name} (#{image})")
     end
   end
