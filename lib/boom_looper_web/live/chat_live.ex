@@ -504,7 +504,7 @@ defmodule BoomLooperWeb.ChatLive do
         messages ++ [build_msg]
       end
 
-    {:noreply, socket |> assign(:messages, messages) |> assign(:build_log, build_log) |> assign(:building, true) |> push_event("scroll_bottom", %{})}
+    {:noreply, socket |> assign(:messages, messages) |> assign(:build_log, build_log) |> assign(:building, true)}
   end
 
   @impl true
@@ -1181,6 +1181,10 @@ defmodule BoomLooperWeb.ChatLive do
       <div class="flex items-center gap-2 px-3 py-1.5 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
         <div class={"w-1.5 h-1.5 rounded-full flex-none #{@dot_class}"}></div>
         <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">{@label}</span>
+        <button phx-hook="CopySource" id={"copy-build-#{System.unique_integer([:positive])}"} data-source={@content}
+          class="ml-auto text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors">
+          copy
+        </button>
       </div>
       <pre class={"px-3 py-2 text-xs font-mono text-zinc-800 dark:text-green-400 bg-zinc-100 dark:bg-zinc-950 whitespace-pre-wrap overflow-y-auto #{if @status == :building, do: "max-h-64", else: "max-h-32"}"}>{@content}</pre>
     </div>
