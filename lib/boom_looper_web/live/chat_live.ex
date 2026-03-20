@@ -814,21 +814,10 @@ defmodule BoomLooperWeb.ChatLive do
     "#{adj} #{noun}"
   end
 
+  # Ports come from Docker.container_ports as %{"container_port" => "host_port"}
   defp first_host_port(ports) when is_map(ports) and map_size(ports) > 0 do
     case Enum.at(ports, 0) do
-      {host_port, _container_port} -> to_string(host_port)
-      _ -> nil
-    end
-  end
-
-  defp first_host_port(ports) when is_list(ports) and length(ports) > 0 do
-    case hd(ports) do
-      {host_port, _container_port} -> to_string(host_port)
-      port_str when is_binary(port_str) ->
-        case String.split(port_str, ":") do
-          [host, _] -> host
-          _ -> nil
-        end
+      {_container_port, host_port} -> to_string(host_port)
       _ -> nil
     end
   end
