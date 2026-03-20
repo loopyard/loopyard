@@ -291,12 +291,20 @@ defmodule BoomLooper.ChatAgent do
 
     # Add user message
     user_msg = %{role: :user, content: text, timestamp: DateTime.utc_now()}
-    state = %{append_message(state, user_msg) | status: :thinking}
+    state = append_message(state, user_msg)
 
     broadcast("chat_agent:#{state.id}", {:chat_message, state.id, user_msg})
+
+    # Don't try to stream if session is still dead
+    unless state.backend.session_alive?(state.session) do
+      broadcast(@topic, {:chat_agent_status_changed, state.id, :idle})
+      {:noreply, state}
+    else
+
+    state = %{state | status: :thinking}
     broadcast(@topic, {:chat_agent_status_changed, state.id, :thinking})
 
-    # Stream the response in a Task linked to this GenServer
+    # Stream the response in a Task
     me = self()
     agent_id = state.id
     session = state.session
@@ -320,6 +328,7 @@ defmodule BoomLooper.ChatAgent do
     end)
 
     {:noreply, state}
+    end # unless session dead
   end
 
   @impl true
@@ -475,7 +484,6 @@ defmodule BoomLooper.ChatAgent do
   end
 
   defp ensure_session_alive(state) do
-    # Check if the CLI session process is still alive
     alive = try do
       state.backend.session_alive?(state.session)
     rescue
@@ -488,14 +496,23 @@ defmodule BoomLooper.ChatAgent do
       state
     else
       require Logger
-      Logger.info("[ChatAgent] #{state.id} session dead, auto-restarting...")
+      Logger.warning("[ChatAgent] #{state.id} session dead, auto-restarting...")
+
+      restart_msg = %{role: :system, content: "Session lost — reconnecting...", timestamp: DateTime.utc_now()}
+      broadcast("chat_agent:#{state.id}", {:chat_message, state.id, restart_msg})
+      state = append_message(state, restart_msg)
+
       case state.backend.start_session(state.session_opts) do
         {:ok, new_session} ->
-          %{state | session: new_session}
+          ok_msg = %{role: :system, content: "Reconnected.", timestamp: DateTime.utc_now()}
+          broadcast("chat_agent:#{state.id}", {:chat_message, state.id, ok_msg})
+          append_message(%{state | session: new_session}, ok_msg)
 
         {:error, reason} ->
           Logger.error("[ChatAgent] #{state.id} failed to restart session: #{inspect(reason)}")
-          state
+          fail_msg = %{role: :error, content: "Failed to reconnect: #{inspect(reason)}", timestamp: DateTime.utc_now()}
+          broadcast("chat_agent:#{state.id}", {:chat_message, state.id, fail_msg})
+          append_message(state, fail_msg)
       end
     end
   end
