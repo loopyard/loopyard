@@ -17,18 +17,6 @@ defmodule BoomLooperWeb.ChatLive do
     end
   end
 
-  def mount(%{"workspace_id" => workspace_id}, _session, socket) do
-    # Legacy /w/ route — look up as a branch in ProjectRegistry
-    branch = BoomLooper.ProjectRegistry.get_branch(workspace_id)
-    project = if branch, do: BoomLooper.ProjectRegistry.get_project(branch.project_id)
-
-    if project && branch do
-      workspace = %{id: branch.id, path: branch.path, name: project.name}
-      mount_with_workspace(socket, workspace, %{project: project, branch: branch})
-    else
-      {:ok, push_navigate(socket, to: "/")}
-    end
-  end
 
   defp mount_with_workspace(socket, workspace, extra_assigns) do
     if connected?(socket) do
@@ -45,11 +33,18 @@ defmodule BoomLooperWeb.ChatLive do
     agents = list_workspace_agents(workspace.path)
     service_statuses = fetch_service_statuses(workspace.path)
 
+    base_path = if extra_assigns[:project] do
+      "/p/#{extra_assigns[:project].id}/b/#{extra_assigns[:branch].id}"
+    else
+      "/p/#{workspace.id}/b/#{workspace.id}"
+    end
+
     {:ok,
      socket
      |> assign(:workspace, workspace)
      |> assign(:project, extra_assigns[:project])
      |> assign(:branch, extra_assigns[:branch])
+     |> assign(:base_path, base_path)
      |> assign(:agents, agents)
      |> assign(:service_statuses, service_statuses)
      |> assign(:selected_id, nil)
@@ -89,7 +84,7 @@ defmodule BoomLooperWeb.ChatLive do
           :not_found ->
             socket
             |> put_flash(:error, "Agent not found")
-            |> push_navigate(to: workspace_path(socket))
+            |> push_navigate(to: branch_path(socket))
         end
       else
         socket
@@ -124,7 +119,7 @@ defmodule BoomLooperWeb.ChatLive do
       ChatAgent.register_booting(id, name, workspace.path)
       Task.start(fn -> boot_agent(id, agent_opts, nil, workspace.path, if(setup, do: "setup")) end)
 
-      {:noreply, push_navigate(socket, to: "/w/#{workspace.id}/chat/#{id}")}
+      {:noreply, push_navigate(socket, to: "#{branch_path(socket)}/chat/#{id}")}
     else
       checklists = BoomLooper.Checklist.available(workspace.path)
       {:noreply, assign(socket, available_checklists: checklists, selected_checklist: nil)}
@@ -164,8 +159,8 @@ defmodule BoomLooperWeb.ChatLive do
   @impl true
   def handle_event("select_agent", %{"id" => id}, socket) do
     tab = socket.assigns.tab
-    ws = socket.assigns.workspace.id
-    path = if tab == :container, do: "/w/#{ws}/chat/#{id}/container", else: "/w/#{ws}/chat/#{id}"
+    bp = branch_path(socket)
+    path = if tab == :container, do: "#{bp}/chat/#{id}/container", else: "#{bp}/chat/#{id}"
     {:noreply, push_patch(socket, to: path) |> push_event("focus_input", %{})}
   end
 
@@ -214,7 +209,7 @@ defmodule BoomLooperWeb.ChatLive do
     ChatAgent.register_booting(id, name, working_dir)
     Task.start(fn -> boot_agent(id, agent_opts, ws_config, working_dir, checklist_id) end)
 
-    {:noreply, push_navigate(socket, to: "/w/#{workspace.id}/chat/#{id}")}
+    {:noreply, push_navigate(socket, to: "#{branch_path(socket)}/chat/#{id}")}
   end
 
   @impl true
@@ -242,7 +237,7 @@ defmodule BoomLooperWeb.ChatLive do
     ChatAgent.register_booting(id, name, working_dir, service_name: service_name)
     Task.start(fn -> boot_agent(id, agent_opts, ws_config, working_dir, nil) end)
 
-    {:noreply, push_navigate(socket, to: "/w/#{workspace.id}/chat/#{id}")}
+    {:noreply, push_navigate(socket, to: "#{branch_path(socket)}/chat/#{id}")}
   end
 
   @impl true
@@ -305,13 +300,13 @@ defmodule BoomLooperWeb.ChatLive do
   @impl true
   def handle_event("switch_tab", %{"tab" => tab}, socket) do
     tab = String.to_existing_atom(tab)
-    ws = socket.assigns.workspace.id
+    bp = branch_path(socket)
 
     path =
       case {socket.assigns.selected_id, tab} do
-        {nil, _} -> "/w/#{ws}"
-        {id, :container} -> "/w/#{ws}/chat/#{id}/container"
-        {id, _} -> "/w/#{ws}/chat/#{id}"
+        {nil, _} -> bp
+        {id, :container} -> "#{bp}/chat/#{id}/container"
+        {id, _} -> "#{bp}/chat/#{id}"
       end
 
     {:noreply, push_patch(socket, to: path)}
@@ -393,7 +388,7 @@ defmodule BoomLooperWeb.ChatLive do
         socket
         |> assign(:booting_agent_id, nil)
         |> put_flash(:error, "Failed to start agent: #{inspect(reason)}")
-        |> push_navigate(to: workspace_path(socket))
+        |> push_navigate(to: branch_path(socket))
       else
         socket
       end
@@ -590,13 +585,7 @@ defmodule BoomLooperWeb.ChatLive do
     :exit, _ -> []
   end
 
-  defp workspace_path(socket) do
-    if socket.assigns.project do
-      "/p/#{socket.assigns.project.id}/b/#{socket.assigns.branch.id}"
-    else
-      "/w/#{socket.assigns.workspace.id}"
-    end
-  end
+  defp branch_path(socket), do: socket.assigns.base_path
 
   defp fetch_service_container_logs(service_statuses, service_name) do
     case Enum.find(service_statuses, &(&1.name == service_name)) do
@@ -967,7 +956,7 @@ defmodule BoomLooperWeb.ChatLive do
       <div class="flex-1 flex min-h-0">
         <.sidebar agents={@agents} selected_id={@selected_id} workspace_id={@workspace.id} project={@project} branch={@branch} service_statuses={@service_statuses} selected_service={@selected_service} />
         <main class="flex-1 flex flex-col min-w-0">
-          <.new_agent_screen :if={@live_action == :new} available_checklists={@available_checklists} selected_checklist={@selected_checklist} workspace={@workspace} />
+          <.new_agent_screen :if={@live_action == :new} available_checklists={@available_checklists} selected_checklist={@selected_checklist} workspace={@workspace} base_path={@base_path} />
           <.service_log_view :if={@live_action == :service} service_name={@selected_service} service_statuses={@service_statuses} logs={@service_logs} />
           <.all_services_view :if={@live_action == :services} all_service_logs={@all_service_logs} />
           <.booting_screen :if={@live_action not in [:new, :service, :services] && @booting_agent_id && !@selected_agent} agent_id={@booting_agent_id} status={@boot_status} boot_log={@boot_log} />
@@ -999,7 +988,7 @@ defmodule BoomLooperWeb.ChatLive do
     base_path = if assigns.project do
       "/p/#{assigns.project.id}/b/#{assigns.branch.id}"
     else
-      "/w/#{assigns.workspace_id}"
+      "/p/#{assigns.workspace_id}/b/#{assigns.workspace_id}"
     end
     assigns = assign(assigns, :base_path, base_path)
 
@@ -1028,7 +1017,7 @@ defmodule BoomLooperWeb.ChatLive do
         <div :if={@service_statuses != []} class="px-3 pt-3 pb-1">
           <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-semibold mb-1.5">Services</div>
           <div class="space-y-0.5">
-            <.service_item :for={svc <- @service_statuses} svc={svc} workspace_id={@workspace_id} selected={@selected_service == svc.name} />
+            <.service_item :for={svc <- @service_statuses} svc={svc} base_path={@base_path} selected={@selected_service == svc.name} />
           </div>
         </div>
 
@@ -1087,7 +1076,7 @@ defmodule BoomLooperWeb.ChatLive do
           </div>
 
           <div class="mt-6">
-            <.link navigate={"/w/#{@workspace.id}"} class="text-sm text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors">Cancel</.link>
+            <.link navigate={@base_path} class="text-sm text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors">Cancel</.link>
           </div>
         </div>
 
@@ -1134,7 +1123,7 @@ defmodule BoomLooperWeb.ChatLive do
 
     ~H"""
     <div class={"flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors #{if @selected, do: "bg-white dark:bg-zinc-800 shadow-sm", else: "hover:bg-white/60 dark:hover:bg-zinc-800/40"}"}>
-      <.link navigate={"/w/#{@workspace_id}/service/#{@svc.name}"} class="flex items-center gap-2 min-w-0 flex-1">
+      <.link navigate={"#{@base_path}/service/#{@svc.name}"} class="flex items-center gap-2 min-w-0 flex-1">
         <div class={"w-1.5 h-1.5 rounded-full flex-none #{if @svc.running, do: "bg-green-500", else: "bg-red-500"}"}></div>
         <span class="truncate text-zinc-600 dark:text-zinc-400">{@svc.name}</span>
       </.link>

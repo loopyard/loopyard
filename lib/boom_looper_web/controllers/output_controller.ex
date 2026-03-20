@@ -23,7 +23,7 @@ defmodule BoomLooperWeb.OutputController do
   @doc "Generate a signed URL for a message"
   def signed_url(workspace_id, agent_id, index) do
     token = Phoenix.Token.sign(BoomLooperWeb.Endpoint, "msg", "#{agent_id}:#{index}")
-    "/w/#{workspace_id}/chat/#{agent_id}/msg/#{index}?token=#{token}"
+    "/p/#{workspace_id}/b/#{workspace_id}/chat/#{agent_id}/msg/#{index}?token=#{token}"
   end
 
   defp serve_message(conn, agent_id, index) do

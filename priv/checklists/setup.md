@@ -3,7 +3,7 @@
 Set up the development environment for this project.
 
 - [ ] Examine the project to understand what language, framework, tools, and services it needs. If the project has an existing Dockerfile, use it as a starting point for the dev Dockerfile — don't reinvent what's already there.
-- [ ] Name the workspace
+- [ ] Name the project
 - [ ] Write a dev Dockerfile that installs everything the project needs
 - [ ] Set the dev server command (one command that starts everything — e.g. bin/dev)
 - [ ] Add any services the project needs (databases, caches, etc.)

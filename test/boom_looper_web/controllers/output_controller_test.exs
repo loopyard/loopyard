@@ -29,12 +29,12 @@ defmodule BoomLooperWeb.OutputControllerTest do
     end
 
     test "returns 403 without token", %{conn: conn, agent_id: id} do
-      conn = get(conn, "/w/test/chat/#{id}/msg/0")
+      conn = get(conn, "/p/test/b/test/chat/#{id}/msg/0")
       assert response(conn, 403) =~ "Missing token"
     end
 
     test "returns 403 with invalid token", %{conn: conn, agent_id: id} do
-      conn = get(conn, "/w/test/chat/#{id}/msg/0?token=bogus")
+      conn = get(conn, "/p/test/b/test/chat/#{id}/msg/0?token=bogus")
       assert response(conn, 403) =~ "expired or invalid"
     end
 

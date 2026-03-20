@@ -39,8 +39,8 @@ defmodule BoomLooperWeb.ChatLiveTest do
       assert html =~ "New Agent"
     end
 
-    test "redirects to / for unknown workspace", %{conn: conn} do
-      assert {:error, {:live_redirect, %{to: "/"}}} = live(conn, "/w/nonexistent")
+    test "redirects to / for unknown branch", %{conn: conn} do
+      assert {:error, {:live_redirect, %{to: "/"}}} = live(conn, "/p/nonexistent/b/nonexistent")
     end
   end
 
@@ -60,7 +60,7 @@ defmodule BoomLooperWeb.ChatLiveTest do
       |> render_submit(%{})
 
       {path, _flash} = assert_redirect(view)
-      assert path =~ "/w/#{ws.id}/chat/"
+      assert path =~ "/p/#{ws.project_id}/b/#{ws.id}/chat/"
     end
 
     @tag :docker
@@ -72,7 +72,7 @@ defmodule BoomLooperWeb.ChatLiveTest do
       |> render_submit(%{})
 
       {path, _flash} = assert_redirect(view)
-      assert path =~ "/w/#{ws.id}/chat/"
+      assert path =~ "/p/#{ws.project_id}/b/#{ws.id}/chat/"
 
       {:ok, view2, html} = live(conn, path)
       assert html =~ "Starting agent" or html =~ "Send"
@@ -374,7 +374,7 @@ defmodule BoomLooperWeb.ChatLiveTest do
       Phoenix.PubSub.broadcast(BoomLooper.PubSub, "workspace_services", {:services_updated, ws.path, statuses})
 
       html = flush_lv(view)
-      assert html =~ "/w/#{ws.id}/service/redis"
+      assert html =~ "/p/#{ws.project_id}/b/#{ws.id}/service/redis"
     end
 
     test "services with ports show port URL", %{conn: conn, workspace: ws} do
@@ -402,12 +402,12 @@ defmodule BoomLooperWeb.ChatLiveTest do
 
   describe "service log views" do
     test "/w/:id/services renders All Services heading", %{conn: conn, workspace: ws} do
-      {:ok, _view, html} = live(conn, "/w/#{ws.id}/services")
+      {:ok, _view, html} = live(conn, "/p/#{ws.project_id}/b/#{ws.id}/services")
       assert html =~ "All Services"
     end
 
     test "/w/:id/service/:name renders service name in header", %{conn: conn, workspace: ws} do
-      {:ok, view, _html} = live(conn, "/w/#{ws.id}/service/postgres")
+      {:ok, view, _html} = live(conn, "/p/#{ws.project_id}/b/#{ws.id}/service/postgres")
 
       # Broadcast service statuses so the view has data
       statuses = [%{name: "postgres", image: "postgres:16", running: true, container: "boom-looper-svc-test-pg", ports: %{}}]
