@@ -100,9 +100,13 @@ Hooks.CopySource = {
         })
       }
 
-      // If source is a URL path, fetch the content first
-      if (source.startsWith("/")) {
-        fetch(source).then(r => r.text()).then(copyText)
+      // If source is a URL path (signed message URL), fetch the content first
+      if (source.startsWith("/p/") || source.startsWith("/w/")) {
+        fetch(source).then(r => {
+          if (r.ok) return r.text()
+          // If fetch fails, copy the URL itself as fallback
+          return window.location.origin + source
+        }).then(copyText)
       } else {
         copyText(source)
       }
