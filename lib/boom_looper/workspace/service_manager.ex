@@ -21,7 +21,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
   @prefix "boom-looper-svc"
   @services_topic "workspace_services"
 
-  defstruct [:project_dir, :workspace_id, services: %{}, processes: [], workspace_container_running: false, rebuilding: false]
+  defstruct [:project_dir, :workspace_id, services: %{}, processes: [], workspace_container_running: false, rebuilding: false, port_assignments: %{}]
 
   # --- Public API ---
 
@@ -111,21 +111,32 @@ defmodule BoomLooper.Workspace.ServiceManager do
     case BoomLooper.Workspace.load(state.project_dir) do
       {:ok, workspace} ->
         has_workspace = workspace.processes != [] || workspace.dockerfile != nil
-        ws_running =
+        {ws_running, assigns} =
           if has_workspace do
             ensure_workspace_image(state.workspace_id, workspace)
-            start_ops_container(state, workspace) && start_process_containers(state, workspace)
+            ops_ok = start_ops_container(state, workspace)
+            {procs_ok, assigns} = start_process_containers(state, workspace)
+            {ops_ok && procs_ok, assigns}
           else
-            false
+            {false, state.port_assignments}
           end
 
-        stock_results = Enum.map(workspace.services, &start_stock_service_container(state, &1))
+        # Start stock services, collecting port assignments
+        {stock_results, assigns} =
+          Enum.reduce(workspace.services, {[], assigns}, fn svc, {results, a} ->
+            s = %{state | port_assignments: a}
+            case start_stock_service_container(s, svc) do
+              {:ok, new_assigns} -> {results ++ [{:ok, :started}], new_assigns}
+              {:error, _} = err -> {results ++ [err], a}
+            end
+          end)
 
         services = Map.new(workspace.services, fn s -> {s.name, s} end)
         new_state = %{state |
           services: services,
           processes: workspace.processes,
-          workspace_container_running: ws_running
+          workspace_container_running: ws_running,
+          port_assignments: assigns
         }
         broadcast_service_update(new_state)
         {:reply, {:ok, stock_results}, new_state}
@@ -179,8 +190,9 @@ defmodule BoomLooper.Workspace.ServiceManager do
     case BoomLooper.Workspace.load(state.project_dir) do
       {:ok, workspace} ->
         ensure_workspace_image(state.workspace_id, workspace)
-        ws_running = start_ops_container(state, workspace) && start_process_containers(state, workspace)
-        new_state = %{state | processes: workspace.processes, workspace_container_running: ws_running, rebuilding: false}
+        ops_ok = start_ops_container(state, workspace)
+        {procs_ok, assigns} = start_process_containers(state, workspace)
+        new_state = %{state | processes: workspace.processes, workspace_container_running: ops_ok && procs_ok, rebuilding: false, port_assignments: assigns}
         broadcast_service_update(new_state)
         {:reply, :ok, new_state}
 
@@ -251,38 +263,53 @@ defmodule BoomLooper.Workspace.ServiceManager do
   end
 
   # Process containers — one per process, run from workspace image
-  defp start_process_containers(_state, %{processes: []}), do: true
+  # Returns {success, updated_port_assignments}
+  defp start_process_containers(state, %{processes: []}), do: {true, state.port_assignments}
   defp start_process_containers(state, workspace) do
     image = Docker.workspace_image_name(state.workspace_id)
 
-    Enum.all?(workspace.processes, fn p ->
-      container = process_container_name(state.workspace_id, p.name)
+    {all_ok, assignments} =
+      Enum.reduce(workspace.processes, {true, state.port_assignments}, fn p, {ok, assigns} ->
+        container = process_container_name(state.workspace_id, p.name)
 
-      # Skip if already running
-      if Docker.container_running?(container) do
-        true
-      else
-      Docker.docker(["rm", "-f", container])
+        if Docker.container_running?(container) do
+          {ok, assigns}
+        else
+          Docker.docker(["rm", "-f", container])
 
-      args = [
-        "run", "-d",
-        "--name", container,
-        "--network", Docker.network_name(),
-        "--mount", "type=bind,src=#{state.project_dir},dst=/workspace",
-        "-w", "/workspace"
-      ] ++ dynamic_port_args(p[:ports]) ++ env_args(workspace.env_vars) ++ [image, "sh", "-c", p.command]
+          # Reuse previously assigned ports if available, otherwise dynamic
+          port_args = sticky_port_args(p.name, p[:ports], assigns)
 
-      match?({:ok, _}, Docker.docker(args, timeout: 30_000))
-      end
-    end)
+          args = [
+            "run", "-d",
+            "--name", container,
+            "--network", Docker.network_name(),
+            "--mount", "type=bind,src=#{state.project_dir},dst=/workspace",
+            "-w", "/workspace"
+          ] ++ port_args ++ env_args(workspace.env_vars) ++ [image, "sh", "-c", p.command]
+
+          case Docker.docker(args, timeout: 30_000) do
+            {:ok, _} ->
+              # Read the assigned ports and remember them
+              new_ports = Docker.container_ports(container)
+              assigns = Map.merge(assigns, Map.new(new_ports, fn {cp, hp} -> {"#{p.name}:#{cp}", hp} end))
+              {ok, assigns}
+
+            {:error, _} ->
+              {false, assigns}
+          end
+        end
+      end)
+
+    {all_ok, assignments}
   end
 
+  # Returns {:ok/:error, updated_port_assignments}
   defp start_stock_service_container(state, service) do
     container = service_container_name(state.workspace_id, service.name)
 
-    # Skip if already running
     if Docker.container_running?(container) do
-      {:ok, :already_running}
+      {:ok, state.port_assignments}
     else
     Docker.docker(["rm", "-f", container])
     Docker.ensure_network()
@@ -307,13 +334,19 @@ defmodule BoomLooper.Workspace.ServiceManager do
       ["-v", mount]
     end)
 
+    port_args = sticky_port_args(service.name, service[:ports], state.port_assignments)
+
     args =
       ["run", "-d", "--name", container, "--network", Docker.network_name()] ++
-        env_args(service[:env]) ++ dynamic_port_args(service[:ports]) ++ volume_args ++ custom_args ++ [service.image]
+        env_args(service[:env]) ++ port_args ++ volume_args ++ custom_args ++ [service.image]
 
     case Docker.docker(args, timeout: 120_000) do
-      {:ok, _} -> {:ok, :started}
-      {:error, reason} -> {:error, "Failed to start #{service.name}: #{reason}"}
+      {:ok, _} ->
+        new_ports = Docker.container_ports(container)
+        assigns = Map.merge(state.port_assignments, Map.new(new_ports, fn {cp, hp} -> {"#{service.name}:#{cp}", hp} end))
+        {:ok, assigns}
+      {:error, reason} ->
+        {:error, "Failed to start #{service.name}: #{reason}"}
     end
     end
   end
@@ -376,6 +409,22 @@ defmodule BoomLooper.Workspace.ServiceManager do
     else
       []
     end
+  end
+
+  # Build -p args reusing previously assigned host ports when available
+  defp sticky_port_args(service_name, ports, assignments) do
+    dynamic_port_args(ports)
+    |> Enum.chunk_every(2)
+    |> Enum.flat_map(fn ["-p", mapping] ->
+      # mapping is "0:container_port" — check if we have a saved host port
+      container_port = mapping |> String.split(":") |> List.last()
+      key = "#{service_name}:#{container_port}"
+
+      case Map.get(assignments, key) do
+        nil -> ["-p", "0:#{container_port}"]
+        host_port -> ["-p", "#{host_port}:#{container_port}"]
+      end
+    end)
   end
 
   # Build -p args with dynamic host ports (0:container_port)
