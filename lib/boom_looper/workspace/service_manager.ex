@@ -215,14 +215,18 @@ defmodule BoomLooper.Workspace.ServiceManager do
     end
   end
 
-  # Ops container — always running, agents exec here
+  # Ops container — always running, agents exec here. Idempotent.
   defp start_ops_container(state, workspace) do
-    case Docker.start_workspace_container(state.workspace_id,
-      bind_mount: state.project_dir,
-      env_vars: workspace.env_vars || %{}
-    ) do
-      {:ok, _} -> true
-      {:error, _} -> false
+    if Docker.workspace_container_running?(state.workspace_id) do
+      true
+    else
+      case Docker.start_workspace_container(state.workspace_id,
+        bind_mount: state.project_dir,
+        env_vars: workspace.env_vars || %{}
+      ) do
+        {:ok, _} -> true
+        {:error, _} -> false
+      end
     end
   end
 
@@ -233,6 +237,11 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
     Enum.all?(workspace.processes, fn p ->
       container = process_container_name(state.workspace_id, p.name)
+
+      # Skip if already running
+      if Docker.container_running?(container) do
+        true
+      else
       Docker.docker(["rm", "-f", container])
 
       # Use dynamic host ports (-p 0:container_port) to avoid conflicts between branches
@@ -261,12 +270,17 @@ defmodule BoomLooper.Workspace.ServiceManager do
       ] ++ port_args ++ env_args ++ [image, "sh", "-c", p.command]
 
       match?({:ok, _}, Docker.docker(args, timeout: 30_000))
+      end
     end)
   end
 
   defp start_stock_service_container(state, service) do
     container = service_container_name(state.workspace_id, service.name)
 
+    # Skip if already running
+    if Docker.container_running?(container) do
+      {:ok, :already_running}
+    else
     Docker.docker(["rm", "-f", container])
     Docker.ensure_network()
 
@@ -291,6 +305,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
     case Docker.docker(args, timeout: 120_000) do
       {:ok, _} -> {:ok, :started}
       {:error, reason} -> {:error, "Failed to start #{service.name}: #{reason}"}
+    end
     end
   end
 

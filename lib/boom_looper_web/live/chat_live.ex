@@ -27,7 +27,6 @@ defmodule BoomLooperWeb.ChatLive do
 
       ChatAgent.subscribe()
       BoomLooper.Workspace.ServiceManager.subscribe()
-      maybe_start_services(workspace.path)
     end
 
     agents = list_workspace_agents(workspace.path)
@@ -563,17 +562,6 @@ defmodule BoomLooperWeb.ChatLive do
 
   # --- Private ---
 
-  defp maybe_start_services(workspace_path) do
-    Task.start(fn ->
-      case BoomLooper.Workspace.load(workspace_path) do
-        {:ok, ws} when ws.services != [] or ws.processes != [] or ws.dockerfile != nil ->
-          BoomLooper.Workspace.ServiceManager.start_services(workspace_path)
-
-        _ ->
-          :ok
-      end
-    end)
-  end
 
   defp fetch_service_statuses(workspace_path) do
     case BoomLooper.Workspace.ServiceManager.service_status(workspace_path) do
