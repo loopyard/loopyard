@@ -286,6 +286,9 @@ defmodule BoomLooper.ChatAgent do
 
   @impl true
   def handle_cast({:send_message, text}, state) do
+    # Auto-restart session if dead
+    state = ensure_session_alive(state)
+
     # Add user message
     user_msg = %{role: :user, content: text, timestamp: DateTime.utc_now()}
     state = %{append_message(state, user_msg) | status: :thinking}
@@ -468,6 +471,32 @@ defmodule BoomLooper.ChatAgent do
     case BoomLooper.Workspace.load(project_dir) do
       {:ok, workspace} -> workspace
       _ -> nil
+    end
+  end
+
+  defp ensure_session_alive(state) do
+    # Check if the CLI session process is still alive
+    alive = try do
+      state.backend.session_alive?(state.session)
+    rescue
+      _ -> false
+    catch
+      :exit, _ -> false
+    end
+
+    if alive do
+      state
+    else
+      require Logger
+      Logger.info("[ChatAgent] #{state.id} session dead, auto-restarting...")
+      case state.backend.start_session(state.session_opts) do
+        {:ok, new_session} ->
+          %{state | session: new_session}
+
+        {:error, reason} ->
+          Logger.error("[ChatAgent] #{state.id} failed to restart session: #{inspect(reason)}")
+          state
+      end
     end
   end
 

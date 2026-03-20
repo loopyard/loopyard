@@ -14,4 +14,5 @@ defmodule BoomLooper.Agent.Backend do
   @callback start_session(opts :: keyword()) :: {:ok, session} | {:error, term()}
   @callback stream(session, prompt :: String.t()) :: Enumerable.t()
   @callback stop(session) :: :ok
+  @callback session_alive?(session) :: boolean()
 end

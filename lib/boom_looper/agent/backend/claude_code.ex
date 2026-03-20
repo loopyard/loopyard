@@ -24,6 +24,11 @@ defmodule BoomLooper.Agent.Backend.ClaudeCode do
     ClaudeCode.stop(session)
   end
 
+  @impl true
+  def session_alive?(session) do
+    is_pid(session) && Process.alive?(session)
+  end
+
   # --- Translation: SDK messages → BoomLooper events ---
 
   @doc false
