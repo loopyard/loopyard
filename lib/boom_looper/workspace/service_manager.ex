@@ -208,8 +208,9 @@ defmodule BoomLooper.Workspace.ServiceManager do
   end
 
   @impl true
-  def terminate(_reason, state) do
+  def terminate(reason, state) do
     require Logger
+    BoomLooper.EventLog.info("branch:#{state.workspace_id}", "ServiceManager stopping (#{inspect(reason)})")
 
     # Clean up all Docker containers for this branch
     Enum.each(state.processes, fn p ->

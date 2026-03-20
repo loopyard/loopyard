@@ -280,6 +280,7 @@ defmodule BoomLooper.ChatAgent do
     summary = summary(state)
     :ets.insert(@ets_table, {id, summary})
     broadcast(@topic, {:chat_agent_started, summary})
+    BoomLooper.EventLog.info("agent:#{name}", "Started (#{id})")
 
     {:ok, state}
   end
@@ -427,6 +428,7 @@ defmodule BoomLooper.ChatAgent do
   end
 
   def handle_info({:stream_error, id, reason}, %{id: id} = state) do
+    BoomLooper.EventLog.error("agent:#{state.name}", "Stream error: #{reason}")
     now = DateTime.utc_now()
 
     # Count recent crashes (within last 60 seconds)
@@ -496,7 +498,7 @@ defmodule BoomLooper.ChatAgent do
       state
     else
       require Logger
-      Logger.warning("[ChatAgent] #{state.id} session dead, auto-restarting...")
+      BoomLooper.EventLog.warning("agent:#{state.name}", "CLI session dead, auto-restarting")
 
       restart_msg = %{role: :system, content: "Session lost — reconnecting...", timestamp: DateTime.utc_now()}
       broadcast("chat_agent:#{state.id}", {:chat_message, state.id, restart_msg})
@@ -504,12 +506,13 @@ defmodule BoomLooper.ChatAgent do
 
       case state.backend.start_session(state.session_opts) do
         {:ok, new_session} ->
+          BoomLooper.EventLog.info("agent:#{state.name}", "CLI session restarted")
           ok_msg = %{role: :system, content: "Reconnected.", timestamp: DateTime.utc_now()}
           broadcast("chat_agent:#{state.id}", {:chat_message, state.id, ok_msg})
           append_message(%{state | session: new_session}, ok_msg)
 
         {:error, reason} ->
-          Logger.error("[ChatAgent] #{state.id} failed to restart session: #{inspect(reason)}")
+          BoomLooper.EventLog.error("agent:#{state.name}", "Failed to restart CLI: #{inspect(reason)}")
           fail_msg = %{role: :error, content: "Failed to reconnect: #{inspect(reason)}", timestamp: DateTime.utc_now()}
           broadcast("chat_agent:#{state.id}", {:chat_message, state.id, fail_msg})
           append_message(state, fail_msg)

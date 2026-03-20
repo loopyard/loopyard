@@ -12,10 +12,10 @@ defmodule BoomLooper.StateKeeper do
 
   @impl true
   def init(:ok) do
-    # Create ETS tables owned by this process
-    # They survive as long as this GenServer lives
     BoomLooper.ChatAgent.ensure_ets_table()
     BoomLooper.ProjectRegistry.ensure_ets_tables()
+    BoomLooper.EventLog.ensure_ets_table()
+    BoomLooper.EventLog.info("system", "BoomLooper started")
     {:ok, %{}}
   end
 end
