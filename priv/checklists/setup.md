@@ -6,7 +6,7 @@ Set up the development environment for this project.
 - [ ] Name the project
 - [ ] Write a dev Dockerfile that installs everything the project needs
 - [ ] Set the dev server command (one command that starts everything — e.g. bin/dev)
-- [ ] Add any services the project needs (databases, caches, etc.) — use the right image for each. If the project needs extensions (pgvector, PostGIS), prefer a pre-built image (e.g. `pgvector/pgvector:pg16`). Data volumes are auto-mounted from the image's VOLUME declarations — no manual volume config needed. NEVER install extensions via runtime scripts — they don't persist across container restarts.
+- [ ] Add any services the project needs (databases, caches, etc.) — use the right image for each. If the project needs extensions (pgvector, PostGIS), prefer a pre-built image (e.g. `pgvector/pgvector:pg16`). Data volumes are auto-mounted from the image's VOLUME declarations. If an image doesn't declare VOLUME and the service stores data, add a volume explicitly (e.g. `volumes: ["{data}:/var/lib/postgresql/data"]`). NEVER install extensions via runtime scripts — they don't persist across container restarts.
 - [ ] Set environment variables
 - [ ] Build the Docker image
 - [ ] Start all services
