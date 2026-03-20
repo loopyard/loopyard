@@ -157,6 +157,34 @@ Use functional composition — small, focused components and functions. Each com
 
 Don't create parallel implementations for things that are really the same thing with different config.
 
+### No side effects in LiveView mount or handle_params
+
+Mount and handle_params run on every navigation, reconnect, and hot reload. They must be **read-only** — never start services, create containers, or modify external state. If something needs to start, do it explicitly (button click, agent boot, tool call) — not implicitly on page load.
+
+### Operations must be idempotent
+
+Any function that starts a container, service, or process must check if it's already running first. Never `docker rm -f` then `docker run` unconditionally — that kills running containers. The pattern:
+
+```elixir
+if Docker.container_running?(name), do: :ok, else: start_container(name)
+```
+
+### Don't swallow errors
+
+Never use `Enum.each` on operations that can fail (Docker commands, file writes). Always check return values and log failures. Silent failures cause orphaned containers and stale state that's impossible to debug.
+
+### Use data attributes, not string matching, for JS state
+
+Pass state to JS hooks via `data-*` attributes, not by inspecting URL paths or element content. Modes (`data-copy="fetch"`) over flags (`data-fetch="true"`). Never sniff paths in JavaScript.
+
+### GenServer state must reflect reality
+
+Don't cache Docker container state as booleans in GenServer state. Always query Docker directly when reporting status (`Docker.container_running?`, `Docker.container_ports`). Cached state gets stale when containers die independently.
+
+### Rebuild operations need locks
+
+Use a flag (e.g., `rebuilding: true`) to prevent concurrent operations that would conflict. `start_services` during a rebuild should return an error, not silently race.
+
 ### Tests skip external dependencies by default
 
 `ChatAgent` does not create Docker containers on init — containers are managed by `ServiceManager` within the branch supervisor tree. Only tests tagged `@tag :docker` should actually create containers.
