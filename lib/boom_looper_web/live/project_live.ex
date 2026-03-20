@@ -21,6 +21,23 @@ defmodule BoomLooperWeb.ProjectLive do
   end
 
   @impl true
+  def handle_event("start_branch", %{"id" => branch_id}, socket) do
+    branch = ProjectRegistry.get_branch(branch_id)
+    if branch do
+      BoomLooper.BranchSupervisor.start_branch(branch_id, branch.path)
+      ProjectRegistry.update_branch_status(branch_id, :running)
+    end
+    {:noreply, assign(socket, :branches, load_branches(socket.assigns.project))}
+  end
+
+  @impl true
+  def handle_event("stop_branch", %{"id" => branch_id}, socket) do
+    BoomLooper.BranchSupervisor.stop_branch(branch_id)
+    ProjectRegistry.update_branch_status(branch_id, :stopped)
+    {:noreply, assign(socket, :branches, load_branches(socket.assigns.project))}
+  end
+
+  @impl true
   def handle_event("add_branch", %{"name" => name}, socket) do
     name = String.trim(name)
 
@@ -39,6 +56,9 @@ defmodule BoomLooperWeb.ProjectLive do
 
   @impl true
   def handle_event("remove_branch", %{"id" => id}, socket) do
+    # Stop the branch supervisor first (cleans up containers)
+    BoomLooper.BranchSupervisor.stop_branch(id)
+
     case ProjectRegistry.remove_branch(id) do
       :ok -> {:noreply, assign(socket, :branches, load_branches(socket.assigns.project))}
       {:error, reason} -> {:noreply, put_flash(socket, :error, reason)}
@@ -94,26 +114,38 @@ defmodule BoomLooperWeb.ProjectLive do
           </div>
 
           <div class="space-y-2 mb-8">
-            <.link :for={branch <- @branches} navigate={"/p/#{@project.id}/b/#{branch.id}"}
-              class="block w-full rounded-xl border border-zinc-200 dark:border-zinc-700 p-4 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group">
+            <div :for={branch <- @branches}
+              class="rounded-xl border border-zinc-200 dark:border-zinc-700 p-4 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group">
               <div class="flex items-center justify-between">
-                <div class="flex items-center gap-2">
+                <.link navigate={"/p/#{@project.id}/b/#{branch.id}"} class="flex items-center gap-2 min-w-0 flex-1">
                   <div class={"w-2 h-2 rounded-full flex-none #{if branch.status == :running, do: "bg-green-500", else: "bg-zinc-400"}"}></div>
-                  <span class="text-sm font-medium">{branch.name}</span>
+                  <span class="text-sm font-medium truncate">{branch.name}</span>
                   <span :if={branch.is_main} class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500">default</span>
                   <span :if={branch.agent_count > 0} class="text-xs font-medium text-violet-600 dark:text-violet-400 bg-violet-100 dark:bg-violet-900/30 rounded-full px-2 py-0.5">
                     {branch.agent_count} agent{if branch.agent_count != 1, do: "s"}
                   </span>
+                </.link>
+                <div class="flex items-center gap-2 flex-none opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button :if={branch.status != :running} phx-click="start_branch" phx-value-id={branch.id}
+                    class="text-xs font-medium text-green-600 dark:text-green-400 hover:text-green-500 transition-colors"
+                    title="Start branch">
+                    Start
+                  </button>
+                  <button :if={branch.status == :running} phx-click="stop_branch" phx-value-id={branch.id}
+                    class="text-xs font-medium text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                    title="Stop branch">
+                    Stop
+                  </button>
+                  <button :if={!branch.is_main} phx-click="remove_branch" phx-value-id={branch.id}
+                    class="text-zinc-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                    title="Remove branch">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-4 h-4">
+                      <path d="M5.28 4.22a.75.75 0 0 0-1.06 1.06L6.94 8l-2.72 2.72a.75.75 0 1 0 1.06 1.06L8 9.06l2.72 2.72a.75.75 0 1 0 1.06-1.06L9.06 8l2.72-2.72a.75.75 0 0 0-1.06-1.06L8 6.94 5.28 4.22Z" />
+                    </svg>
+                  </button>
                 </div>
-                <button :if={!branch.is_main} phx-click="remove_branch" phx-value-id={branch.id}
-                  class="text-zinc-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity flex-none"
-                  title="Remove branch">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-4 h-4">
-                    <path d="M5.28 4.22a.75.75 0 0 0-1.06 1.06L6.94 8l-2.72 2.72a.75.75 0 1 0 1.06 1.06L8 9.06l2.72 2.72a.75.75 0 1 0 1.06-1.06L9.06 8l2.72-2.72a.75.75 0 0 0-1.06-1.06L8 6.94 5.28 4.22Z" />
-                  </svg>
-                </button>
               </div>
-            </.link>
+            </div>
           </div>
 
           <form :if={@project.is_git} phx-submit="add_branch" class="flex gap-2">

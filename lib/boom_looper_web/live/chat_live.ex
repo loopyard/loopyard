@@ -32,6 +32,7 @@ defmodule BoomLooperWeb.ChatLive do
       # Ensure the branch supervisor subtree is running
       branch_id = BoomLooper.ProjectRegistry.branch_id(workspace.path)
       BoomLooper.BranchSupervisor.start_branch(branch_id, workspace.path)
+      BoomLooper.ProjectRegistry.update_branch_status(branch_id, :running)
 
       ChatAgent.subscribe()
       BoomLooper.Workspace.ServiceManager.subscribe()

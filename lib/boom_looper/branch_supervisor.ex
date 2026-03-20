@@ -30,7 +30,9 @@ defmodule BoomLooper.BranchSupervisor do
   def stop_branch(branch_id) do
     case BoomLooper.Branch.whereis(branch_id) do
       nil -> {:error, :not_found}
-      pid -> Supervisor.stop(pid, :normal, 15_000)
+      pid ->
+        DynamicSupervisor.terminate_child(__MODULE__, pid)
+        :ok
     end
   end
 
