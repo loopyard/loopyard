@@ -22,6 +22,7 @@ defmodule BoomLooperWeb.Router do
     live "/p/:project_id/b/:branch_id/chat/:id/container", ChatLive, :container
     live "/p/:project_id/b/:branch_id/services", ChatLive, :services
     live "/p/:project_id/b/:branch_id/service/:service_name", ChatLive, :service
+    live "/p/:project_id/b/:branch_id/service/:service_name/console", ChatLive, :console
 
     live "/system", SystemLive, :index
 

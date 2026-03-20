@@ -67,7 +67,8 @@ defmodule BoomLooperWeb.ChatLive do
      |> assign(:service_logs, "")
      |> assign(:all_service_logs, [])
      |> assign(:build_log, "")
-     |> assign(:building, false)}
+     |> assign(:building, false)
+     |> assign(:console_container, nil)}
   end
 
   @impl true
@@ -136,6 +137,19 @@ defmodule BoomLooperWeb.ChatLive do
      |> assign(:selected_service, service_name)
      |> assign(:service_logs, logs)
      |> assign(:all_service_logs, [])}
+  end
+
+  def handle_params(%{"service_name" => service_name}, _uri, %{assigns: %{live_action: :console}} = socket) do
+    # Find the container name for this service
+    svc = Enum.find(socket.assigns.service_statuses, &(&1.name == service_name))
+    container = if svc, do: svc.container, else: nil
+
+    {:noreply,
+     socket
+     |> assign(:selected_id, nil)
+     |> assign(:selected_agent, nil)
+     |> assign(:selected_service, service_name)
+     |> assign(:console_container, container)}
   end
 
   def handle_params(_params, _uri, %{assigns: %{live_action: :services}} = socket) do
@@ -946,7 +960,8 @@ defmodule BoomLooperWeb.ChatLive do
         <.sidebar agents={@agents} selected_id={@selected_id} workspace_id={@workspace.id} project={@project} branch={@branch} service_statuses={@service_statuses} selected_service={@selected_service} />
         <main class="flex-1 flex flex-col min-w-0">
           <.new_agent_screen :if={@live_action == :new} available_checklists={@available_checklists} selected_checklist={@selected_checklist} workspace={@workspace} base_path={@base_path} />
-          <.service_log_view :if={@live_action == :service} service_name={@selected_service} service_statuses={@service_statuses} logs={@service_logs} />
+          <.service_log_view :if={@live_action == :service} service_name={@selected_service} service_statuses={@service_statuses} logs={@service_logs} base_path={@base_path} />
+          <.console_view :if={@live_action == :console} service_name={@selected_service} container={@console_container} />
           <.all_services_view :if={@live_action == :services} all_service_logs={@all_service_logs} />
           <.booting_screen :if={@live_action not in [:new, :service, :services] && @booting_agent_id && !@selected_agent} agent_id={@booting_agent_id} status={@boot_status} boot_log={@boot_log} />
           <.empty_state :if={@live_action not in [:new, :service, :services] && !@booting_agent_id && !@selected_agent} />
@@ -1484,12 +1499,40 @@ defmodule BoomLooperWeb.ChatLive do
           class="text-xs font-mono text-violet-500 hover:text-violet-400 transition-colors">
           localhost:{@first_port}
         </a>
-        <button phx-click="spawn_service_agent" phx-value-service_name={@service_name}
-          class="ml-auto text-xs font-medium text-violet-600 dark:text-violet-400 hover:text-violet-500 transition-colors">
-          + Debug Agent
-        </button>
+        <div class="ml-auto flex items-center gap-3">
+          <.link navigate={"#{@base_path}/service/#{@service_name}/console"}
+            class="text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors">
+            Console
+          </.link>
+          <button phx-click="spawn_service_agent" phx-value-service_name={@service_name}
+            class="text-xs font-medium text-violet-600 dark:text-violet-400 hover:text-violet-500 transition-colors">
+            + Debug Agent
+          </button>
+        </div>
       </div>
       <pre class="flex-1 px-4 py-3 text-xs font-mono overflow-auto whitespace-pre-wrap bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-green-400">{@logs}</pre>
+    </div>
+    """
+  end
+
+  defp console_view(assigns) do
+    ~H"""
+    <div class="flex-1 flex flex-col min-h-0">
+      <div class="flex-none border-b border-zinc-200 dark:border-zinc-700/80 px-4 md:px-5 h-12 flex items-center gap-3">
+        <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{@service_name}</span>
+        <span class="text-xs text-zinc-400 dark:text-zinc-500">console</span>
+      </div>
+      <div
+        :if={@container}
+        id={"terminal-#{@container}"}
+        phx-hook="Terminal"
+        data-container={@container}
+        phx-update="ignore"
+        class="flex-1 bg-zinc-950 p-2"
+      ></div>
+      <div :if={!@container} class="flex-1 flex items-center justify-center">
+        <p class="text-sm text-zinc-400">Service not running</p>
+      </div>
     </div>
     """
   end

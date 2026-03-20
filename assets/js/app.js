@@ -1,8 +1,10 @@
 import "phoenix_html"
 import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
+import {createTerminalHook} from "./terminal"
 
 let Hooks = {}
+Hooks.Terminal = createTerminalHook()
 
 // Auto-scrolls messages to bottom on new content
 Hooks.ScrollBottom = {

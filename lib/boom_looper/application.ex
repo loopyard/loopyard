@@ -17,6 +17,8 @@ defmodule BoomLooper.Application do
       {Registry, keys: :unique, name: BoomLooper.ServiceManagerRegistry},
       {Registry, keys: :unique, name: BoomLooper.BranchRegistry},
       {Registry, keys: :unique, name: BoomLooper.BranchAgentRegistry},
+      {Registry, keys: :unique, name: BoomLooper.TerminalRegistry},
+      {DynamicSupervisor, name: BoomLooper.TerminalSupervisor, strategy: :one_for_one},
       BoomLooper.BranchSupervisor,
       BoomLooperWeb.Endpoint
     ]
