@@ -10,8 +10,9 @@ defmodule BoomLooperWeb.ChatLiveTest do
     hive_dir = Path.join(tmp_dir, ".hive")
     File.mkdir_p!(hive_dir)
     File.write!(Path.join(hive_dir, "workspace.json"), Jason.encode!(%{"name" => "test"}))
-    {:ok, ws} = BoomLooper.WorkspaceRegistry.add(tmp_dir)
-    {ws, tmp_dir}
+    {:ok, _project, branch} = BoomLooper.ProjectRegistry.add(tmp_dir)
+    # Return branch as workspace-compatible map
+    {branch, tmp_dir}
   end
 
   setup do
@@ -20,9 +21,9 @@ defmodule BoomLooperWeb.ChatLiveTest do
     %{workspace: ws, tmp_dir: tmp_dir}
   end
 
-  defp ws_path(ws), do: "/w/#{ws.id}"
-  defp ws_new_path(ws), do: "/w/#{ws.id}/new"
-  defp ws_chat_path(ws, id), do: "/w/#{ws.id}/chat/#{id}"
+  defp ws_path(ws), do: "/p/#{ws.project_id}/b/#{ws.id}"
+  defp ws_new_path(ws), do: "/p/#{ws.project_id}/b/#{ws.id}/new"
+  defp ws_chat_path(ws, id), do: "/p/#{ws.project_id}/b/#{ws.id}/chat/#{id}"
 
   # Flush the LiveView mailbox by rendering, ensuring PubSub messages are processed.
   # We subscribe + drain to confirm delivery, then render the view.

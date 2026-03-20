@@ -26,18 +26,11 @@ defmodule BoomLooperWeb.ChatLive do
       workspace = %{id: branch.id, path: branch.path, name: project.name}
       mount_with_workspace(socket, workspace, %{project: project, branch: branch})
     else
-      # Fall back to old WorkspaceRegistry for backwards compat
-      workspace = BoomLooper.WorkspaceRegistry.get(workspace_id)
-
-      unless workspace do
-        {:ok, push_navigate(socket, to: "/")}
-      else
-        mount_with_workspace(socket, workspace)
-      end
+      {:ok, push_navigate(socket, to: "/")}
     end
   end
 
-  defp mount_with_workspace(socket, workspace, extra_assigns \\ %{}) do
+  defp mount_with_workspace(socket, workspace, extra_assigns) do
     if connected?(socket) do
       # Ensure the branch supervisor subtree is running
       branch_id = BoomLooper.ProjectRegistry.branch_id(workspace.path)

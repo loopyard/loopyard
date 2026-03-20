@@ -53,6 +53,27 @@ defmodule BoomLooper.Docker do
     build_from_string(workspace_image_name(workspace_id), dockerfile)
   end
 
+  @doc "Get the host port mappings for a container. Returns %{container_port => host_port}."
+  def container_ports(container_name) do
+    case docker(["port", container_name]) do
+      {:ok, output} ->
+        output
+        |> String.split("\n", trim: true)
+        |> Map.new(fn line ->
+          # Format: "3000/tcp -> 0.0.0.0:49152"
+          case Regex.run(~r/(\d+)\/\w+\s+->\s+[\d.]+:(\d+)/, line) do
+            [_, container_port, host_port] -> {container_port, host_port}
+            _ -> {line, nil}
+          end
+        end)
+        |> Enum.reject(fn {_, v} -> is_nil(v) end)
+        |> Map.new()
+
+      {:error, _} ->
+        %{}
+    end
+  end
+
   @doc "Check if a container is running by name"
   def container_running?(container_name) do
     case docker(["inspect", "-f", "{{.State.Running}}", container_name]) do

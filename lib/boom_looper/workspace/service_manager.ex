@@ -229,10 +229,17 @@ defmodule BoomLooper.Workspace.ServiceManager do
       container = process_container_name(state.workspace_id, p.name)
       Docker.docker(["rm", "-f", container])
 
+      # Use dynamic host ports (-p 0:container_port) to avoid conflicts between branches
       port_args =
         case p[:ports] do
-          ports when is_list(ports) -> Enum.flat_map(ports, fn ps -> ["-p", ps] end)
-          ports when is_map(ports) -> Enum.flat_map(ports, fn {h, c} -> ["-p", "#{h}:#{c}"] end)
+          ports when is_list(ports) ->
+            Enum.flat_map(ports, fn ps ->
+              # "3000:3000" -> "-p 0:3000" (let Docker pick host port)
+              container_port = ps |> String.split(":") |> List.last()
+              ["-p", "0:#{container_port}"]
+            end)
+          ports when is_map(ports) ->
+            Enum.flat_map(ports, fn {_h, c} -> ["-p", "0:#{c}"] end)
           _ -> []
         end
 
@@ -258,9 +265,12 @@ defmodule BoomLooper.Workspace.ServiceManager do
     Docker.ensure_network()
 
     env_args = Enum.flat_map(service[:env] || %{}, fn {k, v} -> ["-e", "#{k}=#{v}"] end)
+    # Dynamic host ports for stock services too
     port_args = Enum.flat_map(service[:ports] || [], fn
-      {host, cp} -> ["-p", "#{host}:#{cp}"]
-      port_str when is_binary(port_str) -> ["-p", port_str]
+      {_host, cp} -> ["-p", "0:#{cp}"]
+      port_str when is_binary(port_str) ->
+        container_port = port_str |> String.split(":") |> List.last()
+        ["-p", "0:#{container_port}"]
     end)
 
     vol_name = service_volume_name(state.workspace_id, service.name)
@@ -285,14 +295,17 @@ defmodule BoomLooper.Workspace.ServiceManager do
   defp build_stock_statuses(state) do
     Enum.map(state.services, fn {name, service} ->
       container = service_container_name(state.workspace_id, name)
+      running = Docker.container_running?(container)
+      # Get actual host ports (dynamic allocation)
+      ports = if running, do: Docker.container_ports(container), else: %{}
 
       %{
         name: name,
         image: service[:image],
         type: :stock,
-        running: Docker.container_running?(container),
+        running: running,
         container: container,
-        ports: service[:ports] || %{}
+        ports: ports
       }
     end)
   end
@@ -300,14 +313,17 @@ defmodule BoomLooper.Workspace.ServiceManager do
   defp build_process_statuses(state) do
     Enum.map(state.processes, fn p ->
       container = process_container_name(state.workspace_id, p.name)
+      running = Docker.container_running?(container)
+      # Get actual host ports (dynamic allocation)
+      ports = if running, do: Docker.container_ports(container), else: %{}
 
       %{
         name: p.name,
         command: p.command,
         type: :process,
-        running: Docker.container_running?(container),
+        running: running,
         container: container,
-        ports: normalize_ports(p[:ports])
+        ports: ports
       }
     end)
   end
@@ -327,18 +343,6 @@ defmodule BoomLooper.Workspace.ServiceManager do
       []
     end
   end
-
-  defp normalize_ports(ports) when is_list(ports) do
-    Enum.into(ports, %{}, fn port_str ->
-      case String.split(port_str, ":") do
-        [h, c] -> {h, c}
-        [p] -> {p, p}
-      end
-    end)
-  end
-
-  defp normalize_ports(ports) when is_map(ports), do: ports
-  defp normalize_ports(_), do: %{}
 
   defp broadcast_service_update(state) do
     all_statuses = build_workspace_status(state) ++ build_process_statuses(state) ++ build_stock_statuses(state)
