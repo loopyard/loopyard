@@ -4,49 +4,68 @@ defmodule BoomLooperWeb.ChatLive do
   alias BoomLooper.ChatAgent
 
   @impl true
+  def mount(%{"project_id" => project_id, "branch_id" => branch_id}, _session, socket) do
+    project = BoomLooper.ProjectRegistry.get_project(project_id)
+    branch = BoomLooper.ProjectRegistry.get_branch(branch_id)
+
+    unless project && branch do
+      {:ok, push_navigate(socket, to: "/")}
+    else
+      # Build workspace-compatible shape for the rest of ChatLive
+      workspace = %{id: branch.id, path: branch.path, name: project.name}
+      mount_with_workspace(socket, workspace, %{project: project, branch: branch})
+    end
+  end
+
   def mount(%{"workspace_id" => workspace_id}, _session, socket) do
     workspace = BoomLooper.WorkspaceRegistry.get(workspace_id)
 
     unless workspace do
       {:ok, push_navigate(socket, to: "/")}
     else
-      if connected?(socket) do
-        ChatAgent.subscribe()
-        BoomLooper.Workspace.ServiceManager.subscribe()
-        maybe_start_services(workspace.path)
-      end
-
-      agents = list_workspace_agents(workspace.path)
-      service_statuses = fetch_service_statuses(workspace.path)
-
-      {:ok,
-       socket
-       |> assign(:workspace, workspace)
-       |> assign(:agents, agents)
-       |> assign(:service_statuses, service_statuses)
-       |> assign(:selected_id, nil)
-       |> assign(:selected_agent, nil)
-       |> assign(:messages, [])
-       |> assign(:streaming_text, "")
-       |> assign(:tab, :chat)
-       |> assign(:container_logs, "")
-       |> assign(:container_env, nil)
-       |> assign(:container_log_service, nil)
-       |> assign(:has_container, false)
-       |> assign(:booting_agent_id, nil)
-       |> assign(:booting_agent_name, nil)
-       |> assign(:boot_status, "Initializing...")
-       |> assign(:boot_log, [])
-       |> assign(:available_checklists, [])
-       |> assign(:checklist_progress, nil)
-       |> assign(:selected_checklist, nil)
-       |> assign(:editing_name, false)
-       |> assign(:selected_service, nil)
-       |> assign(:service_logs, "")
-       |> assign(:all_service_logs, [])
-       |> assign(:build_log, "")
-       |> assign(:building, false)}
+      mount_with_workspace(socket, workspace)
     end
+  end
+
+  defp mount_with_workspace(socket, workspace, extra_assigns \\ %{}) do
+    if connected?(socket) do
+      ChatAgent.subscribe()
+      BoomLooper.Workspace.ServiceManager.subscribe()
+      maybe_start_services(workspace.path)
+    end
+
+    agents = list_workspace_agents(workspace.path)
+    service_statuses = fetch_service_statuses(workspace.path)
+
+    {:ok,
+     socket
+     |> assign(:workspace, workspace)
+     |> assign(:project, extra_assigns[:project])
+     |> assign(:branch, extra_assigns[:branch])
+     |> assign(:agents, agents)
+     |> assign(:service_statuses, service_statuses)
+     |> assign(:selected_id, nil)
+     |> assign(:selected_agent, nil)
+     |> assign(:messages, [])
+     |> assign(:streaming_text, "")
+     |> assign(:tab, :chat)
+     |> assign(:container_logs, "")
+     |> assign(:container_env, nil)
+     |> assign(:container_log_service, nil)
+     |> assign(:has_container, false)
+     |> assign(:booting_agent_id, nil)
+     |> assign(:booting_agent_name, nil)
+     |> assign(:boot_status, "Initializing...")
+     |> assign(:boot_log, [])
+     |> assign(:available_checklists, [])
+     |> assign(:checklist_progress, nil)
+     |> assign(:selected_checklist, nil)
+     |> assign(:editing_name, false)
+     |> assign(:selected_service, nil)
+     |> assign(:service_logs, "")
+     |> assign(:all_service_logs, [])
+     |> assign(:build_log, "")
+     |> assign(:building, false)}
   end
 
   @impl true
@@ -563,7 +582,13 @@ defmodule BoomLooperWeb.ChatLive do
     :exit, _ -> []
   end
 
-  defp workspace_path(socket), do: "/w/#{socket.assigns.workspace.id}"
+  defp workspace_path(socket) do
+    if socket.assigns.project do
+      "/p/#{socket.assigns.project.id}/b/#{socket.assigns.branch.id}"
+    else
+      "/w/#{socket.assigns.workspace.id}"
+    end
+  end
 
   defp fetch_service_container_logs(service_statuses, service_name) do
     case Enum.find(service_statuses, &(&1.name == service_name)) do

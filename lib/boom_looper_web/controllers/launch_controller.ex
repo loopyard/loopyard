@@ -7,13 +7,13 @@ defmodule BoomLooperWeb.LaunchController do
     if Plug.Crypto.secure_compare(secret, expected) do
       path = Path.expand(path)
 
-      case BoomLooper.WorkspaceRegistry.add(path) do
-        {:ok, workspace} ->
-          # If workspace config exists, go straight to workspace
+      case BoomLooper.ProjectRegistry.add(path) do
+        {:ok, project, branch} ->
+          # If workspace config exists, go straight to branch view
           # Otherwise redirect to new agent (will auto-spawn Setup)
-          dest = case BoomLooper.Workspace.load(path) do
-            {:ok, _} -> "/w/#{workspace.id}"
-            _ -> "/w/#{workspace.id}/new"
+          dest = case BoomLooper.Workspace.load(project.path) do
+            {:ok, _} -> "/p/#{project.id}/b/#{branch.id}"
+            _ -> "/p/#{project.id}/b/#{branch.id}/new"
           end
           redirect(conn, to: dest)
 

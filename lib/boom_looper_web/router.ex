@@ -14,16 +14,27 @@ defmodule BoomLooperWeb.Router do
   scope "/", BoomLooperWeb do
     pipe_through :browser
 
-    live "/", WorkspaceLive, :index
+    live "/", ProjectListLive, :index
+    live "/p/:project_id", ProjectLive, :index
+    live "/p/:project_id/b/:branch_id", ChatLive, :index
+    live "/p/:project_id/b/:branch_id/new", ChatLive, :new
+    live "/p/:project_id/b/:branch_id/chat/:id", ChatLive, :chat
+    live "/p/:project_id/b/:branch_id/chat/:id/container", ChatLive, :container
+    live "/p/:project_id/b/:branch_id/services", ChatLive, :services
+    live "/p/:project_id/b/:branch_id/service/:service_name", ChatLive, :service
+
+    # Legacy workspace routes (redirect to project/branch)
     live "/w/:workspace_id", ChatLive, :index
     live "/w/:workspace_id/new", ChatLive, :new
     live "/w/:workspace_id/chat/:id", ChatLive, :chat
     live "/w/:workspace_id/chat/:id/container", ChatLive, :container
     live "/w/:workspace_id/services", ChatLive, :services
     live "/w/:workspace_id/service/:service_name", ChatLive, :service
+
     live "/system", SystemLive, :index
 
     get "/w/:workspace_id/chat/:id/msg/:index", OutputController, :show
+    get "/p/:project_id/b/:branch_id/chat/:id/msg/:index", OutputController, :show
     get "/launch/:secret", LaunchController, :launch
   end
 end

@@ -6,6 +6,7 @@ defmodule BoomLooper.Application do
   def start(_type, _args) do
     BoomLooper.ChatAgent.ensure_ets_table()
     BoomLooper.WorkspaceRegistry.ensure_ets_table()
+    BoomLooper.ProjectRegistry.ensure_ets_tables()
 
     # Generate a launch secret for CLI onramp
     secret = :crypto.strong_rand_bytes(16) |> Base.url_encode64(padding: false)
