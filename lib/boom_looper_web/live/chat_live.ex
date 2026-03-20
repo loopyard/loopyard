@@ -1181,10 +1181,6 @@ defmodule BoomLooperWeb.ChatLive do
       <div class="flex items-center gap-2 px-3 py-1.5 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
         <div class={"w-1.5 h-1.5 rounded-full flex-none #{@dot_class}"}></div>
         <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">{@label}</span>
-        <button :if={@msg_url} phx-hook="CopySource" id={"copy-build-#{System.unique_integer([:positive])}"} data-source={@msg_url} data-copy="fetch"
-          class="ml-auto text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors">
-          copy link
-        </button>
       </div>
       <pre class={"px-3 py-2 text-xs font-mono text-zinc-800 dark:text-green-400 bg-zinc-100 dark:bg-zinc-950 whitespace-pre-wrap overflow-y-auto #{if @status == :building, do: "max-h-64", else: "max-h-32"}"}>{@content}</pre>
     </div>
@@ -1415,23 +1411,20 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   defp chat_msg(%{msg: %{role: :build}} = assigns) do
-    assigns = assign(assigns, :msg_url, msg_url(assigns))
     ~H"""
-    <.build_log_inline content={@msg.content} status={:building} msg_url={@msg_url} />
+    <.build_log_inline content={@msg.content} status={:building} />
     """
   end
 
   defp chat_msg(%{msg: %{role: :build_done}} = assigns) do
-    assigns = assign(assigns, :msg_url, msg_url(assigns))
     ~H"""
-    <.build_log_inline content={@msg.content} status={:done} msg_url={@msg_url} />
+    <.build_log_inline content={@msg.content} status={:done} />
     """
   end
 
   defp chat_msg(%{msg: %{role: :build_failed}} = assigns) do
-    assigns = assign(assigns, :msg_url, msg_url(assigns))
     ~H"""
-    <.build_log_inline content={@msg.content} status={:failed} msg_url={@msg_url} />
+    <.build_log_inline content={@msg.content} status={:failed} />
     """
   end
 

@@ -104,7 +104,13 @@ Hooks.CopySource = {
 
       const mode = this.el.dataset.copy || "text"
       if (mode === "fetch") {
-        fetch(source).then(r => r.ok ? r.text() : source).then(copyText)
+        fetch(source).then(r => {
+          if (r.ok && (r.headers.get("content-type") || "").includes("text/plain")) {
+            return r.text()
+          }
+          // Failed — copy nothing, show error
+          return "[content unavailable]"
+        }).then(copyText)
       } else {
         copyText(source)
       }
