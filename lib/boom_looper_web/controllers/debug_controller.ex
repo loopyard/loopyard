@@ -8,15 +8,13 @@ defmodule BoomLooperWeb.DebugController do
 
     agent_summary = agents
     |> Enum.map(fn a ->
-      session_alive = try do
-        BoomLooper.Agent.Backend.ClaudeCode.session_alive?(a[:session])
-      rescue
-        _ -> "unknown"
-      catch
-        _ -> "unknown"
+      # Check if the GenServer process is alive (session PID is not in ETS summary)
+      process_alive = case Registry.lookup(BoomLooper.ChatAgentRegistry, a.id) do
+        [{pid, _}] -> Process.alive?(pid)
+        [] -> false
       end
 
-      "  #{a.name} (#{a.id |> String.slice(0..7)}) status=#{a.status} errors=#{a.errors} tools=#{a.tool_calls} session=#{session_alive}"
+      "  #{a.name} (#{a.id |> String.slice(0..7)}) status=#{a.status} errors=#{a.errors} tools=#{a.tool_calls} process=#{process_alive}"
     end)
     |> Enum.join("\n")
 
