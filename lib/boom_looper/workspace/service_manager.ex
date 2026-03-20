@@ -289,7 +289,11 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
     vol_name = service_volume_name(state.workspace_id, service.name)
     Docker.docker(["volume", "create", vol_name])
-    volume_args = Enum.flat_map(service[:volumes] || [], fn spec -> ["-v", "#{spec}"] end)
+
+    # Auto-mount data volume for known service types + any custom volumes
+    auto_volume = auto_data_volume(service[:image], vol_name)
+    custom_volumes = Enum.flat_map(service[:volumes] || [], fn spec -> ["-v", "#{spec}"] end)
+    volume_args = auto_volume ++ custom_volumes
 
     args =
       ["run", "-d", "--name", container, "--network", Docker.network_name()] ++
@@ -361,6 +365,20 @@ defmodule BoomLooper.Workspace.ServiceManager do
       []
     end
   end
+
+  # Auto-detect data volume mount path for known service images
+  defp auto_data_volume(image, vol_name) when is_binary(image) do
+    cond do
+      String.contains?(image, "postgres") -> ["-v", "#{vol_name}:/var/lib/postgresql/data"]
+      String.contains?(image, "redis") -> ["-v", "#{vol_name}:/data"]
+      String.contains?(image, "mysql") || String.contains?(image, "mariadb") -> ["-v", "#{vol_name}:/var/lib/mysql"]
+      String.contains?(image, "mongo") -> ["-v", "#{vol_name}:/data/db"]
+      String.contains?(image, "elasticsearch") || String.contains?(image, "opensearch") -> ["-v", "#{vol_name}:/usr/share/elasticsearch/data"]
+      true -> []
+    end
+  end
+
+  defp auto_data_volume(_, _), do: []
 
   # Build -p args with dynamic host ports (0:container_port)
   defp dynamic_port_args(ports) when is_list(ports) do
