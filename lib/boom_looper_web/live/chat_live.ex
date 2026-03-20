@@ -1148,7 +1148,7 @@ defmodule BoomLooperWeb.ChatLive do
           copy link
         </button>
       </div>
-      <pre class={"px-3 py-2 text-xs font-mono text-green-400 dark:text-green-400 bg-zinc-950 whitespace-pre-wrap overflow-y-auto #{if @status == :building, do: "max-h-64", else: "max-h-32"}"}>{@content}</pre>
+      <pre class={"px-3 py-2 text-xs font-mono text-zinc-800 dark:text-green-400 bg-zinc-100 dark:bg-zinc-950 whitespace-pre-wrap overflow-y-auto #{if @status == :building, do: "max-h-64", else: "max-h-32"}"}>{@content}</pre>
     </div>
     """
   end
@@ -1273,13 +1273,13 @@ defmodule BoomLooperWeb.ChatLive do
       </div>
       <div class="flex-none border-t border-zinc-200 dark:border-zinc-700/80 p-3 md:p-4 safe-area-bottom">
         <form id="chat-form" phx-submit="send_message" phx-hook="ChatForm" class="flex gap-2">
-          <input
-            type="text" name="message" id="chat-input"
+          <textarea
+            name="message" id="chat-input" rows="1"
             placeholder={if @agent.status == :thinking, do: "Agent is #{thinking_word(@agent.id)}...", else: "Type a message..."}
             autocomplete="off"
             class="flex-1 rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-2.5 text-sm
-                   text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400
-                   focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400" />
+                   text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 resize-none
+                   focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"></textarea>
           <button type="submit"
             class="rounded-xl bg-violet-600 hover:bg-violet-700 px-4 py-2.5 text-sm font-medium text-white transition-colors flex-none">
             Send
@@ -1354,7 +1354,7 @@ defmodule BoomLooperWeb.ChatLive do
     ~H"""
     <div class="pl-10 py-0.5">
       <pre class={"p-3 rounded-lg text-xs font-mono overflow-x-auto max-h-80 overflow-y-auto whitespace-pre-wrap
-                   #{if @is_error, do: "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300", else: "bg-zinc-950 text-green-400"}"}>{@display}</pre>
+                   #{if @is_error, do: "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300", else: "bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-green-400"}"}>{@display}</pre>
       <div class="flex items-center gap-2 mt-1">
         <p :if={@truncated} class="text-[10px] text-zinc-400 dark:text-zinc-500">... truncated ({@line_count - 40} more lines)</p>
         <button :if={@msg_url} phx-hook="CopySource" id={"copy-result-#{@idx}"} data-source={@msg_url}
@@ -1466,7 +1466,7 @@ defmodule BoomLooperWeb.ChatLive do
           + Debug Agent
         </button>
       </div>
-      <pre class="flex-1 px-4 py-3 text-xs font-mono overflow-auto whitespace-pre-wrap bg-zinc-950 text-green-400">{@logs}</pre>
+      <pre class="flex-1 px-4 py-3 text-xs font-mono overflow-auto whitespace-pre-wrap bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-green-400">{@logs}</pre>
     </div>
     """
   end
@@ -1544,7 +1544,7 @@ defmodule BoomLooperWeb.ChatLive do
                      focus:outline-none focus:ring-1 focus:ring-violet-500/30" />
           </form>
         </div>
-        <pre class="flex-1 px-4 py-3 text-xs font-mono overflow-auto whitespace-pre-wrap bg-zinc-950 text-green-400 min-h-[200px]">{@logs}</pre>
+        <pre class="flex-1 px-4 py-3 text-xs font-mono overflow-auto whitespace-pre-wrap bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-green-400 min-h-[200px]">{@logs}</pre>
       </div>
     </div>
     """
@@ -1660,7 +1660,7 @@ defmodule BoomLooperWeb.ChatLive do
             <pre class="text-[10px] font-mono text-zinc-500 dark:text-zinc-500 overflow-x-auto whitespace-pre-wrap max-h-32 overflow-y-auto">{@container_env}</pre>
           </div>
           <div :if={@container_logs != ""}>
-            <pre class="text-[10px] font-mono bg-zinc-950 text-green-400 rounded p-2 overflow-auto whitespace-pre-wrap max-h-40">{@container_logs}</pre>
+            <pre class="text-[10px] font-mono bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-green-400 rounded p-2 overflow-auto whitespace-pre-wrap max-h-40">{@container_logs}</pre>
           </div>
         </div>
       </div>

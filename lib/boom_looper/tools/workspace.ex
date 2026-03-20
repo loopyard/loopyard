@@ -200,9 +200,10 @@ defmodule BoomLooper.Tools.Workspace do
                 Enum.each(agent_ids, &BoomLooper.ChatAgent.restart_session/1)
 
               {:error, reason} ->
+                error_line = reason |> String.split("\n") |> Enum.reject(&(&1 == "")) |> List.last() |> Kernel.||("unknown error")
                 Phoenix.PubSub.broadcast(BoomLooper.PubSub,
                   "chat_agent:#{agent_id}",
-                  {:chat_message, agent_id, %{role: :error, content: "Build failed: #{reason}", timestamp: DateTime.utc_now()}})
+                  {:chat_message, agent_id, %{role: :error, content: "Docker build failed: #{error_line}", timestamp: DateTime.utc_now()}})
             end
           end)
 

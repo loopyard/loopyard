@@ -17,12 +17,34 @@ Hooks.ScrollBottom = {
 // Clears input after submit, focuses on agent select
 Hooks.ChatForm = {
   mounted() {
+    const textarea = this.el.querySelector("#chat-input")
+
+    // Enter submits, Shift+Enter adds newline
+    if (textarea) {
+      textarea.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault()
+          this.el.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }))
+        }
+      })
+
+      // Auto-resize textarea
+      textarea.addEventListener("input", () => {
+        textarea.style.height = "auto"
+        textarea.style.height = Math.min(textarea.scrollHeight, 200) + "px"
+      })
+    }
+
     this.el.addEventListener("submit", () => {
-      const input = this.el.querySelector("#chat-input")
-      if (input) {
-        setTimeout(() => { input.value = ""; input.focus() }, 10)
+      if (textarea) {
+        setTimeout(() => {
+          textarea.value = ""
+          textarea.style.height = "auto"
+          textarea.focus()
+        }, 10)
       }
     })
+
     this.handleEvent("focus_input", () => {
       setTimeout(() => {
         const input = document.getElementById("chat-input")

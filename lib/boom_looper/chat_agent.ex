@@ -413,30 +413,19 @@ defmodule BoomLooper.ChatAgent do
       |> length()
 
     if is_binary(reason) && String.contains?(reason, "CLI session exited") && recent_crashes < 2 do
-      # CLI died — show crash, auto-restart, and continue (max 2 retries per minute)
-      crash_msg = %{role: :system, content: "Agent crashed — restarting...", timestamp: now}
-      state = %{state | messages: state.messages ++ [crash_msg], last_activity_at: now, errors: state.errors + 1}
-      broadcast("chat_agent:#{id}", {:chat_message, id, crash_msg})
+      # CLI died — restart session but don't replay (let user decide what to do)
+      state = %{state | last_activity_at: now, errors: state.errors + 1}
 
       case state.backend.start_session(state.session_opts) do
         {:ok, new_session} ->
-          recovered_msg = %{role: :system, content: "Recovered. Continuing...", timestamp: DateTime.utc_now()}
-          state = %{state | session: new_session, messages: state.messages ++ [recovered_msg]}
+          recovered_msg = %{role: :system, content: "Agent session restarted. Send a message to continue.", timestamp: DateTime.utc_now()}
+          state = %{state | session: new_session, messages: state.messages ++ [recovered_msg], status: :idle}
           broadcast("chat_agent:#{id}", {:chat_message, id, recovered_msg})
-
-          # Retry the last user message
-          last_user_msg = state.messages |> Enum.reverse() |> Enum.find(&(&1.role == :user))
-
-          if last_user_msg do
-            GenServer.cast(self(), {:send_message, last_user_msg.content})
-          else
-            broadcast(@topic, {:chat_agent_status_changed, id, :idle})
-          end
-
-          {:noreply, %{state | status: :thinking}}
+          broadcast(@topic, {:chat_agent_status_changed, id, :idle})
+          {:noreply, state}
 
         {:error, _} ->
-          fail_msg = %{role: :error, content: "Agent crashed and failed to restart", timestamp: DateTime.utc_now()}
+          fail_msg = %{role: :error, content: "Agent session crashed and failed to restart", timestamp: DateTime.utc_now()}
           state = %{state | messages: state.messages ++ [fail_msg], status: :idle}
           broadcast("chat_agent:#{id}", {:chat_message, id, fail_msg})
           broadcast(@topic, {:chat_agent_status_changed, id, :idle})
