@@ -287,20 +287,29 @@ defmodule BoomLooper.Workspace.ServiceManager do
     Docker.docker(["rm", "-f", container])
     Docker.ensure_network()
 
-    vol_name = service_volume_name(state.workspace_id, service.name)
-    Docker.docker(["volume", "create", vol_name])
+    # Auto-mount named volumes for image's VOLUME declarations + any custom volumes
+    image_vols = Docker.image_volumes(service.image)
+    custom_vols = service[:volumes] || []
+    vol_base = service_volume_name(state.workspace_id, service.name)
 
-    # Mount volumes declared in service config
-    # Volumes use the branch-scoped volume name for isolation
-    volume_args = Enum.flat_map(service[:volumes] || [], fn spec ->
-      # Replace {data} placeholder with the branch-scoped volume name
-      mount = String.replace(spec, "{data}", vol_name)
+    volume_args =
+      image_vols
+      |> Enum.with_index()
+      |> Enum.flat_map(fn {path, idx} ->
+        vol_name = if idx == 0, do: vol_base, else: "#{vol_base}-#{idx}"
+        Docker.docker(["volume", "create", vol_name])
+        ["-v", "#{vol_name}:#{path}"]
+      end)
+
+    # Add any explicit custom volumes from config
+    custom_args = Enum.flat_map(custom_vols, fn spec ->
+      mount = String.replace(spec, "{data}", vol_base)
       ["-v", mount]
     end)
 
     args =
       ["run", "-d", "--name", container, "--network", Docker.network_name()] ++
-        env_args(service[:env]) ++ dynamic_port_args(service[:ports]) ++ volume_args ++ [service.image]
+        env_args(service[:env]) ++ dynamic_port_args(service[:ports]) ++ volume_args ++ custom_args ++ [service.image]
 
     case Docker.docker(args, timeout: 120_000) do
       {:ok, _} -> {:ok, :started}

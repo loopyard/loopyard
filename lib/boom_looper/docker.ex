@@ -74,6 +74,32 @@ defmodule BoomLooper.Docker do
     end
   end
 
+  @doc "Get VOLUME declarations from a Docker image. Returns list of paths."
+  def image_volumes(image_name) do
+    case docker(["inspect", image_name, "--format", "{{json .Config.Volumes}}"]) do
+      {:ok, output} ->
+        case Jason.decode(String.trim(output)) do
+          {:ok, volumes} when is_map(volumes) -> Map.keys(volumes)
+          _ -> []
+        end
+
+      {:error, _} ->
+        # Image might not be pulled yet — try pulling first
+        case docker(["pull", image_name], timeout: 120_000) do
+          {:ok, _} ->
+            case docker(["inspect", image_name, "--format", "{{json .Config.Volumes}}"]) do
+              {:ok, output} ->
+                case Jason.decode(String.trim(output)) do
+                  {:ok, volumes} when is_map(volumes) -> Map.keys(volumes)
+                  _ -> []
+                end
+              _ -> []
+            end
+          _ -> []
+        end
+    end
+  end
+
   @doc "Check if a container is running by name"
   def container_running?(container_name) do
     case docker(["inspect", "-f", "{{.State.Running}}", container_name]) do
