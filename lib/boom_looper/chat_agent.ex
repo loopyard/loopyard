@@ -638,6 +638,8 @@ defmodule BoomLooper.ChatAgent do
     Pass your agent_id "#{agent_id}" to every tool call.
 
     IMPORTANT: Do NOT use `exec` until AFTER you have set a Dockerfile and run `rebuild`. There is no container to exec into until the image is built.
+
+    IMPORTANT: NEVER install software via runtime scripts (docker exec apt-get, etc.). It doesn't persist — when the container restarts, it's gone. Everything must go through the Dockerfile or image selection. If a service needs an extension, use the right image or write a custom Dockerfile for that service.
     """
   end
 
