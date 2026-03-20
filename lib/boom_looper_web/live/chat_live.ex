@@ -824,6 +824,14 @@ defmodule BoomLooperWeb.ChatLive do
 
   defp first_host_port(_), do: nil
 
+  defp exit_reason(%{oom_killed: true}), do: "OOM killed"
+  defp exit_reason(%{error: error}) when is_binary(error), do: error
+  defp exit_reason(%{exit_code: 0}), do: "exited cleanly"
+  defp exit_reason(%{exit_code: 137}), do: "killed (SIGKILL)"
+  defp exit_reason(%{exit_code: 143}), do: "stopped (SIGTERM)"
+  defp exit_reason(%{exit_code: code}), do: "exit code #{code}"
+  defp exit_reason(_), do: "stopped"
+
   defp service_detail(%{image: image}) when is_binary(image), do: image
   defp service_detail(%{processes: procs}) when is_list(procs), do: Enum.join(procs, ", ")
   defp service_detail(%{command: cmd}) when is_binary(cmd), do: String.slice(cmd, 0..30)
@@ -1126,7 +1134,8 @@ defmodule BoomLooperWeb.ChatLive do
         class="text-[10px] text-violet-500 hover:text-violet-400 font-mono ml-auto flex-none transition-colors">
         :{@first_port}
       </a>
-      <span :if={!@first_port} class="text-[10px] text-zinc-400 dark:text-zinc-500 ml-auto font-mono truncate max-w-[100px]">{service_detail(@svc)}</span>
+      <span :if={!@first_port && @svc.running} class="text-[10px] text-zinc-400 dark:text-zinc-500 ml-auto font-mono truncate max-w-[100px]">{service_detail(@svc)}</span>
+      <span :if={!@svc.running && @svc[:exit_info]} class="text-[10px] text-red-500 ml-auto truncate max-w-[140px]">{exit_reason(@svc.exit_info)}</span>
     </div>
     """
   end

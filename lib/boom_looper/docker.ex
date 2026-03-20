@@ -82,6 +82,24 @@ defmodule BoomLooper.Docker do
     end
   end
 
+  @doc "Get container state details — running, exit code, error, OOM status."
+  def container_state(container_name) do
+    case docker(["inspect", "-f", "{{.State.Status}}|{{.State.ExitCode}}|{{.State.OOMKilled}}|{{.State.Error}}", container_name]) do
+      {:ok, output} ->
+        case output |> String.trim() |> String.split("|") do
+          [status, exit_code, oom, error] ->
+            %{
+              status: status,
+              exit_code: String.to_integer(exit_code),
+              oom_killed: oom == "true",
+              error: if(error == "", do: nil, else: error)
+            }
+          _ -> nil
+        end
+      _ -> nil
+    end
+  end
+
   @doc "Check if the workspace container is running"
   def workspace_container_running?(workspace_id) do
     container_running?(workspace_container_name(workspace_id))

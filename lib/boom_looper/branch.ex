@@ -20,7 +20,8 @@ defmodule BoomLooper.Branch do
 
     children = [
       {BoomLooper.Workspace.ServiceManager, project_dir: project_dir},
-      {DynamicSupervisor, name: agent_sup_name(branch_id), strategy: :one_for_one}
+      {DynamicSupervisor, name: agent_sup_name(branch_id), strategy: :one_for_one},
+      {BoomLooper.ContainerMonitor, project_dir: project_dir}
     ]
 
     Supervisor.init(children, strategy: :one_for_all)

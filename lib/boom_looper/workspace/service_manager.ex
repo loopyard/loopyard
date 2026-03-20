@@ -184,6 +184,12 @@ defmodule BoomLooper.Workspace.ServiceManager do
   end
 
   @impl true
+  def handle_cast(:broadcast_status, state) do
+    broadcast_service_update(state)
+    {:noreply, state}
+  end
+
+  @impl true
   def terminate(_reason, state) do
     # Clean up all Docker containers for this branch
     Enum.each(state.processes, fn p ->
@@ -314,8 +320,9 @@ defmodule BoomLooper.Workspace.ServiceManager do
     Enum.map(state.processes, fn p ->
       container = process_container_name(state.workspace_id, p.name)
       running = Docker.container_running?(container)
-      # Get actual host ports (dynamic allocation)
       ports = if running, do: Docker.container_ports(container), else: %{}
+      # Include exit info when not running so the UI can show WHY it died
+      exit_info = if !running, do: Docker.container_state(container), else: nil
 
       %{
         name: p.name,
@@ -323,7 +330,8 @@ defmodule BoomLooper.Workspace.ServiceManager do
         type: :process,
         running: running,
         container: container,
-        ports: ports
+        ports: ports,
+        exit_info: exit_info
       }
     end)
   end
