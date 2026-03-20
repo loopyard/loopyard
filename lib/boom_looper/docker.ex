@@ -125,8 +125,8 @@ defmodule BoomLooper.Docker do
     ports = Keyword.get(opts, :ports, [])
     command = Keyword.get(opts, :command, ["sleep", "infinity"])
 
-    # Remove any existing container with same name
-    docker(["rm", "-f", name])
+    # Remove stopped container with same name (but not running ones)
+    unless container_running?(name), do: docker(["rm", "-f", name])
 
     # Create cache volume
     docker(["volume", "create", cache_vol])

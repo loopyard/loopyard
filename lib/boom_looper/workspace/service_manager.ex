@@ -191,16 +191,30 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
   @impl true
   def terminate(_reason, state) do
+    require Logger
+
     # Clean up all Docker containers for this branch
     Enum.each(state.processes, fn p ->
-      Docker.docker(["rm", "-f", process_container_name(state.workspace_id, p.name)])
+      container = process_container_name(state.workspace_id, p.name)
+      case Docker.docker(["rm", "-f", container]) do
+        {:ok, _} -> :ok
+        {:error, reason} -> Logger.warning("[ServiceManager] Failed to remove #{container}: #{reason}")
+      end
     end)
 
     Enum.each(state.services, fn {name, _} ->
-      Docker.docker(["rm", "-f", service_container_name(state.workspace_id, name)])
+      container = service_container_name(state.workspace_id, name)
+      case Docker.docker(["rm", "-f", container]) do
+        {:ok, _} -> :ok
+        {:error, reason} -> Logger.warning("[ServiceManager] Failed to remove #{container}: #{reason}")
+      end
     end)
 
-    Docker.stop_workspace_container(state.workspace_id)
+    case Docker.stop_workspace_container(state.workspace_id) do
+      {:ok, _} -> :ok
+      {:error, reason} -> Logger.warning("[ServiceManager] Failed to stop workspace container: #{reason}")
+    end
+
     :ok
   end
 
@@ -353,12 +367,14 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
   defp build_workspace_status(state) do
     ws_container = Docker.workspace_container_name(state.workspace_id)
+    # Always check Docker directly — don't trust cached state
+    running = Docker.container_running?(ws_container)
 
-    if state.workspace_container_running do
+    if state.workspace_container_running || running do
       [%{
         name: "workspace",
         type: :workspace,
-        running: Docker.container_running?(ws_container),
+        running: running,
         container: ws_container,
         ports: %{}
       }]
