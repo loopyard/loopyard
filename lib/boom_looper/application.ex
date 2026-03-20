@@ -4,14 +4,14 @@ defmodule BoomLooper.Application do
 
   @impl true
   def start(_type, _args) do
-    BoomLooper.ChatAgent.ensure_ets_table()
-    BoomLooper.ProjectRegistry.ensure_ets_tables()
-
     # Generate a launch secret for CLI onramp
     secret = :crypto.strong_rand_bytes(16) |> Base.url_encode64(padding: false)
     Application.put_env(:boom_looper, :launch_secret, secret)
 
     children = [
+      # --- Infrastructure layer (survives web reloads) ---
+      # StateKeeper owns ETS tables — must start first, lives longest
+      BoomLooper.StateKeeper,
       {Phoenix.PubSub, name: BoomLooper.PubSub},
       {Registry, keys: :unique, name: BoomLooper.ChatAgentRegistry},
       {Registry, keys: :unique, name: BoomLooper.ServiceManagerRegistry},
@@ -20,6 +20,8 @@ defmodule BoomLooper.Application do
       {Registry, keys: :unique, name: BoomLooper.TerminalRegistry},
       {DynamicSupervisor, name: BoomLooper.TerminalSupervisor, strategy: :one_for_one},
       BoomLooper.BranchSupervisor,
+
+      # --- Web layer (can restart independently) ---
       BoomLooperWeb.Endpoint
     ]
 
