@@ -18,15 +18,24 @@ All UI state that matters is server-driven (assigns, PubSub). Never rely on clie
 - Interactive terminal console for any service container (xterm.js + WebSocket).
 - Launch from terminal: `open "http://localhost:4000/launch/SECRET?path=$(pwd)"`
 
-## Debugging
+## System tools
 
-When things break, dump system state:
+All under `/system/`. Plain text responses for easy scripting.
 
 ```bash
-curl localhost:4000/debug
+# Dump system state — agents, containers, branches, event log
+curl localhost:4000/system/debug
+
+# Nuclear reset — kill all branches, agents, containers. Web stays up.
+curl -X POST localhost:4000/system/reset
+
+# Kill only Docker containers, keep agent state
+curl -X POST localhost:4000/system/reset/containers
 ```
 
-Returns plain text: running agents (with session alive status), Docker containers, and the last 100 event log entries. Paste the output into a conversation for diagnosis.
+**Debug output** includes: branches (with supervisor status), agents (with CLI session alive check), Docker containers, and the last 100 event log entries. Paste the output into a conversation for diagnosis.
+
+**Reset** cascades through the supervisor tree: stops all branches → ServiceManager.terminate kills containers → agents die → ETS cleared. The web layer stays up. Go to `/` and start fresh.
 
 The `BoomLooper.EventLog` captures lifecycle events: agent starts/stops, CLI session crashes/restarts, stream errors, ServiceManager shutdowns. All events are timestamped with source labels.
 
