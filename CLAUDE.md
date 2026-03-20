@@ -185,6 +185,21 @@ Don't cache Docker container state as booleans in GenServer state. Always query 
 
 Use a flag (e.g., `rebuilding: true`) to prevent concurrent operations that would conflict. `start_services` during a rebuild should return an error, not silently race.
 
+### Separation of concerns: views vs infrastructure
+
+The app has two independent layers:
+
+1. **Infrastructure layer** — StateKeeper (ETS owner), PubSub, Registries, BranchSupervisor, ServiceManagers, ChatAgents. This runs containers, manages agent lifecycles, and holds all state. It survives web layer restarts and hot reloads.
+
+2. **Web layer** — LiveViews, Controllers, Channels, Endpoint. This reads state from infrastructure (ETS, GenServer calls) and renders UI. It can restart independently without affecting running agents or containers.
+
+**Rules:**
+- Views are read-only on mount — they observe state, they don't create it
+- Infrastructure modules never import or depend on web modules
+- ETS tables are owned by StateKeeper, not by the Application process
+- Hot-reloading a LiveView file must not affect running agents or containers
+- Every message is a resource with its own URL (LiveView page + raw text endpoint)
+
 ### Tests skip external dependencies by default
 
 `ChatAgent` does not create Docker containers on init — containers are managed by `ServiceManager` within the branch supervisor tree. Only tests tagged `@tag :docker` should actually create containers.

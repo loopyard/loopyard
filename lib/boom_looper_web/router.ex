@@ -26,7 +26,8 @@ defmodule BoomLooperWeb.Router do
 
     live "/system", SystemLive, :index
 
-    get "/p/:project_id/b/:branch_id/chat/:id/msg/:index", OutputController, :show
+    live "/p/:project_id/b/:branch_id/chat/:id/msg/:index", MessageLive, :show
+    get "/p/:project_id/b/:branch_id/chat/:id/msg/:index/raw", OutputController, :show
     get "/launch/:secret", LaunchController, :launch
   end
 end

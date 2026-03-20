@@ -29,25 +29,25 @@ defmodule BoomLooperWeb.OutputControllerTest do
     end
 
     test "returns 403 without token", %{conn: conn, agent_id: id} do
-      conn = get(conn, "/p/test/b/test/chat/#{id}/msg/0")
+      conn = get(conn, "/p/test/b/test/chat/#{id}/msg/0/raw")
       assert response(conn, 403) =~ "Missing token"
     end
 
     test "returns 403 with invalid token", %{conn: conn, agent_id: id} do
-      conn = get(conn, "/p/test/b/test/chat/#{id}/msg/0?token=bogus")
+      conn = get(conn, "/p/test/b/test/chat/#{id}/msg/0/raw?token=bogus")
       assert response(conn, 403) =~ "expired or invalid"
     end
 
     test "returns message content with valid signed URL", %{conn: conn, agent_id: id} do
       # The first message should be the user message "test message"
-      url = BoomLooperWeb.OutputController.signed_url("test", id, 0)
+      url = BoomLooperWeb.OutputController.raw_url("test", id, 0)
       conn = get(conn, url)
       assert response(conn, 200) == "test message"
       assert response_content_type(conn, :text)
     end
 
     test "returns 404 for out of bounds index", %{conn: conn, agent_id: id} do
-      url = BoomLooperWeb.OutputController.signed_url("test", id, 999)
+      url = BoomLooperWeb.OutputController.raw_url("test", id, 999)
       conn = get(conn, url)
       assert response(conn, 404)
     end

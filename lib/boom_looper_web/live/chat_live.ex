@@ -869,6 +869,10 @@ defmodule BoomLooperWeb.ChatLive do
     BoomLooperWeb.OutputController.signed_url(assigns.workspace_id, assigns.agent_id, assigns.idx)
   end
 
+  defp msg_raw_url(assigns) do
+    BoomLooperWeb.OutputController.raw_url(assigns.workspace_id, assigns.agent_id, assigns.idx)
+  end
+
   defp thinking_word(agent_id) do
     idx = :erlang.phash2({agent_id, div(System.system_time(:second), 3)}, length(@thinking_words))
     Enum.at(@thinking_words, idx)
@@ -1188,7 +1192,7 @@ defmodule BoomLooperWeb.ChatLive do
       <div class="flex items-center gap-2 px-3 py-1.5 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
         <div class={"w-1.5 h-1.5 rounded-full flex-none #{@dot_class}"}></div>
         <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">{@label}</span>
-        <button :if={@msg_url} phx-hook="CopySource" id={"copy-build-#{System.unique_integer([:positive])}"} data-source={@msg_url} data-copy="fetch"
+        <button :if={@msg_raw_url} phx-hook="CopySource" id={"copy-build-#{System.unique_integer([:positive])}"} data-source={@msg_raw_url} data-copy="fetch"
           class="ml-auto text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors">
           copy link
         </button>
@@ -1346,7 +1350,7 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   defp chat_msg(%{msg: %{role: :assistant}} = assigns) do
-    assigns = assign(assigns, :url, msg_url(assigns))
+    assigns = assign(assigns, url: msg_url(assigns), raw_url: msg_raw_url(assigns))
 
     ~H"""
     <div class="flex gap-3 mt-3 mb-1 group/msg">
@@ -1354,9 +1358,9 @@ defmodule BoomLooperWeb.ChatLive do
         <span class="text-xs font-bold text-violet-600 dark:text-violet-400">C</span>
       </div>
       <div class="relative max-w-[85%] rounded-2xl rounded-tl-sm bg-zinc-100 dark:bg-zinc-800 px-4 py-2.5" id={"msg-#{hash_content(@msg.content)}"} phx-hook="Markdown" data-source={@msg.content}>
-        <button phx-hook="CopySource" id={"copy-#{hash_content(@msg.content)}"} data-source={@url} data-copy="fetch"
+        <button phx-hook="CopySource" id={"copy-#{hash_content(@msg.content)}"} data-source={@raw_url} data-copy="fetch"
           class="absolute top-2 right-2 p-1 rounded-md text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 opacity-0 group-hover/msg:opacity-100 transition-opacity"
-          title="Copy link">
+          title="Copy content">
           <svg class="w-3.5 h-3.5 copy-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
             <path d="M5.5 3.5A1.5 1.5 0 0 1 7 2h2.879a1.5 1.5 0 0 1 1.06.44l2.122 2.12a1.5 1.5 0 0 1 .439 1.061V9.5A1.5 1.5 0 0 1 12 11V8.621a3 3 0 0 0-.879-2.121L9 4.379A3 3 0 0 0 6.879 3.5H5.5Z" />
             <path d="M4 5a1.5 1.5 0 0 0-1.5 1.5v6A1.5 1.5 0 0 0 4 14h5a1.5 1.5 0 0 0 1.5-1.5V8.621a1.5 1.5 0 0 0-.44-1.06L7.94 5.439A1.5 1.5 0 0 0 6.878 5H4Z" />
@@ -1393,8 +1397,8 @@ defmodule BoomLooperWeb.ChatLive do
     lines = String.split(display, "\n")
     truncated = length(lines) > 40
     display = if truncated, do: Enum.take(lines, 40) |> Enum.join("\n"), else: display
-    url = msg_url(assigns)
-    assigns = assign(assigns, display: display, truncated: truncated, is_error: assigns.msg.is_error, line_count: length(lines), msg_url: url)
+    raw = msg_raw_url(assigns)
+    assigns = assign(assigns, display: display, truncated: truncated, is_error: assigns.msg.is_error, line_count: length(lines), msg_raw_url: raw)
 
     ~H"""
     <div class="pl-10 py-0.5">
@@ -1402,7 +1406,7 @@ defmodule BoomLooperWeb.ChatLive do
                    #{if @is_error, do: "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300", else: "bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-green-400"}"}>{@display}</pre>
       <div class="flex items-center gap-2 mt-1">
         <p :if={@truncated} class="text-[10px] text-zinc-400 dark:text-zinc-500">... truncated ({@line_count - 40} more lines)</p>
-        <button :if={@msg_url} phx-hook="CopySource" id={"copy-result-#{@idx}"} data-source={@msg_url} data-copy="fetch"
+        <button :if={@msg_raw_url} phx-hook="CopySource" id={"copy-result-#{@idx}"} data-source={@msg_raw_url} data-copy="fetch"
           class="text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors">copy link</button>
       </div>
     </div>
@@ -1422,23 +1426,23 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   defp chat_msg(%{msg: %{role: :build}} = assigns) do
-    assigns = assign(assigns, :url, msg_url(assigns))
+    assigns = assign(assigns, :raw, msg_raw_url(assigns))
     ~H"""
-    <.build_log_inline content={@msg.content} status={:building} msg_url={@url} />
+    <.build_log_inline content={@msg.content} status={:building} msg_raw_url={@raw} />
     """
   end
 
   defp chat_msg(%{msg: %{role: :build_done}} = assigns) do
-    assigns = assign(assigns, :url, msg_url(assigns))
+    assigns = assign(assigns, :raw, msg_raw_url(assigns))
     ~H"""
-    <.build_log_inline content={@msg.content} status={:done} msg_url={@url} />
+    <.build_log_inline content={@msg.content} status={:done} msg_raw_url={@raw} />
     """
   end
 
   defp chat_msg(%{msg: %{role: :build_failed}} = assigns) do
-    assigns = assign(assigns, :url, msg_url(assigns))
+    assigns = assign(assigns, :raw, msg_raw_url(assigns))
     ~H"""
-    <.build_log_inline content={@msg.content} status={:failed} msg_url={@url} />
+    <.build_log_inline content={@msg.content} status={:failed} msg_raw_url={@raw} />
     """
   end
 

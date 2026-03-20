@@ -20,10 +20,16 @@ defmodule BoomLooperWeb.OutputController do
     send_resp(conn, 403, "Missing token")
   end
 
-  @doc "Generate a signed URL for a message"
+  @doc "Generate a signed URL for a message (LiveView page)"
   def signed_url(workspace_id, agent_id, index) do
     token = Phoenix.Token.sign(BoomLooperWeb.Endpoint, "msg", "#{agent_id}:#{index}")
     "/p/#{workspace_id}/b/#{workspace_id}/chat/#{agent_id}/msg/#{index}?token=#{token}"
+  end
+
+  @doc "Generate a signed URL for raw text content (for clipboard)"
+  def raw_url(workspace_id, agent_id, index) do
+    token = Phoenix.Token.sign(BoomLooperWeb.Endpoint, "msg", "#{agent_id}:#{index}")
+    "/p/#{workspace_id}/b/#{workspace_id}/chat/#{agent_id}/msg/#{index}/raw?token=#{token}"
   end
 
   defp serve_message(conn, agent_id, index) do
