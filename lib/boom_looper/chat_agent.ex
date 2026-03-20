@@ -87,12 +87,23 @@ defmodule BoomLooper.ChatAgent do
     GenServer.cast(via(id), {:rename, new_name})
   end
 
-  @doc "Store build log output for this agent (called from workspace tools)"
+  @doc "Store build log output as a message in the agent's ETS state"
   def update_build_log(id, content) do
     ensure_ets_table()
     case :ets.lookup(@ets_table, id) do
       [{^id, summary}] ->
-        :ets.insert(@ets_table, {id, Map.put(summary, :build_log, content)})
+        build_msg = %{role: :build, content: content, timestamp: DateTime.utc_now()}
+        messages = summary.messages
+        messages =
+          if Enum.any?(messages, &(&1.role == :build)) do
+            Enum.map(messages, fn
+              %{role: :build} -> build_msg
+              other -> other
+            end)
+          else
+            messages ++ [build_msg]
+          end
+        :ets.insert(@ets_table, {id, %{summary | messages: messages}})
       [] -> :ok
     end
   end
