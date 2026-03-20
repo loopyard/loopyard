@@ -17,8 +17,28 @@ defmodule BoomLooperWeb.ChatLiveTest do
 
   setup do
     {ws, tmp_dir} = create_workspace()
-    on_exit(fn -> File.rm_rf!(tmp_dir) end)
-    %{workspace: ws, tmp_dir: tmp_dir}
+
+    # Create an agent so the branch view doesn't redirect to /new
+    setup_agent_id = "setup-#{:rand.uniform(100_000)}"
+    {:ok, _pid} = BoomLooper.TestHelpers.start_agent(
+      id: setup_agent_id,
+      name: "Test Agent",
+      working_dir: tmp_dir,
+      bind_mount: tmp_dir,
+      started_by: "test"
+    )
+
+    on_exit(fn ->
+      try do
+        BoomLooper.ChatAgent.stop_agent(setup_agent_id)
+      catch
+        :exit, _ -> :ok
+      end
+      Process.sleep(50)
+      File.rm_rf!(tmp_dir)
+    end)
+
+    %{workspace: ws, tmp_dir: tmp_dir, setup_agent_id: setup_agent_id}
   end
 
   defp ws_path(ws), do: "/p/#{ws.project_id}/b/#{ws.id}"
@@ -34,7 +54,7 @@ defmodule BoomLooperWeb.ChatLiveTest do
   end
 
   describe "mount" do
-    test "renders workspace chat page", %{conn: conn, workspace: ws} do
+    test "branch with agent renders chat page", %{conn: conn, workspace: ws} do
       {:ok, _view, html} = live(conn, ws_path(ws))
       assert html =~ "New Agent"
     end
@@ -102,9 +122,9 @@ defmodule BoomLooperWeb.ChatLiveTest do
   end
 
   describe "empty state" do
-    test "shows prompt to create or select agent", %{conn: conn, workspace: ws} do
+    test "branch with agent shows agents section", %{conn: conn, workspace: ws} do
       {:ok, _view, html} = live(conn, ws_path(ws))
-      assert html =~ "Create or select an agent"
+      assert html =~ "Agents"
     end
   end
 

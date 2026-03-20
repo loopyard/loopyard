@@ -151,6 +151,15 @@ defmodule BoomLooperWeb.ChatLive do
      |> assign(:service_logs, "")}
   end
 
+  def handle_params(_params, _uri, %{assigns: %{live_action: :index}} = socket) do
+    # If no agents and no services running, redirect to /new to kick things off
+    if socket.assigns.agents == [] && socket.assigns.service_statuses == [] do
+      {:noreply, push_navigate(socket, to: "#{branch_path(socket)}/new")}
+    else
+      {:noreply, assign(socket, :tab, :chat)}
+    end
+  end
+
   def handle_params(_params, _uri, socket), do: {:noreply, assign(socket, :tab, :chat)}
 
   # --- Events ---
