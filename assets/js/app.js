@@ -100,9 +100,8 @@ Hooks.CopySource = {
         })
       }
 
-      // data-fetch="true" means fetch the URL and copy the response
-      // Otherwise copy the source value directly
-      if (this.el.dataset.fetch === "true") {
+      const mode = this.el.dataset.copy || "text"
+      if (mode === "fetch") {
         fetch(source).then(r => r.ok ? r.text() : source).then(copyText)
       } else {
         copyText(source)
