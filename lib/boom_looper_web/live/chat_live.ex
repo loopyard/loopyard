@@ -1160,7 +1160,7 @@ defmodule BoomLooperWeb.ChatLive do
       <div class="flex items-center gap-2 px-3 py-1.5 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
         <div class={"w-1.5 h-1.5 rounded-full flex-none #{@dot_class}"}></div>
         <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">{@label}</span>
-        <button :if={@msg_url} phx-hook="CopySource" id={"copy-build-#{System.unique_integer([:positive])}"} data-source={@msg_url}
+        <button :if={@msg_url} phx-hook="CopySource" id={"copy-build-#{System.unique_integer([:positive])}"} data-source={@msg_url} data-fetch="true"
           class="ml-auto text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors">
           copy link
         </button>
@@ -1326,7 +1326,7 @@ defmodule BoomLooperWeb.ChatLive do
         <span class="text-xs font-bold text-violet-600 dark:text-violet-400">C</span>
       </div>
       <div class="relative max-w-[85%] rounded-2xl rounded-tl-sm bg-zinc-100 dark:bg-zinc-800 px-4 py-2.5" id={"msg-#{hash_content(@msg.content)}"} phx-hook="Markdown" data-source={@msg.content}>
-        <button phx-hook="CopySource" id={"copy-#{hash_content(@msg.content)}"} data-source={@url}
+        <button phx-hook="CopySource" id={"copy-#{hash_content(@msg.content)}"} data-source={@url} data-fetch="true"
           class="absolute top-2 right-2 p-1 rounded-md text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 opacity-0 group-hover/msg:opacity-100 transition-opacity"
           title="Copy link">
           <svg class="w-3.5 h-3.5 copy-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
@@ -1374,7 +1374,7 @@ defmodule BoomLooperWeb.ChatLive do
                    #{if @is_error, do: "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300", else: "bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-green-400"}"}>{@display}</pre>
       <div class="flex items-center gap-2 mt-1">
         <p :if={@truncated} class="text-[10px] text-zinc-400 dark:text-zinc-500">... truncated ({@line_count - 40} more lines)</p>
-        <button :if={@msg_url} phx-hook="CopySource" id={"copy-result-#{@idx}"} data-source={@msg_url}
+        <button :if={@msg_url} phx-hook="CopySource" id={"copy-result-#{@idx}"} data-source={@msg_url} data-fetch="true"
           class="text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors">copy link</button>
       </div>
     </div>

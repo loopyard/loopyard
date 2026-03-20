@@ -100,13 +100,10 @@ Hooks.CopySource = {
         })
       }
 
-      // If source is a URL path (signed message URL), fetch the content first
-      if (source.startsWith("/p/") || source.startsWith("/w/")) {
-        fetch(source).then(r => {
-          if (r.ok) return r.text()
-          // If fetch fails, copy the URL itself as fallback
-          return window.location.origin + source
-        }).then(copyText)
+      // data-fetch="true" means fetch the URL and copy the response
+      // Otherwise copy the source value directly
+      if (this.el.dataset.fetch === "true") {
+        fetch(source).then(r => r.ok ? r.text() : source).then(copyText)
       } else {
         copyText(source)
       }
