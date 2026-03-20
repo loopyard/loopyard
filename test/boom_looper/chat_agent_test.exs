@@ -27,7 +27,7 @@ defmodule BoomLooper.ChatAgentTest do
       id = "restart-test-#{:rand.uniform(100_000)}"
 
       {:ok, _pid} =
-        BoomLooper.ChatAgentSupervisor.start_agent(
+        BoomLooper.TestHelpers.start_agent(
           id: id,
           name: "Restart Test",
           working_dir: File.cwd!(),
@@ -73,7 +73,7 @@ defmodule BoomLooper.ChatAgentTest do
       id = "state-test-#{:rand.uniform(100_000)}"
 
       {:ok, _pid} =
-        BoomLooper.ChatAgentSupervisor.start_agent(
+        BoomLooper.TestHelpers.start_agent(
           id: id,
           name: "State Test",
           working_dir: File.cwd!(),

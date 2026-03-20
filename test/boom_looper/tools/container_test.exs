@@ -66,7 +66,7 @@ defmodule BoomLooper.Tools.ContainerTest do
       # Start an agent bound to this workspace
       agent_id = "container-tool-test-#{:rand.uniform(100_000)}"
       {:ok, _pid} =
-        BoomLooper.ChatAgentSupervisor.start_agent(
+        BoomLooper.TestHelpers.start_agent(
           id: agent_id,
           name: "Container Tool Test",
           working_dir: tmp_dir,

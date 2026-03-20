@@ -6,6 +6,10 @@ defmodule BoomLooperWeb.ChatLiveTest do
   defp create_workspace do
     tmp_dir = Path.join(System.tmp_dir!(), "boom-looper-chat-test-#{:rand.uniform(100_000)}")
     File.mkdir_p!(tmp_dir)
+    # Create a minimal workspace config so auto-spawn Setup doesn't trigger on /new
+    hive_dir = Path.join(tmp_dir, ".hive")
+    File.mkdir_p!(hive_dir)
+    File.write!(Path.join(hive_dir, "workspace.json"), Jason.encode!(%{"name" => "test"}))
     {:ok, ws} = BoomLooper.WorkspaceRegistry.add(tmp_dir)
     {ws, tmp_dir}
   end
@@ -152,7 +156,7 @@ defmodule BoomLooperWeb.ChatLiveTest do
       assert html =~ "Starting agent"
 
       {:ok, _pid} =
-        BoomLooper.ChatAgentSupervisor.start_agent(
+        BoomLooper.TestHelpers.start_agent(
           id: id,
           name: "Boot Transition Test",
           working_dir: ws.path,
@@ -191,7 +195,7 @@ defmodule BoomLooperWeb.ChatLiveTest do
       id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
 
       {:ok, _pid} =
-        BoomLooper.ChatAgentSupervisor.start_agent(
+        BoomLooper.TestHelpers.start_agent(
           id: id,
           name: "Lifecycle Test",
           working_dir: ws.path,
@@ -259,7 +263,7 @@ defmodule BoomLooperWeb.ChatLiveTest do
       id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
 
       {:ok, _pid} =
-        BoomLooper.ChatAgentSupervisor.start_agent(
+        BoomLooper.TestHelpers.start_agent(
           id: id,
           name: "Tab Test",
           working_dir: ws.path,
@@ -298,7 +302,7 @@ defmodule BoomLooperWeb.ChatLiveTest do
       id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
 
       {:ok, _pid} =
-        BoomLooper.ChatAgentSupervisor.start_agent(
+        BoomLooper.TestHelpers.start_agent(
           id: id,
           name: "WS Tools Test",
           working_dir: ws.path,
@@ -342,7 +346,7 @@ defmodule BoomLooperWeb.ChatLiveTest do
       id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
 
       {:ok, _pid} =
-        BoomLooper.ChatAgentSupervisor.start_agent(
+        BoomLooper.TestHelpers.start_agent(
           id: id,
           name: "Section Test",
           working_dir: ws.path,
@@ -418,7 +422,7 @@ defmodule BoomLooperWeb.ChatLiveTest do
       id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
 
       {:ok, _pid} =
-        BoomLooper.ChatAgentSupervisor.start_agent(
+        BoomLooper.TestHelpers.start_agent(
           id: id,
           name: "Restart CLI Test",
           working_dir: ws.path,
@@ -461,7 +465,7 @@ defmodule BoomLooperWeb.ChatLiveTest do
       id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
 
       {:ok, _pid} =
-        BoomLooper.ChatAgentSupervisor.start_agent(
+        BoomLooper.TestHelpers.start_agent(
           id: id,
           name: "Context Test",
           working_dir: ws.path,

@@ -6,7 +6,7 @@ defmodule BoomLooperWeb.OutputControllerTest do
       id = "output-test-#{:rand.uniform(100_000)}"
 
       {:ok, _pid} =
-        BoomLooper.ChatAgentSupervisor.start_agent(
+        BoomLooper.TestHelpers.start_agent(
           id: id,
           name: "Output Test",
           working_dir: File.cwd!(),

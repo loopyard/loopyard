@@ -34,7 +34,7 @@ defmodule BoomLooperWeb.SystemLiveTest do
       id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
 
       {:ok, _pid} =
-        BoomLooper.ChatAgentSupervisor.start_agent(
+        BoomLooper.TestHelpers.start_agent(
           id: id,
           name: "System Test Agent",
           working_dir: File.cwd!(),

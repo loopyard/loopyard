@@ -32,9 +32,9 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
   @doc "Start all services defined in the workspace config"
   def start_services(project_dir) do
-    case find_or_start(project_dir) do
-      {:ok, pid} -> GenServer.call(pid, :start_services, 120_000)
-      error -> error
+    case Registry.lookup(BoomLooper.ServiceManagerRegistry, project_dir) do
+      [{pid, _}] -> GenServer.call(pid, :start_services, 120_000)
+      [] -> {:error, :service_manager_not_running}
     end
   end
 
@@ -183,14 +183,22 @@ defmodule BoomLooper.Workspace.ServiceManager do
     end
   end
 
-  # --- Private ---
+  @impl true
+  def terminate(_reason, state) do
+    # Clean up all Docker containers for this branch
+    Enum.each(state.processes, fn p ->
+      Docker.docker(["rm", "-f", process_container_name(state.workspace_id, p.name)])
+    end)
 
-  defp find_or_start(project_dir) do
-    case Registry.lookup(BoomLooper.ServiceManagerRegistry, project_dir) do
-      [{pid, _}] -> {:ok, pid}
-      [] -> DynamicSupervisor.start_child(BoomLooper.ServiceManagerSupervisor, {__MODULE__, project_dir: project_dir})
-    end
+    Enum.each(state.services, fn {name, _} ->
+      Docker.docker(["rm", "-f", service_container_name(state.workspace_id, name)])
+    end)
+
+    Docker.stop_workspace_container(state.workspace_id)
+    :ok
   end
+
+  # --- Private ---
 
   defp ensure_workspace_image(workspace_id, workspace) do
     if workspace.processes != [] || workspace.dockerfile != nil do

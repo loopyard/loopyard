@@ -16,8 +16,9 @@ defmodule BoomLooper.Application do
       {Phoenix.PubSub, name: BoomLooper.PubSub},
       {Registry, keys: :unique, name: BoomLooper.ChatAgentRegistry},
       {Registry, keys: :unique, name: BoomLooper.ServiceManagerRegistry},
-      BoomLooper.ChatAgentSupervisor,
-      {DynamicSupervisor, name: BoomLooper.ServiceManagerSupervisor, strategy: :one_for_one},
+      {Registry, keys: :unique, name: BoomLooper.BranchRegistry},
+      {Registry, keys: :unique, name: BoomLooper.BranchAgentRegistry},
+      BoomLooper.BranchSupervisor,
       BoomLooperWeb.Endpoint
     ]
 

@@ -29,6 +29,10 @@ defmodule BoomLooperWeb.ChatLive do
 
   defp mount_with_workspace(socket, workspace, extra_assigns \\ %{}) do
     if connected?(socket) do
+      # Ensure the branch supervisor subtree is running
+      branch_id = BoomLooper.ProjectRegistry.branch_id(workspace.path)
+      BoomLooper.BranchSupervisor.start_branch(branch_id, workspace.path)
+
       ChatAgent.subscribe()
       BoomLooper.Workspace.ServiceManager.subscribe()
       maybe_start_services(workspace.path)
@@ -755,7 +759,8 @@ defmodule BoomLooperWeb.ChatLive do
 
     ChatAgent.update_boot_status(id, "Starting Claude session...")
     Logger.info("[boot_agent] #{id} starting Claude session")
-    case BoomLooper.ChatAgentSupervisor.start_agent(final_opts) do
+    branch_id = BoomLooper.ProjectRegistry.branch_id(working_dir)
+    case BoomLooper.Branch.start_agent(branch_id, final_opts) do
       {:ok, _pid} ->
         Logger.info("[boot_agent] #{id} Claude session started successfully")
         service_name = Keyword.get(final_opts, :service_name)

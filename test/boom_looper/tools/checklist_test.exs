@@ -49,7 +49,7 @@ defmodule BoomLooper.Tools.ChecklistTest do
 
       # Start an agent so find_project_dir works
       {:ok, _pid} =
-        BoomLooper.ChatAgentSupervisor.start_agent(
+        BoomLooper.TestHelpers.start_agent(
           id: id,
           name: "CL Test",
           working_dir: tmp_dir,
@@ -98,7 +98,7 @@ defmodule BoomLooper.Tools.ChecklistTest do
       File.mkdir_p!(tmp_dir)
 
       {:ok, _pid} =
-        BoomLooper.ChatAgentSupervisor.start_agent(
+        BoomLooper.TestHelpers.start_agent(
           id: id,
           name: "Check Test",
           working_dir: tmp_dir,

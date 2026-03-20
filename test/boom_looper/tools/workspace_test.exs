@@ -30,7 +30,7 @@ defmodule BoomLooper.Tools.WorkspaceTest do
       id = "ws-tool-test-#{:rand.uniform(100_000)}"
 
       {:ok, _pid} =
-        BoomLooper.ChatAgentSupervisor.start_agent(
+        BoomLooper.TestHelpers.start_agent(
           id: id,
           name: "Workspace Tool Test",
           working_dir: tmp_dir,
@@ -109,7 +109,7 @@ defmodule BoomLooper.Tools.WorkspaceTest do
       id = "no-bind-test-#{:rand.uniform(100_000)}"
 
       {:ok, _pid} =
-        BoomLooper.ChatAgentSupervisor.start_agent(
+        BoomLooper.TestHelpers.start_agent(
           id: id,
           name: "No Bind Test",
           working_dir: File.cwd!(),

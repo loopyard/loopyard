@@ -23,6 +23,7 @@ defmodule BoomLooper.Workspace.ServiceManagerTest do
     end
 
     test "returns ok with empty list when no workspace config", %{tmp_dir: tmp_dir} do
+      BoomLooper.TestHelpers.ensure_branch(tmp_dir)
       assert {:ok, []} = ServiceManager.start_services(tmp_dir)
     end
   end

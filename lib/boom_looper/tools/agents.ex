@@ -18,8 +18,9 @@ defmodule BoomLooper.Tools.Agents do
 
   def do_spawn(name, working_dir) do
     id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
+    branch_id = BoomLooper.ProjectRegistry.branch_id(working_dir)
 
-    case BoomLooper.ChatAgentSupervisor.start_agent(
+    case BoomLooper.Branch.start_agent(branch_id,
            id: id,
            name: name,
            working_dir: working_dir,
