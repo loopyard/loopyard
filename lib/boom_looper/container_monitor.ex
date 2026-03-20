@@ -5,7 +5,6 @@ defmodule BoomLooper.ContainerMonitor do
   """
   use GenServer
 
-
   @poll_interval 5_000
 
   def start_link(opts) do
@@ -16,12 +15,12 @@ defmodule BoomLooper.ContainerMonitor do
   def init(opts) do
     project_dir = Keyword.fetch!(opts, :project_dir)
     schedule_poll()
-    {:ok, %{project_dir: project_dir, last_statuses: %{}}}
+    {:ok, %{project_dir: project_dir}}
   end
 
   @impl true
   def handle_info(:poll, state) do
-    check_containers(state)
+    broadcast_status(state.project_dir)
     schedule_poll()
     {:noreply, state}
   end
@@ -32,17 +31,9 @@ defmodule BoomLooper.ContainerMonitor do
     Process.send_after(self(), :poll, @poll_interval)
   end
 
-  defp check_containers(state) do
-    # Trigger a service status broadcast which will pick up
-    # any container state changes (including deaths)
-    case Registry.lookup(BoomLooper.ServiceManagerRegistry, state.project_dir) do
+  defp broadcast_status(project_dir) do
+    case Registry.lookup(BoomLooper.ServiceManagerRegistry, project_dir) do
       [{pid, _}] ->
-        try do
-          GenServer.call(pid, :service_status, 5_000)
-        catch
-          :exit, _ -> :ok
-        end
-        # Re-broadcast so the UI updates
         try do
           GenServer.cast(pid, :broadcast_status)
         catch

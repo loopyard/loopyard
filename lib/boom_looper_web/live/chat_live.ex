@@ -176,67 +176,12 @@ defmodule BoomLooperWeb.ChatLive do
 
   @impl true
   def handle_event("spawn_agent", params, socket) do
-    workspace = socket.assigns.workspace
-    working_dir = workspace.path
-    id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
-    checklist_id = Map.get(params, "checklist_id")
-
-    ws_config =
-      case BoomLooper.Workspace.load(working_dir) do
-        {:ok, ws} -> ws
-        _ -> nil
-      end
-
-    # Name from checklist, then workspace, then auto
-    checklist = if checklist_id, do: Enum.find(socket.assigns.available_checklists, &(&1.id == checklist_id))
-
-    name =
-      cond do
-        checklist && checklist.name -> checklist.name
-        ws_config && ws_config.name -> ws_config.name
-        true -> auto_name()
-      end
-
-    agent_opts = [
-      id: id,
-      name: name,
-      working_dir: working_dir,
-      started_by: "browser",
-      bind_mount: working_dir
-    ]
-
-    ChatAgent.register_booting(id, name, working_dir)
-    Task.start(fn -> boot_agent(id, agent_opts, ws_config, working_dir, checklist_id) end)
-
-    {:noreply, push_navigate(socket, to: "#{branch_path(socket)}/chat/#{id}")}
+    do_spawn_agent(socket, Map.get(params, "checklist_id"))
   end
 
   @impl true
   def handle_event("spawn_service_agent", %{"service_name" => service_name}, socket) do
-    workspace = socket.assigns.workspace
-    working_dir = workspace.path
-    id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
-    name = "#{service_name}-agent"
-
-    ws_config =
-      case BoomLooper.Workspace.load(working_dir) do
-        {:ok, ws} -> ws
-        _ -> nil
-      end
-
-    agent_opts = [
-      id: id,
-      name: name,
-      working_dir: working_dir,
-      started_by: "browser",
-      bind_mount: working_dir,
-      service_name: service_name
-    ]
-
-    ChatAgent.register_booting(id, name, working_dir, service_name: service_name)
-    Task.start(fn -> boot_agent(id, agent_opts, ws_config, working_dir, nil) end)
-
-    {:noreply, push_navigate(socket, to: "#{branch_path(socket)}/chat/#{id}")}
+    do_spawn_agent(socket, nil, service_name: service_name)
   end
 
   @impl true
@@ -562,6 +507,44 @@ defmodule BoomLooperWeb.ChatLive do
 
   # --- Private ---
 
+  defp do_spawn_agent(socket, checklist_id, opts \\ []) do
+    workspace = socket.assigns.workspace
+    working_dir = workspace.path
+    id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
+    service_name = Keyword.get(opts, :service_name)
+
+    ws_config =
+      case BoomLooper.Workspace.load(working_dir) do
+        {:ok, ws} -> ws
+        _ -> nil
+      end
+
+    name =
+      cond do
+        service_name -> "#{service_name}-agent"
+        checklist_id ->
+          checklist = Enum.find(socket.assigns[:available_checklists] || [], &(&1.id == checklist_id))
+          if checklist && checklist.name, do: checklist.name, else: auto_name()
+        ws_config && ws_config.name -> ws_config.name
+        true -> auto_name()
+      end
+
+    agent_opts = [
+      id: id,
+      name: name,
+      working_dir: working_dir,
+      started_by: "browser",
+      bind_mount: working_dir
+    ]
+
+    agent_opts = if service_name, do: agent_opts ++ [service_name: service_name], else: agent_opts
+    boot_opts = if service_name, do: [service_name: service_name], else: []
+
+    ChatAgent.register_booting(id, name, working_dir, boot_opts)
+    Task.start(fn -> boot_agent(id, agent_opts, ws_config, working_dir, checklist_id) end)
+
+    {:noreply, push_navigate(socket, to: "#{branch_path(socket)}/chat/#{id}")}
+  end
 
   defp fetch_service_statuses(workspace_path) do
     case BoomLooper.Workspace.ServiceManager.service_status(workspace_path) do

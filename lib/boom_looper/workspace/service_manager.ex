@@ -264,30 +264,13 @@ defmodule BoomLooper.Workspace.ServiceManager do
       else
       Docker.docker(["rm", "-f", container])
 
-      # Use dynamic host ports (-p 0:container_port) to avoid conflicts between branches
-      port_args =
-        case p[:ports] do
-          ports when is_list(ports) ->
-            Enum.flat_map(ports, fn ps ->
-              # "3000:3000" -> "-p 0:3000" (let Docker pick host port)
-              container_port = ps |> String.split(":") |> List.last()
-              ["-p", "0:#{container_port}"]
-            end)
-          ports when is_map(ports) ->
-            Enum.flat_map(ports, fn {_h, c} -> ["-p", "0:#{c}"] end)
-          _ -> []
-        end
-
-      env_args =
-        Enum.flat_map(workspace.env_vars || %{}, fn {k, v} -> ["-e", "#{k}=#{v}"] end)
-
       args = [
         "run", "-d",
         "--name", container,
         "--network", Docker.network_name(),
         "--mount", "type=bind,src=#{state.project_dir},dst=/workspace",
         "-w", "/workspace"
-      ] ++ port_args ++ env_args ++ [image, "sh", "-c", p.command]
+      ] ++ dynamic_port_args(p[:ports]) ++ env_args(workspace.env_vars) ++ [image, "sh", "-c", p.command]
 
       match?({:ok, _}, Docker.docker(args, timeout: 30_000))
       end
@@ -304,23 +287,13 @@ defmodule BoomLooper.Workspace.ServiceManager do
     Docker.docker(["rm", "-f", container])
     Docker.ensure_network()
 
-    env_args = Enum.flat_map(service[:env] || %{}, fn {k, v} -> ["-e", "#{k}=#{v}"] end)
-    # Dynamic host ports for stock services too
-    port_args = Enum.flat_map(service[:ports] || [], fn
-      {_host, cp} -> ["-p", "0:#{cp}"]
-      port_str when is_binary(port_str) ->
-        container_port = port_str |> String.split(":") |> List.last()
-        ["-p", "0:#{container_port}"]
-    end)
-
     vol_name = service_volume_name(state.workspace_id, service.name)
     Docker.docker(["volume", "create", vol_name])
-
     volume_args = Enum.flat_map(service[:volumes] || [], fn spec -> ["-v", "#{spec}"] end)
 
     args =
       ["run", "-d", "--name", container, "--network", Docker.network_name()] ++
-        env_args ++ port_args ++ volume_args ++ [service.image]
+        env_args(service[:env]) ++ dynamic_port_args(service[:ports]) ++ volume_args ++ [service.image]
 
     case Docker.docker(args, timeout: 120_000) do
       {:ok, _} -> {:ok, :started}
@@ -387,6 +360,24 @@ defmodule BoomLooper.Workspace.ServiceManager do
     else
       []
     end
+  end
+
+  # Build -p args with dynamic host ports (0:container_port)
+  defp dynamic_port_args(ports) when is_list(ports) do
+    Enum.flat_map(ports, fn ps ->
+      container_port = ps |> String.split(":") |> List.last()
+      ["-p", "0:#{container_port}"]
+    end)
+  end
+
+  defp dynamic_port_args(ports) when is_map(ports) do
+    Enum.flat_map(ports, fn {_h, c} -> ["-p", "0:#{c}"] end)
+  end
+
+  defp dynamic_port_args(_), do: []
+
+  defp env_args(env_vars) do
+    Enum.flat_map(env_vars || %{}, fn {k, v} -> ["-e", "#{k}=#{v}"] end)
   end
 
   defp broadcast_service_update(state) do
