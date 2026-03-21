@@ -88,7 +88,20 @@ defmodule BoomLooper.Workspace.ServiceManager do
   def init(opts) do
     project_dir = Keyword.fetch!(opts, :project_dir)
     workspace_id = Workspace.workspace_id(project_dir)
-    {:ok, %__MODULE__{project_dir: project_dir, workspace_id: workspace_id}}
+    state = %__MODULE__{project_dir: project_dir, workspace_id: workspace_id}
+
+    # Auto-start services if workspace config exists
+    case Workspace.load(project_dir) do
+      {:ok, ws} when ws.dockerfile != nil ->
+        # Start async so init doesn't block
+        self_pid = self()
+        Task.start(fn ->
+          GenServer.call(self_pid, :start_services, 600_000)
+        end)
+      _ -> :ok
+    end
+
+    {:ok, state}
   end
 
   @impl true
