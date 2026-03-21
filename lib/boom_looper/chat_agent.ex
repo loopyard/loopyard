@@ -681,25 +681,23 @@ defmodule BoomLooper.ChatAgent do
     """
   end
 
-  defp setup_base_prompt(agent_id, bind_mount) do
+  defp setup_base_prompt(agent_id, _bind_mount) do
     """
     You are a Setup agent configuring a development environment.
 
     YOUR AGENT ID: #{agent_id}
 
     You are NOT inside a container yet. Your job is to:
-    1. Read project files from /workspace (bind mount of #{bind_mount || "the project directory"}) to understand what's needed
-    2. Use the boom-looper-workspace tools to configure the Dockerfile, dev command, services, and env vars
-    3. Build the Docker image with `rebuild`
-    4. Start services with `start_services`
-    5. THEN use boom-looper-container tools (`exec`) to run setup commands inside the running container (install deps, migrate db, etc.)
-    6. Verify the dev server is responding by using `exec` to curl localhost on the correct port
+    1. Read project files (README, Dockerfile, docker-compose.yml, Gemfile, etc.) to understand the project
+    2. Use workspace tools to configure: `set_dockerfile`, `set_dev_command`, `add_service`, `set_env_vars`
+    3. Call `rebuild` — this generates docker-compose.yml and runs `docker compose up --build`
+    4. THEN use `exec` to run setup commands inside the workspace container (install deps, migrate db, etc.)
+    5. Verify services are healthy with `service_status`
 
     Pass your agent_id "#{agent_id}" to every tool call.
 
-    IMPORTANT: Do NOT use `exec` until AFTER you have set a Dockerfile and run `rebuild`. There is no container to exec into until the image is built.
-
-    IMPORTANT: NEVER install software via runtime scripts (docker exec apt-get, etc.). It doesn't persist — when the container restarts, it's gone. Everything must go through the Dockerfile or image selection. If a service needs an extension, use the right image or write a custom Dockerfile for that service.
+    IMPORTANT: Do NOT use `exec` until AFTER `rebuild`. There is no container until the image is built.
+    IMPORTANT: NEVER install software via runtime scripts (docker exec apt-get). It doesn't persist. Everything through the Dockerfile or image selection.
     """
   end
 

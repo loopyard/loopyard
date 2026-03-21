@@ -690,7 +690,8 @@ defmodule BoomLooperWeb.ChatLive do
         # Check workspace container instead of per-agent container
         agent_state = BoomLooper.ChatAgent.get_state(id)
         workspace_id = agent_state && agent_state[:workspace_id]
-        has_container = workspace_id != nil && BoomLooper.Docker.workspace_container_running?(workspace_id)
+        ws_container = if workspace_id, do: BoomLooper.Workspace.ServiceManager.service_container_name(workspace_id, "workspace")
+        has_container = ws_container != nil && BoomLooper.Docker.container_running?(ws_container)
 
         if has_container do
           log_opts = %{lines: 100}
@@ -725,30 +726,21 @@ defmodule BoomLooperWeb.ChatLive do
     require Logger
     workspace_id = BoomLooper.Workspace.workspace_id(working_dir)
 
-    if BoomLooper.Docker.workspace_container_running?(workspace_id) do
-      # Exec mode — workspace container already running, just start the agent
-      ChatAgent.update_boot_status(id, "Starting Claude session...")
-    else
-      # Boot mode — need to build image and start workspace + services
-      ChatAgent.update_boot_status(id, "Building image...")
-      dockerfile = if workspace, do: workspace.dockerfile, else: BoomLooper.Docker.dockerfile()
-      case BoomLooper.Docker.build_workspace_image(workspace_id, dockerfile) do
-        {:ok, _} -> :ok
-        {:error, reason} ->
-          ChatAgent.boot_failed(id, reason)
-          raise "Docker build failed: #{reason}"
-      end
+    ws_container = BoomLooper.Workspace.ServiceManager.service_container_name(workspace_id, "workspace")
 
-      ChatAgent.update_boot_status(id, "Starting workspace...")
+    unless BoomLooper.Docker.container_running?(ws_container) do
+      # Services not running — start them via compose
+      ChatAgent.update_boot_status(id, "Starting services...")
       case BoomLooper.Workspace.ServiceManager.start_services(working_dir) do
         {:ok, _} -> :ok
+        {:error, :service_manager_not_running} -> :ok  # No config yet, Setup will create it
         {:error, reason} ->
           ChatAgent.boot_failed(id, reason)
-          raise "Service start failed: #{reason}"
+          raise "Service start failed: #{inspect(reason)}"
       end
-
-      ChatAgent.update_boot_status(id, "Starting Claude session...")
     end
+
+    ChatAgent.update_boot_status(id, "Starting Claude session...")
 
     checklist_path =
       if checklist_id do

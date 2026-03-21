@@ -15,7 +15,7 @@ defmodule BoomLooper.Tools.WorkspaceTest do
 
     test "has all expected tools" do
       tool_names = WorkspaceTools.__tool_server__().tools |> Enum.map(& &1.__tool_name__()) |> MapSet.new()
-      expected = ~w(set_dockerfile set_dev_command add_service remove_service set_env_vars set_workspace_name set_system_prompt rebuild start_services stop_services service_status service_exec)
+      expected = ~w(set_dockerfile set_dev_command add_service remove_service set_env_vars set_workspace_name set_system_prompt rebuild service_status)
       for name <- expected do
         assert name in tool_names, "missing tool: #{name}"
       end

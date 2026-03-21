@@ -115,37 +115,11 @@ defmodule BoomLooper.Tools.Workspace do
     end
   end
 
-  tool :start_services, "Start all service containers defined in the workspace config." do
-    field :agent_id, :string, required: true
-
-    def execute(%{agent_id: agent_id}) do
-      BoomLooper.Tools.Workspace.do_start_services(agent_id)
-    end
-  end
-
-  tool :stop_services, "Stop all workspace service containers." do
-    field :agent_id, :string, required: true
-
-    def execute(%{agent_id: agent_id}) do
-      BoomLooper.Tools.Workspace.do_stop_services(agent_id)
-    end
-  end
-
   tool :service_status, "Check which workspace services are running." do
     field :agent_id, :string, required: true
 
     def execute(%{agent_id: agent_id}) do
       BoomLooper.Tools.Workspace.do_service_status(agent_id)
-    end
-  end
-
-  tool :service_exec, "Execute a command inside a service container (e.g., psql, redis-cli)." do
-    field :agent_id, :string, required: true
-    field :service_name, :string, required: true, description: "Name of the service (e.g., 'postgres', 'redis')"
-    field :command, :string, required: true, description: "Command to run inside the service container"
-
-    def execute(%{agent_id: agent_id, service_name: service_name, command: command}) do
-      BoomLooper.Tools.Workspace.do_service_exec(agent_id, service_name, command)
     end
   end
 
@@ -210,30 +184,6 @@ defmodule BoomLooper.Tools.Workspace do
     end)
   end
 
-  def do_start_services(agent_id) do
-    with_bind_mount(agent_id, fn project_dir ->
-      case ServiceManager.start_services(project_dir) do
-        {:ok, results} ->
-          summary = Enum.map(results, fn
-            {:ok, :started} -> "started"
-            {:ok, :already_running} -> "already running"
-            {:error, reason} -> "error: #{reason}"
-          end)
-          {:ok, %{results: summary}}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
-    end)
-  end
-
-  def do_stop_services(agent_id) do
-    with_bind_mount(agent_id, fn project_dir ->
-      ServiceManager.stop_services(project_dir)
-      {:ok, "Services stopped"}
-    end)
-  end
-
   def do_service_status(agent_id) do
     with_bind_mount(agent_id, fn project_dir ->
       case ServiceManager.service_status(project_dir) do
@@ -243,11 +193,6 @@ defmodule BoomLooper.Tools.Workspace do
     end)
   end
 
-  def do_service_exec(agent_id, service_name, command) do
-    with_bind_mount(agent_id, fn project_dir ->
-      ServiceManager.service_exec(project_dir, service_name, command)
-    end)
-  end
 
   @doc false
   def parse_json_field(nil, default), do: default

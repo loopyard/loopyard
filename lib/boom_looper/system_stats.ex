@@ -142,7 +142,7 @@ defmodule BoomLooper.SystemStats do
     Enum.map(agents, fn agent ->
       container =
         if agent[:workspace_id] do
-          container_stats[BoomLooper.Docker.workspace_container_name(agent.workspace_id)]
+          container_stats[BoomLooper.Workspace.ServiceManager.service_container_name(agent.workspace_id, "workspace")]
         end
       pid_info = agent_process_info(agent.id)
       cli = find_cli_for_agent(cli_processes, agent.id)
@@ -160,7 +160,7 @@ defmodule BoomLooper.SystemStats do
   def service_stats do
     container_stats = docker_stats()
 
-    BoomLooper.Docker.list_containers(prefix: "boom-looper-svc-")
+    BoomLooper.Docker.list_containers(prefix: "bl-")
     |> Enum.map(fn container ->
       %{
         name: container.name,

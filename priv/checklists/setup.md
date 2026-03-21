@@ -2,28 +2,37 @@
 
 Set up the development environment for this project.
 
-- [ ] Examine the project to understand what language, framework, tools, and services it needs. If the project has an existing Dockerfile, use it as a starting point for the dev Dockerfile — don't reinvent what's already there. Check for database extensions, search engines, or other dependencies in config files (Gemfile, requirements.txt, schema files, docker-compose.yml).
+- [ ] Examine the project to understand what it is — language, framework, dependencies, services. Check README, existing Dockerfile, docker-compose.yml, Gemfile/package.json, Procfile, etc.
 - [ ] Name the project
-- [ ] Write a dev Dockerfile that installs everything the project needs
+- [ ] Write a dev Dockerfile that installs everything the project needs. If the project already has a Dockerfile, adapt it for dev — don't start from scratch.
 - [ ] Set the dev server command (one command that starts everything — e.g. bin/dev)
-- [ ] Add any services the project needs (databases, caches, etc.) — use the right image for each. If the project needs extensions (pgvector, PostGIS), prefer a pre-built image (e.g. `pgvector/pgvector:pg16`). Data volumes are auto-mounted from the image's VOLUME declarations. If an image doesn't declare VOLUME and the service stores data, add a volume explicitly (e.g. `volumes: ["{data}:/var/lib/postgresql/data"]`). NEVER install extensions via runtime scripts — they don't persist across container restarts.
+- [ ] Add any services the project needs (databases, caches) with the right images
 - [ ] Set environment variables
-- [ ] Build the Docker image
-- [ ] Start all services
-- [ ] Verify ALL services are healthy — check each service's logs, make sure it's accepting connections. If a service crashes, read the logs, figure out why (missing extension, bad config, wrong image), fix it, and restart.
-- [ ] Install dependencies and run project setup (migrations, seeds, etc.)
+- [ ] Rebuild (generates docker-compose.yml and starts everything)
+- [ ] Verify ALL services are healthy — check logs, make sure each service accepts connections
+- [ ] Install dependencies and run project setup via exec (migrations, seeds, etc.)
 - [ ] Verify the dev server is running and responds
 - [ ] Spawn a new agent named after the project, then ask the user if they'd like to keep Setup running
+
+## How it works
+
+The workspace tools (`set_dockerfile`, `set_dev_command`, `add_service`, etc.) write to `.hive/workspace.json`. When you call `rebuild`, a `docker-compose.yml` is generated from the config and `docker compose up --build` runs everything.
+
+You get three types of containers:
+- **workspace** — `sleep infinity`, full dev environment. Agents exec here.
+- **dev** — runs your dev server command from the workspace image.
+- **stock services** — postgres, redis, etc. from their own images.
 
 ## What is a service?
 
 A **service** is something with a port that you connect to. It runs in its own Docker container.
-- postgres on 5432, redis on 6379, the dev server on 3000, elasticsearch on 9200
-- Each gets its own container, its own `docker logs`, its own lifecycle
-- Use the right image — if the project needs extensions (pgvector, PostGIS, redis modules), find an image that includes them instead of the stock image
 
-A service is NOT:
-- A CSS watcher, JS bundler, or background worker — those are internal to the dev command
-- Anything from a Procfile — the Procfile runs INSIDE the dev container via `bin/dev` or `foreman start`
+A service is NOT a CSS watcher, JS bundler, or background worker. Those run inside the dev command.
 
-If it doesn't have a port, it's not a service — it belongs inside the dev command.
+If it doesn't have a port, it belongs inside the dev command.
+
+## Rules
+
+- Use the right image for services. If extensions are needed (pgvector, PostGIS), use a pre-built image.
+- NEVER install extensions via runtime scripts — they don't persist across container restarts.
+- The dev server should be ONE command that starts everything (bin/dev, foreman start, etc.).
