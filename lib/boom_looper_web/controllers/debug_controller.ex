@@ -59,7 +59,16 @@ defmodule BoomLooperWeb.DebugController do
   def reset(conn, _params) do
     BoomLooper.EventLog.warning("system", "Reset triggered via /reset")
 
-    # Kill all branch supervisor trees (cascades to agents + containers)
+    # Explicitly tear down compose containers for all known projects
+    # (ServiceManager.terminate no longer does this, so reset must)
+    BoomLooper.ProjectRegistry.list_projects()
+    |> Enum.flat_map(&BoomLooper.ProjectRegistry.list_branches(&1.id))
+    |> Enum.each(fn b ->
+      workspace_id = BoomLooper.Workspace.workspace_id(b.working_dir)
+      BoomLooper.Compose.down(b.working_dir, workspace_id)
+    end)
+
+    # Kill all branch supervisor trees (cascades to agents)
     children = DynamicSupervisor.which_children(BoomLooper.BranchSupervisor)
     Enum.each(children, fn {_, pid, _, _} ->
       DynamicSupervisor.terminate_child(BoomLooper.BranchSupervisor, pid)

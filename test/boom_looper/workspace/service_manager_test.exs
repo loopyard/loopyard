@@ -151,6 +151,73 @@ defmodule BoomLooper.Workspace.ServiceManagerTest do
     end
   end
 
+  describe "reconnect on restart" do
+    setup do
+      tmp_dir = Path.join(System.tmp_dir!(), "boom-looper-svc-reconnect-#{:rand.uniform(100_000)}")
+      File.mkdir_p!(tmp_dir)
+
+      ws = %Workspace{
+        name: "Reconnect Test",
+        services: [
+          %{name: "redis", image: "redis:7-alpine", env: %{}, volumes: [], ports: %{}}
+        ],
+        processes: [
+          %{name: "web", command: "bin/dev", ports: ["3000:3000"]}
+        ]
+      }
+
+      Workspace.save(tmp_dir, ws)
+
+      on_exit(fn ->
+        ServiceManager.stop_services(tmp_dir)
+        File.rm_rf!(tmp_dir)
+      end)
+
+      %{tmp_dir: tmp_dir, ws: ws}
+    end
+
+    test "reconnect restores state without starting containers", %{tmp_dir: tmp_dir, ws: ws} do
+      BoomLooper.TestHelpers.ensure_branch(tmp_dir)
+
+      # Get the ServiceManager pid
+      [{pid, _}] = Registry.lookup(BoomLooper.ServiceManagerRegistry, tmp_dir)
+
+      # Subscribe for broadcasts
+      ServiceManager.subscribe()
+
+      # Call reconnect directly — simulates what happens when init finds running containers
+      assert :ok = GenServer.call(pid, {:reconnect, ws})
+
+      # Should broadcast service update with reconnected state
+      assert_receive {:services_updated, ^tmp_dir, statuses}, 2000
+      assert is_list(statuses)
+
+      # Should have workspace + process + stock service entries
+      names = Enum.map(statuses, & &1.name)
+      assert "workspace" in names
+      assert "web" in names
+      assert "redis" in names
+
+      # State should show as running
+      assert {:ok, statuses} = ServiceManager.service_status(tmp_dir)
+      assert length(statuses) == 3
+    end
+
+    test "terminate does not call compose down", %{tmp_dir: tmp_dir} do
+      BoomLooper.TestHelpers.ensure_branch(tmp_dir)
+      [{pid, _}] = Registry.lookup(BoomLooper.ServiceManagerRegistry, tmp_dir)
+
+      # Verify the process is alive, then stop it
+      assert Process.alive?(pid)
+
+      # Stop the service manager — should NOT call compose down
+      # (We can't easily verify compose down wasn't called, but we can verify
+      # the process stops cleanly without error)
+      GenServer.stop(pid, :normal)
+      refute Process.alive?(pid)
+    end
+  end
+
   # Docker integration tests
   describe "full service lifecycle" do
     @describetag :docker

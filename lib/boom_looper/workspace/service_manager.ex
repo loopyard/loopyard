@@ -90,13 +90,20 @@ defmodule BoomLooper.Workspace.ServiceManager do
     workspace_id = Workspace.workspace_id(project_dir)
     state = %__MODULE__{project_dir: project_dir, workspace_id: workspace_id}
 
-    # Auto-start services if workspace config exists
+    # Check if compose containers are already running (survived a server reboot)
     case Workspace.load(project_dir) do
       {:ok, ws} when ws.dockerfile != nil ->
-        # Start async so init doesn't block
         self_pid = self()
         Task.start(fn ->
-          GenServer.call(self_pid, :start_services, 600_000)
+          case Compose.ps(project_dir, workspace_id) do
+            {:ok, running} when running != [] ->
+              # Containers already running — reconnect state without rebuilding
+              GenServer.call(self_pid, {:reconnect, ws}, 30_000)
+
+            _ ->
+              # No running containers — do a full start
+              GenServer.call(self_pid, :start_services, 600_000)
+          end
         end)
       _ -> :ok
     end
@@ -119,6 +126,24 @@ defmodule BoomLooper.Workspace.ServiceManager do
         {:error, reason} -> {:reply, {:error, reason}, state}
       end
     end
+  end
+
+  @impl true
+  def handle_call({:reconnect, ws}, _from, state) do
+    BoomLooper.EventLog.info("branch:#{state.workspace_id}", "Reconnecting to existing compose containers")
+
+    services = Map.new(ws.services, fn s -> {s.name, s} end)
+    all_names = Enum.map(ws.processes, & &1.name) ++ Enum.map(ws.services, & &1.name) ++ ["workspace"]
+    initial_health = Map.new(all_names, fn name -> {name, :started} end)
+
+    new_state = %{state |
+      services: services,
+      processes: ws.processes,
+      running: true,
+      service_health: initial_health
+    }
+    broadcast_service_update(new_state)
+    {:reply, :ok, new_state}
   end
 
   @impl true
@@ -164,9 +189,9 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
   @impl true
   def terminate(_reason, state) do
-    require Logger
-    BoomLooper.EventLog.info("branch:#{state.workspace_id}", "ServiceManager stopping, running compose down")
-    do_stop(state)
+    # Intentionally do NOT call compose down here.
+    # Containers should survive server reboots. Use /system/reset for intentional teardown.
+    BoomLooper.EventLog.info("branch:#{state.workspace_id}", "ServiceManager stopping (containers kept running)")
     :ok
   end
 
