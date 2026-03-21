@@ -95,17 +95,48 @@ defmodule BoomLooper.ChatAgent do
     end
   end
 
-  @doc "Update a message by ID in ETS. The update_fn receives the message and returns the updated message."
+  @doc "Append a message to an agent's message list (for stream messages created outside the GenServer).
+  Goes through the GenServer if alive, falls back to direct ETS write."
+  def append_message_ets(agent_id, msg) do
+    msg = Map.put_new_lazy(msg, :id, fn -> generate_msg_id() end)
+
+    case Registry.lookup(BoomLooper.ChatAgentRegistry, agent_id) do
+      [{pid, _}] ->
+        GenServer.cast(pid, {:append_external_message, msg})
+        # Give the GenServer a moment to process
+        Process.sleep(10)
+        msg
+
+      [] ->
+        # No GenServer running — direct ETS write
+        ensure_ets_table()
+        case :ets.lookup(@ets_table, agent_id) do
+          [{^agent_id, summary}] ->
+            :ets.insert(@ets_table, {agent_id, %{summary | messages: summary.messages ++ [msg]}})
+            msg
+          [] -> nil
+        end
+    end
+  end
+
+  @doc "Update a message by ID. Goes through GenServer if alive, falls back to direct ETS."
   def update_message(agent_id, msg_id, update_fn) do
-    ensure_ets_table()
-    case :ets.lookup(@ets_table, agent_id) do
-      [{^agent_id, summary}] ->
-        messages = Enum.map(summary.messages, fn msg ->
-          if msg[:id] == msg_id, do: update_fn.(msg), else: msg
-        end)
-        :ets.insert(@ets_table, {agent_id, %{summary | messages: messages}})
+    case Registry.lookup(BoomLooper.ChatAgentRegistry, agent_id) do
+      [{pid, _}] ->
+        GenServer.cast(pid, {:update_message, msg_id, update_fn})
         :ok
-      [] -> :error
+
+      [] ->
+        ensure_ets_table()
+        case :ets.lookup(@ets_table, agent_id) do
+          [{^agent_id, summary}] ->
+            messages = Enum.map(summary.messages, fn msg ->
+              if msg[:id] == msg_id, do: update_fn.(msg), else: msg
+            end)
+            :ets.insert(@ets_table, {agent_id, %{summary | messages: messages}})
+            :ok
+          [] -> :error
+        end
     end
   end
 
@@ -377,6 +408,23 @@ defmodule BoomLooper.ChatAgent do
   end
 
   @impl true
+  def handle_cast({:append_external_message, msg}, state) do
+    state = append_message(state, msg)
+    :ets.insert(@ets_table, {state.id, summary(state)})
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_cast({:update_message, msg_id, update_fn}, state) do
+    messages = Enum.map(state.messages, fn msg ->
+      if msg[:id] == msg_id, do: update_fn.(msg), else: msg
+    end)
+    state = %{state | messages: messages}
+    :ets.insert(@ets_table, {state.id, summary(state)})
+    {:noreply, state}
+  end
+
+  @impl true
   def handle_cast({:rename, new_name}, state) do
     state = %{state | name: new_name}
     broadcast(@topic, {:chat_agent_renamed, state.id, new_name})
@@ -638,9 +686,10 @@ defmodule BoomLooper.ChatAgent do
 
     ## How to work
 
-    - **Run commands**: Use `exec` to run shell commands inside the workspace container
+    - **Run commands**: Use `exec` for quick commands (< 2 min). Use `exec_stream` for long-running commands — output streams live into the chat so the user can watch.
+    - **When to use exec_stream**: Any command that runs for more than a few seconds or produces continuous output — builds, tests, servers, ping, tail -f, watch, bundle install, npm install, migrations, etc.
     - **Edit files**: Use `exec` with shell commands (cat, sed, tee, etc.) to read/write files in /workspace
-    - **Install dependencies**: Use `exec` to run apt-get, mix, npm, pip, etc. inside the container
+    - **Install dependencies**: Use `exec_stream` to run apt-get, mix deps.get, npm install, pip install, etc. inside the container (these take time and the user wants to see progress)
     - **Check status**: Use `logs` to see container output, `ports` to see listeners, `inspect_env` for full environment info
     - **Rebuild**: Use the `rebuild` workspace tool to rebuild the container image after changing the Dockerfile
 

@@ -17,7 +17,8 @@ defmodule BoomLooper.Tools.Container do
       {:ok, container} ->
         exec_opts = []
         exec_opts = if Map.has_key?(opts, :workdir), do: Keyword.put(exec_opts, :workdir, opts.workdir), else: exec_opts
-        exec_opts = if Map.has_key?(opts, :timeout), do: Keyword.put(exec_opts, :timeout, opts.timeout), else: exec_opts
+        # Tool accepts seconds, Docker.exec_in expects milliseconds
+        exec_opts = if Map.has_key?(opts, :timeout), do: Keyword.put(exec_opts, :timeout, opts.timeout * 1_000), else: exec_opts
 
         Docker.exec_in(container, command, exec_opts)
 
@@ -92,7 +93,7 @@ defmodule BoomLooper.Tools.Container do
     field :agent_id, :string, required: true
     field :command, :string, required: true
     field :workdir, :string, required: false
-    field :timeout, :integer, required: false
+    field :timeout, :integer, required: false, description: "Max seconds to run (default: 120)"
 
     def execute(%{agent_id: agent_id, command: command} = params) do
       BoomLooper.Tools.Container.do_exec(agent_id, command, params)
@@ -138,16 +139,10 @@ defmodule BoomLooper.Tools.Container do
   def do_exec_stream(agent_id, command, timeout_seconds) do
     case resolve_container(agent_id) do
       {:ok, container} ->
-        # Create the stream message in the agent's ETS state
-        msg_id = :crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false)
-
-        BoomLooper.ChatAgent.ensure_ets_table()
-        case :ets.lookup(:chat_agents, agent_id) do
-          [{^agent_id, summary}] ->
-            stream_msg = %{id: msg_id, role: :build, title: command, content: "", timestamp: DateTime.utc_now()}
-            :ets.insert(:chat_agents, {agent_id, %{summary | messages: summary.messages ++ [stream_msg]}})
-          [] -> :ok
-        end
+        # Create the stream message via ChatAgent API (not direct ETS writes)
+        stream_msg = %{role: :build, title: command, content: "", timestamp: DateTime.utc_now()}
+        stream_msg = BoomLooper.ChatAgent.append_message_ets(agent_id, stream_msg)
+        msg_id = if stream_msg, do: stream_msg.id, else: :crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false)
 
         # Run in background Task
         Task.start(fn ->
