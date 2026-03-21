@@ -127,6 +127,10 @@ Signed with Phoenix.Token (24-hour TTL).
 
 **Link rules**: Every link must be a real `<a href>` with `target="_blank" rel="noopener"`. No JS hacks. Cmd+Click must work. LiveView must not intercept these links. If a message doesn't have an ID yet, don't render the link.
 
+**Message ID rule**: EVERY message broadcast via PubSub must include its `:id`. The pattern is: create the message, call `append_message` (which assigns the ID), then broadcast `List.last(state.messages)` — never the original message variable. This ensures the LiveView and ETS always have the same IDs.
+
+**Testing messages**: Every message must have a unique `:id`. Tests must verify this. `ChatAgent.get_message/2` must be able to find any message by its ID. These are the contracts that enable message URLs to work.
+
 ## Key files
 
 | File | Purpose |

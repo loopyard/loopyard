@@ -107,5 +107,41 @@ defmodule BoomLooper.ChatAgentTest do
       assert %DateTime{} = state.started_at
       assert %DateTime{} = state.last_activity_at
     end
+
+    test "messages have unique IDs after send", %{id: id} do
+      ChatAgent.send_message(id, "hello")
+      Process.sleep(200)
+
+      state = ChatAgent.get_state(id)
+      # Should have at least the user message
+      user_msgs = Enum.filter(state.messages, &(&1.role == :user))
+      assert length(user_msgs) >= 1
+
+      # Every message must have an :id
+      for msg <- state.messages do
+        assert msg[:id] != nil, "Message missing :id — role: #{msg.role}, content: #{inspect(String.slice(msg.content || "", 0..30))}"
+      end
+
+      # IDs must be unique
+      ids = Enum.map(state.messages, & &1[:id]) |> Enum.reject(&is_nil/1)
+      assert ids == Enum.uniq(ids), "Duplicate message IDs found"
+    end
+
+    test "get_message returns message by ID", %{id: id} do
+      ChatAgent.send_message(id, "test lookup")
+      Process.sleep(200)
+
+      state = ChatAgent.get_state(id)
+      msg = Enum.find(state.messages, &(&1.role == :user))
+
+      assert msg[:id] != nil
+      found = ChatAgent.get_message(id, msg.id)
+      assert found != nil
+      assert found.content == "test lookup"
+    end
+
+    test "get_message returns nil for unknown ID", %{id: id} do
+      assert ChatAgent.get_message(id, "nonexistent") == nil
+    end
   end
 end

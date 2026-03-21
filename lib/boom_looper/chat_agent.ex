@@ -295,7 +295,8 @@ defmodule BoomLooper.ChatAgent do
     user_msg = %{role: :user, content: text, timestamp: DateTime.utc_now()}
     state = append_message(state, user_msg)
 
-    broadcast("chat_agent:#{state.id}", {:chat_message, state.id, user_msg})
+    # Broadcast with ID (last message has the ID assigned by append_message)
+    broadcast("chat_agent:#{state.id}", {:chat_message, state.id, List.last(state.messages)})
 
     # Don't try to stream if session is still dead
     unless state.backend.session_alive?(state.session) do
@@ -364,13 +365,13 @@ defmodule BoomLooper.ChatAgent do
 
         restart_msg = %{role: :system, content: "CLI session restarted", timestamp: DateTime.utc_now()}
         state = append_message(state, restart_msg)
-        broadcast("chat_agent:#{state.id}", {:chat_message, state.id, restart_msg})
+        broadcast("chat_agent:#{state.id}", {:chat_message, state.id, List.last(state.messages)})
         {:noreply, state}
 
       {:error, reason} ->
         error_msg = %{role: :error, content: "Failed to restart session: #{inspect(reason)}", timestamp: DateTime.utc_now()}
         state = %{append_message(state, error_msg) | errors: state.errors + 1}
-        broadcast("chat_agent:#{state.id}", {:chat_message, state.id, error_msg})
+        broadcast("chat_agent:#{state.id}", {:chat_message, state.id, List.last(state.messages)})
         {:noreply, state}
     end
   end
@@ -396,19 +397,20 @@ defmodule BoomLooper.ChatAgent do
         %Event.Text{text: content} ->
           assistant_msg = %{role: :assistant, content: content, timestamp: now}
           state = %{append_message(state, assistant_msg) | last_activity_at: now}
-          broadcast("chat_agent:#{id}", {:chat_message, id, assistant_msg})
+          # Broadcast the message WITH its ID (last message in the list)
+          broadcast("chat_agent:#{id}", {:chat_message, id, List.last(state.messages)})
           state
 
         %Event.ToolCall{name: tool_name, input: tool_input} ->
           tool_msg = %{role: :tool, tool: tool_name, input: tool_input, timestamp: now}
           state = %{append_message(state, tool_msg) | last_activity_at: now, tool_calls: state.tool_calls + 1}
-          broadcast("chat_agent:#{id}", {:chat_message, id, tool_msg})
+          broadcast("chat_agent:#{id}", {:chat_message, id, List.last(state.messages)})
           state
 
         %Event.ToolResult{content: content, is_error: is_error} ->
           result_msg = %{role: :tool_result, content: content, is_error: is_error, timestamp: now}
           state = %{append_message(state, result_msg) | last_activity_at: now}
-          broadcast("chat_agent:#{id}", {:chat_message, id, result_msg})
+          broadcast("chat_agent:#{id}", {:chat_message, id, List.last(state.messages)})
           state
 
         %Event.TextDelta{text: text} ->
@@ -446,21 +448,21 @@ defmodule BoomLooper.ChatAgent do
         {:ok, new_session} ->
           recovered_msg = %{role: :system, content: "Agent session restarted. Send a message to continue.", timestamp: DateTime.utc_now()}
           state = append_message(%{state | session: new_session, status: :idle}, recovered_msg)
-          broadcast("chat_agent:#{id}", {:chat_message, id, recovered_msg})
+          broadcast("chat_agent:#{id}", {:chat_message, id, List.last(state.messages)})
           broadcast(@topic, {:chat_agent_status_changed, id, :idle})
           {:noreply, state}
 
         {:error, _} ->
           fail_msg = %{role: :error, content: "Agent session crashed and failed to restart", timestamp: DateTime.utc_now()}
           state = %{append_message(state, fail_msg) | status: :idle}
-          broadcast("chat_agent:#{id}", {:chat_message, id, fail_msg})
+          broadcast("chat_agent:#{id}", {:chat_message, id, List.last(state.messages)})
           broadcast(@topic, {:chat_agent_status_changed, id, :idle})
           {:noreply, state}
       end
     else
       error_msg = %{role: :error, content: reason, timestamp: now}
       state = %{append_message(state, error_msg) | status: :idle, last_activity_at: now, errors: state.errors + 1}
-      broadcast("chat_agent:#{id}", {:chat_message, id, error_msg})
+      broadcast("chat_agent:#{id}", {:chat_message, id, List.last(state.messages)})
       broadcast(@topic, {:chat_agent_status_changed, id, :idle})
       {:noreply, state}
     end
@@ -502,20 +504,20 @@ defmodule BoomLooper.ChatAgent do
       BoomLooper.EventLog.warning("agent:#{state.name}", "CLI session dead, auto-restarting")
 
       restart_msg = %{role: :system, content: "Session lost — reconnecting...", timestamp: DateTime.utc_now()}
-      broadcast("chat_agent:#{state.id}", {:chat_message, state.id, restart_msg})
+      broadcast("chat_agent:#{state.id}", {:chat_message, state.id, List.last(state.messages)})
       state = append_message(state, restart_msg)
 
       case state.backend.start_session(state.session_opts) do
         {:ok, new_session} ->
           BoomLooper.EventLog.info("agent:#{state.name}", "CLI session restarted")
           ok_msg = %{role: :system, content: "Reconnected.", timestamp: DateTime.utc_now()}
-          broadcast("chat_agent:#{state.id}", {:chat_message, state.id, ok_msg})
+          broadcast("chat_agent:#{state.id}", {:chat_message, state.id, List.last(state.messages)})
           append_message(%{state | session: new_session}, ok_msg)
 
         {:error, reason} ->
           BoomLooper.EventLog.error("agent:#{state.name}", "Failed to restart CLI: #{inspect(reason)}")
           fail_msg = %{role: :error, content: "Failed to reconnect: #{inspect(reason)}", timestamp: DateTime.utc_now()}
-          broadcast("chat_agent:#{state.id}", {:chat_message, state.id, fail_msg})
+          broadcast("chat_agent:#{state.id}", {:chat_message, state.id, List.last(state.messages)})
           append_message(state, fail_msg)
       end
     end
@@ -617,7 +619,7 @@ defmodule BoomLooper.ChatAgent do
       if workspace_id do
         BoomLooper.Workspace.ServiceManager.service_container_name(workspace_id, "workspace")
       else
-        "boom-looper-ws-unknown"
+        "bl-unknown-workspace-1"
       end
 
     workspace_note =
@@ -646,7 +648,7 @@ defmodule BoomLooper.ChatAgent do
 
     - #{workspace_note}
     - /root/.cache persists (package caches)
-    - The dev server runs in a SEPARATE container. To reach it from exec, use the container hostname (e.g. `curl http://boom-looper-ws-XXXX-dev:PORT/`)
+    - The dev server runs in a SEPARATE container. To reach it from exec, use the compose service name (e.g. `curl http://dev:PORT/`)
     - Use `service_status` to see container names and ports
     - Use `logs` with `service: "dev"` to see the dev server output
 

@@ -59,9 +59,12 @@ defmodule BoomLooper.Tools.ContainerTest do
       File.mkdir_p!(tmp_dir)
       workspace_id = BoomLooper.Workspace.workspace_id(tmp_dir)
 
-      # Build image and start workspace container
-      BoomLooper.Docker.build_workspace_image(workspace_id, BoomLooper.Docker.dockerfile())
-      BoomLooper.Docker.start_workspace_container(workspace_id, bind_mount: tmp_dir)
+      # Write workspace config and start via compose
+      hive_dir = Path.join(tmp_dir, ".hive")
+      File.mkdir_p!(hive_dir)
+      File.write!(Path.join(hive_dir, "workspace.json"), Jason.encode!(%{"name" => "test", "dockerfile" => BoomLooper.Docker.dockerfile()}))
+      BoomLooper.Compose.write(tmp_dir, workspace_id)
+      BoomLooper.Compose.up(tmp_dir, workspace_id)
 
       # Start an agent bound to this workspace
       agent_id = "container-tool-test-#{:rand.uniform(100_000)}"
@@ -80,7 +83,7 @@ defmodule BoomLooper.Tools.ContainerTest do
         catch
           :exit, _ -> :ok
         end
-        BoomLooper.Docker.stop_workspace_container(workspace_id)
+        BoomLooper.Compose.down(tmp_dir, workspace_id)
         File.rm_rf!(tmp_dir)
       end)
 
