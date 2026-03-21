@@ -26,6 +26,16 @@ Hooks.ScrollBottom = {
   }
 }
 
+// Auto-scroll element to bottom on every update (tail mode)
+Hooks.TailScroll = {
+  mounted() {
+    this.el.scrollTop = this.el.scrollHeight
+  },
+  updated() {
+    this.el.scrollTop = this.el.scrollHeight
+  }
+}
+
 // Clears input after submit, focuses on agent select
 Hooks.ChatForm = {
   mounted() {
