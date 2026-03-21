@@ -686,6 +686,11 @@ defmodule BoomLooperWeb.ChatLive do
         agents = list_workspace_agents(socket.assigns.workspace.path)
         checklist_progress = load_checklist_progress(id)
 
+        # Restore build_log from any existing :build message so streaming continues seamlessly
+        existing_build = Enum.find(agent.messages, &(&1.role == :build))
+        build_log = if existing_build, do: existing_build.content || "", else: ""
+        stream_msg_id = if existing_build, do: existing_build[:id], else: nil
+
         socket =
           socket
           |> assign(:agents, agents)
@@ -695,6 +700,9 @@ defmodule BoomLooperWeb.ChatLive do
           |> assign(:streaming_text, "")
           |> assign(:booting_agent_id, nil)
           |> assign(:checklist_progress, checklist_progress)
+          |> assign(:build_log, build_log)
+          |> assign(:stream_msg_id, stream_msg_id)
+          |> assign(:building, existing_build != nil && existing_build.role == :build)
 
         {:noreply, socket}
     end
@@ -1002,9 +1010,9 @@ defmodule BoomLooperWeb.ChatLive do
           <.service_log_view :if={@live_action == :service} service_name={@selected_service} service_statuses={@service_statuses} logs={@service_logs} base_path={@base_path} />
           <.console_view :if={@live_action == :console} service_name={@selected_service} container={@console_container} />
           <.all_services_view :if={@live_action == :services} all_service_logs={@all_service_logs} />
-          <.booting_screen :if={@live_action not in [:new, :service, :services] && @booting_agent_id && !@selected_agent} agent_id={@booting_agent_id} status={@boot_status} boot_log={@boot_log} />
-          <.empty_state :if={@live_action not in [:new, :service, :services] && !@booting_agent_id && !@selected_agent} />
-          <.agent_view :if={@live_action not in [:new, :service, :services] && @selected_agent} {assigns} />
+          <.booting_screen :if={@live_action not in [:new, :service, :services, :console] && @booting_agent_id && !@selected_agent} agent_id={@booting_agent_id} status={@boot_status} boot_log={@boot_log} />
+          <.empty_state :if={@live_action not in [:new, :service, :services, :console] && !@booting_agent_id && !@selected_agent} />
+          <.agent_view :if={@live_action not in [:new, :service, :services, :console] && @selected_agent} {assigns} />
         </main>
       </div>
     </div>
@@ -1445,6 +1453,16 @@ defmodule BoomLooperWeb.ChatLive do
 
   defp chat_msg(%{msg: %{role: :tool_result}} = assigns) do
     content = assigns.msg.content
+
+    if is_binary(content) && String.contains?(content, "completed with no output") do
+      ~H"<div></div>"
+    else
+      chat_msg_tool_result(assigns)
+    end
+  end
+
+  defp chat_msg_tool_result(assigns) do
+    content = assigns.msg.content
     display = format_tool_result(content)
     lines = String.split(display, "\n")
     truncated = length(lines) > 40
@@ -1572,7 +1590,7 @@ defmodule BoomLooperWeb.ChatLive do
           </button>
         </div>
       </div>
-      <pre class="flex-1 px-4 py-3 text-xs font-mono overflow-auto whitespace-pre-wrap bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-green-400">{@logs}</pre>
+      <pre id="service-logs" phx-hook="TailScroll" class="flex-1 px-4 py-3 text-xs font-mono overflow-auto whitespace-pre-wrap bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-green-400">{@logs}</pre>
     </div>
     """
   end
