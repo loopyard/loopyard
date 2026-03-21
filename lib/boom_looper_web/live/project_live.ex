@@ -11,7 +11,10 @@ defmodule BoomLooperWeb.ProjectLive do
     unless project do
       {:ok, push_navigate(socket, to: "/")}
     else
-      if connected?(socket), do: ChatAgent.subscribe()
+      if connected?(socket) do
+        ChatAgent.subscribe()
+        BoomLooper.Workspace.ServiceManager.subscribe()
+      end
 
       {:ok,
        socket
@@ -72,6 +75,11 @@ defmodule BoomLooperWeb.ProjectLive do
   end
 
   @impl true
+  def handle_info({:services_updated, _path, _statuses}, socket) do
+    {:noreply, assign(socket, :branches, load_branches(socket.assigns.project))}
+  end
+
+  @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   defp load_branches(project) do
@@ -82,7 +90,18 @@ defmodule BoomLooperWeb.ProjectLive do
       agent_count = Enum.count(agents, fn a ->
         a[:bind_mount] == branch.path || a[:working_dir] == branch.path
       end)
-      Map.put(branch, :agent_count, agent_count)
+
+      service_count = case BoomLooper.Workspace.ServiceManager.service_status(branch.path) do
+        {:ok, statuses} ->
+          statuses
+          |> Enum.reject(&(Map.get(&1, :type) == :workspace))
+          |> Enum.count(& &1.running)
+        _ -> 0
+      end
+
+      branch
+      |> Map.put(:agent_count, agent_count)
+      |> Map.put(:service_count, service_count)
     end)
   end
 
@@ -123,6 +142,9 @@ defmodule BoomLooperWeb.ProjectLive do
                   <span :if={branch.is_main} class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500">default</span>
                   <span :if={branch.agent_count > 0} class="text-xs font-medium text-violet-600 dark:text-violet-400 bg-violet-100 dark:bg-violet-900/30 rounded-full px-2 py-0.5">
                     {branch.agent_count} agent{if branch.agent_count != 1, do: "s"}
+                  </span>
+                  <span :if={branch.service_count > 0} class="text-xs font-medium text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 rounded-full px-2 py-0.5">
+                    {branch.service_count} service{if branch.service_count != 1, do: "s"}
                   </span>
                 </.link>
                 <div class="flex items-center gap-2 flex-none opacity-0 group-hover:opacity-100 transition-opacity">
