@@ -21,7 +21,8 @@ defmodule BoomLooper.Workspace.ServiceManager do
   @prefix "boom-looper-svc"
   @services_topic "workspace_services"
 
-  defstruct [:project_dir, :workspace_id, services: %{}, processes: [], workspace_container_running: false, rebuilding: false, port_assignments: %{}]
+  # Service health: :stopped | :booting | :started | :healthy | :crashed
+  defstruct [:project_dir, :workspace_id, services: %{}, processes: [], workspace_container_running: false, rebuilding: false, port_assignments: %{}, service_health: %{}]
 
   # --- Public API ---
 
@@ -132,11 +133,19 @@ defmodule BoomLooper.Workspace.ServiceManager do
           end)
 
         services = Map.new(workspace.services, fn s -> {s.name, s} end)
+
+        # Set initial health: :started for all services (ContainerMonitor will promote to :healthy)
+        initial_health = Map.new(
+          Enum.map(workspace.processes, & &1.name) ++ Enum.map(workspace.services, & &1.name),
+          fn name -> {name, :started} end
+        )
+
         new_state = %{state |
           services: services,
           processes: workspace.processes,
           workspace_container_running: ws_running,
-          port_assignments: assigns
+          port_assignments: assigns,
+          service_health: initial_health
         }
         broadcast_service_update(new_state)
         {:reply, {:ok, stock_results}, new_state}
@@ -205,6 +214,16 @@ defmodule BoomLooper.Workspace.ServiceManager do
   def handle_cast(:broadcast_status, state) do
     broadcast_service_update(state)
     {:noreply, state}
+  end
+
+  @impl true
+  def handle_cast(:check_health, state) do
+    # Ensure service_health exists (handles hot-reload of old state)
+    state = if Map.has_key?(state, :service_health), do: state, else: Map.put(state, :service_health, %{})
+    health = update_health(state)
+    new_state = %{state | service_health: health}
+    if health != state.service_health, do: broadcast_service_update(new_state)
+    {:noreply, new_state}
   end
 
   @impl true
@@ -360,8 +379,9 @@ defmodule BoomLooper.Workspace.ServiceManager do
     Enum.map(state.services, fn {name, service} ->
       container = service_container_name(state.workspace_id, name)
       running = Docker.container_running?(container)
-      # Get actual host ports (dynamic allocation)
       ports = if running, do: Docker.container_ports(container), else: %{}
+      exit_info = if !running, do: Docker.container_state(container), else: nil
+      health = Map.get(Map.get(state, :service_health, %{}), name, :stopped)
 
       %{
         name: name,
@@ -369,7 +389,9 @@ defmodule BoomLooper.Workspace.ServiceManager do
         type: :stock,
         running: running,
         container: container,
-        ports: ports
+        ports: ports,
+        exit_info: exit_info,
+        health: health
       }
     end)
   end
@@ -379,8 +401,8 @@ defmodule BoomLooper.Workspace.ServiceManager do
       container = process_container_name(state.workspace_id, p.name)
       running = Docker.container_running?(container)
       ports = if running, do: Docker.container_ports(container), else: %{}
-      # Include exit info when not running so the UI can show WHY it died
       exit_info = if !running, do: Docker.container_state(container), else: nil
+      health = Map.get(Map.get(state, :service_health, %{}), p.name, :stopped)
 
       %{
         name: p.name,
@@ -389,7 +411,8 @@ defmodule BoomLooper.Workspace.ServiceManager do
         running: running,
         container: container,
         ports: ports,
-        exit_info: exit_info
+        exit_info: exit_info,
+        health: health
       }
     end)
   end
@@ -410,6 +433,47 @@ defmodule BoomLooper.Workspace.ServiceManager do
     else
       []
     end
+  end
+
+  defp update_health(%{service_health: nil} = state), do: update_health(%{state | service_health: %{}})
+  defp update_health(state) do
+    all_services =
+      Enum.map(state.processes, fn p ->
+        {p.name, process_container_name(state.workspace_id, p.name), p[:ports]}
+      end) ++
+      Enum.map(state.services, fn {name, svc} ->
+        {name, service_container_name(state.workspace_id, name), svc[:ports]}
+      end)
+
+    Map.new(all_services, fn {name, container, _config_ports} ->
+      current = Map.get(Map.get(state, :service_health, %{}), name, :stopped)
+      running = Docker.container_running?(container)
+
+      new_health = cond do
+        # Container not running
+        !running ->
+          exit_info = Docker.container_state(container)
+          if exit_info && exit_info.exit_code > 0, do: :crashed, else: :stopped
+
+        # Already healthy — stay healthy (no more polling)
+        current == :healthy ->
+          :healthy
+
+        # Container running — check if ports are accepting connections
+        running ->
+          ports = Docker.container_ports(container)
+          if ports == %{} do
+            # No ports (like workspace container) — running = healthy
+            :healthy
+          else
+            # Check TCP on first host port
+            {_cp, host_port} = Enum.at(ports, 0)
+            if Docker.port_open?(host_port), do: :healthy, else: :started
+          end
+      end
+
+      {name, new_health}
+    end)
   end
 
   # Build -p args reusing previously assigned host ports when available

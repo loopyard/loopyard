@@ -35,7 +35,7 @@ defmodule BoomLooper.ContainerMonitor do
     case Registry.lookup(BoomLooper.ServiceManagerRegistry, project_dir) do
       [{pid, _}] ->
         try do
-          GenServer.cast(pid, :broadcast_status)
+          GenServer.cast(pid, :check_health)
         catch
           :exit, _ -> :ok
         end

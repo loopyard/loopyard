@@ -100,6 +100,15 @@ defmodule BoomLooper.Docker do
     end
   end
 
+  @doc "Check if a TCP port is accepting connections on localhost."
+  def port_open?(port) when is_binary(port), do: port_open?(String.to_integer(port))
+  def port_open?(port) when is_integer(port) do
+    case :gen_tcp.connect(~c"localhost", port, [], 1_000) do
+      {:ok, socket} -> :gen_tcp.close(socket); true
+      {:error, _} -> false
+    end
+  end
+
   @doc "Check if a container is running by name"
   def container_running?(container_name) do
     case docker(["inspect", "-f", "{{.State.Running}}", container_name]) do

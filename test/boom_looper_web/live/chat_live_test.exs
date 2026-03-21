@@ -400,7 +400,7 @@ defmodule BoomLooperWeb.ChatLiveTest do
     test "services with ports show port URL", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
       {:ok, view, _html} = live(conn, ws_chat_path(ws, setup_agent_id))
 
-      statuses = [%{name: "web", command: "mix phx.server", running: true, container: "boom-looper-svc-test-web", ports: %{4000 => 4000}}]
+      statuses = [%{name: "web", command: "mix phx.server", running: true, container: "boom-looper-svc-test-web", ports: %{4000 => 4000}, health: :healthy}]
       Phoenix.PubSub.broadcast(BoomLooper.PubSub, "workspace_services", {:services_updated, ws.path, statuses})
 
       html = flush_lv(view)

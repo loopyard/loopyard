@@ -825,11 +825,18 @@ defmodule BoomLooperWeb.ChatLive do
 
   defp first_host_port(_), do: nil
 
-  # Green = running, red = crashed/error, grey = stopped
-  defp service_dot(%{running: true}), do: "bg-green-500"
-  defp service_dot(%{exit_info: %{exit_code: code}}) when code > 0, do: "bg-red-500"
-  defp service_dot(%{exit_info: %{oom_killed: true}}), do: "bg-red-500"
+  defp service_dot(%{health: :healthy}), do: "bg-green-500"
+  defp service_dot(%{health: :started}), do: "bg-blue-400"
+  defp service_dot(%{health: :booting}), do: "bg-yellow-400 animate-pulse"
+  defp service_dot(%{health: :crashed}), do: "bg-red-500"
+  defp service_dot(%{running: true}), do: "bg-blue-400"
   defp service_dot(_), do: "bg-zinc-400"
+
+  defp service_status_text(%{health: :healthy}), do: nil
+  defp service_status_text(%{health: :started}), do: "starting"
+  defp service_status_text(%{health: :booting}), do: "booting"
+  defp service_status_text(%{health: :crashed}), do: nil  # exit_reason handles this
+  defp service_status_text(_), do: nil
 
   defp exit_reason(%{oom_killed: true}), do: "OOM killed"
   defp exit_reason(%{error: error}) when is_binary(error), do: error
@@ -1142,11 +1149,12 @@ defmodule BoomLooperWeb.ChatLive do
         <div class={"w-1.5 h-1.5 rounded-full flex-none #{service_dot(@svc)}"}></div>
         <span class="truncate text-zinc-600 dark:text-zinc-400">{@svc.name}</span>
       </.link>
-      <a :if={@first_port} href={"http://localhost:#{@first_port}"} target="_blank"
+      <a :if={@first_port && Map.get(@svc, :health) == :healthy} href={"http://localhost:#{@first_port}"} target="_blank"
         class="text-[10px] text-violet-500 hover:text-violet-400 font-mono ml-auto flex-none transition-colors">
         :{@first_port}
       </a>
-      <span :if={!@first_port && @svc.running} class="text-[10px] text-zinc-400 dark:text-zinc-500 ml-auto font-mono truncate max-w-[100px]">{service_detail(@svc)}</span>
+      <span :if={service_status_text(@svc)} class="text-[10px] text-blue-400 ml-auto flex-none">{service_status_text(@svc)}</span>
+      <span :if={!service_status_text(@svc) && !@first_port && @svc.running} class="text-[10px] text-zinc-400 dark:text-zinc-500 ml-auto font-mono truncate max-w-[100px]">{service_detail(@svc)}</span>
       <span :if={!@svc.running && @svc[:exit_info]} class="text-[10px] text-red-500 ml-auto truncate max-w-[140px]">{exit_reason(@svc.exit_info)}</span>
     </div>
     """
