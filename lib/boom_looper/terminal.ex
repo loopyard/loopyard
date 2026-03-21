@@ -59,10 +59,28 @@ defmodule BoomLooper.Terminal do
     unless BoomLooper.Docker.container_running?(container) do
       {:stop, :container_not_running}
     else
-      # Try sh first (works on minimal images like redis/alpine)
+      # Use script(1) to allocate a PTY for docker exec.
+      # Without a PTY, docker exec -it fails immediately.
+      docker = System.find_executable("docker")
+      script = System.find_executable("script")
+
+      {executable, args} = if script do
+        # macOS: script -q /dev/null docker exec -it container sh
+        # Linux: script -qc "docker exec -it container sh" /dev/null
+        case :os.type() do
+          {:unix, :darwin} ->
+            {script, ["-q", "/dev/null", docker, "exec", "-it", container, "sh"]}
+          _ ->
+            {script, ["-qc", "#{docker} exec -it #{container} sh", "/dev/null"]}
+        end
+      else
+        # Fallback: no PTY, interactive only
+        {docker, ["exec", "-i", container, "sh"]}
+      end
+
       port = Port.open(
-        {:spawn_executable, System.find_executable("docker")},
-        [:binary, :exit_status, {:args, ["exec", "-it", container, "sh"]}]
+        {:spawn_executable, executable},
+        [:binary, :exit_status, {:args, args}]
       )
 
       {:ok, %{
