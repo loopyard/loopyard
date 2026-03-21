@@ -111,19 +111,39 @@ defmodule BoomLooper.Compose do
   @doc "Project name for compose (used for container naming)."
   def project_name(workspace_id), do: "bl-#{workspace_id}"
 
-  @doc "Run a docker compose command."
+  @doc "Run a docker compose command. Tries `docker compose` (v2 plugin) first, falls back to `docker-compose` (standalone)."
   def compose(project_dir, workspace_id, args, opts \\ []) do
     compose_file = compose_path(project_dir)
     project = project_name(workspace_id)
     timeout = Keyword.get(opts, :timeout, 120_000)
 
-    full_args = [
-      "compose",
-      "-f", compose_file,
-      "-p", project
-    ] ++ args
+    base_args = ["-f", compose_file, "-p", project] ++ args
 
-    BoomLooper.Docker.docker(full_args, timeout: timeout)
+    # Try docker compose v2 (plugin) first
+    case BoomLooper.Docker.docker(["compose" | base_args], timeout: timeout) do
+      {:error, output} when is_binary(output) and byte_size(output) > 0 ->
+        if String.contains?(output, "unknown shorthand flag") || String.contains?(output, "is not a docker command") do
+          # Fall back to standalone docker-compose
+          docker_compose(base_args, timeout)
+        else
+          {:error, output}
+        end
+
+      other ->
+        other
+    end
+  end
+
+  defp docker_compose(args, timeout) do
+    task = Task.async(fn ->
+      System.cmd("docker-compose", args, stderr_to_stdout: true)
+    end)
+
+    case Task.yield(task, timeout) || Task.shutdown(task) do
+      {:ok, {output, 0}} -> {:ok, output}
+      {:ok, {output, _}} -> {:error, output}
+      nil -> {:error, "docker-compose timed out"}
+    end
   end
 
   @doc "Start all services."

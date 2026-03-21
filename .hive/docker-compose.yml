@@ -1,0 +1,44 @@
+{
+  "services": {
+    "dev": {
+      "build": {
+        "context": "/Users/bradgessler/Projects/bradgessler/hive",
+        "dockerfile_inline": "FROM elixir:1.18\n\n# Install build deps and Node.js (needed for esbuild/tailwind)\nRUN apt-get update && apt-get install -y \\\n    build-essential \\\n    git \\\n    curl \\\n    inotify-tools \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Set mix/hex homes inside workspace for caching\nENV MIX_HOME=/workspace/.mix_home\nENV HEX_HOME=/workspace/.hex_home\n\nWORKDIR /workspace\n"
+      },
+      "command": "mix phx.server",
+      "environment": [
+        "MIX_ENV=dev",
+        "PHX_HOST=localhost",
+        "PORT=4000"
+      ],
+      "ports": [
+        "4000:4000"
+      ],
+      "volumes": [
+        "/Users/bradgessler/Projects/bradgessler/hive:/workspace",
+        "cache-40ee:/root/.cache"
+      ],
+      "working_dir": "/workspace"
+    },
+    "workspace": {
+      "build": {
+        "context": "/Users/bradgessler/Projects/bradgessler/hive",
+        "dockerfile_inline": "FROM elixir:1.18\n\n# Install build deps and Node.js (needed for esbuild/tailwind)\nRUN apt-get update && apt-get install -y \\\n    build-essential \\\n    git \\\n    curl \\\n    inotify-tools \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Set mix/hex homes inside workspace for caching\nENV MIX_HOME=/workspace/.mix_home\nENV HEX_HOME=/workspace/.hex_home\n\nWORKDIR /workspace\n"
+      },
+      "command": "sleep infinity",
+      "environment": [
+        "MIX_ENV=dev",
+        "PHX_HOST=localhost",
+        "PORT=4000"
+      ],
+      "volumes": [
+        "/Users/bradgessler/Projects/bradgessler/hive:/workspace",
+        "cache-40ee:/root/.cache"
+      ],
+      "working_dir": "/workspace"
+    }
+  },
+  "volumes": {
+    "cache-40ee": null
+  }
+}
