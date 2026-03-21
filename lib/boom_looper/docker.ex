@@ -100,12 +100,23 @@ defmodule BoomLooper.Docker do
     end
   end
 
-  @doc "Check if a TCP port is accepting connections on localhost."
+  @doc "Check if a TCP port has a process listening (not just Docker proxy)."
   def port_open?(port) when is_binary(port), do: port_open?(String.to_integer(port))
   def port_open?(port) when is_integer(port) do
-    case :gen_tcp.connect(~c"localhost", port, [], 1_000) do
-      {:ok, socket} -> :gen_tcp.close(socket); true
-      {:error, _} -> false
+    case :gen_tcp.connect(~c"localhost", port, [:binary, active: false], 1_000) do
+      {:ok, socket} ->
+        # Try to receive data within 500ms — if Docker proxy is forwarding
+        # to nothing, we'll get {:error, :closed} or timeout
+        result = case :gen_tcp.recv(socket, 0, 500) do
+          {:ok, _data} -> true          # Got data — server is responding
+          {:error, :timeout} -> true    # Connected but no data yet — still alive
+          {:error, :closed} -> false    # Docker proxy connected but backend isn't there
+        end
+        :gen_tcp.close(socket)
+        result
+
+      {:error, _} ->
+        false
     end
   end
 
