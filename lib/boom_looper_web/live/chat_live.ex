@@ -1454,23 +1454,23 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   defp chat_msg(%{msg: %{role: :build}} = assigns) do
-    assigns = assign(assigns, :raw, msg_raw_url(assigns))
+    assigns = assign(assigns, :link, msg_url(assigns))
     ~H"""
-    <.build_log_inline content={@msg.content} status={:building} msg_raw_url={@raw} title={@msg[:title]} />
+    <.build_log_inline content={@msg.content} status={:building} msg_raw_url={@link} title={@msg[:title]} />
     """
   end
 
   defp chat_msg(%{msg: %{role: :build_done}} = assigns) do
-    assigns = assign(assigns, :raw, msg_raw_url(assigns))
+    assigns = assign(assigns, :link, msg_url(assigns))
     ~H"""
-    <.build_log_inline content={@msg.content} status={:done} msg_raw_url={@raw} title={@msg[:title]} />
+    <.build_log_inline content={@msg.content} status={:done} msg_raw_url={@link} title={@msg[:title]} />
     """
   end
 
   defp chat_msg(%{msg: %{role: :build_failed}} = assigns) do
-    assigns = assign(assigns, :raw, msg_raw_url(assigns))
+    assigns = assign(assigns, :link, msg_url(assigns))
     ~H"""
-    <.build_log_inline content={@msg.content} status={:failed} msg_raw_url={@raw} title={@msg[:title]} />
+    <.build_log_inline content={@msg.content} status={:failed} msg_raw_url={@link} title={@msg[:title]} />
     """
   end
 
