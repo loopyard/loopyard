@@ -8,34 +8,26 @@ defmodule BoomLooperWeb.MessageLive do
 
   @impl true
   def mount(%{"id" => agent_id, "index" => msg_id} = params, _session, socket) do
-    token = Map.get(params, "token", "")
-    expected = "#{agent_id}:#{msg_id}"
+    msg = BoomLooper.ChatAgent.get_message(agent_id, msg_id)
 
-    case Phoenix.Token.verify(BoomLooperWeb.Endpoint, "msg", token, max_age: 86_400) do
-      {:ok, ^expected} ->
-        msg = BoomLooper.ChatAgent.get_message(agent_id, msg_id)
+    if msg do
+      if connected?(socket) do
+        BoomLooper.ChatAgent.subscribe(agent_id)
+      end
 
-        if msg do
-          if connected?(socket) do
-            BoomLooper.ChatAgent.subscribe(agent_id)
-          end
+      raw_url = BoomLooperWeb.OutputController.raw_url(
+        params["project_id"] || "x", agent_id, msg_id)
 
-          raw_url = BoomLooperWeb.OutputController.raw_url(
-            params["project_id"] || "x", agent_id, msg_id)
-
-          {:ok,
-           socket
-           |> assign(:agent_id, agent_id)
-           |> assign(:msg_id, msg_id)
-           |> assign(:msg, msg)
-           |> assign(:raw_url, raw_url)
-           |> assign(:streaming, msg.role in [:build, :stream])}
-        else
-          {:ok, socket |> assign(:msg, nil) |> assign(:raw_url, nil) |> assign(:streaming, false)}
-        end
-
-      _ ->
-        {:ok, socket |> assign(:msg, nil) |> assign(:raw_url, nil) |> assign(:streaming, false)}
+      {:ok,
+       socket
+       |> assign(:agent_id, agent_id)
+       |> assign(:msg_id, msg_id)
+       |> assign(:msg, msg)
+       |> assign(:raw_url, raw_url)
+       |> assign(:streaming, msg.role in [:build, :stream])}
+    else
+      {:ok, socket |> assign(:msg, nil) |> assign(:raw_url, nil) |> assign(:streaming, false)
+       |> assign(:agent_id, agent_id) |> assign(:msg_id, msg_id)}
     end
   end
 
@@ -92,7 +84,9 @@ defmodule BoomLooperWeb.MessageLive do
 
       <div :if={@msg} class="p-4">
         <pre :if={@msg.role in [:build, :build_done, :build_failed, :stream, :tool_result]}
-          class="text-sm font-mono whitespace-pre-wrap bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-green-400 rounded-lg p-4 overflow-auto"
+          id="msg-output"
+          phx-hook="TailScroll"
+          class="text-sm font-mono whitespace-pre-wrap bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-green-400 rounded-lg p-4 overflow-auto max-h-[calc(100vh-6rem)]"
         >{@msg.content}</pre>
 
         <div :if={@msg.role == :assistant}

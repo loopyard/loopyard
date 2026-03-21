@@ -1,0 +1,144 @@
+defmodule BoomLooperWeb.MessageLiveTest do
+  use BoomLooperWeb.ConnCase
+
+  import Phoenix.LiveViewTest
+
+  alias BoomLooper.ChatAgent
+
+  defp create_workspace do
+    tmp_dir = Path.join(System.tmp_dir!(), "boom-looper-msg-test-#{:rand.uniform(100_000)}")
+    File.mkdir_p!(tmp_dir)
+    hive_dir = Path.join(tmp_dir, ".hive")
+    File.mkdir_p!(hive_dir)
+    File.write!(Path.join(hive_dir, "workspace.json"), Jason.encode!(%{"name" => "test"}))
+    {:ok, project, branch} = BoomLooper.ProjectRegistry.add(tmp_dir)
+    {project, branch, tmp_dir}
+  end
+
+  setup do
+    {project, branch, tmp_dir} = create_workspace()
+
+    agent_id = "msg-test-#{:rand.uniform(100_000)}"
+    {:ok, _pid} = BoomLooper.TestHelpers.start_agent(
+      id: agent_id,
+      name: "Msg Test Agent",
+      working_dir: tmp_dir,
+      bind_mount: tmp_dir,
+      started_by: "test"
+    )
+
+    # Send a message so we have something to look up
+    ChatAgent.send_message(agent_id, "hello world")
+    Process.sleep(200)
+
+    on_exit(fn ->
+      try do
+        ChatAgent.stop_agent(agent_id)
+      catch
+        :exit, _ -> :ok
+      end
+      Process.sleep(50)
+      File.rm_rf!(tmp_dir)
+    end)
+
+    %{project: project, branch: branch, tmp_dir: tmp_dir, agent_id: agent_id}
+  end
+
+  describe "message URL contract" do
+    test "every message has a unique non-nil ID", %{agent_id: agent_id} do
+      state = ChatAgent.get_state(agent_id)
+      assert length(state.messages) >= 1
+
+      for msg <- state.messages do
+        assert msg[:id] != nil, "Message missing :id — role: #{msg.role}"
+      end
+
+      ids = Enum.map(state.messages, & &1[:id]) |> Enum.reject(&is_nil/1)
+      assert ids == Enum.uniq(ids), "Duplicate message IDs found"
+    end
+
+    test "get_message returns message by ID", %{agent_id: agent_id} do
+      state = ChatAgent.get_state(agent_id)
+      msg = Enum.find(state.messages, &(&1.role == :user))
+      assert msg != nil
+      assert msg[:id] != nil
+
+      found = ChatAgent.get_message(agent_id, msg.id)
+      assert found != nil
+      assert found.content == "hello world"
+      assert found.id == msg.id
+    end
+
+    test "msg_url generates a URL that MessageLive can load", %{branch: branch, agent_id: agent_id, conn: conn} do
+      state = ChatAgent.get_state(agent_id)
+      msg = Enum.find(state.messages, &(&1.role == :user))
+      assert msg != nil
+
+      url = BoomLooperWeb.OutputController.msg_url(branch.id, agent_id, msg.id)
+      assert url =~ msg.id
+
+      {:ok, _view, html} = live(conn, url)
+      assert html =~ "hello world", "MessageLive shows 'not found' instead of message content. URL: #{url}"
+      refute html =~ "Message not found or link expired"
+    end
+
+    test "raw URL returns message content as plain text", %{branch: branch, agent_id: agent_id, conn: conn} do
+      state = ChatAgent.get_state(agent_id)
+      msg = Enum.find(state.messages, &(&1.role == :user))
+
+      url = BoomLooperWeb.OutputController.raw_url(branch.id, agent_id, msg.id)
+
+      resp = get(conn, url)
+      assert resp.status == 200
+      assert resp.resp_body =~ "hello world"
+    end
+  end
+
+  describe "append_message_ets" do
+    test "messages appended via ETS are findable by get_message", %{agent_id: agent_id} do
+      stream_msg = %{role: :build, title: "test cmd", content: "output here", timestamp: DateTime.utc_now()}
+      result = ChatAgent.append_message_ets(agent_id, stream_msg)
+
+      assert result != nil
+      assert result.id != nil
+
+      found = ChatAgent.get_message(agent_id, result.id)
+      assert found != nil
+      assert found.content == "output here"
+      assert found.role == :build
+    end
+
+    test "messages appended via ETS survive update_message calls", %{agent_id: agent_id} do
+      stream_msg = %{role: :build, title: "test cmd", content: "", timestamp: DateTime.utc_now()}
+      result = ChatAgent.append_message_ets(agent_id, stream_msg)
+
+      # Update the message content (simulates streaming output)
+      ChatAgent.update_message(agent_id, result.id, fn msg ->
+        %{msg | content: "updated output"}
+      end)
+
+      # Give GenServer time to process the cast
+      Process.sleep(50)
+
+      found = ChatAgent.get_message(agent_id, result.id)
+      assert found.content == "updated output"
+    end
+  end
+
+  describe "message link from chat page" do
+    test "chat page renders message links that load correctly", %{project: project, branch: branch, agent_id: agent_id, conn: conn} do
+      chat_path = "/p/#{project.id}/b/#{branch.id}/chat/#{agent_id}"
+      {:ok, _view, html} = live(conn, chat_path)
+
+      case Regex.run(~r{href="(/p/[^"]*?/msg/[^"]*?)"}, html) do
+        [_, msg_link] ->
+          {:ok, _view, msg_html} = live(conn, msg_link)
+          refute msg_html =~ "Message not found or link expired",
+            "Message link from chat page leads to 'not found'. Link: #{msg_link}"
+
+        nil ->
+          :ok
+      end
+    end
+  end
+end

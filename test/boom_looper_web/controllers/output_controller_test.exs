@@ -28,18 +28,7 @@ defmodule BoomLooperWeb.OutputControllerTest do
       %{agent_id: id}
     end
 
-    test "returns 403 without token", %{conn: conn, agent_id: id} do
-      conn = get(conn, "/p/test/b/test/chat/#{id}/msg/0/raw")
-      assert response(conn, 403) =~ "Missing token"
-    end
-
-    test "returns 403 with invalid token", %{conn: conn, agent_id: id} do
-      conn = get(conn, "/p/test/b/test/chat/#{id}/msg/0/raw?token=bogus")
-      assert response(conn, 403) =~ "expired or invalid"
-    end
-
-    test "returns message content with valid signed URL", %{conn: conn, agent_id: id} do
-      # Get the first message's ID
+    test "returns message content with valid URL", %{conn: conn, agent_id: id} do
       state = BoomLooper.ChatAgent.get_state(id)
       msg = hd(state.messages)
       url = BoomLooperWeb.OutputController.raw_url("test", id, msg.id)
@@ -51,6 +40,11 @@ defmodule BoomLooperWeb.OutputControllerTest do
     test "returns 404 for unknown message ID", %{conn: conn, agent_id: id} do
       url = BoomLooperWeb.OutputController.raw_url("test", id, "nonexistent")
       conn = get(conn, url)
+      assert response(conn, 404)
+    end
+
+    test "returns 404 for unknown agent ID", %{conn: conn} do
+      conn = get(conn, "/p/test/b/test/chat/nonexistent/msg/0/raw")
       assert response(conn, 404)
     end
   end

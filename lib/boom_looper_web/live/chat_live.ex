@@ -80,7 +80,7 @@ defmodule BoomLooperWeb.ChatLive do
       if socket.assigns.selected_id != id do
         case select_agent(socket, id) do
           {:noreply, s} ->
-            s
+            clear_flash(s)
 
           :not_found ->
             socket
@@ -88,7 +88,7 @@ defmodule BoomLooperWeb.ChatLive do
             |> push_navigate(to: branch_path(socket))
         end
       else
-        socket
+        clear_flash(socket)
       end
 
     socket = assign(socket, :tab, tab)
@@ -896,7 +896,7 @@ defmodule BoomLooperWeb.ChatLive do
   defp msg_url(assigns) do
     msg_id = assigns.msg[:id]
     if msg_id do
-      BoomLooperWeb.OutputController.signed_url(assigns.workspace_id, assigns.agent_id, msg_id)
+      BoomLooperWeb.OutputController.msg_url(assigns.workspace_id, assigns.agent_id, msg_id)
     end
   end
 
@@ -1216,19 +1216,27 @@ defmodule BoomLooperWeb.ChatLive do
       :failed -> {(title || "Command") <> " — failed", "bg-red-500"}
     end
 
-    assigns = assign(assigns, label: label, dot_class: dot_class)
+    # Truncate to last 50 lines for inline display (full content via "open" link)
+    max_lines = 50
+    content = assigns.content || ""
+    lines = String.split(content, "\n")
+    truncated = length(lines) > max_lines
+    display = if truncated, do: Enum.take(lines, -max_lines) |> Enum.join("\n"), else: content
+
+    assigns = assign(assigns, label: label, dot_class: dot_class, display: display, truncated: truncated)
 
     ~H"""
     <div class="mt-2 mb-1 ml-10 rounded-lg border border-zinc-200 dark:border-zinc-700/80 overflow-hidden">
       <div class="flex items-center gap-2 px-3 py-1.5 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
         <div class={"w-1.5 h-1.5 rounded-full flex-none #{@dot_class}"}></div>
         <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">{@label}</span>
+        <span :if={@truncated} class="text-[10px] text-zinc-400">... truncated</span>
         <a :if={@msg_raw_url} href={@msg_raw_url} target="_blank" rel="noopener"
           class="ml-auto text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors">
           open
         </a>
       </div>
-      <pre class={"px-3 py-2 text-xs font-mono text-zinc-800 dark:text-green-400 bg-zinc-100 dark:bg-zinc-950 whitespace-pre-wrap overflow-y-auto #{if @status == :building, do: "max-h-64", else: "max-h-32"}"}>{@content}</pre>
+      <pre class={"px-3 py-2 text-xs font-mono text-zinc-800 dark:text-green-400 bg-zinc-100 dark:bg-zinc-950 whitespace-pre-wrap overflow-y-auto #{if @status == :building, do: "max-h-64", else: "max-h-32"}"}>{@display}</pre>
     </div>
     """
   end
@@ -1386,6 +1394,13 @@ defmodule BoomLooperWeb.ChatLive do
         <p class="text-sm whitespace-pre-wrap">{@msg.content}</p>
       </div>
     </div>
+    """
+  end
+
+  defp chat_msg(%{msg: %{role: :assistant, content: content}} = assigns)
+       when content in [nil, ""] do
+    ~H"""
+    <div></div>
     """
   end
 
