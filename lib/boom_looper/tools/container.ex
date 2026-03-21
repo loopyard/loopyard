@@ -99,6 +99,16 @@ defmodule BoomLooper.Tools.Container do
     end
   end
 
+  tool :exec_stream, "Run a long-running command with streaming output (e.g. ping, tail -f, watch). Output streams into the chat. The command runs in the background — you can keep working." do
+    field :agent_id, :string, required: true
+    field :command, :string, required: true
+    field :timeout, :integer, required: false, description: "Max seconds to run (default: 30)"
+
+    def execute(%{agent_id: agent_id, command: command} = params) do
+      BoomLooper.Tools.Container.do_exec_stream(agent_id, command, Map.get(params, :timeout, 30))
+    end
+  end
+
   tool :logs, "View container logs. Pass 'service' to see a specific service's logs (e.g. 'dev', 'postgres')." do
     field :agent_id, :string, required: true
     field :service, :string, required: false, description: "Service name to get logs for (e.g. 'dev', 'postgres', 'redis')"
@@ -122,6 +132,82 @@ defmodule BoomLooper.Tools.Container do
 
     def execute(%{agent_id: agent_id}) do
       BoomLooper.Tools.Container.do_ports(agent_id)
+    end
+  end
+
+  def do_exec_stream(agent_id, command, timeout_seconds) do
+    case resolve_container(agent_id) do
+      {:ok, container} ->
+        # Run in background Task — output streams via PubSub
+        Task.start(fn ->
+          port = Port.open(
+            {:spawn_executable, System.find_executable("docker")},
+            [:binary, :exit_status, {:args, ["exec", container, "sh", "-c", command]}]
+          )
+
+          stream_port_output(agent_id, port, "", timeout_seconds * 1_000)
+        end)
+
+        {:ok, "Streaming command started: #{command}"}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp stream_port_output(agent_id, port, acc, timeout) do
+    receive do
+      {^port, {:data, data}} ->
+        acc = acc <> data
+        # Store as build message in agent's ETS (reuses the build log pattern)
+        build_msg = %{role: :build, content: acc, timestamp: DateTime.utc_now()}
+        BoomLooper.ChatAgent.ensure_ets_table()
+        case :ets.lookup(:chat_agents, agent_id) do
+          [{^agent_id, summary}] ->
+            messages = summary.messages
+            messages = if Enum.any?(messages, &(&1.role == :build)) do
+              Enum.map(messages, fn
+                %{role: :build} -> build_msg
+                other -> other
+              end)
+            else
+              messages ++ [build_msg]
+            end
+            :ets.insert(:chat_agents, {agent_id, %{summary | messages: messages}})
+          [] -> :ok
+        end
+
+        # Broadcast to LiveView
+        Phoenix.PubSub.broadcast(BoomLooper.PubSub,
+          "chat_agent:#{agent_id}",
+          {:build_output, agent_id, data})
+
+        stream_port_output(agent_id, port, acc, timeout)
+
+      {^port, {:exit_status, code}} ->
+        # Mark as done
+        done_msg = %{role: :build_done, content: acc, timestamp: DateTime.utc_now()}
+        BoomLooper.ChatAgent.ensure_ets_table()
+        case :ets.lookup(:chat_agents, agent_id) do
+          [{^agent_id, summary}] ->
+            messages = Enum.map(summary.messages, fn
+              %{role: :build} -> done_msg
+              other -> other
+            end)
+            :ets.insert(:chat_agents, {agent_id, %{summary | messages: messages}})
+          [] -> :ok
+        end
+
+        status = if code == 0, do: "completed", else: "exited (code #{code})"
+        Phoenix.PubSub.broadcast(BoomLooper.PubSub,
+          "chat_agent:#{agent_id}",
+          {:chat_message, agent_id, %{role: :system, content: "Command #{status}", timestamp: DateTime.utc_now()}})
+    after
+      timeout ->
+        Port.close(port)
+        Phoenix.PubSub.broadcast(BoomLooper.PubSub,
+          "chat_agent:#{agent_id}",
+          {:chat_message, agent_id, %{role: :system, content: "Command timed out after #{div(timeout, 1_000)}s", timestamp: DateTime.utc_now()}})
     end
   end
 
