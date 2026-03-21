@@ -14,7 +14,7 @@ defmodule BoomLooperWeb.DebugController do
         [] -> false
       end
 
-      "  #{a.name} (#{a.id |> String.slice(0..7)}) status=#{a.status} errors=#{a.errors} tools=#{a.tool_calls} process=#{process_alive}"
+      "  #{a.name} (#{a.id}) status=#{a.status} errors=#{a.errors} tools=#{a.tool_calls} process=#{process_alive}"
     end)
     |> Enum.join("\n")
 
