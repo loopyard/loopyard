@@ -6,13 +6,23 @@ import {createTerminalHook} from "./terminal"
 let Hooks = {}
 Hooks.Terminal = createTerminalHook()
 
-// Auto-scrolls messages to bottom on new content
+// Auto-scrolls messages to bottom on mount and new content
 Hooks.ScrollBottom = {
   mounted() {
+    // Scroll to bottom on initial load
+    requestAnimationFrame(() => {
+      const el = document.getElementById("messages")
+      if (el) el.scrollTop = el.scrollHeight
+    })
+
     this.handleEvent("scroll_bottom", () => {
       const el = document.getElementById("messages")
       if (el) el.scrollTop = el.scrollHeight
     })
+  },
+  updated() {
+    // Don't auto-scroll on update — only on explicit push_event
+    // This prevents hijacking scroll when user is reading history
   }
 }
 
