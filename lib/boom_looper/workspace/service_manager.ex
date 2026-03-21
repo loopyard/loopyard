@@ -1,28 +1,27 @@
 defmodule BoomLooper.Workspace.ServiceManager do
   @moduledoc """
-  GenServer managing all containers for a workspace.
+  GenServer managing Docker Compose services for a workspace.
 
-  Each workspace has:
-  - **ops container** — always running `sleep infinity`, agents exec into this one
-  - **process containers** — one per workspace process (web, css, etc.), run from the workspace image
-  - **stock service containers** — postgres, redis, etc., run from their own images
+  Generates docker-compose.yml from workspace config, runs
+  `docker compose up/down`, monitors health via TCP port checks.
 
-  All containers share the Docker network and workspace bind mount.
-
-  Container naming:
-  - ops:      boom-looper-ws-{workspace_id}
-  - process:  boom-looper-ws-{workspace_id}-{process_name}
-  - stock:    boom-looper-svc-{workspace_id}-{service_name}
+  Container naming and networking handled by compose.
   """
   use GenServer, restart: :transient
 
-  alias BoomLooper.Docker
+  alias BoomLooper.{Compose, Docker, Workspace}
 
-  @prefix "boom-looper-svc"
   @services_topic "workspace_services"
 
-  # Service health: :stopped | :booting | :started | :healthy | :crashed
-  defstruct [:project_dir, :workspace_id, services: %{}, processes: [], workspace_container_running: false, rebuilding: false, port_assignments: %{}, service_health: %{}]
+  defstruct [
+    :project_dir,
+    :workspace_id,
+    services: %{},
+    processes: [],
+    running: false,
+    rebuilding: false,
+    service_health: %{}
+  ]
 
   # --- Public API ---
 
@@ -31,15 +30,13 @@ defmodule BoomLooper.Workspace.ServiceManager do
     GenServer.start_link(__MODULE__, opts, name: via(project_dir))
   end
 
-  @doc "Start all services defined in the workspace config"
   def start_services(project_dir) do
     case Registry.lookup(BoomLooper.ServiceManagerRegistry, project_dir) do
-      [{pid, _}] -> GenServer.call(pid, :start_services, 120_000)
+      [{pid, _}] -> GenServer.call(pid, :start_services, 600_000)
       [] -> {:error, :service_manager_not_running}
     end
   end
 
-  @doc "Stop all service containers for a workspace"
   def stop_services(project_dir) do
     case Registry.lookup(BoomLooper.ServiceManagerRegistry, project_dir) do
       [{pid, _}] -> GenServer.call(pid, :stop_services, 30_000)
@@ -47,18 +44,6 @@ defmodule BoomLooper.Workspace.ServiceManager do
     end
   end
 
-  @doc "Execute a command in a service container"
-  def service_exec(project_dir, service_name, command) do
-    workspace_id = BoomLooper.Workspace.workspace_id(project_dir)
-    container = service_container_name(workspace_id, service_name)
-
-    case Docker.docker(["exec", "-i", container, "sh", "-c", command], timeout: 120_000) do
-      {:ok, output} -> {:ok, output}
-      {:error, reason} -> {:error, "Failed to exec in #{service_name}: #{reason}"}
-    end
-  end
-
-  @doc "Get status of all services for a workspace"
   def service_status(project_dir) do
     case Registry.lookup(BoomLooper.ServiceManagerRegistry, project_dir) do
       [{pid, _}] -> GenServer.call(pid, :service_status)
@@ -66,32 +51,35 @@ defmodule BoomLooper.Workspace.ServiceManager do
     end
   end
 
-  @doc "Restart the workspace container and all process containers after an image rebuild"
   def restart_workspace_container(project_dir) do
     case Registry.lookup(BoomLooper.ServiceManagerRegistry, project_dir) do
-      [{pid, _}] -> GenServer.call(pid, :restart_workspace_container, 120_000)
+      [{pid, _}] -> GenServer.call(pid, :restart, 600_000)
       [] -> :ok
     end
   end
 
-  @doc "Subscribe to service status updates"
+  def service_exec(project_dir, service_name, command) do
+    workspace_id = Workspace.workspace_id(project_dir)
+    Compose.exec(project_dir, workspace_id, service_name, command)
+  end
+
   def subscribe do
     Phoenix.PubSub.subscribe(BoomLooper.PubSub, @services_topic)
   end
 
-  @doc "Container name for a stock service"
+  @doc "Container name for a compose service"
   def service_container_name(workspace_id, service_name) do
-    "#{@prefix}-#{workspace_id}-#{service_name}"
+    # Compose naming: {project}_{service}_{n}
+    "#{Compose.project_name(workspace_id)}-#{service_name}-1"
   end
 
-  @doc "Container name for a workspace process"
+  @doc "Alias for process containers (same naming in compose)"
   def process_container_name(workspace_id, process_name) do
-    "#{Docker.workspace_container_name(workspace_id)}-#{process_name}"
+    service_container_name(workspace_id, process_name)
   end
 
-  @doc "Data volume name for a workspace service"
   def service_volume_name(workspace_id, service_name) do
-    "#{@prefix}-#{workspace_id}-#{service_name}-data"
+    "#{service_name}-data-#{workspace_id}"
   end
 
   # --- Callbacks ---
@@ -99,114 +87,51 @@ defmodule BoomLooper.Workspace.ServiceManager do
   @impl true
   def init(opts) do
     project_dir = Keyword.fetch!(opts, :project_dir)
-    workspace_id = BoomLooper.Workspace.workspace_id(project_dir)
+    workspace_id = Workspace.workspace_id(project_dir)
     {:ok, %__MODULE__{project_dir: project_dir, workspace_id: workspace_id}}
   end
 
   @impl true
   def handle_call(:start_services, _from, %{rebuilding: true} = state) do
-    {:reply, {:error, "A rebuild is in progress. Wait for it to finish."}, state}
+    {:reply, {:error, "A rebuild is in progress."}, state}
   end
 
   def handle_call(:start_services, _from, state) do
-    case BoomLooper.Workspace.load(state.project_dir) do
-      {:ok, workspace} ->
-        has_workspace = workspace.processes != [] || workspace.dockerfile != nil
-        {ws_running, assigns} =
-          if has_workspace do
-            ensure_workspace_image(state.workspace_id, workspace)
-            ops_ok = start_ops_container(state, workspace)
-            {procs_ok, assigns} = start_process_containers(state, workspace)
-            {ops_ok && procs_ok, assigns}
-          else
-            {false, state.port_assignments}
-          end
-
-        # Start stock services, collecting port assignments
-        {stock_results, assigns} =
-          Enum.reduce(workspace.services, {[], assigns}, fn svc, {results, a} ->
-            s = %{state | port_assignments: a}
-            case start_stock_service_container(s, svc) do
-              {:ok, new_assigns} -> {results ++ [{:ok, :started}], new_assigns}
-              {:error, _} = err -> {results ++ [err], a}
-            end
-          end)
-
-        services = Map.new(workspace.services, fn s -> {s.name, s} end)
-
-        # Set initial health: :started for all services (ContainerMonitor will promote to :healthy)
-        initial_health = Map.new(
-          Enum.map(workspace.processes, & &1.name) ++ Enum.map(workspace.services, & &1.name),
-          fn name -> {name, :started} end
-        )
-
-        new_state = %{state |
-          services: services,
-          processes: workspace.processes,
-          workspace_container_running: ws_running,
-          port_assignments: assigns,
-          service_health: initial_health
-        }
-        broadcast_service_update(new_state)
-        {:reply, {:ok, stock_results}, new_state}
-
-      :none ->
-        {:reply, {:ok, []}, state}
-
-      {:error, _} = err ->
-        {:reply, err, state}
+    # Don't restart if already running
+    if state.running do
+      {:reply, {:ok, []}, state}
+    else
+      case do_start(state) do
+        {:ok, new_state} -> {:reply, {:ok, []}, new_state}
+        {:error, reason} -> {:reply, {:error, reason}, state}
+      end
     end
   end
 
   @impl true
   def handle_call(:stop_services, _from, state) do
-    # Stop stock service containers
-    Enum.each(state.services, fn {name, _} ->
-      Docker.docker(["rm", "-f", service_container_name(state.workspace_id, name)])
-    end)
-
-    # Stop process containers
-    Enum.each(state.processes, fn p ->
-      Docker.docker(["rm", "-f", process_container_name(state.workspace_id, p.name)])
-    end)
-
-    # Stop ops container
-    Docker.stop_workspace_container(state.workspace_id)
-
-    new_state = %{state | workspace_container_running: false}
+    do_stop(state)
+    new_state = %{state | running: false, service_health: %{}}
     broadcast_service_update(new_state)
     {:reply, :ok, new_state}
   end
 
   @impl true
   def handle_call(:service_status, _from, state) do
-    all_statuses = build_workspace_status(state) ++ build_process_statuses(state) ++ build_stock_statuses(state)
-    {:reply, {:ok, all_statuses}, state}
+    statuses = build_statuses(state)
+    {:reply, {:ok, statuses}, state}
   end
 
   @impl true
-  def handle_call(:restart_workspace_container, _from, state) do
+  def handle_call(:restart, _from, state) do
     state = %{state | rebuilding: true}
+    do_stop(state)
 
-    # Stop process containers
-    Enum.each(state.processes, fn p ->
-      Docker.docker(["rm", "-f", process_container_name(state.workspace_id, p.name)])
-    end)
-
-    # Stop ops container
-    Docker.stop_workspace_container(state.workspace_id)
-
-    case BoomLooper.Workspace.load(state.project_dir) do
-      {:ok, workspace} ->
-        ensure_workspace_image(state.workspace_id, workspace)
-        ops_ok = start_ops_container(state, workspace)
-        {procs_ok, assigns} = start_process_containers(state, workspace)
-        new_state = %{state | processes: workspace.processes, workspace_container_running: ops_ok && procs_ok, rebuilding: false, port_assignments: assigns}
-        broadcast_service_update(new_state)
-        {:reply, :ok, new_state}
-
-      _ ->
-        {:reply, :ok, %{state | rebuilding: false}}
+    case do_start(state) do
+      {:ok, new_state} ->
+        {:reply, :ok, %{new_state | rebuilding: false}}
+      {:error, reason} ->
+        {:reply, {:error, reason}, %{state | rebuilding: false, running: false}}
     end
   end
 
@@ -218,8 +143,6 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
   @impl true
   def handle_cast(:check_health, state) do
-    # Ensure service_health exists (handles hot-reload of old state)
-    state = if Map.has_key?(state, :service_health), do: state, else: Map.put(state, :service_health, %{})
     health = update_health(state)
     new_state = %{state | service_health: health}
     if health != state.service_health, do: broadcast_service_update(new_state)
@@ -227,182 +150,90 @@ defmodule BoomLooper.Workspace.ServiceManager do
   end
 
   @impl true
-  def terminate(reason, state) do
+  def terminate(_reason, state) do
     require Logger
-    BoomLooper.EventLog.info("branch:#{state.workspace_id}", "ServiceManager stopping (#{inspect(reason)})")
-
-    # Clean up all Docker containers for this branch
-    Enum.each(state.processes, fn p ->
-      container = process_container_name(state.workspace_id, p.name)
-      case Docker.docker(["rm", "-f", container]) do
-        {:ok, _} -> :ok
-        {:error, reason} -> Logger.warning("[ServiceManager] Failed to remove #{container}: #{reason}")
-      end
-    end)
-
-    Enum.each(state.services, fn {name, _} ->
-      container = service_container_name(state.workspace_id, name)
-      case Docker.docker(["rm", "-f", container]) do
-        {:ok, _} -> :ok
-        {:error, reason} -> Logger.warning("[ServiceManager] Failed to remove #{container}: #{reason}")
-      end
-    end)
-
-    case Docker.stop_workspace_container(state.workspace_id) do
-      {:ok, _} -> :ok
-      {:error, reason} -> Logger.warning("[ServiceManager] Failed to stop workspace container: #{reason}")
-    end
-
+    BoomLooper.EventLog.info("branch:#{state.workspace_id}", "ServiceManager stopping, running compose down")
+    do_stop(state)
     :ok
   end
 
   # --- Private ---
 
-  defp ensure_workspace_image(workspace_id, workspace) do
-    if workspace.processes != [] || workspace.dockerfile != nil do
-      dockerfile = workspace.dockerfile || Docker.dockerfile()
-      Docker.build_workspace_image(workspace_id, dockerfile)
-    else
-      :ok
-    end
-  end
+  defp do_start(state) do
+    case Workspace.load(state.project_dir) do
+      {:ok, ws} ->
+        # Generate compose file
+        case Compose.write(state.project_dir, state.workspace_id) do
+          {:ok, _path} ->
+            BoomLooper.EventLog.info("branch:#{state.workspace_id}", "Starting compose services")
 
-  # Ops container — always running, agents exec here. Idempotent.
-  defp start_ops_container(state, workspace) do
-    if Docker.workspace_container_running?(state.workspace_id) do
-      true
-    else
-      case Docker.start_workspace_container(state.workspace_id,
-        bind_mount: state.project_dir,
-        env_vars: workspace.env_vars || %{}
-      ) do
-        {:ok, _} -> true
-        {:error, _} -> false
-      end
-    end
-  end
+            case Compose.up(state.project_dir, state.workspace_id) do
+              {:ok, _} ->
+                services = Map.new(ws.services, fn s -> {s.name, s} end)
+                all_names = Enum.map(ws.processes, & &1.name) ++ Enum.map(ws.services, & &1.name) ++ ["workspace"]
+                initial_health = Map.new(all_names, fn name -> {name, :started} end)
 
-  # Process containers — one per process, run from workspace image
-  # Returns {success, updated_port_assignments}
-  defp start_process_containers(state, %{processes: []}), do: {true, state.port_assignments}
-  defp start_process_containers(state, workspace) do
-    image = Docker.workspace_image_name(state.workspace_id)
+                new_state = %{state |
+                  services: services,
+                  processes: ws.processes,
+                  running: true,
+                  service_health: initial_health
+                }
+                broadcast_service_update(new_state)
+                {:ok, new_state}
 
-    {all_ok, assignments} =
-      Enum.reduce(workspace.processes, {true, state.port_assignments}, fn p, {ok, assigns} ->
-        container = process_container_name(state.workspace_id, p.name)
+              {:error, reason} ->
+                BoomLooper.EventLog.error("branch:#{state.workspace_id}", "Compose up failed: #{reason}")
+                {:error, reason}
+            end
 
-        if Docker.container_running?(container) do
-          {ok, assigns}
-        else
-          Docker.docker(["rm", "-f", container])
-
-          # Reuse previously assigned ports if available, otherwise dynamic
-          port_args = sticky_port_args(p.name, p[:ports], assigns)
-
-          args = [
-            "run", "-d",
-            "--name", container,
-            "--network", Docker.network_name(),
-            "--mount", "type=bind,src=#{state.project_dir},dst=/workspace",
-            "-w", "/workspace"
-          ] ++ port_args ++ env_args(workspace.env_vars) ++ [image, "sh", "-c", p.command]
-
-          case Docker.docker(args, timeout: 30_000) do
-            {:ok, _} ->
-              # Read the assigned ports and remember them
-              new_ports = Docker.container_ports(container)
-              assigns = Map.merge(assigns, Map.new(new_ports, fn {cp, hp} -> {"#{p.name}:#{cp}", hp} end))
-              {ok, assigns}
-
-            {:error, _} ->
-              {false, assigns}
-          end
+          other ->
+            {:error, "Failed to write compose file: #{inspect(other)}"}
         end
-      end)
 
-    {all_ok, assignments}
+      :none ->
+        {:ok, state}
+
+      {:error, _} = err ->
+        err
+    end
   end
 
-  # Returns {:ok/:error, updated_port_assignments}
-  defp start_stock_service_container(state, service) do
-    container = service_container_name(state.workspace_id, service.name)
-
-    if Docker.container_running?(container) do
-      {:ok, state.port_assignments}
-    else
-    Docker.docker(["rm", "-f", container])
-    Docker.ensure_network()
-
-    # Auto-mount named volumes for image's VOLUME declarations + any custom volumes
-    image_vols = Docker.image_volumes(service.image)
-    custom_vols = service[:volumes] || []
-    vol_base = service_volume_name(state.workspace_id, service.name)
-
-    volume_args =
-      image_vols
-      |> Enum.with_index()
-      |> Enum.flat_map(fn {path, idx} ->
-        vol_name = if idx == 0, do: vol_base, else: "#{vol_base}-#{idx}"
-        Docker.docker(["volume", "create", vol_name])
-        ["-v", "#{vol_name}:#{path}"]
-      end)
-
-    # Add any explicit custom volumes from config
-    custom_args = Enum.flat_map(custom_vols, fn spec ->
-      mount = String.replace(spec, "{data}", vol_base)
-      ["-v", mount]
-    end)
-
-    port_args = sticky_port_args(service.name, service[:ports], state.port_assignments)
-
-    args =
-      ["run", "-d", "--name", container, "--network", Docker.network_name()] ++
-        env_args(service[:env]) ++ port_args ++ volume_args ++ custom_args ++ [service.image]
-
-    case Docker.docker(args, timeout: 120_000) do
-      {:ok, _} ->
-        new_ports = Docker.container_ports(container)
-        assigns = Map.merge(state.port_assignments, Map.new(new_ports, fn {cp, hp} -> {"#{service.name}:#{cp}", hp} end))
-        {:ok, assigns}
+  defp do_stop(state) do
+    case Compose.down(state.project_dir, state.workspace_id) do
+      {:ok, _} -> :ok
       {:error, reason} ->
-        {:error, "Failed to start #{service.name}: #{reason}"}
-    end
+        require Logger
+        Logger.warning("[ServiceManager] compose down failed: #{reason}")
     end
   end
 
-  defp via(project_dir) do
-    {:via, Registry, {BoomLooper.ServiceManagerRegistry, project_dir}}
+  defp build_statuses(state) do
+    workspace_status = build_workspace_status(state)
+    process_statuses = build_process_statuses(state)
+    stock_statuses = build_stock_statuses(state)
+    workspace_status ++ process_statuses ++ stock_statuses
   end
 
-  defp build_stock_statuses(state) do
-    Enum.map(state.services, fn {name, service} ->
-      container = service_container_name(state.workspace_id, name)
-      running = Docker.container_running?(container)
-      ports = if running, do: Docker.container_ports(container), else: %{}
-      exit_info = if !running, do: Docker.container_state(container), else: nil
-      health = Map.get(Map.get(state, :service_health, %{}), name, :stopped)
+  defp build_workspace_status(state) do
+    container = service_container_name(state.workspace_id, "workspace")
+    running = Docker.container_running?(container)
+    health = Map.get(state.service_health, "workspace", :stopped)
 
-      %{
-        name: name,
-        image: service[:image],
-        type: :stock,
-        running: running,
-        container: container,
-        ports: ports,
-        exit_info: exit_info,
-        health: health
-      }
-    end)
+    if state.running || running do
+      [%{name: "workspace", type: :workspace, running: running, container: container, ports: %{}, health: health}]
+    else
+      []
+    end
   end
 
   defp build_process_statuses(state) do
     Enum.map(state.processes, fn p ->
-      container = process_container_name(state.workspace_id, p.name)
+      container = service_container_name(state.workspace_id, p.name)
       running = Docker.container_running?(container)
       ports = if running, do: Docker.container_ports(container), else: %{}
       exit_info = if !running, do: Docker.container_state(container), else: nil
-      health = Map.get(Map.get(state, :service_health, %{}), p.name, :stopped)
+      health = Map.get(state.service_health, p.name, :stopped)
 
       %{
         name: p.name,
@@ -417,56 +248,54 @@ defmodule BoomLooper.Workspace.ServiceManager do
     end)
   end
 
-  defp build_workspace_status(state) do
-    ws_container = Docker.workspace_container_name(state.workspace_id)
-    # Always check Docker directly — don't trust cached state
-    running = Docker.container_running?(ws_container)
+  defp build_stock_statuses(state) do
+    Enum.map(state.services, fn {name, service} ->
+      container = service_container_name(state.workspace_id, name)
+      running = Docker.container_running?(container)
+      ports = if running, do: Docker.container_ports(container), else: %{}
+      exit_info = if !running, do: Docker.container_state(container), else: nil
+      health = Map.get(state.service_health, name, :stopped)
 
-    if state.workspace_container_running || running do
-      [%{
-        name: "workspace",
-        type: :workspace,
+      %{
+        name: name,
+        image: service[:image],
+        type: :stock,
         running: running,
-        container: ws_container,
-        ports: %{}
-      }]
-    else
-      []
-    end
+        container: container,
+        ports: ports,
+        exit_info: exit_info,
+        health: health
+      }
+    end)
   end
 
-  defp update_health(%{service_health: nil} = state), do: update_health(%{state | service_health: %{}})
   defp update_health(state) do
     all_services =
+      [{"workspace", service_container_name(state.workspace_id, "workspace")}] ++
       Enum.map(state.processes, fn p ->
-        {p.name, process_container_name(state.workspace_id, p.name), p[:ports]}
+        {p.name, service_container_name(state.workspace_id, p.name)}
       end) ++
-      Enum.map(state.services, fn {name, svc} ->
-        {name, service_container_name(state.workspace_id, name), svc[:ports]}
+      Enum.map(state.services, fn {name, _} ->
+        {name, service_container_name(state.workspace_id, name)}
       end)
 
-    Map.new(all_services, fn {name, container, _config_ports} ->
-      current = Map.get(Map.get(state, :service_health, %{}), name, :stopped)
+    Map.new(all_services, fn {name, container} ->
+      current = Map.get(state.service_health, name, :stopped)
       running = Docker.container_running?(container)
 
       new_health = cond do
-        # Container not running
         !running ->
           exit_info = Docker.container_state(container)
           if exit_info && exit_info.exit_code > 0, do: :crashed, else: :stopped
 
-        # Already healthy — stay healthy (no more polling)
         current == :healthy ->
           :healthy
 
-        # Container running — check if ports are accepting connections
         running ->
           ports = Docker.container_ports(container)
           if ports == %{} do
-            # No ports (like workspace container) — running = healthy
-            :healthy
+            :healthy  # No ports = healthy when running (workspace container)
           else
-            # Check TCP on first host port
             {_cp, host_port} = Enum.at(ports, 0)
             if Docker.port_open?(host_port), do: :healthy, else: :started
           end
@@ -476,47 +305,17 @@ defmodule BoomLooper.Workspace.ServiceManager do
     end)
   end
 
-  # Build -p args reusing previously assigned host ports when available
-  defp sticky_port_args(service_name, ports, assignments) do
-    dynamic_port_args(ports)
-    |> Enum.chunk_every(2)
-    |> Enum.flat_map(fn ["-p", mapping] ->
-      # mapping is "0:container_port" — check if we have a saved host port
-      container_port = mapping |> String.split(":") |> List.last()
-      key = "#{service_name}:#{container_port}"
-
-      case Map.get(assignments, key) do
-        nil -> ["-p", "0:#{container_port}"]
-        host_port -> ["-p", "#{host_port}:#{container_port}"]
-      end
-    end)
-  end
-
-  # Build -p args with dynamic host ports (0:container_port)
-  defp dynamic_port_args(ports) when is_list(ports) do
-    Enum.flat_map(ports, fn ps ->
-      container_port = ps |> String.split(":") |> List.last()
-      ["-p", "0:#{container_port}"]
-    end)
-  end
-
-  defp dynamic_port_args(ports) when is_map(ports) do
-    Enum.flat_map(ports, fn {_h, c} -> ["-p", "0:#{c}"] end)
-  end
-
-  defp dynamic_port_args(_), do: []
-
-  defp env_args(env_vars) do
-    Enum.flat_map(env_vars || %{}, fn {k, v} -> ["-e", "#{k}=#{v}"] end)
-  end
-
   defp broadcast_service_update(state) do
-    all_statuses = build_workspace_status(state) ++ build_process_statuses(state) ++ build_stock_statuses(state)
+    all_statuses = build_statuses(state)
 
     Phoenix.PubSub.broadcast(
       BoomLooper.PubSub,
       @services_topic,
       {:services_updated, state.project_dir, all_statuses}
     )
+  end
+
+  defp via(project_dir) do
+    {:via, Registry, {BoomLooper.ServiceManagerRegistry, project_dir}}
   end
 end

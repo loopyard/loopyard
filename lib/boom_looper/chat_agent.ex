@@ -609,7 +609,7 @@ defmodule BoomLooper.ChatAgent do
   defp container_base_prompt(agent_id, bind_mount, workspace_id) do
     container =
       if workspace_id do
-        BoomLooper.Docker.workspace_container_name(workspace_id)
+        BoomLooper.Workspace.ServiceManager.service_container_name(workspace_id, "workspace")
       else
         "boom-looper-ws-unknown"
       end

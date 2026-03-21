@@ -173,43 +173,33 @@ defmodule BoomLooper.Tools.Workspace do
       case Workspace.load(project_dir) do
         {:ok, ws} when ws.dockerfile != nil ->
           workspace_id = Workspace.workspace_id(project_dir)
-          image_name = BoomLooper.Docker.workspace_image_name(workspace_id)
-          build_topic = "docker_build:#{image_name}"
 
-          # Run build async and forward output to this agent's chat
+          # Run rebuild async — compose build + up
           Task.start(fn ->
-            # Subscribe to build output from Docker
-            Phoenix.PubSub.subscribe(BoomLooper.PubSub, build_topic)
+            # First generate the compose file
+            BoomLooper.Compose.write(project_dir, workspace_id)
 
-            # Kick off the build (streams output via PubSub)
-            build_task = Task.async(fn ->
-              BoomLooper.Docker.build_workspace_image(workspace_id, ws.dockerfile)
-            end)
+            Phoenix.PubSub.broadcast(BoomLooper.PubSub,
+              "chat_agent:#{agent_id}",
+              {:chat_message, agent_id, %{role: :system, content: "Rebuilding services...", timestamp: DateTime.utc_now()}})
 
-            # Forward build output to the agent's chat as build messages
-            forward_build_output(agent_id, build_topic)
-
-            # Wait for build result
-            case Task.await(build_task, 600_000) do
-              {:ok, _} ->
+            case ServiceManager.restart_workspace_container(project_dir) do
+              :ok ->
                 Phoenix.PubSub.broadcast(BoomLooper.PubSub,
                   "chat_agent:#{agent_id}",
-                  {:chat_message, agent_id, %{role: :system, content: "Build complete. Restarting services...", timestamp: DateTime.utc_now()}})
-
-                ServiceManager.restart_workspace_container(project_dir)
+                  {:chat_message, agent_id, %{role: :system, content: "Rebuild complete. Services restarting.", timestamp: DateTime.utc_now()}})
 
                 agent_ids = find_workspace_agent_ids(project_dir) -- [agent_id]
                 Enum.each(agent_ids, &BoomLooper.ChatAgent.restart_session/1)
 
               {:error, reason} ->
-                error_line = reason |> String.split("\n") |> Enum.reject(&(&1 == "")) |> List.last() |> Kernel.||("unknown error")
                 Phoenix.PubSub.broadcast(BoomLooper.PubSub,
                   "chat_agent:#{agent_id}",
-                  {:chat_message, agent_id, %{role: :error, content: "Docker build failed: #{error_line}", timestamp: DateTime.utc_now()}})
+                  {:chat_message, agent_id, %{role: :error, content: "Rebuild failed: #{inspect(reason)}", timestamp: DateTime.utc_now()}})
             end
           end)
 
-          {:ok, "Build started — output will stream below."}
+          {:ok, "Rebuild started."}
 
         {:ok, _} ->
           {:error, "No Dockerfile set. Use set_dockerfile first."}
@@ -285,27 +275,6 @@ defmodule BoomLooper.Tools.Workspace do
       %{bind_mount: dir} when is_binary(dir) -> {:ok, dir}
       %{working_dir: dir} when is_binary(dir) -> {:ok, dir}
       _ -> :error
-    end
-  end
-
-  defp forward_build_output(agent_id, build_topic, acc \\ "") do
-    receive do
-      {:build_output, data} ->
-        acc = acc <> data
-        # Store in ETS so OutputController can serve it
-        BoomLooper.ChatAgent.update_build_log(agent_id, acc)
-        Phoenix.PubSub.broadcast(BoomLooper.PubSub,
-          "chat_agent:#{agent_id}",
-          {:build_output, agent_id, data})
-        forward_build_output(agent_id, build_topic, acc)
-
-      :build_complete ->
-        Phoenix.PubSub.unsubscribe(BoomLooper.PubSub, build_topic)
-
-      :build_failed ->
-        Phoenix.PubSub.unsubscribe(BoomLooper.PubSub, build_topic)
-    after
-      600_000 -> :timeout
     end
   end
 

@@ -6,11 +6,11 @@ defmodule BoomLooper.Workspace.ServiceManagerTest do
 
   describe "naming" do
     test "service_container_name" do
-      assert ServiceManager.service_container_name("abcd", "postgres") == "boom-looper-svc-abcd-postgres"
+      assert ServiceManager.service_container_name("abcd", "postgres") == "bl-abcd-postgres-1"
     end
 
     test "service_volume_name" do
-      assert ServiceManager.service_volume_name("abcd", "postgres") == "boom-looper-svc-abcd-postgres-data"
+      assert ServiceManager.service_volume_name("abcd", "postgres") == "postgres-data-abcd"
     end
   end
 

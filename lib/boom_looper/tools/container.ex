@@ -127,45 +127,30 @@ defmodule BoomLooper.Tools.Container do
 
   # --- Private ---
 
-  # Resolve which container an agent should exec into
+  # All agents exec into the compose "workspace" service
   defp resolve_container(agent_id) do
     case BoomLooper.ChatAgent.get_state(agent_id) do
-      %{service_name: svc, bind_mount: bm} when is_binary(svc) and is_binary(bm) ->
-        # Service agent — exec into the service container
-        workspace_id = BoomLooper.Workspace.workspace_id(bm)
-        container = ServiceManager.process_container_name(workspace_id, svc)
-
-        # Fall back to workspace container if service container is down
-        if Docker.container_running?(container) do
-          {:ok, container}
-        else
-          {:ok, Docker.workspace_container_name(workspace_id)}
-        end
-
       %{bind_mount: bm} when is_binary(bm) ->
-        # Workspace agent — exec into workspace container
-        {:ok, Docker.workspace_container_name(BoomLooper.Workspace.workspace_id(bm))}
-
-      %{workspace_id: ws_id} when is_binary(ws_id) ->
-        {:ok, Docker.workspace_container_name(ws_id)}
+        workspace_id = BoomLooper.Workspace.workspace_id(bm)
+        container = ServiceManager.service_container_name(workspace_id, "workspace")
+        {:ok, container}
 
       _ ->
         {:error, "Agent #{agent_id} has no workspace"}
     end
   end
 
-  # Resolve a specific service container by name (works even if stopped, for logs)
+  # Resolve a specific service container by compose service name
   defp resolve_service_container(agent_id, service_name) do
     case BoomLooper.ChatAgent.get_state(agent_id) do
       %{bind_mount: bm} when is_binary(bm) ->
         workspace_id = BoomLooper.Workspace.workspace_id(bm)
-        proc_container = ServiceManager.process_container_name(workspace_id, service_name)
-        svc_container = ServiceManager.service_container_name(workspace_id, service_name)
+        container = ServiceManager.service_container_name(workspace_id, service_name)
 
-        cond do
-          container_exists?(proc_container) -> {:ok, proc_container}
-          container_exists?(svc_container) -> {:ok, svc_container}
-          true -> {:error, "Service #{service_name} not found"}
+        if Docker.container_running?(container) || container_exists?(container) do
+          {:ok, container}
+        else
+          {:error, "Service #{service_name} not found"}
         end
 
       _ ->

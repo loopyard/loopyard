@@ -142,13 +142,12 @@ defmodule BoomLooperWeb.ChatLive do
   def handle_params(%{"service_name" => service_name}, _uri, %{assigns: %{live_action: :console}} = socket) do
     svc = Enum.find(socket.assigns.service_statuses, &(&1.name == service_name))
 
-    # Process containers (dev) run a single command — exec into workspace container instead
-    # Stock services (postgres, redis) have shells — exec into them directly
+    # Process containers exec into workspace service (has shell + tools)
+    # Stock services exec into their own container
+    workspace_id = BoomLooper.ProjectRegistry.branch_id(socket.assigns.workspace.path)
     container = cond do
       svc && Map.get(svc, :type) == :process ->
-        # Use the workspace container for process services
-        workspace_id = BoomLooper.ProjectRegistry.branch_id(socket.assigns.workspace.path)
-        BoomLooper.Docker.workspace_container_name(workspace_id)
+        BoomLooper.Workspace.ServiceManager.service_container_name(workspace_id, "workspace")
       svc ->
         svc.container
       true ->
