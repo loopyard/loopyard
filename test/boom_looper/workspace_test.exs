@@ -127,8 +127,8 @@ defmodule BoomLooper.WorkspaceTest do
   end
 
   describe "config_path/1" do
-    test "returns path to .hive/workspace.json" do
-      assert Workspace.config_path("/home/user/project") == "/home/user/project/.hive/workspace.json"
+    test "returns path to .boomlooper/repo/workspace.json" do
+      assert Workspace.config_path("/home/user/project") == "/home/user/project/.boomlooper/repo/workspace.json"
     end
   end
 
@@ -173,11 +173,11 @@ defmodule BoomLooper.WorkspaceTest do
       assert :none = Workspace.load(tmp_dir)
     end
 
-    test "creates .hive directory if it doesn't exist", %{tmp_dir: tmp_dir} do
+    test "creates .boomlooper/repo directory if it doesn't exist", %{tmp_dir: tmp_dir} do
       ws = %Workspace{name: "Test"}
       Workspace.save(tmp_dir, ws)
 
-      assert File.dir?(Path.join(tmp_dir, ".hive"))
+      assert File.dir?(Path.join(tmp_dir, ".boomlooper/repo"))
       assert File.exists?(Workspace.config_path(tmp_dir))
     end
   end

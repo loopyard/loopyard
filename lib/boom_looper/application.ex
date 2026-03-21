@@ -15,11 +15,11 @@ defmodule BoomLooper.Application do
       {Phoenix.PubSub, name: BoomLooper.PubSub},
       {Registry, keys: :unique, name: BoomLooper.ChatAgentRegistry},
       {Registry, keys: :unique, name: BoomLooper.ServiceManagerRegistry},
-      {Registry, keys: :unique, name: BoomLooper.BranchRegistry},
-      {Registry, keys: :unique, name: BoomLooper.BranchAgentRegistry},
+      {Registry, keys: :unique, name: BoomLooper.WorkspaceRegistry},
+      {Registry, keys: :unique, name: BoomLooper.WorkspaceAgentRegistry},
       {Registry, keys: :unique, name: BoomLooper.TerminalRegistry},
       {DynamicSupervisor, name: BoomLooper.TerminalSupervisor, strategy: :one_for_one},
-      BoomLooper.BranchSupervisor,
+      BoomLooper.WorkspaceSupervisor,
 
       # --- Web layer (can restart independently) ---
       BoomLooperWeb.Endpoint

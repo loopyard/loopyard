@@ -9,7 +9,7 @@ defmodule BoomLooper.ChecklistTest do
   Set up the development environment for this project.
 
   - [ ] Examine project files to detect language, framework, and tools
-  - [ ] Generate `.hive/workspace.json` with Dockerfile, services, processes
+  - [ ] Generate `.boomlooper/repo/workspace.json` with Dockerfile, services, processes
   - [ ] Rebuild container with `rebuild` tool
   - [x] Start services (databases, caches) with `start_services`
   - [ ] Run project setup commands (install deps, migrate, seed)
@@ -112,7 +112,7 @@ defmodule BoomLooper.ChecklistTest do
 
     test "project checklists override built-in ones" do
       tmp_dir = Path.join(System.tmp_dir!(), "boom-looper-cl-test-#{:rand.uniform(100_000)}")
-      checklist_dir = Path.join(tmp_dir, ".hive/checklists")
+      checklist_dir = Path.join(tmp_dir, ".boomlooper/repo/checklists")
       File.mkdir_p!(checklist_dir)
 
       File.write!(Path.join(checklist_dir, "setup.md"), """
@@ -135,7 +135,7 @@ defmodule BoomLooper.ChecklistTest do
 
     test "merges project and built-in checklists" do
       tmp_dir = Path.join(System.tmp_dir!(), "boom-looper-cl-test-#{:rand.uniform(100_000)}")
-      checklist_dir = Path.join(tmp_dir, ".hive/checklists")
+      checklist_dir = Path.join(tmp_dir, ".boomlooper/repo/checklists")
       File.mkdir_p!(checklist_dir)
 
       File.write!(Path.join(checklist_dir, "deploy.md"), """
@@ -168,7 +168,7 @@ defmodule BoomLooper.ChecklistTest do
 
       result = Checklist.instantiate(checklist, "agent123", tmp_dir)
 
-      assert result.active_path =~ ".hive/active/agent123-setup.md"
+      assert result.active_path =~ ".boomlooper/workspace/active/agent123-setup.md"
       assert File.exists?(result.active_path)
       assert File.read!(result.active_path) == @sample_md
     end

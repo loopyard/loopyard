@@ -7,12 +7,11 @@ defmodule BoomLooperWeb.ChatLiveTest do
     tmp_dir = Path.join(System.tmp_dir!(), "boom-looper-chat-test-#{:rand.uniform(100_000)}")
     File.mkdir_p!(tmp_dir)
     # Create a minimal workspace config so auto-spawn Setup doesn't trigger on /new
-    hive_dir = Path.join(tmp_dir, ".hive")
-    File.mkdir_p!(hive_dir)
-    File.write!(Path.join(hive_dir, "workspace.json"), Jason.encode!(%{"name" => "test"}))
-    {:ok, _project, branch} = BoomLooper.ProjectRegistry.add(tmp_dir)
-    # Return branch as workspace-compatible map
-    {branch, tmp_dir}
+    repo_dir = Path.join(tmp_dir, ".boomlooper/repo")
+    File.mkdir_p!(repo_dir)
+    File.write!(Path.join(repo_dir, "workspace.json"), Jason.encode!(%{"name" => "test"}))
+    {:ok, _project, workspace} = BoomLooper.ProjectRegistry.add(tmp_dir)
+    {workspace, tmp_dir}
   end
 
   setup do
@@ -41,9 +40,9 @@ defmodule BoomLooperWeb.ChatLiveTest do
     %{workspace: ws, tmp_dir: tmp_dir, setup_agent_id: setup_agent_id}
   end
 
-  defp ws_path(ws), do: "/p/#{ws.project_id}/b/#{ws.id}"
-  defp ws_new_path(ws), do: "/p/#{ws.project_id}/b/#{ws.id}/new"
-  defp ws_chat_path(ws, id), do: "/p/#{ws.project_id}/b/#{ws.id}/chat/#{id}"
+  defp ws_path(ws), do: "/projects/#{ws.project_id}/workspaces/#{ws.id}"
+  defp ws_new_path(ws), do: "/projects/#{ws.project_id}/workspaces/#{ws.id}/new"
+  defp ws_chat_path(ws, id), do: "/projects/#{ws.project_id}/workspaces/#{ws.id}/agents/#{id}"
 
   # Flush the LiveView mailbox by rendering, ensuring PubSub messages are processed.
   # We subscribe + drain to confirm delivery, then render the view.
@@ -59,8 +58,8 @@ defmodule BoomLooperWeb.ChatLiveTest do
       assert html =~ "New Agent"
     end
 
-    test "redirects to / for unknown branch", %{conn: conn} do
-      assert {:error, {:live_redirect, %{to: "/"}}} = live(conn, "/p/nonexistent/b/nonexistent")
+    test "redirects to / for unknown workspace", %{conn: conn} do
+      assert {:error, {:live_redirect, %{to: "/"}}} = live(conn, "/projects/nonexistent/workspaces/nonexistent")
     end
   end
 
@@ -80,7 +79,7 @@ defmodule BoomLooperWeb.ChatLiveTest do
       |> render_submit(%{})
 
       {path, _flash} = assert_redirect(view)
-      assert path =~ "/p/#{ws.project_id}/b/#{ws.id}/chat/"
+      assert path =~ "/projects/#{ws.project_id}/workspaces/#{ws.id}/agents/"
     end
 
     @tag :docker
@@ -92,7 +91,7 @@ defmodule BoomLooperWeb.ChatLiveTest do
       |> render_submit(%{})
 
       {path, _flash} = assert_redirect(view)
-      assert path =~ "/p/#{ws.project_id}/b/#{ws.id}/chat/"
+      assert path =~ "/projects/#{ws.project_id}/workspaces/#{ws.id}/agents/"
 
       {:ok, view2, html} = live(conn, path)
       assert html =~ "Starting agent" or html =~ "Send"
@@ -394,7 +393,7 @@ defmodule BoomLooperWeb.ChatLiveTest do
       Phoenix.PubSub.broadcast(BoomLooper.PubSub, "workspace_services", {:services_updated, ws.path, statuses})
 
       html = flush_lv(view)
-      assert html =~ "/p/#{ws.project_id}/b/#{ws.id}/service/redis"
+      assert html =~ "/projects/#{ws.project_id}/workspaces/#{ws.id}/services/redis"
     end
 
     test "services with ports show port URL", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
@@ -421,13 +420,13 @@ defmodule BoomLooperWeb.ChatLiveTest do
   end
 
   describe "service log views" do
-    test "/w/:id/services renders All Services heading", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
-      {:ok, _view, html} = live(conn, "/p/#{ws.project_id}/b/#{ws.id}/services")
+    test "services view renders All Services heading", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
+      {:ok, _view, html} = live(conn, "/projects/#{ws.project_id}/workspaces/#{ws.id}/services")
       assert html =~ "All Services"
     end
 
-    test "/w/:id/service/:name renders service name in header", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
-      {:ok, view, _html} = live(conn, "/p/#{ws.project_id}/b/#{ws.id}/service/postgres")
+    test "service view renders service name in header", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
+      {:ok, view, _html} = live(conn, "/projects/#{ws.project_id}/workspaces/#{ws.id}/services/postgres")
 
       # Broadcast service statuses so the view has data
       statuses = [%{name: "postgres", image: "postgres:16", running: true, container: "boom-looper-svc-test-pg", ports: %{}}]

@@ -60,9 +60,9 @@ defmodule BoomLooper.Tools.ContainerTest do
       workspace_id = BoomLooper.Workspace.workspace_id(tmp_dir)
 
       # Write workspace config and start via compose
-      hive_dir = Path.join(tmp_dir, ".hive")
-      File.mkdir_p!(hive_dir)
-      File.write!(Path.join(hive_dir, "workspace.json"), Jason.encode!(%{"name" => "test", "dockerfile" => BoomLooper.Docker.dockerfile()}))
+      repo_dir = Path.join(tmp_dir, ".boomlooper/repo")
+      File.mkdir_p!(repo_dir)
+      File.write!(Path.join(repo_dir, "workspace.json"), Jason.encode!(%{"name" => "test", "dockerfile" => BoomLooper.Docker.dockerfile()}))
       BoomLooper.Compose.write(tmp_dir, workspace_id)
       BoomLooper.Compose.up(tmp_dir, workspace_id)
 

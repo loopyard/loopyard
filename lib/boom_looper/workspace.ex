@@ -1,11 +1,11 @@
 defmodule BoomLooper.Workspace do
   @moduledoc """
   Workspace configuration for a project directory.
-  Lives as `.hive/workspace.json` in the project root.
+  Lives as `.boomlooper/repo/workspace.json` in the project root.
   Written by setup agents, read by BoomLooper when spawning future agents.
   """
 
-  @config_dir ".hive"
+  @config_dir ".boomlooper/repo"
   @config_file "workspace.json"
 
   defstruct [

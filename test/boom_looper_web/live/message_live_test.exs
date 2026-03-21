@@ -8,9 +8,9 @@ defmodule BoomLooperWeb.MessageLiveTest do
   defp create_workspace do
     tmp_dir = Path.join(System.tmp_dir!(), "boom-looper-msg-test-#{:rand.uniform(100_000)}")
     File.mkdir_p!(tmp_dir)
-    hive_dir = Path.join(tmp_dir, ".hive")
-    File.mkdir_p!(hive_dir)
-    File.write!(Path.join(hive_dir, "workspace.json"), Jason.encode!(%{"name" => "test"}))
+    repo_dir = Path.join(tmp_dir, ".boomlooper/repo")
+    File.mkdir_p!(repo_dir)
+    File.write!(Path.join(repo_dir, "workspace.json"), Jason.encode!(%{"name" => "test"}))
     {:ok, project, branch} = BoomLooper.ProjectRegistry.add(tmp_dir)
     {project, branch, tmp_dir}
   end
@@ -69,12 +69,12 @@ defmodule BoomLooperWeb.MessageLiveTest do
       assert found.id == msg.id
     end
 
-    test "msg_url generates a URL that MessageLive can load", %{branch: branch, agent_id: agent_id, conn: conn} do
+    test "msg_url generates a URL that MessageLive can load", %{agent_id: agent_id, conn: conn} do
       state = ChatAgent.get_state(agent_id)
       msg = Enum.find(state.messages, &(&1.role == :user))
       assert msg != nil
 
-      url = BoomLooperWeb.OutputController.msg_url(branch.id, agent_id, msg.id)
+      url = BoomLooperWeb.OutputController.msg_url(agent_id, msg.id)
       assert url =~ msg.id
 
       {:ok, _view, html} = live(conn, url)
@@ -82,11 +82,11 @@ defmodule BoomLooperWeb.MessageLiveTest do
       refute html =~ "Message not found or link expired"
     end
 
-    test "raw URL returns message content as plain text", %{branch: branch, agent_id: agent_id, conn: conn} do
+    test "raw URL returns message content as plain text", %{agent_id: agent_id, conn: conn} do
       state = ChatAgent.get_state(agent_id)
       msg = Enum.find(state.messages, &(&1.role == :user))
 
-      url = BoomLooperWeb.OutputController.raw_url(branch.id, agent_id, msg.id)
+      url = BoomLooperWeb.OutputController.raw_url(agent_id, msg.id)
 
       resp = get(conn, url)
       assert resp.status == 200
@@ -127,10 +127,10 @@ defmodule BoomLooperWeb.MessageLiveTest do
 
   describe "message link from chat page" do
     test "chat page renders message links that load correctly", %{project: project, branch: branch, agent_id: agent_id, conn: conn} do
-      chat_path = "/p/#{project.id}/b/#{branch.id}/chat/#{agent_id}"
+      chat_path = "/projects/#{project.id}/workspaces/#{branch.id}/agents/#{agent_id}"
       {:ok, _view, html} = live(conn, chat_path)
 
-      case Regex.run(~r{href="(/p/[^"]*?/msg/[^"]*?)"}, html) do
+      case Regex.run(~r{href="(/messages/[^"]*?)"}, html) do
         [_, msg_link] ->
           {:ok, _view, msg_html} = live(conn, msg_link)
           refute msg_html =~ "Message not found or link expired",

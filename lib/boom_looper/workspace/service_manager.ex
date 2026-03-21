@@ -130,7 +130,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
   @impl true
   def handle_call({:reconnect, ws}, _from, state) do
-    BoomLooper.EventLog.info("branch:#{state.workspace_id}", "Reconnecting to existing compose containers")
+    BoomLooper.EventLog.info("workspace:#{state.workspace_id}", "Reconnecting to existing compose containers")
 
     services = Map.new(ws.services, fn s -> {s.name, s} end)
     all_names = Enum.map(ws.processes, & &1.name) ++ Enum.map(ws.services, & &1.name) ++ ["workspace"]
@@ -191,7 +191,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
   def terminate(_reason, state) do
     # Intentionally do NOT call compose down here.
     # Containers should survive server reboots. Use /system/reset for intentional teardown.
-    BoomLooper.EventLog.info("branch:#{state.workspace_id}", "ServiceManager stopping (containers kept running)")
+    BoomLooper.EventLog.info("workspace:#{state.workspace_id}", "ServiceManager stopping (containers kept running)")
     :ok
   end
 
@@ -203,7 +203,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
         # Generate compose file
         case Compose.write(state.project_dir, state.workspace_id) do
           {:ok, _path} ->
-            BoomLooper.EventLog.info("branch:#{state.workspace_id}", "Starting compose services")
+            BoomLooper.EventLog.info("workspace:#{state.workspace_id}", "Starting compose services")
 
             case Compose.up(state.project_dir, state.workspace_id) do
               {:ok, _} ->
@@ -221,7 +221,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
                 {:ok, new_state}
 
               {:error, reason} ->
-                BoomLooper.EventLog.error("branch:#{state.workspace_id}", "Compose up failed: #{reason}")
+                BoomLooper.EventLog.error("workspace:#{state.workspace_id}", "Compose up failed: #{reason}")
                 {:error, reason}
             end
 

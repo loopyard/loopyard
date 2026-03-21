@@ -1,7 +1,7 @@
 defmodule BoomLooper.ProjectRegistry do
   @moduledoc """
-  Registry of projects (git repos) and their branches (worktrees).
-  Each project can have multiple branches, each with its own containers and agents.
+  Registry of projects (git repos) and their workspaces (worktrees).
+  Each project can have multiple workspaces, each with its own containers and agents.
 
   Stored in ETS — no persistence across restarts.
   """
@@ -10,14 +10,14 @@ defmodule BoomLooper.ProjectRegistry do
   alias BoomLooper.Workspace
 
   @projects_table :project_registry
-  @branches_table :branch_registry
+  @workspaces_table :workspace_registry
 
   def ensure_ets_tables do
     if :ets.whereis(@projects_table) == :undefined do
       :ets.new(@projects_table, [:named_table, :public, :set])
     end
-    if :ets.whereis(@branches_table) == :undefined do
-      :ets.new(@branches_table, [:named_table, :public, :set])
+    if :ets.whereis(@workspaces_table) == :undefined do
+      :ets.new(@workspaces_table, [:named_table, :public, :set])
     end
     :ok
   end
@@ -26,8 +26,8 @@ defmodule BoomLooper.ProjectRegistry do
 
   @doc """
   Add a project from a directory path. Detects the git repo root,
-  creates the project, and registers the current branch.
-  Returns {:ok, project, branch} or {:error, reason}.
+  creates the project, and registers the current workspace.
+  Returns {:ok, project, workspace} or {:error, reason}.
   """
   def add(path) do
     path = Path.expand(path)
@@ -41,20 +41,20 @@ defmodule BoomLooper.ProjectRegistry do
         {:ok, repo_root} ->
           project = find_or_create_project(repo_root)
 
-          # Register the current branch
+          # Register the current workspace
           {:ok, branch_name} = Git.current_branch(path)
-          branch = find_or_create_branch(project.id, branch_name, path)
+          workspace = find_or_create_workspace(project.id, branch_name, path)
 
           # Also discover existing worktrees
           discover_worktrees(project)
 
-          {:ok, project, branch}
+          {:ok, project, workspace}
 
         {:error, _} ->
-          # Not a git repo — treat as a single-branch project
+          # Not a git repo — treat as a single-workspace project
           project = find_or_create_project(path)
-          branch = find_or_create_branch(project.id, "main", path)
-          {:ok, project, branch}
+          workspace = find_or_create_workspace(project.id, "main", path)
+          {:ok, project, workspace}
       end
     end
   end
@@ -76,55 +76,55 @@ defmodule BoomLooper.ProjectRegistry do
     end
   end
 
-  @doc "Remove a project and all its branches."
+  @doc "Remove a project and all its workspaces."
   def remove_project(id) do
     ensure_ets_tables()
-    # Remove all branches for this project
-    list_branches(id) |> Enum.each(&(:ets.delete(@branches_table, &1.id)))
+    # Remove all workspaces for this project
+    list_workspaces(id) |> Enum.each(&(:ets.delete(@workspaces_table, &1.id)))
     :ets.delete(@projects_table, id)
     :ok
   end
 
-  # --- Branches ---
+  # --- Workspaces ---
 
-  @doc "List branches for a project."
-  def list_branches(project_id) do
+  @doc "List workspaces for a project."
+  def list_workspaces(project_id) do
     ensure_ets_tables()
-    :ets.tab2list(@branches_table)
-    |> Enum.map(fn {_id, branch} -> branch end)
+    :ets.tab2list(@workspaces_table)
+    |> Enum.map(fn {_id, workspace} -> workspace end)
     |> Enum.filter(&(&1.project_id == project_id))
-    |> Enum.sort_by(fn b -> if b.name == "main", do: "0", else: b.name end)
+    |> Enum.sort_by(fn w -> if w.name == "main", do: "0", else: w.name end)
   end
 
-  @doc "Get a branch by ID."
-  def get_branch(id) do
+  @doc "Get a workspace by ID."
+  def get_workspace(id) do
     ensure_ets_tables()
-    case :ets.lookup(@branches_table, id) do
-      [{^id, branch}] -> branch
+    case :ets.lookup(@workspaces_table, id) do
+      [{^id, workspace}] -> workspace
       [] -> nil
     end
   end
 
   @doc """
-  Add a new branch to a project. Creates a git worktree.
-  Returns {:ok, branch} or {:error, reason}.
+  Add a new workspace to a project. Creates a git worktree.
+  Returns {:ok, workspace} or {:error, reason}.
   """
-  def add_branch(project_id, branch_name) do
+  def add_workspace(project_id, workspace_name) do
     ensure_ets_tables()
     project = get_project(project_id)
 
     unless project do
       {:error, "Project not found"}
     else
-      # Check if branch already registered
-      existing = list_branches(project_id) |> Enum.find(&(&1.name == branch_name))
+      # Check if workspace already registered
+      existing = list_workspaces(project_id) |> Enum.find(&(&1.name == workspace_name))
       if existing do
         {:ok, existing}
       else
-        case Git.worktree_add(project.path, branch_name) do
+        case Git.worktree_add(project.path, workspace_name) do
           {:ok, worktree_path} ->
-            branch = create_branch(project_id, branch_name, worktree_path)
-            {:ok, branch}
+            workspace = create_workspace(project_id, workspace_name, worktree_path)
+            {:ok, workspace}
 
           {:error, reason} ->
             {:error, reason}
@@ -134,34 +134,34 @@ defmodule BoomLooper.ProjectRegistry do
   end
 
   @doc """
-  Remove a branch. Stops containers and removes the git worktree.
-  Cannot remove the main branch.
+  Remove a workspace. Stops containers and removes the git worktree.
+  Cannot remove the main workspace.
   """
-  def remove_branch(branch_id) do
+  def remove_workspace(workspace_id) do
     ensure_ets_tables()
-    branch = get_branch(branch_id)
+    workspace = get_workspace(workspace_id)
 
     cond do
-      is_nil(branch) -> {:error, "Branch not found"}
-      branch.is_main -> {:error, "Cannot remove the main branch"}
+      is_nil(workspace) -> {:error, "Workspace not found"}
+      workspace.is_main -> {:error, "Cannot remove the main workspace"}
       true ->
         # Remove worktree
-        Git.worktree_remove(branch.path)
-        :ets.delete(@branches_table, branch_id)
+        Git.worktree_remove(workspace.path)
+        :ets.delete(@workspaces_table, workspace_id)
         :ok
     end
   end
 
-  @doc "Update branch status (e.g. :running, :stopped)."
-  def update_branch_status(branch_id, status) do
+  @doc "Update workspace status (e.g. :running, :stopped)."
+  def update_workspace_status(workspace_id, status) do
     ensure_ets_tables()
-    case :ets.lookup(@branches_table, branch_id) do
-      [{^branch_id, branch}] ->
-        updated = %{branch | status: status}
-        :ets.insert(@branches_table, {branch_id, updated})
+    case :ets.lookup(@workspaces_table, workspace_id) do
+      [{^workspace_id, workspace}] ->
+        updated = %{workspace | status: status}
+        :ets.insert(@workspaces_table, {workspace_id, updated})
         {:ok, updated}
       [] ->
-        {:error, "Branch not found"}
+        {:error, "Workspace not found"}
     end
   end
 
@@ -191,38 +191,38 @@ defmodule BoomLooper.ProjectRegistry do
     end
   end
 
-  defp find_or_create_branch(project_id, branch_name, path) do
-    id = branch_id(path)
-    case get_branch(id) do
-      nil -> create_branch(project_id, branch_name, path)
+  defp find_or_create_workspace(project_id, workspace_name, path) do
+    id = workspace_id(path)
+    case get_workspace(id) do
+      nil -> create_workspace(project_id, workspace_name, path)
       existing -> existing
     end
   end
 
-  defp create_branch(project_id, branch_name, path) do
+  defp create_workspace(project_id, workspace_name, path) do
     project = get_project(project_id)
     is_main = path == project.path
-    id = branch_id(path)
+    id = workspace_id(path)
 
-    branch = %{
+    workspace = %{
       id: id,
       project_id: project_id,
-      name: branch_name,
+      name: workspace_name,
       path: path,
       is_main: is_main,
       status: :stopped,
       added_at: DateTime.utc_now()
     }
-    :ets.insert(@branches_table, {id, branch})
-    branch
+    :ets.insert(@workspaces_table, {id, workspace})
+    workspace
   end
 
   defp discover_worktrees(project) do
     case Git.worktree_list(project.path) do
       {:ok, worktrees} ->
         Enum.each(worktrees, fn wt ->
-          branch_name = wt[:branch] || "detached"
-          find_or_create_branch(project.id, branch_name, wt.path)
+          workspace_name = wt[:branch] || "detached"
+          find_or_create_workspace(project.id, workspace_name, wt.path)
         end)
 
       {:error, _} ->
@@ -235,8 +235,8 @@ defmodule BoomLooper.ProjectRegistry do
     Workspace.workspace_id(path)
   end
 
-  @doc "Generate a branch ID from a worktree path."
-  def branch_id(path) do
+  @doc "Generate a workspace ID from a worktree path."
+  def workspace_id(path) do
     Workspace.workspace_id(path)
   end
 end

@@ -6,7 +6,7 @@ defmodule BoomLooper.ComposeTest do
   describe "generate/3" do
     setup do
       tmp_dir = Path.join(System.tmp_dir!(), "boom-looper-compose-test-#{:rand.uniform(100_000)}")
-      File.mkdir_p!(Path.join(tmp_dir, ".hive"))
+      File.mkdir_p!(Path.join(tmp_dir, ".boomlooper/workspace"))
       on_exit(fn -> File.rm_rf!(tmp_dir) end)
       %{tmp_dir: tmp_dir}
     end
@@ -60,8 +60,8 @@ defmodule BoomLooper.ComposeTest do
       assert Compose.project_name("abcd") == "bl-abcd"
     end
 
-    test "compose_path is in .hive directory" do
-      assert Compose.compose_path("/tmp/test") == "/tmp/test/.hive/docker-compose.yml"
+    test "compose_path is in .boomlooper/workspace directory" do
+      assert Compose.compose_path("/tmp/test") == "/tmp/test/.boomlooper/workspace/docker-compose.yml"
     end
   end
 end

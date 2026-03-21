@@ -5,9 +5,10 @@ defmodule BoomLooperWeb.MessageLive do
   Multiplayer — all viewers see the same content.
   """
   use BoomLooperWeb, :live_view
+  import BoomLooperWeb.Components.LogViewer
 
   @impl true
-  def mount(%{"id" => agent_id, "index" => msg_id} = params, _session, socket) do
+  def mount(%{"agent_id" => agent_id, "msg_id" => msg_id}, _session, socket) do
     msg = BoomLooper.ChatAgent.get_message(agent_id, msg_id)
 
     if msg do
@@ -15,8 +16,7 @@ defmodule BoomLooperWeb.MessageLive do
         BoomLooper.ChatAgent.subscribe(agent_id)
       end
 
-      raw_url = BoomLooperWeb.OutputController.raw_url(
-        params["project_id"] || "x", agent_id, msg_id)
+      raw_url = BoomLooperWeb.OutputController.raw_url(agent_id, msg_id)
 
       {:ok,
        socket
@@ -83,11 +83,12 @@ defmodule BoomLooperWeb.MessageLive do
       </header>
 
       <div :if={@msg} class="p-4">
-        <pre :if={@msg.role in [:build, :build_done, :build_failed, :stream, :tool_result]}
+        <.log_panel
+          :if={@msg.role in [:build, :build_done, :build_failed, :stream, :tool_result]}
           id="msg-output"
-          phx-hook="TailScroll"
-          class="text-sm font-mono whitespace-pre-wrap bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-green-400 rounded-lg p-4 overflow-auto max-h-[calc(100vh-6rem)]"
-        >{@msg.content}</pre>
+          content={@msg.content}
+          class="text-sm rounded-lg p-4 max-h-[calc(100vh-6rem)]"
+        />
 
         <div :if={@msg.role == :assistant}
           id="msg-content"

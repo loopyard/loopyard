@@ -23,12 +23,12 @@ defmodule BoomLooperWeb.DebugController do
       _ -> "(docker not available)"
     end
 
-    branches = BoomLooper.ProjectRegistry.list_projects()
+    workspaces = BoomLooper.ProjectRegistry.list_projects()
     |> Enum.flat_map(fn p ->
-      BoomLooper.ProjectRegistry.list_branches(p.id)
-      |> Enum.map(fn b ->
-        running = BoomLooper.BranchSupervisor.branch_running?(b.id)
-        "  #{p.name}/#{b.name} (#{b.id}) status=#{b.status} supervisor=#{running}"
+      BoomLooper.ProjectRegistry.list_workspaces(p.id)
+      |> Enum.map(fn w ->
+        running = BoomLooper.WorkspaceSupervisor.workspace_running?(w.id)
+        "  #{p.name}/#{w.name} (#{w.id}) status=#{w.status} supervisor=#{running}"
       end)
     end)
     |> Enum.join("\n")
@@ -37,8 +37,8 @@ defmodule BoomLooperWeb.DebugController do
     === BOOM LOOPER DEBUG ===
     Time: #{DateTime.utc_now() |> Calendar.strftime("%Y-%m-%d %H:%M:%S UTC")}
 
-    === BRANCHES ===
-    #{if branches == "", do: "  (none)", else: branches}
+    === WORKSPACES ===
+    #{if workspaces == "", do: "  (none)", else: workspaces}
 
     === AGENTS (#{length(agents)}) ===
     #{if agent_summary == "", do: "  (none)", else: agent_summary}
@@ -55,26 +55,26 @@ defmodule BoomLooperWeb.DebugController do
     |> send_resp(200, output)
   end
 
-  @doc "POST /reset — kill all branches, agents, and containers. Web layer stays up."
+  @doc "POST /reset — kill all workspaces, agents, and containers. Web layer stays up."
   def reset(conn, _params) do
     BoomLooper.EventLog.warning("system", "Reset triggered via /reset")
 
     # Explicitly tear down compose containers for all known projects
     # (ServiceManager.terminate no longer does this, so reset must)
     BoomLooper.ProjectRegistry.list_projects()
-    |> Enum.flat_map(&BoomLooper.ProjectRegistry.list_branches(&1.id))
-    |> Enum.each(fn b ->
-      workspace_id = BoomLooper.Workspace.workspace_id(b.working_dir)
-      BoomLooper.Compose.down(b.working_dir, workspace_id)
+    |> Enum.flat_map(&BoomLooper.ProjectRegistry.list_workspaces(&1.id))
+    |> Enum.each(fn w ->
+      workspace_id = BoomLooper.Workspace.workspace_id(w.working_dir)
+      BoomLooper.Compose.down(w.working_dir, workspace_id)
     end)
 
-    # Kill all branch supervisor trees (cascades to agents)
-    children = DynamicSupervisor.which_children(BoomLooper.BranchSupervisor)
+    # Kill all workspace supervisor trees (cascades to agents)
+    children = DynamicSupervisor.which_children(BoomLooper.WorkspaceSupervisor)
     Enum.each(children, fn {_, pid, _, _} ->
-      DynamicSupervisor.terminate_child(BoomLooper.BranchSupervisor, pid)
+      DynamicSupervisor.terminate_child(BoomLooper.WorkspaceSupervisor, pid)
     end)
 
-    # Clear project/branch registry
+    # Clear project/workspace registry
     BoomLooper.ProjectRegistry.list_projects()
     |> Enum.each(&BoomLooper.ProjectRegistry.remove_project(&1.id))
 
@@ -82,11 +82,11 @@ defmodule BoomLooperWeb.DebugController do
     BoomLooper.ChatAgent.ensure_ets_table()
     :ets.delete_all_objects(:chat_agents)
 
-    BoomLooper.EventLog.info("system", "Reset complete — all branches, agents, and containers stopped")
+    BoomLooper.EventLog.info("system", "Reset complete — all workspaces, agents, and containers stopped")
 
     conn
     |> put_resp_content_type("text/plain")
-    |> send_resp(200, "Reset complete. All branches, agents, and containers stopped.\nGo to http://localhost:#{port()}/\n")
+    |> send_resp(200, "Reset complete. All workspaces, agents, and containers stopped.\nGo to http://localhost:#{port()}/\n")
   end
 
   @doc "POST /reset/containers — kill only Docker containers, keep agents alive"

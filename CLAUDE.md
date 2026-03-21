@@ -59,7 +59,7 @@ Views read from ETS/GenServers. They never create or modify infrastructure state
 
 - Real `<a href>` with `target="_blank" rel="noopener"`. No JS hacks.
 - EVERY broadcast must include the message `:id`. Broadcast `List.last(state.messages)` after `append_message`.
-- No tokens — simple URLs: `/p/:pid/b/:bid/chat/:agent_id/msg/:msg_id`
+- No tokens — simple URLs: `/messages/:agent_id/:msg_id`
 
 ### Streaming sync
 
@@ -76,6 +76,15 @@ Never `docker exec apt-get`. It doesn't persist across container restarts.
 ### Auto-restart dead CLI sessions
 
 ChatAgent checks `session_alive?` before every send. Restarts silently. No auto-replay (causes crash loops).
+
+## Terminology
+
+- **Project** = a git repo. Managed by `ProjectRegistry`.
+- **Workspace** = a working directory (git worktree) within a project. Each gets its own containers, volumes, agents.
+- **WorkspaceSupervisor** = top-level DynamicSupervisor for all workspace subtrees.
+- **WorkspaceGroup** = per-workspace Supervisor (ServiceManager + AgentSupervisor + ContainerMonitor).
+- Config lives in `.boomlooper/repo/` (tracked in git). Generated files in `.boomlooper/workspace/` (gitignored).
+- URLs: `/projects/:project_id/workspaces/:workspace_id/agents/:id`, `/messages/:agent_id/:msg_id`
 
 ## Stack
 

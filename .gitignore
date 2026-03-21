@@ -18,5 +18,8 @@
 # Build cache
 /.cache
 
+# BoomLooper workspace (generated per-workspace files)
+.boomlooper/workspace/
+
 # OS
 .DS_Store

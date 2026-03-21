@@ -2,28 +2,28 @@ defmodule BoomLooperWeb.ChatLive do
   use BoomLooperWeb, :live_view
 
   alias BoomLooper.ChatAgent
+  import BoomLooperWeb.Components.LogViewer
 
   @impl true
-  def mount(%{"project_id" => project_id, "branch_id" => branch_id}, _session, socket) do
+  def mount(%{"project_id" => project_id, "workspace_id" => workspace_id}, _session, socket) do
     project = BoomLooper.ProjectRegistry.get_project(project_id)
-    branch = BoomLooper.ProjectRegistry.get_branch(branch_id)
+    workspace_entry = BoomLooper.ProjectRegistry.get_workspace(workspace_id)
 
-    unless project && branch do
+    unless project && workspace_entry do
       {:ok, push_navigate(socket, to: "/")}
     else
-      # Build workspace-compatible shape for the rest of ChatLive
-      workspace = %{id: branch.id, path: branch.path, name: project.name}
-      mount_with_workspace(socket, workspace, %{project: project, branch: branch})
+      workspace = %{id: workspace_entry.id, path: workspace_entry.path, name: project.name}
+      mount_with_workspace(socket, workspace, %{project: project, workspace_entry: workspace_entry})
     end
   end
 
 
   defp mount_with_workspace(socket, workspace, extra_assigns) do
     if connected?(socket) do
-      # Ensure the branch supervisor subtree is running
-      branch_id = BoomLooper.ProjectRegistry.branch_id(workspace.path)
-      BoomLooper.BranchSupervisor.start_branch(branch_id, workspace.path)
-      BoomLooper.ProjectRegistry.update_branch_status(branch_id, :running)
+      # Ensure the workspace supervisor subtree is running
+      workspace_id = BoomLooper.ProjectRegistry.workspace_id(workspace.path)
+      BoomLooper.WorkspaceSupervisor.start_workspace(workspace_id, workspace.path)
+      BoomLooper.ProjectRegistry.update_workspace_status(workspace_id, :running)
 
       ChatAgent.subscribe()
       BoomLooper.Workspace.ServiceManager.subscribe()
@@ -33,16 +33,16 @@ defmodule BoomLooperWeb.ChatLive do
     service_statuses = fetch_service_statuses(workspace.path)
 
     base_path = if extra_assigns[:project] do
-      "/p/#{extra_assigns[:project].id}/b/#{extra_assigns[:branch].id}"
+      "/projects/#{extra_assigns[:project].id}/workspaces/#{extra_assigns[:workspace_entry].id}"
     else
-      "/p/#{workspace.id}/b/#{workspace.id}"
+      "/projects/#{workspace.id}/workspaces/#{workspace.id}"
     end
 
     {:ok,
      socket
      |> assign(:workspace, workspace)
      |> assign(:project, extra_assigns[:project])
-     |> assign(:branch, extra_assigns[:branch])
+     |> assign(:workspace_entry, extra_assigns[:workspace_entry])
      |> assign(:base_path, base_path)
      |> assign(:agents, agents)
      |> assign(:service_statuses, service_statuses)
@@ -85,7 +85,7 @@ defmodule BoomLooperWeb.ChatLive do
           :not_found ->
             socket
             |> put_flash(:error, "Agent not found")
-            |> push_navigate(to: branch_path(socket))
+            |> push_navigate(to: workspace_path(socket))
         end
       else
         clear_flash(socket)
@@ -100,7 +100,9 @@ defmodule BoomLooperWeb.ChatLive do
     workspace = socket.assigns.workspace
 
     # Auto-spawn Setup if no config and no agents running
-    has_config = match?({:ok, _}, BoomLooper.Workspace.load(workspace.path))
+    # Check config at workspace path — .boomlooper/repo/ is tracked in git, available in worktrees
+    config_path = workspace.path
+    has_config = match?({:ok, _}, BoomLooper.Workspace.load(config_path))
     has_agents = socket.assigns.agents != []
 
     if !has_config && !has_agents do
@@ -120,7 +122,7 @@ defmodule BoomLooperWeb.ChatLive do
       ChatAgent.register_booting(id, name, workspace.path)
       Task.start(fn -> boot_agent(id, agent_opts, nil, workspace.path, if(setup, do: "setup")) end)
 
-      {:noreply, push_navigate(socket, to: "#{branch_path(socket)}/chat/#{id}")}
+      {:noreply, push_navigate(socket, to: "#{workspace_path(socket)}/agents/#{id}")}
     else
       checklists = BoomLooper.Checklist.available(workspace.path)
       {:noreply, assign(socket, available_checklists: checklists, selected_checklist: nil)}
@@ -145,7 +147,7 @@ defmodule BoomLooperWeb.ChatLive do
 
     # Process containers exec into workspace service (has shell + tools)
     # Stock services exec into their own container
-    workspace_id = BoomLooper.ProjectRegistry.branch_id(socket.assigns.workspace.path)
+    workspace_id = BoomLooper.ProjectRegistry.workspace_id(socket.assigns.workspace.path)
     container = cond do
       svc && Map.get(svc, :type) == :process ->
         BoomLooper.Workspace.ServiceManager.service_container_name(workspace_id, "workspace")
@@ -178,12 +180,14 @@ defmodule BoomLooperWeb.ChatLive do
 
   def handle_params(_params, _uri, %{assigns: %{live_action: :index}} = socket) do
     workspace = socket.assigns.workspace
-    has_config = match?({:ok, %{dockerfile: d}} when d != nil, BoomLooper.Workspace.load(workspace.path))
+    # Check config at workspace path — .boomlooper/repo/ is tracked in git, available in worktrees
+    config_path = workspace.path
+    has_config = match?({:ok, %{dockerfile: d}} when d != nil, BoomLooper.Workspace.load(config_path))
 
     cond do
       # No config at all → needs setup
       !has_config && socket.assigns.agents == [] ->
-        {:noreply, push_navigate(socket, to: "#{branch_path(socket)}/new")}
+        {:noreply, push_navigate(socket, to: "#{workspace_path(socket)}/new")}
 
       # Config exists but no agents → auto-spawn a default agent
       has_config && socket.assigns.agents == [] ->
@@ -192,7 +196,7 @@ defmodule BoomLooperWeb.ChatLive do
       # One agent and none selected → auto-select it
       length(socket.assigns.agents) == 1 && is_nil(socket.assigns.selected_id) ->
         agent = hd(socket.assigns.agents)
-        {:noreply, push_navigate(socket, to: "#{branch_path(socket)}/chat/#{agent.id}")}
+        {:noreply, push_navigate(socket, to: "#{workspace_path(socket)}/agents/#{agent.id}")}
 
       true ->
         {:noreply, assign(socket, :tab, :chat)}
@@ -206,8 +210,8 @@ defmodule BoomLooperWeb.ChatLive do
   @impl true
   def handle_event("select_agent", %{"id" => id}, socket) do
     tab = socket.assigns.tab
-    bp = branch_path(socket)
-    path = if tab == :container, do: "#{bp}/chat/#{id}/container", else: "#{bp}/chat/#{id}"
+    bp = workspace_path(socket)
+    path = if tab == :container, do: "#{bp}/agents/#{id}/container", else: "#{bp}/agents/#{id}"
     {:noreply, push_patch(socket, to: path) |> push_event("focus_input", %{})}
   end
 
@@ -292,13 +296,13 @@ defmodule BoomLooperWeb.ChatLive do
   @impl true
   def handle_event("switch_tab", %{"tab" => tab}, socket) do
     tab = String.to_existing_atom(tab)
-    bp = branch_path(socket)
+    bp = workspace_path(socket)
 
     path =
       case {socket.assigns.selected_id, tab} do
         {nil, _} -> bp
-        {id, :container} -> "#{bp}/chat/#{id}/container"
-        {id, _} -> "#{bp}/chat/#{id}"
+        {id, :container} -> "#{bp}/agents/#{id}/container"
+        {id, _} -> "#{bp}/agents/#{id}"
       end
 
     {:noreply, push_patch(socket, to: path)}
@@ -380,7 +384,7 @@ defmodule BoomLooperWeb.ChatLive do
         socket
         |> assign(:booting_agent_id, nil)
         |> put_flash(:error, "Failed to start agent: #{inspect(reason)}")
-        |> push_navigate(to: branch_path(socket))
+        |> push_navigate(to: workspace_path(socket))
       else
         socket
       end
@@ -572,8 +576,9 @@ defmodule BoomLooperWeb.ChatLive do
     id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
     service_name = Keyword.get(opts, :service_name)
 
+    config_path = working_dir
     ws_config =
-      case BoomLooper.Workspace.load(working_dir) do
+      case BoomLooper.Workspace.load(config_path) do
         {:ok, ws} -> ws
         _ -> nil
       end
@@ -602,7 +607,7 @@ defmodule BoomLooperWeb.ChatLive do
     ChatAgent.register_booting(id, name, working_dir, boot_opts)
     Task.start(fn -> boot_agent(id, agent_opts, ws_config, working_dir, checklist_id) end)
 
-    {:noreply, push_navigate(socket, to: "#{branch_path(socket)}/chat/#{id}")}
+    {:noreply, push_navigate(socket, to: "#{workspace_path(socket)}/agents/#{id}")}
   end
 
   defp fetch_service_statuses(workspace_path) do
@@ -615,7 +620,7 @@ defmodule BoomLooperWeb.ChatLive do
     :exit, _ -> []
   end
 
-  defp branch_path(socket), do: socket.assigns.base_path
+  defp workspace_path(socket), do: socket.assigns.base_path
 
   defp fetch_service_container_logs(service_statuses, service_name) do
     case Enum.find(service_statuses, &(&1.name == service_name)) do
@@ -782,15 +787,15 @@ defmodule BoomLooperWeb.ChatLive do
 
     ChatAgent.update_boot_status(id, "Starting Claude session...")
     Logger.info("[boot_agent] #{id} starting Claude session")
-    branch_id = BoomLooper.ProjectRegistry.branch_id(working_dir)
-    case BoomLooper.Branch.start_agent(branch_id, final_opts) do
+    workspace_id = BoomLooper.ProjectRegistry.workspace_id(working_dir)
+    case BoomLooper.WorkspaceGroup.start_agent(workspace_id, final_opts) do
       {:ok, _pid} ->
         Logger.info("[boot_agent] #{id} Claude session started successfully")
         service_name = Keyword.get(final_opts, :service_name)
 
         cond do
           checklist_path ->
-            ChatAgent.send_message(id, "Follow the checklist at /workspace/.hive/active/#{Path.basename(checklist_path)}. Work through each item in order, using the check_item tool to mark items done as you complete them.")
+            ChatAgent.send_message(id, "Follow the checklist at /workspace/.boomlooper/workspace/active/#{Path.basename(checklist_path)}. Work through each item in order, using the check_item tool to mark items done as you complete them.")
 
           service_name ->
             ChatAgent.send_message(id, "Check the logs for the #{service_name} service and help me debug any issues.")
@@ -904,7 +909,7 @@ defmodule BoomLooperWeb.ChatLive do
   defp msg_url(assigns) do
     msg_id = assigns.msg[:id]
     if msg_id do
-      BoomLooperWeb.OutputController.msg_url(assigns.workspace_id, assigns.agent_id, msg_id)
+      BoomLooperWeb.OutputController.msg_url(assigns.agent_id, msg_id)
     end
   end
 
@@ -999,12 +1004,12 @@ defmodule BoomLooperWeb.ChatLive do
   def render(assigns) do
     ~H"""
     <div id="chat-page" phx-hook="ScrollBottom" class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
-      <.header workspace={@workspace} project={@project} branch={@branch} agent_count={length(@agents)} />
+      <.header workspace={@workspace} project={@project} workspace_entry={@workspace_entry} agent_count={length(@agents)} />
       <p :if={@flash["error"]} class="mx-4 mt-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300">
         {@flash["error"]}
       </p>
       <div class="flex-1 flex min-h-0">
-        <.sidebar agents={@agents} selected_id={@selected_id} workspace_id={@workspace.id} project={@project} branch={@branch} service_statuses={@service_statuses} selected_service={@selected_service} />
+        <.sidebar agents={@agents} selected_id={@selected_id} workspace_id={@workspace.id} project={@project} workspace_entry={@workspace_entry} service_statuses={@service_statuses} selected_service={@selected_service} />
         <main class="flex-1 flex flex-col min-w-0">
           <.new_agent_screen :if={@live_action == :new} available_checklists={@available_checklists} selected_checklist={@selected_checklist} workspace={@workspace} base_path={@base_path} />
           <.service_log_view :if={@live_action == :service} service_name={@selected_service} service_statuses={@service_statuses} logs={@service_logs} base_path={@base_path} />
@@ -1025,10 +1030,10 @@ defmodule BoomLooperWeb.ChatLive do
       <div class="flex items-center gap-3">
         <.link navigate="/" class="text-lg font-semibold tracking-tight hover:text-violet-600 dark:hover:text-violet-400 transition-colors">Boom Looper</.link>
         <span class="text-zinc-300 dark:text-zinc-600">/</span>
-        <.link :if={@project} navigate={"/p/#{@project.id}"} class="text-sm font-medium hover:text-violet-600 dark:hover:text-violet-400 transition-colors">{@workspace.name}</.link>
+        <.link :if={@project} navigate={"/projects/#{@project.id}"} class="text-sm font-medium hover:text-violet-600 dark:hover:text-violet-400 transition-colors">{@workspace.name}</.link>
         <span :if={!@project} class="text-sm font-medium">{@workspace.name}</span>
-        <span :if={@branch && !@branch.is_main} class="text-zinc-300 dark:text-zinc-600">/</span>
-        <span :if={@branch && !@branch.is_main} class="text-sm text-zinc-500 dark:text-zinc-400">{@branch.name}</span>
+        <span :if={@workspace_entry && !@workspace_entry.is_main} class="text-zinc-300 dark:text-zinc-600">/</span>
+        <span :if={@workspace_entry && !@workspace_entry.is_main} class="text-sm text-zinc-500 dark:text-zinc-400">{@workspace_entry.name}</span>
         <span class="text-sm text-zinc-400 dark:text-zinc-500">{@agent_count} agent{if @agent_count != 1, do: "s"}</span>
       </div>
     </header>
@@ -1037,9 +1042,9 @@ defmodule BoomLooperWeb.ChatLive do
 
   defp sidebar(assigns) do
     base_path = if assigns.project do
-      "/p/#{assigns.project.id}/b/#{assigns.branch.id}"
+      "/projects/#{assigns.project.id}/workspaces/#{assigns.workspace_entry.id}"
     else
-      "/p/#{assigns.workspace_id}/b/#{assigns.workspace_id}"
+      "/projects/#{assigns.workspace_id}/workspaces/#{assigns.workspace_id}"
     end
     assigns = assign(assigns, :base_path, base_path)
 
@@ -1174,7 +1179,7 @@ defmodule BoomLooperWeb.ChatLive do
 
     ~H"""
     <div class={"flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors #{if @selected, do: "bg-white dark:bg-zinc-800 shadow-sm", else: "hover:bg-white/60 dark:hover:bg-zinc-800/40"}"}>
-      <.link navigate={"#{@base_path}/service/#{@svc.name}"} class="flex items-center gap-2 min-w-0 flex-1">
+      <.link navigate={"#{@base_path}/services/#{@svc.name}"} class="flex items-center gap-2 min-w-0 flex-1">
         <div class={"w-1.5 h-1.5 rounded-full flex-none #{service_dot(@svc)}"}></div>
         <span class="truncate text-zinc-600 dark:text-zinc-400">{@svc.name}</span>
       </.link>
@@ -1212,40 +1217,6 @@ defmodule BoomLooperWeb.ChatLive do
       </div>
       <div :if={@agent.status == :booting} class="mt-1 ml-[18px] text-xs text-zinc-400 dark:text-zinc-500 truncate">{@agent[:boot_status] || "Initializing..."}</div>
     </button>
-    """
-  end
-
-  defp build_log_inline(assigns) do
-    title = Map.get(assigns, :title) || assigns[:msg_title]
-
-    {label, dot_class} = case assigns.status do
-      :building -> {title || "Running...", "bg-amber-400 animate-pulse"}
-      :done -> {(title || "Command") <> " — done", "bg-green-500"}
-      :failed -> {(title || "Command") <> " — failed", "bg-red-500"}
-    end
-
-    # Truncate to last 50 lines for inline display (full content via "open" link)
-    max_lines = 50
-    content = assigns.content || ""
-    lines = String.split(content, "\n")
-    truncated = length(lines) > max_lines
-    display = if truncated, do: Enum.take(lines, -max_lines) |> Enum.join("\n"), else: content
-
-    assigns = assign(assigns, label: label, dot_class: dot_class, display: display, truncated: truncated)
-
-    ~H"""
-    <div class="mt-2 mb-1 ml-10 rounded-lg border border-zinc-200 dark:border-zinc-700/80 overflow-hidden">
-      <div class="flex items-center gap-2 px-3 py-1.5 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
-        <div class={"w-1.5 h-1.5 rounded-full flex-none #{@dot_class}"}></div>
-        <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">{@label}</span>
-        <span :if={@truncated} class="text-[10px] text-zinc-400">... truncated</span>
-        <a :if={@msg_raw_url} href={@msg_raw_url} target="_blank" rel="noopener"
-          class="ml-auto text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors">
-          open
-        </a>
-      </div>
-      <pre class={"px-3 py-2 text-xs font-mono text-zinc-800 dark:text-green-400 bg-zinc-100 dark:bg-zinc-950 whitespace-pre-wrap overflow-y-auto #{if @status == :building, do: "max-h-64", else: "max-h-32"}"}>{@display}</pre>
-    </div>
     """
   end
 
@@ -1497,21 +1468,21 @@ defmodule BoomLooperWeb.ChatLive do
   defp chat_msg(%{msg: %{role: :build}} = assigns) do
     assigns = assign(assigns, :link, msg_url(assigns))
     ~H"""
-    <.build_log_inline content={@msg.content} status={:building} msg_raw_url={@link} title={@msg[:title]} />
+    <.log_inline content={@msg.content} status={:building} raw_url={@link} title={@msg[:title]} />
     """
   end
 
   defp chat_msg(%{msg: %{role: :build_done}} = assigns) do
     assigns = assign(assigns, :link, msg_url(assigns))
     ~H"""
-    <.build_log_inline content={@msg.content} status={:done} msg_raw_url={@link} title={@msg[:title]} />
+    <.log_inline content={@msg.content} status={:done} raw_url={@link} title={@msg[:title]} />
     """
   end
 
   defp chat_msg(%{msg: %{role: :build_failed}} = assigns) do
     assigns = assign(assigns, :link, msg_url(assigns))
     ~H"""
-    <.build_log_inline content={@msg.content} status={:failed} msg_raw_url={@link} title={@msg[:title]} />
+    <.log_inline content={@msg.content} status={:failed} raw_url={@link} title={@msg[:title]} />
     """
   end
 
@@ -1562,8 +1533,6 @@ defmodule BoomLooperWeb.ChatLive do
 
   # --- Service Log Views ---
 
-  @service_colors ~w(text-blue-400 text-green-400 text-yellow-400 text-pink-400 text-cyan-400 text-orange-400 text-violet-400 text-emerald-400)
-
   defp service_log_view(assigns) do
     svc = Enum.find(assigns.service_statuses, &(&1.name == assigns.service_name))
     first_port = if svc, do: first_host_port(svc[:ports]), else: nil
@@ -1580,7 +1549,7 @@ defmodule BoomLooperWeb.ChatLive do
           localhost:{@first_port}
         </a>
         <div class="ml-auto flex items-center gap-3">
-          <.link navigate={"#{@base_path}/service/#{@service_name}/console"}
+          <.link navigate={"#{@base_path}/services/#{@service_name}/console"}
             class="text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors">
             Console
           </.link>
@@ -1590,7 +1559,7 @@ defmodule BoomLooperWeb.ChatLive do
           </button>
         </div>
       </div>
-      <pre id="service-logs" phx-hook="TailScroll" class="flex-1 px-4 py-3 text-xs font-mono overflow-auto whitespace-pre-wrap bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-green-400">{@logs}</pre>
+      <.log_panel id="service-logs" content={@logs} />
     </div>
     """
   end
@@ -1618,41 +1587,12 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   defp all_services_view(assigns) do
-    colors = @service_colors
-    indexed_logs =
-      Enum.with_index(assigns.all_service_logs)
-      |> Enum.map(fn {svc_log, idx} ->
-        Map.put(svc_log, :color, Enum.at(colors, rem(idx, length(colors))))
-      end)
-
-    assigns = assign(assigns, :indexed_logs, indexed_logs)
-
     ~H"""
     <div class="flex-1 flex flex-col min-h-0">
       <div class="flex-none border-b border-zinc-200 dark:border-zinc-700/80 px-4 md:px-5 h-12 flex items-center">
         <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">All Services</span>
       </div>
-      <div class="flex-1 overflow-auto bg-zinc-950 px-4 py-3">
-        <.service_log_block :for={svc_log <- @indexed_logs}
-          name={svc_log.name} logs={svc_log.logs} color={svc_log.color} />
-      </div>
-    </div>
-    """
-  end
-
-  attr :name, :string, required: true
-  attr :logs, :string, required: true
-  attr :color, :string, required: true
-
-  defp service_log_block(assigns) do
-    lines = String.split(assigns.logs, "\n", trim: true)
-    padded_name = String.pad_leading(assigns.name, 12)
-    assigns = assign(assigns, lines: lines, padded_name: padded_name)
-
-    ~H"""
-    <div :for={line <- @lines} class="flex text-xs font-mono leading-relaxed">
-      <span class={"#{@color} w-36 text-right flex-none select-none"}>{@padded_name} |</span>
-      <span class="text-zinc-300 ml-2 whitespace-pre-wrap break-all">{line}</span>
+      <.log_multi_service logs={@all_service_logs} />
     </div>
     """
   end

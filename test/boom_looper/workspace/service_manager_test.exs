@@ -23,7 +23,7 @@ defmodule BoomLooper.Workspace.ServiceManagerTest do
     end
 
     test "returns ok with empty list when no workspace config", %{tmp_dir: tmp_dir} do
-      BoomLooper.TestHelpers.ensure_branch(tmp_dir)
+      BoomLooper.TestHelpers.ensure_workspace(tmp_dir)
       assert {:ok, []} = ServiceManager.start_services(tmp_dir)
     end
   end
@@ -177,7 +177,7 @@ defmodule BoomLooper.Workspace.ServiceManagerTest do
     end
 
     test "reconnect restores state without starting containers", %{tmp_dir: tmp_dir, ws: ws} do
-      BoomLooper.TestHelpers.ensure_branch(tmp_dir)
+      BoomLooper.TestHelpers.ensure_workspace(tmp_dir)
 
       # Get the ServiceManager pid
       [{pid, _}] = Registry.lookup(BoomLooper.ServiceManagerRegistry, tmp_dir)
@@ -204,7 +204,7 @@ defmodule BoomLooper.Workspace.ServiceManagerTest do
     end
 
     test "terminate does not call compose down", %{tmp_dir: tmp_dir} do
-      BoomLooper.TestHelpers.ensure_branch(tmp_dir)
+      BoomLooper.TestHelpers.ensure_workspace(tmp_dir)
       [{pid, _}] = Registry.lookup(BoomLooper.ServiceManagerRegistry, tmp_dir)
 
       # Verify the process is alive, then stop it

@@ -26,13 +26,24 @@ Hooks.ScrollBottom = {
   }
 }
 
-// Auto-scroll element to bottom on every update (tail mode)
+// Auto-scroll element to bottom on every update (tail mode).
+// Pauses when user scrolls up; resumes when they scroll back to bottom.
 Hooks.TailScroll = {
   mounted() {
+    this._userScrolledUp = false
     this.el.scrollTop = this.el.scrollHeight
+
+    this.el.addEventListener("scroll", () => {
+      const el = this.el
+      // "At bottom" means within 30px of the bottom edge
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 30
+      this._userScrolledUp = !atBottom
+    })
   },
   updated() {
-    this.el.scrollTop = this.el.scrollHeight
+    if (!this._userScrolledUp) {
+      this.el.scrollTop = this.el.scrollHeight
+    }
   }
 }
 

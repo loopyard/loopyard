@@ -17,9 +17,9 @@ defmodule BoomLooper.ContainerMonitorTest do
 
   test "polls without crashing when ServiceManager exists" do
     path = File.cwd!()
-    branch_id = BoomLooper.Workspace.workspace_id(path)
+    workspace_id = BoomLooper.Workspace.workspace_id(path)
 
-    BoomLooper.BranchSupervisor.start_branch(branch_id, path)
+    BoomLooper.WorkspaceSupervisor.start_workspace(workspace_id, path)
 
     {:ok, pid} = ContainerMonitor.start_link(project_dir: path)
 
@@ -28,7 +28,7 @@ defmodule BoomLooper.ContainerMonitorTest do
     assert Process.alive?(pid)
 
     GenServer.stop(pid)
-    BoomLooper.BranchSupervisor.stop_branch(branch_id)
+    BoomLooper.WorkspaceSupervisor.stop_workspace(workspace_id)
     Process.sleep(50)
   end
 end

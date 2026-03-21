@@ -8,12 +8,12 @@ defmodule BoomLooperWeb.LaunchController do
       path = Path.expand(path)
 
       case BoomLooper.ProjectRegistry.add(path) do
-        {:ok, project, branch} ->
-          # If workspace config exists, go straight to branch view
+        {:ok, project, workspace} ->
+          # If workspace config exists, go straight to workspace view
           # Otherwise redirect to new agent (will auto-spawn Setup)
           dest = case BoomLooper.Workspace.load(project.path) do
-            {:ok, _} -> "/p/#{project.id}/b/#{branch.id}"
-            _ -> "/p/#{project.id}/b/#{branch.id}/new"
+            {:ok, _} -> "/projects/#{project.id}/workspaces/#{workspace.id}"
+            _ -> "/projects/#{project.id}/workspaces/#{workspace.id}/new"
           end
           redirect(conn, to: dest)
 

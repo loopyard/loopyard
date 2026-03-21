@@ -16,7 +16,7 @@ Set up the development environment for this project.
 
 ## How it works
 
-The workspace tools (`set_dockerfile`, `set_dev_command`, `add_service`, etc.) write to `.hive/workspace.json`. When you call `rebuild`, a `docker-compose.yml` is generated from the config and `docker compose up --build` runs everything.
+The workspace tools (`set_dockerfile`, `set_dev_command`, `add_service`, etc.) write to `.boomlooper/repo/workspace.json`. When you call `rebuild`, a `docker-compose.yml` is generated from the config and `docker compose up --build` runs everything.
 
 You get three types of containers:
 - **workspace** — `sleep infinity`, full dev environment. Agents exec here.

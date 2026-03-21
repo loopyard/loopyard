@@ -150,7 +150,7 @@ defmodule BoomLooper.Tools.Checklist do
   def find_active_checklist(agent_id) do
     case find_project_dir(agent_id) do
       {:ok, project_dir} ->
-        active_dir = Path.join(project_dir, ".hive/active")
+        active_dir = Path.join(project_dir, ".boomlooper/workspace/active")
 
         case File.ls(active_dir) do
           {:ok, files} ->

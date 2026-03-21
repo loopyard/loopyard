@@ -11,12 +11,12 @@ defmodule BoomLooper.ProjectRegistryTest do
   end
 
   describe "add/1" do
-    test "registers a git repo as a project with main branch" do
+    test "registers a git repo as a project with main workspace" do
       path = File.cwd!()
-      assert {:ok, project, branch} = ProjectRegistry.add(path)
+      assert {:ok, project, workspace} = ProjectRegistry.add(path)
       assert project.is_git == true
-      assert branch.is_main == true
-      assert branch.project_id == project.id
+      assert workspace.is_main == true
+      assert workspace.project_id == project.id
     end
 
     test "returns error for non-existent path" do
@@ -33,9 +33,9 @@ defmodule BoomLooper.ProjectRegistryTest do
     test "discovers existing worktrees" do
       path = File.cwd!()
       {:ok, project, _} = ProjectRegistry.add(path)
-      branches = ProjectRegistry.list_branches(project.id)
-      # Should have at least the main branch
-      assert length(branches) >= 1
+      workspaces = ProjectRegistry.list_workspaces(project.id)
+      # Should have at least the main workspace
+      assert length(workspaces) >= 1
     end
   end
 
@@ -60,31 +60,31 @@ defmodule BoomLooper.ProjectRegistryTest do
     end
   end
 
-  describe "list_branches/1" do
-    test "returns branches for a project" do
+  describe "list_workspaces/1" do
+    test "returns workspaces for a project" do
       path = File.cwd!()
       {:ok, project, _} = ProjectRegistry.add(path)
-      branches = ProjectRegistry.list_branches(project.id)
-      assert length(branches) >= 1
-      assert hd(branches).project_id == project.id
+      workspaces = ProjectRegistry.list_workspaces(project.id)
+      assert length(workspaces) >= 1
+      assert hd(workspaces).project_id == project.id
     end
 
-    test "main branch sorts first" do
+    test "main workspace sorts first" do
       path = File.cwd!()
       {:ok, project, _} = ProjectRegistry.add(path)
-      branches = ProjectRegistry.list_branches(project.id)
-      first = hd(branches)
+      workspaces = ProjectRegistry.list_workspaces(project.id)
+      first = hd(workspaces)
       assert first.is_main == true
     end
   end
 
   describe "remove_project/1" do
-    test "removes project and all branches" do
+    test "removes project and all workspaces" do
       path = File.cwd!()
       {:ok, project, _} = ProjectRegistry.add(path)
       assert :ok = ProjectRegistry.remove_project(project.id)
       assert ProjectRegistry.get_project(project.id) == nil
-      assert ProjectRegistry.list_branches(project.id) == []
+      assert ProjectRegistry.list_workspaces(project.id) == []
     end
   end
 end

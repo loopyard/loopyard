@@ -8,13 +8,13 @@ defmodule BoomLooperWeb.LaunchControllerTest do
   end
 
   describe "launch/2" do
-    test "redirects to branch view for valid path with config", %{conn: conn} do
+    test "redirects to workspace view for valid path with config", %{conn: conn} do
       secret = Application.get_env(:boom_looper, :launch_secret)
-      # Use cwd which is a git repo with .hive config potentially
+      # Use cwd which is a git repo with .boomlooper config potentially
       path = File.cwd!()
 
       conn = get(conn, "/launch/#{secret}?path=#{URI.encode(path)}")
-      assert redirected_to(conn) =~ "/p/"
+      assert redirected_to(conn) =~ "/projects/"
     end
 
     test "returns 403 for invalid secret", %{conn: conn} do

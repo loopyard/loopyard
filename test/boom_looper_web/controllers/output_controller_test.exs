@@ -31,20 +31,20 @@ defmodule BoomLooperWeb.OutputControllerTest do
     test "returns message content with valid URL", %{conn: conn, agent_id: id} do
       state = BoomLooper.ChatAgent.get_state(id)
       msg = hd(state.messages)
-      url = BoomLooperWeb.OutputController.raw_url("test", id, msg.id)
+      url = BoomLooperWeb.OutputController.raw_url(id, msg.id)
       conn = get(conn, url)
       assert response(conn, 200) == "test message"
       assert response_content_type(conn, :text)
     end
 
     test "returns 404 for unknown message ID", %{conn: conn, agent_id: id} do
-      url = BoomLooperWeb.OutputController.raw_url("test", id, "nonexistent")
+      url = BoomLooperWeb.OutputController.raw_url(id, "nonexistent")
       conn = get(conn, url)
       assert response(conn, 404)
     end
 
     test "returns 404 for unknown agent ID", %{conn: conn} do
-      conn = get(conn, "/p/test/b/test/chat/nonexistent/msg/0/raw")
+      conn = get(conn, "/messages/nonexistent/0/raw")
       assert response(conn, 404)
     end
   end

@@ -74,7 +74,7 @@ defmodule BoomLooper.Tools.ChecklistTest do
     test "starts a built-in checklist", %{agent_id: id} do
       assert {:ok, result} = Checklist.do_start_checklist(id, "setup")
       assert result.name == "Setup"
-      assert result.active_path =~ ".hive/active/#{id}-setup.md"
+      assert result.active_path =~ ".boomlooper/workspace/active/#{id}-setup.md"
       assert File.exists?(result.active_path)
     end
 

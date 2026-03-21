@@ -2,7 +2,7 @@ defmodule BoomLooper.Secrets do
   @moduledoc """
   Named secret storage for BoomLooper agents.
 
-  Secrets are stored in `~/.hive/secrets.json` — a dedicated BoomLooper config
+  Secrets are stored in `~/.boomlooper/secrets.json` — a dedicated BoomLooper config
   directory in the user's home, separate from any project directory.
   Secrets are never committed to version control.
 
@@ -10,7 +10,7 @@ defmodule BoomLooper.Secrets do
   them pre-injected into containers as environment variables.
   """
 
-  @storage_dir Path.join(System.user_home!(), ".hive")
+  @storage_dir Path.join(System.user_home!(), ".boomlooper")
   @storage_file "secrets.json"
 
   @doc "Returns the path to the secrets storage file"

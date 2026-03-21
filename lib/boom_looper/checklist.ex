@@ -21,8 +21,8 @@ defmodule BoomLooper.Checklist do
         }
 
   @builtin_dir "priv/checklists"
-  @project_dir ".hive/checklists"
-  @active_dir ".hive/active"
+  @project_dir ".boomlooper/repo/checklists"
+  @active_dir ".boomlooper/workspace/active"
 
   @doc "Parse markdown content into a Checklist struct"
   def parse(markdown) when is_binary(markdown) do

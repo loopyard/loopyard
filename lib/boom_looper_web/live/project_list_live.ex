@@ -25,8 +25,8 @@ defmodule BoomLooperWeb.ProjectListLive do
     path = String.trim(path)
 
     case ProjectRegistry.add(path) do
-      {:ok, project, branch} ->
-        {:noreply, push_navigate(socket, to: "/p/#{project.id}/b/#{branch.id}")}
+      {:ok, project, workspace} ->
+        {:noreply, push_navigate(socket, to: "/projects/#{project.id}/workspaces/#{workspace.id}")}
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, reason)}
@@ -53,11 +53,11 @@ defmodule BoomLooperWeb.ProjectListLive do
 
     ProjectRegistry.list_projects()
     |> Enum.map(fn project ->
-      branches = ProjectRegistry.list_branches(project.id)
+      workspaces = ProjectRegistry.list_workspaces(project.id)
       agent_count = Enum.count(agents, fn a ->
-        Enum.any?(branches, fn b -> a[:bind_mount] == b.path || a[:working_dir] == b.path end)
+        Enum.any?(workspaces, fn w -> a[:bind_mount] == w.path || a[:working_dir] == w.path end)
       end)
-      Map.merge(project, %{branch_count: length(branches), agent_count: agent_count})
+      Map.merge(project, %{workspace_count: length(workspaces), agent_count: agent_count})
     end)
   end
 
@@ -75,7 +75,7 @@ defmodule BoomLooperWeb.ProjectListLive do
           </p>
 
           <h2 class="text-xl font-semibold mb-1">Projects</h2>
-          <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-6">Each project is a git repo. Branches run in isolated containers.</p>
+          <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-6">Each project is a git repo. Workspaces run in isolated containers.</p>
 
           <%!-- Launch command --%>
           <div class="mb-8 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 p-4">
@@ -92,14 +92,14 @@ defmodule BoomLooperWeb.ProjectListLive do
           </div>
 
           <div class="space-y-2 mb-8">
-            <.link :for={project <- @projects} navigate={"/p/#{project.id}"}
+            <.link :for={project <- @projects} navigate={"/projects/#{project.id}"}
               class="block w-full rounded-xl border border-zinc-200 dark:border-zinc-700 p-4 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group">
               <div class="flex items-center justify-between">
                 <div class="min-w-0">
                   <div class="flex items-center gap-2">
                     <span class="text-sm font-semibold truncate">{project.name}</span>
-                    <span :if={project.branch_count > 0} class="text-xs font-medium text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800 rounded-full px-2 py-0.5">
-                      {project.branch_count} branch{if project.branch_count != 1, do: "es"}
+                    <span :if={project.workspace_count > 0} class="text-xs font-medium text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800 rounded-full px-2 py-0.5">
+                      {project.workspace_count} workspace{if project.workspace_count != 1, do: "s"}
                     </span>
                     <span :if={project.agent_count > 0} class="text-xs font-medium text-violet-600 dark:text-violet-400 bg-violet-100 dark:bg-violet-900/30 rounded-full px-2 py-0.5">
                       {project.agent_count} agent{if project.agent_count != 1, do: "s"}

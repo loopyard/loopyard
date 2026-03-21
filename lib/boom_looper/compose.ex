@@ -10,14 +10,14 @@ defmodule BoomLooper.Compose do
   def generate(%Workspace{} = ws, project_dir, workspace_id) do
     services = %{}
 
-    # Write Dockerfile to .hive/ so compose can reference it
-    dockerfile_path = Path.join([project_dir, ".hive", "Dockerfile"])
-    if ws.dockerfile, do: File.write!(dockerfile_path, ws.dockerfile)
+    # Write Dockerfile to .boomlooper/workspace/ so compose can reference it
+    dockerfile_path = Path.join([project_dir, ".boomlooper", "workspace", "Dockerfile"])
+    if ws.dockerfile, do: write_unless_symlink(dockerfile_path, ws.dockerfile)
 
     # Workspace container — always running, agents exec here
     services = if ws.dockerfile do
       Map.put(services, "workspace", %{
-        "build" => %{"context" => Path.join(project_dir, ".hive"), "dockerfile" => "Dockerfile"},
+        "build" => %{"context" => Path.join([project_dir, ".boomlooper", "workspace"]), "dockerfile" => "Dockerfile"},
         "command" => "sleep infinity",
         "volumes" => [
           "#{project_dir}:/workspace",
@@ -33,7 +33,7 @@ defmodule BoomLooper.Compose do
     # Dev container — runs the dev command from workspace image
     services = Enum.reduce(ws.processes, services, fn p, acc ->
       svc = %{
-        "build" => %{"context" => Path.join(project_dir, ".hive"), "dockerfile" => "Dockerfile"},
+        "build" => %{"context" => Path.join([project_dir, ".boomlooper", "workspace"]), "dockerfile" => "Dockerfile"},
         "command" => p.command,
         "volumes" => [
           "#{project_dir}:/workspace",
@@ -94,14 +94,13 @@ defmodule BoomLooper.Compose do
     Jason.encode!(compose, pretty: true)
   end
 
-  @doc "Write docker-compose.yml to the .hive directory."
+  @doc "Write docker-compose.yml to the .boomlooper/workspace directory."
   def write(project_dir, workspace_id) do
     case Workspace.load(project_dir) do
       {:ok, ws} ->
         content = generate(ws, project_dir, workspace_id)
         compose_path = compose_path(project_dir)
-        File.mkdir_p!(Path.dirname(compose_path))
-        File.write!(compose_path, content)
+        write_unless_symlink(compose_path, content)
         {:ok, compose_path}
 
       other ->
@@ -110,7 +109,7 @@ defmodule BoomLooper.Compose do
   end
 
   @doc "Path to the compose file."
-  def compose_path(project_dir), do: Path.join([project_dir, ".hive", "docker-compose.yml"])
+  def compose_path(project_dir), do: Path.join([project_dir, ".boomlooper", "workspace", "docker-compose.yml"])
 
   @doc "Project name for compose (used for container naming)."
   def project_name(workspace_id), do: "bl-#{workspace_id}"
@@ -214,6 +213,15 @@ defmodule BoomLooper.Compose do
   end
 
   # --- Private ---
+
+  defp write_unless_symlink(path, content) do
+    case File.lstat(path) do
+      {:ok, %{type: :symlink}} -> :ok
+      _ ->
+        File.mkdir_p!(Path.dirname(path))
+        File.write!(path, content)
+    end
+  end
 
   defp env_list(env) when is_map(env) do
     Enum.map(env, fn {k, v} -> "#{k}=#{v}" end)

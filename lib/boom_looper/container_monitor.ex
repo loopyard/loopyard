@@ -1,6 +1,6 @@
 defmodule BoomLooper.ContainerMonitor do
   @moduledoc """
-  Polls Docker container health for a branch and broadcasts status changes.
+  Polls Docker container health for a workspace and broadcasts status changes.
   Detects when containers die and updates the UI with exit info.
   """
   use GenServer

@@ -1,7 +1,7 @@
 defmodule BoomLooperWeb.OutputController do
   use BoomLooperWeb, :controller
 
-  def show(conn, %{"id" => agent_id, "index" => msg_id}) do
+  def show(conn, %{"agent_id" => agent_id, "msg_id" => msg_id}) do
     case BoomLooper.ChatAgent.get_message(agent_id, msg_id) do
       %{content: content} when is_binary(content) ->
         conn
@@ -14,12 +14,12 @@ defmodule BoomLooperWeb.OutputController do
   end
 
   @doc "Generate a URL for a message (LiveView page)"
-  def msg_url(workspace_id, agent_id, msg_id) do
-    "/p/#{workspace_id}/b/#{workspace_id}/chat/#{agent_id}/msg/#{msg_id}"
+  def msg_url(agent_id, msg_id) do
+    "/messages/#{agent_id}/#{msg_id}"
   end
 
   @doc "Generate a URL for raw text content"
-  def raw_url(workspace_id, agent_id, msg_id) do
-    "/p/#{workspace_id}/b/#{workspace_id}/chat/#{agent_id}/msg/#{msg_id}/raw"
+  def raw_url(agent_id, msg_id) do
+    "/messages/#{agent_id}/#{msg_id}/raw"
   end
 end
