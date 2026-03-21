@@ -512,23 +512,12 @@ defmodule BoomLooperWeb.ChatLive do
 
   @impl true
   def handle_info({:build_output, id, data}, socket) when id == socket.assigns.selected_id do
-    build_log = socket.assigns.build_log <> data
-    build_log = if byte_size(build_log) > 8000, do: String.slice(build_log, -8000..-1//1), else: build_log
+    upsert_stream_message(socket, data, "Building Docker image...")
+  end
 
-    messages = socket.assigns.messages
-    build_msg = %{role: :build, content: build_log, timestamp: DateTime.utc_now()}
-
-    messages =
-      if Enum.any?(messages, &(&1.role == :build)) do
-        Enum.map(messages, fn
-          %{role: :build} -> build_msg
-          other -> other
-        end)
-      else
-        messages ++ [build_msg]
-      end
-
-    {:noreply, socket |> assign(:messages, messages) |> assign(:build_log, build_log) |> assign(:building, true)}
+  @impl true
+  def handle_info({:stream_output, id, data, title}, socket) when id == socket.assigns.selected_id do
+    upsert_stream_message(socket, data, title)
   end
 
   @impl true
@@ -553,6 +542,26 @@ defmodule BoomLooperWeb.ChatLive do
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   # --- Private ---
+
+  defp upsert_stream_message(socket, data, title) do
+    build_log = socket.assigns.build_log <> data
+    build_log = if byte_size(build_log) > 8000, do: String.slice(build_log, -8000..-1//1), else: build_log
+
+    messages = socket.assigns.messages
+    build_msg = %{role: :build, content: build_log, title: title, timestamp: DateTime.utc_now()}
+
+    messages =
+      if Enum.any?(messages, &(&1.role == :build)) do
+        Enum.map(messages, fn
+          %{role: :build} -> build_msg
+          other -> other
+        end)
+      else
+        messages ++ [build_msg]
+      end
+
+    {:noreply, socket |> assign(:messages, messages) |> assign(:build_log, build_log) |> assign(:building, true)}
+  end
 
   defp do_spawn_agent(socket, checklist_id, opts \\ []) do
     workspace = socket.assigns.workspace
@@ -1196,10 +1205,12 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   defp build_log_inline(assigns) do
+    title = Map.get(assigns, :title) || assigns[:msg_title]
+
     {label, dot_class} = case assigns.status do
-      :building -> {"Building Docker image...", "bg-amber-400 animate-pulse"}
-      :done -> {"Build complete", "bg-green-500"}
-      :failed -> {"Build failed", "bg-red-500"}
+      :building -> {title || "Running...", "bg-amber-400 animate-pulse"}
+      :done -> {(title || "Command") <> " — done", "bg-green-500"}
+      :failed -> {(title || "Command") <> " — failed", "bg-red-500"}
     end
 
     assigns = assign(assigns, label: label, dot_class: dot_class)
@@ -1209,9 +1220,9 @@ defmodule BoomLooperWeb.ChatLive do
       <div class="flex items-center gap-2 px-3 py-1.5 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
         <div class={"w-1.5 h-1.5 rounded-full flex-none #{@dot_class}"}></div>
         <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">{@label}</span>
-        <button :if={@msg_raw_url} phx-hook="CopySource" id={"copy-build-#{System.unique_integer([:positive])}"} data-source={@msg_raw_url} data-copy="fetch"
+        <button phx-hook="CopySource" id={"copy-build-#{System.unique_integer([:positive])}"} data-source={@content}
           class="ml-auto text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors">
-          copy link
+          copy
         </button>
       </div>
       <pre class={"px-3 py-2 text-xs font-mono text-zinc-800 dark:text-green-400 bg-zinc-100 dark:bg-zinc-950 whitespace-pre-wrap overflow-y-auto #{if @status == :building, do: "max-h-64", else: "max-h-32"}"}>{@content}</pre>
@@ -1445,21 +1456,21 @@ defmodule BoomLooperWeb.ChatLive do
   defp chat_msg(%{msg: %{role: :build}} = assigns) do
     assigns = assign(assigns, :raw, msg_raw_url(assigns))
     ~H"""
-    <.build_log_inline content={@msg.content} status={:building} msg_raw_url={@raw} />
+    <.build_log_inline content={@msg.content} status={:building} msg_raw_url={@raw} title={@msg[:title]} />
     """
   end
 
   defp chat_msg(%{msg: %{role: :build_done}} = assigns) do
     assigns = assign(assigns, :raw, msg_raw_url(assigns))
     ~H"""
-    <.build_log_inline content={@msg.content} status={:done} msg_raw_url={@raw} />
+    <.build_log_inline content={@msg.content} status={:done} msg_raw_url={@raw} title={@msg[:title]} />
     """
   end
 
   defp chat_msg(%{msg: %{role: :build_failed}} = assigns) do
     assigns = assign(assigns, :raw, msg_raw_url(assigns))
     ~H"""
-    <.build_log_inline content={@msg.content} status={:failed} msg_raw_url={@raw} />
+    <.build_log_inline content={@msg.content} status={:failed} msg_raw_url={@raw} title={@msg[:title]} />
     """
   end
 

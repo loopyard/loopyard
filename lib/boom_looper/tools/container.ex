@@ -145,7 +145,7 @@ defmodule BoomLooper.Tools.Container do
             [:binary, :exit_status, {:args, ["exec", container, "sh", "-c", command]}]
           )
 
-          stream_port_output(agent_id, port, "", timeout_seconds * 1_000)
+          stream_port_output(agent_id, port, command, "", timeout_seconds * 1_000)
         end)
 
         {:ok, "Streaming command started: #{command}"}
@@ -155,12 +155,12 @@ defmodule BoomLooper.Tools.Container do
     end
   end
 
-  defp stream_port_output(agent_id, port, acc, timeout) do
+  defp stream_port_output(agent_id, port, command, acc, timeout) do
     receive do
       {^port, {:data, data}} ->
         acc = acc <> data
         # Store as build message in agent's ETS (reuses the build log pattern)
-        build_msg = %{role: :build, content: acc, timestamp: DateTime.utc_now()}
+        build_msg = %{role: :build, content: acc, title: command, timestamp: DateTime.utc_now()}
         BoomLooper.ChatAgent.ensure_ets_table()
         case :ets.lookup(:chat_agents, agent_id) do
           [{^agent_id, summary}] ->
@@ -177,16 +177,16 @@ defmodule BoomLooper.Tools.Container do
           [] -> :ok
         end
 
-        # Broadcast to LiveView
+        # Broadcast to LiveView — include command as title
         Phoenix.PubSub.broadcast(BoomLooper.PubSub,
           "chat_agent:#{agent_id}",
-          {:build_output, agent_id, data})
+          {:stream_output, agent_id, data, command})
 
-        stream_port_output(agent_id, port, acc, timeout)
+        stream_port_output(agent_id, port, command, acc, timeout)
 
       {^port, {:exit_status, code}} ->
         # Mark as done
-        done_msg = %{role: :build_done, content: acc, timestamp: DateTime.utc_now()}
+        done_msg = %{role: :build_done, content: acc, title: command, timestamp: DateTime.utc_now()}
         BoomLooper.ChatAgent.ensure_ets_table()
         case :ets.lookup(:chat_agents, agent_id) do
           [{^agent_id, summary}] ->
