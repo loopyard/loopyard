@@ -176,10 +176,17 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   def handle_params(_params, _uri, %{assigns: %{live_action: :index}} = socket) do
+    workspace = socket.assigns.workspace
+    has_config = match?({:ok, %{dockerfile: d}} when d != nil, BoomLooper.Workspace.load(workspace.path))
+
     cond do
-      # Nothing running → redirect to /new
-      socket.assigns.agents == [] && socket.assigns.service_statuses == [] ->
+      # No config at all → needs setup
+      !has_config && socket.assigns.agents == [] ->
         {:noreply, push_navigate(socket, to: "#{branch_path(socket)}/new")}
+
+      # Config exists but no agents → auto-spawn a default agent
+      has_config && socket.assigns.agents == [] ->
+        do_spawn_agent(socket, nil)
 
       # One agent and none selected → auto-select it
       length(socket.assigns.agents) == 1 && is_nil(socket.assigns.selected_id) ->
