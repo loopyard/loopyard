@@ -68,6 +68,7 @@ defmodule BoomLooperWeb.ChatLive do
      |> assign(:all_service_logs, [])
      |> assign(:build_log, "")
      |> assign(:building, false)
+     |> assign(:stream_msg_id, nil)
      |> assign(:console_container, nil)}
   end
 
@@ -237,7 +238,7 @@ defmodule BoomLooperWeb.ChatLive do
 
     if message != "" && socket.assigns.selected_id do
       # Optimistically add user message so it renders immediately
-      user_msg = %{role: :user, content: message, timestamp: DateTime.utc_now()}
+      user_msg = %{id: :crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false), role: :user, content: message, timestamp: DateTime.utc_now()}
 
       socket =
         socket
@@ -512,12 +513,12 @@ defmodule BoomLooperWeb.ChatLive do
 
   @impl true
   def handle_info({:build_output, id, data}, socket) when id == socket.assigns.selected_id do
-    upsert_stream_message(socket, data, "Building Docker image...")
+    upsert_stream_message(socket, data, "Building Docker image...", nil)
   end
 
   @impl true
-  def handle_info({:stream_output, id, data, title}, socket) when id == socket.assigns.selected_id do
-    upsert_stream_message(socket, data, title)
+  def handle_info({:stream_output, id, data, title, msg_id}, socket) when id == socket.assigns.selected_id do
+    upsert_stream_message(socket, data, title, msg_id)
   end
 
   @impl true
@@ -543,12 +544,14 @@ defmodule BoomLooperWeb.ChatLive do
 
   # --- Private ---
 
-  defp upsert_stream_message(socket, data, title) do
+  defp upsert_stream_message(socket, data, title, msg_id) do
     build_log = socket.assigns.build_log <> data
     build_log = if byte_size(build_log) > 8000, do: String.slice(build_log, -8000..-1//1), else: build_log
 
     messages = socket.assigns.messages
-    build_msg = %{role: :build, content: build_log, title: title, timestamp: DateTime.utc_now()}
+    # Use msg_id from the source so URL is stable
+    id = msg_id || socket.assigns[:stream_msg_id] || (:crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false))
+    build_msg = %{id: id, role: :build, content: build_log, title: title, timestamp: DateTime.utc_now()}
 
     messages =
       if Enum.any?(messages, &(&1.role == :build)) do
@@ -560,7 +563,7 @@ defmodule BoomLooperWeb.ChatLive do
         messages ++ [build_msg]
       end
 
-    {:noreply, socket |> assign(:messages, messages) |> assign(:build_log, build_log) |> assign(:building, true)}
+    {:noreply, socket |> assign(:messages, messages) |> assign(:build_log, build_log) |> assign(:building, true) |> assign(:stream_msg_id, id)}
   end
 
   defp do_spawn_agent(socket, checklist_id, opts \\ []) do
@@ -1220,7 +1223,7 @@ defmodule BoomLooperWeb.ChatLive do
       <div class="flex items-center gap-2 px-3 py-1.5 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
         <div class={"w-1.5 h-1.5 rounded-full flex-none #{@dot_class}"}></div>
         <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">{@label}</span>
-        <a :if={@msg_raw_url} href={@msg_raw_url} target="_blank"
+        <a :if={@msg_raw_url} href={@msg_raw_url} target="_blank" rel="noopener"
           class="ml-auto text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors">
           open
         </a>
@@ -1368,9 +1371,18 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   defp chat_msg(%{msg: %{role: :user}} = assigns) do
+    assigns = assign(assigns, :url, msg_url(assigns))
     ~H"""
-    <div class="flex justify-end mt-3 mb-1">
-      <div class="max-w-[85%] rounded-2xl rounded-tr-sm bg-violet-600 text-white px-4 py-2.5">
+    <div class="flex justify-end mt-3 mb-1 group/msg">
+      <div class="relative max-w-[85%] rounded-2xl rounded-tr-sm bg-violet-600 text-white px-4 py-2.5">
+        <a :if={@url} href={@url} target="_blank" rel="noopener"
+          class="absolute top-2 left-2 p-1 rounded-md text-violet-300 hover:text-white opacity-0 group-hover/msg:opacity-100 transition-opacity"
+          title="Open">
+          <svg class="w-3 h-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M6.22 8.72a.75.75 0 0 0 1.06 1.06l5.22-5.22v1.69a.75.75 0 0 0 1.5 0v-3.5a.75.75 0 0 0-.75-.75h-3.5a.75.75 0 0 0 0 1.5h1.69L6.22 8.72Z" />
+            <path d="M3.5 6.75c0-.69.56-1.25 1.25-1.25H7A.75.75 0 0 0 7 4H4.75A2.75 2.75 0 0 0 2 6.75v4.5A2.75 2.75 0 0 0 4.75 14h4.5A2.75 2.75 0 0 0 12 11.25V9a.75.75 0 0 0-1.5 0v2.25c0 .69-.56 1.25-1.25 1.25h-4.5c-.69 0-1.25-.56-1.25-1.25v-4.5Z" />
+          </svg>
+        </a>
         <p class="text-sm whitespace-pre-wrap">{@msg.content}</p>
       </div>
     </div>
@@ -1386,7 +1398,7 @@ defmodule BoomLooperWeb.ChatLive do
         <span class="text-xs font-bold text-violet-600 dark:text-violet-400">C</span>
       </div>
       <div class="relative max-w-[85%] rounded-2xl rounded-tl-sm bg-zinc-100 dark:bg-zinc-800 px-4 py-2.5" id={"msg-#{hash_content(@msg.content)}"} phx-hook="Markdown" data-source={@msg.content}>
-        <a href={@url} target="_blank"
+        <a :if={@url} href={@url} target="_blank" rel="noopener"
           class="absolute top-2 right-2 p-1 rounded-md text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 opacity-0 group-hover/msg:opacity-100 transition-opacity"
           title="Open">
           <svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
@@ -1431,7 +1443,7 @@ defmodule BoomLooperWeb.ChatLive do
                    #{if @is_error, do: "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300", else: "bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-green-400"}"}>{@display}</pre>
       <div class="flex items-center gap-2 mt-1">
         <p :if={@truncated} class="text-[10px] text-zinc-400 dark:text-zinc-500">... truncated ({@line_count - 40} more lines)</p>
-        <a :if={@url} href={@url} target="_blank" class="text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors">open</a>
+        <a :if={@url} href={@url} target="_blank" rel="noopener" class="text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors">open</a>
       </div>
     </div>
     """

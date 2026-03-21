@@ -123,6 +123,10 @@ Messages use unique IDs (not array indices) so URLs are stable. IDs assigned by 
 
 Signed with Phoenix.Token (24-hour TTL).
 
+**Architecture principle**: Each message is potentially its own app. Today we have simple text messages and streaming output viewers. In the future, messages could contain interactive diagrams, forms, question prompts, or any visualization. The MessageLive page is the container for these apps. The chat feed shows a compact inline version. The URL opens the full version. Design message types to be composable — extract interfaces that work both inline and full-page.
+
+**Link rules**: Every link must be a real `<a href>` with `target="_blank" rel="noopener"`. No JS hacks. Cmd+Click must work. LiveView must not intercept these links. If a message doesn't have an ID yet, don't render the link.
+
 ## Key files
 
 | File | Purpose |

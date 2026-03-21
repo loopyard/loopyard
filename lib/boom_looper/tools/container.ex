@@ -176,10 +176,10 @@ defmodule BoomLooper.Tools.Container do
           %{msg | content: acc}
         end)
 
-        # Broadcast to LiveView
+        # Broadcast to LiveView — include msg_id so the LiveView uses the same ID
         Phoenix.PubSub.broadcast(BoomLooper.PubSub,
           "chat_agent:#{agent_id}",
-          {:stream_output, agent_id, data, command})
+          {:stream_output, agent_id, data, command, msg_id})
 
         stream_port_output(agent_id, port, command, msg_id, acc, timeout)
 
