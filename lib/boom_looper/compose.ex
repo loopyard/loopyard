@@ -10,10 +10,14 @@ defmodule BoomLooper.Compose do
   def generate(%Workspace{} = ws, project_dir, workspace_id) do
     services = %{}
 
+    # Write Dockerfile to .hive/ so compose can reference it
+    dockerfile_path = Path.join([project_dir, ".hive", "Dockerfile"])
+    if ws.dockerfile, do: File.write!(dockerfile_path, ws.dockerfile)
+
     # Workspace container — always running, agents exec here
     services = if ws.dockerfile do
       Map.put(services, "workspace", %{
-        "build" => %{"context" => project_dir, "dockerfile_inline" => ws.dockerfile},
+        "build" => %{"context" => Path.join(project_dir, ".hive"), "dockerfile" => "Dockerfile"},
         "command" => "sleep infinity",
         "volumes" => [
           "#{project_dir}:/workspace",
@@ -29,7 +33,7 @@ defmodule BoomLooper.Compose do
     # Dev container — runs the dev command from workspace image
     services = Enum.reduce(ws.processes, services, fn p, acc ->
       svc = %{
-        "build" => %{"context" => project_dir, "dockerfile_inline" => ws.dockerfile || default_dockerfile()},
+        "build" => %{"context" => Path.join(project_dir, ".hive"), "dockerfile" => "Dockerfile"},
         "command" => p.command,
         "volumes" => [
           "#{project_dir}:/workspace",
@@ -224,7 +228,4 @@ defmodule BoomLooper.Compose do
     |> Map.new(fn [_, host_port, container_port] -> {container_port, host_port} end)
   end
 
-  defp default_dockerfile do
-    BoomLooper.Docker.dockerfile()
-  end
 end

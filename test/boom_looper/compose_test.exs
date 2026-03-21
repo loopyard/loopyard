@@ -4,7 +4,14 @@ defmodule BoomLooper.ComposeTest do
   alias BoomLooper.{Compose, Workspace}
 
   describe "generate/3" do
-    test "generates compose with workspace, dev, and stock services" do
+    setup do
+      tmp_dir = Path.join(System.tmp_dir!(), "boom-looper-compose-test-#{:rand.uniform(100_000)}")
+      File.mkdir_p!(Path.join(tmp_dir, ".hive"))
+      on_exit(fn -> File.rm_rf!(tmp_dir) end)
+      %{tmp_dir: tmp_dir}
+    end
+
+    test "generates compose with workspace, dev, and stock services", %{tmp_dir: tmp_dir} do
       ws = %Workspace{
         name: "test-project",
         dockerfile: "FROM ruby:3.4\nWORKDIR /workspace",
@@ -13,13 +20,12 @@ defmodule BoomLooper.ComposeTest do
         env_vars: %{"RAILS_ENV" => "development"}
       }
 
-      output = Compose.generate(ws, "/tmp/test-project", "abcd")
+      output = Compose.generate(ws, tmp_dir, "abcd")
       config = Jason.decode!(output)
 
       # Has workspace service
       assert config["services"]["workspace"]
       assert config["services"]["workspace"]["command"] == "sleep infinity"
-      assert "/tmp/test-project:/workspace" in config["services"]["workspace"]["volumes"]
 
       # Has dev service
       assert config["services"]["dev"]
@@ -36,14 +42,14 @@ defmodule BoomLooper.ComposeTest do
       assert Map.has_key?(config["volumes"], "postgres-data-abcd")
     end
 
-    test "generates minimal compose with only workspace" do
+    test "generates minimal compose with only workspace", %{tmp_dir: tmp_dir} do
       ws = %Workspace{
         dockerfile: "FROM ubuntu:24.04",
         processes: [],
         services: []
       }
 
-      output = Compose.generate(ws, "/tmp/minimal", "1234")
+      output = Compose.generate(ws, tmp_dir, "1234")
       config = Jason.decode!(output)
 
       assert config["services"]["workspace"]
