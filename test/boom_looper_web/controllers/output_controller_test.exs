@@ -39,15 +39,17 @@ defmodule BoomLooperWeb.OutputControllerTest do
     end
 
     test "returns message content with valid signed URL", %{conn: conn, agent_id: id} do
-      # The first message should be the user message "test message"
-      url = BoomLooperWeb.OutputController.raw_url("test", id, 0)
+      # Get the first message's ID
+      state = BoomLooper.ChatAgent.get_state(id)
+      msg = hd(state.messages)
+      url = BoomLooperWeb.OutputController.raw_url("test", id, msg.id)
       conn = get(conn, url)
       assert response(conn, 200) == "test message"
       assert response_content_type(conn, :text)
     end
 
-    test "returns 404 for out of bounds index", %{conn: conn, agent_id: id} do
-      url = BoomLooperWeb.OutputController.raw_url("test", id, 999)
+    test "returns 404 for unknown message ID", %{conn: conn, agent_id: id} do
+      url = BoomLooperWeb.OutputController.raw_url("test", id, "nonexistent")
       conn = get(conn, url)
       assert response(conn, 404)
     end

@@ -87,24 +87,25 @@ defmodule BoomLooper.ChatAgent do
     GenServer.cast(via(id), {:rename, new_name})
   end
 
-  @doc "Store build log output as a message in the agent's ETS state"
-  def update_build_log(id, content) do
+  @doc "Get a specific message by ID from the agent's ETS state."
+  def get_message(agent_id, msg_id) do
+    case get_state(agent_id) do
+      %{messages: messages} -> Enum.find(messages, &(&1[:id] == msg_id))
+      _ -> nil
+    end
+  end
+
+  @doc "Update a message by ID in ETS. The update_fn receives the message and returns the updated message."
+  def update_message(agent_id, msg_id, update_fn) do
     ensure_ets_table()
-    case :ets.lookup(@ets_table, id) do
-      [{^id, summary}] ->
-        build_msg = %{role: :build, content: content, timestamp: DateTime.utc_now()}
-        messages = summary.messages
-        messages =
-          if Enum.any?(messages, &(&1.role == :build)) do
-            Enum.map(messages, fn
-              %{role: :build} -> build_msg
-              other -> other
-            end)
-          else
-            messages ++ [build_msg]
-          end
-        :ets.insert(@ets_table, {id, %{summary | messages: messages}})
-      [] -> :ok
+    case :ets.lookup(@ets_table, agent_id) do
+      [{^agent_id, summary}] ->
+        messages = Enum.map(summary.messages, fn msg ->
+          if msg[:id] == msg_id, do: update_fn.(msg), else: msg
+        end)
+        :ets.insert(@ets_table, {agent_id, %{summary | messages: messages}})
+        :ok
+      [] -> :error
     end
   end
 
@@ -521,7 +522,12 @@ defmodule BoomLooper.ChatAgent do
   end
 
   defp append_message(state, msg) do
+    msg = Map.put_new_lazy(msg, :id, fn -> generate_msg_id() end)
     %{state | messages: state.messages ++ [msg]}
+  end
+
+  defp generate_msg_id do
+    :crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false)
   end
 
   defp via(id), do: {:via, Registry, {BoomLooper.ChatAgentRegistry, id}}

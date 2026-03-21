@@ -112,11 +112,16 @@ Each service container has an interactive terminal (xterm.js) at `/p/:project_id
 
 ### Messages as resources
 
-Every chat message has two URLs:
-- **Live page** (`/msg/:index?token=...`) — LiveView that shows content. Streaming messages (build output) update in real-time. Multiplayer.
-- **Raw text** (`/msg/:index/raw?token=...`) — plain text endpoint for clipboard copy.
+Every chat message has a unique ID and its own URL. This is a first-class feature for collaboration.
 
-Signed with Phoenix.Token (1-hour TTL).
+- **Live page** (`/msg/:msg_id?token=...`) — LiveView. Streaming messages update in real-time. Multiplayer.
+- **Raw text** (`/msg/:msg_id/raw?token=...`) — plain text for copying.
+
+Use cases: tailing (tear off streaming exec into own window), sharing (link to a specific error), multi-monitor (spread outputs across windows).
+
+Messages use unique IDs (not array indices) so URLs are stable. IDs assigned by `append_message`, stored in ETS. Streaming messages updated in-place via `ChatAgent.update_message/3`. All writes go through ChatAgent — never direct ETS writes. One source of truth.
+
+Signed with Phoenix.Token (24-hour TTL).
 
 ## Key files
 

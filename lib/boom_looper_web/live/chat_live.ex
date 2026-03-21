@@ -891,7 +891,10 @@ defmodule BoomLooperWeb.ChatLive do
     "cruisin'", "chillaxing", "twirling", "whirling"
   ]
   defp msg_url(assigns) do
-    BoomLooperWeb.OutputController.signed_url(assigns.workspace_id, assigns.agent_id, assigns.idx)
+    msg_id = assigns.msg[:id]
+    if msg_id do
+      BoomLooperWeb.OutputController.signed_url(assigns.workspace_id, assigns.agent_id, msg_id)
+    end
   end
 
 
