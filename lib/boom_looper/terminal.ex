@@ -49,38 +49,42 @@ defmodule BoomLooper.Terminal do
 
   def topic(container), do: "terminal:#{container}"
 
+  @doc """
+  Build the {executable, args} tuple for launching a terminal session.
+
+  Uses `script(1)` to allocate a PTY (Erlang Ports don't provide one).
+  Disables local echo via `stty -echo` to prevent double-echo (script's
+  PTY echo + shell echo). Falls back to plain `docker exec -i` if script
+  is not available.
+  """
+  def build_cmd(container) do
+    docker = System.find_executable("docker")
+    script = System.find_executable("script")
+
+    if script do
+      inner_cmd = "stty -echo 2>/dev/null; exec #{docker} exec -i #{container} sh"
+
+      case :os.type() do
+        {:unix, :darwin} ->
+          {script, ["-q", "/dev/null", "/bin/sh", "-c", inner_cmd]}
+        _ ->
+          {script, ["-qc", inner_cmd, "/dev/null"]}
+      end
+    else
+      {docker, ["exec", "-i", container, "sh"]}
+    end
+  end
+
   # --- Callbacks ---
 
   @impl true
   def init(opts) do
     container = Keyword.fetch!(opts, :container)
 
-    # Check if container is running
     unless BoomLooper.Docker.container_running?(container) do
       {:stop, :container_not_running}
     else
-      # Use script(1) to allocate a PTY for docker exec.
-      # Without a PTY, docker exec -it fails immediately via Erlang Ports.
-      # We use docker exec -i (no -t) so the remote shell doesn't allocate
-      # its own TTY. script's PTY provides the TTY, but its local echo
-      # causes double-echo. We disable it with stty -echo before exec'ing.
-      docker = System.find_executable("docker")
-      script = System.find_executable("script")
-
-      {executable, args} = if script do
-        # Wrap in sh -c so we can disable local PTY echo first,
-        # then exec docker without -t (script already provides the PTY).
-        inner_cmd = "stty -echo 2>/dev/null; exec #{docker} exec -i #{container} sh"
-
-        case :os.type() do
-          {:unix, :darwin} ->
-            {script, ["-q", "/dev/null", "/bin/sh", "-c", inner_cmd]}
-          _ ->
-            {script, ["-qc", inner_cmd, "/dev/null"]}
-        end
-      else
-        {docker, ["exec", "-i", container, "sh"]}
-      end
+      {executable, args} = build_cmd(container)
 
       port = Port.open(
         {:spawn_executable, executable},
