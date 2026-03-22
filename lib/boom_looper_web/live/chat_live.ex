@@ -1432,27 +1432,6 @@ defmodule BoomLooperWeb.ChatLive do
     end
   end
 
-  defp chat_msg_tool_result(assigns) do
-    content = assigns.msg.content
-    display = format_tool_result(content)
-    lines = String.split(display, "\n")
-    truncated = length(lines) > 40
-    display = if truncated, do: Enum.take(lines, 40) |> Enum.join("\n"), else: display
-    url = msg_url(assigns)
-    assigns = assign(assigns, display: display, truncated: truncated, is_error: assigns.msg.is_error, line_count: length(lines), url: url)
-
-    ~H"""
-    <div class="pl-10 py-0.5">
-      <pre class={"p-3 rounded-lg text-xs font-mono overflow-x-auto max-h-80 overflow-y-auto whitespace-pre-wrap
-                   #{if @is_error, do: "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300", else: "bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-green-400"}"}>{@display}</pre>
-      <div class="flex items-center gap-2 mt-1">
-        <p :if={@truncated} class="text-[10px] text-zinc-400 dark:text-zinc-500">... truncated ({@line_count - 40} more lines)</p>
-        <a :if={@url} href={@url} target="_blank" rel="noopener" class="text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors">open</a>
-      </div>
-    </div>
-    """
-  end
-
   defp chat_msg(%{msg: %{role: :error}} = assigns) do
     ~H"""
     <div class="flex items-start gap-2 py-1 pl-10">
@@ -1497,6 +1476,27 @@ defmodule BoomLooperWeb.ChatLive do
   defp chat_msg(assigns) do
     ~H"""
     <div></div>
+    """
+  end
+
+  defp chat_msg_tool_result(assigns) do
+    content = assigns.msg.content
+    display = format_tool_result(content)
+    lines = String.split(display, "\n")
+    truncated = length(lines) > 40
+    display = if truncated, do: Enum.take(lines, 40) |> Enum.join("\n"), else: display
+    url = msg_url(assigns)
+    assigns = assign(assigns, display: display, truncated: truncated, is_error: assigns.msg.is_error, line_count: length(lines), url: url)
+
+    ~H"""
+    <div class="pl-10 py-0.5">
+      <pre class={"p-3 rounded-lg text-xs font-mono overflow-x-auto max-h-80 overflow-y-auto whitespace-pre-wrap
+                   #{if @is_error, do: "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300", else: "bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-green-400"}"}>{@display}</pre>
+      <div class="flex items-center gap-2 mt-1">
+        <p :if={@truncated} class="text-[10px] text-zinc-400 dark:text-zinc-500">... truncated ({@line_count - 40} more lines)</p>
+        <a :if={@url} href={@url} target="_blank" rel="noopener" class="text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors">open</a>
+      </div>
+    </div>
     """
   end
 
