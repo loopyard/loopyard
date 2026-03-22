@@ -53,13 +53,26 @@ export function createTerminalHook() {
           term.write("\r\n\x1b[31mFailed to connect: " + JSON.stringify(resp) + "\x1b[0m\r\n")
         })
 
-      // Cmd+K (macOS) / Ctrl+K: clear screen for all viewers
+      // Clear screen for all viewers:
+      // - Cmd+K (macOS) / Ctrl+K: clear scrollback
+      // - Ctrl+L: standard terminal clear — also clears server buffer
+      //   so late joiners don't get stale output
       term.attachCustomKeyEventHandler((ev) => {
-        if (ev.type === "keydown" && ev.key === "k" && (ev.metaKey || ev.ctrlKey)) {
+        if (ev.type !== "keydown") return true
+
+        if (ev.key === "k" && (ev.metaKey || ev.ctrlKey)) {
           ev.preventDefault()
           channel.push("clear")
           return false
         }
+
+        if (ev.key === "l" && ev.ctrlKey && !ev.metaKey) {
+          // Let Ctrl+L pass through to the shell (it sends \x0c which
+          // the shell handles), but also clear the server buffer
+          channel.push("clear")
+          return true
+        }
+
         return true
       })
 
