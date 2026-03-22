@@ -39,6 +39,18 @@ These rules exist because we learned them the hard way. Each one prevented a rea
 
 Write failing tests first, then implement. Not optional. See [docs/TESTING.md](docs/TESTING.md).
 
+### Isolate logic, test the real path
+
+Extract logic into modules with clear boundaries. Don't bury behavior in LiveView private functions — if it has logic worth getting right, it belongs in its own module with its own tests.
+
+**Test the real path, not a mock of it.** If users hit a bug through the websocket → channel → GenServer → Port stack, the test must exercise that same stack. A unit test that passes on an isolated layer while the integration is broken is worse than no test — it gives false confidence.
+
+Concretely:
+- **Inject dependencies** so tests can substitute local processes for Docker containers (e.g. Terminal accepts a `cmd` option so tests use a local shell instead of `docker exec`)
+- **Test multiplayer** — spin up N subscribers, have each send input, assert each sees output exactly once. This catches PubSub topic collisions, stale connection duplication, and buffer replay overlap.
+- **Prove the bug exists before fixing it.** Write a test that fails, THEN fix the code, THEN confirm the test passes. Don't ship a fix you haven't verified through a failing→passing test cycle.
+- **Don't test rendering alone** — render tests prove HTML structure but not behavior. Test the accumulation, dedup, windowing, and state restoration logic as units.
+
 ### All state mutations go through GenServers
 
 Never write directly to ETS from outside the owning GenServer. Use `ChatAgent.append_message_ets/2` and `ChatAgent.update_message/3` which route through the GenServer via casts. Direct ETS writes get overwritten.
