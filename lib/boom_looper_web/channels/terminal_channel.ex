@@ -7,13 +7,8 @@ defmodule BoomLooperWeb.TerminalChannel do
   def join("terminal:" <> container, _params, socket) do
     case Terminal.get_or_start(container) do
       {:ok, _pid} ->
-        # Subscribe to terminal output
         Phoenix.PubSub.subscribe(BoomLooper.PubSub, Terminal.topic(container))
-
-        # Send buffered output for late joiners
-        buffer = Terminal.get_buffer(container)
-        if buffer != "", do: push(socket, "output", %{data: buffer})
-
+        send(self(), :send_buffer)
         {:ok, assign(socket, :container, container)}
 
       {:error, reason} ->
@@ -34,17 +29,21 @@ defmodule BoomLooperWeb.TerminalChannel do
   end
 
   @impl true
+  def handle_info(:send_buffer, socket) do
+    buffer = Terminal.get_buffer(socket.assigns.container)
+    if buffer != "", do: push(socket, "output", %{data: buffer})
+    {:noreply, socket}
+  end
+
   def handle_info({:terminal_output, data}, socket) do
     push(socket, "output", %{data: data})
     {:noreply, socket}
   end
 
-  @impl true
   def handle_info({:terminal_exit, code}, socket) do
     push(socket, "exit", %{code: code})
     {:noreply, socket}
   end
 
-  @impl true
   def handle_info(_, socket), do: {:noreply, socket}
 end
