@@ -1,6 +1,7 @@
 defmodule BoomLooperWeb.TerminalChannelTest do
   use BoomLooperWeb.ChannelCase
 
+  alias BoomLooper.Terminal
   alias BoomLooperWeb.TerminalChannel
 
   describe "join" do
@@ -21,7 +22,6 @@ defmodule BoomLooperWeb.TerminalChannelTest do
         stderr_to_stdout: true)
 
       on_exit(fn ->
-        # Stop the terminal if running
         case Registry.lookup(BoomLooper.TerminalRegistry, container) do
           [{pid, _}] -> GenServer.stop(pid, :normal)
           [] -> :ok
@@ -44,10 +44,7 @@ defmodule BoomLooperWeb.TerminalChannelTest do
         socket(BoomLooperWeb.UserSocket, "user", %{})
         |> subscribe_and_join(TerminalChannel, "terminal:#{container}")
 
-      # Send input — should not crash
       push(socket, "input", %{"data" => "echo test\n"})
-
-      # Should receive output back
       assert_push "output", %{data: _}, 3_000
     end
 
@@ -57,7 +54,6 @@ defmodule BoomLooperWeb.TerminalChannelTest do
         |> subscribe_and_join(TerminalChannel, "terminal:#{container}")
 
       push(socket, "resize", %{"cols" => 120, "rows" => 40})
-      # No crash = success
       Process.sleep(100)
     end
   end

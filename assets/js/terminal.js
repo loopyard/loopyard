@@ -2,13 +2,27 @@ import { Terminal } from "@xterm/xterm"
 import { FitAddon } from "@xterm/addon-fit"
 import { Socket } from "phoenix"
 
+// Track active terminal connections globally so we can clean up
+// stale connections on remount (longpoll reconnects, LiveView navigation)
+const activeTerminals = new Map()
+
 export function createTerminalHook() {
   return {
     mounted() {
       const container = this.el.dataset.container
       if (!container) return
 
-      // Create xterm instance
+      // Clean up any existing terminal for this container
+      // (prevents double-output from stale connections on reconnect)
+      const existing = activeTerminals.get(container)
+      if (existing) {
+        existing.channel.leave()
+        existing.socket.disconnect()
+        existing.term.dispose()
+        window.removeEventListener("resize", existing.resizeHandler)
+        activeTerminals.delete(container)
+      }
+
       const term = new Terminal({
         cursorBlink: true,
         fontSize: 13,
@@ -26,7 +40,6 @@ export function createTerminalHook() {
       term.open(this.el)
       fitAddon.fit()
 
-      // Connect to Phoenix Channel
       const socket = new Socket("/terminal", {})
       socket.connect()
 
@@ -40,23 +53,20 @@ export function createTerminalHook() {
           term.write("\r\n\x1b[31mFailed to connect: " + JSON.stringify(resp) + "\x1b[0m\r\n")
         })
 
-      // Terminal input → channel
       term.onData((data) => {
         channel.push("input", { data })
       })
 
-      // Channel output → terminal
       channel.on("output", ({ data }) => {
         term.write(data)
       })
 
       channel.on("exit", ({ code }) => {
         term.write(`\r\n\x1b[33mSession exited (code ${code})\x1b[0m\r\n`)
-        // Don't reconnect — session is done
         channel.leave()
+        activeTerminals.delete(container)
       })
 
-      // Handle resize — debounce to prevent feedback loops
       let resizeTimer = null
       let lastCols = 0, lastRows = 0
       const handleResize = () => {
@@ -72,21 +82,28 @@ export function createTerminalHook() {
       }
 
       window.addEventListener("resize", handleResize)
-      // Only observe the parent container, not the terminal itself
       new ResizeObserver(handleResize).observe(this.el.parentElement)
 
       // Store for cleanup
+      this._container = container
       this._term = term
       this._channel = channel
       this._socket = socket
       this._resizeHandler = handleResize
+
+      // Track globally
+      activeTerminals.set(container, {
+        term, channel, socket, resizeHandler: handleResize
+      })
     },
 
     destroyed() {
+      const container = this._container
       if (this._channel) this._channel.leave()
       if (this._socket) this._socket.disconnect()
       if (this._term) this._term.dispose()
-      window.removeEventListener("resize", this._resizeHandler)
+      if (this._resizeHandler) window.removeEventListener("resize", this._resizeHandler)
+      if (container) activeTerminals.delete(container)
     }
   }
 }

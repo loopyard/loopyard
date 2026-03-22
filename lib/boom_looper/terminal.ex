@@ -1,6 +1,6 @@
 defmodule BoomLooper.Terminal do
   @moduledoc """
-  GenServer wrapping a Port to `docker exec -it`. One per active console session.
+  GenServer wrapping a Port for interactive terminal sessions.
   Broadcasts output via PubSub. Shared session — all viewers see the same terminal.
   """
   use GenServer
@@ -50,24 +50,20 @@ defmodule BoomLooper.Terminal do
   def topic(container), do: "terminal:#{container}"
 
   @doc """
-  Build the {executable, args} tuple for launching a terminal session.
+  Build the {executable, args} tuple for launching a terminal session
+  inside a Docker container.
 
-  Uses `script(1)` to allocate a PTY (Erlang Ports don't provide one).
-  Then `docker exec -it` allocates a TTY inside the container so the
-  remote shell handles line editing and echo properly. We disable echo
-  on script's local PTY via `stty -echo` to prevent double-echo.
-
-  Falls back to plain `docker exec -i` if script is not available.
+  Uses `script(1)` to allocate a PTY so interactive shells work.
+  Disables local echo via `stty -echo` to prevent double-echo.
+  Uses `docker exec -i` (not -it) — script provides the PTY, docker
+  doesn't need to allocate a second one.
   """
   def build_cmd(container) do
     docker = System.find_executable("docker")
     script = System.find_executable("script")
 
     if script do
-      # 1. stty -echo: disable local echo on script's PTY
-      # 2. docker exec -it: allocate a real TTY inside the container
-      #    so the remote shell handles echo and line editing
-      inner_cmd = "stty -echo 2>/dev/null; exec #{docker} exec -it #{container} sh"
+      inner_cmd = "stty -echo 2>/dev/null; exec #{docker} exec -i #{container} sh"
 
       case :os.type() do
         {:unix, :darwin} ->
@@ -80,21 +76,34 @@ defmodule BoomLooper.Terminal do
     end
   end
 
+  @doc """
+  Open a Port with the given {executable, args} command.
+  Extracted so tests can verify port behavior independently.
+  """
+  def open_port({executable, args}) do
+    Port.open(
+      {:spawn_executable, executable},
+      [:binary, :exit_status, {:args, args}]
+    )
+  end
+
   # --- Callbacks ---
 
   @impl true
   def init(opts) do
     container = Keyword.fetch!(opts, :container)
 
-    unless BoomLooper.Docker.container_running?(container) do
+    # Allow tests to inject a custom command
+    cmd = Keyword.get(opts, :cmd)
+
+    cmd = cmd || if BoomLooper.Docker.container_running?(container) do
+      build_cmd(container)
+    end
+
+    unless cmd do
       {:stop, :container_not_running}
     else
-      {executable, args} = build_cmd(container)
-
-      port = Port.open(
-        {:spawn_executable, executable},
-        [:binary, :exit_status, {:args, args}]
-      )
+      port = open_port(cmd)
 
       {:ok, %{
         container: container,
@@ -112,9 +121,6 @@ defmodule BoomLooper.Terminal do
 
   @impl true
   def handle_cast({:resize, cols, rows}, state) do
-    # Docker doesn't support resize via exec easily, but we can try
-    # via the Docker API. For now, just store it.
-    # TODO: implement resize via Docker API
     _ = {cols, rows}
     {:noreply, state}
   end
@@ -126,10 +132,8 @@ defmodule BoomLooper.Terminal do
 
   @impl true
   def handle_info({port, {:data, data}}, %{port: port} = state) do
-    # Broadcast output to all subscribers
     Phoenix.PubSub.broadcast(BoomLooper.PubSub, topic(state.container), {:terminal_output, data})
 
-    # Keep last 50KB of output for late joiners
     buffer = state.buffer <> data
     buffer = if byte_size(buffer) > 50_000, do: String.slice(buffer, -50_000..-1//1), else: buffer
 
