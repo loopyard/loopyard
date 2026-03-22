@@ -47,7 +47,9 @@ defmodule BoomLooper.Terminal do
     end
   end
 
-  def topic(container), do: "terminal:#{container}"
+  @doc "PubSub topic for terminal output. Distinct from the channel topic
+  to avoid Phoenix transport subscriptions causing double delivery."
+  def topic(container), do: "terminal_output:#{container}"
 
   @doc """
   Build the {executable, args} tuple for launching a terminal session
