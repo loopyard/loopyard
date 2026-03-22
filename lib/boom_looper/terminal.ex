@@ -61,17 +61,23 @@ defmodule BoomLooper.Terminal do
     else
       # Use script(1) to allocate a PTY for docker exec.
       # Without a PTY, docker exec -it fails immediately via Erlang Ports.
-      # script provides the PTY, so we use docker exec -i (not -it) to avoid
-      # double echo (script PTY echo + docker TTY echo).
+      # We use docker exec -it (interactive + TTY) so the remote shell handles
+      # line editing and echo. We then disable local echo on script's PTY via
+      # stty raw -echo to prevent double echo (script PTY echo + shell echo).
       docker = System.find_executable("docker")
       script = System.find_executable("script")
+      stty = System.find_executable("stty")
 
       {executable, args} = if script do
+        # Wrap in sh -c so we can run stty first to disable local PTY echo,
+        # then exec docker with -it for proper remote TTY handling.
+        inner_cmd = "#{stty} raw -echo 2>/dev/null; exec #{docker} exec -it #{container} sh"
+
         case :os.type() do
           {:unix, :darwin} ->
-            {script, ["-q", "/dev/null", docker, "exec", "-i", container, "sh"]}
+            {script, ["-q", "/dev/null", "/bin/sh", "-c", inner_cmd]}
           _ ->
-            {script, ["-qc", "#{docker} exec -i #{container} sh", "/dev/null"]}
+            {script, ["-qc", inner_cmd, "/dev/null"]}
         end
       else
         {docker, ["exec", "-i", container, "sh"]}
