@@ -47,6 +47,14 @@ defmodule BoomLooper.Terminal do
     end
   end
 
+  @doc "Clear the buffer and broadcast clear to all viewers."
+  def clear_buffer(container) do
+    case Registry.lookup(@registry, container) do
+      [{pid, _}] -> GenServer.cast(pid, :clear)
+      [] -> :ok
+    end
+  end
+
   @doc "PubSub topic for terminal output. Distinct from the channel topic
   to avoid Phoenix transport subscriptions causing double delivery."
   def topic(container), do: "terminal_output:#{container}"
@@ -121,6 +129,12 @@ defmodule BoomLooper.Terminal do
   def handle_cast({:input, data}, state) do
     Port.command(state.port, data)
     {:noreply, state}
+  end
+
+  @impl true
+  def handle_cast(:clear, state) do
+    Phoenix.PubSub.broadcast(BoomLooper.PubSub, topic(state.container), :terminal_clear)
+    {:noreply, %{state | buffer: ""}}
   end
 
   @impl true

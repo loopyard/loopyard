@@ -29,6 +29,11 @@ defmodule BoomLooperWeb.TerminalChannel do
     {:noreply, socket}
   end
 
+  def handle_in("clear", _params, socket) do
+    Terminal.clear_buffer(socket.assigns.container)
+    {:noreply, socket}
+  end
+
   @impl true
   def handle_info(:after_join, socket) do
     container = socket.assigns.container
@@ -45,6 +50,11 @@ defmodule BoomLooperWeb.TerminalChannel do
     # Any PubSub messages that arrived between steps 1 and 2 are lost,
     # but that's a tiny window and the next output will fill in.
     # The important thing: no doubled output.
+    {:noreply, socket}
+  end
+
+  def handle_info(:terminal_clear, socket) do
+    push(socket, "clear", %{})
     {:noreply, socket}
   end
 

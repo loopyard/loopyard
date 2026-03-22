@@ -53,14 +53,18 @@ export function createTerminalHook() {
           term.write("\r\n\x1b[31mFailed to connect: " + JSON.stringify(resp) + "\x1b[0m\r\n")
         })
 
-      // Cmd+K (macOS) / Ctrl+K: clear the terminal screen
+      // Cmd+K (macOS) / Ctrl+K: clear screen for all viewers
       term.attachCustomKeyEventHandler((ev) => {
         if (ev.type === "keydown" && ev.key === "k" && (ev.metaKey || ev.ctrlKey)) {
           ev.preventDefault()
-          term.clear()
+          channel.push("clear")
           return false
         }
         return true
+      })
+
+      channel.on("clear", () => {
+        term.clear()
       })
 
       term.onData((data) => {

@@ -168,6 +168,55 @@ defmodule BoomLooper.TerminalEchoTest do
     end
   end
 
+  describe "clear (multiplayer)" do
+    test "clear_buffer empties buffer and broadcasts to all subscribers" do
+      container = "clear-#{:rand.uniform(100_000)}"
+      topic = Terminal.topic(container)
+
+      {:ok, pid} = start_terminal(container)
+      drain()
+
+      # Send a command to fill the buffer
+      GenServer.cast(pid, {:input, "echo BEFORE_CLEAR\n"})
+      Process.sleep(500)
+
+      assert Terminal.get_buffer(container) =~ "BEFORE_CLEAR"
+
+      # Subscribe 2 viewers
+      Phoenix.PubSub.subscribe(BoomLooper.PubSub, topic)
+
+      parent = self()
+      viewer2 = spawn_link(fn ->
+        Phoenix.PubSub.subscribe(BoomLooper.PubSub, topic)
+        send(parent, :viewer2_ready)
+        receive do
+          :terminal_clear -> send(parent, :viewer2_cleared)
+        after
+          3_000 -> send(parent, :viewer2_timeout)
+        end
+      end)
+
+      assert_receive :viewer2_ready, 1_000
+
+      # Clear
+      Terminal.clear_buffer(container)
+
+      # Both viewers should receive the clear broadcast
+      assert_receive :terminal_clear, 1_000
+      assert_receive :viewer2_cleared, 1_000
+
+      # Buffer should be empty
+      assert Terminal.get_buffer(container) == ""
+
+      # New output after clear should work normally
+      GenServer.cast(pid, {:input, "echo AFTER_CLEAR\n"})
+      output = collect(2_000)
+      assert output =~ "AFTER_CLEAR"
+
+      stop_terminal(pid)
+    end
+  end
+
   describe "buffer for late joiners" do
     test "buffer contains output, late subscriber gets it without doubling" do
       container = "buffer-#{:rand.uniform(100_000)}"
