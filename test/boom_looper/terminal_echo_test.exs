@@ -12,15 +12,15 @@ defmodule BoomLooper.TerminalEchoTest do
 
   # Build the same kind of command Terminal.build_cmd produces, but
   # targeting a local shell instead of docker exec.
+  # script provides a PTY, sh runs interactively with echo.
   defp local_shell_cmd do
     script = System.find_executable("script")
-    inner = "stty -echo 2>/dev/null; exec sh"
 
     case :os.type() do
       {:unix, :darwin} ->
-        {script, ["-q", "/dev/null", "/bin/sh", "-c", inner]}
+        {script, ["-q", "/dev/null", "/bin/sh"]}
       _ ->
-        {script, ["-qc", inner, "/dev/null"]}
+        {script, ["-qc", "/bin/sh", "/dev/null"]}
     end
   end
 
@@ -45,53 +45,52 @@ defmodule BoomLooper.TerminalEchoTest do
   end
 
   describe "single subscriber" do
-    test "command output appears exactly once" do
+    test "command output is not duplicated" do
       container = "single-#{:rand.uniform(100_000)}"
       topic = Terminal.topic(container)
       Phoenix.PubSub.subscribe(BoomLooper.PubSub, topic)
 
       {:ok, pid} = start_terminal(container)
-
-      # Drain startup output (prompt, etc)
       drain()
 
+      # Use a marker that's distinct from the echo command itself
+      # to isolate command OUTPUT from input echo
       marker = "SINGLE-#{:rand.uniform(1_000_000)}"
       GenServer.cast(pid, {:input, "echo #{marker}\n"})
 
       output = collect(2_000)
+
+      # With PTY echo, the marker appears in:
+      # 1. Input echo: "echo SINGLE-123\n" (contains marker)
+      # 2. Command output: "SINGLE-123\n" (contains marker)
+      # Total: exactly 2. If we see 3+, something is duplicating.
       count = count_occurrences(output, marker)
 
-      assert count == 1,
-        "Expected marker once, got #{count}.\nOutput: #{inspect(output)}"
+      assert count == 2,
+        "Expected marker twice (input echo + output), got #{count}.\nOutput: #{inspect(output)}"
 
       stop_terminal(pid)
     end
 
-    test "input is not echoed back (stty -echo works)" do
-      container = "noecho-#{:rand.uniform(100_000)}"
+    test "shell prompt is visible (PTY echo works)" do
+      container = "prompt-#{:rand.uniform(100_000)}"
       topic = Terminal.topic(container)
       Phoenix.PubSub.subscribe(BoomLooper.PubSub, topic)
 
       {:ok, pid} = start_terminal(container)
-      drain()
 
-      # Send a command where the input line is distinguishable from output
-      GenServer.cast(pid, {:input, "echo HELLO\n"})
+      # Collect initial output — should contain a shell prompt
+      output = collect(1_000)
 
-      output = collect(2_000)
-
-      # "echo HELLO" (the input) should NOT appear — stty -echo suppresses it
-      # "HELLO" (the output) should appear exactly once
-      refute output =~ "echo HELLO",
-        "Input was echoed back by PTY. stty -echo failed.\nOutput: #{inspect(output)}"
-      assert output =~ "HELLO"
+      assert output =~ "$" || output =~ "#" || output =~ ">",
+        "No shell prompt visible. User can't see what they're typing.\nOutput: #{inspect(output)}"
 
       stop_terminal(pid)
     end
   end
 
   describe "multiple subscribers (multiplayer)" do
-    test "3 subscribers each see command output exactly once" do
+    test "3 subscribers each see command output without extra duplication" do
       container = "multi-#{:rand.uniform(100_000)}"
       topic = Terminal.topic(container)
 
@@ -133,14 +132,14 @@ defmodule BoomLooper.TerminalEchoTest do
         assert_receive {:result, ^i, output}, 5_000
 
         count = count_occurrences(output, marker)
-        assert count == 1,
-          "Subscriber #{i} saw marker #{count} times (expected 1).\nOutput: #{inspect(output)}"
+        assert count == 2,
+          "Subscriber #{i} saw marker #{count} times (expected 2: input echo + output).\nOutput: #{inspect(output)}"
       end
 
       stop_terminal(pid)
     end
 
-    test "3 subscribers each send a command, each command output appears once" do
+    test "3 subscribers each send a command, no extra duplication" do
       container = "3writers-#{:rand.uniform(100_000)}"
       topic = Terminal.topic(container)
 
@@ -161,8 +160,8 @@ defmodule BoomLooper.TerminalEchoTest do
 
       for {marker, i} <- Enum.with_index(markers, 1) do
         count = count_occurrences(output, marker)
-        assert count == 1,
-          "Command #{i} marker appeared #{count} times (expected 1).\nOutput: #{inspect(output)}"
+        assert count == 2,
+          "Command #{i} marker appeared #{count} times (expected 2: input echo + output).\nOutput: #{inspect(output)}"
       end
 
       stop_terminal(pid)
@@ -194,13 +193,13 @@ defmodule BoomLooper.TerminalEchoTest do
 
       output = collect(2_000)
 
-      # Live output should have marker2 once
-      assert count_occurrences(output, marker2) == 1,
-        "Late command marker doubled.\nOutput: #{inspect(output)}"
+      # Live output should have marker2 twice (input echo + output), not more
+      assert count_occurrences(output, marker2) == 2,
+        "Late command marker appeared #{count_occurrences(output, marker2)} times (expected 2).\nOutput: #{inspect(output)}"
 
-      # The buffer should NOT be re-delivered via PubSub
+      # The early marker should NOT appear in live PubSub output
       # (PubSub only delivers new messages after subscribe)
-      refute output =~ marker,
+      assert count_occurrences(output, marker) == 0,
         "Buffer was re-delivered via PubSub — would cause doubling for late joiners"
 
       stop_terminal(pid)

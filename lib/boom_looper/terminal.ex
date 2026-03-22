@@ -63,13 +63,15 @@ defmodule BoomLooper.Terminal do
     script = System.find_executable("script")
 
     if script do
-      inner_cmd = "stty -echo 2>/dev/null; exec #{docker} exec -i #{container} sh"
-
+      # script allocates a PTY so docker exec -it works (Erlang Ports
+      # don't provide one). The container's shell handles echo and line
+      # editing via its own TTY (-t flag). The JS-side activeTerminals
+      # dedup prevents double-output from stale reconnections.
       case :os.type() do
         {:unix, :darwin} ->
-          {script, ["-q", "/dev/null", "/bin/sh", "-c", inner_cmd]}
+          {script, ["-q", "/dev/null", docker, "exec", "-it", container, "sh"]}
         _ ->
-          {script, ["-qc", inner_cmd, "/dev/null"]}
+          {script, ["-qc", "#{docker} exec -it #{container} sh", "/dev/null"]}
       end
     else
       {docker, ["exec", "-i", container, "sh"]}

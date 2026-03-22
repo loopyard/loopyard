@@ -17,20 +17,13 @@ defmodule BoomLooper.TerminalTest do
       assert File.exists?(executable)
     end
 
-    test "includes stty -echo to prevent double echo" do
-      {_executable, args} = Terminal.build_cmd("test-container")
-
-      # The args should contain stty -echo somewhere (in the inner command)
-      joined = Enum.join(args, " ")
-      assert joined =~ "stty -echo"
-    end
-
-    test "uses docker exec -i (script provides the PTY)" do
+    test "uses docker exec -it for proper TTY in container" do
       {_executable, args} = Terminal.build_cmd("test-container")
 
       joined = Enum.join(args, " ")
       assert joined =~ "docker"
-      assert joined =~ "exec -i"
+      assert joined =~ "exec"
+      assert joined =~ "-it"
     end
 
     test "includes the container name in the command" do
