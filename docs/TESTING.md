@@ -166,6 +166,7 @@ Test file: `test/boom_looper/tools/container_test.exs`
 
 | Source file | Test file |
 |-------------|-----------|
+| `lib/boom_looper/stream_buffer.ex` | `test/boom_looper/stream_buffer_test.exs` |
 | `lib/boom_looper/chat_agent.ex` | `test/boom_looper/chat_agent_test.exs` |
 | `lib/boom_looper/compose.ex` | `test/boom_looper/compose_test.exs` |
 | `lib/boom_looper/workspace/service_manager.ex` | `test/boom_looper/workspace/service_manager_test.exs` |

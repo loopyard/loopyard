@@ -2,6 +2,7 @@ defmodule BoomLooperWeb.ChatLive do
   use BoomLooperWeb, :live_view
 
   alias BoomLooper.ChatAgent
+  alias BoomLooper.StreamBuffer
   import BoomLooperWeb.Components.LogViewer
 
   @impl true
@@ -66,9 +67,8 @@ defmodule BoomLooperWeb.ChatLive do
      |> assign(:selected_service, nil)
      |> assign(:service_logs, "")
      |> assign(:all_service_logs, [])
-     |> assign(:build_log, "")
+     |> assign(:stream_buffer, StreamBuffer.new())
      |> assign(:building, false)
-     |> assign(:stream_msg_id, nil)
      |> assign(:console_container, nil)}
   end
 
@@ -549,25 +549,12 @@ defmodule BoomLooperWeb.ChatLive do
   # --- Private ---
 
   defp upsert_stream_message(socket, data, title, msg_id) do
-    build_log = socket.assigns.build_log <> data
-    build_log = if byte_size(build_log) > 8000, do: String.slice(build_log, -8000..-1//1), else: build_log
+    stream_buffer = socket.assigns.stream_buffer
+      |> StreamBuffer.append(data, title: title, msg_id: msg_id)
 
-    messages = socket.assigns.messages
-    # Use msg_id from the source so URL is stable
-    id = msg_id || socket.assigns[:stream_msg_id] || (:crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false))
-    build_msg = %{id: id, role: :build, content: build_log, title: title, timestamp: DateTime.utc_now()}
+    messages = StreamBuffer.upsert_message(stream_buffer, socket.assigns.messages)
 
-    messages =
-      if Enum.any?(messages, &(&1.role == :build)) do
-        Enum.map(messages, fn
-          %{role: :build} -> build_msg
-          other -> other
-        end)
-      else
-        messages ++ [build_msg]
-      end
-
-    {:noreply, socket |> assign(:messages, messages) |> assign(:build_log, build_log) |> assign(:building, true) |> assign(:stream_msg_id, id)}
+    {:noreply, socket |> assign(:messages, messages) |> assign(:stream_buffer, stream_buffer) |> assign(:building, true)}
   end
 
   defp do_spawn_agent(socket, checklist_id, opts \\ []) do
@@ -691,10 +678,9 @@ defmodule BoomLooperWeb.ChatLive do
         agents = list_workspace_agents(socket.assigns.workspace.path)
         checklist_progress = load_checklist_progress(id)
 
-        # Restore build_log from any existing :build message so streaming continues seamlessly
+        # Restore stream buffer from any existing :build message so streaming continues seamlessly
         existing_build = Enum.find(agent.messages, &(&1.role == :build))
-        build_log = if existing_build, do: existing_build.content || "", else: ""
-        stream_msg_id = if existing_build, do: existing_build[:id], else: nil
+        stream_buffer = StreamBuffer.restore(existing_build)
 
         socket =
           socket
@@ -705,8 +691,7 @@ defmodule BoomLooperWeb.ChatLive do
           |> assign(:streaming_text, "")
           |> assign(:booting_agent_id, nil)
           |> assign(:checklist_progress, checklist_progress)
-          |> assign(:build_log, build_log)
-          |> assign(:stream_msg_id, stream_msg_id)
+          |> assign(:stream_buffer, stream_buffer)
           |> assign(:building, existing_build != nil && existing_build.role == :build)
 
         {:noreply, socket}
