@@ -25,13 +25,12 @@ defmodule BoomLooper.TerminalTest do
       assert joined =~ "stty -echo"
     end
 
-    test "uses docker exec -i (no -t) to avoid TTY conflict with script" do
+    test "uses docker exec -it so the remote shell handles echo" do
       {_executable, args} = Terminal.build_cmd("test-container")
 
       joined = Enum.join(args, " ")
       assert joined =~ "docker"
-      assert joined =~ "exec -i"
-      refute joined =~ "exec -it"
+      assert joined =~ "exec -it"
     end
 
     test "includes the container name in the command" do

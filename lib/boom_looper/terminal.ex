@@ -53,16 +53,21 @@ defmodule BoomLooper.Terminal do
   Build the {executable, args} tuple for launching a terminal session.
 
   Uses `script(1)` to allocate a PTY (Erlang Ports don't provide one).
-  Disables local echo via `stty -echo` to prevent double-echo (script's
-  PTY echo + shell echo). Falls back to plain `docker exec -i` if script
-  is not available.
+  Then `docker exec -it` allocates a TTY inside the container so the
+  remote shell handles line editing and echo properly. We disable echo
+  on script's local PTY via `stty -echo` to prevent double-echo.
+
+  Falls back to plain `docker exec -i` if script is not available.
   """
   def build_cmd(container) do
     docker = System.find_executable("docker")
     script = System.find_executable("script")
 
     if script do
-      inner_cmd = "stty -echo 2>/dev/null; exec #{docker} exec -i #{container} sh"
+      # 1. stty -echo: disable local echo on script's PTY
+      # 2. docker exec -it: allocate a real TTY inside the container
+      #    so the remote shell handles echo and line editing
+      inner_cmd = "stty -echo 2>/dev/null; exec #{docker} exec -it #{container} sh"
 
       case :os.type() do
         {:unix, :darwin} ->
