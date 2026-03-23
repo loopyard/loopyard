@@ -202,5 +202,53 @@ defmodule BoomLooper.TerminalIntegrationTest do
 
       leave(socket)
     end
+
+    test "clear via channel empties buffer", %{container: container} do
+      {:ok, _, socket} =
+        socket(BoomLooperWeb.UserSocket, "user", %{})
+        |> subscribe_and_join(TerminalChannel, "terminal:#{container}")
+
+      drain_channel_output()
+
+      # Send a command so there's content in the buffer
+      marker = "PRECLR-#{:rand.uniform(1_000_000)}"
+      push(socket, "input", %{"data" => "echo #{marker}\n"})
+      _output = collect_channel_output(1_000)
+
+      assert Terminal.get_buffer(container) =~ marker
+
+      # Push clear (same as Cmd+K or Ctrl+L from browser)
+      push(socket, "clear", %{})
+      Process.sleep(300)
+
+      # Buffer should be empty
+      assert Terminal.get_buffer(container) == ""
+
+      leave(socket)
+    end
+
+    test "late joiner after clear gets fresh buffer", %{container: container} do
+      # Fill the buffer directly via the Terminal GenServer
+      terminal_pid = elem(hd(Registry.lookup(BoomLooper.TerminalRegistry, container)), 0)
+      GenServer.cast(terminal_pid, {:input, "echo STALE_CONTENT\n"})
+      Process.sleep(500)
+
+      assert Terminal.get_buffer(container) =~ "STALE_CONTENT"
+
+      # Clear
+      Terminal.clear_buffer(container)
+      Process.sleep(200)
+
+      assert Terminal.get_buffer(container) == ""
+
+      # Late joiner should NOT see STALE_CONTENT
+      {:ok, _, _socket} =
+        socket(BoomLooperWeb.UserSocket, "user", %{})
+        |> subscribe_and_join(TerminalChannel, "terminal:#{container}")
+
+      initial = collect_channel_output(1_000)
+      refute initial =~ "STALE_CONTENT",
+        "Late joiner saw stale content after clear.\nOutput: #{inspect(initial)}"
+    end
   end
 end
