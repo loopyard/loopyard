@@ -1,0 +1,55 @@
+#!/bin/bash
+set -e
+
+echo "🔧 Setting up Boom Looper..."
+echo ""
+
+# Install Homebrew dependencies
+if command -v brew &> /dev/null; then
+  echo "→ Installing dependencies (Brewfile)..."
+  brew bundle --no-lock
+else
+  echo "❌ Homebrew not found. Install it from https://brew.sh"
+  exit 1
+fi
+
+# Check Docker is running
+if ! docker info &> /dev/null; then
+  echo ""
+  echo "→ Docker Desktop is installed but not running."
+  echo "  Open Docker Desktop and wait for it to start, then re-run this script."
+  exit 1
+fi
+
+# Install Claude Code CLI
+if ! command -v claude &> /dev/null; then
+  echo ""
+  echo "→ Installing Claude Code CLI..."
+  npm install -g @anthropic-ai/claude-code
+fi
+
+# Elixir setup (project-local hex/mix to avoid conflicts)
+export MIX_HOME="$PWD/.mix_home"
+export HEX_HOME="$PWD/.hex_home"
+
+echo ""
+echo "→ Installing Elixir dependencies..."
+mix local.hex --force --if-missing
+mix local.rebar --force --if-missing
+mix deps.get
+
+echo ""
+echo "→ Building assets..."
+mix assets.setup
+mix assets.build
+
+echo ""
+echo "✅ Setup complete!"
+echo ""
+echo "  Start the server:"
+echo "    mix phx.server"
+echo ""
+echo "  Then launch from any project directory:"
+echo "    open \"http://localhost:4000/launch/SECRET?path=\$(pwd)\""
+echo ""
+echo "  (The actual secret is printed when the server starts.)"
