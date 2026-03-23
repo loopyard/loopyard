@@ -29,12 +29,10 @@ defmodule BoomLooper.Application do
     opts = [strategy: :one_for_one, name: BoomLooper.Supervisor]
     result = Supervisor.start_link(children, opts)
 
-    # Start SSH if enabled via /connect
-    if Application.get_env(:boom_looper, :ssh_enabled, false) do
-      case BoomLooper.SSHServer.start_link() do
-        {:ok, _} -> :ok
-        {:error, reason} -> Logger.warning("[SSHServer] Not started: #{inspect(reason)}")
-      end
+    # Start SSH server
+    case BoomLooper.SSHServer.start_link() do
+      {:ok, _} -> :ok
+      {:error, reason} -> Logger.warning("[SSHServer] Not started: #{inspect(reason)}")
     end
 
     port = Application.get_env(:boom_looper, BoomLooperWeb.Endpoint)[:http][:port] || 4000
