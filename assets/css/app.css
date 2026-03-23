@@ -17,6 +17,16 @@
   * { scrollbar-color: rgba(255, 255, 255, 0.1) transparent; }
 }
 
+/* Prevent chat content from blowing out viewport on mobile */
+#messages {
+  overflow-x: hidden;
+}
+#messages > div {
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
 /* Markdown in chat bubbles */
 .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
   font-weight: 600;
@@ -48,10 +58,13 @@
   padding: 0.75em;
   border-radius: 0.5rem;
   overflow-x: auto;
+  max-width: 100%;
   background: #1a1a2e;
   color: #a5d6a7;
 }
 .markdown-body pre code {
+  white-space: pre-wrap;
+  word-break: break-all;
   padding: 0;
   background: transparent;
   font-size: 0.8em;
