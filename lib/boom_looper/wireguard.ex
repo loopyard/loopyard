@@ -279,12 +279,9 @@ defmodule BoomLooper.WireGuard do
     _ -> :ok
   end
 
-  @doc "Detect the host's public IPv6 address for the WireGuard endpoint."
+  @doc "Detect the host's LAN IP address."
   def detect_host_ip do
-    case detect_public_ipv6() do
-      nil -> detect_ipv4_fallback()
-      ipv6 -> "[#{ipv6}]"
-    end
+    detect_ipv4_fallback()
   end
 
   @doc "Detect the host's public IPv6 address, or nil."
