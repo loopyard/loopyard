@@ -297,9 +297,9 @@ defmodule BoomLooper.WireGuard do
           |> Keyword.get_values(:addr)
           |> Enum.filter(fn
             {a, _, _, _, _, _, _, _} ->
-              a != 0 and a != 1 and
-              (a &&& 0xFE00) != 0xFE80 and
-              (a &&& 0xFE00) != 0xFC00
+              # Must be a global unicast address (2000::/3)
+              # Exclude: loopback (::1), link-local (fe80::/10), ULA (fc00::/7)
+              (a >>> 13) == 1  # top 3 bits are 001 = global unicast
             _ -> false
           end)
         end)

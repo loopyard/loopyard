@@ -53,11 +53,7 @@ defmodule BoomLooperWeb.WireGuardLive do
 
     if client do
       config = WireGuard.client_config(client)
-      qr_svg = try do
-        WireGuard.client_qr_svg(client)
-      rescue
-        _ -> nil
-      end
+      qr_svg = WireGuard.client_qr_svg(client)
 
       {:noreply, assign(socket, :new_client, %{client: client, config: config, qr_svg: qr_svg})}
     else
