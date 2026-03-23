@@ -31,6 +31,12 @@ defmodule BoomLooperWeb.WireGuardLive do
             _ -> nil
           end
 
+          # Auto-start WireGuard if not already running
+          unless WireGuard.interface_up?() do
+            WireGuard.ensure_server_keys()
+            WireGuard.up()
+          end
+
           {:noreply,
            socket
            |> assign(:clients, WireGuard.list_clients())
@@ -120,27 +126,38 @@ defmodule BoomLooperWeb.WireGuardLive do
           </div>
 
           <div :if={@available}>
-            <div class="flex items-center justify-between mb-6">
+            <div class="mb-6">
+              <h2 class="text-xl font-semibold">Remote Access</h2>
+              <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
+                Add a device, then connect it to access BoomLooper, SSH, and all service ports from anywhere.
+              </p>
+            </div>
+
+            <div :if={@interface_up} class="mb-6 rounded-xl border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 p-4 flex items-center justify-between">
               <div>
-                <h2 class="text-xl font-semibold">Remote Access</h2>
-                <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
-                  Connect devices to access all ports on this machine.
+                <div class="flex items-center gap-2 mb-1">
+                  <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                  <span class="text-sm font-medium text-green-700 dark:text-green-400">Accepting connections</span>
+                </div>
+                <p class="text-xs font-mono text-green-600 dark:text-green-500">
+                  {WireGuard.server_ip()} — Port {WireGuard.listen_port()}
                 </p>
               </div>
               <button phx-click="toggle_interface"
-                class={"rounded-lg px-4 py-2 text-sm font-medium transition-colors #{if @interface_up, do: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400", else: "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400"}"}>
-                {if @interface_up, do: "Connected", else: "Start"}
+                class="text-xs font-medium text-green-600 dark:text-green-400 hover:text-red-500 dark:hover:text-red-400 transition-colors">
+                Stop
               </button>
             </div>
 
-            <div :if={@interface_up} class="mb-6 rounded-xl border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 p-4">
-              <div class="flex items-center gap-2 mb-1">
-                <div class="w-2 h-2 rounded-full bg-green-500"></div>
-                <span class="text-sm font-medium text-green-700 dark:text-green-400">Active</span>
+            <div :if={!@interface_up && @clients != []} class="mb-6 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-4 flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <div class="w-2 h-2 rounded-full bg-amber-400"></div>
+                <p class="text-sm text-amber-700 dark:text-amber-400">Not accepting connections</p>
               </div>
-              <p class="text-xs font-mono text-green-600 dark:text-green-500">
-                {WireGuard.server_ip()} — Port {WireGuard.listen_port()}
-              </p>
+              <button phx-click="toggle_interface"
+                class="rounded-lg bg-violet-600 hover:bg-violet-700 px-4 py-2 text-sm font-medium text-white transition-colors">
+                Restart
+              </button>
             </div>
 
             <%!-- New client detail — shown immediately after add or when clicking a client --%>
