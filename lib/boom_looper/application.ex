@@ -36,7 +36,8 @@ defmodule BoomLooper.Application do
     IO.puts("\n  Launch from any project directory:")
     IO.puts("  open \"http://localhost:#{port}/launch/#{secret}?path=$(pwd)\"")
     IO.puts("\n  SSH into a container console:")
-    IO.puts("  sshpass -p '#{secret}' ssh -o StrictHostKeyChecking=no -p #{ssh_port} CONTAINER@localhost\n")
+    IO.puts("  ssh -o StrictHostKeyChecking=no -p #{ssh_port} CONTAINER@localhost")
+    IO.puts("  Password: #{secret}\n")
 
     result
   end
