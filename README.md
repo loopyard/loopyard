@@ -14,6 +14,7 @@ Running Claude Code locally is great, but it runs on your host and you manage th
 - **Multiplayer** — every chat, terminal, and service log has its own URL. Open in another tab, send to a teammate, or pull up on your phone
 - **Multiple agents** — run a Setup agent, a Feature agent, and a Debug agent on the same project simultaneously
 - **SSH into any container** — `ssh -p 2222 container-name@localhost` drops you into a shared terminal session
+- **Work from any device** — start a task on your laptop, check progress from your phone on the couch, pick it back up on your desktop. Every device sees the same live state — no syncing, no context lost
 - **Persistent containers** — restart the server, containers keep running. Pick up where you left off
 
 ## Getting started
