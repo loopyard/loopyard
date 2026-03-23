@@ -28,9 +28,15 @@ defmodule BoomLooper.Application do
     opts = [strategy: :one_for_one, name: BoomLooper.Supervisor]
     result = Supervisor.start_link(children, opts)
 
+    # Start SSH server (not a supervised child — :ssh.daemon manages its own process)
+    BoomLooper.SSHServer.start_link()
+
     port = Application.get_env(:boom_looper, BoomLooperWeb.Endpoint)[:http][:port] || 4000
+    ssh_port = BoomLooper.SSHServer.port()
     IO.puts("\n  Launch from any project directory:")
-    IO.puts("  open \"http://localhost:#{port}/launch/#{secret}?path=$(pwd)\"\n")
+    IO.puts("  open \"http://localhost:#{port}/launch/#{secret}?path=$(pwd)\"")
+    IO.puts("\n  SSH into a container console:")
+    IO.puts("  sshpass -p '#{secret}' ssh -o StrictHostKeyChecking=no -p #{ssh_port} CONTAINER@localhost\n")
 
     result
   end

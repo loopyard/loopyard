@@ -16,7 +16,7 @@ defmodule BoomLooper.MixProject do
   def application do
     [
       mod: {BoomLooper.Application, []},
-      extra_applications: [:logger, :runtime_tools]
+      extra_applications: [:logger, :runtime_tools, :ssh, :crypto, :public_key]
     ]
   end
 
