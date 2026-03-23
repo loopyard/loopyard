@@ -989,13 +989,20 @@ defmodule BoomLooperWeb.ChatLive do
   def render(assigns) do
     ~H"""
     <div id="chat-page" phx-hook="ScrollBottom" class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
-      <.header workspace={@workspace} project={@project} workspace_entry={@workspace_entry} agent_count={length(@agents)} />
+      <.header workspace={@workspace} project={@project} workspace_entry={@workspace_entry} agent_count={length(@agents)} live_action={@live_action} base_path={@base_path} />
       <p :if={@flash["error"]} class="mx-4 mt-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300">
         {@flash["error"]}
       </p>
       <div class="flex-1 flex min-h-0">
-        <.sidebar agents={@agents} selected_id={@selected_id} workspace_id={@workspace.id} project={@project} workspace_entry={@workspace_entry} service_statuses={@service_statuses} selected_service={@selected_service} />
-        <main class="flex-1 flex flex-col min-w-0">
+        <%!-- Sidebar: always visible on md+, full-screen on mobile when no agent/service selected --%>
+        <.sidebar
+          agents={@agents} selected_id={@selected_id} workspace_id={@workspace.id}
+          project={@project} workspace_entry={@workspace_entry}
+          service_statuses={@service_statuses} selected_service={@selected_service}
+          live_action={@live_action}
+        />
+        <%!-- Main content: hidden on mobile when sidebar is showing (index/new with no selection) --%>
+        <main class={"flex-1 flex flex-col min-w-0 #{if @live_action in [:index, :new] && !@selected_id && !@selected_service, do: "hidden md:flex", else: "flex"}"}>
           <.new_agent_screen :if={@live_action == :new} available_checklists={@available_checklists} selected_checklist={@selected_checklist} workspace={@workspace} base_path={@base_path} />
           <.service_log_view :if={@live_action == :service} service_name={@selected_service} service_statuses={@service_statuses} logs={@service_logs} base_path={@base_path} />
           <.console_view :if={@live_action == :console} service_name={@selected_service} container={@console_container} />
@@ -1010,16 +1017,25 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   defp header(assigns) do
+    # Show back arrow on mobile when viewing agent/service (returns to sidebar)
+    show_back = assigns.live_action in [:chat, :container, :service, :console, :services]
+    assigns = assign(assigns, :show_back, show_back)
+
     ~H"""
     <header class="flex-none h-14 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center justify-between px-4 md:px-5">
-      <div class="flex items-center gap-3">
-        <.link navigate="/" class="text-lg font-semibold tracking-tight hover:text-violet-600 dark:hover:text-violet-400 transition-colors">Boom Looper</.link>
-        <span class="text-zinc-300 dark:text-zinc-600">/</span>
-        <.link :if={@project} navigate={"/projects/#{@project.id}"} class="text-sm font-medium hover:text-violet-600 dark:hover:text-violet-400 transition-colors">{@workspace.name}</.link>
-        <span :if={!@project} class="text-sm font-medium">{@workspace.name}</span>
-        <span :if={@workspace_entry && !@workspace_entry.is_main} class="text-zinc-300 dark:text-zinc-600">/</span>
-        <span :if={@workspace_entry && !@workspace_entry.is_main} class="text-sm text-zinc-500 dark:text-zinc-400">{@workspace_entry.name}</span>
-        <span class="text-sm text-zinc-400 dark:text-zinc-500">{@agent_count} agent{if @agent_count != 1, do: "s"}</span>
+      <div class="flex items-center gap-3 min-w-0">
+        <.link :if={@show_back} navigate={@base_path} class="md:hidden text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 flex-none">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+            <path fill-rule="evenodd" d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z" clip-rule="evenodd" />
+          </svg>
+        </.link>
+        <.link navigate="/" class="text-lg font-semibold tracking-tight hover:text-violet-600 dark:hover:text-violet-400 transition-colors hidden md:block">Boom Looper</.link>
+        <span class="text-zinc-300 dark:text-zinc-600 hidden md:block">/</span>
+        <.link :if={@project} navigate={"/projects/#{@project.id}"} class="text-sm font-medium hover:text-violet-600 dark:hover:text-violet-400 transition-colors truncate">{@workspace.name}</.link>
+        <span :if={!@project} class="text-sm font-medium truncate">{@workspace.name}</span>
+        <span :if={@workspace_entry && !@workspace_entry.is_main} class="text-zinc-300 dark:text-zinc-600 hidden sm:block">/</span>
+        <span :if={@workspace_entry && !@workspace_entry.is_main} class="text-sm text-zinc-500 dark:text-zinc-400 hidden sm:block truncate">{@workspace_entry.name}</span>
+        <span class="text-sm text-zinc-400 dark:text-zinc-500 hidden sm:block flex-none">{@agent_count} agent{if @agent_count != 1, do: "s"}</span>
       </div>
     </header>
     """
@@ -1034,7 +1050,15 @@ defmodule BoomLooperWeb.ChatLive do
     assigns = assign(assigns, :base_path, base_path)
 
     ~H"""
-    <aside class="w-72 md:w-80 flex-none border-r border-zinc-200 dark:border-zinc-700/80 flex flex-col bg-zinc-50 dark:bg-zinc-900/50">
+    <%!-- On mobile: full-width when visible (index/new), hidden when agent/service selected.
+         On md+: always visible as a fixed-width sidebar. --%>
+    <aside class={[
+      "flex-none border-r border-zinc-200 dark:border-zinc-700/80 flex flex-col bg-zinc-50 dark:bg-zinc-900/50",
+      "w-full md:w-80",
+      if(@live_action in [:chat, :container, :service, :console, :services] || @selected_id || @selected_service,
+        do: "hidden md:flex",
+        else: "flex")
+    ]}>
       <div class="flex-none p-3 border-b border-zinc-200 dark:border-zinc-700/80">
         <.link
           navigate={"#{@base_path}/new"}
@@ -1265,22 +1289,18 @@ defmodule BoomLooperWeb.ChatLive do
 
     ~H"""
     <div class="flex-none border-b border-zinc-200 dark:border-zinc-700/80">
-      <div class="flex items-center justify-between px-4 md:px-5 h-12">
-        <div class="flex items-center gap-3">
-          <div class={"w-2 h-2 rounded-full #{status_dot(@agent.status)}"}></div>
-          <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{@agent.name}</span>
-          <a :if={@container_port} href={"http://localhost:#{@container_port}"} target="_blank"
-            class="text-xs font-mono text-violet-500 hover:text-violet-400 transition-colors">
-            localhost:{@container_port}
-          </a>
+      <div class="flex items-center justify-between px-3 md:px-5 h-12 gap-2">
+        <div class="flex items-center gap-2 md:gap-3 min-w-0">
+          <div class={"w-2 h-2 rounded-full flex-none #{status_dot(@agent.status)}"}></div>
+          <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate">{@agent.name}</span>
           <.checklist_badge :if={@checklist_progress} progress={@checklist_progress} />
-          <span :if={@agent[:last_activity_at]} class="text-xs text-zinc-400 dark:text-zinc-500">
+          <span :if={@agent[:last_activity_at]} class="text-xs text-zinc-400 dark:text-zinc-500 hidden sm:block flex-none">
             {time_ago(@agent[:last_activity_at])}
           </span>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-1 md:gap-2 flex-none">
           <button :if={@agent.status in [:idle, :thinking]} phx-click="restart_session" phx-value-id={@agent.id}
-            class="text-xs font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10 rounded-md px-2 py-1">
+            class="text-xs font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10 rounded-md px-2 py-1 hidden sm:block">
             Restart CLI
           </button>
           <button :if={@agent.status in [:idle, :thinking]} phx-click="stop_agent" phx-value-id={@agent.id}
@@ -1666,7 +1686,7 @@ defmodule BoomLooperWeb.ChatLive do
 
   defp context_panel(assigns) do
     ~H"""
-    <aside class="w-72 md:w-80 flex-none border-l border-zinc-200 dark:border-zinc-700/80 flex flex-col bg-zinc-50 dark:bg-zinc-900/50 overflow-y-auto">
+    <aside class="hidden lg:flex w-80 flex-none border-l border-zinc-200 dark:border-zinc-700/80 flex-col bg-zinc-50 dark:bg-zinc-900/50 overflow-y-auto">
       <div class="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700/80">
         <h3 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Agent Context</h3>
       </div>
