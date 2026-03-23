@@ -75,7 +75,17 @@
   .markdown-body hr { border-color: rgba(255, 255, 255, 0.1); }
 }
 
-/* Safe area for notched devices */
+/* Safari iOS: use dvh instead of vh for correct height with dynamic toolbar */
+@supports (height: 100dvh) {
+  .h-screen { height: 100dvh !important; }
+}
+
+/* Safe area for notched/dynamic island devices */
 @supports (padding: env(safe-area-inset-bottom)) {
   .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
+  .safe-area-top { padding-top: env(safe-area-inset-top); }
+  .safe-area-x {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
 }
