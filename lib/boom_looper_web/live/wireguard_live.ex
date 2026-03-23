@@ -27,7 +27,6 @@ defmodule BoomLooperWeb.WireGuardLive do
           config = WireGuard.client_config(client)
           qr_svg = WireGuard.client_qr_svg(client)
 
-          # Auto-start WireGuard if not already running
           unless WireGuard.interface_up?() do
             WireGuard.ensure_server_keys()
             WireGuard.up()
@@ -54,7 +53,6 @@ defmodule BoomLooperWeb.WireGuardLive do
     if client do
       config = WireGuard.client_config(client)
       qr_svg = WireGuard.client_qr_svg(client)
-
       {:noreply, assign(socket, :new_client, %{client: client, config: config, qr_svg: qr_svg})}
     else
       {:noreply, socket}
@@ -113,32 +111,33 @@ defmodule BoomLooperWeb.WireGuardLive do
           </p>
 
           <div :if={!@available} class="text-center py-12">
-            <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-2">WireGuard is not installed.</p>
-            <code class="text-xs text-zinc-400 dark:text-zinc-500 bg-zinc-100 dark:bg-zinc-800 px-3 py-1.5 rounded-lg">brew install wireguard-tools</code>
+            <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-4">WireGuard tools are required for remote access.</p>
+            <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 p-6 inline-block text-left">
+              <p class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-2">macOS</p>
+              <code class="text-sm font-mono text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 px-3 py-1.5 rounded-lg block">brew install wireguard-tools</code>
+              <p class="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mt-4 mb-2">Linux</p>
+              <code class="text-sm font-mono text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 px-3 py-1.5 rounded-lg block">sudo apt install wireguard-tools</code>
+            </div>
           </div>
 
           <div :if={@available}>
             <div class="mb-6">
               <h2 class="text-xl font-semibold">Remote Access</h2>
               <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
-                Add a device, then connect it to access BoomLooper, SSH, and all service ports from anywhere.
+                Connect your devices to access BoomLooper, SSH, and all service ports from anywhere.
               </p>
             </div>
 
+            <%!-- Status --%>
             <div :if={@interface_up} class="mb-6 rounded-xl border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 p-4 flex items-center justify-between">
               <div>
                 <div class="flex items-center gap-2 mb-1">
                   <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
                   <span class="text-sm font-medium text-green-700 dark:text-green-400">Accepting connections</span>
                 </div>
-                <p class="text-xs font-mono text-green-600 dark:text-green-500">
-                  {WireGuard.server_ip()} — Port {WireGuard.listen_port()}
-                </p>
+                <p class="text-xs font-mono text-green-600 dark:text-green-500">{WireGuard.server_ip()} — Port {WireGuard.listen_port()}</p>
               </div>
-              <button phx-click="toggle_interface"
-                class="text-xs font-medium text-green-600 dark:text-green-400 hover:text-red-500 dark:hover:text-red-400 transition-colors">
-                Stop
-              </button>
+              <button phx-click="toggle_interface" class="text-xs font-medium text-green-600 dark:text-green-400 hover:text-red-500 dark:hover:text-red-400 transition-colors">Stop</button>
             </div>
 
             <div :if={!@interface_up && @clients != []} class="mb-6 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-4 flex items-center justify-between">
@@ -146,19 +145,13 @@ defmodule BoomLooperWeb.WireGuardLive do
                 <div class="w-2 h-2 rounded-full bg-amber-400"></div>
                 <p class="text-sm text-amber-700 dark:text-amber-400">Not accepting connections</p>
               </div>
-              <button phx-click="toggle_interface"
-                class="rounded-lg bg-violet-600 hover:bg-violet-700 px-4 py-2 text-sm font-medium text-white transition-colors">
-                Restart
-              </button>
+              <button phx-click="toggle_interface" class="rounded-lg bg-violet-600 hover:bg-violet-700 px-4 py-2 text-sm font-medium text-white transition-colors">Restart</button>
             </div>
 
-            <%!-- New client detail — shown immediately after add or when clicking a client --%>
+            <%!-- Device setup instructions — shown after adding or clicking a device --%>
             <div :if={@new_client} class="mb-6 rounded-xl border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-900/20 p-6">
-              <div class="flex items-center justify-between mb-4">
-                <div>
-                  <h3 class="text-lg font-semibold">{@new_client.client["name"]}</h3>
-                  <p class="text-xs font-mono text-zinc-400">{@new_client.client["ip"]}</p>
-                </div>
+              <div class="flex items-center justify-between mb-5">
+                <h3 class="text-lg font-semibold">{@new_client.client["name"]}</h3>
                 <button phx-click="dismiss" class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-5 h-5">
                     <path d="M5.28 4.22a.75.75 0 0 0-1.06 1.06L6.94 8l-2.72 2.72a.75.75 0 1 0 1.06 1.06L8 9.06l2.72 2.72a.75.75 0 1 0 1.06-1.06L9.06 8l2.72-2.72a.75.75 0 0 0-1.06-1.06L8 6.94 5.28 4.22Z" />
@@ -166,42 +159,104 @@ defmodule BoomLooperWeb.WireGuardLive do
                 </button>
               </div>
 
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <%!-- QR Code for phone --%>
-                <div :if={@new_client.qr_svg} class="flex flex-col items-center">
-                  <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-3">Scan with WireGuard app</p>
-                  <div class="bg-white p-4 rounded-xl shadow-sm">
-                    {raw(@new_client.qr_svg)}
-                  </div>
+              <%!-- iPhone / iPad --%>
+              <div class="mb-6 pb-6 border-b border-violet-200 dark:border-violet-700/50">
+                <h4 class="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <span class="text-base">📱</span> iPhone / iPad
+                </h4>
+                <ol class="space-y-3 text-sm text-zinc-600 dark:text-zinc-400">
+                  <li class="flex gap-3">
+                    <span class="text-xs font-bold text-violet-500 bg-violet-100 dark:bg-violet-900/40 rounded-full w-5 h-5 flex items-center justify-center flex-none mt-0.5">1</span>
+                    <span>
+                      Install
+                      <a href="https://apps.apple.com/app/wireguard/id1441195209" target="_blank" rel="noopener"
+                        class="text-violet-600 dark:text-violet-400 underline font-medium">WireGuard</a>
+                      from the App Store
+                    </span>
+                  </li>
+                  <li class="flex gap-3">
+                    <span class="text-xs font-bold text-violet-500 bg-violet-100 dark:bg-violet-900/40 rounded-full w-5 h-5 flex items-center justify-center flex-none mt-0.5">2</span>
+                    <span>Open WireGuard → tap <strong>+</strong> → <strong>Create from QR code</strong></span>
+                  </li>
+                  <li class="flex gap-3">
+                    <span class="text-xs font-bold text-violet-500 bg-violet-100 dark:bg-violet-900/40 rounded-full w-5 h-5 flex items-center justify-center flex-none mt-0.5">3</span>
+                    <span>Scan this QR code:</span>
+                  </li>
+                </ol>
+                <div :if={@new_client.qr_svg} class="mt-3 ml-8 bg-white p-4 rounded-xl shadow-sm inline-block">
+                  {raw(@new_client.qr_svg)}
                 </div>
-
-                <%!-- Config --%>
-                <div>
-                  <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-3">Or import this config file</p>
-                  <pre class="text-xs font-mono bg-zinc-100 dark:bg-zinc-950 text-zinc-700 dark:text-zinc-300 rounded-lg p-4 overflow-x-auto whitespace-pre-wrap">{@new_client.config}</pre>
-                  <button id={"copy-wg-#{@new_client.client["name"]}"} phx-hook="CopySource" data-source={@new_client.config}
-                    class="mt-2 text-xs font-medium text-violet-600 dark:text-violet-400 hover:text-violet-500">
-                    Copy to clipboard
-                  </button>
-                </div>
+                <ol start="4" class="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
+                  <li class="flex gap-3">
+                    <span class="text-xs font-bold text-violet-500 bg-violet-100 dark:bg-violet-900/40 rounded-full w-5 h-5 flex items-center justify-center flex-none mt-0.5">4</span>
+                    <span>Toggle the tunnel on — open <span class="font-mono text-xs">http://{WireGuard.server_ip()}:4000</span></span>
+                  </li>
+                </ol>
               </div>
 
-              <p class="mt-4 text-xs text-zinc-400 dark:text-zinc-500">
-                After connecting, open
-                <span class="font-mono">http://{WireGuard.server_ip()}:4000</span>
-              </p>
+              <%!-- Mac --%>
+              <div class="mb-6 pb-6 border-b border-violet-200 dark:border-violet-700/50">
+                <h4 class="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <span class="text-base">💻</span> Mac
+                </h4>
+                <ol class="space-y-3 text-sm text-zinc-600 dark:text-zinc-400">
+                  <li class="flex gap-3">
+                    <span class="text-xs font-bold text-violet-500 bg-violet-100 dark:bg-violet-900/40 rounded-full w-5 h-5 flex items-center justify-center flex-none mt-0.5">1</span>
+                    <span>
+                      Install
+                      <a href="https://apps.apple.com/app/wireguard/id1451685025" target="_blank" rel="noopener"
+                        class="text-violet-600 dark:text-violet-400 underline font-medium">WireGuard</a>
+                      from the Mac App Store
+                    </span>
+                  </li>
+                  <li class="flex gap-3">
+                    <span class="text-xs font-bold text-violet-500 bg-violet-100 dark:bg-violet-900/40 rounded-full w-5 h-5 flex items-center justify-center flex-none mt-0.5">2</span>
+                    <div>
+                      <span>Copy the config and import it (WireGuard → Import Tunnel(s) from File)</span>
+                      <pre class="mt-2 text-xs font-mono bg-zinc-100 dark:bg-zinc-950 text-zinc-700 dark:text-zinc-300 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap">{@new_client.config}</pre>
+                      <button id={"copy-wg-#{@new_client.client["name"]}"} phx-hook="CopySource" data-source={@new_client.config}
+                        class="mt-1.5 text-xs font-medium text-violet-600 dark:text-violet-400 hover:text-violet-500">
+                        Copy to clipboard
+                      </button>
+                    </div>
+                  </li>
+                  <li class="flex gap-3">
+                    <span class="text-xs font-bold text-violet-500 bg-violet-100 dark:bg-violet-900/40 rounded-full w-5 h-5 flex items-center justify-center flex-none mt-0.5">3</span>
+                    <span>Activate the tunnel — open <span class="font-mono text-xs">http://{WireGuard.server_ip()}:4000</span></span>
+                  </li>
+                </ol>
+              </div>
+
+              <%!-- Linux --%>
+              <div>
+                <h4 class="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <span class="text-base">🐧</span> Linux
+                </h4>
+                <ol class="space-y-3 text-sm text-zinc-600 dark:text-zinc-400">
+                  <li class="flex gap-3">
+                    <span class="text-xs font-bold text-violet-500 bg-violet-100 dark:bg-violet-900/40 rounded-full w-5 h-5 flex items-center justify-center flex-none mt-0.5">1</span>
+                    <span><code class="text-xs bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded">sudo apt install wireguard-tools</code></span>
+                  </li>
+                  <li class="flex gap-3">
+                    <span class="text-xs font-bold text-violet-500 bg-violet-100 dark:bg-violet-900/40 rounded-full w-5 h-5 flex items-center justify-center flex-none mt-0.5">2</span>
+                    <span>Save the config above to <code class="text-xs bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded">/etc/wireguard/boomlooper.conf</code></span>
+                  </li>
+                  <li class="flex gap-3">
+                    <span class="text-xs font-bold text-violet-500 bg-violet-100 dark:bg-violet-900/40 rounded-full w-5 h-5 flex items-center justify-center flex-none mt-0.5">3</span>
+                    <span><code class="text-xs bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded">sudo wg-quick up boomlooper</code></span>
+                  </li>
+                </ol>
+              </div>
             </div>
 
-            <%!-- Client list --%>
+            <%!-- Device list --%>
             <div class="space-y-2 mb-6">
               <div :for={client <- @clients}
                 class="rounded-xl border border-zinc-200 dark:border-zinc-700 p-4 flex items-center justify-between group hover:border-violet-400 dark:hover:border-violet-500 transition-colors">
                 <button phx-click="show_client" phx-value-name={client["name"]} class="flex items-center gap-3 min-w-0 flex-1 text-left">
                   <div class="w-2 h-2 rounded-full bg-violet-500 flex-none"></div>
-                  <div class="min-w-0">
-                    <span class="text-sm font-medium">{client["name"]}</span>
-                    <span class="text-xs text-zinc-400 dark:text-zinc-500 ml-2 font-mono">{client["ip"]}</span>
-                  </div>
+                  <span class="text-sm font-medium">{client["name"]}</span>
+                  <span class="text-xs text-zinc-400 dark:text-zinc-500 font-mono">{client["ip"]}</span>
                 </button>
                 <button phx-click="remove_client" phx-value-name={client["name"]}
                   class="text-zinc-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity flex-none">
@@ -212,9 +267,9 @@ defmodule BoomLooperWeb.WireGuardLive do
               </div>
             </div>
 
-            <%!-- Add client form --%>
+            <%!-- Add device --%>
             <form phx-submit="add_client" class="flex gap-2">
-              <input type="text" name="name" placeholder="Device name (e.g. iPhone, Laptop)..." autocomplete="off"
+              <input type="text" name="name" placeholder="Device name (e.g. iPhone, MacBook)..." autocomplete="off"
                 class="flex-1 rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-3 text-sm
                        text-zinc-600 dark:text-zinc-300 placeholder:text-zinc-400
                        focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400" />
