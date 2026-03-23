@@ -1,4 +1,4 @@
-defmodule BoomLooperWeb.WireGuardLive do
+defmodule BoomLooperWeb.ConnectLive do
   use BoomLooperWeb, :live_view
 
   @impl true

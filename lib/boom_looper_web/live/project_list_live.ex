@@ -127,7 +127,7 @@ defmodule BoomLooperWeb.ProjectListLive do
           <section class="mb-10">
             <h2 class="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-3">Tools</h2>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <.link navigate="/remote"
+              <.link navigate="/connect"
                 class="rounded-xl border border-zinc-200 dark:border-zinc-700 p-4 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
                 <div class="flex items-center gap-3">
                   <div class="w-8 h-8 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center flex-none">
@@ -136,8 +136,8 @@ defmodule BoomLooperWeb.ProjectListLive do
                     </svg>
                   </div>
                   <div>
-                    <p class="text-sm font-medium">Remote Access</p>
-                    <p class="text-xs text-zinc-400 dark:text-zinc-500">Connect devices from anywhere</p>
+                    <p class="text-sm font-medium">Connect</p>
+                    <p class="text-xs text-zinc-400 dark:text-zinc-500">Open on your phone</p>
                   </div>
                 </div>
               </.link>
