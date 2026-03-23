@@ -12,6 +12,7 @@ defmodule BoomLooper.WireGuard do
     - wg0.conf                 — generated WireGuard config
   """
   require Logger
+  import Bitwise
 
   @subnet "10.0.42"
   @server_ip "#{@subnet}.1"
@@ -278,15 +279,44 @@ defmodule BoomLooper.WireGuard do
     _ -> :ok
   end
 
-  defp detect_host_ip do
-    # Try to get the host's LAN IP
-    case System.cmd("hostname", ["-I"], stderr_to_stdout: true) do
-      {output, 0} ->
-        output |> String.trim() |> String.split() |> hd()
+  @doc "Detect the host's public IPv6 address for the WireGuard endpoint."
+  def detect_host_ip do
+    case detect_public_ipv6() do
+      nil -> detect_ipv4_fallback()
+      ipv6 -> "[#{ipv6}]"
+    end
+  end
+
+  @doc "Detect the host's public IPv6 address, or nil."
+  def detect_public_ipv6 do
+    case :inet.getifaddrs() do
+      {:ok, ifaddrs} ->
+        addr = ifaddrs
+        |> Enum.flat_map(fn {_iface, opts} ->
+          opts
+          |> Keyword.get_values(:addr)
+          |> Enum.filter(fn
+            {a, _, _, _, _, _, _, _} ->
+              a != 0 and a != 1 and
+              (a &&& 0xFE00) != 0xFE80 and
+              (a &&& 0xFE00) != 0xFC00
+            _ -> false
+          end)
+        end)
+        |> List.first()
+
+        if addr, do: :inet.ntoa(addr) |> to_string()
+
+      _ -> nil
+    end
+  end
+
+  defp detect_ipv4_fallback do
+    case System.cmd("ipconfig", ["getifaddr", "en0"], stderr_to_stdout: true) do
+      {output, 0} -> String.trim(output)
       _ ->
-        # macOS fallback
-        case System.cmd("ipconfig", ["getifaddr", "en0"], stderr_to_stdout: true) do
-          {output, 0} -> String.trim(output)
+        case System.cmd("hostname", ["-I"], stderr_to_stdout: true) do
+          {output, 0} -> output |> String.trim() |> String.split() |> hd()
           _ -> "YOUR_HOST_IP"
         end
     end
