@@ -7,6 +7,10 @@ defmodule BoomLooper.SSHServer do
 
   Multiplayer — SSH sessions share the same Terminal GenServer as
   browser console tabs. All viewers see the same terminal.
+
+  Uses `ssh_server_channel` behavior for raw byte access — every
+  keystroke arrives immediately (no line buffering), same as the
+  websocket path.
   """
   require Logger
 
@@ -20,7 +24,7 @@ defmodule BoomLooper.SSHServer do
 
     ssh_opts = [
       system_dir: String.to_charlist(system_dir),
-      shell: &start_shell/2,
+      ssh_cli: {BoomLooper.SSHServer.Channel, []},
       no_auth_needed: true,
       idle_time: :infinity
     ]
@@ -42,66 +46,6 @@ defmodule BoomLooper.SSHServer do
 
   @doc "The SSH port number."
   def port, do: @default_port
-
-  # --- Shell ---
-
-  defp start_shell(user, _peer) do
-    container = to_string(user)
-    spawn(fn -> run_shell(container) end)
-  end
-
-  defp run_shell(container) do
-    case BoomLooper.Terminal.get_or_start(container) do
-      {:ok, _pid} ->
-        Phoenix.PubSub.subscribe(BoomLooper.PubSub, BoomLooper.Terminal.topic(container))
-
-        buffer = BoomLooper.Terminal.get_buffer(container)
-        if buffer != "", do: IO.write(buffer)
-
-        me = self()
-        _stdin_reader = spawn_link(fn -> stdin_loop(me) end)
-
-        shell_loop(container)
-
-      {:error, reason} ->
-        IO.write("Error: container #{container} not available (#{inspect(reason)})\r\n")
-    end
-  end
-
-  defp shell_loop(container) do
-    receive do
-      {:terminal_output, data} ->
-        IO.write(data)
-        shell_loop(container)
-
-      :terminal_clear ->
-        IO.write("\e[2J\e[H")
-        shell_loop(container)
-
-      {:terminal_exit, _code} ->
-        IO.write("\r\nTerminal session ended.\r\n")
-
-      {:stdin, data} ->
-        BoomLooper.Terminal.send_input(container, data)
-        shell_loop(container)
-
-      {:stdin_closed} ->
-        :ok
-
-      _ ->
-        shell_loop(container)
-    end
-  end
-
-  defp stdin_loop(parent) do
-    case IO.read(:stdio, 1) do
-      {:error, _} -> send(parent, {:stdin_closed})
-      :eof -> send(parent, {:stdin_closed})
-      data ->
-        send(parent, {:stdin, data})
-        stdin_loop(parent)
-    end
-  end
 
   # --- Host keys ---
 
@@ -132,5 +76,146 @@ defmodule BoomLooper.SSHServer do
     path = Path.join(dir, "ssh_host_ecdsa_key")
     File.write!(path, pem)
     File.chmod!(path, 0o600)
+  end
+end
+
+defmodule BoomLooper.SSHServer.Channel do
+  @moduledoc """
+  SSH channel that provides raw byte I/O to a Terminal session.
+  Implements :ssh_server_channel behavior for direct access to the
+  SSH data stream — no line buffering, no group leader, every
+  keystroke delivered immediately.
+  """
+  @behaviour :ssh_server_channel
+
+  alias BoomLooper.Terminal
+
+  defstruct [:connection, :channel_id, :container]
+
+  @impl true
+  def init(_args) do
+    {:ok, %__MODULE__{}}
+  end
+
+  @impl true
+  def handle_ssh_msg({:ssh_cm, connection, {:pty, channel_id, want_reply, _pty_opts}}, state) do
+    if want_reply, do: :ssh_connection.reply_request(connection, want_reply, :success, channel_id)
+    {:ok, state}
+  end
+
+  # Client requests a shell — start the terminal session
+  def handle_ssh_msg({:ssh_cm, connection, {:shell, channel_id, want_reply}}, state) do
+    if want_reply, do: :ssh_connection.reply_request(connection, want_reply, :success, channel_id)
+    {:ok, state}
+  end
+
+  # Client sends "env" — ignore but acknowledge
+  def handle_ssh_msg({:ssh_cm, connection, {:env, channel_id, want_reply, _var, _val}}, state) do
+    if want_reply, do: :ssh_connection.reply_request(connection, want_reply, :success, channel_id)
+    {:ok, state}
+  end
+
+  # Client sends "window_change" — ignore for now
+  def handle_ssh_msg({:ssh_cm, _connection, {:window_change, _channel_id, _width, _height, _px_w, _px_h}}, state) do
+    {:ok, state}
+  end
+
+  # Client sends data (keystrokes) — raw, byte by byte
+  def handle_ssh_msg({:ssh_cm, _connection, {:data, _channel_id, _type, data}}, state) do
+    if state.container do
+      Terminal.send_input(state.container, data)
+    end
+    {:ok, state}
+  end
+
+  # Client sends EOF
+  def handle_ssh_msg({:ssh_cm, _connection, {:eof, _channel_id}}, state) do
+    {:ok, state}
+  end
+
+  # Client closes channel
+  def handle_ssh_msg({:ssh_cm, _connection, {:closed, _channel_id}}, state) do
+    {:stop, _channel_id = state.channel_id, state}
+  end
+
+  # Exec request — username comes through here or via the connection
+  def handle_ssh_msg({:ssh_cm, connection, {:exec, channel_id, want_reply, command}}, state) do
+    container = to_string(command)
+
+    if want_reply, do: :ssh_connection.reply_request(connection, want_reply, :success, channel_id)
+
+    state = start_terminal_session(container, state)
+    {:ok, state}
+  end
+
+  def handle_ssh_msg(_msg, state) do
+    {:ok, state}
+  end
+
+  # --- handle_msg: SSH lifecycle + PubSub from Terminal ---
+
+  @impl true
+  def handle_msg({:ssh_channel_up, channel_id, connection}, state) do
+    [{:user, user} | _] = :ssh.connection_info(connection, [:user])
+    container = to_string(user)
+
+    state = %{state | connection: connection, channel_id: channel_id, container: container}
+    state = start_terminal_session(container, state)
+    {:ok, state}
+  end
+
+  def handle_msg({:terminal_output, data}, state) do
+    if state.connection && state.channel_id do
+      :ssh_connection.send(state.connection, state.channel_id, data)
+    end
+    {:ok, state}
+  end
+
+  def handle_msg(:terminal_clear, state) do
+    if state.connection && state.channel_id do
+      :ssh_connection.send(state.connection, state.channel_id, "\e[2J\e[H")
+    end
+    {:ok, state}
+  end
+
+  def handle_msg({:terminal_exit, _code}, state) do
+    if state.connection && state.channel_id do
+      :ssh_connection.send(state.connection, state.channel_id, "\r\nTerminal session ended.\r\n")
+      :ssh_connection.close(state.connection, state.channel_id)
+    end
+    {:stop, state.channel_id, state}
+  end
+
+  # Catch-all for unknown messages (SSH internals, monitors, etc.)
+  def handle_msg(_msg, state) do
+    {:ok, state}
+  end
+
+  @impl true
+  def terminate(_reason, _state) do
+    :ok
+  end
+
+  # --- Private ---
+
+  defp start_terminal_session(container, state) do
+    case Terminal.get_or_start(container) do
+      {:ok, _pid} ->
+        Phoenix.PubSub.subscribe(BoomLooper.PubSub, Terminal.topic(container))
+
+        buffer = Terminal.get_buffer(container)
+        if buffer != "" && state.connection && state.channel_id do
+          :ssh_connection.send(state.connection, state.channel_id, buffer)
+        end
+
+        %{state | container: container}
+
+      {:error, reason} ->
+        if state.connection && state.channel_id do
+          msg = "Error: container #{container} not available (#{inspect(reason)})\r\n"
+          :ssh_connection.send(state.connection, state.channel_id, msg)
+        end
+        state
+    end
   end
 end
