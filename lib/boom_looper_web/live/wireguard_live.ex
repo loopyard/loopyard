@@ -3,18 +3,24 @@ defmodule BoomLooperWeb.WireGuardLive do
 
   alias BoomLooper.WireGuard
 
+  @ios_app_url "https://apps.apple.com/app/wireguard/id1441195209"
+
   @impl true
   def mount(_params, _session, socket) do
     available = WireGuard.available?()
     clients = if available, do: WireGuard.list_clients(), else: []
     interface_up = if available, do: WireGuard.interface_up?(), else: false
 
+    # Pre-generate App Store QR code
+    app_qr_svg = @ios_app_url |> EQRCode.encode() |> EQRCode.svg(width: 160)
+
     {:ok,
      socket
      |> assign(:available, available)
      |> assign(:clients, clients)
      |> assign(:interface_up, interface_up)
-     |> assign(:new_client, nil)}
+     |> assign(:new_client, nil)
+     |> assign(:app_qr_svg, app_qr_svg)}
   end
 
   @impl true
@@ -164,15 +170,15 @@ defmodule BoomLooperWeb.WireGuardLive do
                 <h4 class="text-sm font-semibold mb-3 flex items-center gap-2">
                   <span class="text-base">📱</span> iPhone / iPad
                 </h4>
-                <ol class="space-y-3 text-sm text-zinc-600 dark:text-zinc-400">
+                <ol class="space-y-4 text-sm text-zinc-600 dark:text-zinc-400">
                   <li class="flex gap-3">
                     <span class="text-xs font-bold text-violet-500 bg-violet-100 dark:bg-violet-900/40 rounded-full w-5 h-5 flex items-center justify-center flex-none mt-0.5">1</span>
-                    <span>
-                      Install
-                      <a href="https://apps.apple.com/app/wireguard/id1441195209" target="_blank" rel="noopener"
-                        class="text-violet-600 dark:text-violet-400 underline font-medium">WireGuard</a>
-                      from the App Store
-                    </span>
+                    <div>
+                      <span>Install <strong>WireGuard</strong> from the App Store</span>
+                      <div class="mt-2 bg-white p-3 rounded-xl shadow-sm inline-block">
+                        {raw(@app_qr_svg)}
+                      </div>
+                    </div>
                   </li>
                   <li class="flex gap-3">
                     <span class="text-xs font-bold text-violet-500 bg-violet-100 dark:bg-violet-900/40 rounded-full w-5 h-5 flex items-center justify-center flex-none mt-0.5">2</span>
@@ -180,13 +186,13 @@ defmodule BoomLooperWeb.WireGuardLive do
                   </li>
                   <li class="flex gap-3">
                     <span class="text-xs font-bold text-violet-500 bg-violet-100 dark:bg-violet-900/40 rounded-full w-5 h-5 flex items-center justify-center flex-none mt-0.5">3</span>
-                    <span>Scan this QR code:</span>
+                    <div>
+                      <span>Scan this code to add the tunnel:</span>
+                      <div :if={@new_client.qr_svg} class="mt-2 bg-white p-4 rounded-xl shadow-sm inline-block">
+                        {raw(@new_client.qr_svg)}
+                      </div>
+                    </div>
                   </li>
-                </ol>
-                <div :if={@new_client.qr_svg} class="mt-3 ml-8 bg-white p-4 rounded-xl shadow-sm inline-block">
-                  {raw(@new_client.qr_svg)}
-                </div>
-                <ol start="4" class="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
                   <li class="flex gap-3">
                     <span class="text-xs font-bold text-violet-500 bg-violet-100 dark:bg-violet-900/40 rounded-full w-5 h-5 flex items-center justify-center flex-none mt-0.5">4</span>
                     <span>Toggle the tunnel on — open <span class="font-mono text-xs">http://{WireGuard.server_ip()}:4000</span></span>
