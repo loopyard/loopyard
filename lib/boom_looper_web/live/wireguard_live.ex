@@ -25,11 +25,7 @@ defmodule BoomLooperWeb.WireGuardLive do
       case WireGuard.add_client(name) do
         {:ok, client} ->
           config = WireGuard.client_config(client)
-          qr_svg = try do
-            WireGuard.client_qr_svg(client)
-          rescue
-            _ -> nil
-          end
+          qr_svg = WireGuard.client_qr_svg(client)
 
           # Auto-start WireGuard if not already running
           unless WireGuard.interface_up?() do
