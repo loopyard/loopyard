@@ -121,7 +121,7 @@ defmodule BoomLooper.SSHServer do
   # --- Host keys ---
 
   defp ssh_host_key_dir do
-    dir = Path.join(System.tmp_dir!(), "boom-looper-ssh-keys")
+    dir = Path.join([System.user_home!(), ".boomlooper", "ssh"])
 
     unless File.exists?(Path.join(dir, "ssh_host_rsa_key")) do
       File.mkdir_p!(dir)
