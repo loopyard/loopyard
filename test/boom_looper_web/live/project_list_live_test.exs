@@ -14,7 +14,7 @@ defmodule BoomLooperWeb.ProjectListLiveTest do
     test "renders the project list page at /", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/")
       assert html =~ "Projects"
-      assert html =~ "Launch from any project directory"
+      assert html =~ "Launch Command"
     end
   end
 

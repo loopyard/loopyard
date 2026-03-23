@@ -181,6 +181,8 @@ Test file: `test/boom_looper/tools/container_test.exs`
 | `lib/boom_looper_web/channels/terminal_channel.ex` | `test/boom_looper_web/channels/terminal_channel_test.exs` |
 | `lib/boom_looper_web/components/log_viewer.ex` | `test/boom_looper_web/components/log_viewer_test.exs` |
 | `lib/boom_looper_web/controllers/output_controller.ex` | `test/boom_looper_web/controllers/output_controller_test.exs` |
+| `lib/boom_looper_web/live/connect_live.ex` | `test/boom_looper_web/live/connect_live_test.exs` |
+| `lib/boom_looper_web/live/system_live.ex` | `test/boom_looper_web/live/system_live_test.exs` |
 
 ## When to write tests
 
