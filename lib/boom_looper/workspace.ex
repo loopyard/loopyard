@@ -92,6 +92,14 @@ defmodule BoomLooper.Workspace do
     }
   end
 
+  @doc """
+  BoomLooper's home directory for user-level data (secrets, SSH keys, etc.).
+  Defaults to `~/.boomlooper`, overridable with `BOOMLOOPER_HOME` env var.
+  """
+  def home_dir do
+    System.get_env("BOOMLOOPER_HOME") || Path.join(System.user_home!(), ".boomlooper")
+  end
+
   @doc "Generate a workspace ID from a project directory path (for naming service containers)"
   def workspace_id(project_dir) do
     project_dir

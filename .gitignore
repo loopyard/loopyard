@@ -21,5 +21,8 @@
 # BoomLooper workspace (generated per-workspace files)
 .boomlooper/workspace/
 
+# BoomLooper home dir for test env
+.boomlooper_home/
+
 # OS
 .DS_Store

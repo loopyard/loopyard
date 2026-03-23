@@ -20,10 +20,10 @@ defmodule BoomLooper.SecretsTest do
   end
 
   describe "storage_path/0" do
-    test "returns path under ~/.boomlooper" do
+    test "returns path under BOOMLOOPER_HOME" do
       path = Secrets.storage_path()
-      assert String.ends_with?(path, ".boomlooper/secrets.json")
-      assert String.starts_with?(path, System.user_home!())
+      assert String.ends_with?(path, "secrets.json")
+      assert String.contains?(path, BoomLooper.Workspace.home_dir())
     end
   end
 

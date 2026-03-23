@@ -6,21 +6,14 @@ defmodule BoomLooper.SSHServerTest do
   @ssh_port 2223
 
   setup_all do
-    # Use tmp dir for host keys in tests (sandbox can't write to ~/.boomlooper)
-    host_dir = Path.join(System.tmp_dir!(), "boom-looper-ssh-host-#{:rand.uniform(100_000)}")
-    Application.put_env(:boom_looper, :ssh_host_key_dir, host_dir)
-
     {:ok, _pid} = BoomLooper.SSHServer.start_link(port: @ssh_port)
 
+    # Writable user_dir for the SSH client (known_hosts storage)
     user_dir = Path.join(System.tmp_dir!(), "boom-looper-ssh-client-#{:rand.uniform(100_000)}")
     File.mkdir_p!(user_dir)
     File.chmod!(user_dir, 0o700)
 
-    on_exit(fn ->
-      File.rm_rf!(user_dir)
-      File.rm_rf!(host_dir)
-      Application.delete_env(:boom_looper, :ssh_host_key_dir)
-    end)
+    on_exit(fn -> File.rm_rf!(user_dir) end)
 
     %{user_dir: user_dir}
   end

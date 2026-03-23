@@ -10,11 +10,11 @@ defmodule BoomLooper.Secrets do
   them pre-injected into containers as environment variables.
   """
 
-  @storage_dir Path.join(System.user_home!(), ".boomlooper")
+  defp storage_dir, do: BoomLooper.Workspace.home_dir()
   @storage_file "secrets.json"
 
   @doc "Returns the path to the secrets storage file"
-  def storage_path, do: Path.join(@storage_dir, @storage_file)
+  def storage_path, do: Path.join(storage_dir(), @storage_file)
 
   @doc "List all secret keys and names (not values)"
   def list do
@@ -89,7 +89,7 @@ defmodule BoomLooper.Secrets do
 
   defp write_store(store) do
     path = storage_path()
-    File.mkdir_p!(@storage_dir)
+    File.mkdir_p!(storage_dir())
     File.write!(path, Jason.encode!(store, pretty: true))
     :ok
   end
