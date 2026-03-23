@@ -8,6 +8,18 @@ A Phoenix LiveView app that lets a team share and interact with Claude Code agen
 
 All UI state is server-driven (assigns, PubSub). Never rely on client-side state.
 
+## How it works
+
+BoomLooper is a **Docker control plane** with **AI agents** wired into it.
+
+**The control plane:** Each project gets a Docker Compose stack — a workspace container (where agents exec commands), dev server containers (running the app), and stock services (postgres, redis, etc.). BoomLooper generates the Dockerfile and docker-compose.yml from a config file (`.boomlooper/repo/workspace.json`), manages the container lifecycle, monitors health, and reconnects to running containers across server restarts.
+
+**The agents:** Claude Code sessions run as GenServer processes. Each agent exec's into the workspace container to read/write code and run commands. Agents have MCP tools for controlling their infrastructure — setting the Dockerfile, adding services, rebuilding containers, running commands. The setup agent bootstraps a project from scratch by examining the codebase and writing the workspace config.
+
+**The multiplayer layer:** Everything is wired through PubSub. Chat messages, terminal I/O, service status changes, build output — all broadcast to every connected viewer. LiveViews subscribe and render. The terminal system supports both browser (xterm.js via Phoenix Channel) and SSH access to the same shared session. Multiple people can watch an agent work, type in the same terminal, or monitor services simultaneously.
+
+**The key insight:** agents don't get special access. They use the same `docker exec` path that the terminal console uses. The workspace config they write is the same config a human could edit. The MCP tools are just structured wrappers around the same Docker and file operations. This means anything an agent does is visible, reproducible, and debuggable by a human.
+
 ## Docs
 
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — System design, supervisor tree, container model, data flow
