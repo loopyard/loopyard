@@ -33,17 +33,30 @@ curl -X POST localhost:4000/system/reset/containers  # Kill containers only
 
 ## Code rules
 
-These rules exist because we learned them the hard way. Each one prevented a real bug.
+These rules exist because we learned them the hard way. Each one prevented a real bug. If you break one, you will ship a bug that wastes hours to debug.
 
-### Every feature needs tests
+### Every feature needs tests — no exceptions
 
-Write failing tests first, then implement. Not optional. See [docs/TESTING.md](docs/TESTING.md).
+Write a failing test first, then implement. Not optional. See [docs/TESTING.md](docs/TESTING.md).
 
-### Isolate logic, test the real path
+If you're fixing a bug, write a test that reproduces it BEFORE writing the fix. Run the test, watch it fail, then fix the code, then watch it pass. If you skip this, you have no proof the fix works. We've shipped "fixes" multiple times that didn't actually fix anything because the test wasn't written first.
 
-Extract logic into modules with clear boundaries. Don't bury behavior in LiveView private functions — if it has logic worth getting right, it belongs in its own module with its own tests.
+### Isolate logic into testable modules
 
-**Test the real path, not a mock of it.** If users hit a bug through the websocket → channel → GenServer → Port stack, the test must exercise that same stack. A unit test that passes on an isolated layer while the integration is broken is worse than no test — it gives false confidence.
+Don't bury behavior in LiveView private functions. If it has logic worth getting right, it belongs in its own module with its own tests. LiveViews should be thin — they handle events, delegate to modules, and render.
+
+**Examples of what to extract:**
+- `StreamBuffer` — streaming accumulation logic extracted from chat_live.ex private functions. 31 unit tests cover rolling window, upsert, restore, boundary conditions.
+- `Terminal.build_cmd/1` — command construction extracted as a public function so tests can validate the PTY setup without Docker.
+- `LogViewer` — rendering components extracted to `BoomLooperWeb.Components.LogViewer` with their own test file.
+
+**The pattern:** if you find yourself writing complex logic inside `defp` in a LiveView, stop. Extract it. Test it. Wire the LiveView to call it.
+
+### Test the real path, not a mock of it
+
+If users hit a bug through the websocket → channel → GenServer → Port stack, the test must exercise that same stack. A unit test that passes on an isolated layer while the integration is broken is worse than no test — it gives false confidence.
+
+**We learned this the hard way:** Terminal unit tests passed (PTY echo was fine in isolation) while users saw double-echo in the browser. The bug was a PubSub topic collision between the Terminal output topic and the Phoenix channel topic — only visible when the full websocket stack was exercised. We found it by writing `terminal_integration_test.exs` that connects via the channel, sends input, and asserts output appears exactly once.
 
 Concretely:
 - **Inject dependencies** so tests can substitute local processes for Docker containers (e.g. Terminal accepts a `cmd` option so tests use a local shell instead of `docker exec`)
@@ -57,7 +70,25 @@ Never write directly to ETS from outside the owning GenServer. Use `ChatAgent.ap
 
 ### Never modify shared state in assigns directly
 
-If other viewers should see a change, it must go through GenServer → PubSub → all LiveViews. Never update `messages`, `agents`, `service_statuses`, or any shared data in socket assigns directly from a `handle_event`. Call the GenServer and let the PubSub broadcast update all viewers. Local assigns are only for per-viewer UI state (which tab is active, whether a rename input is open). We learned this the hard way: optimistic local adds broke multiplayer because other viewers never saw them.
+If other viewers should see a change, it must go through GenServer → PubSub → all LiveViews. Never update `messages`, `agents`, `service_statuses`, or any shared data in socket assigns directly from a `handle_event`. Call the GenServer and let the PubSub broadcast update all viewers.
+
+Local assigns are only for per-viewer UI state (which tab is active, whether a rename input is open).
+
+**The bug this prevents:** we had optimistic local message adds — the sender's LiveView added the user message directly to assigns, and the PubSub handler skipped `:user` role messages to avoid duplication. Result: other viewers never saw what the user typed. The fix: remove all optimistic adds, let every message flow through PubSub.
+
+### PubSub topics must not collide with channel topics
+
+Phoenix's channel transport subscribes to the channel topic string internally. If your GenServer broadcasts on the SAME topic string, the transport receives both the raw broadcast AND the channel's push — doubling every message. Use distinct topic strings: `"terminal_output:#{id}"` for GenServer broadcasts vs `"terminal:#{id}"` for the channel topic.
+
+### Multiplayer is the default, not a feature
+
+Every new feature must work with multiple viewers. Before shipping:
+1. Can two browser tabs see the same state?
+2. If one tab makes a change, does the other tab update?
+3. If someone joins late, do they see the current state?
+4. If someone clears/resets, does everyone see it?
+
+This applies to chat messages, terminal sessions, service statuses, build output — everything.
 
 ### No side effects in LiveView mount or handle_params
 
@@ -79,7 +110,7 @@ Views read from ETS/GenServers. They never create or modify infrastructure state
 
 ### Streaming sync
 
-On page load, initialize `build_log` from existing `:build` message content. TailScroll hook auto-scrolls on mount and update.
+Use `StreamBuffer` for all "show existing content + stream new data" patterns. It handles rolling byte windows, message upsert, and page-reload restoration. Don't reinvent this in LiveView assigns.
 
 ### Operations must be idempotent
 
@@ -93,6 +124,12 @@ Never `docker exec apt-get`. It doesn't persist across container restarts.
 
 ChatAgent checks `session_alive?` before every send. Restarts silently. No auto-replay (causes crash loops).
 
+### Keep it simple
+
+Don't add infrastructure users have to install, configure, or manage. If a feature requires `sudo`, system packages, or manual setup steps, it's too complex. The app should work out of the box with `mix phx.server`.
+
+Don't add toggles for things that should just be on. Don't add config files for things that have sensible defaults. Don't add "advanced" sections that hide complexity — either the feature is simple enough to be always-on, or it's not ready.
+
 ## Terminology
 
 - **Project** = a git repo. Managed by `ProjectRegistry`.
@@ -100,6 +137,7 @@ ChatAgent checks `session_alive?` before every send. Restarts silently. No auto-
 - **WorkspaceSupervisor** = top-level DynamicSupervisor for all workspace subtrees.
 - **WorkspaceGroup** = per-workspace Supervisor (ServiceManager + AgentSupervisor + ContainerMonitor).
 - Config lives in `.boomlooper/repo/` (tracked in git). Generated files in `.boomlooper/workspace/` (gitignored).
+- User-level data in `~/.boomlooper/` (overridable with `BOOMLOOPER_HOME` env var).
 - URLs: `/projects/:project_id/workspaces/:workspace_id/agents/:id`, `/messages/:agent_id/:msg_id`
 
 ## Stack
@@ -110,4 +148,3 @@ Elixir 1.19 / OTP 28, Phoenix 1.7 / LiveView 1.1, Claude Code SDK (`claude_code`
 
 - ETS state lost on server restart (containers persist, projects/agents don't)
 - Agent message history grows unbounded (future: SQLite)
-- Secrets tests fail in sandbox (filesystem permissions)
