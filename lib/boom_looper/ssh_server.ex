@@ -25,8 +25,7 @@ defmodule BoomLooper.SSHServer do
       shell: &start_shell/2,
       no_auth_needed: false,
       auth_methods: ~c"password",
-      idle_time: :infinity,
-      disconnectfun: fn _reason -> :ok end
+      idle_time: :infinity
     ]
 
     case :ssh.daemon(port, ssh_opts) do
@@ -50,14 +49,14 @@ defmodule BoomLooper.SSHServer do
     Plug.Crypto.secure_compare(to_string(password), expected) && user_valid?(to_string(user))
   end
 
-  defp user_valid?(container_name) do
-    # Container name must be non-empty. We don't validate it exists here —
-    # Terminal.get_or_start will fail if the container isn't running.
-    container_name != ""
-  end
+  defp user_valid?(container_name), do: container_name != ""
 
   # --- Shell ---
 
+  # The shell callback is called by Erlang SSH. It must return a pid.
+  # The process gets stdin/stdout wired through the Erlang IO system
+  # (group leader). We read stdin in a Task and write terminal output
+  # to stdout via IO.write.
   defp start_shell(user, _peer) do
     container = to_string(user)
     spawn(fn -> run_shell(container) end)
@@ -66,53 +65,57 @@ defmodule BoomLooper.SSHServer do
   defp run_shell(container) do
     case BoomLooper.Terminal.get_or_start(container) do
       {:ok, _pid} ->
-        # Subscribe to terminal output
         Phoenix.PubSub.subscribe(BoomLooper.PubSub, BoomLooper.Terminal.topic(container))
 
         # Send buffer for late joiners
         buffer = BoomLooper.Terminal.get_buffer(container)
-        if buffer != "", do: send_to_ssh(buffer)
+        if buffer != "", do: IO.write(buffer)
 
-        # I/O loop
-        ssh_loop(container)
+        # Read stdin in a separate process — IO.read blocks
+        me = self()
+        stdin_reader = spawn_link(fn -> stdin_loop(me) end)
+
+        # Main loop: forward terminal output to stdout, stdin to terminal
+        shell_loop(container, stdin_reader)
 
       {:error, reason} ->
-        send_to_ssh("Error: container #{container} not available (#{inspect(reason)})\r\n")
+        IO.write("Error: container #{container} not available (#{inspect(reason)})\r\n")
     end
   end
 
-  defp ssh_loop(container) do
+  defp shell_loop(container, stdin_reader) do
     receive do
       {:terminal_output, data} ->
-        send_to_ssh(data)
-        ssh_loop(container)
+        IO.write(data)
+        shell_loop(container, stdin_reader)
 
       :terminal_clear ->
-        # Send ANSI clear screen
-        send_to_ssh("\e[2J\e[H")
-        ssh_loop(container)
-
-      {:ssh_cm, _conn, {:data, _channel, _type, data}} ->
-        BoomLooper.Terminal.send_input(container, data)
-        ssh_loop(container)
-
-      {:ssh_cm, _conn, {:eof, _channel}} ->
-        :ok
-
-      {:ssh_cm, _conn, {:closed, _channel}} ->
-        :ok
+        IO.write("\e[2J\e[H")
+        shell_loop(container, stdin_reader)
 
       {:terminal_exit, _code} ->
-        send_to_ssh("\r\nTerminal session ended.\r\n")
+        IO.write("\r\nTerminal session ended.\r\n")
+
+      {:stdin, data} ->
+        BoomLooper.Terminal.send_input(container, data)
+        shell_loop(container, stdin_reader)
+
+      {:stdin_closed} ->
+        :ok
 
       _ ->
-        ssh_loop(container)
+        shell_loop(container, stdin_reader)
     end
   end
 
-  defp send_to_ssh(data) do
-    # In an SSH shell process, stdout goes to the group leader
-    IO.write(data)
+  defp stdin_loop(parent) do
+    case IO.read(:stdio, 1) do
+      {:error, _} -> send(parent, {:stdin_closed})
+      :eof -> send(parent, {:stdin_closed})
+      data ->
+        send(parent, {:stdin, data})
+        stdin_loop(parent)
+    end
   end
 
   # --- Host keys ---
