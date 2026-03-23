@@ -241,14 +241,9 @@ defmodule BoomLooperWeb.ChatLive do
     message = String.trim(message)
 
     if message != "" && socket.assigns.selected_id do
-      # Optimistically add user message so it renders immediately
-      user_msg = %{id: :crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false), role: :user, content: message, timestamp: DateTime.utc_now()}
-
-      socket =
-        socket
-        |> assign(:messages, socket.assigns.messages ++ [user_msg])
-        |> push_event("scroll_bottom", %{})
-
+      # Don't add optimistically — let PubSub broadcast handle it for ALL viewers.
+      # This ensures multiplayer: every viewer (including the sender) sees the
+      # message via the same path.
       ChatAgent.send_message(socket.assigns.selected_id, message)
       {:noreply, socket}
     else
@@ -458,11 +453,6 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   @impl true
-  def handle_info({:chat_message, id, %{role: :user}}, socket) when id == socket.assigns.selected_id do
-    # User messages are rendered optimistically in handle_event("send_message") — skip the PubSub echo
-    {:noreply, socket}
-  end
-
   def handle_info({:chat_message, id, msg}, socket) when id == socket.assigns.selected_id do
     socket = if msg.role == :assistant, do: assign(socket, :streaming_text, ""), else: socket
 
