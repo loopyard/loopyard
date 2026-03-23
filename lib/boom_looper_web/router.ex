@@ -30,6 +30,7 @@ defmodule BoomLooperWeb.Router do
     live "/projects/:project_id/workspaces/:workspace_id/services/:service_name/console", ChatLive, :console
 
     live "/system", SystemLive, :index
+    live "/remote", WireGuardLive, :index
 
     live "/messages/:agent_id/:msg_id", MessageLive, :show
     get "/messages/:agent_id/:msg_id/raw", OutputController, :show

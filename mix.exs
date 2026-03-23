@@ -38,7 +38,8 @@ defmodule BoomLooper.MixProject do
       {:bandit, "~> 1.6"},
       {:claude_code, "~> 0.32"},
       {:dotenvy, "~> 0.9"},
-      {:lazy_html, ">= 0.1.0", only: :test}
+      {:lazy_html, ">= 0.1.0", only: :test},
+      {:eqrcode, "~> 0.1.10"}
     ]
   end
 
