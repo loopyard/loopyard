@@ -55,6 +55,10 @@ Concretely:
 
 Never write directly to ETS from outside the owning GenServer. Use `ChatAgent.append_message_ets/2` and `ChatAgent.update_message/3` which route through the GenServer via casts. Direct ETS writes get overwritten.
 
+### Never modify shared state in assigns directly
+
+If other viewers should see a change, it must go through GenServer → PubSub → all LiveViews. Never update `messages`, `agents`, `service_statuses`, or any shared data in socket assigns directly from a `handle_event`. Call the GenServer and let the PubSub broadcast update all viewers. Local assigns are only for per-viewer UI state (which tab is active, whether a rename input is open). We learned this the hard way: optimistic local adds broke multiplayer because other viewers never saw them.
+
 ### No side effects in LiveView mount or handle_params
 
 Mount is **read-only**. Never start services, create containers, or modify external state on mount.
