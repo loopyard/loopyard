@@ -1550,11 +1550,32 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   defp console_view(assigns) do
+    ssh_cmd = if assigns.container do
+      secret = Application.get_env(:boom_looper, :launch_secret, "")
+      port = BoomLooper.SSHServer.port()
+      "sshpass -p '#{secret}' ssh -o StrictHostKeyChecking=no -p #{port} #{assigns.container}@localhost"
+    end
+
+    assigns = assign(assigns, :ssh_cmd, ssh_cmd)
+
     ~H"""
     <div class="flex-1 flex flex-col min-h-0">
       <div class="flex-none border-b border-zinc-200 dark:border-zinc-700/80 px-4 md:px-5 h-12 flex items-center gap-3">
         <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{@service_name}</span>
         <span class="text-xs text-zinc-400 dark:text-zinc-500">console</span>
+        <div :if={@ssh_cmd} class="ml-auto">
+          <button id="copy-ssh" phx-hook="CopySource" data-source={@ssh_cmd}
+            class="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-300 transition-colors font-mono">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3.5 h-3.5 copy-icon">
+              <path d="M5.5 3.5A1.5 1.5 0 0 1 7 2h2.879a1.5 1.5 0 0 1 1.06.44l2.122 2.12a1.5 1.5 0 0 1 .439 1.061V9.5A1.5 1.5 0 0 1 12 11V8.621a3 3 0 0 0-.879-2.121L9 4.379A3 3 0 0 0 6.879 3.5H5.5Z" />
+              <path d="M4 5a1.5 1.5 0 0 0-1.5 1.5v6A1.5 1.5 0 0 0 4 14h5a1.5 1.5 0 0 0 1.5-1.5V8.621a1.5 1.5 0 0 0-.44-1.06L7.94 5.439A1.5 1.5 0 0 0 6.878 5H4Z" />
+            </svg>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3.5 h-3.5 check-icon hidden text-green-400">
+              <path fill-rule="evenodd" d="M12.416 3.376a.75.75 0 0 1 .208 1.04l-5 7.5a.75.75 0 0 1-1.154.114l-3-3a.75.75 0 0 1 1.06-1.06l2.353 2.353 4.493-6.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd" />
+            </svg>
+            SSH
+          </button>
+        </div>
       </div>
       <div
         :if={@container}
