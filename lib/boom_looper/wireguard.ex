@@ -185,17 +185,39 @@ defmodule BoomLooper.WireGuard do
   end
 
   defp generate_keypair do
-    case System.cmd("wg", ["genkey"], stderr_to_stdout: true) do
-      {private_key, 0} ->
-        private_key = String.trim(private_key)
-        case System.cmd("wg", ["pubkey"], input: private_key, stderr_to_stdout: true) do
-          {public_key, 0} -> {:ok, private_key, String.trim(public_key)}
-          {err, _} -> {:error, "wg pubkey failed: #{err}"}
-        end
-      {err, _} -> {:error, "wg genkey failed: #{err}"}
-    end
+    wg = System.find_executable("wg")
+    unless wg, do: throw("wg not found")
+
+    port = Port.open({:spawn_executable, wg}, [:binary, :exit_status, {:args, ["genkey"]}])
+    private_key = collect_port(port) |> String.trim()
+
+    # Pipe private key into wg pubkey via sh -c echo
+    sh = System.find_executable("sh")
+    port = Port.open({:spawn_executable, sh}, [
+      :binary, :exit_status,
+      {:args, ["-c", "echo '#{private_key}' | #{wg} pubkey"]}
+    ])
+    public_key = collect_port(port) |> String.trim()
+
+    {:ok, private_key, public_key}
+  catch
+    msg -> {:error, msg}
   rescue
     e -> {:error, "wg not available: #{Exception.message(e)}"}
+  end
+
+  defp collect_port(port) do
+    collect_port_loop(port, "")
+  end
+
+  defp collect_port_loop(port, acc) do
+    receive do
+      {^port, {:data, data}} -> collect_port_loop(port, acc <> data)
+      {^port, {:exit_status, 0}} -> acc
+      {^port, {:exit_status, code}} -> throw("wg exited with code #{code}")
+    after
+      5_000 -> throw("wg timed out")
+    end
   end
 
   defp next_client_ip(clients) do
