@@ -1551,8 +1551,7 @@ defmodule BoomLooperWeb.ChatLive do
 
   defp console_view(assigns) do
     ssh_cmd = if assigns.container do
-      port = BoomLooper.SSHServer.port()
-      "ssh -p #{port} #{assigns.container}@localhost"
+      "ssh -p #{BoomLooper.SSHServer.port()} #{assigns.container}@localhost"
     end
 
     assigns = assign(assigns, :ssh_cmd, ssh_cmd)

@@ -1,13 +1,12 @@
 defmodule BoomLooper.SSHServer do
   @moduledoc """
-  SSH server that provides terminal access to Docker containers.
-  Username is the container name, password is the launch secret.
+  SSH server for terminal access to Docker containers.
+  Username is the container name. No password.
+
+    ssh -p 2222 container-name@localhost
 
   Multiplayer — SSH sessions share the same Terminal GenServer as
   browser console tabs. All viewers see the same terminal.
-
-  Start: automatically started in application.ex
-  Connect: ssh container-name@localhost -p 2222
   """
   require Logger
 
@@ -19,15 +18,10 @@ defmodule BoomLooper.SSHServer do
 
     :ssh.start()
 
-    user_dir = ssh_user_dir()
-
     ssh_opts = [
       system_dir: String.to_charlist(system_dir),
-      user_dir: String.to_charlist(user_dir),
-      pwdfun: &check_password/4,
       shell: &start_shell/2,
-      no_auth_needed: false,
-      auth_methods: ~c"publickey,password",
+      no_auth_needed: true,
       idle_time: :infinity
     ]
 
@@ -40,26 +34,17 @@ defmodule BoomLooper.SSHServer do
         Logger.error("[SSHServer] Failed to start: #{inspect(reason)}")
         {:error, reason}
     end
+  rescue
+    e ->
+      Logger.error("[SSHServer] Failed to start: #{Exception.message(e)}")
+      {:error, Exception.message(e)}
   end
 
   @doc "The SSH port number."
   def port, do: @default_port
 
-  # --- Auth ---
-
-  defp check_password(user, password, _peer_address, _state) do
-    expected = Application.get_env(:boom_looper, :launch_secret, "")
-    Plug.Crypto.secure_compare(to_string(password), expected) && user_valid?(to_string(user))
-  end
-
-  defp user_valid?(container_name), do: container_name != ""
-
   # --- Shell ---
 
-  # The shell callback is called by Erlang SSH. It must return a pid.
-  # The process gets stdin/stdout wired through the Erlang IO system
-  # (group leader). We read stdin in a Task and write terminal output
-  # to stdout via IO.write.
   defp start_shell(user, _peer) do
     container = to_string(user)
     spawn(fn -> run_shell(container) end)
@@ -70,44 +55,41 @@ defmodule BoomLooper.SSHServer do
       {:ok, _pid} ->
         Phoenix.PubSub.subscribe(BoomLooper.PubSub, BoomLooper.Terminal.topic(container))
 
-        # Send buffer for late joiners
         buffer = BoomLooper.Terminal.get_buffer(container)
         if buffer != "", do: IO.write(buffer)
 
-        # Read stdin in a separate process — IO.read blocks
         me = self()
-        stdin_reader = spawn_link(fn -> stdin_loop(me) end)
+        _stdin_reader = spawn_link(fn -> stdin_loop(me) end)
 
-        # Main loop: forward terminal output to stdout, stdin to terminal
-        shell_loop(container, stdin_reader)
+        shell_loop(container)
 
       {:error, reason} ->
         IO.write("Error: container #{container} not available (#{inspect(reason)})\r\n")
     end
   end
 
-  defp shell_loop(container, stdin_reader) do
+  defp shell_loop(container) do
     receive do
       {:terminal_output, data} ->
         IO.write(data)
-        shell_loop(container, stdin_reader)
+        shell_loop(container)
 
       :terminal_clear ->
         IO.write("\e[2J\e[H")
-        shell_loop(container, stdin_reader)
+        shell_loop(container)
 
       {:terminal_exit, _code} ->
         IO.write("\r\nTerminal session ended.\r\n")
 
       {:stdin, data} ->
         BoomLooper.Terminal.send_input(container, data)
-        shell_loop(container, stdin_reader)
+        shell_loop(container)
 
       {:stdin_closed} ->
         :ok
 
       _ ->
-        shell_loop(container, stdin_reader)
+        shell_loop(container)
     end
   end
 
@@ -124,7 +106,8 @@ defmodule BoomLooper.SSHServer do
   # --- Host keys ---
 
   defp ssh_host_key_dir do
-    dir = Path.join([System.user_home!(), ".boomlooper", "ssh"])
+    dir = Application.get_env(:boom_looper, :ssh_host_key_dir,
+      Path.join([System.user_home!(), ".boomlooper", "ssh"]))
 
     unless File.exists?(Path.join(dir, "ssh_host_rsa_key")) do
       File.mkdir_p!(dir)
@@ -142,31 +125,6 @@ defmodule BoomLooper.SSHServer do
     path = Path.join(dir, "ssh_host_rsa_key")
     File.write!(path, pem)
     File.chmod!(path, 0o600)
-  end
-
-  defp ssh_user_dir do
-    dir = Path.join([System.user_home!(), ".boomlooper", "ssh", "user"])
-    File.mkdir_p!(dir)
-    File.chmod!(dir, 0o700)
-
-    # Copy the user's authorized_keys so their SSH keys just work
-    src = Path.join(System.user_home!(), ".ssh/authorized_keys")
-    dest = Path.join(dir, "authorized_keys")
-
-    cond do
-      File.exists?(src) ->
-        File.cp!(src, dest)
-
-      !File.exists?(dest) ->
-        # No authorized_keys — collect all .pub keys from ~/.ssh
-        pub_keys = Path.wildcard(Path.join(System.user_home!(), ".ssh/*.pub"))
-        if pub_keys != [] do
-          content = Enum.map_join(pub_keys, "\n", &File.read!/1)
-          File.write!(dest, content)
-        end
-    end
-
-    dir
   end
 
   defp generate_host_key(dir, :ecdsa) do

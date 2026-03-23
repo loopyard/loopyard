@@ -1,6 +1,7 @@
 defmodule BoomLooper.Application do
   @moduledoc false
   use Application
+  require Logger
 
   @impl true
   def start(_type, _args) do
@@ -29,7 +30,10 @@ defmodule BoomLooper.Application do
     result = Supervisor.start_link(children, opts)
 
     # Start SSH server (not a supervised child — :ssh.daemon manages its own process)
-    BoomLooper.SSHServer.start_link()
+    case BoomLooper.SSHServer.start_link() do
+      {:ok, _} -> :ok
+      {:error, reason} -> Logger.warning("[SSHServer] Not started: #{inspect(reason)}")
+    end
 
     port = Application.get_env(:boom_looper, BoomLooperWeb.Endpoint)[:http][:port] || 4000
     ssh_port = BoomLooper.SSHServer.port()
