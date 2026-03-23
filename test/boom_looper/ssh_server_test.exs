@@ -2,6 +2,7 @@ defmodule BoomLooper.SSHServerTest do
   use ExUnit.Case, async: false
 
   alias BoomLooper.Terminal
+  alias BoomLooper.SSHServer.Channel
 
   @ssh_port 2223
 
@@ -17,6 +18,8 @@ defmodule BoomLooper.SSHServerTest do
     %{user_dir: user_dir}
   end
 
+  # --- Helpers ---
+
   defp connect(user, user_dir) do
     :ssh.connect(~c"localhost", @ssh_port, [
       user: String.to_charlist(user),
@@ -29,9 +32,9 @@ defmodule BoomLooper.SSHServerTest do
   defp open_shell(conn) do
     {:ok, chan} = :ssh_connection.session_channel(conn, 5_000)
     result = :ssh_connection.ptty_alloc(conn, chan, [])
-    assert result in [:ok, :success], "ptty_alloc failed: #{inspect(result)}"
+    assert result in [:ok, :success]
     result = :ssh_connection.shell(conn, chan)
-    assert result in [:ok, :success], "shell failed: #{inspect(result)}"
+    assert result in [:ok, :success]
     chan
   end
 
@@ -62,6 +65,69 @@ defmodule BoomLooper.SSHServerTest do
     end
   end
 
+  defp drain_pubsub do
+    receive do
+      {:terminal_output, _} -> drain_pubsub()
+      :terminal_clear -> drain_pubsub()
+    after
+      200 -> :ok
+    end
+  end
+
+  defp collect_pubsub(timeout), do: pubsub_loop("", timeout)
+
+  defp pubsub_loop(acc, remaining) when remaining <= 0, do: acc
+  defp pubsub_loop(acc, remaining) do
+    start = System.monotonic_time(:millisecond)
+    receive do
+      {:terminal_output, data} ->
+        pubsub_loop(acc <> data, remaining - (System.monotonic_time(:millisecond) - start))
+    after
+      remaining -> acc
+    end
+  end
+
+  defp drain_ssh(conn, chan) do
+    receive do
+      {:ssh_cm, ^conn, {:data, ^chan, _, _}} -> drain_ssh(conn, chan)
+    after
+      200 -> :ok
+    end
+  end
+
+  defp collect_ssh(conn, chan, timeout), do: ssh_loop(conn, chan, "", timeout)
+
+  defp ssh_loop(_conn, _chan, acc, remaining) when remaining <= 0, do: acc
+  defp ssh_loop(conn, chan, acc, remaining) do
+    start = System.monotonic_time(:millisecond)
+    receive do
+      {:ssh_cm, ^conn, {:data, ^chan, _, data}} ->
+        ssh_loop(conn, chan, acc <> to_string(data), remaining - (System.monotonic_time(:millisecond) - start))
+    after
+      remaining -> acc
+    end
+  end
+
+  # --- Unit tests (no SSH connection needed) ---
+
+  describe "Channel.clear_signal?/1" do
+    test "detects Ctrl+L" do
+      assert Channel.clear_signal?(<<12>>)
+    end
+
+    test "rejects regular characters" do
+      refute Channel.clear_signal?("a")
+      refute Channel.clear_signal?("ls\n")
+      refute Channel.clear_signal?(<<13>>)
+    end
+
+    test "rejects multi-byte data containing Ctrl+L" do
+      refute Channel.clear_signal?(<<12, 13>>)
+    end
+  end
+
+  # --- Integration tests ---
+
   describe "connection" do
     test "connects with container name as username", %{user_dir: user_dir} do
       container = "ssh-conn-#{:rand.uniform(100_000)}"
@@ -88,10 +154,8 @@ defmodule BoomLooper.SSHServerTest do
       Process.sleep(300)
       drain_pubsub()
 
-      # Send a single character — NOT followed by newline
       :ok = :ssh_connection.send(conn, chan, "x")
 
-      # Should arrive at Terminal immediately
       output = collect_pubsub(1_500)
       assert output =~ "x", "Single char not received. SSH is line-buffering."
 
@@ -100,7 +164,7 @@ defmodule BoomLooper.SSHServerTest do
     end
 
     @tag timeout: 10_000
-    test "SSH receives Terminal output without line buffering", %{user_dir: user_dir} do
+    test "SSH receives Terminal output", %{user_dir: user_dir} do
       container = "ssh-recv-#{:rand.uniform(100_000)}"
       {:ok, terminal_pid} = start_terminal(container)
 
@@ -122,44 +186,40 @@ defmodule BoomLooper.SSHServerTest do
 
   describe "multiplayer" do
     @tag timeout: 10_000
-    test "SSH and web see each other's input in real-time", %{user_dir: user_dir} do
+    test "SSH and web see each other's input", %{user_dir: user_dir} do
       container = "ssh-mp-#{:rand.uniform(100_000)}"
       {:ok, terminal_pid} = start_terminal(container)
 
-      # Web viewer (PubSub)
       Phoenix.PubSub.subscribe(BoomLooper.PubSub, Terminal.topic(container))
       drain_pubsub()
 
-      # SSH viewer
       {:ok, conn} = connect(container, user_dir)
       chan = open_shell(conn)
       Process.sleep(300)
       drain_pubsub()
       drain_ssh(conn, chan)
 
-      # SSH user types
+      # SSH → web
       marker = "MP-#{:rand.uniform(1_000_000)}"
       :ok = :ssh_connection.send(conn, chan, "echo #{marker}\n")
 
-      # Web viewer sees it
       web_output = collect_pubsub(2_000)
-      assert web_output =~ marker, "Web didn't see SSH input. Got: #{inspect(web_output)}"
+      assert web_output =~ marker, "Web didn't see SSH input."
 
-      # Web user types
+      # Web → SSH
       marker2 = "WEB-#{:rand.uniform(1_000_000)}"
       drain_ssh(conn, chan)
       GenServer.cast(terminal_pid, {:input, "echo #{marker2}\n"})
 
-      # SSH sees it
       ssh_output = collect_ssh(conn, chan, 2_000)
-      assert ssh_output =~ marker2, "SSH didn't see web input. Got: #{inspect(ssh_output)}"
+      assert ssh_output =~ marker2, "SSH didn't see web input."
 
       :ssh.close(conn)
       stop_terminal(terminal_pid)
     end
 
     @tag timeout: 10_000
-    test "clear from web sends ANSI clear to SSH", %{user_dir: user_dir} do
+    test "clear propagates from web to SSH", %{user_dir: user_dir} do
       container = "ssh-clr-#{:rand.uniform(100_000)}"
       {:ok, terminal_pid} = start_terminal(container)
 
@@ -171,63 +231,10 @@ defmodule BoomLooper.SSHServerTest do
       Terminal.clear_buffer(container)
 
       output = collect_ssh(conn, chan, 1_000)
-      assert output =~ "\e[2J", "SSH didn't receive clear. Got: #{inspect(output)}"
+      assert output =~ "\e[2J", "SSH didn't receive clear."
 
       :ssh.close(conn)
       stop_terminal(terminal_pid)
-    end
-  end
-
-  # --- PubSub helpers ---
-
-  defp drain_pubsub do
-    receive do
-      {:terminal_output, _} -> drain_pubsub()
-      :terminal_clear -> drain_pubsub()
-    after
-      200 -> :ok
-    end
-  end
-
-  defp collect_pubsub(timeout) do
-    pubsub_loop("", timeout)
-  end
-
-  defp pubsub_loop(acc, remaining) when remaining <= 0, do: acc
-  defp pubsub_loop(acc, remaining) do
-    start = System.monotonic_time(:millisecond)
-    receive do
-      {:terminal_output, data} ->
-        elapsed = System.monotonic_time(:millisecond) - start
-        pubsub_loop(acc <> data, remaining - elapsed)
-    after
-      remaining -> acc
-    end
-  end
-
-  # --- SSH helpers ---
-
-  defp drain_ssh(conn, chan) do
-    receive do
-      {:ssh_cm, ^conn, {:data, ^chan, _, _}} -> drain_ssh(conn, chan)
-    after
-      200 -> :ok
-    end
-  end
-
-  defp collect_ssh(conn, chan, timeout) do
-    ssh_loop(conn, chan, "", timeout)
-  end
-
-  defp ssh_loop(_conn, _chan, acc, remaining) when remaining <= 0, do: acc
-  defp ssh_loop(conn, chan, acc, remaining) do
-    start = System.monotonic_time(:millisecond)
-    receive do
-      {:ssh_cm, ^conn, {:data, ^chan, _, data}} ->
-        elapsed = System.monotonic_time(:millisecond) - start
-        ssh_loop(conn, chan, acc <> to_string(data), remaining - elapsed)
-    after
-      remaining -> acc
     end
   end
 end
