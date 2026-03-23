@@ -1551,9 +1551,8 @@ defmodule BoomLooperWeb.ChatLive do
 
   defp console_view(assigns) do
     ssh_cmd = if assigns.container do
-      secret = Application.get_env(:boom_looper, :launch_secret, "")
       port = BoomLooper.SSHServer.port()
-      "sshpass -p '#{secret}' ssh -o StrictHostKeyChecking=no -p #{port} #{assigns.container}@localhost"
+      "ssh -p #{port} #{assigns.container}@localhost"
     end
 
     assigns = assign(assigns, :ssh_cmd, ssh_cmd)

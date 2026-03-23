@@ -19,12 +19,15 @@ defmodule BoomLooper.SSHServer do
 
     :ssh.start()
 
+    user_dir = ssh_user_dir()
+
     ssh_opts = [
       system_dir: String.to_charlist(system_dir),
+      user_dir: String.to_charlist(user_dir),
       pwdfun: &check_password/4,
       shell: &start_shell/2,
       no_auth_needed: false,
-      auth_methods: ~c"password",
+      auth_methods: ~c"publickey,password",
       idle_time: :infinity
     ]
 
@@ -139,6 +142,31 @@ defmodule BoomLooper.SSHServer do
     path = Path.join(dir, "ssh_host_rsa_key")
     File.write!(path, pem)
     File.chmod!(path, 0o600)
+  end
+
+  defp ssh_user_dir do
+    dir = Path.join([System.user_home!(), ".boomlooper", "ssh", "user"])
+    File.mkdir_p!(dir)
+    File.chmod!(dir, 0o700)
+
+    # Copy the user's authorized_keys so their SSH keys just work
+    src = Path.join(System.user_home!(), ".ssh/authorized_keys")
+    dest = Path.join(dir, "authorized_keys")
+
+    cond do
+      File.exists?(src) ->
+        File.cp!(src, dest)
+
+      !File.exists?(dest) ->
+        # No authorized_keys — collect all .pub keys from ~/.ssh
+        pub_keys = Path.wildcard(Path.join(System.user_home!(), ".ssh/*.pub"))
+        if pub_keys != [] do
+          content = Enum.map_join(pub_keys, "\n", &File.read!/1)
+          File.write!(dest, content)
+        end
+    end
+
+    dir
   end
 
   defp generate_host_key(dir, :ecdsa) do
