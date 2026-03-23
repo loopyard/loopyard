@@ -123,6 +123,12 @@ defmodule BoomLooper.SSHServer.Channel do
   # Client sends data (keystrokes) — raw, byte by byte
   def handle_ssh_msg({:ssh_cm, _connection, {:data, _channel_id, _type, data}}, state) do
     if state.container do
+      # Ctrl+L (\x0c) clears the screen — also clear the server buffer
+      # so late joiners don't see stale output (same as web Ctrl+L)
+      if data == <<12>> do
+        Terminal.clear_buffer(state.container)
+      end
+
       Terminal.send_input(state.container, data)
     end
     {:ok, state}
