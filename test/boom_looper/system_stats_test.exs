@@ -4,6 +4,8 @@ defmodule BoomLooper.SystemStatsTest do
   alias BoomLooper.SystemStats
 
   describe "host_stats" do
+    # host_stats calls vm_stat (macOS only)
+    @tag :macos
     test "returns CPU, memory, disk, and uptime" do
       stats = SystemStats.host_stats()
       assert is_map(stats.cpu)

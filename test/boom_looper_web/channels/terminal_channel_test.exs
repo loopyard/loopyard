@@ -1,7 +1,6 @@
 defmodule BoomLooperWeb.TerminalChannelTest do
   use BoomLooperWeb.ChannelCase
 
-  alias BoomLooper.Terminal
   alias BoomLooperWeb.TerminalChannel
 
   describe "join" do

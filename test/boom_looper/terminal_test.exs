@@ -5,7 +5,7 @@ defmodule BoomLooper.TerminalTest do
 
   describe "topic/1" do
     test "returns PubSub topic for a container" do
-      assert Terminal.topic("my-container") == "terminal:my-container"
+      assert Terminal.topic("my-container") == "terminal_output:my-container"
     end
   end
 
