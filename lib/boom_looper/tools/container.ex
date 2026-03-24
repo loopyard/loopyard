@@ -110,7 +110,7 @@ defmodule BoomLooper.Tools.Container do
     end
   end
 
-  tool :logs, "View container logs. Pass 'service' to see a specific service's logs (e.g. 'dev', 'postgres')." do
+  tool :logs, "View container logs (works on running AND stopped/crashed containers). Pass 'service' to see a specific service's logs (e.g. 'dev', 'postgres'). Use service_containers first to see what's available." do
     field :agent_id, :string, required: true
     field :service, :string, required: false, description: "Service name to get logs for (e.g. 'dev', 'postgres', 'redis')"
     field :lines, :integer, required: false
@@ -128,11 +128,42 @@ defmodule BoomLooper.Tools.Container do
     end
   end
 
+  tool :service_containers, "List all containers for this workspace with their status. Shows running and stopped/crashed containers." do
+    field :agent_id, :string, required: true
+
+    def execute(%{agent_id: agent_id}) do
+      BoomLooper.Tools.Container.do_service_containers(agent_id)
+    end
+  end
+
   tool :ports, "Show all listening ports in the container" do
     field :agent_id, :string, required: true
 
     def execute(%{agent_id: agent_id}) do
       BoomLooper.Tools.Container.do_ports(agent_id)
+    end
+  end
+
+  def do_service_containers(agent_id) do
+    case BoomLooper.ChatAgent.get_state(agent_id) do
+      %{bind_mount: bm} when is_binary(bm) ->
+        workspace_id = BoomLooper.Workspace.workspace_id(bm)
+        prefix = "bl-#{workspace_id}"
+
+        case Docker.docker(["ps", "-a", "--filter", "name=#{prefix}",
+                            "--format", "{{.Names}}\t{{.Status}}\t{{.Ports}}"]) do
+          {:ok, ""} ->
+            {:ok, "No containers found for this workspace."}
+
+          {:ok, output} ->
+            {:ok, output}
+
+          {:error, reason} ->
+            {:error, "Failed to list containers: #{reason}"}
+        end
+
+      _ ->
+        {:error, "Agent #{agent_id} has no workspace"}
     end
   end
 
