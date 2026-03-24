@@ -7,7 +7,6 @@ defmodule BoomLooper.TestHelpers do
 
     case BoomLooper.WorkspaceSupervisor.start_workspace(workspace_id, path) do
       {:ok, _} -> workspace_id
-      {:ok, :already_running} -> workspace_id
       {:error, {:already_started, _}} -> workspace_id
     end
   end
