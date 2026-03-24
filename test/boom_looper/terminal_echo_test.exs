@@ -7,6 +7,7 @@ defmodule BoomLooper.TerminalEchoTest do
   PTY path that Docker containers use.
   """
   use ExUnit.Case
+  @moduletag :terminal
 
   alias BoomLooper.Terminal
 

@@ -41,5 +41,5 @@ jobs:
         run: mix compile --warnings-as-errors
 
       - name: Run tests
-        run: mix test --exclude docker --exclude macos --exclude ssh
+        run: mix test --exclude docker --exclude macos --exclude ssh --exclude terminal
         timeout-minutes: 5

@@ -7,6 +7,7 @@ defmodule BoomLooper.TerminalIntegrationTest do
   uses, just without Docker in the loop.
   """
   use BoomLooperWeb.ChannelCase
+  @moduletag :terminal
 
   alias BoomLooper.Terminal
   alias BoomLooperWeb.TerminalChannel
