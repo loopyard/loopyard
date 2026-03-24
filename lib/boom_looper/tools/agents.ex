@@ -62,6 +62,32 @@ defmodule BoomLooper.Tools.Agents do
     end
   end
 
+  def do_read_chat(agent_id, opts \\ %{}) do
+    case ChatAgent.get_state(agent_id) do
+      nil ->
+        {:error, "Agent #{agent_id} not found"}
+
+      state ->
+        messages = state.messages
+        tail = Map.get(opts, :tail, 50)
+
+        messages = if length(messages) > tail do
+          Enum.take(messages, -tail)
+        else
+          messages
+        end
+
+        formatted = Enum.map_join(messages, "\n", fn msg ->
+          role = msg.role |> to_string() |> String.upcase()
+          content = (msg[:content] || "") |> String.trim()
+          content = if String.length(content) > 500, do: String.slice(content, 0..500) <> "...", else: content
+          "[#{role}] #{content}"
+        end)
+
+        {:ok, "Chat history for #{state.name} (#{agent_id}):\n\n#{formatted}"}
+    end
+  end
+
   # --- Tool definitions (SDK interface) ---
 
   tool :list_agents, "List all running agents with their IDs, names, and status" do
@@ -94,6 +120,15 @@ defmodule BoomLooper.Tools.Agents do
 
     def execute(%{agent_id: agent_id, name: name}) do
       BoomLooper.Tools.Agents.do_rename(agent_id, name)
+    end
+  end
+
+  tool :read_agent_chat, "Read another agent's chat history. Use this to see what happened in another agent's session, debug errors, or understand context." do
+    field :agent_id, :string, required: true
+    field :tail, :integer, required: false, description: "Number of recent messages to return (default: 50)"
+
+    def execute(%{agent_id: agent_id} = params) do
+      BoomLooper.Tools.Agents.do_read_chat(agent_id, params)
     end
   end
 

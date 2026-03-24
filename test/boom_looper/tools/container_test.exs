@@ -15,16 +15,10 @@ defmodule BoomLooper.Tools.ContainerTest do
 
     test "has all expected tools" do
       tool_names = Container.__tool_server__().tools |> Enum.map(& &1.__tool_name__()) |> MapSet.new()
-      expected = ~w(exec logs inspect_env ports)
+      expected = ~w(exec exec_stream logs inspect_env ports service_containers)
       for name <- expected do
         assert name in tool_names, "missing tool: #{name}"
       end
-    end
-
-    test "start_service and stop_service tools are removed" do
-      tool_names = Container.__tool_server__().tools |> Enum.map(& &1.__tool_name__()) |> MapSet.new()
-      refute "start_service" in tool_names
-      refute "stop_service" in tool_names
     end
   end
 
@@ -46,6 +40,11 @@ defmodule BoomLooper.Tools.ContainerTest do
 
     test "do_inspect returns error when agent has no workspace" do
       assert {:error, msg} = Container.do_inspect("nonexistent-agent")
+      assert msg =~ "no workspace"
+    end
+
+    test "do_service_containers returns error when agent has no workspace" do
+      assert {:error, msg} = Container.do_service_containers("nonexistent-agent")
       assert msg =~ "no workspace"
     end
   end
