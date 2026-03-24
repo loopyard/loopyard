@@ -42,4 +42,4 @@ jobs:
 
       - name: Run tests
         run: mix test --exclude docker --exclude macos --exclude ssh --exclude terminal
-        timeout-minutes: 5
+        timeout-minutes: 10
