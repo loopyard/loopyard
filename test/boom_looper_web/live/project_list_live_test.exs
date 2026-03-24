@@ -5,23 +5,22 @@ defmodule BoomLooperWeb.ProjectListLiveTest do
 
   setup do
     BoomLooper.ProjectRegistry.ensure_ets_tables()
-    # Clean up projects from other tests
     BoomLooper.ProjectRegistry.list_projects() |> Enum.each(&BoomLooper.ProjectRegistry.remove_project(&1.id))
     :ok
   end
 
   describe "mount" do
-    test "renders the project list page at /", %{conn: conn} do
+    test "renders the home page with project input and launch command", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/")
-      assert html =~ "Projects"
-      assert html =~ "Launch Command"
+      assert html =~ "Boom Looper"
+      assert html =~ "Launch"
+      assert html =~ "Project path"
     end
-  end
 
-  describe "empty state" do
-    test "shows empty state when no projects", %{conn: conn} do
+    test "shows Remote and System links in header", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/")
-      assert html =~ "No projects yet"
+      assert html =~ "Remote"
+      assert html =~ "System"
     end
   end
 
