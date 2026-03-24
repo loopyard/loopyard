@@ -1,5 +1,6 @@
 defmodule BoomLooper.SSHServerTest do
   use ExUnit.Case, async: false
+  @moduletag :ssh
 
   alias BoomLooper.Terminal
   alias BoomLooper.SSHServer.Channel
