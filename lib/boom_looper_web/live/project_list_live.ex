@@ -106,11 +106,13 @@ defmodule BoomLooperWeb.ProjectListLive do
               </.link>
 
               <div :if={@projects == []} class="text-center py-8">
-                <p class="text-sm text-zinc-400 dark:text-zinc-500">No projects yet. Add one below or use the launch command.</p>
+                <p class="text-sm text-zinc-400 dark:text-zinc-500">No projects yet.</p>
               </div>
             </div>
 
-            <form phx-submit="add_project" class="flex gap-2">
+            <h3 class="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-3 mt-6">Add a project</h3>
+
+            <form phx-submit="add_project" class="flex gap-2 mb-4">
               <input type="text" name="path" placeholder="Enter project directory path..." autocomplete="off" autofocus
                 class="flex-1 rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-3 text-sm font-mono
                        text-zinc-600 dark:text-zinc-300 placeholder:text-zinc-400
@@ -121,6 +123,17 @@ defmodule BoomLooperWeb.ProjectListLive do
                 Add
               </button>
             </form>
+
+            <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 p-4">
+              <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-2">Or run from any project directory:</p>
+              <div class="flex items-center gap-2">
+                <code class="flex-1 text-sm font-mono text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-950 rounded-lg px-3 py-2.5 overflow-x-auto whitespace-nowrap">{@launch_cmd}</code>
+                <button id="copy-launch" phx-hook="CopySource" data-source={@launch_cmd}
+                  class="flex-none rounded-lg bg-violet-600 hover:bg-violet-500 text-white px-4 py-2.5 text-sm font-medium transition-colors">
+                  Copy
+                </button>
+              </div>
+            </div>
           </section>
 
           <%!-- Quick actions --%>
@@ -136,7 +149,7 @@ defmodule BoomLooperWeb.ProjectListLive do
                     </svg>
                   </div>
                   <div>
-                    <p class="text-sm font-medium">Connect</p>
+                    <p class="text-sm font-medium">Remote</p>
                     <p class="text-xs text-zinc-400 dark:text-zinc-500">Open on your phone</p>
                   </div>
                 </div>
@@ -156,21 +169,6 @@ defmodule BoomLooperWeb.ProjectListLive do
                   </div>
                 </div>
               </.link>
-            </div>
-          </section>
-
-          <%!-- Launch command --%>
-          <section>
-            <h2 class="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider mb-3">Launch Command</h2>
-            <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 p-4">
-              <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-2">Run from any project directory to add it to Boom Looper</p>
-              <div class="flex items-center gap-2">
-                <code class="flex-1 text-sm font-mono text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-950 rounded-lg px-3 py-2.5 overflow-x-auto whitespace-nowrap">{@launch_cmd}</code>
-                <button id="copy-launch" phx-hook="CopySource" data-source={@launch_cmd}
-                  class="flex-none rounded-lg bg-violet-600 hover:bg-violet-500 text-white px-4 py-2.5 text-sm font-medium transition-colors">
-                  Copy
-                </button>
-              </div>
             </div>
           </section>
         </div>
