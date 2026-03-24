@@ -167,9 +167,10 @@ defmodule BoomLooper.Tools.Workspace do
                 Enum.each(agent_ids, &BoomLooper.ChatAgent.restart_session/1)
 
               {:error, reason} ->
+                content = to_string(reason)
                 Phoenix.PubSub.broadcast(BoomLooper.PubSub,
                   "chat_agent:#{agent_id}",
-                  {:chat_message, agent_id, %{role: :error, content: "Rebuild failed: #{inspect(reason)}", timestamp: DateTime.utc_now()}})
+                  {:chat_message, agent_id, %{role: :build_failed, content: content, title: "Rebuild", timestamp: DateTime.utc_now()}})
             end
           end)
 
