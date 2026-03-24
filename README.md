@@ -75,4 +75,12 @@ Commander provides a GUI for managing Claude Code sessions. Boom Looper goes fur
 
 ## Contributing
 
-See [CLAUDE.md](CLAUDE.md) for code rules, architecture, and testing requirements. Every feature needs tests. Every bug fix starts with a failing test. No exceptions.
+See [CLAUDE.md](CLAUDE.md) for code rules, architecture, and testing requirements.
+
+Claude Code skills are available for common workflows:
+- `/new-feature` — plan, test, build, integrate
+- `/fix-bug` — reproduce in a test first, then fix
+- `/review-pr` — check against project rules
+- `/setup` — get Boom Looper running on a new machine
+
+Every feature needs tests. Every bug fix starts with a failing test. No exceptions.
