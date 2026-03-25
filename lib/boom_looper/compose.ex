@@ -187,7 +187,17 @@ defmodule BoomLooper.Compose do
     receive do
       {^port, {:data, data}} ->
         callback.(data)
-        collect_port_output(port, callback, acc <> data, timeout)
+        new_acc = acc <> data
+
+        # Fail fast on known fatal errors
+        cond do
+          String.contains?(new_acc, "no matching manifest for linux/arm64") ->
+            Port.close(port)
+            {:error, :arm64_unsupported, new_acc}
+
+          true ->
+            collect_port_output(port, callback, new_acc, timeout)
+        end
 
       {^port, {:exit_status, 0}} ->
         {:ok, acc}

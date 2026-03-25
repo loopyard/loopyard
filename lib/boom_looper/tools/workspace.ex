@@ -176,6 +176,25 @@ defmodule BoomLooper.Tools.Workspace do
                 agent_ids = find_workspace_agent_ids(project_dir) -- [agent_id]
                 Enum.each(agent_ids, &BoomLooper.ChatAgent.restart_session/1)
 
+              {:error, :arm64_unsupported, _output} ->
+                BoomLooper.ChatAgent.update_message(agent_id, msg_id, fn msg ->
+                  %{msg | role: :build_failed}
+                end)
+
+                arm64_msg = """
+                **ARM64 image not available.** One of your service images doesn't have an ARM64 build.
+
+                To fix: Use `remove_service` to remove the incompatible service, then `add_service` with an ARM64-compatible image.
+
+                Common alternatives:
+                - PostGIS: `ghcr.io/baosystems/postgis:17-3.5` instead of `postgis/postgis`
+                - Check `docker manifest inspect <image>` for architecture support
+                """
+
+                Phoenix.PubSub.broadcast(BoomLooper.PubSub,
+                  "chat_agent:#{agent_id}",
+                  {:chat_message, agent_id, %{role: :system, content: arm64_msg, timestamp: DateTime.utc_now()}})
+
               {:error, _output} ->
                 BoomLooper.ChatAgent.update_message(agent_id, msg_id, fn msg ->
                   %{msg | role: :build_failed}
