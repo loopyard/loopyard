@@ -891,6 +891,12 @@ defmodule BoomLooper.ChatAgent do
     - Never download x86_64 binaries. If a tool doesn't have an arm64 binary, check the distro package manager first before trying to build from source.
     - Keep it simple. Don't install things you don't need.
 
+    **Service images must have ARM64 support.** Before calling `add_service`, verify the image has an ARM64 build:
+    - `docker manifest inspect <image>:<tag> 2>&1 | grep architecture` — look for `arm64` or `aarch64`
+    - If the error "no matching manifest for linux/arm64" appears during rebuild, the image doesn't support ARM64
+    - Find an alternative ARM64-compatible image (e.g., `ghcr.io/baosystems/postgis` instead of `postgis/postgis`)
+    - If no ARM64 image exists, tell the user — don't retry with the same image
+
     ## File watchers and bind mounts
 
     inotify/fsevents do NOT work reliably across Docker bind mounts. File watching tools (watchman, webpack, tailwind, esbuild, vite, nodemon, guard, etc.) will often fail to detect changes or spin endlessly.
