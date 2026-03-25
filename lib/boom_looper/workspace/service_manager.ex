@@ -132,6 +132,9 @@ defmodule BoomLooper.Workspace.ServiceManager do
   def handle_call({:reconnect, ws}, _from, state) do
     BoomLooper.EventLog.info("workspace:#{state.workspace_id}", "Reconnecting to existing compose containers")
 
+    # Replay agent log to restore agent state to ETS and start agents
+    replay_agent_log(state.project_dir, state.workspace_id)
+
     services = Map.new(ws.services, fn s -> {s.name, s} end)
     all_names = Enum.map(ws.processes, & &1.name) ++ Enum.map(ws.services, & &1.name) ++ ["workspace"]
     initial_health = Map.new(all_names, fn name -> {name, :started} end)
@@ -355,5 +358,39 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
   defp via(project_dir) do
     {:via, Registry, {BoomLooper.ServiceManagerRegistry, project_dir}}
+  end
+
+  defp replay_agent_log(project_dir, workspace_id) do
+    log_path = Path.join([project_dir, ".boomlooper", "workspace", "agents.log"])
+
+    case BoomLooper.AgentLog.replay(log_path: log_path, ets_table: :chat_agents) do
+      {:ok, agents} when map_size(agents) > 0 ->
+        BoomLooper.EventLog.info("workspace", "Restored #{map_size(agents)} agent(s) from log, starting...")
+
+        # Start each agent with resume: true
+        for {agent_id, _agent_data} <- agents do
+          start_restored_agent(workspace_id, agent_id)
+        end
+
+        :ok
+
+      {:ok, _} ->
+        :ok
+
+      {:error, reason} ->
+        BoomLooper.EventLog.warning("workspace", "Failed to replay agent log: #{inspect(reason)}")
+    end
+  end
+
+  defp start_restored_agent(workspace_id, agent_id) do
+    opts = [id: agent_id, resume: true]
+
+    case BoomLooper.WorkspaceGroup.start_agent(workspace_id, opts) do
+      {:ok, _pid} ->
+        :ok
+
+      {:error, reason} ->
+        BoomLooper.EventLog.warning("workspace", "Failed to resume agent #{agent_id}: #{inspect(reason)}")
+    end
   end
 end

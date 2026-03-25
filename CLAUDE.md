@@ -64,6 +64,12 @@ Don't bury behavior in LiveView private functions. If it has logic worth getting
 
 **The pattern:** if you find yourself writing complex logic inside `defp` in a LiveView, stop. Extract it. Test it. Wire the LiveView to call it.
 
+### Keep tests fast
+
+Unit tests should run in under 2 seconds total. If a test needs Docker, external services, or takes >1 second, tag it with `@tag :docker` or `@tag :slow` and exclude from default runs. Run full suite in CI.
+
+**Example:** `AgentLog` tests run in 0.1s because they use temp files and injected ETS tables, not real workspaces.
+
 ### Test the real path, not a mock of it
 
 If users hit a bug through the websocket → channel → GenServer → Port stack, the test must exercise that same stack. A unit test that passes on an isolated layer while the integration is broken is worse than no test — it gives false confidence.
@@ -156,7 +162,20 @@ Don't add toggles for things that should just be on. Don't add config files for 
 
 Elixir 1.19 / OTP 28, Phoenix 1.7 / LiveView 1.1, Claude Code SDK (`claude_code`), Docker Compose, Tailwind CSS, xterm.js, Bandit. No database (ETS + GenServers).
 
+## Architecture: Scaling & Persistence
+
+**Workspace affinity model:** One workspace runs entirely on one node. Projects can span multiple nodes (different workspaces on different nodes), but a single workspace is always local to its node. This enables local storage without shared databases.
+
+**Agent persistence:** Agents and messages are persisted to an append-only ETF log at `.boomlooper/workspace/agents.log`. On server restart:
+1. ServiceManager detects running containers via `Compose.ps`
+2. Calls `replay_agent_log` to restore agent state to ETS
+3. Starts ChatAgent GenServers with `resume: true` for each restored agent
+4. Each agent loads its messages from ETS and starts a fresh Claude session
+
+ETS remains the runtime store for fast multiplayer access; the log is the durable backing store.
+
+**Log format:** Length-prefixed binary records using `:erlang.term_to_binary`. Events: `{:agent, id, data}`, `{:msg, agent_id, msg}`, `{:msg_update, agent_id, msg_id, changes}`.
+
 ## Known issues
 
-- ETS state lost on server restart (containers persist, projects/agents don't)
-- Agent message history grows unbounded (future: SQLite)
+- Agent message history grows unbounded (future: log compaction)

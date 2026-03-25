@@ -9,6 +9,7 @@ defmodule BoomLooper.ChatAgent do
   require Logger
 
   alias BoomLooper.Agent.Event
+  alias BoomLooper.AgentLog
 
   defstruct [
     :id,
@@ -258,6 +259,77 @@ defmodule BoomLooper.ChatAgent do
   @impl true
   def init(opts) do
     id = Keyword.fetch!(opts, :id)
+    resume = Keyword.get(opts, :resume, false)
+
+    if resume do
+      init_resume(id, opts)
+    else
+      init_fresh(id, opts)
+    end
+  end
+
+  # Resume an agent from persisted state (after server restart)
+  defp init_resume(id, opts) do
+    ensure_ets_table()
+
+    case :ets.lookup(@ets_table, id) do
+      [{^id, saved}] ->
+        # Restore from saved state
+        bind_mount = saved.bind_mount
+        workspace = if bind_mount, do: load_workspace_config(bind_mount), else: nil
+        workspace_id = saved.workspace_id
+
+        tools = Keyword.get(opts, :tools, default_tools())
+        backend = Keyword.get(opts, :backend, BoomLooper.Agent.Backend.ClaudeCode)
+
+        system_prompt = build_system_prompt(id, bind_mount, workspace_id, workspace, saved[:checklist_path], saved[:service_name])
+
+        session_opts = [
+          cwd: saved.working_dir,
+          permission_mode: :accept_edits,
+          dangerously_skip_permissions: true,
+          mcp_servers: build_mcp_servers(tools),
+          allowed_tools: build_allowed_tools(tools),
+          system_prompt: system_prompt
+        ]
+
+        {:ok, session} = backend.start_session(session_opts)
+
+        state = %__MODULE__{
+          id: id,
+          name: saved.name,
+          session: session,
+          session_opts: session_opts,
+          backend: backend,
+          working_dir: saved.working_dir,
+          bind_mount: bind_mount,
+          workspace_id: workspace_id,
+          started_at: saved.started_at,
+          started_by: saved.started_by,
+          last_activity_at: DateTime.utc_now(),
+          status: :idle,
+          messages: saved.messages,
+          tool_calls: saved[:tool_calls] || 0,
+          errors: saved[:errors] || 0,
+          checklist_path: saved[:checklist_path],
+          service_name: saved[:service_name]
+        }
+
+        # Update ETS with live status
+        :ets.insert(@ets_table, {id, summary(state)})
+        broadcast(@topic, {:chat_agent_resumed, summary(state)})
+        BoomLooper.EventLog.info("agent:#{state.name}", "Resumed (#{id}) with #{length(state.messages)} messages")
+
+        {:ok, state}
+
+      [] ->
+        # No saved state - can't resume
+        {:stop, :no_saved_state}
+    end
+  end
+
+  # Start a fresh agent (normal path)
+  defp init_fresh(id, opts) do
     name = Keyword.get(opts, :name, "Chat #{id |> String.slice(0..7)}")
     working_dir = Keyword.get(opts, :working_dir, File.cwd!())
     started_by = Keyword.get(opts, :started_by, "anonymous")
@@ -311,6 +383,7 @@ defmodule BoomLooper.ChatAgent do
 
     summary = summary(state)
     :ets.insert(@ets_table, {id, summary})
+    persist_agent(state)
     broadcast(@topic, {:chat_agent_started, summary})
     BoomLooper.EventLog.info("agent:#{name}", "Started (#{id})")
 
@@ -325,6 +398,7 @@ defmodule BoomLooper.ChatAgent do
     # Add user message
     user_msg = %{role: :user, content: text, timestamp: DateTime.utc_now()}
     state = append_message(state, user_msg)
+    persist_message(state, List.last(state.messages))
 
     # Broadcast with ID (last message has the ID assigned by append_message)
     broadcast("chat_agent:#{state.id}", {:chat_message, state.id, List.last(state.messages)})
@@ -411,16 +485,26 @@ defmodule BoomLooper.ChatAgent do
   def handle_cast({:append_external_message, msg}, state) do
     state = append_message(state, msg)
     :ets.insert(@ets_table, {state.id, summary(state)})
+    persist_message(state, List.last(state.messages))
     {:noreply, state}
   end
 
   @impl true
   def handle_cast({:update_message, msg_id, update_fn}, state) do
+    old_msg = Enum.find(state.messages, &(&1[:id] == msg_id))
     messages = Enum.map(state.messages, fn msg ->
       if msg[:id] == msg_id, do: update_fn.(msg), else: msg
     end)
     state = %{state | messages: messages}
     :ets.insert(@ets_table, {state.id, summary(state)})
+
+    # Persist the changes (diff between old and new)
+    new_msg = Enum.find(state.messages, &(&1[:id] == msg_id))
+    if old_msg && new_msg do
+      changes = Map.drop(new_msg, [:id])
+      persist_message_update(state, msg_id, changes)
+    end
+
     {:noreply, state}
   end
 
@@ -445,23 +529,26 @@ defmodule BoomLooper.ChatAgent do
         %Event.Text{text: content} ->
           assistant_msg = %{role: :assistant, content: content, timestamp: now}
           state = %{append_message(state, assistant_msg) | last_activity_at: now}
-          # Broadcast the message WITH its ID (last message in the list)
+          persist_message(state, List.last(state.messages))
           broadcast("chat_agent:#{id}", {:chat_message, id, List.last(state.messages)})
           state
 
         %Event.ToolCall{name: tool_name, input: tool_input} ->
           tool_msg = %{role: :tool, tool: tool_name, input: tool_input, timestamp: now}
           state = %{append_message(state, tool_msg) | last_activity_at: now, tool_calls: state.tool_calls + 1}
+          persist_message(state, List.last(state.messages))
           broadcast("chat_agent:#{id}", {:chat_message, id, List.last(state.messages)})
           state
 
         %Event.ToolResult{content: content, is_error: is_error} ->
           result_msg = %{role: :tool_result, content: content, is_error: is_error, timestamp: now}
           state = %{append_message(state, result_msg) | last_activity_at: now}
+          persist_message(state, List.last(state.messages))
           broadcast("chat_agent:#{id}", {:chat_message, id, List.last(state.messages)})
           state
 
         %Event.TextDelta{text: text} ->
+          # Don't persist deltas - they're just streaming UI updates
           broadcast("chat_agent:#{id}", {:chat_text_delta, id, text})
           state
 
@@ -603,6 +690,44 @@ defmodule BoomLooper.ChatAgent do
 
   defp broadcast(topic, message) do
     Phoenix.PubSub.broadcast(BoomLooper.PubSub, topic, message)
+  end
+
+  # --- Persistence ---
+
+  defp log_path(nil), do: nil
+  defp log_path(bind_mount) do
+    Path.join([bind_mount, ".boomlooper", "workspace", "agents.log"])
+  end
+
+  defp persist_agent(state) do
+    case log_path(state.bind_mount) do
+      nil -> :ok
+      path ->
+        agent_data = %{
+          name: state.name,
+          workspace_id: state.workspace_id,
+          started_at: state.started_at,
+          started_by: state.started_by,
+          status: state.status,
+          checklist_path: state.checklist_path,
+          service_name: state.service_name
+        }
+        AgentLog.append({:agent, state.id, agent_data}, log_path: path)
+    end
+  end
+
+  defp persist_message(state, msg) do
+    case log_path(state.bind_mount) do
+      nil -> :ok
+      path -> AgentLog.append({:msg, state.id, msg}, log_path: path)
+    end
+  end
+
+  defp persist_message_update(state, msg_id, changes) do
+    case log_path(state.bind_mount) do
+      nil -> :ok
+      path -> AgentLog.append({:msg_update, state.id, msg_id, changes}, log_path: path)
+    end
   end
 
   # --- System Prompt ---
