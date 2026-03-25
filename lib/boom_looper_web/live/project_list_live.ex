@@ -116,7 +116,7 @@ defmodule BoomLooperWeb.ProjectListLive do
             <h2 class="text-lg font-semibold">Add a project</h2>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div class="space-y-3">
             <%!-- Option: Terminal command --%>
             <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 p-5 flex flex-col">
               <div class="flex items-center gap-2 mb-1">
