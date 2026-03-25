@@ -119,7 +119,7 @@ defmodule BoomLooperWeb.DebugController do
       # Stop any running agents for this workspace
       BoomLooper.ChatAgent.list_agents()
       |> Enum.filter(&(&1[:bind_mount] == workspace.path))
-      |> Enum.each(&BoomLooper.ChatAgent.stop(&1.id))
+      |> Enum.each(&BoomLooper.ChatAgent.stop_agent(&1.id))
 
       # Stop containers
       ws_id = BoomLooper.Workspace.workspace_id(workspace.path)
@@ -142,7 +142,7 @@ defmodule BoomLooperWeb.DebugController do
 
   @doc "POST /system/agents/:id/stop — stop a specific agent"
   def stop_agent(conn, %{"id" => agent_id}) do
-    case BoomLooper.ChatAgent.stop(agent_id) do
+    case BoomLooper.ChatAgent.stop_agent(agent_id) do
       :ok ->
         BoomLooper.EventLog.info("agent:#{agent_id}", "Agent stopped via API")
         conn
