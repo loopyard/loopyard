@@ -1,1 +1,1 @@
-web: iex --sname boom -S mix phx.server
+web: mix boom.server
