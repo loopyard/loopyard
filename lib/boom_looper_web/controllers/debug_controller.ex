@@ -64,8 +64,8 @@ defmodule BoomLooperWeb.DebugController do
     BoomLooper.ProjectRegistry.list_projects()
     |> Enum.flat_map(&BoomLooper.ProjectRegistry.list_workspaces(&1.id))
     |> Enum.each(fn w ->
-      workspace_id = BoomLooper.Workspace.workspace_id(w.working_dir)
-      BoomLooper.Compose.down(w.working_dir, workspace_id)
+      workspace_id = BoomLooper.Workspace.workspace_id(w.path)
+      BoomLooper.Compose.down(w.path, workspace_id)
     end)
 
     # Kill all workspace supervisor trees (cascades to agents)
