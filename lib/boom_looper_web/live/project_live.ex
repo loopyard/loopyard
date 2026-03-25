@@ -21,7 +21,7 @@ defmodule BoomLooperWeb.ProjectLive do
       {:ok,
        socket
        |> assign(:project, project)
-       |> assign(:workspaces, load_workspaces_fast(project))}
+       |> assign(:workspaces, load_workspaces(project))}
     end
   end
 
@@ -32,14 +32,14 @@ defmodule BoomLooperWeb.ProjectLive do
       BoomLooper.WorkspaceSupervisor.start_workspace(workspace_id, workspace.path)
       ProjectRegistry.update_workspace_status(workspace_id, :running)
     end
-    {:noreply, assign(socket, :workspaces, load_workspaces_full(socket.assigns.project))}
+    {:noreply, assign(socket, :workspaces, load_workspaces(socket.assigns.project, include_services: true))}
   end
 
   @impl true
   def handle_event("stop_workspace", %{"id" => workspace_id}, socket) do
     BoomLooper.WorkspaceSupervisor.stop_workspace(workspace_id)
     ProjectRegistry.update_workspace_status(workspace_id, :stopped)
-    {:noreply, assign(socket, :workspaces, load_workspaces_full(socket.assigns.project))}
+    {:noreply, assign(socket, :workspaces, load_workspaces(socket.assigns.project, include_services: true))}
   end
 
   @impl true
@@ -65,7 +65,7 @@ defmodule BoomLooperWeb.ProjectLive do
     BoomLooper.WorkspaceSupervisor.stop_workspace(id)
 
     case ProjectRegistry.remove_workspace(id) do
-      :ok -> {:noreply, assign(socket, :workspaces, load_workspaces_fast(socket.assigns.project))}
+      :ok -> {:noreply, assign(socket, :workspaces, load_workspaces(socket.assigns.project))}
       {:error, reason} -> {:noreply, put_flash(socket, :error, reason)}
     end
   end
@@ -73,25 +73,25 @@ defmodule BoomLooperWeb.ProjectLive do
   @impl true
   def handle_info({event, _}, socket)
       when event in [:chat_agent_started, :chat_agent_stopped, :chat_agent_booting, :chat_agent_removed] do
-    {:noreply, assign(socket, :workspaces, load_workspaces_fast(socket.assigns.project))}
+    {:noreply, assign(socket, :workspaces, load_workspaces(socket.assigns.project))}
   end
 
   @impl true
   def handle_info({:services_updated, _path, _statuses}, socket) do
-    {:noreply, assign(socket, :workspaces, load_workspaces_full(socket.assigns.project))}
+    {:noreply, assign(socket, :workspaces, load_workspaces(socket.assigns.project, include_services: true))}
   end
 
   @impl true
   def handle_info(:fetch_service_counts, socket) do
-    {:noreply, assign(socket, :workspaces, load_workspaces_full(socket.assigns.project))}
+    {:noreply, assign(socket, :workspaces, load_workspaces(socket.assigns.project, include_services: true))}
   end
 
   @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
-  # Fast load without service status queries (for initial mount)
-  defp load_workspaces_fast(project) do
+  defp load_workspaces(project, opts \\ []) do
     agents = ChatAgent.list_agents()
+    include_services = Keyword.get(opts, :include_services, false)
 
     ProjectRegistry.list_workspaces(project.id)
     |> Enum.map(fn workspace ->
@@ -99,32 +99,20 @@ defmodule BoomLooperWeb.ProjectLive do
         a[:bind_mount] == workspace.path || a[:working_dir] == workspace.path
       end)
 
-      workspace
-      |> Map.put(:agent_count, agent_count)
-      |> Map.put(:service_count, 0)
-    end)
-  end
-
-  # Full load with service status (async after mount, or on events)
-  defp load_workspaces_full(project) do
-    agents = ChatAgent.list_agents()
-
-    ProjectRegistry.list_workspaces(project.id)
-    |> Enum.map(fn workspace ->
-      agent_count = Enum.count(agents, fn a ->
-        a[:bind_mount] == workspace.path || a[:working_dir] == workspace.path
-      end)
-
-      service_count = try do
-        case BoomLooper.Workspace.ServiceManager.service_status(workspace.path) do
-          {:ok, statuses} ->
-            statuses
-            |> Enum.reject(&(Map.get(&1, :type) == :workspace))
-            |> Enum.count(& &1.running)
-          _ -> 0
+      service_count = if include_services do
+        try do
+          case BoomLooper.Workspace.ServiceManager.service_status(workspace.path) do
+            {:ok, statuses} ->
+              statuses
+              |> Enum.reject(&(Map.get(&1, :type) == :workspace))
+              |> Enum.count(& &1.running)
+            _ -> 0
+          end
+        catch
+          :exit, _ -> 0
         end
-      catch
-        :exit, _ -> 0
+      else
+        0
       end
 
       workspace
