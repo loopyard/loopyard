@@ -35,17 +35,24 @@ mix phx.server
 
 Launch from any project directory: `open "http://localhost:4000/launch/SECRET?path=$(pwd)"`
 
-## System tools
+## Development console
+
+Start with `overmind start` (uses Procfile.dev) to get IEx console access:
 
 ```bash
-curl localhost:4000/system/debug                        # Dump system state
-curl -X POST localhost:4000/system/reset                # Nuclear reset (kills all)
-curl -X POST localhost:4000/system/reset/containers     # Kill containers only
-curl -X POST localhost:4000/system/workspaces/:id/clean # Clean workspace, stop agents
-curl -X POST localhost:4000/system/agents/:id/stop      # Stop a specific agent
+# Attach to running console
+overmind connect web
+
+# Or connect remotely
+iex --sname claude --remsh boom@$(hostname -s)
 ```
 
-The dev tools module (`BoomLooper.Tools.Dev`) mirrors these as MCP tools for future internal use.
+From IEx you have full access to inspect/control the system:
+```elixir
+BoomLooper.ChatAgent.list_agents()
+BoomLooper.ProjectRegistry.list_projects()
+BoomLooper.ChatAgent.stop_agent("agent_id")
+```
 
 ## Code rules
 

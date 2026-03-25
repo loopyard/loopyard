@@ -11,11 +11,6 @@ defmodule BoomLooperWeb.Router do
     plug BoomLooperWeb.Plugs.BasicAuth
   end
 
-  # No CSRF for system tools (curl-friendly)
-  pipeline :api do
-    plug :accepts, ["html", "json", "text"]
-  end
-
   scope "/", BoomLooperWeb do
     pipe_through :browser
 
@@ -38,13 +33,4 @@ defmodule BoomLooperWeb.Router do
     get "/launch/:secret", LaunchController, :launch
   end
 
-  scope "/system", BoomLooperWeb do
-    pipe_through :api
-
-    get "/debug", DebugController, :index
-    post "/reset", DebugController, :reset
-    post "/reset/containers", DebugController, :reset_containers
-    post "/workspaces/:id/clean", DebugController, :clean_workspace
-    post "/agents/:id/stop", DebugController, :stop_agent
-  end
 end
