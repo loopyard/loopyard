@@ -38,10 +38,14 @@ Launch from any project directory: `open "http://localhost:4000/launch/SECRET?pa
 ## System tools
 
 ```bash
-curl localhost:4000/system/debug                     # Dump system state
-curl -X POST localhost:4000/system/reset             # Nuclear reset (kills containers)
-curl -X POST localhost:4000/system/reset/containers  # Kill containers only
+curl localhost:4000/system/debug                        # Dump system state
+curl -X POST localhost:4000/system/reset                # Nuclear reset (kills all)
+curl -X POST localhost:4000/system/reset/containers     # Kill containers only
+curl -X POST localhost:4000/system/workspaces/:id/clean # Clean workspace, stop agents
+curl -X POST localhost:4000/system/agents/:id/stop      # Stop a specific agent
 ```
+
+The dev tools module (`BoomLooper.Tools.Dev`) mirrors these as MCP tools for future internal use.
 
 ## Code rules
 
