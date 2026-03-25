@@ -219,7 +219,10 @@ defmodule BoomLooper.ChatAgent do
     ensure_ets_table()
 
     :ets.tab2list(@ets_table)
-    |> Enum.map(fn {_id, summary} ->
+    |> Enum.map(fn {ets_key, summary} ->
+      # Ensure the summary has an :id (some code paths may omit it)
+      summary = Map.put_new(summary, :id, ets_key)
+
       # If agent is still alive, get fresh state
       case Registry.lookup(BoomLooper.ChatAgentRegistry, summary.id) do
         [{pid, _}] ->
@@ -231,7 +234,7 @@ defmodule BoomLooper.ChatAgent do
         [] -> summary
       end
     end)
-    |> Enum.sort_by(& &1.started_at, {:desc, DateTime})
+    |> Enum.sort_by(& &1[:started_at], {:desc, DateTime})
   end
 
   def ensure_ets_table do
