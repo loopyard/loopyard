@@ -1,7 +1,7 @@
 defmodule BoomLooper.Tools.Dev do
   @moduledoc """
   MCP tools for BoomLooper development/debugging.
-  Only available when BOOMLOOPER_DEV_MCP=1.
+  Only available when BOOMLOOPER_MODE=dev.
 
   These give super-root access to BoomLooper internals - cleaning workspaces,
   stopping agents, resetting containers. Used for building BoomLooper with BoomLooper.
