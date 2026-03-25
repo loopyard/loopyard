@@ -91,12 +91,16 @@ defmodule BoomLooperWeb.ProjectLive do
         a[:bind_mount] == workspace.path || a[:working_dir] == workspace.path
       end)
 
-      service_count = case BoomLooper.Workspace.ServiceManager.service_status(workspace.path) do
-        {:ok, statuses} ->
-          statuses
-          |> Enum.reject(&(Map.get(&1, :type) == :workspace))
-          |> Enum.count(& &1.running)
-        _ -> 0
+      service_count = try do
+        case BoomLooper.Workspace.ServiceManager.service_status(workspace.path) do
+          {:ok, statuses} ->
+            statuses
+            |> Enum.reject(&(Map.get(&1, :type) == :workspace))
+            |> Enum.count(& &1.running)
+          _ -> 0
+        end
+      catch
+        :exit, _ -> 0
       end
 
       workspace
