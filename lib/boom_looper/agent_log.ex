@@ -5,7 +5,10 @@ defmodule BoomLooper.AgentLog do
   Uses ETF (Erlang Term Format) for fast serialization of native Elixir types.
   Log format: length-prefixed binary records.
 
-  Each record: [4 bytes: size][N bytes: ETF binary]
+  Each record: [4 bytes: size][N bytes: zlib-compressed ETF]
+
+  Per-record compression because we're append-only. Whole-file compression
+  (gzip stream) would require decompress/recompress on every append.
 
   ## Versioning
 
@@ -266,13 +269,15 @@ defmodule BoomLooper.AgentLog do
     if needs_header do
       meta = {:log_meta, %{version: version, created_at: DateTime.utc_now()}}
       binary = :erlang.term_to_binary(meta)
-      File.write!(path, <<byte_size(binary)::32, binary::binary>>, [:write, :raw])
+      compressed = :zlib.compress(binary)
+      File.write!(path, <<byte_size(compressed)::32, compressed::binary>>, [:write, :raw])
     end
   end
 
   defp write_record(path, event) do
     binary = :erlang.term_to_binary(event)
-    File.write!(path, <<byte_size(binary)::32, binary::binary>>, [:append, :raw])
+    compressed = :zlib.compress(binary)
+    File.write!(path, <<byte_size(compressed)::32, compressed::binary>>, [:append, :raw])
   end
 
   # --- Private: Reading ---
@@ -356,10 +361,12 @@ defmodule BoomLooper.AgentLog do
 
   defp read_entries(_, acc), do: Enum.reverse(acc)
 
-  defp safe_binary_to_term(binary) do
+  defp safe_binary_to_term(compressed) do
+    binary = :zlib.uncompress(compressed)
     {:ok, :erlang.binary_to_term(binary)}
   rescue
-    ArgumentError -> :error
+    # zlib errors or ETF decode errors
+    _ -> :error
   end
 
   # --- Private: Event Application ---
