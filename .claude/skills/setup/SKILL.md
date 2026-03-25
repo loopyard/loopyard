@@ -61,6 +61,28 @@ mix phx.server
 
 **Important:** Always set `MIX_HOME` and `HEX_HOME` before running mix commands. This uses a project-local Hex installation to avoid conflicts with your system Hex.
 
+### 5. Development console (optional)
+
+For IEx console access during development, use `Procfile.dev`:
+
+```bash
+overmind start -f Procfile.dev  # or use your preferred process manager
+```
+
+Then connect via remote shell:
+
+```bash
+iex --sname claude --remsh boom@$(hostname -s)
+```
+
+From IEx you have full access to inspect/control the system:
+
+```elixir
+BoomLooper.ProjectRegistry.list_projects()
+BoomLooper.ChatAgent.list_agents()
+:ets.tab2list(:project_registry)
+```
+
 ## Linux
 
 Install dependencies manually:
@@ -98,6 +120,8 @@ Start the server (remember to set the env vars in each new terminal):
 export MIX_HOME="$PWD/.mix_home" HEX_HOME="$PWD/.hex_home"
 mix phx.server
 ```
+
+For development with IEx console access, see "Development console" in the macOS section above.
 
 ## Troubleshooting
 

@@ -16,6 +16,12 @@ If the bug is in the UI/websocket/channel stack, write an integration test that 
 
 If you can't reproduce it in a test, you don't understand the bug yet. Keep investigating.
 
+**Debug tip:** Use IEx remote shell to inspect live state:
+```bash
+iex --sname claude --remsh boom@$(hostname -s)
+```
+Then inspect ETS, GenServers, etc: `:ets.tab2list(:project_registry)`, `BoomLooper.ChatAgent.list_agents()`.
+
 ## Step 2: Run the test, watch it fail
 
 ```bash
