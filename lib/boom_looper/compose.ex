@@ -17,7 +17,7 @@ defmodule BoomLooper.Compose do
     # Workspace container — always running, agents exec here
     services = if ws.dockerfile do
       Map.put(services, "workspace", %{
-        "build" => %{"context" => Path.join([project_dir, ".boomlooper", "workspace"]), "dockerfile" => "Dockerfile"},
+        "build" => %{"context" => project_dir, "dockerfile" => ".boomlooper/workspace/Dockerfile"},
         "command" => "sleep infinity",
         "volumes" => [
           "#{project_dir}:/workspace",
@@ -33,7 +33,7 @@ defmodule BoomLooper.Compose do
     # Dev container — runs the dev command from workspace image
     services = Enum.reduce(ws.processes, services, fn p, acc ->
       svc = %{
-        "build" => %{"context" => Path.join([project_dir, ".boomlooper", "workspace"]), "dockerfile" => "Dockerfile"},
+        "build" => %{"context" => project_dir, "dockerfile" => ".boomlooper/workspace/Dockerfile"},
         "command" => p.command,
         "volumes" => [
           "#{project_dir}:/workspace",
@@ -43,10 +43,11 @@ defmodule BoomLooper.Compose do
         "environment" => env_list(ws.env_vars)
       }
 
-      # Add ports
+      # Add ports — always use dynamic host port allocation to avoid conflicts.
+      # "3001:3000" becomes "3000" (Docker picks a free host port).
       svc = case p[:ports] do
         ports when is_list(ports) and ports != [] ->
-          Map.put(svc, "ports", ports)
+          Map.put(svc, "ports", Enum.map(ports, &container_port_only/1))
         _ ->
           svc
       end
@@ -63,7 +64,7 @@ defmodule BoomLooper.Compose do
         else: svc
 
       svc = if s[:ports] && s.ports != [],
-        do: Map.put(svc, "ports", Enum.map(s.ports, &to_string/1)),
+        do: Map.put(svc, "ports", Enum.map(s.ports, fn p -> container_port_only(to_string(p)) end)),
         else: svc
 
       svc = if s[:volumes] && s.volumes != [],
@@ -154,6 +155,52 @@ defmodule BoomLooper.Compose do
     compose(project_dir, workspace_id, ["up", "-d", "--build"], timeout: 600_000)
   end
 
+  @doc """
+  Start all services with streaming output. Calls `callback` with each chunk of output.
+  Returns {:ok, full_output} or {:error, full_output} when done.
+  """
+  def up_stream(project_dir, workspace_id, callback) when is_function(callback, 1) do
+    compose_file = compose_path(project_dir)
+    project = project_name(workspace_id)
+
+    args = [
+      "compose", "-f", compose_file, "-p", project,
+      "up", "-d", "--build"
+    ]
+
+    docker_path = System.find_executable("docker")
+
+    unless docker_path do
+      {:error, "docker not found"}
+    else
+      port = Port.open(
+        {:spawn_executable, docker_path},
+        [:binary, :exit_status, :stderr_to_stdout, {:args, args}]
+      )
+
+      collect_port_output(port, callback, "", 600_000)
+    end
+  end
+
+  @doc false
+  def collect_port_output(port, callback, acc, timeout) do
+    receive do
+      {^port, {:data, data}} ->
+        callback.(data)
+        collect_port_output(port, callback, acc <> data, timeout)
+
+      {^port, {:exit_status, 0}} ->
+        {:ok, acc}
+
+      {^port, {:exit_status, _code}} ->
+        {:error, acc}
+    after
+      timeout ->
+        Port.close(port)
+        {:error, acc <> "\n(timed out)"}
+    end
+  end
+
   @doc "Stop all services."
   def down(project_dir, workspace_id) do
     compose(project_dir, workspace_id, ["down"], timeout: 30_000)
@@ -220,6 +267,16 @@ defmodule BoomLooper.Compose do
       _ ->
         File.mkdir_p!(Path.dirname(path))
         File.write!(path, content)
+    end
+  end
+
+  # Strip host port from a port mapping, keeping only the container port.
+  # "3001:3000" -> "3000", "3000" -> "3000", "3000/tcp" -> "3000/tcp"
+  defp container_port_only(port_spec) when is_binary(port_spec) do
+    case String.split(port_spec, ":") do
+      [_host, container] -> container
+      [container] -> container
+      [_ip, _host, container] -> container
     end
   end
 

@@ -26,7 +26,7 @@ defmodule BoomLooper.Tools.Workspace do
     field :agent_id, :string, required: true
     field :command, :string, required: true, description: "Command to start the dev server (e.g. bin/dev, foreman start)"
     field :name, :string, required: false, description: "Name for the dev service (default: dev)"
-    field :ports, :string, required: false, description: "JSON array of port mappings (e.g. [\"3000:3000\"])"
+    field :ports, :string, required: false, description: "JSON array of container ports to expose (e.g. [\"3000\"]). Host ports are allocated dynamically — do NOT specify host:container mappings."
 
     def execute(%{agent_id: agent_id, command: command} = params) do
       name = Map.get(params, :name, "dev")
@@ -45,7 +45,7 @@ defmodule BoomLooper.Tools.Workspace do
     field :name, :string, required: true, description: "Service name (e.g. postgres, redis)"
     field :image, :string, required: true, description: "Docker image (e.g. postgres:16, pgvector/pgvector:pg16, redis:7)"
     field :env, :string, required: false, description: "JSON object of env vars for the service"
-    field :ports, :string, required: false, description: "JSON array of port mappings (e.g. [\"5432\"])"
+    field :ports, :string, required: false, description: "JSON array of container ports to expose (e.g. [\"5432\"]). Host ports are allocated dynamically."
     field :volumes, :string, required: false, description: "JSON array of volume mounts. Use {data} for persistent workspace-scoped volume (e.g. [\"{data}:/var/lib/postgresql/data\"])"
 
     def execute(%{agent_id: agent_id, name: name, image: image} = params) do
@@ -146,31 +146,44 @@ defmodule BoomLooper.Tools.Workspace do
     with_bind_mount(agent_id, fn project_dir ->
       case Workspace.load(project_dir) do
         {:ok, ws} when ws.dockerfile != nil ->
-          workspace_id = Workspace.workspace_id(project_dir)
+          # Create a streaming build message in chat
+          stream_msg = %{role: :build, title: "Rebuild", content: "", timestamp: DateTime.utc_now()}
+          stream_msg = BoomLooper.ChatAgent.append_message_ets(agent_id, stream_msg)
+          msg_id = if stream_msg, do: stream_msg.id, else: :crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false)
 
-          # Run rebuild async — compose build + up
+          # Run rebuild async with streaming output
           Task.start(fn ->
-            # First generate the compose file
-            BoomLooper.Compose.write(project_dir, workspace_id)
+            callback = fn chunk ->
+              BoomLooper.ChatAgent.update_message(agent_id, msg_id, fn msg ->
+                %{msg | content: (msg.content || "") <> chunk}
+              end)
 
-            Phoenix.PubSub.broadcast(BoomLooper.PubSub,
-              "chat_agent:#{agent_id}",
-              {:chat_message, agent_id, %{role: :system, content: "Rebuilding services...", timestamp: DateTime.utc_now()}})
+              Phoenix.PubSub.broadcast(BoomLooper.PubSub,
+                "chat_agent:#{agent_id}",
+                {:stream_output, agent_id, chunk, "Rebuild", msg_id})
+            end
 
-            case ServiceManager.restart_workspace_container(project_dir) do
-              :ok ->
+            case ServiceManager.restart_workspace_streaming(project_dir, callback) do
+              {:ok, _output} ->
+                BoomLooper.ChatAgent.update_message(agent_id, msg_id, fn msg ->
+                  %{msg | role: :build_done}
+                end)
+
                 Phoenix.PubSub.broadcast(BoomLooper.PubSub,
                   "chat_agent:#{agent_id}",
-                  {:chat_message, agent_id, %{role: :system, content: "Rebuild complete. Services restarting.", timestamp: DateTime.utc_now()}})
+                  {:chat_message, agent_id, %{role: :system, content: "Rebuild complete. Services starting.", timestamp: DateTime.utc_now()}})
 
                 agent_ids = find_workspace_agent_ids(project_dir) -- [agent_id]
                 Enum.each(agent_ids, &BoomLooper.ChatAgent.restart_session/1)
 
-              {:error, reason} ->
-                content = to_string(reason)
+              {:error, _output} ->
+                BoomLooper.ChatAgent.update_message(agent_id, msg_id, fn msg ->
+                  %{msg | role: :build_failed}
+                end)
+
                 Phoenix.PubSub.broadcast(BoomLooper.PubSub,
                   "chat_agent:#{agent_id}",
-                  {:chat_message, agent_id, %{role: :build_failed, content: content, title: "Rebuild", timestamp: DateTime.utc_now()}})
+                  {:chat_message, agent_id, %{role: :system, content: "Rebuild failed. Check build output above.", timestamp: DateTime.utc_now()}})
             end
           end)
 

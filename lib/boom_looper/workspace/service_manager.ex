@@ -58,6 +58,27 @@ defmodule BoomLooper.Workspace.ServiceManager do
     end
   end
 
+  @doc "Stop containers, rebuild with streaming output, then reconnect state."
+  def restart_workspace_streaming(project_dir, callback) when is_function(callback, 1) do
+    workspace_id = Workspace.workspace_id(project_dir)
+
+    Compose.down(project_dir, workspace_id)
+    Compose.write(project_dir, workspace_id)
+
+    result = Compose.up_stream(project_dir, workspace_id, callback)
+
+    case Registry.lookup(BoomLooper.ServiceManagerRegistry, project_dir) do
+      [{pid, _}] ->
+        case Workspace.load(project_dir) do
+          {:ok, ws} -> GenServer.call(pid, {:reconnect, ws}, 30_000)
+          _ -> :ok
+        end
+      [] -> :ok
+    end
+
+    result
+  end
+
   def service_exec(project_dir, service_name, command) do
     workspace_id = Workspace.workspace_id(project_dir)
     Compose.exec(project_dir, workspace_id, service_name, command)
