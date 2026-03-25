@@ -109,6 +109,53 @@ defmodule BoomLooperWeb.DebugController do
     |> send_resp(200, "All boom-looper containers killed.\n")
   end
 
+  @doc "POST /system/workspaces/:id/clean — delete .boomlooper/workspace dir for a workspace"
+  def clean_workspace(conn, %{"id" => workspace_id}) do
+    workspace = BoomLooper.ProjectRegistry.get_workspace(workspace_id)
+
+    if workspace do
+      workspace_dir = Path.join(workspace.path, ".boomlooper/workspace")
+
+      # Stop any running agents for this workspace
+      BoomLooper.ChatAgent.list_agents()
+      |> Enum.filter(&(&1[:bind_mount] == workspace.path))
+      |> Enum.each(&BoomLooper.ChatAgent.stop(&1.id))
+
+      # Stop containers
+      ws_id = BoomLooper.Workspace.workspace_id(workspace.path)
+      BoomLooper.Compose.down(workspace.path, ws_id)
+
+      # Delete workspace directory
+      File.rm_rf(workspace_dir)
+
+      BoomLooper.EventLog.info("workspace:#{workspace_id}", "Workspace cleaned via API")
+
+      conn
+      |> put_resp_content_type("text/plain")
+      |> send_resp(200, "Workspace #{workspace_id} cleaned. Deleted #{workspace_dir}\n")
+    else
+      conn
+      |> put_resp_content_type("text/plain")
+      |> send_resp(404, "Workspace #{workspace_id} not found\n")
+    end
+  end
+
+  @doc "POST /system/agents/:id/stop — stop a specific agent"
+  def stop_agent(conn, %{"id" => agent_id}) do
+    case BoomLooper.ChatAgent.stop(agent_id) do
+      :ok ->
+        BoomLooper.EventLog.info("agent:#{agent_id}", "Agent stopped via API")
+        conn
+        |> put_resp_content_type("text/plain")
+        |> send_resp(200, "Agent #{agent_id} stopped\n")
+
+      {:error, :not_found} ->
+        conn
+        |> put_resp_content_type("text/plain")
+        |> send_resp(404, "Agent #{agent_id} not found\n")
+    end
+  end
+
   defp port do
     Application.get_env(:boom_looper, BoomLooperWeb.Endpoint)[:http][:port] || 4000
   end

@@ -44,5 +44,7 @@ defmodule BoomLooperWeb.Router do
     get "/debug", DebugController, :index
     post "/reset", DebugController, :reset
     post "/reset/containers", DebugController, :reset_containers
+    post "/workspaces/:id/clean", DebugController, :clean_workspace
+    post "/agents/:id/stop", DebugController, :stop_agent
   end
 end
