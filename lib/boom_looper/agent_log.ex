@@ -9,10 +9,38 @@ defmodule BoomLooper.AgentLog do
 
   ## Versioning
 
-  Version is required in API calls. First record in files is a meta record:
+  Version is **required** in all API calls. This is intentional - we want the
+  application to be explicit about what version it expects, not auto-detect.
+
+  First record in files is a meta record:
   `{:log_meta, %{version: 1, created_at: ~U[...]}}`
 
   Version mismatch returns `{:error, {:version_mismatch, file: X, requested: Y}}`
+  rather than crashing. This allows graceful handling (show error, run migration).
+
+  ### When to bump version
+
+  - **DO bump**: Structural changes to event tuples (adding/removing elements,
+    changing tuple structure, renaming event types)
+  - **DON'T bump**: Adding new keys to maps within events. Maps are extensible -
+    old code ignores unknown keys, new code handles missing keys with defaults.
+
+  ### Why version is required (not auto-detected)
+
+  Auto-detection hides version mismatches until runtime failures. By requiring
+  the version in every call, mismatches are caught immediately with clear errors.
+  The app knows what version it speaks; the file knows what version it contains.
+
+  ## Migrations
+
+  When you need to change the log format:
+
+  1. Define a transformer function: `transform_v1_to_v2(event) -> event`
+  2. Call `migrate(path, from: 1, to: 2, transformer: &transform_v1_to_v2/1)`
+  3. Migration is atomic - uses temp file + rename, so crash = original preserved
+
+  The `peek/1` function exists specifically to support migrations - it reads
+  any version file without checking, which is what a migrator needs.
 
   ## Event types
 
@@ -83,13 +111,15 @@ defmodule BoomLooper.AgentLog do
   end
 
   @doc """
-  Inspect a log file without version checking.
+  Peek at a log file without version checking.
 
-  For debugging - reads any version file.
+  For debugging and migrations - reads any version file regardless of what
+  version the application expects. This is the only function that doesn't
+  require a version parameter.
 
   Returns `{:ok, %{version: N, created_at: DateTime, events: [...]}}` or `{:error, reason}`.
   """
-  def inspect(opts) do
+  def peek(opts) do
     path = Keyword.fetch!(opts, :log_path)
 
     case File.read(path) do
@@ -102,6 +132,105 @@ defmodule BoomLooper.AgentLog do
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  @doc """
+  Migrate a log file from one version to another.
+
+  ## How it works
+
+  1. Reads the entire file using `inspect/1` (version-agnostic)
+  2. Verifies the file is at the expected `from` version
+  3. Transforms each event using the provided transformer function
+  4. Writes all transformed events to a temp file with the `to` version
+  5. Atomically renames temp file to original path
+
+  ## Atomicity / Crash Safety
+
+  The migration is crash-safe because:
+  - Original file is never modified in place
+  - New content is written to a `.migrating` temp file
+  - `File.rename/2` is atomic on POSIX systems
+  - If crash occurs during write, original file is untouched
+  - Either you have the complete old file or the complete new file
+
+  ## Options
+
+  - :log_path - path to log file (required)
+  - :from - expected current version (required)
+  - :to - target version (required)
+  - :transformer - function to transform each event (required)
+    Signature: `(event :: tuple()) :: tuple()`
+
+  ## Returns
+
+  - `:ok` - migration successful
+  - `{:error, :file_not_found}` - no file at path
+  - `{:error, {:unexpected_version, got: X, expected: Y}}` - file isn't at `from` version
+  - `{:error, reason}` - other file errors
+
+  ## Example
+
+  ```elixir
+  # Migrating from v1 to v2 where we rename :msg to :message
+  transformer = fn
+    {:msg, agent_id, data} -> {:message, agent_id, data}
+    other -> other
+  end
+
+  AgentLog.migrate(path,
+    from: 1,
+    to: 2,
+    transformer: transformer
+  )
+  ```
+  """
+  def migrate(opts) do
+    path = Keyword.fetch!(opts, :log_path)
+    from_version = Keyword.fetch!(opts, :from)
+    to_version = Keyword.fetch!(opts, :to)
+    transformer = Keyword.fetch!(opts, :transformer)
+
+    case peek(log_path: path) do
+      {:ok, %{version: nil}} ->
+        {:error, :file_not_found}
+
+      {:ok, %{version: version}} when version != from_version ->
+        {:error, {:unexpected_version, got: version, expected: from_version}}
+
+      {:ok, %{events: events}} ->
+        do_migrate(path, to_version, events, transformer)
+
+      {:error, _} = err ->
+        err
+    end
+  end
+
+  defp do_migrate(path, to_version, events, transformer) do
+    temp_path = path <> ".migrating"
+    dir = Path.dirname(temp_path)
+
+    # Ensure directory exists (should already, but be safe)
+    unless File.exists?(dir) do
+      File.mkdir_p!(dir)
+    end
+
+    # Remove any leftover temp file from a previous failed migration
+    File.rm(temp_path)
+
+    # Write transformed events to temp file
+    for event <- events do
+      transformed = transformer.(event)
+      append(transformed, log_path: temp_path, version: to_version)
+    end
+
+    # Atomic rename - this is the commit point
+    # On POSIX systems, rename is atomic. Either the old file exists
+    # or the new file exists, never an in-between state.
+    case File.rename(temp_path, path) do
+      :ok -> :ok
+      {:error, reason} -> {:error, {:rename_failed, reason}}
     end
   end
 

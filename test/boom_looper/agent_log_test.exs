@@ -50,25 +50,25 @@ defmodule BoomLooper.AgentLogTest do
     test "first append writes meta header with version", %{log_path: log_path} do
       AgentLog.append({:agent, "a1", %{name: "Test"}}, log_path: log_path, version: 1)
 
-      {:ok, info} = AgentLog.inspect(log_path: log_path)
+      {:ok, info} = AgentLog.peek(log_path: log_path)
       assert info.version == 1
       assert %DateTime{} = info.created_at
     end
   end
 
-  describe "inspect/1" do
+  describe "peek/1" do
     test "returns version and all events", %{log_path: log_path} do
       AgentLog.append({:agent, "a1", %{name: "Agent 1"}}, log_path: log_path, version: 1)
       AgentLog.append({:msg, "a1", %{id: "m1", content: "Hello"}}, log_path: log_path, version: 1)
 
-      {:ok, info} = AgentLog.inspect(log_path: log_path)
+      {:ok, info} = AgentLog.peek(log_path: log_path)
 
       assert info.version == 1
       assert length(info.events) == 2
     end
 
     test "works on non-existent file", %{log_path: log_path} do
-      {:ok, info} = AgentLog.inspect(log_path: log_path)
+      {:ok, info} = AgentLog.peek(log_path: log_path)
 
       assert info.version == nil
       assert info.events == []
@@ -78,8 +78,8 @@ defmodule BoomLooper.AgentLogTest do
       # Write with version 99
       AgentLog.append({:agent, "a1", %{}}, log_path: log_path, version: 99)
 
-      # inspect doesn't care about version
-      {:ok, info} = AgentLog.inspect(log_path: log_path)
+      # peek doesn't care about version
+      {:ok, info} = AgentLog.peek(log_path: log_path)
       assert info.version == 99
     end
   end
@@ -418,6 +418,217 @@ defmodule BoomLooper.AgentLogTest do
       for i <- 1..5 do
         assert length(state["agent-#{i}"].messages) == 5
       end
+    end
+  end
+
+  describe "migrate/1" do
+    # Migration uses atomic file rename for crash safety:
+    # 1. Read all events from original file (any version via inspect/1)
+    # 2. Transform each event with user-provided function
+    # 3. Write transformed events to temp file (.migrating suffix)
+    # 4. Atomic rename temp -> original
+    #
+    # If crash occurs during steps 1-3, original file is untouched.
+    # Step 4 is atomic on POSIX - either old or new file, never partial.
+
+    test "migrates from v1 to v2 with transformer", %{log_path: log_path} do
+      # Write v1 data
+      AgentLog.append({:agent, "a1", %{name: "Test"}}, log_path: log_path, version: 1)
+      AgentLog.append({:msg, "a1", %{id: "m1", content: "Hello"}}, log_path: log_path, version: 1)
+
+      # Migrate: rename :msg to :message
+      transformer = fn
+        {:msg, agent_id, data} -> {:message, agent_id, data}
+        other -> other
+      end
+
+      assert :ok = AgentLog.migrate(
+        log_path: log_path,
+        from: 1,
+        to: 2,
+        transformer: transformer
+      )
+
+      # File is now v2
+      {:ok, info} = AgentLog.peek(log_path: log_path)
+      assert info.version == 2
+
+      # Events were transformed
+      assert Enum.any?(info.events, fn
+        {:message, "a1", _} -> true
+        _ -> false
+      end)
+
+      # Old :msg format is gone
+      refute Enum.any?(info.events, fn
+        {:msg, _, _} -> true
+        _ -> false
+      end)
+    end
+
+    test "returns error when file doesn't exist", %{log_path: log_path} do
+      result = AgentLog.migrate(
+        log_path: log_path,
+        from: 1,
+        to: 2,
+        transformer: &Function.identity/1
+      )
+
+      assert {:error, :file_not_found} = result
+    end
+
+    test "returns error when file version doesn't match expected", %{log_path: log_path} do
+      # Write v1 data
+      AgentLog.append({:agent, "a1", %{name: "Test"}}, log_path: log_path, version: 1)
+
+      # Try to migrate from v2 (but file is v1)
+      result = AgentLog.migrate(
+        log_path: log_path,
+        from: 2,
+        to: 3,
+        transformer: &Function.identity/1
+      )
+
+      assert {:error, {:unexpected_version, got: 1, expected: 2}} = result
+
+      # Original file unchanged
+      {:ok, info} = AgentLog.peek(log_path: log_path)
+      assert info.version == 1
+    end
+
+    test "identity transformer just bumps version", %{log_path: log_path} do
+      # Write v1 data with multiple events
+      AgentLog.append({:agent, "a1", %{name: "Agent 1"}}, log_path: log_path, version: 1)
+      AgentLog.append({:agent, "a2", %{name: "Agent 2"}}, log_path: log_path, version: 1)
+      AgentLog.append({:msg, "a1", %{id: "m1", content: "Hello"}}, log_path: log_path, version: 1)
+
+      # Migrate with identity (no transformation, just version bump)
+      assert :ok = AgentLog.migrate(
+        log_path: log_path,
+        from: 1,
+        to: 2,
+        transformer: &Function.identity/1
+      )
+
+      # Version bumped
+      {:ok, info} = AgentLog.peek(log_path: log_path)
+      assert info.version == 2
+
+      # All events preserved
+      assert length(info.events) == 3
+    end
+
+    test "cleans up temp file on success", %{log_path: log_path} do
+      AgentLog.append({:agent, "a1", %{name: "Test"}}, log_path: log_path, version: 1)
+
+      assert :ok = AgentLog.migrate(
+        log_path: log_path,
+        from: 1,
+        to: 2,
+        transformer: &Function.identity/1
+      )
+
+      # No .migrating file left behind
+      refute File.exists?(log_path <> ".migrating")
+    end
+
+    test "removes stale temp file from previous failed migration", %{log_path: log_path} do
+      AgentLog.append({:agent, "a1", %{name: "Test"}}, log_path: log_path, version: 1)
+
+      # Create stale temp file (simulates previous crash)
+      File.write!(log_path <> ".migrating", "stale data from crashed migration")
+
+      assert :ok = AgentLog.migrate(
+        log_path: log_path,
+        from: 1,
+        to: 2,
+        transformer: &Function.identity/1
+      )
+
+      # Migration succeeded, original file is v2
+      {:ok, info} = AgentLog.peek(log_path: log_path)
+      assert info.version == 2
+    end
+
+    test "all events pass through transformer", %{log_path: log_path} do
+      # Write various event types
+      AgentLog.append({:agent, "a1", %{name: "Test", count: 0}}, log_path: log_path, version: 1)
+      AgentLog.append({:msg, "a1", %{id: "m1", count: 0}}, log_path: log_path, version: 1)
+      AgentLog.append({:msg_update, "a1", "m1", %{count: 0}}, log_path: log_path, version: 1)
+
+      # Transformer increments count in all events
+      transformer = fn
+        {:agent, id, data} -> {:agent, id, Map.update!(data, :count, &(&1 + 1))}
+        {:msg, id, data} -> {:msg, id, Map.update!(data, :count, &(&1 + 1))}
+        {:msg_update, id, msg_id, data} -> {:msg_update, id, msg_id, Map.update!(data, :count, &(&1 + 1))}
+        other -> other
+      end
+
+      assert :ok = AgentLog.migrate(
+        log_path: log_path,
+        from: 1,
+        to: 2,
+        transformer: transformer
+      )
+
+      {:ok, info} = AgentLog.peek(log_path: log_path)
+
+      # All events have count: 1 (incremented from 0)
+      for event <- info.events do
+        case event do
+          {:agent, _, %{count: count}} -> assert count == 1
+          {:msg, _, %{count: count}} -> assert count == 1
+          {:msg_update, _, _, %{count: count}} -> assert count == 1
+        end
+      end
+    end
+
+    test "replayed state identical after identity migration", %{log_path: log_path} do
+      # Build up realistic state
+      AgentLog.append({:agent, "a1", %{name: "Agent 1", status: :idle}}, log_path: log_path, version: 1)
+      AgentLog.append({:msg, "a1", %{id: "m1", role: :user, content: "Hello"}}, log_path: log_path, version: 1)
+      AgentLog.append({:msg, "a1", %{id: "m2", role: :assistant, content: "Hi there"}}, log_path: log_path, version: 1)
+      AgentLog.append({:agent, "a2", %{name: "Agent 2"}}, log_path: log_path, version: 1)
+
+      # Capture state before migration
+      {:ok, state_before} = AgentLog.replay(log_path: log_path, version: 1)
+
+      # Migrate with identity
+      assert :ok = AgentLog.migrate(
+        log_path: log_path,
+        from: 1,
+        to: 2,
+        transformer: &Function.identity/1
+      )
+
+      # State after should be identical
+      {:ok, state_after} = AgentLog.replay(log_path: log_path, version: 2)
+
+      assert state_before == state_after
+    end
+
+    test "created_at reflects when file was written, not original creation", %{log_path: log_path} do
+      AgentLog.append({:agent, "a1", %{name: "Test"}}, log_path: log_path, version: 1)
+
+      {:ok, info_before} = AgentLog.peek(log_path: log_path)
+
+      # Small delay to ensure timestamps would differ
+      Process.sleep(10)
+
+      assert :ok = AgentLog.migrate(
+        log_path: log_path,
+        from: 1,
+        to: 2,
+        transformer: &Function.identity/1
+      )
+
+      {:ok, info_after} = AgentLog.peek(log_path: log_path)
+
+      # created_at is NOT preserved - it reflects when the v2 file was created.
+      # This is intentional. If you need to track original creation, store it
+      # in the events themselves. The meta.created_at is for the current file.
+      assert %DateTime{} = info_after.created_at
+      assert DateTime.compare(info_after.created_at, info_before.created_at) == :gt
     end
   end
 end
