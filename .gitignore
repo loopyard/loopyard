@@ -10,6 +10,9 @@
 # Editor
 .elixir_ls/
 
+# Claude Code local settings
+.claude/settings.local.json
+
 # Environment (never commit secrets)
 .env
 .env.*
@@ -19,7 +22,7 @@
 /.cache
 
 # BoomLooper workspace (generated per-workspace files)
-.boomlooper/workspace/
+.boomlooper/
 
 # BoomLooper home dir for test env
 .boomlooper_home/
