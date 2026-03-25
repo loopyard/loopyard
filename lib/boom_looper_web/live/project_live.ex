@@ -14,12 +14,14 @@ defmodule BoomLooperWeb.ProjectLive do
       if connected?(socket) do
         ChatAgent.subscribe()
         BoomLooper.Workspace.ServiceManager.subscribe()
+        # Fetch service counts async after mount
+        send(self(), :fetch_service_counts)
       end
 
       {:ok,
        socket
        |> assign(:project, project)
-       |> assign(:workspaces, load_workspaces(project))}
+       |> assign(:workspaces, load_workspaces_fast(project))}
     end
   end
 
@@ -30,14 +32,14 @@ defmodule BoomLooperWeb.ProjectLive do
       BoomLooper.WorkspaceSupervisor.start_workspace(workspace_id, workspace.path)
       ProjectRegistry.update_workspace_status(workspace_id, :running)
     end
-    {:noreply, assign(socket, :workspaces, load_workspaces(socket.assigns.project))}
+    {:noreply, assign(socket, :workspaces, load_workspaces_full(socket.assigns.project))}
   end
 
   @impl true
   def handle_event("stop_workspace", %{"id" => workspace_id}, socket) do
     BoomLooper.WorkspaceSupervisor.stop_workspace(workspace_id)
     ProjectRegistry.update_workspace_status(workspace_id, :stopped)
-    {:noreply, assign(socket, :workspaces, load_workspaces(socket.assigns.project))}
+    {:noreply, assign(socket, :workspaces, load_workspaces_full(socket.assigns.project))}
   end
 
   @impl true
@@ -63,7 +65,7 @@ defmodule BoomLooperWeb.ProjectLive do
     BoomLooper.WorkspaceSupervisor.stop_workspace(id)
 
     case ProjectRegistry.remove_workspace(id) do
-      :ok -> {:noreply, assign(socket, :workspaces, load_workspaces(socket.assigns.project))}
+      :ok -> {:noreply, assign(socket, :workspaces, load_workspaces_fast(socket.assigns.project))}
       {:error, reason} -> {:noreply, put_flash(socket, :error, reason)}
     end
   end
@@ -71,18 +73,40 @@ defmodule BoomLooperWeb.ProjectLive do
   @impl true
   def handle_info({event, _}, socket)
       when event in [:chat_agent_started, :chat_agent_stopped, :chat_agent_booting, :chat_agent_removed] do
-    {:noreply, assign(socket, :workspaces, load_workspaces(socket.assigns.project))}
+    {:noreply, assign(socket, :workspaces, load_workspaces_fast(socket.assigns.project))}
   end
 
   @impl true
   def handle_info({:services_updated, _path, _statuses}, socket) do
-    {:noreply, assign(socket, :workspaces, load_workspaces(socket.assigns.project))}
+    {:noreply, assign(socket, :workspaces, load_workspaces_full(socket.assigns.project))}
+  end
+
+  @impl true
+  def handle_info(:fetch_service_counts, socket) do
+    {:noreply, assign(socket, :workspaces, load_workspaces_full(socket.assigns.project))}
   end
 
   @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
-  defp load_workspaces(project) do
+  # Fast load without service status queries (for initial mount)
+  defp load_workspaces_fast(project) do
+    agents = ChatAgent.list_agents()
+
+    ProjectRegistry.list_workspaces(project.id)
+    |> Enum.map(fn workspace ->
+      agent_count = Enum.count(agents, fn a ->
+        a[:bind_mount] == workspace.path || a[:working_dir] == workspace.path
+      end)
+
+      workspace
+      |> Map.put(:agent_count, agent_count)
+      |> Map.put(:service_count, 0)
+    end)
+  end
+
+  # Full load with service status (async after mount, or on events)
+  defp load_workspaces_full(project) do
     agents = ChatAgent.list_agents()
 
     ProjectRegistry.list_workspaces(project.id)
