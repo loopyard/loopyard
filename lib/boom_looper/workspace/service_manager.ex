@@ -363,6 +363,27 @@ defmodule BoomLooper.Workspace.ServiceManager do
     {:via, Registry, {BoomLooper.ServiceManagerRegistry, project_dir}}
   end
 
+  # --- Agent Log Versioning ---
+  #
+  # Agent logs use file-level versioning. The version is stored in the first
+  # record (meta header) and checked on every replay.
+  #
+  # Migration strategy:
+  # - Migration happens HERE, on startup, before any agents are created
+  # - This means no concurrent writes during migration (agents don't exist yet)
+  # - If we ever need "hot" migration while agents are running, we'd need a
+  #   GenServer coordinator that queues writes during migration. Don't build
+  #   that until we actually need it.
+  #
+  # When to bump @log_version:
+  # - DO bump: Structural changes to event tuples (adding/removing elements)
+  # - DON'T bump: Adding new keys to maps (maps are extensible, old code ignores new keys)
+  #
+  # To add a new version:
+  # 1. Bump @log_version
+  # 2. Add transformer in migrate_log/2: {@log_version - 1, @log_version} => fn ...
+  # 3. The migration chain handles multi-version jumps (v1→v2→v3)
+
   @log_version 1
 
   defp replay_agent_log(project_dir, workspace_id) do
@@ -372,7 +393,6 @@ defmodule BoomLooper.Workspace.ServiceManager do
       {:ok, agents} when map_size(agents) > 0 ->
         BoomLooper.EventLog.info("workspace", "Restored #{map_size(agents)} agent(s) from log, starting...")
 
-        # Start each agent with resume: true
         for {agent_id, _agent_data} <- agents do
           start_restored_agent(workspace_id, agent_id)
         end
@@ -382,13 +402,80 @@ defmodule BoomLooper.Workspace.ServiceManager do
       {:ok, _} ->
         :ok
 
-      {:error, {:version_mismatch, file: file_v, requested: req_v}} ->
-        BoomLooper.EventLog.warning("workspace", "Agent log version mismatch: file is v#{file_v}, expected v#{req_v}. Agents not restored.")
+      {:error, {:version_mismatch, file: file_v, requested: @log_version}} ->
+        # Attempt migration before giving up
+        case migrate_log(log_path, file_v) do
+          :ok ->
+            BoomLooper.EventLog.info("workspace", "Migrated agent log from v#{file_v} to v#{@log_version}")
+            # Retry replay after successful migration
+            replay_agent_log(project_dir, workspace_id)
+
+          {:error, :no_migration_path} ->
+            BoomLooper.EventLog.warning("workspace",
+              "Agent log version mismatch: file is v#{file_v}, expected v#{@log_version}. " <>
+              "No migration path available. Agents not restored.")
+
+          {:error, reason} ->
+            BoomLooper.EventLog.warning("workspace",
+              "Failed to migrate agent log from v#{file_v}: #{inspect(reason)}. Agents not restored.")
+        end
 
       {:error, reason} ->
         BoomLooper.EventLog.warning("workspace", "Failed to replay agent log: #{inspect(reason)}")
     end
   end
+
+  # Migrate log file from old version to @log_version.
+  # Handles multi-step migrations (e.g., v1→v2→v3) by chaining.
+  defp migrate_log(log_path, from_version) when from_version < @log_version do
+    # Find next version in chain
+    next_version = from_version + 1
+
+    case migration_transformer(from_version, next_version) do
+      nil ->
+        {:error, :no_migration_path}
+
+      transformer ->
+        case BoomLooper.AgentLog.migrate(
+          log_path: log_path,
+          from: from_version,
+          to: next_version,
+          transformer: transformer
+        ) do
+          :ok when next_version == @log_version ->
+            :ok
+
+          :ok ->
+            # Continue chain to reach @log_version
+            migrate_log(log_path, next_version)
+
+          error ->
+            error
+        end
+    end
+  end
+
+  defp migrate_log(_log_path, from_version) when from_version > @log_version do
+    # File is newer than code - can't downgrade
+    {:error, :no_migration_path}
+  end
+
+  # Define transformers for each version step.
+  # Return nil if no migration exists for that step.
+  #
+  # Example for future v1→v2 migration:
+  #
+  #   defp migration_transformer(1, 2) do
+  #     fn
+  #       {:msg, agent_id, data} ->
+  #         # Example: rename field
+  #         {:msg, agent_id, Map.put(data, :new_field, Map.get(data, :old_field))}
+  #       other ->
+  #         other
+  #     end
+  #   end
+  #
+  defp migration_transformer(_from, _to), do: nil
 
   defp start_restored_agent(workspace_id, agent_id) do
     opts = [id: agent_id, resume: true]

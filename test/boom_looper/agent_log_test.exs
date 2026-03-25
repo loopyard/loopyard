@@ -630,5 +630,60 @@ defmodule BoomLooper.AgentLogTest do
       assert %DateTime{} = info_after.created_at
       assert DateTime.compare(info_after.created_at, info_before.created_at) == :gt
     end
+
+    test "multi-step migration chain v1→v2→v3", %{log_path: log_path} do
+      # Start with v1 data
+      AgentLog.append({:agent, "a1", %{name: "Test", v1_field: true}}, log_path: log_path, version: 1)
+      AgentLog.append({:msg, "a1", %{id: "m1", content: "Hello"}}, log_path: log_path, version: 1)
+
+      # v1→v2: add migrated_at field
+      v1_to_v2 = fn
+        {:agent, id, data} -> {:agent, id, Map.put(data, :migrated_v2, true)}
+        other -> other
+      end
+
+      assert :ok = AgentLog.migrate(
+        log_path: log_path,
+        from: 1,
+        to: 2,
+        transformer: v1_to_v2
+      )
+
+      {:ok, info_v2} = AgentLog.peek(log_path: log_path)
+      assert info_v2.version == 2
+
+      # v2→v3: rename :msg to :message
+      v2_to_v3 = fn
+        {:msg, id, data} -> {:message, id, data}
+        other -> other
+      end
+
+      assert :ok = AgentLog.migrate(
+        log_path: log_path,
+        from: 2,
+        to: 3,
+        transformer: v2_to_v3
+      )
+
+      {:ok, info_v3} = AgentLog.peek(log_path: log_path)
+      assert info_v3.version == 3
+
+      # Both transformations applied
+      assert Enum.any?(info_v3.events, fn
+        {:agent, _, %{migrated_v2: true}} -> true
+        _ -> false
+      end)
+
+      assert Enum.any?(info_v3.events, fn
+        {:message, _, _} -> true
+        _ -> false
+      end)
+
+      # Old formats gone
+      refute Enum.any?(info_v3.events, fn
+        {:msg, _, _} -> true
+        _ -> false
+      end)
+    end
   end
 end
