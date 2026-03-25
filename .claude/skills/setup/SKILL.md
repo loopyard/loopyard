@@ -116,6 +116,30 @@ Then try again.
 
 **Port 4000 in use**: Set a different port with `PORT=4001 mix phx.server`.
 
+## ARM64 / Apple Silicon Service Images
+
+When configuring services in workspace.json on Apple Silicon (M1/M2/M3/M4), prefer images with ARM64 builds. AMD64-only images will run under emulation (slower, sometimes buggy).
+
+**Check if an image has ARM64:**
+```bash
+docker manifest inspect <image>:<tag> 2>&1 | grep -i "architecture"
+```
+
+Look for `arm64` or `aarch64`. If only `amd64` is available:
+
+1. **Find an alternative image** - Many popular images have ARM64 builds from different publishers (e.g., `ghcr.io/baosystems/postgis` instead of `postgis/postgis`)
+
+2. **Build from Dockerfile** - Most images publish their Dockerfile on GitHub. Clone and build locally for native ARM64:
+   ```bash
+   # Example: PostGIS doesn't have ARM64, but you can build it
+   git clone https://github.com/postgis/docker-postgis
+   cd docker-postgis/17-3.5
+   docker build -t postgis:17-3.5-arm64 .
+   ```
+   Then reference your local image in workspace.json.
+
+3. **Accept emulation** - If the service isn't performance-critical, AMD64 emulation works fine for dev. Just expect ~2-3x slower performance.
+
 ### Colima issues (macOS)
 
 **Colima fails to start with socket error**: Clean up stale files and try again:
