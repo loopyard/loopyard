@@ -1019,13 +1019,17 @@ defmodule BoomLooperWeb.ChatLive do
             <path fill-rule="evenodd" d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z" clip-rule="evenodd" />
           </svg>
         </.link>
-        <.link navigate="/" class="text-lg font-semibold tracking-tight hover:text-violet-600 dark:hover:text-violet-400 transition-colors hidden md:block">Boom Looper</.link>
+        <.link navigate="/" class="text-sm font-semibold tracking-tight hover:text-violet-600 dark:hover:text-violet-400 transition-colors hidden md:block">Boom Looper</.link>
         <span class="text-zinc-300 dark:text-zinc-600 hidden md:block">/</span>
         <.link :if={@project} navigate={"/projects/#{@project.id}"} class="text-sm font-medium hover:text-violet-600 dark:hover:text-violet-400 transition-colors truncate">{@workspace.name}</.link>
         <span :if={!@project} class="text-sm font-medium truncate">{@workspace.name}</span>
         <span :if={@workspace_entry && !@workspace_entry.is_main} class="text-zinc-300 dark:text-zinc-600 hidden sm:block">/</span>
         <span :if={@workspace_entry && !@workspace_entry.is_main} class="text-sm text-zinc-500 dark:text-zinc-400 hidden sm:block truncate">{@workspace_entry.name}</span>
         <span class="text-sm text-zinc-400 dark:text-zinc-500 hidden sm:block flex-none">{@agent_count} agent{if @agent_count != 1, do: "s"}</span>
+      </div>
+      <div class="flex items-center gap-4 flex-none hidden md:flex">
+        <.link navigate="/connect" class="text-xs text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">Remote</.link>
+        <.link navigate="/system" class="text-xs text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">System</.link>
       </div>
     </header>
     """
@@ -1591,7 +1595,7 @@ defmodule BoomLooperWeb.ChatLive do
         phx-hook="Terminal"
         data-container={@container}
         phx-update="ignore"
-        class="flex-1 bg-zinc-950 p-2"
+        class="flex-1 bg-[#18181b] p-3"
       ></div>
       <div :if={!@container} class="flex-1 flex items-center justify-center">
         <p class="text-sm text-zinc-400">Service not running</p>

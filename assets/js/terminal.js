@@ -25,7 +25,7 @@ export function createTerminalHook() {
 
       const term = new Terminal({
         cursorBlink: true,
-        fontSize: 13,
+        fontSize: 14,
         fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
         theme: {
           background: "#18181b",

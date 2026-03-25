@@ -180,10 +180,16 @@ defmodule BoomLooperWeb.ProjectLive do
   def render(assigns) do
     ~H"""
     <div class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
-      <header class="flex-none h-14 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center px-4 md:px-5 gap-3">
-        <.link navigate="/" class="text-lg font-semibold tracking-tight hover:text-violet-600 dark:hover:text-violet-400 transition-colors">Boom Looper</.link>
-        <span class="text-zinc-300 dark:text-zinc-600">/</span>
-        <span class="text-sm font-medium">{@project.name}</span>
+      <header class="flex-none h-14 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center justify-between px-4 md:px-5">
+        <div class="flex items-center gap-3">
+          <.link navigate="/" class="text-sm font-semibold tracking-tight hover:text-violet-600 dark:hover:text-violet-400 transition-colors">Boom Looper</.link>
+          <span class="text-zinc-300 dark:text-zinc-600">/</span>
+          <span class="text-sm font-medium">{@project.name}</span>
+        </div>
+        <div class="flex items-center gap-4">
+          <.link navigate="/connect" class="text-xs text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">Remote</.link>
+          <.link navigate="/system" class="text-xs text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">System</.link>
+        </div>
       </header>
       <div class="flex-1 overflow-y-auto">
         <div class="max-w-2xl mx-auto px-4 py-8">

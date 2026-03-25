@@ -12,18 +12,8 @@ Hooks.Terminal = createTerminalHook()
 Hooks.ScrollBottom = {
   mounted() {
     this._userScrolledUp = false
-    const el = document.getElementById("messages")
-
-    if (el) {
-      // Scroll to bottom on initial load
-      requestAnimationFrame(() => { el.scrollTop = el.scrollHeight })
-
-      // Track whether user has scrolled up
-      el.addEventListener("scroll", () => {
-        const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50
-        this._userScrolledUp = !atBottom
-      })
-    }
+    this._lastPath = window.location.pathname
+    this._setupScroll()
 
     this.handleEvent("scroll_bottom", () => {
       if (!this._userScrolledUp) {
@@ -31,6 +21,30 @@ Hooks.ScrollBottom = {
         if (el) el.scrollTop = el.scrollHeight
       }
     })
+  },
+
+  updated() {
+    const currentPath = window.location.pathname
+    if (currentPath !== this._lastPath) {
+      this._lastPath = currentPath
+      this._userScrolledUp = false
+      this._setupScroll()
+    }
+  },
+
+  _setupScroll() {
+    const el = document.getElementById("messages")
+    if (el) {
+      requestAnimationFrame(() => { el.scrollTop = el.scrollHeight })
+
+      if (!this._scrollListenerAdded) {
+        el.addEventListener("scroll", () => {
+          const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50
+          this._userScrolledUp = !atBottom
+        })
+        this._scrollListenerAdded = true
+      }
+    }
   }
 }
 
