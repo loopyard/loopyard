@@ -35,6 +35,10 @@ defmodule BoomLooper.Application do
       {:error, reason} -> Logger.warning("[SSHServer] Not started: #{inspect(reason)}")
     end
 
+    # Restore persisted projects from ~/.boomlooper/projects.json
+    # ServiceManager will reconnect to any running containers
+    BoomLooper.ProjectRegistry.restore()
+
     port = Application.get_env(:boom_looper, BoomLooperWeb.Endpoint)[:http][:port] || 4000
     IO.puts("\n  Launch from any project directory:")
     IO.puts("  open \"http://localhost:#{port}/launch/#{secret}?path=$(pwd)\"\n")

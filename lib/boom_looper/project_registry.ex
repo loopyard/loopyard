@@ -3,10 +3,15 @@ defmodule BoomLooper.ProjectRegistry do
   Registry of projects (git repos) and their workspaces (worktrees).
   Each project can have multiple workspaces, each with its own containers and agents.
 
-  Stored in ETS — no persistence across restarts.
+  Projects are stored in ETS for fast access, and persisted to
+  `~/.boomlooper/projects.json` via `ProjectStore`. On startup,
+  `restore/0` re-registers persisted projects.
   """
 
+  require Logger
+
   alias BoomLooper.Git
+  alias BoomLooper.ProjectStore
   alias BoomLooper.Workspace
 
   @projects_table :project_registry
@@ -48,15 +53,44 @@ defmodule BoomLooper.ProjectRegistry do
           # Also discover existing worktrees
           discover_worktrees(project)
 
+          # Persist to disk
+          ProjectStore.add(project.path)
+
           {:ok, project, workspace}
 
         {:error, _} ->
           # Not a git repo — treat as a single-workspace project
           project = find_or_create_project(path)
           workspace = find_or_create_workspace(project.id, "main", path)
+
+          # Persist to disk
+          ProjectStore.add(project.path)
+
           {:ok, project, workspace}
       end
     end
+  end
+
+  @doc """
+  Restore projects from disk on startup.
+
+  Re-registers all projects from `~/.boomlooper/projects.json`.
+  ServiceManager will detect running containers and reconnect.
+  """
+  def restore do
+    ensure_ets_tables()
+
+    for path <- ProjectStore.load() do
+      case add(path) do
+        {:ok, _project, _workspace} ->
+          :ok
+
+        {:error, reason} ->
+          Logger.warning("[ProjectRegistry] Failed to restore project #{path}: #{reason}")
+      end
+    end
+
+    :ok
   end
 
   @doc "List all projects."
@@ -79,6 +113,11 @@ defmodule BoomLooper.ProjectRegistry do
   @doc "Remove a project and all its workspaces."
   def remove_project(id) do
     ensure_ets_tables()
+    project = get_project(id)
+
+    # Remove from disk
+    if project, do: ProjectStore.remove(project.path)
+
     # Remove all workspaces for this project
     list_workspaces(id) |> Enum.each(&(:ets.delete(@workspaces_table, &1.id)))
     :ets.delete(@projects_table, id)
