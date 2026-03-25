@@ -7,7 +7,15 @@ defmodule BoomLooper.AgentLog do
 
   Each record: [4 bytes: size][N bytes: ETF binary]
 
-  Event types:
+  ## Versioning
+
+  Version is required in API calls. First record in files is a meta record:
+  `{:log_meta, %{version: 1, created_at: ~U[...]}}`
+
+  Version mismatch returns `{:error, {:version_mismatch, file: X, requested: Y}}`
+
+  ## Event types
+
   - {:agent, agent_id, agent_data} - Agent created/updated
   - {:msg, agent_id, message} - Message appended
   - {:msg_update, agent_id, msg_id, changes} - Message updated
@@ -18,43 +26,53 @@ defmodule BoomLooper.AgentLog do
   @doc """
   Append an event to the log file.
 
+  Writes version header on first append to new/empty file.
+
   Options:
   - :log_path - path to log file (required)
+  - :version - log version (required)
   """
   def append(event, opts) do
     path = Keyword.fetch!(opts, :log_path)
+    version = Keyword.fetch!(opts, :version)
     dir = Path.dirname(path)
 
     unless File.exists?(dir) do
       File.mkdir_p!(dir)
     end
 
-    binary = :erlang.term_to_binary(event)
-    File.write!(path, <<byte_size(binary)::32, binary::binary>>, [:append, :raw])
+    # Write version header if file doesn't exist or is empty
+    ensure_meta_header(path, version)
+
+    write_record(path, event)
   end
 
   @doc """
   Replay the log file and apply events to rebuild state.
 
-  Returns a map of agent_id => agent_data (including messages).
+  Returns `{:ok, state}` on success.
+  Returns `{:error, {:version_mismatch, file: X, requested: Y}}` if versions don't match.
 
   Options:
   - :log_path - path to log file (required)
-  - :ets_table - ETS table to populate (optional, if provided will write to ETS)
+  - :version - expected version (required)
+  - :ets_table - ETS table to populate (optional)
   """
   def replay(opts) do
     path = Keyword.fetch!(opts, :log_path)
+    requested_version = Keyword.fetch!(opts, :version)
     ets_table = Keyword.get(opts, :ets_table)
 
     case File.read(path) do
       {:ok, binary} ->
-        state = replay_entries(binary, %{})
+        case check_version_and_replay(binary, requested_version) do
+          {:ok, state} ->
+            if ets_table, do: populate_ets(ets_table, state)
+            {:ok, state}
 
-        if ets_table do
-          populate_ets(ets_table, state)
+          {:error, _} = err ->
+            err
         end
-
-        {:ok, state}
 
       {:error, :enoent} ->
         {:ok, %{}}
@@ -65,20 +83,120 @@ defmodule BoomLooper.AgentLog do
   end
 
   @doc """
+  Inspect a log file without version checking.
+
+  For debugging - reads any version file.
+
+  Returns `{:ok, %{version: N, created_at: DateTime, events: [...]}}` or `{:error, reason}`.
+  """
+  def inspect(opts) do
+    path = Keyword.fetch!(opts, :log_path)
+
+    case File.read(path) do
+      {:ok, binary} ->
+        {meta, events} = read_all(binary)
+        {:ok, Map.put(meta, :events, events)}
+
+      {:error, :enoent} ->
+        {:ok, %{version: nil, created_at: nil, events: []}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
   Read all events from the log without applying them.
-  Useful for debugging/inspection.
+  Useful for debugging/inspection. Excludes meta record.
   """
   def read_events(opts) do
     path = Keyword.fetch!(opts, :log_path)
 
     case File.read(path) do
-      {:ok, binary} -> {:ok, read_entries(binary, [])}
-      {:error, :enoent} -> {:ok, []}
-      {:error, reason} -> {:error, reason}
+      {:ok, binary} ->
+        {_meta, events} = read_all(binary)
+        {:ok, events}
+
+      {:error, :enoent} ->
+        {:ok, []}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
-  # --- Private: Replay Logic ---
+  # --- Private: Writing ---
+
+  defp ensure_meta_header(path, version) do
+    needs_header = case File.stat(path) do
+      {:ok, %{size: 0}} -> true
+      {:error, :enoent} -> true
+      _ -> false
+    end
+
+    if needs_header do
+      meta = {:log_meta, %{version: version, created_at: DateTime.utc_now()}}
+      binary = :erlang.term_to_binary(meta)
+      File.write!(path, <<byte_size(binary)::32, binary::binary>>, [:write, :raw])
+    end
+  end
+
+  defp write_record(path, event) do
+    binary = :erlang.term_to_binary(event)
+    File.write!(path, <<byte_size(binary)::32, binary::binary>>, [:append, :raw])
+  end
+
+  # --- Private: Reading ---
+
+  defp check_version_and_replay(binary, requested_version) do
+    case read_meta(binary) do
+      {:ok, %{version: file_version}, rest} when file_version == requested_version ->
+        state = replay_entries(rest, %{})
+        {:ok, state}
+
+      {:ok, %{version: file_version}, _rest} ->
+        {:error, {:version_mismatch, file: file_version, requested: requested_version}}
+
+      {:error, :no_meta} ->
+        # Legacy file (no meta record) - treat as version 0
+        if requested_version == 0 do
+          state = replay_entries(binary, %{})
+          {:ok, state}
+        else
+          {:error, {:version_mismatch, file: 0, requested: requested_version}}
+        end
+    end
+  end
+
+  defp read_meta(<<size::32, rest::binary>>) when byte_size(rest) >= size do
+    <<data::binary-size(size), remaining::binary>> = rest
+
+    case safe_binary_to_term(data) do
+      {:ok, {:log_meta, meta}} when is_map(meta) ->
+        {:ok, meta, remaining}
+
+      {:ok, _other} ->
+        {:error, :no_meta}
+
+      :error ->
+        {:error, :no_meta}
+    end
+  end
+
+  defp read_meta(_), do: {:error, :no_meta}
+
+  defp read_all(binary) do
+    case read_meta(binary) do
+      {:ok, meta, rest} ->
+        events = read_entries(rest, [])
+        {meta, events}
+
+      {:error, :no_meta} ->
+        # Legacy file - no meta, all records are events
+        events = read_entries(binary, [])
+        {%{version: 0, created_at: nil}, events}
+    end
+  end
 
   defp replay_entries(<<size::32, rest::binary>>, state) when byte_size(rest) >= size do
     <<data::binary-size(size), remaining::binary>> = rest
@@ -99,6 +217,7 @@ defmodule BoomLooper.AgentLog do
 
     acc =
       case safe_binary_to_term(data) do
+        {:ok, {:log_meta, _}} -> acc  # Skip meta record
         {:ok, event} -> [event | acc]
         :error -> acc
       end
@@ -117,7 +236,6 @@ defmodule BoomLooper.AgentLog do
   # --- Private: Event Application ---
 
   defp apply_event({:agent, agent_id, agent_data}, state) do
-    # Upsert agent, preserving messages if they exist
     existing = Map.get(state, agent_id, %{messages: []})
     messages = Map.get(existing, :messages, [])
     updated = Map.put(agent_data, :messages, messages)
@@ -125,7 +243,6 @@ defmodule BoomLooper.AgentLog do
   end
 
   defp apply_event({:msg, agent_id, msg}, state) do
-    # Append message to agent
     agent = Map.get(state, agent_id, %{messages: []})
     messages = Map.get(agent, :messages, [])
     updated = Map.put(agent, :messages, messages ++ [msg])
@@ -133,7 +250,6 @@ defmodule BoomLooper.AgentLog do
   end
 
   defp apply_event({:msg_update, agent_id, msg_id, changes}, state) do
-    # Update existing message
     case Map.get(state, agent_id) do
       nil ->
         state

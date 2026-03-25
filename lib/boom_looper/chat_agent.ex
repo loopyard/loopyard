@@ -694,6 +694,8 @@ defmodule BoomLooper.ChatAgent do
 
   # --- Persistence ---
 
+  @log_version 1
+
   defp log_path(nil), do: nil
   defp log_path(bind_mount) do
     Path.join([bind_mount, ".boomlooper", "workspace", "agents.log"])
@@ -712,21 +714,21 @@ defmodule BoomLooper.ChatAgent do
           checklist_path: state.checklist_path,
           service_name: state.service_name
         }
-        AgentLog.append({:agent, state.id, agent_data}, log_path: path)
+        AgentLog.append({:agent, state.id, agent_data}, log_path: path, version: @log_version)
     end
   end
 
   defp persist_message(state, msg) do
     case log_path(state.bind_mount) do
       nil -> :ok
-      path -> AgentLog.append({:msg, state.id, msg}, log_path: path)
+      path -> AgentLog.append({:msg, state.id, msg}, log_path: path, version: @log_version)
     end
   end
 
   defp persist_message_update(state, msg_id, changes) do
     case log_path(state.bind_mount) do
       nil -> :ok
-      path -> AgentLog.append({:msg_update, state.id, msg_id, changes}, log_path: path)
+      path -> AgentLog.append({:msg_update, state.id, msg_id, changes}, log_path: path, version: @log_version)
     end
   end
 

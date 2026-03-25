@@ -363,10 +363,12 @@ defmodule BoomLooper.Workspace.ServiceManager do
     {:via, Registry, {BoomLooper.ServiceManagerRegistry, project_dir}}
   end
 
+  @log_version 1
+
   defp replay_agent_log(project_dir, workspace_id) do
     log_path = Path.join([project_dir, ".boomlooper", "workspace", "agents.log"])
 
-    case BoomLooper.AgentLog.replay(log_path: log_path, ets_table: :chat_agents) do
+    case BoomLooper.AgentLog.replay(log_path: log_path, version: @log_version, ets_table: :chat_agents) do
       {:ok, agents} when map_size(agents) > 0 ->
         BoomLooper.EventLog.info("workspace", "Restored #{map_size(agents)} agent(s) from log, starting...")
 
@@ -379,6 +381,9 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
       {:ok, _} ->
         :ok
+
+      {:error, {:version_mismatch, file: file_v, requested: req_v}} ->
+        BoomLooper.EventLog.warning("workspace", "Agent log version mismatch: file is v#{file_v}, expected v#{req_v}. Agents not restored.")
 
       {:error, reason} ->
         BoomLooper.EventLog.warning("workspace", "Failed to replay agent log: #{inspect(reason)}")
