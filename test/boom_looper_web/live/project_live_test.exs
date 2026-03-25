@@ -35,4 +35,59 @@ defmodule BoomLooperWeb.ProjectLiveTest do
       assert html =~ "default"
     end
   end
+
+  describe "remove project" do
+    test "shows confirmation screen before removing", %{conn: conn, project: project} do
+      {:ok, view, html} = live(conn, "/projects/#{project.id}")
+      assert html =~ "Remove project"
+
+      # Click Remove project — shows confirmation, doesn't delete yet
+      html = view |> element("button", "Remove project") |> render_click()
+      assert html =~ "Directory to delete"
+      assert html =~ "Docker containers to stop"
+      assert ProjectRegistry.get_project(project.id) != nil
+    end
+
+    test "cancel returns to project view", %{conn: conn, project: project} do
+      {:ok, view, _html} = live(conn, "/projects/#{project.id}")
+      view |> element("button", "Remove project") |> render_click()
+
+      html = view |> element("button", "Cancel") |> render_click()
+      refute html =~ "Directory to delete"
+      assert html =~ project.name
+      assert ProjectRegistry.get_project(project.id) != nil
+    end
+
+    test "confirming removes project and redirects home", %{conn: conn, project: project} do
+      {:ok, view, _html} = live(conn, "/projects/#{project.id}")
+      view |> element("button", "Remove project") |> render_click()
+
+      assert {:error, {:live_redirect, %{to: "/"}}} =
+               view |> element("button", "Remove project") |> render_click()
+
+      assert ProjectRegistry.get_project(project.id) == nil
+      assert ProjectRegistry.list_workspaces(project.id) == []
+    end
+
+    test "deletes .boomlooper directory" do
+      tmp_dir = Path.join(System.tmp_dir!(), "bl-remove-test-#{:rand.uniform(100_000)}")
+      File.mkdir_p!(tmp_dir)
+      boomlooper_dir = Path.join(tmp_dir, ".boomlooper")
+      File.mkdir_p!(Path.join(boomlooper_dir, "workspace"))
+      File.mkdir_p!(Path.join(boomlooper_dir, "repo"))
+      File.write!(Path.join(boomlooper_dir, "workspace/docker-compose.yml"), "{}")
+      File.write!(Path.join(boomlooper_dir, "repo/workspace.json"), "{}")
+
+      {:ok, project, _} = ProjectRegistry.add(tmp_dir)
+
+      conn = build_conn()
+      {:ok, view, _html} = live(conn, "/projects/#{project.id}")
+      view |> element("button", "Remove project") |> render_click()
+      view |> element("button", "Remove project") |> render_click()
+
+      refute File.dir?(boomlooper_dir)
+      assert File.dir?(tmp_dir)
+      File.rm_rf!(tmp_dir)
+    end
+  end
 end

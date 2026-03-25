@@ -110,16 +110,57 @@ defmodule BoomLooper.ProjectRegistry do
     end
   end
 
-  @doc "Remove a project and all its workspaces."
+  @doc """
+  Remove a project and all its workspaces.
+  Stops agents, tears down Docker containers, and deletes .boomlooper files.
+  """
   def remove_project(id) do
     ensure_ets_tables()
     project = get_project(id)
+    workspaces = list_workspaces(id)
 
-    # Remove from disk
-    if project, do: ProjectStore.remove(project.path)
+    # Stop all agents and clean up ETS entries
+    all_agents = BoomLooper.ChatAgent.list_agents()
 
-    # Remove all workspaces for this project
-    list_workspaces(id) |> Enum.each(&(:ets.delete(@workspaces_table, &1.id)))
+    Enum.each(workspaces, fn workspace ->
+      all_agents
+      |> Enum.filter(fn a -> a[:bind_mount] == workspace.path || a[:working_dir] == workspace.path end)
+      |> Enum.each(fn agent ->
+        BoomLooper.ChatAgent.stop_agent(agent.id)
+        BoomLooper.ChatAgent.remove_agent(agent.id)
+      end)
+
+      BoomLooper.WorkspaceSupervisor.stop_workspace(workspace.id)
+    end)
+
+    if project do
+      # Remove from disk persistence
+      ProjectStore.remove(project.path)
+
+      # Delete .boomlooper directory (config + generated files)
+      boomlooper_dir = Path.join(project.path, ".boomlooper")
+      File.rm_rf(boomlooper_dir)
+
+      # Tear down Docker containers in background
+      workspace_paths = Enum.map(workspaces, fn ws ->
+        {ws.path, Workspace.workspace_id(ws.path)}
+      end)
+
+      Task.start(fn ->
+        Enum.each(workspace_paths, fn {path, workspace_id} ->
+          try do
+            BoomLooper.Compose.down(path, workspace_id)
+          rescue
+            _ -> :ok
+          catch
+            _, _ -> :ok
+          end
+        end)
+      end)
+    end
+
+    # Remove from ETS
+    Enum.each(workspaces, fn ws -> :ets.delete(@workspaces_table, ws.id) end)
     :ets.delete(@projects_table, id)
     :ok
   end

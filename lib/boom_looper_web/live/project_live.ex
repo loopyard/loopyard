@@ -21,7 +21,8 @@ defmodule BoomLooperWeb.ProjectLive do
       {:ok,
        socket
        |> assign(:project, project)
-       |> assign(:workspaces, load_workspaces(project))}
+       |> assign(:workspaces, load_workspaces(project))
+       |> assign(:confirming_remove, false)}
     end
   end
 
@@ -57,6 +58,22 @@ defmodule BoomLooperWeb.ProjectLive do
     else
       {:noreply, socket}
     end
+  end
+
+  @impl true
+  def handle_event("confirm_remove", _params, socket) do
+    {:noreply, assign(socket, :confirming_remove, true)}
+  end
+
+  @impl true
+  def handle_event("cancel_remove", _params, socket) do
+    {:noreply, assign(socket, :confirming_remove, false)}
+  end
+
+  @impl true
+  def handle_event("remove_project", _params, socket) do
+    ProjectRegistry.remove_project(socket.assigns.project.id)
+    {:noreply, push_navigate(socket, to: "/")}
   end
 
   @impl true
@@ -126,6 +143,39 @@ defmodule BoomLooperWeb.ProjectLive do
     String.replace_prefix(path, home, "~")
   end
 
+  defp removal_details(project) do
+    boomlooper_dir = Path.join(project.path, ".boomlooper")
+    workspace_dir = Path.join(boomlooper_dir, "workspace")
+
+    files = if File.dir?(workspace_dir) do
+      case File.ls(workspace_dir) do
+        {:ok, entries} -> Enum.map(entries, &Path.join(".boomlooper/workspace", &1))
+        _ -> []
+      end
+    else
+      []
+    end
+
+    config_exists = File.exists?(Path.join(boomlooper_dir, "repo/workspace.json"))
+
+    containers = ProjectRegistry.list_workspaces(project.id)
+    |> Enum.flat_map(fn ws ->
+      workspace_id = BoomLooper.Workspace.workspace_id(ws.path)
+      prefix = BoomLooper.Compose.project_name(workspace_id)
+      case BoomLooper.Compose.ps(ws.path, workspace_id) do
+        {:ok, services} -> Enum.map(services, fn s -> "#{prefix}-#{s.name}-1" end)
+        _ -> []
+      end
+    end)
+
+    %{
+      boomlooper_dir: shorten_path(boomlooper_dir),
+      generated_files: files,
+      config_exists: config_exists,
+      containers: containers
+    }
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -141,63 +191,108 @@ defmodule BoomLooperWeb.ProjectLive do
             {@flash["error"]}
           </p>
 
-          <div class="flex items-center justify-between mb-6">
-            <div>
-              <h2 class="text-xl font-semibold">{@project.name}</h2>
-              <p class="text-xs font-mono text-zinc-400 dark:text-zinc-500 mt-0.5">{shorten_path(@project.path)}</p>
+          <%= if @confirming_remove do %>
+            <.remove_confirmation project={@project} details={removal_details(@project)} />
+          <% else %>
+            <div class="flex items-center justify-between mb-6">
+              <div>
+                <h2 class="text-xl font-semibold">{@project.name}</h2>
+                <p class="text-xs font-mono text-zinc-400 dark:text-zinc-500 mt-0.5">{shorten_path(@project.path)}</p>
+              </div>
+              <button phx-click="confirm_remove"
+                class="text-xs font-medium text-zinc-400 dark:text-zinc-500 hover:text-red-500 dark:hover:text-red-400 transition-colors">
+                Remove project
+              </button>
             </div>
-          </div>
 
-          <div class="space-y-2 mb-8">
-            <div :for={workspace <- @workspaces}
-              class="rounded-xl border border-zinc-200 dark:border-zinc-700 p-4 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group">
-              <div class="flex items-center justify-between">
-                <.link navigate={"/projects/#{@project.id}/workspaces/#{workspace.id}"} class="flex items-center gap-2 min-w-0 flex-1">
-                  <div class={"w-2 h-2 rounded-full flex-none #{if workspace.status == :running, do: "bg-green-500", else: "bg-zinc-400"}"}></div>
-                  <span class="text-sm font-medium truncate">{workspace.name}</span>
-                  <span :if={workspace.is_main} class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500">default</span>
-                  <span :if={workspace.agent_count > 0} class="text-xs font-medium text-violet-600 dark:text-violet-400 bg-violet-100 dark:bg-violet-900/30 rounded-full px-2 py-0.5">
-                    {workspace.agent_count} agent{if workspace.agent_count != 1, do: "s"}
-                  </span>
-                  <span :if={workspace.service_count > 0} class="text-xs font-medium text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 rounded-full px-2 py-0.5">
-                    {workspace.service_count} service{if workspace.service_count != 1, do: "s"}
-                  </span>
-                </.link>
-                <div class="flex items-center gap-2 flex-none opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button :if={workspace.status != :running} phx-click="start_workspace" phx-value-id={workspace.id}
-                    class="text-xs font-medium text-green-600 dark:text-green-400 hover:text-green-500 transition-colors"
-                    title="Start workspace">
-                    Start
-                  </button>
-                  <button :if={workspace.status == :running} phx-click="stop_workspace" phx-value-id={workspace.id}
-                    class="text-xs font-medium text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
-                    title="Stop workspace">
-                    Stop
-                  </button>
-                  <button :if={!workspace.is_main} phx-click="remove_workspace" phx-value-id={workspace.id}
-                    class="text-zinc-300 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 transition-colors"
-                    title="Remove workspace">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-4 h-4">
-                      <path d="M5.28 4.22a.75.75 0 0 0-1.06 1.06L6.94 8l-2.72 2.72a.75.75 0 1 0 1.06 1.06L8 9.06l2.72 2.72a.75.75 0 1 0 1.06-1.06L9.06 8l2.72-2.72a.75.75 0 0 0-1.06-1.06L8 6.94 5.28 4.22Z" />
-                    </svg>
-                  </button>
+            <div class="space-y-2 mb-8">
+              <div :for={workspace <- @workspaces}
+                class="rounded-xl border border-zinc-200 dark:border-zinc-700 p-4 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group">
+                <div class="flex items-center justify-between">
+                  <.link navigate={"/projects/#{@project.id}/workspaces/#{workspace.id}"} class="flex items-center gap-2 min-w-0 flex-1">
+                    <div class={"w-2 h-2 rounded-full flex-none #{if workspace.status == :running, do: "bg-green-500", else: "bg-zinc-400"}"}></div>
+                    <span class="text-sm font-medium truncate">{workspace.name}</span>
+                    <span :if={workspace.is_main} class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500">default</span>
+                    <span :if={workspace.agent_count > 0} class="text-xs font-medium text-violet-600 dark:text-violet-400 bg-violet-100 dark:bg-violet-900/30 rounded-full px-2 py-0.5">
+                      {workspace.agent_count} agent{if workspace.agent_count != 1, do: "s"}
+                    </span>
+                    <span :if={workspace.service_count > 0} class="text-xs font-medium text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 rounded-full px-2 py-0.5">
+                      {workspace.service_count} service{if workspace.service_count != 1, do: "s"}
+                    </span>
+                  </.link>
+                  <div class="flex items-center gap-2 flex-none opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button :if={workspace.status != :running} phx-click="start_workspace" phx-value-id={workspace.id}
+                      class="text-xs font-medium text-green-600 dark:text-green-400 hover:text-green-500 transition-colors"
+                      title="Start workspace">
+                      Start
+                    </button>
+                    <button :if={workspace.status == :running} phx-click="stop_workspace" phx-value-id={workspace.id}
+                      class="text-xs font-medium text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                      title="Stop workspace">
+                      Stop
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <form :if={@project.is_git} phx-submit="add_workspace" class="flex gap-2">
-            <input type="text" name="name" placeholder="Workspace name..." autocomplete="off"
-              class="flex-1 rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-3 text-sm font-mono
-                     text-zinc-600 dark:text-zinc-300 placeholder:text-zinc-400
-                     focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400" />
-            <button type="submit"
-              class="rounded-xl border border-zinc-200 dark:border-zinc-700 px-5 py-3 text-sm font-medium text-zinc-600 dark:text-zinc-400
-                     hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors flex-none">
-              + Workspace
-            </button>
-          </form>
+            <form :if={@project.is_git} phx-submit="add_workspace" class="flex gap-2">
+              <input type="text" name="name" placeholder="Workspace name..." autocomplete="off"
+                class="flex-1 rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-3 text-sm font-mono
+                       text-zinc-600 dark:text-zinc-300 placeholder:text-zinc-400
+                       focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400" />
+              <button type="submit"
+                class="rounded-xl border border-zinc-200 dark:border-zinc-700 px-5 py-3 text-sm font-medium text-zinc-600 dark:text-zinc-400
+                       hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors flex-none">
+                + Workspace
+              </button>
+            </form>
+          <% end %>
         </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp remove_confirmation(assigns) do
+    ~H"""
+    <div class="space-y-6">
+      <div>
+        <h2 class="text-xl font-semibold text-red-600 dark:text-red-400">Remove {@project.name}</h2>
+        <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">This will permanently remove the project from Boom Looper. Your source code is not affected.</p>
+      </div>
+
+      <div class="rounded-lg border border-zinc-200 dark:border-zinc-700 divide-y divide-zinc-200 dark:divide-zinc-700">
+        <div class="px-4 py-3">
+          <div class="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-2">Directory to delete</div>
+          <p class="text-sm font-mono text-zinc-600 dark:text-zinc-400">{@details.boomlooper_dir}/</p>
+          <ul :if={@details.generated_files != []} class="mt-1.5 space-y-0.5">
+            <li :for={file <- @details.generated_files} class="text-xs font-mono text-zinc-400 dark:text-zinc-500 pl-4">{file}</li>
+          </ul>
+          <p :if={@details.config_exists} class="text-xs text-amber-600 dark:text-amber-400 mt-1.5">Includes workspace.json config (workspace settings, Dockerfile, services)</p>
+        </div>
+
+        <div class="px-4 py-3">
+          <div class="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-2">Docker containers to stop</div>
+          <%= if @details.containers != [] do %>
+            <ul class="space-y-0.5">
+              <li :for={container <- @details.containers} class="text-sm font-mono text-zinc-600 dark:text-zinc-400">{container}</li>
+            </ul>
+          <% else %>
+            <p class="text-sm text-zinc-400 dark:text-zinc-500">No running containers</p>
+          <% end %>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <button phx-click="remove_project"
+          class="rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium px-4 py-2 transition-colors">
+          Remove project
+        </button>
+        <button phx-click="cancel_remove"
+          class="text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors">
+          Cancel
+        </button>
       </div>
     </div>
     """
