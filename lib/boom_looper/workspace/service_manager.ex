@@ -210,6 +210,9 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
             case Compose.up(state.project_dir, state.workspace_id) do
               {:ok, _} ->
+                # Replay agent log to restore any persisted agents
+                replay_agent_log(state.project_dir, state.workspace_id)
+
                 services = Map.new(ws.services, fn s -> {s.name, s} end)
                 all_names = Enum.map(ws.processes, & &1.name) ++ Enum.map(ws.services, & &1.name) ++ ["workspace"]
                 initial_health = Map.new(all_names, fn name -> {name, :started} end)
