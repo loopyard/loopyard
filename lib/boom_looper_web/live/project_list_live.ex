@@ -63,6 +63,9 @@ defmodule BoomLooperWeb.ProjectListLive do
 
   @impl true
   def render(assigns) do
+    has_projects = assigns.projects != []
+    assigns = assign(assigns, :has_projects, has_projects)
+
     ~H"""
     <div class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
       <header class="flex-none h-14 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center justify-between px-4 md:px-5">
@@ -78,8 +81,17 @@ defmodule BoomLooperWeb.ProjectListLive do
             {@flash["error"]}
           </p>
 
-          <%!-- Projects --%>
-          <div class="space-y-2 mb-6">
+          <%!-- Empty state --%>
+          <div :if={!@has_projects} class="mb-8">
+            <h2 class="text-xl font-semibold mb-2">Add a project to get started</h2>
+            <p class="text-sm text-zinc-500 dark:text-zinc-400 leading-relaxed">
+              Point Boom Looper at a project directory. It'll spin up a Docker environment
+              and launch an AI agent to set everything up. Paste a path below or use the terminal command.
+            </p>
+          </div>
+
+          <%!-- Existing projects --%>
+          <div :if={@has_projects} class="space-y-2 mb-6">
             <.link :for={project <- @projects} navigate={"/projects/#{project.id}"}
               class="block w-full rounded-xl border border-zinc-200 dark:border-zinc-700 p-4 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group">
               <div class="flex items-center justify-between">
@@ -100,22 +112,48 @@ defmodule BoomLooperWeb.ProjectListLive do
           </div>
 
           <%!-- Add project --%>
-          <form phx-submit="add_project" class="flex gap-2 mb-3">
-            <input type="text" name="path" placeholder="Project path..." autocomplete="off" autofocus
-              class="flex-1 rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-2.5 text-sm font-mono
-                     text-zinc-600 dark:text-zinc-300 placeholder:text-zinc-400
-                     focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400" />
-            <button type="submit"
-              class="rounded-xl bg-violet-600 hover:bg-violet-700 px-4 py-2.5 text-sm font-medium text-white transition-colors flex-none">
-              Launch
-            </button>
-          </form>
+          <div :if={@has_projects} class="mb-3">
+            <h2 class="text-lg font-semibold">Add a project</h2>
+          </div>
 
-          <div class="flex items-center gap-2 text-xs text-zinc-400 dark:text-zinc-500">
-            <span>or from terminal:</span>
-            <code class="font-mono bg-zinc-100 dark:bg-zinc-800 rounded px-1.5 py-0.5 select-all truncate max-w-xs">{@launch_cmd}</code>
-            <button id="copy-launch" phx-hook="CopySource" data-source={@launch_cmd}
-              class="text-violet-500 hover:text-violet-400 font-medium flex-none">copy</button>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <%!-- Option: Terminal command --%>
+            <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 p-5 flex flex-col">
+              <div class="flex items-center gap-2 mb-1">
+                <h3 class="text-sm font-semibold">From terminal</h3>
+                <span class="text-[10px] uppercase tracking-wider text-emerald-600 dark:text-emerald-500 font-semibold ml-auto">Recommended</span>
+              </div>
+              <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
+                <code class="text-zinc-700 dark:text-zinc-300">cd</code> into your project and run this command.
+              </p>
+              <div class="flex items-center gap-2 mt-auto">
+                <div class="flex-1 bg-zinc-900 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 font-mono text-xs text-zinc-300 overflow-x-auto whitespace-nowrap select-all">
+                  <span class="text-zinc-500 select-none">$ </span>{@launch_cmd}
+                </div>
+                <button id="copy-launch" phx-hook="CopySource" data-source={@launch_cmd}
+                  class="flex-none rounded-lg bg-zinc-900 dark:bg-zinc-200 hover:bg-zinc-800 dark:hover:bg-white px-4 py-2 text-sm font-semibold text-white dark:text-zinc-900 transition-colors">
+                  Copy
+                </button>
+              </div>
+            </div>
+
+            <%!-- Option: Paste path --%>
+            <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 p-5 flex flex-col">
+              <h3 class="text-sm font-semibold mb-1">Paste a path</h3>
+              <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
+                Full path to a project directory on this machine.
+              </p>
+              <form phx-submit="add_project" class="flex items-center gap-2 mt-auto">
+                <input type="text" name="path" placeholder="/Users/you/projects/my-app" autocomplete="off"
+                  class="flex-1 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-3 py-2 text-sm font-mono
+                         text-zinc-900 dark:text-zinc-300 placeholder:text-zinc-400 dark:placeholder:text-zinc-600
+                         focus:outline-none focus:ring-1 focus:ring-violet-500/20 focus:border-violet-400" />
+                <button type="submit"
+                  class="rounded-lg bg-zinc-900 dark:bg-zinc-200 hover:bg-zinc-800 dark:hover:bg-white px-4 py-2 text-sm font-semibold text-white dark:text-zinc-900 transition-colors flex-none">
+                  Launch
+                </button>
+              </form>
+            </div>
           </div>
         </div>
       </div>
