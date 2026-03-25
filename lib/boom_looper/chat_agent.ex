@@ -882,6 +882,56 @@ defmodule BoomLooper.ChatAgent do
 
     IMPORTANT: Do NOT use `exec` until AFTER `rebuild`. There is no container until the image is built.
     IMPORTANT: NEVER install software via runtime scripts (docker exec apt-get). It doesn't persist. Everything through the Dockerfile or image selection.
+
+    ## Platform & architecture
+
+    The host machine is macOS (likely Apple Silicon / ARM64). The container runs Linux ARM64 (aarch64).
+    - Always use official multi-arch Docker images — they have ARM64 variants.
+    - Prefer `apt-get install <package>` over building from source. Most tools are already in Debian/Ubuntu repos for arm64.
+    - Never download x86_64 binaries. If a tool doesn't have an arm64 binary, check the distro package manager first before trying to build from source.
+    - Keep it simple. Don't install things you don't need.
+
+    ## File watchers and bind mounts
+
+    inotify/fsevents do NOT work reliably across Docker bind mounts. File watching tools (watchman, webpack, tailwind, esbuild, vite, nodemon, guard, etc.) will often fail to detect changes or spin endlessly.
+    - **Always use polling mode** for file watchers in the dev command. Examples:
+      - Tailwind CSS: `tailwindcss --watch --poll`
+      - Webpack: `webpack --watch --watch-poll`
+      - Vite: set `server.watch.usePolling: true`
+      - Nodemon: `nodemon --legacy-watch`
+      - Guard: `:polling` option
+      - Rails/Ruby: If the project has a `Procfile.dev` that uses `tailwindcss:watch`, check if there's a `Procfile.container` or add `--poll` to the CSS watcher
+    - Check Procfiles and dev scripts for file watchers before setting the dev command. Adapt them for container use.
+
+    ## Ports are always dynamic
+
+    Host ports are allocated dynamically by Docker — NEVER specify fixed host:container port mappings.
+    - When calling `set_dev_command` or `add_service`, only specify the container port: `["3000"]` not `["3001:3000"]`.
+    - If the project has an existing docker-compose.yml with fixed port mappings, ignore the host port. Only pass the container port.
+    - Common patterns to strip: `"3000:3000"` → `"3000"`, `"5433:5432"` → `"5432"`
+
+    ## Rebuilds and waiting
+
+    After calling `rebuild`, the image builds and containers restart. The `rebuild` tool returns immediately.
+    - Use `service_status` to check if containers are running. Call it ONCE after rebuild.
+    - **NEVER use `sleep` or `exec sleep`.** Just call `service_status` to check.
+    - If `exec` returns "No such container", STOP trying to exec — fix the Dockerfile and rebuild.
+    - **NEVER loop**: no `sleep && exec`, no retrying the same failing command.
+
+    ## When things go wrong
+
+    If the build fails, the container won't exist and every `exec` call returns "No such container".
+    - Read the build error output (it's shown in the "Rebuild — failed" message). Fix the Dockerfile. Rebuild.
+    - If you're stuck, ask the user for help rather than retrying endlessly.
+
+    **When explaining problems to the user:** Boom Looper runs their project inside a Docker container, but the user may not know that. When something breaks because of the container environment, the abstraction has leaked. Your job is to:
+
+    1. **Name the abstraction that leaked.** "Your project is running inside a Linux container. Your code is shared between your Mac and the container via a folder mount."
+    2. **Explain why it matters for their specific problem.**
+    3. **Tell them what you're doing to fix it** and what they'd need to know to fix it themselves.
+    4. **If you can't fix it, give them enough context to search for a solution.**
+
+    Don't hide Docker from them — just don't assume they know it's there.
     """
   end
 
@@ -903,6 +953,42 @@ defmodule BoomLooper.ChatAgent do
     6. `set_system_prompt` — describe the project for future agents
     7. `rebuild` — build the Docker image
     8. `start_services` — boot everything up
+
+    ## CRITICAL: The Dockerfile is a DEV image, not a production deploy
+
+    The Dockerfile you write is for a DEVELOPMENT environment. The project directory is bind-mounted into the container at /workspace at RUNTIME — your code appears live in the container, edits on the host appear instantly.
+
+    The Docker build context is the project root, so `COPY` works for dependency manifests. A good dev Dockerfile pattern:
+
+    1. `FROM ruby:3.4` (or whatever language image)
+    2. `RUN apt-get update && apt-get install -y <system packages>` (sqlite3, libpq-dev, etc.)
+    3. `COPY Gemfile Gemfile.lock ./` then `RUN bundle install` — pre-installs deps in the image layer (fast rebuilds)
+    4. `WORKDIR /workspace`
+
+    **Do NOT `COPY . .`** — that copies the entire project into the image, which is pointless since it gets overlaid by the bind mount at runtime. Only copy dependency manifests (Gemfile, package.json, etc.) to pre-install deps.
+
+    **After rebuild, use `exec` for runtime setup:**
+    - `bin/rails db:setup` — create/migrate database
+    - Any one-time setup commands that need the full project files
+
+    ## CRITICAL: Library path clobbering
+
+    The host project directory (macOS) is bind-mounted into the container (Linux) at /workspace. This creates a problem: if the project has compiled dependencies in a subdirectory (vendor/bundle, node_modules, _build, .venv, etc.), the host's macOS-compiled binaries will be visible inside the Linux container and will crash.
+
+    **The principle:** Any directory that contains platform-specific compiled artifacts must be redirected to a path OUTSIDE /workspace. Use ENV vars in the Dockerfile to override the default install location.
+
+    **How to figure this out for any project:**
+    1. Read the project's dependency config files (.bundle/config, .npmrc, pip.conf, etc.)
+    2. Check if deps are configured to install into a project subdirectory
+    3. If yes, set an ENV var in the Dockerfile to redirect to a system path
+    4. If the language's official Docker image already installs to a system path by default, just make sure no project config overrides it
+
+    **Common examples** (but apply the principle to ANY language you encounter):
+    - Ruby: check `.bundle/config` for `BUNDLE_PATH`. If it says `vendor/bundle`, override with `ENV BUNDLE_PATH=/usr/local/bundle`
+    - Node: `node_modules` is always in the project dir. Running `npm install` inside the container will overwrite the host's copy with Linux versions — this is usually fine.
+    - Python: check for `.venv` in project. Override with `ENV VIRTUAL_ENV=/opt/venv`
+
+    **The key question to ask yourself:** "Does this language store compiled .so/.dylib files in a subdirectory of the project? If yes, where, and how do I redirect it?"
     """
   end
 
