@@ -10,7 +10,7 @@ complexity: medium
 
 Rails 8 app with PostGIS, Redis, Tailwind CSS. Uses `bin/dev` (foreman) to start web + CSS watcher + JS bundler.
 
-## What success looks like
+## Success
 
 - Dockerfile: ruby:3.4 base, system deps (libpq-dev, nodejs, etc.)
 - Services: postgres (postgis image), redis
@@ -19,7 +19,7 @@ Rails 8 app with PostGIS, Redis, Tailwind CSS. Uses `bin/dev` (foreman) to start
 - Dev server responds on its port
 - 11/11 checklist items
 
-## Known gotchas
+## Gotchas
 
 - Needs PostGIS-enabled postgres image, not plain postgres
 - May also need pgvector — use an image with both or install via Dockerfile
