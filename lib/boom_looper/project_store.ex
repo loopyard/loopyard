@@ -38,6 +38,10 @@ defmodule BoomLooper.ProjectStore do
 
       {:error, :enoent} ->
         []
+
+      {:error, _reason} ->
+        # Permission errors, path issues, etc. — treat as empty
+        []
     end
   end
 
