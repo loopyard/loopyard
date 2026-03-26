@@ -43,6 +43,8 @@ After rebuild, use `exec` for runtime setup:
 - Install JS deps: `exec` with `npm install` or `yarn install`
 - Build assets: `exec` with the project's asset build command
 
+If database setup fails with schema or migration errors, drop and recreate: `rails db:drop db:create db:migrate`. Don't try to fix a broken schema — start fresh.
+
 ## Library path clobbering
 
 The host project directory (macOS) is bind-mounted into the container (Linux) at /workspace. If the project has compiled dependencies in a subdirectory (vendor/bundle, node_modules, etc.), the host's macOS-compiled binaries will crash on Linux.
