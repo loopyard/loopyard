@@ -15,11 +15,9 @@ defmodule Mix.Tasks.Boom.Server do
 
   @shortdoc "Start BoomLooper with IEx console"
 
-  @cookie_file ".erlang.cookie"
-
   @impl Mix.Task
   def run(_args) do
-    # Use a project-local cookie so tools can connect without needing ~/.erlang.cookie
+    # Use a BOOMLOOPER_HOME-scoped cookie so tools can connect without ~/.erlang.cookie
     cookie = ensure_cookie()
     Node.start(:boom, :shortnames)
     Node.set_cookie(cookie)
@@ -30,11 +28,13 @@ defmodule Mix.Tasks.Boom.Server do
   end
 
   defp ensure_cookie do
-    path = Path.join(File.cwd!(), @cookie_file)
+    home = System.get_env("BOOMLOOPER_HOME") || Path.join(System.user_home!(), ".boomlooper")
+    path = Path.join(home, "cookie")
 
     cookie = if File.exists?(path) do
       path |> File.read!() |> String.trim()
     else
+      File.mkdir_p!(home)
       c = :crypto.strong_rand_bytes(16) |> Base.encode64(padding: false)
       File.write!(path, c)
       c
