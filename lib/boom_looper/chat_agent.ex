@@ -259,6 +259,7 @@ defmodule BoomLooper.ChatAgent do
 
   @impl true
   def init(opts) do
+    Process.flag(:trap_exit, true)
     id = Keyword.fetch!(opts, :id)
     resume = Keyword.get(opts, :resume, false)
 
@@ -413,13 +414,13 @@ defmodule BoomLooper.ChatAgent do
     state = %{state | status: :thinking}
     broadcast(@topic, {:chat_agent_status_changed, state.id, :thinking})
 
-    # Stream the response in a Task
+    # Stream the response in a linked Task so we detect crashes
     me = self()
     agent_id = state.id
     session = state.session
     backend = state.backend
 
-    Task.start(fn ->
+    Task.start_link(fn ->
       try do
         backend.stream(session, text)
         |> Enum.each(fn event ->
@@ -435,6 +436,9 @@ defmodule BoomLooper.ChatAgent do
           send(me, {:stream_error, agent_id, "CLI session exited: #{inspect(reason)}"})
       end
     end)
+
+    # Safety timeout — if no stream events arrive within 2 minutes, reset to idle
+    Process.send_after(self(), {:stream_timeout, agent_id}, 120_000)
 
     {:noreply, state}
     end # unless session dead
@@ -566,6 +570,19 @@ defmodule BoomLooper.ChatAgent do
     {:noreply, state}
   end
 
+  def handle_info({:stream_timeout, id}, %{id: id, status: :thinking} = state) do
+    # Still thinking after timeout — the streaming task is gone
+    BoomLooper.EventLog.warning("agent:#{state.name}", "Stream timed out, resetting to idle")
+    error_msg = %{role: :error, content: "Agent stopped responding. Send a message to retry.", timestamp: DateTime.utc_now()}
+    state = %{append_message(state, error_msg) | status: :idle, errors: state.errors + 1}
+    broadcast("chat_agent:#{id}", {:chat_message, id, List.last(state.messages)})
+    broadcast(@topic, {:chat_agent_status_changed, id, :idle})
+    {:noreply, state}
+  end
+
+  # Ignore timeout if we're no longer thinking (stream completed normally)
+  def handle_info({:stream_timeout, _id}, state), do: {:noreply, state}
+
   def handle_info({:stream_error, id, reason}, %{id: id} = state) do
     BoomLooper.EventLog.error("agent:#{state.name}", "Stream error: #{reason}")
     now = DateTime.utc_now()
@@ -602,6 +619,16 @@ defmodule BoomLooper.ChatAgent do
       broadcast(@topic, {:chat_agent_status_changed, id, :idle})
       {:noreply, state}
     end
+  end
+
+  # Linked streaming task died — reset from thinking if needed
+  def handle_info({:EXIT, _pid, reason}, %{status: :thinking} = state) when reason != :normal do
+    BoomLooper.EventLog.warning("agent:#{state.name}", "Streaming task died: #{inspect(reason)}")
+    error_msg = %{role: :error, content: "Agent session crashed. Send a message to retry.", timestamp: DateTime.utc_now()}
+    state = %{append_message(state, error_msg) | status: :idle, errors: state.errors + 1}
+    broadcast("chat_agent:#{state.id}", {:chat_message, state.id, List.last(state.messages)})
+    broadcast(@topic, {:chat_agent_status_changed, state.id, :idle})
+    {:noreply, state}
   end
 
   def handle_info(_msg, state), do: {:noreply, state}
