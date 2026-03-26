@@ -8,10 +8,11 @@ Set up the development environment for this project.
 - [ ] Set the dev server command AND its port (one command that starts everything — e.g. bin/dev on port 3000)
 - [ ] Add any services the project needs (databases, caches) with the right images
 - [ ] Set environment variables
-- [ ] Rebuild (generates docker-compose.yml and starts everything)
-- [ ] Verify ALL services are healthy — check logs, make sure each service accepts connections
-- [ ] Install dependencies and run project setup via exec — create database, run migrations, install JS deps, rebuild native extensions (npm rebuild)
-- [ ] Verify the dev server is running and responds
+- [ ] Rebuild (generates docker-compose.yml and starts containers)
+- [ ] Install dependencies via exec — bundle install, npm install, etc. The dev container may crash initially; that's expected.
+- [ ] Rebuild again after deps are installed — this restarts the dev container with deps in place
+- [ ] Verify dev server is ACTUALLY running — use service_status and confirm dev shows `"running":true` and `"health":"healthy"`. If crashed, check logs and fix.
+- [ ] Verify dev server responds — use ports tool to get the mapped port, then curl or check it's listening. DO NOT check this item until you confirm the server responds.
 - [ ] Spawn a new agent named after the project, then ask the user if they'd like to keep Setup running
 
 ## How it works

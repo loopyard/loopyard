@@ -21,6 +21,7 @@ Rails edge app with SQLite3, Tailwind CSS, Falcon async server. Simple stack - n
 
 ## Gotchas
 
+- **`hotswap` gem crashes with socket error** — The `hotswap` gem tries to create a Unix socket at `/workspace/tmp/sockets/hotswap.sock`. Unix sockets don't work across Docker bind mounts. Fix: set `HOTSWAP_DISABLED=1` env var via `set_env_vars`.
 - **`.ruby-version` mismatch** — Project specifies ruby 3.4.2 but cached image is 3.4.8. After first rebuild, exec `echo "3.4.8" > .ruby-version` then rebuild again. Otherwise Bundler crashes with RubyVersionMismatch.
 - **Use ruby:3.4.8-slim** — This is the only cached ruby image. Other versions hang on Docker pull.
 - Uses Rails edge from github main branch — `bundle install` may need extra time

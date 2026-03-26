@@ -59,6 +59,15 @@ Common examples:
 - Node: `npm install` inside the container overwrites host copies with Linux versions — usually fine
 - Python: override with `ENV VIRTUAL_ENV=/opt/venv`
 
+## Unix sockets don't work across bind mounts
+
+If a library tries to create a Unix socket in `/workspace/tmp/` or any bind-mounted path, it will fail with `ENOTSUP` or `Operation not supported`. Common culprits:
+- **hotswap** (Rails): set `HOTSWAP_DISABLED=1` env var
+- **spring** (Rails): set `DISABLE_SPRING=1` env var
+- Any library using `/tmp/sockets/` inside the project
+
+Fix: Disable the library via env var, or redirect socket paths outside /workspace.
+
 ## File watchers and bind mounts
 
 inotify/fsevents do NOT work across Docker bind mounts. Always use polling mode:
@@ -98,6 +107,16 @@ How to know the build finished:
 - **NEVER use `sleep` or `exec sleep`.**
 - If `exec` returns "No such container", STOP — read the build output, fix the Dockerfile, and rebuild.
 - **NEVER retry the same failing command.**
+
+## Verification requirements
+
+**Do NOT check off verification items until they actually pass.**
+
+- "Verify dev server is running" means `service_status` shows `"running":true` and `"health":"healthy"` for dev. NOT just that containers exist.
+- "Verify dev server responds" means you confirmed port is listening (via `ports` tool or curl). NOT just assuming it works.
+- If dev shows `"health":"crashed"`, check logs, fix the issue (usually missing deps or wrong ruby version), rebuild, and keep trying until healthy.
+
+**The eval is not done until the dev server is actually serving requests.**
 
 ## When things go wrong
 
