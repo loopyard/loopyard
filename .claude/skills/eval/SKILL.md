@@ -160,7 +160,19 @@ Each run file contains:
 
 ## Iterating on Prompts
 
-The loop: **run eval → read result → fix prompt → recompile → restart app → run again.**
+The loop:
+
+1. **Run eval** — `EvalRunner.run("/path", clean: true)` or manually
+2. **Read the run result** in `evals/<name>/runs/<timestamp>.md` — look at outcome, tool usage, errors, where it stalled
+3. **Read the project.md** — check the Gotchas section. Did the agent hit a known gotcha? Did it hit a NEW one?
+4. **Decide what to fix:**
+   - If the agent didn't know something → fix the prompt (`setup_guide.md`) or checklist (`setup.md`)
+   - If the agent knew but the tooling failed → fix BoomLooper code (compose.ex, tools, etc.)
+   - If it's a project-specific gotcha → add it to `evals/<name>/project.md` Gotchas section
+5. **Recompile + restart app** (setup_guide.md is a compiled module attribute)
+6. **Run again** and compare
+
+The goal is to push `project.md` gotchas into generic prompt improvements that help ALL projects, not just this one. If the same gotcha appears across multiple projects, it belongs in `setup_guide.md` or `setup.md`, not just in the project's gotchas.
 
 Files that control setup agent behavior:
 - `priv/prompts/setup_guide.md` — the detailed guide sent as the agent's first message
