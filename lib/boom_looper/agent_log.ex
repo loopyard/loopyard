@@ -410,6 +410,8 @@ defmodule BoomLooper.AgentLog do
 
   defp populate_ets(table, state) do
     for {agent_id, agent_data} <- state do
+      # Ensure :id is always present (it's the ETS key but code expects it in the map too)
+      agent_data = Map.put_new(agent_data, :id, agent_id)
       :ets.insert(table, {agent_id, agent_data})
     end
 

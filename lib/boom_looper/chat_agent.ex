@@ -11,12 +11,6 @@ defmodule BoomLooper.ChatAgent do
   alias BoomLooper.Agent.Event
   alias BoomLooper.AgentLog
 
-  @agent_defaults %{
-    id: nil, name: "Unknown", status: :idle, messages: [],
-    working_dir: nil, bind_mount: nil, workspace_id: nil,
-    started_at: nil, started_by: nil, last_activity_at: nil,
-    tool_calls: 0, errors: 0, checklist_path: nil, service_name: nil
-  }
 
   defstruct [
     :id,
@@ -54,20 +48,17 @@ defmodule BoomLooper.ChatAgent do
 
   def get_state(id) do
     # Try live GenServer first, fall back to ETS
-    summary = try do
+    try do
       GenServer.call(via(id), :get_state)
     catch
       :exit, _ ->
         ensure_ets_table()
 
         case :ets.lookup(@ets_table, id) do
-          [{^id, s}] -> s
+          [{^id, summary}] -> summary
           [] -> nil
         end
     end
-
-    # Ensure all expected fields exist
-    if summary, do: Map.merge(@agent_defaults, summary) |> Map.put_new(:id, id), else: nil
   end
 
   def stop_agent(id) do
@@ -229,11 +220,7 @@ defmodule BoomLooper.ChatAgent do
     ensure_ets_table()
 
     :ets.tab2list(@ets_table)
-    |> Enum.map(fn {ets_key, summary} ->
-      # Ensure all expected fields exist (some code paths may omit them)
-      summary = Map.merge(@agent_defaults, summary)
-      summary = %{summary | id: summary.id || ets_key}
-
+    |> Enum.map(fn {_id, summary} ->
       # If agent is still alive, get fresh state
       case Registry.lookup(BoomLooper.ChatAgentRegistry, summary.id) do
         [{pid, _}] ->
@@ -719,15 +706,8 @@ defmodule BoomLooper.ChatAgent do
     case log_path(state.bind_mount) do
       nil -> :ok
       path ->
-        agent_data = %{
-          name: state.name,
-          workspace_id: state.workspace_id,
-          started_at: state.started_at,
-          started_by: state.started_by,
-          status: state.status,
-          checklist_path: state.checklist_path,
-          service_name: state.service_name
-        }
+        # Log the full summary so replay produces complete ETS entries
+        agent_data = summary(state) |> Map.delete(:messages)
         AgentLog.append({:agent, state.id, agent_data}, log_path: path, version: @log_version)
     end
   end
