@@ -9,6 +9,8 @@ The host machine is macOS (likely Apple Silicon / ARM64). The container runs Lin
 
 **Service images must have ARM64 support.** Before calling `add_service`, verify the image has an ARM64 build. If "no matching manifest for linux/arm64" appears during rebuild, find an alternative image.
 
+**JS bundler binaries** (esbuild, swc, sharp, etc.) are platform-specific. If the project has `node_modules` on the host (macOS), those binaries won't work in the Linux container. Fix: `exec` with `npm rebuild` or `npm install` after rebuild to get Linux binaries.
+
 ## The Dockerfile is a DEV image, not a production deploy
 
 The project directory is bind-mounted into the container at /workspace at RUNTIME. The Docker build context is the project root, so `COPY` works for dependency manifests.
@@ -21,7 +23,11 @@ Good dev Dockerfile pattern:
 
 **Do NOT `COPY . .`** — pointless since the bind mount overlays it at runtime. Only copy dependency manifests.
 
-After rebuild, use `exec` for runtime setup (db:setup, migrations, etc.)
+After rebuild, use `exec` for runtime setup:
+- Create databases: `exec` with `rails db:create` or `createdb`
+- Run migrations: `exec` with `rails db:migrate` or equivalent
+- Install JS deps: `exec` with `npm install` or `yarn install`
+- Build assets: `exec` with the project's asset build command
 
 ## Library path clobbering
 
@@ -50,9 +56,16 @@ inotify/fsevents do NOT work across Docker bind mounts. Always use polling mode:
 - Rails: if tailwindcss-rails is used, set `TAILWINDCSS_POLL=true`. Do NOT install watchman.
 - General: if you see "watchman: not found" in logs, the fix is polling mode, NOT installing watchman.
 
-## Ports are always dynamic
+## Ports
 
-NEVER specify fixed host:container port mappings. Only specify the container port: `["3000"]` not `["3001:3000"]`.
+Every process that serves HTTP MUST have ports set. Use `set_dev_command` with ports.
+
+When calling `set_dev_command`, always include the port the dev server listens on:
+- Rails on port 3000: `ports: ["3000"]`
+- Phoenix on port 4000: `ports: ["4000"]`
+- Next.js on port 3000: `ports: ["3000"]`
+
+Only specify the container port — Docker picks a free host port automatically. Never use host:container format like `"3001:3000"`.
 
 ## Rebuilds and waiting
 

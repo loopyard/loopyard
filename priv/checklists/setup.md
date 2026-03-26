@@ -5,12 +5,12 @@ Set up the development environment for this project.
 - [ ] Examine the project to understand what it is — language, framework, dependencies, services. Check README, existing Dockerfile, docker-compose.yml, Gemfile/package.json, Procfile, etc.
 - [ ] Name the project
 - [ ] Write a dev Dockerfile that installs everything the project needs. If the project already has a Dockerfile, adapt it for dev — don't start from scratch.
-- [ ] Set the dev server command (one command that starts everything — e.g. bin/dev)
+- [ ] Set the dev server command AND its port (one command that starts everything — e.g. bin/dev on port 3000)
 - [ ] Add any services the project needs (databases, caches) with the right images
 - [ ] Set environment variables
 - [ ] Rebuild (generates docker-compose.yml and starts everything)
 - [ ] Verify ALL services are healthy — check logs, make sure each service accepts connections
-- [ ] Install dependencies and run project setup via exec (migrations, seeds, etc.)
+- [ ] Install dependencies and run project setup via exec — create database, run migrations, install JS deps, rebuild native extensions (npm rebuild)
 - [ ] Verify the dev server is running and responds
 - [ ] Spawn a new agent named after the project, then ask the user if they'd like to keep Setup running
 
