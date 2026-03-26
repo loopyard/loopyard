@@ -4,6 +4,9 @@ defmodule BoomLooperWeb.ChatLive do
   alias BoomLooper.ChatAgent
   alias BoomLooper.StreamBuffer
   import BoomLooperWeb.Components.LogViewer
+  import BoomLooperWeb.Components.Sidebar, only: [
+    status_dot: 1, service_dot: 1, service_detail: 1, first_host_port: 1, thinking_word: 1
+  ]
 
   @impl true
   def mount(%{"project_id" => project_id, "workspace_id" => workspace_id}, _session, socket) do
@@ -836,27 +839,11 @@ defmodule BoomLooperWeb.ChatLive do
     "#{adj} #{noun}"
   end
 
-  # Ports come from Docker.container_ports as %{"container_port" => "host_port"}
-  defp first_host_port(ports) when is_map(ports) and map_size(ports) > 0 do
-    case Enum.at(ports, 0) do
-      {_container_port, host_port} -> to_string(host_port)
-      _ -> nil
-    end
-  end
-
-  defp first_host_port(_), do: nil
-
-  defp service_dot(%{health: :healthy}), do: "bg-green-500"
-  defp service_dot(%{health: :started}), do: "bg-blue-400"
-  defp service_dot(%{health: :booting}), do: "bg-yellow-400 animate-pulse"
-  defp service_dot(%{health: :crashed}), do: "bg-red-500"
-  defp service_dot(%{running: true}), do: "bg-blue-400"
-  defp service_dot(_), do: "bg-zinc-400"
-
+  # These are only used inline in chat_live templates, not in sidebar components
   defp service_status_text(%{health: :healthy}), do: nil
   defp service_status_text(%{health: :started}), do: "starting"
   defp service_status_text(%{health: :booting}), do: "booting"
-  defp service_status_text(%{health: :crashed}), do: nil  # exit_reason handles this
+  defp service_status_text(%{health: :crashed}), do: nil
   defp service_status_text(_), do: nil
 
   defp exit_reason(%{oom_killed: true}), do: "OOM killed"
@@ -867,32 +854,6 @@ defmodule BoomLooperWeb.ChatLive do
   defp exit_reason(%{exit_code: code}), do: "exit code #{code}"
   defp exit_reason(_), do: "stopped"
 
-  defp service_detail(%{image: image}) when is_binary(image), do: image
-  defp service_detail(%{processes: procs}) when is_list(procs), do: Enum.join(procs, ", ")
-  defp service_detail(%{command: cmd}) when is_binary(cmd), do: String.slice(cmd, 0..30)
-  defp service_detail(_), do: ""
-
-  defp status_dot(:booting), do: "bg-violet-400 animate-pulse"
-  defp status_dot(:idle), do: "bg-green-500"
-  defp status_dot(:thinking), do: "bg-amber-400 animate-pulse"
-  defp status_dot(:stopped), do: "bg-zinc-400"
-  defp status_dot(:crashed), do: "bg-red-500"
-  defp status_dot(:destroying), do: "bg-red-400 animate-pulse"
-  defp status_dot(_), do: "bg-zinc-400"
-
-  @thinking_words [
-    "thinking", "pondering", "working", "contemplating", "ruminating", "computing",
-    "analyzing", "reasoning", "deliberating", "investigating", "galavanting",
-    "pontificating", "abstracting", "noodling", "scheming", "conjuring",
-    "percolating", "marinating", "vibing", "manifesting", "doin' my thang",
-    "cookin'", "brewing", "churning", "crunching", "simmering", "riffing",
-    "jamming", "wrangling", "spelunking", "deciphering", "musing",
-    "rerouting encryption", "mainframing", "burning tokens", "foxtrotting",
-    "beep boop beep boop", "reverse engineering gravity", "consulting the oracle",
-    "asking the magic 8-ball", "stacking tokens", "defragmenting thoughts",
-    "compiling vibes", "reticulating splines", "makin' bacon", "fishing",
-    "cruisin'", "chillaxing", "twirling", "whirling"
-  ]
   defp msg_url(assigns) do
     msg_id = assigns.msg[:id]
     if msg_id do
@@ -901,10 +862,6 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
 
-  defp thinking_word(agent_id) do
-    idx = :erlang.phash2({agent_id, div(System.system_time(:second), 3)}, length(@thinking_words))
-    Enum.at(@thinking_words, idx)
-  end
 
   defp hash_content(content) when is_binary(content) do
     :erlang.phash2(content, 0xFFFFFF) |> Integer.to_string(16)
