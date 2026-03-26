@@ -132,7 +132,8 @@ defmodule BoomLooperWeb.ChatLive do
         ]
 
         ChatAgent.register_booting(id, name, workspace.path)
-        Task.start(fn -> boot_agent(id, agent_opts, nil, workspace.path, if(setup, do: "setup")) end)
+        checklist_id = if setup, do: "setup"
+        Task.start(fn -> BoomLooper.AgentBoot.boot(id, agent_opts, checklist_id: checklist_id) end)
 
         {:noreply, push_navigate(socket, to: "#{workspace_path(socket)}/agents/#{id}")}
 
@@ -596,7 +597,7 @@ defmodule BoomLooperWeb.ChatLive do
     boot_opts = if service_name, do: [service_name: service_name], else: []
 
     ChatAgent.register_booting(id, name, working_dir, boot_opts)
-    Task.start(fn -> boot_agent(id, agent_opts, ws_config, working_dir, checklist_id) end)
+    Task.start(fn -> BoomLooper.AgentBoot.boot(id, agent_opts, checklist_id: checklist_id, service_name: service_name) end)
 
     {:noreply, push_navigate(socket, to: "#{workspace_path(socket)}/agents/#{id}")}
   end
@@ -743,75 +744,7 @@ defmodule BoomLooperWeb.ChatLive do
     end
   end
 
-  defp boot_agent(id, agent_opts, workspace, working_dir, checklist_id) do
-    require Logger
-    workspace_id = BoomLooper.Workspace.workspace_id(working_dir)
-
-    ws_container = BoomLooper.Workspace.ServiceManager.service_container_name(workspace_id, "workspace")
-
-    unless BoomLooper.Docker.container_running?(ws_container) do
-      # Services not running — start them via compose
-      ChatAgent.update_boot_status(id, "Starting services...")
-      case BoomLooper.Workspace.ServiceManager.start_services(working_dir) do
-        {:ok, _} -> :ok
-        {:error, :service_manager_not_running} -> :ok  # No config yet, Setup will create it
-        {:error, reason} ->
-          ChatAgent.boot_failed(id, reason)
-          raise "Service start failed: #{inspect(reason)}"
-      end
-    end
-
-    ChatAgent.update_boot_status(id, "Starting Claude session...")
-
-    checklist_path =
-      if checklist_id do
-        ChatAgent.update_boot_status(id, "Setting up checklist...")
-        case BoomLooper.Checklist.instantiate_by_id(checklist_id, id, working_dir) do
-          {:ok, checklist} -> checklist.active_path
-          {:error, _} -> nil
-        end
-      end
-
-    final_opts = if checklist_path, do: agent_opts ++ [checklist_path: checklist_path], else: agent_opts
-
-    ChatAgent.update_boot_status(id, "Starting Claude session...")
-    Logger.info("[boot_agent] #{id} starting Claude session")
-    workspace_id = BoomLooper.ProjectRegistry.workspace_id(working_dir)
-    case BoomLooper.WorkspaceGroup.start_agent(workspace_id, final_opts) do
-      {:ok, _pid} ->
-        Logger.info("[boot_agent] #{id} Claude session started successfully")
-        service_name = Keyword.get(final_opts, :service_name)
-
-        cond do
-          checklist_path ->
-            ChatAgent.send_message(id, "Follow the checklist at /workspace/.boomlooper/workspace/active/#{Path.basename(checklist_path)}. Work through each item in order, using the check_item tool to mark items done as you complete them.")
-
-          service_name ->
-            ChatAgent.send_message(id, "Check the logs for the #{service_name} service and help me debug any issues.")
-
-          !workspace ->
-            guide = ChatAgent.setup_guide()
-            ChatAgent.send_message(id, guide <> "\n\n---\n\nLook at the project in /workspace and help me set up a development environment. Examine the project files to understand what language, framework, and tools are needed.")
-
-          true ->
-            :ok
-        end
-
-      {:error, reason} ->
-        Logger.error("[boot_agent] #{id} start_agent failed: #{inspect(reason)}")
-        ChatAgent.boot_failed(id, reason)
-    end
-  rescue
-    e ->
-      require Logger
-      Logger.error("[boot_agent] #{id} crashed: #{Exception.message(e)}")
-      ChatAgent.boot_failed(id, Exception.message(e))
-  catch
-    :exit, reason ->
-      require Logger
-      Logger.error("[boot_agent] #{id} exited: #{inspect(reason)}")
-      ChatAgent.boot_failed(id, "Boot process exited: #{inspect(reason)}")
-  end
+  # boot_agent logic extracted to BoomLooper.AgentBoot
 
   defp load_checklist_progress(agent_id) do
     case BoomLooper.Tools.Checklist.find_active_checklist(agent_id) do
