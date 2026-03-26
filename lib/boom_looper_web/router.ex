@@ -11,6 +11,10 @@ defmodule BoomLooperWeb.Router do
     plug BoomLooperWeb.Plugs.BasicAuth
   end
 
+  pipeline :api do
+    plug :accepts, ["json", "text"]
+  end
+
   scope "/", BoomLooperWeb do
     pipe_through :browser
 
@@ -33,4 +37,9 @@ defmodule BoomLooperWeb.Router do
     get "/launch/:secret", LaunchController, :launch
   end
 
+  # No CSRF, curl-friendly system endpoints
+  scope "/system", BoomLooperWeb do
+    pipe_through :api
+    get "/log", SystemController, :log
+  end
 end

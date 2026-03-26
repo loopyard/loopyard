@@ -11,6 +11,7 @@ defmodule BoomLooper.Application do
 
     children = [
       # --- Infrastructure layer (survives web reloads) ---
+      BoomLooper.LogBuffer,
       # StateKeeper owns ETS tables — must start first, lives longest
       BoomLooper.StateKeeper,
       {Phoenix.PubSub, name: BoomLooper.PubSub},
