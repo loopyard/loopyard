@@ -243,6 +243,11 @@ defmodule BoomLooper.Compose do
     compose(project_dir, workspace_id, ["down"], timeout: 30_000)
   end
 
+  @doc "Stop all services and remove volumes (clean slate)."
+  def down_volumes(project_dir, workspace_id) do
+    compose(project_dir, workspace_id, ["down", "-v"], timeout: 30_000)
+  end
+
   @doc "Get running service names."
   def ps(project_dir, workspace_id) do
     case compose(project_dir, workspace_id, ["ps", "--format", "{{.Service}}\t{{.State}}\t{{.Ports}}"]) do

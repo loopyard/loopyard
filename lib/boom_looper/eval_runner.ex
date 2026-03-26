@@ -55,9 +55,22 @@ defmodule BoomLooper.EvalRunner do
         nil -> :ok
         project ->
           Logger.info("[EvalRunner] Cleaning up existing project #{project.id}")
+
+          # Wipe volumes too so databases start fresh
+          workspaces = ProjectRegistry.list_workspaces(project.id)
+          Enum.each(workspaces, fn ws ->
+            ws_id = BoomLooper.Workspace.workspace_id(ws.path)
+            try do
+              BoomLooper.Compose.down_volumes(ws.path, ws_id)
+            rescue
+              _ -> :ok
+            catch
+              _, _ -> :ok
+            end
+          end)
+
           ProjectRegistry.remove_project(project.id)
-          # Give docker compose down a moment
-          Process.sleep(5_000)
+          Process.sleep(3_000)
       end
     end
 
