@@ -35,6 +35,24 @@ defmodule BoomLooperWeb.SystemLive do
     {:noreply, socket}
   end
 
+  @impl true
+  def handle_event("reboot", _params, socket) do
+    # Stop all agents
+    for agent <- BoomLooper.ChatAgent.list_agents() do
+      BoomLooper.ChatAgent.stop_agent(agent.id)
+      BoomLooper.ChatAgent.remove_agent(agent.id)
+    end
+
+    # Restart the application (reloads code + restarts supervisor tree)
+    Task.start(fn ->
+      Application.stop(:boom_looper)
+      Process.sleep(500)
+      Application.ensure_all_started(:boom_looper)
+    end)
+
+    {:noreply, put_flash(socket, :info, "Rebooting...")}
+  end
+
   defp schedule_refresh, do: Process.send_after(self(), :refresh, @refresh_interval)
 
   defp refresh_stats(socket) do
@@ -44,6 +62,7 @@ defmodule BoomLooperWeb.SystemLive do
     |> assign(:agents, BoomLooper.SystemStats.agent_stats())
     |> assign(:cli_processes, BoomLooper.SystemStats.all_cli_processes())
     |> assign(:service_containers, BoomLooper.SystemStats.service_stats())
+    |> assign(:logs, BoomLooper.LogBuffer.recent(50))
   end
 
   defp format_bytes(bytes) when is_integer(bytes) and bytes < 1024, do: "#{bytes} B"
@@ -89,7 +108,13 @@ defmodule BoomLooperWeb.SystemLive do
           <.link navigate="/" class="text-sm text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">&larr; Back</.link>
           <h1 class="text-lg font-semibold tracking-tight">System</h1>
         </div>
-        <span class="text-xs text-zinc-400 dark:text-zinc-500 font-mono">auto-refreshing every 3s</span>
+        <div class="flex items-center gap-4">
+          <span class="text-xs text-zinc-400 dark:text-zinc-500 font-mono">auto-refreshing every 3s</span>
+          <button phx-click="reboot" data-confirm="This will stop all agents, tear down containers, and restart the app. Continue?"
+            class="text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded px-2 py-1 transition-colors">
+            Reboot
+          </button>
+        </div>
       </header>
 
       <div class="max-w-6xl mx-auto px-4 md:px-6 py-6 space-y-8">
@@ -98,6 +123,7 @@ defmodule BoomLooperWeb.SystemLive do
         <.agents_section agents={@agents} />
         <.service_containers_section containers={@service_containers} />
         <.cli_section processes={@cli_processes} />
+        <.log_section logs={@logs} />
       </div>
     </div>
     """
@@ -377,6 +403,32 @@ defmodule BoomLooperWeb.SystemLive do
     </section>
     """
   end
+
+  # --- Recent Logs ---
+
+  defp log_section(assigns) do
+    ~H"""
+    <section>
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
+        Recent Logs <span class="text-zinc-400 font-normal">(last 50)</span>
+      </h2>
+      <div class="rounded-lg border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 overflow-hidden max-h-96 overflow-y-auto">
+        <div class="px-4 py-3 text-xs font-mono text-zinc-600 dark:text-zinc-400 space-y-0.5">
+          <div :for={entry <- @logs}>
+            <span class={log_level_class(entry.level)}>[{entry.level}]</span>
+            <span>{entry.message}</span>
+          </div>
+        </div>
+      </div>
+    </section>
+    """
+  end
+
+  defp log_level_class(:error), do: "text-red-500 font-semibold"
+  defp log_level_class(:warning), do: "text-amber-500"
+  defp log_level_class(:info), do: "text-blue-400"
+  defp log_level_class(:debug), do: "text-zinc-500"
+  defp log_level_class(_), do: "text-zinc-400"
 
   defp status_color(:idle), do: "bg-green-500"
   defp status_color(:thinking), do: "bg-amber-400 animate-pulse"
