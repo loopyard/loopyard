@@ -158,25 +158,38 @@ Each run file contains:
 - Tool usage breakdown (which MCP tools, how many calls each)
 - Error messages if any
 
-## Iterating on Prompts
+## How to Iterate
 
-The loop:
+This is not "run once and ship." You run trials, observe, adjust, and run again until setup works reliably. Think of it like training — each run teaches you something.
 
-1. **Run eval** — `EvalRunner.run("/path", clean: true)` or manually
-2. **Read the run result** in `evals/<name>/runs/<timestamp>.md` — look at outcome, tool usage, errors, where it stalled
-3. **Read the project.md** — check the Gotchas section. Did the agent hit a known gotcha? Did it hit a NEW one?
-4. **Decide what to fix:**
-   - If the agent didn't know something → fix the prompt (`setup_guide.md`) or checklist (`setup.md`)
-   - If the agent knew but the tooling failed → fix BoomLooper code (compose.ex, tools, etc.)
-   - If it's a project-specific gotcha → add it to `evals/<name>/project.md` Gotchas section
-5. **Recompile + restart app** (setup_guide.md is a compiled module attribute)
-6. **Run again** and compare
+### The cycle
 
-The goal is to push `project.md` gotchas into generic prompt improvements that help ALL projects, not just this one. If the same gotcha appears across multiple projects, it belongs in `setup_guide.md` or `setup.md`, not just in the project's gotchas.
+1. **Run a trial** — `EvalRunner.run("/path", clean: true)`. Let it finish.
+2. **Observe** — Read the run result in `evals/<name>/runs/`. Ask yourself:
+   - Where did the agent get stuck? What tool was it calling when it stalled?
+   - Did it hit a known gotcha from `project.md`, or a new one?
+   - What did it do well? (Don't just look at failures — notice what's working so you don't break it.)
+   - How does this compare to the previous run? Better or worse? Why?
+3. **Diagnose** — Connect to the live node and inspect the agent's messages if the run file isn't enough. Look at the last 20 messages, tool usage breakdown, error messages. Understand the *why*, not just the *what*.
+4. **Change ONE thing** — Pick the highest-impact fix:
+   - Agent didn't know something → fix the prompt (`setup_guide.md`) or checklist (`setup.md`)
+   - Agent knew but tooling failed → fix BoomLooper code (compose.ex, tools, etc.)
+   - New project-specific gotcha → add it to `evals/<name>/project.md` Gotchas section
+   - Don't change everything at once. One change per iteration so you know what helped.
+5. **Recompile + restart** — setup_guide.md is a compiled module attribute, needs restart.
+6. **Run again** — Compare to the previous run. Did the change help? If yes, commit it. If no, revert and try something else.
 
-Files that control setup agent behavior:
-- `priv/prompts/setup_guide.md` — the detailed guide sent as the agent's first message
-- `priv/checklists/setup.md` — the checklist template (items the agent works through)
-- `lib/boom_looper/chat_agent.ex` — the system prompt (keep under 2000 chars or CLI gets SIGKILL'd)
+### What to promote
+
+Gotchas that repeat across multiple projects don't belong in one project's `project.md` — they belong in the generic prompts:
+- `priv/prompts/setup_guide.md` — detailed guide, sent as the agent's first message
+- `priv/checklists/setup.md` — the checklist template
+- `lib/boom_looper/chat_agent.ex` — system prompt (keep under 2000 chars)
+
+A gotcha that only affects one project stays in that project's `project.md`. A gotcha that shows up in 2+ projects gets promoted to the setup guide.
+
+### Keep a trail
+
+Every run is recorded. The run files ARE the trail. When you look back across multiple runs for the same project, you should see the numbers improving — fewer errors, fewer nudges, fewer tool calls, faster completion. If they're getting worse, you broke something — look at what changed between runs.
 
 **Important:** `setup_guide.md` is compiled into `ChatAgent` as a module attribute (`@setup_guide File.read!(...)`). Changes require recompilation. In dev, Phoenix code reloader handles this on the next request, but for eval runs via RPC the app needs a restart to pick up changes.
