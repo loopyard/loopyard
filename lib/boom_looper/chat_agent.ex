@@ -886,9 +886,13 @@ defmodule BoomLooper.ChatAgent do
 
     Do NOT use `exec` until AFTER `rebuild`. NEVER install via runtime scripts (docker exec apt-get). NEVER use `sleep`. Use `service_status` to check progress.
 
-    IMPORTANT: Read the setup guide before starting: use your Read tool on #{Application.app_dir(:boom_looper, "priv/prompts/setup_guide.md")}
     """
   end
+
+  @setup_guide File.read!(Path.join(:code.priv_dir(:boom_looper), "prompts/setup_guide.md"))
+
+  @doc false
+  def setup_guide, do: @setup_guide
 
   defp setup_prompt(bind_mount) do
     path_note = if bind_mount, do: " at #{bind_mount}", else: ""

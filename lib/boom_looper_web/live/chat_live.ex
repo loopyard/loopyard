@@ -776,7 +776,8 @@ defmodule BoomLooperWeb.ChatLive do
             ChatAgent.send_message(id, "Check the logs for the #{service_name} service and help me debug any issues.")
 
           !workspace ->
-            ChatAgent.send_message(id, "Look at the project in /workspace and help me set up a development environment. Examine the project files to understand what language, framework, and tools are needed.")
+            guide = ChatAgent.setup_guide()
+            ChatAgent.send_message(id, guide <> "\n\n---\n\nLook at the project in /workspace and help me set up a development environment. Examine the project files to understand what language, framework, and tools are needed.")
 
           true ->
             :ok
