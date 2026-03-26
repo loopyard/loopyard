@@ -105,27 +105,38 @@ defmodule BoomLooperWeb.ChatLive do
     has_config = match?({:ok, _}, BoomLooper.Workspace.load(config_path))
     has_agents = socket.assigns.agents != []
 
-    if !has_config && !has_agents do
-      # Auto-launch Setup checklist
-      id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
-      setup = BoomLooper.Checklist.available(workspace.path) |> Enum.find(&(&1.id == "setup"))
-      name = if setup, do: setup.name, else: "Setup"
+    # Check if a setup agent already exists for this workspace
+    existing_setup = socket.assigns.agents
+      |> Enum.find(fn a -> a[:name] == "Setup" && a[:status] not in [:stopped, :crashed] end)
 
-      agent_opts = [
-        id: id,
-        name: name,
-        working_dir: workspace.path,
-        started_by: "browser",
-        bind_mount: workspace.path
-      ]
+    cond do
+      # Existing setup agent — go to it instead of spawning another
+      existing_setup ->
+        {:noreply, push_navigate(socket, to: "#{workspace_path(socket)}/agents/#{existing_setup.id}")}
 
-      ChatAgent.register_booting(id, name, workspace.path)
-      Task.start(fn -> boot_agent(id, agent_opts, nil, workspace.path, if(setup, do: "setup")) end)
+      # No config, no agents — auto-launch setup
+      !has_config && !has_agents ->
+        id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
+        setup = BoomLooper.Checklist.available(workspace.path) |> Enum.find(&(&1.id == "setup"))
+        name = if setup, do: setup.name, else: "Setup"
 
-      {:noreply, push_navigate(socket, to: "#{workspace_path(socket)}/agents/#{id}")}
-    else
-      checklists = BoomLooper.Checklist.available(workspace.path)
-      {:noreply, assign(socket, available_checklists: checklists, selected_checklist: nil)}
+        agent_opts = [
+          id: id,
+          name: name,
+          working_dir: workspace.path,
+          started_by: "browser",
+          bind_mount: workspace.path
+        ]
+
+        ChatAgent.register_booting(id, name, workspace.path)
+        Task.start(fn -> boot_agent(id, agent_opts, nil, workspace.path, if(setup, do: "setup")) end)
+
+        {:noreply, push_navigate(socket, to: "#{workspace_path(socket)}/agents/#{id}")}
+
+      # Config exists or agents exist — show the new agent picker
+      true ->
+        checklists = BoomLooper.Checklist.available(workspace.path)
+        {:noreply, assign(socket, available_checklists: checklists, selected_checklist: nil)}
     end
   end
 
