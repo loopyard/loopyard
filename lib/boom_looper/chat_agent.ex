@@ -755,31 +755,52 @@ defmodule BoomLooper.ChatAgent do
 
   # --- System Prompt ---
 
-  defp build_system_prompt(agent_id, bind_mount, workspace_id, workspace, checklist_path, service_name) do
-    {base, workspace_section} =
-      if workspace do
-        {container_base_prompt(agent_id, bind_mount, workspace_id),
-         workspace_prompt(workspace, bind_mount)}
-      else
-        {setup_base_prompt(agent_id, bind_mount),
-         setup_prompt(bind_mount)}
-      end
+  # The system prompt is passed as a CLI argument (--system-prompt).
+  # If it's too long, the OS will SIGKILL the CLI process (exit 137).
+  # Keep it under this limit. Anything larger should go in CLAUDE.md
+  # or a file the agent reads.
+  @max_system_prompt_chars 2000
 
-    checklist_section =
-      if checklist_path do
-        checklist_prompt(checklist_path)
-      else
-        ""
-      end
+  @doc false
+  def build_system_prompt(agent_id, bind_mount, workspace_id, workspace, checklist_path, service_name) do
+    # System prompt: ONLY identity + agent ID. Must stay small.
+    base = if workspace do
+      container_base_prompt(agent_id, bind_mount, workspace_id)
+    else
+      setup_base_prompt(agent_id, bind_mount)
+    end
 
-    service_section =
-      if service_name && workspace_id && workspace do
-        service_agent_prompt(service_name, workspace_id, workspace)
-      else
-        ""
-      end
+    parts = [base]
 
-    base <> "\n" <> workspace_section <> checklist_section <> service_section
+    parts = if workspace do
+      parts ++ [workspace_prompt(workspace, bind_mount)]
+    else
+      parts ++ [setup_prompt(bind_mount)]
+    end
+
+    parts = if checklist_path do
+      parts ++ [checklist_prompt(checklist_path)]
+    else
+      parts
+    end
+
+    parts = if service_name && workspace_id && workspace do
+      parts ++ [service_agent_prompt(service_name, workspace_id, workspace)]
+    else
+      parts
+    end
+
+    prompt = Enum.join(parts, "\n")
+
+    if String.length(prompt) > @max_system_prompt_chars do
+      Logger.warning(
+        "[ChatAgent] System prompt is #{String.length(prompt)} chars " <>
+        "(limit #{@max_system_prompt_chars}). CLI may be SIGKILL'd. " <>
+        "Move content to priv/prompts/ or CLAUDE.md."
+      )
+    end
+
+    prompt
   end
 
   defp service_agent_prompt(service_name, workspace_id, workspace) do
@@ -797,17 +818,7 @@ defmodule BoomLooper.ChatAgent do
           {"unknown", "Unknown service"}
       end
 
-    """
-
-    ## Service Agent: #{service_name}
-
-    You are scoped to the "#{service_name}" service (container: #{container}).
-    #{detail}
-
-    Your primary job is to monitor, debug, and fix this service. Use the `logs` tool to check its output.
-    You still have full workspace access via the container tools — use it to read code, run tests, and make fixes.
-    Focus your attention on issues related to this service.
-    """
+    "\nService agent for #{service_name} (#{container}). #{detail}. Use `logs` to check output."
   end
 
   defp container_base_prompt(agent_id, bind_mount, workspace_id) do
@@ -826,30 +837,9 @@ defmodule BoomLooper.ChatAgent do
       end
 
     """
-    You share a workspace container "#{container}" with other agents. Your workspace is at /workspace.
+    Workspace container: #{container}. YOUR AGENT ID: #{agent_id}. Pass agent_id to every tool call.
 
-    YOUR AGENT ID: #{agent_id}
-
-    IMPORTANT: Use the boom-looper-container MCP tools for ALL work. Pass your agent_id "#{agent_id}" to every container tool call.
-
-    ## How to work
-
-    - **Run commands**: Use `exec` for quick commands (< 2 min). Use `exec_stream` for long-running commands — output streams live into the chat so the user can watch.
-    - **When to use exec_stream**: Any command that runs for more than a few seconds or produces continuous output — builds, tests, servers, ping, tail -f, watch, bundle install, npm install, migrations, etc.
-    - **Edit files**: Use `exec` with shell commands (cat, sed, tee, etc.) to read/write files in /workspace
-    - **Install dependencies**: Use `exec_stream` to run apt-get, mix deps.get, npm install, pip install, etc. inside the container (these take time and the user wants to see progress)
-    - **Check status**: Use `logs` to see container output, `ports` to see listeners, `inspect_env` for full environment info
-    - **Rebuild**: Use the `rebuild` workspace tool to rebuild the container image after changing the Dockerfile
-
-    ## Container details
-
-    - #{workspace_note}
-    - /root/.cache persists (package caches)
-    - The dev server runs in a SEPARATE container. To reach it from exec, use the compose service name (e.g. `curl http://dev:PORT/`)
-    - Use `service_status` to see container names and ports
-    - Use `logs` with `service: "dev"` to see the dev server output
-
-    Do NOT use your local Bash/Read/Write tools for project work — everything goes through the container tools.
+    Use boom-looper-container MCP tools for ALL work. `exec` for quick commands, `exec_stream` for long-running ones. #{workspace_note}. Dev server runs in a separate container — use `logs` and `service_status` to check it.
     """
   end
 
