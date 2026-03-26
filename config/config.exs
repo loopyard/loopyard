@@ -38,4 +38,7 @@ config :logger, :console,
 
 config :phoenix, :json_library, Jason
 
+# Use system-installed claude CLI instead of bundled version
+config :claude_code, cli_path: :global
+
 import_config "#{config_env()}.exs"
