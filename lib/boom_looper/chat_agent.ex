@@ -11,6 +11,13 @@ defmodule BoomLooper.ChatAgent do
   alias BoomLooper.Agent.Event
   alias BoomLooper.AgentLog
 
+  @agent_defaults %{
+    id: nil, name: "Unknown", status: :idle, messages: [],
+    working_dir: nil, bind_mount: nil, workspace_id: nil,
+    started_at: nil, started_by: nil, last_activity_at: nil,
+    tool_calls: 0, errors: 0, checklist_path: nil, service_name: nil
+  }
+
   defstruct [
     :id,
     :name,
@@ -47,17 +54,20 @@ defmodule BoomLooper.ChatAgent do
 
   def get_state(id) do
     # Try live GenServer first, fall back to ETS
-    try do
+    summary = try do
       GenServer.call(via(id), :get_state)
     catch
       :exit, _ ->
         ensure_ets_table()
 
         case :ets.lookup(@ets_table, id) do
-          [{^id, summary}] -> summary
+          [{^id, s}] -> s
           [] -> nil
         end
     end
+
+    # Ensure all expected fields exist
+    if summary, do: Map.merge(@agent_defaults, summary) |> Map.put_new(:id, id), else: nil
   end
 
   def stop_agent(id) do
@@ -220,8 +230,9 @@ defmodule BoomLooper.ChatAgent do
 
     :ets.tab2list(@ets_table)
     |> Enum.map(fn {ets_key, summary} ->
-      # Ensure the summary has an :id (some code paths may omit it)
-      summary = Map.put_new(summary, :id, ets_key)
+      # Ensure all expected fields exist (some code paths may omit them)
+      summary = Map.merge(@agent_defaults, summary)
+      summary = %{summary | id: summary.id || ets_key}
 
       # If agent is still alive, get fresh state
       case Registry.lookup(BoomLooper.ChatAgentRegistry, summary.id) do
