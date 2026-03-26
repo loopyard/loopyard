@@ -42,11 +42,13 @@ Common examples:
 ## File watchers and bind mounts
 
 inotify/fsevents do NOT work across Docker bind mounts. Always use polling mode:
-- Tailwind CSS: `tailwindcss --watch --poll`
+- Tailwind CSS v4+: set `TAILWINDCSS_POLL=true` env var (via `set_env_vars`)
+- Tailwind CSS v3: `tailwindcss --watch --poll`
 - Webpack: `webpack --watch --watch-poll`
 - Vite: `server.watch.usePolling: true`
 - Nodemon: `nodemon --legacy-watch`
-- Rails: check for `Procfile.container` or add `--poll` to CSS watcher
+- Rails: if tailwindcss-rails is used, set `TAILWINDCSS_POLL=true`. Do NOT install watchman.
+- General: if you see "watchman: not found" in logs, the fix is polling mode, NOT installing watchman.
 
 ## Ports are always dynamic
 
