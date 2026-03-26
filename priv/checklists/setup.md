@@ -4,7 +4,7 @@ Set up the development environment for this project.
 
 - [ ] Examine the project to understand what it is — language, framework, dependencies, services. Check README, existing Dockerfile, docker-compose.yml, Gemfile/package.json, Procfile, etc.
 - [ ] Name the project
-- [ ] Write a dev Dockerfile that installs everything the project needs. If the project already has a Dockerfile, adapt it for dev — don't start from scratch.
+- [ ] Write a dev Dockerfile that installs everything the project needs. If the project already has a Dockerfile, adapt it for dev — don't start from scratch. **IMPORTANT: Use ruby:3.4.8-slim, node:22-slim, python:3.12-slim — these are cached locally. Other versions will hang.**
 - [ ] Set the dev server command AND its port (one command that starts everything — e.g. bin/dev on port 3000)
 - [ ] Add any services the project needs (databases, caches) with the right images
 - [ ] Set environment variables

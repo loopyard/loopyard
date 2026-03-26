@@ -7,6 +7,20 @@ The host machine is macOS (likely Apple Silicon / ARM64). The container runs Lin
 - Prefer `apt-get install <package>` over building from source.
 - Never download x86_64 binaries.
 
+**Use these exact image tags for base images:**
+- Ruby: `ruby:3.4.8-slim`
+- Node: `node:22-slim` or `node:20-slim`
+- Python: `python:3.12-slim`
+
+These specific versions are cached locally. Do NOT use the version from the project's existing Dockerfile — those versions may not be cached, and Docker Hub pulls hang. Always use the versions listed above.
+
+**Version lock files must match the container.** If you use `ruby:3.4.8-slim` but the project's `.ruby-version` says `3.4.2`, Bundler will crash with version mismatch. Fix this after the first rebuild:
+1. First `rebuild` creates containers (dev may crash, that's expected)
+2. `exec` into workspace: `echo "3.4.8" > .ruby-version`
+3. Second `rebuild` to restart dev with correct version
+
+Same pattern for Node with `.nvmrc` or `.node-version` files.
+
 **Service images must have ARM64 support.** Before calling `add_service`, verify the image has an ARM64 build. If "no matching manifest for linux/arm64" appears during rebuild, find an alternative image.
 
 **JS bundler binaries** (esbuild, swc, sharp, etc.) are platform-specific. If the project has `node_modules` on the host (macOS), those binaries won't work in the Linux container. Fix: `exec` with `npm rebuild` or `npm install` after rebuild to get Linux binaries.
@@ -69,10 +83,21 @@ Only specify the container port — Docker picks a free host port automatically.
 
 ## Rebuilds and waiting
 
-- Use `service_status` to check if containers are running. Call it ONCE after rebuild.
-- **NEVER use `sleep` or `exec sleep`.** Just call `service_status`.
-- If `exec` returns "No such container", STOP — fix the Dockerfile and rebuild.
-- **NEVER loop** or retry the same failing command.
+**`rebuild` returns immediately** — the build runs in the background. You'll see build output streaming in `build` role messages. Wait for build completion before checking containers.
+
+How to know the build finished:
+1. Look for build output messages showing "Successfully built" or container start logs
+2. Call `service_status` ONCE — if services appear, you're good
+3. If `service_status` returns empty, check `logs` for the workspace container to see build errors
+
+**NEVER poll in a loop.** If containers don't appear after one `service_status` check:
+- Read the build output messages for errors
+- Use `logs` tool to check container logs
+- Fix the Dockerfile and rebuild if needed
+
+- **NEVER use `sleep` or `exec sleep`.**
+- If `exec` returns "No such container", STOP — read the build output, fix the Dockerfile, and rebuild.
+- **NEVER retry the same failing command.**
 
 ## When things go wrong
 

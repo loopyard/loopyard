@@ -4,7 +4,7 @@ defmodule BoomLooper.ChatAgent do
   Streams structured messages to viewers via PubSub.
   Unlike the PTY-based Agent, this uses the JSON protocol
   for a proper multiplayer chat experience.
-  """
+  """ # Force recompile: 2026-03-26T11:26
   use GenServer, restart: :transient
   require Logger
 
