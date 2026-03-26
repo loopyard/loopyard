@@ -163,11 +163,23 @@ defmodule BoomLooper.Compose do
     compose_file = compose_path(project_dir)
     project = project_name(workspace_id)
 
-    args = [
-      "compose", "-f", compose_file, "-p", project,
-      "up", "-d", "--build"
-    ]
+    base_args = ["-f", compose_file, "-p", project, "up", "-d", "--build"]
 
+    # Try docker compose v2 (plugin) first, fall back to standalone docker-compose
+    case stream_compose(["compose" | base_args], callback) do
+      {:error, output} when is_binary(output) ->
+        if String.contains?(output, "unknown shorthand flag") || String.contains?(output, "is not a docker command") do
+          stream_docker_compose(base_args, callback)
+        else
+          {:error, output}
+        end
+
+      other ->
+        other
+    end
+  end
+
+  defp stream_compose(args, callback) do
     docker_path = System.find_executable("docker")
 
     unless docker_path do
@@ -175,6 +187,21 @@ defmodule BoomLooper.Compose do
     else
       port = Port.open(
         {:spawn_executable, docker_path},
+        [:binary, :exit_status, :stderr_to_stdout, {:args, args}]
+      )
+
+      collect_port_output(port, callback, "", 600_000)
+    end
+  end
+
+  defp stream_docker_compose(args, callback) do
+    dc_path = System.find_executable("docker-compose")
+
+    unless dc_path do
+      {:error, "docker-compose not found"}
+    else
+      port = Port.open(
+        {:spawn_executable, dc_path},
         [:binary, :exit_status, :stderr_to_stdout, {:args, args}]
       )
 
