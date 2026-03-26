@@ -24,12 +24,17 @@ defmodule BoomLooperWeb.ProjectListLive do
   def handle_event("add_project", %{"path" => path}, socket) do
     path = String.trim(path)
 
+    if path == "" do
+      {:noreply, put_flash(socket, :error, "Enter a project path")}
+    else
+
     case ProjectRegistry.add(path) do
       {:ok, project, workspace} ->
         {:noreply, push_navigate(socket, to: "/projects/#{project.id}/workspaces/#{workspace.id}")}
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, reason)}
+    end
     end
   end
 
