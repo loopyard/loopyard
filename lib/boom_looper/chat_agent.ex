@@ -355,6 +355,7 @@ defmodule BoomLooper.ChatAgent do
         cwd: working_dir,
         permission_mode: :accept_edits,
         dangerously_skip_permissions: true,
+        max_turns: 50,
         mcp_servers: build_mcp_servers(tools),
         allowed_tools: build_allowed_tools(tools)
       ]
