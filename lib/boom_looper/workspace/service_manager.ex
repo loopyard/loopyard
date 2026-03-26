@@ -499,14 +499,28 @@ defmodule BoomLooper.Workspace.ServiceManager do
   defp migration_transformer(_from, _to), do: nil
 
   defp start_restored_agent(workspace_id, agent_id) do
-    opts = [id: agent_id, resume: true]
-
-    case BoomLooper.WorkspaceGroup.start_agent(workspace_id, opts) do
-      {:ok, _pid} ->
+    # Don't start if the agent process is already running
+    case Registry.lookup(BoomLooper.ChatAgentRegistry, agent_id) do
+      [{_pid, _}] ->
         :ok
 
-      {:error, reason} ->
-        BoomLooper.EventLog.warning("workspace", "Failed to resume agent #{agent_id}: #{inspect(reason)}")
+      [] ->
+        # Don't restart agents that were stopped or crashed
+        case :ets.lookup(:chat_agents, agent_id) do
+          [{_, %{status: status}}] when status in [:stopped, :crashed] ->
+            :ok
+
+          _ ->
+            opts = [id: agent_id, resume: true, started_by: "log_replay"]
+
+            case BoomLooper.WorkspaceGroup.start_agent(workspace_id, opts) do
+              {:ok, _pid} ->
+                :ok
+
+              {:error, reason} ->
+                BoomLooper.EventLog.warning("workspace", "Failed to resume agent #{agent_id}: #{inspect(reason)}")
+            end
+        end
     end
   end
 end

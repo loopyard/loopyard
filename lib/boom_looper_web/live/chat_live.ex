@@ -124,7 +124,7 @@ defmodule BoomLooperWeb.ChatLive do
           id: id,
           name: name,
           working_dir: workspace.path,
-          started_by: "browser",
+          started_by: "auto_setup",
           bind_mount: workspace.path
         ]
 
