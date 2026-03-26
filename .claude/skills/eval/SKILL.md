@@ -58,7 +58,7 @@ Options:
 - `timeout: 900_000` — 15 minutes default. Large projects with slow Docker builds may need more.
 - `max_nudges: 5` — how many times to auto-nudge when agent goes idle before checklist is complete. The agent hits max_turns (50) and stops; the runner sends "Continue with the remaining checklist items." and the agent keeps going.
 
-Results are written to `evals/<project_name>/<timestamp>.md` in the repo root.
+Results are written to `evals/<project_name>/runs/<timestamp>.md` in the repo root.
 
 ### Manual: Step by Step
 
@@ -142,7 +142,16 @@ HOME=/tmp MIX_HOME="$PWD/.mix_home" HEX_HOME="$PWD/.hex_home" \
 
 ## Where Results Live
 
-`evals/<project_name>/<timestamp>.md` — each file contains:
+```
+evals/
+├── <project_name>/
+│   ├── project.md              # stack, gotchas, success criteria
+│   └── runs/
+│       └── <timestamp>.md      # one file per eval run
+└── README.md
+```
+
+Each run file contains:
 - Outcome (completed/stalled/timeout/failed), duration, message count, tool calls
 - Nudge count and checklist progress (e.g. 11/11)
 - Service status at completion

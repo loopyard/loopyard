@@ -247,7 +247,7 @@ defmodule BoomLooper.EvalRunner do
   Record an eval run to `evals/:project_name/:date.md`.
   """
   def record_run(project_name, result) do
-    dir = Path.join(["evals", sanitize_name(project_name)])
+    dir = Path.join(["evals", sanitize_name(project_name), "runs"])
     File.mkdir_p!(dir)
 
     date = Calendar.strftime(DateTime.utc_now(), "%Y-%m-%d_%H%M%S")

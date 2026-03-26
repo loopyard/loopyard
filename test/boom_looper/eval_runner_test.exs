@@ -75,7 +75,7 @@ defmodule BoomLooper.EvalRunnerTest do
 
       path = EvalRunner.record_run("My Cool Project!", result)
 
-      assert path =~ "evals/my_cool_project"
+      assert path =~ "evals/my_cool_project/runs/"
       assert File.exists?(path)
     end
 
