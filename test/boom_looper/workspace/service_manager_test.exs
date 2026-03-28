@@ -15,10 +15,15 @@ defmodule BoomLooper.Workspace.ServiceManagerTest do
   end
 
   describe "start_services/1 with no config" do
+    @describetag :docker
+
     setup do
       tmp_dir = Path.join(System.tmp_dir!(), "boom-looper-svc-test-#{:rand.uniform(100_000)}")
       File.mkdir_p!(tmp_dir)
-      on_exit(fn -> File.rm_rf!(tmp_dir) end)
+      on_exit(fn ->
+        ServiceManager.stop_services(tmp_dir)
+        File.rm_rf!(tmp_dir)
+      end)
       %{tmp_dir: tmp_dir}
     end
 
@@ -152,6 +157,8 @@ defmodule BoomLooper.Workspace.ServiceManagerTest do
   end
 
   describe "reconnect on restart" do
+    @describetag :docker
+
     setup do
       tmp_dir = Path.join(System.tmp_dir!(), "boom-looper-svc-reconnect-#{:rand.uniform(100_000)}")
       File.mkdir_p!(tmp_dir)
