@@ -1,0 +1,117 @@
+defmodule BoomLooper.IExSession do
+  @moduledoc """
+  Tracks operator presence via IEx/RPC for UI visibility.
+
+  Traffic light system for humans:
+  - :green  = "Operator connected, just watching" - safe to work
+  - :yellow = "Operator doing things" - stuff might change
+  - :red    = "Operator destroying things" - stop, your work might get blown away
+
+  Usage from IEx:
+
+      # Just connected, watching
+      IExSession.watching()
+
+      # Doing something
+      IExSession.working("running eval for foo")
+
+      # About to destroy stuff
+      IExSession.destructive("wiping all volumes")
+
+      # Wrap a function (auto yellow -> green)
+      IExSession.run("running eval", fn -> EvalRunner.run(path) end)
+
+      # Wrap destructive operation (auto red -> green)
+      IExSession.run!("wiping project", fn -> ProjectRegistry.remove(id) end)
+
+      # Disconnect
+      IExSession.disconnect()
+  """
+
+  use GenServer
+
+  @topic "iex_session"
+
+  def start_link(_), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
+
+  # --- Public API ---
+
+  @doc "Just watching, not touching anything. Green light."
+  def watching(note \\ nil) do
+    set(:green, note || "Connected")
+  end
+
+  @doc "Actively doing things. Yellow light."
+  def working(what) do
+    set(:yellow, what)
+  end
+
+  @doc "About to destroy/reset things. Red light."
+  def destructive(what) do
+    set(:red, what)
+  end
+
+  @doc "Clear presence."
+  def disconnect do
+    GenServer.cast(__MODULE__, :disconnect)
+  end
+
+  @doc "Get current session state."
+  def current do
+    GenServer.call(__MODULE__, :current)
+  catch
+    :exit, _ -> %{level: nil, label: nil, node: nil, at: nil}
+  end
+
+  @doc "Wrap a function with yellow status, returns to green after."
+  def run(label, fun) do
+    working(label)
+    try do
+      fun.()
+    after
+      watching()
+    end
+  end
+
+  @doc "Wrap a destructive function with red status, returns to green after."
+  def run!(label, fun) do
+    destructive(label)
+    try do
+      fun.()
+    after
+      watching()
+    end
+  end
+
+  # --- Internal ---
+
+  defp set(level, label) do
+    GenServer.cast(__MODULE__, {:set, level, label, node()})
+  end
+
+  # --- GenServer ---
+
+  def init(_) do
+    {:ok, %{level: nil, label: nil, node: nil, at: nil}}
+  end
+
+  def handle_cast({:set, level, label, node}, _state) do
+    state = %{level: level, label: label, node: node, at: DateTime.utc_now()}
+    broadcast(state)
+    {:noreply, state}
+  end
+
+  def handle_cast(:disconnect, _state) do
+    state = %{level: nil, label: nil, node: nil, at: nil}
+    broadcast(state)
+    {:noreply, state}
+  end
+
+  def handle_call(:current, _from, state) do
+    {:reply, state, state}
+  end
+
+  defp broadcast(state) do
+    Phoenix.PubSub.broadcast(BoomLooper.PubSub, @topic, {:iex_session, state})
+  end
+end
