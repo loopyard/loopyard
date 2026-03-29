@@ -2,7 +2,7 @@
   "services": {
     "dev": {
       "build": {
-        "context": "/Users/bradgessler/Projects/bradgessler/hive/.hive",
+        "context": "/Users/bradgessler/Projects/boomlooper/boomlooper/.hive",
         "dockerfile": "Dockerfile"
       },
       "command": "mix phx.server",
@@ -15,14 +15,14 @@
         "4000:4000"
       ],
       "volumes": [
-        "/Users/bradgessler/Projects/bradgessler/hive:/workspace",
-        "cache-40ee:/root/.cache"
+        "/Users/bradgessler/Projects/boomlooper/boomlooper:/workspace",
+        "cache-boomlooper:/root/.cache"
       ],
       "working_dir": "/workspace"
     },
     "workspace": {
       "build": {
-        "context": "/Users/bradgessler/Projects/bradgessler/hive/.hive",
+        "context": "/Users/bradgessler/Projects/boomlooper/boomlooper/.hive",
         "dockerfile": "Dockerfile"
       },
       "command": "sleep infinity",
@@ -32,13 +32,13 @@
         "PORT=4000"
       ],
       "volumes": [
-        "/Users/bradgessler/Projects/bradgessler/hive:/workspace",
-        "cache-40ee:/root/.cache"
+        "/Users/bradgessler/Projects/boomlooper/boomlooper:/workspace",
+        "cache-boomlooper:/root/.cache"
       ],
       "working_dir": "/workspace"
     }
   },
   "volumes": {
-    "cache-40ee": null
+    "cache-boomlooper": null
   }
 }

@@ -181,4 +181,127 @@ defmodule BoomLooper.WorkspaceTest do
       assert File.exists?(Workspace.config_path(tmp_dir))
     end
   end
+
+  describe "normalize_git_url/1" do
+    test "normalizes HTTPS URLs" do
+      assert Workspace.normalize_git_url("https://github.com/owner/repo.git") == "github.com/owner/repo"
+      assert Workspace.normalize_git_url("https://github.com/owner/repo") == "github.com/owner/repo"
+    end
+
+    test "normalizes SSH URLs" do
+      assert Workspace.normalize_git_url("git@github.com:owner/repo.git") == "github.com/owner/repo"
+      assert Workspace.normalize_git_url("git@github.com:owner/repo") == "github.com/owner/repo"
+    end
+
+    test "lowercases URLs" do
+      assert Workspace.normalize_git_url("https://GitHub.com/Owner/Repo.git") == "github.com/owner/repo"
+    end
+  end
+
+  describe "workspace_id_from_git/2" do
+    test "returns deterministic ID for same git_url and branch" do
+      id1 = Workspace.workspace_id_from_git("git@github.com:owner/repo.git", "main")
+      id2 = Workspace.workspace_id_from_git("git@github.com:owner/repo.git", "main")
+      assert id1 == id2
+      assert is_binary(id1)
+      assert String.length(id1) == 4
+    end
+
+    test "returns different IDs for different branches" do
+      id_main = Workspace.workspace_id_from_git("git@github.com:owner/repo.git", "main")
+      id_dev = Workspace.workspace_id_from_git("git@github.com:owner/repo.git", "develop")
+      assert id_main != id_dev
+    end
+
+    test "returns same ID for equivalent SSH and HTTPS URLs" do
+      id_ssh = Workspace.workspace_id_from_git("git@github.com:owner/repo.git", "main")
+      id_https = Workspace.workspace_id_from_git("https://github.com/owner/repo.git", "main")
+      assert id_ssh == id_https
+    end
+  end
+
+  describe "project_id_from_git/1" do
+    test "returns deterministic ID for same git_url" do
+      id1 = Workspace.project_id_from_git("git@github.com:owner/repo.git")
+      id2 = Workspace.project_id_from_git("git@github.com:owner/repo.git")
+      assert id1 == id2
+      assert is_binary(id1)
+      assert String.length(id1) == 4
+    end
+
+    test "returns same ID for equivalent SSH and HTTPS URLs" do
+      id_ssh = Workspace.project_id_from_git("git@github.com:owner/repo.git")
+      id_https = Workspace.project_id_from_git("https://github.com/owner/repo.git")
+      assert id_ssh == id_https
+    end
+  end
+
+  describe "from_map/1 with git fields" do
+    test "parses git_url and branch" do
+      ws = Workspace.from_map(%{
+        "name" => "My Project",
+        "git_url" => "git@github.com:owner/repo.git",
+        "branch" => "main"
+      })
+
+      assert ws.git_url == "git@github.com:owner/repo.git"
+      assert ws.branch == "main"
+    end
+
+    test "handles missing git fields" do
+      ws = Workspace.from_map(%{"name" => "Local Project"})
+
+      assert ws.git_url == nil
+      assert ws.branch == nil
+    end
+  end
+
+  describe "to_map/1 with git fields" do
+    test "includes git_url and branch in output" do
+      ws = %Workspace{
+        name: "My Project",
+        git_url: "git@github.com:owner/repo.git",
+        branch: "main"
+      }
+      map = Workspace.to_map(ws)
+
+      assert map["git_url"] == "git@github.com:owner/repo.git"
+      assert map["branch"] == "main"
+    end
+  end
+
+  describe "load_from_volume/1 and save_to_volume/2" do
+    @describetag :docker
+    setup do
+      volume_name = "bl-test-ws-#{:rand.uniform(100_000)}"
+      System.cmd("docker", ["volume", "create", volume_name])
+
+      on_exit(fn ->
+        System.cmd("docker", ["volume", "rm", "-f", volume_name], stderr_to_stdout: true)
+      end)
+
+      %{volume_name: volume_name}
+    end
+
+    test "saves and loads workspace config from volume", %{volume_name: volume_name} do
+      ws = %Workspace{
+        name: "Volume Project",
+        git_url: "git@github.com:owner/repo.git",
+        branch: "main",
+        dockerfile: "FROM ubuntu:24.04"
+      }
+
+      assert :ok = Workspace.save_to_volume(volume_name, ws)
+      assert {:ok, loaded} = Workspace.load_from_volume(volume_name)
+
+      assert loaded.name == "Volume Project"
+      assert loaded.git_url == "git@github.com:owner/repo.git"
+      assert loaded.branch == "main"
+      assert loaded.dockerfile == "FROM ubuntu:24.04"
+    end
+
+    test "load_from_volume returns :none when no config exists", %{volume_name: volume_name} do
+      assert :none = Workspace.load_from_volume(volume_name)
+    end
+  end
 end

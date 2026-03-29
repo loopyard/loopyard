@@ -36,25 +36,6 @@ defmodule BoomLooper.AgentBootTest do
       assert ChatAgent.get_state(id) == nil
     end
 
-    test "passes checklist_id through to checklist setup" do
-      id = "checklist-test-#{:rand.uniform(100_000)}"
-      working_dir = File.cwd!()
-
-      ChatAgent.register_booting(id, "Setup", working_dir)
-
-      # Boot with a bogus checklist — should not crash, just skip
-      result = AgentBoot.boot(id, [
-        id: id,
-        name: "Setup",
-        working_dir: working_dir,
-        started_by: "test",
-        bind_mount: working_dir
-      ], checklist_id: "nonexistent")
-
-      # Should fail gracefully (workspace not running)
-      assert result == {:error, :workspace_not_running} or ChatAgent.get_state(id) == nil
-    end
-
     test "sends initial setup message when no workspace config exists" do
       # This tests the default_message logic — when ws_config is nil,
       # the setup guide should be sent as the initial message

@@ -13,8 +13,8 @@ defmodule BoomLooperWeb.ProjectListLiveTest do
     test "renders the home page with project input and launch command", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/")
       assert html =~ "Boom Looper"
-      assert html =~ "Launch"
-      assert html =~ "Project path"
+      assert html =~ "From terminal"
+      assert html =~ "Paste a path"
     end
 
     test "shows Remote and System links in header", %{conn: conn} do

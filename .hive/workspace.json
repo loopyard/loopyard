@@ -1,11 +1,11 @@
 {
-  "dockerfile": "FROM elixir:1.18\n\n# Install build deps and Node.js (needed for esbuild/tailwind)\nRUN apt-get update && apt-get install -y \\\n    build-essential \\\n    git \\\n    curl \\\n    inotify-tools \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Set mix/hex homes inside workspace for caching\nENV MIX_HOME=/workspace/.mix_home\nENV HEX_HOME=/workspace/.hex_home\n\nWORKDIR /workspace\n",
+  "dockerfile": "FROM elixir:1.18-otp-27\n\n# Install build deps, Node.js (for esbuild/tailwind), and inotify-tools (for live reload)\nRUN apt-get update && apt-get install -y \\\n    build-essential \\\n    git \\\n    curl \\\n    inotify-tools \\\n    nodejs \\\n    npm \\\n    && rm -rf /var/lib/apt/lists/*\n\n# Install Claude CLI globally (required by claude_code dependency)\nRUN npm install -g @anthropic-ai/claude-code\n\n# Set mix/hex homes inside workspace for caching\nENV MIX_HOME=/workspace/.mix_home\nENV HEX_HOME=/workspace/.hex_home\n\nWORKDIR /workspace\n",
   "env_vars": {
     "MIX_ENV": "dev",
     "PHX_HOST": "localhost",
     "PORT": "4000"
   },
-  "name": "Fallback",
+  "name": "boomlooper",
   "processes": [
     {
       "command": "mix phx.server",
@@ -16,5 +16,5 @@
     }
   ],
   "services": [],
-  "system_prompt": null
+  "system_prompt": "BoomLooper is an Elixir/Phoenix application using LiveView. It uses Bandit as the web server, esbuild and tailwind for assets. The claude_code library requires the Claude CLI to be installed globally. Run `mix setup` after initial checkout to install dependencies and build assets."
 }

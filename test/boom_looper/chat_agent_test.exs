@@ -147,15 +147,9 @@ defmodule BoomLooper.ChatAgentTest do
 
   describe "build_system_prompt/6" do
     test "setup agent prompt stays under CLI argument limit" do
-      prompt = ChatAgent.build_system_prompt("test-id", "/tmp/project", nil, nil, nil, nil)
+      prompt = ChatAgent.build_system_prompt("test-id", "/tmp/project", nil, nil, nil)
       assert String.length(prompt) <= 2000,
         "Setup prompt is #{String.length(prompt)} chars, max is 2000. Move content to priv/prompts/ or CLAUDE.md."
-    end
-
-    test "setup agent prompt with checklist stays under limit" do
-      prompt = ChatAgent.build_system_prompt("test-id", "/tmp/project", nil, nil, "/path/to/checklist.md", nil)
-      assert String.length(prompt) <= 2000,
-        "Setup+checklist prompt is #{String.length(prompt)} chars, max is 2000."
     end
 
     test "container agent prompt stays under limit" do
@@ -168,12 +162,12 @@ defmodule BoomLooper.ChatAgentTest do
         system_prompt: "This is a Rails app."
       }
 
-      prompt = ChatAgent.build_system_prompt("test-id", "/tmp/project", "abcd", workspace, nil, nil)
+      prompt = ChatAgent.build_system_prompt("test-id", "/tmp/project", "abcd", workspace, nil)
       assert String.length(prompt) <= 2000,
         "Container prompt is #{String.length(prompt)} chars, max is 2000."
     end
 
-    test "container agent with checklist and service stays under limit" do
+    test "container agent with service stays under limit" do
       workspace = %BoomLooper.Workspace{
         name: "test-project",
         dockerfile: "FROM ruby:3.4",
@@ -183,7 +177,7 @@ defmodule BoomLooper.ChatAgentTest do
         system_prompt: "Rails app with postgres."
       }
 
-      prompt = ChatAgent.build_system_prompt("test-id", "/tmp/project", "abcd", workspace, "/checklist.md", "postgres")
+      prompt = ChatAgent.build_system_prompt("test-id", "/tmp/project", "abcd", workspace, "postgres")
       assert String.length(prompt) <= 2000,
         "Full prompt is #{String.length(prompt)} chars, max is 2000."
     end

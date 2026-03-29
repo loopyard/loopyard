@@ -11,6 +11,8 @@ defmodule BoomLooper.Workspace do
   defstruct [
     :name,
     :dockerfile,
+    :git_url,       # Git repository URL (e.g., "git@github.com:owner/repo.git")
+    :branch,        # Branch name (e.g., "main")
     services: [],
     processes: [],
     env_vars: %{},
@@ -39,6 +41,29 @@ defmodule BoomLooper.Workspace do
       {:error, reason} ->
         {:error, "Failed to read workspace config: #{inspect(reason)}"}
     end
+  end
+
+  @doc "Load workspace config from a Docker volume. Returns {:ok, workspace} or :none"
+  def load_from_volume(volume_name) do
+    case BoomLooper.VolumeManager.read_file(volume_name, ".boomlooper/repo/workspace.json") do
+      {:ok, contents} ->
+        case Jason.decode(contents) do
+          {:ok, data} -> {:ok, from_map(data)}
+          {:error, reason} -> {:error, "Invalid workspace JSON: #{inspect(reason)}"}
+        end
+
+      {:error, :not_found} ->
+        :none
+
+      {:error, reason} ->
+        {:error, "Failed to read workspace config from volume: #{inspect(reason)}"}
+    end
+  end
+
+  @doc "Save workspace config to a Docker volume."
+  def save_to_volume(volume_name, %__MODULE__{} = workspace) do
+    json = workspace |> to_map() |> Jason.encode!(pretty: true)
+    BoomLooper.VolumeManager.write_file(volume_name, ".boomlooper/repo/workspace.json", json)
   end
 
   @doc "Save workspace config to a project directory"
@@ -73,6 +98,8 @@ defmodule BoomLooper.Workspace do
     %__MODULE__{
       name: data["name"],
       dockerfile: data["dockerfile"],
+      git_url: data["git_url"],
+      branch: data["branch"],
       services: stock_from_services,
       processes: all_processes,
       env_vars: data["env_vars"] || %{},
@@ -85,6 +112,8 @@ defmodule BoomLooper.Workspace do
     %{
       "name" => ws.name,
       "dockerfile" => ws.dockerfile,
+      "git_url" => ws.git_url,
+      "branch" => ws.branch,
       "services" => Enum.map(ws.services, &service_to_map/1),
       "processes" => Enum.map(ws.processes, &process_to_map/1),
       "env_vars" => ws.env_vars,
@@ -108,6 +137,34 @@ defmodule BoomLooper.Workspace do
     |> Integer.to_string(16)
     |> String.downcase()
     |> String.pad_leading(4, "0")
+  end
+
+  @doc "Generate a workspace ID from git URL and branch (for volume-based workspaces)"
+  def workspace_id_from_git(git_url, branch) do
+    "#{normalize_git_url(git_url)}:#{branch}"
+    |> :erlang.phash2(0xFFFF)
+    |> Integer.to_string(16)
+    |> String.downcase()
+    |> String.pad_leading(4, "0")
+  end
+
+  @doc "Generate a project ID from git URL"
+  def project_id_from_git(git_url) do
+    normalize_git_url(git_url)
+    |> :erlang.phash2(0xFFFF)
+    |> Integer.to_string(16)
+    |> String.downcase()
+    |> String.pad_leading(4, "0")
+  end
+
+  @doc "Normalize a git URL for consistent hashing"
+  def normalize_git_url(url) do
+    url
+    |> String.downcase()
+    |> String.replace(~r/\.git$/, "")
+    |> String.replace(~r/^https?:\/\//, "")
+    |> String.replace(~r/^git@/, "")
+    |> String.replace(":", "/")
   end
 
   # --- Private ---

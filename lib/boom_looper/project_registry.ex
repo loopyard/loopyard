@@ -30,6 +30,88 @@ defmodule BoomLooper.ProjectRegistry do
   # --- Projects ---
 
   @doc """
+  Add a project from a git URL. Clones the repo into a volume and registers the workspace.
+  Returns {:ok, project, workspace} or {:error, reason}.
+
+  Options:
+    - branch: branch to clone (default: "main")
+    - token: GitHub token for auth (optional)
+  """
+  def add_from_url(git_url, opts \\ []) do
+    ensure_ets_tables()
+
+    branch = Keyword.get(opts, :branch, "main")
+    token = Keyword.get(opts, :token)
+
+    project_id = Workspace.project_id_from_git(git_url)
+    workspace_id = Workspace.workspace_id_from_git(git_url, branch)
+
+    # Find or create project
+    project = case get_project(project_id) do
+      nil ->
+        name = extract_repo_name(git_url)
+        proj = %{
+          id: project_id,
+          name: name,
+          git_url: git_url,
+          is_git: true,
+          volume_based: true,
+          added_at: DateTime.utc_now()
+        }
+        :ets.insert(@projects_table, {project_id, proj})
+        proj
+
+      existing ->
+        existing
+    end
+
+    # Find or create workspace
+    workspace = case get_workspace(workspace_id) do
+      nil ->
+        volume_name = BoomLooper.VolumeManager.code_volume_name(workspace_id)
+        ws = %{
+          id: workspace_id,
+          project_id: project_id,
+          name: branch,
+          branch: branch,
+          git_url: git_url,
+          volume: volume_name,
+          volume_based: true,
+          status: :stopped,
+          added_at: DateTime.utc_now()
+        }
+        :ets.insert(@workspaces_table, {workspace_id, ws})
+        ws
+
+      existing ->
+        existing
+    end
+
+    # Clone code into volume if not already done
+    volume_name = BoomLooper.VolumeManager.code_volume_name(workspace_id)
+    unless BoomLooper.VolumeManager.volume_has_code?(volume_name) do
+      case BoomLooper.VolumeManager.clone_into_volume(volume_name, git_url, branch: branch, token: token) do
+        {:ok, _} -> :ok
+        {:error, reason} -> Logger.warning("[ProjectRegistry] Clone failed: #{reason}")
+      end
+    end
+
+    # Persist to disk (store git_url instead of path)
+    ProjectStore.add(git_url)
+
+    {:ok, project, workspace}
+  end
+
+  defp extract_repo_name(git_url) do
+    git_url
+    |> String.replace(~r/\.git$/, "")
+    |> String.split("/")
+    |> List.last()
+    |> String.split(":")
+    |> List.last()
+  end
+
+  @doc """
   Add a project from a directory path. Detects the git repo root,
   creates the project, and registers the current workspace.
   Returns {:ok, project, workspace} or {:error, reason}.
@@ -80,13 +162,23 @@ defmodule BoomLooper.ProjectRegistry do
   def restore do
     ensure_ets_tables()
 
-    for path <- ProjectStore.load() do
-      case add(path) do
+    for entry <- ProjectStore.load() do
+      result = cond do
+        # Git URL (volume-based)
+        String.starts_with?(entry, "git@") or String.starts_with?(entry, "https://") ->
+          add_from_url(entry)
+
+        # Local path (bind-mount based)
+        true ->
+          add(entry)
+      end
+
+      case result do
         {:ok, _project, _workspace} ->
           :ok
 
         {:error, reason} ->
-          Logger.warning("[ProjectRegistry] Failed to restore project #{path}: #{reason}")
+          Logger.warning("[ProjectRegistry] Failed to restore project #{entry}: #{reason}")
       end
     end
 
@@ -112,7 +204,7 @@ defmodule BoomLooper.ProjectRegistry do
 
   @doc """
   Remove a project and all its workspaces.
-  Stops agents, tears down Docker containers, and deletes .boomlooper files.
+  Stops agents, tears down Docker containers, and deletes volumes/files.
   """
   def remove_project(id) do
     ensure_ets_tables()
@@ -123,8 +215,13 @@ defmodule BoomLooper.ProjectRegistry do
     all_agents = BoomLooper.ChatAgent.list_agents()
 
     Enum.each(workspaces, fn workspace ->
+      # Match agents by workspace_id or path
       all_agents
-      |> Enum.filter(fn a -> a[:bind_mount] == workspace.path || a[:working_dir] == workspace.path end)
+      |> Enum.filter(fn a ->
+        a[:workspace_id] == workspace.id ||
+        a[:bind_mount] == workspace[:path] ||
+        a[:working_dir] == workspace[:path]
+      end)
       |> Enum.each(fn agent ->
         BoomLooper.ChatAgent.stop_agent(agent.id)
         BoomLooper.ChatAgent.remove_agent(agent.id)
@@ -135,28 +232,48 @@ defmodule BoomLooper.ProjectRegistry do
 
     if project do
       # Remove from disk persistence
-      ProjectStore.remove(project.path)
+      persistence_key = project[:git_url] || project[:path]
+      ProjectStore.remove(persistence_key)
 
-      # Delete .boomlooper directory (config + generated files)
-      boomlooper_dir = Path.join(project.path, ".boomlooper")
-      File.rm_rf(boomlooper_dir)
-
-      # Tear down Docker containers in background
-      workspace_paths = Enum.map(workspaces, fn ws ->
-        {ws.path, Workspace.workspace_id(ws.path)}
-      end)
-
-      Task.start(fn ->
-        Enum.each(workspace_paths, fn {path, workspace_id} ->
-          try do
-            BoomLooper.Compose.down(path, workspace_id)
-          rescue
-            _ -> :ok
-          catch
-            _, _ -> :ok
-          end
+      # Handle cleanup based on project type
+      if project[:volume_based] do
+        # Volume-based: delete volumes
+        Task.start(fn ->
+          Enum.each(workspaces, fn ws ->
+            try do
+              # Stop compose first
+              BoomLooper.Compose.down_volumes(Workspace.home_dir(), ws.id)
+              # Delete code and cache volumes
+              BoomLooper.VolumeManager.delete_volume(ws[:volume])
+              BoomLooper.VolumeManager.delete_volume(BoomLooper.VolumeManager.cache_volume_name(ws.id))
+            rescue
+              _ -> :ok
+            catch
+              _, _ -> :ok
+            end
+          end)
         end)
-      end)
+      else
+        # Path-based: delete .boomlooper directory and tear down containers
+        boomlooper_dir = Path.join(project.path, ".boomlooper")
+        File.rm_rf(boomlooper_dir)
+
+        workspace_paths = Enum.map(workspaces, fn ws ->
+          {ws.path, Workspace.workspace_id(ws.path)}
+        end)
+
+        Task.start(fn ->
+          Enum.each(workspace_paths, fn {path, workspace_id} ->
+            try do
+              BoomLooper.Compose.down(path, workspace_id)
+            rescue
+              _ -> :ok
+            catch
+              _, _ -> :ok
+            end
+          end)
+        end)
+      end
     end
 
     # Remove from ETS

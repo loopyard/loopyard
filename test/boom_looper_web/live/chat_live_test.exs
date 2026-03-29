@@ -55,7 +55,8 @@ defmodule BoomLooperWeb.ChatLiveTest do
   describe "mount" do
     test "branch with agent renders chat page", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
       {:ok, _view, html} = live(conn, ws_chat_path(ws, setup_agent_id))
-      assert html =~ "New Agent"
+      # Agent view shows the agent name in header
+      assert html =~ "Test Agent"
     end
 
     test "redirects to / for unknown workspace", %{conn: conn} do
@@ -64,26 +65,20 @@ defmodule BoomLooperWeb.ChatLiveTest do
   end
 
   describe "new agent screen" do
-    test "navigating to /new shows checklist picker", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
-      {:ok, _view, html} = live(conn, ws_new_path(ws))
-
-      assert html =~ "Setup"
-      assert html =~ "Feature Development"
+    test "navigating to /new spawns an agent", %{conn: conn, workspace: ws, setup_agent_id: _setup_agent_id} do
+      # /new now immediately spawns an agent and redirects
+      assert {:error, {:live_redirect, %{to: path}}} = live(conn, ws_new_path(ws))
+      assert path =~ "/projects/#{ws.project_id}/workspaces/#{ws.id}/agents/"
     end
 
-    test "launching an agent redirects to chat", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
-      {:ok, view, _html} = live(conn, ws_new_path(ws))
-
-      view
-      |> element("form[phx-submit='spawn_agent']")
-      |> render_submit(%{})
-
-      {path, _flash} = assert_redirect(view)
+    test "launching an agent redirects to chat", %{conn: conn, workspace: ws, setup_agent_id: _setup_agent_id} do
+      # /new now immediately redirects - no form interaction needed
+      assert {:error, {:live_redirect, %{to: path}}} = live(conn, ws_new_path(ws))
       assert path =~ "/projects/#{ws.project_id}/workspaces/#{ws.id}/agents/"
     end
 
     @tag :docker
-    test "launching an agent shows booting then transitions to chat", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
+    test "launching an agent shows booting then transitions to chat", %{conn: conn, workspace: ws, setup_agent_id: _setup_agent_id} do
       {:ok, view, _html} = live(conn, ws_new_path(ws))
 
       view
@@ -121,21 +116,22 @@ defmodule BoomLooperWeb.ChatLiveTest do
   end
 
   describe "empty state" do
-    test "branch with agent shows agents section", %{conn: conn, workspace: ws, setup_agent_id: agent_id} do
+    test "branch with agent shows chat view", %{conn: conn, workspace: ws, setup_agent_id: agent_id} do
       {:ok, _view, html} = live(conn, ws_chat_path(ws, agent_id))
-      assert html =~ "Agents"
+      # Shows the agent name header when viewing a single agent
+      assert html =~ "Test Agent"
     end
   end
 
   describe "booting state" do
-    test "unknown agent id redirects to workspace home with error", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
+    test "unknown agent id redirects to workspace home with error", %{conn: conn, workspace: ws, setup_agent_id: _setup_agent_id} do
       assert {:error, {:live_redirect, %{to: path, flash: %{"error" => "Agent not found"}}}} =
                live(conn, ws_chat_path(ws, "nonexistent123"))
 
       assert path == ws_path(ws)
     end
 
-    test "booting agent shows booting screen", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
+    test "booting agent shows booting screen", %{conn: conn, workspace: ws, setup_agent_id: _setup_agent_id} do
       id = "boot-test-#{:rand.uniform(100_000)}"
       BoomLooper.ChatAgent.register_booting(id, "My Agent", ws.path)
 
@@ -150,7 +146,7 @@ defmodule BoomLooperWeb.ChatLiveTest do
       assert has_element?(view, "div.animate-pulse")
     end
 
-    test "boot_status updates are shown to all viewers", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
+    test "boot_status updates are shown to all viewers", %{conn: conn, workspace: ws, setup_agent_id: _setup_agent_id} do
       id = "boot-test-#{:rand.uniform(100_000)}"
       BoomLooper.ChatAgent.register_booting(id, "My Agent", ws.path)
 
@@ -167,7 +163,7 @@ defmodule BoomLooperWeb.ChatLiveTest do
       assert html =~ "Building container image..."
     end
 
-    test "booting transitions to chat when agent starts", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
+    test "booting transitions to chat when agent starts", %{conn: conn, workspace: ws, setup_agent_id: _setup_agent_id} do
       id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
       BoomLooper.ChatAgent.register_booting(id, "Boot Transition Test", ws.path)
       BoomLooper.ChatAgent.subscribe()
@@ -198,7 +194,7 @@ defmodule BoomLooperWeb.ChatLiveTest do
       end
     end
 
-    test "boot failure removes agent and shows error", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
+    test "boot failure removes agent and shows error", %{conn: conn, workspace: ws, setup_agent_id: _setup_agent_id} do
       id = "fail-test-#{:rand.uniform(100_000)}"
       BoomLooper.ChatAgent.register_booting(id, "Fail Agent", ws.path)
 
@@ -420,12 +416,12 @@ defmodule BoomLooperWeb.ChatLiveTest do
   end
 
   describe "service log views" do
-    test "services view renders All Services heading", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
+    test "services view renders All Services heading", %{conn: conn, workspace: ws, setup_agent_id: _setup_agent_id} do
       {:ok, _view, html} = live(conn, "/projects/#{ws.project_id}/workspaces/#{ws.id}/services")
       assert html =~ "All Services"
     end
 
-    test "service view renders service name in header", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
+    test "service view renders service name in header", %{conn: conn, workspace: ws, setup_agent_id: _setup_agent_id} do
       {:ok, view, _html} = live(conn, "/projects/#{ws.project_id}/workspaces/#{ws.id}/services/postgres")
 
       # Broadcast service statuses so the view has data
@@ -509,27 +505,6 @@ defmodule BoomLooperWeb.ChatLiveTest do
 
       assert html =~ "Agent Context"
       assert html =~ "Context Test"
-    end
-
-    test "checklist_updated PubSub updates progress in context panel", %{conn: conn, agent_id: id, workspace: ws} do
-      {:ok, view, _html} = live(conn, ws_chat_path(ws, id))
-
-      progress = %{checked: 3, total: 7, items: [
-        %{text: "Step 1", checked: true, line: 3},
-        %{text: "Step 2", checked: true, line: 4},
-        %{text: "Step 3", checked: true, line: 5},
-        %{text: "Step 4", checked: false, line: 6},
-        %{text: "Step 5", checked: false, line: 7},
-        %{text: "Step 6", checked: false, line: 8},
-        %{text: "Step 7", checked: false, line: 9}
-      ]}
-
-      Phoenix.PubSub.broadcast(BoomLooper.PubSub, "chat_agents", {:checklist_updated, id, progress})
-
-      html = flush_lv(view)
-      assert html =~ "3/7"
-      assert html =~ "Step 1"
-      assert html =~ "Step 7"
     end
   end
 end

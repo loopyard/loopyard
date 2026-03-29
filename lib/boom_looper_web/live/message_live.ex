@@ -17,6 +17,7 @@ defmodule BoomLooperWeb.MessageLive do
       end
 
       raw_url = BoomLooperWeb.OutputController.raw_url(agent_id, msg_id)
+      streaming = msg.role in [:build, :stream]
 
       {:ok,
        socket
@@ -24,27 +25,50 @@ defmodule BoomLooperWeb.MessageLive do
        |> assign(:msg_id, msg_id)
        |> assign(:msg, msg)
        |> assign(:raw_url, raw_url)
-       |> assign(:streaming, msg.role in [:build, :stream])}
+       |> assign(:streaming, streaming)
+       |> assign(:streaming_text, "")
+       |> assign(:stream_content, msg.content || "")}  # Local accumulator for streaming
     else
       {:ok, socket |> assign(:msg, nil) |> assign(:raw_url, nil) |> assign(:streaming, false)
-       |> assign(:agent_id, agent_id) |> assign(:msg_id, msg_id)}
+       |> assign(:agent_id, agent_id) |> assign(:msg_id, msg_id) |> assign(:streaming_text, "")
+       |> assign(:stream_content, "")}
     end
   end
 
-  # Refresh message when stream output updates
+  # Handle streaming text deltas for assistant messages
   @impl true
-  def handle_info({:stream_output, id, _data, _title}, socket) when id == socket.assigns.agent_id do
-    refresh_message(socket)
+  def handle_info({:chat_text_delta, id, text}, socket) when id == socket.assigns.agent_id do
+    # Accumulate streaming text for real-time display
+    {:noreply, assign(socket, :streaming_text, socket.assigns.streaming_text <> text)}
   end
 
-  def handle_info({:build_output, id, _data}, socket) when id == socket.assigns.agent_id do
-    refresh_message(socket)
+  # Stream output for build/exec_stream - accumulate locally for instant updates
+  def handle_info({:stream_output, id, data, _title, msg_id}, socket)
+      when id == socket.assigns.agent_id and msg_id == socket.assigns.msg_id do
+    # Accumulate content locally instead of re-fetching from ETS
+    new_content = socket.assigns.stream_content <> data
+    {:noreply, socket |> assign(:stream_content, new_content) |> assign(:streaming, true)}
   end
 
-  # Build/stream complete
+  def handle_info({:build_output, id, data}, socket) when id == socket.assigns.agent_id do
+    # Accumulate build output locally
+    new_content = socket.assigns.stream_content <> data
+    {:noreply, socket |> assign(:stream_content, new_content) |> assign(:streaming, true)}
+  end
+
+  # Handle new messages - refresh if this is our message being updated
+  def handle_info({:chat_message, id, %{id: msg_id} = msg}, socket)
+      when id == socket.assigns.agent_id and msg_id == socket.assigns.msg_id do
+    # Clear streaming text when full message arrives
+    socket = if msg.role == :assistant, do: assign(socket, :streaming_text, ""), else: socket
+    {:noreply, socket |> assign(:msg, msg) |> assign(:stream_content, msg.content || "")}
+  end
+
+  # Build/stream complete (system message arrives)
   def handle_info({:chat_message, id, %{role: role}}, socket)
       when id == socket.assigns.agent_id and role in [:system, :error] do
     if socket.assigns.streaming do
+      # Final refresh to get the completed message state
       refresh_message(socket)
     else
       {:noreply, socket}
@@ -56,7 +80,10 @@ defmodule BoomLooperWeb.MessageLive do
   defp refresh_message(socket) do
     msg = BoomLooper.ChatAgent.get_message(socket.assigns.agent_id, socket.assigns.msg_id)
     if msg do
-      {:noreply, socket |> assign(:msg, msg) |> assign(:streaming, msg.role in [:build, :stream])}
+      {:noreply, socket
+       |> assign(:msg, msg)
+       |> assign(:streaming, msg.role in [:build, :stream])
+       |> assign(:stream_content, msg.content || "")}
     else
       {:noreply, socket}
     end
@@ -86,16 +113,22 @@ defmodule BoomLooperWeb.MessageLive do
         <.log_panel
           :if={@msg.role in [:build, :build_done, :build_failed, :stream, :tool_result]}
           id="msg-output"
-          content={@msg.content}
+          content={@stream_content}
           class="text-sm rounded-lg p-4 max-h-[calc(100vh-6rem)]"
         />
 
         <div :if={@msg.role == :assistant}
           id="msg-content"
           phx-hook="Markdown"
-          data-source={@msg.content}
+          data-source={if @streaming_text != "", do: @streaming_text, else: @msg.content}
           class="prose dark:prose-invert max-w-none">
           <div class="markdown-body"></div>
+        </div>
+
+        <%!-- Show streaming indicator when accumulating text --%>
+        <div :if={@streaming_text != "" && @msg.role == :assistant} class="mt-2 flex items-center gap-1.5 text-xs text-amber-500">
+          <div class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></div>
+          streaming...
         </div>
 
         <div :if={@msg.role == :user}

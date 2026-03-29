@@ -219,8 +219,8 @@ defmodule BoomLooperWeb.ProjectLive do
                     <div class={"w-2 h-2 rounded-full flex-none #{if workspace.status == :running, do: "bg-green-500", else: "bg-zinc-400"}"}></div>
                     <span class="text-sm font-medium truncate">{workspace.name}</span>
                     <span :if={workspace.is_main} class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500">default</span>
-                    <span :if={workspace.agent_count > 0} class="text-xs font-medium text-violet-600 dark:text-violet-400 bg-violet-100 dark:bg-violet-900/30 rounded-full px-2 py-0.5">
-                      {workspace.agent_count} agent{if workspace.agent_count != 1, do: "s"}
+                    <span :if={workspace.agent_count > 1} class="text-xs font-medium text-violet-600 dark:text-violet-400 bg-violet-100 dark:bg-violet-900/30 rounded-full px-2 py-0.5">
+                      {workspace.agent_count} agents
                     </span>
                     <span :if={workspace.service_count > 0} class="text-xs font-medium text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 rounded-full px-2 py-0.5">
                       {workspace.service_count} service{if workspace.service_count != 1, do: "s"}

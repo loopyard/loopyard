@@ -1,8 +1,8 @@
 defmodule BoomLooper.EvalRunner do
   @moduledoc """
   Automates eval runs: launch a project, monitor the setup agent,
-  record results. Handles max_turns by auto-nudging the agent when
-  it goes idle before the checklist is complete.
+  record results. Considers the eval complete when services are healthy
+  or when the agent goes idle with no obvious errors.
 
   Usage from IEx (on the running node or via RPC):
 
@@ -35,7 +35,7 @@ defmodule BoomLooper.EvalRunner do
     - :timeout — max wait time in ms (default: 15 minutes)
     - :poll_interval — how often to check agent state (default: 5s)
     - :max_nudges — max times to nudge an idle agent (default: 5)
-    - :clean — remove existing project first (default: false)
+    - :existing — :wipe (remove existing project first) or :keep (default)
 
   Returns {:ok, result} or {:error, reason}.
   """
@@ -43,36 +43,13 @@ defmodule BoomLooper.EvalRunner do
     timeout = Keyword.get(opts, :timeout, @default_timeout)
     poll_interval = Keyword.get(opts, :poll_interval, @poll_interval)
     max_nudges = Keyword.get(opts, :max_nudges, @max_nudges)
-    clean = Keyword.get(opts, :clean, false)
+    existing = Keyword.get(opts, :existing, :keep)
     project_path = Path.expand(project_path)
 
     Logger.info("[EvalRunner] Starting eval for #{project_path}")
     started_at = System.monotonic_time(:millisecond)
 
-    # Optionally clean up existing project first
-    if clean do
-      case ProjectRegistry.list_projects() |> Enum.find(&(&1.path == project_path)) do
-        nil -> :ok
-        project ->
-          Logger.info("[EvalRunner] Cleaning up existing project #{project.id}")
-
-          # Wipe volumes too so databases start fresh
-          workspaces = ProjectRegistry.list_workspaces(project.id)
-          Enum.each(workspaces, fn ws ->
-            ws_id = BoomLooper.Workspace.workspace_id(ws.path)
-            try do
-              BoomLooper.Compose.down_volumes(ws.path, ws_id)
-            rescue
-              _ -> :ok
-            catch
-              _, _ -> :ok
-            end
-          end)
-
-          ProjectRegistry.remove_project(project.id)
-          Process.sleep(3_000)
-      end
-    end
+    maybe_cleanup(existing, project_path)
 
     # Step 1: Add the project
     case ProjectRegistry.add(project_path) do
@@ -85,9 +62,7 @@ defmodule BoomLooper.EvalRunner do
 
         # Step 3: Spawn setup agent
         id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
-        setup = BoomLooper.Checklist.available(workspace.path) |> Enum.find(&(&1.id == "setup"))
-        name = if setup, do: setup.name, else: "Setup"
-        checklist_id = if setup, do: "setup"
+        name = "Setup"
 
         agent_opts = [
           id: id,
@@ -98,7 +73,7 @@ defmodule BoomLooper.EvalRunner do
         ]
 
         ChatAgent.register_booting(id, name, workspace.path)
-        Task.start(fn -> BoomLooper.AgentBoot.boot(id, agent_opts, checklist_id: checklist_id) end)
+        Task.start(fn -> BoomLooper.AgentBoot.boot(id, agent_opts) end)
 
         # Step 4: Poll until done or timeout, with auto-nudging
         deadline = started_at + timeout
@@ -115,7 +90,7 @@ defmodule BoomLooper.EvalRunner do
         })
 
         record_run(project.name, result)
-        Logger.info("[EvalRunner] Eval complete for #{project.name}: #{result.outcome} (#{result.checklist_checked}/#{result.checklist_total})")
+        Logger.info("[EvalRunner] Eval complete for #{project.name}: #{result.outcome}")
 
         {:ok, result}
 
@@ -131,7 +106,7 @@ defmodule BoomLooper.EvalRunner do
   def check_services(workspace_path) do
     case BoomLooper.Workspace.ServiceManager.service_status(workspace_path) do
       {:ok, statuses} ->
-        Map.new(statuses, fn s -> {s.name, s.status} end)
+        Map.new(statuses, fn s -> {s.name, s.health} end)
 
       _ ->
         %{}
@@ -142,7 +117,78 @@ defmodule BoomLooper.EvalRunner do
     :exit, _ -> %{}
   end
 
+  @doc """
+  Verify HTTP response from dev service.
+  Returns {:ok, status_code} or {:error, reason}.
+  """
+  def verify_http_response(workspace_path) do
+    workspace_id = BoomLooper.Workspace.workspace_id(workspace_path)
+
+    # Get the dev service port
+    case BoomLooper.Compose.ps(workspace_path, workspace_id) do
+      {:ok, services} ->
+        # Find dev service with a port
+        dev_service = Enum.find(services, fn s ->
+          s.name == "dev" && map_size(s.ports) > 0
+        end)
+
+        case dev_service do
+          nil ->
+            {:error, "no dev service with exposed ports"}
+
+          %{ports: ports} ->
+            {_container_port, host_port} = Enum.at(ports, 0)
+            url = "http://localhost:#{host_port}/"
+
+            # Use curl to test HTTP response
+            case System.cmd("curl", ["-sS", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "10", url], stderr_to_stdout: true) do
+              {status_code, 0} ->
+                code = String.trim(status_code) |> String.to_integer()
+                if code >= 200 && code < 400 do
+                  {:ok, code}
+                else
+                  {:error, "HTTP #{code}"}
+                end
+
+              {error, _} ->
+                {:error, "curl failed: #{String.slice(error, 0..100)}"}
+            end
+        end
+
+      {:error, reason} ->
+        {:error, "compose ps failed: #{reason}"}
+    end
+  rescue
+    e -> {:error, "exception: #{inspect(e)}"}
+  end
+
   # --- Private ---
+
+  defp maybe_cleanup(:keep, _project_path), do: :ok
+
+  defp maybe_cleanup(:wipe, project_path) do
+    case ProjectRegistry.list_projects() |> Enum.find(&(&1.path == project_path)) do
+      nil -> :ok
+      project ->
+        Logger.info("[EvalRunner] Cleaning up existing project #{project.id}")
+
+        # Wipe volumes too so databases start fresh
+        workspaces = ProjectRegistry.list_workspaces(project.id)
+        Enum.each(workspaces, fn ws ->
+          ws_id = BoomLooper.Workspace.workspace_id(ws.path)
+          try do
+            BoomLooper.Compose.down_volumes(ws.path, ws_id)
+          rescue
+            _ -> :ok
+          catch
+            _, _ -> :ok
+          end
+        end)
+
+        ProjectRegistry.remove_project(project.id)
+        Process.sleep(3_000)
+    end
+  end
 
   defp poll_agent(agent_id, deadline, interval, project_path, nudges, max_nudges) do
     now = System.monotonic_time(:millisecond)
@@ -166,23 +212,46 @@ defmodule BoomLooper.EvalRunner do
             Process.sleep(interval)
             poll_agent(agent_id, deadline, interval, project_path, nudges, max_nudges)
           else
-            # Agent went idle — check checklist progress
-            {checked, total} = checklist_progress(agent_id, project_path)
+            # Agent went idle — check if services are healthy
+            services = check_services(project_path)
+            has_services = map_size(services) > 0
+            all_healthy = Enum.all?(services, fn {_name, health} -> health == :healthy end)
+            recent_errors = Enum.count(state.messages, fn m -> m[:role] == :error end)
 
             cond do
-              checked == total && total > 0 ->
-                # Checklist complete
-                build_result(:completed, state, project_path, nudges)
+              has_services && all_healthy ->
+                # Services are healthy - verify HTTP responds
+                case verify_http_response(project_path) do
+                  {:ok, status} ->
+                    Logger.info("[EvalRunner] HTTP check passed: #{status}")
+                    build_result(:completed, state, project_path, nudges)
+
+                  {:error, reason} ->
+                    Logger.warning("[EvalRunner] HTTP check failed: #{reason}")
+                    if nudges >= max_nudges do
+                      build_result(:http_failed, state, project_path, nudges)
+                    else
+                      Logger.info("[EvalRunner] Nudging to fix HTTP (#{nudges + 1}/#{max_nudges})")
+                      ChatAgent.send_message(agent_id, "The service is running but HTTP requests fail: #{reason}. Please fix.")
+                      Process.sleep(interval)
+                      poll_agent(agent_id, deadline, interval, project_path, nudges + 1, max_nudges)
+                    end
+                end
 
               nudges >= max_nudges ->
                 # Too many nudges — give up
-                Logger.warning("[EvalRunner] Agent #{agent_id} idle at #{checked}/#{total} after #{nudges} nudges, giving up")
+                Logger.warning("[EvalRunner] Agent #{agent_id} idle after #{nudges} nudges, giving up")
                 build_result(:stalled, state, project_path, nudges)
 
+              recent_errors > 3 ->
+                # Too many errors - something is broken
+                Logger.warning("[EvalRunner] Agent #{agent_id} has #{recent_errors} errors, marking as failed")
+                build_result(:failed, state, project_path, nudges)
+
               true ->
-                # Checklist incomplete — nudge the agent to continue
-                Logger.info("[EvalRunner] Agent #{agent_id} idle at #{checked}/#{total}, nudging (#{nudges + 1}/#{max_nudges})")
-                ChatAgent.send_message(agent_id, "Continue with the remaining checklist items.")
+                # Still working — nudge the agent to continue
+                Logger.info("[EvalRunner] Agent #{agent_id} idle, nudging (#{nudges + 1}/#{max_nudges})")
+                ChatAgent.send_message(agent_id, "Continue setting up the development environment. Make sure all services are running and healthy.")
                 Process.sleep(interval)
                 poll_agent(agent_id, deadline, interval, project_path, nudges + 1, max_nudges)
             end
@@ -195,27 +264,6 @@ defmodule BoomLooper.EvalRunner do
           Process.sleep(interval)
           poll_agent(agent_id, deadline, interval, project_path, nudges, max_nudges)
       end
-    end
-  end
-
-  defp checklist_progress(agent_id, project_path) do
-    # Try to find the active checklist file
-    active_dir = Path.join(project_path, ".boomlooper/workspace/active")
-
-    case File.ls(active_dir) do
-      {:ok, files} ->
-        case Enum.find(files, &String.starts_with?(&1, "#{agent_id}-")) do
-          nil -> {0, 0}
-          file ->
-            path = Path.join(active_dir, file)
-            case BoomLooper.Checklist.progress_from_file(path) do
-              {:ok, {checked, total}} -> {checked, total}
-              _ -> {0, 0}
-            end
-        end
-
-      _ ->
-        {0, 0}
     end
   end
 
@@ -234,13 +282,6 @@ defmodule BoomLooper.EvalRunner do
       |> Enum.filter(fn m -> m[:role] == :tool end)
       |> Enum.frequencies_by(fn m -> m[:tool] end)
 
-    {checked, total} =
-      if state do
-        checklist_progress(state[:id] || "", project_path)
-      else
-        {0, 0}
-      end
-
     %{
       outcome: outcome,
       status: state && state[:status],
@@ -250,8 +291,6 @@ defmodule BoomLooper.EvalRunner do
       error_messages: error_messages,
       services: services,
       nudges: nudges,
-      checklist_checked: checked,
-      checklist_total: total,
       tool_usage: tool_usage
     }
   end
@@ -302,7 +341,6 @@ defmodule BoomLooper.EvalRunner do
     - **Tool calls:** #{result.tool_calls}
     - **Errors:** #{result.errors}
     - **Nudges:** #{result.nudges}
-    - **Checklist:** #{result.checklist_checked}/#{result.checklist_total}
 
     ## Services
 

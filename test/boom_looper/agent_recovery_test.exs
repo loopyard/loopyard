@@ -159,7 +159,6 @@ defmodule BoomLooper.AgentRecoveryTest do
         started_at: ~U[2024-01-15 10:00:00Z],
         started_by: "user",
         status: :idle,
-        checklist_path: "/path/to/checklist.md",
         service_name: nil
       }}, log_path: log_path, version: @version)
 
@@ -177,7 +176,6 @@ defmodule BoomLooper.AgentRecoveryTest do
       assert agent.name == "Happy Agent"
       assert agent.workspace_id == "ws-happy"
       assert agent.started_at == ~U[2024-01-15 10:00:00Z]
-      assert agent.checklist_path == "/path/to/checklist.md"
 
       # All messages in order
       assert length(agent.messages) == 3

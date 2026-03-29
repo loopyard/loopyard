@@ -8,6 +8,7 @@ defmodule BoomLooperWeb.ProjectListLive do
   def mount(_params, _session, socket) do
     if connected?(socket) do
       ChatAgent.subscribe()
+      Phoenix.PubSub.subscribe(BoomLooper.PubSub, "iex_session")
     end
 
     secret = Application.get_env(:boom_looper, :launch_secret, "")
@@ -17,7 +18,8 @@ defmodule BoomLooperWeb.ProjectListLive do
     {:ok,
      socket
      |> assign(:projects, load_projects())
-     |> assign(:launch_cmd, launch_cmd)}
+     |> assign(:launch_cmd, launch_cmd)
+     |> assign(:iex_session, BoomLooper.IExSession.current())}
   end
 
   @impl true
@@ -42,6 +44,11 @@ defmodule BoomLooperWeb.ProjectListLive do
   def handle_event("remove_project", %{"id" => id}, socket) do
     ProjectRegistry.remove_project(id)
     {:noreply, assign(socket, :projects, load_projects())}
+  end
+
+  @impl true
+  def handle_info({:iex_session, state}, socket) do
+    {:noreply, assign(socket, :iex_session, state)}
   end
 
   @impl true
@@ -75,6 +82,7 @@ defmodule BoomLooperWeb.ProjectListLive do
     <div class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
       <header class="flex-none h-14 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center justify-between px-4 md:px-5">
         <h1 class="text-sm font-semibold tracking-tight">Boom Looper</h1>
+        <.iex_indicator :if={@iex_session.level} session={@iex_session} />
         <div class="flex items-center gap-4">
           <.link navigate="/connect" class="text-xs text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">Remote</.link>
           <.link navigate="/system" class="text-xs text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">System</.link>
@@ -166,5 +174,39 @@ defmodule BoomLooperWeb.ProjectListLive do
   defp shorten_path(path) do
     home = System.user_home!()
     String.replace_prefix(path, home, "~")
+  end
+
+  defp iex_indicator(assigns) do
+    {dot_color, bg_color} = case assigns.session.level do
+      :green -> {"bg-green-400", "bg-green-500/20 text-green-600 dark:text-green-400"}
+      :yellow -> {"bg-yellow-400 animate-pulse", "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400"}
+      :red -> {"bg-red-500 animate-pulse", "bg-red-500/20 text-red-600 dark:text-red-400"}
+      _ -> {"bg-zinc-400", "bg-zinc-500/20 text-zinc-600 dark:text-zinc-400"}
+    end
+
+    assigns = assigns
+      |> assign(:dot_color, dot_color)
+      |> assign(:bg_color, bg_color)
+      |> assign(:time_ago, relative_time(assigns.session.at))
+
+    ~H"""
+    <div class={"flex items-center gap-2 px-3 py-1 rounded-full text-xs #{@bg_color}"}>
+      <span class={"w-2 h-2 rounded-full flex-none #{@dot_color}"}></span>
+      <span class="font-medium">IEx</span>
+      <span class="opacity-75">{@session.label}</span>
+      <span class="opacity-50">{@time_ago}</span>
+    </div>
+    """
+  end
+
+  defp relative_time(nil), do: ""
+  defp relative_time(datetime) do
+    diff = DateTime.diff(DateTime.utc_now(), datetime, :second)
+    cond do
+      diff < 5 -> "now"
+      diff < 60 -> "#{diff}s"
+      diff < 3600 -> "#{div(diff, 60)}m"
+      true -> "#{div(diff, 3600)}h"
+    end
   end
 end

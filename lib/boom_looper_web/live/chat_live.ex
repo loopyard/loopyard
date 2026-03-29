@@ -31,6 +31,7 @@ defmodule BoomLooperWeb.ChatLive do
 
       ChatAgent.subscribe()
       BoomLooper.Workspace.ServiceManager.subscribe()
+      Phoenix.PubSub.subscribe(BoomLooper.PubSub, "iex_session")
     end
 
     agents = list_workspace_agents(workspace.path)
@@ -63,16 +64,14 @@ defmodule BoomLooperWeb.ChatLive do
      |> assign(:booting_agent_name, nil)
      |> assign(:boot_status, "Initializing...")
      |> assign(:boot_log, [])
-     |> assign(:available_checklists, [])
-     |> assign(:checklist_progress, nil)
-     |> assign(:selected_checklist, nil)
      |> assign(:editing_name, false)
      |> assign(:selected_service, nil)
      |> assign(:service_logs, "")
      |> assign(:all_service_logs, [])
      |> assign(:stream_buffer, StreamBuffer.new())
      |> assign(:building, false)
-     |> assign(:console_container, nil)}
+     |> assign(:console_container, nil)
+     |> assign(:iex_session, BoomLooper.IExSession.current())}
   end
 
   @impl true
@@ -100,47 +99,16 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   def handle_params(_params, _uri, %{assigns: %{live_action: :new}} = socket) do
-    workspace = socket.assigns.workspace
+    # Check if there's a running agent to navigate to
+    running_agent = socket.assigns.agents
+      |> Enum.find(fn a -> a[:status] not in [:stopped, :crashed] end)
 
-    # Auto-spawn Setup if no config and no agents running
-    # Check config at workspace path — .boomlooper/repo/ is tracked in git, available in worktrees
-    config_path = workspace.path
-    has_config = match?({:ok, _}, BoomLooper.Workspace.load(config_path))
-    has_agents = socket.assigns.agents != []
-
-    # Check if a setup agent already exists for this workspace
-    existing_setup = socket.assigns.agents
-      |> Enum.find(fn a -> a[:name] == "Setup" && a[:status] not in [:stopped, :crashed] end)
-
-    cond do
-      # Existing setup agent — go to it instead of spawning another
-      existing_setup ->
-        {:noreply, push_navigate(socket, to: "#{workspace_path(socket)}/agents/#{existing_setup.id}")}
-
-      # No config, no agents — auto-launch setup
-      !has_config && !has_agents ->
-        id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
-        setup = BoomLooper.Checklist.available(workspace.path) |> Enum.find(&(&1.id == "setup"))
-        name = if setup, do: setup.name, else: "Setup"
-
-        agent_opts = [
-          id: id,
-          name: name,
-          working_dir: workspace.path,
-          started_by: "auto_setup",
-          bind_mount: workspace.path
-        ]
-
-        ChatAgent.register_booting(id, name, workspace.path)
-        checklist_id = if setup, do: "setup"
-        Task.start(fn -> BoomLooper.AgentBoot.boot(id, agent_opts, checklist_id: checklist_id) end)
-
-        {:noreply, push_navigate(socket, to: "#{workspace_path(socket)}/agents/#{id}")}
-
-      # Config exists or agents exist — show the new agent picker
-      true ->
-        checklists = BoomLooper.Checklist.available(workspace.path)
-        {:noreply, assign(socket, available_checklists: checklists, selected_checklist: nil)}
+    if running_agent do
+      # Go to existing running agent
+      {:noreply, push_navigate(socket, to: "#{workspace_path(socket)}/agents/#{running_agent.id}")}
+    else
+      # Spawn a new agent
+      do_spawn_agent(socket)
     end
   end
 
@@ -206,7 +174,7 @@ defmodule BoomLooperWeb.ChatLive do
 
       # Config exists but no agents → auto-spawn a default agent
       has_config && socket.assigns.agents == [] ->
-        do_spawn_agent(socket, nil)
+        do_spawn_agent(socket)
 
       # One agent and none selected → auto-select it
       length(socket.assigns.agents) == 1 && is_nil(socket.assigns.selected_id) ->
@@ -231,24 +199,13 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   @impl true
-  def handle_event("select_checklist", %{"id" => id}, socket) do
-    checklist = Enum.find(socket.assigns.available_checklists, &(&1.id == id))
-    {:noreply, assign(socket, :selected_checklist, checklist)}
-  end
-
-  @impl true
-  def handle_event("back_to_checklists", _params, socket) do
-    {:noreply, assign(socket, :selected_checklist, nil)}
-  end
-
-  @impl true
-  def handle_event("spawn_agent", params, socket) do
-    do_spawn_agent(socket, Map.get(params, "checklist_id"))
+  def handle_event("spawn_agent", _params, socket) do
+    do_spawn_agent(socket)
   end
 
   @impl true
   def handle_event("spawn_service_agent", %{"service_name" => service_name}, socket) do
-    do_spawn_agent(socket, nil, service_name: service_name)
+    do_spawn_agent(socket, service_name: service_name)
   end
 
   @impl true
@@ -498,18 +455,10 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   @impl true
-  def handle_info({:checklist_updated, id, progress}, socket) do
-    socket =
-      if id == socket.assigns.selected_id do
-        assign(socket, :checklist_progress, progress)
-      else
-        socket
-      end
-
-    {:noreply, socket}
+  def handle_info({:iex_session, state}, socket) do
+    {:noreply, assign(socket, :iex_session, state)}
   end
 
-  @impl true
   def handle_info({:services_updated, path, statuses}, socket) do
     if path == socket.assigns.workspace.path do
       # Workspace container is infrastructure — never show in sidebar
@@ -562,7 +511,8 @@ defmodule BoomLooperWeb.ChatLive do
     {:noreply, socket |> assign(:messages, messages) |> assign(:stream_buffer, stream_buffer) |> assign(:building, true)}
   end
 
-  defp do_spawn_agent(socket, checklist_id, opts \\ []) do
+  defp do_spawn_agent(socket, opts \\ []) do
+    opts = opts || []
     workspace = socket.assigns.workspace
     working_dir = workspace.path
     id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
@@ -578,9 +528,6 @@ defmodule BoomLooperWeb.ChatLive do
     name =
       cond do
         service_name -> "#{service_name}-agent"
-        checklist_id ->
-          checklist = Enum.find(socket.assigns[:available_checklists] || [], &(&1.id == checklist_id))
-          if checklist && checklist.name, do: checklist.name, else: auto_name()
         ws_config && ws_config.name -> ws_config.name
         true -> auto_name()
       end
@@ -597,7 +544,7 @@ defmodule BoomLooperWeb.ChatLive do
     boot_opts = if service_name, do: [service_name: service_name], else: []
 
     ChatAgent.register_booting(id, name, working_dir, boot_opts)
-    Task.start(fn -> BoomLooper.AgentBoot.boot(id, agent_opts, checklist_id: checklist_id, service_name: service_name) end)
+    Task.start(fn -> BoomLooper.AgentBoot.boot(id, agent_opts, boot_opts) end)
 
     {:noreply, push_navigate(socket, to: "#{workspace_path(socket)}/agents/#{id}")}
   end
@@ -681,7 +628,6 @@ defmodule BoomLooperWeb.ChatLive do
       agent ->
         ChatAgent.subscribe(id)
         agents = list_workspace_agents(socket.assigns.workspace.path)
-        checklist_progress = load_checklist_progress(id)
 
         # Restore stream buffer from any existing :build message so streaming continues seamlessly
         existing_build = Enum.find(agent.messages, &(&1.role == :build))
@@ -695,7 +641,6 @@ defmodule BoomLooperWeb.ChatLive do
           |> assign(:messages, agent.messages)
           |> assign(:streaming_text, "")
           |> assign(:booting_agent_id, nil)
-          |> assign(:checklist_progress, checklist_progress)
           |> assign(:stream_buffer, stream_buffer)
           |> assign(:building, existing_build != nil && existing_build.role == :build)
 
@@ -745,23 +690,6 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   # boot_agent logic extracted to BoomLooper.AgentBoot
-
-  defp load_checklist_progress(agent_id) do
-    case BoomLooper.Tools.Checklist.find_active_checklist(agent_id) do
-      {:ok, path} ->
-        case BoomLooper.Checklist.load_file(path) do
-          {:ok, checklist} ->
-            {checked, total} = BoomLooper.Checklist.progress(checklist)
-            %{checked: checked, total: total, items: checklist.items}
-
-          _ ->
-            nil
-        end
-
-      :not_found ->
-        nil
-    end
-  end
 
   @adjectives ~w(Swift Bright Calm Deep Quick Sharp Keen Bold Clear True)
   @nouns ~w(Spark Drift Pulse Wave Bloom Forge Sage Fern Tide Mesa)
@@ -853,11 +781,6 @@ defmodule BoomLooperWeb.ChatLive do
       {"service_status", _} -> "Checked service status"
       {"list_secrets", _} -> "Listed available secrets"
       {"get_secret", %{"key" => k}} -> "Retrieved secret: #{k}"
-      {"list_checklists", _} -> "Listed available checklists"
-      {"start_checklist", %{"checklist_id" => cl}} -> "Started checklist: #{cl}"
-      {"get_progress", _} -> "Checked checklist progress"
-      {"check_item", %{"line" => l}} -> "Checked item at line #{l}"
-      {"uncheck_item", %{"line" => l}} -> "Unchecked item at line #{l}"
       {name, _} -> name |> String.replace("_", " ") |> String.capitalize()
     end
   end
@@ -881,7 +804,7 @@ defmodule BoomLooperWeb.ChatLive do
   def render(assigns) do
     ~H"""
     <div id="chat-page" phx-hook="ScrollBottom" class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
-      <.header workspace={@workspace} project={@project} workspace_entry={@workspace_entry} agent_count={length(@agents)} live_action={@live_action} base_path={@base_path} />
+      <.header workspace={@workspace} project={@project} workspace_entry={@workspace_entry} agent_count={length(@agents)} live_action={@live_action} base_path={@base_path} iex_session={@iex_session} />
       <p :if={@flash["error"]} class="mx-4 mt-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300">
         {@flash["error"]}
       </p>
@@ -893,9 +816,8 @@ defmodule BoomLooperWeb.ChatLive do
           service_statuses={@service_statuses} selected_service={@selected_service}
           live_action={@live_action}
         />
-        <%!-- Main content: hidden on mobile when sidebar is showing (index/new with no selection) --%>
-        <main class={"flex-1 flex flex-col min-w-0 #{if @live_action in [:index, :new] && !@selected_id && !@selected_service, do: "hidden md:flex", else: "flex"}"}>
-          <.new_agent_screen :if={@live_action == :new} available_checklists={@available_checklists} selected_checklist={@selected_checklist} workspace={@workspace} base_path={@base_path} />
+        <%!-- Main content: hidden on mobile when sidebar is showing (index with no selection) --%>
+        <main class={"flex-1 flex flex-col min-w-0 #{if @live_action == :index && !@selected_id && !@selected_service, do: "hidden md:flex", else: "flex"}"}>
           <.service_log_view :if={@live_action == :service} service_name={@selected_service} service_statuses={@service_statuses} logs={@service_logs} base_path={@base_path} />
           <.console_view :if={@live_action == :console} service_name={@selected_service} container={@console_container} />
           <.all_services_view :if={@live_action == :services} all_service_logs={@all_service_logs} />
@@ -906,6 +828,40 @@ defmodule BoomLooperWeb.ChatLive do
       </div>
     </div>
     """
+  end
+
+  defp iex_indicator(assigns) do
+    {dot_color, bg_color} = case assigns.session.level do
+      :green -> {"bg-green-400", "bg-green-500/20 text-green-600 dark:text-green-400"}
+      :yellow -> {"bg-yellow-400 animate-pulse", "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400"}
+      :red -> {"bg-red-500 animate-pulse", "bg-red-500/20 text-red-600 dark:text-red-400"}
+      _ -> {"bg-zinc-400", "bg-zinc-500/20 text-zinc-600 dark:text-zinc-400"}
+    end
+
+    assigns = assigns
+      |> assign(:dot_color, dot_color)
+      |> assign(:bg_color, bg_color)
+      |> assign(:time_ago, relative_time(assigns.session.at))
+
+    ~H"""
+    <div class={"hidden md:flex items-center gap-2 px-3 py-1 rounded-full text-xs #{@bg_color}"}>
+      <span class={"w-2 h-2 rounded-full flex-none #{@dot_color}"}></span>
+      <span class="font-medium">IEx</span>
+      <span class="opacity-75">{@session.label}</span>
+      <span class="opacity-50">{@time_ago}</span>
+    </div>
+    """
+  end
+
+  defp relative_time(nil), do: ""
+  defp relative_time(datetime) do
+    diff = DateTime.diff(DateTime.utc_now(), datetime, :second)
+    cond do
+      diff < 5 -> "now"
+      diff < 60 -> "#{diff}s"
+      diff < 3600 -> "#{div(diff, 60)}m"
+      true -> "#{div(diff, 3600)}h"
+    end
   end
 
   defp header(assigns) do
@@ -927,8 +883,9 @@ defmodule BoomLooperWeb.ChatLive do
         <span :if={!@project} class="text-sm font-medium truncate">{@workspace.name}</span>
         <span :if={@workspace_entry && !@workspace_entry.is_main} class="text-zinc-300 dark:text-zinc-600 hidden sm:block">/</span>
         <span :if={@workspace_entry && !@workspace_entry.is_main} class="text-sm text-zinc-500 dark:text-zinc-400 hidden sm:block truncate">{@workspace_entry.name}</span>
-        <span class="text-sm text-zinc-400 dark:text-zinc-500 hidden sm:block flex-none">{@agent_count} agent{if @agent_count != 1, do: "s"}</span>
+        <span :if={@agent_count > 1} class="text-sm text-zinc-400 dark:text-zinc-500 hidden sm:block flex-none">{@agent_count} agents</span>
       </div>
+      <.iex_indicator :if={@iex_session.level} session={@iex_session} />
       <div class="flex items-center gap-4 flex-none hidden md:flex">
         <.link navigate="/connect" class="text-xs text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">Remote</.link>
         <.link navigate="/system" class="text-xs text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">System</.link>
@@ -943,7 +900,18 @@ defmodule BoomLooperWeb.ChatLive do
     else
       "/projects/#{assigns.workspace_id}/workspaces/#{assigns.workspace_id}"
     end
-    assigns = assign(assigns, :base_path, base_path)
+
+    # For 1-agent-per-workspace model:
+    # - Hide "New Agent" button when there's already a running agent
+    # - Show agents section only when there are multiple agents or the single agent needs attention
+    has_running_agent = Enum.any?(assigns.agents, fn a -> a.status in [:idle, :thinking, :booting] end)
+    show_new_agent_button = !has_running_agent
+    show_agents_section = length(assigns.agents) > 1 || Enum.any?(assigns.agents, fn a -> a.status in [:stopped, :crashed] end)
+
+    assigns = assigns
+      |> assign(:base_path, base_path)
+      |> assign(:show_new_agent_button, show_new_agent_button)
+      |> assign(:show_agents_section, show_agents_section)
 
     ~H"""
     <%!-- On mobile: full-width when visible (index/new), hidden when agent/service selected.
@@ -955,7 +923,8 @@ defmodule BoomLooperWeb.ChatLive do
         do: "hidden md:flex",
         else: "flex")
     ]}>
-      <div class="flex-none p-3 border-b border-zinc-200 dark:border-zinc-700/80">
+      <%!-- Only show New Agent button when no running agent exists --%>
+      <div :if={@show_new_agent_button} class="flex-none p-3 border-b border-zinc-200 dark:border-zinc-700/80">
         <.link
           navigate={"#{@base_path}/new"}
           class="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 px-3.5 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-400
@@ -968,7 +937,8 @@ defmodule BoomLooperWeb.ChatLive do
         </.link>
       </div>
       <div class="flex-1 overflow-y-auto">
-        <div :if={@agents != []} class="px-3 pt-3 pb-1">
+        <%!-- Show agents section only when there are multiple agents or stopped/crashed ones --%>
+        <div :if={@show_agents_section && @agents != []} class="px-3 pt-3 pb-1">
           <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-semibold mb-1.5">Agents</div>
           <div class="space-y-0.5">
             <.agent_list_item :for={agent <- @agents} agent={agent} selected={@selected_id == agent.id} />
@@ -987,92 +957,6 @@ defmodule BoomLooperWeb.ChatLive do
         </div>
       </div>
     </aside>
-    """
-  end
-
-  # --- New Agent Screen (Checklist Card Picker) ---
-
-  defp new_agent_screen(assigns) do
-    ~H"""
-    <div class="flex-1 overflow-y-auto p-6 md:p-8">
-      <div class="max-w-2xl mx-auto">
-        <div :if={!@selected_checklist}>
-          <h2 class="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mb-1">New Agent</h2>
-          <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-6">Choose a checklist to guide the agent, or launch freeform.</p>
-
-          <div class="space-y-3">
-            <%!-- Freeform card --%>
-            <form phx-submit="spawn_agent">
-              <button type="submit"
-                class="w-full text-left rounded-xl border border-zinc-200 dark:border-zinc-700 p-4
-                       hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
-                <div class="flex items-center justify-between">
-                  <div>
-                    <h3 class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Freeform</h3>
-                    <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Launch an agent with no checklist. You'll chat directly.</p>
-                  </div>
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-4 h-4 text-zinc-300 dark:text-zinc-600">
-                    <path fill-rule="evenodd" d="M6.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 0 1-1.06-1.06L8.94 8 6.22 5.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
-                  </svg>
-                </div>
-              </button>
-            </form>
-
-            <%!-- Checklist cards --%>
-            <button :for={cl <- @available_checklists}
-              phx-click="select_checklist" phx-value-id={cl.id}
-              class="w-full text-left rounded-xl border border-zinc-200 dark:border-zinc-700 p-4
-                     hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
-              <div class="flex items-center justify-between">
-                <div class="min-w-0">
-                  <h3 class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{cl.name || cl.id}</h3>
-                  <p :if={cl.description} class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">{cl.description}</p>
-                  <p class="text-xs text-zinc-400 dark:text-zinc-500 mt-1">{length(cl.items)} steps</p>
-                </div>
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-4 h-4 text-zinc-300 dark:text-zinc-600 flex-none">
-                  <path fill-rule="evenodd" d="M6.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 0 1-1.06-1.06L8.94 8 6.22 5.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
-                </svg>
-              </div>
-            </button>
-          </div>
-
-          <div class="mt-6">
-            <.link navigate={@base_path} class="text-sm text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors">Cancel</.link>
-          </div>
-        </div>
-
-        <%!-- Checklist detail view --%>
-        <div :if={@selected_checklist}>
-          <button phx-click="back_to_checklists" class="flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 mb-4 transition-colors">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-4 h-4">
-              <path fill-rule="evenodd" d="M9.78 4.22a.75.75 0 0 1 0 1.06L7.06 8l2.72 2.72a.75.75 0 1 1-1.06 1.06L5.47 8.53a.75.75 0 0 1 0-1.06l3.25-3.25a.75.75 0 0 1 1.06 0Z" clip-rule="evenodd" />
-            </svg>
-            Back
-          </button>
-
-          <h2 class="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mb-1">{@selected_checklist.name || @selected_checklist.id}</h2>
-          <p :if={@selected_checklist.description} class="text-sm text-zinc-500 dark:text-zinc-400 mb-5">{@selected_checklist.description}</p>
-
-          <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 p-4 mb-5">
-            <div class="space-y-2">
-              <div :for={item <- @selected_checklist.items} class="flex items-start gap-2.5">
-                <div class="flex-none w-4 h-4 rounded border border-zinc-300 dark:border-zinc-600 mt-0.5"></div>
-                <span class="text-sm text-zinc-700 dark:text-zinc-300">{item.text}</span>
-              </div>
-            </div>
-          </div>
-
-          <form phx-submit="spawn_agent">
-            <input type="hidden" name="checklist_id" value={@selected_checklist.id} />
-            <button type="submit"
-              class="rounded-xl bg-zinc-900 dark:bg-zinc-100 px-6 py-3 text-sm font-medium text-white dark:text-zinc-900
-                     hover:bg-zinc-700 dark:hover:bg-zinc-300 transition-colors">
-              Launch Agent
-            </button>
-          </form>
-        </div>
-      </div>
-    </div>
     """
   end
 
@@ -1170,11 +1054,11 @@ defmodule BoomLooperWeb.ChatLive do
     ~H"""
     <div class="flex-1 flex min-h-0">
       <div class="flex-1 flex flex-col min-w-0 min-h-0">
-        <.agent_header agent={@selected_agent} tab={@tab} has_container={@has_container} checklist_progress={@checklist_progress} />
+        <.agent_header agent={@selected_agent} tab={@tab} has_container={@has_container} />
         <.chat_panel :if={@tab == :chat} messages={@messages} streaming_text={@streaming_text} agent={@selected_agent} workspace_id={@workspace.id} />
         <.container_panel :if={@tab == :container} env={@container_env} logs={@container_logs} log_service={@container_log_service} has_container={@has_container} />
       </div>
-      <.context_panel agent={@selected_agent} checklist_progress={@checklist_progress} has_container={@has_container} container_env={@container_env} container_logs={@container_logs} editing_name={@editing_name} />
+      <.context_panel agent={@selected_agent} has_container={@has_container} container_env={@container_env} container_logs={@container_logs} editing_name={@editing_name} />
     </div>
     """
   end
@@ -1189,7 +1073,6 @@ defmodule BoomLooperWeb.ChatLive do
         <div class="flex items-center gap-2 md:gap-3 min-w-0">
           <div class={"w-2 h-2 rounded-full flex-none #{status_dot(@agent.status)}"}></div>
           <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate">{@agent.name}</span>
-          <.checklist_badge :if={@checklist_progress} progress={@checklist_progress} />
           <span :if={@agent[:last_activity_at]} class="text-xs text-zinc-400 dark:text-zinc-500 hidden sm:block flex-none">
             {time_ago(@agent[:last_activity_at])}
           </span>
@@ -1556,28 +1439,6 @@ defmodule BoomLooperWeb.ChatLive do
     """
   end
 
-  # --- Checklist Badge ---
-
-  defp checklist_badge(assigns) do
-    progress = assigns.progress
-    pct = if progress.total > 0, do: round(progress.checked / progress.total * 100), else: 0
-
-    color =
-      cond do
-        pct == 100 -> "text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30"
-        pct > 0 -> "text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30"
-        true -> "text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800"
-      end
-
-    assigns = assign(assigns, pct: pct, color: color)
-
-    ~H"""
-    <span class={"text-xs font-medium rounded-full px-2 py-0.5 #{@color}"}>
-      {@progress.checked}/{@progress.total}
-    </span>
-    """
-  end
-
   # --- Context Panel (right sidebar) ---
 
   defp context_panel(assigns) do
@@ -1601,32 +1462,6 @@ defmodule BoomLooperWeb.ChatLive do
             <path d="M13.488 2.513a1.75 1.75 0 0 0-2.475 0L6.75 6.774a2.75 2.75 0 0 0-.596.892l-.848 2.047a.75.75 0 0 0 .98.98l2.047-.848a2.75 2.75 0 0 0 .892-.596l4.261-4.262a1.75 1.75 0 0 0 0-2.474Z" />
             <path d="M4.75 3.5c-.69 0-1.25.56-1.25 1.25v6.5c0 .69.56 1.25 1.25 1.25h6.5c.69 0 1.25-.56 1.25-1.25V9A.75.75 0 0 1 14 9v2.25A2.75 2.75 0 0 1 11.25 14h-6.5A2.75 2.75 0 0 1 2 11.25v-6.5A2.75 2.75 0 0 1 4.75 2H7a.75.75 0 0 1 0 1.5H4.75Z" />
           </svg>
-        </div>
-      </div>
-
-      <%!-- Checklist Progress --%>
-      <div :if={@checklist_progress} class="border-b border-zinc-200 dark:border-zinc-700/80">
-        <div class="px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50">
-          <div class="flex items-center justify-between">
-            <h4 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Checklist</h4>
-            <span class="text-xs text-zinc-400">{@checklist_progress.checked}/{@checklist_progress.total}</span>
-          </div>
-          <div class="mt-2 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
-            <div
-              class={"h-full rounded-full transition-all duration-300 #{if @checklist_progress.checked == @checklist_progress.total && @checklist_progress.total > 0, do: "bg-green-500", else: "bg-violet-500"}"}
-              style={"width: #{if @checklist_progress.total > 0, do: round(@checklist_progress.checked / @checklist_progress.total * 100), else: 0}%"}
-            />
-          </div>
-        </div>
-        <div class="px-4 py-2 space-y-1">
-          <div :for={item <- @checklist_progress.items} class="flex items-start gap-2">
-            <div class={"flex-none w-4 h-4 rounded border mt-0.5 flex items-center justify-center #{if item.checked, do: "bg-violet-600 border-violet-600", else: "border-zinc-300 dark:border-zinc-600"}"}>
-              <svg :if={item.checked} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3 h-3 text-white">
-                <path fill-rule="evenodd" d="M12.416 3.376a.75.75 0 0 1 .208 1.04l-5 7.5a.75.75 0 0 1-1.154.114l-3-3a.75.75 0 0 1 1.06-1.06l2.353 2.353 4.493-6.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd" />
-              </svg>
-            </div>
-            <span class={"text-xs #{if item.checked, do: "text-zinc-400 dark:text-zinc-500 line-through", else: "text-zinc-700 dark:text-zinc-300"}"}>{item.text}</span>
-          </div>
         </div>
       </div>
 

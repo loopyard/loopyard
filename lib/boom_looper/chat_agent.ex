@@ -21,10 +21,11 @@ defmodule BoomLooper.ChatAgent do
     :working_dir,
     :bind_mount,
     :workspace_id,
+    :volume_based,     # true for git URL workspaces
+    :volume_name,      # code volume name (volume-based only)
     :started_at,
     :started_by,
     :last_activity_at,
-    :checklist_path,
     :service_name,
     status: :idle,
     messages: [],
@@ -178,6 +179,10 @@ defmodule BoomLooper.ChatAgent do
       id: id,
       name: name,
       working_dir: working_dir,
+      bind_mount: Keyword.get(opts, :bind_mount),
+      workspace_id: Keyword.get(opts, :workspace_id),
+      volume_based: Keyword.get(opts, :volume_based, false),
+      volume_name: Keyword.get(opts, :volume_name),
       service_name: Keyword.get(opts, :service_name),
       started_at: DateTime.utc_now(),
       started_by: "browser",
@@ -232,7 +237,7 @@ defmodule BoomLooper.ChatAgent do
         [] -> summary
       end
     end)
-    |> Enum.sort_by(& &1[:started_at], {:desc, DateTime})
+    |> Enum.sort_by(fn a -> a[:started_at] || ~U[1970-01-01 00:00:00Z] end, {:desc, DateTime})
   end
 
   def ensure_ets_table do
@@ -277,14 +282,28 @@ defmodule BoomLooper.ChatAgent do
     case :ets.lookup(@ets_table, id) do
       [{^id, saved}] ->
         # Restore from saved state
-        bind_mount = saved.bind_mount
-        workspace = if bind_mount, do: load_workspace_config(bind_mount), else: nil
-        workspace_id = saved.workspace_id
+        bind_mount = saved[:bind_mount]
+        volume_based = saved[:volume_based] || false
+        volume_name = saved[:volume_name]
+        workspace_id = saved[:workspace_id]
+
+        # Load workspace config from appropriate source
+        workspace = cond do
+          volume_based && volume_name ->
+            case BoomLooper.Workspace.load_from_volume(volume_name) do
+              {:ok, ws} -> ws
+              _ -> nil
+            end
+          bind_mount ->
+            load_workspace_config(bind_mount)
+          true ->
+            nil
+        end
 
         tools = Keyword.get(opts, :tools, default_tools())
         backend = Keyword.get(opts, :backend, BoomLooper.Agent.Backend.ClaudeCode)
 
-        system_prompt = build_system_prompt(id, bind_mount, workspace_id, workspace, saved[:checklist_path], saved[:service_name])
+        system_prompt = build_system_prompt(id, bind_mount, workspace_id, workspace, saved[:service_name])
 
         session_opts = [
           cwd: saved.working_dir,
@@ -306,6 +325,8 @@ defmodule BoomLooper.ChatAgent do
           working_dir: saved.working_dir,
           bind_mount: bind_mount,
           workspace_id: workspace_id,
+          volume_based: volume_based,
+          volume_name: volume_name,
           started_at: saved.started_at,
           started_by: saved.started_by,
           last_activity_at: DateTime.utc_now(),
@@ -313,7 +334,6 @@ defmodule BoomLooper.ChatAgent do
           messages: saved.messages,
           tool_calls: saved[:tool_calls] || 0,
           errors: saved[:errors] || 0,
-          checklist_path: saved[:checklist_path],
           service_name: saved[:service_name]
         }
 
@@ -339,14 +359,29 @@ defmodule BoomLooper.ChatAgent do
     # Tool modules the agent has access to
     tools = Keyword.get(opts, :tools, default_tools())
     bind_mount = Keyword.get(opts, :bind_mount)
+    volume_based = Keyword.get(opts, :volume_based, false)
+    volume_name = Keyword.get(opts, :volume_name)
+    workspace_id = Keyword.get(opts, :workspace_id)
 
-    # Load workspace config if a bind mount exists
-    workspace = if bind_mount, do: load_workspace_config(bind_mount), else: nil
-    workspace_id = if bind_mount, do: BoomLooper.Workspace.workspace_id(bind_mount), else: nil
-    checklist_path = Keyword.get(opts, :checklist_path)
+    # Load workspace config from appropriate source
+    workspace = cond do
+      volume_based && volume_name ->
+        case BoomLooper.Workspace.load_from_volume(volume_name) do
+          {:ok, ws} -> ws
+          _ -> nil
+        end
+      bind_mount ->
+        load_workspace_config(bind_mount)
+      true ->
+        nil
+    end
+
+    # Derive workspace_id if not provided
+    workspace_id = workspace_id || (if bind_mount, do: BoomLooper.Workspace.workspace_id(bind_mount), else: nil)
+
     service_name = Keyword.get(opts, :service_name)
 
-    system_prompt = build_system_prompt(id, bind_mount, workspace_id, workspace, checklist_path, service_name)
+    system_prompt = build_system_prompt(id, bind_mount, workspace_id, workspace, service_name)
 
     backend = Keyword.get(opts, :backend, BoomLooper.Agent.Backend.ClaudeCode)
 
@@ -375,12 +410,13 @@ defmodule BoomLooper.ChatAgent do
       working_dir: working_dir,
       bind_mount: bind_mount,
       workspace_id: workspace_id,
+      volume_based: volume_based,
+      volume_name: volume_name,
       started_at: now,
       started_by: started_by,
       last_activity_at: now,
       status: :idle,
       messages: [],
-      checklist_path: checklist_path,
       service_name: service_name
     }
 
@@ -705,6 +741,8 @@ defmodule BoomLooper.ChatAgent do
       working_dir: state.working_dir,
       bind_mount: state.bind_mount,
       workspace_id: state.workspace_id,
+      volume_based: state.volume_based,
+      volume_name: state.volume_name,
       started_at: state.started_at,
       started_by: state.started_by,
       last_activity_at: state.last_activity_at,
@@ -712,7 +750,6 @@ defmodule BoomLooper.ChatAgent do
       messages: state.messages,
       tool_calls: state.tool_calls,
       errors: state.errors,
-      checklist_path: state.checklist_path,
       service_name: state.service_name
     }
   end
@@ -725,15 +762,26 @@ defmodule BoomLooper.ChatAgent do
 
   @log_version 1
 
-  defp log_path(nil), do: nil
-  defp log_path(bind_mount) do
-    Path.join([bind_mount, ".boomlooper", "workspace", "agents.log"])
+  # Get log path based on workspace type
+  defp log_path_for_state(state) do
+    cond do
+      state.volume_based && state.workspace_id ->
+        # Volume-based: store in ~/.boomlooper/workspaces/{workspace_id}/
+        Path.join([BoomLooper.Workspace.home_dir(), "workspaces", state.workspace_id, "agents.log"])
+      state.bind_mount ->
+        # Path-based: store in project directory
+        Path.join([state.bind_mount, ".boomlooper", "workspace", "agents.log"])
+      true ->
+        nil
+    end
   end
 
   defp persist_agent(state) do
-    case log_path(state.bind_mount) do
+    case log_path_for_state(state) do
       nil -> :ok
       path ->
+        # Ensure directory exists
+        File.mkdir_p!(Path.dirname(path))
         # Log the full summary so replay produces complete ETS entries
         agent_data = summary(state) |> Map.delete(:messages)
         AgentLog.append({:agent, state.id, agent_data}, log_path: path, version: @log_version)
@@ -741,16 +789,20 @@ defmodule BoomLooper.ChatAgent do
   end
 
   defp persist_message(state, msg) do
-    case log_path(state.bind_mount) do
+    case log_path_for_state(state) do
       nil -> :ok
-      path -> AgentLog.append({:msg, state.id, msg}, log_path: path, version: @log_version)
+      path ->
+        File.mkdir_p!(Path.dirname(path))
+        AgentLog.append({:msg, state.id, msg}, log_path: path, version: @log_version)
     end
   end
 
   defp persist_message_update(state, msg_id, changes) do
-    case log_path(state.bind_mount) do
+    case log_path_for_state(state) do
       nil -> :ok
-      path -> AgentLog.append({:msg_update, state.id, msg_id, changes}, log_path: path, version: @log_version)
+      path ->
+        File.mkdir_p!(Path.dirname(path))
+        AgentLog.append({:msg_update, state.id, msg_id, changes}, log_path: path, version: @log_version)
     end
   end
 
@@ -763,7 +815,7 @@ defmodule BoomLooper.ChatAgent do
   @max_system_prompt_chars 2000
 
   @doc false
-  def build_system_prompt(agent_id, bind_mount, workspace_id, workspace, checklist_path, service_name) do
+  def build_system_prompt(agent_id, bind_mount, workspace_id, workspace, service_name) do
     # System prompt: ONLY identity + agent ID. Must stay small.
     base = if workspace do
       container_base_prompt(agent_id, bind_mount, workspace_id)
@@ -777,12 +829,6 @@ defmodule BoomLooper.ChatAgent do
       parts ++ [workspace_prompt(workspace, bind_mount)]
     else
       parts ++ [setup_prompt(bind_mount)]
-    end
-
-    parts = if checklist_path do
-      parts ++ [checklist_prompt(checklist_path)]
-    else
-      parts
     end
 
     parts = if service_name && workspace_id && workspace do
@@ -908,22 +954,10 @@ defmodule BoomLooper.ChatAgent do
     """
   end
 
-  defp checklist_prompt(checklist_path) do
-    """
-
-    ## Active Checklist
-
-    You have an active checklist at #{checklist_path}.
-    Work through each item in order. Use the `check_item` tool to mark items done as you complete them.
-    Use the `get_progress` tool to see your current status.
-    Do not skip items — complete them in sequence.
-    """
-  end
-
   # --- Tool Configuration ---
 
   defp default_tools do
-    [BoomLooper.Tools.Agents, BoomLooper.Tools.Container, BoomLooper.Tools.Workspace, BoomLooper.Tools.Secrets, BoomLooper.Tools.Checklist]
+    [BoomLooper.Tools.Agents, BoomLooper.Tools.Container, BoomLooper.Tools.Workspace, BoomLooper.Tools.Secrets]
   end
 
   defp build_mcp_servers(tool_modules) do

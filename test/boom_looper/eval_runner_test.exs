@@ -33,8 +33,6 @@ defmodule BoomLooper.EvalRunnerTest do
       error_messages: [],
       services: %{},
       nudges: 0,
-      checklist_checked: 11,
-      checklist_total: 11,
       tool_usage: %{}
     }, overrides)
   end
@@ -60,7 +58,6 @@ defmodule BoomLooper.EvalRunnerTest do
       assert content =~ "completed"
       assert content =~ "workspace: running"
       assert content =~ "postgres: running"
-      assert content =~ "Checklist:** 11/11"
       assert content =~ "Read: 5"
     end
 
@@ -87,9 +84,7 @@ defmodule BoomLooper.EvalRunnerTest do
         agent_id: "err789",
         errors: 2,
         error_messages: ["CLI crashed", "Session lost"],
-        nudges: 3,
-        checklist_checked: 7,
-        checklist_total: 11
+        nudges: 3
       })
 
       path = EvalRunner.record_run("errored", result)
@@ -99,7 +94,6 @@ defmodule BoomLooper.EvalRunnerTest do
       assert content =~ "Session lost"
       assert content =~ "Errors:** 2"
       assert content =~ "Nudges:** 3"
-      assert content =~ "Checklist:** 7/11"
     end
   end
 end

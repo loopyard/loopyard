@@ -163,7 +163,8 @@ defmodule BoomLooper.Tools.Workspace do
                 {:stream_output, agent_id, chunk, "Rebuild", msg_id})
             end
 
-            case ServiceManager.restart_workspace_streaming(project_dir, callback) do
+            # Only rebuild dev containers, keep workspace container running
+            case ServiceManager.restart_dev_streaming(project_dir, callback) do
               {:ok, _output} ->
                 BoomLooper.ChatAgent.update_message(agent_id, msg_id, fn msg ->
                   %{msg | role: :build_done}
