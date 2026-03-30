@@ -56,17 +56,33 @@ defmodule BoomLooper.EvalRunner do
         project ->
           Logger.info("[EvalRunner] Cleaning up existing project #{project.id}")
 
-          # Wipe volumes too so databases start fresh
+          # Kill all agents for this project
+          for agent <- ChatAgent.list_agents(),
+              agent[:working_dir] == project_path do
+            ChatAgent.stop_agent(agent.id)
+            ChatAgent.remove_agent(agent.id)
+          end
+
+          # Stop workspace supervisors, tear down containers, wipe all volumes
           workspaces = ProjectRegistry.list_workspaces(project.id)
           Enum.each(workspaces, fn ws ->
             ws_id = BoomLooper.Workspace.workspace_id(ws.path)
+
+            # Stop the workspace supervisor first
+            BoomLooper.WorkspaceSupervisor.stop_workspace(ws_id)
+
+            # Tear down containers and compose-managed volumes
+            virtual_dir = Path.join([BoomLooper.Workspace.home_dir(), "workspaces", ws_id])
             try do
-              BoomLooper.Compose.down_volumes(ws.path, ws_id)
+              BoomLooper.Compose.down_volumes(virtual_dir, ws_id)
             rescue
               _ -> :ok
             catch
               _, _ -> :ok
             end
+
+            # Delete the external code volume (compose won't touch external volumes)
+            BoomLooper.VolumeManager.delete_volume("code-#{ws_id}")
           end)
 
           ProjectRegistry.remove_project(project.id)

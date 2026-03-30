@@ -37,23 +37,22 @@ Pattern:
 
 ## Library path clobbering
 
-Host macOS binaries in bind-mounted dirs crash on Linux. Redirect platform-specific artifacts outside /workspace via ENV vars in the Dockerfile. Read the stack guide for specifics.
+Host macOS binaries copied into the volume crash on Linux. Redirect platform-specific artifacts outside /workspace via ENV vars in the Dockerfile. Read the stack guide for specifics (e.g. `BUNDLE_PATH`, `node_modules` rebuild).
 
-## Unix sockets don't work across bind mounts
-
-If a library creates Unix sockets in `/workspace/tmp/`, it fails with ENOTSUP. Disable via env vars or redirect socket paths outside /workspace. Stack guides list common culprits.
-
-## File watchers need polling
-
-inotify/fsevents don't work across bind mounts. Always use polling:
-- Tailwind CSS v4+: `TAILWINDCSS_POLL=true`
-- Webpack: `--watch-poll`
-- Vite: `server.watch.usePolling: true`
-- General: if "watchman: not found", use polling — do NOT install watchman.
-
-## Ports
+## Ports & binding
 
 Every HTTP process MUST have ports set via `set_dev_command`. Only specify the container port — Docker picks the host port. Never use `"3001:3000"` format.
+
+**The dev server MUST bind to `0.0.0.0`**, not `localhost` or `127.0.0.1`. If it binds to localhost, Docker port mapping can't reach it from outside the container. This is the #1 reason "the server is running but I can't reach it."
+
+Common fixes:
+- **Rails:** `bin/rails server -b 0.0.0.0` (add `-b 0.0.0.0` to the server command in Procfile.dev or set `BINDING=0.0.0.0`)
+- **Next.js / Node:** `next dev -H 0.0.0.0` or `HOST=0.0.0.0`
+- **Phoenix:** Already binds to `0.0.0.0` in dev by default (via `config/dev.exs`)
+- **Python (Django/Flask/uvicorn):** `--host 0.0.0.0`
+- **Vite:** `--host 0.0.0.0`
+
+Set this via env var (`BINDING=0.0.0.0`) or in the dev command itself. Check Procfile.dev — if the server command doesn't include a bind flag, add one.
 
 ## Rebuilds
 

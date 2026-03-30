@@ -38,6 +38,8 @@ Usually `bin/dev` (foreman). Check `Procfile.dev` to see what it runs. Default p
 
 `set_dev_command` with `command: "bin/dev"`, `ports: ["3000"]`.
 
+**Rails must bind to `0.0.0.0`** or Docker port mapping won't work. Check `Procfile.dev` — if the web line is `bin/rails server` without `-b 0.0.0.0`, fix it via env var: set `BINDING=0.0.0.0` with `set_env_vars`.
+
 If `Procfile.dev` references a non-standard port (e.g. `PORT=5000`), use that port instead.
 
 ## Services
