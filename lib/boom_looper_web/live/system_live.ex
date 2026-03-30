@@ -35,6 +35,20 @@ defmodule BoomLooperWeb.SystemLive do
     {:noreply, socket}
   end
 
+  def handle_event("restart_workspace", %{"id" => ws_id, "path" => path}, socket) do
+    # Stop the dead workspace group if it exists
+    BoomLooper.WorkspaceSupervisor.stop_workspace(ws_id)
+    Process.sleep(500)
+
+    # Restart it
+    case BoomLooper.WorkspaceSupervisor.start_workspace(ws_id, path) do
+      {:ok, _} ->
+        {:noreply, put_flash(socket, :info, "Workspace #{ws_id} restarted")}
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to restart #{ws_id}: #{inspect(reason)}")}
+    end
+  end
+
   @impl true
   def handle_event("reboot", _params, socket) do
     # Stop all agents
@@ -60,6 +74,7 @@ defmodule BoomLooperWeb.SystemLive do
     |> assign(:host, BoomLooper.SystemStats.host_stats())
     |> assign(:beam, BoomLooper.SystemStats.beam_stats())
     |> assign(:agents, BoomLooper.SystemStats.agent_stats())
+    |> assign(:workspaces, BoomLooper.SystemStats.workspace_stats())
     |> assign(:cli_processes, BoomLooper.SystemStats.all_cli_processes())
     |> assign(:service_containers, BoomLooper.SystemStats.service_stats())
     |> assign(:logs, BoomLooper.LogBuffer.recent(50))
@@ -120,6 +135,7 @@ defmodule BoomLooperWeb.SystemLive do
       <div class="max-w-6xl mx-auto px-4 md:px-6 py-6 space-y-8">
         <.host_section host={@host} />
         <.app_section beam={@beam} agent_count={length(@agents)} cli_count={length(@cli_processes)} />
+        <.workspaces_section workspaces={@workspaces} />
         <.agents_section agents={@agents} />
         <.service_containers_section containers={@service_containers} />
         <.cli_section processes={@cli_processes} />
@@ -200,6 +216,64 @@ defmodule BoomLooperWeb.SystemLive do
       <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500">{@label}</div>
       <div class="text-sm font-semibold font-mono mt-0.5">{@value}</div>
     </div>
+    """
+  end
+
+  # --- Workspaces ---
+
+  defp workspaces_section(assigns) do
+    ~H"""
+    <section>
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
+        Workspaces <span class="text-zinc-400 font-normal">({length(@workspaces)})</span>
+      </h2>
+      <div :if={@workspaces == []} class="text-sm text-zinc-400 dark:text-zinc-500">No workspaces registered</div>
+      <div :if={@workspaces != []} class="space-y-2">
+        <div :for={ws <- @workspaces} class="rounded-lg border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 px-4 py-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3 min-w-0">
+              <div class={"w-2 h-2 rounded-full flex-none #{if ws.group_alive && ws.service_manager_alive, do: "bg-green-500", else: "bg-red-500"}"}></div>
+              <div class="min-w-0">
+                <span class="text-sm font-medium">{ws.project_name}</span>
+                <span class="text-xs text-zinc-400 ml-2 font-mono">{ws.workspace_id}</span>
+                <div class="text-xs text-zinc-500 truncate">{ws.path}</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 flex-none">
+              <div class="text-xs text-right space-y-0.5 mr-3">
+                <div>
+                  <span class="text-zinc-400">Group:</span>
+                  <span class={if ws.group_alive, do: "text-green-600 dark:text-green-400", else: "text-red-600 dark:text-red-400 font-semibold"}>
+                    {if ws.group_alive, do: "alive", else: "dead"}
+                  </span>
+                </div>
+                <div>
+                  <span class="text-zinc-400">ServiceMgr:</span>
+                  <span class={if ws.service_manager_alive, do: "text-green-600 dark:text-green-400", else: "text-red-600 dark:text-red-400 font-semibold"}>
+                    {if ws.service_manager_alive, do: "alive", else: "dead"}
+                  </span>
+                </div>
+              </div>
+              <button
+                :if={!ws.group_alive || !ws.service_manager_alive}
+                phx-click="restart_workspace"
+                phx-value-id={ws.workspace_id}
+                phx-value-path={ws.path}
+                class="text-xs font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10 rounded px-2 py-1 transition-colors"
+              >
+                Restart
+              </button>
+              <span
+                :if={ws.group_alive && ws.service_manager_alive}
+                class="text-xs text-green-600 dark:text-green-400 px-2 py-1"
+              >
+                OK
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
     """
   end
 

@@ -24,7 +24,8 @@ defmodule BoomLooper.WorkspaceGroup do
       {BoomLooper.ContainerMonitor, project_dir: project_dir}
     ]
 
-    Supervisor.init(children, strategy: :one_for_all)
+    # Give Docker operations time to recover — default 3/5s is too tight for I/O
+    Supervisor.init(children, strategy: :one_for_all, max_restarts: 10, max_seconds: 60)
   end
 
   @doc "Start a ChatAgent under this workspace's agent supervisor."

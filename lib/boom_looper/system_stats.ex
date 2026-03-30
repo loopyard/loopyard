@@ -131,6 +131,42 @@ defmodule BoomLooper.SystemStats do
     }
   end
 
+  # --- Workspaces ---
+
+  @doc "Workspace health: is the group alive, is ServiceManager alive, recent errors"
+  def workspace_stats do
+    projects = BoomLooper.ProjectRegistry.list_projects()
+
+    Enum.flat_map(projects, fn project ->
+      workspaces = BoomLooper.ProjectRegistry.list_workspaces(project.id)
+
+      Enum.map(workspaces, fn ws ->
+        ws_id = BoomLooper.Workspace.workspace_id(ws.path)
+        group_alive = BoomLooper.WorkspaceGroup.whereis(ws_id) != nil
+
+        sm_alive = case Registry.lookup(BoomLooper.ServiceManagerRegistry, ws.path) do
+          [{pid, _}] -> Process.alive?(pid)
+          _ ->
+            # Try virtual dir
+            virtual_dir = Path.join([BoomLooper.Workspace.home_dir(), "workspaces", ws_id])
+            case Registry.lookup(BoomLooper.ServiceManagerRegistry, virtual_dir) do
+              [{pid, _}] -> Process.alive?(pid)
+              _ -> false
+            end
+        end
+
+        %{
+          workspace_id: ws_id,
+          project_name: project.name,
+          workspace_name: ws.name,
+          path: ws.path,
+          group_alive: group_alive,
+          service_manager_alive: sm_alive
+        }
+      end)
+    end)
+  end
+
   # --- Per Agent ---
 
   @doc "Per-agent resource breakdown: container, CLI process, GenServer"

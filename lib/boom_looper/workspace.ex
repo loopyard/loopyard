@@ -176,7 +176,7 @@ defmodule BoomLooper.Workspace do
       command: s["command"],
       env: s["env"] || %{},
       volumes: s["volumes"] || [],
-      ports: s["ports"] || %{}
+      ports: normalize_ports(s["ports"])
     }
   end
 
@@ -184,9 +184,16 @@ defmodule BoomLooper.Workspace do
     %{
       name: p["name"],
       command: p["command"],
-      ports: p["ports"] || []
+      ports: normalize_ports(p["ports"])
     }
   end
+
+  defp normalize_ports(nil), do: []
+  defp normalize_ports(ports) when is_list(ports), do: Enum.map(ports, &to_string/1)
+  defp normalize_ports(port) when is_integer(port), do: [to_string(port)]
+  defp normalize_ports(port) when is_binary(port), do: [port]
+  defp normalize_ports(%{} = ports) when map_size(ports) == 0, do: []
+  defp normalize_ports(ports) when is_map(ports), do: Map.values(ports) |> Enum.map(&to_string/1)
 
   defp service_to_map(s) do
     map = %{

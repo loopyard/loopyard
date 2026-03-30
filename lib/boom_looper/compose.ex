@@ -64,9 +64,12 @@ defmodule BoomLooper.Compose do
         do: Map.put(svc, "environment", env_list(s.env)),
         else: svc
 
-      svc = if s[:ports] && s.ports != [],
-        do: Map.put(svc, "ports", Enum.map(s.ports, fn p -> container_port_only(to_string(p)) end)),
-        else: svc
+      svc = case s[:ports] do
+        ports when is_list(ports) and ports != [] ->
+          Map.put(svc, "ports", Enum.map(ports, &container_port_only/1))
+        _ ->
+          svc
+      end
 
       svc = if s[:volumes] && s.volumes != [],
         do: Map.put(svc, "volumes", Enum.map(s.volumes, fn v ->

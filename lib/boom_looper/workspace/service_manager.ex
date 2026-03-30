@@ -233,22 +233,33 @@ defmodule BoomLooper.Workspace.ServiceManager do
     # Load workspace config from volume (all workspaces are volume-based now)
     ws_result = Workspace.load_from_volume(volume_name)
 
-    # Always try to start services - workspace container uses fixed alpine image
-    # and can run even without a project Dockerfile configured
+    # Try to start services async — never crash init, just log failures.
+    # If this fails, the ServiceManager stays alive in an idle state and
+    # can be retried via start_services/1 or rebuild.
     self_pid = self()
     Task.start(fn ->
-      case Compose.ps(effective_project_dir, workspace_id) do
-        {:ok, running} when running != [] ->
-          # Containers already running — reconnect state without rebuilding
-          ws = case ws_result do
-            {:ok, ws} -> ws
-            _ -> %Workspace{}
-          end
-          GenServer.call(self_pid, {:reconnect, ws}, 30_000)
+      try do
+        case Compose.ps(effective_project_dir, workspace_id) do
+          {:ok, running} when running != [] ->
+            # Containers already running — reconnect state without rebuilding
+            ws = case ws_result do
+              {:ok, ws} -> ws
+              _ -> %Workspace{}
+            end
+            GenServer.call(self_pid, {:reconnect, ws}, 30_000)
 
-        _ ->
-          # No running containers — do a full start
-          GenServer.call(self_pid, :start_services, 600_000)
+          _ ->
+            # No running containers — do a full start
+            GenServer.call(self_pid, :start_services, 600_000)
+        end
+      rescue
+        e ->
+          BoomLooper.EventLog.error("workspace:#{workspace_id}",
+            "Async init failed: #{Exception.message(e)}")
+      catch
+        :exit, reason ->
+          BoomLooper.EventLog.error("workspace:#{workspace_id}",
+            "Async init exited: #{inspect(reason)}")
       end
     end)
 
