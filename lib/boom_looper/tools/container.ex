@@ -146,8 +146,7 @@ defmodule BoomLooper.Tools.Container do
 
   def do_service_containers(agent_id) do
     case BoomLooper.ChatAgent.get_state(agent_id) do
-      %{bind_mount: bm} when is_binary(bm) ->
-        workspace_id = BoomLooper.Workspace.workspace_id(bm)
+      %{workspace_id: workspace_id} when is_binary(workspace_id) ->
         prefix = "bl-#{workspace_id}"
 
         case Docker.docker(["ps", "-a", "--filter", "name=#{prefix}",
@@ -236,8 +235,7 @@ defmodule BoomLooper.Tools.Container do
   # All agents exec into the compose "workspace" service
   defp resolve_container(agent_id) do
     case BoomLooper.ChatAgent.get_state(agent_id) do
-      %{bind_mount: bm} when is_binary(bm) ->
-        workspace_id = BoomLooper.Workspace.workspace_id(bm)
+      %{workspace_id: workspace_id} when is_binary(workspace_id) ->
         container = ServiceManager.service_container_name(workspace_id, "workspace")
         {:ok, container}
 
@@ -249,8 +247,7 @@ defmodule BoomLooper.Tools.Container do
   # Resolve a specific service container by compose service name
   defp resolve_service_container(agent_id, service_name) do
     case BoomLooper.ChatAgent.get_state(agent_id) do
-      %{bind_mount: bm} when is_binary(bm) ->
-        workspace_id = BoomLooper.Workspace.workspace_id(bm)
+      %{workspace_id: workspace_id} when is_binary(workspace_id) ->
         container = ServiceManager.service_container_name(workspace_id, service_name)
 
         if Docker.container_running?(container) || container_exists?(container) do

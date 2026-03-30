@@ -50,7 +50,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
   def service_status(project_dir) do
     case Registry.lookup(BoomLooper.ServiceManagerRegistry, project_dir) do
-      [{pid, _}] -> GenServer.call(pid, :service_status)
+      [{pid, _}] -> GenServer.call(pid, :service_status, 60_000)
       [] -> {:ok, []}
     end
   end
@@ -69,8 +69,10 @@ defmodule BoomLooper.Workspace.ServiceManager do
   def restart_dev_streaming(project_dir, callback) when is_function(callback, 1) do
     workspace_id = Workspace.workspace_id(project_dir)
 
+    volume_name = "code-#{workspace_id}"
+
     # Stop only dev containers (not workspace)
-    case Workspace.load(project_dir) do
+    case Workspace.load_from_volume(volume_name) do
       {:ok, ws} ->
         Enum.each(ws.processes, fn p ->
           Compose.compose(project_dir, workspace_id, ["stop", p.name], timeout: 30_000)
@@ -78,12 +80,19 @@ defmodule BoomLooper.Workspace.ServiceManager do
       _ -> :ok
     end
 
-    # Regenerate compose file with updated config
-    Compose.write(project_dir, workspace_id)
+    # Regenerate compose file with updated config from volume
+    case Workspace.load_from_volume(volume_name) do
+      {:ok, ws} ->
+        content = Compose.generate(ws, project_dir, workspace_id)
+        compose_path = Compose.compose_path(project_dir)
+        File.mkdir_p!(Path.dirname(compose_path))
+        File.write!(compose_path, content)
+      _ -> :ok
+    end
 
     # Rebuild and start dev containers only
     # docker compose up --build <service> rebuilds just that service
-    case Workspace.load(project_dir) do
+    case Workspace.load_from_volume(volume_name) do
       {:ok, ws} when ws.processes != [] ->
         process_names = Enum.map(ws.processes, & &1.name)
         result = Compose.up_services_stream(project_dir, workspace_id, process_names, callback)
@@ -104,15 +113,25 @@ defmodule BoomLooper.Workspace.ServiceManager do
   @doc "Stop containers, rebuild with streaming output, then reconnect state."
   def restart_workspace_streaming(project_dir, callback) when is_function(callback, 1) do
     workspace_id = Workspace.workspace_id(project_dir)
+    volume_name = "code-#{workspace_id}"
 
     Compose.down(project_dir, workspace_id)
-    Compose.write(project_dir, workspace_id)
+
+    # Write compose file from volume config
+    case Workspace.load_from_volume(volume_name) do
+      {:ok, ws} ->
+        content = Compose.generate(ws, project_dir, workspace_id)
+        compose_path = Compose.compose_path(project_dir)
+        File.mkdir_p!(Path.dirname(compose_path))
+        File.write!(compose_path, content)
+      _ -> :ok
+    end
 
     result = Compose.up_stream(project_dir, workspace_id, callback)
 
     case Registry.lookup(BoomLooper.ServiceManagerRegistry, project_dir) do
       [{pid, _}] ->
-        case Workspace.load(project_dir) do
+        case Workspace.load_from_volume(volume_name) do
           {:ok, ws} -> GenServer.call(pid, {:reconnect, ws}, 30_000)
           _ -> :ok
         end
@@ -356,30 +375,39 @@ defmodule BoomLooper.Workspace.ServiceManager do
     File.mkdir_p!(Path.dirname(compose_path))
     File.write!(compose_path, content)
 
-    BoomLooper.EventLog.info("workspace:#{state.workspace_id}", "Starting compose services")
+    # If there's no dockerfile and no services, nothing to start yet.
+    # The setup agent will configure the workspace and trigger a rebuild.
+    has_services = ws.dockerfile != nil || ws.services != [] || ws.processes != []
 
-    case Compose.up(state.project_dir, state.workspace_id) do
-      {:ok, _} ->
-        # Replay agent log to restore any persisted agents
-        replay_agent_log(state.project_dir, state.workspace_id)
+    if has_services do
+      BoomLooper.EventLog.info("workspace:#{state.workspace_id}", "Starting compose services")
 
-        services = Map.new(ws.services, fn s -> {s.name, s} end)
-        all_names = Enum.map(ws.processes, & &1.name) ++ Enum.map(ws.services, & &1.name) ++ ["workspace"]
-        initial_health = Map.new(all_names, fn name -> {name, :started} end)
+      case Compose.up(state.project_dir, state.workspace_id) do
+        {:ok, _} ->
+          replay_agent_log(state.project_dir, state.workspace_id)
 
-        new_state = %{state |
-          services: services,
-          processes: ws.processes,
-          running: true,
-          service_health: initial_health,
-          volume_name: volume_name
-        }
-        broadcast_service_update(new_state)
-        {:ok, new_state}
+          services = Map.new(ws.services, fn s -> {s.name, s} end)
+          all_names = Enum.map(ws.processes, & &1.name) ++ Enum.map(ws.services, & &1.name) ++ ["workspace"]
+          initial_health = Map.new(all_names, fn name -> {name, :started} end)
 
-      {:error, reason} ->
-        BoomLooper.EventLog.error("workspace:#{state.workspace_id}", "Compose up failed: #{reason}")
-        {:error, reason}
+          new_state = %{state |
+            services: services,
+            processes: ws.processes,
+            running: true,
+            service_health: initial_health,
+            volume_name: volume_name
+          }
+          broadcast_service_update(new_state)
+          {:ok, new_state}
+
+        {:error, reason} ->
+          BoomLooper.EventLog.error("workspace:#{state.workspace_id}", "Compose up failed: #{reason}")
+          {:error, reason}
+      end
+    else
+      BoomLooper.EventLog.info("workspace:#{state.workspace_id}", "No services configured yet, waiting for setup")
+      replay_agent_log(state.project_dir, state.workspace_id)
+      {:ok, %{state | volume_name: volume_name}}
     end
   end
 

@@ -1,88 +1,71 @@
-# Setup Guide
+# Setup Agent Guide
 
-## How BoomLooper Works
+## Step 1: Identify the stack
 
-**Architecture:** Two containers share a code volume:
-- **Workspace container** (alpine + git) — always running, you exec commands here
-- **Dev container** (built from your Dockerfile) — runs the app, hot reloads via inotify
+Read the project files first. Then read the matching stack guide from `/workspace/.boomlooper/` or use `exec` to `cat` the guide from the BoomLooper priv directory:
 
-Your config goes in `.boomlooper/repo/workspace.json`. This gets written via MCP tools (`set_dockerfile`, `set_dev_command`, etc.). BoomLooper generates the actual Dockerfile and docker-compose.yml from your config.
+- Gemfile → Rails → read `priv/prompts/stacks/rails.md` via `Read` tool at the BoomLooper project root
+- package.json with "next" → Next.js → read `priv/prompts/stacks/nextjs.md`
+- mix.exs → Phoenix → read `priv/prompts/stacks/phoenix.md`
+- requirements.txt / pyproject.toml → Python → read `priv/prompts/stacks/python.md`
+- No match → read `priv/prompts/stacks/generic.md`
 
-**Project root files are clues, not config.** The project may have:
-- `Dockerfile` — production image, usually not suitable for dev
-- `docker-compose.yml` — may be useful, but often production-focused
-- `.env` — project runtime config, BoomLooper overrides this with env_vars
-- `Procfile.dev` — shows how the project runs locally
+The stack guide has framework-specific Dockerfile patterns, database setup, gotchas.
 
-Read these to understand the project. Use them as hints. But your final config goes through the MCP tools, not by copying project files.
+## Platform & architecture
 
-## Ruby/Rails Recipe
+The host is macOS (likely Apple Silicon / ARM64). Containers run Linux ARM64.
+- Use official multi-arch Docker images.
+- Prefer `apt-get install` over building from source.
+- Never download x86_64 binaries.
 
-### Dockerfile
+**Use these cached base images:** `ruby:3.4.8-slim`, `node:22-slim`, `python:3.12-slim`. Other versions may hang on pull.
 
-**Important:** Code lives in a Docker volume mounted at `/workspace`. The Dockerfile builds the dev environment image, NOT the app. Don't use `COPY` or `ADD` for project files — they're not in the build context.
+**Service images must have ARM64 support.** If "no matching manifest for linux/arm64" appears, find an alternative image.
 
-```dockerfile
-FROM ruby:3.4.2-slim
+## The Dockerfile is a DEV image
 
-RUN apt-get update && apt-get install -y \
-    build-essential libpq-dev libsqlite3-dev libyaml-dev libssl-dev git curl \
-    && rm -rf /var/lib/apt/lists/*
+The project code lives in a Docker volume mounted at /workspace. Only copy dependency manifests in the Dockerfile — NOT the full source.
 
-WORKDIR /workspace
-```
+Pattern:
+1. `FROM <language>:<version>-slim`
+2. `RUN apt-get update && apt-get install -y <system packages>`
+3. Copy dependency lockfiles, install deps
+4. `WORKDIR /workspace`
 
-**Adjust for project needs:**
-- If using libvips (image processing): add `libvips-dev` to apt-get
-- If using Node.js: install via nodesource script
-- If using `bin/dev` (Procfile.dev exists): add `RUN gem install foreman` after apt-get
+**Do NOT `COPY . .`** — the volume mount overlays it.
 
-### Dev command
+## Library path clobbering
 
-**Boot with 1 worker and bind to 0.0.0.0 (external port).** Apps must not bind to localhost — Docker can't forward to localhost bindings.
+Host macOS binaries in bind-mounted dirs crash on Linux. Redirect platform-specific artifacts outside /workspace via ENV vars in the Dockerfile. Read the stack guide for specifics.
 
-BoomLooper automatically runs `bundle install` and `db:prepare` before Ruby commands, so just set the dev command:
+## Unix sockets don't work across bind mounts
 
-- If project has `Procfile.dev`: use `bin/dev`
-- Otherwise: use `bin/rails server --port $PORT --binding 0.0.0.0`
+If a library creates Unix sockets in `/workspace/tmp/`, it fails with ENOTSUP. Disable via env vars or redirect socket paths outside /workspace. Stack guides list common culprits.
 
-### Env vars
+## File watchers need polling
 
-Set: `HOTSWAP_DISABLED=1`, `HOST=0.0.0.0`
+inotify/fsevents don't work across bind mounts. Always use polling:
+- Tailwind CSS v4+: `TAILWINDCSS_POLL=true`
+- Webpack: `--watch-poll`
+- Vite: `server.watch.usePolling: true`
+- General: if "watchman: not found", use polling — do NOT install watchman.
 
-## Workflow
+## Ports
 
-### Phase 1: Examine the project
+Every HTTP process MUST have ports set via `set_dev_command`. Only specify the container port — Docker picks the host port. Never use `"3001:3000"` format.
 
-Read project files to understand what you're working with:
-- `Gemfile` — Ruby version, key gems (Rails version, database adapter, asset pipeline)
-- `Procfile.dev` — how the project runs locally (if exists, you'll need foreman)
-- `config/database.yml` — what database it expects
-- `.ruby-version` or `.tool-versions` — Ruby version to use in FROM line
-- `package.json` — whether Node.js is needed
+## Rebuilds
 
-### Phase 2: Plan the setup
+`rebuild` streams build output. After it finishes, call `service_status` ONCE. Never poll in a loop. Never use `sleep`. If containers don't appear, read the build output and fix the Dockerfile.
 
-Based on what you found:
-1. **Base image** — match Ruby version from project
-2. **System deps** — what apt packages are needed (libpq-dev for postgres, libvips-dev for image processing, etc.)
-3. **Runtime deps** — does it need Node.js? foreman?
-4. **Dev command** — `bin/dev` if Procfile.dev exists, otherwise direct rails server
-5. **Services** — postgres, redis, etc. based on database.yml and Gemfile
+## Verification
 
-### Phase 3: Configure
+Do NOT check off verification items until they actually pass:
+- "Services healthy" = `service_status` shows `running: true` and `health: healthy`
+- "Dev server responds" = confirmed port is listening via `ports` tool
+- If dev crashed, check logs, fix, rebuild. Not done until serving requests.
 
-1. `set_dockerfile` — based on your plan
-2. `set_dev_command` — usually `bin/dev` or `bin/rails server --binding 0.0.0.0 --port $PORT`
-3. `set_env_vars` — HOTSWAP_DISABLED=1, HOST=0.0.0.0
-4. `add_service` — postgres, redis, etc. with proper env vars:
-   - Postgres: `{"POSTGRES_HOST_AUTH_METHOD": "trust"}` (allows passwordless local dev)
-   - Redis: no special env needed
+## When things go wrong
 
-### Phase 4: Build and verify
-
-1. `rebuild` — **tell the human this may take 2-5 minutes**. This builds the dev container image.
-2. Check `service_status` once per minute. Report status to human each time.
-3. Wait for dev container to become healthy — BoomLooper automatically runs `bundle install` and `db:prepare` on startup.
-
-**Don't spam service_status.** Check once, wait a minute, check again. Builds take time.
+Read the error. Fix the Dockerfile or config. Rebuild. If database schema is broken, drop and recreate — don't debug stale schemas.

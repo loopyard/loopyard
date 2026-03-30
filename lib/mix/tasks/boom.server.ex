@@ -19,8 +19,14 @@ defmodule Mix.Tasks.Boom.Server do
   def run(_args) do
     # Use a BOOMLOOPER_HOME-scoped cookie so tools can connect without ~/.erlang.cookie
     cookie = ensure_cookie()
-    Node.start(:boom, :shortnames)
-    Node.set_cookie(cookie)
+
+    case Node.start(:boom, :shortnames) do
+      {:ok, _} ->
+        Node.set_cookie(cookie)
+
+      {:error, reason} ->
+        Mix.shell().info("Warning: could not start distributed node (#{inspect(reason)}). Remote shell access disabled.")
+    end
 
     # Start the Phoenix endpoint
     Application.put_env(:phoenix, :serve_endpoints, true)

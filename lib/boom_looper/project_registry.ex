@@ -368,7 +368,8 @@ defmodule BoomLooper.ProjectRegistry do
     id = project_id(repo_path)
     case get_project(id) do
       nil ->
-        name = case Workspace.load(repo_path) do
+        ws_id = Workspace.workspace_id(repo_path)
+        name = case Workspace.load_from_volume("code-#{ws_id}") do
           {:ok, ws} when ws.name != nil -> ws.name
           _ -> Path.basename(repo_path)
         end

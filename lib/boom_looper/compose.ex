@@ -7,77 +7,54 @@ defmodule BoomLooper.Compose do
   alias BoomLooper.Workspace
 
   @doc "Generate docker-compose.yml content from workspace config."
-  def generate(%Workspace{} = ws, _project_dir, workspace_id) do
+  def generate(%Workspace{} = ws, project_dir, workspace_id) do
     services = %{}
+    code_volume = "code-#{workspace_id}"
 
-    # All workspaces are now volume-based - code lives in Docker volume
-    code_volume = "code-#{workspace_id}:/workspace"
-    cache_volume = "cache-#{workspace_id}:/root/.cache"
+    # Write Dockerfile to .boomlooper/workspace/ so compose can reference it
+    dockerfile_path = Path.join([project_dir, ".boomlooper", "workspace", "Dockerfile"])
+    if ws.dockerfile, do: write_unless_symlink(dockerfile_path, ws.dockerfile)
 
     # Workspace container — always running, agents exec here
-    # Uses fixed alpine base image (git + gh), NOT the project Dockerfile
-    workspace_base_path = workspace_base_dockerfile_path()
-    services = Map.put(services, "workspace", %{
-      "build" => %{
-        "context" => Path.dirname(workspace_base_path),
-        "dockerfile" => "Dockerfile"
-      },
-      "command" => "sleep infinity",
-      "volumes" => [code_volume, cache_volume],
-      "working_dir" => "/workspace",
-      "environment" => env_list(ws.env_vars)
-    })
-
-    # Dev container build config (project Dockerfile) - only when dockerfile is set
-    # Write Dockerfile to BoomLooper's build directory
-    dev_build_config = if ws.dockerfile do
-      build_dir = Path.join([Workspace.home_dir(), "builds", workspace_id])
-      File.mkdir_p!(build_dir)
-      dockerfile_path = Path.join(build_dir, "Dockerfile")
-      write_unless_symlink(dockerfile_path, ws.dockerfile)
-      %{"context" => build_dir, "dockerfile" => "Dockerfile"}
-    else
-      nil
-    end
-
-    # Dev/process containers — run from project Dockerfile
-    # Only created when dockerfile is configured
-    # Wrap command with env var exports so they override project's .env file
-    services = if dev_build_config do
-      Enum.reduce(ws.processes, services, fn p, acc ->
-        # Include PORT from process config if specified
-        process_env = case p[:ports] do
-          port when is_integer(port) -> Map.put(ws.env_vars, "PORT", to_string(port))
-          [port | _] when is_integer(port) -> Map.put(ws.env_vars, "PORT", to_string(port))
-          _ -> ws.env_vars
-        end
-
-        svc = %{
-          "build" => dev_build_config,
-          "command" => wrap_command_with_env(p.command, process_env),
-          "volumes" => [code_volume, cache_volume],
-          "working_dir" => "/workspace",
-          "environment" => env_list(process_env)
-        }
-
-        # Add ports — always use dynamic host port allocation to avoid conflicts.
-        # "3001:3000" becomes "3000" (Docker picks a free host port).
-        svc = case p[:ports] do
-          ports when is_list(ports) and ports != [] ->
-            Map.put(svc, "ports", Enum.map(ports, &container_port_only/1))
-          port when is_integer(port) ->
-            Map.put(svc, "ports", ["#{port}"])
-          port when is_binary(port) ->
-            Map.put(svc, "ports", [container_port_only(port)])
-          _ ->
-            svc
-        end
-
-        Map.put(acc, p.name, svc)
-      end)
+    services = if ws.dockerfile do
+      Map.put(services, "workspace", %{
+        "build" => %{"context" => project_dir, "dockerfile" => ".boomlooper/workspace/Dockerfile"},
+        "command" => "sleep infinity",
+        "volumes" => [
+          "#{code_volume}:/workspace",
+          "cache-#{workspace_id}:/root/.cache"
+        ],
+        "working_dir" => "/workspace",
+        "environment" => env_list(ws.env_vars)
+      })
     else
       services
     end
+
+    # Dev container — runs the dev command from workspace image
+    services = Enum.reduce(ws.processes, services, fn p, acc ->
+      svc = %{
+        "build" => %{"context" => project_dir, "dockerfile" => ".boomlooper/workspace/Dockerfile"},
+        "command" => p.command,
+        "volumes" => [
+          "#{code_volume}:/workspace",
+          "cache-#{workspace_id}:/root/.cache"
+        ],
+        "working_dir" => "/workspace",
+        "environment" => env_list(ws.env_vars)
+      }
+
+      # Add ports — always use dynamic host port allocation to avoid conflicts.
+      # "3001:3000" becomes "3000" (Docker picks a free host port).
+      svc = case p[:ports] do
+        ports when is_list(ports) and ports != [] ->
+          Map.put(svc, "ports", Enum.map(ports, &container_port_only/1))
+        _ ->
+          svc
+      end
+
+      Map.put(acc, p.name, svc)
+    end)
 
     # Stock services — postgres, redis, etc.
     services = Enum.reduce(ws.services, services, fn s, acc ->
@@ -87,14 +64,9 @@ defmodule BoomLooper.Compose do
         do: Map.put(svc, "environment", env_list(s.env)),
         else: svc
 
-      svc = case s[:ports] do
-        ports when is_list(ports) and ports != [] ->
-          Map.put(svc, "ports", Enum.map(ports, fn p -> container_port_only(to_string(p)) end))
-        port when is_integer(port) ->
-          Map.put(svc, "ports", ["#{port}"])
-        _ ->
-          svc
-      end
+      svc = if s[:ports] && s.ports != [],
+        do: Map.put(svc, "ports", Enum.map(s.ports, fn p -> container_port_only(to_string(p)) end)),
+        else: svc
 
       svc = if s[:volumes] && s.volumes != [],
         do: Map.put(svc, "volumes", Enum.map(s.volumes, fn v ->
@@ -105,13 +77,11 @@ defmodule BoomLooper.Compose do
       Map.put(acc, s.name, svc)
     end)
 
-    # Volumes - all workspaces are volume-based now
+    # Volumes — code volume is external (created by VolumeManager), cache is compose-managed
     volumes = %{
-      "cache-#{workspace_id}" => nil,
-      # Code volume is external (created and populated by VolumeManager before compose up)
-      "code-#{workspace_id}" => %{"external" => true}
+      code_volume => %{"external" => true},
+      "cache-#{workspace_id}" => nil
     }
-
     volumes = Enum.reduce(ws.services, volumes, fn s, acc ->
       Enum.reduce(s[:volumes] || [], acc, fn v, a ->
         if String.contains?(v, "{data}") do
@@ -214,15 +184,15 @@ defmodule BoomLooper.Compose do
   end
 
   @doc """
-  Build and start specific services with streaming output.
-  Used to rebuild dev containers without touching workspace.
+  Start specific services with streaming output. Calls `callback` with each chunk of output.
+  Returns {:ok, full_output} or {:error, full_output} when done.
   """
-  def up_services_stream(project_dir, workspace_id, service_names, callback) when is_function(callback, 1) do
+  def up_services_stream(project_dir, workspace_id, service_names, callback)
+      when is_list(service_names) and is_function(callback, 1) do
     compose_file = compose_path(project_dir)
     project = project_name(workspace_id)
 
-    # docker compose up -d --build service1 service2 ...
-    base_args = ["-f", compose_file, "-p", project, "up", "-d", "--build"] ++ service_names
+    base_args = ["-f", compose_file, "-p", project, "up", "-d", "--build" | service_names]
 
     case stream_compose(["compose" | base_args], callback) do
       {:error, output} when is_binary(output) ->
@@ -361,14 +331,6 @@ defmodule BoomLooper.Compose do
 
   # --- Private ---
 
-  # Path to the workspace base image Dockerfile (alpine + git + gh)
-  defp workspace_base_dockerfile_path do
-    # Located in the BoomLooper source tree at .hive/workspace-base/Dockerfile
-    # Use priv_dir which is copied during compilation
-    priv_path = :code.priv_dir(:boom_looper) |> to_string()
-    Path.join([priv_path, "workspace-base", "Dockerfile"])
-  end
-
   defp write_unless_symlink(path, content) do
     case File.lstat(path) do
       {:ok, %{type: :symlink}} -> :ok
@@ -393,50 +355,6 @@ defmodule BoomLooper.Compose do
   end
 
   defp env_list(_), do: []
-
-  # Wrap command to skip project's .env file (foreman ignores -e /dev/null).
-  # We write our own .env.boomlooper and tell foreman to use that instead.
-  # This ensures BoomLooper's env vars take precedence over project's .env.
-  defp wrap_command_with_env(command, env_vars) when is_map(env_vars) and map_size(env_vars) > 0 do
-    # Create .env.boomlooper content
-    env_content = Enum.map_join(env_vars, "\\n", fn {k, v} -> "#{k}=#{v}" end)
-    exports = Enum.map_join(env_vars, " ", fn {k, v} -> "#{k}=#{shell_escape(v)}" end)
-
-    # Detect Ruby commands that need bundle install
-    is_ruby_cmd = String.contains?(command, "bundle exec") or
-                  String.contains?(command, "bin/rails") or
-                  String.contains?(command, "bin/dev")
-
-    # Ensure deps installed before running Ruby commands
-    # bundle check is fast when gems are pre-installed
-    # npm ci only runs if package.json exists and node_modules is missing
-    bundle_setup = "(bundle check || bundle install)"
-    npm_setup = "(test ! -f package.json || test -d node_modules || npm ci)"
-    deps_setup = "#{bundle_setup} && #{npm_setup}"
-
-    # Database setup runs before app starts - creates DB if missing, then migrates
-    db_setup = "(bin/rails db:prepare 2>/dev/null || true)"
-
-    cond do
-      String.contains?(command, "bin/dev") ->
-        # Intercept bin/dev: clean up stale pid, install deps, setup db, write our .env, run foreman
-        ["sh", "-c", "rm -f tmp/pids/server.pid && #{deps_setup} && #{db_setup} && echo -e '#{env_content}' > /tmp/.env.bl && foreman start -f Procfile.dev -e /tmp/.env.bl"]
-
-      is_ruby_cmd ->
-        # Ruby command: ensure deps installed first
-        ["sh", "-c", "#{deps_setup} && #{exports} exec #{command}"]
-
-      true ->
-        # Non-Ruby command: just prefix with env vars
-        ["sh", "-c", "#{exports} exec #{command}"]
-    end
-  end
-
-  defp wrap_command_with_env(command, _), do: command
-
-  defp shell_escape(value) do
-    "'" <> String.replace(to_string(value), "'", "'\\''") <> "'"
-  end
 
   defp parse_compose_ports(""), do: %{}
   defp parse_compose_ports(ports_str) do

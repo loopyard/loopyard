@@ -11,7 +11,8 @@ defmodule BoomLooperWeb.LaunchController do
         {:ok, project, workspace} ->
           # If workspace config exists, go straight to workspace view
           # Otherwise redirect to new agent (will auto-spawn Setup)
-          dest = case BoomLooper.Workspace.load(project.path) do
+          ws_id = BoomLooper.Workspace.workspace_id(workspace.path)
+          dest = case BoomLooper.Workspace.load_from_volume("code-#{ws_id}") do
             {:ok, _} -> "/projects/#{project.id}/workspaces/#{workspace.id}"
             _ -> "/projects/#{project.id}/workspaces/#{workspace.id}/new"
           end

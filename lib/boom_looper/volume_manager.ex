@@ -163,19 +163,17 @@ defmodule BoomLooper.VolumeManager do
   Write a file to a volume without a running container.
   """
   def write_file(volume_name, path, content) do
-    # Use sh -c with heredoc-style input
     dir = Path.dirname(path)
+    encoded = Base.encode64(content)
 
-    script = """
-    mkdir -p /workspace/#{dir}
-    cat > /workspace/#{path}
-    """
+    script = "mkdir -p /workspace/#{dir} && echo \"$FILE_CONTENT\" | base64 -d > /workspace/#{path}"
 
-    case docker_with_stdin([
-      "run", "--rm", "-i",
+    case docker([
+      "run", "--rm",
+      "-e", "FILE_CONTENT=#{encoded}",
       "-v", "#{volume_name}:/workspace",
       "alpine", "sh", "-c", script
-    ], content) do
+    ]) do
       {:ok, _} -> :ok
       {:error, reason} -> {:error, reason}
     end
@@ -296,25 +294,6 @@ defmodule BoomLooper.VolumeManager do
     end
   end
 
-  defp docker_with_stdin(args, input) do
-    docker_path = System.find_executable("docker")
-
-    unless docker_path do
-      {:error, "docker not found"}
-    else
-      port = Port.open(
-        {:spawn_executable, docker_path},
-        [:binary, :exit_status, :stderr_to_stdout, {:args, args}]
-      )
-
-      # Send input and close stdin
-      Port.command(port, input)
-      Port.command(port, "")
-
-      collect_port_output(port, "")
-    end
-  end
-
   defp stream_docker(args, callback) do
     docker_path = System.find_executable("docker")
 
@@ -327,23 +306,6 @@ defmodule BoomLooper.VolumeManager do
       )
 
       collect_streaming_output(port, callback, "", @clone_timeout)
-    end
-  end
-
-  defp collect_port_output(port, acc) do
-    receive do
-      {^port, {:data, data}} ->
-        collect_port_output(port, acc <> data)
-
-      {^port, {:exit_status, 0}} ->
-        {:ok, acc}
-
-      {^port, {:exit_status, _}} ->
-        {:error, acc}
-    after
-      30_000 ->
-        Port.close(port)
-        {:error, acc <> "\n(timed out)"}
     end
   end
 

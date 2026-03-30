@@ -21,8 +21,6 @@ defmodule BoomLooper.ChatAgent do
     :working_dir,
     :bind_mount,
     :workspace_id,
-    :volume_based,     # true for git URL workspaces
-    :volume_name,      # code volume name (volume-based only)
     :started_at,
     :started_by,
     :last_activity_at,
@@ -179,10 +177,6 @@ defmodule BoomLooper.ChatAgent do
       id: id,
       name: name,
       working_dir: working_dir,
-      bind_mount: Keyword.get(opts, :bind_mount),
-      workspace_id: Keyword.get(opts, :workspace_id),
-      volume_based: Keyword.get(opts, :volume_based, false),
-      volume_name: Keyword.get(opts, :volume_name),
       service_name: Keyword.get(opts, :service_name),
       started_at: DateTime.utc_now(),
       started_by: "browser",
@@ -237,7 +231,7 @@ defmodule BoomLooper.ChatAgent do
         [] -> summary
       end
     end)
-    |> Enum.sort_by(fn a -> a[:started_at] || ~U[1970-01-01 00:00:00Z] end, {:desc, DateTime})
+    |> Enum.sort_by(& &1[:started_at], {:desc, DateTime})
   end
 
   def ensure_ets_table do
@@ -282,23 +276,9 @@ defmodule BoomLooper.ChatAgent do
     case :ets.lookup(@ets_table, id) do
       [{^id, saved}] ->
         # Restore from saved state
-        bind_mount = saved[:bind_mount]
-        volume_based = saved[:volume_based] || false
-        volume_name = saved[:volume_name]
-        workspace_id = saved[:workspace_id]
-
-        # Load workspace config from appropriate source
-        workspace = cond do
-          volume_based && volume_name ->
-            case BoomLooper.Workspace.load_from_volume(volume_name) do
-              {:ok, ws} -> ws
-              _ -> nil
-            end
-          bind_mount ->
-            load_workspace_config(bind_mount)
-          true ->
-            nil
-        end
+        bind_mount = saved.bind_mount
+        workspace_id = saved.workspace_id
+        workspace = if workspace_id, do: load_workspace_config(workspace_id), else: nil
 
         tools = Keyword.get(opts, :tools, default_tools())
         backend = Keyword.get(opts, :backend, BoomLooper.Agent.Backend.ClaudeCode)
@@ -325,8 +305,6 @@ defmodule BoomLooper.ChatAgent do
           working_dir: saved.working_dir,
           bind_mount: bind_mount,
           workspace_id: workspace_id,
-          volume_based: volume_based,
-          volume_name: volume_name,
           started_at: saved.started_at,
           started_by: saved.started_by,
           last_activity_at: DateTime.utc_now(),
@@ -359,26 +337,11 @@ defmodule BoomLooper.ChatAgent do
     # Tool modules the agent has access to
     tools = Keyword.get(opts, :tools, default_tools())
     bind_mount = Keyword.get(opts, :bind_mount)
-    volume_based = Keyword.get(opts, :volume_based, false)
-    volume_name = Keyword.get(opts, :volume_name)
+
+    # workspace_id is passed explicitly — never derived from bind_mount
     workspace_id = Keyword.get(opts, :workspace_id)
-
-    # Load workspace config from appropriate source
-    workspace = cond do
-      volume_based && volume_name ->
-        case BoomLooper.Workspace.load_from_volume(volume_name) do
-          {:ok, ws} -> ws
-          _ -> nil
-        end
-      bind_mount ->
-        load_workspace_config(bind_mount)
-      true ->
-        nil
-    end
-
-    # Derive workspace_id if not provided
-    workspace_id = workspace_id || (if bind_mount, do: BoomLooper.Workspace.workspace_id(bind_mount), else: nil)
-
+    # Load workspace config from volume (code lives in Docker volumes, not on host)
+    workspace = if workspace_id, do: load_workspace_config(workspace_id), else: nil
     service_name = Keyword.get(opts, :service_name)
 
     system_prompt = build_system_prompt(id, bind_mount, workspace_id, workspace, service_name)
@@ -410,8 +373,6 @@ defmodule BoomLooper.ChatAgent do
       working_dir: working_dir,
       bind_mount: bind_mount,
       workspace_id: workspace_id,
-      volume_based: volume_based,
-      volume_name: volume_name,
       started_at: now,
       started_by: started_by,
       last_activity_at: now,
@@ -681,8 +642,9 @@ defmodule BoomLooper.ChatAgent do
 
   # --- Private ---
 
-  defp load_workspace_config(project_dir) do
-    case BoomLooper.Workspace.load(project_dir) do
+  defp load_workspace_config(workspace_id) when is_binary(workspace_id) do
+    volume_name = "code-#{workspace_id}"
+    case BoomLooper.Workspace.load_from_volume(volume_name) do
       {:ok, workspace} -> workspace
       _ -> nil
     end
@@ -741,8 +703,6 @@ defmodule BoomLooper.ChatAgent do
       working_dir: state.working_dir,
       bind_mount: state.bind_mount,
       workspace_id: state.workspace_id,
-      volume_based: state.volume_based,
-      volume_name: state.volume_name,
       started_at: state.started_at,
       started_by: state.started_by,
       last_activity_at: state.last_activity_at,
@@ -762,26 +722,16 @@ defmodule BoomLooper.ChatAgent do
 
   @log_version 1
 
-  # Get log path based on workspace type
-  defp log_path_for_state(state) do
-    cond do
-      state.volume_based && state.workspace_id ->
-        # Volume-based: store in ~/.boomlooper/workspaces/{workspace_id}/
-        Path.join([BoomLooper.Workspace.home_dir(), "workspaces", state.workspace_id, "agents.log"])
-      state.bind_mount ->
-        # Path-based: store in project directory
-        Path.join([state.bind_mount, ".boomlooper", "workspace", "agents.log"])
-      true ->
-        nil
-    end
+  defp log_path(nil), do: nil
+  defp log_path(workspace_id) do
+    virtual_dir = Path.join([BoomLooper.Workspace.home_dir(), "workspaces", workspace_id])
+    Path.join([virtual_dir, ".boomlooper", "workspace", "agents.log"])
   end
 
   defp persist_agent(state) do
-    case log_path_for_state(state) do
+    case log_path(state.workspace_id) do
       nil -> :ok
       path ->
-        # Ensure directory exists
-        File.mkdir_p!(Path.dirname(path))
         # Log the full summary so replay produces complete ETS entries
         agent_data = summary(state) |> Map.delete(:messages)
         AgentLog.append({:agent, state.id, agent_data}, log_path: path, version: @log_version)
@@ -789,20 +739,16 @@ defmodule BoomLooper.ChatAgent do
   end
 
   defp persist_message(state, msg) do
-    case log_path_for_state(state) do
+    case log_path(state.workspace_id) do
       nil -> :ok
-      path ->
-        File.mkdir_p!(Path.dirname(path))
-        AgentLog.append({:msg, state.id, msg}, log_path: path, version: @log_version)
+      path -> AgentLog.append({:msg, state.id, msg}, log_path: path, version: @log_version)
     end
   end
 
   defp persist_message_update(state, msg_id, changes) do
-    case log_path_for_state(state) do
+    case log_path(state.workspace_id) do
       nil -> :ok
-      path ->
-        File.mkdir_p!(Path.dirname(path))
-        AgentLog.append({:msg_update, state.id, msg_id, changes}, log_path: path, version: @log_version)
+      path -> AgentLog.append({:msg_update, state.id, msg_id, changes}, log_path: path, version: @log_version)
     end
   end
 
@@ -868,7 +814,7 @@ defmodule BoomLooper.ChatAgent do
     "\nService agent for #{service_name} (#{container}). #{detail}. Use `logs` to check output."
   end
 
-  defp container_base_prompt(agent_id, bind_mount, workspace_id) do
+  defp container_base_prompt(agent_id, _bind_mount, workspace_id) do
     container =
       if workspace_id do
         BoomLooper.Workspace.ServiceManager.service_container_name(workspace_id, "workspace")
@@ -876,12 +822,7 @@ defmodule BoomLooper.ChatAgent do
         "bl-unknown-workspace-1"
       end
 
-    workspace_note =
-      if bind_mount do
-        "/workspace is a bind mount of #{bind_mount} — edits appear on the host immediately"
-      else
-        "/workspace is a Docker volume that persists independently"
-      end
+    workspace_note = "/workspace is a Docker volume that persists across container restarts"
 
     """
     Workspace container: #{container}. YOUR AGENT ID: #{agent_id}. Pass agent_id to every tool call.

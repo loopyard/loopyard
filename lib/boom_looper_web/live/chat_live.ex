@@ -31,7 +31,6 @@ defmodule BoomLooperWeb.ChatLive do
 
       ChatAgent.subscribe()
       BoomLooper.Workspace.ServiceManager.subscribe()
-      Phoenix.PubSub.subscribe(BoomLooper.PubSub, "iex_session")
     end
 
     agents = list_workspace_agents(workspace.path)
@@ -70,8 +69,7 @@ defmodule BoomLooperWeb.ChatLive do
      |> assign(:all_service_logs, [])
      |> assign(:stream_buffer, StreamBuffer.new())
      |> assign(:building, false)
-     |> assign(:console_container, nil)
-     |> assign(:iex_session, BoomLooper.IExSession.current())}
+     |> assign(:console_container, nil)}
   end
 
   @impl true
@@ -99,16 +97,47 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   def handle_params(_params, _uri, %{assigns: %{live_action: :new}} = socket) do
-    # Check if there's a running agent to navigate to
-    running_agent = socket.assigns.agents
-      |> Enum.find(fn a -> a[:status] not in [:stopped, :crashed] end)
+    workspace = socket.assigns.workspace
 
-    if running_agent do
-      # Go to existing running agent
-      {:noreply, push_navigate(socket, to: "#{workspace_path(socket)}/agents/#{running_agent.id}")}
-    else
-      # Spawn a new agent
-      do_spawn_agent(socket)
+    # Auto-spawn Setup if no config and no agents running
+    # Check config from code volume
+    config_ws_id = BoomLooper.Workspace.workspace_id(workspace.path)
+    has_config = match?({:ok, _}, BoomLooper.Workspace.load_from_volume("code-#{config_ws_id}"))
+    has_agents = socket.assigns.agents != []
+
+    # Check if a setup agent already exists for this workspace
+    existing_setup = socket.assigns.agents
+      |> Enum.find(fn a -> a[:name] == "Setup" && a[:status] not in [:stopped, :crashed] end)
+
+    cond do
+      # Existing setup agent — go to it instead of spawning another
+      existing_setup ->
+        {:noreply, push_navigate(socket, to: "#{workspace_path(socket)}/agents/#{existing_setup.id}")}
+
+      # No config, no agents — auto-launch setup
+      !has_config && !has_agents ->
+        id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
+        name = "Setup"
+
+        ws_id = BoomLooper.Workspace.workspace_id(workspace.path)
+
+        agent_opts = [
+          id: id,
+          name: name,
+          working_dir: workspace.path,
+          started_by: "auto_setup",
+          bind_mount: workspace.path,
+          workspace_id: ws_id
+        ]
+
+        ChatAgent.register_booting(id, name, workspace.path)
+        Task.start(fn -> BoomLooper.AgentBoot.boot(id, agent_opts) end)
+
+        {:noreply, push_navigate(socket, to: "#{workspace_path(socket)}/agents/#{id}")}
+
+      # Config exists or agents exist — show the new agent picker
+      true ->
+        {:noreply, socket}
     end
   end
 
@@ -163,9 +192,9 @@ defmodule BoomLooperWeb.ChatLive do
 
   def handle_params(_params, _uri, %{assigns: %{live_action: :index}} = socket) do
     workspace = socket.assigns.workspace
-    # Check config at workspace path — .boomlooper/repo/ is tracked in git, available in worktrees
-    config_path = workspace.path
-    has_config = match?({:ok, %{dockerfile: d}} when d != nil, BoomLooper.Workspace.load(config_path))
+    # Check config from code volume
+    idx_ws_id = BoomLooper.Workspace.workspace_id(workspace.path)
+    has_config = match?({:ok, %{dockerfile: d}} when d != nil, BoomLooper.Workspace.load_from_volume("code-#{idx_ws_id}"))
 
     cond do
       # No config at all → needs setup
@@ -174,7 +203,7 @@ defmodule BoomLooperWeb.ChatLive do
 
       # Config exists but no agents → auto-spawn a default agent
       has_config && socket.assigns.agents == [] ->
-        do_spawn_agent(socket)
+        do_spawn_agent(socket, nil)
 
       # One agent and none selected → auto-select it
       length(socket.assigns.agents) == 1 && is_nil(socket.assigns.selected_id) ->
@@ -454,11 +483,8 @@ defmodule BoomLooperWeb.ChatLive do
      |> push_event("scroll_bottom", %{})}
   end
 
-  @impl true
-  def handle_info({:iex_session, state}, socket) do
-    {:noreply, assign(socket, :iex_session, state)}
-  end
 
+  @impl true
   def handle_info({:services_updated, path, statuses}, socket) do
     if path == socket.assigns.workspace.path do
       # Workspace container is infrastructure — never show in sidebar
@@ -512,15 +538,14 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   defp do_spawn_agent(socket, opts \\ []) do
-    opts = opts || []
     workspace = socket.assigns.workspace
     working_dir = workspace.path
+    ws_id = BoomLooper.Workspace.workspace_id(working_dir)
     id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
     service_name = Keyword.get(opts, :service_name)
 
-    config_path = working_dir
     ws_config =
-      case BoomLooper.Workspace.load(config_path) do
+      case BoomLooper.Workspace.load_from_volume("code-#{ws_id}") do
         {:ok, ws} -> ws
         _ -> nil
       end
@@ -537,14 +562,15 @@ defmodule BoomLooperWeb.ChatLive do
       name: name,
       working_dir: working_dir,
       started_by: "browser",
-      bind_mount: working_dir
+      bind_mount: working_dir,
+      workspace_id: ws_id
     ]
 
     agent_opts = if service_name, do: agent_opts ++ [service_name: service_name], else: agent_opts
     boot_opts = if service_name, do: [service_name: service_name], else: []
 
     ChatAgent.register_booting(id, name, working_dir, boot_opts)
-    Task.start(fn -> BoomLooper.AgentBoot.boot(id, agent_opts, boot_opts) end)
+    Task.start(fn -> BoomLooper.AgentBoot.boot(id, agent_opts, service_name: service_name) end)
 
     {:noreply, push_navigate(socket, to: "#{workspace_path(socket)}/agents/#{id}")}
   end
@@ -628,7 +654,6 @@ defmodule BoomLooperWeb.ChatLive do
       agent ->
         ChatAgent.subscribe(id)
         agents = list_workspace_agents(socket.assigns.workspace.path)
-
         # Restore stream buffer from any existing :build message so streaming continues seamlessly
         existing_build = Enum.find(agent.messages, &(&1.role == :build))
         stream_buffer = StreamBuffer.restore(existing_build)
@@ -804,7 +829,7 @@ defmodule BoomLooperWeb.ChatLive do
   def render(assigns) do
     ~H"""
     <div id="chat-page" phx-hook="ScrollBottom" class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
-      <.header workspace={@workspace} project={@project} workspace_entry={@workspace_entry} agent_count={length(@agents)} live_action={@live_action} base_path={@base_path} iex_session={@iex_session} />
+      <.header workspace={@workspace} project={@project} workspace_entry={@workspace_entry} agent_count={length(@agents)} live_action={@live_action} base_path={@base_path} />
       <p :if={@flash["error"]} class="mx-4 mt-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300">
         {@flash["error"]}
       </p>
@@ -816,8 +841,9 @@ defmodule BoomLooperWeb.ChatLive do
           service_statuses={@service_statuses} selected_service={@selected_service}
           live_action={@live_action}
         />
-        <%!-- Main content: hidden on mobile when sidebar is showing (index with no selection) --%>
-        <main class={"flex-1 flex flex-col min-w-0 #{if @live_action == :index && !@selected_id && !@selected_service, do: "hidden md:flex", else: "flex"}"}>
+        <%!-- Main content: hidden on mobile when sidebar is showing (index/new with no selection) --%>
+        <main class={"flex-1 flex flex-col min-w-0 #{if @live_action in [:index, :new] && !@selected_id && !@selected_service, do: "hidden md:flex", else: "flex"}"}>
+          <.new_agent_screen :if={@live_action == :new} workspace={@workspace} base_path={@base_path} />
           <.service_log_view :if={@live_action == :service} service_name={@selected_service} service_statuses={@service_statuses} logs={@service_logs} base_path={@base_path} />
           <.console_view :if={@live_action == :console} service_name={@selected_service} container={@console_container} />
           <.all_services_view :if={@live_action == :services} all_service_logs={@all_service_logs} />
@@ -828,40 +854,6 @@ defmodule BoomLooperWeb.ChatLive do
       </div>
     </div>
     """
-  end
-
-  defp iex_indicator(assigns) do
-    {dot_color, bg_color} = case assigns.session.level do
-      :green -> {"bg-green-400", "bg-green-500/20 text-green-600 dark:text-green-400"}
-      :yellow -> {"bg-yellow-400 animate-pulse", "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400"}
-      :red -> {"bg-red-500 animate-pulse", "bg-red-500/20 text-red-600 dark:text-red-400"}
-      _ -> {"bg-zinc-400", "bg-zinc-500/20 text-zinc-600 dark:text-zinc-400"}
-    end
-
-    assigns = assigns
-      |> assign(:dot_color, dot_color)
-      |> assign(:bg_color, bg_color)
-      |> assign(:time_ago, relative_time(assigns.session.at))
-
-    ~H"""
-    <div class={"hidden md:flex items-center gap-2 px-3 py-1 rounded-full text-xs #{@bg_color}"}>
-      <span class={"w-2 h-2 rounded-full flex-none #{@dot_color}"}></span>
-      <span class="font-medium">IEx</span>
-      <span class="opacity-75">{@session.label}</span>
-      <span class="opacity-50">{@time_ago}</span>
-    </div>
-    """
-  end
-
-  defp relative_time(nil), do: ""
-  defp relative_time(datetime) do
-    diff = DateTime.diff(DateTime.utc_now(), datetime, :second)
-    cond do
-      diff < 5 -> "now"
-      diff < 60 -> "#{diff}s"
-      diff < 3600 -> "#{div(diff, 60)}m"
-      true -> "#{div(diff, 3600)}h"
-    end
   end
 
   defp header(assigns) do
@@ -883,9 +875,8 @@ defmodule BoomLooperWeb.ChatLive do
         <span :if={!@project} class="text-sm font-medium truncate">{@workspace.name}</span>
         <span :if={@workspace_entry && !@workspace_entry.is_main} class="text-zinc-300 dark:text-zinc-600 hidden sm:block">/</span>
         <span :if={@workspace_entry && !@workspace_entry.is_main} class="text-sm text-zinc-500 dark:text-zinc-400 hidden sm:block truncate">{@workspace_entry.name}</span>
-        <span :if={@agent_count > 1} class="text-sm text-zinc-400 dark:text-zinc-500 hidden sm:block flex-none">{@agent_count} agents</span>
+        <span class="text-sm text-zinc-400 dark:text-zinc-500 hidden sm:block flex-none">{@agent_count} agent{if @agent_count != 1, do: "s"}</span>
       </div>
-      <.iex_indicator :if={@iex_session.level} session={@iex_session} />
       <div class="flex items-center gap-4 flex-none hidden md:flex">
         <.link navigate="/connect" class="text-xs text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">Remote</.link>
         <.link navigate="/system" class="text-xs text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">System</.link>
@@ -900,18 +891,7 @@ defmodule BoomLooperWeb.ChatLive do
     else
       "/projects/#{assigns.workspace_id}/workspaces/#{assigns.workspace_id}"
     end
-
-    # For 1-agent-per-workspace model:
-    # - Hide "New Agent" button when there's already a running agent
-    # - Show agents section only when there are multiple agents or the single agent needs attention
-    has_running_agent = Enum.any?(assigns.agents, fn a -> a.status in [:idle, :thinking, :booting] end)
-    show_new_agent_button = !has_running_agent
-    show_agents_section = length(assigns.agents) > 1 || Enum.any?(assigns.agents, fn a -> a.status in [:stopped, :crashed] end)
-
-    assigns = assigns
-      |> assign(:base_path, base_path)
-      |> assign(:show_new_agent_button, show_new_agent_button)
-      |> assign(:show_agents_section, show_agents_section)
+    assigns = assign(assigns, :base_path, base_path)
 
     ~H"""
     <%!-- On mobile: full-width when visible (index/new), hidden when agent/service selected.
@@ -923,8 +903,7 @@ defmodule BoomLooperWeb.ChatLive do
         do: "hidden md:flex",
         else: "flex")
     ]}>
-      <%!-- Only show New Agent button when no running agent exists --%>
-      <div :if={@show_new_agent_button} class="flex-none p-3 border-b border-zinc-200 dark:border-zinc-700/80">
+      <div class="flex-none p-3 border-b border-zinc-200 dark:border-zinc-700/80">
         <.link
           navigate={"#{@base_path}/new"}
           class="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 px-3.5 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-400
@@ -937,8 +916,7 @@ defmodule BoomLooperWeb.ChatLive do
         </.link>
       </div>
       <div class="flex-1 overflow-y-auto">
-        <%!-- Show agents section only when there are multiple agents or stopped/crashed ones --%>
-        <div :if={@show_agents_section && @agents != []} class="px-3 pt-3 pb-1">
+        <div :if={@agents != []} class="px-3 pt-3 pb-1">
           <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-semibold mb-1.5">Agents</div>
           <div class="space-y-0.5">
             <.agent_list_item :for={agent <- @agents} agent={agent} selected={@selected_id == agent.id} />
@@ -957,6 +935,31 @@ defmodule BoomLooperWeb.ChatLive do
         </div>
       </div>
     </aside>
+    """
+  end
+
+  # --- New Agent Screen ---
+
+  defp new_agent_screen(assigns) do
+    ~H"""
+    <div class="flex-1 overflow-y-auto p-6 md:p-8">
+      <div class="max-w-2xl mx-auto">
+        <h2 class="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mb-1">New Agent</h2>
+        <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-6">Launch a new agent to work on this project.</p>
+
+        <form phx-submit="spawn_agent">
+          <button type="submit"
+            class="rounded-xl bg-zinc-900 dark:bg-zinc-100 px-6 py-3 text-sm font-medium text-white dark:text-zinc-900
+                   hover:bg-zinc-700 dark:hover:bg-zinc-300 transition-colors">
+            Launch Agent
+          </button>
+        </form>
+
+        <div class="mt-6">
+          <.link navigate={@base_path} class="text-sm text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors">Cancel</.link>
+        </div>
+      </div>
+    </div>
     """
   end
 

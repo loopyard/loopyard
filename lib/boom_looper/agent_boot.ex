@@ -22,9 +22,10 @@ defmodule BoomLooper.AgentBoot do
     initial_message = Keyword.get(opts, :initial_message)
     workspace_id = Workspace.workspace_id(working_dir)
 
-    # Load workspace config (nil if no config yet — Setup agent will create it)
+    # Load workspace config from volume (nil if no config yet — Setup agent will create it)
+    volume_name = "code-#{workspace_id}"
     ws_config =
-      case Workspace.load(working_dir) do
+      case Workspace.load_from_volume(volume_name) do
         {:ok, ws} -> ws
         _ -> nil
       end

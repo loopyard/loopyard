@@ -54,6 +54,22 @@ BoomLooper.ProjectRegistry.list_projects()
 BoomLooper.ChatAgent.stop_agent("agent_id")
 ```
 
+## RPC from Claude Code
+
+You can recompile and interact with the running node via RPC without restarting:
+
+```bash
+HOME=/tmp MIX_HOME="$PWD/.mix_home" HEX_HOME="$PWD/.hex_home" \
+  elixir --sname d1 --cookie "$(cat "$BOOMLOOPER_HOME/cookie")" -e '
+  :rpc.call(:"boom@macbook", IEx.Helpers, :recompile, []) |> IO.inspect()
+'
+```
+
+- `BOOMLOOPER_HOME` is set in `.env` and loaded by direnv. The cookie is at `$BOOMLOOPER_HOME/cookie`.
+- `HOME=/tmp` is required because `~/.erlang.cookie` may have permission issues.
+- `--sname` must be unique per invocation (use d1, d2, d3...).
+- Use `IEx.Helpers.recompile()` via RPC to pick up code changes without restarting the server.
+
 ## Code rules
 
 These rules exist because we learned them the hard way. Each one prevented a real bug. If you break one, you will ship a bug that wastes hours to debug.

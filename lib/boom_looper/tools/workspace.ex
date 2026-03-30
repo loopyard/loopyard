@@ -127,15 +127,17 @@ defmodule BoomLooper.Tools.Workspace do
 
   @doc false
   def do_update_config(agent_id, update_fn, success_msg) do
-    with_bind_mount(agent_id, fn project_dir ->
-      ws = case Workspace.load(project_dir) do
+    with_workspace_id(agent_id, fn workspace_id ->
+      volume_name = "code-#{workspace_id}"
+
+      ws = case Workspace.load_from_volume(volume_name) do
         {:ok, existing} -> existing
         _ -> %Workspace{}
       end
 
       updated = update_fn.(ws)
 
-      case Workspace.save(project_dir, updated) do
+      case Workspace.save_to_volume(volume_name, updated) do
         :ok -> {:ok, success_msg}
         {:error, reason} -> {:error, "Failed to save config: #{inspect(reason)}"}
       end
@@ -144,7 +146,10 @@ defmodule BoomLooper.Tools.Workspace do
 
   def do_rebuild(agent_id) do
     with_bind_mount(agent_id, fn project_dir ->
-      case Workspace.load(project_dir) do
+      workspace_id = find_workspace_id(agent_id)
+      volume_name = if workspace_id, do: "code-#{workspace_id}"
+
+      case (if volume_name, do: Workspace.load_from_volume(volume_name), else: Workspace.load(project_dir)) do
         {:ok, ws} when ws.dockerfile != nil ->
           # Create a streaming build message in chat
           stream_msg = %{role: :build, title: "Rebuild", content: "", timestamp: DateTime.utc_now()}
@@ -249,11 +254,25 @@ defmodule BoomLooper.Tools.Workspace do
     end
   end
 
+  defp with_workspace_id(agent_id, callback) do
+    case find_workspace_id(agent_id) do
+      nil -> {:error, "Agent #{agent_id} has no workspace"}
+      workspace_id -> callback.(workspace_id)
+    end
+  end
+
   defp find_bind_mount(agent_id) do
     case BoomLooper.ChatAgent.get_state(agent_id) do
       %{bind_mount: dir} when is_binary(dir) -> {:ok, dir}
       %{working_dir: dir} when is_binary(dir) -> {:ok, dir}
       _ -> :error
+    end
+  end
+
+  defp find_workspace_id(agent_id) do
+    case BoomLooper.ChatAgent.get_state(agent_id) do
+      %{workspace_id: ws_id} when is_binary(ws_id) -> ws_id
+      _ -> nil
     end
   end
 
