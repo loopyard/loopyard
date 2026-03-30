@@ -93,11 +93,16 @@ defmodule BoomLooper.Workspace.ServiceManager do
     # Rebuild and start dev containers only
     # docker compose up --build <service> rebuilds just that service
     case Workspace.load_from_volume(volume_name) do
-      {:ok, ws} when ws.processes != [] ->
-        process_names = Enum.map(ws.processes, & &1.name)
-        result = Compose.up_services_stream(project_dir, workspace_id, process_names, callback)
+      {:ok, ws} ->
+        result = if ws.processes != [] do
+          process_names = Enum.map(ws.processes, & &1.name)
+          Compose.up_services_stream(project_dir, workspace_id, process_names, callback)
+        else
+          {:ok, "No dev processes configured"}
+        end
 
-        # Reconnect state
+        # Always reconnect state so services/processes are reflected in the UI,
+        # even when only dev containers were rebuilt
         case Registry.lookup(BoomLooper.ServiceManagerRegistry, project_dir) do
           [{pid, _}] -> GenServer.call(pid, {:reconnect, ws}, 30_000)
           [] -> :ok

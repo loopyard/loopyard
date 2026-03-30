@@ -168,8 +168,20 @@ defmodule BoomLooper.Tools.Workspace do
                 {:stream_output, agent_id, chunk, "Rebuild", msg_id})
             end
 
-            # Only rebuild dev containers, keep workspace container running
-            case ServiceManager.restart_dev_streaming(project_dir, callback) do
+            # Check if the workspace container is already running.
+            # First rebuild after setup: nothing is running, so start everything.
+            # Subsequent rebuilds: only rebuild dev containers, keep workspace running.
+            ws_id = Workspace.workspace_id(project_dir)
+            ws_container = ServiceManager.service_container_name(ws_id, "workspace")
+            workspace_running = BoomLooper.Docker.container_running?(ws_container)
+
+            rebuild_result = if workspace_running do
+              ServiceManager.restart_dev_streaming(project_dir, callback)
+            else
+              ServiceManager.restart_workspace_streaming(project_dir, callback)
+            end
+
+            case rebuild_result do
               {:ok, _output} ->
                 BoomLooper.ChatAgent.update_message(agent_id, msg_id, fn msg ->
                   %{msg | role: :build_done}
