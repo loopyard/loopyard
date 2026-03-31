@@ -1,70 +1,61 @@
-# Setup Agent Guide
+# Docker Compose Setup Guide
 
-## Step 1: Identify the stack
+You are configuring a Docker Compose cluster using MCP tools. The cluster runs a development environment for a code project.
 
-Read the project files first. Then read the matching stack guide from `/workspace/.boomlooper/` or use `exec` to `cat` the guide from the BoomLooper priv directory:
+## Architecture
 
-- Gemfile → Rails → read `priv/prompts/stacks/rails.md` via `Read` tool at the BoomLooper project root
-- package.json with "next" → Next.js → read `priv/prompts/stacks/nextjs.md`
-- mix.exs → Phoenix → read `priv/prompts/stacks/phoenix.md`
-- requirements.txt / pyproject.toml → Python → read `priv/prompts/stacks/python.md`
-- No match → read `priv/prompts/stacks/generic.md`
+Your MCP tools write to a workspace config file. When you call `rebuild`, a `docker-compose.yml` is generated from that config and `docker compose up --build` runs.
 
-The stack guide has framework-specific Dockerfile patterns, database setup, gotchas.
+The cluster has 3 types of containers:
 
-## Platform & architecture
+- **workspace** — always running (`sleep infinity`). You `exec` commands here (install deps, run migrations, etc.)
+- **dev** — runs the dev server command you set. Built from the same Dockerfile as workspace.
+- **stock services** — postgres, redis, etc. Official images, no custom build.
 
-The host is macOS (likely Apple Silicon / ARM64). Containers run Linux ARM64.
-- Use official multi-arch Docker images.
-- Prefer `apt-get install` over building from source.
-- Never download x86_64 binaries.
+All containers share a code volume mounted at `/workspace`.
 
-**Use these cached base images:** `ruby:3.4.8-slim`, `node:22-slim`, `python:3.12-slim`. Other versions may hang on pull.
+## Your tools
 
-**Service images must have ARM64 support.** If "no matching manifest for linux/arm64" appears, find an alternative image.
+| Tool | What it does |
+|------|-------------|
+| `set_dockerfile` | Set the Dockerfile content (dev image — system deps + language runtime) |
+| `set_dev_command` | Set the dev server command AND its port |
+| `add_service` | Add a stock service (postgres, redis, etc.) |
+| `set_env_vars` | Set environment variables for workspace + dev containers |
+| `set_workspace_name` | Name the project |
+| `rebuild` | Generate compose file, build images, start all containers |
+| `exec` | Run a command in the workspace container |
+| `service_status` | Check which containers are running and healthy |
+| `logs` | Read container logs |
+| `ports` | Get mapped port numbers |
 
-## The Dockerfile is a DEV image
+## Setup sequence
 
-The project code lives in a Docker volume mounted at /workspace. Only copy dependency manifests in the Dockerfile — NOT the full source.
+1. **Examine the project** — read key files (Gemfile, package.json, mix.exs, Dockerfile, Procfile.dev, README) to understand the stack
+2. **Read the stack guide** — match to one of: `priv/prompts/stacks/rails.md`, `nextjs.md`, `phoenix.md`, `python.md`, `generic.md`. Read it for framework-specific patterns.
+3. **Name the project** via `set_workspace_name`
+4. **Write the Dockerfile** via `set_dockerfile` — a dev image that installs system deps and language runtime. Do NOT `COPY . .` — code is already at `/workspace` via volume mount.
+5. **Set the dev command** via `set_dev_command` — the command that starts the dev server, AND its port
+6. **Add services** via `add_service` — databases, caches the project needs
+7. **Set env vars** via `set_env_vars` — database URLs, binding address, framework config
+8. **Rebuild** via `rebuild` — this builds the image and starts everything
+9. **Install deps** via `exec` — `bundle install`, `npm install`, etc. inside the workspace container
+10. **Run migrations** via `exec` — `bin/rails db:create db:migrate`, `npx prisma migrate dev`, etc.
+11. **Check status** via `service_status` — verify containers are running and healthy
+12. **Verify** via `ports` + `exec curl` — confirm the dev server responds on its port
 
-Pattern:
-1. `FROM <language>:<version>-slim`
-2. `RUN apt-get update && apt-get install -y <system packages>`
-3. Copy dependency lockfiles, install deps
-4. `WORKDIR /workspace`
+## Critical rules
 
-**Do NOT `COPY . .`** — the volume mount overlays it.
+**Bind to 0.0.0.0** — Dev servers MUST bind to `0.0.0.0`, not localhost. Docker port mapping can't reach localhost inside a container. Set `BINDING=0.0.0.0` env var or add `-b 0.0.0.0` / `-H 0.0.0.0` / `--host 0.0.0.0` to the dev command.
 
-## Library path clobbering
+**Declare ports** — Every HTTP process must have its port declared in `set_dev_command`. Only specify the container port (e.g. `"3000"`). Docker picks the host port automatically.
 
-Host macOS binaries copied into the volume crash on Linux. Redirect platform-specific artifacts outside /workspace via ENV vars in the Dockerfile. Read the stack guide for specifics (e.g. `BUNDLE_PATH`, `node_modules` rebuild).
+**Don't COPY code** — The Dockerfile should NOT copy project files. Code lives in a volume at `/workspace`. The Dockerfile just sets up the environment (apt packages, language runtime, build tools).
 
-## Ports & binding
+**Platform: Linux ARM64** — Containers run on Apple Silicon. Use multi-arch images. Prefer `-slim` variants. If an image has no ARM64 build, find an alternative.
 
-Every HTTP process MUST have ports set via `set_dev_command`. Only specify the container port — Docker picks the host port. Never use `"3001:3000"` format.
+**One rebuild, then exec** — Rebuild creates the containers. After that, install deps and run migrations via `exec`. Don't rebuild just to install packages — that restarts everything.
 
-**The dev server MUST bind to `0.0.0.0`**, not `localhost` or `127.0.0.1`. If it binds to localhost, Docker port mapping can't reach it from outside the container. This is the #1 reason "the server is running but I can't reach it."
+**Check status once** — After rebuild, call `service_status` once. Don't poll in a loop. If something crashed, read `logs` and fix the config.
 
-Common fixes:
-- **Rails:** `bin/rails server -b 0.0.0.0` (add `-b 0.0.0.0` to the server command in Procfile.dev or set `BINDING=0.0.0.0`)
-- **Next.js / Node:** `next dev -H 0.0.0.0` or `HOST=0.0.0.0`
-- **Phoenix:** Already binds to `0.0.0.0` in dev by default (via `config/dev.exs`)
-- **Python (Django/Flask/uvicorn):** `--host 0.0.0.0`
-- **Vite:** `--host 0.0.0.0`
-
-Set this via env var (`BINDING=0.0.0.0`) or in the dev command itself. Check Procfile.dev — if the server command doesn't include a bind flag, add one.
-
-## Rebuilds
-
-`rebuild` streams build output. After it finishes, call `service_status` ONCE. Never poll in a loop. Never use `sleep`. If containers don't appear, read the build output and fix the Dockerfile.
-
-## Verification
-
-Do NOT check off verification items until they actually pass:
-- "Services healthy" = `service_status` shows `running: true` and `health: healthy`
-- "Dev server responds" = confirmed port is listening via `ports` tool
-- If dev crashed, check logs, fix, rebuild. Not done until serving requests.
-
-## When things go wrong
-
-Read the error. Fix the Dockerfile or config. Rebuild. If database schema is broken, drop and recreate — don't debug stale schemas.
+**Database URLs use service names** — In Docker Compose, services reach each other by name. Postgres URL: `postgres://postgres@postgres:5432/myapp_dev`. Redis: `redis://redis:6379/0`.

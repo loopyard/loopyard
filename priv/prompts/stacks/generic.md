@@ -1,30 +1,31 @@
-# Generic Stack Guide
+# Generic Stack
 
-No specific framework detected. Use these general principles.
+No specific framework detected. General approach:
 
-## Dockerfile pattern
+## Dockerfile
 
-1. Pick a base image that matches the project's language
-2. Install system deps via `apt-get`
-3. Copy dependency lockfiles and install
-4. `WORKDIR /workspace`
+1. Pick a base image matching the project's language (`-slim` variant preferred)
+2. `RUN apt-get update && apt-get install -y` system deps
+3. `WORKDIR /workspace`
+4. Do NOT `COPY . .` — code is in a volume
 
 ## Dev command
 
 Look for:
 - `Procfile.dev` or `Procfile` → use `foreman start` (install foreman in Dockerfile)
 - `package.json` scripts → `npm run dev` or `npm start`
-- `Makefile` → check for a `dev` or `serve` target
-- README → usually documents how to start the dev server
+- `Makefile` → check for `dev` or `serve` target
+- README → usually documents how to start
+
+**Must bind `0.0.0.0`** — add `--host 0.0.0.0` or equivalent flag.
 
 ## After rebuild
 
-1. Install dependencies (`npm install`, `pip install`, `bundle install`, etc.)
+1. Install dependencies inside the workspace container via `exec`
 2. Set up database if needed (create, migrate)
-3. Build assets if needed
+3. Rebuild native extensions if coming from macOS: `npm rebuild`, etc.
 
-## Common gotchas
+## Gotchas
 
-- Host native binaries don't work in the container — reinstall deps after rebuild
-- File watchers need polling mode in bind mounts
-- Database URLs in .env files point to localhost — override with docker service names via `set_env_vars`
+- macOS native binaries from the volume won't work — reinstall deps after rebuild
+- Database URLs in `.env` files point to `localhost` — override with Docker service names via `set_env_vars`

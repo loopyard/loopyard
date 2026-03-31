@@ -1,38 +1,32 @@
-# Phoenix Stack Guide
+# Phoenix / Elixir
 
-## Base image
-
-Use `elixir:1.18`. Check `mix.exs` for the elixir version requirement.
-
-## Dockerfile pattern
+## Dockerfile
 
 ```dockerfile
 FROM elixir:1.18
-
 RUN apt-get update && apt-get install -y \
     build-essential git curl inotify-tools \
     && rm -rf /var/lib/apt/lists/*
-
-ENV MIX_HOME=/workspace/.mix_home
-ENV HEX_HOME=/workspace/.hex_home
-
+ENV MIX_HOME=/workspace/.mix_home HEX_HOME=/workspace/.hex_home
 WORKDIR /workspace
 ```
 
-Check `mix.exs` for extras:
-- Ecto with postgres → add `libpq-dev` (for compiling postgrex)
-- Node.js assets → add `nodejs npm`
+Check `mix.exs` for Elixir version. Add `nodejs npm` if project has JS assets. Add `libpq-dev` if using Ecto with postgres.
 
 ## Dev command
 
-Usually `mix phx.server` or a custom `mix` task. Default port is 4000.
-
-`set_dev_command` with `command: "mix phx.server"`, `ports: ["4000"]`.
+`mix phx.server` on port `4000`. Phoenix binds `0.0.0.0` by default in dev.
 
 ## Services
 
-- **PostgreSQL:** `postgres:16` with `POSTGRES_HOST_AUTH_METHOD=trust`
-- **Env vars:** `DATABASE_URL=postgres://postgres@postgres:5432/<app>_dev`, `MIX_ENV=dev`, `PHX_HOST=localhost`
+- **postgres:** `postgres:16` with `POSTGRES_HOST_AUTH_METHOD=trust` (if mix.exs has `:postgrex`)
+
+## Env vars
+
+```
+DATABASE_URL=postgres://postgres@postgres:5432/<app>_dev
+MIX_ENV=dev
+```
 
 ## After rebuild
 
@@ -44,8 +38,8 @@ exec: mix ecto.migrate
 exec: mix assets.setup    # if assets pipeline exists
 ```
 
-## Common gotchas
+## Gotchas
 
-- **Tailwind polling:** Set `TAILWINDCSS_POLL=true` env var.
-- **Mix/Hex homes:** Set `MIX_HOME` and `HEX_HOME` to paths inside `/workspace` so they persist across rebuilds.
-- **inotify-tools:** Install in Dockerfile for live reload (even though polling is needed for bind mounts, Phoenix still uses inotify for some things).
+- Set `MIX_HOME` and `HEX_HOME` inside `/workspace` so they persist across rebuilds
+- If compilation fails with stale artifacts: `rm -rf _build deps && mix deps.get`
+- `inotify-tools` needed for Phoenix live reload
