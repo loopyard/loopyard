@@ -555,7 +555,12 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
   defp ensure_status_table do
     case :ets.whereis(@status_table) do
-      :undefined -> :ets.new(@status_table, [:set, :public, :named_table, read_concurrency: true])
+      :undefined ->
+        try do
+          :ets.new(@status_table, [:set, :public, :named_table, read_concurrency: true])
+        catch
+          :error, :badarg -> @status_table
+        end
       _ -> @status_table
     end
   end
