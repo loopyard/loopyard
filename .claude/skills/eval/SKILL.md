@@ -10,94 +10,50 @@ Run an automated eval that launches a project in BoomLooper, monitors the setup 
 
 ## Prerequisites
 
-- BoomLooper must be running (start with `mix phx.server` or `overmind start -f Procfile.dev -D`)
-- You must be in the **BoomLooper repo root**
-
-## The `bin/op` Tool
-
-All operator commands go through `bin/op`. This handles RPC, cookies, and node connections automatically.
-
-```bash
-bin/op connect Claude     # Connect as operator (green indicator in UI)
-bin/op working "message"  # Set working status (yellow indicator)
-bin/op danger "message"   # Set danger status (red indicator)
-bin/op disconnect         # Disconnect (indicator disappears)
-bin/op status             # Show current status
-bin/op eval <path>        # Run eval on project
-bin/op eval <path> --wipe # Run eval, wiping existing project first
-bin/op projects           # List projects
-bin/op agents             # List agents
-```
+- BoomLooper must be running (`mix boom.server`)
+- You must be in the BoomLooper repo root
 
 ## Running an Eval
 
-### Quick Start
+Jack into the running server and call EvalRunner directly:
 
 ```bash
-bin/op connect Claude
-bin/op eval ~/Projects/some-project --wipe
-bin/op disconnect
+# Fresh eval (wipes existing project + containers)
+mix boom.rpc 'BoomLooper.EvalRunner.run("/Users/you/Projects/some-app", clean: true, timeout: 900_000)'
+
+# Keep existing state
+mix boom.rpc 'BoomLooper.EvalRunner.run("/Users/you/Projects/some-app", timeout: 900_000)'
 ```
 
-The eval:
-1. Registers the project in BoomLooper
-2. Spawns a setup agent
-3. Monitors until services are healthy (or timeout)
-4. Auto-nudges when the agent goes idle
-5. Records results to `evals/<project_name>/runs/<timestamp>.md`
+## Monitoring
 
-### Options
+While the eval runs, jack in and check on things:
 
-- `--wipe` — Remove existing project + containers first (fresh start). Use for repeatable evals.
-- Default timeout is 15 minutes. Large projects with slow Docker builds may take longer.
+```bash
+mix boom.rpc 'BoomLooper.ChatAgent.list_agents()'
+mix boom.rpc 'BoomLooper.Workspace.ServiceManager.service_status("/Users/you/Projects/some-app")'
+mix boom.rpc 'BoomLooper.Docker.docker(["ps", "--format", "table {{.Names}}\t{{.Status}}"])'
+mix boom.rpc 'BoomLooper.ChatAgent.stop_agent("agent_id")'
+```
+
+Any Elixir expression works. The UI shows a yellow indicator while you're jacked in.
 
 ## What Success Looks Like
 
 - **Outcome: completed** — services healthy, HTTP responds
-- **Low nudge count** (0-2, not 5)
+- **Low nudge count** (0-2)
 - **Low tool calls** (under 100)
-- **Services healthy** — workspace, dev, postgres, redis all running
+- **Services visible in sidebar** — workspace, dev, postgres, etc.
 
-## Common Failure Modes
+## Results
 
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| `stalled` after 5 nudges | Agent confused or services won't start | Check container logs, fix prompt |
-| No COPY + bundle install in Dockerfile | Agent didn't follow recipe | Emphasize in `setup_guide.md` |
-| App binds to localhost | Can't access from outside container | Add `--binding 0.0.0.0` to Procfile.dev |
-| 50+ service_status calls | Agent polling in a loop | Check container logs for actual error |
+Each eval writes to `evals/<project_name>/runs/<timestamp>.md` with outcome, duration, tool calls, errors, and service status.
 
-## Where Results Live
+## Iterating
 
-```
-evals/
-├── <project_name>/
-│   └── runs/
-│       └── <timestamp>.md      # one file per eval run
-```
-
-Each run file contains:
-- Outcome (completed/stalled/timeout/failed), duration, message count, tool calls
-- Nudge count
-- Service status at completion
-- Tool usage breakdown
-- Error messages if any
-
-## How to Iterate
-
-1. **Run a trial** — `bin/op eval /path --wipe`
-2. **Observe** — Read the run file in `evals/<name>/runs/`
-3. **Diagnose** — What went wrong? Prompt issue or code issue?
-4. **Fix ONE thing** — Edit `priv/prompts/setup_guide.md` or fix BoomLooper code
-5. **Restart** — `mix compile && overmind restart web` (or restart your server)
-6. **Run again** — Compare to previous run
-
-## After Each Experiment
-
-Prompt changes require recompilation:
-
-```bash
-mix compile --force && overmind restart web
-```
-
-Or if running directly: restart the `mix phx.server` process.
+1. Run eval
+2. Read results in `evals/<name>/runs/`
+3. Diagnose — jack in with `mix boom.rpc` to inspect live state
+4. Fix prompt or code
+5. Hot-reload: `mix boom.rpc 'IEx.Helpers.recompile()'`
+6. Run again, compare

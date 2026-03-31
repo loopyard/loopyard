@@ -35,43 +35,18 @@ mix phx.server
 
 Launch from any project directory: `open "http://localhost:4000/launch/SECRET?path=$(pwd)"`
 
-## Development console
+## Remote access
 
-Start with `overmind start` (uses Procfile.dev) to get IEx console access:
-
-```bash
-# Attach to running console
-overmind connect web
-
-# Or connect remotely
-iex --sname claude --remsh boom@$(hostname -s)
-```
-
-From IEx you have full access to inspect/control the system:
-```elixir
-BoomLooper.ChatAgent.list_agents()
-BoomLooper.ProjectRegistry.list_projects()
-BoomLooper.ChatAgent.stop_agent("agent_id")
-```
-
-## Operator CLI (`bin/op`)
-
-`bin/op` connects to the running BoomLooper node via RPC. It shows a traffic light indicator in the web UI so users know an operator is connected.
+When BoomLooper is running (`mix boom.server`), you can jack into it and run any Elixir:
 
 ```bash
-bin/op connect Claude     # Green indicator — just watching
-bin/op working "message"  # Yellow indicator — doing stuff
-bin/op danger "message"   # Red indicator — destructive operation
-bin/op disconnect         # Remove indicator
-
-bin/op eval <path> --wipe # Run setup eval on a project
-bin/op agents             # List running agents
-bin/op projects           # List registered projects
-bin/op recompile          # Hot-reload code on running node
-bin/op status             # Show current operator status
+# One-shot: evaluate a single expression
+mix boom.rpc "BoomLooper.ChatAgent.list_agents()"
 ```
 
-Always `bin/op connect` before doing work so the UI shows you're in there.
+`mix boom.rpc` reads the cookie from `~/.boomlooper/cookie` automatically. Any valid Elixir expression works — ETS, GenServers, Registry, Docker, anything. Use this to inspect state, run evals, kill agents, check services, hot-reload code.
+
+**Always use `mix boom.rpc` to verify your changes work on the live system.** Don't just compile and hope — jack in and check.
 
 ## Code rules
 

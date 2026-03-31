@@ -56,32 +56,22 @@ mix local.hex --force && mix deps.get && mix assets.setup && mix assets.build
 
 ```bash
 export MIX_HOME="$PWD/.mix_home" HEX_HOME="$PWD/.hex_home"
-mix phx.server
+mix boom.server
 ```
 
 **Important:** Always set `MIX_HOME` and `HEX_HOME` before running mix commands. This uses a project-local Hex installation to avoid conflicts with your system Hex.
 
-### 5. Development console (optional)
+### 5. Remote access
 
-For IEx console access during development, use `Procfile.dev`:
-
-```bash
-overmind start -f Procfile.dev  # or use your preferred process manager
-```
-
-Then connect via remote shell:
+Once the server is running, jack in from another terminal with `mix boom.rpc`:
 
 ```bash
-iex --sname claude --remsh boom@$(hostname -s)
+mix boom.rpc "BoomLooper.ProjectRegistry.list_projects()"
+mix boom.rpc "BoomLooper.ChatAgent.list_agents()"
+mix boom.rpc ":ets.tab2list(:project_registry)"
 ```
 
-From IEx you have full access to inspect/control the system:
-
-```elixir
-BoomLooper.ProjectRegistry.list_projects()
-BoomLooper.ChatAgent.list_agents()
-:ets.tab2list(:project_registry)
-```
+Any valid Elixir expression works. The UI shows an indicator while you're connected.
 
 ## Linux
 
@@ -118,10 +108,10 @@ Start the server (remember to set the env vars in each new terminal):
 
 ```bash
 export MIX_HOME="$PWD/.mix_home" HEX_HOME="$PWD/.hex_home"
-mix phx.server
+mix boom.server
 ```
 
-For development with IEx console access, see "Development console" in the macOS section above.
+For remote access, see step 5 in the macOS section above.
 
 ## Troubleshooting
 
