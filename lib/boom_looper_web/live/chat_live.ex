@@ -203,7 +203,7 @@ defmodule BoomLooperWeb.ChatLive do
 
       # Config exists but no agents → auto-spawn a default agent
       has_config && socket.assigns.agents == [] ->
-        do_spawn_agent(socket, nil)
+        do_spawn_agent(socket)
 
       # One agent and none selected → auto-select it
       length(socket.assigns.agents) == 1 && is_nil(socket.assigns.selected_id) ->
