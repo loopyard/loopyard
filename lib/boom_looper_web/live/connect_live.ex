@@ -1,5 +1,6 @@
 defmodule BoomLooperWeb.ConnectLive do
   use BoomLooperWeb, :live_view
+  use BoomLooperWeb.IExAware
 
   @impl true
   def mount(_params, _session, socket) do
@@ -9,6 +10,8 @@ defmodule BoomLooperWeb.ConnectLive do
     qr_svg = url |> EQRCode.encode() |> EQRCode.svg(width: 240)
 
     ssh_cmd = "ssh -p #{BoomLooper.SSHServer.port()} CONTAINER@#{lan_ip}"
+
+    socket = if connected?(socket), do: subscribe_iex(socket), else: assign(socket, :iex_session, %{level: nil})
 
     {:ok,
      socket
@@ -21,11 +24,7 @@ defmodule BoomLooperWeb.ConnectLive do
   def render(assigns) do
     ~H"""
     <div class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
-      <header class="flex-none h-14 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center px-4 md:px-5 gap-3">
-        <.link navigate="/" class="text-lg font-semibold tracking-tight hover:text-violet-600 dark:hover:text-violet-400 transition-colors">Boom Looper</.link>
-        <span class="text-zinc-300 dark:text-zinc-600">/</span>
-        <span class="text-sm font-medium">Connect</span>
-      </header>
+      <.header breadcrumbs={[{"Boom Looper", "/"}, {"Connect", nil}]} iex_session={@iex_session} />
 
       <div class="flex-1 flex items-center justify-center">
         <div class="text-center px-4">

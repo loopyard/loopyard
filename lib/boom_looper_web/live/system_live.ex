@@ -1,11 +1,14 @@
 defmodule BoomLooperWeb.SystemLive do
   use BoomLooperWeb, :live_view
+  use BoomLooperWeb.IExAware
 
   @refresh_interval 3_000
 
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket), do: schedule_refresh()
+
+    socket = if connected?(socket), do: subscribe_iex(socket), else: assign(socket, :iex_session, %{level: nil})
 
     {:ok, refresh_stats(socket)}
   end
@@ -118,19 +121,13 @@ defmodule BoomLooperWeb.SystemLive do
   def render(assigns) do
     ~H"""
     <div class="min-h-screen bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
-      <header class="h-14 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center justify-between px-4 md:px-6">
-        <div class="flex items-center gap-3">
-          <.link navigate="/" class="text-sm text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">&larr; Back</.link>
-          <h1 class="text-lg font-semibold tracking-tight">System</h1>
-        </div>
-        <div class="flex items-center gap-4">
-          <span class="text-xs text-zinc-400 dark:text-zinc-500 font-mono">auto-refreshing every 3s</span>
-          <button phx-click="reboot" data-confirm="This will stop all agents, tear down containers, and restart the app. Continue?"
-            class="text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded px-2 py-1 transition-colors">
-            Reboot
-          </button>
-        </div>
-      </header>
+      <.header breadcrumbs={[{"Boom Looper", "/"}, {"System", nil}]} iex_session={@iex_session}>
+        <span class="text-xs text-zinc-400 dark:text-zinc-500 font-mono">auto-refreshing every 3s</span>
+        <button phx-click="reboot" data-confirm="This will stop all agents, tear down containers, and restart the app. Continue?"
+          class="text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded px-2 py-1 transition-colors">
+          Reboot
+        </button>
+      </.header>
 
       <div class="max-w-6xl mx-auto px-4 md:px-6 py-6 space-y-8">
         <.host_section host={@host} />

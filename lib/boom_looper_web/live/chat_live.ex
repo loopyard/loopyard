@@ -1,5 +1,6 @@
 defmodule BoomLooperWeb.ChatLive do
   use BoomLooperWeb, :live_view
+  use BoomLooperWeb.IExAware
 
   alias BoomLooper.ChatAgent
   alias BoomLooper.StreamBuffer
@@ -30,6 +31,8 @@ defmodule BoomLooperWeb.ChatLive do
       # Start workspace supervisor async — don't block mount
       send(self(), {:start_workspace, workspace.path})
     end
+
+    socket = if connected?(socket), do: subscribe_iex(socket), else: assign(socket, :iex_session, %{level: nil})
 
     # Mount instantly with ETS data (fast). Service statuses arrive via PubSub.
     agents = list_workspace_agents(workspace.path)
@@ -839,7 +842,7 @@ defmodule BoomLooperWeb.ChatLive do
   def render(assigns) do
     ~H"""
     <div id="chat-page" phx-hook="ScrollBottom" class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
-      <.header workspace={@workspace} project={@project} workspace_entry={@workspace_entry} agent_count={length(@agents)} live_action={@live_action} base_path={@base_path} />
+      <.chat_header workspace={@workspace} project={@project} workspace_entry={@workspace_entry} agent_count={length(@agents)} live_action={@live_action} base_path={@base_path} iex_session={@iex_session} />
       <p :if={@flash["error"]} class="mx-4 mt-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300">
         {@flash["error"]}
       </p>
@@ -866,7 +869,7 @@ defmodule BoomLooperWeb.ChatLive do
     """
   end
 
-  defp header(assigns) do
+  defp chat_header(assigns) do
     # Show back arrow on mobile when viewing agent/service (returns to sidebar)
     show_back = assigns.live_action in [:chat, :container, :service, :console, :services]
     assigns = assign(assigns, :show_back, show_back)
@@ -886,6 +889,7 @@ defmodule BoomLooperWeb.ChatLive do
         <span :if={@workspace_entry && !@workspace_entry.is_main} class="text-zinc-300 dark:text-zinc-600 hidden sm:block">/</span>
         <span :if={@workspace_entry && !@workspace_entry.is_main} class="text-sm text-zinc-500 dark:text-zinc-400 hidden sm:block truncate">{@workspace_entry.name}</span>
         <span class="text-sm text-zinc-400 dark:text-zinc-500 hidden sm:block flex-none">{@agent_count} agent{if @agent_count != 1, do: "s"}</span>
+        <BoomLooperWeb.Components.AppHeader.iex_indicator :if={@iex_session.level} session={@iex_session} />
       </div>
       <div class="flex items-center gap-4 flex-none hidden md:flex">
         <.link navigate="/connect" class="text-xs text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">Remote</.link>
