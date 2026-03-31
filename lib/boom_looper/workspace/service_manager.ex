@@ -70,14 +70,16 @@ defmodule BoomLooper.Workspace.ServiceManager do
   """
   def restart_dev_streaming(project_dir, callback) when is_function(callback, 1) do
     workspace_id = Workspace.workspace_id(project_dir)
-
     volume_name = "code-#{workspace_id}"
+    # All compose operations use the virtual dir, not the real project path
+    effective_dir = Path.join([Workspace.home_dir(), "workspaces", workspace_id])
+    File.mkdir_p!(effective_dir)
 
     # Stop only dev containers (not workspace)
     case Workspace.load_from_volume(volume_name) do
       {:ok, ws} ->
         Enum.each(ws.processes, fn p ->
-          Compose.compose(project_dir, workspace_id, ["stop", p.name], timeout: 30_000)
+          Compose.compose(effective_dir, workspace_id, ["stop", p.name], timeout: 30_000)
         end)
       _ -> :ok
     end
@@ -85,8 +87,8 @@ defmodule BoomLooper.Workspace.ServiceManager do
     # Regenerate compose file with updated config from volume
     case Workspace.load_from_volume(volume_name) do
       {:ok, ws} ->
-        content = Compose.generate(ws, project_dir, workspace_id)
-        compose_path = Compose.compose_path(project_dir)
+        content = Compose.generate(ws, effective_dir, workspace_id)
+        compose_path = Compose.compose_path(effective_dir)
         File.mkdir_p!(Path.dirname(compose_path))
         File.write!(compose_path, content)
       _ -> :ok
@@ -98,7 +100,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
       {:ok, ws} ->
         result = if ws.processes != [] do
           process_names = Enum.map(ws.processes, & &1.name)
-          Compose.up_services_stream(project_dir, workspace_id, process_names, callback)
+          Compose.up_services_stream(effective_dir, workspace_id, process_names, callback)
         else
           {:ok, "No dev processes configured"}
         end
@@ -121,20 +123,23 @@ defmodule BoomLooper.Workspace.ServiceManager do
   def restart_workspace_streaming(project_dir, callback) when is_function(callback, 1) do
     workspace_id = Workspace.workspace_id(project_dir)
     volume_name = "code-#{workspace_id}"
+    # All compose operations use the virtual dir, not the real project path
+    effective_dir = Path.join([Workspace.home_dir(), "workspaces", workspace_id])
+    File.mkdir_p!(effective_dir)
 
-    Compose.down(project_dir, workspace_id)
+    Compose.down(effective_dir, workspace_id)
 
     # Write compose file from volume config
     case Workspace.load_from_volume(volume_name) do
       {:ok, ws} ->
-        content = Compose.generate(ws, project_dir, workspace_id)
-        compose_path = Compose.compose_path(project_dir)
+        content = Compose.generate(ws, effective_dir, workspace_id)
+        compose_path = Compose.compose_path(effective_dir)
         File.mkdir_p!(Path.dirname(compose_path))
         File.write!(compose_path, content)
       _ -> :ok
     end
 
-    result = Compose.up_stream(project_dir, workspace_id, callback)
+    result = Compose.up_stream(effective_dir, workspace_id, callback)
 
     case Registry.lookup(BoomLooper.ServiceManagerRegistry, project_dir) do
       [{pid, _}] ->
