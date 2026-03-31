@@ -90,8 +90,12 @@ defmodule BoomLooper.AgentBoot do
         guide = ChatAgent.setup_guide()
         guide <> "\n\n---\n\nLook at the project in /workspace and help me set up a development environment. Examine the project files to understand what language, framework, and tools are needed."
 
+      ws_config && ws_config.dockerfile ->
+        "The workspace has an existing configuration. Check `service_status` — if services are running and healthy, you're good. If not, run `rebuild` then install dependencies via `exec`."
+
       true ->
-        nil
+        guide = ChatAgent.setup_guide()
+        guide <> "\n\n---\n\nLook at the project in /workspace and help me set up a development environment. Examine the project files to understand what language, framework, and tools are needed."
     end
   end
 end
