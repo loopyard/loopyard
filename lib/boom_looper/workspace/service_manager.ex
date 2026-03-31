@@ -14,12 +14,11 @@ defmodule BoomLooper.Workspace.ServiceManager do
   @services_topic "workspace_services"
 
   defstruct [
-    :project_dir,       # effective project dir (where compose file lives)
+    :project_dir,       # virtual dir (~/.boomlooper/workspaces/<id>) where compose file lives
     :canonical_dir,     # original project dir (used for registry and broadcasts)
     :workspace_id,
-    :volume_based,      # always true now (all workspaces are volume-based)
-    :volume_name,       # code volume name
-    :source_path,       # original local path (for local projects migrated to volume)
+    :volume_name,       # code volume name (code-<workspace_id>)
+    :source_path,       # original local path (copied to volume on first run)
     services: %{},
     processes: [],
     running: false,
@@ -209,28 +208,20 @@ defmodule BoomLooper.Workspace.ServiceManager do
   def init(opts) do
     project_dir = Keyword.fetch!(opts, :project_dir)
     workspace_id = Keyword.get(opts, :workspace_id) || Workspace.workspace_id(project_dir)
-    volume_based = Keyword.get(opts, :volume_based, false)
-    volume_name = Keyword.get(opts, :volume_name) || "code-#{workspace_id}"
+    volume_name = "code-#{workspace_id}"
 
-    # ALL workspaces are now volume-based
-    # For local paths, migrate code to volume on first run
-    {effective_project_dir, volume_based, source_path} = if volume_based do
-      # Already volume-based (git URL project)
-      dir = Path.join([Workspace.home_dir(), "workspaces", workspace_id])
-      File.mkdir_p!(dir)
-      {dir, true, nil}
-    else
-      # Local path - migrate to volume
-      dir = Path.join([Workspace.home_dir(), "workspaces", workspace_id])
-      File.mkdir_p!(dir)
-      {dir, true, project_dir}
-    end
+    # All workspaces use a virtual dir for compose files + metadata
+    effective_project_dir = Path.join([Workspace.home_dir(), "workspaces", workspace_id])
+    File.mkdir_p!(effective_project_dir)
+
+    # If project_dir is a real local path (not already a virtual dir), we'll
+    # copy code from it to the volume on first start
+    source_path = if project_dir != effective_project_dir, do: project_dir
 
     state = %__MODULE__{
       project_dir: effective_project_dir,
-      canonical_dir: project_dir,  # original path for registry/broadcasts
+      canonical_dir: project_dir,
       workspace_id: workspace_id,
-      volume_based: volume_based,
       volume_name: volume_name,
       source_path: source_path
     }
