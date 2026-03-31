@@ -12,6 +12,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
   alias BoomLooper.{Compose, Docker, Workspace}
 
   @services_topic "workspace_services"
+  @status_table :service_status_cache
 
   defstruct [
     :project_dir,       # virtual dir (~/.boomlooper/workspaces/<id>) where compose file lives
@@ -48,8 +49,10 @@ defmodule BoomLooper.Workspace.ServiceManager do
   end
 
   def service_status(project_dir) do
-    case Registry.lookup(BoomLooper.ServiceManagerRegistry, project_dir) do
-      [{pid, _}] -> GenServer.call(pid, :service_status, 60_000)
+    # Read from ETS cache — never blocks on the GenServer (which may be doing Docker ops)
+    ensure_status_table()
+    case :ets.lookup(@status_table, project_dir) do
+      [{_, statuses}] -> {:ok, statuses}
       [] -> {:ok, []}
     end
   end
@@ -309,12 +312,6 @@ defmodule BoomLooper.Workspace.ServiceManager do
   end
 
   @impl true
-  def handle_call(:service_status, _from, state) do
-    statuses = build_statuses(state)
-    {:reply, {:ok, statuses}, state}
-  end
-
-  @impl true
   def handle_call(:restart, _from, state) do
     state = %{state | rebuilding: true}
     do_stop(state)
@@ -535,11 +532,22 @@ defmodule BoomLooper.Workspace.ServiceManager do
     # Use canonical_dir for broadcasts so subscribers can match on the original path
     broadcast_dir = state.canonical_dir || state.project_dir
 
+    # Cache in ETS so service_status/1 never blocks on the GenServer
+    ensure_status_table()
+    :ets.insert(@status_table, {broadcast_dir, all_statuses})
+
     Phoenix.PubSub.broadcast(
       BoomLooper.PubSub,
       @services_topic,
       {:services_updated, broadcast_dir, all_statuses}
     )
+  end
+
+  defp ensure_status_table do
+    case :ets.whereis(@status_table) do
+      :undefined -> :ets.new(@status_table, [:set, :public, :named_table, read_concurrency: true])
+      _ -> @status_table
+    end
   end
 
   defp via(project_dir) do
