@@ -54,21 +54,24 @@ BoomLooper.ProjectRegistry.list_projects()
 BoomLooper.ChatAgent.stop_agent("agent_id")
 ```
 
-## RPC from Claude Code
+## Operator CLI (`bin/op`)
 
-You can recompile and interact with the running node via RPC without restarting:
+`bin/op` connects to the running BoomLooper node via RPC. It shows a traffic light indicator in the web UI so users know an operator is connected.
 
 ```bash
-HOME=/tmp MIX_HOME="$PWD/.mix_home" HEX_HOME="$PWD/.hex_home" \
-  elixir --sname d1 --cookie "$(cat "$BOOMLOOPER_HOME/cookie")" -e '
-  :rpc.call(:"boom@macbook", IEx.Helpers, :recompile, []) |> IO.inspect()
-'
+bin/op connect Claude     # Green indicator — just watching
+bin/op working "message"  # Yellow indicator — doing stuff
+bin/op danger "message"   # Red indicator — destructive operation
+bin/op disconnect         # Remove indicator
+
+bin/op eval <path> --wipe # Run setup eval on a project
+bin/op agents             # List running agents
+bin/op projects           # List registered projects
+bin/op recompile          # Hot-reload code on running node
+bin/op status             # Show current operator status
 ```
 
-- `BOOMLOOPER_HOME` is set in `.env` and loaded by direnv. The cookie is at `$BOOMLOOPER_HOME/cookie`.
-- `HOME=/tmp` is required because `~/.erlang.cookie` may have permission issues.
-- `--sname` must be unique per invocation (use d1, d2, d3...).
-- Use `IEx.Helpers.recompile()` via RPC to pick up code changes without restarting the server.
+Always `bin/op connect` before doing work so the UI shows you're in there.
 
 ## Code rules
 
