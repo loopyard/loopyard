@@ -24,17 +24,16 @@ defmodule BoomLooperWeb.ChatLive do
 
   defp mount_with_workspace(socket, workspace, extra_assigns) do
     if connected?(socket) do
-      # Ensure the workspace supervisor subtree is running
-      workspace_id = BoomLooper.ProjectRegistry.workspace_id(workspace.path)
-      BoomLooper.WorkspaceSupervisor.start_workspace(workspace_id, workspace.path)
-      BoomLooper.ProjectRegistry.update_workspace_status(workspace_id, :running)
-
       ChatAgent.subscribe()
       BoomLooper.Workspace.ServiceManager.subscribe()
+
+      # Start workspace supervisor async — don't block mount
+      send(self(), {:start_workspace, workspace.path})
     end
 
+    # Mount instantly with ETS data (fast). Service statuses arrive via PubSub.
     agents = list_workspace_agents(workspace.path)
-    service_statuses = fetch_service_statuses(workspace.path)
+    service_statuses = []
 
     base_path = if extra_assigns[:project] do
       "/projects/#{extra_assigns[:project].id}/workspaces/#{extra_assigns[:workspace_entry].id}"
@@ -483,6 +482,17 @@ defmodule BoomLooperWeb.ChatLive do
      |> push_event("scroll_bottom", %{})}
   end
 
+
+  @impl true
+  def handle_info({:start_workspace, path}, socket) do
+    workspace_id = BoomLooper.ProjectRegistry.workspace_id(path)
+    BoomLooper.WorkspaceSupervisor.start_workspace(workspace_id, path)
+    BoomLooper.ProjectRegistry.update_workspace_status(workspace_id, :running)
+
+    # Now that ServiceManager is running, fetch initial service statuses
+    service_statuses = fetch_service_statuses(path)
+    {:noreply, assign(socket, :service_statuses, service_statuses)}
+  end
 
   @impl true
   def handle_info({:services_updated, path, statuses}, socket) do
