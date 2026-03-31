@@ -52,6 +52,8 @@ All containers share a code volume mounted at `/workspace`.
 
 **Don't COPY code** — The Dockerfile should NOT copy project files. Code lives in a volume at `/workspace`. The Dockerfile just sets up the environment (apt packages, language runtime, build tools).
 
+**Split heavy Dockerfile layers** — Don't install everything in one giant `RUN apt-get install`. Split into separate layers: (1) core build tools + language runtime, (2) optional heavy packages like Chromium/headless browsers, (3) fonts/media libraries. Each `RUN` is a separate Docker build step — if one OOM-kills, you lose the whole layer. Smaller layers cache better and survive memory-constrained builds.
+
 **Platform: Linux ARM64** — Containers run on Apple Silicon. Use multi-arch images. Prefer `-slim` variants. If an image has no ARM64 build, find an alternative.
 
 **One rebuild, then exec** — Rebuild creates the containers. After that, install deps and run migrations via `exec`. Don't rebuild just to install packages — that restarts everything.
