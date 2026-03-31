@@ -232,6 +232,11 @@ defmodule BoomLooper.Workspace.ServiceManager do
     # Load workspace config from volume (all workspaces are volume-based now)
     ws_result = Workspace.load_from_volume(volume_name)
 
+    # Seed the ETS cache immediately so service_status/1 returns something
+    # even while async init is doing Docker ops
+    ensure_status_table()
+    :ets.insert(@status_table, {project_dir, build_statuses(state)})
+
     # Try to start services async — never crash init, just log failures.
     # If this fails, the ServiceManager stays alive in an idle state and
     # can be retried via start_services/1 or rebuild.
