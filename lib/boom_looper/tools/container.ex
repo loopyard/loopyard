@@ -128,7 +128,7 @@ defmodule BoomLooper.Tools.Container do
     end
   end
 
-  tool :service_containers, "List all containers for this workspace with their status. Shows running and stopped/crashed containers." do
+  tool :service_containers, "List all containers for this workspace. Call ONCE after rebuild completes. Do NOT poll — if containers aren't up, read logs instead." do
     field :agent_id, :string, required: true
 
     def execute(%{agent_id: agent_id}) do

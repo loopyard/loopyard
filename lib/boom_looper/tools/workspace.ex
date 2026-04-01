@@ -107,7 +107,7 @@ defmodule BoomLooper.Tools.Workspace do
     end
   end
 
-  tool :rebuild, "Rebuild the workspace Docker image and restart the workspace container. Use after changing the Dockerfile." do
+  tool :rebuild, "Rebuild the workspace Docker image and restart containers. Call ONCE after setting Dockerfile, services, and env vars. Do NOT call multiple times — if build fails, read logs, fix the Dockerfile, then rebuild once." do
     field :agent_id, :string, required: true
 
     def execute(%{agent_id: agent_id}) do
@@ -115,7 +115,7 @@ defmodule BoomLooper.Tools.Workspace do
     end
   end
 
-  tool :service_status, "Check which workspace services are running." do
+  tool :service_status, "Check which workspace services are running. Call ONCE after rebuild. Do NOT poll in a loop — if services aren't up yet, read logs instead." do
     field :agent_id, :string, required: true
 
     def execute(%{agent_id: agent_id}) do
@@ -144,6 +144,8 @@ defmodule BoomLooper.Tools.Workspace do
     end)
   end
 
+  @rebuild_table :rebuild_tasks
+
   def do_rebuild(agent_id) do
     with_bind_mount(agent_id, fn project_dir ->
       workspace_id = find_workspace_id(agent_id)
@@ -151,13 +153,16 @@ defmodule BoomLooper.Tools.Workspace do
 
       case (if volume_name, do: Workspace.load_from_volume(volume_name), else: Workspace.load(project_dir)) do
         {:ok, ws} when ws.dockerfile != nil ->
+          # Cancel any in-progress rebuild for this project
+          cancel_previous_rebuild(project_dir, workspace_id)
+
           # Create a streaming build message in chat
           stream_msg = %{role: :build, title: "Rebuild", content: "", timestamp: DateTime.utc_now()}
           stream_msg = BoomLooper.ChatAgent.append_message_ets(agent_id, stream_msg)
           msg_id = if stream_msg, do: stream_msg.id, else: :crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false)
 
-          # Run rebuild async with streaming output
-          Task.start(fn ->
+          # Run rebuild async with streaming output — track the task so we can cancel it
+          {:ok, task_pid} = Task.start(fn ->
             callback = fn chunk ->
               BoomLooper.ChatAgent.update_message(agent_id, msg_id, fn msg ->
                 %{msg | content: (msg.content || "") <> chunk}
@@ -224,7 +229,11 @@ defmodule BoomLooper.Tools.Workspace do
             end
           end)
 
-          {:ok, "Rebuild started."}
+          # Track the rebuild task so we can cancel it if another rebuild starts
+          ensure_rebuild_table()
+          :ets.insert(@rebuild_table, {project_dir, task_pid})
+
+          {:ok, "Rebuild started. The build runs in the background — you will receive a system message when it completes or fails. Do NOT poll service_status or service_containers while waiting. Proceed to your next configuration step, or wait for the build result."}
 
         {:ok, _} ->
           {:error, "No Dockerfile set. Use set_dockerfile first."}
@@ -235,13 +244,86 @@ defmodule BoomLooper.Tools.Workspace do
     end)
   end
 
+  defp cancel_previous_rebuild(project_dir, workspace_id) do
+    ensure_rebuild_table()
+
+    # Kill the previous rebuild task if running
+    case :ets.lookup(@rebuild_table, project_dir) do
+      [{_, pid}] when is_pid(pid) ->
+        if Process.alive?(pid), do: Process.exit(pid, :kill)
+        :ets.delete(@rebuild_table, project_dir)
+      _ -> :ok
+    end
+
+    # Kill any orphaned docker-compose processes for this project
+    if workspace_id do
+      project_name = BoomLooper.Compose.project_name(workspace_id)
+      System.cmd("pkill", ["-f", "docker-compose.*#{project_name}"], stderr_to_stdout: true)
+    end
+  end
+
+  @doc "Check if a rebuild is currently running for this project."
+  def rebuild_in_progress?(project_dir) do
+    ensure_rebuild_table()
+    case :ets.lookup(@rebuild_table, project_dir) do
+      [{_, pid}] when is_pid(pid) -> Process.alive?(pid)
+      _ -> false
+    end
+  end
+
+  defp ensure_rebuild_table do
+    case :ets.whereis(@rebuild_table) do
+      :undefined ->
+        try do
+          :ets.new(@rebuild_table, [:set, :public, :named_table])
+        catch
+          :error, :badarg -> @rebuild_table
+        end
+      _ -> @rebuild_table
+    end
+  end
+
+  @status_rate_table :status_rate_limit
+
   def do_service_status(agent_id) do
+    # Rate limit: max 3 calls per 60 seconds per agent
+    ensure_rate_table()
+    now = System.monotonic_time(:second)
+
+    case :ets.lookup(@status_rate_table, agent_id) do
+      [{_, timestamps}] ->
+        recent = Enum.filter(timestamps, &(now - &1 < 60))
+        if length(recent) >= 3 do
+          {:error, "Too many service_status calls (#{length(recent)} in 60s). Do NOT poll in a loop. Call service_status ONCE after rebuild. If services aren't running, use `logs` to diagnose."}
+        else
+          :ets.insert(@status_rate_table, {agent_id, [now | recent]})
+          do_service_status_inner(agent_id)
+        end
+      [] ->
+        :ets.insert(@status_rate_table, {agent_id, [now]})
+        do_service_status_inner(agent_id)
+    end
+  end
+
+  defp do_service_status_inner(agent_id) do
     with_bind_mount(agent_id, fn project_dir ->
       case ServiceManager.service_status(project_dir) do
         {:ok, statuses} -> {:ok, %{services: statuses}}
         other -> other
       end
     end)
+  end
+
+  defp ensure_rate_table do
+    case :ets.whereis(@status_rate_table) do
+      :undefined ->
+        try do
+          :ets.new(@status_rate_table, [:set, :public, :named_table])
+        catch
+          :error, :badarg -> @status_rate_table
+        end
+      _ -> @status_rate_table
+    end
   end
 
 

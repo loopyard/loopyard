@@ -23,7 +23,7 @@ defmodule BoomLooper.EvalRunner do
   alias BoomLooper.ChatAgent
   alias BoomLooper.ProjectRegistry
 
-  @default_timeout 900_000   # 15 minutes
+  @default_timeout 1_800_000  # 30 minutes
   @poll_interval 5_000       # 5 seconds
   @max_nudges 5              # don't nudge forever
 
@@ -83,6 +83,10 @@ defmodule BoomLooper.EvalRunner do
 
             # Delete the external code volume (compose won't touch external volumes)
             BoomLooper.VolumeManager.delete_volume("code-#{ws_id}")
+
+            # Delete agents.log so stale agents aren't replayed on restart
+            agents_log = Path.join([virtual_dir, ".boomlooper", "workspace", "agents.log"])
+            File.rm(agents_log)
           end)
 
           ProjectRegistry.remove_project(project.id)
@@ -183,14 +187,21 @@ defmodule BoomLooper.EvalRunner do
             Process.sleep(interval)
             poll_agent(agent_id, deadline, interval, project_path, nudges, max_nudges)
           else
-            if nudges >= max_nudges do
-              Logger.warning("[EvalRunner] Agent #{agent_id} idle after #{nudges} nudges, giving up")
-              build_result(:stalled, state, project_path, nudges)
-            else
-              Logger.info("[EvalRunner] Agent #{agent_id} idle, nudging (#{nudges + 1}/#{max_nudges})")
-              ChatAgent.send_message(agent_id, "Continue setting up the development environment.")
+            # Don't nudge while a rebuild is in progress — the build is async
+            # and the agent is correctly waiting for the system message
+            if BoomLooper.Tools.Workspace.rebuild_in_progress?(project_path) do
               Process.sleep(interval)
-              poll_agent(agent_id, deadline, interval, project_path, nudges + 1, max_nudges)
+              poll_agent(agent_id, deadline, interval, project_path, nudges, max_nudges)
+            else
+              if nudges >= max_nudges do
+                Logger.warning("[EvalRunner] Agent #{agent_id} idle after #{nudges} nudges, giving up")
+                build_result(:stalled, state, project_path, nudges)
+              else
+                Logger.info("[EvalRunner] Agent #{agent_id} idle, nudging (#{nudges + 1}/#{max_nudges})")
+                ChatAgent.send_message(agent_id, "Continue setting up the development environment.")
+                Process.sleep(interval)
+                poll_agent(agent_id, deadline, interval, project_path, nudges + 1, max_nudges)
+              end
             end
           end
 
