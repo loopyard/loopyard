@@ -161,6 +161,17 @@ defmodule BoomLooper.ChatAgent do
         :ok
     end
 
+    # Persist removal to agent log so it's not replayed on restart
+    case :ets.lookup(@ets_table, id) do
+      [{^id, summary}] ->
+        ws_id = summary[:workspace_id]
+        if ws_id do
+          path = log_path(ws_id)
+          AgentLog.append({:agent_removed, id}, log_path: path, version: 1)
+        end
+      [] -> :ok
+    end
+
     # Remove from sidebar — no per-agent Docker cleanup needed
     # (workspace container is shared and managed by ServiceManager)
     Task.start(fn ->

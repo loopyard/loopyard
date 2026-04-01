@@ -404,6 +404,10 @@ defmodule BoomLooper.AgentLog do
     end
   end
 
+  defp apply_event({:agent_removed, agent_id}, state) do
+    Map.delete(state, agent_id)
+  end
+
   defp apply_event(_unknown, state), do: state
 
   # --- Private: ETS Population ---
