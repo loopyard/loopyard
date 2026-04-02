@@ -121,6 +121,66 @@ defmodule BoomLooper.VolumeManagerTest do
     end
   end
 
+  describe "copy_to_volume/2" do
+    @describetag :docker
+
+    test "copies local directory contents into a volume" do
+      volume_name = "bl-test-copy-#{:rand.uniform(100_000)}"
+      tmp_dir = Path.join(System.tmp_dir!(), "boom-vol-copy-#{:rand.uniform(100_000)}")
+      File.mkdir_p!(tmp_dir)
+      File.write!(Path.join(tmp_dir, "README.md"), "# Test Project")
+      File.mkdir_p!(Path.join(tmp_dir, "src"))
+      File.write!(Path.join(tmp_dir, "src/main.rb"), "puts 'hello'")
+
+      on_exit(fn ->
+        System.cmd("docker", ["volume", "rm", "-f", volume_name], stderr_to_stdout: true)
+        File.rm_rf!(tmp_dir)
+      end)
+
+      VolumeManager.create_volume(volume_name)
+      assert {:ok, _output} = VolumeManager.copy_to_volume(volume_name, tmp_dir)
+      assert {:ok, "# Test Project"} = VolumeManager.read_file(volume_name, "README.md")
+      assert {:ok, "puts 'hello'"} = VolumeManager.read_file(volume_name, "src/main.rb")
+    end
+
+    test "calls streaming callback during copy" do
+      volume_name = "bl-test-copy-cb-#{:rand.uniform(100_000)}"
+      tmp_dir = Path.join(System.tmp_dir!(), "boom-vol-copy-cb-#{:rand.uniform(100_000)}")
+      File.mkdir_p!(tmp_dir)
+      File.write!(Path.join(tmp_dir, "test.txt"), "data")
+
+      on_exit(fn ->
+        System.cmd("docker", ["volume", "rm", "-f", volume_name], stderr_to_stdout: true)
+        File.rm_rf!(tmp_dir)
+      end)
+
+      me = self()
+      VolumeManager.create_volume(volume_name)
+      assert {:ok, _} = VolumeManager.copy_to_volume(volume_name, tmp_dir, callback: fn _chunk -> send(me, :got_chunk) end)
+    end
+  end
+
+  describe "glob/2" do
+    @describetag :docker
+
+    test "finds files matching pattern in a volume" do
+      volume_name = "bl-test-glob-#{:rand.uniform(100_000)}"
+
+      on_exit(fn ->
+        System.cmd("docker", ["volume", "rm", "-f", volume_name], stderr_to_stdout: true)
+      end)
+
+      VolumeManager.create_volume(volume_name)
+      VolumeManager.write_file(volume_name, "app.rb", "code")
+      VolumeManager.write_file(volume_name, "lib/helper.rb", "more code")
+      VolumeManager.write_file(volume_name, "README.md", "docs")
+
+      assert {:ok, files} = VolumeManager.glob(volume_name, "*.rb")
+      assert Enum.any?(files, &String.ends_with?(&1, ".rb"))
+      refute Enum.any?(files, &String.ends_with?(&1, ".md"))
+    end
+  end
+
   describe "volume_has_code?/1" do
     @describetag :docker
 

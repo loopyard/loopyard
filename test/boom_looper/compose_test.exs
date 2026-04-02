@@ -140,8 +140,124 @@ defmodule BoomLooper.ComposeTest do
     end
   end
 
-  describe "up_stream/3" do
-    test "calls callback with output and returns result" do
+  describe "generate/3 edge cases" do
+    setup do
+      tmp_dir = Path.join(System.tmp_dir!(), "boom-looper-compose-edge-#{:rand.uniform(100_000)}")
+      File.mkdir_p!(Path.join(tmp_dir, ".boomlooper/workspace"))
+      on_exit(fn -> File.rm_rf!(tmp_dir) end)
+      %{tmp_dir: tmp_dir}
+    end
+
+    test "multiple processes each get their own service", %{tmp_dir: tmp_dir} do
+      ws = %Workspace{
+        dockerfile: "FROM node:20",
+        processes: [
+          %{name: "web", command: "npm start", ports: ["3000"]},
+          %{name: "worker", command: "npm run worker", ports: []}
+        ],
+        services: []
+      }
+
+      config = ws |> Compose.generate(tmp_dir, "abcd") |> Jason.decode!()
+
+      assert config["services"]["web"]["command"] == "npm start"
+      assert config["services"]["worker"]["command"] == "npm run worker"
+      assert config["services"]["web"]["ports"] == ["3000"]
+      refute Map.has_key?(config["services"]["worker"], "ports")
+    end
+
+    test "service env vars rendered as KEY=VALUE list", %{tmp_dir: tmp_dir} do
+      ws = %Workspace{
+        dockerfile: "FROM ruby:3.4",
+        processes: [],
+        services: [%{name: "pg", image: "postgres:16",
+                      env: %{"POSTGRES_USER" => "app", "POSTGRES_DB" => "mydb"},
+                      volumes: [], ports: []}]
+      }
+
+      config = ws |> Compose.generate(tmp_dir, "abcd") |> Jason.decode!()
+      env = config["services"]["pg"]["environment"]
+      assert "POSTGRES_USER=app" in env
+      assert "POSTGRES_DB=mydb" in env
+    end
+
+    test "service without env/ports/volumes omits those keys", %{tmp_dir: tmp_dir} do
+      ws = %Workspace{
+        dockerfile: "FROM ruby:3.4",
+        processes: [],
+        services: [%{name: "redis", image: "redis:7", env: %{}, volumes: [], ports: []}]
+      }
+
+      config = ws |> Compose.generate(tmp_dir, "abcd") |> Jason.decode!()
+      redis = config["services"]["redis"]
+      assert redis["image"] == "redis:7"
+      refute Map.has_key?(redis, "environment")
+      refute Map.has_key?(redis, "ports")
+      refute Map.has_key?(redis, "volumes")
+    end
+
+    test "{data} in volumes is expanded to workspace-scoped name", %{tmp_dir: tmp_dir} do
+      ws = %Workspace{
+        dockerfile: "FROM ruby:3.4",
+        processes: [],
+        services: [%{name: "postgres", image: "postgres:16", env: %{},
+                      volumes: ["{data}:/var/lib/postgresql/data"], ports: []}]
+      }
+
+      config = ws |> Compose.generate(tmp_dir, "abcd") |> Jason.decode!()
+      vols = config["services"]["postgres"]["volumes"]
+      assert "postgres-data-abcd:/var/lib/postgresql/data" in vols
+      assert Map.has_key?(config["volumes"], "postgres-data-abcd")
+    end
+
+    test "shared volumes include code, cache, and deps", %{tmp_dir: tmp_dir} do
+      ws = %Workspace{
+        dockerfile: "FROM ruby:3.4",
+        processes: [%{name: "dev", command: "bin/dev", ports: []}],
+        services: []
+      }
+
+      config = ws |> Compose.generate(tmp_dir, "abcd") |> Jason.decode!()
+
+      for svc <- ["workspace", "dev"] do
+        volumes = config["services"][svc]["volumes"]
+        assert Enum.any?(volumes, &(&1 == "code-abcd:/workspace"))
+        assert Enum.any?(volumes, &(&1 == "cache-abcd:/root/.cache"))
+        assert Enum.any?(volumes, &(&1 == "deps-abcd:/usr/local/bundle"))
+      end
+    end
+
+    test "workspace env_vars applied to workspace and dev containers", %{tmp_dir: tmp_dir} do
+      ws = %Workspace{
+        dockerfile: "FROM ruby:3.4",
+        processes: [%{name: "dev", command: "bin/dev", ports: []}],
+        services: [],
+        env_vars: %{"RAILS_ENV" => "development", "SECRET" => "abc"}
+      }
+
+      config = ws |> Compose.generate(tmp_dir, "abcd") |> Jason.decode!()
+
+      for svc <- ["workspace", "dev"] do
+        env = config["services"][svc]["environment"]
+        assert "RAILS_ENV=development" in env
+        assert "SECRET=abc" in env
+      end
+    end
+
+    test "strips IP:host:container port format", %{tmp_dir: tmp_dir} do
+      ws = %Workspace{
+        dockerfile: "FROM ruby:3.4",
+        processes: [%{name: "dev", command: "bin/dev", ports: ["0.0.0.0:3001:3000"]}],
+        services: []
+      }
+
+      config = ws |> Compose.generate(tmp_dir, "abcd") |> Jason.decode!()
+      assert config["services"]["dev"]["ports"] == ["3000"]
+    end
+  end
+
+  describe "collect_port_output/4" do
+    test "succeeds with callback on zero exit" do
       me = self()
 
       port = Port.open(
@@ -166,6 +282,59 @@ defmodule BoomLooper.ComposeTest do
 
       assert {:error, output} = result
       assert output =~ "fail"
+    end
+
+    test "returns error with accumulated output on timeout" do
+      port = Port.open(
+        {:spawn_executable, System.find_executable("sleep")},
+        [:binary, :exit_status, {:args, ["10"]}]
+      )
+
+      result = Compose.collect_port_output(port, fn _ -> :ok end, "partial", 100)
+      assert {:error, output} = result
+      assert output =~ "partial"
+      assert output =~ "timed out"
+    end
+
+    test "detects arm64_unsupported in output" do
+      port = Port.open(
+        {:spawn_executable, System.find_executable("echo")},
+        [:binary, :exit_status, {:args, ["no matching manifest for linux/arm64"]}]
+      )
+
+      result = Compose.collect_port_output(port, fn _ -> :ok end, "", 5_000)
+      assert {:error, :arm64_unsupported, _output} = result
+    end
+  end
+
+  describe "write/2" do
+    test "writes compose file from workspace config" do
+      tmp_dir = Path.join(System.tmp_dir!(), "boom-looper-compose-write-#{:rand.uniform(100_000)}")
+      File.mkdir_p!(Path.join(tmp_dir, ".boomlooper/workspace"))
+      on_exit(fn -> File.rm_rf!(tmp_dir) end)
+
+      ws = %Workspace{
+        dockerfile: "FROM ruby:3.4",
+        processes: [%{name: "dev", command: "bin/dev", ports: ["3000"]}],
+        services: []
+      }
+
+      Workspace.save(tmp_dir, ws)
+      assert {:ok, path} = Compose.write(tmp_dir, "abcd")
+      assert File.exists?(path)
+      assert path == Compose.compose_path(tmp_dir)
+
+      content = File.read!(path)
+      config = Jason.decode!(content)
+      assert config["services"]["dev"]
+    end
+
+    test "returns :none when no workspace config" do
+      tmp_dir = Path.join(System.tmp_dir!(), "boom-looper-compose-noconf-#{:rand.uniform(100_000)}")
+      File.mkdir_p!(tmp_dir)
+      on_exit(fn -> File.rm_rf!(tmp_dir) end)
+
+      assert :none = Compose.write(tmp_dir, "abcd")
     end
   end
 end
