@@ -286,26 +286,12 @@ defmodule BoomLooper.ChatAgent do
 
     case :ets.lookup(@ets_table, id) do
       [{^id, saved}] ->
-        # Restore from saved state
-        bind_mount = saved.bind_mount
-        workspace_id = saved.workspace_id
-        workspace = if workspace_id, do: load_workspace_config(workspace_id), else: nil
-
-        tools = Keyword.get(opts, :tools, default_tools())
-        backend = Keyword.get(opts, :backend, BoomLooper.Agent.Backend.ClaudeCode)
-
-        system_prompt = build_system_prompt(id, bind_mount, workspace_id, workspace, saved[:service_name])
-
-        session_opts = [
-          cwd: saved.working_dir,
-          permission_mode: :accept_edits,
-          dangerously_skip_permissions: true,
-          mcp_servers: build_mcp_servers(tools),
-          allowed_tools: build_allowed_tools(tools),
-          system_prompt: system_prompt
-        ]
-
-        {:ok, session} = backend.start_session(session_opts)
+        {session, session_opts, backend} = start_session(id, opts,
+          working_dir: saved.working_dir,
+          bind_mount: saved.bind_mount,
+          workspace_id: saved.workspace_id,
+          service_name: saved[:service_name]
+        )
 
         state = %__MODULE__{
           id: id,
@@ -314,8 +300,8 @@ defmodule BoomLooper.ChatAgent do
           session_opts: session_opts,
           backend: backend,
           working_dir: saved.working_dir,
-          bind_mount: bind_mount,
-          workspace_id: workspace_id,
+          bind_mount: saved.bind_mount,
+          workspace_id: saved.workspace_id,
           started_at: saved.started_at,
           started_by: saved.started_by,
           last_activity_at: DateTime.utc_now(),
@@ -326,7 +312,6 @@ defmodule BoomLooper.ChatAgent do
           service_name: saved[:service_name]
         }
 
-        # Update ETS with live status
         :ets.insert(@ets_table, {id, summary(state)})
         broadcast(@topic, {:chat_agent_resumed, summary(state)})
         BoomLooper.EventLog.info("agent:#{state.name}", "Resumed (#{id}) with #{length(state.messages)} messages")
@@ -334,7 +319,6 @@ defmodule BoomLooper.ChatAgent do
         {:ok, state}
 
       [] ->
-        # No saved state - can't resume
         {:stop, :no_saved_state}
     end
   end
@@ -344,34 +328,17 @@ defmodule BoomLooper.ChatAgent do
     name = Keyword.get(opts, :name, "Chat #{id |> String.slice(0..7)}")
     working_dir = Keyword.get(opts, :working_dir, File.cwd!())
     started_by = Keyword.get(opts, :started_by, "anonymous")
-
-    # Tool modules the agent has access to
-    tools = Keyword.get(opts, :tools, default_tools())
     bind_mount = Keyword.get(opts, :bind_mount)
-
-    # workspace_id is passed explicitly — never derived from bind_mount
     workspace_id = Keyword.get(opts, :workspace_id)
-    # Load workspace config from volume (code lives in Docker volumes, not on host)
-    workspace = if workspace_id, do: load_workspace_config(workspace_id), else: nil
     service_name = Keyword.get(opts, :service_name)
 
-    system_prompt = build_system_prompt(id, bind_mount, workspace_id, workspace, service_name)
-
-    backend = Keyword.get(opts, :backend, BoomLooper.Agent.Backend.ClaudeCode)
-
-    session_opts =
-      [
-        cwd: working_dir,
-        permission_mode: :accept_edits,
-        dangerously_skip_permissions: true,
-        max_turns: 50,
-        mcp_servers: build_mcp_servers(tools),
-        allowed_tools: build_allowed_tools(tools)
-      ]
-
-    session_opts = Keyword.put(session_opts, :system_prompt, system_prompt)
-
-    {:ok, session} = backend.start_session(session_opts)
+    {session, session_opts, backend} = start_session(id, opts,
+      working_dir: working_dir,
+      bind_mount: bind_mount,
+      workspace_id: workspace_id,
+      service_name: service_name,
+      max_turns: 50
+    )
 
     now = DateTime.utc_now()
 
@@ -399,6 +366,35 @@ defmodule BoomLooper.ChatAgent do
     BoomLooper.EventLog.info("agent:#{name}", "Started (#{id})")
 
     {:ok, state}
+  end
+
+  # Shared session creation for both fresh and resumed agents
+  defp start_session(id, opts, params) do
+    working_dir = Keyword.fetch!(params, :working_dir)
+    bind_mount = Keyword.get(params, :bind_mount)
+    workspace_id = Keyword.get(params, :workspace_id)
+    service_name = Keyword.get(params, :service_name)
+
+    tools = Keyword.get(opts, :tools, default_tools())
+    backend = Keyword.get(opts, :backend, BoomLooper.Agent.Backend.ClaudeCode)
+    workspace = if workspace_id, do: load_workspace_config(workspace_id), else: nil
+    system_prompt = build_system_prompt(id, bind_mount, workspace_id, workspace, service_name)
+
+    session_opts = [
+      cwd: working_dir,
+      permission_mode: :accept_edits,
+      dangerously_skip_permissions: true,
+      mcp_servers: build_mcp_servers(tools),
+      allowed_tools: build_allowed_tools(tools),
+      system_prompt: system_prompt
+    ]
+
+    session_opts = if max = Keyword.get(params, :max_turns),
+      do: Keyword.put(session_opts, :max_turns, max),
+      else: session_opts
+
+    {:ok, session} = backend.start_session(session_opts)
+    {session, session_opts, backend}
   end
 
   @impl true

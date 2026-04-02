@@ -171,83 +171,16 @@ defmodule BoomLooper.Tools.Workspace do
 
       case (if volume_name, do: Workspace.load_from_volume(volume_name), else: Workspace.load(project_dir)) do
         {:ok, ws} when ws.dockerfile != nil ->
-          # Cancel any in-progress rebuild for this project
           cancel_previous_rebuild(project_dir, workspace_id)
 
-          # Create a streaming build message in chat
           stream_msg = %{role: :build, title: "Rebuild", content: "", timestamp: DateTime.utc_now()}
           stream_msg = BoomLooper.ChatAgent.append_message_ets(agent_id, stream_msg)
           msg_id = if stream_msg, do: stream_msg.id, else: :crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false)
 
-          # Run rebuild async with streaming output — track the task so we can cancel it
           {:ok, task_pid} = Task.start(fn ->
-            callback = fn chunk ->
-              BoomLooper.ChatAgent.update_message(agent_id, msg_id, fn msg ->
-                %{msg | content: (msg.content || "") <> chunk}
-              end)
-
-              Phoenix.PubSub.broadcast(BoomLooper.PubSub,
-                "chat_agent:#{agent_id}",
-                {:stream_output, agent_id, chunk, "Rebuild", msg_id})
-            end
-
-            # Check if the workspace container is already running.
-            # First rebuild after setup: nothing is running, so start everything.
-            # Subsequent rebuilds: only rebuild dev containers, keep workspace running.
-            ws_id = Workspace.workspace_id(project_dir)
-            ws_container = ServiceManager.service_container_name(ws_id, "workspace")
-            workspace_running = BoomLooper.Docker.container_running?(ws_container)
-
-            rebuild_result = if workspace_running do
-              ServiceManager.restart_dev_streaming(project_dir, callback)
-            else
-              ServiceManager.restart_workspace_streaming(project_dir, callback)
-            end
-
-            case rebuild_result do
-              {:ok, _output} ->
-                BoomLooper.ChatAgent.update_message(agent_id, msg_id, fn msg ->
-                  %{msg | role: :build_done}
-                end)
-
-                Phoenix.PubSub.broadcast(BoomLooper.PubSub,
-                  "chat_agent:#{agent_id}",
-                  {:chat_message, agent_id, %{role: :system, content: "Rebuild complete. Services starting.", timestamp: DateTime.utc_now()}})
-
-                agent_ids = find_workspace_agent_ids(project_dir) -- [agent_id]
-                Enum.each(agent_ids, &BoomLooper.ChatAgent.restart_session/1)
-
-              {:error, :arm64_unsupported, _output} ->
-                BoomLooper.ChatAgent.update_message(agent_id, msg_id, fn msg ->
-                  %{msg | role: :build_failed}
-                end)
-
-                arm64_msg = """
-                **ARM64 image not available.** One of your service images doesn't have an ARM64 build.
-
-                To fix: Use `remove_service` to remove the incompatible service, then `add_service` with an ARM64-compatible image.
-
-                Common alternatives:
-                - PostGIS: `ghcr.io/baosystems/postgis:17-3.5` instead of `postgis/postgis`
-                - Check `docker manifest inspect <image>` for architecture support
-                """
-
-                Phoenix.PubSub.broadcast(BoomLooper.PubSub,
-                  "chat_agent:#{agent_id}",
-                  {:chat_message, agent_id, %{role: :system, content: arm64_msg, timestamp: DateTime.utc_now()}})
-
-              {:error, _output} ->
-                BoomLooper.ChatAgent.update_message(agent_id, msg_id, fn msg ->
-                  %{msg | role: :build_failed}
-                end)
-
-                Phoenix.PubSub.broadcast(BoomLooper.PubSub,
-                  "chat_agent:#{agent_id}",
-                  {:chat_message, agent_id, %{role: :system, content: "Rebuild failed. Check build output above.", timestamp: DateTime.utc_now()}})
-            end
+            run_rebuild(agent_id, msg_id, project_dir)
           end)
 
-          # Track the rebuild task so we can cancel it if another rebuild starts
           ensure_rebuild_table()
           :ets.insert(@rebuild_table, {project_dir, task_pid})
 
@@ -260,6 +193,70 @@ defmodule BoomLooper.Tools.Workspace do
           {:error, "No workspace config. Use set_dockerfile to create one."}
       end
     end)
+  end
+
+  defp run_rebuild(agent_id, msg_id, project_dir) do
+    callback = fn chunk ->
+      BoomLooper.ChatAgent.update_message(agent_id, msg_id, fn msg ->
+        %{msg | content: (msg.content || "") <> chunk}
+      end)
+
+      Phoenix.PubSub.broadcast(BoomLooper.PubSub,
+        "chat_agent:#{agent_id}",
+        {:stream_output, agent_id, chunk, "Rebuild", msg_id})
+    end
+
+    ws_id = Workspace.workspace_id(project_dir)
+    ws_container = ServiceManager.service_container_name(ws_id, "workspace")
+
+    rebuild_result = if BoomLooper.Docker.container_running?(ws_container) do
+      ServiceManager.restart_dev_streaming(project_dir, callback)
+    else
+      ServiceManager.restart_workspace_streaming(project_dir, callback)
+    end
+
+    handle_rebuild_result(rebuild_result, agent_id, msg_id, project_dir)
+  end
+
+  defp handle_rebuild_result({:ok, _output}, agent_id, msg_id, project_dir) do
+    BoomLooper.ChatAgent.update_message(agent_id, msg_id, fn msg ->
+      %{msg | role: :build_done}
+    end)
+
+    broadcast_system(agent_id, "Rebuild complete. Services starting.")
+
+    agent_ids = find_workspace_agent_ids(project_dir) -- [agent_id]
+    Enum.each(agent_ids, &BoomLooper.ChatAgent.restart_session/1)
+  end
+
+  defp handle_rebuild_result({:error, :arm64_unsupported, _output}, agent_id, msg_id, _project_dir) do
+    BoomLooper.ChatAgent.update_message(agent_id, msg_id, fn msg ->
+      %{msg | role: :build_failed}
+    end)
+
+    broadcast_system(agent_id, """
+    **ARM64 image not available.** One of your service images doesn't have an ARM64 build.
+
+    To fix: Use `remove_service` to remove the incompatible service, then `add_service` with an ARM64-compatible image.
+
+    Common alternatives:
+    - PostGIS: `ghcr.io/baosystems/postgis:17-3.5` instead of `postgis/postgis`
+    - Check `docker manifest inspect <image>` for architecture support
+    """)
+  end
+
+  defp handle_rebuild_result({:error, _output}, agent_id, msg_id, _project_dir) do
+    BoomLooper.ChatAgent.update_message(agent_id, msg_id, fn msg ->
+      %{msg | role: :build_failed}
+    end)
+
+    broadcast_system(agent_id, "Rebuild failed. Check build output above.")
+  end
+
+  defp broadcast_system(agent_id, content) do
+    Phoenix.PubSub.broadcast(BoomLooper.PubSub,
+      "chat_agent:#{agent_id}",
+      {:chat_message, agent_id, %{role: :system, content: content, timestamp: DateTime.utc_now()}})
   end
 
   defp cancel_previous_rebuild(project_dir, workspace_id) do
