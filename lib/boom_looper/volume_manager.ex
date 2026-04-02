@@ -45,6 +45,46 @@ defmodule BoomLooper.VolumeManager do
     end
   end
 
+  @doc """
+  Delete all code-* and cache-* volumes not associated with an active workspace.
+  Returns {:ok, deleted_count} or {:error, reason}.
+  """
+  def prune_orphaned_volumes do
+    # Find active workspace IDs
+    active_ids = BoomLooper.ProjectRegistry.list_projects()
+    |> Enum.flat_map(fn p -> BoomLooper.ProjectRegistry.list_workspaces(p.id) end)
+    |> Enum.map(fn ws -> BoomLooper.Workspace.workspace_id(ws.path) end)
+    |> MapSet.new()
+
+    # List all Docker volumes
+    case docker(["volume", "ls", "--format", "{{.Name}}"]) do
+      {:ok, output} ->
+        volumes = output |> String.trim() |> String.split("\n", trim: true)
+
+        orphans = Enum.filter(volumes, fn name ->
+          case Regex.run(~r/^(?:code|cache|bl-.*_cache)-([a-f0-9]{4})$/, name) do
+            [_, ws_id] -> ws_id not in active_ids
+            nil ->
+              # Also match compose-managed volumes like bl-XXXX_cache-XXXX
+              case Regex.run(~r/^bl-([a-f0-9]{4})_/, name) do
+                [_, ws_id] -> ws_id not in active_ids
+                nil -> false
+              end
+          end
+        end)
+
+        deleted = Enum.count(orphans, fn name ->
+          match?({:ok, _}, docker(["volume", "rm", "-f", name]))
+        end)
+
+        Logger.info("[VolumeManager] Pruned #{deleted}/#{length(orphans)} orphaned volumes")
+        {:ok, deleted}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
   # --- Clone Operations ---
 
   @doc """
