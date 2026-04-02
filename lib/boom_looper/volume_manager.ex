@@ -46,7 +46,7 @@ defmodule BoomLooper.VolumeManager do
   end
 
   @doc """
-  Delete all code-* and cache-* volumes not associated with an active workspace.
+  Delete all code-*, cache-*, and deps-* volumes not associated with an active workspace.
   Returns {:ok, deleted_count} or {:error, reason}.
   """
   def prune_orphaned_volumes do
@@ -62,7 +62,7 @@ defmodule BoomLooper.VolumeManager do
         volumes = output |> String.trim() |> String.split("\n", trim: true)
 
         orphans = Enum.filter(volumes, fn name ->
-          case Regex.run(~r/^(?:code|cache|bl-.*_cache)-([a-f0-9]{4})$/, name) do
+          case Regex.run(~r/^(?:code|cache|deps|bl-.*_cache)-([a-f0-9]{4})$/, name) do
             [_, ws_id] -> ws_id not in active_ids
             nil ->
               # Also match compose-managed volumes like bl-XXXX_cache-XXXX

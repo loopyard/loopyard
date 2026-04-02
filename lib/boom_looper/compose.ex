@@ -15,15 +15,19 @@ defmodule BoomLooper.Compose do
     dockerfile_path = Path.join([project_dir, ".boomlooper", "workspace", "Dockerfile"])
     if ws.dockerfile, do: write_unless_symlink(dockerfile_path, ws.dockerfile)
 
+    # Shared volumes for workspace + dev containers
+    shared_volumes = [
+      "#{code_volume}:/workspace",
+      "cache-#{workspace_id}:/root/.cache",
+      "deps-#{workspace_id}:/usr/local/bundle"
+    ]
+
     # Workspace container — always running, agents exec here
     services = if ws.dockerfile do
       Map.put(services, "workspace", %{
         "build" => %{"context" => project_dir, "dockerfile" => ".boomlooper/workspace/Dockerfile"},
         "command" => "sleep infinity",
-        "volumes" => [
-          "#{code_volume}:/workspace",
-          "cache-#{workspace_id}:/root/.cache"
-        ],
+        "volumes" => shared_volumes,
         "working_dir" => "/workspace",
         "environment" => env_list(ws.env_vars)
       })
@@ -36,10 +40,7 @@ defmodule BoomLooper.Compose do
       svc = %{
         "build" => %{"context" => project_dir, "dockerfile" => ".boomlooper/workspace/Dockerfile"},
         "command" => p.command,
-        "volumes" => [
-          "#{code_volume}:/workspace",
-          "cache-#{workspace_id}:/root/.cache"
-        ],
+        "volumes" => shared_volumes,
         "working_dir" => "/workspace",
         "environment" => env_list(ws.env_vars)
       }
@@ -80,10 +81,11 @@ defmodule BoomLooper.Compose do
       Map.put(acc, s.name, svc)
     end)
 
-    # Volumes — code volume is external (created by VolumeManager), cache is compose-managed
+    # Volumes — code volume is external (created by VolumeManager), others are compose-managed
     volumes = %{
       code_volume => %{"external" => true},
-      "cache-#{workspace_id}" => nil
+      "cache-#{workspace_id}" => nil,
+      "deps-#{workspace_id}" => nil
     }
     volumes = Enum.reduce(ws.services, volumes, fn s, acc ->
       Enum.reduce(s[:volumes] || [], acc, fn v, a ->
