@@ -408,42 +408,41 @@ defmodule BoomLooper.ChatAgent do
     broadcast("chat_agent:#{state.id}", {:chat_message, state.id, List.last(state.messages)})
 
     # Don't try to stream if session is still dead
-    unless state.backend.session_alive?(state.session) do
+    if not state.backend.session_alive?(state.session) do
       broadcast(@topic, {:chat_agent_status_changed, state.id, :idle})
       {:noreply, state}
     else
+      state = %{state | status: :thinking}
+      broadcast(@topic, {:chat_agent_status_changed, state.id, :thinking})
 
-    state = %{state | status: :thinking}
-    broadcast(@topic, {:chat_agent_status_changed, state.id, :thinking})
+      # Stream the response in a linked Task so we detect crashes
+      me = self()
+      agent_id = state.id
+      session = state.session
+      backend = state.backend
 
-    # Stream the response in a linked Task so we detect crashes
-    me = self()
-    agent_id = state.id
-    session = state.session
-    backend = state.backend
+      Task.start_link(fn ->
+        try do
+          backend.stream(session, text)
+          |> Enum.each(fn event ->
+            send(me, {:stream_event, agent_id, event})
+          end)
 
-    Task.start_link(fn ->
-      try do
-        backend.stream(session, text)
-        |> Enum.each(fn event ->
-          send(me, {:stream_event, agent_id, event})
-        end)
+          send(me, {:stream_done, agent_id})
+        rescue
+          e ->
+            send(me, {:stream_error, agent_id, Exception.message(e)})
+        catch
+          :exit, reason ->
+            send(me, {:stream_error, agent_id, "CLI session exited: #{inspect(reason)}"})
+        end
+      end)
 
-        send(me, {:stream_done, agent_id})
-      rescue
-        e ->
-          send(me, {:stream_error, agent_id, Exception.message(e)})
-      catch
-        :exit, reason ->
-          send(me, {:stream_error, agent_id, "CLI session exited: #{inspect(reason)}"})
-      end
-    end)
+      # Safety timeout — if no stream events arrive within 2 minutes, reset to idle
+      Process.send_after(self(), {:stream_timeout, agent_id}, 120_000)
 
-    # Safety timeout — if no stream events arrive within 2 minutes, reset to idle
-    Process.send_after(self(), {:stream_timeout, agent_id}, 120_000)
-
-    {:noreply, state}
-    end # unless session dead
+      {:noreply, state}
+    end
   end
 
   @impl true
