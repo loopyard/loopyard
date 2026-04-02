@@ -127,7 +127,10 @@ defmodule BoomLooper.Tools.Workspace do
 
   @doc false
   def do_update_config(agent_id, update_fn, success_msg) do
-    with_workspace_id(agent_id, fn workspace_id ->
+    workspace_id = find_workspace_id(agent_id)
+
+    if workspace_id do
+      # Volume-based: save to Docker volume
       volume_name = "code-#{workspace_id}"
 
       ws = case Workspace.load_from_volume(volume_name) do
@@ -141,7 +144,22 @@ defmodule BoomLooper.Tools.Workspace do
         :ok -> {:ok, success_msg}
         {:error, reason} -> {:error, "Failed to save config: #{inspect(reason)}"}
       end
-    end)
+    else
+      # Fallback: save to local bind_mount path (for tests)
+      with_bind_mount(agent_id, fn project_dir ->
+        ws = case Workspace.load(project_dir) do
+          {:ok, existing} -> existing
+          _ -> %Workspace{}
+        end
+
+        updated = update_fn.(ws)
+
+        case Workspace.save(project_dir, updated) do
+          :ok -> {:ok, success_msg}
+          {:error, reason} -> {:error, "Failed to save config: #{inspect(reason)}"}
+        end
+      end)
+    end
   end
 
   @rebuild_table :rebuild_tasks
@@ -345,13 +363,6 @@ defmodule BoomLooper.Tools.Workspace do
     case find_bind_mount(agent_id) do
       {:ok, project_dir} -> callback.(project_dir)
       :error -> {:error, "Agent #{agent_id} has no bind mount"}
-    end
-  end
-
-  defp with_workspace_id(agent_id, callback) do
-    case find_workspace_id(agent_id) do
-      nil -> {:error, "Agent #{agent_id} has no workspace"}
-      workspace_id -> callback.(workspace_id)
     end
   end
 

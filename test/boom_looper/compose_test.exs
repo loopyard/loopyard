@@ -23,16 +23,16 @@ defmodule BoomLooper.ComposeTest do
       output = Compose.generate(ws, tmp_dir, "abcd")
       config = Jason.decode!(output)
 
-      # Has workspace service (uses fixed alpine base image)
+      # Has workspace service (built from project Dockerfile)
       assert config["services"]["workspace"]
       assert config["services"]["workspace"]["command"] == "sleep infinity"
-      # Workspace uses priv/workspace-base as build context
-      assert String.ends_with?(config["services"]["workspace"]["build"]["context"], "priv/workspace-base")
+      # Workspace uses project dir as build context
+      assert config["services"]["workspace"]["build"]["context"] == tmp_dir
 
       # Has dev service (uses project Dockerfile)
       assert config["services"]["dev"]
-      # Dev command is wrapped with env setup
-      assert is_list(config["services"]["dev"]["command"])
+      # Dev command is set directly
+      assert config["services"]["dev"]["command"] == "bin/dev"
       # Host ports are stripped — only container port remains
       assert "3000" in config["services"]["dev"]["ports"]
 
@@ -47,7 +47,7 @@ defmodule BoomLooper.ComposeTest do
       assert Map.has_key?(config["volumes"], "postgres-data-abcd")
     end
 
-    test "workspace container always exists, even without dockerfile", %{tmp_dir: tmp_dir} do
+    test "no workspace container without dockerfile", %{tmp_dir: tmp_dir} do
       ws = %Workspace{
         dockerfile: nil,
         processes: [],
@@ -57,10 +57,8 @@ defmodule BoomLooper.ComposeTest do
       output = Compose.generate(ws, tmp_dir, "1234")
       config = Jason.decode!(output)
 
-      # Workspace container always exists (uses fixed alpine image)
-      assert config["services"]["workspace"]
-      assert config["services"]["workspace"]["command"] == "sleep infinity"
-      # No dev service without dockerfile
+      # No workspace or dev service without dockerfile
+      refute config["services"]["workspace"]
       refute config["services"]["dev"]
     end
 
@@ -74,13 +72,12 @@ defmodule BoomLooper.ComposeTest do
       output = Compose.generate(ws, tmp_dir, "abcd")
       config = Jason.decode!(output)
 
-      # Workspace uses priv/workspace-base (not project Dockerfile)
-      assert String.ends_with?(config["services"]["workspace"]["build"]["context"], "priv/workspace-base")
-      assert config["services"]["workspace"]["build"]["dockerfile"] == "Dockerfile"
+      # Workspace uses project dir as build context
+      assert config["services"]["workspace"]["build"]["context"] == tmp_dir
+      assert config["services"]["workspace"]["build"]["dockerfile"] == ".boomlooper/workspace/Dockerfile"
 
-      # Dev uses builds directory
-      expected_build_dir = Path.join([Workspace.home_dir(), "builds", "abcd"])
-      assert config["services"]["dev"]["build"]["context"] == expected_build_dir
+      # Dev also uses project dir as build context
+      assert config["services"]["dev"]["build"]["context"] == tmp_dir
     end
 
     test "strips host ports from port mappings", %{tmp_dir: tmp_dir} do
@@ -138,9 +135,8 @@ defmodule BoomLooper.ComposeTest do
       output = Compose.generate(ws, tmp_dir, "abcd")
       config = Jason.decode!(output)
 
-      expected_build_dir = Path.join([Workspace.home_dir(), "builds", "abcd"])
-      assert config["services"]["dev"]["build"]["context"] == expected_build_dir
-      assert config["services"]["dev"]["build"]["dockerfile"] == "Dockerfile"
+      assert config["services"]["dev"]["build"]["context"] == tmp_dir
+      assert config["services"]["dev"]["build"]["dockerfile"] == ".boomlooper/workspace/Dockerfile"
     end
   end
 

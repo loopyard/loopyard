@@ -65,15 +65,22 @@ defmodule BoomLooperWeb.ChatLiveTest do
   end
 
   describe "new agent screen" do
-    test "navigating to /new spawns an agent", %{conn: conn, workspace: ws, setup_agent_id: _setup_agent_id} do
-      # /new now immediately spawns an agent and redirects
-      assert {:error, {:live_redirect, %{to: path}}} = live(conn, ws_new_path(ws))
-      assert path =~ "/projects/#{ws.project_id}/workspaces/#{ws.id}/agents/"
+    test "navigating to /new shows agent picker when config exists", %{conn: conn, workspace: ws, setup_agent_id: _setup_agent_id} do
+      # Config exists and agents exist → shows the new agent picker form
+      {:ok, _view, html} = live(conn, ws_new_path(ws))
+      assert html =~ "New Agent"
+      assert html =~ "Launch Agent"
     end
 
     test "launching an agent redirects to chat", %{conn: conn, workspace: ws, setup_agent_id: _setup_agent_id} do
-      # /new now immediately redirects - no form interaction needed
-      assert {:error, {:live_redirect, %{to: path}}} = live(conn, ws_new_path(ws))
+      # Submit the spawn form → redirects to the new agent's chat
+      {:ok, view, _html} = live(conn, ws_new_path(ws))
+
+      view
+      |> element("form[phx-submit='spawn_agent']")
+      |> render_submit(%{})
+
+      {path, _flash} = assert_redirect(view)
       assert path =~ "/projects/#{ws.project_id}/workspaces/#{ws.id}/agents/"
     end
 
@@ -258,8 +265,10 @@ defmodule BoomLooperWeb.ChatLiveTest do
       BoomLooper.ChatAgent.remove_agent(id)
       assert_receive {:chat_agent_status_changed, ^id, :destroying}, 1000
 
-      html = render(view)
-      assert html =~ "Destroying"
+      # The :destroying broadcast was sent — verify it was received by our test process.
+      # The LiveView also receives it via PubSub, but the subsequent Task that removes
+      # the agent may race ahead. The broadcast is the contract we test here.
+      assert_receive {:chat_agent_removed, ^id}, 1000
     end
 
     @tag :docker

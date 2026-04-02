@@ -18,7 +18,9 @@ defmodule BoomLooper.AgentBootTest do
   describe "boot/3" do
     test "registers boot status updates before starting session" do
       id = "boot-test-#{:rand.uniform(100_000)}"
-      working_dir = File.cwd!()
+      working_dir = Path.join(System.tmp_dir!(), "agent-boot-status-test-#{:rand.uniform(100_000)}")
+      File.mkdir_p!(working_dir)
+      on_exit(fn -> File.rm_rf!(working_dir) end)
 
       ChatAgent.register_booting(id, "Test", working_dir)
 
