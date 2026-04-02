@@ -643,12 +643,24 @@ defmodule BoomLooper.ChatAgent do
   def handle_info(_msg, state), do: {:noreply, state}
 
   @impl true
-  def terminate(:normal, _state), do: :ok
-
   def terminate(_reason, state) do
-    crashed = %{state | status: :crashed}
-    :ets.insert(@ets_table, {state.id, summary(crashed)})
-    broadcast(@topic, {:chat_agent_stopped, summary(crashed)})
+    # Always stop the Claude CLI session to prevent process leaks
+    if state.session && state.backend do
+      try do
+        task = Task.async(fn -> state.backend.stop(state.session) end)
+        Task.yield(task, 3_000) || Task.shutdown(task, :brutal_kill)
+      rescue
+        _ -> :ok
+      catch
+        _, _ -> :ok
+      end
+    end
+
+    unless state.status in [:stopped, :destroying] do
+      crashed = %{state | status: :crashed}
+      :ets.insert(@ets_table, {state.id, summary(crashed)})
+      broadcast(@topic, {:chat_agent_stopped, summary(crashed)})
+    end
   end
 
   # --- Private ---
