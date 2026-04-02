@@ -76,17 +76,11 @@ defmodule Mix.Tasks.Boom.Rpc do
   end
 
   defp read_cookie do
-    default_home = Path.join(System.user_home!(), ".boomlooper")
-    env_home = System.get_env("BOOMLOOPER_HOME")
+    # Always use ~/.boomlooper/cookie — matches boom.server
+    path = Path.join([System.user_home!(), ".boomlooper", "cookie"])
 
-    # Try BOOMLOOPER_HOME first, fall back to ~/.boomlooper
-    path = cond do
-      env_home && File.exists?(Path.join(env_home, "cookie")) ->
-        Path.join(env_home, "cookie")
-      File.exists?(Path.join(default_home, "cookie")) ->
-        Path.join(default_home, "cookie")
-      true ->
-        Mix.raise("Cookie not found. Checked #{if env_home, do: Path.join(env_home, "cookie") <> " and "}#{Path.join(default_home, "cookie")}. Is BoomLooper running?")
+    unless File.exists?(path) do
+      Mix.raise("Cookie not found at #{path}. Is BoomLooper running?")
     end
 
     path |> File.read!() |> String.trim() |> String.to_atom()

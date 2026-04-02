@@ -17,7 +17,7 @@ defmodule Mix.Tasks.Boom.Server do
 
   @impl Mix.Task
   def run(_args) do
-    # Use a BOOMLOOPER_HOME-scoped cookie so tools can connect without ~/.erlang.cookie
+    # Cookie always lives at ~/.boomlooper/cookie so boom.rpc can find it
     cookie = ensure_cookie()
 
     case Node.start(:boom, :shortnames) do
@@ -34,7 +34,10 @@ defmodule Mix.Tasks.Boom.Server do
   end
 
   defp ensure_cookie do
-    home = System.get_env("BOOMLOOPER_HOME") || Path.join(System.user_home!(), ".boomlooper")
+    # Always use ~/.boomlooper for the cookie — never BOOMLOOPER_HOME.
+    # BOOMLOOPER_HOME is for workspace data. Using it for cookies causes
+    # mismatches when direnv caches a stale value.
+    home = Path.join(System.user_home!(), ".boomlooper")
     path = Path.join(home, "cookie")
 
     cookie = if File.exists?(path) do

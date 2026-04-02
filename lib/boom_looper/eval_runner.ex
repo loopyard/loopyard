@@ -9,14 +9,9 @@ defmodule BoomLooper.EvalRunner do
     BoomLooper.EvalRunner.run("/path/to/project")
     BoomLooper.EvalRunner.run("/path/to/project", timeout: 900_000)
 
-  From another machine:
+  Or via mix boom.rpc:
 
-    source .env
-    HOME=/tmp MIX_HOME="$PWD/.mix_home" HEX_HOME="$PWD/.hex_home" \\
-      elixir --sname eval --cookie "$(cat "$BOOMLOOPER_HOME/cookie")" -e '
-      :rpc.call(:"boom@macbook", BoomLooper.EvalRunner, :run, ["/path/to/project"])
-      |> IO.inspect()
-    '
+    mix boom.rpc 'BoomLooper.EvalRunner.run("/path/to/project", clean: true)'
   """
   require Logger
 
