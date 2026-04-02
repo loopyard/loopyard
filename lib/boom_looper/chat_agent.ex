@@ -172,12 +172,9 @@ defmodule BoomLooper.ChatAgent do
       [] -> :ok
     end
 
-    # Remove from sidebar — no per-agent Docker cleanup needed
-    # (workspace container is shared and managed by ServiceManager)
-    Task.start(fn ->
-      :ets.delete(@ets_table, id)
-      broadcast(@topic, {:chat_agent_removed, id})
-    end)
+    # Remove from sidebar
+    :ets.delete(@ets_table, id)
+    broadcast(@topic, {:chat_agent_removed, id})
   end
 
   @doc "Register an agent as booting in ETS so all viewers can see it"

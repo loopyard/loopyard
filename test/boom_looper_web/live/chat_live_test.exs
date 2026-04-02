@@ -260,14 +260,10 @@ defmodule BoomLooperWeb.ChatLiveTest do
       BoomLooper.ChatAgent.stop_agent(id)
       assert_receive {:chat_agent_stopped, _}, 500
 
-      {:ok, view, _html} = live(conn, ws_chat_path(ws, id))
+      {:ok, _view, _html} = live(conn, ws_chat_path(ws, id))
 
       BoomLooper.ChatAgent.remove_agent(id)
       assert_receive {:chat_agent_status_changed, ^id, :destroying}, 1000
-
-      # The :destroying broadcast was sent — verify it was received by our test process.
-      # The LiveView also receives it via PubSub, but the subsequent Task that removes
-      # the agent may race ahead. The broadcast is the contract we test here.
       assert_receive {:chat_agent_removed, ^id}, 1000
     end
 
