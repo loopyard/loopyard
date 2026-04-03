@@ -223,7 +223,10 @@ defmodule BoomLooper.Tools.Workspace do
       %{msg | role: :build_done}
     end)
 
-    broadcast_system(agent_id, "Rebuild complete. Services starting.")
+    # Wait for containers to start, then report actual status
+    Process.sleep(5_000)
+    status_report = post_rebuild_status(project_dir)
+    broadcast_system(agent_id, "Rebuild complete.\n\n#{status_report}")
 
     agent_ids = find_workspace_agent_ids(project_dir) -- [agent_id]
     Enum.each(agent_ids, &BoomLooper.ChatAgent.restart_session/1)
@@ -254,9 +257,84 @@ defmodule BoomLooper.Tools.Workspace do
   end
 
   defp broadcast_system(agent_id, content) do
-    Phoenix.PubSub.broadcast(BoomLooper.PubSub,
-      "chat_agent:#{agent_id}",
-      {:chat_message, agent_id, %{role: :system, content: content, timestamp: DateTime.utc_now()}})
+    BoomLooper.ChatAgent.append_message_ets(agent_id, %{
+      role: :system,
+      content: content,
+      timestamp: DateTime.utc_now()
+    })
+  end
+
+  defp post_rebuild_status(project_dir) do
+    ws_id = Workspace.workspace_id(project_dir)
+
+    case ServiceManager.service_status(project_dir) do
+      {:ok, statuses} ->
+        lines = Enum.map(statuses, fn s ->
+          port_info = case s.ports do
+            ports when is_map(ports) and map_size(ports) > 0 ->
+              ports |> Enum.map(fn {cp, hp} -> "#{cp}→localhost:#{hp}" end) |> Enum.join(", ")
+            _ -> ""
+          end
+
+          status_icon = if s.running, do: "running", else: "NOT RUNNING"
+          "- #{s.name}: #{status_icon}#{if port_info != "", do: " (#{port_info})", else: ""}"
+        end)
+
+        # Grab logs from any crashed/stopped process containers
+        crash_logs = statuses
+          |> Enum.filter(fn s -> s.type == :process and not s.running end)
+          |> Enum.map(fn s ->
+            container = ServiceManager.service_container_name(ws_id, s.name)
+            case BoomLooper.Docker.container_logs(container, tail: 50) do
+              {:ok, logs} -> "### #{s.name} logs (crashed)\n```\n#{String.trim(logs)}\n```"
+              _ -> nil
+            end
+          end)
+          |> Enum.reject(&is_nil/1)
+
+        # Probe HTTP on any running process with ports
+        http_report = statuses
+          |> Enum.filter(fn s -> s.type == :process and s.running and s.ports != %{} end)
+          |> Enum.flat_map(fn s ->
+            Enum.map(s.ports, fn {_cp, hp} ->
+              case http_probe("http://localhost:#{hp}") do
+                {:ok, status, _body} when status in 200..299 ->
+                  "HTTP #{status} on port #{hp} — app is working!"
+                {:ok, status, body} ->
+                  "HTTP #{status} on port #{hp}:\n```\n#{body}\n```"
+                :error ->
+                  "Port #{hp} mapped but not responding to HTTP yet"
+              end
+            end)
+          end)
+
+        sections = [
+          "## Service Status\n#{Enum.join(lines, "\n")}",
+          if(crash_logs != [], do: Enum.join(crash_logs, "\n\n"), else: nil),
+          if(http_report != [], do: "## HTTP Probe\n#{Enum.join(http_report, "\n")}", else: nil)
+        ] |> Enum.reject(&is_nil/1)
+
+        Enum.join(sections, "\n\n")
+
+      _ ->
+        "Could not check service status."
+    end
+  rescue
+    _ -> "Could not check service status."
+  catch
+    _, _ -> "Could not check service status."
+  end
+
+  defp http_probe(url) do
+    :inets.start()
+    :ssl.start()
+
+    case :httpc.request(:get, {String.to_charlist(url), []}, [timeout: 5_000, connect_timeout: 3_000], body_format: :binary) do
+      {:ok, {{_, status, _}, _headers, body}} ->
+        {:ok, status, String.slice(to_string(body), 0..500)}
+      _ ->
+        :error
+    end
   end
 
   defp cancel_previous_rebuild(project_dir, workspace_id) do

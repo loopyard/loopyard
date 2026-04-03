@@ -104,6 +104,83 @@ defmodule BoomLooper.Tools.WorkspaceTest do
     end
   end
 
+  describe "rebuild system messages" do
+    setup do
+      tmp_dir = Path.join(System.tmp_dir!(), "boom-looper-rebuild-test-#{:rand.uniform(100_000)}")
+      File.mkdir_p!(tmp_dir)
+
+      id = "rebuild-msg-test-#{:rand.uniform(100_000)}"
+
+      {:ok, _pid} =
+        BoomLooper.TestHelpers.start_agent(
+          id: id,
+          name: "Rebuild Msg Test",
+          working_dir: tmp_dir,
+          bind_mount: tmp_dir,
+          started_by: "test"
+        )
+
+      on_exit(fn ->
+        try do
+          BoomLooper.ChatAgent.stop_agent(id)
+        catch
+          :exit, _ -> :ok
+        end
+
+        Process.sleep(50)
+        File.rm_rf!(tmp_dir)
+      end)
+
+      %{agent_id: id, tmp_dir: tmp_dir}
+    end
+
+    test "append_message_ets delivers system message to agent state", %{agent_id: id} do
+      BoomLooper.ChatAgent.append_message_ets(id, %{
+        role: :system,
+        content: "Rebuild complete.",
+        timestamp: DateTime.utc_now()
+      })
+
+      Process.sleep(50)
+      state = BoomLooper.ChatAgent.get_state(id)
+      system_msgs = Enum.filter(state.messages, &(&1[:role] == :system))
+      assert length(system_msgs) >= 1
+      assert Enum.any?(system_msgs, &(&1.content =~ "Rebuild complete"))
+    end
+
+    test "append_message_ets broadcasts to PubSub subscribers", %{agent_id: id} do
+      BoomLooper.ChatAgent.subscribe(id)
+
+      BoomLooper.ChatAgent.append_message_ets(id, %{
+        role: :system,
+        content: "Rebuild failed.",
+        timestamp: DateTime.utc_now()
+      })
+
+      assert_receive {:chat_message, ^id, %{role: :system, content: "Rebuild failed."}}, 1_000
+    end
+
+    test "system messages are visible to both agent and subscribers", %{agent_id: id} do
+      BoomLooper.ChatAgent.subscribe(id)
+
+      BoomLooper.ChatAgent.append_message_ets(id, %{
+        role: :system,
+        content: "ARM64 image not available.",
+        timestamp: DateTime.utc_now()
+      })
+
+      # Subscriber gets it
+      assert_receive {:chat_message, ^id, %{role: :system, content: content}}, 1_000
+      assert content =~ "ARM64"
+
+      # Agent state has it
+      Process.sleep(50)
+      state = BoomLooper.ChatAgent.get_state(id)
+      system_msgs = Enum.filter(state.messages, &(&1[:role] == :system))
+      assert Enum.any?(system_msgs, &(&1.content =~ "ARM64"))
+    end
+  end
+
   describe "without bind mount" do
     setup do
       id = "no-bind-test-#{:rand.uniform(100_000)}"
