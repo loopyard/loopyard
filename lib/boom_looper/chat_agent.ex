@@ -492,6 +492,7 @@ defmodule BoomLooper.ChatAgent do
     state = append_message(state, msg)
     :ets.insert(@ets_table, {state.id, summary(state)})
     persist_message(state, List.last(state.messages))
+    broadcast("chat_agent:#{state.id}", {:chat_message, state.id, List.last(state.messages)})
     {:noreply, state}
   end
 
