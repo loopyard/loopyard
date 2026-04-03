@@ -158,6 +158,48 @@ defmodule BoomLooper.EvalRunner do
     :exit, _ -> %{}
   end
 
+  @doc """
+  Try to fetch an HTTP response from any dev service with a mapped port.
+  Returns {:ok, status_code, body_preview} or :no_response.
+  """
+  def probe_web_service(workspace_path) do
+    case BoomLooper.Workspace.ServiceManager.service_status(workspace_path) do
+      {:ok, statuses} ->
+        statuses
+        |> Enum.filter(fn s -> s.type == :process && s.running && s.ports != %{} end)
+        |> Enum.find_value(:no_response, fn service ->
+          service.ports
+          |> Enum.find_value(:no_response, fn {_container_port, host_port} ->
+            case http_get("http://localhost:#{host_port}") do
+              {:ok, status, body} -> {:ok, status, body}
+              :error -> nil
+            end
+          end)
+        end)
+
+      _ ->
+        :no_response
+    end
+  rescue
+    _ -> :no_response
+  catch
+    _, _ -> :no_response
+  end
+
+  defp http_get(url) do
+    # Use :httpc from stdlib — no deps needed
+    :inets.start()
+    :ssl.start()
+
+    case :httpc.request(:get, {String.to_charlist(url), []}, [timeout: 5_000, connect_timeout: 3_000], body_format: :binary) do
+      {:ok, {{_, status, _}, _headers, body}} ->
+        {:ok, status, String.slice(to_string(body), 0..500)}
+
+      _ ->
+        :error
+    end
+  end
+
   # --- Private ---
 
   defp poll_agent(agent_id, deadline, interval, project_path, nudges, max_nudges) do
@@ -165,7 +207,16 @@ defmodule BoomLooper.EvalRunner do
 
     if now >= deadline do
       state = ChatAgent.get_state(agent_id)
-      build_result(:timeout, state, project_path, nudges)
+      # Even on timeout, check if the web service is actually working
+      case probe_web_service(project_path) do
+        {:ok, status, body} when status in 200..299 ->
+          Logger.info("[EvalRunner] Timed out but web service is healthy (HTTP #{status})")
+          build_result(:success, state, project_path, nudges, %{http_status: status, http_body_preview: body})
+        {:ok, status, body} ->
+          build_result(:web_error, state, project_path, nudges, %{http_status: status, http_body_preview: body})
+        :no_response ->
+          build_result(:timeout, state, project_path, nudges)
+      end
     else
       case ChatAgent.get_state(agent_id) do
         nil ->
@@ -182,20 +233,45 @@ defmodule BoomLooper.EvalRunner do
             Process.sleep(interval)
             poll_agent(agent_id, deadline, interval, project_path, nudges, max_nudges)
           else
-            # Don't nudge while a rebuild is in progress — the build is async
-            # and the agent is correctly waiting for the system message
+            # Don't nudge while a rebuild is in progress
             if BoomLooper.Tools.Workspace.rebuild_in_progress?(project_path) do
               Process.sleep(interval)
               poll_agent(agent_id, deadline, interval, project_path, nudges, max_nudges)
             else
-              if nudges >= max_nudges do
-                Logger.warning("[EvalRunner] Agent #{agent_id} idle after #{nudges} nudges, giving up")
-                build_result(:stalled, state, project_path, nudges)
-              else
-                Logger.info("[EvalRunner] Agent #{agent_id} idle, nudging (#{nudges + 1}/#{max_nudges})")
-                ChatAgent.send_message(agent_id, "Continue setting up the development environment.")
-                Process.sleep(interval)
-                poll_agent(agent_id, deadline, interval, project_path, nudges + 1, max_nudges)
+              # Check if the web service is actually responding
+              case probe_web_service(project_path) do
+                {:ok, status, body} when status in 200..299 ->
+                  Logger.info("[EvalRunner] Web service healthy (HTTP #{status}), declaring success")
+                  build_result(:success, state, project_path, nudges, %{
+                    http_status: status,
+                    http_body_preview: body
+                  })
+
+                {:ok, status, body} ->
+                  # Got a response but it's an error — feed it back to the agent
+                  Logger.info("[EvalRunner] Web service error (HTTP #{status}), nudging with error body")
+                  if nudges >= max_nudges do
+                    build_result(:web_error, state, project_path, nudges, %{
+                      http_status: status,
+                      http_body_preview: body
+                    })
+                  else
+                    nudge_msg = "The web service is returning HTTP #{status}. Here's the response body — fix the issue:\n\n```\n#{body}\n```"
+                    ChatAgent.send_message(agent_id, nudge_msg)
+                    Process.sleep(interval)
+                    poll_agent(agent_id, deadline, interval, project_path, nudges + 1, max_nudges)
+                  end
+
+                :no_response ->
+                  if nudges >= max_nudges do
+                    Logger.warning("[EvalRunner] Agent #{agent_id} idle after #{nudges} nudges, giving up")
+                    build_result(:stalled, state, project_path, nudges)
+                  else
+                    Logger.info("[EvalRunner] Agent #{agent_id} idle, no web response, nudging (#{nudges + 1}/#{max_nudges})")
+                    ChatAgent.send_message(agent_id, "The web service is not responding on any port. Check service_status and container logs to debug.")
+                    Process.sleep(interval)
+                    poll_agent(agent_id, deadline, interval, project_path, nudges + 1, max_nudges)
+                  end
               end
             end
           end
@@ -210,7 +286,7 @@ defmodule BoomLooper.EvalRunner do
     end
   end
 
-  defp build_result(outcome, state, project_path, nudges) do
+  defp build_result(outcome, state, project_path, nudges, extra \\ %{}) do
     services = check_services(project_path)
     messages = if state, do: state.messages, else: []
 
@@ -219,7 +295,6 @@ defmodule BoomLooper.EvalRunner do
       |> Enum.filter(fn m -> m[:role] == :error end)
       |> Enum.map(fn m -> m[:content] end)
 
-    # Tool usage breakdown
     tool_usage =
       messages
       |> Enum.filter(fn m -> m[:role] == :tool end)
@@ -236,6 +311,7 @@ defmodule BoomLooper.EvalRunner do
       nudges: nudges,
       tool_usage: tool_usage
     }
+    |> Map.merge(extra)
   end
 
   @doc """
@@ -284,6 +360,7 @@ defmodule BoomLooper.EvalRunner do
     - **Tool calls:** #{result.tool_calls}
     - **Errors:** #{result.errors}
     - **Nudges:** #{result.nudges}
+    #{if result[:http_status], do: "- **HTTP Status:** #{result.http_status}", else: "- **HTTP Status:** no response"}
 
     ## Services
 
@@ -296,7 +373,18 @@ defmodule BoomLooper.EvalRunner do
     ## Errors
 
     #{errors_section}
+    #{if result[:http_body_preview] do
+    """
 
+    ## HTTP Response
+
+    ```
+    #{result.http_body_preview}
+    ```
+    """
+    else
+      ""
+    end}
     ## Project
 
     #{result.project_path}
