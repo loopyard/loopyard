@@ -280,9 +280,9 @@ defmodule BoomLooper.Tools.Workspace do
           "- #{s.name}: #{status_icon}#{if port_info != "", do: " (#{port_info})", else: ""}"
         end)
 
-        # Grab logs from any crashed/stopped process containers
+        # Grab logs from ANY crashed/stopped container (processes AND services like postgres)
         crash_logs = statuses
-          |> Enum.filter(fn s -> s.type == :process and not s.running end)
+          |> Enum.filter(fn s -> not s.running end)
           |> Enum.map(fn s ->
             container = ServiceManager.service_container_name(ws_id, s.name)
             case BoomLooper.Docker.container_logs(container, tail: 50) do
