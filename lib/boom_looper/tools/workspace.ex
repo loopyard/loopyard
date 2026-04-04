@@ -267,6 +267,12 @@ defmodule BoomLooper.Tools.Workspace do
   defp post_rebuild_status(project_dir) do
     ws_id = Workspace.workspace_id(project_dir)
 
+    # Load workspace config to get image names for docs URLs
+    ws_config = case Workspace.load_from_volume("code-#{ws_id}") do
+      {:ok, ws} -> ws
+      _ -> %Workspace{}
+    end
+
     case ServiceManager.service_status(project_dir) do
       {:ok, statuses} ->
         lines = Enum.map(statuses, fn s ->
@@ -285,10 +291,18 @@ defmodule BoomLooper.Tools.Workspace do
           |> Enum.filter(fn s -> not s.running end)
           |> Enum.map(fn s ->
             container = ServiceManager.service_container_name(ws_id, s.name)
-            case BoomLooper.Docker.container_logs(container, tail: 50) do
-              {:ok, logs} -> "### #{s.name} logs (crashed)\n```\n#{String.trim(logs)}\n```"
-              _ -> nil
+            logs_section = case BoomLooper.Docker.container_logs(container, tail: 50) do
+              {:ok, logs} -> "```\n#{String.trim(logs)}\n```"
+              _ -> "(no logs available)"
             end
+
+            # Find the image for this service to generate docs URL
+            docs_hint = case Enum.find(ws_config.services, &(&1.name == s.name)) do
+              %{image: image} -> "\nDocs: #{dockerhub_url(image)}"
+              _ -> ""
+            end
+
+            "### #{s.name} (crashed)#{docs_hint}\n#{logs_section}"
           end)
           |> Enum.reject(&is_nil/1)
 
@@ -334,6 +348,17 @@ defmodule BoomLooper.Tools.Workspace do
         {:ok, status, String.slice(to_string(body), 0..500)}
       _ ->
         :error
+    end
+  end
+
+  defp dockerhub_url(image) do
+    # Strip tag (e.g. "postgres:16" → "postgres", "pgvector/pgvector:pg16" → "pgvector/pgvector")
+    name = image |> String.split(":") |> List.first()
+
+    if String.contains?(name, "/") do
+      "https://hub.docker.com/r/#{name}"
+    else
+      "https://hub.docker.com/_/#{name}"
     end
   end
 
