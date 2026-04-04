@@ -28,7 +28,8 @@ defmodule BoomLooper.ChatAgent do
     status: :idle,
     messages: [],
     tool_calls: 0,
-    errors: 0
+    errors: 0,
+    stream_ref: nil
   ]
 
   @topic "chat_agents"
@@ -439,9 +440,11 @@ defmodule BoomLooper.ChatAgent do
       end)
 
       # Safety timeout — if no stream events arrive within 2 minutes, reset to idle
-      Process.send_after(self(), {:stream_timeout, agent_id}, 120_000)
+      # Use a unique ref so stale timeouts from previous streams are ignored
+      stream_ref = make_ref()
+      Process.send_after(self(), {:stream_timeout, agent_id, stream_ref}, 120_000)
 
-      {:noreply, state}
+      {:noreply, %{state | stream_ref: stream_ref}}
     end
   end
 
@@ -572,8 +575,8 @@ defmodule BoomLooper.ChatAgent do
     {:noreply, state}
   end
 
-  def handle_info({:stream_timeout, id}, %{id: id, status: :thinking} = state) do
-    # Still thinking after timeout — the streaming task is gone
+  def handle_info({:stream_timeout, id, ref}, %{id: id, status: :thinking, stream_ref: ref} = state) do
+    # Still thinking after timeout AND ref matches current stream — the streaming task is gone
     BoomLooper.EventLog.warning("agent:#{state.name}", "Stream timed out, resetting to idle")
     error_msg = %{role: :error, content: "Agent stopped responding. Send a message to retry.", timestamp: DateTime.utc_now()}
     state = %{append_message(state, error_msg) | status: :idle, errors: state.errors + 1}
@@ -582,7 +585,10 @@ defmodule BoomLooper.ChatAgent do
     {:noreply, state}
   end
 
-  # Ignore timeout if we're no longer thinking (stream completed normally)
+  # Ignore timeout if ref doesn't match (stale timer from previous stream) or not thinking
+  def handle_info({:stream_timeout, _id, _ref}, state), do: {:noreply, state}
+
+  # Legacy timeout format (no ref) — ignore
   def handle_info({:stream_timeout, _id}, state), do: {:noreply, state}
 
   def handle_info({:stream_error, id, reason}, %{id: id} = state) do

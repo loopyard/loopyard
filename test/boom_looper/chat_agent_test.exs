@@ -145,6 +145,58 @@ defmodule BoomLooper.ChatAgentTest do
     end
   end
 
+  describe "stream_timeout with ref" do
+    setup do
+      id = "timeout-test-#{:rand.uniform(100_000)}"
+
+      {:ok, pid} =
+        BoomLooper.TestHelpers.start_agent(
+          id: id,
+          name: "Timeout Test",
+          working_dir: File.cwd!(),
+          started_by: "test"
+        )
+
+      on_exit(fn ->
+        try do
+          ChatAgent.stop_agent(id)
+        catch
+          :exit, _ -> :ok
+        end
+
+        Process.sleep(50)
+      end)
+
+      %{id: id, pid: pid}
+    end
+
+    test "stale stream_timeout is ignored when agent is thinking on a new stream", %{id: id, pid: pid} do
+      ChatAgent.subscribe(id)
+
+      # Simulate: a stale timeout from a previous stream fires while agent is thinking
+      # First, put the agent into thinking state with a current stream_ref
+      _current_ref = make_ref()
+      stale_ref = make_ref()
+
+      # Send a stale timeout (wrong ref) — should be ignored
+      send(pid, {:stream_timeout, id, stale_ref})
+      Process.sleep(50)
+
+      state = ChatAgent.get_state(id)
+      # Agent should still be idle (not errored), because the stale timeout was ignored
+      assert state.status == :idle
+      refute_receive {:chat_message, ^id, %{role: :error}}, 100
+    end
+
+    test "legacy stream_timeout without ref is ignored", %{id: id, pid: pid} do
+      send(pid, {:stream_timeout, id})
+      Process.sleep(50)
+
+      state = ChatAgent.get_state(id)
+      assert state.status == :idle
+    end
+  end
+
   describe "build_system_prompt/6" do
     test "setup agent prompt stays under CLI argument limit" do
       prompt = ChatAgent.build_system_prompt("test-id", "/tmp/project", nil, nil, nil)
