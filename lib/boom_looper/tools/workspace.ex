@@ -18,7 +18,7 @@ defmodule BoomLooper.Tools.Workspace do
     def execute(%{agent_id: agent_id, dockerfile: dockerfile}) do
       BoomLooper.Tools.Workspace.do_update_config(agent_id, fn ws ->
         %{ws | dockerfile: dockerfile}
-      end, "Dockerfile updated")
+      end, "Wrote Dockerfile to workspace config. Run `rebuild` to build the image and start containers.")
     end
   end
 
@@ -36,7 +36,7 @@ defmodule BoomLooper.Tools.Workspace do
         # Replace any existing process with this name, or add new
         processes = Enum.reject(ws.processes, &(&1.name == name))
         %{ws | processes: processes ++ [%{name: name, command: command, ports: ports}]}
-      end, "Dev command set: #{command}")
+      end, "Wrote dev command `#{command}` to workspace config. This will run in its own container after `rebuild`.")
     end
   end
 
@@ -56,7 +56,7 @@ defmodule BoomLooper.Tools.Workspace do
       BoomLooper.Tools.Workspace.do_update_config(agent_id, fn ws ->
         services = Enum.reject(ws.services, &(&1.name == name))
         %{ws | services: services ++ [%{name: name, image: image, env: env, volumes: volumes, ports: ports}]}
-      end, "Service added: #{name} (#{image})")
+      end, "Added #{name} (#{image}) to workspace config. Container will start after `rebuild`.")
     end
   end
 
@@ -68,7 +68,7 @@ defmodule BoomLooper.Tools.Workspace do
       BoomLooper.Tools.Workspace.do_update_config(agent_id, fn ws ->
         %{ws | services: Enum.reject(ws.services, &(&1.name == name)),
                processes: Enum.reject(ws.processes, &(&1.name == name))}
-      end, "Service removed: #{name}")
+      end, "Removed #{name} from workspace config. Run `rebuild` to apply.")
     end
   end
 
@@ -81,7 +81,7 @@ defmodule BoomLooper.Tools.Workspace do
 
       BoomLooper.Tools.Workspace.do_update_config(agent_id, fn ws ->
         %{ws | env_vars: Map.merge(ws.env_vars, parsed)}
-      end, "Environment variables updated")
+      end, "Wrote environment variables to workspace config. Applied after `rebuild`.")
     end
   end
 
@@ -92,7 +92,7 @@ defmodule BoomLooper.Tools.Workspace do
     def execute(%{agent_id: agent_id, name: name}) do
       BoomLooper.Tools.Workspace.do_update_config(agent_id, fn ws ->
         %{ws | name: name}
-      end, "Workspace named: #{name}")
+      end, "Set workspace name to \"#{name}\" in config.")
     end
   end
 
@@ -103,7 +103,7 @@ defmodule BoomLooper.Tools.Workspace do
     def execute(%{agent_id: agent_id, system_prompt: prompt}) do
       BoomLooper.Tools.Workspace.do_update_config(agent_id, fn ws ->
         %{ws | system_prompt: prompt}
-      end, "System prompt updated")
+      end, "Wrote system prompt to workspace config. Future agents will see this.")
     end
   end
 
