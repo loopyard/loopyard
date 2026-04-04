@@ -40,10 +40,14 @@ Any Elixir expression works. The UI shows a yellow indicator while you're jacked
 
 ## What Success Looks Like
 
-- **Outcome: completed** — services healthy, HTTP responds
+- **Outcome: success** — web service returns HTTP 2xx
 - **Low nudge count** (0-2)
 - **Low tool calls** (under 100)
 - **Services visible in sidebar** — workspace, dev, postgres, etc.
+
+Other outcomes: `failed` (agent crashed/stopped), `stalled` (idle after max nudges, no HTTP response), `timeout` (deadline hit), `web_error` (HTTP response but non-2xx after max nudges).
+
+The eval probes the web service via HTTP at each check. Error response bodies (4xx/5xx) are fed back to the agent as nudge messages so it can debug.
 
 ## Results
 

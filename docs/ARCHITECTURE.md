@@ -48,8 +48,8 @@ Compose project: bl-{workspace_id}
   └── redis (stock service)
 ```
 
-- **Workspace container** — Built from `priv/workspace-base/Dockerfile` (alpine + git + gh + rsync). Always running (`sleep infinity`). Agents exec here via `docker exec`. Never crashes. Always available for file ops and debugging.
-- **Dev container** — Built from project Dockerfile (e.g. Ruby/Node image). Runs the dev command (e.g. `bin/dev`). Only created when Dockerfile is configured. Hot reloads via inotify through shared volume.
+- **Workspace container** — Built from the project Dockerfile (`.boomlooper/workspace/Dockerfile`). Always running (`sleep infinity`). Agents exec here via `docker exec`. Only created when a Dockerfile is configured.
+- **Dev container** — Built from the same project Dockerfile. Runs the dev command (e.g. `bin/dev`). Only created when a dev process is configured. Hot reloads via inotify through shared volume.
 - **Stock services** — postgres, redis, etc. Own containers, own images.
 
 All containers share a Docker network and the code volume. Container naming: `bl-{workspace_id}-{service}-1`.
@@ -132,7 +132,7 @@ ETS (read by LiveViews, get_state, get_message)
 LiveViews (render updates)
 ```
 
-All mutations go through the GenServer. `append_message_ets` and `update_message` route through the GenServer via casts when it's alive, ensuring state consistency.
+All mutations go through the GenServer. `append_message_ets` and `update_message` route through the GenServer via casts when it's alive, ensuring state consistency. `append_external_message` also broadcasts to PubSub so both the agent and LiveView subscribers see the message.
 
 ## Messages as resources
 

@@ -27,7 +27,7 @@ defmodule BoomLooper.EvalRunner do
   and record the result. Blocks until done or timeout.
 
   Options:
-    - :timeout — max wait time in ms (default: 15 minutes)
+    - :timeout — max wait time in ms (default: 30 minutes)
     - :poll_interval — how often to check agent state (default: 5s)
     - :max_nudges — max times to nudge an idle agent (default: 5)
     - :clean — remove existing project first (default: false)

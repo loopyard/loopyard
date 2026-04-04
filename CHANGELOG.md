@@ -3,6 +3,8 @@
 ## Unreleased
 
 ### Added
+- EvalRunner HTTP probing — declares success on 2xx, feeds error response bodies back to agent
+- Post-rebuild status report — agent gets service status, crash logs, and HTTP probe results after every rebuild
 - SSH server for terminal access to containers (`ssh -p 2222 container@localhost`)
 - `/connect` page with LAN QR code for mobile access
 - `StreamBuffer` module for streaming output accumulation
@@ -13,6 +15,10 @@
 - Safari iOS fixes (dvh viewport, safe area insets, content overflow)
 - GitHub Actions CI
 - PR template with checklist
+
+### Fixed
+- Rebuild messages now reach the agent (was broadcasting to PubSub only, agent never subscribed to its own topic)
+- `append_external_message` now broadcasts to PubSub so both agent and LiveView subscribers see external messages
 
 ### Changed
 - `.hive/` renamed to `.boomlooper/` with `repo/` (tracked) and `workspace/` (gitignored) split
