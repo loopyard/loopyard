@@ -645,8 +645,12 @@ defmodule BoomLooper.ChatAgent do
 
   @impl true
   def terminate(_reason, state) do
-    # Always stop the Claude CLI session to prevent process leaks
+    # Always stop the Claude CLI session to prevent process leaks.
+    # Port.close alone doesn't kill the OS process — we must find and kill it.
     if state.session && state.backend do
+      # Grab the OS PID before stopping (the port will be gone after stop)
+      os_pid = get_session_os_pid(state.session)
+
       try do
         task = Task.async(fn -> state.backend.stop(state.session) end)
         Task.yield(task, 3_000) || Task.shutdown(task, :brutal_kill)
@@ -655,6 +659,9 @@ defmodule BoomLooper.ChatAgent do
       catch
         _, _ -> :ok
       end
+
+      # Force-kill the OS process if it's still around
+      if os_pid, do: kill_os_process(os_pid)
     end
 
     unless state.status in [:stopped, :destroying] do
@@ -662,6 +669,40 @@ defmodule BoomLooper.ChatAgent do
       :ets.insert(@ets_table, {state.id, summary(crashed)})
       broadcast(@topic, {:chat_agent_stopped, summary(crashed)})
     end
+  end
+
+  defp get_session_os_pid(session) do
+    # Walk the process tree: Session → children → find the adapter with a Port
+    try do
+      {:links, links} = Process.info(session, :links)
+      Enum.find_value(links, fn pid ->
+        if is_pid(pid) and Process.alive?(pid) do
+          try do
+            state = :sys.get_state(pid, 500)
+            if is_map(state) and Map.has_key?(state, :port) and is_port(state.port) do
+              case Port.info(state.port, :os_pid) do
+                {:os_pid, os_pid} -> os_pid
+                _ -> nil
+              end
+            end
+          catch
+            _, _ -> nil
+          end
+        end
+      end)
+    rescue
+      _ -> nil
+    catch
+      _, _ -> nil
+    end
+  end
+
+  defp kill_os_process(os_pid) do
+    System.cmd("kill", ["-9", "#{os_pid}"], stderr_to_stdout: true)
+  rescue
+    _ -> :ok
+  catch
+    _, _ -> :ok
   end
 
   # --- Private ---
