@@ -1268,8 +1268,15 @@ defmodule BoomLooperWeb.ChatLive do
 
   defp chat_msg(%{msg: %{role: :system}} = assigns) do
     ~H"""
-    <div class="flex items-center gap-2 py-1 pl-10">
-      <span class="text-xs text-zinc-400 dark:text-zinc-500 italic">{@msg.content}</span>
+    <div class="py-1 pl-10">
+      <div
+        class="text-xs text-zinc-400 dark:text-zinc-500 italic"
+        id={"system-msg-#{@msg[:id] || hash_content(@msg.content)}"}
+        phx-hook="Markdown"
+        data-source={@msg.content}
+      >
+        <div class="markdown-body"></div>
+      </div>
     </div>
     """
   end
