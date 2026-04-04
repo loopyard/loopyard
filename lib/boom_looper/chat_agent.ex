@@ -439,10 +439,12 @@ defmodule BoomLooper.ChatAgent do
         end
       end)
 
-      # Safety timeout — if no stream events arrive within 2 minutes, reset to idle
-      # Use a unique ref so stale timeouts from previous streams are ignored
+      # Safety timeout — if no stream events arrive within 10 minutes, reset to idle.
+      # Long timeout needed because MCP tool calls (exec, rebuild) can block for minutes
+      # while installing deps, running migrations, or building Docker images.
+      # Use a unique ref so stale timeouts from previous streams are ignored.
       stream_ref = make_ref()
-      Process.send_after(self(), {:stream_timeout, agent_id, stream_ref}, 120_000)
+      Process.send_after(self(), {:stream_timeout, agent_id, stream_ref}, 600_000)
 
       {:noreply, %{state | stream_ref: stream_ref}}
     end
