@@ -615,17 +615,19 @@ defmodule BoomLooperWeb.ChatLive do
 
   defp fetch_service_container_logs(service_statuses, service_name) do
     case Enum.find(service_statuses, &(&1.name == service_name)) do
-      %{container: container} ->
+      %{container: container} = svc ->
         case BoomLooper.Docker.docker(["logs", "--tail", "200", container], timeout: 5_000) do
+          {:ok, ""} ->
+            if svc.running, do: "(no output yet)", else: "(container exited with no output)"
           {:ok, output} -> output
-          {:error, _} -> ""
+          {:error, _} -> "(could not fetch logs)"
         end
 
       nil ->
-        ""
+        "(container not found)"
     end
   catch
-    :exit, _ -> ""
+    :exit, _ -> "(could not fetch logs)"
   end
 
   defp fetch_all_service_logs(service_statuses) do
