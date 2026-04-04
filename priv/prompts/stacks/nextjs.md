@@ -16,7 +16,7 @@ Check `.nvmrc` or `.node-version` — if it specifies a different major version,
 
 ## Services
 
-- **postgres:** `postgres:16` with `POSTGRES_HOST_AUTH_METHOD=trust` (if using Prisma/Drizzle with postgres)
+- **postgres:** `postgres:16` — pass `env: {"POSTGRES_HOST_AUTH_METHOD": "trust"}` in `add_service` (if using Prisma/Drizzle with postgres)
 
 ## Env vars
 

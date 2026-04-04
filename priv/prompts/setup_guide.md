@@ -61,3 +61,5 @@ All containers share a code volume mounted at `/workspace`.
 **Check status once** — After rebuild, call `service_status` once. Don't poll in a loop. If something crashed, read `logs` and fix the config.
 
 **Database URLs use service names** — In Docker Compose, services reach each other by name. Postgres URL: `postgres://postgres@postgres:5432/myapp_dev`. Redis: `redis://redis:6379/0`.
+
+**Service env vars go on the service** — `set_env_vars` sets env vars for workspace + dev containers. Service-specific env vars (like `POSTGRES_HOST_AUTH_METHOD=trust` for postgres) must be passed via the `env` parameter of `add_service`. If postgres won't start, this is almost certainly the reason.

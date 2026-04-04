@@ -19,7 +19,7 @@ Check `mix.exs` for Elixir version. Add `nodejs npm` if project has JS assets. A
 
 ## Services
 
-- **postgres:** `postgres:16` with `POSTGRES_HOST_AUTH_METHOD=trust` (if mix.exs has `:postgrex`)
+- **postgres:** `postgres:16` — pass `env: {"POSTGRES_HOST_AUTH_METHOD": "trust"}` in `add_service` (if mix.exs has `:postgrex`)
 
 ## Env vars
 

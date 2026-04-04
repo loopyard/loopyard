@@ -23,7 +23,7 @@ Check `.python-version` or `pyproject.toml` for version. Add `libpq-dev` if usin
 
 ## Services
 
-- **postgres:** `postgres:16` with `POSTGRES_HOST_AUTH_METHOD=trust`
+- **postgres:** `postgres:16` — pass `env: {"POSTGRES_HOST_AUTH_METHOD": "trust"}` in `add_service`
 - **redis:** `redis:7-alpine` (if using Celery/RQ)
 
 ## Env vars

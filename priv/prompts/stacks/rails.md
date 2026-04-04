@@ -22,7 +22,7 @@ Check `Gemfile` for extras: `image_processing` → add `libvips`, `nokogiri` →
 
 ## Services
 
-- **postgres:** `postgres:16` with `POSTGRES_HOST_AUTH_METHOD=trust`
+- **postgres:** `postgres:16` — pass `env: {"POSTGRES_HOST_AUTH_METHOD": "trust"}` in `add_service` (NOT in `set_env_vars` — service env vars go on the service itself)
 - **redis:** `redis:7-alpine` (if Gemfile has `redis` or `sidekiq` or `good_job`)
 
 ## Env vars
