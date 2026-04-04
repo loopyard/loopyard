@@ -66,7 +66,7 @@ All containers share a code volume mounted at `/workspace`.
 - "Could not find gem" → run `exec: bundle install`
 - "ENOENT: Procfile.dev" → check if the file exists, adjust the dev command
 
-**The fix loop:** read crash log → `exec` to fix → `rebuild` to restart dev. Each crash gives you info for the next fix. Do NOT change the Dockerfile or service config in response to a dev crash — those are runtime issues, not build issues. Use `exec` to fix them.
+**The fix loop:** read crash log → `exec` to fix → `rebuild` to restart dev → read new crash log → repeat. It may take several iterations — each crash reveals the next issue. First crash: missing deps. Second crash: missing database. Third crash: missing env var. This is normal. Do NOT change the Dockerfile or service config in response to a dev crash — those are runtime issues, not build issues. Use `exec` to fix them, then `rebuild` to restart dev and see if the next issue surfaces.
 
 **Check status once** — After rebuild, call `service_status` once. Don't poll in a loop. If something crashed, read `logs` and fix the config.
 

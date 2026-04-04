@@ -144,7 +144,8 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   def handle_params(%{"service_name" => service_name}, _uri, %{assigns: %{live_action: :service}} = socket) do
-    logs = fetch_service_container_logs(socket.assigns.service_statuses, service_name)
+    # Fetch logs async so the page loads immediately
+    send(self(), {:fetch_service_logs, service_name})
     schedule_log_refresh()
 
     {:noreply,
@@ -152,7 +153,7 @@ defmodule BoomLooperWeb.ChatLive do
      |> assign(:selected_id, nil)
      |> assign(:selected_agent, nil)
      |> assign(:selected_service, service_name)
-     |> assign(:service_logs, logs)
+     |> assign(:service_logs, "Loading logs...")
      |> assign(:all_service_logs, [])}
   end
 
@@ -180,7 +181,7 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   def handle_params(_params, _uri, %{assigns: %{live_action: :services}} = socket) do
-    all_logs = fetch_all_service_logs(socket.assigns.service_statuses)
+    send(self(), :fetch_all_service_logs)
     schedule_log_refresh()
 
     {:noreply,
@@ -188,7 +189,7 @@ defmodule BoomLooperWeb.ChatLive do
      |> assign(:selected_id, nil)
      |> assign(:selected_agent, nil)
      |> assign(:selected_service, nil)
-     |> assign(:all_service_logs, all_logs)
+     |> assign(:all_service_logs, [])
      |> assign(:service_logs, "")}
   end
 
@@ -516,6 +517,18 @@ defmodule BoomLooperWeb.ChatLive do
   @impl true
   def handle_info({:stream_output, id, data, title, msg_id}, socket) when id == socket.assigns.selected_id do
     upsert_stream_message(socket, data, title, msg_id)
+  end
+
+  @impl true
+  def handle_info({:fetch_service_logs, service_name}, socket) do
+    logs = fetch_service_container_logs(socket.assigns.service_statuses, service_name)
+    {:noreply, assign(socket, :service_logs, logs)}
+  end
+
+  @impl true
+  def handle_info(:fetch_all_service_logs, socket) do
+    all_logs = fetch_all_service_logs(socket.assigns.service_statuses)
+    {:noreply, assign(socket, :all_service_logs, all_logs)}
   end
 
   @impl true
