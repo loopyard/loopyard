@@ -4,14 +4,13 @@ defmodule BoomLooper.EvalRunner do
   record results. Handles max_turns by auto-nudging the agent when
   it goes idle before the checklist is complete.
 
-  Usage from IEx (on the running node or via RPC):
+  All evals run asynchronously under a Task.Supervisor. Use `status/0`
+  to check progress and `results/0` to see completed runs.
 
-    BoomLooper.EvalRunner.run("/path/to/project")
-    BoomLooper.EvalRunner.run("/path/to/project", timeout: 900_000)
-
-  Or via mix boom.rpc:
+  Usage via mix boom.rpc:
 
     mix boom.rpc 'BoomLooper.EvalRunner.run("/path/to/project", clean: true)'
+    mix boom.rpc 'BoomLooper.EvalRunner.status()'
   """
   require Logger
 
@@ -23,8 +22,8 @@ defmodule BoomLooper.EvalRunner do
   @max_nudges 5              # don't nudge forever
 
   @doc """
-  Run an eval: add the project, spawn a setup agent, wait for completion,
-  and record the result. Blocks until done or timeout.
+  Run an eval asynchronously. Spawns a supervised task that outlives the
+  RPC connection. Use `status/0` to check progress.
 
   Options:
     - :timeout — max wait time in ms (default: 30 minutes)
@@ -32,9 +31,32 @@ defmodule BoomLooper.EvalRunner do
     - :max_nudges — max times to nudge an idle agent (default: 5)
     - :clean — remove existing project first (default: false)
 
-  Returns {:ok, result} or {:error, reason}.
+  Returns {:ok, pid}.
   """
   def run(project_path, opts \\ []) do
+    project_path = Path.expand(project_path)
+
+    {:ok, pid} = Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
+      eval_name = project_path |> Path.basename() |> sanitize_name()
+      BoomLooper.StateKeeper.put_eval(eval_name, %{pid: self(), path: project_path, started_at: DateTime.utc_now(), status: :running, result: nil})
+      do_run(project_path, opts)
+    end)
+
+    {:ok, pid}
+  end
+
+  @doc """
+  Check status of all running and recent evals.
+  """
+  def status do
+    BoomLooper.StateKeeper.list_evals()
+    |> Enum.map(fn {name, info} ->
+      running = is_pid(info.pid) and Process.alive?(info.pid)
+      %{name: name, status: if(running, do: :running, else: info.status), started_at: info.started_at, result: info[:result]}
+    end)
+  end
+
+  defp do_run(project_path, opts) do
     timeout = Keyword.get(opts, :timeout, @default_timeout)
     poll_interval = Keyword.get(opts, :poll_interval, @poll_interval)
     max_nudges = Keyword.get(opts, :max_nudges, @max_nudges)
@@ -132,6 +154,13 @@ defmodule BoomLooper.EvalRunner do
 
         record_run(project.name, result)
         Logger.info("[EvalRunner] Eval complete for #{project.name}: #{result.outcome}")
+
+        # Update ETS tracking
+        eval_name = sanitize_name(project.name)
+        case BoomLooper.StateKeeper.get_eval(eval_name) do
+          nil -> :ok
+          info -> BoomLooper.StateKeeper.put_eval(eval_name, %{info | status: :done, result: result})
+        end
 
         {:ok, result}
 

@@ -19,17 +19,21 @@ Jack into the running server and call EvalRunner directly:
 
 ```bash
 # Fresh eval (wipes existing project + containers)
-mix boom.rpc 'BoomLooper.EvalRunner.run("/Users/you/Projects/some-app", clean: true, timeout: 900_000)'
+mix boom.rpc 'BoomLooper.EvalRunner.run("/Users/you/Projects/some-app", clean: true)'
 
 # Keep existing state
-mix boom.rpc 'BoomLooper.EvalRunner.run("/Users/you/Projects/some-app", timeout: 900_000)'
+mix boom.rpc 'BoomLooper.EvalRunner.run("/Users/you/Projects/some-app")'
 ```
+
+Evals run asynchronously — `run/2` returns immediately with `{:ok, pid}`.
 
 ## Monitoring
 
-While the eval runs, jack in and check on things:
-
 ```bash
+# Check all running/completed evals
+mix boom.rpc 'BoomLooper.EvalRunner.status()'
+
+# Deeper inspection
 mix boom.rpc 'BoomLooper.ChatAgent.list_agents()'
 mix boom.rpc 'BoomLooper.Workspace.ServiceManager.service_status("/Users/you/Projects/some-app")'
 mix boom.rpc 'BoomLooper.Docker.docker(["ps", "--format", "table {{.Names}}\t{{.Status}}"])'

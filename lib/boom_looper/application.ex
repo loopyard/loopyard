@@ -22,6 +22,7 @@ defmodule BoomLooper.Application do
       {Registry, keys: :unique, name: BoomLooper.WorkspaceAgentRegistry},
       {Registry, keys: :unique, name: BoomLooper.TerminalRegistry},
       {DynamicSupervisor, name: BoomLooper.TerminalSupervisor, strategy: :one_for_one},
+      {Task.Supervisor, name: BoomLooper.TaskSupervisor},
       BoomLooper.WorkspaceSupervisor,
 
       # --- Web layer (can restart independently) ---
