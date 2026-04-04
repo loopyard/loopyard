@@ -372,6 +372,11 @@ defmodule BoomLooper.Compose do
     Enum.map(env, fn {k, v} -> "#{k}=#{v}" end)
   end
 
+  defp env_list(env) when is_list(env) do
+    # Handle ["KEY=VAL", ...] format
+    Enum.filter(env, &is_binary/1)
+  end
+
   defp env_list(_), do: []
 
   defp parse_compose_ports(""), do: %{}

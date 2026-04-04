@@ -450,8 +450,26 @@ defmodule BoomLooper.Tools.Workspace do
 
   def parse_json_field(value, default) when is_binary(value) do
     case Jason.decode(value) do
-      {:ok, parsed} -> parsed
-      {:error, _} -> default
+      {:ok, parsed} ->
+        parsed
+
+      {:error, _} ->
+        # Try parsing KEY=VAL format (comma or newline separated) for env vars
+        if String.contains?(value, "=") do
+          value
+          |> String.split(~r/[,\n]+/)
+          |> Enum.map(&String.trim/1)
+          |> Enum.reject(&(&1 == ""))
+          |> Map.new(fn pair ->
+            case String.split(pair, "=", parts: 2) do
+              [k, v] -> {String.trim(k), String.trim(v)}
+              _ -> nil
+            end
+          end)
+          |> Map.delete(nil)
+        else
+          default
+        end
     end
   end
 
