@@ -74,7 +74,7 @@ defmodule BoomLooper.Compose do
 
       svc = if s[:volumes] && s.volumes != [],
         do: Map.put(svc, "volumes", Enum.map(s.volumes, fn v ->
-          String.replace(v, "{data}", "#{s.name}-data-#{workspace_id}")
+          expand_data_volume(v, s.name, workspace_id)
         end)),
         else: svc
 
@@ -90,7 +90,7 @@ defmodule BoomLooper.Compose do
     volumes = Enum.reduce(ws.services, volumes, fn s, acc ->
       Enum.reduce(s[:volumes] || [], acc, fn v, a ->
         if String.contains?(v, "{data}") do
-          vol_name = "#{s.name}-data-#{workspace_id}"
+          vol_name = data_volume_name(s.name, workspace_id)
           Map.put(a, vol_name, nil)
         else
           a
@@ -102,6 +102,19 @@ defmodule BoomLooper.Compose do
     compose = if volumes != %{}, do: Map.put(compose, "volumes", volumes), else: compose
 
     Jason.encode!(compose, pretty: true)
+  end
+
+  # Expand {data} in volume specs. Handles both "{data}:/path" and "{data}/subpath:/path".
+  # "{data}/pgdata:/var/lib/postgresql/data" → "postgres-data-abcd:/var/lib/postgresql/data"
+  # The /subpath is stripped — the named volume IS the data directory.
+  defp expand_data_volume(volume_spec, service_name, workspace_id) do
+    vol_name = data_volume_name(service_name, workspace_id)
+    # Replace {data} and any trailing subpath (e.g. {data}/pgdata) with just the volume name
+    String.replace(volume_spec, ~r/\{data\}[^:]*/, vol_name)
+  end
+
+  defp data_volume_name(service_name, workspace_id) do
+    "#{service_name}-data-#{workspace_id}"
   end
 
   @doc "Write docker-compose.yml to the .boomlooper/workspace directory."

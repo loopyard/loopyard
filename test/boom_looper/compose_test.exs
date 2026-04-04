@@ -210,6 +210,23 @@ defmodule BoomLooper.ComposeTest do
       assert Map.has_key?(config["volumes"], "postgres-data-abcd")
     end
 
+    test "{data}/subpath in volumes strips subpath and expands correctly", %{tmp_dir: tmp_dir} do
+      ws = %Workspace{
+        dockerfile: "FROM ruby:3.4",
+        processes: [],
+        services: [%{name: "postgres", image: "postgres:16", env: %{},
+                      volumes: ["{data}/pgdata:/var/lib/postgresql/data"], ports: []}]
+      }
+
+      config = ws |> Compose.generate(tmp_dir, "abcd") |> Jason.decode!()
+      vols = config["services"]["postgres"]["volumes"]
+      # Subpath stripped — volume name is clean
+      assert "postgres-data-abcd:/var/lib/postgresql/data" in vols
+      assert Map.has_key?(config["volumes"], "postgres-data-abcd")
+      # No slash in volume name
+      refute Enum.any?(Map.keys(config["volumes"]), &String.contains?(&1, "/"))
+    end
+
     test "shared volumes include code, cache, and deps", %{tmp_dir: tmp_dir} do
       ws = %Workspace{
         dockerfile: "FROM ruby:3.4",
