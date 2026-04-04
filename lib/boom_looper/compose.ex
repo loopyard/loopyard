@@ -185,7 +185,7 @@ defmodule BoomLooper.Compose do
     compose_file = compose_path(project_dir)
     project = project_name(workspace_id)
 
-    base_args = ["-f", compose_file, "-p", project, "up", "-d", "--build"]
+    base_args = ["-f", compose_file, "-p", project, "up", "-d", "--build", "--force-recreate"]
 
     # Try docker compose v2 (plugin) first, fall back to standalone docker-compose
     case stream_compose(["compose" | base_args], callback) do
@@ -210,7 +210,7 @@ defmodule BoomLooper.Compose do
     compose_file = compose_path(project_dir)
     project = project_name(workspace_id)
 
-    base_args = ["-f", compose_file, "-p", project, "up", "-d", "--build" | service_names]
+    base_args = ["-f", compose_file, "-p", project, "up", "-d", "--build", "--force-recreate" | service_names]
 
     case stream_compose(["compose" | base_args], callback) do
       {:error, output} when is_binary(output) ->

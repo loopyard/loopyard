@@ -38,11 +38,12 @@ All containers share a code volume mounted at `/workspace`.
 5. **Set the dev command** via `set_dev_command` — the command that starts the dev server, AND its port
 6. **Add services** via `add_service` — databases, caches the project needs
 7. **Set env vars** via `set_env_vars` — database URLs, binding address, framework config
-8. **Rebuild** via `rebuild` — this builds the image and starts everything
+8. **Rebuild** via `rebuild` — this builds the image and starts everything. Dev server will likely crash on first boot (deps not installed, no database). That's expected — the crash logs tell you what to fix next.
 9. **Install deps** via `exec` — `bundle install`, `npm install`, etc. inside the workspace container
 10. **Run migrations** via `exec` — `bin/rails db:create db:migrate`, `npx prisma migrate dev`, etc.
-11. **Check status** via `service_status` — verify containers are running and healthy
-12. **Verify** via `ports` + `exec curl` — confirm the dev server responds on its port
+11. **Rebuild again** via `rebuild` — restart the dev server now that deps and database are ready
+12. **Check status** via `service_status` — verify containers are running and healthy
+13. **Verify** via `ports` + `exec curl` — confirm the dev server responds on its port
 
 ## Critical rules
 
@@ -57,6 +58,15 @@ All containers share a code volume mounted at `/workspace`.
 **Platform: Linux ARM64** — Containers run on Apple Silicon. Use multi-arch images. Prefer `-slim` variants. If an image has no ARM64 build, find an alternative.
 
 **One rebuild, then exec** — Rebuild creates the containers. After that, install deps and run migrations via `exec`. Don't rebuild just to install packages — that restarts everything.
+
+**Dev server crashes are diagnostic, not failures.** The dev container starts during rebuild, but deps aren't installed and the database doesn't exist yet. The first crash is expected. Read the crash logs from the post-rebuild status — they tell you exactly what to fix:
+
+- "cannot load such file" / "ModuleNotFoundError" → run `exec: bundle install` / `pip install`
+- "relation does not exist" / "database does not exist" → run `exec: rails db:create db:migrate`
+- "Could not find gem" → run `exec: bundle install`
+- "ENOENT: Procfile.dev" → check if the file exists, adjust the dev command
+
+**The fix loop:** read crash log → `exec` to fix → `rebuild` to restart dev. Each crash gives you info for the next fix. Do NOT change the Dockerfile or service config in response to a dev crash — those are runtime issues, not build issues. Use `exec` to fix them.
 
 **Check status once** — After rebuild, call `service_status` once. Don't poll in a loop. If something crashed, read `logs` and fix the config.
 
