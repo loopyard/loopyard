@@ -26,7 +26,10 @@ defmodule BoomLooper.WorkspaceSupervisor do
     end
   end
 
-  @doc "Stop a workspace subtree. Cascades to ServiceManager (Docker cleanup) and all agents."
+  @doc """
+  Stop a workspace subtree. ServiceManager.terminate/2 tears down Docker containers
+  automatically, so this always does a full cleanup. No zombie containers possible.
+  """
   def stop_workspace(workspace_id) do
     case BoomLooper.WorkspaceGroup.whereis(workspace_id) do
       nil -> {:error, :not_found}

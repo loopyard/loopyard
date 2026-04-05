@@ -75,29 +75,21 @@ defmodule BoomLooper.Workspace.ServiceManager do
     effective_dir = Path.join([Workspace.home_dir(), "workspaces", workspace_id])
     File.mkdir_p!(effective_dir)
 
-    # Stop only dev containers (not workspace)
+    # Load config once — fail early if it can't be read
     case Workspace.load_from_volume(volume_name) do
       {:ok, ws} ->
+        # Stop only dev containers (not workspace)
         Enum.each(ws.processes, fn p ->
           Compose.compose(effective_dir, workspace_id, ["stop", p.name], timeout: 30_000)
         end)
-      _ -> :ok
-    end
 
-    # Regenerate compose file with updated config from volume
-    case Workspace.load_from_volume(volume_name) do
-      {:ok, ws} ->
+        # Regenerate compose file with updated config
         content = Compose.generate(ws, effective_dir, workspace_id)
         compose_path = Compose.compose_path(effective_dir)
         File.mkdir_p!(Path.dirname(compose_path))
         File.write!(compose_path, content)
-      _ -> :ok
-    end
 
-    # Rebuild and start dev containers only
-    # docker compose up --build <service> rebuilds just that service
-    case Workspace.load_from_volume(volume_name) do
-      {:ok, ws} ->
+        # Rebuild and start dev containers
         result = if ws.processes != [] do
           process_names = Enum.map(ws.processes, & &1.name)
           Compose.up_services_stream(effective_dir, workspace_id, process_names, callback)
@@ -105,8 +97,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
           {:ok, "No dev processes configured"}
         end
 
-        # Always reconnect state so services/processes are reflected in the UI,
-        # even when only dev containers were rebuilt
+        # Reconnect state so services/processes are reflected in the UI
         case Registry.lookup(BoomLooper.ServiceManagerRegistry, project_dir) do
           [{pid, _}] -> GenServer.call(pid, {:reconnect, ws}, 30_000)
           [] -> :ok
@@ -114,8 +105,10 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
         result
 
-      _ ->
-        {:ok, "No dev processes configured"}
+      other ->
+        require Logger
+        Logger.warning("[ServiceManager] Failed to load workspace config from volume #{volume_name}: #{inspect(other)}")
+        {:error, "Could not load workspace config from volume. Has the workspace been configured?"}
     end
   end
 
@@ -350,9 +343,10 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
   @impl true
   def terminate(_reason, state) do
-    # Intentionally do NOT call compose down here.
-    # Containers should survive server reboots. Use /system/reset for intentional teardown.
-    BoomLooper.EventLog.info("workspace:#{state.workspace_id}", "ServiceManager stopping (containers kept running)")
+    # Always tear down containers. State is persisted in volumes + ETF logs,
+    # so init/1 can restart everything cleanly. This prevents zombie containers.
+    BoomLooper.EventLog.info("workspace:#{state.workspace_id}", "ServiceManager stopping — tearing down containers")
+    do_stop(state)
     :ok
   end
 
