@@ -530,10 +530,29 @@ defmodule BoomLooper.EvalRunner do
   # --- Config ---
 
   defp load_eval_config do
-    path = Application.app_dir(:boom_looper, "priv/evals.json")
-    case File.read(path) do
-      {:ok, contents} -> Jason.decode!(contents)
-      {:error, _} -> %{}
+    Path.wildcard("evals/*/eval.md")
+    |> Map.new(fn path ->
+      name = path |> Path.dirname() |> Path.basename()
+      frontmatter = parse_frontmatter(File.read!(path))
+      {name, frontmatter}
+    end)
+  end
+
+  defp parse_frontmatter(content) do
+    case Regex.run(~r/\A---\n(.*?)\n---/s, content) do
+      [_, yaml] ->
+        yaml
+        |> String.split("\n")
+        |> Map.new(fn line ->
+          case String.split(line, ":", parts: 2) do
+            [k, v] -> {String.trim(k), String.trim(v)}
+            _ -> {"", ""}
+          end
+        end)
+        |> Map.delete("")
+
+      nil ->
+        %{}
     end
   end
 

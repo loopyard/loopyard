@@ -11,10 +11,23 @@ defmodule BoomLooper.EvalRunnerTest do
     BoomLooper.ProjectRegistry.list_projects()
     |> Enum.each(&BoomLooper.ProjectRegistry.remove_project(&1.id))
 
-    # Clean up eval output
-    File.rm_rf("evals")
+    # Clean up eval run output (not the eval configs)
+    for dir <- Path.wildcard("evals/*/runs") do
+      File.rm_rf!(dir)
+    end
+    # Clean up test-specific eval dirs created by record_run tests
+    File.rm_rf("evals/test-project")
+    File.rm_rf("evals/my_cool_project")
+    File.rm_rf("evals/errored")
 
-    on_exit(fn -> File.rm_rf("evals") end)
+    on_exit(fn ->
+      for dir <- Path.wildcard("evals/*/runs") do
+        File.rm_rf!(dir)
+      end
+      File.rm_rf("evals/test-project")
+      File.rm_rf("evals/my_cool_project")
+      File.rm_rf("evals/errored")
+    end)
     :ok
   end
 

@@ -48,6 +48,18 @@ mix boom.rpc "BoomLooper.ChatAgent.list_agents()"
 
 **Always use `mix boom.rpc` to verify your changes work on the live system.** Don't just compile and hope — jack in and check.
 
+## Evals
+
+Evals test whether the setup agent can configure a project from scratch. Each eval lives in `evals/<name>/eval.md` with frontmatter (`title`, `git_url`) and a description. Run results are written to `evals/<name>/runs/<timestamp>.md`.
+
+```bash
+mix boom.rpc 'BoomLooper.EvalRunner.eval("maybe-finance")'  # by name
+mix boom.rpc 'BoomLooper.EvalRunner.list_evals()'           # list all
+mix boom.rpc 'BoomLooper.EvalRunner.status()'               # check progress
+```
+
+Every eval starts fresh (tears down existing project first). Results and configs are both tracked in git. When an eval fails, fix the **prompts** or **tools**, not the eval target. See `/eval` skill for details.
+
 ## Code rules
 
 These rules exist because we learned them the hard way. Each one prevented a real bug. If you break one, you will ship a bug that wastes hours to debug.
