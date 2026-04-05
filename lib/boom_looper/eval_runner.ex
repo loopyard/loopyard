@@ -10,13 +10,13 @@ defmodule BoomLooper.EvalRunner do
   Usage:
 
     # Run by eval name (looks up git URL from priv/evals.json):
-    mix boom.rpc 'BoomLooper.EvalRunner.eval("maybe-finance", clean: true)'
+    mix boom.rpc 'BoomLooper.EvalRunner.eval("maybe-finance")'
 
     # Run by git URL:
-    mix boom.rpc 'BoomLooper.EvalRunner.run("https://github.com/maybe-finance/maybe.git", clean: true)'
+    mix boom.rpc 'BoomLooper.EvalRunner.run("https://github.com/maybe-finance/maybe.git")'
 
     # Run by local path (legacy):
-    mix boom.rpc 'BoomLooper.EvalRunner.run("/path/to/project", clean: true)'
+    mix boom.rpc 'BoomLooper.EvalRunner.run("/path/to/project")'
 
     # Check status:
     mix boom.rpc 'BoomLooper.EvalRunner.status()'
@@ -45,7 +45,7 @@ defmodule BoomLooper.EvalRunner do
   @doc """
   Run an eval by name (from priv/evals.json). Looks up the git URL and delegates to run/2.
 
-      EvalRunner.eval("maybe-finance", clean: true)
+      EvalRunner.eval("maybe-finance")
   """
   def eval(name, opts \\ []) do
     config = load_eval_config()
@@ -63,7 +63,7 @@ defmodule BoomLooper.EvalRunner do
     - :timeout — max wait time in ms (default: 30 minutes)
     - :poll_interval — how often to check agent state (default: 5s)
     - :max_nudges — max times to nudge an idle agent (default: 10)
-    - :clean — remove existing project first (default: false)
+
 
   Returns {:ok, pid}.
   """
@@ -104,14 +104,13 @@ defmodule BoomLooper.EvalRunner do
     timeout = Keyword.get(opts, :timeout, @default_timeout)
     poll_interval = Keyword.get(opts, :poll_interval, @poll_interval)
     max_nudges = Keyword.get(opts, :max_nudges, @max_nudges)
-    clean = Keyword.get(opts, :clean, false)
     is_git_url = git_url?(source)
 
     Logger.info("[EvalRunner] Starting eval for #{source}")
     started_at = System.monotonic_time(:millisecond)
 
-    # Optionally clean up existing project first
-    if clean, do: clean_project(source, is_git_url)
+    # Always start fresh — tear down any existing project
+    clean_project(source, is_git_url)
 
     # Add the project (git URL or local path)
     case add_project(source, is_git_url) do
