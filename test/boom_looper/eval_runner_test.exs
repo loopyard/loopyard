@@ -21,7 +21,7 @@ defmodule BoomLooper.EvalRunnerTest do
   defp base_result(overrides \\ %{}) do
     Map.merge(%{
       outcome: :completed,
-      project_path: "/tmp/test-project",
+      source: "/tmp/test-project",
       project_name: "test-project",
       agent_id: "abc123",
       duration_ms: 5000,
@@ -35,6 +35,32 @@ defmodule BoomLooper.EvalRunnerTest do
       nudges: 0,
       tool_usage: %{}
     }, overrides)
+  end
+
+  describe "list_evals/0" do
+    test "returns evals from priv/evals.json" do
+      evals = EvalRunner.list_evals()
+      assert is_list(evals)
+      names = Enum.map(evals, & &1.name)
+      assert "maybe-finance" in names
+      assert "discourse" in names
+      assert "chatwoot" in names
+    end
+
+    test "each eval has a git_url" do
+      for eval <- EvalRunner.list_evals() do
+        assert is_binary(eval.git_url)
+        assert String.starts_with?(eval.git_url, "https://")
+      end
+    end
+  end
+
+  describe "eval/2" do
+    test "returns error for unknown eval name" do
+      assert {:error, msg} = EvalRunner.eval("nonexistent")
+      assert msg =~ "Unknown eval"
+      assert msg =~ "maybe-finance"
+    end
   end
 
   describe "check_services/1" do

@@ -1,0 +1,11 @@
+{
+  "maybe-finance": {
+    "git_url": "https://github.com/maybe-finance/maybe.git"
+  },
+  "discourse": {
+    "git_url": "https://github.com/discourse/discourse.git"
+  },
+  "chatwoot": {
+    "git_url": "https://github.com/chatwoot/chatwoot.git"
+  }
+}
