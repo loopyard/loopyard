@@ -13,9 +13,18 @@ Run an automated eval that launches a project in BoomLooper, monitors the setup 
 - BoomLooper must be running (`mix boom.server`)
 - You must be in the BoomLooper repo root
 
-## Eval Config
+## Eval Directory Structure
 
-Each eval lives in `evals/<name>/eval.md` with frontmatter:
+Each eval lives in `evals/<name>/`:
+
+```
+evals/<name>/
+  eval.md          # config (frontmatter: title, git_url) + description — tracked in git
+  runs/            # timestamped result markdown files — tracked in git
+  project/         # cloned project source — gitignored, machine-local
+```
+
+Example `eval.md` frontmatter:
 
 ```markdown
 ---
@@ -26,7 +35,7 @@ git_url: https://github.com/maybe-finance/maybe.git
 Description of what this eval tests and what success looks like.
 ```
 
-Run results are written to `evals/<name>/runs/<timestamp>.md` alongside the config.
+Configs and run results are committed so you can track eval performance over time across machines. Project clones are gitignored since they're large and machine-local.
 
 ## Running an Eval
 

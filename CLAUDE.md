@@ -50,7 +50,14 @@ mix boom.rpc "BoomLooper.ChatAgent.list_agents()"
 
 ## Evals
 
-Evals test whether the setup agent can configure a project from scratch. Each eval lives in `evals/<name>/eval.md` with frontmatter (`title`, `git_url`) and a description. Run results are written to `evals/<name>/runs/<timestamp>.md`.
+Evals test whether the setup agent can configure a project from scratch. Each eval lives in `evals/<name>/` with this structure:
+
+```
+evals/<name>/
+  eval.md          # config (frontmatter: title, git_url) + description — tracked in git
+  runs/            # timestamped result files — tracked in git
+  project/         # cloned project source — gitignored, machine-local
+```
 
 ```bash
 mix boom.rpc 'BoomLooper.EvalRunner.eval("maybe-finance")'  # by name
@@ -58,7 +65,7 @@ mix boom.rpc 'BoomLooper.EvalRunner.list_evals()'           # list all
 mix boom.rpc 'BoomLooper.EvalRunner.status()'               # check progress
 ```
 
-Every eval starts fresh (tears down existing project first). Results and configs are both tracked in git. When an eval fails, fix the **prompts** or **tools**, not the eval target. See `/eval` skill for details.
+Every eval starts fresh (tears down existing project first). Configs and run results are tracked in git; project clones are gitignored. When an eval fails, fix the **prompts** or **tools**, not the eval target. See `/eval` skill for details.
 
 ## Code rules
 
