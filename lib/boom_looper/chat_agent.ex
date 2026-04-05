@@ -609,10 +609,17 @@ defmodule BoomLooper.ChatAgent do
 
       case state.backend.start_session(state.session_opts) do
         {:ok, new_session} ->
-          recovered_msg = %{role: :system, content: "Agent session restarted. Send a message to continue.", timestamp: DateTime.utc_now()}
+          recovered_msg = %{role: :system, content: "Agent session restarted automatically.", timestamp: DateTime.utc_now()}
           state = append_message(%{state | session: new_session, status: :idle}, recovered_msg)
           broadcast("chat_agent:#{id}", {:chat_message, id, List.last(state.messages)})
           broadcast(@topic, {:chat_agent_status_changed, id, :idle})
+
+          # Auto-continue: send the agent a summary of what it was doing so it can resume
+          resume_msg = build_resume_message(state)
+          if resume_msg do
+            GenServer.cast(self(), {:send_message, resume_msg})
+          end
+
           {:noreply, state}
 
         {:error, _} ->
@@ -706,6 +713,54 @@ defmodule BoomLooper.ChatAgent do
   end
 
   # --- Private ---
+
+  defp build_resume_message(state) do
+    # Build a compact summary of recent activity so the new session can continue
+    recent = state.messages |> Enum.take(-20)
+    return_nothing = length(recent) < 3
+
+    if return_nothing do
+      nil
+    else
+      # Summarize what tools were used and what the last assistant message said
+      tool_names = recent
+        |> Enum.filter(&(&1.role == :tool))
+        |> Enum.map(&(&1[:tool]))
+        |> Enum.uniq()
+
+      last_assistant = recent
+        |> Enum.filter(&(&1.role == :assistant))
+        |> List.last()
+
+      last_system = recent
+        |> Enum.filter(&(&1.role in [:system, :build_done]))
+        |> List.last()
+
+      parts = ["Your session crashed and was restarted. Here's what was happening:"]
+
+      parts = if tool_names != [] do
+        parts ++ ["Recent tools used: #{Enum.join(tool_names, ", ")}"]
+      else
+        parts
+      end
+
+      parts = if last_assistant do
+        parts ++ ["Your last message: #{String.slice(last_assistant.content, 0..500)}"]
+      else
+        parts
+      end
+
+      parts = if last_system do
+        parts ++ ["Last system status: #{String.slice(last_system.content, 0..500)}"]
+      else
+        parts
+      end
+
+      parts = parts ++ ["Continue where you left off. If you were setting up the dev environment, check service_status and follow the verification loop."]
+
+      Enum.join(parts, "\n\n")
+    end
+  end
 
   defp load_workspace_config(workspace_id) when is_binary(workspace_id) do
     volume_name = "code-#{workspace_id}"

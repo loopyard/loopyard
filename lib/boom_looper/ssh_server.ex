@@ -3,23 +3,41 @@ defmodule BoomLooper.SSHServer do
   SSH server for terminal access to Docker containers.
   Username is the container name. No password.
 
-    ssh -p 2222 container-name@localhost
+    ssh -p <port> container-name@localhost
 
   Multiplayer — SSH sessions share the same Terminal GenServer as
   browser console tabs. All viewers see the same terminal.
 
-  Uses `ssh_server_channel` behavior (see `BoomLooper.SSHServer.Channel`)
-  for raw byte access — every keystroke arrives immediately, same as
-  the websocket path.
+  Port is configurable:
+  - `SSH_PORT` env var — set to a specific port or "0" for auto-assign
+  - Default: 0 (OS picks an available port)
   """
+  use GenServer
   require Logger
 
-  @default_port 2222
+  @default_port 0
 
   def start_link(opts \\ []) do
-    port = Keyword.get(opts, :port, @default_port)
-    system_dir = ensure_host_keys()
+    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  end
 
+  @doc "The SSH port number. Returns the actual port (resolved after auto-assign)."
+  def port do
+    GenServer.call(__MODULE__, :port)
+  catch
+    :exit, _ -> nil
+  end
+
+  @impl true
+  def init(opts) do
+    port = Keyword.get_lazy(opts, :port, fn ->
+      case System.get_env("SSH_PORT") do
+        nil -> @default_port
+        val -> String.to_integer(val)
+      end
+    end)
+
+    system_dir = ensure_host_keys()
     :ssh.start()
 
     ssh_opts = [
@@ -31,21 +49,41 @@ defmodule BoomLooper.SSHServer do
 
     case :ssh.daemon(port, ssh_opts) do
       {:ok, pid} ->
-        Logger.info("[SSHServer] Listening on port #{port}")
-        {:ok, pid}
+        actual_port = resolve_port(pid, port)
+        Logger.info("[SSHServer] Listening on port #{actual_port}")
+        {:ok, %{daemon: pid, port: actual_port}}
 
       {:error, reason} ->
         Logger.error("[SSHServer] Failed to start: #{inspect(reason)}")
-        {:error, reason}
+        {:stop, reason}
     end
   rescue
     e ->
       Logger.error("[SSHServer] Failed to start: #{Exception.message(e)}")
-      {:error, Exception.message(e)}
+      {:stop, Exception.message(e)}
   end
 
-  @doc "The SSH port number."
-  def port, do: @default_port
+  @impl true
+  def handle_call(:port, _from, state) do
+    {:reply, state.port, state}
+  end
+
+  @impl true
+  def terminate(_reason, state) do
+    if state[:daemon], do: :ssh.stop_daemon(state.daemon)
+  end
+
+  # When port is 0, query the daemon for the actual assigned port
+  defp resolve_port(daemon, 0) do
+    case :ssh.daemon_info(daemon) do
+      {:ok, info} ->
+        Keyword.get(info, :port, 0)
+      _ ->
+        0
+    end
+  end
+
+  defp resolve_port(_daemon, port), do: port
 
   # --- Host keys ---
 

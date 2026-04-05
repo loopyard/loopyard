@@ -5,10 +5,14 @@ defmodule BoomLooper.SSHServerTest do
   alias BoomLooper.Terminal
   alias BoomLooper.SSHServer.Channel
 
-  @ssh_port 2223
-
   setup_all do
-    {:ok, _pid} = BoomLooper.SSHServer.start_link(port: @ssh_port)
+    # SSHServer is started by the application with port 0 (auto-assigned).
+    # Get the actual port it's listening on.
+    ssh_port = BoomLooper.SSHServer.port()
+
+    unless ssh_port do
+      raise "SSHServer not running — cannot run SSH tests"
+    end
 
     user_dir = Path.join(System.tmp_dir!(), "boom-looper-ssh-client-#{:rand.uniform(100_000)}")
     File.mkdir_p!(user_dir)
@@ -16,13 +20,13 @@ defmodule BoomLooper.SSHServerTest do
 
     on_exit(fn -> File.rm_rf!(user_dir) end)
 
-    %{user_dir: user_dir}
+    %{user_dir: user_dir, ssh_port: ssh_port}
   end
 
   # --- Helpers ---
 
-  defp connect(user, user_dir) do
-    :ssh.connect(~c"localhost", @ssh_port, [
+  defp connect(user, user_dir, ssh_port) do
+    :ssh.connect(~c"localhost", ssh_port, [
       user: String.to_charlist(user),
       user_dir: String.to_charlist(user_dir),
       silently_accept_hosts: true,
@@ -130,11 +134,11 @@ defmodule BoomLooper.SSHServerTest do
   # --- Integration tests ---
 
   describe "connection" do
-    test "connects with container name as username", %{user_dir: user_dir} do
+    test "connects with container name as username", %{user_dir: user_dir, ssh_port: ssh_port} do
       container = "ssh-conn-#{:rand.uniform(100_000)}"
       {:ok, terminal_pid} = start_terminal(container)
 
-      {:ok, conn} = connect(container, user_dir)
+      {:ok, conn} = connect(container, user_dir, ssh_port)
       :ssh.close(conn)
 
       stop_terminal(terminal_pid)
@@ -143,14 +147,14 @@ defmodule BoomLooper.SSHServerTest do
 
   describe "raw byte I/O" do
     @tag timeout: 10_000
-    test "SSH sends individual characters immediately (no line buffering)", %{user_dir: user_dir} do
+    test "SSH sends individual characters immediately (no line buffering)", %{user_dir: user_dir, ssh_port: ssh_port} do
       container = "ssh-raw-#{:rand.uniform(100_000)}"
       {:ok, terminal_pid} = start_terminal(container)
 
       Phoenix.PubSub.subscribe(BoomLooper.PubSub, Terminal.topic(container))
       drain_pubsub()
 
-      {:ok, conn} = connect(container, user_dir)
+      {:ok, conn} = connect(container, user_dir, ssh_port)
       chan = open_shell(conn)
       Process.sleep(300)
       drain_pubsub()
@@ -165,11 +169,11 @@ defmodule BoomLooper.SSHServerTest do
     end
 
     @tag timeout: 10_000
-    test "SSH receives Terminal output", %{user_dir: user_dir} do
+    test "SSH receives Terminal output", %{user_dir: user_dir, ssh_port: ssh_port} do
       container = "ssh-recv-#{:rand.uniform(100_000)}"
       {:ok, terminal_pid} = start_terminal(container)
 
-      {:ok, conn} = connect(container, user_dir)
+      {:ok, conn} = connect(container, user_dir, ssh_port)
       chan = open_shell(conn)
       Process.sleep(300)
       drain_ssh(conn, chan)
@@ -187,14 +191,14 @@ defmodule BoomLooper.SSHServerTest do
 
   describe "multiplayer" do
     @tag timeout: 10_000
-    test "SSH and web see each other's input", %{user_dir: user_dir} do
+    test "SSH and web see each other's input", %{user_dir: user_dir, ssh_port: ssh_port} do
       container = "ssh-mp-#{:rand.uniform(100_000)}"
       {:ok, terminal_pid} = start_terminal(container)
 
       Phoenix.PubSub.subscribe(BoomLooper.PubSub, Terminal.topic(container))
       drain_pubsub()
 
-      {:ok, conn} = connect(container, user_dir)
+      {:ok, conn} = connect(container, user_dir, ssh_port)
       chan = open_shell(conn)
       Process.sleep(300)
       drain_pubsub()
@@ -220,11 +224,11 @@ defmodule BoomLooper.SSHServerTest do
     end
 
     @tag timeout: 10_000
-    test "clear propagates from web to SSH", %{user_dir: user_dir} do
+    test "clear propagates from web to SSH", %{user_dir: user_dir, ssh_port: ssh_port} do
       container = "ssh-clr-#{:rand.uniform(100_000)}"
       {:ok, terminal_pid} = start_terminal(container)
 
-      {:ok, conn} = connect(container, user_dir)
+      {:ok, conn} = connect(container, user_dir, ssh_port)
       chan = open_shell(conn)
       Process.sleep(300)
       drain_ssh(conn, chan)

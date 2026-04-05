@@ -197,6 +197,144 @@ defmodule BoomLooper.ChatAgentTest do
     end
   end
 
+  describe "terminate kills OS process (process leak fix)" do
+    defmodule PortAdapter do
+      @moduledoc """
+      A fake adapter GenServer that holds a Port, mimicking the structure
+      that get_session_os_pid walks: session pid → linked child → %{port: port}.
+      """
+      use GenServer
+
+      def start_link(cmd) do
+        GenServer.start_link(__MODULE__, cmd)
+      end
+
+      def get_os_pid(adapter) do
+        GenServer.call(adapter, :os_pid)
+      end
+
+      @impl true
+      def init(cmd) do
+        port = Port.open({:spawn, cmd}, [:binary, :exit_status])
+        {:os_pid, os_pid} = Port.info(port, :os_pid)
+        {:ok, %{port: port, os_pid: os_pid}}
+      end
+
+      @impl true
+      def handle_call(:os_pid, _from, state) do
+        {:reply, state.os_pid, state}
+      end
+
+      @impl true
+      def handle_info({_port, {:exit_status, _}}, state), do: {:noreply, state}
+    end
+
+    defmodule PortBackend do
+      @moduledoc """
+      Test backend that spawns a real OS process (sleep) via a linked adapter.
+      The session is a GenServer that links to the adapter — same topology as ClaudeCode.
+      """
+      @behaviour BoomLooper.Agent.Backend
+
+      use GenServer
+
+      @impl BoomLooper.Agent.Backend
+      def start_session(_opts) do
+        GenServer.start_link(__MODULE__, :ok)
+      end
+
+      @impl BoomLooper.Agent.Backend
+      def stream(_session, _prompt), do: []
+
+      @impl BoomLooper.Agent.Backend
+      def stop(session) do
+        if is_pid(session) and Process.alive?(session) do
+          GenServer.stop(session, :normal, 1_000)
+        end
+        :ok
+      end
+
+      @impl BoomLooper.Agent.Backend
+      def session_alive?(session), do: is_pid(session) and Process.alive?(session)
+
+      # GenServer that links to a PortAdapter child
+      @impl GenServer
+      def init(:ok) do
+        {:ok, adapter} = PortAdapter.start_link("sleep 999")
+        Process.link(adapter)
+        os_pid = PortAdapter.get_os_pid(adapter)
+        {:ok, %{adapter: adapter, os_pid: os_pid}}
+      end
+
+      @impl GenServer
+      def handle_call(:os_pid, _from, state) do
+        {:reply, state.os_pid, state}
+      end
+    end
+
+    setup do
+      id = "leak-test-#{:rand.uniform(100_000)}"
+
+      {:ok, _pid} =
+        BoomLooper.TestHelpers.start_agent(
+          id: id,
+          name: "Leak Test",
+          working_dir: File.cwd!(),
+          started_by: "test",
+          backend: PortBackend
+        )
+
+      on_exit(fn ->
+        try do
+          ChatAgent.stop_agent(id)
+        catch
+          :exit, _ -> :ok
+        end
+
+        Process.sleep(50)
+      end)
+
+      %{id: id}
+    end
+
+    test "stopping agent kills the underlying OS process", %{id: id} do
+      # Get the session PID from the agent
+      [{pid, _}] = Registry.lookup(BoomLooper.ChatAgentRegistry, id)
+      %{session: session} = :sys.get_state(pid, 1_000)
+
+      # Get the OS PID of the sleep process through the session
+      os_pid = GenServer.call(session, :os_pid)
+      assert is_integer(os_pid)
+
+      # Verify the OS process is alive
+      assert {_, 0} = System.cmd("kill", ["-0", "#{os_pid}"], stderr_to_stdout: true)
+
+      # Stop the agent — this triggers terminate/2
+      ChatAgent.stop_agent(id)
+      Process.sleep(200)
+
+      # The OS process should be dead now
+      {_, exit_code} = System.cmd("kill", ["-0", "#{os_pid}"], stderr_to_stdout: true)
+      assert exit_code != 0, "OS process #{os_pid} still alive after agent stop — process leak!"
+    end
+
+    test "terminate handles already-dead session gracefully", %{id: id} do
+      [{pid, _}] = Registry.lookup(BoomLooper.ChatAgentRegistry, id)
+      %{session: session} = :sys.get_state(pid, 1_000)
+
+      # Kill the session before stopping the agent
+      Process.exit(session, :kill)
+      Process.sleep(50)
+
+      # Stop should not crash
+      ChatAgent.stop_agent(id)
+      Process.sleep(100)
+
+      # Agent should be gone
+      assert [] = Registry.lookup(BoomLooper.ChatAgentRegistry, id)
+    end
+  end
+
   describe "build_system_prompt/6" do
     test "setup agent prompt stays under CLI argument limit" do
       prompt = ChatAgent.build_system_prompt("test-id", "/tmp/project", nil, nil, nil)

@@ -137,7 +137,7 @@ defmodule BoomLooper.Compose do
   @doc "Project name for compose (used for container naming)."
   def project_name(workspace_id), do: "bl-#{workspace_id}"
 
-  @doc "Run a docker compose command. Tries `docker compose` (v2 plugin) first, falls back to `docker-compose` (standalone)."
+  @doc "Run a docker compose command. Uses `docker compose` (v2 plugin) if available, otherwise `docker-compose` (standalone)."
   def compose(project_dir, workspace_id, args, opts \\ []) do
     compose_file = compose_path(project_dir)
     project = project_name(workspace_id)
@@ -145,18 +145,10 @@ defmodule BoomLooper.Compose do
 
     base_args = ["-f", compose_file, "-p", project] ++ args
 
-    # Try docker compose v2 (plugin) first
-    case BoomLooper.Docker.docker(["compose" | base_args], timeout: timeout) do
-      {:error, output} when is_binary(output) and byte_size(output) > 0 ->
-        if String.contains?(output, "unknown shorthand flag") || String.contains?(output, "is not a docker command") do
-          # Fall back to standalone docker-compose
-          docker_compose(base_args, timeout)
-        else
-          {:error, output}
-        end
-
-      other ->
-        other
+    if docker_compose_v2?() do
+      BoomLooper.Docker.docker(["compose" | base_args], timeout: timeout)
+    else
+      docker_compose(base_args, timeout)
     end
   end
 
@@ -187,17 +179,11 @@ defmodule BoomLooper.Compose do
 
     base_args = ["-f", compose_file, "-p", project, "up", "-d", "--build", "--force-recreate"]
 
-    # Try docker compose v2 (plugin) first, fall back to standalone docker-compose
-    case stream_compose(["compose" | base_args], callback) do
-      {:error, output} when is_binary(output) ->
-        if String.contains?(output, "unknown shorthand flag") || String.contains?(output, "is not a docker command") do
-          stream_docker_compose(base_args, callback)
-        else
-          {:error, output}
-        end
-
-      other ->
-        other
+    # Use docker compose v2 (plugin) or standalone docker-compose
+    if docker_compose_v2?() do
+      stream_compose(["compose" | base_args], callback)
+    else
+      stream_docker_compose(base_args, callback)
     end
   end
 
@@ -212,17 +198,29 @@ defmodule BoomLooper.Compose do
 
     base_args = ["-f", compose_file, "-p", project, "up", "-d", "--build", "--force-recreate" | service_names]
 
-    case stream_compose(["compose" | base_args], callback) do
-      {:error, output} when is_binary(output) ->
-        if String.contains?(output, "unknown shorthand flag") || String.contains?(output, "is not a docker command") do
-          stream_docker_compose(base_args, callback)
-        else
-          {:error, output}
-        end
-
-      other ->
-        other
+    if docker_compose_v2?() do
+      stream_compose(["compose" | base_args], callback)
+    else
+      stream_docker_compose(base_args, callback)
     end
+  end
+
+  @doc "Check if `docker compose` v2 plugin is available. Result is cached."
+  def docker_compose_v2? do
+    case :persistent_term.get(:docker_compose_v2, :unchecked) do
+      :unchecked ->
+        result = case System.cmd("docker", ["compose", "version"], stderr_to_stdout: true) do
+          {output, 0} -> String.contains?(output, "Docker Compose")
+          _ -> false
+        end
+        :persistent_term.put(:docker_compose_v2, result)
+        result
+
+      cached ->
+        cached
+    end
+  rescue
+    _ -> false
   end
 
   defp stream_compose(args, callback) do

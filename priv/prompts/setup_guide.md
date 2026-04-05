@@ -38,12 +38,44 @@ All containers share a code volume mounted at `/workspace`.
 5. **Set the dev command** via `set_dev_command` — the command that starts the dev server, AND its port
 6. **Add services** via `add_service` — databases, caches the project needs
 7. **Set env vars** via `set_env_vars` — database URLs, binding address, framework config
-8. **Rebuild** via `rebuild` — this builds the image and starts everything. Dev server will likely crash on first boot (deps not installed, no database). That's expected — the crash logs tell you what to fix next.
+8. **Rebuild** via `rebuild` — this builds the image and starts everything. Dev server will likely crash on first boot (deps not installed, no database). That's expected.
 9. **Install deps** via `exec` — `bundle install`, `npm install`, etc. inside the workspace container
 10. **Run migrations** via `exec` — `bin/rails db:create db:migrate`, `npx prisma migrate dev`, etc.
 11. **Rebuild again** via `rebuild` — restart the dev server now that deps and database are ready
-12. **Check status** via `service_status` — verify containers are running and healthy
-13. **Verify** via `ports` + `exec curl` — confirm the dev server responds on its port
+12. **Verify the dev server is up** — this is the most important step. Follow the verification loop below.
+
+## Verification loop (MANDATORY — run after EVERY rebuild)
+
+You are NOT done until the dev server responds to HTTP requests with a 200 status. This is the single most important part of setup. Never go idle without completing this loop.
+
+**After every `rebuild`, immediately do:**
+
+1. `service_status` — is the dev container running?
+2. **If dev crashed:** run `logs` on the dev container. Read the FULL error output. Diagnose the root cause. Fix it (see common fixes below). `rebuild`. Go to step 1.
+3. **If dev is running:** run `exec curl -s -o /dev/null -w "%{http_code}" http://localhost:<container_port>` from the workspace container to check if the server is actually responding.
+4. **If connection refused / no response:** the server may still be booting. Wait 10s, then `logs` on dev to check. If it crashed silently, fix and `rebuild`. If still booting, wait and retry curl.
+5. **If HTTP 500/502/etc:** run `logs` on dev to see the error. Fix the root cause (missing migration, bad config, etc.). `rebuild`. Go to step 1.
+6. **If HTTP 200 (or 301/302):** the dev server is working. You're done.
+
+**Common crash causes (fix in this order):**
+
+| Symptom | Fix |
+|---------|-----|
+| "cannot load such file" / "ModuleNotFoundError" | `exec: bundle install` / `pip install -r requirements.txt` |
+| "Could not find gem" / missing node modules | `exec: bundle install` / `exec: npm install` |
+| "database does not exist" / "relation does not exist" | `exec: bin/rails db:create db:migrate` |
+| exit code 127 / "command not found" | check if the tool (foreman, node, etc.) is installed in Dockerfile |
+| CSS/JS build exited | `exec: npm install && npm rebuild`, check build scripts exist |
+| "connection refused" on expected port | add `BINDING=0.0.0.0` to env vars |
+| Missing env var errors | `set_env_vars`, then `rebuild` |
+| Missing system library (.so not found) | update Dockerfile with `apt-get install`, then `rebuild` |
+
+**Key principles:**
+- Each crash reveals the NEXT issue. Expect 3-5 rebuild cycles. This is normal.
+- Do NOT stop after one fix. Always `rebuild` and check again.
+- Do NOT go idle while the dev server is down. Keep fixing until HTTP 200.
+- Runtime errors (missing deps, no database) → fix with `exec`, then `rebuild` to restart dev.
+- Build errors (missing system packages) → fix the Dockerfile, then `rebuild`.
 
 ## Critical rules
 
@@ -59,16 +91,7 @@ All containers share a code volume mounted at `/workspace`.
 
 **One rebuild, then exec** — Rebuild creates the containers. After that, install deps and run migrations via `exec`. Don't rebuild just to install packages — that restarts everything.
 
-**Dev server crashes are diagnostic, not failures.** The dev container starts during rebuild, but deps aren't installed and the database doesn't exist yet. The first crash is expected. Read the crash logs from the post-rebuild status — they tell you exactly what to fix:
-
-- "cannot load such file" / "ModuleNotFoundError" → run `exec: bundle install` / `pip install`
-- "relation does not exist" / "database does not exist" → run `exec: rails db:create db:migrate`
-- "Could not find gem" → run `exec: bundle install`
-- "ENOENT: Procfile.dev" → check if the file exists, adjust the dev command
-
-**The fix loop:** read crash log → `exec` to fix → `rebuild` to restart dev → read new crash log → repeat. It may take several iterations — each crash reveals the next issue. First crash: missing deps. Second crash: missing database. Third crash: missing env var. This is normal. Do NOT change the Dockerfile or service config in response to a dev crash — those are runtime issues, not build issues. Use `exec` to fix them, then `rebuild` to restart dev and see if the next issue surfaces.
-
-**Check status once** — After rebuild, call `service_status` once. Don't poll in a loop. If something crashed, read `logs` and fix the config.
+**Always verify after rebuild** — Follow the verification loop above. Never assume the dev server is working without checking HTTP response.
 
 **Database URLs use service names** — In Docker Compose, services reach each other by name. Postgres URL: `postgres://postgres@postgres:5432/myapp_dev`. Redis: `redis://redis:6379/0`.
 

@@ -24,6 +24,7 @@ defmodule BoomLooper.Application do
       {DynamicSupervisor, name: BoomLooper.TerminalSupervisor, strategy: :one_for_one},
       {Task.Supervisor, name: BoomLooper.TaskSupervisor},
       BoomLooper.WorkspaceSupervisor,
+      BoomLooper.SSHServer,
 
       # --- Web layer (can restart independently) ---
       BoomLooperWeb.Endpoint
@@ -31,12 +32,6 @@ defmodule BoomLooper.Application do
 
     opts = [strategy: :one_for_one, name: BoomLooper.Supervisor]
     result = Supervisor.start_link(children, opts)
-
-    # Start SSH server
-    case BoomLooper.SSHServer.start_link() do
-      {:ok, _} -> :ok
-      {:error, reason} -> Logger.warning("[SSHServer] Not started: #{inspect(reason)}")
-    end
 
     # Restore persisted projects from ~/.boomlooper/projects.json
     # ServiceManager will reconnect to any running containers
