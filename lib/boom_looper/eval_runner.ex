@@ -454,7 +454,7 @@ defmodule BoomLooper.EvalRunner do
   Record an eval run to `evals/:project_name/:date.md`.
   """
   def record_run(project_name, result) do
-    dir = Path.join(["evals", sanitize_name(project_name), "runs"])
+    dir = Path.join([evals_dir(), sanitize_name(project_name), "runs"])
     File.mkdir_p!(dir)
 
     date = Calendar.strftime(DateTime.utc_now(), "%Y-%m-%d_%H%M%S")
@@ -529,8 +529,13 @@ defmodule BoomLooper.EvalRunner do
 
   # --- Config ---
 
+  # Captured at compile time so it works regardless of cwd at runtime
+  @project_root __DIR__ |> Path.join("../..") |> Path.expand()
+
+  defp evals_dir, do: Path.join(@project_root, "evals")
+
   defp load_eval_config do
-    Path.wildcard("evals/*/eval.md")
+    Path.wildcard(Path.join(evals_dir(), "*/eval.md"))
     |> Map.new(fn path ->
       name = path |> Path.dirname() |> Path.basename()
       frontmatter = parse_frontmatter(File.read!(path))
