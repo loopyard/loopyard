@@ -181,6 +181,101 @@ defmodule BoomLooper.Tools.WorkspaceTest do
     end
   end
 
+  describe "parse_env/1" do
+    test "nil returns empty map" do
+      assert WorkspaceTools.parse_env(nil) == %{}
+    end
+
+    test "passes through map" do
+      assert WorkspaceTools.parse_env(%{"KEY" => "val"}) == %{"KEY" => "val"}
+    end
+
+    test "parses JSON object" do
+      assert WorkspaceTools.parse_env(~s({"KEY":"val"})) == %{"KEY" => "val"}
+    end
+
+    test "parses JSON array of KEY=VAL strings" do
+      input = ~s(["DATABASE_URL=postgres://localhost/db", "REDIS_URL=redis://localhost"])
+      assert WorkspaceTools.parse_env(input) == %{
+        "DATABASE_URL" => "postgres://localhost/db",
+        "REDIS_URL" => "redis://localhost"
+      }
+    end
+
+    test "parses comma-separated KEY=VAL pairs" do
+      assert WorkspaceTools.parse_env("FOO=bar,BAZ=qux") == %{"FOO" => "bar", "BAZ" => "qux"}
+    end
+
+    test "parses native list of KEY=VAL strings" do
+      assert WorkspaceTools.parse_env(["FOO=bar", "BAZ=qux"]) == %{"FOO" => "bar", "BAZ" => "qux"}
+    end
+
+    test "returns empty map for garbage" do
+      assert WorkspaceTools.parse_env("not-a-thing") == %{}
+    end
+
+    test "returns empty map for non-binary non-map" do
+      assert WorkspaceTools.parse_env(42) == %{}
+    end
+  end
+
+  describe "parse_volumes/1" do
+    test "nil returns empty list" do
+      assert WorkspaceTools.parse_volumes(nil) == []
+    end
+
+    test "passes through list" do
+      assert WorkspaceTools.parse_volumes(["{data}:/var/lib/postgresql/data"]) == ["{data}:/var/lib/postgresql/data"]
+    end
+
+    test "parses JSON array" do
+      input = ~s(["{data}:/var/lib/postgresql/data"])
+      assert WorkspaceTools.parse_volumes(input) == ["{data}:/var/lib/postgresql/data"]
+    end
+
+    test "wraps single string in list" do
+      assert WorkspaceTools.parse_volumes("{data}:/var/lib/postgresql/data") == ["{data}:/var/lib/postgresql/data"]
+    end
+
+    test "returns empty list for garbage" do
+      assert WorkspaceTools.parse_volumes(42) == []
+    end
+  end
+
+  describe "parse_ports/1" do
+    test "nil returns empty list" do
+      assert WorkspaceTools.parse_ports(nil) == []
+    end
+
+    test "integer port" do
+      assert WorkspaceTools.parse_ports(3000) == ["3000"]
+    end
+
+    test "plain string port" do
+      assert WorkspaceTools.parse_ports("3000") == ["3000"]
+    end
+
+    test "comma-separated ports" do
+      assert WorkspaceTools.parse_ports("3000, 3001") == ["3000", "3001"]
+    end
+
+    test "JSON array string" do
+      assert WorkspaceTools.parse_ports(~s(["3000", "3001"])) == ["3000", "3001"]
+    end
+
+    test "native list" do
+      assert WorkspaceTools.parse_ports(["3000", "3001"]) == ["3000", "3001"]
+    end
+
+    test "host:container format extracts both numbers" do
+      assert WorkspaceTools.parse_ports("3000:3000") == ["3000", "3000"]
+    end
+
+    test "garbage returns empty" do
+      assert WorkspaceTools.parse_ports(%{}) == []
+    end
+  end
+
   describe "without bind mount" do
     setup do
       id = "no-bind-test-#{:rand.uniform(100_000)}"

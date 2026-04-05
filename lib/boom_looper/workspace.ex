@@ -81,9 +81,16 @@ defmodule BoomLooper.Workspace do
     raw_services = (data["services"] || []) |> Enum.map(&parse_service/1)
     legacy_processes = (data["processes"] || []) |> Enum.map(&parse_process/1)
 
-    # Split: services with `image` are stock services, those with `command` (no image) are processes
-    {stock_from_services, procs_from_services} =
+    # Split: services with `image` are stock services, those without are processes (legacy format)
+    {stock_from_services, legacy_svc_as_procs} =
       Enum.split_with(raw_services, fn s -> s.image != nil end)
+
+    # Convert legacy service entries (no image) to process format
+    procs_from_services = Enum.map(legacy_svc_as_procs, fn s ->
+      # Look up the original command from raw data since parse_service doesn't include it
+      raw = Enum.find(data["services"] || [], fn raw -> raw["name"] == s.name end)
+      %{name: s.name, command: raw["command"], ports: s.ports}
+    end)
 
     # Merge legacy processes, deduplicating by name against procs_from_services
     all_processes =
@@ -173,7 +180,6 @@ defmodule BoomLooper.Workspace do
     %{
       name: s["name"],
       image: s["image"],
-      command: s["command"],
       env: s["env"] || %{},
       volumes: s["volumes"] || [],
       ports: normalize_ports(s["ports"])
@@ -189,11 +195,17 @@ defmodule BoomLooper.Workspace do
   end
 
   defp normalize_ports(nil), do: []
-  defp normalize_ports(ports) when is_list(ports), do: Enum.map(ports, &to_string/1)
+  defp normalize_ports(ports) when is_list(ports) do
+    ports |> Enum.map(&to_string/1) |> Enum.reject(&(&1 == ""))
+  end
   defp normalize_ports(port) when is_integer(port), do: [to_string(port)]
-  defp normalize_ports(port) when is_binary(port), do: [port]
+  defp normalize_ports(port) when is_binary(port) and port != "", do: [port]
+  defp normalize_ports(port) when is_binary(port), do: []
   defp normalize_ports(%{} = ports) when map_size(ports) == 0, do: []
-  defp normalize_ports(ports) when is_map(ports), do: Map.values(ports) |> Enum.map(&to_string/1)
+  defp normalize_ports(ports) when is_map(ports) do
+    # Extract keys (port numbers), not values (which may be empty from old bug)
+    Map.keys(ports) |> Enum.map(&to_string/1) |> Enum.reject(&(&1 == ""))
+  end
 
   defp service_to_map(s) do
     map = %{

@@ -26,17 +26,24 @@ defmodule BoomLooper.Tools.Workspace do
     field :agent_id, :string, required: true
     field :command, :string, required: true, description: "Command to start the dev server (e.g. bin/dev, foreman start)"
     field :name, :string, required: false, description: "Name for the dev service (default: dev)"
-    field :ports, :string, required: false, description: "JSON array of container ports to expose (e.g. [\"3000\"]). Host ports are allocated dynamically — do NOT specify host:container mappings."
+    field :ports, :string, required: false, description: "Container port number the dev server listens on (e.g. \"3000\"). For multiple ports use comma-separated: \"3000,3001\""
 
     def execute(%{agent_id: agent_id, command: command} = params) do
       name = Map.get(params, :name, "dev")
-      ports = BoomLooper.Tools.Workspace.parse_json_field(params[:ports], [])
+      ports = BoomLooper.Tools.Workspace.parse_ports(params[:ports])
+
+      ports_warning = if ports == [] do
+        "\n\n⚠️ WARNING: No ports declared. The dev server will not be accessible from outside the container. " <>
+        "Call `set_dev_command` again with `ports: [\"3000\"]` (or whatever port the server listens on) to fix this."
+      else
+        ""
+      end
 
       BoomLooper.Tools.Workspace.do_update_config(agent_id, fn ws ->
         # Replace any existing process with this name, or add new
         processes = Enum.reject(ws.processes, &(&1.name == name))
         %{ws | processes: processes ++ [%{name: name, command: command, ports: ports}]}
-      end, "Wrote dev command `#{command}` to workspace config. This will run in its own container after `rebuild`.")
+      end, "Wrote dev command `#{command}` to workspace config. This will run in its own container after `rebuild`." <> ports_warning)
     end
   end
 
@@ -44,14 +51,14 @@ defmodule BoomLooper.Tools.Workspace do
     field :agent_id, :string, required: true
     field :name, :string, required: true, description: "Service name (e.g. postgres, redis)"
     field :image, :string, required: true, description: "Docker image (e.g. postgres:16, pgvector/pgvector:pg16, redis:7)"
-    field :env, :string, required: false, description: "JSON object of env vars for the service"
-    field :ports, :string, required: false, description: "JSON array of container ports to expose (e.g. [\"5432\"]). Host ports are allocated dynamically."
-    field :volumes, :string, required: false, description: "JSON array of volume mounts. Use {data} for persistent workspace-scoped volume (e.g. [\"{data}:/var/lib/postgresql/data\"])"
+    field :env, :string, required: false, description: "Environment variables as JSON object (e.g. {\"POSTGRES_PASSWORD\":\"secret\"}) or KEY=VAL pairs (e.g. \"POSTGRES_PASSWORD=secret,POSTGRES_DB=myapp\")"
+    field :ports, :string, required: false, description: "Container port number (e.g. \"5432\"). For multiple ports use comma-separated: \"5432,5433\""
+    field :volumes, :string, required: false, description: "Volume mounts as JSON array (e.g. [\"{data}:/var/lib/postgresql/data\"]). Use {data} for a persistent workspace-scoped volume."
 
     def execute(%{agent_id: agent_id, name: name, image: image} = params) do
-      env = BoomLooper.Tools.Workspace.parse_json_field(params[:env], %{})
-      ports = BoomLooper.Tools.Workspace.parse_json_field(params[:ports], [])
-      volumes = BoomLooper.Tools.Workspace.parse_json_field(params[:volumes], [])
+      env = BoomLooper.Tools.Workspace.parse_env(params[:env])
+      ports = BoomLooper.Tools.Workspace.parse_ports(params[:ports])
+      volumes = BoomLooper.Tools.Workspace.parse_volumes(params[:volumes])
 
       BoomLooper.Tools.Workspace.do_update_config(agent_id, fn ws ->
         services = Enum.reject(ws.services, &(&1.name == name))
@@ -74,10 +81,10 @@ defmodule BoomLooper.Tools.Workspace do
 
   tool :set_env_vars, "Set environment variables for the workspace container." do
     field :agent_id, :string, required: true
-    field :env_vars, :string, required: true, description: "JSON object of env vars (e.g. {\"RAILS_ENV\":\"development\"})"
+    field :env_vars, :string, required: true, description: "Environment variables as JSON object (e.g. {\"RAILS_ENV\":\"development\"}) or KEY=VAL pairs (e.g. \"RAILS_ENV=development,DB_HOST=postgres\")"
 
     def execute(%{agent_id: agent_id, env_vars: env_vars}) do
-      parsed = BoomLooper.Tools.Workspace.parse_json_field(env_vars, %{})
+      parsed = BoomLooper.Tools.Workspace.parse_env(env_vars)
 
       BoomLooper.Tools.Workspace.do_update_config(agent_id, fn ws ->
         %{ws | env_vars: Map.merge(ws.env_vars, parsed)}
@@ -322,10 +329,24 @@ defmodule BoomLooper.Tools.Workspace do
             end)
           end)
 
+        # Determine if the dev server is healthy
+        dev_healthy = Enum.any?(http_report, &String.contains?(&1, "app is working!"))
+        has_crashes = crash_logs != []
+
+        next_step = cond do
+          dev_healthy ->
+            nil
+          has_crashes ->
+            "⚠️ **Containers crashed.** Read the crash logs above, fix the issue via `exec`, then `rebuild` and check again. You are NOT done until HTTP returns 200."
+          true ->
+            "⚠️ **Dev server is not responding to HTTP yet.** Check `logs` on the dev container, fix the issue, `rebuild`, and verify again. You are NOT done until HTTP returns 200."
+        end
+
         sections = [
           "## Service Status\n#{Enum.join(lines, "\n")}",
           if(crash_logs != [], do: Enum.join(crash_logs, "\n\n"), else: nil),
-          if(http_report != [], do: "## HTTP Probe\n#{Enum.join(http_report, "\n")}", else: nil)
+          if(http_report != [], do: "## HTTP Probe\n#{Enum.join(http_report, "\n")}", else: nil),
+          next_step
         ] |> Enum.reject(&is_nil/1)
 
         Enum.join(sections, "\n\n")
@@ -445,35 +466,93 @@ defmodule BoomLooper.Tools.Workspace do
   end
 
 
-  @doc false
-  def parse_json_field(nil, default), do: default
+  @doc """
+  Parse a ports value into a list of port strings. Accepts any reasonable format:
+  - nil → []
+  - "3000" → ["3000"]
+  - "3000, 3001" → ["3000", "3001"]
+  - '["3000"]' (JSON) → ["3000"]
+  - ["3000"] (native list) → ["3000"]
+  - 3000 (integer) → ["3000"]
+  """
+  def parse_ports(nil), do: []
+  def parse_ports(port) when is_integer(port), do: [to_string(port)]
+  def parse_ports(ports) when is_list(ports), do: Enum.map(ports, &to_string/1) |> Enum.reject(&(&1 == ""))
 
-  def parse_json_field(value, default) when is_binary(value) do
+  def parse_ports(value) when is_binary(value) do
+    # Try JSON first (agent might send '["3000"]')
     case Jason.decode(value) do
-      {:ok, parsed} ->
-        parsed
+      {:ok, parsed} when is_list(parsed) ->
+        Enum.map(parsed, &to_string/1) |> Enum.reject(&(&1 == ""))
+      _ ->
+        # Extract all port-like numbers from the string
+        Regex.scan(~r/\d+/, value)
+        |> List.flatten()
+    end
+  end
 
-      {:error, _} ->
-        # Try parsing KEY=VAL format (comma or newline separated) for env vars
+  def parse_ports(_), do: []
+
+  @doc """
+  Parse environment variables into a map. Accepts:
+  - nil → %{}
+  - %{"KEY" => "val"} (already a map) → passed through
+  - '{"KEY":"val"}' (JSON object) → decoded
+  - '["KEY=val"]' (JSON array) → split on =
+  - "KEY=val,OTHER=x" (KEY=VAL pairs) → split on , and =
+  """
+  def parse_env(nil), do: %{}
+  def parse_env(env) when is_map(env), do: env
+
+  def parse_env(env) when is_list(env) do
+    Map.new(env, fn
+      item when is_binary(item) ->
+        case String.split(item, "=", parts: 2) do
+          [k, v] -> {String.trim(k), String.trim(v)}
+          _ -> {item, ""}
+        end
+      _ -> {"", ""}
+    end)
+    |> Map.delete("")
+  end
+
+  def parse_env(value) when is_binary(value) do
+    case Jason.decode(value) do
+      {:ok, parsed} when is_map(parsed) -> parsed
+      {:ok, parsed} when is_list(parsed) -> parse_env(parsed)
+      _ ->
         if String.contains?(value, "=") do
           value
           |> String.split(~r/[,\n]+/)
           |> Enum.map(&String.trim/1)
           |> Enum.reject(&(&1 == ""))
-          |> Map.new(fn pair ->
-            case String.split(pair, "=", parts: 2) do
-              [k, v] -> {String.trim(k), String.trim(v)}
-              _ -> nil
-            end
-          end)
-          |> Map.delete(nil)
+          |> parse_env()
         else
-          default
+          %{}
         end
     end
   end
 
-  def parse_json_field(value, _default), do: value
+  def parse_env(_), do: %{}
+
+  @doc """
+  Parse volume mounts into a list of strings. Accepts:
+  - nil → []
+  - ["vol:/path"] (list) → passed through
+  - '["{data}:/var/lib/postgresql/data"]' (JSON array) → decoded
+  - "{data}:/var/lib/postgresql/data" (single string) → wrapped in list
+  """
+  def parse_volumes(nil), do: []
+  def parse_volumes(vols) when is_list(vols), do: Enum.map(vols, &to_string/1)
+
+  def parse_volumes(value) when is_binary(value) do
+    case Jason.decode(value) do
+      {:ok, parsed} when is_list(parsed) -> Enum.map(parsed, &to_string/1)
+      _ -> [value]
+    end
+  end
+
+  def parse_volumes(_), do: []
 
   # --- Private ---
 
