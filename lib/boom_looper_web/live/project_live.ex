@@ -80,7 +80,6 @@ defmodule BoomLooperWeb.ProjectLive do
 
   @impl true
   def handle_event("remove_workspace", %{"id" => id}, socket) do
-    # Stop the workspace supervisor first (cleans up containers)
     BoomLooper.WorkspaceSupervisor.stop_workspace(id)
 
     case ProjectRegistry.remove_workspace(id) do
@@ -204,10 +203,11 @@ defmodule BoomLooperWeb.ProjectLive do
             </div>
 
             <div class="space-y-2 mb-8">
-              <div :for={workspace <- @workspaces}
-                class="rounded-xl border border-zinc-200 dark:border-zinc-700 p-4 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group">
+              <.link :for={workspace <- @workspaces}
+                navigate={"/projects/#{@project.id}/workspaces/#{workspace.id}"}
+                class="block rounded-xl border border-zinc-200 dark:border-zinc-700 p-4 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group">
                 <div class="flex items-center justify-between">
-                  <.link navigate={"/projects/#{@project.id}/workspaces/#{workspace.id}"} class="flex items-center gap-2 min-w-0 flex-1">
+                  <div class="flex items-center gap-2 min-w-0 flex-1">
                     <div class={"w-2 h-2 rounded-full flex-none #{if workspace.status == :running, do: "bg-green-500", else: "bg-zinc-400"}"}></div>
                     <span class="text-sm font-medium truncate">{workspace.name}</span>
                     <span :if={workspace.is_main} class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500">default</span>
@@ -217,7 +217,7 @@ defmodule BoomLooperWeb.ProjectLive do
                     <span :if={workspace.service_count > 0} class="text-xs font-medium text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 rounded-full px-2 py-0.5">
                       {workspace.service_count} service{if workspace.service_count != 1, do: "s"}
                     </span>
-                  </.link>
+                  </div>
                   <div class="flex items-center gap-2 flex-none opacity-0 group-hover:opacity-100 transition-opacity">
                     <button :if={workspace.status != :running} phx-click="start_workspace" phx-value-id={workspace.id}
                       class="text-xs font-medium text-green-600 dark:text-green-400 hover:text-green-500 transition-colors"
@@ -231,7 +231,7 @@ defmodule BoomLooperWeb.ProjectLive do
                     </button>
                   </div>
                 </div>
-              </div>
+              </.link>
             </div>
 
             <form :if={@project.is_git} phx-submit="add_workspace" class="flex gap-2">

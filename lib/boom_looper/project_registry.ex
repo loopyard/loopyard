@@ -235,45 +235,31 @@ defmodule BoomLooper.ProjectRegistry do
       persistence_key = project[:git_url] || project[:path]
       ProjectStore.remove(persistence_key)
 
-      # Handle cleanup based on project type
-      if project[:volume_based] do
-        # Volume-based: delete volumes
-        Task.start(fn ->
-          Enum.each(workspaces, fn ws ->
-            try do
-              # Stop compose first
-              BoomLooper.Compose.down_volumes(Workspace.home_dir(), ws.id)
-              # Delete code and cache volumes
-              BoomLooper.VolumeManager.delete_volume(ws[:volume])
-              BoomLooper.VolumeManager.delete_volume(BoomLooper.VolumeManager.cache_volume_name(ws.id))
-            rescue
-              _ -> :ok
-            catch
-              _, _ -> :ok
-            end
-          end)
-        end)
-      else
-        # Path-based: delete .boomlooper directory and tear down containers
+      # Delete .boomlooper directory synchronously (fast local operation)
+      unless project[:volume_based] do
         boomlooper_dir = Path.join(project.path, ".boomlooper")
         File.rm_rf(boomlooper_dir)
-
-        workspace_paths = Enum.map(workspaces, fn ws ->
-          {ws.path, Workspace.workspace_id(ws.path)}
-        end)
-
-        Task.start(fn ->
-          Enum.each(workspace_paths, fn {path, workspace_id} ->
-            try do
-              BoomLooper.Compose.down(path, workspace_id)
-            rescue
-              _ -> :ok
-            catch
-              _, _ -> :ok
-            end
-          end)
-        end)
       end
+
+      # Clean up volumes and compose resources in the background (slow Docker ops)
+      Task.start(fn ->
+        Enum.each(workspaces, fn ws ->
+          try do
+            ws_id = Workspace.workspace_id(ws.path)
+            virtual_dir = Path.join([Workspace.home_dir(), "workspaces", ws_id])
+            BoomLooper.Compose.down_volumes(virtual_dir, ws_id)
+
+            if project[:volume_based] do
+              BoomLooper.VolumeManager.delete_volume(ws[:volume])
+              BoomLooper.VolumeManager.delete_volume(BoomLooper.VolumeManager.cache_volume_name(ws.id))
+            end
+          rescue
+            _ -> :ok
+          catch
+            _, _ -> :ok
+          end
+        end)
+      end)
     end
 
     # Remove from ETS
