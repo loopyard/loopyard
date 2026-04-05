@@ -490,12 +490,15 @@ defmodule BoomLooperWeb.ChatLive do
   @impl true
   def handle_info({:start_workspace, path}, socket) do
     workspace_id = BoomLooper.ProjectRegistry.workspace_id(path)
-    BoomLooper.WorkspaceSupervisor.start_workspace(workspace_id, path)
-    BoomLooper.ProjectRegistry.update_workspace_status(workspace_id, :running)
 
-    # Now that ServiceManager is running, fetch initial service statuses
-    service_statuses = fetch_service_statuses(path)
-    {:noreply, assign(socket, :service_statuses, service_statuses)}
+    # Start workspace in a Task so it doesn't block the LiveView process.
+    # Service statuses will arrive via PubSub when ServiceManager starts.
+    Task.start(fn ->
+      BoomLooper.WorkspaceSupervisor.start_workspace(workspace_id, path)
+      BoomLooper.ProjectRegistry.update_workspace_status(workspace_id, :running)
+    end)
+
+    {:noreply, socket}
   end
 
   @impl true
@@ -599,16 +602,6 @@ defmodule BoomLooperWeb.ChatLive do
     Task.start(fn -> BoomLooper.AgentBoot.boot(id, agent_opts, service_name: service_name) end)
 
     {:noreply, push_navigate(socket, to: "#{workspace_path(socket)}/agents/#{id}")}
-  end
-
-  defp fetch_service_statuses(workspace_path) do
-    case BoomLooper.Workspace.ServiceManager.service_status(workspace_path) do
-      {:ok, statuses} ->
-        Enum.reject(statuses, &(Map.get(&1, :type) == :workspace))
-      _ -> []
-    end
-  catch
-    :exit, _ -> []
   end
 
   defp workspace_path(socket), do: socket.assigns.base_path
