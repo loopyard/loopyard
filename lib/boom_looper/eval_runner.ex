@@ -19,7 +19,7 @@ defmodule BoomLooper.EvalRunner do
 
   @default_timeout 1_800_000  # 30 minutes
   @poll_interval 5_000       # 5 seconds
-  @max_nudges 5              # don't nudge forever
+  @max_nudges 10             # allow several crash-fix-rebuild cycles
 
   @doc """
   Run an eval asynchronously. Spawns a supervised task that outlives the
@@ -39,7 +39,17 @@ defmodule BoomLooper.EvalRunner do
     {:ok, pid} = Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
       eval_name = project_path |> Path.basename() |> sanitize_name()
       BoomLooper.StateKeeper.put_eval(eval_name, %{pid: self(), path: project_path, started_at: DateTime.utc_now(), status: :running, result: nil})
-      do_run(project_path, opts)
+      try do
+        do_run(project_path, opts)
+      rescue
+        e ->
+          Logger.error("[EvalRunner] Eval crashed for #{eval_name}: #{Exception.message(e)}\n#{Exception.format_stacktrace(__STACKTRACE__)}")
+          BoomLooper.StateKeeper.put_eval(eval_name, %{pid: self(), path: project_path, started_at: DateTime.utc_now(), status: :crashed, result: %{outcome: :crashed, error: Exception.message(e)}})
+      catch
+        kind, reason ->
+          Logger.error("[EvalRunner] Eval crashed for #{eval_name}: #{inspect({kind, reason})}")
+          BoomLooper.StateKeeper.put_eval(eval_name, %{pid: self(), path: project_path, started_at: DateTime.utc_now(), status: :crashed, result: %{outcome: :crashed, error: inspect({kind, reason})}})
+      end
     end)
 
     {:ok, pid}
@@ -85,10 +95,10 @@ defmodule BoomLooper.EvalRunner do
           Enum.each(workspaces, fn ws ->
             ws_id = BoomLooper.Workspace.workspace_id(ws.path)
 
-            # Stop the workspace supervisor first
+            # Stop workspace supervisor (terminate callback tears down containers)
             BoomLooper.WorkspaceSupervisor.stop_workspace(ws_id)
 
-            # Tear down containers and compose-managed volumes
+            # Also force compose down -v to remove compose-managed volumes
             virtual_dir = Path.join([BoomLooper.Workspace.home_dir(), "workspaces", ws_id])
             try do
               BoomLooper.Compose.down_volumes(virtual_dir, ws_id)
@@ -120,7 +130,14 @@ defmodule BoomLooper.EvalRunner do
           {:error, {:already_started, _}} -> :ok
         end
 
-        # Step 3: Spawn setup agent
+        # Step 3: Kill existing eval agents for this project, then spawn a new one
+        for agent <- ChatAgent.list_agents(),
+            agent[:working_dir] == workspace.path,
+            agent[:started_by] == "eval_runner" do
+          ChatAgent.stop_agent(agent.id)
+          ChatAgent.remove_agent(agent.id)
+        end
+
         id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
         name = "Setup"
 
@@ -297,7 +314,12 @@ defmodule BoomLooper.EvalRunner do
                     build_result(:stalled, state, project_path, nudges)
                   else
                     Logger.info("[EvalRunner] Agent #{agent_id} idle, no web response, nudging (#{nudges + 1}/#{max_nudges})")
-                    ChatAgent.send_message(agent_id, "The web service is not responding on any port. Check service_status and container logs to debug.")
+                    services = check_services(project_path)
+                    svc_summary = services |> Enum.map(fn {n, s} -> "#{n}: #{s}" end) |> Enum.join(", ")
+                    nudge_msg = "The dev server is not responding to HTTP requests. Services: #{svc_summary}. " <>
+                      "Run `service_status` to check container state, then `logs` on the dev container to see the crash output. " <>
+                      "Fix the issue, `rebuild`, and check again. You are NOT done until the dev server returns HTTP 200."
+                    ChatAgent.send_message(agent_id, nudge_msg)
                     Process.sleep(interval)
                     poll_agent(agent_id, deadline, interval, project_path, nudges + 1, max_nudges)
                   end
