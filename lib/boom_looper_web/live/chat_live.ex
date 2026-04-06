@@ -30,11 +30,13 @@ defmodule BoomLooperWeb.ChatLive do
 
       # Start workspace supervisor async — don't block mount
       send(self(), {:start_workspace, workspace.path})
+      # Fetch service status async — Docker can be slow, never block mount
+      send(self(), :fetch_service_status)
     end
 
     socket = if connected?(socket), do: subscribe_iex(socket), else: assign(socket, :iex_session, %{level: nil})
 
-    # Mount instantly with ETS data (fast). Service statuses arrive via PubSub.
+    # Mount instantly with agents. Service status loads async (Docker can be slow).
     agents = list_workspace_agents(workspace.path)
     service_statuses = []
 
@@ -502,11 +504,30 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   @impl true
-  def handle_info({:services_updated, path, statuses}, socket) do
+  def handle_info(:fetch_service_status, socket) do
+    # Fetch service status in a Task so Docker slowness doesn't block the LiveView.
+    path = socket.assigns.workspace.path
+    lv_pid = self()
+
+    Task.start(fn ->
+      statuses = BoomLooper.Workspace.ServiceStatus.for_workspace(path)
+      send(lv_pid, {:service_status_result, statuses})
+    end)
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:service_status_result, statuses}, socket) do
+    {:noreply, assign(socket, :service_statuses, statuses)}
+  end
+
+  @impl true
+  def handle_info({:services_updated, path, _statuses}, socket) do
     if path == socket.assigns.workspace.path do
-      # Workspace container is infrastructure — never show in sidebar
-      visible = Enum.reject(statuses, &(Map.get(&1, :type) == :workspace))
-      {:noreply, assign(socket, :service_statuses, visible)}
+      # Re-query actual state via ServiceStatus (reliable, no stale PubSub data)
+      service_statuses = BoomLooper.Workspace.ServiceStatus.for_workspace(path)
+      {:noreply, assign(socket, :service_statuses, service_statuses)}
     else
       {:noreply, socket}
     end
@@ -1170,7 +1191,7 @@ defmodule BoomLooperWeb.ChatLive do
     assigns = assign(assigns, :url, msg_url(assigns))
     ~H"""
     <div class="flex justify-end mt-3 mb-1 group/msg">
-      <div class="relative max-w-[85%] rounded-2xl rounded-tr-sm bg-violet-600 text-white px-4 py-2.5">
+      <div class="relative max-w-[85%] rounded-2xl rounded-tr-sm bg-violet-600 text-white px-4 py-2.5" id={"msg-user-#{hash_content(@msg.content)}"} phx-hook="Markdown" data-source={@msg.content}>
         <a :if={@url} href={@url} target="_blank" rel="noopener"
           class="absolute top-2 left-2 p-1 rounded-md text-violet-300 hover:text-white opacity-0 group-hover/msg:opacity-100 transition-opacity"
           title="Open">
@@ -1179,7 +1200,7 @@ defmodule BoomLooperWeb.ChatLive do
             <path d="M3.5 6.75c0-.69.56-1.25 1.25-1.25H7A.75.75 0 0 0 7 4H4.75A2.75 2.75 0 0 0 2 6.75v4.5A2.75 2.75 0 0 0 4.75 14h4.5A2.75 2.75 0 0 0 12 11.25V9a.75.75 0 0 0-1.5 0v2.25c0 .69-.56 1.25-1.25 1.25h-4.5c-.69 0-1.25-.56-1.25-1.25v-4.5Z" />
           </svg>
         </a>
-        <p class="text-sm whitespace-pre-wrap">{@msg.content}</p>
+        <div class="markdown-body markdown-body-user text-sm"></div>
       </div>
     </div>
     """

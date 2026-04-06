@@ -24,13 +24,15 @@ defmodule BoomLooper.ProjectStore do
     Path.join(boomlooper_home(), "projects.json")
   end
 
-  @doc "Load all project paths from disk."
+  @doc "Load all projects from disk. Returns list of %{path: ..., name: ...} maps."
   def load do
     case File.read(path()) do
       {:ok, json} ->
         case Jason.decode(json) do
           {:ok, %{"projects" => projects}} when is_list(projects) ->
-            Enum.map(projects, & &1["path"]) |> Enum.reject(&is_nil/1)
+            Enum.map(projects, fn p ->
+              %{path: p["path"], name: p["name"]}
+            end) |> Enum.reject(&is_nil(&1.path))
 
           _ ->
             []
@@ -45,9 +47,13 @@ defmodule BoomLooper.ProjectStore do
     end
   end
 
-  @doc "Save project paths to disk."
-  def save(project_paths) do
-    records = Enum.map(project_paths, &%{"path" => &1})
+  @doc "Save projects to disk. Accepts list of paths (strings) or project maps."
+  def save(projects) do
+    records = Enum.map(projects, fn
+      p when is_binary(p) -> %{"path" => p}
+      %{path: path, name: name} -> %{"path" => path, "name" => name}
+      %{path: path} -> %{"path" => path}
+    end)
     data = %{"version" => @version, "projects" => records}
 
     file_path = path()

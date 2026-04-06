@@ -638,14 +638,27 @@ defmodule BoomLooper.ChatAgent do
     end
   end
 
-  # Linked streaming task died — reset from thinking if needed
+  # Linked streaming task died — auto-restart session
   def handle_info({:EXIT, _pid, reason}, %{status: :thinking} = state) when reason != :normal do
     BoomLooper.EventLog.warning("agent:#{state.name}", "Streaming task died: #{inspect(reason)}")
-    error_msg = %{role: :error, content: "Agent session crashed. Send a message to retry.", timestamp: DateTime.utc_now()}
-    state = %{append_message(state, error_msg) | status: :idle, errors: state.errors + 1}
-    broadcast("chat_agent:#{state.id}", {:chat_message, state.id, List.last(state.messages)})
-    broadcast(@topic, {:chat_agent_status_changed, state.id, :idle})
-    {:noreply, state}
+    id = state.id
+
+    # Try to auto-restart the session
+    case state.backend.start_session(state.session_opts) do
+      {:ok, new_session} ->
+        recovered_msg = %{role: :system, content: "Session crashed — restarted automatically.", timestamp: DateTime.utc_now()}
+        state = append_message(%{state | session: new_session, status: :idle, errors: state.errors + 1}, recovered_msg)
+        broadcast("chat_agent:#{id}", {:chat_message, id, List.last(state.messages)})
+        broadcast(@topic, {:chat_agent_status_changed, id, :idle})
+        {:noreply, state}
+
+      {:error, _} ->
+        error_msg = %{role: :error, content: "Agent session crashed. Send a message to retry.", timestamp: DateTime.utc_now()}
+        state = %{append_message(state, error_msg) | status: :idle, errors: state.errors + 1}
+        broadcast("chat_agent:#{id}", {:chat_message, id, List.last(state.messages)})
+        broadcast(@topic, {:chat_agent_status_changed, id, :idle})
+        {:noreply, state}
+    end
   end
 
   def handle_info(_msg, state), do: {:noreply, state}

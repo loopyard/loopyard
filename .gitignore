@@ -38,3 +38,6 @@ evals/*/project/
 
 # OS
 .DS_Store
+
+# Eval projects (the actual repos being tested)
+evals/*/project/

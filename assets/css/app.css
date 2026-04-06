@@ -88,6 +88,12 @@
   .markdown-body hr { border-color: rgba(255, 255, 255, 0.1); }
 }
 
+/* User message markdown (white text on purple bg) */
+.markdown-body-user { color: white; }
+.markdown-body-user code { background: rgba(255, 255, 255, 0.2); color: white; }
+.markdown-body-user a { color: #e9d5ff; }
+.markdown-body-user blockquote { border-left-color: rgba(255, 255, 255, 0.4); color: rgba(255, 255, 255, 0.8); }
+
 /* Safari iOS: use dvh instead of vh for correct height with dynamic toolbar */
 @supports (height: 100dvh) {
   .h-screen { height: 100dvh !important; }

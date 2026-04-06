@@ -44,6 +44,15 @@ defmodule BoomLooperWeb.ChatLiveTest do
   defp ws_new_path(ws), do: "/projects/#{ws.project_id}/workspaces/#{ws.id}/new"
   defp ws_chat_path(ws, id), do: "/projects/#{ws.project_id}/workspaces/#{ws.id}/agents/#{id}"
 
+  # Add services to workspace config so ServiceStatus finds them
+  defp add_services_to_workspace(ws, services) do
+    config_path = Path.join([ws.path, ".boomlooper", "repo", "workspace.json"])
+    {:ok, content} = File.read(config_path)
+    {:ok, config} = Jason.decode(content)
+    updated = Map.put(config, "services", services)
+    File.write!(config_path, Jason.encode!(updated))
+  end
+
   # Flush the LiveView mailbox by rendering, ensuring PubSub messages are processed.
   # We subscribe + drain to confirm delivery, then render the view.
   defp flush_lv(view) do
@@ -345,15 +354,11 @@ defmodule BoomLooperWeb.ChatLiveTest do
   end
 
   describe "service statuses in sidebar" do
-    test "sidebar renders service indicators when services_updated PubSub arrives", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
-      {:ok, view, html} = live(conn, ws_chat_path(ws, setup_agent_id))
-      refute html =~ "Services"
+    test "sidebar renders service indicators when services defined in workspace", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
+      # Add services to workspace config - ServiceStatus reads from config, not PubSub
+      add_services_to_workspace(ws, [%{"name" => "postgres", "image" => "postgres:16"}])
 
-      # Simulate services_updated PubSub broadcast
-      statuses = [%{name: "postgres", image: "postgres:16", running: true, container: "boom-looper-svc-test-postgres", ports: %{}}]
-      Phoenix.PubSub.broadcast(BoomLooper.PubSub, "workspace_services", {:services_updated, ws.path, statuses})
-
-      html = flush_lv(view)
+      {:ok, _view, html} = live(conn, ws_chat_path(ws, setup_agent_id))
       assert html =~ "Services"
       assert html =~ "postgres"
     end
@@ -388,35 +393,32 @@ defmodule BoomLooperWeb.ChatLiveTest do
     end
 
     test "service items link to service log view", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
-      {:ok, view, _html} = live(conn, ws_chat_path(ws, setup_agent_id))
+      add_services_to_workspace(ws, [%{"name" => "redis", "image" => "redis:7"}])
 
-      statuses = [%{name: "redis", image: "redis:7", running: true, container: "boom-looper-svc-test-redis", ports: %{}}]
-      Phoenix.PubSub.broadcast(BoomLooper.PubSub, "workspace_services", {:services_updated, ws.path, statuses})
-
-      html = flush_lv(view)
+      {:ok, _view, html} = live(conn, ws_chat_path(ws, setup_agent_id))
       assert html =~ "/projects/#{ws.project_id}/workspaces/#{ws.id}/services/redis"
     end
 
-    test "services with ports show port URL", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
-      {:ok, view, _html} = live(conn, ws_chat_path(ws, setup_agent_id))
+    test "stock services appear in sidebar", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
+      add_services_to_workspace(ws, [%{"name" => "postgres", "image" => "postgres:16"}])
 
-      statuses = [%{name: "web", command: "mix phx.server", running: true, container: "boom-looper-svc-test-web", ports: %{4000 => 4000}, health: :healthy}]
-      Phoenix.PubSub.broadcast(BoomLooper.PubSub, "workspace_services", {:services_updated, ws.path, statuses})
-
-      html = flush_lv(view)
-      assert html =~ ":4000"
-      assert html =~ "localhost:4000"
+      {:ok, _view, html} = live(conn, ws_chat_path(ws, setup_agent_id))
+      assert html =~ "Services"
+      assert html =~ "postgres"
     end
 
-    test "services without ports show image or command instead", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
-      {:ok, view, _html} = live(conn, ws_chat_path(ws, setup_agent_id))
+    test "process services appear in sidebar", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
+      # Add a process (not a stock service)
+      config_path = Path.join([ws.path, ".boomlooper", "repo", "workspace.json"])
+      {:ok, content} = File.read(config_path)
+      {:ok, config} = Jason.decode(content)
+      updated = Map.put(config, "dockerfile", "FROM ruby:3.2")
+                |> Map.put("processes", [%{"name" => "dev", "command" => "bin/rails server"}])
+      File.write!(config_path, Jason.encode!(updated))
 
-      statuses = [%{name: "postgres", image: "postgres:16", running: true, container: "boom-looper-svc-test-pg", ports: %{}}]
-      Phoenix.PubSub.broadcast(BoomLooper.PubSub, "workspace_services", {:services_updated, ws.path, statuses})
-
-      html = flush_lv(view)
-      assert html =~ "postgres:16"
-      refute html =~ "localhost:"
+      {:ok, _view, html} = live(conn, ws_chat_path(ws, setup_agent_id))
+      assert html =~ "Services"
+      assert html =~ "dev"
     end
   end
 

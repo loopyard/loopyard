@@ -154,6 +154,28 @@ defmodule BoomLooper.ProjectRegistry do
   end
 
   @doc """
+  Rename a project. Updates ETS and persists to disk.
+  """
+  def rename_project(project_id, new_name) do
+    case :ets.lookup(:project_registry, project_id) do
+      [{_, project}] ->
+        updated = Map.put(project, :name, new_name)
+        :ets.insert(:project_registry, {project_id, updated})
+        persist_all_projects()
+        {:ok, updated}
+
+      [] ->
+        {:error, :not_found}
+    end
+  end
+
+  defp persist_all_projects do
+    projects = list_projects()
+    records = Enum.map(projects, fn p -> %{path: p.path, name: p.name} end)
+    ProjectStore.save(records)
+  end
+
+  @doc """
   Restore projects from disk on startup.
 
   Re-registers all projects from `~/.boomlooper/projects.json`.
@@ -163,22 +185,33 @@ defmodule BoomLooper.ProjectRegistry do
     ensure_ets_tables()
 
     for entry <- ProjectStore.load() do
+      # Handle both old format (string path) and new format (map with path/name)
+      {path, saved_name} = case entry do
+        %{path: p, name: n} -> {p, n}
+        %{path: p} -> {p, nil}
+        p when is_binary(p) -> {p, nil}
+      end
+
       result = cond do
         # Git URL (volume-based)
-        String.starts_with?(entry, "git@") or String.starts_with?(entry, "https://") ->
-          add_from_url(entry)
+        String.starts_with?(path, "git@") or String.starts_with?(path, "https://") ->
+          add_from_url(path)
 
         # Local path (bind-mount based)
         true ->
-          add(entry)
+          add(path)
       end
 
       case result do
-        {:ok, _project, _workspace} ->
+        {:ok, project, _workspace} ->
+          # Apply saved name if present
+          if saved_name do
+            :ets.insert(:project_registry, {project.id, Map.put(project, :name, saved_name)})
+          end
           :ok
 
         {:error, reason} ->
-          Logger.warning("[ProjectRegistry] Failed to restore project #{entry}: #{reason}")
+          Logger.warning("[ProjectRegistry] Failed to restore project #{path}: #{reason}")
       end
     end
 
