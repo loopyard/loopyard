@@ -25,8 +25,26 @@ All containers share a code volume mounted at `/workspace`. Use `${CODE_VOLUME}:
 
 ## Setup sequence
 
-1. **Examine the project** — read key files (Gemfile, package.json, mix.exs, Dockerfile, Procfile.dev, README) to understand the stack
-2. **Read the stack guide** — match to one of: `priv/prompts/stacks/rails.md`, `nextjs.md`, `phoenix.md`, `python.md`, `generic.md`. Read it for framework-specific patterns.
+1. **Examine the project** — read key files to figure out the stack:
+   - **Ruby/Rails** → `Gemfile`, `Gemfile.lock`, `bin/rails`, `Procfile.dev`
+   - **PHP/Laravel** → `composer.json`, `composer.lock`, `artisan`, `bootstrap/app.php`
+   - **Python/Django** → `manage.py`, `requirements.txt`, `pyproject.toml`, `settings.py`, `asgi.py`/`wsgi.py`
+   - **Python (other)** → `requirements.txt`, `pyproject.toml`, `setup.py`, `app.py`, `main.py`
+   - **Node/Next.js** → `package.json` with `next` in dependencies, `next.config.*`
+   - **Node (other)** → `package.json` with `express`/`fastify`/`koa`/`hono`/`@nestjs/core`, lockfiles, `tsconfig.json`
+   - **Elixir/Phoenix** → `mix.exs`, `config/config.exs`, `lib/<app>_web/`
+   - **Anything else** → `README.md`, `Dockerfile` (existing), `Makefile`, `docker-compose.yml` (existing)
+2. **Read the stack guide** — match to ONE of:
+   - `priv/prompts/stacks/rails.md` (Ruby on Rails)
+   - `priv/prompts/stacks/laravel.md` (PHP / Laravel)
+   - `priv/prompts/stacks/django.md` (Python / Django)
+   - `priv/prompts/stacks/python.md` (Flask / FastAPI / other Python)
+   - `priv/prompts/stacks/nextjs.md` (Next.js)
+   - `priv/prompts/stacks/node.md` (Express / Fastify / Hono / NestJS / generic Node)
+   - `priv/prompts/stacks/phoenix.md` (Elixir / Phoenix)
+   - `priv/prompts/stacks/generic.md` (anything else — fallback)
+
+   Read it for framework-specific patterns. Do NOT read more than one — pick the closest match.
 3. **Write the Dockerfile** via `write_file` path=`.boomlooper/workspace/Dockerfile`
 4. **Write docker-compose.yml** via `write_file` path=`.boomlooper/workspace/docker-compose.yml`
 5. **Build and start** via `docker_compose("up -d --build")` — builds the image and starts everything
