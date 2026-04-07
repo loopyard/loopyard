@@ -16,18 +16,79 @@ All containers share a code volume mounted at `/workspace`. Use `${CODE_VOLUME}:
 
 All filesystem tools operate on `/workspace` inside the running workspace container — paths are relative to the project root. **You have NO host-side filesystem access.** Use the MCP tools below for everything.
 
+### Discovery — pick the right tool to orient yourself
+
 | Tool | What it does |
 |------|-------------|
-| `read_file` | Read a file from the workspace |
-| `write_file` | Write a NEW file or fully overwrite an existing one (Dockerfile, docker-compose.yml, configs) |
-| `edit` | **PREFER THIS** for in-place changes. Atomic find/replace inside one file. Cheaper in tokens than read_file+write_file because it only sends the diff. Pass `replace_all: true` for refactors. Multi-line `old_string` works. |
-| `multi_edit` | Apply many edits to ONE file in a single atomic operation. Use this when you're updating several lines of the same config — cheaper than calling `edit` repeatedly. Edits run in order; later edits can match text produced by earlier ones. |
-| `grep` | **PREFER THIS** over `exec("grep -rn …")`. Recursive content search returning structured `file:line: content` results. Skips `.git`, `node_modules`, `vendor`, `_build`, `deps`, `.next`, `dist` automatically. Pass `include: "*.json"` or `regex: true` as needed. |
-| `glob` | **PREFER THIS** over `exec("find …")`. Find files by glob pattern: `*.json`, `**/*.ts`, `app/**/*.vue`, `**/locale/en/login.json`. Returns paths relative to /workspace. |
-| `exec` | Run an arbitrary shell command in the workspace container. Use for installs (`bundle install`, `npm install`), migrations, tests, or anything that's not a routine file operation. **Don't use `exec` for file ops** — `edit`/`grep`/`glob` are faster and structured. |
+| `tree` | **START HERE.** Print a directory tree of the workspace in ONE call: file types, sizes, hierarchy. Replaces 5-15 calls of `ls`/`find`/`read_file`. Auto-excludes junk dirs. |
+| `read_files` | Read several files in ONE call. Perfect for the "look at Gemfile + package.json + README + Procfile.dev" phase. Failures are inline so partial errors don't lose the rest. |
+| `read_file` | Read a single file |
+| `grep` | **PREFER over `exec("grep -rn …")`.** Recursive content search returning structured `file:line: content`. Auto-excludes junk dirs. Pass `include: "*.json"` or `regex: true`. |
+| `glob` | **PREFER over `exec("find …")`.** Find files by glob: `*.json`, `**/*.ts`, `app/**/*.vue`, `**/locale/en/login.json`. |
+
+### Editing files — never read+modify+write
+
+| Tool | What it does |
+|------|-------------|
+| `edit` | **PREFER for in-place changes.** Atomic find/replace inside one file. Just the diff in/out, not the whole file. Pass `replace_all: true` for refactors. Multi-line `old_string` works. |
+| `multi_edit` | Apply many edits to ONE file as a single atomic operation. Cheaper than calling `edit` repeatedly. Edits run in order; later edits can match text produced by earlier ones. |
+| `write_file` | Write a NEW file or fully overwrite an existing one (Dockerfile, docker-compose.yml, fresh configs). Don't use this just to change a few lines — use `edit`. |
+
+### Verification — close the host-vs-container probe gap
+
+| Tool | What it does |
+|------|-------------|
+| `probe_http` | **ALWAYS use this to verify the dev server.** Probes from the HOST'S perspective — the same vantage point the eval runner uses. Without args, finds the published host port and probes `/`. Pass `port` or `path` to override. Returns the exact URL probed, status, body preview, and (on failure) a per-stack diagnosis. |
+| `inspect_service` | Combined snapshot of one service in ONE call: container state, exit code, host/container port mapping, last 50 log lines, extracted error summary. Replaces fanning out to `docker_compose ps` + `logs` + `ports` + `docker port`. |
+
+### Everything else
+
+| Tool | What it does |
+|------|-------------|
+| `exec` | Run a shell command in the workspace container. Use for installs (`bundle install`, `npm install`), migrations, tests, or anything that's not a routine file or HTTP op. **Don't use `exec` for file ops** — `edit`/`grep`/`glob` are faster. **Don't use `exec` for HTTP probing** — `probe_http` matches the runner. |
+| `exec_stream` | Long-running command with streaming output (e.g. `tail -f`) |
 | `docker_compose` | Run any compose command (`up -d --build`, `ps`, `logs dev`, `down`) |
 | `docker` | Run any docker command (`ps`, `volume ls`, `inspect`) |
-| `logs` | Shortcut for container logs |
+| `logs` | Shortcut for container logs (use `inspect_service` instead when you also need state/ports) |
+
+### Discovery: orient with `tree`, then `read_files`
+
+```
+# WRONG — 6+ separate calls, can't see directory layout
+exec command="ls -la /workspace"
+read_file path="Gemfile"
+read_file path="package.json"
+exec command="find /workspace -name 'Procfile*'"
+read_file path="Procfile.dev"
+read_file path="README.md"
+
+# RIGHT — 2 calls, full picture
+tree depth=2
+read_files paths='["Gemfile", "package.json", "Procfile.dev", "README.md"]'
+```
+
+### Editing: don't read the whole file just to change a line
+
+```
+# WRONG — sends 5000 lines twice
+read_file path="config/application.rb"
+write_file path="config/application.rb" content="(entire file with one line changed)"
+
+# RIGHT — just the diff
+edit path="config/application.rb" \
+     old_string='config.time_zone = "UTC"' \
+     new_string='config.time_zone = "America/Los_Angeles"'
+```
+
+### Verification: probe from the same place the runner does
+
+```
+# WRONG — verifies from inside the container, runner disagrees, you get nudged
+exec command="curl http://dev:3000"
+
+# RIGHT — same probe the runner uses, with the same answer
+probe_http
+```
 
 ### Editing existing files: don't read the whole file just to make a small change
 

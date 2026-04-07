@@ -219,6 +219,54 @@ defmodule BoomLooper.Tools.Container do
     end
   end
 
+  tool :probe_http, "Probe an HTTP endpoint from the HOST'S perspective — the same vantage point the eval runner uses. ALWAYS use this to verify the dev server is reachable. Without args, finds the workspace's published host port and probes /. Pass `port` to override which container port to look up, or `path` to hit /up, /health, etc. The response includes the exact URL probed, status code, body preview, and (on failure) a per-stack diagnosis of likely causes." do
+    field :agent_id, :string, required: true
+    field :port, :integer, required: false, description: "Container port to look up (e.g. 3000). Default: probe whatever's published on workspace or dev container."
+    field :path, :string, required: false, description: "Request path. Default: '/'. Common alternatives: '/up' (Rails), '/health', '/healthz'."
+
+    def execute(%{agent_id: agent_id} = params) do
+      BoomLooper.Tools.Container.do_probe_http(agent_id, params)
+    end
+  end
+
+  tool :tree, "Print a directory tree from inside the workspace. ONE call gives spatial awareness of the whole project — file types, sizes, hierarchy. PREFER THIS over `exec(\"ls -la\")` or `exec(\"find ...\")` for discovery. Auto-excludes .git, node_modules, vendor/bundle, _build, deps, .next, dist, target, .venv, __pycache__." do
+    field :agent_id, :string, required: true
+    field :path, :string, required: false, description: "Subdirectory under /workspace (default: whole workspace)"
+    field :depth, :integer, required: false, description: "Max depth to descend (default: 3, max: 8)"
+    field :max_entries, :integer, required: false, description: "Max entries to print (default: 200)"
+
+    def execute(%{agent_id: agent_id} = params) do
+      BoomLooper.Tools.Container.do_tree(agent_id, params)
+    end
+  end
+
+  tool :inspect_service, "Get a complete snapshot of one service in ONE call: container state, exit code, host/container port mapping, last 50 log lines, and an extracted error summary. PREFER THIS over fanning out to `docker_compose ps` + `logs` + `ports` + `docker port` separately." do
+    field :agent_id, :string, required: true
+    field :name, :string, required: true, description: "Service name from docker-compose.yml (e.g. 'dev', 'postgres', 'redis')"
+
+    def execute(%{agent_id: agent_id, name: name}) do
+      BoomLooper.Tools.Container.do_inspect_service(agent_id, name)
+    end
+  end
+
+  tool :read_files, "Read several files in ONE round trip. PREFER THIS over multiple `read_file` calls during discovery (e.g. reading Gemfile + package.json + README + Procfile.dev at once). Files that don't exist show up as `(error: ...)` so partial failures don't lose the rest." do
+    field :agent_id, :string, required: true
+    field :paths, :string, required: true, description: ~s|JSON array of file paths relative to /workspace, e.g. '["Gemfile", "package.json", "README.md"]'|
+
+    def execute(%{agent_id: agent_id, paths: paths}) do
+      case Jason.decode(to_string(paths)) do
+        {:ok, list} when is_list(list) ->
+          BoomLooper.Tools.Container.do_read_files(agent_id, list)
+
+        {:ok, _} ->
+          {:error, "paths must be a JSON array of strings"}
+
+        {:error, reason} ->
+          {:error, "paths is not valid JSON: #{inspect(reason)}"}
+      end
+    end
+  end
+
   tool :docker, "Run any Docker CLI command. Use for inspecting containers, volumes, images, networks, etc." do
     field :agent_id, :string, required: true
     field :command, :string, required: true, description: "Docker command (e.g. 'ps -a', 'volume ls', 'inspect mycontainer', 'images')"
@@ -695,6 +743,443 @@ defmodule BoomLooper.Tools.Container do
       %{workspace_id: wid} when is_binary(wid) -> {:ok, wid}
       _ -> {:error, "Agent #{agent_id} has no workspace"}
     end
+  end
+
+  @doc """
+  Probe an HTTP endpoint from the **host's** perspective — the same
+  vantage point as the eval runner. Mirrors the runner's probe_web_service
+  logic so the agent can self-verify and see exactly what the runner sees.
+
+  Without arguments, finds the workspace's published host port (workspace
+  container first, then dev container) and probes `/`. Pass `port` to
+  override which container port to look up, or `path` to hit a specific
+  endpoint like `/up` or `/health`.
+
+  Returns a structured report including the URL probed, status code,
+  body preview, and (on failure) a diagnosis of likely causes — so the
+  agent doesn't have to guess whether its own `curl dev:3000` from inside
+  the container disagreeing with the runner means the app is bound to
+  127.0.0.1 vs the published port is wrong vs the container is not yet
+  ready.
+  """
+  def do_probe_http(agent_id, opts \\ %{}) do
+    container_port = Map.get(opts, :port)
+    path = Map.get(opts, :path, "/")
+
+    with {:ok, workspace_id} <- agent_workspace_id(agent_id) do
+      project_name = BoomLooper.Compose.project_name(workspace_id)
+      candidates = discover_dev_host_ports(project_name, container_port)
+
+      case try_probe_candidates(candidates, path, project_name) do
+        {:ok, host_port, status, body, container_name} ->
+          {:ok, format_probe_success(host_port, container_name, path, status, body)}
+
+        {:error, :no_ports} ->
+          {:ok, format_probe_no_ports(project_name)}
+
+        {:error, {:no_response, attempted, container_states}} ->
+          {:ok, format_probe_no_response(attempted, path, container_states)}
+      end
+    end
+  end
+
+  # Find published host ports for the workspace's web-serving containers,
+  # in priority order: workspace container first, then dev container.
+  defp discover_dev_host_ports(project_name, nil) do
+    workspace_name = "#{project_name}-workspace-1"
+    dev_name = "#{project_name}-dev-1"
+
+    for name <- [workspace_name, dev_name],
+        container_running?(name),
+        {container_port, host_port} <- BoomLooper.Docker.container_ports(name) do
+      {name, container_port, host_port}
+    end
+  end
+
+  defp discover_dev_host_ports(project_name, container_port) do
+    target = to_string(container_port)
+    workspace_name = "#{project_name}-workspace-1"
+    dev_name = "#{project_name}-dev-1"
+
+    for name <- [workspace_name, dev_name],
+        container_running?(name),
+        {cport, host_port} <- BoomLooper.Docker.container_ports(name),
+        cport == target do
+      {name, cport, host_port}
+    end
+  end
+
+  defp try_probe_candidates([], _path, _project_name), do: {:error, :no_ports}
+
+  defp try_probe_candidates(candidates, path, project_name) do
+    {results, _} =
+      Enum.reduce_while(candidates, {[], nil}, fn {container, container_port, host_port}, {acc, _} ->
+        url = "http://localhost:#{host_port}#{path}"
+
+        case http_get(url) do
+          {:ok, status, body} ->
+            {:halt, {{:found, host_port, container, status, body}, nil}}
+
+          :error ->
+            {:cont, {[{container, container_port, host_port} | acc], nil}}
+        end
+      end)
+
+    case results do
+      {:found, host_port, container, status, body} ->
+        {:ok, host_port, status, body, container}
+
+      attempted when is_list(attempted) ->
+        states =
+          for {container, _, _} <- Enum.uniq_by(attempted, fn {c, _, _} -> c end), into: %{} do
+            {container, container_running?(container)}
+          end
+
+        _ = project_name
+        {:error, {:no_response, Enum.reverse(attempted), states}}
+    end
+  end
+
+  defp container_running?(name), do: BoomLooper.Docker.container_running?(name)
+
+  defp http_get(url) do
+    :inets.start()
+    :ssl.start()
+
+    case :httpc.request(:get, {String.to_charlist(url), []}, [timeout: 5_000, connect_timeout: 3_000], body_format: :binary) do
+      {:ok, {{_, status, _}, _headers, body}} ->
+        {:ok, status, String.slice(to_string(body), 0..600)}
+
+      _ ->
+        :error
+    end
+  end
+
+  defp format_probe_success(host_port, container, path, status, body) do
+    """
+    HTTP #{status} from http://localhost:#{host_port}#{path}
+    Mapped from container: #{container}
+
+    Body preview:
+    #{body}
+    """
+  end
+
+  defp format_probe_no_ports(project_name) do
+    """
+    No host-mapped ports found for #{project_name}-workspace-1 or #{project_name}-dev-1.
+
+    Either the containers aren't running, or your `dev` service in
+    docker-compose.yml has no `ports:` declaration. Add something like:
+
+      dev:
+        ports:
+          - "3000"
+
+    Then `docker_compose("up -d --build")`.
+    """
+  end
+
+  defp format_probe_no_response(attempted, path, container_states) do
+    state_lines =
+      container_states
+      |> Enum.map(fn {name, running?} ->
+        "  #{name}: #{if running?, do: "running", else: "NOT RUNNING"}"
+      end)
+      |> Enum.join("\n")
+
+    attempted_urls =
+      attempted
+      |> Enum.map(fn {container, container_port, host_port} ->
+        "  http://localhost:#{host_port}#{path}  (mapped from #{container}:#{container_port})"
+      end)
+      |> Enum.join("\n")
+
+    """
+    Connection refused on every host port I tried.
+
+    URLs probed (in order):
+    #{attempted_urls}
+
+    Container states:
+    #{state_lines}
+
+    Likely causes:
+    - Your dev server is bound to 127.0.0.1 inside the container (Rails default,
+      Vite default, Flask default). Bind to 0.0.0.0:
+        Rails:    `bin/rails server -b 0.0.0.0` or set BINDING=0.0.0.0
+        Vite:     `--host 0.0.0.0` or `server.host = true`
+        Flask:    `flask run --host=0.0.0.0`
+        Django:   `python manage.py runserver 0.0.0.0:8000`
+        Next.js:  binds to 0.0.0.0 by default — should be fine
+    - Dev server is still booting. Check `logs service="dev"` and wait, then retry.
+    - Wrong port: run `inspect_service name="dev"` to see what's actually listening.
+    """
+  end
+
+  @doc """
+  Print a directory tree from inside the workspace container.
+
+  One call → spatial awareness. Replaces the typical sequence of
+  `exec("ls -la /workspace")` + `exec("find /workspace -maxdepth 2 ...")`
+  + manual stitching. The agent gets file types, sizes, and a real
+  hierarchy in one structured response.
+
+  Defaults to the workspace root, depth 3, capped at 200 entries.
+  Auto-excludes `.git`, `node_modules`, `vendor/bundle`, `_build`,
+  `deps`, `.next`, `dist`, `target`, `.venv`, `__pycache__`.
+  """
+  def do_tree(agent_id, opts \\ %{}) do
+    path = opts |> Map.get(:path, ".") |> normalize_search_path()
+    depth = Map.get(opts, :depth, 3)
+    max_entries = Map.get(opts, :max_entries, 200)
+
+    cond do
+      String.contains?(path, "..") ->
+        {:error, "Path cannot contain '..'"}
+
+      depth < 1 or depth > 8 ->
+        {:error, "depth must be between 1 and 8"}
+
+      true ->
+        do_tree_in_container(agent_id, path, depth, max_entries)
+    end
+  end
+
+  defp do_tree_in_container(agent_id, path, depth, max_entries) do
+    case resolve_container(agent_id) do
+      {:ok, container} ->
+        full_path = Path.join("/workspace", path)
+
+        # GNU find -printf gives us type/size/path in one go.
+        # `%y` = file type (f/d/l), `%s` = size, `%P` = path relative to start
+        # NOTE: no sort — `sort -t$'\\t'` is bash-specific and the container
+        # shell is dash. find's natural traversal order is good enough.
+        cmd =
+          "find #{shell_quote(full_path)} -mindepth 1 -maxdepth #{depth} " <>
+            "-not -path '*/.git*' -not -path '*/node_modules*' " <>
+            "-not -path '*/vendor/bundle*' -not -path '*/_build*' " <>
+            "-not -path '*/deps*' -not -path '*/.next*' " <>
+            "-not -path '*/dist*' -not -path '*/target*' " <>
+            "-not -path '*/.venv*' -not -path '*/__pycache__*' " <>
+            "-printf '%y\\t%s\\t%P\\n' 2>/dev/null | head -n #{max_entries + 1}"
+
+        case Docker.exec_in(container, cmd, timeout: 30_000) do
+          {:ok, ""} ->
+            {:ok, "(empty: #{path})"}
+
+          {:ok, output} ->
+            entries = parse_find_output(output)
+            truncated = length(entries) > max_entries
+            entries = Enum.take(entries, max_entries)
+            {:ok, render_tree(entries, path, truncated, max_entries)}
+
+          {:error, reason} ->
+            {:error, "tree failed: #{inspect(reason)}"}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp parse_find_output(output) do
+    output
+    |> String.split("\n", trim: true)
+    |> Enum.map(fn line ->
+      case String.split(line, "\t", parts: 3) do
+        [type, size, path] -> {type, size, path}
+        _ -> nil
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp render_tree(entries, root_label, truncated, max_entries) do
+    rendered =
+      entries
+      |> Enum.map(fn {type, size, rel_path} ->
+        depth = (rel_path |> Path.split() |> length()) - 1
+        indent = String.duplicate("  ", depth)
+        name = Path.basename(rel_path)
+
+        case type do
+          "d" -> "#{indent}#{name}/"
+          "f" -> "#{indent}#{name}  (#{format_size(size)})"
+          "l" -> "#{indent}#{name} -> (link)"
+          _ -> "#{indent}#{name}"
+        end
+      end)
+      |> Enum.join("\n")
+
+    truncation_note =
+      if truncated do
+        "\n\n... truncated to #{max_entries} entries. Pass max_entries to see more, or path/depth to narrow."
+      else
+        ""
+      end
+
+    "#{root_label}/\n#{rendered}#{truncation_note}"
+  end
+
+  defp format_size(size) when is_binary(size) do
+    case Integer.parse(size) do
+      {n, _} -> format_size(n)
+      _ -> size
+    end
+  end
+
+  defp format_size(n) when is_integer(n) and n < 1024, do: "#{n} B"
+  defp format_size(n) when is_integer(n) and n < 1_048_576, do: "#{Float.round(n / 1024, 1)} KB"
+  defp format_size(n) when is_integer(n) and n < 1_073_741_824, do: "#{Float.round(n / 1_048_576, 1)} MB"
+  defp format_size(n) when is_integer(n), do: "#{Float.round(n / 1_073_741_824, 1)} GB"
+  defp format_size(_), do: "?"
+
+  @doc """
+  Combined snapshot of one service: container state, exit code,
+  host/container port mapping, recent logs, and an extracted error
+  summary. Replaces the 5-6 calls of `docker_compose ps` + `logs` +
+  `ports` + `docker port` + `docker stats` that an agent typically
+  fans out when something is sick.
+  """
+  def do_inspect_service(agent_id, name) do
+    with {:ok, workspace_id} <- agent_workspace_id(agent_id) do
+      container = "#{BoomLooper.Compose.project_name(workspace_id)}-#{name}-1"
+
+      case BoomLooper.Docker.container_state(container) do
+        nil ->
+          {:ok, format_missing_service(name, container)}
+
+        state ->
+          ports = BoomLooper.Docker.container_ports(container)
+
+          logs =
+            case BoomLooper.Docker.container_logs(container, tail: 50) do
+              {:ok, output} -> output
+              _ -> "(could not fetch logs)"
+            end
+
+          {:ok, format_service_inspection(name, container, state, ports, logs)}
+      end
+    end
+  end
+
+  defp format_missing_service(name, container) do
+    """
+    Service `#{name}` (#{container}): NOT FOUND.
+
+    The container doesn't exist. Check `service_containers` to see what's
+    actually running, or `docker_compose("ps")` to see compose services.
+    """
+  end
+
+  defp format_service_inspection(name, container, state, ports, logs) do
+    port_lines =
+      if map_size(ports) == 0 do
+        "  (no published host ports)"
+      else
+        ports
+        |> Enum.map(fn {cport, hport} -> "  #{cport} → host:#{hport}" end)
+        |> Enum.join("\n")
+      end
+
+    error_lines = extract_error_lines(logs)
+
+    error_section =
+      case error_lines do
+        [] -> ""
+        lines -> "\nDetected errors:\n#{Enum.map_join(lines, "\n", &("  " <> &1))}\n"
+      end
+
+    """
+    Service: #{name}  (#{container})
+    State:   #{state.status}#{exit_summary(state)}
+    Published ports:
+    #{port_lines}
+    #{error_section}
+    Last 50 log lines:
+    #{logs}
+    """
+  end
+
+  defp exit_summary(%{status: "running"}), do: ""
+  defp exit_summary(%{exit_code: 0}), do: " (exit 0 — clean)"
+  defp exit_summary(%{exit_code: 137, oom_killed: true}), do: " (exit 137 — OOM killed)"
+  defp exit_summary(%{exit_code: 137}), do: " (exit 137 — SIGKILL)"
+  defp exit_summary(%{exit_code: 143}), do: " (exit 143 — SIGTERM)"
+  defp exit_summary(%{exit_code: code, error: error}) when is_binary(error) and error != "" do
+    " (exit #{code} — #{error})"
+  end
+  defp exit_summary(%{exit_code: code}), do: " (exit #{code})"
+  defp exit_summary(_), do: ""
+
+  # Pull out lines from logs that look like real errors. Heuristic but
+  # cheap — saves the agent re-grepping the same logs.
+  defp extract_error_lines(logs) when is_binary(logs) do
+    logs
+    |> String.split("\n")
+    |> Enum.filter(fn line ->
+      lower = String.downcase(line)
+
+      String.contains?(lower, "error") or
+        String.contains?(lower, "fatal") or
+        String.contains?(lower, "exception") or
+        String.contains?(lower, "panic") or
+        String.contains?(lower, "traceback") or
+        String.contains?(lower, "cannot") or
+        String.contains?(lower, "refused") or
+        String.contains?(lower, "denied")
+    end)
+    |> Enum.take(8)
+  end
+
+  defp extract_error_lines(_), do: []
+
+  @doc """
+  Read several files in one round trip. The native API forces N
+  separate `read_file` calls; this batches them so the discovery
+  phase ("look at Gemfile, package.json, README, Procfile.dev")
+  is one tool call instead of four.
+
+  Returns a single string with all files concatenated, separated by
+  `=== path ===` headers. Files that don't exist or can't be read
+  show up as `(error: ...)` so the agent knows what worked and what
+  didn't without losing the rest.
+  """
+  def do_read_files(agent_id, paths) when is_list(paths) do
+    cond do
+      paths == [] ->
+        {:error, "paths list must not be empty"}
+
+      length(paths) > 20 ->
+        {:error, "Too many paths (max 20). Read in batches if you really need more."}
+
+      Enum.any?(paths, &(not is_binary(&1))) ->
+        {:error, "all paths must be strings"}
+
+      true ->
+        results =
+          Enum.map(paths, fn path ->
+            case do_read_file(agent_id, path) do
+              {:ok, content} -> {path, {:ok, content}}
+              {:error, reason} -> {path, {:error, reason}}
+            end
+          end)
+
+        {:ok, format_multi_read(results)}
+    end
+  end
+
+  defp format_multi_read(results) do
+    results
+    |> Enum.map(fn
+      {path, {:ok, content}} ->
+        "=== #{path} (#{byte_size(content)} bytes) ===\n#{content}"
+
+      {path, {:error, reason}} ->
+        "=== #{path} (error) ===\n(#{inspect(reason)})"
+    end)
+    |> Enum.join("\n\n")
   end
 
   def do_docker(command, timeout_seconds) do
