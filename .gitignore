@@ -18,6 +18,9 @@
 .env.*
 !.env.example
 
+# SSH host keys for the embedded SSH server (private — never commit)
+/ssh/
+
 # Build cache
 /.cache
 
