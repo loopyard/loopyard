@@ -2,14 +2,13 @@ defmodule BoomLooper.Workspace.ServiceManager do
   @moduledoc """
   GenServer managing Docker Compose services for a workspace.
 
-  Generates docker-compose.yml from workspace config, runs
-  `docker compose up/down`, monitors health via TCP port checks.
-
-  Container naming and networking handled by compose.
+  Agents write docker-compose.yml directly via boom-looper-container tools.
+  This module runs `docker compose up/down` and monitors container health.
   """
   use GenServer, restart: :transient
 
-  alias BoomLooper.{Compose, Docker, Workspace}
+  alias BoomLooper.{Compose, Workspace}
+  alias BoomLooper.Workspace.ServiceStatus
 
   @services_topic "workspace_services"
   @status_table :service_status_cache
@@ -20,11 +19,8 @@ defmodule BoomLooper.Workspace.ServiceManager do
     :workspace_id,
     :volume_name,       # code volume name (code-<workspace_id>)
     :source_path,       # original local path (copied to volume on first run)
-    services: %{},
-    processes: [],
     running: false,
-    rebuilding: false,
-    service_health: %{}
+    rebuilding: false
   ]
 
   # --- Public API ---
@@ -70,76 +66,93 @@ defmodule BoomLooper.Workspace.ServiceManager do
   """
   def restart_dev_streaming(project_dir, callback) when is_function(callback, 1) do
     workspace_id = Workspace.workspace_id(project_dir)
-    volume_name = "code-#{workspace_id}"
+    volume_name = Workspace.volume_name_for(workspace_id)
     # All compose operations use the virtual dir, not the real project path
     effective_dir = Path.join([Workspace.home_dir(), "workspaces", workspace_id])
     File.mkdir_p!(effective_dir)
 
-    # Load config once — fail early if it can't be read
-    case Workspace.load_from_volume(volume_name) do
-      {:ok, ws} ->
-        # Stop only dev containers (not workspace)
-        Enum.each(ws.processes, fn p ->
-          Compose.compose(effective_dir, workspace_id, ["stop", p.name], timeout: 30_000)
-        end)
+    compose_path = Compose.compose_path(effective_dir)
+    File.mkdir_p!(Path.dirname(compose_path))
 
-        # Regenerate compose file with updated config
-        content = Compose.generate(ws, effective_dir, workspace_id)
-        compose_path = Compose.compose_path(effective_dir)
-        File.mkdir_p!(Path.dirname(compose_path))
-        File.write!(compose_path, content)
-
-        # Rebuild and start dev containers
-        result = if ws.processes != [] do
-          process_names = Enum.map(ws.processes, & &1.name)
-          Compose.up_services_stream(effective_dir, workspace_id, process_names, callback)
-        else
-          {:ok, "No dev processes configured"}
+    # Read agent-written compose file from volume
+    case BoomLooper.VolumeManager.read_file(volume_name, ".boomlooper/workspace/docker-compose.yml") do
+      {:ok, content} when content != "" ->
+        case Compose.process_agent_compose(content, workspace_id) do
+          {:ok, processed} -> File.write!(compose_path, processed)
+          {:error, reason} ->
+            callback.("Error processing compose file: #{reason}\n")
+            {:error, reason}
         end
 
-        # Reconnect state so services/processes are reflected in the UI
-        case Registry.lookup(BoomLooper.ServiceManagerRegistry, project_dir) do
-          [{pid, _}] -> GenServer.call(pid, {:reconnect, ws}, 30_000)
-          [] -> :ok
-        end
-
-        result
-
-      other ->
-        require Logger
-        Logger.warning("[ServiceManager] Failed to load workspace config from volume #{volume_name}: #{inspect(other)}")
-        {:error, "Could not load workspace config from volume. Has the workspace been configured?"}
+      _ ->
+        callback.("No docker-compose.yml found. Agent must write it first.\n")
+        {:error, :no_compose_file}
     end
+
+    # Stop dev containers (not workspace) - use compose ps to find them
+    case Compose.ps(effective_dir, workspace_id) do
+      {:ok, services} ->
+        services
+        |> Enum.filter(fn s -> s.name != "workspace" end)
+        |> Enum.each(fn s ->
+          Compose.compose(effective_dir, workspace_id, ["stop", s.name], timeout: 30_000)
+        end)
+      _ -> :ok
+    end
+
+    # Find services to start (everything except workspace)
+    result = case Compose.compose(effective_dir, workspace_id, ["config", "--services"]) do
+      {:ok, output} ->
+        services = output |> String.trim() |> String.split("\n", trim: true) |> Enum.reject(&(&1 == "workspace"))
+        if services != [] do
+          Compose.up_services_stream(effective_dir, workspace_id, services, callback)
+        else
+          {:ok, "No services to start"}
+        end
+      _ ->
+        {:ok, "No services configured"}
+    end
+
+    # Reconnect state
+    case Registry.lookup(BoomLooper.ServiceManagerRegistry, project_dir) do
+      [{pid, _}] -> GenServer.call(pid, :reconnect, 30_000)
+      [] -> :ok
+    end
+
+    result
   end
 
   @doc "Stop containers, rebuild with streaming output, then reconnect state."
   def restart_workspace_streaming(project_dir, callback) when is_function(callback, 1) do
     workspace_id = Workspace.workspace_id(project_dir)
-    volume_name = "code-#{workspace_id}"
+    volume_name = Workspace.volume_name_for(workspace_id)
     # All compose operations use the virtual dir, not the real project path
     effective_dir = Path.join([Workspace.home_dir(), "workspaces", workspace_id])
     File.mkdir_p!(effective_dir)
 
     Compose.down(effective_dir, workspace_id)
 
-    # Write compose file from volume config
-    case Workspace.load_from_volume(volume_name) do
-      {:ok, ws} ->
-        content = Compose.generate(ws, effective_dir, workspace_id)
-        compose_path = Compose.compose_path(effective_dir)
-        File.mkdir_p!(Path.dirname(compose_path))
-        File.write!(compose_path, content)
-      _ -> :ok
+    # Read agent-written compose file from volume
+    compose_path = Compose.compose_path(effective_dir)
+    File.mkdir_p!(Path.dirname(compose_path))
+
+    case BoomLooper.VolumeManager.read_file(volume_name, ".boomlooper/workspace/docker-compose.yml") do
+      {:ok, content} when content != "" ->
+        case Compose.process_agent_compose(content, workspace_id) do
+          {:ok, processed} ->
+            File.write!(compose_path, processed)
+          {:error, reason} ->
+            callback.("Error processing compose file: #{reason}\n")
+        end
+
+      _ ->
+        callback.("No docker-compose.yml found. Agent must write it first.\n")
     end
 
     result = Compose.up_stream(effective_dir, workspace_id, callback)
 
     case Registry.lookup(BoomLooper.ServiceManagerRegistry, project_dir) do
-      [{pid, _}] ->
-        case Workspace.load_from_volume(volume_name) do
-          {:ok, ws} -> GenServer.call(pid, {:reconnect, ws}, 30_000)
-          _ -> :ok
-        end
+      [{pid, _}] -> GenServer.call(pid, :reconnect, 30_000)
       [] -> :ok
     end
 
@@ -154,25 +167,25 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
     Compose.down(project_dir, workspace_id)
 
-    # Load config from volume and write compose file
-    case Workspace.load_from_volume(volume_name) do
-      {:ok, ws} ->
-        content = Compose.generate(ws, project_dir, workspace_id)
-        compose_path = Compose.compose_path(project_dir)
-        File.mkdir_p!(Path.dirname(compose_path))
-        File.write!(compose_path, content)
+    # Read agent-written compose file from volume
+    compose_path = Compose.compose_path(project_dir)
+    File.mkdir_p!(Path.dirname(compose_path))
 
-      _ -> :ok
+    case BoomLooper.VolumeManager.read_file(volume_name, ".boomlooper/workspace/docker-compose.yml") do
+      {:ok, content} when content != "" ->
+        case Compose.process_agent_compose(content, workspace_id) do
+          {:ok, processed} -> File.write!(compose_path, processed)
+          {:error, reason} -> callback.("Error processing compose file: #{reason}\n")
+        end
+
+      _ ->
+        callback.("No docker-compose.yml found. Agent must write it first.\n")
     end
 
     result = Compose.up_stream(project_dir, workspace_id, callback)
 
     case Registry.lookup(BoomLooper.ServiceManagerRegistry, project_dir) do
-      [{pid, _}] ->
-        case Workspace.load_from_volume(volume_name) do
-          {:ok, ws} -> GenServer.call(pid, {:reconnect, ws}, 30_000)
-          _ -> :ok
-        end
+      [{pid, _}] -> GenServer.call(pid, :reconnect, 30_000)
       [] -> :ok
     end
 
@@ -209,7 +222,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
   def init(opts) do
     project_dir = Keyword.fetch!(opts, :project_dir)
     workspace_id = Keyword.get(opts, :workspace_id) || Workspace.workspace_id(project_dir)
-    volume_name = "code-#{workspace_id}"
+    volume_name = Workspace.volume_name_for(workspace_id)
 
     # All workspaces use a virtual dir for compose files + metadata
     effective_project_dir = Path.join([Workspace.home_dir(), "workspaces", workspace_id])
@@ -227,13 +240,10 @@ defmodule BoomLooper.Workspace.ServiceManager do
       source_path: source_path
     }
 
-    # Load workspace config from volume (all workspaces are volume-based now)
-    ws_result = Workspace.load_from_volume(volume_name)
-
     # Seed the ETS cache immediately so service_status/1 returns something
     # even while async init is doing Docker ops
     ensure_status_table()
-    :ets.insert(@status_table, {project_dir, build_statuses(state)})
+    :ets.insert(@status_table, {project_dir, []})
 
     # Try to start services async — never crash init, just log failures.
     # If this fails, the ServiceManager stays alive in an idle state and
@@ -244,11 +254,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
         case Compose.ps(effective_project_dir, workspace_id) do
           {:ok, running} when running != [] ->
             # Containers already running — reconnect state without rebuilding
-            ws = case ws_result do
-              {:ok, ws} -> ws
-              _ -> %Workspace{}
-            end
-            GenServer.call(self_pid, {:reconnect, ws}, 30_000)
+            GenServer.call(self_pid, :reconnect, 30_000)
 
           _ ->
             # No running containers — do a full start
@@ -286,22 +292,13 @@ defmodule BoomLooper.Workspace.ServiceManager do
   end
 
   @impl true
-  def handle_call({:reconnect, ws}, _from, state) do
+  def handle_call(:reconnect, _from, state) do
     BoomLooper.EventLog.info("workspace:#{state.workspace_id}", "Reconnecting to existing compose containers")
 
     # Replay agent log to restore agent state to ETS and start agents
     replay_agent_log(state.project_dir, state.workspace_id)
 
-    services = Map.new(ws.services, fn s -> {s.name, s} end)
-    all_names = Enum.map(ws.processes, & &1.name) ++ Enum.map(ws.services, & &1.name) ++ ["workspace"]
-    initial_health = Map.new(all_names, fn name -> {name, :started} end)
-
-    new_state = %{state |
-      services: services,
-      processes: ws.processes,
-      running: true,
-      service_health: initial_health
-    }
+    new_state = %{state | running: true}
     broadcast_service_update(new_state)
     {:reply, :ok, new_state}
   end
@@ -309,7 +306,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
   @impl true
   def handle_call(:stop_services, _from, state) do
     do_stop(state)
-    new_state = %{state | running: false, service_health: %{}}
+    new_state = %{state | running: false}
     broadcast_service_update(new_state)
     {:reply, :ok, new_state}
   end
@@ -331,14 +328,6 @@ defmodule BoomLooper.Workspace.ServiceManager do
   def handle_cast(:broadcast_status, state) do
     broadcast_service_update(state)
     {:noreply, state}
-  end
-
-  @impl true
-  def handle_cast(:check_health, state) do
-    health = update_health(state)
-    new_state = %{state | service_health: health}
-    if health != state.service_health, do: broadcast_service_update(new_state)
-    {:noreply, new_state}
   end
 
   @impl true
@@ -371,40 +360,30 @@ defmodule BoomLooper.Workspace.ServiceManager do
       end
     end
 
-    # Load config - use default empty workspace if none exists
-    ws = case load_workspace_config(state) do
-      {:ok, ws} -> ws
-      _ -> %Workspace{}
-    end
-
-    # Generate and write compose file
-    content = Compose.generate(ws, state.project_dir, state.workspace_id)
+    # Check for agent-written compose file in the volume
     compose_path = Compose.compose_path(state.project_dir)
     File.mkdir_p!(Path.dirname(compose_path))
-    File.write!(compose_path, content)
 
-    # If there's no dockerfile and no services, nothing to start yet.
-    # The setup agent will configure the workspace and trigger a rebuild.
-    has_services = ws.dockerfile != nil || ws.services != [] || ws.processes != []
+    has_compose = case BoomLooper.VolumeManager.read_file(volume_name, ".boomlooper/workspace/docker-compose.yml") do
+      {:ok, content} when content != "" ->
+        case Compose.process_agent_compose(content, state.workspace_id) do
+          {:ok, processed} ->
+            File.write!(compose_path, processed)
+            true
+          {:error, _} ->
+            false
+        end
+      _ ->
+        false
+    end
 
-    if has_services do
+    if has_compose do
       BoomLooper.EventLog.info("workspace:#{state.workspace_id}", "Starting compose services")
 
       case Compose.up(state.project_dir, state.workspace_id) do
         {:ok, _} ->
           replay_agent_log(state.project_dir, state.workspace_id)
-
-          services = Map.new(ws.services, fn s -> {s.name, s} end)
-          all_names = Enum.map(ws.processes, & &1.name) ++ Enum.map(ws.services, & &1.name) ++ ["workspace"]
-          initial_health = Map.new(all_names, fn name -> {name, :started} end)
-
-          new_state = %{state |
-            services: services,
-            processes: ws.processes,
-            running: true,
-            service_health: initial_health,
-            volume_name: volume_name
-          }
+          new_state = %{state | running: true, volume_name: volume_name}
           broadcast_service_update(new_state)
           {:ok, new_state}
 
@@ -413,15 +392,10 @@ defmodule BoomLooper.Workspace.ServiceManager do
           {:error, reason}
       end
     else
-      BoomLooper.EventLog.info("workspace:#{state.workspace_id}", "No services configured yet, waiting for setup")
+      BoomLooper.EventLog.info("workspace:#{state.workspace_id}", "No docker-compose.yml yet, waiting for agent to write it")
       replay_agent_log(state.project_dir, state.workspace_id)
       {:ok, %{state | volume_name: volume_name}}
     end
-  end
-
-  defp load_workspace_config(state) do
-    # All workspaces are now volume-based
-    Workspace.load_from_volume(state.volume_name)
   end
 
   defp do_stop(state) do
@@ -433,105 +407,9 @@ defmodule BoomLooper.Workspace.ServiceManager do
     end
   end
 
-  defp build_statuses(state) do
-    workspace_status = build_workspace_status(state)
-    process_statuses = build_process_statuses(state)
-    stock_statuses = build_stock_statuses(state)
-    workspace_status ++ process_statuses ++ stock_statuses
-  end
-
-  defp build_workspace_status(state) do
-    container = service_container_name(state.workspace_id, "workspace")
-    running = Docker.container_running?(container)
-    health = Map.get(state.service_health, "workspace", :stopped)
-
-    if state.running || running do
-      [%{name: "workspace", type: :workspace, running: running, container: container, ports: %{}, health: health}]
-    else
-      []
-    end
-  end
-
-  defp build_process_statuses(state) do
-    Enum.map(state.processes, fn p ->
-      container = service_container_name(state.workspace_id, p.name)
-      running = Docker.container_running?(container)
-      ports = if running, do: Docker.container_ports(container), else: %{}
-      exit_info = if !running, do: Docker.container_state(container), else: nil
-      health = Map.get(state.service_health, p.name, :stopped)
-
-      %{
-        name: p.name,
-        command: p.command,
-        type: :process,
-        running: running,
-        container: container,
-        ports: ports,
-        exit_info: exit_info,
-        health: health
-      }
-    end)
-  end
-
-  defp build_stock_statuses(state) do
-    Enum.map(state.services, fn {name, service} ->
-      container = service_container_name(state.workspace_id, name)
-      running = Docker.container_running?(container)
-      ports = if running, do: Docker.container_ports(container), else: %{}
-      exit_info = if !running, do: Docker.container_state(container), else: nil
-      health = Map.get(state.service_health, name, :stopped)
-
-      %{
-        name: name,
-        image: service[:image],
-        type: :stock,
-        running: running,
-        container: container,
-        ports: ports,
-        exit_info: exit_info,
-        health: health
-      }
-    end)
-  end
-
-  defp update_health(state) do
-    all_services =
-      [{"workspace", service_container_name(state.workspace_id, "workspace")}] ++
-      Enum.map(state.processes, fn p ->
-        {p.name, service_container_name(state.workspace_id, p.name)}
-      end) ++
-      Enum.map(state.services, fn {name, _} ->
-        {name, service_container_name(state.workspace_id, name)}
-      end)
-
-    Map.new(all_services, fn {name, container} ->
-      current = Map.get(state.service_health, name, :stopped)
-      running = Docker.container_running?(container)
-
-      new_health = cond do
-        !running ->
-          exit_info = Docker.container_state(container)
-          if exit_info && exit_info.exit_code > 0, do: :crashed, else: :stopped
-
-        current == :healthy ->
-          :healthy
-
-        running ->
-          ports = Docker.container_ports(container)
-          if ports == %{} do
-            :healthy  # No ports = healthy when running (workspace container)
-          else
-            {_cp, host_port} = Enum.at(ports, 0)
-            if Docker.port_open?(host_port), do: :healthy, else: :started
-          end
-      end
-
-      {name, new_health}
-    end)
-  end
-
   defp broadcast_service_update(state) do
-    all_statuses = build_statuses(state)
+    # Use ServiceStatus for consistent enumeration across all callers
+    all_statuses = ServiceStatus.for_workspace(state.project_dir)
 
     # Use canonical_dir for broadcasts so subscribers can match on the original path
     broadcast_dir = state.canonical_dir || state.project_dir

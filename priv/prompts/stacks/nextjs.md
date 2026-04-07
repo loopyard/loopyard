@@ -16,26 +16,28 @@ Check `.nvmrc` or `.node-version` — if it specifies a different major version,
 
 ## Services
 
-- **postgres:** `postgres:16` — pass `env: {"POSTGRES_HOST_AUTH_METHOD": "trust"}` in `add_service` (if using Prisma/Drizzle with postgres)
+Add to docker-compose.yml:
+- **postgres:** `image: postgres:16` with `environment: POSTGRES_HOST_AUTH_METHOD=trust` on the postgres service (if using Prisma/Drizzle with postgres)
 
 ## Env vars
 
+Add to workspace and dev services in docker-compose.yml:
 ```
 HOST=0.0.0.0
 DATABASE_URL=postgres://postgres@postgres:5432/<app>_dev
 NODE_ENV=development
 ```
 
-## After rebuild
+## After docker_compose up
 
 ```
-exec: npm install
-exec: npx prisma migrate dev    # if using Prisma
-exec: npx prisma generate       # if using Prisma
+exec("npm install")
+exec("npx prisma migrate dev")    # if using Prisma
+exec("npx prisma generate")       # if using Prisma
 ```
 
 ## Gotchas
 
 - `npm install` inside the container gets Linux-native binaries (replaces macOS ones from volume)
-- If `sharp` or `esbuild` crashes with "Exec format error": `npm rebuild`
-- Next.js reads `.env.local` for env vars — database URLs there may point to `localhost` instead of the Docker service name. Override with `set_env_vars`.
+- If `sharp` or `esbuild` crashes with "Exec format error": `exec("npm rebuild")`
+- Next.js reads `.env.local` for env vars — database URLs there may point to `localhost` instead of the Docker service name. Override in docker-compose.yml environment section.

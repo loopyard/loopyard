@@ -44,8 +44,9 @@ defmodule Mix.Tasks.Boom.Rpc do
           Mix.shell().info(inspect(value, pretty: true, limit: :infinity, printable_limit: :infinity))
       end
     after
-      # Clear the indicator when done
-      :rpc.call(node, BoomLooper.IExSession, :disconnect, [])
+      # Only disconnect if the command didn't claim the session.
+      # Long-running tasks (like EvalRunner) claim the session and disconnect themselves when done.
+      :rpc.call(node, BoomLooper.IExSession, :disconnect_unless_claimed, [])
     end
   end
 

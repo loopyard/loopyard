@@ -49,7 +49,7 @@ defmodule BoomLooper.ProjectRegistry do
     # Find or create project
     project = case get_project(project_id) do
       nil ->
-        name = extract_repo_name(git_url)
+        name = unique_name(extract_repo_name(git_url), project_id)
         proj = %{
           id: project_id,
           name: name,
@@ -69,6 +69,12 @@ defmodule BoomLooper.ProjectRegistry do
     workspace = case get_workspace(workspace_id) do
       nil ->
         volume_name = BoomLooper.VolumeManager.code_volume_name(workspace_id)
+        # Compute path so all workspaces have the same shape
+        computed_path = Path.join([Workspace.home_dir(), "workspaces", workspace_id])
+        # First branch added is considered main (typically "main" or "master")
+        existing_workspaces = list_workspaces(project_id)
+        is_main = existing_workspaces == []
+
         ws = %{
           id: workspace_id,
           project_id: project_id,
@@ -77,6 +83,8 @@ defmodule BoomLooper.ProjectRegistry do
           git_url: git_url,
           volume: volume_name,
           volume_based: true,
+          path: computed_path,
+          is_main: is_main,
           status: :stopped,
           added_at: DateTime.utc_now()
         }
@@ -88,8 +96,10 @@ defmodule BoomLooper.ProjectRegistry do
     end
 
     # Clone code into volume if not already done
+    # clone_mode: :sync (default), :disabled (tests)
     volume_name = BoomLooper.VolumeManager.code_volume_name(workspace_id)
-    unless BoomLooper.VolumeManager.volume_has_code?(volume_name) do
+    clone_mode = Application.get_env(:boom_looper, :clone_mode, :sync)
+    if clone_mode != :disabled and not BoomLooper.VolumeManager.volume_has_code?(volume_name) do
       case BoomLooper.VolumeManager.clone_into_volume(volume_name, git_url, branch: branch, token: token) do
         {:ok, _} -> :ok
         {:error, reason} -> Logger.warning("[ProjectRegistry] Clone failed: #{reason}")
@@ -154,24 +164,84 @@ defmodule BoomLooper.ProjectRegistry do
   end
 
   @doc """
-  Rename a project. Updates ETS and persists to disk.
+  Rename a project. Updates ETS and persists to disk. Trims input.
+  If the requested name collides with another project, appends a numeric
+  suffix (e.g. `myapp-2`) so each project remains uniquely findable.
   """
   def rename_project(project_id, new_name) do
-    case :ets.lookup(:project_registry, project_id) do
-      [{_, project}] ->
-        updated = Map.put(project, :name, new_name)
-        :ets.insert(:project_registry, {project_id, updated})
-        persist_all_projects()
-        {:ok, updated}
+    name = String.trim(to_string(new_name || ""))
 
-      [] ->
-        {:error, :not_found}
+    cond do
+      name == "" ->
+        {:error, :empty_name}
+
+      true ->
+        case :ets.lookup(:project_registry, project_id) do
+          [{_, project}] ->
+            unique = unique_name(name, project_id)
+            updated = Map.put(project, :name, unique)
+            :ets.insert(:project_registry, {project_id, updated})
+            persist_all_projects()
+            {:ok, updated}
+
+          [] ->
+            {:error, :not_found}
+        end
+    end
+  end
+
+  # Names that the basename strategy commonly produces but tell you nothing.
+  # When we hit one of these, walk up to the parent dir for something useful.
+  @generic_basenames ~w(project src code app repo source main master trunk)
+
+  @doc """
+  Derive a human-readable default name from a directory path. Falls back to
+  the parent directory when the basename is generic (e.g. "project", "src").
+  Returns nil if nothing usable can be extracted.
+  """
+  def default_name_from_path(path) when is_binary(path) do
+    parts =
+      path
+      |> Path.expand()
+      |> Path.split()
+      |> Enum.reverse()
+      |> Enum.reject(&(&1 in ["", "/"]))
+
+    Enum.find(parts, fn segment ->
+      segment not in @generic_basenames and segment != "."
+    end)
+  end
+  def default_name_from_path(_), do: nil
+
+  # Returns a name unique across all projects, except for the project we're
+  # naming (so renaming a project to its own current name is a no-op).
+  defp unique_name(base, exclude_id) do
+    taken =
+      list_projects()
+      |> Enum.reject(&(&1.id == exclude_id))
+      |> MapSet.new(& &1.name)
+
+    if MapSet.member?(taken, base) do
+      Stream.iterate(2, &(&1 + 1))
+      |> Enum.find_value(fn n ->
+        candidate = "#{base}-#{n}"
+        if MapSet.member?(taken, candidate), do: nil, else: candidate
+      end)
+    else
+      base
     end
   end
 
   defp persist_all_projects do
     projects = list_projects()
-    records = Enum.map(projects, fn p -> %{path: p.path, name: p.name} end)
+    # `path` in the persisted store is overloaded — it's either a filesystem
+    # path (bind-mount projects) or a git URL (volume-based projects). Use
+    # whichever key the project actually has so the rename round-trips.
+    records =
+      projects
+      |> Enum.map(fn p -> %{path: p[:path] || p[:git_url], name: p.name} end)
+      |> Enum.reject(&is_nil(&1.path))
+
     ProjectStore.save(records)
   end
 
@@ -204,9 +274,20 @@ defmodule BoomLooper.ProjectRegistry do
 
       case result do
         {:ok, project, _workspace} ->
-          # Apply saved name if present
-          if saved_name do
-            :ets.insert(:project_registry, {project.id, Map.put(project, :name, saved_name)})
+          # Apply saved name if present and not generic; otherwise upgrade
+          # generic/missing names using the directory layout.
+          desired = cond do
+            is_binary(saved_name) and String.trim(saved_name) != "" and saved_name not in @generic_basenames ->
+              saved_name
+            is_binary(project[:path]) ->
+              default_name_from_path(project[:path]) || project.name
+            true ->
+              project.name
+          end
+
+          unique = unique_name(desired, project.id)
+          if unique != project.name do
+            :ets.insert(:project_registry, {project.id, Map.put(project, :name, unique)})
           end
           :ok
 
@@ -214,6 +295,9 @@ defmodule BoomLooper.ProjectRegistry do
           Logger.warning("[ProjectRegistry] Failed to restore project #{path}: #{reason}")
       end
     end
+
+    # Persist normalized names so they survive the next restart without recomputation.
+    persist_all_projects()
 
     :ok
   end
@@ -307,7 +391,7 @@ defmodule BoomLooper.ProjectRegistry do
   def list_workspaces(project_id) do
     ensure_ets_tables()
     :ets.tab2list(@workspaces_table)
-    |> Enum.map(fn {_id, workspace} -> workspace end)
+    |> Enum.map(fn {_id, workspace} -> normalize_workspace(workspace) end)
     |> Enum.filter(&(&1.project_id == project_id))
     |> Enum.sort_by(fn w -> if w.name == "main", do: "0", else: w.name end)
   end
@@ -316,10 +400,26 @@ defmodule BoomLooper.ProjectRegistry do
   def get_workspace(id) do
     ensure_ets_tables()
     case :ets.lookup(@workspaces_table, id) do
-      [{^id, workspace}] -> workspace
+      [{^id, workspace}] -> normalize_workspace(workspace)
       [] -> nil
     end
   end
+
+  # Ensure all workspaces have consistent shape (path, is_main)
+  defp normalize_workspace(ws) do
+    ws
+    |> maybe_add_path()
+    |> maybe_add_is_main()
+  end
+
+  defp maybe_add_path(%{path: _} = ws), do: ws
+  defp maybe_add_path(%{volume_based: true, id: id} = ws) do
+    Map.put(ws, :path, Path.join([Workspace.home_dir(), "workspaces", id]))
+  end
+  defp maybe_add_path(ws), do: ws
+
+  defp maybe_add_is_main(%{is_main: _} = ws), do: ws
+  defp maybe_add_is_main(ws), do: Map.put(ws, :is_main, false)
 
   @doc """
   Add a new workspace to a project. Creates a git worktree.
@@ -388,10 +488,11 @@ defmodule BoomLooper.ProjectRegistry do
     case get_project(id) do
       nil ->
         ws_id = Workspace.workspace_id(repo_path)
-        name = case Workspace.load_from_volume("code-#{ws_id}") do
+        raw_name = case Workspace.load_from_volume("code-#{ws_id}") do
           {:ok, ws} when ws.name != nil -> ws.name
-          _ -> Path.basename(repo_path)
+          _ -> default_name_from_path(repo_path) || Path.basename(repo_path)
         end
+        name = unique_name(raw_name, id)
 
         project = %{
           id: id,

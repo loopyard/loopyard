@@ -1,135 +1,103 @@
 defmodule BoomLooper.Compose do
   @moduledoc """
-  Generates and manages docker-compose.yml files for workspaces.
-  Translates workspace config into compose services.
+  Docker Compose operations for workspaces.
+
+  Agents write docker-compose.yml directly via boom-looper-container tools.
+  This module processes those files and runs compose commands.
   """
 
   alias BoomLooper.Workspace
 
-  @doc "Generate docker-compose.yml content from workspace config."
-  def generate(%Workspace{} = ws, project_dir, workspace_id) do
-    services = %{}
-    code_volume = "code-#{workspace_id}"
+  @doc """
+  Process an agent-written docker-compose.yml with minimal fixups.
+  Agents write standard compose syntax. We:
+  1. Replace ${CODE_VOLUME} placeholder with actual volume name
+  2. Ensure the code volume is declared as external
+  3. Strip host ports (use dynamic allocation)
+  """
+  def process_agent_compose(compose_content, workspace_id) do
+    code_volume = Workspace.volume_name_for(workspace_id)
 
-    # Write Dockerfile to .boomlooper/workspace/ so compose can reference it
-    dockerfile_path = Path.join([project_dir, ".boomlooper", "workspace", "Dockerfile"])
-    if ws.dockerfile, do: write_unless_symlink(dockerfile_path, ws.dockerfile)
+    case Jason.decode(compose_content) do
+      {:ok, compose} ->
+        compose = update_in(compose, ["services"], fn services ->
+          services
+          |> Enum.map(fn {name, svc} ->
+            svc = update_volumes_placeholder(svc, code_volume)
+            svc = strip_host_ports(svc)
+            {name, svc}
+          end)
+          |> Map.new()
+        end)
 
-    # Shared volumes for workspace + dev containers
-    shared_volumes = [
-      "#{code_volume}:/workspace",
-      "cache-#{workspace_id}:/root/.cache",
-      "deps-#{workspace_id}:/usr/local/bundle"
-    ]
+        # Ensure code volume is declared as external
+        volumes = Map.get(compose, "volumes", %{}) || %{}
+        volumes = Map.put(volumes, code_volume, %{"external" => true})
+        compose = Map.put(compose, "volumes", volumes)
 
-    # Workspace container — always running, agents exec here
-    services = if ws.dockerfile do
-      Map.put(services, "workspace", %{
-        "build" => %{"context" => project_dir, "dockerfile" => ".boomlooper/workspace/Dockerfile"},
-        "command" => "sleep infinity",
-        "volumes" => shared_volumes,
-        "working_dir" => "/workspace",
-        "environment" => env_list(ws.env_vars)
-      })
-    else
-      services
-    end
+        {:ok, Jason.encode!(compose, pretty: true)}
 
-    # Dev container — runs the dev command from workspace image
-    services = Enum.reduce(ws.processes, services, fn p, acc ->
-      svc = %{
-        "build" => %{"context" => project_dir, "dockerfile" => ".boomlooper/workspace/Dockerfile"},
-        "command" => p.command,
-        "volumes" => shared_volumes,
-        "working_dir" => "/workspace",
-        "environment" => env_list(ws.env_vars)
-      }
+      {:error, _} ->
+        # If not valid JSON, try YAML (compose files are usually YAML)
+        case YamlElixir.read_from_string(compose_content) do
+          {:ok, compose} ->
+            compose = update_in(compose, ["services"], fn services ->
+              services
+              |> Enum.map(fn {name, svc} ->
+                svc = update_volumes_placeholder(svc, code_volume)
+                svc = strip_host_ports(svc)
+                {name, svc}
+              end)
+              |> Map.new()
+            end)
 
-      # Add ports — always use dynamic host port allocation to avoid conflicts.
-      # "3001:3000" becomes "3000" (Docker picks a free host port).
-      svc = case p[:ports] do
-        ports when is_list(ports) and ports != [] ->
-          Map.put(svc, "ports", Enum.map(ports, &container_port_only/1))
-        _ ->
-          svc
-      end
+            volumes = Map.get(compose, "volumes", %{}) || %{}
+            volumes = Map.put(volumes, code_volume, %{"external" => true})
+            compose = Map.put(compose, "volumes", volumes)
 
-      Map.put(acc, p.name, svc)
-    end)
+            # Write back as JSON (docker compose accepts both)
+            {:ok, Jason.encode!(compose, pretty: true)}
 
-    # Stock services — postgres, redis, etc.
-    services = Enum.reduce(ws.services, services, fn s, acc ->
-      svc = %{"image" => s.image}
-
-      svc = if s[:env] && s.env != %{},
-        do: Map.put(svc, "environment", env_list(s.env)),
-        else: svc
-
-      svc = case s[:ports] do
-        ports when is_list(ports) and ports != [] ->
-          Map.put(svc, "ports", Enum.map(ports, &container_port_only/1))
-        _ ->
-          svc
-      end
-
-      svc = if s[:volumes] && s.volumes != [],
-        do: Map.put(svc, "volumes", Enum.map(s.volumes, fn v ->
-          expand_data_volume(v, s.name, workspace_id)
-        end)),
-        else: svc
-
-      Map.put(acc, s.name, svc)
-    end)
-
-    # Volumes — code volume is external (created by VolumeManager), others are compose-managed
-    volumes = %{
-      code_volume => %{"external" => true},
-      "cache-#{workspace_id}" => nil,
-      "deps-#{workspace_id}" => nil
-    }
-    volumes = Enum.reduce(ws.services, volumes, fn s, acc ->
-      Enum.reduce(s[:volumes] || [], acc, fn v, a ->
-        if String.contains?(v, "{data}") do
-          vol_name = data_volume_name(s.name, workspace_id)
-          Map.put(a, vol_name, nil)
-        else
-          a
+          {:error, reason} ->
+            {:error, "Invalid compose file: #{inspect(reason)}"}
         end
-      end)
-    end)
-
-    compose = %{"services" => services}
-    compose = if volumes != %{}, do: Map.put(compose, "volumes", volumes), else: compose
-
-    Jason.encode!(compose, pretty: true)
-  end
-
-  # Expand {data} in volume specs. Handles both "{data}:/path" and "{data}/subpath:/path".
-  # "{data}/pgdata:/var/lib/postgresql/data" → "postgres-data-abcd:/var/lib/postgresql/data"
-  # The /subpath is stripped — the named volume IS the data directory.
-  defp expand_data_volume(volume_spec, service_name, workspace_id) do
-    vol_name = data_volume_name(service_name, workspace_id)
-    # Replace {data} and any trailing subpath (e.g. {data}/pgdata) with just the volume name
-    String.replace(volume_spec, ~r/\{data\}[^:]*/, vol_name)
-  end
-
-  defp data_volume_name(service_name, workspace_id) do
-    "#{service_name}-data-#{workspace_id}"
-  end
-
-  @doc "Write docker-compose.yml to the .boomlooper/workspace directory."
-  def write(project_dir, workspace_id) do
-    case Workspace.load(project_dir) do
-      {:ok, ws} ->
-        content = generate(ws, project_dir, workspace_id)
-        compose_path = compose_path(project_dir)
-        write_unless_symlink(compose_path, content)
-        {:ok, compose_path}
-
-      other ->
-        other
     end
   end
+
+  defp update_volumes_placeholder(svc, code_volume) when is_map(svc) do
+    case svc["volumes"] do
+      volumes when is_list(volumes) ->
+        updated = Enum.map(volumes, fn
+          vol when is_binary(vol) ->
+            String.replace(vol, "${CODE_VOLUME}", code_volume)
+          vol -> vol
+        end)
+        Map.put(svc, "volumes", updated)
+      _ -> svc
+    end
+  end
+  defp update_volumes_placeholder(svc, _), do: svc
+
+  defp strip_host_ports(svc) when is_map(svc) do
+    case svc["ports"] do
+      ports when is_list(ports) ->
+        stripped = Enum.map(ports, &container_port_only/1)
+        Map.put(svc, "ports", stripped)
+      _ -> svc
+    end
+  end
+  defp strip_host_ports(svc), do: svc
+
+  # Strip host port from a port mapping, keeping only the container port.
+  # "3001:3000" -> "3000", "3000" -> "3000", "3000/tcp" -> "3000/tcp"
+  defp container_port_only(port_spec) when is_binary(port_spec) do
+    case String.split(port_spec, ":") do
+      [_host, container] -> container
+      [container] -> container
+      [_ip, _host, container] -> container
+    end
+  end
+  defp container_port_only(port_spec), do: to_string(port_spec)
 
   @doc "Path to the compose file."
   def compose_path(project_dir), do: Path.join([project_dir, ".boomlooper", "workspace", "docker-compose.yml"])
@@ -149,6 +117,15 @@ defmodule BoomLooper.Compose do
       BoomLooper.Docker.docker(["compose" | base_args], timeout: timeout)
     else
       docker_compose(base_args, timeout)
+    end
+  end
+
+  @doc "Run a docker compose command with pre-built args (includes -f and -p flags)."
+  def compose_cmd(args, timeout \\ 120_000) do
+    if docker_compose_v2?() do
+      BoomLooper.Docker.docker(["compose" | args], timeout: timeout)
+    else
+      docker_compose(args, timeout)
     end
   end
 
@@ -347,41 +324,10 @@ defmodule BoomLooper.Compose do
 
   # --- Private ---
 
-  defp write_unless_symlink(path, content) do
-    case File.lstat(path) do
-      {:ok, %{type: :symlink}} -> :ok
-      _ ->
-        File.mkdir_p!(Path.dirname(path))
-        File.write!(path, content)
-    end
-  end
-
-  # Strip host port from a port mapping, keeping only the container port.
-  # "3001:3000" -> "3000", "3000" -> "3000", "3000/tcp" -> "3000/tcp"
-  defp container_port_only(port_spec) when is_binary(port_spec) do
-    case String.split(port_spec, ":") do
-      [_host, container] -> container
-      [container] -> container
-      [_ip, _host, container] -> container
-    end
-  end
-
-  defp env_list(env) when is_map(env) do
-    Enum.map(env, fn {k, v} -> "#{k}=#{v}" end)
-  end
-
-  defp env_list(env) when is_list(env) do
-    # Handle ["KEY=VAL", ...] format
-    Enum.filter(env, &is_binary/1)
-  end
-
-  defp env_list(_), do: []
-
   defp parse_compose_ports(""), do: %{}
   defp parse_compose_ports(ports_str) do
     # Format: "0.0.0.0:32871->3000/tcp, :::32871->3000/tcp"
     Regex.scan(~r/(?:\d+\.){3}\d+:(\d+)->(\d+)/, ports_str)
     |> Map.new(fn [_, host_port, container_port] -> {container_port, host_port} end)
   end
-
 end

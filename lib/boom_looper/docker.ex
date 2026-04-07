@@ -30,6 +30,14 @@ defmodule BoomLooper.Docker do
     end
   end
 
+  @doc "Check if a container exists (running or not) by name"
+  def container_exists?(container_name) do
+    case docker(["inspect", container_name]) do
+      {:ok, _} -> true
+      _ -> false
+    end
+  end
+
   @doc "Get container state details — running, exit code, error, OOM status."
   def container_state(container_name) do
     case docker(["inspect", "-f", "{{.State.Status}}|{{.State.ExitCode}}|{{.State.OOMKilled}}|{{.State.Error}}", container_name]) do

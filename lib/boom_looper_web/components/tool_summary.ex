@@ -4,6 +4,8 @@ defmodule BoomLooperWeb.Components.ToolSummary do
   Used in the chat UI to show what the agent is doing.
   """
 
+  import BoomLooperWeb.Format, only: [shorten_path: 1]
+
   @doc "Summarize a tool call into a short human-readable string."
   def summarize(tool_name, input) when is_map(input) do
     clean_name = tool_name |> String.replace(~r/^mcp__[\w-]+__/, "")
@@ -50,9 +52,4 @@ defmodule BoomLooperWeb.Components.ToolSummary do
   end
 
   def summarize(tool_name, _input), do: tool_name
-
-  defp shorten_path(path) do
-    home = System.user_home!()
-    String.replace_prefix(path, home, "~")
-  end
 end

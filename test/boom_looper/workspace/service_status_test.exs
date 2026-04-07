@@ -2,12 +2,11 @@ defmodule BoomLooper.Workspace.ServiceStatusTest do
   @moduledoc """
   Tests for reliable service status display.
 
-  The key requirement: services should be shown based on workspace config,
+  The key requirement: services should be shown based on docker-compose.yml,
   NOT dependent on PubSub timing. Running state comes from Docker.
   """
   use ExUnit.Case
 
-  alias BoomLooper.Workspace
   alias BoomLooper.Workspace.ServiceStatus
 
   describe "list_defined_services/1" do
@@ -18,19 +17,18 @@ defmodule BoomLooper.Workspace.ServiceStatusTest do
       %{tmp_dir: tmp_dir}
     end
 
-    test "returns empty list when no workspace config", %{tmp_dir: tmp_dir} do
+    test "returns empty list when no docker-compose.yml", %{tmp_dir: tmp_dir} do
       assert ServiceStatus.list_defined_services(tmp_dir) == []
     end
 
-    test "returns stock services from workspace config", %{tmp_dir: tmp_dir} do
-      ws = %Workspace{
-        name: "Test",
-        services: [
-          %{name: "postgres", image: "postgres:16", env: %{}, volumes: [], ports: %{}},
-          %{name: "redis", image: "redis:7-alpine", env: %{}, volumes: [], ports: %{}}
-        ]
-      }
-      Workspace.save(tmp_dir, ws)
+    test "returns stock services from docker-compose.yml", %{tmp_dir: tmp_dir} do
+      write_compose(tmp_dir, """
+      services:
+        postgres:
+          image: postgres:16
+        redis:
+          image: redis:7-alpine
+      """)
 
       services = ServiceStatus.list_defined_services(tmp_dir)
 
@@ -40,37 +38,36 @@ defmodule BoomLooper.Workspace.ServiceStatusTest do
       assert "redis" in names
     end
 
-    test "returns processes from workspace config", %{tmp_dir: tmp_dir} do
-      ws = %Workspace{
-        name: "Test",
-        dockerfile: "FROM ruby:3.2",
-        processes: [
-          %{name: "dev", command: "bin/rails server -p 3000", ports: ["3000"]}
-        ]
-      }
-      Workspace.save(tmp_dir, ws)
+    test "returns processes from docker-compose.yml", %{tmp_dir: tmp_dir} do
+      write_compose(tmp_dir, """
+      services:
+        workspace:
+          build: .
+        dev:
+          build: .
+          command: bin/rails server -p 3000
+      """)
 
       services = ServiceStatus.list_defined_services(tmp_dir)
 
+      # workspace is excluded
       assert length(services) == 1
       dev = hd(services)
       assert dev.name == "dev"
       assert dev.type == :process
-      assert dev.command == "bin/rails server -p 3000"
     end
 
-    test "includes both services and processes", %{tmp_dir: tmp_dir} do
-      ws = %Workspace{
-        name: "Test",
-        dockerfile: "FROM ruby:3.2",
-        services: [
-          %{name: "postgres", image: "postgres:16", env: %{}, volumes: [], ports: %{}}
-        ],
-        processes: [
-          %{name: "dev", command: "bin/rails server", ports: ["3000"]}
-        ]
-      }
-      Workspace.save(tmp_dir, ws)
+    test "includes both stock services and processes", %{tmp_dir: tmp_dir} do
+      write_compose(tmp_dir, """
+      services:
+        workspace:
+          build: .
+        postgres:
+          image: postgres:16
+        dev:
+          build: .
+          command: bin/rails server
+      """)
 
       services = ServiceStatus.list_defined_services(tmp_dir)
 
@@ -80,27 +77,30 @@ defmodule BoomLooper.Workspace.ServiceStatusTest do
       assert :process in types
     end
 
-    test "services have type :stock", %{tmp_dir: tmp_dir} do
-      ws = %Workspace{
-        name: "Test",
-        services: [
-          %{name: "postgres", image: "postgres:16", env: %{}, volumes: [], ports: %{}}
-        ]
-      }
-      Workspace.save(tmp_dir, ws)
+    test "infers type based on service name", %{tmp_dir: tmp_dir} do
+      write_compose(tmp_dir, """
+      services:
+        postgres:
+          image: postgres:16
+        myapp:
+          build: .
+      """)
 
-      [service] = ServiceStatus.list_defined_services(tmp_dir)
-      assert service.type == :stock
-      assert service.image == "postgres:16"
+      services = ServiceStatus.list_defined_services(tmp_dir)
+
+      pg = Enum.find(services, & &1.name == "postgres")
+      app = Enum.find(services, & &1.name == "myapp")
+      assert pg.type == :stock
+      assert app.type == :process
     end
   end
 
   describe "get_running_state/2" do
     @describetag :docker
 
-    test "returns running: false for containers that don't exist" do
+    test "returns status: :stopped for containers that don't exist" do
       state = ServiceStatus.get_running_state("nonexistent-workspace-id-12345", "postgres")
-      assert state.running == false
+      assert state.status == :stopped
       assert state.container == nil
     end
   end
@@ -108,8 +108,8 @@ defmodule BoomLooper.Workspace.ServiceStatusTest do
   describe "merge_status/2" do
     test "merges defined services with running state" do
       defined = [
-        %{name: "postgres", type: :stock, image: "postgres:16"},
-        %{name: "dev", type: :process, command: "bin/rails server"}
+        %{name: "postgres", type: :stock},
+        %{name: "dev", type: :process}
       ]
 
       running = %{
@@ -132,14 +132,13 @@ defmodule BoomLooper.Workspace.ServiceStatusTest do
     end
 
     test "preserves service metadata from definition" do
-      defined = [%{name: "postgres", type: :stock, image: "postgres:16"}]
+      defined = [%{name: "postgres", type: :stock}]
       running = %{"postgres" => %{running: true, container: "pg-1", ports: %{"5432" => "5433"}, health: :healthy}}
 
       [merged] = ServiceStatus.merge_status(defined, running)
 
       assert merged.name == "postgres"
       assert merged.type == :stock
-      assert merged.image == "postgres:16"
       assert merged.running == true
       assert merged.ports == %{"5432" => "5433"}
     end
@@ -156,13 +155,11 @@ defmodule BoomLooper.Workspace.ServiceStatusTest do
     end
 
     test "returns complete service status for workspace", %{tmp_dir: tmp_dir} do
-      ws = %Workspace{
-        name: "Integration Test",
-        services: [
-          %{name: "postgres", image: "postgres:16", env: %{}, volumes: [], ports: %{}}
-        ]
-      }
-      Workspace.save(tmp_dir, ws)
+      write_compose(tmp_dir, """
+      services:
+        postgres:
+          image: postgres:16
+      """)
 
       # Without Docker running, services should show as defined but not running
       services = ServiceStatus.for_workspace(tmp_dir)
@@ -171,8 +168,14 @@ defmodule BoomLooper.Workspace.ServiceStatusTest do
       [pg] = services
       assert pg.name == "postgres"
       assert pg.type == :stock
-      assert pg.image == "postgres:16"
       assert pg.running == false
     end
+  end
+
+  # Helper to write docker-compose.yml in the expected location
+  defp write_compose(tmp_dir, content) do
+    compose_dir = Path.join([tmp_dir, ".boomlooper", "workspace"])
+    File.mkdir_p!(compose_dir)
+    File.write!(Path.join(compose_dir, "docker-compose.yml"), content)
   end
 end

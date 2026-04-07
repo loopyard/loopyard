@@ -24,6 +24,9 @@ defmodule BoomLooper.IExSession do
       # Wrap destructive operation (auto red -> green)
       IExSession.run!("wiping project", fn -> ProjectRegistry.remove(id) end)
 
+      # Claim the session (prevents auto-disconnect by RPC)
+      IExSession.claim()
+
       # Disconnect
       IExSession.disconnect()
   """
@@ -51,9 +54,19 @@ defmodule BoomLooper.IExSession do
     set(:red, what)
   end
 
-  @doc "Clear presence."
+  @doc "Claim the session. Prevents disconnect_unless_claimed from clearing it."
+  def claim do
+    GenServer.cast(__MODULE__, :claim)
+  end
+
+  @doc "Clear presence (always works, clears claim)."
   def disconnect do
     GenServer.cast(__MODULE__, :disconnect)
+  end
+
+  @doc "Clear presence only if not claimed. Used by RPC to allow long-running tasks to keep the session."
+  def disconnect_unless_claimed do
+    GenServer.cast(__MODULE__, :disconnect_unless_claimed)
   end
 
   @doc "Get current session state."
@@ -92,26 +105,43 @@ defmodule BoomLooper.IExSession do
   # --- GenServer ---
 
   def init(_) do
-    {:ok, %{level: nil, label: nil, node: nil, at: nil}}
+    {:ok, %{level: nil, label: nil, node: nil, at: nil, claimed: false}}
   end
 
-  def handle_cast({:set, level, label, node}, _state) do
-    state = %{level: level, label: label, node: node, at: DateTime.utc_now()}
+  def handle_cast({:set, level, label, node}, state) do
+    state = %{state | level: level, label: label, node: node, at: DateTime.utc_now()}
     broadcast(state)
     {:noreply, state}
   end
 
+  def handle_cast(:claim, state) do
+    {:noreply, %{state | claimed: true}}
+  end
+
   def handle_cast(:disconnect, _state) do
-    state = %{level: nil, label: nil, node: nil, at: nil}
+    state = %{level: nil, label: nil, node: nil, at: nil, claimed: false}
+    broadcast(state)
+    {:noreply, state}
+  end
+
+  def handle_cast(:disconnect_unless_claimed, %{claimed: true} = state) do
+    # Session is claimed by a long-running task, don't disconnect
+    {:noreply, state}
+  end
+
+  def handle_cast(:disconnect_unless_claimed, _state) do
+    # Not claimed, safe to disconnect
+    state = %{level: nil, label: nil, node: nil, at: nil, claimed: false}
     broadcast(state)
     {:noreply, state}
   end
 
   def handle_call(:current, _from, state) do
-    {:reply, state, state}
+    {:reply, Map.drop(state, [:claimed]), state}
   end
 
   defp broadcast(state) do
-    Phoenix.PubSub.broadcast(BoomLooper.PubSub, @topic, {:iex_session, state})
+    # Don't include claimed in broadcast - it's internal state
+    Phoenix.PubSub.broadcast(BoomLooper.PubSub, @topic, {:iex_session, Map.drop(state, [:claimed])})
   end
 end

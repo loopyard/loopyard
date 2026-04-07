@@ -15,6 +15,9 @@ defmodule BoomLooperWeb.ProjectLive do
       if connected?(socket) do
         ChatAgent.subscribe()
         BoomLooper.Workspace.ServiceManager.subscribe()
+        # Service/volume counts touch the filesystem and Docker — never
+        # block mount on them. Render immediately with zeros, then fill
+        # in via :fetch_service_counts.
         send(self(), :fetch_service_counts)
       end
 
@@ -23,8 +26,9 @@ defmodule BoomLooperWeb.ProjectLive do
       {:ok,
        socket
        |> assign(:project, project)
-       |> assign(:workspaces, load_workspaces(project))
-       |> assign(:confirming_remove, false)}
+       |> assign(:workspaces, load_workspaces(project, [:agents]))
+       |> assign(:confirming_remove, false)
+       |> assign(:editing_name, false)}
     end
   end
 
@@ -32,17 +36,18 @@ defmodule BoomLooperWeb.ProjectLive do
   def handle_event("start_workspace", %{"id" => workspace_id}, socket) do
     workspace = ProjectRegistry.get_workspace(workspace_id)
     if workspace do
+      # workspace.path is normalized by ProjectRegistry for all workspace types
       BoomLooper.WorkspaceSupervisor.start_workspace(workspace_id, workspace.path)
       ProjectRegistry.update_workspace_status(workspace_id, :running)
     end
-    {:noreply, assign(socket, :workspaces, load_workspaces(socket.assigns.project, include_services: true))}
+    {:noreply, assign(socket, :workspaces, load_workspaces(socket.assigns.project, [:agents, :services, :volumes]))}
   end
 
   @impl true
   def handle_event("stop_workspace", %{"id" => workspace_id}, socket) do
     BoomLooper.WorkspaceSupervisor.stop_workspace(workspace_id)
     ProjectRegistry.update_workspace_status(workspace_id, :stopped)
-    {:noreply, assign(socket, :workspaces, load_workspaces(socket.assigns.project, include_services: true))}
+    {:noreply, assign(socket, :workspaces, load_workspaces(socket.assigns.project, [:agents, :services, :volumes]))}
   end
 
   @impl true
@@ -59,6 +64,33 @@ defmodule BoomLooperWeb.ProjectLive do
       end
     else
       {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("start_rename", _params, socket) do
+    {:noreply, assign(socket, :editing_name, true)}
+  end
+
+  @impl true
+  def handle_event("cancel_rename", _params, socket) do
+    {:noreply, assign(socket, :editing_name, false)}
+  end
+
+  @impl true
+  def handle_event("rename_project", %{"name" => name}, socket) do
+    case ProjectRegistry.rename_project(socket.assigns.project.id, name) do
+      {:ok, project} ->
+        {:noreply,
+         socket
+         |> assign(:project, project)
+         |> assign(:editing_name, false)}
+
+      {:error, :empty_name} ->
+        {:noreply, put_flash(socket, :error, "Project name can't be empty")}
+
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "Project not found")}
     end
   end
 
@@ -83,7 +115,7 @@ defmodule BoomLooperWeb.ProjectLive do
     BoomLooper.WorkspaceSupervisor.stop_workspace(id)
 
     case ProjectRegistry.remove_workspace(id) do
-      :ok -> {:noreply, assign(socket, :workspaces, load_workspaces(socket.assigns.project))}
+      :ok -> {:noreply, assign(socket, :workspaces, load_workspaces(socket.assigns.project, [:agents, :services, :volumes]))}
       {:error, reason} -> {:noreply, put_flash(socket, :error, reason)}
     end
   end
@@ -91,61 +123,81 @@ defmodule BoomLooperWeb.ProjectLive do
   @impl true
   def handle_info({event, _}, socket)
       when event in [:chat_agent_started, :chat_agent_stopped, :chat_agent_booting, :chat_agent_removed] do
-    {:noreply, assign(socket, :workspaces, load_workspaces(socket.assigns.project))}
+    {:noreply, assign(socket, :workspaces, load_workspaces(socket.assigns.project, [:agents, :services, :volumes]))}
   end
 
   @impl true
   def handle_info({:services_updated, _path, _statuses}, socket) do
-    {:noreply, assign(socket, :workspaces, load_workspaces(socket.assigns.project, include_services: true))}
+    {:noreply, assign(socket, :workspaces, load_workspaces(socket.assigns.project, [:agents, :services, :volumes]))}
   end
 
   @impl true
   def handle_info(:fetch_service_counts, socket) do
-    {:noreply, assign(socket, :workspaces, load_workspaces(socket.assigns.project, include_services: true))}
+    {:noreply, assign(socket, :workspaces, load_workspaces(socket.assigns.project, [:agents, :services, :volumes]))}
   end
 
   @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
-  defp load_workspaces(project, opts \\ []) do
-    agents = ChatAgent.list_agents()
-    include_services = Keyword.get(opts, :include_services, false)
+  # Caller asks for the slices it wants by listing them. The default mount
+  # asks only for :agents (cheap, in-memory) so the page paints instantly;
+  # async handlers come back and ask for :services and :volumes once Docker
+  # is willing to talk.
+  defp load_workspaces(project, sections) do
+    ctx = %{agents: if(:agents in sections, do: ChatAgent.list_agents(), else: [])}
 
     ProjectRegistry.list_workspaces(project.id)
     |> Enum.map(fn workspace ->
-      agent_count = Enum.count(agents, fn a ->
-        a[:bind_mount] == workspace.path || a[:working_dir] == workspace.path
+      Enum.reduce([:agents, :services, :volumes], workspace, fn section, ws ->
+        Map.merge(ws, load_section(section, sections, workspace, ctx))
       end)
-
-      service_count = if include_services do
-        try do
-          case BoomLooper.Workspace.ServiceManager.service_status(workspace.path) do
-            {:ok, statuses} ->
-              statuses
-              |> Enum.reject(&(Map.get(&1, :type) == :workspace))
-              |> Enum.count(& &1.running)
-            _ -> 0
-          end
-        catch
-          :exit, _ -> 0
-        end
-      else
-        0
-      end
-
-      workspace
-      |> Map.put(:agent_count, agent_count)
-      |> Map.put(:service_count, service_count)
     end)
   end
 
-  defp shorten_path(path) do
-    home = System.user_home!()
-    String.replace_prefix(path, home, "~")
+  defp load_section(:agents, sections, workspace, ctx) do
+    if :agents in sections do
+      count = Enum.count(ctx.agents, fn a ->
+        a[:bind_mount] == workspace.path || a[:working_dir] == workspace.path || a[:workspace_id] == workspace.id
+      end)
+      %{agent_count: count}
+    else
+      %{agent_count: 0}
+    end
   end
 
+  defp load_section(:services, sections, workspace, _ctx) do
+    if :services in sections do
+      try do
+        # ServiceStatus reads from docker-compose.yml — gives us all defined
+        # services plus their current running state. Show total (so empty
+        # workspaces don't look configurationless) and running side by side.
+        statuses = BoomLooper.Workspace.ServiceStatus.for_workspace(workspace.path)
+        %{service_count: length(statuses), services_running: Enum.count(statuses, & &1.status == :running)}
+      catch
+        :exit, _ -> %{service_count: 0, services_running: 0}
+      end
+    else
+      %{service_count: 0, services_running: 0}
+    end
+  end
+
+  defp load_section(:volumes, sections, workspace, _ctx) do
+    if :volumes in sections do
+      count = case BoomLooper.VolumeManager.list_workspace_volumes(workspace.id) do
+        {:ok, vols} -> length(vols)
+        _ -> 0
+      end
+      %{volume_count: count}
+    else
+      %{volume_count: 0}
+    end
+  end
+
+
   defp removal_details(project) do
-    boomlooper_dir = Path.join(project.path, ".boomlooper")
+    # For volume-based projects, use the workspace dir
+    project_dir = project[:path] || Path.join([BoomLooper.Workspace.home_dir(), "workspaces", hd(ProjectRegistry.list_workspaces(project.id) |> Enum.map(& &1.id))])
+    boomlooper_dir = Path.join(project_dir, ".boomlooper")
     workspace_dir = Path.join(boomlooper_dir, "workspace")
 
     files = if File.dir?(workspace_dir) do
@@ -161,9 +213,9 @@ defmodule BoomLooperWeb.ProjectLive do
 
     containers = ProjectRegistry.list_workspaces(project.id)
     |> Enum.flat_map(fn ws ->
-      workspace_id = BoomLooper.Workspace.workspace_id(ws.path)
-      prefix = BoomLooper.Compose.project_name(workspace_id)
-      case BoomLooper.Compose.ps(ws.path, workspace_id) do
+      # ws.path is normalized by ProjectRegistry for all workspace types
+      prefix = BoomLooper.Compose.project_name(ws.id)
+      case BoomLooper.Compose.ps(ws.path, ws.id) do
         {:ok, services} -> Enum.map(services, fn s -> "#{prefix}-#{s.name}-1" end)
         _ -> []
       end
@@ -184,20 +236,37 @@ defmodule BoomLooperWeb.ProjectLive do
       <.header breadcrumbs={[{"Boom Looper", "/"}, {@project.name, nil}]} iex_session={@iex_session} />
       <div class="flex-1 overflow-y-auto">
         <div class="max-w-2xl mx-auto px-4 py-8">
-          <p :if={@flash["error"]} class="mb-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300">
-            {@flash["error"]}
-          </p>
+          <.flash_banner flash={@flash} kind={:error} />
 
           <%= if @confirming_remove do %>
             <.remove_confirmation project={@project} details={removal_details(@project)} />
           <% else %>
-            <div class="flex items-center justify-between mb-6">
-              <div>
-                <h2 class="text-xl font-semibold">{@project.name}</h2>
-                <p class="text-xs font-mono text-zinc-400 dark:text-zinc-500 mt-0.5">{shorten_path(@project.path)}</p>
+            <div class="flex items-center justify-between mb-6 gap-4">
+              <div class="min-w-0 flex-1">
+                <%= if @editing_name do %>
+                  <form phx-submit="rename_project" phx-click-away="cancel_rename" class="flex items-center gap-2">
+                    <input type="text" name="name" value={@project.name} autocomplete="off" autofocus
+                      phx-keydown="cancel_rename" phx-key="Escape"
+                      class="text-xl font-semibold bg-transparent border-b-2 border-violet-400 focus:outline-none focus:border-violet-500 px-0 py-0.5 min-w-0 flex-1
+                             text-zinc-900 dark:text-zinc-100" />
+                    <button type="submit" class="text-xs font-medium text-violet-600 dark:text-violet-400 hover:text-violet-500 transition-colors flex-none">Save</button>
+                    <button type="button" phx-click="cancel_rename" class="text-xs font-medium text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors flex-none">Cancel</button>
+                  </form>
+                <% else %>
+                  <button phx-click="start_rename"
+                    class="group flex items-center gap-2 text-left hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
+                    title="Rename project">
+                    <h2 class="text-xl font-semibold truncate">{@project.name}</h2>
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"
+                      class="w-3.5 h-3.5 text-zinc-300 dark:text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity flex-none">
+                      <path d="M2.695 14.762l-1.262 3.155a.5.5 0 00.65.65l3.155-1.262a4 4 0 001.343-.886L17.5 5.501a2.121 2.121 0 00-3-3L3.58 13.419a4 4 0 00-.885 1.343z" />
+                    </svg>
+                  </button>
+                <% end %>
+                <p class="text-xs font-mono text-zinc-400 dark:text-zinc-500 mt-0.5 truncate">{project_location(@project)}</p>
               </div>
               <button phx-click="confirm_remove"
-                class="text-xs font-medium text-zinc-400 dark:text-zinc-500 hover:text-red-500 dark:hover:text-red-400 transition-colors">
+                class="text-xs font-medium text-zinc-400 dark:text-zinc-500 hover:text-red-500 dark:hover:text-red-400 transition-colors flex-none">
                 Remove project
               </button>
             </div>
@@ -210,12 +279,23 @@ defmodule BoomLooperWeb.ProjectLive do
                   <div class="flex items-center gap-2 min-w-0 flex-1">
                     <div class={"w-2 h-2 rounded-full flex-none #{if workspace.status == :running, do: "bg-green-500", else: "bg-zinc-400"}"}></div>
                     <span class="text-sm font-medium truncate">{workspace.name}</span>
-                    <span :if={workspace.is_main} class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500">default</span>
-                    <span :if={workspace.agent_count > 1} class="text-xs font-medium text-violet-600 dark:text-violet-400 bg-violet-100 dark:bg-violet-900/30 rounded-full px-2 py-0.5">
-                      {workspace.agent_count} agents
+                    <span :if={workspace[:is_main]} class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500">default</span>
+                    <span :if={workspace.agent_count > 0} class="text-xs font-medium text-violet-600 dark:text-violet-400 bg-violet-100 dark:bg-violet-900/30 rounded-full px-2 py-0.5">
+                      {workspace.agent_count} agent{if workspace.agent_count != 1, do: "s"}
                     </span>
-                    <span :if={workspace.service_count > 0} class="text-xs font-medium text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 rounded-full px-2 py-0.5">
-                      {workspace.service_count} service{if workspace.service_count != 1, do: "s"}
+                    <span :if={workspace.service_count > 0}
+                      class={[
+                        "text-xs font-medium rounded-full px-2 py-0.5 inline-flex items-center gap-1",
+                        if(workspace.services_running == workspace.service_count,
+                          do: "text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30",
+                          else: "text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800")
+                      ]}
+                      title={"#{workspace.services_running} of #{workspace.service_count} services running"}>
+                      <span class={"w-1.5 h-1.5 rounded-full #{if workspace.services_running == workspace.service_count, do: "bg-green-500", else: "bg-zinc-400"}"}></span>
+                      {workspace.services_running}/{workspace.service_count} service{if workspace.service_count != 1, do: "s"}
+                    </span>
+                    <span :if={workspace.volume_count > 0} class="text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30 rounded-full px-2 py-0.5">
+                      {workspace.volume_count} volume{if workspace.volume_count != 1, do: "s"}
                     </span>
                   </div>
                   <div class="flex items-center gap-2 flex-none opacity-0 group-hover:opacity-100 transition-opacity">

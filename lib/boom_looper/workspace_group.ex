@@ -19,9 +19,9 @@ defmodule BoomLooper.WorkspaceGroup do
     project_dir = Keyword.fetch!(opts, :project_dir)
 
     children = [
-      {BoomLooper.Workspace.ServiceManager, project_dir: project_dir},
+      {BoomLooper.Workspace.ServiceManager, project_dir: project_dir, workspace_id: workspace_id},
       {DynamicSupervisor, name: agent_sup_name(workspace_id), strategy: :one_for_one},
-      {BoomLooper.ContainerMonitor, project_dir: project_dir}
+      {BoomLooper.ContainerMonitor, project_dir: project_dir, workspace_id: workspace_id}
     ]
 
     # Give Docker operations time to recover — default 3/5s is too tight for I/O

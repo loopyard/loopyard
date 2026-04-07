@@ -22,6 +22,12 @@ defmodule BoomLooperWeb.ProjectListLiveTest do
       assert html =~ "Remote"
       assert html =~ "System"
     end
+
+    test "mount returns under 500ms — pure ETS reads, no shell-outs", %{conn: conn} do
+      {micros, {:ok, _view, _html}} = :timer.tc(fn -> live(conn, "/") end)
+      assert micros < 500_000,
+        "ProjectListLive mount took #{div(micros, 1000)}ms — slow call slipped in"
+    end
   end
 
   describe "add project" do

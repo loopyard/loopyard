@@ -20,10 +20,13 @@ defmodule BoomLooper.AgentBoot do
     working_dir = Keyword.fetch!(agent_opts, :working_dir)
     service_name = Keyword.get(opts, :service_name)
     initial_message = Keyword.get(opts, :initial_message)
-    workspace_id = Workspace.workspace_id(working_dir)
+    # Use workspace_id from opts if provided (volume-based workspaces pass it),
+    # otherwise compute from path (bind-mount workspaces)
+    workspace_id = Keyword.get(agent_opts, :workspace_id) || Workspace.workspace_id(working_dir)
 
     # Load workspace config from volume (nil if no config yet — Setup agent will create it)
-    volume_name = "code-#{workspace_id}"
+    # Volume-based workspaces pass the volume name, otherwise compute from workspace_id
+    volume_name = Keyword.get(agent_opts, :volume) || "code-#{workspace_id}"
     ws_config =
       case Workspace.load_from_volume(volume_name) do
         {:ok, ws} -> ws
@@ -48,8 +51,6 @@ defmodule BoomLooper.AgentBoot do
     # Start the agent GenServer
     ChatAgent.update_boot_status(id, "Starting Claude session...")
     Logger.info("[AgentBoot] #{id} starting Claude session")
-
-    workspace_id = BoomLooper.ProjectRegistry.workspace_id(working_dir)
 
     case BoomLooper.WorkspaceGroup.start_agent(workspace_id, agent_opts) do
       {:ok, _pid} ->

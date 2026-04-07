@@ -1,75 +1,55 @@
 defmodule BoomLooperWeb.SystemLiveTest do
-  use BoomLooperWeb.ConnCase
+  use BoomLooperWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
 
-  # SystemLive calls docker stats on mount, which is slow and can hang
-  @moduletag :docker
+  # CRITICAL: SystemLive must mount without blocking on Docker. The whole
+  # point of the rewrite was that mount paints a skeleton instantly and
+  # slow slices fill in via start_async/handle_async. These tests pin
+  # that contract — if anyone reintroduces a synchronous shell-out in
+  # mount, the timing assertion will fail loudly.
 
   describe "mount" do
-    test "renders the system page", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/system")
+    test "renders immediately with skeleton state — never blocks on docker", %{conn: conn} do
+      {micros, {:ok, _view, html}} = :timer.tc(fn -> live(conn, "/system") end)
 
-      assert html =~ "System"
+      # Mount + first render must be well under any docker shell-out cost
+      # (`docker stats --no-stream` alone takes 1-2s). 500ms is generous;
+      # the actual goal is <100ms but tests have setup overhead.
+      assert micros < 500_000,
+        "SystemLive mount took #{div(micros, 1000)}ms — synchronous slow call slipped in"
+
       assert html =~ "Host System"
-      assert html =~ "BoomLooper App"
-      assert html =~ "BEAM Memory"
+      assert html =~ "BEAM VM"
+      assert html =~ "Cluster"
     end
 
-    test "shows back link to chat", %{conn: conn} do
+    test "shows breadcrumb back to root", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/system")
       assert has_element?(view, "a[href='/']")
     end
+
+    test "shows drill-down links to subpages", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/system")
+      assert has_element?(view, "a[href='/system/workspaces']")
+      assert has_element?(view, "a[href='/system/docker']")
+    end
+
+    test "BEAM stats render in initial paint (no async, pure VM lookup)", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/system")
+      # BEAM stats are populated synchronously from mount because they're
+      # just :erlang.memory() calls. They should be in the very first HTML.
+      assert html =~ "Memory"
+      assert html =~ "Processes"
+      assert html =~ "Schedulers"
+    end
   end
 
-  describe "service containers section" do
-    test "renders service containers section", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/system")
-      assert html =~ "Service Containers"
-    end
-  end
-
-  describe "agent resources" do
-    setup %{conn: conn} do
-      id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
-
-      {:ok, _pid} =
-        BoomLooper.TestHelpers.start_agent(
-          id: id,
-          name: "System Test Agent",
-          working_dir: File.cwd!(),
-          started_by: "test"
-        )
-
-      on_exit(fn ->
-        try do
-          BoomLooper.ChatAgent.stop_agent(id)
-        catch
-          :exit, _ -> :ok
-        end
-
-        Process.sleep(50)
-      end)
-
-      %{conn: conn, agent_id: id}
-    end
-
-    test "shows per-agent resource breakdown", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/system")
-      assert html =~ "System Test Agent"
-      assert html =~ "GenServer"
-      assert html =~ "Docker Container"
-      assert html =~ "Claude CLI"
-    end
-
-    test "shows kill button for active agents", %{conn: conn} do
+  describe "reboot" do
+    test "fires reboot event", %{conn: conn} do
+      # Don't actually reboot — just verify the button is present.
       {:ok, view, _html} = live(conn, "/system")
-      assert has_element?(view, "button[phx-click='kill_container']")
-    end
-
-    test "shows restart CLI button for active agents", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/system")
-      assert has_element?(view, "button[phx-click='restart_session']")
+      assert has_element?(view, "button[phx-click='reboot']")
     end
   end
 end

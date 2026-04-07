@@ -12,9 +12,9 @@ All UI state is server-driven (assigns, PubSub). Never rely on client-side state
 
 BoomLooper is a **Docker control plane** with **AI agents** wired into it.
 
-**The control plane:** Each project gets a Docker Compose stack — a workspace container (where agents exec commands), dev server containers (running the app), and stock services (postgres, redis, etc.). BoomLooper generates the Dockerfile and docker-compose.yml from a config file (`.boomlooper/repo/workspace.json`), manages the container lifecycle, monitors health, and reconnects to running containers across server restarts.
+**The control plane:** Each project gets a Docker Compose stack — a workspace container (where agents exec commands), dev server containers (running the app), and stock services (postgres, redis, etc.). Agents write `Dockerfile` and `docker-compose.yml` directly to `.boomlooper/workspace/`. BoomLooper manages the container lifecycle, monitors health, and reconnects to running containers across server restarts.
 
-**The agents:** Claude Code sessions run as GenServer processes. Each agent exec's into the workspace container to read/write code and run commands. Agents have MCP tools for controlling their infrastructure — setting the Dockerfile, adding services, rebuilding containers, running commands. The setup agent bootstraps a project from scratch by examining the codebase and writing the workspace config.
+**The agents:** Claude Code sessions run as GenServer processes. Each agent exec's into the workspace container to read/write code and run commands. Agents use MCP tools from `boom-looper-container`: `exec` for commands, `write_file` for Dockerfile/docker-compose.yml, `docker_compose` for container lifecycle, `logs` for debugging. The setup agent bootstraps a project from scratch by examining the codebase and writing infrastructure files directly.
 
 **The multiplayer layer:** Everything is wired through PubSub. Chat messages, terminal I/O, service status changes, build output — all broadcast to every connected viewer. LiveViews subscribe and render. The terminal system supports both browser (xterm.js via Phoenix Channel) and SSH access to the same shared session. Multiple people can watch an agent work, type in the same terminal, or monitor services simultaneously.
 
@@ -66,6 +66,31 @@ mix boom.rpc 'BoomLooper.EvalRunner.status()'               # check progress
 ```
 
 Every eval starts fresh (tears down existing project first). Configs and run results are tracked in git; project clones are gitignored. When an eval fails, fix the **prompts** or **tools**, not the eval target. See `/eval` skill for details.
+
+### Eval integrity: no nudges, no overfitting
+
+**An eval only passes with zero human intervention.** If you have to manually send a message to kick the agent ("run bundle install", "continue"), that's a failure. The system must be autonomous enough to complete setup without nudges.
+
+**No technology-specific code in the system.** The core BoomLooper code (GenServers, tools, compose generation) must be language-agnostic. Don't hard-code Rails commands, Python paths, or Node conventions. Examples in prompts are fine (they teach patterns), but system logic must work for any stack.
+
+**Signs of overfitting:**
+- All evals use the same language/framework (currently all Ruby/Rails — need Python, Node, Go, etc.)
+- String matching for specific error messages ("bundle install failed")
+- Hard-coded paths like `/usr/local/bundle` (Ruby-specific)
+- Fixes that only work for the project you're debugging
+
+**The right pattern:**
+- System sends generic signals ("Continue.") and lets Claude decide what to do
+- Agent reads the codebase to discover what stack it is (Gemfile → Ruby, package.json → Node, etc.)
+- Agent writes technology-specific system_prompt based on what it discovers
+- Prompts in `priv/prompts/` teach general patterns with examples from multiple ecosystems
+
+**When fixing eval failures:**
+1. Don't nudge the agent — that's cheating
+2. Don't add project-specific logic to system code
+3. Fix the prompts to teach better patterns
+4. Fix tools to provide better feedback
+5. Add evals for different project types to catch overfitting
 
 ## Code rules
 
@@ -136,6 +161,131 @@ This applies to chat messages, terminal sessions, service statuses, build output
 
 Mount is **read-only**. Never start services, create containers, or modify external state on mount.
 
+### No boolean flag arguments — pass a list of what you want
+
+When a function loads or does several things and the caller picks a subset, **never** model that with `do_thing: true/false` flags. Pass a list of atoms naming the slices you want and have the function dispatch on membership.
+
+**Don't:**
+```elixir
+load_workspaces(project, include_services: true, include_volumes: false, include_agents: true)
+```
+This pattern multiplies: every new slice adds another flag, every call site has to know which flags exist, every flag combination is its own untested code path, and the function body fills up with `if include_x do ... else ... end` branches.
+
+**Do:**
+```elixir
+load_workspaces(project, [:agents, :services])           # mount — fast
+load_workspaces(project, [:agents, :services, :volumes]) # async refresh — full
+```
+
+The function dispatches per section (`if :services in sections do ...`), and adding a new slice means adding one new section handler — no flag, no call site updates.
+
+Boolean arguments are a code smell in general. They make call sites unreadable (`foo(x, true, false, true)`), conflate "the thing exists" with "the thing is on", and they're almost always hiding two functions or a richer enum. Use them only when the parameter is genuinely binary in nature (`force?: true`, `dry_run?: true`) — and even then, prefer a keyword arg with a `?` suffix so the call site reads.
+
+### Mount must render instantly — every slow slice gets its own `start_async`
+
+Mount renders the page. It must not block on Docker, the filesystem, the network, or any other potentially-slow call. **The page must paint in <100ms**, with loading skeletons in place of any data that hasn't arrived yet. Slow data fills in via Phoenix LiveView's `start_async/3` and `handle_async/3`.
+
+**Do NOT do this in mount:**
+- `docker ps`, `docker inspect`, `docker compose ps`, `docker stats` — every shell-out is 100ms+; `docker stats --no-stream` alone takes 1-2s
+- `ServiceStatus.for_workspace/1` — fans out into N `Docker.container_running?` calls
+- `VolumeManager.list_workspace_volumes/1` — shells out to docker
+- `File.read` / `File.exists?` on anything that might not be local
+- Any function that walks all workspaces × all services in a synchronous loop
+- A single "load everything" call that bundles fast and slow slices together — they MUST be independently fetchable
+
+**Do this instead:**
+
+```elixir
+alias Phoenix.LiveView.AsyncResult
+
+def mount(_params, _session, socket) do
+  socket =
+    socket
+    |> assign(:host_cpu, AsyncResult.loading())
+    |> assign(:host_memory, AsyncResult.loading())
+    |> assign(:beam, SystemStats.beam_stats())   # pure VM lookup, instant — fine in mount
+
+  if connected?(socket) do
+    {:ok,
+     socket
+     |> start_async(:host_cpu, &SystemStats.host_cpu/0)        # one shell-out, runs in its own Task
+     |> start_async(:host_memory, &SystemStats.host_memory/0)} # parallel with host_cpu
+  else
+    {:ok, socket}
+  end
+end
+
+def handle_async(key, {:ok, value}, socket) do
+  {:noreply, assign(socket, key, AsyncResult.ok(socket.assigns[key], value))}
+end
+
+def handle_async(key, {:exit, reason}, socket) do
+  {:noreply, assign(socket, key, AsyncResult.failed(socket.assigns[key], reason))}
+end
+```
+
+**Critical properties this gives you:**
+- Mount returns in microseconds. The first paint is HTML with skeleton classes (`animate-pulse`).
+- Each slow slice runs in its own `Task` — they're **parallel**, not serialized.
+- A hung `docker stats` call doesn't block `host_cpu` or `host_memory`.
+- A failed slice is contained: `AsyncResult.failed/2` lets the template show "failed to load" for just that card.
+- Refresh = call `start_async/3` again; the LiveView updates that one assign in place.
+
+**Test that mount actually stays fast.** Wrap `live(conn, "/the/page")` in `:timer.tc/1` and assert under 500ms. **Every LiveView with non-trivial data needs this test.** If a synchronous shell-out leaks back in, the test fails immediately:
+
+```elixir
+test "mount renders without blocking on docker" do
+  {micros, {:ok, _view, _html}} = :timer.tc(fn -> live(conn, "/system") end)
+  assert micros < 500_000, "mount took #{div(micros, 1000)}ms — sync slow call slipped in"
+end
+```
+
+**The same rule applies to `handle_params`.** It runs on every URL change inside a live session. Patches between actions (`:index` ↔ `:chat` ↔ `:new`) hit handle_params, NOT mount. If you put a `Docker.container_running?` or a `VolumeManager.read_file` in handle_params, every navigation hangs. We've shipped this bug — the workspace landing page synchronously called `VolumeManager.read_file` (which is a docker exec/run) in `handle_params(:index)` to decide whether to redirect to `/new`. Fix: defer with `start_async/3`, store the decision-driving result in an assign, do the navigate from `handle_async/3`. The page paints instantly; the decision lands a tick later.
+
+**Slice helpers must be independently callable.** Don't write `SystemStats.everything()` and pretend you'll only call it from refresh paths — someone will call it from mount and the page will hang. Each slice is its own public function (`host_cpu/0`, `host_memory/0`, `docker_container_stats/0`, …), and the module's docstring should say "every public function is one slice, never bundle them".
+
+**Same rule for `handle_params`** — it runs on every URL change. Never put a Docker call there.
+
+**`send(self(), :fetch_thing)` + `handle_info` is the older pattern — still acceptable for in-VM work that's borderline-cheap, but for real shell-outs use `start_async`. The two reasons: (1) `start_async` runs the work in a separate process so it doesn't block message processing on the LiveView; (2) `AsyncResult` gives you loading/ok/failed states for free in the template.
+
+### Drill-down pages don't duplicate scoped pages
+
+When a domain has both a global "cluster oversight" view and a per-thing "this one item" view, **they are different pages with different responsibilities** — don't smush them together and don't reimplement one inside the other.
+
+| Page | Responsibility |
+|------|---------------|
+| `/projects/:id` | Project-scoped: workspaces, agents, services FOR THIS PROJECT. Where the user goes to *use* the project. |
+| `/system/workspaces` | Cluster-wide: every workspace's supervisor health. Where the user goes when something is broken and they want to restart. |
+| `/system/workspaces/:id` (if added) | One workspace's deep diagnostic view (containers, agents, processes, recent errors). |
+| `/system/docker` | Cluster-wide Docker state (every `bl-*` container, every volume). Where the user goes for cluster-wide cleanup. |
+
+**Rules:**
+1. If a behavior already exists on the scoped page, the system page links to it. Don't reimplement "click an agent to chat with it" on `/system/workspaces` — that's what `/projects/:id/workspaces/:id/agents/:id` is for.
+2. System pages are for **diagnosis and remote fixing** — restart, kill, rm -f, prune. Scoped pages are for **using** the thing.
+3. Each page does its own slice loading. Don't share a "load everything" function between them.
+4. Top-level system overview (`/system`) is intentionally thin: host stats, BEAM totals, counts, recent errors, links into the deeper pages. It must fit in one screen and load instantly.
+
+### Display formatters and tiny UI primitives live in shared modules — never `defp`'d in a LiveView
+
+If a function would be `defp shorten_path/1` or `defp format_bytes/1` or `defp project_location/1` in a LiveView, **stop**. Put it in `BoomLooperWeb.Format` instead. The `html_helpers/0` macro auto-imports `BoomLooperWeb.Format` into every LiveView, component, and HTML module — these helpers are available everywhere by default.
+
+Same rule for tiny render primitives that show up in 2+ LiveViews:
+
+| Pattern | Lives in | Use |
+|---|---|---|
+| Flash strip (`@flash["error"]` / `@flash["info"]`) | `BoomLooperWeb.Components.Common` | `<.flash_banner flash={@flash} kind={:error} />` |
+| Loading skeleton (`animate-pulse`) | `BoomLooperWeb.Components.Common` | `<.skeleton />` or `<.skeleton variant={:card} />` or `<.skeleton rows={4} />` |
+| Page header / breadcrumbs | `BoomLooperWeb.Components.AppHeader` | `<.header breadcrumbs={[{"Boom Looper", "/"}, ...]} iex_session={@iex_session} />` |
+| Sidebar bits (status/service dots, agent items) | `BoomLooperWeb.Components.Sidebar` | imported on demand |
+| Log content panels | `BoomLooperWeb.Components.LogViewer` | imported on demand |
+| Path → "~/foo", byte/number formatting | `BoomLooperWeb.Format` | auto-imported |
+
+`Format` and `Components.Common` are the only two things that get **auto-imported** via `html_helpers/0` — they're the absolute basics every page needs. Bigger components (sidebar, log_viewer) are imported on demand by the LiveViews that use them, so we don't pollute every render with stuff most pages don't need.
+
+**Anti-pattern that bit us:** `shorten_path/1` was `defp`'d in 4 different files (`chat_live`, `project_live`, `project_list_live`, `tool_summary`) — each implementation drifted slightly. The flash banner HTML was copy-pasted into 4 LiveViews with identical Tailwind classes. Loading skeletons were re-rolled in 2 system pages. All of those went away when we centralized them.
+
+**The test for "is this duplicated?":** if you're about to type the same 5+ lines of code (or HTML) you've already typed in another file in this session, stop. Extract it. The cost of one new module is far less than the cost of three slightly-different copies that drift over months.
+
 ### Views observe, infrastructure acts
 
 Views read from ETS/GenServers. They never create or modify infrastructure state. Infrastructure modules never depend on web modules.
@@ -172,13 +322,64 @@ Don't add infrastructure users have to install, configure, or manage. If a featu
 
 Don't add toggles for things that should just be on. Don't add config files for things that have sensible defaults. Don't add "advanced" sections that hide complexity — either the feature is simple enough to be always-on, or it's not ready.
 
+### One source of truth per domain
+
+Each piece of data should have exactly ONE authoritative source. If you find yourself reading the same information from multiple places, you've created drift.
+
+**Sources of truth:**
+- **What services SHOULD exist** → `docker-compose.yml` via `ServiceStatus.list_defined_services/1`
+- **What services ARE running** → Docker via `Docker.container_running?/1`
+- **Compose file path** → `Compose.compose_path/1` (never hardcode `.boomlooper/workspace/docker-compose.yml`)
+- **Workspace ID** → `Workspace.workspace_id/1`
+- **Project name prefix** → `Compose.project_name/1`
+
+**Anti-patterns we've had:**
+- `workspace.json` describing services AND `docker-compose.yml` describing services → agents didn't know which to use
+- `ServiceManager.service_status/1` AND `ServiceStatus.for_workspace/1` → callers picked randomly
+- Direct `docker ps` calls scattered across modules instead of going through `ServiceStatus`
+
+If you need service information, use `ServiceStatus.for_workspace/1`. It reads from `docker-compose.yml` and merges running state from Docker. Don't reinvent this.
+
+### Agents write infrastructure directly — no intermediate config
+
+Agents write `Dockerfile` and `docker-compose.yml` directly to `.boomlooper/workspace/`. They do NOT use intermediate config files like `workspace.json`. The compose file IS the config.
+
+**Correct flow:**
+1. Agent reads codebase to understand the stack
+2. Agent writes `Dockerfile` via `write_file`
+3. Agent writes `docker-compose.yml` via `write_file`
+4. Agent runs `docker_compose up -d --build`
+
+**Wrong flow (legacy, avoid):**
+1. Agent calls `set_dockerfile` tool → writes to `workspace.json`
+2. Agent calls `add_service` tool → writes to `workspace.json`
+3. Agent calls `rebuild` → generates `docker-compose.yml` FROM `workspace.json`
+
+The second flow has an unnecessary layer. The `workspace.json` config was designed before agents could write files directly. Now they can. Use the direct path.
+
+**Exception:** `set_workspace_name` and `set_system_prompt` tools write to `workspace.json` because they're metadata about the project, not infrastructure.
+
+### Use canonical helper functions
+
+When a pattern exists, use it. Don't write your own version.
+
+| Need | Use | Don't |
+|------|-----|-------|
+| Compose file path | `Compose.compose_path(project_dir)` | `Path.join([dir, ".boomlooper", "workspace", "docker-compose.yml"])` |
+| Container running? | `Docker.container_running?(name)` | `System.cmd("docker", ["inspect", ...])` |
+| Container ports | `Docker.container_ports(name)` | `System.cmd("docker", ["port", ...])` |
+| Service list | `ServiceStatus.for_workspace(path)` | `System.cmd("docker", ["ps", ...])` + parsing |
+| Project name | `Compose.project_name(workspace_id)` | `"bl-#{workspace_id}"` hardcoded |
+
+If you're shelling out to docker for something, check if there's already a wrapper in `Docker` or `Compose` modules first.
+
 ## Terminology
 
 - **Project** = a git repo. Managed by `ProjectRegistry`.
 - **Workspace** = a working directory (git worktree) within a project. Each gets its own containers, volumes, agents.
 - **WorkspaceSupervisor** = top-level DynamicSupervisor for all workspace subtrees.
 - **WorkspaceGroup** = per-workspace Supervisor (ServiceManager + AgentSupervisor + ContainerMonitor).
-- Config lives in `.boomlooper/repo/` (tracked in git). Generated files in `.boomlooper/workspace/` (gitignored).
+- Infrastructure files (`Dockerfile`, `docker-compose.yml`) live in `.boomlooper/workspace/` (gitignored). Metadata (`workspace.json` with project name, system prompt) lives in `.boomlooper/repo/` (can be tracked in git).
 - User-level data in `~/.boomlooper/` (overridable with `BOOMLOOPER_HOME` env var).
 - URLs: `/projects/:project_id/workspaces/:workspace_id/agents/:id`, `/messages/:agent_id/:msg_id`
 

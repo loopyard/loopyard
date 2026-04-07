@@ -1,22 +1,22 @@
 defmodule BoomLooper.Workspace do
   @moduledoc """
   Workspace configuration for a project directory.
+  Stores METADATA only: project name, system prompt, git info.
+
+  Infrastructure (Dockerfile, docker-compose.yml) is written directly by agents
+  via boom-looper-container tools. This module does NOT handle infrastructure.
+
   Lives as `.boomlooper/repo/workspace.json` in the project root.
-  Written by setup agents, read by BoomLooper when spawning future agents.
   """
 
   @config_dir ".boomlooper/repo"
   @config_file "workspace.json"
 
   defstruct [
-    :name,
-    :dockerfile,
+    :name,          # Display name in the UI
+    :system_prompt, # System prompt fragment for future agents
     :git_url,       # Git repository URL (e.g., "git@github.com:owner/repo.git")
-    :branch,        # Branch name (e.g., "main")
-    services: [],
-    processes: [],
-    env_vars: %{},
-    system_prompt: nil
+    :branch         # Branch name (e.g., "main")
   ]
 
   @doc "Path to the workspace config file for a given project directory"
@@ -78,39 +78,11 @@ defmodule BoomLooper.Workspace do
 
   @doc "Build a Workspace struct from a decoded JSON map"
   def from_map(data) when is_map(data) do
-    raw_services = (data["services"] || []) |> Enum.map(&parse_service/1)
-    legacy_processes = (data["processes"] || []) |> Enum.map(&parse_process/1)
-
-    # Split: services with `image` are stock services, those without are processes (legacy format)
-    {stock_from_services, legacy_svc_as_procs} =
-      Enum.split_with(raw_services, fn s -> s.image != nil end)
-
-    # Convert legacy service entries (no image) to process format
-    procs_from_services = Enum.map(legacy_svc_as_procs, fn s ->
-      # Look up the original command from raw data since parse_service doesn't include it
-      raw = Enum.find(data["services"] || [], fn raw -> raw["name"] == s.name end)
-      %{name: s.name, command: raw["command"], ports: s.ports}
-    end)
-
-    # Merge legacy processes, deduplicating by name against procs_from_services
-    all_processes =
-      Enum.reduce(legacy_processes, procs_from_services, fn proc, acc ->
-        if Enum.any?(acc, fn p -> p.name == proc.name end) do
-          acc
-        else
-          acc ++ [%{name: proc.name, command: proc.command, ports: proc[:ports] || []}]
-        end
-      end)
-
     %__MODULE__{
       name: data["name"],
-      dockerfile: data["dockerfile"],
+      system_prompt: data["system_prompt"],
       git_url: data["git_url"],
-      branch: data["branch"],
-      services: stock_from_services,
-      processes: all_processes,
-      env_vars: data["env_vars"] || %{},
-      system_prompt: data["system_prompt"]
+      branch: data["branch"]
     }
   end
 
@@ -118,13 +90,9 @@ defmodule BoomLooper.Workspace do
   def to_map(%__MODULE__{} = ws) do
     %{
       "name" => ws.name,
-      "dockerfile" => ws.dockerfile,
+      "system_prompt" => ws.system_prompt,
       "git_url" => ws.git_url,
-      "branch" => ws.branch,
-      "services" => Enum.map(ws.services, &service_to_map/1),
-      "processes" => Enum.map(ws.processes, &process_to_map/1),
-      "env_vars" => ws.env_vars,
-      "system_prompt" => ws.system_prompt
+      "branch" => ws.branch
     }
   end
 
@@ -133,11 +101,37 @@ defmodule BoomLooper.Workspace do
   Defaults to `~/.boomlooper`, overridable with `BOOMLOOPER_HOME` env var.
   """
   def home_dir do
-    System.get_env("BOOMLOOPER_HOME") || Path.join(System.user_home!(), ".boomlooper")
+    case System.get_env("BOOMLOOPER_HOME") do
+      val when val in [nil, ""] -> Path.join(System.user_home!(), ".boomlooper")
+      path -> path
+    end
   end
 
-  @doc "Generate a workspace ID from a project directory path (for naming service containers)"
+  @doc """
+  Resolve workspace ID from a project directory path.
+
+  For volume-based workspaces (paths like `.../workspaces/{id}`), extracts the ID directly.
+  For bind-mount projects, generates a hash-based ID.
+  """
   def workspace_id(project_dir) do
+    # Check if this is a volume-based workspace path (e.g., .../workspaces/6e79)
+    workspaces_base = Path.join(home_dir(), "workspaces")
+    expanded = Path.expand(project_dir)
+
+    if String.starts_with?(expanded, workspaces_base) do
+      # Extract the workspace ID from the path
+      expanded
+      |> Path.relative_to(workspaces_base)
+      |> Path.split()
+      |> List.first()
+    else
+      # Fall back to hash-based ID for bind-mount projects
+      hash_workspace_id(expanded)
+    end
+  end
+
+  @doc "Generate a hash-based workspace ID (for bind-mount projects only)"
+  def hash_workspace_id(project_dir) do
     project_dir
     |> Path.expand()
     |> :erlang.phash2(0xFFFF)
@@ -174,54 +168,15 @@ defmodule BoomLooper.Workspace do
     |> String.replace(":", "/")
   end
 
-  # --- Private ---
-
-  defp parse_service(s) when is_map(s) do
-    %{
-      name: s["name"],
-      image: s["image"],
-      env: s["env"] || %{},
-      volumes: s["volumes"] || [],
-      ports: normalize_ports(s["ports"])
-    }
+  @doc """
+  Get the volume name for a workspace.
+  Looks up the workspace in the registry to find the actual volume name.
+  Falls back to `code-{workspace_id}` for backwards compatibility.
+  """
+  def volume_name_for(workspace_id) do
+    case BoomLooper.ProjectRegistry.get_workspace(workspace_id) do
+      %{volume: vol} when is_binary(vol) -> vol
+      _ -> "code-#{workspace_id}"
+    end
   end
-
-  defp parse_process(p) when is_map(p) do
-    %{
-      name: p["name"],
-      command: p["command"],
-      ports: normalize_ports(p["ports"])
-    }
-  end
-
-  defp normalize_ports(nil), do: []
-  defp normalize_ports(ports) when is_list(ports) do
-    ports |> Enum.map(&to_string/1) |> Enum.reject(&(&1 == ""))
-  end
-  defp normalize_ports(port) when is_integer(port), do: [to_string(port)]
-  defp normalize_ports(port) when is_binary(port) and port != "", do: [port]
-  defp normalize_ports(port) when is_binary(port), do: []
-  defp normalize_ports(%{} = ports) when map_size(ports) == 0, do: []
-  defp normalize_ports(ports) when is_map(ports) do
-    # Extract keys (port numbers), not values (which may be empty from old bug)
-    Map.keys(ports) |> Enum.map(&to_string/1) |> Enum.reject(&(&1 == ""))
-  end
-
-  defp service_to_map(s) do
-    map = %{
-      "name" => s.name,
-      "image" => s.image,
-      "env" => s.env,
-      "volumes" => s.volumes,
-      "ports" => s.ports
-    }
-
-    map
-  end
-
-  defp process_to_map(p) do
-    map = %{"name" => p.name, "command" => p.command}
-    if p[:ports] && p[:ports] != [], do: Map.put(map, "ports", p.ports), else: map
-  end
-
 end

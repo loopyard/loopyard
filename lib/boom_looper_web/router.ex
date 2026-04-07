@@ -29,6 +29,8 @@ defmodule BoomLooperWeb.Router do
     live "/projects/:project_id/workspaces/:workspace_id/services/:service_name/console", ChatLive, :console
 
     live "/system", SystemLive, :index
+    live "/system/workspaces", SystemWorkspacesLive, :index
+    live "/system/docker", SystemDockerLive, :index
     live "/connect", ConnectLive, :index
 
     live "/messages/:agent_id/:msg_id", MessageLive, :show

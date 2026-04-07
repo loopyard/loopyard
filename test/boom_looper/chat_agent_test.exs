@@ -345,11 +345,9 @@ defmodule BoomLooper.ChatAgentTest do
     test "container agent prompt stays under limit" do
       workspace = %BoomLooper.Workspace{
         name: "test-project",
-        dockerfile: "FROM ruby:3.4",
-        services: [%{name: "postgres", image: "postgres:16", env: %{}, volumes: [], ports: %{"5432" => "32000"}}],
-        processes: [%{name: "dev", command: "bin/dev", ports: ["3000"]}],
-        env_vars: %{},
-        system_prompt: "This is a Rails app."
+        system_prompt: "This is a Rails app.",
+        git_url: nil,
+        branch: nil
       }
 
       prompt = ChatAgent.build_system_prompt("test-id", "/tmp/project", "abcd", workspace, nil)
@@ -360,11 +358,9 @@ defmodule BoomLooper.ChatAgentTest do
     test "container agent with service stays under limit" do
       workspace = %BoomLooper.Workspace{
         name: "test-project",
-        dockerfile: "FROM ruby:3.4",
-        services: [%{name: "postgres", image: "postgres:16", env: %{}, volumes: [], ports: %{}}],
-        processes: [%{name: "dev", command: "bin/dev", ports: ["3000"]}],
-        env_vars: %{},
-        system_prompt: "Rails app with postgres."
+        system_prompt: "Rails app with postgres.",
+        git_url: nil,
+        branch: nil
       }
 
       prompt = ChatAgent.build_system_prompt("test-id", "/tmp/project", "abcd", workspace, "postgres")

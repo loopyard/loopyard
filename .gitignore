@@ -41,3 +41,4 @@ evals/*/project/
 
 # Eval projects (the actual repos being tested)
 evals/*/project/
+projects.json

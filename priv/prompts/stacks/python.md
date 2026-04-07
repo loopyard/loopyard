@@ -23,24 +23,26 @@ Check `.python-version` or `pyproject.toml` for version. Add `libpq-dev` if usin
 
 ## Services
 
-- **postgres:** `postgres:16` — pass `env: {"POSTGRES_HOST_AUTH_METHOD": "trust"}` in `add_service`
-- **redis:** `redis:7-alpine` (if using Celery/RQ)
+Add to docker-compose.yml:
+- **postgres:** `image: postgres:16` with `environment: POSTGRES_HOST_AUTH_METHOD=trust` on the postgres service
+- **redis:** `image: redis:7-alpine` (if using Celery/RQ)
 
 ## Env vars
 
+Add to workspace and dev services in docker-compose.yml:
 ```
 DATABASE_URL=postgres://postgres@postgres:5432/<app>_dev
 ```
 
-## After rebuild
+## After docker_compose up
 
 ```
-exec: pip install -r requirements.txt    # or: pip install -e .
-exec: python manage.py migrate           # Django
-exec: alembic upgrade head               # if using Alembic
+exec("pip install -r requirements.txt")    # or: pip install -e .
+exec("python manage.py migrate")           # Django
+exec("alembic upgrade head")               # if using Alembic
 ```
 
 ## Gotchas
 
 - Virtual env MUST be outside `/workspace` (`/opt/venv`) — otherwise macOS venv from volume is used and binaries crash
-- `.env` files may have `localhost` database URLs — override with `set_env_vars`
+- `.env` files may have `localhost` database URLs — override in docker-compose.yml environment section

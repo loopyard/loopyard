@@ -10,6 +10,8 @@ config :phoenix, :plug_init_mode, :runtime
 config :phoenix_live_view, :enable_expensive_runtime_checks, true
 
 # Disable auth in tests by default
+# Clone mode: :sync (default), :async, :disabled
 config :boom_looper,
   auth_password: nil,
-  auth_username: nil
+  auth_username: nil,
+  clone_mode: :disabled

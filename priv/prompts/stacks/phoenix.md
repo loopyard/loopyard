@@ -19,23 +19,25 @@ Check `mix.exs` for Elixir version. Add `nodejs npm` if project has JS assets. A
 
 ## Services
 
-- **postgres:** `postgres:16` — pass `env: {"POSTGRES_HOST_AUTH_METHOD": "trust"}` in `add_service` (if mix.exs has `:postgrex`)
+Add to docker-compose.yml:
+- **postgres:** `image: postgres:16` with `environment: POSTGRES_HOST_AUTH_METHOD=trust` on the postgres service (if mix.exs has `:postgrex`)
 
 ## Env vars
 
+Add to workspace and dev services in docker-compose.yml:
 ```
 DATABASE_URL=postgres://postgres@postgres:5432/<app>_dev
 MIX_ENV=dev
 ```
 
-## After rebuild
+## After docker_compose up
 
 ```
-exec: mix local.hex --force && mix local.rebar --force
-exec: mix deps.get
-exec: mix ecto.create
-exec: mix ecto.migrate
-exec: mix assets.setup    # if assets pipeline exists
+exec("mix local.hex --force && mix local.rebar --force")
+exec("mix deps.get")
+exec("mix ecto.create")
+exec("mix ecto.migrate")
+exec("mix assets.setup")    # if assets pipeline exists
 ```
 
 ## Gotchas

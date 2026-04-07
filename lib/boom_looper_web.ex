@@ -64,6 +64,16 @@ defmodule BoomLooperWeb do
       import Phoenix.HTML
       import Phoenix.LiveView.Helpers, only: []
 
+      # Display formatters used everywhere — never re-define these inline
+      # in a LiveView. If you find yourself writing `defp shorten_path` or
+      # `defp format_bytes`, delete it and let this import do its job.
+      import BoomLooperWeb.Format
+
+      # Tiny shared components: <.flash_banner>, <.skeleton>. The big
+      # page-specific components (sidebar, log_viewer, app_header) are
+      # imported on demand by the LiveViews that use them.
+      import BoomLooperWeb.Components.Common
+
       alias Phoenix.LiveView.JS
 
       unquote(verified_routes())

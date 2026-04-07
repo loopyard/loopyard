@@ -15,10 +15,63 @@ defmodule BoomLooper.Tools.ContainerTest do
 
     test "has all expected tools" do
       tool_names = Container.__tool_server__().tools |> Enum.map(& &1.__tool_name__()) |> MapSet.new()
-      expected = ~w(exec exec_stream logs inspect_env ports service_containers)
+      expected = ~w(exec exec_stream logs inspect_env ports service_containers write_file read_file docker docker_compose workspace_info volumes)
       for name <- expected do
         assert name in tool_names, "missing tool: #{name}"
       end
+    end
+  end
+
+  describe "do_write_file/3" do
+    test "rejects paths with .." do
+      # This should work without a real agent because path validation happens first
+      assert {:error, msg} = Container.do_write_file("any-agent", "../etc/passwd", "content")
+      assert msg =~ ".."
+    end
+
+    test "returns error when agent has no workspace" do
+      assert {:error, msg} = Container.do_write_file("nonexistent-agent", "test.txt", "content")
+      assert msg =~ "no workspace"
+    end
+  end
+
+  describe "do_read_file/2" do
+    test "rejects paths with .." do
+      assert {:error, msg} = Container.do_read_file("any-agent", "../etc/passwd")
+      assert msg =~ ".."
+    end
+
+    test "returns error when agent has no workspace" do
+      assert {:error, msg} = Container.do_read_file("nonexistent-agent", "test.txt")
+      assert msg =~ "no workspace"
+    end
+  end
+
+  describe "do_docker/2" do
+    @describetag :docker
+
+    test "runs docker commands" do
+      assert {:ok, output} = Container.do_docker("ps --format '{{.Names}}'", 30)
+      # Should return something (even if empty)
+      assert is_binary(output)
+    end
+
+    test "returns error for invalid commands" do
+      assert {:error, _} = Container.do_docker("invalid-subcommand-xyz", 5)
+    end
+  end
+
+  describe "do_workspace_info/1" do
+    test "returns error when agent has no workspace" do
+      assert {:error, msg} = Container.do_workspace_info("nonexistent-agent")
+      assert msg =~ "no workspace"
+    end
+  end
+
+  describe "do_volumes/2" do
+    test "returns error when agent has no workspace" do
+      assert {:error, msg} = Container.do_volumes("nonexistent-agent", "list")
+      assert msg =~ "no workspace"
     end
   end
 

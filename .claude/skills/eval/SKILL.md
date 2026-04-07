@@ -6,55 +6,37 @@ user_invocable: true
 
 # Eval: Test Project Setup End-to-End
 
-Run an automated eval that launches a project in BoomLooper, monitors the setup agent until services are healthy, auto-nudges when it stalls, and records results.
+Run an automated eval that launches a project in BoomLooper and monitors the setup agent until services are healthy.
+
+**Critical principle: zero nudges.** An eval only truly passes if the agent completes setup with NO human intervention. If nudges are needed, that's a system failure to fix — not a successful eval.
 
 ## Prerequisites
 
 - BoomLooper must be running (`mix boom.server`)
 - You must be in the BoomLooper repo root
 
-## Eval Directory Structure
+## Eval Projects
 
-Each eval lives in `evals/<name>/`:
+Eval projects live in `./evals/<name>/project/`. The `project/` subdirectory is gitignored — clone or copy test repos there.
 
+Example structure:
 ```
-evals/<name>/
-  eval.md          # config (frontmatter: title, git_url) + description — tracked in git
-  runs/            # timestamped result markdown files — tracked in git
-  project/         # cloned project source — gitignored, machine-local
+evals/
+  rails-app/
+    project/      # <- the actual Rails repo (gitignored)
+    runs/         # <- eval results (tracked)
+      2024-01-15T10-30-00.md
 ```
-
-Example `eval.md` frontmatter:
-
-```markdown
----
-title: Maybe Finance
-git_url: https://github.com/maybe-finance/maybe.git
----
-
-Description of what this eval tests and what success looks like.
-```
-
-Configs and run results are committed so you can track eval performance over time across machines. Project clones are gitignored since they're large and machine-local.
 
 ## Running an Eval
 
-Jack into the running server and call EvalRunner:
+Jack into the running server and call EvalRunner directly:
 
 ```bash
-# By name (looks up git URL from evals/<name>/eval.md):
-mix boom.rpc 'BoomLooper.EvalRunner.eval("maybe-finance")'
-
-# By git URL directly:
-mix boom.rpc 'BoomLooper.EvalRunner.run("https://github.com/maybe-finance/maybe.git")'
-
-# List available evals:
-mix boom.rpc 'BoomLooper.EvalRunner.list_evals()'
+mix boom.rpc 'BoomLooper.EvalRunner.run("evals/rails-app/project")'
 ```
 
-Every eval always starts fresh — tears down existing project, volumes, and containers first.
-
-Evals run asynchronously — `eval/1` and `run/1` return immediately with `{:ok, pid}`.
+Evals run asynchronously — `run/2` returns immediately with `{:ok, pid}`.
 
 ## Monitoring
 
@@ -64,6 +46,7 @@ mix boom.rpc 'BoomLooper.EvalRunner.status()'
 
 # Deeper inspection
 mix boom.rpc 'BoomLooper.ChatAgent.list_agents()'
+mix boom.rpc 'BoomLooper.Workspace.ServiceManager.service_status("evals/rails-app/project")'
 mix boom.rpc 'BoomLooper.Docker.docker(["ps", "--format", "table {{.Names}}\t{{.Status}}"])'
 mix boom.rpc 'BoomLooper.ChatAgent.stop_agent("agent_id")'
 ```
@@ -73,30 +56,44 @@ Any Elixir expression works. The UI shows a yellow indicator while you're jacked
 ## What Success Looks Like
 
 - **Outcome: success** — web service returns HTTP 2xx
-- **Low nudge count** (0-2)
-- **Low tool calls** (under 100)
+- **Zero nudges** — agent completed entirely autonomously
+- **Reasonable tool calls** — varies by project complexity
 - **Services visible in sidebar** — workspace, dev, postgres, etc.
 
-Other outcomes: `failed` (agent crashed/stopped), `stalled` (idle after max nudges, no HTTP response), `timeout` (deadline hit), `web_error` (HTTP response but non-2xx after max nudges).
+Other outcomes: `failed` (agent crashed/stopped), `stalled` (went idle before HTTP 200), `timeout` (deadline hit), `web_error` (HTTP response but non-2xx).
 
-The eval probes the web service via HTTP at each check. Error response bodies (4xx/5xx) are fed back to the agent as nudge messages so it can debug.
+**If an eval needs nudges, that's a bug to fix:**
+- Don't celebrate a "success with 2 nudges" — fix why it stalled
+- The system should auto-continue on rebuild completion/failure messages
+- Prompts should teach the agent to keep iterating until HTTP 200
+- Add diverse eval projects (Python, Node, Go) to catch overfitting
 
-## Important: Don't Help the Setup Agent
+## Results
 
-The point of evals is to measure whether the setup agent can configure a project **on its own** using only its system prompt, MCP tools, and stack guides. Do NOT:
-
-- Give the setup agent hints about what's wrong
-- Manually fix the workspace config
-- Exec into containers to run commands for it
-- Modify the project's code to make setup easier
-
-If the agent fails, the fix belongs in the **prompts** (`priv/prompts/setup_guide.md`, `priv/prompts/stacks/*.md`), the **MCP tools** (`lib/boom_looper/tools/workspace.ex`), or the **EvalRunner nudge logic** — not in hand-holding the agent through a specific project.
+Results are written to `evals/<name>/runs/<timestamp>.md` (sibling to `project/`) with outcome, duration, tool calls, errors, and service status.
 
 ## Iterating
 
 1. Run eval
 2. Read results in `evals/<name>/runs/`
 3. Diagnose — jack in with `mix boom.rpc` to inspect live state
-4. Fix prompts, tools, or infrastructure code
+4. Fix prompt or code
 5. Hot-reload: `mix boom.rpc 'IEx.Helpers.recompile()'`
 6. Run again, compare
+
+## Avoiding Overfitting
+
+**Don't optimize for your current evals.** If all evals are Ruby/Rails, you might accidentally hard-code Ruby assumptions.
+
+Signs of overfitting:
+- Hard-coded paths like `/usr/local/bundle` (Ruby-specific)
+- String matching for specific errors ("bundle install failed")
+- Fixes that only work for the project you're debugging
+
+How to prevent it:
+- Keep core system code technology-agnostic
+- Add evals for different stacks (Python/Django, Node/Express, Go, Rust)
+- Prompts teach patterns with examples, not hard-coded commands
+- Agent discovers the stack by reading the codebase, then adapts
+
+When an eval fails, fix **prompts** or **tools** — not the system code with project-specific hacks.

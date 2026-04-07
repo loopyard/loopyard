@@ -127,13 +127,13 @@ defmodule BoomLooperWeb.Components.Sidebar do
       navigate={"#{@base_path}/services/#{@svc.name}"}
     >
       <:actions>
-        <a :if={@first_port && Map.get(@svc, :health) == :healthy} href={"http://localhost:#{@first_port}"} target="_blank"
+        <a :if={@first_port && Map.get(@svc, :status) == :running} href={"http://localhost:#{@first_port}"} target="_blank"
           class="text-[10px] text-violet-500 hover:text-violet-400 font-mono ml-auto flex-none transition-colors">
           :{@first_port}
         </a>
         <span :if={service_status_text(@svc)} class="text-[10px] text-blue-400 ml-auto flex-none">{service_status_text(@svc)}</span>
-        <span :if={!service_status_text(@svc) && !@first_port && @svc.running} class="text-[10px] text-zinc-400 dark:text-zinc-500 ml-auto font-mono truncate max-w-[100px]">{service_detail(@svc)}</span>
-        <span :if={!@svc.running && @svc[:exit_info]} class="text-[10px] text-red-500 ml-auto truncate max-w-[140px]">{exit_reason(@svc.exit_info)}</span>
+        <span :if={!service_status_text(@svc) && !@first_port && @svc[:status] == :running} class="text-[10px] text-zinc-400 dark:text-zinc-500 ml-auto font-mono truncate max-w-[100px]">{service_detail(@svc)}</span>
+        <span :if={@svc[:status] == :crashed && @svc[:exit_info]} class="text-[10px] text-red-500 ml-auto truncate max-w-[140px]">{exit_reason(@svc.exit_info)}</span>
       </:actions>
     </.sidebar_item>
     """
@@ -149,11 +149,16 @@ defmodule BoomLooperWeb.Components.Sidebar do
   def status_dot(:destroying), do: "bg-red-400 animate-pulse"
   def status_dot(_), do: "bg-zinc-400"
 
-  def service_dot(%{health: :healthy}), do: "bg-green-500"
-  def service_dot(%{health: :started}), do: "bg-blue-400"
-  def service_dot(%{health: :booting}), do: "bg-yellow-400 animate-pulse"
-  def service_dot(%{health: :crashed}), do: "bg-red-500"
-  def service_dot(%{running: true}), do: "bg-blue-400"
+  # Service status states → dot color:
+  # :running - confirmed running via Docker → green
+  # :stopped - not running (never started or cleanly stopped) → gray
+  # :crashed - exited with non-zero code → red
+  # :starting - container started but port not yet listening (transitional) → blue pulse
+  def service_dot(%{status: :running}), do: "bg-green-500"
+  def service_dot(%{status: :starting}), do: "bg-blue-400 animate-pulse"
+  def service_dot(%{status: :crashed}), do: "bg-red-500"
+  def service_dot(%{status: :stopped}), do: "bg-zinc-400"
+  # Default for unknown/nil status → gray, NEVER green
   def service_dot(_), do: "bg-zinc-400"
 
   def service_detail(%{image: image}) when is_binary(image), do: image
@@ -188,10 +193,10 @@ defmodule BoomLooperWeb.Components.Sidebar do
     Enum.at(@thinking_words, idx)
   end
 
-  defp service_status_text(%{health: :healthy}), do: nil
-  defp service_status_text(%{health: :started}), do: "starting"
-  defp service_status_text(%{health: :booting}), do: "booting"
-  defp service_status_text(%{health: :crashed}), do: nil
+  defp service_status_text(%{status: :running}), do: nil
+  defp service_status_text(%{status: :starting}), do: "starting"
+  defp service_status_text(%{status: :crashed}), do: nil
+  defp service_status_text(%{status: :stopped}), do: nil
   defp service_status_text(_), do: nil
 
   defp exit_reason(%{oom_killed: true}), do: "OOM killed"

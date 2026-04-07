@@ -19,13 +19,13 @@ Look for:
 
 **Must bind `0.0.0.0`** — add `--host 0.0.0.0` or equivalent flag.
 
-## After rebuild
+## After docker_compose up
 
-1. Install dependencies inside the workspace container via `exec`
+1. Install dependencies inside the workspace container via `exec("...")`
 2. Set up database if needed (create, migrate)
-3. Rebuild native extensions if coming from macOS: `npm rebuild`, etc.
+3. Rebuild native extensions if coming from macOS: `exec("npm rebuild")`, etc.
 
 ## Gotchas
 
-- macOS native binaries from the volume won't work — reinstall deps after rebuild
-- Database URLs in `.env` files point to `localhost` — override with Docker service names via `set_env_vars`
+- macOS native binaries from the volume won't work — reinstall deps after `docker_compose("up -d --build")`
+- Database URLs in `.env` files point to `localhost` — override in docker-compose.yml environment section

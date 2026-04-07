@@ -25,6 +25,12 @@ defmodule BoomLooperWeb.ProjectLiveTest do
     test "redirects to / for unknown project", %{conn: conn} do
       assert {:error, {:live_redirect, %{to: "/"}}} = live(conn, "/projects/nonexistent")
     end
+
+    test "mount returns under 500ms — service/volume counts load async", %{conn: conn, project: project} do
+      {micros, {:ok, _view, _html}} = :timer.tc(fn -> live(conn, "/projects/#{project.id}") end)
+      assert micros < 500_000,
+        "ProjectLive mount took #{div(micros, 1000)}ms — sync slow call slipped in"
+    end
   end
 
   describe "workspace list" do

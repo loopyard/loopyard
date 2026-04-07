@@ -4,23 +4,22 @@ defmodule BoomLooper.SystemStats do
   1. Host system — total RAM, CPU, disk
   2. This app — BEAM VM memory, process counts
   3. Per agent — Docker container, Claude CLI process, GenServer
+
+  Every public function in this module is **independently callable** and
+  represents one slice of data. LiveViews mount with skeletons, then load
+  each slice in its own `Task.start` so slow shell-outs (`docker stats`,
+  `ps aux`, `vm_stat`) don't block the page render or each other.
+
+  Don't add a "load everything" function — that's what mount used to do
+  and it made the page take seconds to paint.
   """
 
   alias BoomLooper.ChatAgent
 
-  # --- Host System ---
+  # --- Host System (each slice is one shell-out, callable in isolation) ---
 
-  @doc "Host machine stats: CPU, RAM, disk"
-  def host_stats do
-    %{
-      cpu: host_cpu(),
-      memory: host_memory(),
-      disk: host_disk(),
-      uptime: host_uptime()
-    }
-  end
-
-  defp host_cpu do
+  @doc "Host CPU info: core count and load average. Single sysctl call."
+  def host_cpu do
     # macOS: use sysctl for core count, top for load
     cores =
       case System.cmd("sysctl", ["-n", "hw.ncpu"], stderr_to_stdout: true) do
@@ -52,7 +51,8 @@ defmodule BoomLooper.SystemStats do
     %{cores: cores, load_avg: load}
   end
 
-  defp host_memory do
+  @doc "Host RAM stats from vm_stat (macOS)."
+  def host_memory do
     # macOS: vm_stat for memory breakdown
     case System.cmd("vm_stat", [], stderr_to_stdout: true) do
       {output, 0} ->
@@ -83,7 +83,8 @@ defmodule BoomLooper.SystemStats do
     end
   end
 
-  defp host_disk do
+  @doc "Host disk usage for /. Single df call."
+  def host_disk do
     case System.cmd("df", ["-h", "/"], stderr_to_stdout: true) do
       {output, 0} ->
         lines = String.split(output, "\n", trim: true)
@@ -108,7 +109,8 @@ defmodule BoomLooper.SystemStats do
     end
   end
 
-  defp host_uptime do
+  @doc "Host uptime string from `uptime`."
+  def host_uptime do
     case System.cmd("uptime", [], stderr_to_stdout: true) do
       {output, 0} -> String.trim(output)
       _ -> "unknown"
@@ -169,33 +171,30 @@ defmodule BoomLooper.SystemStats do
 
   # --- Per Agent ---
 
-  @doc "Per-agent resource breakdown: container, CLI process, GenServer"
-  def agent_stats do
-    agents = ChatAgent.list_agents()
-    container_stats = docker_stats()
-    cli_processes = claude_cli_processes()
+  @doc """
+  Per-agent resource breakdown: container, CLI process, GenServer.
 
-    Enum.map(agents, fn agent ->
+  Accepts pre-fetched container stats and CLI processes so callers can
+  fetch them once and reuse. Pass `%{}` and `[]` if you don't have them
+  yet (the per-agent rows will just be missing those columns).
+  """
+  def agent_stats(container_stats \\ %{}, cli_processes \\ []) do
+    Enum.map(ChatAgent.list_agents(), fn agent ->
       container =
         if agent[:workspace_id] do
           container_stats[BoomLooper.Workspace.ServiceManager.service_container_name(agent.workspace_id, "workspace")]
         end
-      pid_info = agent_process_info(agent.id)
-      cli = find_cli_for_agent(cli_processes, agent.id)
-
       %{
         agent: agent,
         container: container,
-        cli: cli,
-        beam: pid_info
+        cli: find_cli_for_agent(cli_processes, agent.id),
+        beam: agent_process_info(agent.id)
       }
     end)
   end
 
-  @doc "Service container resource stats"
-  def service_stats do
-    container_stats = docker_stats()
-
+  @doc "Service container resource stats. Accepts pre-fetched docker stats."
+  def service_stats(container_stats \\ %{}) do
     BoomLooper.Docker.list_containers(prefix: "bl-")
     |> Enum.map(fn container ->
       %{
@@ -208,7 +207,13 @@ defmodule BoomLooper.SystemStats do
 
   # --- Docker container stats ---
 
-  defp docker_stats do
+  @doc """
+  Per-container resource stats from `docker stats --no-stream`. SLOW —
+  one shell-out, but `docker stats` itself takes ~1-2s to gather samples.
+  Returns a map keyed by container name. Call this once and pass it to
+  `agent_stats/2` and `service_stats/1`.
+  """
+  def docker_container_stats do
     case System.cmd("docker", [
            "stats", "--no-stream",
            "--format", "{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.PIDs}}"
@@ -233,7 +238,10 @@ defmodule BoomLooper.SystemStats do
 
   # --- Claude CLI processes ---
 
-  defp claude_cli_processes do
+  @doc """
+  All Claude CLI processes from `ps aux`. SLOW — one full ps walk.
+  """
+  def claude_cli_processes do
     case System.cmd("ps", ["aux"], stderr_to_stdout: true) do
       {output, 0} ->
         output
@@ -246,11 +254,6 @@ defmodule BoomLooper.SystemStats do
       _ ->
         []
     end
-  end
-
-  @doc false
-  def all_cli_processes do
-    claude_cli_processes()
   end
 
   defp parse_ps_line(line) do

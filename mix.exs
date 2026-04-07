@@ -39,7 +39,8 @@ defmodule BoomLooper.MixProject do
       {:claude_code, "~> 0.34"},
       {:dotenvy, "~> 0.9"},
       {:lazy_html, ">= 0.1.0", only: :test},
-      {:eqrcode, "~> 0.1.10"}
+      {:eqrcode, "~> 0.1.10"},
+      {:yaml_elixir, "~> 2.9"}
     ]
   end
 

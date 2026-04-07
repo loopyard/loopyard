@@ -147,6 +147,43 @@ defmodule BoomLooper.ChatAgent do
     GenServer.cast(via(id), :restart_session)
   end
 
+  @doc "Start a stopped/crashed agent — starts a new GenServer and resumes from saved state"
+  def start_agent(id) do
+    ensure_ets_table()
+
+    case :ets.lookup(@ets_table, id) do
+      [{^id, summary}] when summary.status in [:stopped, :crashed] ->
+        # Build opts from saved summary
+        opts = [
+          id: id,
+          name: summary.name,
+          working_dir: summary[:working_dir],
+          bind_mount: summary[:bind_mount],
+          workspace_id: summary[:workspace_id],
+          volume: summary[:volume],
+          resume: true
+        ] |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+
+        # Start under the workspace's agent supervisor if available, otherwise global
+        supervisor = if summary[:workspace_id] do
+          BoomLooper.WorkspaceGroup.agent_sup_name(summary[:workspace_id])
+        else
+          BoomLooper.AgentSupervisor
+        end
+
+        case DynamicSupervisor.start_child(supervisor, {__MODULE__, opts}) do
+          {:ok, _pid} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
+
+      [{^id, summary}] ->
+        {:error, "Agent is #{summary.status}, not stopped or crashed"}
+
+      [] ->
+        {:error, "Agent not found"}
+    end
+  end
+
   @doc "Remove a stopped/crashed agent — transitions to :destroying, cleans up Docker, then removes from sidebar"
   def remove_agent(id) do
     ensure_ets_table()
@@ -498,6 +535,13 @@ defmodule BoomLooper.ChatAgent do
     :ets.insert(@ets_table, {state.id, summary(state)})
     persist_message(state, List.last(state.messages))
     broadcast("chat_agent:#{state.id}", {:chat_message, state.id, List.last(state.messages)})
+
+    # Auto-continue: if agent is idle and receives an external system message,
+    # prompt it to evaluate and continue. The agent decides if work is done.
+    if state.status == :idle && msg.role == :system do
+      GenServer.cast(self(), {:send_message, "Continue."})
+    end
+
     {:noreply, state}
   end
 
@@ -776,7 +820,7 @@ defmodule BoomLooper.ChatAgent do
   end
 
   defp load_workspace_config(workspace_id) when is_binary(workspace_id) do
-    volume_name = "code-#{workspace_id}"
+    volume_name = BoomLooper.Workspace.volume_name_for(workspace_id)
     case BoomLooper.Workspace.load_from_volume(volume_name) do
       {:ok, workspace} -> workspace
       _ -> nil
@@ -1003,9 +1047,16 @@ defmodule BoomLooper.ChatAgent do
 
     Pass your agent_id "#{agent_id}" to every tool call.
 
-    Steps: read project files → set_dockerfile → set_dev_command → add_service → set_env_vars → rebuild → exec setup → verify with service_status.
+    Steps: read project files → write Dockerfile → write docker-compose.yml → docker_compose up → exec setup → verify.
 
-    Do NOT use `exec` until AFTER `rebuild`. NEVER install via runtime scripts (docker exec apt-get). NEVER use `sleep`. Use `service_status` to check progress.
+    Tools:
+    - `write_file` — write Dockerfile and docker-compose.yml to `.boomlooper/workspace/`
+    - `docker_compose` — run compose commands (e.g. "up -d --build", "ps", "logs dev")
+    - `docker` — run docker commands (e.g. "ps", "volume ls")
+    - `exec` — run commands in the workspace container
+    - `logs` — get container logs
+
+    Use `${CODE_VOLUME}:/workspace` in your compose file — it gets substituted automatically.
 
     """
   end
@@ -1021,17 +1072,21 @@ defmodule BoomLooper.ChatAgent do
     """
     ## Workspace Setup
 
-    New project#{path_note}. No workspace config exists yet. Examine project files and configure step by step:
-    1. `set_workspace_name` 2. `set_dockerfile` (dev image, not production)
-    3. `set_dev_command` (ONE command, e.g. bin/dev) 4. `add_service` (postgres, redis — NOT web servers)
-    5. `set_env_vars` 6. `set_system_prompt` 7. `rebuild` 8. `start_services`
+    New project#{path_note}. Write docker-compose.yml and Dockerfile directly:
+    1. Read project files to understand the stack
+    2. `write_file` path=`.boomlooper/workspace/Dockerfile`
+    3. `write_file` path=`.boomlooper/workspace/docker-compose.yml`
+    4. `docker_compose("up -d --build")`
+    5. `exec` to install deps/run migrations
+    6. `docker_compose("logs dev")` to verify
     """
   end
 
   # --- Tool Configuration ---
 
   defp default_tools do
-    [BoomLooper.Tools.Agents, BoomLooper.Tools.Container, BoomLooper.Tools.Workspace, BoomLooper.Tools.Secrets]
+    # Note: Workspace tools removed - agents use direct docker_compose/write_file instead
+    [BoomLooper.Tools.Agents, BoomLooper.Tools.Container, BoomLooper.Tools.Secrets]
   end
 
   defp build_mcp_servers(tool_modules) do
@@ -1041,8 +1096,17 @@ defmodule BoomLooper.ChatAgent do
     end)
   end
 
+  # Built-in Claude Code tools that agents should have access to
+  @builtin_tools [
+    "WebSearch",      # Search the web for docs, examples, solutions
+    "WebFetch",       # Fetch specific URLs
+    "Read",           # Read files (in workspace via exec, but useful for prompts)
+    "Glob",           # Find files by pattern
+    "Grep"            # Search file contents
+  ]
+
   defp build_allowed_tools(tool_modules) do
-    Enum.flat_map(tool_modules, fn mod ->
+    mcp_tools = Enum.flat_map(tool_modules, fn mod ->
       info = mod.__tool_server__()
       server_name = info.name
 
@@ -1050,5 +1114,7 @@ defmodule BoomLooper.ChatAgent do
         "mcp__#{server_name}__#{tool_mod.__tool_name__()}"
       end)
     end)
+
+    @builtin_tools ++ mcp_tools
   end
 end

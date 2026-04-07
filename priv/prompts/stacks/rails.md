@@ -22,8 +22,9 @@ Check `Gemfile` for extras: `image_processing` → add `libvips`, `nokogiri` →
 
 ## Services
 
-- **postgres:** `postgres:16` — pass `env: {"POSTGRES_HOST_AUTH_METHOD": "trust"}` in `add_service` (NOT in `set_env_vars` — service env vars go on the service itself)
-- **redis:** `redis:7-alpine` (if Gemfile has `redis` or `sidekiq` or `good_job`)
+Add to docker-compose.yml:
+- **postgres:** `image: postgres:16` with `environment: POSTGRES_HOST_AUTH_METHOD=trust` on the postgres service
+- **redis:** `image: redis:7-alpine` (if Gemfile has `redis` or `sidekiq` or `good_job`)
 
 ## Env vars
 
@@ -35,16 +36,16 @@ DISABLE_SPRING=1
 BUNDLE_PATH=/usr/local/bundle
 ```
 
-## After rebuild
+## After docker_compose up
 
 ```
-exec: bundle install
-exec: npm install && npm rebuild
-exec: bin/rails db:create
-exec: bin/rails db:migrate
+exec("bundle install")
+exec("npm install && npm rebuild")
+exec("bin/rails db:create")
+exec("bin/rails db:migrate")
 ```
 
-If db:migrate fails with schema errors: `bin/rails db:drop db:create db:migrate`
+If db:migrate fails with schema errors: `exec("bin/rails db:drop db:create db:migrate")`
 
 ## Gotchas
 

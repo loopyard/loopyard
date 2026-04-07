@@ -51,7 +51,10 @@ defmodule BoomLooper.EvalRunner do
     config = load_eval_config()
     case config[name] do
       nil -> {:error, "Unknown eval: #{name}. Available: #{config |> Map.keys() |> Enum.join(", ")}"}
-      entry -> run(entry["git_url"], opts)
+      entry ->
+        # Pass branch from config if present
+        opts = if entry["branch"], do: Keyword.put(opts, :branch, entry["branch"]), else: opts
+        run(entry["git_url"], opts)
     end
   end
 
@@ -68,9 +71,16 @@ defmodule BoomLooper.EvalRunner do
   Returns {:ok, pid}.
   """
   def run(source, opts \\ []) do
+    eval_name = source |> extract_name() |> sanitize_name()
+
+    # Take over IExSession synchronously BEFORE the RPC returns — prevents flash when RPC disconnects
+    # Claim prevents disconnect_unless_claimed from clearing it
+    BoomLooper.IExSession.working("eval: #{eval_name} — starting")
+    BoomLooper.IExSession.claim()
+
     {:ok, pid} = Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
-      eval_name = source |> extract_name() |> sanitize_name()
       BoomLooper.StateKeeper.put_eval(eval_name, %{pid: self(), source: source, started_at: DateTime.utc_now(), status: :running, result: nil})
+
       try do
         do_run(source, opts)
       rescue
@@ -81,6 +91,9 @@ defmodule BoomLooper.EvalRunner do
         kind, reason ->
           Logger.error("[EvalRunner] Eval crashed for #{eval_name}: #{inspect({kind, reason})}")
           BoomLooper.StateKeeper.put_eval(eval_name, %{pid: self(), source: source, started_at: DateTime.utc_now(), status: :crashed, result: %{outcome: :crashed, error: inspect({kind, reason})}})
+      after
+        # Clear IExSession when eval is done (success, failure, or crash)
+        BoomLooper.IExSession.disconnect()
       end
     end)
 
@@ -106,14 +119,34 @@ defmodule BoomLooper.EvalRunner do
     max_nudges = Keyword.get(opts, :max_nudges, @max_nudges)
     is_git_url = git_url?(source)
 
+    eval_name = source |> extract_name() |> sanitize_name()
     Logger.info("[EvalRunner] Starting eval for #{source}")
     started_at = System.monotonic_time(:millisecond)
 
     # Always start fresh — tear down any existing project
+    BoomLooper.IExSession.working("eval: #{eval_name} — cleaning")
     clean_project(source, is_git_url)
 
+    # Also delete any stale volume that might exist from manual testing
+    # This ensures we start truly fresh even if clean_project didn't find a registered project
+    if is_git_url do
+      branch = Keyword.get(opts, :branch, "main")
+      expected_ws_id = Workspace.workspace_id_from_git(source, branch)
+      expected_volume = BoomLooper.VolumeManager.code_volume_name(expected_ws_id)
+      BoomLooper.VolumeManager.delete_volume(expected_volume)
+
+      # Also tear down any containers using this workspace_id
+      virtual_dir = Path.join([Workspace.home_dir(), "workspaces", expected_ws_id])
+      try do
+        BoomLooper.Compose.down_volumes(virtual_dir, expected_ws_id)
+      catch
+        _, _ -> :ok
+      end
+    end
+
     # Add the project (git URL or local path)
-    case add_project(source, is_git_url) do
+    BoomLooper.IExSession.working("eval: #{eval_name} — adding project")
+    case add_project(source, is_git_url, opts) do
       {:ok, project, workspace} ->
         # For volume-based workspaces, use the virtual dir as project_dir
         project_dir = if workspace[:volume_based] do
@@ -157,6 +190,7 @@ defmodule BoomLooper.EvalRunner do
         Task.start(fn -> BoomLooper.AgentBoot.boot(id, agent_opts) end)
 
         # Poll until done or timeout, with auto-nudging
+        BoomLooper.IExSession.working("eval: #{project.name} — running")
         deadline = started_at + timeout
         result = poll_agent(id, deadline, poll_interval, project_dir, 0, max_nudges)
 
@@ -165,6 +199,7 @@ defmodule BoomLooper.EvalRunner do
         result = Map.merge(result, %{
           source: source,
           project_name: project.name,
+          project_path: project_dir,
           agent_id: id,
           duration_ms: duration_ms,
           timestamp: DateTime.utc_now()
@@ -195,11 +230,12 @@ defmodule BoomLooper.EvalRunner do
     String.starts_with?(source, "git@")
   end
 
-  defp add_project(source, true = _is_git_url) do
-    ProjectRegistry.add_from_url(source)
+  defp add_project(source, true = _is_git_url, opts) do
+    branch = Keyword.get(opts, :branch, "main")
+    ProjectRegistry.add_from_url(source, branch: branch)
   end
 
-  defp add_project(source, false = _is_git_url) do
+  defp add_project(source, false = _is_git_url, _opts) do
     ProjectRegistry.add(Path.expand(source))
   end
 
@@ -243,7 +279,7 @@ defmodule BoomLooper.EvalRunner do
           end
 
           # Delete external code volume
-          BoomLooper.VolumeManager.delete_volume("code-#{ws_id}")
+          BoomLooper.VolumeManager.delete_volume(BoomLooper.VolumeManager.code_volume_name(ws_id))
 
           # Delete agents.log so stale agents aren't replayed
           agents_log = Path.join([virtual_dir, ".boomlooper", "workspace", "agents.log"])
@@ -280,13 +316,10 @@ defmodule BoomLooper.EvalRunner do
   Returns a map of service name => status.
   """
   def check_services(workspace_key) do
-    case BoomLooper.Workspace.ServiceManager.service_status(workspace_key) do
-      {:ok, statuses} ->
-        Map.new(statuses, fn s -> {s.name, s.status} end)
-
-      _ ->
-        %{}
-    end
+    # Use ServiceStatus for consistent service enumeration
+    workspace_key
+    |> BoomLooper.Workspace.ServiceStatus.for_workspace()
+    |> Map.new(fn s -> {s.name, s.status} end)
   rescue
     _ -> %{}
   catch
@@ -298,23 +331,20 @@ defmodule BoomLooper.EvalRunner do
   Returns {:ok, status_code, body_preview} or :no_response.
   """
   def probe_web_service(workspace_key) do
-    case BoomLooper.Workspace.ServiceManager.service_status(workspace_key) do
-      {:ok, statuses} ->
-        statuses
-        |> Enum.filter(fn s -> s.type == :process && s.running && s.ports != %{} end)
-        |> Enum.find_value(:no_response, fn service ->
-          service.ports
-          |> Enum.find_value(:no_response, fn {_container_port, host_port} ->
-            case http_get("http://localhost:#{host_port}") do
-              {:ok, status, body} -> {:ok, status, body}
-              :error -> nil
-            end
-          end)
-        end)
-
-      _ ->
-        :no_response
-    end
+    # Use ServiceStatus for consistent service enumeration
+    # It reads from docker-compose.yml and merges running state from Docker
+    workspace_key
+    |> BoomLooper.Workspace.ServiceStatus.for_workspace()
+    |> Enum.filter(fn s -> s.type == :process && s.status == :running && s[:ports] != nil && s[:ports] != %{} end)
+    |> Enum.find_value(:no_response, fn service ->
+      service.ports
+      |> Enum.find_value(:no_response, fn {_container_port, host_port} ->
+        case http_get("http://localhost:#{host_port}") do
+          {:ok, status, body} -> {:ok, status, body}
+          :error -> nil
+        end
+      end)
+    end)
   rescue
     _ -> :no_response
   catch
@@ -342,7 +372,8 @@ defmodule BoomLooper.EvalRunner do
     if now >= deadline do
       state = ChatAgent.get_state(agent_id)
       case probe_web_service(workspace_key) do
-        {:ok, status, body} when status in 200..299 ->
+        {:ok, status, body} when status in 200..399 ->
+          # Accept 2xx success, 3xx redirects as "working"
           Logger.info("[EvalRunner] Timed out but web service is healthy (HTTP #{status})")
           build_result(:success, state, workspace_key, nudges, %{http_status: status, http_body_preview: body})
         {:ok, status, body} ->
@@ -365,12 +396,9 @@ defmodule BoomLooper.EvalRunner do
             Process.sleep(interval)
             poll_agent(agent_id, deadline, interval, workspace_key, nudges, max_nudges)
           else
-            if BoomLooper.Tools.Workspace.rebuild_in_progress?(workspace_key) do
-              Process.sleep(interval)
-              poll_agent(agent_id, deadline, interval, workspace_key, nudges, max_nudges)
-            else
-              case probe_web_service(workspace_key) do
-                {:ok, status, body} when status in 200..299 ->
+            case probe_web_service(workspace_key) do
+                {:ok, status, body} when status in 200..399 ->
+                  # Accept 2xx success, 3xx redirects as "working"
                   Logger.info("[EvalRunner] Web service healthy (HTTP #{status}), declaring success")
                   build_result(:success, state, workspace_key, nudges, %{
                     http_status: status,
@@ -406,7 +434,6 @@ defmodule BoomLooper.EvalRunner do
                     Process.sleep(interval)
                     poll_agent(agent_id, deadline, interval, workspace_key, nudges + 1, max_nudges)
                   end
-              end
             end
           end
 
@@ -451,10 +478,11 @@ defmodule BoomLooper.EvalRunner do
   # --- Recording ---
 
   @doc """
-  Record an eval run to `evals/:project_name/:date.md`.
+  Record an eval run. If project is in `evals/<name>/project/`, writes to
+  sibling `runs/` directory. Otherwise writes to `evals/<project_name>/runs/`.
   """
   def record_run(project_name, result) do
-    dir = Path.join([evals_dir(), sanitize_name(project_name), "runs"])
+    dir = runs_dir(result.project_path, project_name)
     File.mkdir_p!(dir)
 
     date = Calendar.strftime(DateTime.utc_now(), "%Y-%m-%d_%H%M%S")
@@ -465,6 +493,22 @@ defmodule BoomLooper.EvalRunner do
 
     Logger.info("[EvalRunner] Recorded eval to #{path}")
     path
+  end
+
+  defp runs_dir(project_path, project_name) do
+    # Check if project is in evals/<name>/project/ pattern
+    if Path.basename(project_path) == "project" do
+      parent = Path.dirname(project_path)
+      grandparent = Path.dirname(parent)
+      if Path.basename(grandparent) == "evals" do
+        # Write to sibling runs/ directory
+        Path.join(parent, "runs")
+      else
+        Path.join(["evals", sanitize_name(project_name), "runs"])
+      end
+    else
+      Path.join(["evals", sanitize_name(project_name), "runs"])
+    end
   end
 
   defp format_result(result) do
@@ -529,13 +573,8 @@ defmodule BoomLooper.EvalRunner do
 
   # --- Config ---
 
-  # Captured at compile time so it works regardless of cwd at runtime
-  @project_root __DIR__ |> Path.join("../..") |> Path.expand()
-
-  defp evals_dir, do: Path.join(@project_root, "evals")
-
   defp load_eval_config do
-    Path.wildcard(Path.join(evals_dir(), "*/eval.md"))
+    Path.wildcard("evals/*/eval.md")
     |> Map.new(fn path ->
       name = path |> Path.dirname() |> Path.basename()
       frontmatter = parse_frontmatter(File.read!(path))

@@ -1,0 +1,68 @@
+defmodule BoomLooperWeb.Components.Common do
+  @moduledoc """
+  Tiny shared components used across LiveViews. Each one replaces a
+  block of HTML that was previously copy-pasted into multiple files.
+
+  These are explicitly the **only** components that get auto-imported
+  via `BoomLooperWeb.html_helpers/0`. Anything page-specific stays in
+  its own module.
+  """
+  use Phoenix.Component
+
+  @doc """
+  Flash strip — green for `:info`, red for `:error`. Renders nothing if
+  the corresponding flash key isn't set.
+
+      <.flash_banner flash={@flash} kind={:info} />
+      <.flash_banner flash={@flash} kind={:error} />
+  """
+  attr :flash, :map, required: true
+  attr :kind, :atom, required: true, values: [:info, :error]
+  attr :class, :string, default: "mb-4"
+
+  def flash_banner(assigns) do
+    ~H"""
+    <p :if={Phoenix.Flash.get(@flash, @kind)} class={[@class, banner_class(@kind)]}>
+      {Phoenix.Flash.get(@flash, @kind)}
+    </p>
+    """
+  end
+
+  defp banner_class(:info) do
+    "rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 px-4 py-3 text-sm text-green-700 dark:text-green-300"
+  end
+
+  defp banner_class(:error) do
+    "rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300"
+  end
+
+  @doc """
+  Loading skeleton. Used as a placeholder while a `start_async` slice is
+  in flight. Two shapes:
+
+      <.skeleton />               # one row, generic
+      <.skeleton rows={4} />      # multiple stacked rows
+      <.skeleton variant={:card} /> # card-shaped (title + bar + small bar)
+  """
+  attr :rows, :integer, default: 1
+  attr :variant, :atom, default: :rows, values: [:rows, :card]
+  attr :class, :string, default: ""
+
+  def skeleton(%{variant: :card} = assigns) do
+    ~H"""
+    <div class={["animate-pulse space-y-2", @class]}>
+      <div class="h-6 w-2/3 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+      <div class="h-2 w-full bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+      <div class="h-2 w-1/3 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+    </div>
+    """
+  end
+
+  def skeleton(assigns) do
+    ~H"""
+    <div class={["rounded-lg border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 p-4 space-y-2", @class]}>
+      <div :for={_ <- 1..@rows} class="h-4 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
+    </div>
+    """
+  end
+end

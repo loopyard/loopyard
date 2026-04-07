@@ -82,6 +82,16 @@ defmodule BoomLooperWeb.MessageLiveTest do
       refute html =~ "Message not found or link expired"
     end
 
+    test "MessageLive mount returns under 500ms — single ETS read", %{agent_id: agent_id, conn: conn} do
+      state = ChatAgent.get_state(agent_id)
+      msg = Enum.find(state.messages, &(&1.role == :user))
+      url = BoomLooperWeb.OutputController.msg_url(agent_id, msg.id)
+
+      {micros, {:ok, _view, _html}} = :timer.tc(fn -> live(conn, url) end)
+      assert micros < 500_000,
+        "MessageLive mount took #{div(micros, 1000)}ms — slow call slipped in"
+    end
+
     test "raw URL returns message content as plain text", %{agent_id: agent_id, conn: conn} do
       state = ChatAgent.get_state(agent_id)
       msg = Enum.find(state.messages, &(&1.role == :user))

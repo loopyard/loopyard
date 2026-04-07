@@ -214,4 +214,93 @@ defmodule BoomLooper.VolumeManagerTest do
       assert VolumeManager.volume_has_code?(volume_name) == true
     end
   end
+
+  describe "volume_info/1" do
+    @describetag :docker
+
+    test "returns volume info for existing volume" do
+      volume_name = "bl-test-#{:rand.uniform(100_000)}"
+
+      on_exit(fn ->
+        System.cmd("docker", ["volume", "rm", "-f", volume_name], stderr_to_stdout: true)
+      end)
+
+      VolumeManager.create_volume(volume_name)
+
+      info = VolumeManager.volume_info(volume_name)
+      assert info.name == volume_name
+      assert info.driver == "local"
+      assert is_binary(info.mount_point)
+      assert is_binary(info.size)
+    end
+
+    test "returns nil for non-existent volume" do
+      assert VolumeManager.volume_info("bl-nonexistent-xyz") == nil
+    end
+
+    test "identifies code volume purpose" do
+      volume_name = "bl-abc123-code"
+
+      on_exit(fn ->
+        System.cmd("docker", ["volume", "rm", "-f", volume_name], stderr_to_stdout: true)
+      end)
+
+      VolumeManager.create_volume(volume_name)
+      info = VolumeManager.volume_info(volume_name)
+
+      assert info.type == :code
+      assert info.service == "workspace"
+      assert info.description == "Project source code"
+    end
+
+    test "identifies service data volume purpose" do
+      volume_name = "postgres-data-abc123"
+
+      on_exit(fn ->
+        System.cmd("docker", ["volume", "rm", "-f", volume_name], stderr_to_stdout: true)
+      end)
+
+      VolumeManager.create_volume(volume_name)
+      info = VolumeManager.volume_info(volume_name)
+
+      assert info.type == :data
+      assert info.service == "postgres"
+      assert info.description == "PostgreSQL database"
+    end
+  end
+
+  describe "volume_ls/2" do
+    @describetag :docker
+
+    test "lists directory contents in volume" do
+      volume_name = "bl-test-ls-#{:rand.uniform(100_000)}"
+
+      on_exit(fn ->
+        System.cmd("docker", ["volume", "rm", "-f", volume_name], stderr_to_stdout: true)
+      end)
+
+      VolumeManager.create_volume(volume_name)
+      VolumeManager.write_file(volume_name, "README.md", "# Test")
+      VolumeManager.write_file(volume_name, "src/main.rb", "puts 'hi'")
+
+      assert {:ok, output} = VolumeManager.volume_ls(volume_name)
+      assert String.contains?(output, "README.md")
+    end
+
+    test "lists subdirectory contents" do
+      volume_name = "bl-test-ls-sub-#{:rand.uniform(100_000)}"
+
+      on_exit(fn ->
+        System.cmd("docker", ["volume", "rm", "-f", volume_name], stderr_to_stdout: true)
+      end)
+
+      VolumeManager.create_volume(volume_name)
+      VolumeManager.write_file(volume_name, "src/main.rb", "puts 'hi'")
+      VolumeManager.write_file(volume_name, "src/lib/helper.rb", "module Helper; end")
+
+      assert {:ok, output} = VolumeManager.volume_ls(volume_name, "/src")
+      assert String.contains?(output, "main.rb")
+      assert String.contains?(output, "lib")
+    end
+  end
 end

@@ -45,12 +45,21 @@ defmodule BoomLooperWeb.ChatLiveTest do
   defp ws_chat_path(ws, id), do: "/projects/#{ws.project_id}/workspaces/#{ws.id}/agents/#{id}"
 
   # Add services to workspace config so ServiceStatus finds them
+  # Write docker-compose.yml with given services (ServiceStatus reads from this file)
   defp add_services_to_workspace(ws, services) do
-    config_path = Path.join([ws.path, ".boomlooper", "repo", "workspace.json"])
-    {:ok, content} = File.read(config_path)
-    {:ok, config} = Jason.decode(content)
-    updated = Map.put(config, "services", services)
-    File.write!(config_path, Jason.encode!(updated))
+    compose_dir = Path.join([ws.path, ".boomlooper", "workspace"])
+    File.mkdir_p!(compose_dir)
+
+    services_yaml = services
+    |> Enum.map(fn svc ->
+      name = svc["name"]
+      image = svc["image"]
+      "  #{name}:\n    image: #{image}"
+    end)
+    |> Enum.join("\n")
+
+    content = "services:\n#{services_yaml}\n"
+    File.write!(Path.join(compose_dir, "docker-compose.yml"), content)
   end
 
   # Flush the LiveView mailbox by rendering, ensuring PubSub messages are processed.
@@ -70,6 +79,88 @@ defmodule BoomLooperWeb.ChatLiveTest do
 
     test "redirects to / for unknown workspace", %{conn: conn} do
       assert {:error, {:live_redirect, %{to: "/"}}} = live(conn, "/projects/nonexistent/workspaces/nonexistent")
+    end
+
+    test "workspace :index mount returns under 500ms — compose check is async", %{conn: conn, workspace: ws} do
+      # Lands on /projects/X/workspaces/Y. Previously this synchronously
+      # called VolumeManager.read_file (docker run alpine cat) — could
+      # take seconds. Now the read happens in start_async; mount must
+      # paint immediately and the navigate (if any) lands later.
+      {micros, _result} = :timer.tc(fn ->
+        live(conn, "/projects/#{ws.project_id}/workspaces/#{ws.id}")
+      end)
+      assert micros < 500_000,
+        "ChatLive :index mount took #{div(micros, 1000)}ms — sync compose check leaked back in"
+    end
+
+    test "workspace :chat mount returns under 500ms", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
+      {micros, _result} = :timer.tc(fn -> live(conn, ws_chat_path(ws, setup_agent_id)) end)
+      assert micros < 500_000,
+        "ChatLive :chat mount took #{div(micros, 1000)}ms — sync slow call leaked in"
+    end
+
+    test "volume-based workspace mounts correctly", %{conn: conn} do
+      # Create a volume-based project/workspace directly in ETS
+      project_id = "vol-proj-#{:rand.uniform(100_000)}"
+      workspace_id = "vol-ws-#{:rand.uniform(100_000)}"
+
+      project = %{
+        id: project_id,
+        name: "Volume Test",
+        git_url: "https://github.com/test/repo.git",
+        is_git: true,
+        volume_based: true,
+        added_at: DateTime.utc_now()
+      }
+      :ets.insert(:project_registry, {project_id, project})
+
+      workspace = %{
+        id: workspace_id,
+        project_id: project_id,
+        name: "main",
+        branch: "main",
+        git_url: "https://github.com/test/repo.git",
+        volume: "bl-#{workspace_id}-code",
+        volume_based: true,
+        status: :stopped,
+        added_at: DateTime.utc_now()
+      }
+      :ets.insert(:workspace_registry, {workspace_id, workspace})
+
+      # Create the expected virtual path directory
+      expected_path = Path.join([BoomLooper.Workspace.home_dir(), "workspaces", workspace_id])
+      File.mkdir_p!(expected_path)
+
+      # Create workspace config so auto-spawn Setup doesn't trigger
+      repo_dir = Path.join(expected_path, ".boomlooper/repo")
+      File.mkdir_p!(repo_dir)
+      File.write!(Path.join(repo_dir, "workspace.json"), Jason.encode!(%{"name" => "test"}))
+
+      # Create an agent for this workspace
+      agent_id = "vol-agent-#{:rand.uniform(100_000)}"
+      {:ok, _pid} = BoomLooper.TestHelpers.start_agent(
+        id: agent_id,
+        name: "Volume Agent",
+        working_dir: expected_path,
+        bind_mount: expected_path,
+        started_by: "test",
+        workspace_id: workspace_id
+      )
+
+      on_exit(fn ->
+        try do
+          BoomLooper.ChatAgent.stop_agent(agent_id)
+        catch
+          :exit, _ -> :ok
+        end
+        :ets.delete(:project_registry, project_id)
+        :ets.delete(:workspace_registry, workspace_id)
+        File.rm_rf!(expected_path)
+      end)
+
+      # Mount the LiveView - should not crash
+      {:ok, _view, html} = live(conn, "/projects/#{project_id}/workspaces/#{workspace_id}/agents/#{agent_id}")
+      assert html =~ "Volume Agent"
     end
   end
 
@@ -408,13 +499,16 @@ defmodule BoomLooperWeb.ChatLiveTest do
     end
 
     test "process services appear in sidebar", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
-      # Add a process (not a stock service)
-      config_path = Path.join([ws.path, ".boomlooper", "repo", "workspace.json"])
-      {:ok, content} = File.read(config_path)
-      {:ok, config} = Jason.decode(content)
-      updated = Map.put(config, "dockerfile", "FROM ruby:3.2")
-                |> Map.put("processes", [%{"name" => "dev", "command" => "bin/rails server"}])
-      File.write!(config_path, Jason.encode!(updated))
+      # Add a process service (not a stock service like postgres/redis)
+      compose_dir = Path.join([ws.path, ".boomlooper", "workspace"])
+      File.mkdir_p!(compose_dir)
+      content = """
+      services:
+        dev:
+          build: .
+          command: bin/rails server
+      """
+      File.write!(Path.join(compose_dir, "docker-compose.yml"), content)
 
       {:ok, _view, html} = live(conn, ws_chat_path(ws, setup_agent_id))
       assert html =~ "Services"

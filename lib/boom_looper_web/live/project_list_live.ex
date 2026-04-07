@@ -3,14 +3,9 @@ defmodule BoomLooperWeb.ProjectListLive do
   use BoomLooperWeb.IExAware
 
   alias BoomLooper.ProjectRegistry
-  alias BoomLooper.ChatAgent
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket) do
-      ChatAgent.subscribe()
-    end
-
     socket = if connected?(socket), do: subscribe_iex(socket), else: assign(socket, :iex_session, %{level: nil})
 
     secret = Application.get_env(:boom_looper, :launch_secret, "")
@@ -48,24 +43,13 @@ defmodule BoomLooperWeb.ProjectListLive do
   end
 
   @impl true
-  def handle_info({event, _}, socket)
-      when event in [:chat_agent_started, :chat_agent_stopped, :chat_agent_booting, :chat_agent_removed] do
-    {:noreply, assign(socket, :projects, load_projects())}
-  end
-
-  @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   defp load_projects do
-    agents = ChatAgent.list_agents()
-
     ProjectRegistry.list_projects()
     |> Enum.map(fn project ->
       workspaces = ProjectRegistry.list_workspaces(project.id)
-      agent_count = Enum.count(agents, fn a ->
-        Enum.any?(workspaces, fn w -> a[:bind_mount] == w.path || a[:working_dir] == w.path end)
-      end)
-      Map.merge(project, %{workspace_count: length(workspaces), agent_count: agent_count})
+      Map.put(project, :workspace_count, length(workspaces))
     end)
   end
 
@@ -79,9 +63,7 @@ defmodule BoomLooperWeb.ProjectListLive do
       <.header breadcrumbs={[{"Boom Looper", nil}]} iex_session={@iex_session} />
       <div class="flex-1 overflow-y-auto">
         <div class="max-w-xl mx-auto px-4 py-8">
-          <p :if={@flash["error"]} class="mb-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300">
-            {@flash["error"]}
-          </p>
+          <.flash_banner flash={@flash} kind={:error} />
 
           <%!-- Empty state --%>
           <div :if={!@has_projects} class="mb-8">
@@ -100,11 +82,11 @@ defmodule BoomLooperWeb.ProjectListLive do
                 <div class="min-w-0">
                   <div class="flex items-center gap-2">
                     <span class="text-sm font-semibold truncate">{project.name}</span>
-                    <span :if={project.agent_count > 0} class="text-xs font-medium text-violet-600 dark:text-violet-400 bg-violet-100 dark:bg-violet-900/30 rounded-full px-2 py-0.5">
-                      {project.agent_count} agent{if project.agent_count != 1, do: "s"}
+                    <span :if={project.workspace_count > 1} class="text-xs text-zinc-400 dark:text-zinc-500">
+                      {project.workspace_count} workspaces
                     </span>
                   </div>
-                  <p class="text-xs font-mono text-zinc-400 dark:text-zinc-500 mt-0.5 truncate">{shorten_path(project.path)}</p>
+                  <p class="text-xs font-mono text-zinc-400 dark:text-zinc-500 mt-0.5 truncate">{project_location(project)}</p>
                 </div>
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3.5 h-3.5 text-zinc-300 dark:text-zinc-600 group-hover:text-zinc-500 dark:group-hover:text-zinc-400 transition-colors flex-none">
                   <path fill-rule="evenodd" d="M6.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 0 1-1.06-1.06L8.94 8 6.22 5.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
@@ -158,11 +140,6 @@ defmodule BoomLooperWeb.ProjectListLive do
       </div>
     </div>
     """
-  end
-
-  defp shorten_path(path) do
-    home = System.user_home!()
-    String.replace_prefix(path, home, "~")
   end
 
 end

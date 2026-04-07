@@ -46,6 +46,153 @@ defmodule BoomLooper.VolumeManager do
   end
 
   @doc """
+  List all volumes for a workspace.
+  Returns volumes matching bl-{workspace_id}* pattern.
+  """
+  def list_workspace_volumes(workspace_id) do
+    case docker(["volume", "ls", "--format", "{{.Name}}"]) do
+      {:ok, output} ->
+        volumes = output
+        |> String.trim()
+        |> String.split("\n", trim: true)
+        |> Enum.filter(fn name ->
+          String.starts_with?(name, "bl-#{workspace_id}")
+        end)
+        |> Enum.map(fn name -> volume_info(name) end)
+        |> Enum.reject(&is_nil/1)
+
+        {:ok, volumes}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  List ALL bl-* volumes — name + parsed purpose only, no `du` shell-out.
+
+  Use this for cluster overviews where you'd otherwise spawn one Alpine
+  container per volume just to measure size. If you need sizes, fetch
+  them separately for the volumes the user actually opens.
+  """
+  def list_all_volumes do
+    case docker(["volume", "ls", "--filter", "name=bl-", "--format", "{{.Name}}"]) do
+      {:ok, output} ->
+        output
+        |> String.trim()
+        |> String.split("\n", trim: true)
+        |> Enum.map(&volume_summary/1)
+
+      _ ->
+        []
+    end
+  end
+
+  @doc """
+  Cheap volume summary — name + parsed purpose. No `docker volume inspect`,
+  no `du`. Pairs with `list_all_volumes/0`.
+  """
+  def volume_summary(name) do
+    {type, service, description} = parse_volume_purpose(name)
+    %{name: name, type: type, service: service, description: description}
+  end
+
+  @doc """
+  Get volume info: name, size, mount point, related service.
+  """
+  def volume_info(volume_name) do
+    case docker(["volume", "inspect", volume_name, "--format", "{{json .}}"]) do
+      {:ok, json} ->
+        case Jason.decode(json) do
+          {:ok, data} ->
+            size = get_volume_size(volume_name)
+            {type, service, description} = parse_volume_purpose(volume_name)
+
+            %{
+              name: volume_name,
+              mount_point: data["Mountpoint"],
+              driver: data["Driver"],
+              created_at: data["CreatedAt"],
+              size: size,
+              type: type,
+              service: service,
+              description: description
+            }
+          _ -> nil
+        end
+      _ -> nil
+    end
+  end
+
+  # Parse volume name to determine its purpose and related service
+  # Patterns:
+  #   bl-{ws_id}-code           → workspace code
+  #   bl-{ws_id}_cache-{ws_id}  → workspace cache
+  #   bl-{ws_id}_deps-{ws_id}   → workspace deps
+  #   {service}-data-{ws_id}    → service data (postgres, redis, etc.)
+  defp parse_volume_purpose(name) do
+    cond do
+      # Code volume: bl-XXXX-code
+      Regex.match?(~r/^bl-[a-f0-9]+-code$/, name) ->
+        {:code, "workspace", "Project source code"}
+
+      # Cache volume: bl-XXXX_cache-XXXX or cache-XXXX
+      String.contains?(name, "cache") ->
+        {:cache, "workspace", "Build cache (~/.cache)"}
+
+      # Deps volume: bl-XXXX_deps-XXXX or deps-XXXX
+      String.contains?(name, "deps") ->
+        {:deps, "workspace", "Dependencies (/deps)"}
+
+      # Service data volume: {service}-data-{ws_id}
+      Regex.match?(~r/^(.+)-data-[a-f0-9]+$/, name) ->
+        [_, service] = Regex.run(~r/^(.+)-data-[a-f0-9]+$/, name)
+        description = case service do
+          "postgres" -> "PostgreSQL database"
+          "redis" -> "Redis data"
+          "minio" -> "MinIO object storage"
+          "mysql" -> "MySQL database"
+          "mongo" -> "MongoDB data"
+          _ -> "#{service} data"
+        end
+        {:data, service, description}
+
+      true ->
+        {:other, nil, "Unknown volume"}
+    end
+  end
+
+  defp get_volume_size(volume_name) do
+    # Get size by running du in a container
+    case docker([
+      "run", "--rm",
+      "-v", "#{volume_name}:/vol",
+      "alpine", "du", "-sh", "/vol"
+    ], timeout: 10_000) do
+      {:ok, output} ->
+        case String.split(String.trim(output), ~r/\s+/, parts: 2) do
+          [size | _] -> size
+          _ -> "unknown"
+        end
+      _ -> "unknown"
+    end
+  end
+
+  @doc """
+  List directory contents in a volume.
+  """
+  def volume_ls(volume_name, path \\ "/") do
+    case docker([
+      "run", "--rm",
+      "-v", "#{volume_name}:/vol",
+      "alpine", "ls", "-la", "/vol#{path}"
+    ]) do
+      {:ok, output} -> {:ok, output}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
   Delete all code-*, cache-*, and deps-* volumes not associated with an active workspace.
   Returns {:ok, deleted_count} or {:error, reason}.
   """
@@ -186,36 +333,72 @@ defmodule BoomLooper.VolumeManager do
   end
 
   @doc """
-  Read a file from a volume without a running container.
+  Read a file from a volume. Uses running container if available, otherwise spins up temporary container.
   """
   def read_file(volume_name, path) do
-    case docker([
-      "run", "--rm",
-      "-v", "#{volume_name}:/workspace",
-      "alpine", "cat", "/workspace/#{path}"
-    ]) do
-      {:ok, content} -> {:ok, content}
-      {:error, _} -> {:error, :not_found}
+    # Try to find a running workspace container for this volume
+    case find_container_for_volume(volume_name) do
+      {:ok, container} ->
+        BoomLooper.Docker.exec_in(container, "cat /workspace/#{path}")
+
+      :none ->
+        # No running container, use temporary alpine
+        case docker([
+          "run", "--rm",
+          "-v", "#{volume_name}:/workspace",
+          "alpine", "cat", "/workspace/#{path}"
+        ]) do
+          {:ok, content} -> {:ok, content}
+          {:error, _} -> {:error, :not_found}
+        end
     end
   end
 
   @doc """
-  Write a file to a volume without a running container.
+  Write a file to a volume. Uses running container if available, otherwise spins up temporary container.
   """
   def write_file(volume_name, path, content) do
     dir = Path.dirname(path)
     encoded = Base.encode64(content)
 
-    script = "mkdir -p /workspace/#{dir} && echo \"$FILE_CONTENT\" | base64 -d > /workspace/#{path}"
+    case find_container_for_volume(volume_name) do
+      {:ok, container} ->
+        script = "mkdir -p /workspace/#{dir} && echo '#{encoded}' | base64 -d > /workspace/#{path}"
+        case BoomLooper.Docker.exec_in(container, script) do
+          {:ok, _} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
 
-    case docker([
-      "run", "--rm",
-      "-e", "FILE_CONTENT=#{encoded}",
-      "-v", "#{volume_name}:/workspace",
-      "alpine", "sh", "-c", script
-    ]) do
-      {:ok, _} -> :ok
-      {:error, reason} -> {:error, reason}
+      :none ->
+        # No running container, use temporary alpine
+        script = "mkdir -p /workspace/#{dir} && echo \"$FILE_CONTENT\" | base64 -d > /workspace/#{path}"
+
+        case docker([
+          "run", "--rm",
+          "-e", "FILE_CONTENT=#{encoded}",
+          "-v", "#{volume_name}:/workspace",
+          "alpine", "sh", "-c", script
+        ]) do
+          {:ok, _} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
+    end
+  end
+
+  # Find a running workspace container that has this volume mounted
+  defp find_container_for_volume(volume_name) do
+    # Volume names are like bl-{workspace_id}-code
+    case Regex.run(~r/^bl-([a-f0-9]+)-code$/, volume_name) do
+      [_, workspace_id] ->
+        container = "bl-#{workspace_id}-workspace-1"
+        if BoomLooper.Docker.container_running?(container) do
+          {:ok, container}
+        else
+          :none
+        end
+
+      _ ->
+        :none
     end
   end
 

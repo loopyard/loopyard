@@ -1,18 +1,18 @@
 defmodule BoomLooper.Workspace.ServiceStatus do
   @moduledoc """
-  Reliable service status based on workspace config + Docker state.
+  Reliable service status based on docker-compose.yml + Docker state.
 
   This module provides service status that:
-  1. Shows ALL defined services (from workspace config)
+  1. Shows ALL defined services (from docker-compose.yml)
   2. Merges running state from Docker
   3. Does NOT depend on PubSub timing or ETS caching
 
-  The workspace config is the source of truth for what services SHOULD exist.
+  The docker-compose.yml is the source of truth for what services SHOULD exist.
   Docker is the source of truth for what IS running.
   """
 
   alias BoomLooper.Workspace
-  alias BoomLooper.Workspace.ServiceManager
+  alias BoomLooper.Compose
   alias BoomLooper.Docker
 
   @doc """
@@ -21,91 +21,148 @@ defmodule BoomLooper.Workspace.ServiceStatus do
   """
   def for_workspace(project_dir) do
     project_dir = Path.expand(project_dir)
+    workspace_id = Workspace.workspace_id(project_dir)
 
-    # First try workspace config (source of truth for what SHOULD exist)
+    # Read services from docker-compose.yml (source of truth)
     defined = list_defined_services(project_dir)
 
     if defined != [] do
-      # Have config - merge with Docker running state
-      workspace_id = Workspace.workspace_id(project_dir)
+      # Have compose file - merge with Docker running state
       running = get_all_running_states(workspace_id, defined)
       merge_status(defined, running)
     else
-      # No config yet - fallback to ServiceManager (for in-progress setups)
-      case ServiceManager.service_status(project_dir) do
-        {:ok, statuses} -> Enum.reject(statuses, &(Map.get(&1, :type) == :workspace))
-        _ -> []
-      end
+      # No compose file yet - check docker ps directly for running containers
+      list_services_from_docker(workspace_id)
     end
   end
 
   @doc """
-  List all services defined in the workspace config.
+  List all services defined in docker-compose.yml.
   Returns a list of service definitions (not running state).
   """
   def list_defined_services(project_dir) do
-    case Workspace.load(project_dir) do
-      {:ok, ws} -> extract_services(ws)
+    case File.read(Compose.compose_path(project_dir)) do
+      {:ok, content} -> parse_compose_services(content)
       _ -> []
     end
   end
 
-  @doc """
-  Get running state for a specific service.
-  Returns %{running: bool, container: string|nil, ports: map, health: atom|nil}
-  """
-  def get_running_state(workspace_id, service_name) do
-    container_name = ServiceManager.service_container_name(workspace_id, service_name)
+  # BoomLooper writes docker-compose files as JSON (Compose accepts JSON
+  # because YAML is a superset). Try JSON first, fall back to a simple
+  # line-based YAML parser for hand-edited files.
+  defp parse_compose_services(content) do
+    case Jason.decode(content) do
+      {:ok, %{"services" => services}} when is_map(services) ->
+        services
+        |> Map.keys()
+        |> Enum.reject(&(&1 == "workspace"))
+        |> Enum.sort()
+        |> Enum.map(fn name -> %{name: name, type: infer_service_type_from_name(name)} end)
 
-    if Docker.container_running?(container_name) do
-      ports = get_container_ports(container_name)
-      %{
-        running: true,
-        container: container_name,
-        ports: ports,
-        health: :healthy
-      }
-    else
-      %{
-        running: false,
-        container: nil,
-        ports: %{},
-        health: nil
-      }
+      _ ->
+        parse_compose_services_yaml(content)
+    end
+  end
+
+  defp parse_compose_services_yaml(yaml_content) do
+    # Simple YAML parsing for services - look for top-level service names
+    # Format: "services:" followed by indented service names
+    lines = String.split(yaml_content, "\n")
+
+    {services, _} = Enum.reduce(lines, {[], false}, fn line, {acc, in_services} ->
+      cond do
+        String.starts_with?(line, "services:") ->
+          {acc, true}
+
+        String.starts_with?(line, "volumes:") or String.starts_with?(line, "networks:") ->
+          {acc, false}
+
+        in_services and Regex.match?(~r/^  [a-z]/, line) ->
+          # Service name at 2-space indent under services:
+          service_name = line |> String.trim() |> String.trim_trailing(":")
+          # Skip workspace container - it's internal
+          if service_name != "workspace" do
+            service = %{
+              name: service_name,
+              type: infer_service_type_from_name(service_name)
+            }
+            {[service | acc], true}
+          else
+            {acc, true}
+          end
+
+        true ->
+          {acc, in_services}
+      end
+    end)
+
+    Enum.reverse(services)
+  end
+
+  defp infer_service_type_from_name(name) do
+    cond do
+      name in ["postgres", "redis", "mysql", "mongo", "minio", "rabbitmq", "memcached", "elasticsearch"] -> :stock
+      true -> :process
     end
   end
 
   @doc """
-  Merge defined services with running state.
+  Get state for a specific service.
+  Returns %{container: string|nil, ports: map, status: atom, exit_info: map|nil}
+
+  Status values:
+  - :running - container is running (confirmed via Docker)
+  - :stopped - not running (never started or cleanly stopped)
+  - :crashed - exited with non-zero code
   """
-  def merge_status(defined, running) do
+  def get_running_state(workspace_id, service_name) do
+    project_name = BoomLooper.Compose.project_name(workspace_id)
+    container_name = "#{project_name}-#{service_name}-1"
+
+    cond do
+      Docker.container_running?(container_name) ->
+        ports = get_container_ports(container_name)
+        %{
+          container: container_name,
+          ports: ports,
+          status: :running,
+          exit_info: nil
+        }
+
+      Docker.container_exists?(container_name) ->
+        # Container exists but not running - check if it crashed
+        exit_info = Docker.container_state(container_name)
+        status = if exit_info && exit_info.exit_code > 0, do: :crashed, else: :stopped
+        %{
+          container: container_name,
+          ports: %{},
+          status: status,
+          exit_info: exit_info
+        }
+
+      true ->
+        # Container doesn't exist at all - it's defined in compose but never started
+        %{
+          container: nil,
+          ports: %{},
+          status: :stopped,
+          exit_info: nil
+        }
+    end
+  end
+
+  @doc """
+  Merge defined services with state from Docker.
+  Default state for services we haven't checked yet is :stopped.
+  """
+  def merge_status(defined, running_states) do
     Enum.map(defined, fn service ->
-      state = Map.get(running, service.name, %{running: false, container: nil, ports: %{}, health: nil})
+      state = Map.get(running_states, service.name, %{container: nil, ports: %{}, status: :stopped, exit_info: nil})
       Map.merge(service, state)
     end)
   end
 
   # Private functions
-
-  defp extract_services(ws) do
-    stock_services = Enum.map(ws.services || [], fn s ->
-      %{
-        name: s.name,
-        type: :stock,
-        image: s[:image] || s["image"]
-      }
-    end)
-
-    process_services = Enum.map(ws.processes || [], fn p ->
-      %{
-        name: p.name,
-        type: :process,
-        command: p[:command] || p["command"]
-      }
-    end)
-
-    stock_services ++ process_services
-  end
 
   defp get_all_running_states(workspace_id, defined) do
     Map.new(defined, fn service ->
@@ -114,21 +171,72 @@ defmodule BoomLooper.Workspace.ServiceStatus do
   end
 
   defp get_container_ports(container_name) do
-    case System.cmd("docker", ["port", container_name], stderr_to_stdout: true) do
+    # Use shared Docker module function
+    Docker.container_ports(container_name)
+  end
+
+  # Query docker ps directly for running containers matching this workspace
+  defp list_services_from_docker(workspace_id) do
+    project_name = BoomLooper.Compose.project_name(workspace_id)
+
+    case System.cmd("docker", [
+      "ps", "--filter", "name=#{project_name}",
+      "--format", "{{.Names}}\t{{.Image}}\t{{.Ports}}\t{{.Status}}"
+    ], stderr_to_stdout: true) do
       {output, 0} ->
         output
         |> String.split("\n", trim: true)
-        |> Enum.reduce(%{}, fn line, acc ->
-          case Regex.run(~r/^(\d+)\/tcp -> [\d.:]+:(\d+)$/, line) do
-            [_, container_port, host_port] ->
-              Map.put(acc, container_port, host_port)
-            _ ->
-              acc
-          end
-        end)
+        |> Enum.map(&parse_docker_ps_line(&1, project_name))
+        |> Enum.reject(&is_nil/1)
+        |> Enum.reject(&(&1.name == "workspace"))  # Exclude workspace container
 
       _ ->
-        %{}
+        []
     end
+  end
+
+  defp parse_docker_ps_line(line, project_name) do
+    case String.split(line, "\t") do
+      [container_name, image, ports_str, docker_status] ->
+        # Extract service name from container name (e.g., "bl-848d-postgres-1" -> "postgres")
+        service_name = container_name
+          |> String.replace_prefix("#{project_name}-", "")
+          |> String.replace_suffix("-1", "")
+
+        status = if String.contains?(docker_status, "Up"), do: :running, else: :stopped
+
+        %{
+          name: service_name,
+          type: infer_service_type(image),
+          image: image,
+          container: container_name,
+          status: status,
+          ports: parse_ports(ports_str),
+          exit_info: nil
+        }
+
+      _ ->
+        nil
+    end
+  end
+
+  defp infer_service_type(image) do
+    cond do
+      String.contains?(image, "postgres") -> :stock
+      String.contains?(image, "redis") -> :stock
+      String.contains?(image, "mysql") -> :stock
+      String.contains?(image, "mongo") -> :stock
+      String.contains?(image, "minio") -> :stock
+      String.contains?(image, "rabbitmq") -> :stock
+      true -> :process
+    end
+  end
+
+  defp parse_ports(ports_str) do
+    # Parse "0.0.0.0:32961->3000/tcp, ..." into %{3000 => 32961}
+    Regex.scan(~r/0\.0\.0\.0:(\d+)->(\d+)/, ports_str)
+    |> Map.new(fn [_, host_port, container_port] ->
+      {String.to_integer(container_port), String.to_integer(host_port)}
+    end)
   end
 end
