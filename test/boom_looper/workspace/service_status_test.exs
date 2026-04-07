@@ -106,41 +106,51 @@ defmodule BoomLooper.Workspace.ServiceStatusTest do
   end
 
   describe "merge_status/2" do
+    alias BoomLooper.Workspace.ServiceStatus.Service
+
     test "merges defined services with running state" do
       defined = [
-        %{name: "postgres", type: :stock},
-        %{name: "dev", type: :process}
+        %Service{name: "postgres", type: :stock, status: :stopped},
+        %Service{name: "dev", type: :process, status: :stopped}
       ]
 
       running = %{
-        "postgres" => %{running: true, container: "bl-abc-postgres-1", ports: %{}, health: :healthy},
-        "dev" => %{running: false, container: nil, ports: %{}, health: nil}
+        "postgres" => %{status: :running, container: "bl-abc-postgres-1", ports: %{}, exit_info: nil},
+        "dev" => %{status: :stopped, container: nil, ports: %{}, exit_info: nil}
       }
 
       merged = ServiceStatus.merge_status(defined, running)
 
       assert length(merged) == 2
 
-      pg = Enum.find(merged, & &1.name == "postgres")
-      assert pg.running == true
+      pg = Enum.find(merged, &(&1.name == "postgres"))
+      assert pg.status == :running
       assert pg.container == "bl-abc-postgres-1"
-      assert pg.health == :healthy
 
-      dev = Enum.find(merged, & &1.name == "dev")
-      assert dev.running == false
+      dev = Enum.find(merged, &(&1.name == "dev"))
+      assert dev.status == :stopped
       assert dev.container == nil
     end
 
     test "preserves service metadata from definition" do
-      defined = [%{name: "postgres", type: :stock}]
-      running = %{"postgres" => %{running: true, container: "pg-1", ports: %{"5432" => "5433"}, health: :healthy}}
+      defined = [%Service{name: "postgres", type: :stock, status: :stopped}]
+      running = %{"postgres" => %{status: :running, container: "pg-1", ports: %{"5432" => "5433"}, exit_info: nil}}
 
       [merged] = ServiceStatus.merge_status(defined, running)
 
       assert merged.name == "postgres"
       assert merged.type == :stock
-      assert merged.running == true
+      assert merged.status == :running
       assert merged.ports == %{"5432" => "5433"}
+    end
+
+    test "result is a Service struct, not a plain map" do
+      defined = [%Service{name: "x", type: :stock, status: :stopped}]
+      running = %{"x" => %{status: :running, container: "x-1", ports: %{}, exit_info: nil}}
+
+      [merged] = ServiceStatus.merge_status(defined, running)
+
+      assert %Service{} = merged
     end
   end
 

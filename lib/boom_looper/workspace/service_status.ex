@@ -9,16 +9,65 @@ defmodule BoomLooper.Workspace.ServiceStatus do
 
   The docker-compose.yml is the source of truth for what services SHOULD exist.
   Docker is the source of truth for what IS running.
+
+  ## Why a struct
+
+  We previously returned `%{name: ..., running: true, health: :healthy}`
+  and the sidebar/UI keyed off `:running` and `:health`. When those
+  fields got renamed to `:status`, six tests silently broke because
+  reading a missing key from a map returns `nil` and `service_dot/1`
+  fell through to the gray default. Using a struct turns field renames
+  into compile errors instead of silent test failures.
   """
 
   alias BoomLooper.Workspace
   alias BoomLooper.Compose
   alias BoomLooper.Docker
 
+  defmodule Service do
+    @moduledoc """
+    One service known to BoomLooper. Built by `ServiceStatus.for_workspace/1`.
+
+    The merge from "what's defined in docker-compose.yml" + "what Docker
+    says is running" produces this struct. Anything that renders services
+    (sidebar, project page, system pages) pattern-matches on these fields,
+    so renames here ripple to compile errors at every call site.
+
+    ## Status semantics
+
+    - `:running` — container exists AND `docker inspect .State.Running == true`
+    - `:starting` — container exists, not yet running (transient)
+    - `:crashed` — container exists, exit code != 0
+    - `:stopped` — container doesn't exist OR exited cleanly
+    """
+    @enforce_keys [:name, :type, :status]
+    defstruct [
+      :name,        # Service name from compose file
+      :type,        # :stock | :process — for grouping in the UI
+      :status,      # :running | :starting | :crashed | :stopped
+      :container,   # Full container name (or nil)
+      :image,       # Docker image (only set when discovered via docker ps)
+      ports: %{},   # %{container_port => host_port}
+      exit_info: nil
+    ]
+
+    @type status :: :running | :starting | :crashed | :stopped
+    @type t :: %__MODULE__{
+            name: String.t(),
+            type: :stock | :process,
+            status: status(),
+            container: String.t() | nil,
+            image: String.t() | nil,
+            ports: %{optional(integer() | String.t()) => integer() | String.t()},
+            exit_info: map() | nil
+          }
+  end
+
   @doc """
   Get complete service status for a workspace.
   Returns all defined services with their current running state.
   """
+  @spec for_workspace(String.t()) :: [Service.t()]
   def for_workspace(project_dir) do
     project_dir = Path.expand(project_dir)
     workspace_id = Workspace.workspace_id(project_dir)
@@ -57,7 +106,9 @@ defmodule BoomLooper.Workspace.ServiceStatus do
         |> Map.keys()
         |> Enum.reject(&(&1 == "workspace"))
         |> Enum.sort()
-        |> Enum.map(fn name -> %{name: name, type: infer_service_type_from_name(name)} end)
+        |> Enum.map(fn name ->
+          %Service{name: name, type: infer_service_type_from_name(name), status: :stopped}
+        end)
 
       _ ->
         parse_compose_services_yaml(content)
@@ -82,9 +133,10 @@ defmodule BoomLooper.Workspace.ServiceStatus do
           service_name = line |> String.trim() |> String.trim_trailing(":")
           # Skip workspace container - it's internal
           if service_name != "workspace" do
-            service = %{
+            service = %Service{
               name: service_name,
-              type: infer_service_type_from_name(service_name)
+              type: infer_service_type_from_name(service_name),
+              status: :stopped
             }
             {[service | acc], true}
           else
@@ -155,10 +207,11 @@ defmodule BoomLooper.Workspace.ServiceStatus do
   Merge defined services with state from Docker.
   Default state for services we haven't checked yet is :stopped.
   """
+  @spec merge_status([Service.t()], %{String.t() => map()}) :: [Service.t()]
   def merge_status(defined, running_states) do
-    Enum.map(defined, fn service ->
+    Enum.map(defined, fn %Service{} = service ->
       state = Map.get(running_states, service.name, %{container: nil, ports: %{}, status: :stopped, exit_info: nil})
-      Map.merge(service, state)
+      struct!(service, state)
     end)
   end
 
@@ -205,7 +258,7 @@ defmodule BoomLooper.Workspace.ServiceStatus do
 
         status = if String.contains?(docker_status, "Up"), do: :running, else: :stopped
 
-        %{
+        %Service{
           name: service_name,
           type: infer_service_type(image),
           image: image,

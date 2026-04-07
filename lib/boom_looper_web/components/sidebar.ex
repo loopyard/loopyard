@@ -116,7 +116,7 @@ defmodule BoomLooperWeb.Components.Sidebar do
   attr :selected, :boolean, default: false
 
   def service_item(assigns) do
-    first_port = first_host_port(assigns.svc[:ports])
+    first_port = first_host_port(assigns.svc.ports)
     assigns = assign(assigns, :first_port, first_port)
 
     ~H"""
@@ -127,13 +127,13 @@ defmodule BoomLooperWeb.Components.Sidebar do
       navigate={"#{@base_path}/services/#{@svc.name}"}
     >
       <:actions>
-        <a :if={@first_port && Map.get(@svc, :status) == :running} href={"http://localhost:#{@first_port}"} target="_blank"
+        <a :if={@first_port && @svc.status == :running} href={"http://localhost:#{@first_port}"} target="_blank"
           class="text-[10px] text-violet-500 hover:text-violet-400 font-mono ml-auto flex-none transition-colors">
           :{@first_port}
         </a>
         <span :if={service_status_text(@svc)} class="text-[10px] text-blue-400 ml-auto flex-none">{service_status_text(@svc)}</span>
-        <span :if={!service_status_text(@svc) && !@first_port && @svc[:status] == :running} class="text-[10px] text-zinc-400 dark:text-zinc-500 ml-auto font-mono truncate max-w-[100px]">{service_detail(@svc)}</span>
-        <span :if={@svc[:status] == :crashed && @svc[:exit_info]} class="text-[10px] text-red-500 ml-auto truncate max-w-[140px]">{exit_reason(@svc.exit_info)}</span>
+        <span :if={!service_status_text(@svc) && !@first_port && @svc.status == :running} class="text-[10px] text-zinc-400 dark:text-zinc-500 ml-auto font-mono truncate max-w-[100px]">{service_detail(@svc)}</span>
+        <span :if={@svc.status == :crashed && @svc.exit_info} class="text-[10px] text-red-500 ml-auto truncate max-w-[140px]">{exit_reason(@svc.exit_info)}</span>
       </:actions>
     </.sidebar_item>
     """

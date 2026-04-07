@@ -12,13 +12,77 @@ defmodule BoomLooper.SystemStats do
 
   Don't add a "load everything" function — that's what mount used to do
   and it made the page take seconds to paint.
+
+  ## Why structs
+
+  The slice functions return **typed structs**, not raw maps. We learned
+  the hard way that returning `%{running: true, health: :healthy}` and
+  later renaming the fields silently broke 6 sidebar tests — Elixir
+  happily lets you read missing keys from a map (returning nil), so
+  drift gets discovered weeks later by a confused user. Structs make
+  field renames an immediate compile error.
+
+  If you add a new field to one of these structs, every consumer that
+  pattern-matches on it (templates do `@host_cpu.cores`) breaks at
+  compile time instead of silently rendering empty.
   """
+
+  defmodule HostCpu do
+    @moduledoc "Host CPU stats. Returned by `SystemStats.host_cpu/0`."
+    @enforce_keys [:cores, :load_avg]
+    defstruct [:cores, :load_avg]
+
+    @type t :: %__MODULE__{cores: pos_integer(), load_avg: [float()]}
+  end
+
+  defmodule HostMemory do
+    @moduledoc "Host RAM stats. Returned by `SystemStats.host_memory/0`."
+    @enforce_keys [:total, :used, :free]
+    defstruct [:total, :used, :free, :inactive, :compressed]
+
+    @type t :: %__MODULE__{
+            total: non_neg_integer(),
+            used: non_neg_integer(),
+            free: non_neg_integer(),
+            inactive: non_neg_integer() | nil,
+            compressed: non_neg_integer() | nil
+          }
+  end
+
+  defmodule HostDisk do
+    @moduledoc "Host disk stats from `df -h /`. Returned by `SystemStats.host_disk/0`."
+    @enforce_keys [:total, :used, :available, :use_pct]
+    defstruct [:total, :used, :available, :use_pct]
+
+    @type t :: %__MODULE__{
+            total: String.t(),
+            used: String.t(),
+            available: String.t(),
+            use_pct: String.t()
+          }
+  end
+
+  defmodule BeamStats do
+    @moduledoc "BEAM VM stats. Returned by `SystemStats.beam_stats/0`."
+    @enforce_keys [:total, :processes, :ets, :system, :process_count, :schedulers]
+    defstruct [:total, :processes, :ets, :system, :process_count, :schedulers]
+
+    @type t :: %__MODULE__{
+            total: non_neg_integer(),
+            processes: non_neg_integer(),
+            ets: non_neg_integer(),
+            system: non_neg_integer(),
+            process_count: non_neg_integer(),
+            schedulers: pos_integer()
+          }
+  end
 
   alias BoomLooper.ChatAgent
 
   # --- Host System (each slice is one shell-out, callable in isolation) ---
 
   @doc "Host CPU info: core count and load average. Single sysctl call."
+  @spec host_cpu() :: HostCpu.t()
   def host_cpu do
     # macOS: use sysctl for core count, top for load
     cores =
@@ -48,10 +112,11 @@ defmodule BoomLooper.SystemStats do
           [0.0, 0.0, 0.0]
       end
 
-    %{cores: cores, load_avg: load}
+    %HostCpu{cores: cores, load_avg: load}
   end
 
   @doc "Host RAM stats from vm_stat (macOS)."
+  @spec host_memory() :: HostMemory.t()
   def host_memory do
     # macOS: vm_stat for memory breakdown
     case System.cmd("vm_stat", [], stderr_to_stdout: true) do
@@ -76,14 +141,15 @@ defmodule BoomLooper.SystemStats do
 
         used = active + wired + compressed
 
-        %{total: total, used: used, free: free, inactive: inactive, compressed: compressed}
+        %HostMemory{total: total, used: used, free: free, inactive: inactive, compressed: compressed}
 
       _ ->
-        %{total: 0, used: 0, free: 0, inactive: 0, compressed: 0}
+        %HostMemory{total: 0, used: 0, free: 0, inactive: 0, compressed: 0}
     end
   end
 
   @doc "Host disk usage for /. Single df call."
+  @spec host_disk() :: HostDisk.t()
   def host_disk do
     case System.cmd("df", ["-h", "/"], stderr_to_stdout: true) do
       {output, 0} ->
@@ -91,12 +157,12 @@ defmodule BoomLooper.SystemStats do
 
         case Enum.at(lines, 1) do
           nil ->
-            %{total: "?", used: "?", available: "?", use_pct: "?"}
+            %HostDisk{total: "?", used: "?", available: "?", use_pct: "?"}
 
           line ->
             parts = String.split(line, ~r/\s+/)
             # df -h: Filesystem Size Used Avail Capacity ...
-            %{
+            %HostDisk{
               total: Enum.at(parts, 1, "?"),
               used: Enum.at(parts, 2, "?"),
               available: Enum.at(parts, 3, "?"),
@@ -105,7 +171,7 @@ defmodule BoomLooper.SystemStats do
         end
 
       _ ->
-        %{total: "?", used: "?", available: "?", use_pct: "?"}
+        %HostDisk{total: "?", used: "?", available: "?", use_pct: "?"}
     end
   end
 
@@ -120,10 +186,11 @@ defmodule BoomLooper.SystemStats do
   # --- BEAM VM ---
 
   @doc "BEAM VM memory and process stats"
+  @spec beam_stats() :: BeamStats.t()
   def beam_stats do
     mem = :erlang.memory()
 
-    %{
+    %BeamStats{
       total: mem[:total],
       processes: mem[:processes],
       ets: mem[:ets],

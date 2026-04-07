@@ -156,7 +156,7 @@ defmodule BoomLooperWeb.ChatLive do
     # Stock services exec into their own container
     workspace_id = BoomLooper.ProjectRegistry.workspace_id(socket.assigns.workspace.path)
     container = cond do
-      svc && Map.get(svc, :type) == :process ->
+      svc && svc.type == :process ->
         BoomLooper.Workspace.ServiceManager.service_container_name(workspace_id, "workspace")
       svc ->
         svc.container
@@ -1182,7 +1182,7 @@ defmodule BoomLooperWeb.ChatLive do
   # --- Sidebar ---
 
   defp service_item(assigns) do
-    first_port = first_host_port(assigns.svc[:ports])
+    first_port = first_host_port(assigns.svc.ports)
     assigns = assign(assigns, :first_port, first_port)
 
     ~H"""
@@ -1191,13 +1191,13 @@ defmodule BoomLooperWeb.ChatLive do
         <div class={"w-1.5 h-1.5 rounded-full flex-none #{service_dot(@svc)}"}></div>
         <span class="truncate text-zinc-600 dark:text-zinc-400">{@svc.name}</span>
       </.link>
-      <a :if={@first_port && Map.get(@svc, :status) == :running} href={"http://#{@host}:#{@first_port}"} target="_blank"
+      <a :if={@first_port && @svc.status == :running} href={"http://#{@host}:#{@first_port}"} target="_blank"
         class="text-[10px] text-violet-500 hover:text-violet-400 font-mono ml-auto flex-none transition-colors">
         :{@first_port}
       </a>
       <span :if={service_status_text(@svc)} class="text-[10px] text-blue-400 ml-auto flex-none">{service_status_text(@svc)}</span>
       <span :if={!service_status_text(@svc) && !@first_port && @svc.status == :running} class="text-[10px] text-zinc-400 dark:text-zinc-500 ml-auto font-mono truncate max-w-[100px]">{service_detail(@svc)}</span>
-      <span :if={@svc.status == :crashed && @svc[:exit_info]} class="text-[10px] text-red-500 ml-auto truncate max-w-[140px]">{exit_reason(@svc.exit_info)}</span>
+      <span :if={@svc.status == :crashed && @svc.exit_info} class="text-[10px] text-red-500 ml-auto truncate max-w-[140px]">{exit_reason(@svc.exit_info)}</span>
     </div>
     """
   end
@@ -1601,7 +1601,7 @@ defmodule BoomLooperWeb.ChatLive do
 
   defp service_log_view(assigns) do
     svc = Enum.find(assigns.service_statuses, &(&1.name == assigns.service_name))
-    first_port = if svc, do: first_host_port(svc[:ports]), else: nil
+    first_port = if svc, do: first_host_port(svc.ports), else: nil
     assigns = assign(assigns, svc: svc, first_port: first_port)
 
     ~H"""
