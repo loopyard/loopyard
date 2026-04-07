@@ -111,11 +111,26 @@ defmodule BoomLooper.Tools.ContainerTest do
       File.mkdir_p!(tmp_dir)
       workspace_id = BoomLooper.Workspace.workspace_id(tmp_dir)
 
-      # Write workspace config and start via compose
+      # Write workspace config
       repo_dir = Path.join(tmp_dir, ".boomlooper/repo")
       File.mkdir_p!(repo_dir)
-      File.write!(Path.join(repo_dir, "workspace.json"), Jason.encode!(%{"name" => "test", "dockerfile" => BoomLooper.Docker.dockerfile()}))
-      BoomLooper.Compose.write(tmp_dir, workspace_id)
+      File.write!(Path.join(repo_dir, "workspace.json"), Jason.encode!(%{"name" => "test"}))
+
+      # Write docker-compose.yml directly (new architecture)
+      workspace_dir = Path.join(tmp_dir, ".boomlooper/workspace")
+      File.mkdir_p!(workspace_dir)
+      compose_content = """
+      {
+        "services": {
+          "workspace": {
+            "image": "ubuntu:24.04",
+            "command": ["sleep", "infinity"],
+            "working_dir": "/workspace"
+          }
+        }
+      }
+      """
+      File.write!(Path.join(workspace_dir, "docker-compose.yml"), compose_content)
       BoomLooper.Compose.up(tmp_dir, workspace_id)
 
       # Start an agent bound to this workspace

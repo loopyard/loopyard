@@ -31,24 +31,25 @@ defmodule BoomLooperWeb.Components.SidebarTest do
   end
 
   describe "service_dot/1" do
-    test "returns green for healthy" do
-      assert service_dot(%{health: :healthy}) == "bg-green-500"
+    test "returns green for running" do
+      assert service_dot(%{status: :running}) == "bg-green-500"
     end
 
-    test "returns blue for started" do
-      assert service_dot(%{health: :started}) == "bg-blue-400"
+    test "returns blue with pulse for starting" do
+      assert service_dot(%{status: :starting}) == "bg-blue-400 animate-pulse"
     end
 
     test "returns red for crashed" do
-      assert service_dot(%{health: :crashed}) == "bg-red-500"
-    end
-
-    test "returns blue for running without health" do
-      assert service_dot(%{running: true}) == "bg-blue-400"
+      assert service_dot(%{status: :crashed}) == "bg-red-500"
     end
 
     test "returns gray for stopped" do
-      assert service_dot(%{running: false}) == "bg-zinc-400"
+      assert service_dot(%{status: :stopped}) == "bg-zinc-400"
+    end
+
+    test "returns gray for unknown status" do
+      assert service_dot(%{status: :unknown}) == "bg-zinc-400"
+      assert service_dot(%{}) == "bg-zinc-400"
     end
   end
 
@@ -140,22 +141,22 @@ defmodule BoomLooperWeb.Components.SidebarTest do
   end
 
   describe "service_item/1" do
-    test "renders service name with health dot" do
-      svc = %{name: "postgres", health: :healthy, running: true, ports: %{"5432" => 32885}}
+    test "renders service name with status dot" do
+      svc = %{name: "postgres", status: :running, ports: %{"5432" => 32885}}
       html = render_comp(&service_item/1, %{svc: svc, base_path: "/projects/p1/workspaces/w1", selected: false})
       assert html =~ "postgres"
       assert html =~ "bg-green-500"
     end
 
-    test "shows port link when healthy" do
-      svc = %{name: "dev", health: :healthy, running: true, ports: %{"3000" => 3000}}
+    test "shows port link when running" do
+      svc = %{name: "dev", status: :running, ports: %{"3000" => 3000}}
       html = render_comp(&service_item/1, %{svc: svc, base_path: "/base", selected: false})
       assert html =~ "http://localhost:3000"
       assert html =~ ":3000"
     end
 
     test "does not render remove button" do
-      svc = %{name: "redis", health: :healthy, running: true, ports: %{}}
+      svc = %{name: "redis", status: :running, ports: %{}}
       html = render_comp(&service_item/1, %{svc: svc, base_path: "/base", selected: false})
       refute html =~ "remove"
       refute html =~ "&times;"

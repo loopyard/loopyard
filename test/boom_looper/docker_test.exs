@@ -3,17 +3,6 @@ defmodule BoomLooper.DockerTest do
 
   alias BoomLooper.Docker
 
-  describe "dockerfile" do
-    test "uses generic ubuntu base image" do
-      assert Docker.dockerfile() =~ "FROM ubuntu:24.04"
-    end
-
-    test "includes build-essential and gh CLI" do
-      assert Docker.dockerfile() =~ "build-essential"
-      assert Docker.dockerfile() =~ "gh"
-    end
-  end
-
   describe "container_running?/1" do
     test "returns false for non-existent container" do
       refute Docker.container_running?("nonexistent-container-#{:rand.uniform(100_000)}")

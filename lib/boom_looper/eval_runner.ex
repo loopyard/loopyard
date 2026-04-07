@@ -482,7 +482,7 @@ defmodule BoomLooper.EvalRunner do
   sibling `runs/` directory. Otherwise writes to `evals/<project_name>/runs/`.
   """
   def record_run(project_name, result) do
-    dir = runs_dir(result.project_path, project_name)
+    dir = runs_dir(result.source, project_name)
     File.mkdir_p!(dir)
 
     date = Calendar.strftime(DateTime.utc_now(), "%Y-%m-%d_%H%M%S")

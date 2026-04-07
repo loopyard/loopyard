@@ -331,6 +331,12 @@ defmodule BoomLooper.Workspace.ServiceManager do
   end
 
   @impl true
+  def handle_cast(:check_health, state) do
+    broadcast_service_update(state)
+    {:noreply, state}
+  end
+
+  @impl true
   def terminate(_reason, state) do
     # Always tear down containers. State is persisted in volumes + ETF logs,
     # so init/1 can restart everything cleanly. This prevents zombie containers.

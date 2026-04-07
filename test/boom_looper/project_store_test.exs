@@ -51,7 +51,10 @@ defmodule BoomLooper.ProjectStoreTest do
       File.mkdir_p!(Path.dirname(ProjectStore.path()))
       File.write!(ProjectStore.path(), Jason.encode!(data))
 
-      assert ProjectStore.load() == ["/path/to/project1", "/path/to/project2"]
+      assert ProjectStore.load() == [
+        %{path: "/path/to/project1", name: nil},
+        %{path: "/path/to/project2", name: nil}
+      ]
     end
 
     test "ignores records without path key" do
@@ -66,7 +69,10 @@ defmodule BoomLooper.ProjectStoreTest do
       File.mkdir_p!(Path.dirname(ProjectStore.path()))
       File.write!(ProjectStore.path(), Jason.encode!(data))
 
-      assert ProjectStore.load() == ["/valid/path", "/another/valid"]
+      assert ProjectStore.load() == [
+        %{path: "/valid/path", name: nil},
+        %{path: "/another/valid", name: nil}
+      ]
     end
   end
 
@@ -105,21 +111,24 @@ defmodule BoomLooper.ProjectStoreTest do
       ProjectStore.save(["/old/path"])
       ProjectStore.save(["/new/path"])
 
-      assert ProjectStore.load() == ["/new/path"]
+      assert ProjectStore.load() == [%{path: "/new/path", name: nil}]
     end
   end
 
   describe "add/1" do
     test "creates file and adds path" do
       assert :ok = ProjectStore.add("/my/project")
-      assert ProjectStore.load() == ["/my/project"]
+      assert ProjectStore.load() == [%{path: "/my/project", name: nil}]
     end
 
     test "appends to existing paths" do
       ProjectStore.add("/first")
       ProjectStore.add("/second")
 
-      assert ProjectStore.load() == ["/first", "/second"]
+      assert ProjectStore.load() == [
+        %{path: "/first", name: nil},
+        %{path: "/second", name: nil}
+      ]
     end
 
     test "is idempotent - no duplicates" do
@@ -127,14 +136,17 @@ defmodule BoomLooper.ProjectStoreTest do
       ProjectStore.add("/same/path")
       ProjectStore.add("/same/path")
 
-      assert ProjectStore.load() == ["/same/path"]
+      assert ProjectStore.load() == [%{path: "/same/path", name: nil}]
     end
 
     test "preserves existing paths when adding new" do
       ProjectStore.add("/existing")
       ProjectStore.add("/new")
 
-      assert ProjectStore.load() == ["/existing", "/new"]
+      assert ProjectStore.load() == [
+        %{path: "/existing", name: nil},
+        %{path: "/new", name: nil}
+      ]
     end
   end
 
@@ -146,14 +158,17 @@ defmodule BoomLooper.ProjectStoreTest do
 
       ProjectStore.remove("/remove")
 
-      assert ProjectStore.load() == ["/keep", "/also-keep"]
+      assert ProjectStore.load() == [
+        %{path: "/keep", name: nil},
+        %{path: "/also-keep", name: nil}
+      ]
     end
 
     test "handles removing non-existent path" do
       ProjectStore.add("/exists")
       ProjectStore.remove("/does-not-exist")
 
-      assert ProjectStore.load() == ["/exists"]
+      assert ProjectStore.load() == [%{path: "/exists", name: nil}]
     end
 
     test "handles removing from empty file" do

@@ -1131,14 +1131,13 @@ defmodule BoomLooperWeb.ChatLive do
           <p :if={@agents == []} class="text-xs text-zinc-400 dark:text-zinc-500 py-1">No agents</p>
         </div>
 
-        <%!-- Services section - always show header --%>
-        <div class="px-3 pt-3 pb-1">
+        <%!-- Services section - only show when services exist or still loading --%>
+        <div :if={@service_statuses != [] || !@services_loaded} class="px-3 pt-3 pb-1">
           <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-semibold mb-1.5">Services</div>
           <div :if={@service_statuses != []} class="space-y-0.5">
             <.service_item :for={svc <- @service_statuses} svc={svc} base_path={@base_path} selected={@selected_service == svc.name} host={@host} />
           </div>
           <p :if={!@services_loaded} class="text-xs text-zinc-400 dark:text-zinc-500 py-1">Loading...</p>
-          <p :if={@services_loaded && @service_statuses == []} class="text-xs text-zinc-400 dark:text-zinc-500 py-1">No services</p>
         </div>
 
         <%!-- Volumes section - always show header --%>

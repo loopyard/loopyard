@@ -973,22 +973,14 @@ defmodule BoomLooper.ChatAgent do
     prompt
   end
 
-  defp service_agent_prompt(service_name, workspace_id, workspace) do
-    {container, detail} =
-      cond do
-        svc = Enum.find(workspace.services, &(&1.name == service_name)) ->
-          {BoomLooper.Workspace.ServiceManager.service_container_name(workspace_id, service_name),
-           "Stock service running #{svc.image}"}
+  defp service_agent_prompt(service_name, workspace_id, _workspace) do
+    # Workspace metadata no longer carries services/processes — that info
+    # lives in docker-compose.yml directly. Just point the agent at the
+    # right container and let it use `logs` / `exec` to investigate.
+    container =
+      BoomLooper.Workspace.ServiceManager.service_container_name(workspace_id, service_name)
 
-        proc = Enum.find(workspace.processes, &(&1.name == service_name)) ->
-          {BoomLooper.Workspace.ServiceManager.process_container_name(workspace_id, service_name),
-           "Process running: #{proc.command}"}
-
-        true ->
-          {"unknown", "Unknown service"}
-      end
-
-    "\nService agent for #{service_name} (#{container}). #{detail}. Use `logs` to check output."
+    "\nService agent for #{service_name} (container: #{container}). Use `logs` to check output."
   end
 
   defp container_base_prompt(agent_id, _bind_mount, workspace_id) do
@@ -1009,35 +1001,11 @@ defmodule BoomLooper.ChatAgent do
   end
 
   defp workspace_prompt(workspace, _bind_mount) do
-    stock_section =
-      case workspace.services do
-        [] -> ""
-        services ->
-          lines = Enum.map(services, fn s ->
-            ports = s[:ports] || %{}
-            "- #{s.name}: #{s.image}" <>
-            if(is_map(ports) && map_size(ports) > 0, do: " (ports: #{inspect(ports)})", else: "")
-          end)
-          "\nStock services on the Docker network:\n#{Enum.join(lines, "\n")}\n"
-      end
-
-    process_section =
-      case workspace.processes do
-        [] -> ""
-        processes ->
-          lines = Enum.map(processes, fn p ->
-            ports = p[:ports] || []
-            "- #{p.name}: #{p.command}" <>
-            if(is_list(ports) && length(ports) > 0, do: " (ports: #{inspect(ports)})", else: "")
-          end)
-          "\nWorkspace processes (run inside the workspace container):\n#{Enum.join(lines, "\n")}\n"
-      end
-
     custom = if workspace.system_prompt, do: "\n#{workspace.system_prompt}\n", else: ""
 
     """
     ## Workspace: #{workspace.name || "Unnamed"}
-    #{stock_section}#{process_section}#{custom}
+    #{custom}
     """
   end
 

@@ -70,6 +70,33 @@ defmodule BoomLooperWeb.ChatLiveTest do
     render(view)
   end
 
+  # Polls the LiveView's assigns until `predicate.(value)` is truthy or
+  # we hit `timeout`. Use this to wait for `start_async` / `Task.start`
+  # results to land — `:sys.get_state(view.pid)` only drains the LiveView's
+  # current mailbox, so any Task that hasn't sent its result back yet
+  # gets missed by a single drain.
+  defp wait_for_assign(view, key, predicate, timeout \\ 1_000) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+    do_wait_for_assign(view, key, predicate, deadline)
+  end
+
+  defp do_wait_for_assign(view, key, predicate, deadline) do
+    state = :sys.get_state(view.pid)
+    value = state.socket.assigns[key]
+
+    cond do
+      predicate.(value) ->
+        value
+
+      System.monotonic_time(:millisecond) > deadline ->
+        raise "wait_for_assign timed out waiting for #{key} (last value: #{inspect(value)})"
+
+      true ->
+        Process.sleep(20)
+        do_wait_for_assign(view, key, predicate, deadline)
+    end
+  end
+
   describe "mount" do
     test "branch with agent renders chat page", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
       {:ok, _view, html} = live(conn, ws_chat_path(ws, setup_agent_id))
@@ -449,13 +476,20 @@ defmodule BoomLooperWeb.ChatLiveTest do
       # Add services to workspace config - ServiceStatus reads from config, not PubSub
       add_services_to_workspace(ws, [%{"name" => "postgres", "image" => "postgres:16"}])
 
-      {:ok, _view, html} = live(conn, ws_chat_path(ws, setup_agent_id))
+      {:ok, view, _html} = live(conn, ws_chat_path(ws, setup_agent_id))
+      # Wait for async service loading to complete (Task.start → message loop)
+      wait_for_assign(view, :services_loaded, & &1)
+      html = render(view)
       assert html =~ "Services"
       assert html =~ "postgres"
     end
 
     test "sidebar shows no services section when no services configured", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
-      {:ok, _view, html} = live(conn, ws_chat_path(ws, setup_agent_id))
+      {:ok, view, _html} = live(conn, ws_chat_path(ws, setup_agent_id))
+      # Wait for async service loading to complete (Task.start → message loop)
+      wait_for_assign(view, :services_loaded, & &1)
+      html = render(view)
+      # Services section is hidden when no services and loading complete
       refute html =~ "Services"
     end
 
@@ -486,14 +520,20 @@ defmodule BoomLooperWeb.ChatLiveTest do
     test "service items link to service log view", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
       add_services_to_workspace(ws, [%{"name" => "redis", "image" => "redis:7"}])
 
-      {:ok, _view, html} = live(conn, ws_chat_path(ws, setup_agent_id))
+      {:ok, view, _html} = live(conn, ws_chat_path(ws, setup_agent_id))
+      # Wait for async service loading to complete (Task.start → message loop)
+      wait_for_assign(view, :services_loaded, & &1)
+      html = render(view)
       assert html =~ "/projects/#{ws.project_id}/workspaces/#{ws.id}/services/redis"
     end
 
     test "stock services appear in sidebar", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
       add_services_to_workspace(ws, [%{"name" => "postgres", "image" => "postgres:16"}])
 
-      {:ok, _view, html} = live(conn, ws_chat_path(ws, setup_agent_id))
+      {:ok, view, _html} = live(conn, ws_chat_path(ws, setup_agent_id))
+      # Wait for async service loading to complete (Task.start → message loop)
+      wait_for_assign(view, :services_loaded, & &1)
+      html = render(view)
       assert html =~ "Services"
       assert html =~ "postgres"
     end
@@ -510,7 +550,10 @@ defmodule BoomLooperWeb.ChatLiveTest do
       """
       File.write!(Path.join(compose_dir, "docker-compose.yml"), content)
 
-      {:ok, _view, html} = live(conn, ws_chat_path(ws, setup_agent_id))
+      {:ok, view, _html} = live(conn, ws_chat_path(ws, setup_agent_id))
+      # Wait for async service loading to complete (Task.start → message loop)
+      wait_for_assign(view, :services_loaded, & &1)
+      html = render(view)
       assert html =~ "Services"
       assert html =~ "dev"
     end

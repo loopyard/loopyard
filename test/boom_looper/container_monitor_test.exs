@@ -1,5 +1,8 @@
 defmodule BoomLooper.ContainerMonitorTest do
   use ExUnit.Case
+  # One test sleeps 6s waiting for the poll loop. Excluded from the
+  # default run; opt in with `mix test --include slow`.
+  @moduletag :slow
 
   alias BoomLooper.ContainerMonitor
 

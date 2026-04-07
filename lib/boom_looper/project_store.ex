@@ -63,10 +63,11 @@ defmodule BoomLooper.ProjectStore do
 
   @doc "Add a project path. Idempotent - won't add duplicates."
   def add(project_path) do
-    paths = load()
+    projects = load()
+    existing_paths = Enum.map(projects, & &1.path)
 
-    unless project_path in paths do
-      save(paths ++ [project_path])
+    unless project_path in existing_paths do
+      save(projects ++ [%{path: project_path, name: nil}])
     end
 
     :ok
@@ -74,8 +75,8 @@ defmodule BoomLooper.ProjectStore do
 
   @doc "Remove a project path."
   def remove(project_path) do
-    paths = load() |> Enum.reject(&(&1 == project_path))
-    save(paths)
+    projects = load() |> Enum.reject(&(&1.path == project_path))
+    save(projects)
     :ok
   end
 
