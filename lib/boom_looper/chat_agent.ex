@@ -415,12 +415,24 @@ defmodule BoomLooper.ChatAgent do
     workspace = if workspace_id, do: load_workspace_config(workspace_id), else: nil
     system_prompt = build_system_prompt(id, bind_mount, workspace_id, workspace, service_name)
 
+    # Containerized agents (volume-based, no bind_mount) MUST NOT get
+    # host-side Read/Glob/Grep. Their workspace lives inside a Docker
+    # volume; the host's view of `working_dir` is either empty or
+    # doesn't exist yet. If a container agent has the native tools,
+    # it falls back to the BEAM process cwd (BoomLooper repo!) and
+    # happily "sets up" whatever it finds there. This was the
+    # chatwoot eval cross-contamination bug.
+    #
+    # Bind-mount agents keep the native tools because they work on the
+    # real host dir.
+    container_only? = is_nil(bind_mount)
+
     session_opts = [
       cwd: working_dir,
       permission_mode: :accept_edits,
       dangerously_skip_permissions: true,
       mcp_servers: build_mcp_servers(tools),
-      allowed_tools: build_allowed_tools(tools),
+      allowed_tools: build_allowed_tools(tools, container_only?),
       system_prompt: system_prompt
     ]
 
@@ -1064,16 +1076,26 @@ defmodule BoomLooper.ChatAgent do
     end)
   end
 
-  # Built-in Claude Code tools that agents should have access to
-  @builtin_tools [
+  # Built-in Claude Code tools for bind-mount agents (they run against
+  # the host filesystem, so native Read/Glob/Grep work correctly).
+  @builtin_tools_bind_mount [
     "WebSearch",      # Search the web for docs, examples, solutions
     "WebFetch",       # Fetch specific URLs
-    "Read",           # Read files (in workspace via exec, but useful for prompts)
+    "Read",           # Read files directly on host
     "Glob",           # Find files by pattern
     "Grep"            # Search file contents
   ]
 
-  defp build_allowed_tools(tool_modules) do
+  # Built-in tools for container-only agents. Read/Glob/Grep are REMOVED
+  # because they run host-side — they'd find (or fail to find) files in
+  # the wrong place. Everything filesystem-related must go through MCP
+  # tools that exec inside the container.
+  @builtin_tools_container_only [
+    "WebSearch",
+    "WebFetch"
+  ]
+
+  defp build_allowed_tools(tool_modules, container_only?) do
     mcp_tools = Enum.flat_map(tool_modules, fn mod ->
       info = mod.__tool_server__()
       server_name = info.name
@@ -1083,6 +1105,8 @@ defmodule BoomLooper.ChatAgent do
       end)
     end)
 
-    @builtin_tools ++ mcp_tools
+    builtins = if container_only?, do: @builtin_tools_container_only, else: @builtin_tools_bind_mount
+
+    builtins ++ mcp_tools
   end
 end

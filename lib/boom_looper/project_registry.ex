@@ -99,17 +99,37 @@ defmodule BoomLooper.ProjectRegistry do
     # clone_mode: :sync (default), :disabled (tests)
     volume_name = BoomLooper.VolumeManager.code_volume_name(workspace_id)
     clone_mode = Application.get_env(:boom_looper, :clone_mode, :sync)
-    if clone_mode != :disabled and not BoomLooper.VolumeManager.volume_has_code?(volume_name) do
-      case BoomLooper.VolumeManager.clone_into_volume(volume_name, git_url, branch: branch, token: token) do
-        {:ok, _} -> :ok
-        {:error, reason} -> Logger.warning("[ProjectRegistry] Clone failed: #{reason}")
+
+    clone_result =
+      if clone_mode != :disabled and not BoomLooper.VolumeManager.volume_has_code?(volume_name) do
+        BoomLooper.VolumeManager.clone_into_volume(volume_name, git_url, branch: branch, token: token)
+      else
+        {:ok, :skipped}
       end
+
+    case clone_result do
+      {:ok, _} ->
+        # Persist to disk (store git_url instead of path)
+        ProjectStore.add(git_url)
+        {:ok, project, workspace}
+
+      {:error, reason} ->
+        # CRITICAL: Do NOT return {:ok, ...} with an empty volume. If we
+        # did, the setup agent would start against an empty /workspace,
+        # all its MCP tools would fail, and it would fall back to native
+        # Claude Code filesystem tools (Read/Grep/Bash) which traverse
+        # the HOST process cwd — which happens to be the BoomLooper repo
+        # root. We'd get a bizarre false-success where the agent "sets
+        # up" BoomLooper itself instead of the target project.
+        # This was the chatwoot eval bug.
+        Logger.error("[ProjectRegistry] Clone failed for #{git_url}: #{reason}")
+
+        # Roll back the ETS entries we just inserted so a retry can re-create them.
+        :ets.delete(@workspaces_table, workspace_id)
+        :ets.delete(@projects_table, project_id)
+
+        {:error, "Clone failed: #{reason}"}
     end
-
-    # Persist to disk (store git_url instead of path)
-    ProjectStore.add(git_url)
-
-    {:ok, project, workspace}
   end
 
   defp extract_repo_name(git_url) do

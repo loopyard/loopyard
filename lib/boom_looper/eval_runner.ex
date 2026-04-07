@@ -218,6 +218,37 @@ defmodule BoomLooper.EvalRunner do
         {:ok, result}
 
       {:error, reason} ->
+        # Add-project failed (usually: git clone returned non-zero). We
+        # MUST record this as a proper failed eval — don't silently
+        # return {:error, ...}. Otherwise the StateKeeper shows
+        # status: :done / result: nil and the run file is never written,
+        # which looks identical to "eval never started".
+        duration_ms = System.monotonic_time(:millisecond) - started_at
+        project_name = eval_name
+
+        result = %{
+          outcome: :failed,
+          source: source,
+          project_name: project_name,
+          project_path: nil,
+          agent_id: nil,
+          duration_ms: duration_ms,
+          timestamp: DateTime.utc_now(),
+          nudges: 0,
+          error: reason,
+          services: [],
+          errors: [reason],
+          last_messages: []
+        }
+
+        record_run(project_name, result)
+        Logger.error("[EvalRunner] Eval failed for #{project_name}: #{reason}")
+
+        case BoomLooper.StateKeeper.get_eval(eval_name) do
+          nil -> :ok
+          info -> BoomLooper.StateKeeper.put_eval(eval_name, %{info | status: :done, result: result})
+        end
+
         {:error, "Failed to add project: #{reason}"}
     end
   end
@@ -331,11 +362,17 @@ defmodule BoomLooper.EvalRunner do
   Returns {:ok, status_code, body_preview} or :no_response.
   """
   def probe_web_service(workspace_key) do
-    # Use ServiceStatus for consistent service enumeration
-    # It reads from docker-compose.yml and merges running state from Docker
+    # ServiceStatus.for_workspace/1 returns %Service{} structs. Use dot
+    # access — NOT Access `[:ports]` — because structs don't implement
+    # Access and the old code silently caught the raise in the rescue
+    # below, making every probe return :no_response. Spent a full eval
+    # round chasing "stalls" that were actually 200s. See commit log.
     workspace_key
     |> BoomLooper.Workspace.ServiceStatus.for_workspace()
-    |> Enum.filter(fn s -> s.type == :process && s.status == :running && s[:ports] != nil && s[:ports] != %{} end)
+    |> Enum.filter(fn s ->
+      s.type == :process and s.status == :running and
+        is_map(s.ports) and map_size(s.ports) > 0
+    end)
     |> Enum.find_value(:no_response, fn service ->
       service.ports
       |> Enum.find_value(:no_response, fn {_container_port, host_port} ->
