@@ -408,19 +408,36 @@ defmodule BoomLooper.EvalRunner do
     priority = Enum.filter(containers, fn c -> c.name in priority_names end)
     fallback = Enum.reject(containers, fn c -> c.name in priority_names end)
 
-    (priority ++ fallback)
-    |> Enum.flat_map(&container_host_ports/1)
-    |> Enum.uniq()
-    |> Enum.find_value(:no_response, fn host_port ->
+    ports =
+      (priority ++ fallback)
+      |> Enum.flat_map(&container_host_ports/1)
+      |> Enum.uniq()
+
+    # Try each port; if ALL come back with no connection, wait briefly
+    # and try once more. Absorbs the "agent declared done, dev server
+    # still binding" race — common with Rails/Node startup. A single
+    # 2s pause catches ~all of these without adding much total wait.
+    case try_ports(ports) do
+      :no_response ->
+        Process.sleep(2_000)
+        try_ports(ports)
+
+      result ->
+        result
+    end
+  rescue
+    _ -> :no_response
+  catch
+    _, _ -> :no_response
+  end
+
+  defp try_ports(ports) do
+    Enum.find_value(ports, :no_response, fn host_port ->
       case http_get("http://localhost:#{host_port}") do
         {:ok, status, body} -> {:ok, status, body}
         :error -> nil
       end
     end)
-  rescue
-    _ -> :no_response
-  catch
-    _, _ -> :no_response
   end
 
   defp container_host_ports(%{name: name}) do
@@ -471,49 +488,26 @@ defmodule BoomLooper.EvalRunner do
           poll_agent(agent_id, deadline, interval, workspace_key, nudges, max_nudges)
 
         %{status: :idle} = state ->
-          if length(state.messages) < 2 do
-            Process.sleep(interval)
-            poll_agent(agent_id, deadline, interval, workspace_key, nudges, max_nudges)
-          else
-            case probe_web_service(workspace_key) do
-                {:ok, status, body} when status in 200..399 ->
-                  # Accept 2xx success, 3xx redirects as "working"
-                  Logger.info("[EvalRunner] Web service healthy (HTTP #{status}), declaring success")
-                  build_result(:success, state, workspace_key, nudges, %{
-                    http_status: status,
-                    http_body_preview: body
-                  })
+          cond do
+            length(state.messages) < 2 ->
+              Process.sleep(interval)
+              poll_agent(agent_id, deadline, interval, workspace_key, nudges, max_nudges)
 
-                {:ok, status, body} ->
-                  Logger.info("[EvalRunner] Web service error (HTTP #{status}), nudging with error body")
-                  if nudges >= max_nudges do
-                    build_result(:web_error, state, workspace_key, nudges, %{
-                      http_status: status,
-                      http_body_preview: body
-                    })
-                  else
-                    nudge_msg = "The web service is returning HTTP #{status}. Here's the response body — fix the issue:\n\n```\n#{body}\n```"
-                    ChatAgent.send_message(agent_id, nudge_msg)
-                    Process.sleep(interval)
-                    poll_agent(agent_id, deadline, interval, workspace_key, nudges + 1, max_nudges)
-                  end
+            # If the MOST RECENT message is a "session died, retry"
+            # error, that's Claude Code SDK instability — not the
+            # agent running out of ideas. Send a plain "Continue."
+            # to restart the session WITHOUT counting it as a nudge.
+            # The nudge counter is a teaching signal, not a retry
+            # counter — conflating them makes "zero nudges" unreachable
+            # on long evals because any SDK hiccup bumps the count.
+            session_died?(state) ->
+              Logger.info("[EvalRunner] Session crash detected, retrying (not counted as nudge)")
+              ChatAgent.send_message(agent_id, "Continue.")
+              Process.sleep(interval)
+              poll_agent(agent_id, deadline, interval, workspace_key, nudges, max_nudges)
 
-                :no_response ->
-                  if nudges >= max_nudges do
-                    Logger.warning("[EvalRunner] Agent #{agent_id} idle after #{nudges} nudges, giving up")
-                    build_result(:stalled, state, workspace_key, nudges)
-                  else
-                    Logger.info("[EvalRunner] Agent #{agent_id} idle, no web response, nudging (#{nudges + 1}/#{max_nudges})")
-                    services = check_services(workspace_key)
-                    svc_summary = services |> Enum.map(fn {n, s} -> "#{n}: #{s}" end) |> Enum.join(", ")
-                    nudge_msg = "The dev server is not responding to HTTP requests. Services: #{svc_summary}. " <>
-                      "Run `service_status` to check container state, then `logs` on the dev container to see the crash output. " <>
-                      "Fix the issue, `rebuild`, and check again. You are NOT done until the dev server returns HTTP 200."
-                    ChatAgent.send_message(agent_id, nudge_msg)
-                    Process.sleep(interval)
-                    poll_agent(agent_id, deadline, interval, workspace_key, nudges + 1, max_nudges)
-                  end
-            end
+            true ->
+              handle_idle_probe(agent_id, state, deadline, interval, workspace_key, nudges, max_nudges)
           end
 
         %{status: status} = state when status in [:stopped, :crashed] ->
@@ -523,6 +517,61 @@ defmodule BoomLooper.EvalRunner do
           Process.sleep(interval)
           poll_agent(agent_id, deadline, interval, workspace_key, nudges, max_nudges)
       end
+    end
+  end
+
+  # The SDK's "session died" error surfaces as a message with role :error
+  # and content that contains "Agent stopped responding". When THIS is the
+  # most recent message, the agent went idle because the CLI crashed, not
+  # because it ran out of ideas.
+  defp session_died?(%{messages: messages}) do
+    case List.last(messages) do
+      %{role: :error, content: content} when is_binary(content) ->
+        String.contains?(content, "Agent stopped responding")
+
+      _ ->
+        false
+    end
+  end
+
+  defp handle_idle_probe(agent_id, state, deadline, interval, workspace_key, nudges, max_nudges) do
+    case probe_web_service(workspace_key) do
+      {:ok, status, body} when status in 200..399 ->
+        Logger.info("[EvalRunner] Web service healthy (HTTP #{status}), declaring success")
+        build_result(:success, state, workspace_key, nudges, %{
+          http_status: status,
+          http_body_preview: body
+        })
+
+      {:ok, status, body} ->
+        Logger.info("[EvalRunner] Web service error (HTTP #{status}), nudging with error body")
+        if nudges >= max_nudges do
+          build_result(:web_error, state, workspace_key, nudges, %{
+            http_status: status,
+            http_body_preview: body
+          })
+        else
+          nudge_msg = "The web service is returning HTTP #{status}. Here's the response body — fix the issue:\n\n```\n#{body}\n```"
+          ChatAgent.send_message(agent_id, nudge_msg)
+          Process.sleep(interval)
+          poll_agent(agent_id, deadline, interval, workspace_key, nudges + 1, max_nudges)
+        end
+
+      :no_response ->
+        if nudges >= max_nudges do
+          Logger.warning("[EvalRunner] Agent #{agent_id} idle after #{nudges} nudges, giving up")
+          build_result(:stalled, state, workspace_key, nudges)
+        else
+          Logger.info("[EvalRunner] Agent #{agent_id} idle, no web response, nudging (#{nudges + 1}/#{max_nudges})")
+          services = check_services(workspace_key)
+          svc_summary = services |> Enum.map(fn {n, s} -> "#{n}: #{s}" end) |> Enum.join(", ")
+          nudge_msg = "The dev server is not responding to HTTP requests. Services: #{svc_summary}. " <>
+            "Run `service_status` to check container state, then `logs` on the dev container to see the crash output. " <>
+            "Fix the issue, `rebuild`, and check again. You are NOT done until the dev server returns HTTP 200."
+          ChatAgent.send_message(agent_id, nudge_msg)
+          Process.sleep(interval)
+          poll_agent(agent_id, deadline, interval, workspace_key, nudges + 1, max_nudges)
+        end
     end
   end
 
