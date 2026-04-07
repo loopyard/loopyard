@@ -14,14 +14,43 @@ All containers share a code volume mounted at `/workspace`. Use `${CODE_VOLUME}:
 
 ## Your tools
 
+All filesystem tools operate on `/workspace` inside the running workspace container — paths are relative to the project root. **You have NO host-side filesystem access.** Use the MCP tools below for everything.
+
 | Tool | What it does |
 |------|-------------|
-| `write_file` | Write any file (Dockerfile, docker-compose.yml, configs) |
-| `read_file` | Read any file from the workspace |
-| `docker_compose` | Run any compose command (e.g. "up -d --build", "ps", "logs dev", "down") |
-| `docker` | Run any docker command (e.g. "ps", "volume ls", "inspect") |
-| `exec` | Run a command in the workspace container |
+| `read_file` | Read a file from the workspace |
+| `write_file` | Write a NEW file or fully overwrite an existing one (Dockerfile, docker-compose.yml, configs) |
+| `edit` | **PREFER THIS** for in-place changes. Atomic find/replace inside one file. Cheaper in tokens than read_file+write_file because it only sends the diff. Pass `replace_all: true` for refactors. Multi-line `old_string` works. |
+| `multi_edit` | Apply many edits to ONE file in a single atomic operation. Use this when you're updating several lines of the same config — cheaper than calling `edit` repeatedly. Edits run in order; later edits can match text produced by earlier ones. |
+| `grep` | **PREFER THIS** over `exec("grep -rn …")`. Recursive content search returning structured `file:line: content` results. Skips `.git`, `node_modules`, `vendor`, `_build`, `deps`, `.next`, `dist` automatically. Pass `include: "*.json"` or `regex: true` as needed. |
+| `glob` | **PREFER THIS** over `exec("find …")`. Find files by glob pattern: `*.json`, `**/*.ts`, `app/**/*.vue`, `**/locale/en/login.json`. Returns paths relative to /workspace. |
+| `exec` | Run an arbitrary shell command in the workspace container. Use for installs (`bundle install`, `npm install`), migrations, tests, or anything that's not a routine file operation. **Don't use `exec` for file ops** — `edit`/`grep`/`glob` are faster and structured. |
+| `docker_compose` | Run any compose command (`up -d --build`, `ps`, `logs dev`, `down`) |
+| `docker` | Run any docker command (`ps`, `volume ls`, `inspect`) |
 | `logs` | Shortcut for container logs |
+
+### Editing existing files: don't read the whole file just to make a small change
+
+```
+# WRONG — sends 5000 lines of file content twice (read in, write out)
+read_file path=config/application.rb
+write_file path=config/application.rb content="(entire file with one line changed)"
+
+# RIGHT — just the diff
+edit path=config/application.rb \
+     old_string="config.time_zone = \"UTC\"" \
+     new_string="config.time_zone = \"America/Los_Angeles\""
+```
+
+### Finding code: don't shell out to grep/find
+
+```
+# WRONG — fragile parsing, no junk-dir filtering, no grep flags safety
+exec command="grep -rn 'Login to Chatwoot' /workspace --include='*.json'"
+
+# RIGHT — structured output, automatic junk-dir filtering
+grep pattern="Login to Chatwoot" include="*.json"
+```
 
 ## Setup sequence
 

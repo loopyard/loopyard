@@ -163,6 +163,62 @@ defmodule BoomLooper.Tools.Container do
     end
   end
 
+  tool :edit, "Atomic find/replace in a workspace file. PREFER THIS over read_file+write_file for changes — it's atomic, cheaper in tokens (just the diff, not the whole file twice), and gives clear errors if old_string isn't unique. Use replace_all for refactors that touch every occurrence." do
+    field :agent_id, :string, required: true
+    field :path, :string, required: true, description: "File path relative to /workspace (e.g. 'app/javascript/dashboard/i18n/locale/en/login.json')"
+    field :old_string, :string, required: true, description: "Exact text to replace. Must be unique in the file unless replace_all=true. Multi-line strings work — pass with literal newlines."
+    field :new_string, :string, required: true, description: "Replacement text. Pass empty string to delete."
+    field :replace_all, :boolean, required: false, description: "Replace every occurrence (default: false — fails if old_string appears more than once)"
+
+    def execute(%{agent_id: agent_id, path: path, old_string: old_string, new_string: new_string} = params) do
+      BoomLooper.Tools.Container.do_edit(agent_id, path, old_string, new_string, params)
+    end
+  end
+
+  tool :multi_edit, "Apply many edits to one file as a single atomic read-modify-write. Cheaper than calling `edit` N times. Edits run in order against the running result, so a later edit can match text produced by an earlier one. If ANY edit fails, the file is not written." do
+    field :agent_id, :string, required: true
+    field :path, :string, required: true, description: "File path relative to /workspace"
+    field :edits, :string, required: true, description: ~s|JSON array of edits, e.g. '[{"old_string": "foo", "new_string": "bar"}, {"old_string": "baz", "new_string": "qux", "replace_all": true}]'|
+
+    def execute(%{agent_id: agent_id, path: path, edits: edits}) do
+      case Jason.decode(to_string(edits)) do
+        {:ok, list} when is_list(list) ->
+          BoomLooper.Tools.Container.do_multi_edit(agent_id, path, list)
+
+        {:ok, _} ->
+          {:error, "edits must be a JSON array"}
+
+        {:error, reason} ->
+          {:error, "edits is not valid JSON: #{inspect(reason)}"}
+      end
+    end
+  end
+
+  tool :grep, "Recursive content search inside the workspace. Returns structured matches (file:line: content). PREFER THIS over `exec(\"grep -rn ...\")`. Excludes .git/node_modules/vendor/_build/deps/.next/dist/target/.venv/__pycache__ automatically." do
+    field :agent_id, :string, required: true
+    field :pattern, :string, required: true, description: "Text to search for. Fixed string by default — pass regex=true for extended regex (grep -E)."
+    field :path, :string, required: false, description: "Subdirectory under /workspace to search (default: whole workspace)"
+    field :include, :string, required: false, description: "File pattern to filter, e.g. '*.json' or '*.{ts,vue}'"
+    field :regex, :boolean, required: false, description: "Treat pattern as extended regex (default: false — fixed string)"
+    field :output_mode, :string, required: false, description: "'lines' (default — file:line: content) or 'files' (just unique file paths)"
+    field :head_limit, :integer, required: false, description: "Max matches to return (default: 200)"
+
+    def execute(%{agent_id: agent_id, pattern: pattern} = params) do
+      BoomLooper.Tools.Container.do_grep(agent_id, pattern, params)
+    end
+  end
+
+  tool :glob, "Find files in the workspace by glob pattern (e.g. '*.json', '**/*.ts', 'app/**/*.vue'). Returns paths relative to /workspace. PREFER THIS over `exec(\"find ...\")`. Excludes the same junk dirs as `grep`." do
+    field :agent_id, :string, required: true
+    field :pattern, :string, required: true, description: "Glob pattern. '*' matches one segment, '**' matches any depth. Examples: '*.json', '**/*.ts', 'app/**/*.vue'"
+    field :path, :string, required: false, description: "Subdirectory under /workspace to search from (default: whole workspace)"
+    field :head_limit, :integer, required: false, description: "Max files to return (default: 200)"
+
+    def execute(%{agent_id: agent_id, pattern: pattern} = params) do
+      BoomLooper.Tools.Container.do_glob(agent_id, pattern, params)
+    end
+  end
+
   tool :docker, "Run any Docker CLI command. Use for inspecting containers, volumes, images, networks, etc." do
     field :agent_id, :string, required: true
     field :command, :string, required: true, description: "Docker command (e.g. 'ps -a', 'volume ls', 'inspect mycontainer', 'images')"
@@ -242,6 +298,402 @@ defmodule BoomLooper.Tools.Container do
         _ ->
           {:error, "Agent #{agent_id} has no workspace"}
       end
+    end
+  end
+
+  @doc """
+  Atomic find/replace inside a workspace file. Mirrors Claude Code's
+  native `Edit` tool but operates on the workspace volume via the
+  same in-process VolumeManager pipeline as `read_file`/`write_file`.
+
+  Handled in Elixir, NOT shell — no quoting/escaping pitfalls. Multi-
+  line `old_string` works. The agent never sees the full file content
+  in its context, only the diff, so this is dramatically cheaper in
+  tokens than read+modify+write.
+  """
+  def do_edit(agent_id, path, old_string, new_string, opts \\ %{}) do
+    replace_all? = Map.get(opts, :replace_all, false)
+
+    cond do
+      String.contains?(path, "..") ->
+        {:error, "Path cannot contain '..'"}
+
+      old_string == "" ->
+        {:error, "old_string must not be empty (use write_file to create a new file)"}
+
+      old_string == new_string ->
+        {:error, "old_string and new_string are identical — nothing to change"}
+
+      true ->
+        with {:ok, workspace_id} <- agent_workspace_id(agent_id) do
+          volume_name = BoomLooper.Workspace.volume_name_for(workspace_id)
+
+          case BoomLooper.VolumeManager.read_file(volume_name, path) do
+            {:ok, content} ->
+              do_edit_in_memory(volume_name, path, content, old_string, new_string, replace_all?)
+
+            {:error, :not_found} ->
+              {:error, "File not found: #{path}"}
+
+            {:error, reason} ->
+              {:error, "Failed to read #{path}: #{inspect(reason)}"}
+          end
+        end
+    end
+  end
+
+  defp do_edit_in_memory(volume_name, path, content, old, new, replace_all?) do
+    occurrences =
+      content
+      |> String.split(old)
+      |> length()
+      |> Kernel.-(1)
+
+    cond do
+      occurrences == 0 ->
+        {:error,
+         "old_string not found in #{path}. The file does NOT contain the literal text you " <>
+           "passed. Use `grep` to find the actual text in context, then retry with the exact match."}
+
+      occurrences > 1 and not replace_all? ->
+        {:error,
+         "old_string appears #{occurrences} times in #{path}. Either pass replace_all: true to " <>
+           "change all of them, or expand old_string with surrounding context until it's unique."}
+
+      true ->
+        new_content =
+          if replace_all? do
+            String.replace(content, old, new, global: true)
+          else
+            String.replace(content, old, new, global: false)
+          end
+
+        case BoomLooper.VolumeManager.write_file(volume_name, path, new_content) do
+          :ok ->
+            replaced = if replace_all?, do: occurrences, else: 1
+            {:ok, "Replaced #{replaced} occurrence(s) in #{path} (#{byte_size(new_content)} bytes)"}
+
+          {:error, reason} ->
+            {:error, "Failed to write #{path}: #{inspect(reason)}"}
+        end
+    end
+  end
+
+  @doc """
+  Apply many edits to a single file as one atomic read-modify-write.
+  Cheaper than calling `edit` N times because there's only one round
+  trip to the volume. Mirrors Claude Code's native `MultiEdit`.
+
+  `edits` is a list of `%{"old_string" => ..., "new_string" => ...,
+  "replace_all" => bool?}` maps.
+
+  Edits are applied in order. If any one edit fails (string not found,
+  ambiguous match), the WHOLE operation aborts and the file is not
+  written — atomicity guarantee.
+  """
+  def do_multi_edit(agent_id, path, edits) when is_list(edits) do
+    cond do
+      String.contains?(path, "..") ->
+        {:error, "Path cannot contain '..'"}
+
+      edits == [] ->
+        {:error, "edits list must not be empty"}
+
+      true ->
+        with {:ok, workspace_id} <- agent_workspace_id(agent_id) do
+          volume_name = BoomLooper.Workspace.volume_name_for(workspace_id)
+
+          case BoomLooper.VolumeManager.read_file(volume_name, path) do
+            {:ok, content} ->
+              apply_multi_edit(volume_name, path, content, edits)
+
+            {:error, :not_found} ->
+              {:error, "File not found: #{path}"}
+
+            {:error, reason} ->
+              {:error, "Failed to read #{path}: #{inspect(reason)}"}
+          end
+        end
+    end
+  end
+
+  defp apply_multi_edit(volume_name, path, content, edits) do
+    Enum.reduce_while(edits, {:ok, content, 0}, fn edit, {:ok, current, idx} ->
+      old = edit["old_string"] || edit[:old_string]
+      new = edit["new_string"] || edit[:new_string]
+      replace_all? = edit["replace_all"] || edit[:replace_all] || false
+
+      cond do
+        is_nil(old) or old == "" ->
+          {:halt, {:error, "edit ##{idx + 1}: old_string is missing or empty"}}
+
+        is_nil(new) ->
+          {:halt, {:error, "edit ##{idx + 1}: new_string is missing"}}
+
+        true ->
+          occurrences = (current |> String.split(old) |> length()) - 1
+
+          cond do
+            occurrences == 0 ->
+              {:halt,
+               {:error, "edit ##{idx + 1}: old_string not found (after #{idx} prior edits applied)"}}
+
+            occurrences > 1 and not replace_all? ->
+              {:halt,
+               {:error,
+                "edit ##{idx + 1}: old_string appears #{occurrences} times — pass replace_all: true or expand the context"}}
+
+            true ->
+              new_content = String.replace(current, old, new, global: replace_all?)
+              {:cont, {:ok, new_content, idx + 1}}
+          end
+      end
+    end)
+    |> case do
+      {:ok, new_content, count} ->
+        case BoomLooper.VolumeManager.write_file(volume_name, path, new_content) do
+          :ok ->
+            {:ok, "Applied #{count} edit(s) to #{path} (#{byte_size(new_content)} bytes)"}
+
+          {:error, reason} ->
+            {:error, "Failed to write #{path}: #{inspect(reason)}"}
+        end
+
+      {:error, _} = err ->
+        err
+    end
+  end
+
+  @doc """
+  Recursive content search inside the workspace, mirroring Claude
+  Code's native `Grep` tool. Returns structured results, not parsed
+  shell output.
+
+  - `pattern` is a fixed string by default. Pass `regex: true` for
+    extended regex (`grep -E`).
+  - `path` is relative to /workspace. Default is the whole workspace.
+  - `include` is a glob like `*.{js,ts}` to filter files.
+  - `output_mode` is `"lines"` (default — `[{file, line, content}, …]`)
+    or `"files"` (just unique file paths).
+
+  Skips `.git`, `node_modules`, `vendor/bundle`, `_build`, `deps`,
+  `.next`, `dist`, and similar large junk dirs by default — they're
+  almost never what an agent is searching for and they balloon
+  output.
+  """
+  def do_grep(agent_id, pattern, opts \\ %{}) do
+    path = Map.get(opts, :path, ".") |> normalize_search_path()
+    include = Map.get(opts, :include)
+    regex? = Map.get(opts, :regex, false)
+    output_mode = Map.get(opts, :output_mode, "lines")
+    head_limit = Map.get(opts, :head_limit, 200)
+
+    cond do
+      String.contains?(path, "..") ->
+        {:error, "Path cannot contain '..'"}
+
+      pattern == "" ->
+        {:error, "pattern must not be empty"}
+
+      true ->
+        do_grep_in_container(agent_id, pattern, path, include, regex?, output_mode, head_limit)
+    end
+  end
+
+  defp do_grep_in_container(agent_id, pattern, path, include, regex?, output_mode, head_limit) do
+    case resolve_container(agent_id) do
+      {:ok, container} ->
+        flags = ["-rn", "--color=never"]
+        flags = if regex?, do: flags ++ ["-E"], else: flags ++ ["-F"]
+        flags = flags ++ ["--exclude-dir=.git", "--exclude-dir=node_modules",
+                          "--exclude-dir=vendor", "--exclude-dir=_build",
+                          "--exclude-dir=deps", "--exclude-dir=.next",
+                          "--exclude-dir=dist", "--exclude-dir=target",
+                          "--exclude-dir=.venv", "--exclude-dir=__pycache__"]
+
+        flags = if include, do: flags ++ ["--include=#{include}"], else: flags
+
+        full_path = Path.join("/workspace", path)
+        cmd = "grep #{Enum.join(flags, " ")} #{shell_quote(pattern)} #{shell_quote(full_path)} 2>/dev/null | head -n #{head_limit}"
+
+        case Docker.exec_in(container, cmd, timeout: 30_000) do
+          {:ok, ""} ->
+            {:ok, "No matches for #{inspect(pattern)} in #{path}"}
+
+          {:ok, output} ->
+            format_grep_output(output, output_mode, head_limit)
+
+          {:error, reason} ->
+            {:error, "grep failed: #{inspect(reason)}"}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp format_grep_output(output, "files", _head_limit) do
+    files =
+      output
+      |> String.split("\n", trim: true)
+      |> Enum.map(fn line ->
+        case String.split(line, ":", parts: 3) do
+          [file, _line, _content] -> Path.relative_to(file, "/workspace")
+          _ -> nil
+        end
+      end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+
+    case files do
+      [] -> {:ok, "No files matched."}
+      _ -> {:ok, Enum.join(files, "\n")}
+    end
+  end
+
+  defp format_grep_output(output, _lines, head_limit) do
+    lines =
+      output
+      |> String.split("\n", trim: true)
+      |> Enum.map(fn line ->
+        case String.split(line, ":", parts: 3) do
+          [file, lno, content] ->
+            "#{Path.relative_to(file, "/workspace")}:#{lno}: #{content}"
+
+          _ ->
+            line
+        end
+      end)
+
+    truncated = if length(lines) >= head_limit, do: "\n... (truncated to #{head_limit} matches)", else: ""
+    {:ok, Enum.join(lines, "\n") <> truncated}
+  end
+
+  @doc """
+  Find files by name pattern inside the workspace, mirroring Claude
+  Code's native `Glob` tool. Returns a list of matching paths,
+  relative to /workspace.
+
+  - `pattern` is a glob like `*.json`, `**/*.ts`, or `app/**/*.vue`.
+    `**` matches any number of directories.
+  - `path` is the root to search from (default: workspace root).
+
+  Skips the same junk dirs as `grep` (`.git`, `node_modules`, etc.).
+  """
+  def do_glob(agent_id, pattern, opts \\ %{}) do
+    path = Map.get(opts, :path, ".") |> normalize_search_path()
+    head_limit = Map.get(opts, :head_limit, 200)
+
+    cond do
+      String.contains?(path, "..") ->
+        {:error, "Path cannot contain '..'"}
+
+      pattern == "" ->
+        {:error, "pattern must not be empty"}
+
+      true ->
+        do_glob_in_container(agent_id, pattern, path, head_limit)
+    end
+  end
+
+  defp do_glob_in_container(agent_id, pattern, path, head_limit) do
+    case resolve_container(agent_id) do
+      {:ok, container} ->
+        full_path = Path.join("/workspace", path)
+        find_args = glob_to_find_args(pattern)
+
+        cmd =
+          "find #{shell_quote(full_path)} -type f " <>
+            "-not -path '*/.git/*' -not -path '*/node_modules/*' " <>
+            "-not -path '*/vendor/bundle/*' -not -path '*/_build/*' " <>
+            "-not -path '*/deps/*' -not -path '*/.next/*' " <>
+            "-not -path '*/dist/*' -not -path '*/target/*' " <>
+            "-not -path '*/.venv/*' -not -path '*/__pycache__/*' " <>
+            "#{find_args} 2>/dev/null | head -n #{head_limit}"
+
+        case Docker.exec_in(container, cmd, timeout: 30_000) do
+          {:ok, ""} ->
+            {:ok, "No files matched #{inspect(pattern)}"}
+
+          {:ok, output} ->
+            relative =
+              output
+              |> String.split("\n", trim: true)
+              |> Enum.map(&Path.relative_to(&1, "/workspace"))
+
+            truncated = if length(relative) >= head_limit, do: "\n... (truncated to #{head_limit} files)", else: ""
+            {:ok, Enum.join(relative, "\n") <> truncated}
+
+          {:error, reason} ->
+            {:error, "find failed: #{inspect(reason)}"}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # Translate a glob pattern into find arguments. Handles:
+  #   *.ext       → -name '*.ext'
+  #   **/*.ext    → -name '*.ext'        (find is recursive by default with -type f)
+  #   subdir/**/*.ext → -path '*/subdir/*' -name '*.ext'
+  defp glob_to_find_args(pattern) do
+    cond do
+      String.starts_with?(pattern, "**/") ->
+        # `**/foo/bar.ext` — match `bar.ext` at any depth, with the
+        # path containing `foo/bar.ext`. `-name` only matches basenames
+        # (no slashes), so when the leaf has slashes we use `-path`.
+        leaf = String.replace_prefix(pattern, "**/", "")
+
+        if String.contains?(leaf, "/") do
+          "-path #{shell_quote("*/#{leaf}")}"
+        else
+          "-name #{shell_quote(leaf)}"
+        end
+
+      String.contains?(pattern, "/**") ->
+        # e.g. "app/**/*.vue" → -path '*/app/*' -name '*.vue'
+        case String.split(pattern, "/**") do
+          [prefix, "/" <> leaf] when leaf != "" ->
+            if String.contains?(leaf, "/") do
+              "-path #{shell_quote("*/#{prefix}/*/#{leaf}")}"
+            else
+              "-path #{shell_quote("*/#{prefix}/*")} -name #{shell_quote(leaf)}"
+            end
+
+          [prefix, ""] ->
+            "-path #{shell_quote("*/#{prefix}/*")}"
+
+          _ ->
+            "-name #{shell_quote(pattern)}"
+        end
+
+      String.contains?(pattern, "/") ->
+        "-path #{shell_quote("*/#{pattern}")}"
+
+      true ->
+        "-name #{shell_quote(pattern)}"
+    end
+  end
+
+  defp normalize_search_path("."), do: "."
+  defp normalize_search_path(""), do: "."
+  defp normalize_search_path(path) when is_binary(path) do
+    path
+    |> String.trim_leading("/")
+    |> String.trim_leading("./")
+  end
+
+  defp shell_quote(s) when is_binary(s) do
+    # Single-quote and escape any embedded single quotes.
+    # Keeps shell metacharacters in the pattern from being interpreted.
+    "'" <> String.replace(s, "'", "'\"'\"'") <> "'"
+  end
+
+  defp agent_workspace_id(agent_id) do
+    case BoomLooper.ChatAgent.get_state(agent_id) do
+      %{workspace_id: wid} when is_binary(wid) -> {:ok, wid}
+      _ -> {:error, "Agent #{agent_id} has no workspace"}
     end
   end
 
