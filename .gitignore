@@ -3,6 +3,8 @@
 /_build
 /.mix_home
 /.hex_home
+/.mix
+/.hex
 
 # Static artifacts
 /priv/static/assets/
