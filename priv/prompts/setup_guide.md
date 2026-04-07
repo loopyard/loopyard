@@ -126,12 +126,28 @@ Write each Dockerfile separately via `write_file` to `.boomlooper/workspace/`.
 
 1. `docker_compose("ps")` — is the dev container running?
 2. **If dev crashed:** run `logs` on the dev container. Diagnose. Fix. Restart with `docker_compose("up -d --build")`. Repeat.
-3. **If dev is running:** run `exec("curl -s -o /dev/null -w '%{http_code}' http://dev:<port>")` to check response. Use the service name (`dev`) as hostname — it resolves inside the Docker network.
+3. **If dev is running:** verify HTTP from the HOST, not the container network (see below).
 4. **If curl returns 000 or connection refused:** server may still be booting. Wait 10-15s, then check logs. If crashed, fix and restart.
 5. **If HTTP 500/502:** check logs for errors. Fix config/migrations. Restart.
-6. **If HTTP 200 (or 301/302):** dev server is working. You're done.
+6. **If HTTP 200 (or 301/302):** dev server is working. **STOP. Do not "improve" the setup. Do not rewrite Dockerfile/compose. You are done.**
 
-**Never skip the curl check.** Even if logs look healthy, the server might not be ready. Always confirm with curl before finishing.
+### CRITICAL: verify from the HOST, not from inside the container
+
+The eval runner probes `http://localhost:<published_host_port>` **from the Docker host**, not from inside any container. This is a different vantage point than `curl http://dev:3000` from inside the workspace container. The two can disagree:
+
+- **Container-internal** (`curl http://dev:3000` from workspace container): uses Docker's internal network and the container port. Works even if the app is bound to `127.0.0.1` inside the dev container.
+- **Host-external** (what the runner does): uses the *published* host port mapping. Fails when the app is bound to `127.0.0.1` inside the container because the host can't reach the container's loopback.
+
+**The only verification that matches the runner's check:**
+
+```
+docker_compose("ps")                                # get mapped host port for dev
+exec("curl -v http://host.docker.internal:<HOST_PORT>")  # probe host port from workspace
+```
+
+If the internal curl works but the host-side curl fails, your app is bound to `127.0.0.1` inside the container. Fix the bind address (see "Critical rules" below). Do NOT rebuild to "fix" this — rebuilds change the published host port and cause probe races.
+
+**Never skip the host-side curl check.** Internal success is not the same as external success.
 
 **Common crash causes:**
 
@@ -145,7 +161,16 @@ Write each Dockerfile separately via `write_file` to `.boomlooper/workspace/`.
 
 ## Critical rules
 
-**Bind to 0.0.0.0** — Dev servers MUST bind to `0.0.0.0`. Set `BINDING=0.0.0.0` in environment or add `--host 0.0.0.0` to the command.
+**Bind to 0.0.0.0** — Dev servers MUST bind to `0.0.0.0`. Set `BINDING=0.0.0.0` in environment or add `--host 0.0.0.0` to the command. Common defaults that WILL break the host probe:
+
+- **Rails** `bin/rails server` and `bin/dev` bind to `127.0.0.1` in recent Rails versions. Use `bin/rails server -b 0.0.0.0` OR set `BINDING=0.0.0.0` in the dev service's environment.
+- **Next.js** binds to `0.0.0.0` by default in dev mode. Safe.
+- **Vite** defaults to `localhost`. Use `--host 0.0.0.0` or `server.host = true` in vite.config.
+- **Flask/Django** defaults to `127.0.0.1`. Use `flask run --host=0.0.0.0` or `python manage.py runserver 0.0.0.0:8000`.
+
+**The `dev` service is mandatory and must publish a port** — Your docker-compose.yml MUST have a service literally named `dev` with an explicit `ports:` mapping. Never collapse the dev server into the `workspace` container. Never rename or remove the `dev` service. The eval runner looks for `bl-<ws>-dev-1` with a published host port.
+
+**Once HTTP 200, STOP** — The instant the host-side probe returns HTTP 200/301/302, you are done. Do not rewrite the Dockerfile to "clean things up". Do not add warmup scripts. Do not install additional tools "to make debugging easier". Every `docker_compose up -d --build` after success changes the published host port and gives the eval runner a moment where it can't reach the dev server — that counts as a failure. The working state is the final state.
 
 **Database URLs use service names** — `postgres://postgres@postgres:5432/myapp_dev`. Service names are hostnames in Docker network.
 

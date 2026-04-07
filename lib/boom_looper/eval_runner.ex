@@ -30,7 +30,13 @@ defmodule BoomLooper.EvalRunner do
   alias BoomLooper.ProjectRegistry
   alias BoomLooper.Workspace
 
-  @default_timeout 1_800_000  # 30 minutes
+  # Heavy Rails apps (chatwoot, discourse) need more than 30 minutes
+  # for clone + image build + bundle install + asset precompile. The
+  # discourse round-1 eval was still actively iterating at the 30-min
+  # mark and hit :timeout with the dev container healthy. 45 gives
+  # enough headroom for big Ruby/Node apps; small projects still
+  # finish in 5-10 min so there's no cost.
+  @default_timeout 2_700_000  # 45 minutes
   @poll_interval 5_000       # 5 seconds
   @max_nudges 10             # allow several crash-fix-rebuild cycles
 
@@ -563,16 +569,81 @@ defmodule BoomLooper.EvalRunner do
           build_result(:stalled, state, workspace_key, nudges)
         else
           Logger.info("[EvalRunner] Agent #{agent_id} idle, no web response, nudging (#{nudges + 1}/#{max_nudges})")
-          services = check_services(workspace_key)
-          svc_summary = services |> Enum.map(fn {n, s} -> "#{n}: #{s}" end) |> Enum.join(", ")
-          nudge_msg = "The dev server is not responding to HTTP requests. Services: #{svc_summary}. " <>
-            "Run `service_status` to check container state, then `logs` on the dev container to see the crash output. " <>
-            "Fix the issue, `rebuild`, and check again. You are NOT done until the dev server returns HTTP 200."
+          nudge_msg = build_stall_nudge(workspace_key, nudges + 1, max_nudges)
           ChatAgent.send_message(agent_id, nudge_msg)
           Process.sleep(interval)
           poll_agent(agent_id, deadline, interval, workspace_key, nudges + 1, max_nudges)
         end
     end
+  end
+
+  # Nudge text that tells the agent WHAT the runner is probing and WHY
+  # its own `curl dev:3000` from inside the workspace container might
+  # disagree. Agents repeatedly got stuck because they kept verifying
+  # from container-internal (which works) while the runner probes
+  # `http://localhost:<host_port>` from the host (which fails when the
+  # app binds to 127.0.0.1 inside the container).
+  #
+  # Escalates with nudge count so the agent knows it's looping.
+  defp build_stall_nudge(workspace_key, nudge_num, max_nudges) do
+    services = check_services(workspace_key)
+    svc_summary = services |> Enum.map(fn {n, s} -> "#{n}: #{s}" end) |> Enum.join(", ")
+    candidate_ports = discover_candidate_ports(workspace_key)
+
+    probe_target_hint =
+      case candidate_ports do
+        [] ->
+          "I can't find ANY published host ports on workspace or dev containers. " <>
+            "Your docker-compose.yml needs an explicit `ports:` mapping on the dev service " <>
+            "(e.g. `ports: [\"3000\"]`) — without it the runner can't reach your app from the host."
+
+        ports ->
+          "I tried these published host ports: #{Enum.join(ports, ", ")} — all connection-refused or timed out."
+      end
+
+    escalation =
+      cond do
+        nudge_num == 1 ->
+          "This is your FIRST nudge. The probe is HOST-SIDE, not container-side. " <>
+            "If `curl dev:3000` from inside the workspace container returns 200 but this probe fails, " <>
+            "your dev server is bound to 127.0.0.1 (container-internal only) and needs to bind to 0.0.0.0. " <>
+            "Rails: `-b 0.0.0.0` or `BINDING=0.0.0.0`. Next.js: `--hostname 0.0.0.0`. Flask/Django: `0.0.0.0:PORT`."
+
+        nudge_num >= 3 ->
+          "This is nudge #{nudge_num}/#{max_nudges}. You've been looping. STOP re-running the same diagnosis. " <>
+            "The runner probes `http://localhost:<published_host_port>` from the HOST (not from any container). " <>
+            "Do NOT rewrite docker-compose.yml or the Dockerfile — rebuilds change host ports and make things worse. " <>
+            "Make ONE targeted change based on `logs`."
+
+        true ->
+          "Nudge #{nudge_num}/#{max_nudges}."
+      end
+
+    """
+    The eval runner's HTTP probe failed. Services: #{svc_summary}.
+
+    #{probe_target_hint}
+
+    #{escalation}
+
+    Do NOT delete or rename the `dev` service. Do NOT rewrite the whole \
+    docker-compose.yml.
+    """
+  end
+
+  defp discover_candidate_ports(workspace_key) do
+    workspace_id = BoomLooper.Workspace.workspace_id(workspace_key)
+    project_name = BoomLooper.Compose.project_name(workspace_id)
+
+    for c <- BoomLooper.Docker.list_containers(prefix: "#{project_name}-"),
+        c.running,
+        c.name in ["#{project_name}-workspace-1", "#{project_name}-dev-1"],
+        port <- container_host_ports(c) do
+      port
+    end
+    |> Enum.uniq()
+  rescue
+    _ -> []
   end
 
   defp build_result(outcome, state, workspace_key, nudges, extra \\ %{}) do
