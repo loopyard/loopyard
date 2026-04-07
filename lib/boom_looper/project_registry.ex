@@ -358,6 +358,18 @@ defmodule BoomLooper.ProjectRegistry do
         File.rm_rf(boomlooper_dir)
       end
 
+      # CRITICAL: also wipe the host-side virtual workspace dir.
+      # `agents.log` lives at ~/.boomlooper/workspaces/<ws_id>/.boomlooper/workspace/agents.log
+      # — that's a HOST path, not a Docker volume. If we leave it behind,
+      # the next eval that re-clones the same git URL gets the SAME
+      # workspace_id (deterministic), and ServiceManager.init replays the
+      # leftover log, resurrecting ghost agents from the previous run.
+      # This was the cause of the "two Setup agents" bug.
+      Enum.each(workspaces, fn ws ->
+        virtual_dir = Path.join([Workspace.home_dir(), "workspaces", ws.id])
+        File.rm_rf(virtual_dir)
+      end)
+
       # Clean up volumes and compose resources in the background (slow Docker ops)
       Task.start(fn ->
         Enum.each(workspaces, fn ws ->

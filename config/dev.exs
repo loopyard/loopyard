@@ -1,7 +1,10 @@
 import Config
 
+# IPv4 wildcard so the LAN URL (e.g. http://10.0.1.129:4000) works.
+# IPv6 wildcard `{0,0,0,0,0,0,0,0}` does NOT dual-stack on macOS by default —
+# Bandit creates an IPV6_V6ONLY socket and IPv4 clients can't connect.
 config :boom_looper, BoomLooperWeb.Endpoint,
-  http: [ip: {0, 0, 0, 0, 0, 0, 0, 0}, port: String.to_integer(System.get_env("PORT") || "4000")],
+  http: [ip: {0, 0, 0, 0}, port: String.to_integer(System.get_env("PORT") || "4000")],
   check_origin: false,
   code_reloader: true,
   debug_errors: true,

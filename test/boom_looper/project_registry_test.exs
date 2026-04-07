@@ -86,6 +86,36 @@ defmodule BoomLooper.ProjectRegistryTest do
       assert ProjectRegistry.get_project(project.id) == nil
       assert ProjectRegistry.list_workspaces(project.id) == []
     end
+
+    test "wipes the host-side virtual workspace dir so agents.log is gone" do
+      # Regression: agents.log lives at
+      #   ~/.boomlooper/workspaces/<ws_id>/.boomlooper/workspace/agents.log
+      # If remove_project doesn't delete this dir, the next eval that
+      # re-clones the same git URL gets the SAME workspace_id and
+      # ServiceManager.init replays the leftover log, resurrecting
+      # ghost agents from the previous run. We hit this in a real eval.
+      tmp = Path.join(System.tmp_dir!(), "bl-virtual-cleanup-#{:rand.uniform(100_000)}")
+      File.mkdir_p!(tmp)
+      File.write!(Path.join(tmp, ".git"), "")  # marker so it's "git-like"
+      {:ok, project, workspace} = ProjectRegistry.add(tmp)
+
+      virtual_dir =
+        Path.join([BoomLooper.Workspace.home_dir(), "workspaces", workspace.id])
+
+      # Simulate the workspace having been used at least once: write a
+      # fake agents.log that any future replay would pick up.
+      log_path = Path.join([virtual_dir, ".boomlooper", "workspace", "agents.log"])
+      File.mkdir_p!(Path.dirname(log_path))
+      File.write!(log_path, "fake log content")
+      assert File.exists?(log_path)
+
+      assert :ok = ProjectRegistry.remove_project(project.id)
+
+      refute File.exists?(log_path),
+        "agents.log survived remove_project — ghost agents will resurrect on next eval"
+      refute File.exists?(virtual_dir),
+        "virtual workspace dir survived remove_project"
+    end
   end
 
   describe "add_from_url/2" do

@@ -25,8 +25,9 @@ if config_env() == :prod do
   host = System.get_env("PHX_HOST") || "example.com"
   port = String.to_integer(System.get_env("PORT") || "4000")
 
+  # IPv4 wildcard — see comment in config/dev.exs for why we don't use IPv6.
   config :boom_looper, BoomLooperWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
-    http: [ip: {0, 0, 0, 0, 0, 0, 0, 0}, port: port],
+    http: [ip: {0, 0, 0, 0}, port: port],
     secret_key_base: secret_key_base
 end
