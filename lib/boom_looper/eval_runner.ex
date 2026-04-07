@@ -226,6 +226,9 @@ defmodule BoomLooper.EvalRunner do
         duration_ms = System.monotonic_time(:millisecond) - started_at
         project_name = eval_name
 
+        # Keys here must match what format_result/record_run expect,
+        # OR record_run will crash with KeyError and the whole eval
+        # task gets marked :crashed. Learned that the hard way mid-round.
         result = %{
           outcome: :failed,
           source: source,
@@ -237,8 +240,12 @@ defmodule BoomLooper.EvalRunner do
           nudges: 0,
           error: reason,
           services: [],
-          errors: [reason],
-          last_messages: []
+          errors: 1,
+          error_messages: [reason],
+          last_messages: [],
+          message_count: 0,
+          tool_calls: 0,
+          tool_usage: %{}
         }
 
         record_run(project_name, result)
