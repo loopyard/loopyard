@@ -758,16 +758,21 @@ defmodule BoomLooperWeb.ChatLive do
 
   defp fetch_service_container_logs(service_statuses, service_name) do
     case Enum.find(service_statuses, &(&1.name == service_name)) do
-      %{container: container} = svc ->
+      nil ->
+        "(container not found)"
+
+      %{container: nil} ->
+        # Service is defined in compose but no container has been started yet.
+        # Don't pass nil to System.cmd — it raises ArgumentError.
+        "(container not started)"
+
+      %{container: container} = svc when is_binary(container) ->
         case BoomLooper.Docker.docker(["logs", "--tail", "200", container], timeout: 5_000) do
           {:ok, ""} ->
             if svc.status == :running, do: "(no output yet)", else: "(container exited with no output)"
           {:ok, output} -> output
           {:error, _} -> "(could not fetch logs)"
         end
-
-      nil ->
-        "(container not found)"
     end
   catch
     :exit, _ -> "(could not fetch logs)"
@@ -776,9 +781,15 @@ defmodule BoomLooperWeb.ChatLive do
   defp fetch_all_service_logs(service_statuses) do
     Enum.map(service_statuses, fn svc ->
       logs =
-        case BoomLooper.Docker.docker(["logs", "--tail", "50", svc.container], timeout: 5_000) do
-          {:ok, output} -> output
-          {:error, _} -> ""
+        case svc.container do
+          nil ->
+            ""
+
+          container when is_binary(container) ->
+            case BoomLooper.Docker.docker(["logs", "--tail", "50", container], timeout: 5_000) do
+              {:ok, output} -> output
+              {:error, _} -> ""
+            end
         end
 
       %{name: svc.name, logs: logs}
