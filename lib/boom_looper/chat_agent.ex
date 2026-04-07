@@ -35,6 +35,46 @@ defmodule BoomLooper.ChatAgent do
   @topic "chat_agents"
   @ets_table :chat_agents
 
+  # Built-in Claude Code tools for bind-mount agents (they run against
+  # the host filesystem, so native Read/Glob/Grep work correctly).
+  @builtin_tools_bind_mount [
+    "WebSearch",
+    "WebFetch",
+    "Read",
+    "Glob",
+    "Grep"
+  ]
+
+  # Built-in tools for container-only agents. Read/Glob/Grep are REMOVED
+  # because they run host-side — they'd find (or fail to find) files in
+  # the wrong place. Everything filesystem-related must go through MCP
+  # tools that exec inside the container.
+  @builtin_tools_container_only [
+    "WebSearch",
+    "WebFetch"
+  ]
+
+  # Native tools that container-only agents must NEVER use. The
+  # `allowed_tools` allowlist alone isn't enough — with
+  # --dangerously-skip-permissions the SDK still allows native tools
+  # by default. We pass this list as `disallowed_tools` to make the
+  # block explicit and survive any future allowlist holes.
+  #
+  # Bash escape was the smoking gun: agents would `cd /Users/.../boomlooper`
+  # and edit the host clone, while the running container kept reading
+  # the docker volume copy. Edit/Write/Read with absolute paths did
+  # the same thing.
+  @denied_native_tools_for_container_agents [
+    "Bash",
+    "Edit",
+    "Write",
+    "Read",
+    "Glob",
+    "Grep",
+    "MultiEdit",
+    "NotebookEdit"
+  ]
+
   # --- Public API ---
 
   def start_link(opts) do
@@ -415,19 +455,27 @@ defmodule BoomLooper.ChatAgent do
     workspace = if workspace_id, do: load_workspace_config(workspace_id), else: nil
     system_prompt = build_system_prompt(id, bind_mount, workspace_id, workspace, service_name)
 
-    # Containerized agents (volume-based, no bind_mount) MUST NOT get
-    # host-side Read/Glob/Grep. Their workspace lives inside a Docker
-    # volume; the host's view of `working_dir` is either empty or
-    # doesn't exist yet. If a container agent has the native tools,
-    # it falls back to the BEAM process cwd (BoomLooper repo!) and
-    # happily "sets up" whatever it finds there. This was the
-    # chatwoot eval cross-contamination bug.
+    # Containerized agents (volume-based, no bind_mount) MUST NOT use
+    # host-side filesystem tools. Their workspace lives inside a Docker
+    # volume; the host's view of `working_dir` is empty. If a container
+    # agent has Bash/Read/Edit/Write/Glob/Grep, it falls back to the
+    # BEAM process cwd (the BoomLooper repo) and merrily edits files
+    # there — which never reaches the running dev container.
     #
-    # Bind-mount agents keep the native tools because they work on the
-    # real host dir.
+    # We saw this twice:
+    # - chatwoot eval cross-contamination (set up BoomLooper instead of chatwoot)
+    # - "change a UI string" reproducer (edited a stale host clone, not the
+    #   docker volume the container reads)
+    #
+    # `allowed_tools` alone isn't enough: with --dangerously-skip-permissions,
+    # the SDK still allows native tools by default. We need an EXPLICIT
+    # disallowed_tools list to block them.
+    #
+    # Bind-mount agents keep the native tools because they legitimately
+    # work on the host dir.
     container_only? = is_nil(bind_mount)
 
-    session_opts = [
+    base_opts = [
       cwd: working_dir,
       permission_mode: :accept_edits,
       dangerously_skip_permissions: true,
@@ -435,6 +483,13 @@ defmodule BoomLooper.ChatAgent do
       allowed_tools: build_allowed_tools(tools, container_only?),
       system_prompt: system_prompt
     ]
+
+    session_opts =
+      if container_only? do
+        Keyword.put(base_opts, :disallowed_tools, @denied_native_tools_for_container_agents)
+      else
+        base_opts
+      end
 
     session_opts = if max = Keyword.get(params, :max_turns),
       do: Keyword.put(session_opts, :max_turns, max),
@@ -1075,25 +1130,6 @@ defmodule BoomLooper.ChatAgent do
       {info.name, mod}
     end)
   end
-
-  # Built-in Claude Code tools for bind-mount agents (they run against
-  # the host filesystem, so native Read/Glob/Grep work correctly).
-  @builtin_tools_bind_mount [
-    "WebSearch",      # Search the web for docs, examples, solutions
-    "WebFetch",       # Fetch specific URLs
-    "Read",           # Read files directly on host
-    "Glob",           # Find files by pattern
-    "Grep"            # Search file contents
-  ]
-
-  # Built-in tools for container-only agents. Read/Glob/Grep are REMOVED
-  # because they run host-side — they'd find (or fail to find) files in
-  # the wrong place. Everything filesystem-related must go through MCP
-  # tools that exec inside the container.
-  @builtin_tools_container_only [
-    "WebSearch",
-    "WebFetch"
-  ]
 
   defp build_allowed_tools(tool_modules, container_only?) do
     mcp_tools = Enum.flat_map(tool_modules, fn mod ->
