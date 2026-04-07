@@ -358,34 +358,69 @@ defmodule BoomLooper.EvalRunner do
   end
 
   @doc """
-  Try to fetch an HTTP response from any dev service with a mapped port.
-  Returns {:ok, status_code, body_preview} or :no_response.
+  Try to fetch an HTTP response from this workspace's dev-serving
+  container. Returns {:ok, status_code, body_preview} or :no_response.
+
+  ## What we probe, in priority order
+
+  1. The **workspace** container (`bl-<ws_id>-workspace-1`). Many
+     agents run the dev server directly inside workspace — common on
+     pnpm monorepos, Go single-binaries, and anything where a second
+     container is awkward. If workspace has a published port and it
+     answers HTTP, that's the dev server.
+  2. The **dev** container (`bl-<ws_id>-dev-1`). This is what the
+     prompt template recommends; agents that follow the template use
+     it and it's a clean home for the dev server.
+  3. Any other container in the workspace (last-resort fallback).
+
+  We skip admin UIs like inbucket/minio because probing them first
+  would produce a false success: inbucket returning HTTP 200 on its
+  mail-admin page has nothing to do with whether the actual dev app
+  is up. Workspace-first and dev-first make the probe model what a
+  user cares about (the port link in the UI).
+
+  The earlier version filtered to compose `:process` services only
+  AND used `[:ports]` Access syntax on a Service struct — the Access
+  call raised, the rescue below silently converted every probe to
+  `:no_response`, and we chased phantom "stalls" through a whole eval
+  round before catching it.
   """
   def probe_web_service(workspace_key) do
-    # ServiceStatus.for_workspace/1 returns %Service{} structs. Use dot
-    # access — NOT Access `[:ports]` — because structs don't implement
-    # Access and the old code silently caught the raise in the rescue
-    # below, making every probe return :no_response. Spent a full eval
-    # round chasing "stalls" that were actually 200s. See commit log.
-    workspace_key
-    |> BoomLooper.Workspace.ServiceStatus.for_workspace()
-    |> Enum.filter(fn s ->
-      s.type == :process and s.status == :running and
-        is_map(s.ports) and map_size(s.ports) > 0
-    end)
-    |> Enum.find_value(:no_response, fn service ->
-      service.ports
-      |> Enum.find_value(:no_response, fn {_container_port, host_port} ->
-        case http_get("http://localhost:#{host_port}") do
-          {:ok, status, body} -> {:ok, status, body}
-          :error -> nil
-        end
-      end)
+    workspace_id = BoomLooper.Workspace.workspace_id(workspace_key)
+    project_name = BoomLooper.Compose.project_name(workspace_id)
+
+    containers =
+      BoomLooper.Docker.list_containers(prefix: "#{project_name}-")
+      |> Enum.filter(& &1.running)
+
+    workspace_name = "#{project_name}-workspace-1"
+    dev_name = "#{project_name}-dev-1"
+
+    priority_names = [workspace_name, dev_name]
+
+    priority = Enum.filter(containers, fn c -> c.name in priority_names end)
+    fallback = Enum.reject(containers, fn c -> c.name in priority_names end)
+
+    (priority ++ fallback)
+    |> Enum.flat_map(&container_host_ports/1)
+    |> Enum.uniq()
+    |> Enum.find_value(:no_response, fn host_port ->
+      case http_get("http://localhost:#{host_port}") do
+        {:ok, status, body} -> {:ok, status, body}
+        :error -> nil
+      end
     end)
   rescue
     _ -> :no_response
   catch
     _, _ -> :no_response
+  end
+
+  defp container_host_ports(%{name: name}) do
+    name
+    |> BoomLooper.Docker.container_ports()
+    |> Map.values()
+    |> Enum.map(&to_string/1)
   end
 
   defp http_get(url) do
