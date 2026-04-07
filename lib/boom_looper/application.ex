@@ -33,6 +33,11 @@ defmodule BoomLooper.Application do
     opts = [strategy: :one_for_one, name: BoomLooper.Supervisor]
     result = Supervisor.start_link(children, opts)
 
+    # Attach the slow-mount logger so we get a loud warning if any
+    # LiveView callback exceeds 500ms in production. The :timer.tc
+    # mount tests catch this locally; this is the prod safety net.
+    BoomLooperWeb.SlowMountLogger.attach()
+
     # Restore persisted projects from ~/.boomlooper/projects.json
     # ServiceManager will reconnect to any running containers
     BoomLooper.ProjectRegistry.restore()

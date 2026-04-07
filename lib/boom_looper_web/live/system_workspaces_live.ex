@@ -26,6 +26,12 @@ defmodule BoomLooperWeb.SystemWorkspacesLive do
       |> assign(:container_counts, AsyncResult.loading())
 
     if connected?(socket) do
+      # Multiplayer: anyone watching this page sees agent + service
+      # changes the moment they happen, instead of waiting for the
+      # next 5s poll. The poll is still here as a fallback in case a
+      # broadcast gets dropped.
+      BoomLooper.ChatAgent.subscribe()
+      BoomLooper.Workspace.ServiceManager.subscribe()
       Process.send_after(self(), :refresh, @refresh)
       {:ok, kick_slices(socket)}
     else
@@ -64,10 +70,28 @@ defmodule BoomLooperWeb.SystemWorkspacesLive do
   @impl true
   def handle_info(:refresh, socket) do
     Process.send_after(self(), :refresh, @refresh)
-    {:noreply,
-     socket
-     |> assign(:workspaces, SystemStats.workspace_stats())
-     |> kick_slices()}
+    {:noreply, refresh(socket)}
+  end
+
+  # Any agent lifecycle event → re-pull workspace stats and kick the
+  # async container count fetch.
+  def handle_info({event, _}, socket)
+      when event in [:chat_agent_started, :chat_agent_stopped, :chat_agent_booting,
+                     :chat_agent_removed, :chat_agent_status_changed, :chat_agent_resumed] do
+    {:noreply, refresh(socket)}
+  end
+
+  def handle_info({:services_updated, _path, _statuses}, socket) do
+    {:noreply, refresh(socket)}
+  end
+
+  # Catch-all so unknown PubSub messages don't crash the LiveView.
+  def handle_info(_msg, socket), do: {:noreply, socket}
+
+  defp refresh(socket) do
+    socket
+    |> assign(:workspaces, SystemStats.workspace_stats())
+    |> kick_slices()
   end
 
   @impl true

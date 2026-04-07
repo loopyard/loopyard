@@ -31,4 +31,40 @@ defmodule BoomLooperWeb.SystemDockerLiveTest do
       assert html =~ "animate-pulse"
     end
   end
+
+  describe "multiplayer (PubSub)" do
+    test "two viewers both stay alive on a chat_agent broadcast", %{conn: conn} do
+      {:ok, view1, _} = live(conn, "/system/docker")
+      {:ok, view2, _} = live(build_conn(), "/system/docker")
+      Process.sleep(50)
+
+      Phoenix.PubSub.broadcast(
+        BoomLooper.PubSub,
+        "chat_agent",
+        {:chat_agent_started, %{id: "fake", name: "fake", status: :idle}}
+      )
+
+      assert is_binary(render(view1))
+      assert is_binary(render(view2))
+    end
+
+    test "viewer refreshes on a services_updated broadcast", %{conn: conn} do
+      {:ok, view, _} = live(conn, "/system/docker")
+      Process.sleep(50)
+
+      Phoenix.PubSub.broadcast(
+        BoomLooper.PubSub,
+        "service_manager",
+        {:services_updated, "/some/path", []}
+      )
+
+      assert is_binary(render(view))
+    end
+
+    test "unknown PubSub messages don't crash the LiveView", %{conn: conn} do
+      {:ok, view, _} = live(conn, "/system/docker")
+      send(view.pid, {:totally_unknown_message, :payload})
+      assert is_binary(render(view))
+    end
+  end
 end

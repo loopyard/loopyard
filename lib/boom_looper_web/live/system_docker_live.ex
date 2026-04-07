@@ -28,6 +28,10 @@ defmodule BoomLooperWeb.SystemDockerLive do
       |> assign(:volumes, AsyncResult.loading())
 
     if connected?(socket) do
+      # Multiplayer: container/agent lifecycle changes from any source
+      # (other tabs, agents, manual `docker rm`) trigger a refresh.
+      BoomLooper.ChatAgent.subscribe()
+      BoomLooper.Workspace.ServiceManager.subscribe()
       Process.send_after(self(), :refresh, @refresh)
       {:ok, kick_slices(socket)}
     else
@@ -51,6 +55,18 @@ defmodule BoomLooperWeb.SystemDockerLive do
     Process.send_after(self(), :refresh, @refresh)
     {:noreply, kick_slices(socket)}
   end
+
+  def handle_info({event, _}, socket)
+      when event in [:chat_agent_started, :chat_agent_stopped, :chat_agent_booting,
+                     :chat_agent_removed, :chat_agent_status_changed, :chat_agent_resumed] do
+    {:noreply, kick_slices(socket)}
+  end
+
+  def handle_info({:services_updated, _path, _statuses}, socket) do
+    {:noreply, kick_slices(socket)}
+  end
+
+  def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl true
   def handle_async(key, {:ok, value}, socket) do
