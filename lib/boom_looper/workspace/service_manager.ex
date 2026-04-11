@@ -336,10 +336,15 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
   @impl true
   def terminate(_reason, state) do
-    # Always tear down containers. State is persisted in volumes + ETF logs,
-    # so init/1 can restart everything cleanly. This prevents zombie containers.
-    BoomLooper.EventLog.info("workspace:#{state.workspace_id}", "ServiceManager stopping — tearing down containers")
-    do_stop(state)
+    # Containers persist across ServiceManager restarts. State lives in
+    # volumes + ETF logs, and init/1 reconnects via `Compose.ps` on the
+    # next start. Only the explicit `stop_services/1` path tears containers
+    # down — crash / shutdown / supervisor restart keeps them running so
+    # the user's work survives a BEAM restart.
+    BoomLooper.EventLog.info(
+      "workspace:#{state.workspace_id}",
+      "ServiceManager stopping — containers left running"
+    )
     :ok
   end
 
