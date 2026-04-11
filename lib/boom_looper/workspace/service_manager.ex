@@ -46,7 +46,6 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
   def service_status(project_dir) do
     # Read from ETS cache — never blocks on the GenServer (which may be doing Docker ops)
-    ensure_status_table()
     case :ets.lookup(@status_table, project_dir) do
       [{_, statuses}] -> {:ok, statuses}
       [] -> {:ok, []}
@@ -242,7 +241,6 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
     # Seed the ETS cache immediately so service_status/1 returns something
     # even while async init is doing Docker ops
-    ensure_status_table()
     :ets.insert(@status_table, {project_dir, []})
 
     # Try to start services async — never crash init, just log failures.
@@ -449,7 +447,6 @@ defmodule BoomLooper.Workspace.ServiceManager do
     broadcast_dir = state.canonical_dir || state.project_dir
 
     # Cache in ETS so service_status/1 never blocks on the GenServer
-    ensure_status_table()
     :ets.insert(@status_table, {broadcast_dir, all_statuses})
 
     Phoenix.PubSub.broadcast(
@@ -457,18 +454,6 @@ defmodule BoomLooper.Workspace.ServiceManager do
       @services_topic,
       {:services_updated, broadcast_dir, all_statuses}
     )
-  end
-
-  defp ensure_status_table do
-    case :ets.whereis(@status_table) do
-      :undefined ->
-        try do
-          :ets.new(@status_table, [:set, :public, :named_table, read_concurrency: true])
-        catch
-          :error, :badarg -> @status_table
-        end
-      _ -> @status_table
-    end
   end
 
   defp via(project_dir) do

@@ -4,8 +4,8 @@ defmodule BoomLooper.EventLogTest do
   alias BoomLooper.EventLog
 
   setup do
-    # Clear events between tests
-    EventLog.ensure_ets_table()
+    # Clear events between tests. Tables are pre-created by StateKeeper
+    # when the application starts.
     :ets.delete_all_objects(:event_log)
     :ok
   end
@@ -75,10 +75,4 @@ defmodule BoomLooper.EventLogTest do
     end
   end
 
-  describe "ensure_ets_table/0" do
-    test "is idempotent" do
-      assert :ok = EventLog.ensure_ets_table()
-      assert :ok = EventLog.ensure_ets_table()
-    end
-  end
 end

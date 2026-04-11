@@ -8,16 +8,8 @@ defmodule BoomLooper.EventLog do
   @ets_table :event_log
   @max_events 200
 
-  def ensure_ets_table do
-    if :ets.whereis(@ets_table) == :undefined do
-      :ets.new(@ets_table, [:named_table, :public, :ordered_set])
-    end
-    :ok
-  end
-
   @doc "Log an event. Source is like 'agent:Setup', 'service:dev', 'docker', 'system'."
   def log(level, source, message) do
-    ensure_ets_table()
     key = System.monotonic_time(:nanosecond)
     event = %{
       timestamp: DateTime.utc_now(),
@@ -36,7 +28,6 @@ defmodule BoomLooper.EventLog do
 
   @doc "Get last N events, newest first."
   def recent(n \\ 50) do
-    ensure_ets_table()
     :ets.tab2list(@ets_table)
     |> Enum.map(fn {_key, event} -> event end)
     |> Enum.reverse()

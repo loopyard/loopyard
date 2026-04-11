@@ -5,9 +5,8 @@ defmodule BoomLooper.AgentBootTest do
   alias BoomLooper.ChatAgent
 
   setup do
-    ChatAgent.ensure_ets_table()
-
-    # Clean up agents
+    # Clean up agents — :chat_agents is owned by StateKeeper
+    _ = BoomLooper.StateKeeper.ensure_tables!()
     for {id, _} <- :ets.tab2list(:chat_agents) do
       :ets.delete(:chat_agents, id)
     end

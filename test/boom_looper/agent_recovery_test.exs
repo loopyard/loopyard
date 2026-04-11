@@ -21,8 +21,8 @@ defmodule BoomLooper.AgentRecoveryTest do
     File.mkdir_p!(tmp_dir)
     log_path = Path.join(tmp_dir, ".boomlooper/workspace/agents.log")
 
-    # Ensure ETS table exists
-    ChatAgent.ensure_ets_table()
+    # Tables are pre-created by StateKeeper.
+    BoomLooper.StateKeeper.ensure_tables!()
 
     on_exit(fn ->
       File.rm_rf!(tmp_dir)

@@ -17,16 +17,6 @@ defmodule BoomLooper.ProjectRegistry do
   @projects_table :project_registry
   @workspaces_table :workspace_registry
 
-  def ensure_ets_tables do
-    if :ets.whereis(@projects_table) == :undefined do
-      :ets.new(@projects_table, [:named_table, :public, :set])
-    end
-    if :ets.whereis(@workspaces_table) == :undefined do
-      :ets.new(@workspaces_table, [:named_table, :public, :set])
-    end
-    :ok
-  end
-
   # --- Projects ---
 
   @doc """
@@ -38,8 +28,6 @@ defmodule BoomLooper.ProjectRegistry do
     - token: GitHub token for auth (optional)
   """
   def add_from_url(git_url, opts \\ []) do
-    ensure_ets_tables()
-
     branch = Keyword.get(opts, :branch, "main")
     token = Keyword.get(opts, :token)
 
@@ -151,6 +139,7 @@ defmodule BoomLooper.ProjectRegistry do
   def add(path) do
     ensure_ets_tables()
 
+<<<<<<< HEAD
     case BoomLooper.Source.Local.add_project(path, []) do
       {:ok, built} ->
         project = upsert_project(built)
@@ -162,6 +151,14 @@ defmodule BoomLooper.ProjectRegistry do
             {:ok, branch} -> branch
             _ -> "main"
           end
+=======
+    unless File.dir?(path) do
+      {:error, "Directory does not exist: #{path}"}
+    else
+      case Git.repo_root(path) do
+        {:ok, repo_root} ->
+          project = find_or_create_project(repo_root)
+>>>>>>> 5354ea0 (state_keeper: become sole ETS table owner, remove ensure_ets_table callsites)
 
         workspace = find_or_create_workspace(project.id, workspace_name, project.path)
 
@@ -285,8 +282,6 @@ defmodule BoomLooper.ProjectRegistry do
   ServiceManager will detect running containers and reconnect.
   """
   def restore do
-    ensure_ets_tables()
-
     for entry <- ProjectStore.load() do
       # Handle both old format (string path) and new format (map with path/name)
       {path, saved_name} = case entry do
@@ -337,7 +332,6 @@ defmodule BoomLooper.ProjectRegistry do
 
   @doc "List all projects."
   def list_projects do
-    ensure_ets_tables()
     :ets.tab2list(@projects_table)
     |> Enum.map(fn {_id, project} -> project end)
     |> Enum.sort_by(& &1.name)
@@ -345,7 +339,6 @@ defmodule BoomLooper.ProjectRegistry do
 
   @doc "Get a project by ID."
   def get_project(id) do
-    ensure_ets_tables()
     case :ets.lookup(@projects_table, id) do
       [{^id, project}] -> project
       [] -> nil
@@ -357,7 +350,6 @@ defmodule BoomLooper.ProjectRegistry do
   Stops agents, tears down Docker containers, and deletes volumes/files.
   """
   def remove_project(id) do
-    ensure_ets_tables()
     project = get_project(id)
     workspaces = list_workspaces(id)
 
@@ -434,7 +426,6 @@ defmodule BoomLooper.ProjectRegistry do
 
   @doc "List workspaces for a project."
   def list_workspaces(project_id) do
-    ensure_ets_tables()
     :ets.tab2list(@workspaces_table)
     |> Enum.map(fn {_id, workspace} -> normalize_workspace(workspace) end)
     |> Enum.filter(&(&1.project_id == project_id))
@@ -443,7 +434,6 @@ defmodule BoomLooper.ProjectRegistry do
 
   @doc "Get a workspace by ID."
   def get_workspace(id) do
-    ensure_ets_tables()
     case :ets.lookup(@workspaces_table, id) do
       [{^id, workspace}] -> normalize_workspace(workspace)
       [] -> nil
@@ -470,8 +460,12 @@ defmodule BoomLooper.ProjectRegistry do
   Add a new workspace to a project. Delegates to the project's Source adapter.
   Returns {:ok, workspace} or {:error, reason}.
   """
+<<<<<<< HEAD
   def add_workspace(project_id, branch_name) do
     ensure_ets_tables()
+=======
+  def add_workspace(project_id, workspace_name) do
+>>>>>>> 5354ea0 (state_keeper: become sole ETS table owner, remove ensure_ets_table callsites)
     project = get_project(project_id)
 
     unless project do
@@ -502,7 +496,6 @@ defmodule BoomLooper.ProjectRegistry do
   workspace.
   """
   def remove_workspace(workspace_id) do
-    ensure_ets_tables()
     workspace = get_workspace(workspace_id)
 
     cond do
@@ -523,7 +516,6 @@ defmodule BoomLooper.ProjectRegistry do
 
   @doc "Update workspace status (e.g. :running, :stopped)."
   def update_workspace_status(workspace_id, status) do
-    ensure_ets_tables()
     case :ets.lookup(@workspaces_table, workspace_id) do
       [{^workspace_id, workspace}] ->
         updated = %{workspace | status: status}

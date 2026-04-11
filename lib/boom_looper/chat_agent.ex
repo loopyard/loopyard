@@ -53,8 +53,6 @@ defmodule BoomLooper.ChatAgent do
       GenServer.call(via(id), :get_state)
     catch
       :exit, _ ->
-        ensure_ets_table()
-
         case :ets.lookup(@ets_table, id) do
           [{^id, summary}] -> summary
           [] -> nil
@@ -66,8 +64,6 @@ defmodule BoomLooper.ChatAgent do
     case Registry.lookup(BoomLooper.ChatAgentRegistry, id) do
       [{pid, _}] ->
         # Update ETS and broadcast before stopping, since terminate(:normal) is a no-op
-        ensure_ets_table()
-
         case :ets.lookup(@ets_table, id) do
           [{^id, summary}] ->
             stopped = %{summary | status: :stopped}
@@ -110,7 +106,6 @@ defmodule BoomLooper.ChatAgent do
 
       [] ->
         # No GenServer running — direct ETS write
-        ensure_ets_table()
         case :ets.lookup(@ets_table, agent_id) do
           [{^agent_id, summary}] ->
             :ets.insert(@ets_table, {agent_id, %{summary | messages: summary.messages ++ [msg]}})
@@ -128,7 +123,6 @@ defmodule BoomLooper.ChatAgent do
         :ok
 
       [] ->
-        ensure_ets_table()
         case :ets.lookup(@ets_table, agent_id) do
           [{^agent_id, summary}] ->
             messages = Enum.map(summary.messages, fn msg ->
@@ -148,8 +142,6 @@ defmodule BoomLooper.ChatAgent do
 
   @doc "Start a stopped/crashed agent — starts a new GenServer and resumes from saved state"
   def start_agent(id) do
-    ensure_ets_table()
-
     case :ets.lookup(@ets_table, id) do
       [{^id, summary}] when summary.status in [:stopped, :crashed] ->
         # Build opts from saved summary
@@ -185,8 +177,6 @@ defmodule BoomLooper.ChatAgent do
 
   @doc "Remove a stopped/crashed agent — transitions to :destroying, cleans up Docker, then removes from sidebar"
   def remove_agent(id) do
-    ensure_ets_table()
-
     # Transition to :destroying so all viewers see the state
     case :ets.lookup(@ets_table, id) do
       [{^id, summary}] ->
@@ -216,8 +206,6 @@ defmodule BoomLooper.ChatAgent do
 
   @doc "Register an agent as booting in ETS so all viewers can see it"
   def register_booting(id, name, working_dir, opts \\ []) do
-    ensure_ets_table()
-
     summary = %{
       id: id,
       name: name,
@@ -240,8 +228,6 @@ defmodule BoomLooper.ChatAgent do
 
   @doc "Update boot status in ETS and broadcast to all viewers"
   def update_boot_status(id, status_text) do
-    ensure_ets_table()
-
     case :ets.lookup(@ets_table, id) do
       [{^id, summary}] ->
         updated = %{summary | boot_status: status_text, last_activity_at: DateTime.utc_now()}
@@ -255,14 +241,11 @@ defmodule BoomLooper.ChatAgent do
 
   @doc "Mark a booting agent as failed and remove it"
   def boot_failed(id, reason) do
-    ensure_ets_table()
     :ets.delete(@ets_table, id)
     broadcast(@topic, {:chat_agent_boot_failed, id, reason})
   end
 
   def list_agents do
-    ensure_ets_table()
-
     :ets.tab2list(@ets_table)
     |> Enum.map(fn {_id, summary} ->
       # If agent is still alive, get fresh state
@@ -277,14 +260,6 @@ defmodule BoomLooper.ChatAgent do
       end
     end)
     |> Enum.sort_by(& &1[:started_at], {:desc, DateTime})
-  end
-
-  def ensure_ets_table do
-    if :ets.whereis(@ets_table) == :undefined do
-      :ets.new(@ets_table, [:named_table, :public, :set])
-    end
-
-    :ok
   end
 
   def subscribe do
@@ -316,8 +291,6 @@ defmodule BoomLooper.ChatAgent do
 
   # Resume an agent from persisted state (after server restart)
   defp init_resume(id, opts) do
-    ensure_ets_table()
-
     case :ets.lookup(@ets_table, id) do
       [{^id, saved}] ->
         {session, session_opts, backend} = start_session(id, opts,

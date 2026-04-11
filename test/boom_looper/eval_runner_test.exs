@@ -4,8 +4,7 @@ defmodule BoomLooper.EvalRunnerTest do
   alias BoomLooper.EvalRunner
 
   setup do
-    BoomLooper.ProjectRegistry.ensure_ets_tables()
-    BoomLooper.ChatAgent.ensure_ets_table()
+    BoomLooper.StateKeeper.ensure_tables!()
 
     # Clean up projects from previous tests
     BoomLooper.ProjectRegistry.list_projects()

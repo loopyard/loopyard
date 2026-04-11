@@ -270,7 +270,6 @@ defmodule BoomLooperWeb.ChatLiveTest do
       BoomLooper.ChatAgent.register_booting(id, "My Agent", ws.path)
 
       on_exit(fn ->
-        BoomLooper.ChatAgent.ensure_ets_table()
         :ets.delete(:chat_agents, id)
       end)
 
@@ -285,7 +284,6 @@ defmodule BoomLooperWeb.ChatLiveTest do
       BoomLooper.ChatAgent.register_booting(id, "My Agent", ws.path)
 
       on_exit(fn ->
-        BoomLooper.ChatAgent.ensure_ets_table()
         :ets.delete(:chat_agents, id)
       end)
 
@@ -360,7 +358,6 @@ defmodule BoomLooperWeb.ChatLiveTest do
           :exit, _ -> :ok
         end
 
-        BoomLooper.ChatAgent.ensure_ets_table()
         :ets.delete(:chat_agents, id)
       end)
 

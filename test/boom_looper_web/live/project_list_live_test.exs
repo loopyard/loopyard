@@ -4,7 +4,7 @@ defmodule BoomLooperWeb.ProjectListLiveTest do
   import Phoenix.LiveViewTest
 
   setup do
-    BoomLooper.ProjectRegistry.ensure_ets_tables()
+    BoomLooper.StateKeeper.ensure_tables!()
     BoomLooper.ProjectRegistry.list_projects() |> Enum.each(&BoomLooper.ProjectRegistry.remove_project(&1.id))
     :ok
   end

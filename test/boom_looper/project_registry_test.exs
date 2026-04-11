@@ -4,7 +4,7 @@ defmodule BoomLooper.ProjectRegistryTest do
   alias BoomLooper.ProjectRegistry
 
   setup do
-    ProjectRegistry.ensure_ets_tables()
+    BoomLooper.StateKeeper.ensure_tables!()
     # Clean up any existing state
     ProjectRegistry.list_projects() |> Enum.each(&ProjectRegistry.remove_project(&1.id))
     :ok

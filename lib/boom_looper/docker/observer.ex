@@ -124,14 +124,8 @@ defmodule BoomLooper.Docker.Observer do
 
   @impl true
   def init(_) do
-    table =
-      if :ets.whereis(@table) == :undefined do
-        :ets.new(@table, [:named_table, :public, :set, read_concurrency: true])
-      else
-        @table
-      end
-
-    {:ok, %{table: table, port: nil, debounce_ref: nil, prev: nil, line_buffer: ""},
+    # ETS table is pre-created by BoomLooper.StateKeeper.
+    {:ok, %{table: @table, port: nil, debounce_ref: nil, prev: nil, line_buffer: ""},
      {:continue, :bootstrap}}
   end
 

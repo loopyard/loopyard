@@ -1,10 +1,10 @@
 defmodule BoomLooper.WorkspaceGroupTest do
   use ExUnit.Case
 
-  alias BoomLooper.{WorkspaceGroup, WorkspaceSupervisor, ProjectRegistry}
+  alias BoomLooper.{WorkspaceGroup, WorkspaceSupervisor}
 
   setup do
-    ProjectRegistry.ensure_ets_tables()
+    BoomLooper.StateKeeper.ensure_tables!()
     :ok
   end
 
