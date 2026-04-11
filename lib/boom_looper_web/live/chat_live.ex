@@ -313,7 +313,7 @@ defmodule BoomLooperWeb.ChatLive do
     ]
 
     ChatAgent.register_booting(id, name, workspace.path)
-    Task.start(fn -> BoomLooper.AgentBoot.boot(id, agent_opts) end)
+    Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn -> BoomLooper.AgentBoot.boot(id, agent_opts) end)
 
     {:noreply, push_navigate(socket, to: "#{workspace_path(socket)}/agents/#{id}")}
   end
@@ -398,7 +398,11 @@ defmodule BoomLooperWeb.ChatLive do
 
   @impl true
   def handle_event("switch_tab", %{"tab" => tab}, socket) do
-    tab = String.to_existing_atom(tab)
+    tab = case tab do
+      "chat" -> :chat
+      "container" -> :container
+      _ -> :chat
+    end
     bp = workspace_path(socket)
 
     path =
@@ -597,7 +601,7 @@ defmodule BoomLooperWeb.ChatLive do
 
     # Start workspace in a Task so it doesn't block the LiveView process.
     # Service statuses will arrive via PubSub when ServiceManager starts.
-    Task.start(fn ->
+    Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
       BoomLooper.WorkspaceSupervisor.start_workspace(workspace_id, path)
       BoomLooper.ProjectRegistry.update_workspace_status(workspace_id, :running)
     end)
@@ -725,7 +729,7 @@ defmodule BoomLooperWeb.ChatLive do
     boot_opts = if service_name, do: [service_name: service_name], else: []
 
     ChatAgent.register_booting(id, name, working_dir, boot_opts)
-    Task.start(fn -> BoomLooper.AgentBoot.boot(id, agent_opts, service_name: service_name) end)
+    Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn -> BoomLooper.AgentBoot.boot(id, agent_opts, service_name: service_name) end)
 
     {:noreply, push_navigate(socket, to: "#{workspace_path(socket)}/agents/#{id}")}
   end

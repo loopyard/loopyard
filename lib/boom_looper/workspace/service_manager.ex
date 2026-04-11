@@ -249,7 +249,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
     # If this fails, the ServiceManager stays alive in an idle state and
     # can be retried via start_services/1 or rebuild.
     self_pid = self()
-    Task.start(fn ->
+    Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
       try do
         case Compose.ps(effective_project_dir, workspace_id) do
           {:ok, running} when running != [] ->
