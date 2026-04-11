@@ -693,37 +693,52 @@ defmodule BoomLooperWeb.ChatLive do
 
   @impl true
   def handle_info({:fetch_service_logs, service_name}, socket) do
-    # Get fresh service status - don't rely on potentially stale socket assigns
-    service_statuses = BoomLooper.Workspace.ServiceStatus.for_workspace(socket.assigns.workspace.path)
-    logs = fetch_service_container_logs(service_statuses, service_name)
-    # Also update the service_statuses in assigns so sidebar stays current
-    {:noreply, socket |> assign(:service_logs, logs) |> assign(:service_statuses, service_statuses)}
+    path = socket.assigns.workspace.path
+    {:noreply, start_service_logs_fetch(socket, path, service_name)}
   end
 
   @impl true
   def handle_info(:fetch_all_service_logs, socket) do
-    # Get fresh service status
-    service_statuses = BoomLooper.Workspace.ServiceStatus.for_workspace(socket.assigns.workspace.path)
-    all_logs = fetch_all_service_logs(service_statuses)
-    {:noreply, socket |> assign(:all_service_logs, all_logs) |> assign(:service_statuses, service_statuses)}
+    path = socket.assigns.workspace.path
+    {:noreply, start_all_service_logs_fetch(socket, path)}
   end
 
   @impl true
   def handle_info(:refresh_service_logs, socket) do
     case socket.assigns.live_action do
       :service ->
-        logs = fetch_service_container_logs(socket.assigns.service_statuses, socket.assigns.selected_service)
+        path = socket.assigns.workspace.path
         schedule_log_refresh()
-        {:noreply, assign(socket, :service_logs, logs)}
+        {:noreply, start_service_logs_fetch(socket, path, socket.assigns.selected_service)}
 
       :services ->
-        all_logs = fetch_all_service_logs(socket.assigns.service_statuses)
+        path = socket.assigns.workspace.path
         schedule_log_refresh()
-        {:noreply, assign(socket, :all_service_logs, all_logs)}
+        {:noreply, start_all_service_logs_fetch(socket, path)}
 
       _ ->
         {:noreply, socket}
     end
+  end
+
+  @impl true
+  def handle_info({:service_logs_fetched, service_name, service_statuses, logs}, socket) do
+    socket =
+      socket
+      |> assign(:service_statuses, service_statuses)
+      |> then(fn s ->
+        if s.assigns[:selected_service] == service_name, do: assign(s, :service_logs, logs), else: s
+      end)
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:all_service_logs_fetched, service_statuses, all_logs}, socket) do
+    {:noreply,
+     socket
+     |> assign(:service_statuses, service_statuses)
+     |> assign(:all_service_logs, all_logs)}
   end
 
   @impl true
@@ -779,6 +794,35 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   defp workspace_path(socket), do: socket.assigns.base_path
+
+  # Kick off a Task that fetches service status + container logs for one
+  # service. The LiveView process stays responsive; when the task completes
+  # it sends a `:service_logs_fetched` message which `handle_info` routes
+  # into assigns. We go through Task.Supervisor so we don't block on the
+  # `docker logs` shell-out.
+  defp start_service_logs_fetch(socket, path, service_name) do
+    lv = self()
+
+    Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
+      service_statuses = BoomLooper.Workspace.ServiceStatus.for_workspace(path)
+      logs = fetch_service_container_logs(service_statuses, service_name)
+      send(lv, {:service_logs_fetched, service_name, service_statuses, logs})
+    end)
+
+    socket
+  end
+
+  defp start_all_service_logs_fetch(socket, path) do
+    lv = self()
+
+    Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
+      service_statuses = BoomLooper.Workspace.ServiceStatus.for_workspace(path)
+      all_logs = fetch_all_service_logs(service_statuses)
+      send(lv, {:all_service_logs_fetched, service_statuses, all_logs})
+    end)
+
+    socket
+  end
 
   defp fetch_service_container_logs(service_statuses, service_name) do
     case Enum.find(service_statuses, &(&1.name == service_name)) do
