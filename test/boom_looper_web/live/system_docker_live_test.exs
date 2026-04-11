@@ -22,13 +22,19 @@ defmodule BoomLooperWeb.SystemDockerLiveTest do
       assert has_element?(view, "a[href='/system']")
     end
 
-    test "shows loading skeletons before async tasks complete", %{conn: conn} do
+    test "containers and volumes render immediately from Observer cache — no skeletons", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/system/docker")
-      # Skeleton rows have animate-pulse — they're our visible placeholder
-      # while the async slices are in flight. If we accidentally synced
-      # the loads back into mount, the html would jump straight to the
-      # populated tables and this would fail.
-      assert html =~ "animate-pulse"
+      # Docker.Observer seeds ETS before any LiveView mounts, so the
+      # containers and volumes sections are fully populated in the
+      # first render. No animate-pulse skeletons for these. Only
+      # container_stats (docker stats --no-stream) is still async.
+      assert html =~ "Containers"
+      assert html =~ "Volumes"
+      # The container table should be present (not a skeleton)
+      # Even if no bl- containers exist, we get the "No bl-* containers"
+      # message instead of a skeleton.
+      refute html =~ "animate-pulse" and not (html =~ "container_stats"),
+        "Containers/volumes are still showing skeletons — Observer cache not seeded?"
     end
   end
 

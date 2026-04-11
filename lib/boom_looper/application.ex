@@ -26,6 +26,12 @@ defmodule BoomLooper.Application do
       BoomLooper.WorkspaceSupervisor,
       BoomLooper.SSHServer,
 
+      # Docker event-driven cache — starts the event stream + initial
+      # snapshot so LiveViews can read container/volume state from ETS
+      # instantly on mount. Must start after PubSub (broadcasts) and
+      # before Endpoint (first LiveView mount).
+      BoomLooper.Docker.Observer,
+
       # --- Web layer (can restart independently) ---
       BoomLooperWeb.Endpoint
     ]

@@ -16,24 +16,22 @@ defmodule BoomLooperWeb.SystemDockerLive do
   alias Phoenix.LiveView.AsyncResult
   alias BoomLooper.SystemStats
 
-  @refresh 5_000
-
   @impl true
   def mount(_params, _session, socket) do
+    # Containers + volumes come from Docker.Observer's ETS cache —
+    # instant, zero docker calls. Stats are still async (slow).
+    observer = BoomLooper.Docker.Observer.snapshot()
+
     socket =
       socket
       |> assign_iex()
-      |> assign(:containers, AsyncResult.loading())
+      |> assign(:containers, observer.containers)
+      |> assign(:volumes, observer.volumes)
       |> assign(:container_stats, AsyncResult.loading())
-      |> assign(:volumes, AsyncResult.loading())
 
     if connected?(socket) do
-      # Multiplayer: container/agent lifecycle changes from any source
-      # (other tabs, agents, manual `docker rm`) trigger a refresh.
-      BoomLooper.ChatAgent.subscribe()
-      BoomLooper.Workspace.ServiceManager.subscribe()
-      Process.send_after(self(), :refresh, @refresh)
-      {:ok, kick_slices(socket)}
+      BoomLooper.Docker.Observer.subscribe()
+      {:ok, start_async(socket, :container_stats, &SystemStats.docker_container_stats/0)}
     else
       {:ok, socket}
     end
@@ -43,27 +41,19 @@ defmodule BoomLooperWeb.SystemDockerLive do
     if connected?(socket), do: subscribe_iex(socket), else: assign(socket, :iex_session, %{level: nil})
   end
 
-  defp kick_slices(socket) do
-    socket
-    |> start_async(:containers, fn -> BoomLooper.Docker.list_containers(prefix: "bl-") end)
-    |> start_async(:container_stats, &SystemStats.docker_container_stats/0)
-    |> start_async(:volumes, &BoomLooper.VolumeManager.list_all_volumes/0)
-  end
-
+  # Docker.Observer broadcasts when container/volume state changes.
+  # We just swap the assigns — no docker calls from this LiveView.
   @impl true
-  def handle_info(:refresh, socket) do
-    Process.send_after(self(), :refresh, @refresh)
-    {:noreply, kick_slices(socket)}
+  def handle_info({:docker_state_changed, snapshot}, socket) do
+    {:noreply,
+     socket
+     |> assign(:containers, snapshot.containers)
+     |> assign(:volumes, snapshot.volumes)}
   end
 
-  def handle_info({event, _}, socket)
-      when event in [:chat_agent_started, :chat_agent_stopped, :chat_agent_booting,
-                     :chat_agent_removed, :chat_agent_status_changed, :chat_agent_resumed] do
-    {:noreply, kick_slices(socket)}
-  end
-
-  def handle_info({:services_updated, _path, _statuses}, socket) do
-    {:noreply, kick_slices(socket)}
+  # Observer lost connection to Docker — show whatever we had last
+  def handle_info({:docker_state_reset}, socket) do
+    {:noreply, socket}
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
@@ -80,7 +70,11 @@ defmodule BoomLooperWeb.SystemDockerLive do
   @impl true
   def handle_event("kill_container", %{"name" => name}, socket) do
     BoomLooper.Docker.docker(["rm", "-f", name])
-    {:noreply, kick_slices(socket)}
+    # The docker events stream will pick up the container destroy event
+    # and trigger a re-snapshot automatically. Force an immediate one
+    # so the user sees the container vanish in the same render cycle.
+    BoomLooper.Docker.Observer.poll_now()
+    {:noreply, socket}
   end
 
   @impl true
@@ -102,13 +96,13 @@ defmodule BoomLooperWeb.SystemDockerLive do
     <section>
       <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
         Containers
-        <span :if={@containers.ok?} class="text-zinc-400 font-normal">({length(@containers.result)})</span>
+        <span :if={is_list(@containers)} class="text-zinc-400 font-normal">({length(@containers)})</span>
       </h2>
 
       <%= cond do %>
-        <% !@containers.ok? -> %>
+        <% !is_list(@containers) -> %>
           <.skeleton rows={4} />
-        <% @containers.result == [] -> %>
+        <% @containers == [] -> %>
           <div class="text-sm text-zinc-400 dark:text-zinc-500">No bl-* containers running</div>
         <% true -> %>
           <div class="rounded-lg border border-zinc-200 dark:border-zinc-700/80 overflow-hidden">
@@ -125,7 +119,7 @@ defmodule BoomLooperWeb.SystemDockerLive do
                 </tr>
               </thead>
               <tbody>
-                <tr :for={c <- @containers.result} class="border-t border-zinc-200 dark:border-zinc-700/50">
+                <tr :for={c <- @containers} class="border-t border-zinc-200 dark:border-zinc-700/50">
                   <td class="px-3 py-2">
                     <div class={"w-2 h-2 rounded-full #{if c.running, do: "bg-green-500", else: "bg-zinc-400"}"}></div>
                   </td>
@@ -156,13 +150,13 @@ defmodule BoomLooperWeb.SystemDockerLive do
     <section>
       <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
         Volumes
-        <span :if={@volumes.ok?} class="text-zinc-400 font-normal">({length(@volumes.result)})</span>
+        <span :if={is_list(@volumes)} class="text-zinc-400 font-normal">({length(@volumes)})</span>
       </h2>
 
       <%= cond do %>
-        <% !@volumes.ok? -> %>
+        <% !is_list(@volumes) -> %>
           <.skeleton rows={4} />
-        <% @volumes.result == [] -> %>
+        <% @volumes == [] -> %>
           <div class="text-sm text-zinc-400 dark:text-zinc-500">No bl-* volumes</div>
         <% true -> %>
           <div class="rounded-lg border border-zinc-200 dark:border-zinc-700/80 overflow-hidden">
@@ -176,7 +170,7 @@ defmodule BoomLooperWeb.SystemDockerLive do
                 </tr>
               </thead>
               <tbody>
-                <tr :for={v <- @volumes.result} class="border-t border-zinc-200 dark:border-zinc-700/50">
+                <tr :for={v <- @volumes} class="border-t border-zinc-200 dark:border-zinc-700/50">
                   <td class="px-3 py-2 font-mono">{v.name}</td>
                   <td class="px-3 py-2 font-mono text-zinc-500">{v.type}</td>
                   <td class="px-3 py-2 font-mono text-zinc-500">{v.service}</td>

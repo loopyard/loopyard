@@ -12,28 +12,25 @@ defmodule BoomLooperWeb.SystemWorkspacesLive do
   use BoomLooperWeb, :live_view
   use BoomLooperWeb.IExAware
 
-  alias Phoenix.LiveView.AsyncResult
   alias BoomLooper.SystemStats
-
-  @refresh 5_000
 
   @impl true
   def mount(_params, _session, socket) do
+    # Container counts come from Docker.Observer's ETS cache — instant.
+    # workspace_stats comes from Registry (also instant).
+    container_counts = compute_container_counts()
+
     socket =
       socket
       |> assign_iex()
       |> assign(:workspaces, SystemStats.workspace_stats())
-      |> assign(:container_counts, AsyncResult.loading())
+      |> assign(:container_counts, container_counts)
 
     if connected?(socket) do
-      # Multiplayer: anyone watching this page sees agent + service
-      # changes the moment they happen, instead of waiting for the
-      # next 5s poll. The poll is still here as a fallback in case a
-      # broadcast gets dropped.
+      BoomLooper.Docker.Observer.subscribe()
       BoomLooper.ChatAgent.subscribe()
       BoomLooper.Workspace.ServiceManager.subscribe()
-      Process.send_after(self(), :refresh, @refresh)
-      {:ok, kick_slices(socket)}
+      {:ok, socket}
     else
       {:ok, socket}
     end
@@ -43,23 +40,16 @@ defmodule BoomLooperWeb.SystemWorkspacesLive do
     if connected?(socket), do: subscribe_iex(socket), else: assign(socket, :iex_session, %{level: nil})
   end
 
-  defp kick_slices(socket) do
-    start_async(socket, :container_counts, &load_container_counts/0)
-  end
-
-  # One docker ps call, bucketed by `bl-<workspace_id>-` prefix. We do NOT
-  # do per-workspace docker calls — that would be N shell-outs.
-  defp load_container_counts do
-    BoomLooper.Docker.list_containers(prefix: "bl-")
+  # Bucket Observer's container list by workspace_id.
+  defp compute_container_counts do
+    BoomLooper.Docker.Observer.containers()
     |> Enum.reduce(%{}, fn c, acc ->
-      case Regex.run(~r/^bl-([a-f0-9]+)-/, c.name) do
-        [_, ws_id] ->
+      case c.workspace_id do
+        nil -> acc
+        ws_id ->
           Map.update(acc, ws_id, %{total: 1, running: bool_to_int(c.running)}, fn cur ->
             %{total: cur.total + 1, running: cur.running + bool_to_int(c.running)}
           end)
-
-        _ ->
-          acc
       end
     end)
   end
@@ -68,13 +58,15 @@ defmodule BoomLooperWeb.SystemWorkspacesLive do
   defp bool_to_int(_), do: 0
 
   @impl true
-  def handle_info(:refresh, socket) do
-    Process.send_after(self(), :refresh, @refresh)
+  def handle_info({:docker_state_changed, _snapshot}, socket) do
     {:noreply, refresh(socket)}
   end
 
-  # Any agent lifecycle event → re-pull workspace stats and kick the
-  # async container count fetch.
+  def handle_info({:docker_state_reset}, socket) do
+    {:noreply, assign(socket, :container_counts, %{})}
+  end
+
+  # Any agent lifecycle event → re-pull workspace stats.
   def handle_info({event, _}, socket)
       when event in [:chat_agent_started, :chat_agent_stopped, :chat_agent_booting,
                      :chat_agent_removed, :chat_agent_status_changed, :chat_agent_resumed] do
@@ -91,16 +83,7 @@ defmodule BoomLooperWeb.SystemWorkspacesLive do
   defp refresh(socket) do
     socket
     |> assign(:workspaces, SystemStats.workspace_stats())
-    |> kick_slices()
-  end
-
-  @impl true
-  def handle_async(key, {:ok, value}, socket) do
-    {:noreply, assign(socket, key, AsyncResult.ok(socket.assigns[key] || AsyncResult.loading(), value))}
-  end
-
-  def handle_async(key, {:exit, reason}, socket) do
-    {:noreply, assign(socket, key, AsyncResult.failed(socket.assigns[key] || AsyncResult.loading(), reason))}
+    |> assign(:container_counts, compute_container_counts())
   end
 
   @impl true
@@ -194,15 +177,10 @@ defmodule BoomLooperWeb.SystemWorkspacesLive do
 
   defp container_pill(assigns) do
     ~H"""
-    <%= case @containers do %>
-      <% %{ok?: true, result: counts} -> %>
-        <% c = Map.get(counts, @workspace_id, %{total: 0, running: 0}) %>
-        <span class="text-xs font-mono text-zinc-500" title={"#{c.running} running of #{c.total}"}>
-          {c.running}/{c.total} containers
-        </span>
-      <% _ -> %>
-        <span class="text-xs font-mono text-zinc-300 dark:text-zinc-600">…</span>
-    <% end %>
+    <% c = Map.get(@containers, @workspace_id, %{total: 0, running: 0}) %>
+    <span class="text-xs font-mono text-zinc-500" title={"#{c.running} running of #{c.total}"}>
+      {c.running}/{c.total} containers
+    </span>
     """
   end
 end
