@@ -186,10 +186,11 @@ defmodule BoomLooper.Compose do
   def docker_compose_v2? do
     case :persistent_term.get(:docker_compose_v2, :unchecked) do
       :unchecked ->
-        result = case System.cmd("docker", ["compose", "version"], stderr_to_stdout: true) do
-          {output, 0} -> String.contains?(output, "Docker Compose")
-          _ -> false
-        end
+        result =
+          case BoomLooper.Docker.docker(["compose", "version"]) do
+            {:ok, output} -> String.contains?(output, "Docker Compose")
+            _ -> false
+          end
         :persistent_term.put(:docker_compose_v2, result)
         result
 
@@ -201,18 +202,7 @@ defmodule BoomLooper.Compose do
   end
 
   defp stream_compose(args, callback) do
-    docker_path = System.find_executable("docker")
-
-    unless docker_path do
-      {:error, "docker not found"}
-    else
-      port = Port.open(
-        {:spawn_executable, docker_path},
-        [:binary, :exit_status, :stderr_to_stdout, {:args, args}]
-      )
-
-      collect_port_output(port, callback, "", 600_000)
-    end
+    BoomLooper.Docker.stream(args, callback, timeout: 600_000)
   end
 
   defp stream_docker_compose(args, callback) do

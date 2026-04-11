@@ -9,6 +9,8 @@ defmodule BoomLooper.VolumeManager do
 
   require Logger
 
+  alias BoomLooper.Docker
+
   @clone_image "alpine/git:latest"
   @clone_timeout 300_000  # 5 minutes
 
@@ -19,7 +21,7 @@ defmodule BoomLooper.VolumeManager do
   Returns :ok if created or already exists.
   """
   def create_volume(volume_name) do
-    case docker(["volume", "create", volume_name]) do
+    case Docker.docker(["volume", "create", volume_name]) do
       {:ok, _} -> :ok
       {:error, reason} -> {:error, reason}
     end
@@ -29,7 +31,7 @@ defmodule BoomLooper.VolumeManager do
   Delete a named Docker volume.
   """
   def delete_volume(volume_name) do
-    case docker(["volume", "rm", "-f", volume_name]) do
+    case Docker.docker(["volume", "rm", "-f", volume_name]) do
       {:ok, _} -> :ok
       {:error, reason} -> {:error, reason}
     end
@@ -39,7 +41,7 @@ defmodule BoomLooper.VolumeManager do
   Check if a volume exists.
   """
   def volume_exists?(volume_name) do
-    case docker(["volume", "inspect", volume_name]) do
+    case Docker.docker(["volume", "inspect", volume_name]) do
       {:ok, _} -> true
       {:error, _} -> false
     end
@@ -50,7 +52,7 @@ defmodule BoomLooper.VolumeManager do
   Returns volumes matching bl-{workspace_id}* pattern.
   """
   def list_workspace_volumes(workspace_id) do
-    case docker(["volume", "ls", "--format", "{{.Name}}"]) do
+    case Docker.docker(["volume", "ls", "--format", "{{.Name}}"]) do
       {:ok, output} ->
         volumes = output
         |> String.trim()
@@ -76,7 +78,7 @@ defmodule BoomLooper.VolumeManager do
   them separately for the volumes the user actually opens.
   """
   def list_all_volumes do
-    case docker(["volume", "ls", "--filter", "name=bl-", "--format", "{{.Name}}"]) do
+    case Docker.docker(["volume", "ls", "--filter", "name=bl-", "--format", "{{.Name}}"]) do
       {:ok, output} ->
         output
         |> String.trim()
@@ -101,7 +103,7 @@ defmodule BoomLooper.VolumeManager do
   Get volume info: name, size, mount point, related service.
   """
   def volume_info(volume_name) do
-    case docker(["volume", "inspect", volume_name, "--format", "{{json .}}"]) do
+    case Docker.docker(["volume", "inspect", volume_name, "--format", "{{json .}}"]) do
       {:ok, json} ->
         case Jason.decode(json) do
           {:ok, data} ->
@@ -164,7 +166,7 @@ defmodule BoomLooper.VolumeManager do
 
   defp get_volume_size(volume_name) do
     # Get size by running du in a container
-    case docker([
+    case Docker.docker([
       "run", "--rm",
       "-v", "#{volume_name}:/vol",
       "alpine", "du", "-sh", "/vol"
@@ -182,7 +184,7 @@ defmodule BoomLooper.VolumeManager do
   List directory contents in a volume.
   """
   def volume_ls(volume_name, path \\ "/") do
-    case docker([
+    case Docker.docker([
       "run", "--rm",
       "-v", "#{volume_name}:/vol",
       "alpine", "ls", "-la", "/vol#{path}"
@@ -204,7 +206,7 @@ defmodule BoomLooper.VolumeManager do
     |> MapSet.new()
 
     # List all Docker volumes
-    case docker(["volume", "ls", "--format", "{{.Name}}"]) do
+    case Docker.docker(["volume", "ls", "--format", "{{.Name}}"]) do
       {:ok, output} ->
         volumes = output |> String.trim() |> String.split("\n", trim: true)
 
@@ -221,7 +223,7 @@ defmodule BoomLooper.VolumeManager do
         end)
 
         deleted = Enum.count(orphans, fn name ->
-          match?({:ok, _}, docker(["volume", "rm", "-f", name]))
+          match?({:ok, _}, Docker.docker(["volume", "rm", "-f", name]))
         end)
 
         Logger.info("[VolumeManager] Pruned #{deleted}/#{length(orphans)} orphaned volumes")
@@ -264,7 +266,7 @@ defmodule BoomLooper.VolumeManager do
 
         Logger.info("[VolumeManager] Cloning #{git_url} (branch: #{branch}) into volume #{volume_name}")
 
-        case stream_docker(clone_args, callback) do
+        case Docker.stream(clone_args, callback, timeout: @clone_timeout) do
           {:ok, output} ->
             Logger.info("[VolumeManager] Clone completed successfully")
             {:ok, output}
@@ -297,7 +299,7 @@ defmodule BoomLooper.VolumeManager do
     # Clone directly in workspace container (already has git installed)
     clone_cmd = "git clone --branch #{branch} --depth 1 '#{auth_url}' /workspace"
 
-    case docker(["exec", container, "sh", "-c", clone_cmd], timeout: @clone_timeout) do
+    case Docker.docker(["exec", container, "sh", "-c", clone_cmd], timeout: @clone_timeout) do
       {:ok, output} -> {:ok, output}
       {:error, reason} -> {:error, reason}
     end
@@ -310,7 +312,7 @@ defmodule BoomLooper.VolumeManager do
   def pull_in_container(workspace_id) do
     container = "bl-#{workspace_id}-workspace-1"
 
-    case docker(["exec", container, "git", "-C", "/workspace", "pull"]) do
+    case Docker.docker(["exec", container, "git", "-C", "/workspace", "pull"]) do
       {:ok, output} -> {:ok, output}
       {:error, reason} -> {:error, reason}
     end
@@ -322,7 +324,7 @@ defmodule BoomLooper.VolumeManager do
   """
   def volume_has_code?(volume_name) do
     # Run a quick check to see if /workspace has files
-    case docker([
+    case Docker.docker([
       "run", "--rm",
       "-v", "#{volume_name}:/workspace",
       "alpine", "sh", "-c", "test -d /workspace/.git && echo yes || echo no"
@@ -343,7 +345,7 @@ defmodule BoomLooper.VolumeManager do
 
       :none ->
         # No running container, use temporary alpine
-        case docker([
+        case Docker.docker([
           "run", "--rm",
           "-v", "#{volume_name}:/workspace",
           "alpine", "cat", "/workspace/#{path}"
@@ -373,7 +375,7 @@ defmodule BoomLooper.VolumeManager do
         # No running container, use temporary alpine
         script = "mkdir -p /workspace/#{dir} && echo \"$FILE_CONTENT\" | base64 -d > /workspace/#{path}"
 
-        case docker([
+        case Docker.docker([
           "run", "--rm",
           "-e", "FILE_CONTENT=#{encoded}",
           "-v", "#{volume_name}:/workspace",
@@ -434,7 +436,7 @@ defmodule BoomLooper.VolumeManager do
 
         Logger.info("[VolumeManager] Copying #{source_path} to volume #{volume_name}")
 
-        case stream_docker(rsync_args, callback) do
+        case Docker.stream(rsync_args, callback, timeout: @clone_timeout) do
           {:ok, output} ->
             Logger.info("[VolumeManager] Copy completed successfully")
             {:ok, output}
@@ -453,7 +455,7 @@ defmodule BoomLooper.VolumeManager do
   List files in a volume matching a glob pattern.
   """
   def glob(volume_name, pattern) do
-    case docker([
+    case Docker.docker([
       "run", "--rm",
       "-v", "#{volume_name}:/workspace",
       "alpine", "sh", "-c", "find /workspace -name '#{pattern}' -type f 2>/dev/null | head -100"
@@ -503,50 +505,4 @@ defmodule BoomLooper.VolumeManager do
     end
   end
 
-  defp docker(args, opts \\ []) do
-    timeout = Keyword.get(opts, :timeout, 30_000)
-
-    task = Task.async(fn ->
-      System.cmd("docker", args, stderr_to_stdout: true)
-    end)
-
-    case Task.yield(task, timeout) || Task.shutdown(task) do
-      {:ok, {output, 0}} -> {:ok, output}
-      {:ok, {output, _}} -> {:error, output}
-      nil -> {:error, "docker command timed out"}
-    end
-  end
-
-  defp stream_docker(args, callback) do
-    docker_path = System.find_executable("docker")
-
-    unless docker_path do
-      {:error, "docker not found"}
-    else
-      port = Port.open(
-        {:spawn_executable, docker_path},
-        [:binary, :exit_status, :stderr_to_stdout, {:args, args}]
-      )
-
-      collect_streaming_output(port, callback, "", @clone_timeout)
-    end
-  end
-
-  defp collect_streaming_output(port, callback, acc, timeout) do
-    receive do
-      {^port, {:data, data}} ->
-        callback.(data)
-        collect_streaming_output(port, callback, acc <> data, timeout)
-
-      {^port, {:exit_status, 0}} ->
-        {:ok, acc}
-
-      {^port, {:exit_status, _}} ->
-        {:error, acc}
-    after
-      timeout ->
-        Port.close(port)
-        {:error, acc <> "\n(timed out)"}
-    end
-  end
 end

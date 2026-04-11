@@ -46,4 +46,35 @@ defmodule BoomLooper.DockerTest do
       assert {:error, _} = Docker.docker(["nonexistent-command-xyz"])
     end
   end
+
+  describe "stream/3" do
+    test "returns error when docker not in PATH" do
+      # We can't easily test the streaming loop without docker, but we can
+      # verify the open_port error path returns cleanly.
+      original_path = System.get_env("PATH")
+
+      try do
+        System.put_env("PATH", "/nonexistent-path-for-test")
+        assert {:error, _} = Docker.stream(["version"], fn _ -> :ok end)
+      after
+        if original_path, do: System.put_env("PATH", original_path)
+      end
+    end
+
+    @tag :docker
+    test "invokes callback with streaming chunks" do
+      ref = make_ref()
+      parent = self()
+
+      callback = fn data ->
+        send(parent, {ref, :chunk, data})
+      end
+
+      assert {:ok, output} = Docker.stream(["version", "--format", "{{.Client.Version}}"], callback)
+      assert output != ""
+
+      # At least one chunk should have arrived
+      assert_received {^ref, :chunk, _}
+    end
+  end
 end

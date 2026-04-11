@@ -125,19 +125,92 @@ defmodule BoomLooper.Docker do
     end
   end
 
-  @doc "Execute a raw docker CLI command. Returns {:ok, output} or {:error, output}."
+  @doc """
+  Execute a raw docker CLI command. Returns {:ok, output} or {:error, output}.
+
+  Options:
+    * `:timeout` — milliseconds (default 120_000)
+    * `:env` — list of `{name, value}` tuples passed to the child process
+  """
   def docker(args, opts \\ []) do
     timeout = Keyword.get(opts, :timeout, 120_000)
+    env = Keyword.get(opts, :env, [])
+    cmd_opts = [stderr_to_stdout: true] ++ if(env == [], do: [], else: [env: env])
 
     task =
       Task.async(fn ->
-        System.cmd("docker", args, stderr_to_stdout: true)
+        System.cmd("docker", args, cmd_opts)
       end)
 
     case Task.yield(task, timeout) || Task.shutdown(task) do
       {:ok, {output, 0}} -> {:ok, output}
       {:ok, {output, _code}} -> {:error, String.trim(output)}
       nil -> {:error, "Docker command timed out after #{timeout}ms"}
+    end
+  end
+
+  @doc """
+  Stream a docker command, invoking `callback` with each chunk of output.
+  Returns `{:ok, full_output}` on exit 0, or `{:error, partial_output}` on
+  non-zero exit / timeout.
+
+  Options:
+    * `:timeout` — total max wait (default 600_000)
+  """
+  def stream(args, callback, opts \\ []) when is_function(callback, 1) do
+    timeout = Keyword.get(opts, :timeout, 600_000)
+
+    case open_port(args) do
+      {:error, _} = err -> err
+      port -> collect_stream(port, callback, "", timeout)
+    end
+  end
+
+  @doc """
+  Open a raw `Port` for a docker command. Caller is responsible for
+  receiving port messages and closing the port.
+
+  Options:
+    * `:env` — list of `{name, value}` tuples passed to the child process
+  """
+  def open_port(args, opts \\ []) do
+    case System.find_executable("docker") do
+      nil ->
+        {:error, "docker not found in PATH"}
+
+      docker_path ->
+        port_opts = [
+          :binary,
+          :exit_status,
+          :stderr_to_stdout,
+          {:args, args}
+        ]
+
+        port_opts =
+          case Keyword.get(opts, :env, []) do
+            [] -> port_opts
+            env -> port_opts ++ [{:env, Enum.map(env, fn {k, v} -> {to_charlist(k), to_charlist(v)} end)}]
+          end
+
+        Port.open({:spawn_executable, docker_path}, port_opts)
+    end
+  end
+
+  defp collect_stream(port, callback, acc, timeout) do
+    receive do
+      {^port, {:data, data}} ->
+        callback.(data)
+        collect_stream(port, callback, acc <> data, timeout)
+
+      {^port, {:exit_status, 0}} ->
+        {:ok, acc}
+
+      {^port, {:exit_status, _}} ->
+        {:error, acc}
+    after
+      timeout ->
+        Port.close(port)
+        {:error, acc <> "\n(timed out)"}
     end
   end
 end

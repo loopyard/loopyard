@@ -214,35 +214,21 @@ defmodule BoomLooper.Docker.Observer do
   end
 
   defp start_event_stream(state) do
-    docker = System.find_executable("docker")
+    case BoomLooper.Docker.open_port([
+           "events",
+           "--filter", "type=container",
+           "--filter", "type=volume",
+           "--format", "{{json .}}"
+         ]) do
+      {:error, reason} ->
+        Logger.error("[Docker.Observer] #{reason}")
+        :ets.insert(@table, {:connected, false})
+        Process.send_after(self(), :retry_bootstrap, @retry_interval)
+        state
 
-    if docker do
-      port =
-        Port.open(
-          {:spawn_executable, docker},
-          [
-            :binary,
-            :stream,
-            :exit_status,
-            :use_stdio,
-            :stderr_to_stdout,
-            args: [
-              "events",
-              "--filter", "type=container",
-              "--filter", "type=volume",
-              "--format", "{{json .}}"
-            ]
-          ]
-        )
-
-      :ets.insert(@table, {:connected, true})
-      %{state | port: port, line_buffer: ""}
-    else
-      Logger.error("[Docker.Observer] `docker` not found in PATH")
-      :ets.insert(@table, {:connected, false})
-      # Retry later
-      Process.send_after(self(), :retry_bootstrap, @retry_interval)
-      state
+      port when is_port(port) ->
+        :ets.insert(@table, {:connected, true})
+        %{state | port: port, line_buffer: ""}
     end
   end
 
@@ -267,15 +253,15 @@ defmodule BoomLooper.Docker.Observer do
   end
 
   defp fetch_containers do
-    case System.cmd("docker", [
-           "ps", "-a",
-           "--filter", "name=bl-",
-           "--format", "{{.Names}}\t{{.Status}}\t{{.Ports}}"
-         ],
-         stderr_to_stdout: true,
-         env: [{"LC_ALL", "C"}]
-    ) do
-      {output, 0} ->
+    case BoomLooper.Docker.docker(
+           [
+             "ps", "-a",
+             "--filter", "name=bl-",
+             "--format", "{{.Names}}\t{{.Status}}\t{{.Ports}}"
+           ],
+           env: [{"LC_ALL", "C"}]
+         ) do
+      {:ok, output} ->
         output
         |> String.split("\n", trim: true)
         |> Enum.map(&parse_container_line/1)
@@ -307,14 +293,12 @@ defmodule BoomLooper.Docker.Observer do
   end
 
   defp fetch_volumes do
-    case System.cmd("docker", [
+    case BoomLooper.Docker.docker([
            "volume", "ls",
            "--filter", "name=bl-",
            "--format", "{{.Name}}"
-         ],
-         stderr_to_stdout: true
-    ) do
-      {output, 0} ->
+         ]) do
+      {:ok, output} ->
         output
         |> String.split("\n", trim: true)
         |> Enum.map(fn name ->

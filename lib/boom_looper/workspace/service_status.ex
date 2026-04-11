@@ -232,11 +232,11 @@ defmodule BoomLooper.Workspace.ServiceStatus do
   defp list_services_from_docker(workspace_id) do
     project_name = BoomLooper.Compose.project_name(workspace_id)
 
-    case System.cmd("docker", [
+    case Docker.docker([
       "ps", "--filter", "name=#{project_name}",
       "--format", "{{.Names}}\t{{.Image}}\t{{.Ports}}\t{{.Status}}"
-    ], stderr_to_stdout: true) do
-      {output, 0} ->
+    ]) do
+      {:ok, output} ->
         output
         |> String.split("\n", trim: true)
         |> Enum.map(&parse_docker_ps_line(&1, project_name))

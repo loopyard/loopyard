@@ -281,11 +281,11 @@ defmodule BoomLooper.SystemStats do
   `agent_stats/2` and `service_stats/1`.
   """
   def docker_container_stats do
-    case System.cmd("docker", [
+    case BoomLooper.Docker.docker([
            "stats", "--no-stream",
            "--format", "{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.PIDs}}"
-         ], stderr_to_stdout: true) do
-      {output, 0} ->
+         ]) do
+      {:ok, output} ->
         output
         |> String.trim()
         |> String.split("\n", trim: true)
