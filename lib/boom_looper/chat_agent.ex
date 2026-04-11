@@ -10,6 +10,7 @@ defmodule BoomLooper.ChatAgent do
 
   alias BoomLooper.Agent.Event
   alias BoomLooper.AgentLog
+  alias BoomLooper.ChatAgent.{Persistence, Prompt, ToolConfig}
 
 
   defstruct [
@@ -34,46 +35,6 @@ defmodule BoomLooper.ChatAgent do
 
   @topic "chat_agents"
   @ets_table :chat_agents
-
-  # Built-in Claude Code tools for bind-mount agents (they run against
-  # the host filesystem, so native Read/Glob/Grep work correctly).
-  @builtin_tools_bind_mount [
-    "WebSearch",
-    "WebFetch",
-    "Read",
-    "Glob",
-    "Grep"
-  ]
-
-  # Built-in tools for container-only agents. Read/Glob/Grep are REMOVED
-  # because they run host-side — they'd find (or fail to find) files in
-  # the wrong place. Everything filesystem-related must go through MCP
-  # tools that exec inside the container.
-  @builtin_tools_container_only [
-    "WebSearch",
-    "WebFetch"
-  ]
-
-  # Native tools that container-only agents must NEVER use. The
-  # `allowed_tools` allowlist alone isn't enough — with
-  # --dangerously-skip-permissions the SDK still allows native tools
-  # by default. We pass this list as `disallowed_tools` to make the
-  # block explicit and survive any future allowlist holes.
-  #
-  # Bash escape was the smoking gun: agents would `cd /Users/.../boomlooper`
-  # and edit the host clone, while the running container kept reading
-  # the docker volume copy. Edit/Write/Read with absolute paths did
-  # the same thing.
-  @denied_native_tools_for_container_agents [
-    "Bash",
-    "Edit",
-    "Write",
-    "Read",
-    "Glob",
-    "Grep",
-    "MultiEdit",
-    "NotebookEdit"
-  ]
 
   # --- Public API ---
 
@@ -145,8 +106,6 @@ defmodule BoomLooper.ChatAgent do
     case Registry.lookup(BoomLooper.ChatAgentRegistry, agent_id) do
       [{pid, _}] ->
         GenServer.cast(pid, {:append_external_message, msg})
-        # Give the GenServer a moment to process
-        Process.sleep(10)
         msg
 
       [] ->
@@ -244,7 +203,7 @@ defmodule BoomLooper.ChatAgent do
       [{^id, summary}] ->
         ws_id = summary[:workspace_id]
         if ws_id do
-          path = log_path(ws_id)
+          path = Persistence.log_path(ws_id)
           AgentLog.append({:agent_removed, id}, log_path: path, version: 1)
         end
       [] -> :ok
@@ -436,7 +395,7 @@ defmodule BoomLooper.ChatAgent do
 
     summary = summary(state)
     :ets.insert(@ets_table, {id, summary})
-    persist_agent(state)
+    Persistence.persist_agent(state, &summary/1)
     broadcast(@topic, {:chat_agent_started, summary})
     BoomLooper.EventLog.info("agent:#{name}", "Started (#{id})")
 
@@ -450,10 +409,10 @@ defmodule BoomLooper.ChatAgent do
     workspace_id = Keyword.get(params, :workspace_id)
     service_name = Keyword.get(params, :service_name)
 
-    tools = Keyword.get(opts, :tools, default_tools())
+    tools = Keyword.get(opts, :tools, ToolConfig.default_tools())
     backend = Keyword.get(opts, :backend, BoomLooper.Agent.Backend.ClaudeCode)
     workspace = if workspace_id, do: load_workspace_config(workspace_id), else: nil
-    system_prompt = build_system_prompt(id, bind_mount, workspace_id, workspace, service_name)
+    system_prompt = Prompt.build_system_prompt(id, bind_mount, workspace_id, workspace, service_name)
 
     # Containerized agents (volume-based, no bind_mount) MUST NOT use
     # host-side filesystem tools. Their workspace lives inside a Docker
@@ -479,14 +438,14 @@ defmodule BoomLooper.ChatAgent do
       cwd: working_dir,
       permission_mode: :accept_edits,
       dangerously_skip_permissions: true,
-      mcp_servers: build_mcp_servers(tools),
-      allowed_tools: build_allowed_tools(tools, container_only?),
+      mcp_servers: ToolConfig.build_mcp_servers(tools),
+      allowed_tools: ToolConfig.build_allowed_tools(tools, container_only?),
       system_prompt: system_prompt
     ]
 
     session_opts =
       if container_only? do
-        Keyword.put(base_opts, :disallowed_tools, @denied_native_tools_for_container_agents)
+        Keyword.put(base_opts, :disallowed_tools, ToolConfig.denied_native_tools_for_container_agents())
       else
         base_opts
       end
@@ -507,7 +466,7 @@ defmodule BoomLooper.ChatAgent do
     # Add user message
     user_msg = %{role: :user, content: text, timestamp: DateTime.utc_now()}
     state = append_message(state, user_msg)
-    persist_message(state, List.last(state.messages))
+    Persistence.persist_message(state,List.last(state.messages))
 
     # Broadcast with ID (last message has the ID assigned by append_message)
     broadcast("chat_agent:#{state.id}", {:chat_message, state.id, List.last(state.messages)})
@@ -600,7 +559,7 @@ defmodule BoomLooper.ChatAgent do
   def handle_cast({:append_external_message, msg}, state) do
     state = append_message(state, msg)
     :ets.insert(@ets_table, {state.id, summary(state)})
-    persist_message(state, List.last(state.messages))
+    Persistence.persist_message(state,List.last(state.messages))
     broadcast("chat_agent:#{state.id}", {:chat_message, state.id, List.last(state.messages)})
 
     # Auto-continue: if agent is idle and receives an external system message,
@@ -625,7 +584,7 @@ defmodule BoomLooper.ChatAgent do
     new_msg = Enum.find(state.messages, &(&1[:id] == msg_id))
     if old_msg && new_msg do
       changes = Map.drop(new_msg, [:id])
-      persist_message_update(state, msg_id, changes)
+      Persistence.persist_message_update(state,msg_id, changes)
     end
 
     {:noreply, state}
@@ -652,21 +611,21 @@ defmodule BoomLooper.ChatAgent do
         %Event.Text{text: content} ->
           assistant_msg = %{role: :assistant, content: content, timestamp: now}
           state = %{append_message(state, assistant_msg) | last_activity_at: now}
-          persist_message(state, List.last(state.messages))
+          Persistence.persist_message(state,List.last(state.messages))
           broadcast("chat_agent:#{id}", {:chat_message, id, List.last(state.messages)})
           state
 
         %Event.ToolCall{name: tool_name, input: tool_input} ->
           tool_msg = %{role: :tool, tool: tool_name, input: tool_input, timestamp: now}
           state = %{append_message(state, tool_msg) | last_activity_at: now, tool_calls: state.tool_calls + 1}
-          persist_message(state, List.last(state.messages))
+          Persistence.persist_message(state,List.last(state.messages))
           broadcast("chat_agent:#{id}", {:chat_message, id, List.last(state.messages)})
           state
 
         %Event.ToolResult{content: content, is_error: is_error} ->
           result_msg = %{role: :tool_result, content: content, is_error: is_error, timestamp: now}
           state = %{append_message(state, result_msg) | last_activity_at: now}
-          persist_message(state, List.last(state.messages))
+          Persistence.persist_message(state,List.last(state.messages))
           broadcast("chat_agent:#{id}", {:chat_message, id, List.last(state.messages)})
           state
 
@@ -682,12 +641,14 @@ defmodule BoomLooper.ChatAgent do
     {:noreply, state}
   end
 
+  @impl true
   def handle_info({:stream_done, id}, %{id: id} = state) do
     state = %{state | status: :idle}
     broadcast(@topic, {:chat_agent_status_changed, id, :idle})
     {:noreply, state}
   end
 
+  @impl true
   def handle_info({:stream_timeout, id, ref}, %{id: id, status: :thinking, stream_ref: ref} = state) do
     # Still thinking after timeout AND ref matches current stream — the streaming task is gone
     BoomLooper.EventLog.warning("agent:#{state.name}", "Stream timed out, resetting to idle")
@@ -699,11 +660,14 @@ defmodule BoomLooper.ChatAgent do
   end
 
   # Ignore timeout if ref doesn't match (stale timer from previous stream) or not thinking
+  @impl true
   def handle_info({:stream_timeout, _id, _ref}, state), do: {:noreply, state}
 
   # Legacy timeout format (no ref) — ignore
+  @impl true
   def handle_info({:stream_timeout, _id}, state), do: {:noreply, state}
 
+  @impl true
   def handle_info({:stream_error, id, reason}, %{id: id} = state) do
     BoomLooper.EventLog.error("agent:#{state.name}", "Stream error: #{reason}")
     now = DateTime.utc_now()
@@ -750,6 +714,7 @@ defmodule BoomLooper.ChatAgent do
   end
 
   # Linked streaming task died — auto-restart session
+  @impl true
   def handle_info({:EXIT, _pid, reason}, %{status: :thinking} = state) when reason != :normal do
     BoomLooper.EventLog.warning("agent:#{state.name}", "Streaming task died: #{inspect(reason)}")
     id = state.id
@@ -772,6 +737,7 @@ defmodule BoomLooper.ChatAgent do
     end
   end
 
+  @impl true
   def handle_info(_msg, state), do: {:noreply, state}
 
   @impl true
@@ -962,187 +928,12 @@ defmodule BoomLooper.ChatAgent do
     Phoenix.PubSub.broadcast(BoomLooper.PubSub, topic, message)
   end
 
-  # --- Persistence ---
-
-  @log_version 1
-
-  defp log_path(nil), do: nil
-  defp log_path(workspace_id) do
-    virtual_dir = Path.join([BoomLooper.Workspace.home_dir(), "workspaces", workspace_id])
-    Path.join([virtual_dir, ".boomlooper", "workspace", "agents.log"])
-  end
-
-  defp persist_agent(state) do
-    case log_path(state.workspace_id) do
-      nil -> :ok
-      path ->
-        # Log the full summary so replay produces complete ETS entries
-        agent_data = summary(state) |> Map.delete(:messages)
-        AgentLog.append({:agent, state.id, agent_data}, log_path: path, version: @log_version)
-    end
-  end
-
-  defp persist_message(state, msg) do
-    case log_path(state.workspace_id) do
-      nil -> :ok
-      path -> AgentLog.append({:msg, state.id, msg}, log_path: path, version: @log_version)
-    end
-  end
-
-  defp persist_message_update(state, msg_id, changes) do
-    case log_path(state.workspace_id) do
-      nil -> :ok
-      path -> AgentLog.append({:msg_update, state.id, msg_id, changes}, log_path: path, version: @log_version)
-    end
-  end
-
-  # --- System Prompt ---
-
-  # The system prompt is passed as a CLI argument (--system-prompt).
-  # If it's too long, the OS will SIGKILL the CLI process (exit 137).
-  # Keep it under this limit. Anything larger should go in CLAUDE.md
-  # or a file the agent reads.
-  @max_system_prompt_chars 2000
+  # --- Delegated public API (backward compatibility) ---
 
   @doc false
-  def build_system_prompt(agent_id, bind_mount, workspace_id, workspace, service_name) do
-    # System prompt: ONLY identity + agent ID. Must stay small.
-    base = if workspace do
-      container_base_prompt(agent_id, bind_mount, workspace_id)
-    else
-      setup_base_prompt(agent_id, bind_mount)
-    end
-
-    parts = [base]
-
-    parts = if workspace do
-      parts ++ [workspace_prompt(workspace, bind_mount)]
-    else
-      parts ++ [setup_prompt(bind_mount)]
-    end
-
-    parts = if service_name && workspace_id && workspace do
-      parts ++ [service_agent_prompt(service_name, workspace_id, workspace)]
-    else
-      parts
-    end
-
-    prompt = Enum.join(parts, "\n")
-
-    if String.length(prompt) > @max_system_prompt_chars do
-      Logger.warning(
-        "[ChatAgent] System prompt is #{String.length(prompt)} chars " <>
-        "(limit #{@max_system_prompt_chars}). CLI may be SIGKILL'd. " <>
-        "Move content to priv/prompts/ or CLAUDE.md."
-      )
-    end
-
-    prompt
-  end
-
-  defp service_agent_prompt(service_name, workspace_id, _workspace) do
-    # Workspace metadata no longer carries services/processes — that info
-    # lives in docker-compose.yml directly. Just point the agent at the
-    # right container and let it use `logs` / `exec` to investigate.
-    container =
-      BoomLooper.Workspace.ServiceManager.service_container_name(workspace_id, service_name)
-
-    "\nService agent for #{service_name} (container: #{container}). Use `logs` to check output."
-  end
-
-  defp container_base_prompt(agent_id, _bind_mount, workspace_id) do
-    container =
-      if workspace_id do
-        BoomLooper.Workspace.ServiceManager.service_container_name(workspace_id, "workspace")
-      else
-        "bl-unknown-workspace-1"
-      end
-
-    workspace_note = "/workspace is a Docker volume that persists across container restarts"
-
-    """
-    Workspace container: #{container}. YOUR AGENT ID: #{agent_id}. Pass agent_id to every tool call.
-
-    Use boom-looper-container MCP tools for ALL work. `exec` for quick commands, `exec_stream` for long-running ones. #{workspace_note}. Dev server runs in a separate container — use `logs` and `service_status` to check it.
-    """
-  end
-
-  defp workspace_prompt(workspace, _bind_mount) do
-    custom = if workspace.system_prompt, do: "\n#{workspace.system_prompt}\n", else: ""
-
-    """
-    ## Workspace: #{workspace.name || "Unnamed"}
-    #{custom}
-    """
-  end
-
-  defp setup_base_prompt(agent_id, _bind_mount) do
-    """
-    You are a Setup agent. YOUR AGENT ID: #{agent_id}
-
-    Pass your agent_id "#{agent_id}" to every tool call.
-
-    Steps: read project files → write Dockerfile → write docker-compose.yml → docker_compose up → exec setup → verify.
-
-    Tools:
-    - `write_file` — write Dockerfile and docker-compose.yml to `.boomlooper/workspace/`
-    - `docker_compose` — run compose commands (e.g. "up -d --build", "ps", "logs dev")
-    - `docker` — run docker commands (e.g. "ps", "volume ls")
-    - `exec` — run commands in the workspace container
-    - `logs` — get container logs
-
-    Use `${CODE_VOLUME}:/workspace` in your compose file — it gets substituted automatically.
-
-    """
-  end
-
-  @setup_guide File.read!(Path.join(:code.priv_dir(:boom_looper), "prompts/setup_guide.md"))
+  defdelegate build_system_prompt(agent_id, bind_mount, workspace_id, workspace, service_name),
+    to: Prompt
 
   @doc false
-  def setup_guide, do: @setup_guide
-
-  defp setup_prompt(bind_mount) do
-    path_note = if bind_mount, do: " at #{bind_mount}", else: ""
-
-    """
-    ## Workspace Setup
-
-    New project#{path_note}. Write docker-compose.yml and Dockerfile directly:
-    1. Read project files to understand the stack
-    2. `write_file` path=`.boomlooper/workspace/Dockerfile`
-    3. `write_file` path=`.boomlooper/workspace/docker-compose.yml`
-    4. `docker_compose("up -d --build")`
-    5. `exec` to install deps/run migrations
-    6. `docker_compose("logs dev")` to verify
-    """
-  end
-
-  # --- Tool Configuration ---
-
-  defp default_tools do
-    # Note: Workspace tools removed - agents use direct docker_compose/write_file instead
-    [BoomLooper.Tools.Agents, BoomLooper.Tools.Container, BoomLooper.Tools.Secrets]
-  end
-
-  defp build_mcp_servers(tool_modules) do
-    Map.new(tool_modules, fn mod ->
-      info = mod.__tool_server__()
-      {info.name, mod}
-    end)
-  end
-
-  defp build_allowed_tools(tool_modules, container_only?) do
-    mcp_tools = Enum.flat_map(tool_modules, fn mod ->
-      info = mod.__tool_server__()
-      server_name = info.name
-
-      Enum.map(info.tools, fn tool_mod ->
-        "mcp__#{server_name}__#{tool_mod.__tool_name__()}"
-      end)
-    end)
-
-    builtins = if container_only?, do: @builtin_tools_container_only, else: @builtin_tools_bind_mount
-
-    builtins ++ mcp_tools
-  end
+  defdelegate setup_guide(), to: Prompt
 end
