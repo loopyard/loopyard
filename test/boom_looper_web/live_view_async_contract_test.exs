@@ -128,6 +128,19 @@ defmodule BoomLooperWeb.LiveViewAsyncContractTest do
       assert scan_string(clean) == []
     end
 
+    test "ignores function captures passed to start_async (they're deferred, not sync)" do
+      clean = """
+      defmodule FakeLive do
+        def mount(_p, _s, socket) do
+          start_async(socket, :stats, &BoomLooper.SystemStats.docker_container_stats/0)
+          {:ok, socket}
+        end
+      end
+      """
+
+      assert scan_string(clean) == []
+    end
+
     test "ignores slow calls in non-callback functions" do
       # The scanner ONLY looks at mount/handle_params. Helpers can call
       # whatever they want — they're invoked from handle_async/handle_info.
@@ -225,12 +238,27 @@ defmodule BoomLooperWeb.LiveViewAsyncContractTest do
 
   defp extract_from_node(_), do: []
 
-  # Walk a body AST and return every `Module.function` remote call as
-  # `{module_leaf_atom, function_atom, line}`.
+  # Walk a body AST and return every `Module.function(args)` DIRECT call
+  # as `{module_leaf_atom, function_atom, line}`.
+  #
+  # Skips function captures like `&Module.fun/0` — those are deferred
+  # references passed to `start_async/3`, not synchronous invocations.
+  # Without this distinction, `start_async(socket, :stats, &SystemStats.docker_container_stats/0)`
+  # would be flagged even though it's the CORRECT async pattern.
   defp collect_remote_calls(body) do
+    # Strip function captures before walking so their inner dot nodes
+    # don't get collected. Macro.prewalk can't skip subtrees, so we
+    # replace the whole &-node with a placeholder.
+    stripped =
+      Macro.prewalk(body, fn
+        {:&, _, _} -> :__capture_removed__
+        node -> node
+      end)
+
     {_, calls} =
-      Macro.prewalk(body, [], fn
-        {{:., meta, [{:__aliases__, _, mod_path}, fun]}, _, _args} = node, acc when is_atom(fun) ->
+      Macro.prewalk(stripped, [], fn
+        {{:., meta, [{:__aliases__, _, mod_path}, fun]}, _, args} = node, acc
+        when is_atom(fun) and is_list(args) ->
           leaf = mod_path |> List.last()
           line = Keyword.get(meta, :line, 0)
           {node, [{leaf, fun, line} | acc]}

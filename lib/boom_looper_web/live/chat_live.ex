@@ -32,20 +32,19 @@ defmodule BoomLooperWeb.ChatLive do
     if connected?(socket) do
       ChatAgent.subscribe()
       BoomLooper.Workspace.ServiceManager.subscribe()
+      BoomLooper.Docker.Observer.subscribe()
 
       # Start workspace supervisor async — don't block mount
       send(self(), {:start_workspace, workspace.path})
-      # Fetch service status async — Docker can be slow, never block mount
-      send(self(), :fetch_service_status)
-      # Fetch volumes async
-      send(self(), :fetch_volumes)
     end
 
     socket = if connected?(socket), do: subscribe_iex(socket), else: assign(socket, :iex_session, %{level: nil})
 
-    # Mount instantly with agents. Service status loads async (Docker can be slow).
+    # Services + volumes come from Docker.Observer's ETS cache (instant,
+    # zero docker calls). The sidebar renders immediately with real data.
     agents = list_workspace_agents(workspace.path)
-    service_statuses = []
+    ws_id = extra_assigns[:workspace_entry] && extra_assigns[:workspace_entry].id || workspace.id
+    {service_statuses, volumes} = load_sidebar_from_observer(workspace.path, ws_id)
 
     base_path = if extra_assigns[:project] do
       "/projects/#{extra_assigns[:project].id}/workspaces/#{extra_assigns[:workspace_entry].id}"
@@ -67,8 +66,9 @@ defmodule BoomLooperWeb.ChatLive do
      |> assign(:host, host)
      |> assign(:agents, agents)
      |> assign(:service_statuses, service_statuses)
-     |> assign(:services_loaded, false)
-     |> assign(:volumes_loaded, false)
+     |> assign(:services_loaded, true)
+     |> assign(:volumes_loaded, true)
+     |> assign(:volumes, volumes)
      |> assign(:selected_id, nil)
      |> assign(:selected_agent, nil)
      |> assign(:messages, [])
@@ -88,8 +88,7 @@ defmodule BoomLooperWeb.ChatLive do
      |> assign(:all_service_logs, [])
      |> assign(:stream_buffer, StreamBuffer.new())
      |> assign(:building, false)
-     |> assign(:console_container, nil)
-     |> assign(:volumes, [])}
+     |> assign(:console_container, nil)}
   end
 
   @impl true
@@ -606,51 +605,28 @@ defmodule BoomLooperWeb.ChatLive do
     {:noreply, socket}
   end
 
+  # Docker.Observer broadcasts when container/volume state changes.
+  # Re-derive sidebar state from the cache — zero docker calls.
   @impl true
-  def handle_info(:fetch_service_status, socket) do
-    # Fetch service status in a Task so Docker slowness doesn't block the LiveView.
-    path = socket.assigns.workspace.path
-    lv_pid = self()
+  def handle_info({:docker_state_changed, _snapshot}, socket) do
+    ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
+    {service_statuses, volumes} = load_sidebar_from_observer(socket.assigns.workspace.path, ws_id)
 
-    Task.start(fn ->
-      statuses = BoomLooper.Workspace.ServiceStatus.for_workspace(path)
-      send(lv_pid, {:service_status_result, statuses})
-    end)
+    {:noreply,
+     socket
+     |> assign(:service_statuses, service_statuses)
+     |> assign(:volumes, volumes)}
+  end
 
+  def handle_info({:docker_state_reset}, socket) do
     {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info({:service_status_result, statuses}, socket) do
-    {:noreply, socket |> assign(:service_statuses, statuses) |> assign(:services_loaded, true)}
-  end
-
-  @impl true
-  def handle_info(:fetch_volumes, socket) do
-    workspace_id = socket.assigns.workspace_entry.id
-    lv_pid = self()
-
-    Task.start(fn ->
-      volumes = case BoomLooper.VolumeManager.list_workspace_volumes(workspace_id) do
-        {:ok, vols} -> vols
-        _ -> []
-      end
-      send(lv_pid, {:volumes_result, volumes})
-    end)
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info({:volumes_result, volumes}, socket) do
-    {:noreply, socket |> assign(:volumes, volumes) |> assign(:volumes_loaded, true)}
   end
 
   @impl true
   def handle_info({:services_updated, path, _statuses}, socket) do
     if path == socket.assigns.workspace.path do
-      # Re-query actual state via ServiceStatus (reliable, no stale PubSub data)
-      service_statuses = BoomLooper.Workspace.ServiceStatus.for_workspace(path)
+      ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
+      {service_statuses, _volumes} = load_sidebar_from_observer(path, ws_id)
       {:noreply, assign(socket, :service_statuses, service_statuses)}
     else
       {:noreply, socket}
@@ -807,6 +783,65 @@ defmodule BoomLooperWeb.ChatLive do
     |> Enum.filter(fn a ->
       a[:bind_mount] == workspace_path || a[:working_dir] == workspace_path
     end)
+  end
+
+  # Derive sidebar service + volume state from Docker.Observer's ETS
+  # cache. Zero docker calls — microsecond reads. The Observer
+  # maintains the cache via the `docker events` stream.
+  #
+  # Services: read docker-compose.yml (fast local file) for DEFINED
+  # services, then merge running state from Observer's container list.
+  # Volumes: directly from Observer's volume list for this workspace.
+  defp load_sidebar_from_observer(workspace_path, workspace_id) do
+    # Defined services from the compose file (fast — local file read)
+    defined = BoomLooper.Workspace.ServiceStatus.list_defined_services(workspace_path)
+
+    # Running state from Observer's cached container list
+    project_name = BoomLooper.Compose.project_name(workspace_id)
+    observer_containers = BoomLooper.Docker.Observer.containers_for(workspace_id)
+
+    service_statuses =
+      if defined != [] do
+        Enum.map(defined, fn svc ->
+          container_name = "#{project_name}-#{svc.name}-1"
+          container = Enum.find(observer_containers, &(&1.name == container_name))
+
+          if container && container.running do
+            struct!(svc, %{
+              status: :running,
+              container: container_name,
+              ports: container.host_ports || %{}
+            })
+          else
+            struct!(svc, %{status: :stopped, container: container_name})
+          end
+        end)
+      else
+        # No compose file yet — derive from Observer containers directly
+        observer_containers
+        |> Enum.reject(&(String.ends_with?(&1.name, "-workspace-1")))
+        |> Enum.map(fn c ->
+          service_name = c.name
+            |> String.replace_prefix("#{project_name}-", "")
+            |> String.replace_suffix("-1", "")
+
+          %BoomLooper.Workspace.ServiceStatus.Service{
+            name: service_name,
+            type: :process,
+            status: if(c.running, do: :running, else: :stopped),
+            container: c.name,
+            ports: c.host_ports || %{}
+          }
+        end)
+      end
+
+    volumes =
+      BoomLooper.Docker.Observer.volumes_for(workspace_id)
+      |> Enum.map(fn v ->
+        %{name: v.name, type: v.type, service: v.service, description: v.description}
+      end)
+
+    {service_statuses, volumes}
   end
 
   defp select_agent(socket, id) do
