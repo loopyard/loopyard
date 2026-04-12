@@ -37,20 +37,34 @@ defmodule BoomLooper.Tools.Container do
 
   def validate_workspace_path(_), do: {:error, "Path must be a string"}
 
+  defp validate_string(value, field, max_bytes) do
+    cond do
+      not is_binary(value) -> {:error, "#{field} must be a string"}
+      byte_size(value) > max_bytes -> {:error, "#{field} exceeds #{max_bytes} byte limit"}
+      String.contains?(value, <<0>>) -> {:error, "#{field} contains null bytes"}
+      true -> :ok
+    end
+  end
+
+  defp validate_timeout(seconds) when is_number(seconds) and seconds >= 1 and seconds <= 3600, do: :ok
+  defp validate_timeout(_), do: {:error, "timeout must be between 1 and 3600 seconds"}
+
   # --- Public API ---
 
   def do_exec(agent_id, command, opts \\ %{}) do
-    case resolve_container(agent_id) do
-      {:ok, container} ->
-        exec_opts = []
-        exec_opts = if Map.has_key?(opts, :workdir), do: Keyword.put(exec_opts, :workdir, opts.workdir), else: exec_opts
-        # Tool accepts seconds, Docker.exec_in expects milliseconds
-        exec_opts = if Map.has_key?(opts, :timeout), do: Keyword.put(exec_opts, :timeout, opts.timeout * 1_000), else: exec_opts
+    with :ok <- validate_string(command, "command", 10_000),
+         :ok <- validate_timeout(Map.get(opts, :timeout, 120)) do
+      case resolve_container(agent_id) do
+        {:ok, container} ->
+          exec_opts = []
+          exec_opts = if Map.has_key?(opts, :workdir), do: Keyword.put(exec_opts, :workdir, opts.workdir), else: exec_opts
+          exec_opts = if Map.has_key?(opts, :timeout), do: Keyword.put(exec_opts, :timeout, opts.timeout * 1_000), else: exec_opts
 
-        Docker.exec_in(container, command, exec_opts)
+          Docker.exec_in(container, command, exec_opts)
 
-      {:error, reason} ->
-        {:error, reason}
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 
@@ -332,7 +346,9 @@ defmodule BoomLooper.Tools.Container do
   end
 
   def do_write_file(agent_id, path, content) do
-    with {:ok, _} <- validate_workspace_path(path) do
+    with {:ok, _} <- validate_workspace_path(path),
+         :ok <- validate_string(path, "path", 500),
+         :ok <- validate_string(content, "content", 1_000_000) do
       case BoomLooper.ChatAgent.get_state(agent_id) do
         %{workspace_id: workspace_id} when is_binary(workspace_id) ->
           volume_name = BoomLooper.Workspace.volume_name_for(workspace_id)

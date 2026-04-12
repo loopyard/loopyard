@@ -22,6 +22,36 @@ defmodule BoomLooper.Tools.ContainerTest do
     end
   end
 
+  describe "input validation" do
+    test "do_exec rejects oversized commands" do
+      big_cmd = String.duplicate("x", 10_001)
+      assert {:error, msg} = Container.do_exec("any-agent", big_cmd)
+      assert msg =~ "10000 byte limit"
+    end
+
+    test "do_exec rejects commands with null bytes" do
+      assert {:error, msg} = Container.do_exec("any-agent", "echo \0 hello")
+      assert msg =~ "null bytes"
+    end
+
+    test "do_exec rejects invalid timeout" do
+      assert {:error, msg} = Container.do_exec("any-agent", "echo hi", %{timeout: 9999})
+      assert msg =~ "between 1 and 3600"
+    end
+
+    test "do_write_file rejects oversized content" do
+      big = String.duplicate("x", 1_000_001)
+      assert {:error, msg} = Container.do_write_file("any-agent", "test.txt", big)
+      assert msg =~ "1000000 byte limit"
+    end
+
+    test "do_write_file rejects oversized paths" do
+      long_path = String.duplicate("a/", 251)
+      assert {:error, msg} = Container.do_write_file("any-agent", long_path, "content")
+      assert msg =~ "500 byte limit"
+    end
+  end
+
   describe "validate_workspace_path/1" do
     test "accepts relative paths" do
       assert {:ok, "/workspace/src/main.rs"} = Container.validate_workspace_path("src/main.rs")
