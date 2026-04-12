@@ -37,7 +37,7 @@ defmodule BoomLooper.ComposeTest do
       assert config["volumes"]["bl-abcd-code"]["external"] == true
     end
 
-    test "strips host ports from port mappings" do
+    test "strips host ports when no port_map provided" do
       compose = %{
         "services" => %{
           "web" => %{
@@ -50,6 +50,47 @@ defmodule BoomLooper.ComposeTest do
       config = Jason.decode!(result)
 
       assert config["services"]["web"]["ports"] == ["3000", "8080", "4000"]
+    end
+
+    test "pins host ports from port_map (sticky ports across restarts)" do
+      compose = %{
+        "services" => %{
+          "dev" => %{
+            "ports" => ["3000"]
+          },
+          "postgres" => %{
+            "ports" => ["5432"]
+          }
+        }
+      }
+
+      port_map = %{
+        "dev" => %{3000 => 33870},
+        "postgres" => %{5432 => 33871}
+      }
+
+      {:ok, result} = Compose.process_agent_compose(Jason.encode!(compose), "abcd", port_map: port_map)
+      config = Jason.decode!(result)
+
+      assert config["services"]["dev"]["ports"] == ["33870:3000"]
+      assert config["services"]["postgres"]["ports"] == ["33871:5432"]
+    end
+
+    test "falls back to dynamic when port_map has no entry for a service" do
+      compose = %{
+        "services" => %{
+          "dev" => %{"ports" => ["3000"]},
+          "worker" => %{"ports" => ["4000"]}
+        }
+      }
+
+      port_map = %{"dev" => %{3000 => 33870}}
+
+      {:ok, result} = Compose.process_agent_compose(Jason.encode!(compose), "abcd", port_map: port_map)
+      config = Jason.decode!(result)
+
+      assert config["services"]["dev"]["ports"] == ["33870:3000"]
+      assert config["services"]["worker"]["ports"] == ["4000"]
     end
 
     test "handles YAML input" do
@@ -103,7 +144,7 @@ defmodule BoomLooper.ComposeTest do
       ws_volumes = config["services"]["workspace"]["volumes"]
       assert Enum.any?(ws_volumes, &String.starts_with?(&1, "bl-test1-code:"))
 
-      # Host ports are stripped
+      # Host ports are dynamic (no port_map provided)
       assert config["services"]["workspace"]["ports"] == ["3000"]
     end
 

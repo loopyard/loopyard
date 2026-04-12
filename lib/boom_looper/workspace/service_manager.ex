@@ -66,17 +66,18 @@ defmodule BoomLooper.Workspace.ServiceManager do
   def restart_dev_streaming(project_dir, callback) when is_function(callback, 1) do
     workspace_id = Workspace.workspace_id(project_dir)
     volume_name = Workspace.volume_name_for(workspace_id)
-    # All compose operations use the virtual dir, not the real project path
     effective_dir = Path.join([Workspace.home_dir(), "workspaces", workspace_id])
     File.mkdir_p!(effective_dir)
+
+    # Capture port assignments BEFORE stopping containers so we can pin them
+    port_map = Compose.capture_port_map(workspace_id)
 
     compose_path = Compose.compose_path(effective_dir)
     File.mkdir_p!(Path.dirname(compose_path))
 
-    # Read agent-written compose file from volume
     case BoomLooper.VolumeManager.read_file(volume_name, ".boomlooper/workspace/docker-compose.yml") do
       {:ok, content} when content != "" ->
-        case Compose.process_agent_compose(content, workspace_id) do
+        case Compose.process_agent_compose(content, workspace_id, port_map: port_map) do
           {:ok, processed} -> File.write!(compose_path, processed)
           {:error, reason} ->
             callback.("Error processing compose file: #{reason}\n")
@@ -125,19 +126,20 @@ defmodule BoomLooper.Workspace.ServiceManager do
   def restart_workspace_streaming(project_dir, callback) when is_function(callback, 1) do
     workspace_id = Workspace.workspace_id(project_dir)
     volume_name = Workspace.volume_name_for(workspace_id)
-    # All compose operations use the virtual dir, not the real project path
     effective_dir = Path.join([Workspace.home_dir(), "workspaces", workspace_id])
     File.mkdir_p!(effective_dir)
 
+    # Capture ports BEFORE tearing down
+    port_map = Compose.capture_port_map(workspace_id)
+
     Compose.down(effective_dir, workspace_id)
 
-    # Read agent-written compose file from volume
     compose_path = Compose.compose_path(effective_dir)
     File.mkdir_p!(Path.dirname(compose_path))
 
     case BoomLooper.VolumeManager.read_file(volume_name, ".boomlooper/workspace/docker-compose.yml") do
       {:ok, content} when content != "" ->
-        case Compose.process_agent_compose(content, workspace_id) do
+        case Compose.process_agent_compose(content, workspace_id, port_map: port_map) do
           {:ok, processed} ->
             File.write!(compose_path, processed)
           {:error, reason} ->
@@ -160,19 +162,19 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
   @doc "Stop containers, rebuild with streaming output for volume-based workspaces."
   def restart_workspace_streaming_volume(workspace_id, volume_name, callback) when is_function(callback, 1) do
-    # Use virtual project dir
     project_dir = Path.join([Workspace.home_dir(), "workspaces", workspace_id])
     File.mkdir_p!(project_dir)
 
+    port_map = Compose.capture_port_map(workspace_id)
+
     Compose.down(project_dir, workspace_id)
 
-    # Read agent-written compose file from volume
     compose_path = Compose.compose_path(project_dir)
     File.mkdir_p!(Path.dirname(compose_path))
 
     case BoomLooper.VolumeManager.read_file(volume_name, ".boomlooper/workspace/docker-compose.yml") do
       {:ok, content} when content != "" ->
-        case Compose.process_agent_compose(content, workspace_id) do
+        case Compose.process_agent_compose(content, workspace_id, port_map: port_map) do
           {:ok, processed} -> File.write!(compose_path, processed)
           {:error, reason} -> callback.("Error processing compose file: #{reason}\n")
         end
@@ -373,9 +375,12 @@ defmodule BoomLooper.Workspace.ServiceManager do
     compose_path = Compose.compose_path(state.project_dir)
     File.mkdir_p!(Path.dirname(compose_path))
 
+    # Capture any existing port assignments (e.g. containers still running after GenServer restart)
+    port_map = Compose.capture_port_map(state.workspace_id)
+
     has_compose = case BoomLooper.VolumeManager.read_file(volume_name, ".boomlooper/workspace/docker-compose.yml") do
       {:ok, content} when content != "" ->
-        case Compose.process_agent_compose(content, state.workspace_id) do
+        case Compose.process_agent_compose(content, state.workspace_id, port_map: port_map) do
           {:ok, processed} ->
             File.write!(compose_path, processed)
             true

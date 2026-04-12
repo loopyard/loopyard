@@ -13,55 +13,55 @@ defmodule BoomLooper.Compose do
   Agents write standard compose syntax. We:
   1. Replace ${CODE_VOLUME} placeholder with actual volume name
   2. Ensure the code volume is declared as external
-  3. Strip host ports (use dynamic allocation)
+  3. Pin host ports from previous run (sticky ports across restarts)
+
+  Options:
+    * `:port_map` — `%{"service_name" => %{container_port => host_port}}` from the
+      previous run. If a service had port 33870→3000, we pin "33870:3000" so the
+      URL stays stable across restarts. If omitted, ports are dynamically allocated.
   """
-  def process_agent_compose(compose_content, workspace_id) do
+  def process_agent_compose(compose_content, workspace_id, opts \\ []) do
     code_volume = Workspace.volume_name_for(workspace_id)
+    port_map = Keyword.get(opts, :port_map, %{})
 
-    case Jason.decode(compose_content) do
+    case parse_compose(compose_content) do
       {:ok, compose} ->
-        compose = update_in(compose, ["services"], fn services ->
-          services
-          |> Enum.map(fn {name, svc} ->
-            svc = update_volumes_placeholder(svc, code_volume)
-            svc = strip_host_ports(svc)
-            {name, svc}
-          end)
-          |> Map.new()
-        end)
-
-        # Ensure code volume is declared as external
-        volumes = Map.get(compose, "volumes", %{}) || %{}
-        volumes = Map.put(volumes, code_volume, %{"external" => true})
-        compose = Map.put(compose, "volumes", volumes)
-
+        compose = process_services(compose, code_volume, port_map)
+        compose = ensure_code_volume(compose, code_volume)
         {:ok, Jason.encode!(compose, pretty: true)}
 
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp parse_compose(content) do
+    case Jason.decode(content) do
+      {:ok, compose} -> {:ok, compose}
       {:error, _} ->
-        # If not valid JSON, try YAML (compose files are usually YAML)
-        case YamlElixir.read_from_string(compose_content) do
-          {:ok, compose} ->
-            compose = update_in(compose, ["services"], fn services ->
-              services
-              |> Enum.map(fn {name, svc} ->
-                svc = update_volumes_placeholder(svc, code_volume)
-                svc = strip_host_ports(svc)
-                {name, svc}
-              end)
-              |> Map.new()
-            end)
-
-            volumes = Map.get(compose, "volumes", %{}) || %{}
-            volumes = Map.put(volumes, code_volume, %{"external" => true})
-            compose = Map.put(compose, "volumes", volumes)
-
-            # Write back as JSON (docker compose accepts both)
-            {:ok, Jason.encode!(compose, pretty: true)}
-
-          {:error, reason} ->
-            {:error, "Invalid compose file: #{inspect(reason)}"}
+        case YamlElixir.read_from_string(content) do
+          {:ok, compose} -> {:ok, compose}
+          {:error, reason} -> {:error, "Invalid compose file: #{inspect(reason)}"}
         end
     end
+  end
+
+  defp process_services(compose, code_volume, port_map) do
+    update_in(compose, ["services"], fn services ->
+      services
+      |> Enum.map(fn {name, svc} ->
+        svc = update_volumes_placeholder(svc, code_volume)
+        svc = pin_or_strip_ports(svc, Map.get(port_map, name, %{}))
+        {name, svc}
+      end)
+      |> Map.new()
+    end)
+  end
+
+  defp ensure_code_volume(compose, code_volume) do
+    volumes = Map.get(compose, "volumes", %{}) || %{}
+    volumes = Map.put(volumes, code_volume, %{"external" => true})
+    Map.put(compose, "volumes", volumes)
   end
 
   defp update_volumes_placeholder(svc, code_volume) when is_map(svc) do
@@ -78,26 +78,71 @@ defmodule BoomLooper.Compose do
   end
   defp update_volumes_placeholder(svc, _), do: svc
 
-  defp strip_host_ports(svc) when is_map(svc) do
+  # Pin previously-assigned host ports so URLs survive restarts.
+  # Falls back to dynamic allocation if no previous mapping exists.
+  defp pin_or_strip_ports(svc, prev_ports) when is_map(svc) do
     case svc["ports"] do
       ports when is_list(ports) ->
-        stripped = Enum.map(ports, &container_port_only/1)
-        Map.put(svc, "ports", stripped)
+        pinned = Enum.map(ports, &pin_port(&1, prev_ports))
+        Map.put(svc, "ports", pinned)
       _ -> svc
     end
   end
-  defp strip_host_ports(svc), do: svc
+  defp pin_or_strip_ports(svc, _), do: svc
 
-  # Strip host port from a port mapping, keeping only the container port.
-  # "3001:3000" -> "3000", "3000" -> "3000", "3000/tcp" -> "3000/tcp"
-  defp container_port_only(port_spec) when is_binary(port_spec) do
+  # If we have a previous host port for this container port, pin it.
+  # Otherwise strip to container-only for dynamic allocation.
+  defp pin_port(port_spec, prev_ports) when is_binary(port_spec) do
+    container_port = extract_container_port(port_spec)
+
+    case Map.get(prev_ports, container_port) || Map.get(prev_ports, to_string(container_port)) do
+      nil -> container_port_str(port_spec)
+      host_port -> "#{host_port}:#{container_port}"
+    end
+  end
+  defp pin_port(port_spec, prev_ports) when is_integer(port_spec) do
+    pin_port(to_string(port_spec), prev_ports)
+  end
+
+  # Extract the container port number from various formats
+  defp extract_container_port(port_spec) do
+    port_str = case String.split(port_spec, ":") do
+      [_host, container] -> container
+      [container] -> container
+      [_ip, _host, container] -> container
+    end
+    # Strip protocol suffix like /tcp
+    port_str |> String.split("/") |> hd() |> String.to_integer()
+  end
+
+  # Strip to container-only (dynamic allocation)
+  defp container_port_str(port_spec) when is_binary(port_spec) do
     case String.split(port_spec, ":") do
       [_host, container] -> container
       [container] -> container
       [_ip, _host, container] -> container
     end
   end
-  defp container_port_only(port_spec), do: to_string(port_spec)
+
+  @doc """
+  Capture the current port assignments for all services in a workspace.
+  Returns `%{"dev" => %{3000 => 33870}, "postgres" => %{5432 => 33871}}`.
+  Used to pin ports across restarts.
+  """
+  def capture_port_map(workspace_id) do
+    project_name = project_name(workspace_id)
+
+    BoomLooper.Docker.Observer.containers_for(workspace_id)
+    |> Enum.reject(&(&1.name =~ ~r/-workspace-/))
+    |> Map.new(fn container ->
+      # Extract service name: "bl-abcd-dev-1" → "dev"
+      service = container.name
+        |> String.replace_prefix("#{project_name}-", "")
+        |> String.replace_suffix("-1", "")
+
+      {service, container.host_ports}
+    end)
+  end
 
   @doc "Path to the compose file."
   def compose_path(project_dir), do: Path.join([project_dir, ".boomlooper", "workspace", "docker-compose.yml"])

@@ -163,8 +163,9 @@ defmodule BoomLooper.Tools.Container.Helpers do
       {:error, _} -> :ok
     end
 
-    # Sync docker-compose.yml with full processing
+    # Sync docker-compose.yml with full processing + sticky ports
     ws_id = Path.basename(project_dir)
+    port_map = BoomLooper.Compose.capture_port_map(ws_id)
 
     case BoomLooper.VolumeManager.read_file(
            volume_name,
@@ -172,7 +173,7 @@ defmodule BoomLooper.Tools.Container.Helpers do
          ) do
       {:ok, content} ->
         processed =
-          case BoomLooper.Compose.process_agent_compose(content, ws_id) do
+          case BoomLooper.Compose.process_agent_compose(content, ws_id, port_map: port_map) do
             {:ok, json} ->
               json
 
