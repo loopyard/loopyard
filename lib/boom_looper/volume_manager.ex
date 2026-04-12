@@ -11,7 +11,9 @@ defmodule BoomLooper.VolumeManager do
 
   alias BoomLooper.Docker
 
-  @clone_image "alpine/git:latest"
+  # Use plain alpine (always cached locally) + install git inline rather
+  # than alpine/git which often hangs on pull from Docker Hub.
+  @clone_image "alpine:latest"
   @clone_timeout 300_000  # 5 minutes
 
   # --- Volume Operations ---
@@ -261,7 +263,8 @@ defmodule BoomLooper.VolumeManager do
           "run", "--rm",
           "-v", "#{volume_name}:/workspace",
           @clone_image,
-          "clone", "--branch", branch, "--depth", "1", auth_url, "/workspace"
+          "sh", "-c",
+          "apk add --no-cache git >/dev/null 2>&1 && git clone --branch #{branch} --depth 1 '#{auth_url}' /workspace"
         ]
 
         Logger.info("[VolumeManager] Cloning #{git_url} (branch: #{branch}) into volume #{volume_name}")
