@@ -39,6 +39,15 @@ defmodule BoomLooper.ProjectRegistryTest do
       # Should have at least the main workspace
       assert length(workspaces) >= 1
     end
+
+    test "no duplicate workspace names within a project" do
+      path = File.cwd!()
+      {:ok, project, _} = ProjectRegistry.add(path)
+      workspaces = ProjectRegistry.list_workspaces(project.id)
+      names = Enum.map(workspaces, & &1.name)
+      assert names == Enum.uniq(names),
+        "Found duplicate workspace names: #{inspect(names -- Enum.uniq(names))}"
+    end
   end
 
   describe "add/1 (via Source.Local)" do

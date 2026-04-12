@@ -451,15 +451,24 @@ defmodule BoomLooper.ProjectRegistry do
   defp discover_worktrees(project) do
     case Git.worktree_list(project.path) do
       {:ok, worktrees} ->
+        # Collect names already registered to avoid duplicates. A worktree
+        # on branch "main" would collide with the project's main workspace.
+        existing_names =
+          WorkspaceRegistry.list_workspaces(project.id)
+          |> MapSet.new(& &1.name)
+
         Enum.each(worktrees, fn wt ->
-          # Skip the main worktree (same path as project) — it's already
-          # registered as the main workspace. Also skip detached worktrees
-          # that don't have a branch name.
           cond do
+            # Skip the main worktree (same path as project)
             wt.path == project.path ->
               :ok
 
+            # Skip detached or unnamed worktrees
             wt[:branch] == nil || wt[:detached] ->
+              :ok
+
+            # Skip if a workspace with this branch name already exists
+            wt.branch in existing_names ->
               :ok
 
             true ->
