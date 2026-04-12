@@ -1,29 +1,14 @@
 defmodule BoomLooper.Tools.Container.InspectService do
-  @moduledoc false
+  use BoomLooper.Tool,
+    name: "inspect_service",
+    description: "Get a complete snapshot of one service in ONE call: container state, exit code, host/container port mapping, last 50 log lines, and an extracted error summary. PREFER THIS over fanning out to `docker_compose ps` + `logs` + `ports` + `docker port` separately.",
+    params: [
+      agent_id: {:string, required: true},
+      name: {:string, required: true, description: "Service name from docker-compose.yml (e.g. 'dev', 'postgres', 'redis')"}
+    ]
 
   alias BoomLooper.Docker
   alias BoomLooper.Tools.Container.Helpers
-
-  def __tool_name__, do: "inspect_service"
-
-  def __description__,
-    do:
-      "Get a complete snapshot of one service in ONE call: container state, exit code, host/container port mapping, last 50 log lines, and an extracted error summary. PREFER THIS over fanning out to `docker_compose ps` + `logs` + `ports` + `docker port` separately."
-
-  def input_schema do
-    %{
-      "type" => "object",
-      "properties" => %{
-        "agent_id" => %{"type" => "string"},
-        "name" => %{
-          "type" => "string",
-          "description" =>
-            "Service name from docker-compose.yml (e.g. 'dev', 'postgres', 'redis')"
-        }
-      },
-      "required" => ["agent_id", "name"]
-    }
-  end
 
   def execute(%{agent_id: agent_id, name: name}, _assigns) do
     with {:ok, workspace_id} <- Helpers.agent_workspace_id(agent_id) do

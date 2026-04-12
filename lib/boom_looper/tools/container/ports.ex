@@ -1,21 +1,13 @@
 defmodule BoomLooper.Tools.Container.Ports do
-  @moduledoc false
+  use BoomLooper.Tool,
+    name: "ports",
+    description: "Show all listening ports in the container",
+    params: [
+      agent_id: {:string, required: true}
+    ]
 
   alias BoomLooper.Docker
   alias BoomLooper.Tools.Container.Helpers
-
-  def __tool_name__, do: "ports"
-  def __description__, do: "Show all listening ports in the container"
-
-  def input_schema do
-    %{
-      "type" => "object",
-      "properties" => %{
-        "agent_id" => %{"type" => "string"}
-      },
-      "required" => ["agent_id"]
-    }
-  end
 
   def execute(%{agent_id: agent_id}, _assigns) do
     case Helpers.resolve_container(agent_id) do

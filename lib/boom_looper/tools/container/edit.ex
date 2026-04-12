@@ -1,42 +1,16 @@
 defmodule BoomLooper.Tools.Container.Edit do
-  @moduledoc false
+  use BoomLooper.Tool,
+    name: "edit",
+    description: "Atomic find/replace in a workspace file. PREFER THIS over read_file+write_file for changes — it's atomic, cheaper in tokens (just the diff, not the whole file twice), and gives clear errors if old_string isn't unique. Use replace_all for refactors that touch every occurrence.",
+    params: [
+      agent_id: {:string, required: true},
+      path: {:string, required: true, description: "File path relative to /workspace (e.g. 'app/javascript/dashboard/i18n/locale/en/login.json')"},
+      old_string: {:string, required: true, description: "Exact text to replace. Must be unique in the file unless replace_all=true. Multi-line strings work — pass with literal newlines."},
+      new_string: {:string, required: true, description: "Replacement text. Pass empty string to delete."},
+      replace_all: {:boolean, description: "Replace every occurrence (default: false — fails if old_string appears more than once)"}
+    ]
 
   alias BoomLooper.Tools.Container.Helpers
-
-  def __tool_name__, do: "edit"
-
-  def __description__,
-    do:
-      "Atomic find/replace in a workspace file. PREFER THIS over read_file+write_file for changes — it's atomic, cheaper in tokens (just the diff, not the whole file twice), and gives clear errors if old_string isn't unique. Use replace_all for refactors that touch every occurrence."
-
-  def input_schema do
-    %{
-      "type" => "object",
-      "properties" => %{
-        "agent_id" => %{"type" => "string"},
-        "path" => %{
-          "type" => "string",
-          "description" =>
-            "File path relative to /workspace (e.g. 'app/javascript/dashboard/i18n/locale/en/login.json')"
-        },
-        "old_string" => %{
-          "type" => "string",
-          "description" =>
-            "Exact text to replace. Must be unique in the file unless replace_all=true. Multi-line strings work — pass with literal newlines."
-        },
-        "new_string" => %{
-          "type" => "string",
-          "description" => "Replacement text. Pass empty string to delete."
-        },
-        "replace_all" => %{
-          "type" => "boolean",
-          "description" =>
-            "Replace every occurrence (default: false — fails if old_string appears more than once)"
-        }
-      },
-      "required" => ["agent_id", "path", "old_string", "new_string"]
-    }
-  end
 
   def execute(
         %{agent_id: agent_id, path: path, old_string: old_string, new_string: new_string} =

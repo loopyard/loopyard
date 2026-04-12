@@ -1,28 +1,13 @@
 defmodule BoomLooper.Tools.Container.ReadFiles do
-  @moduledoc false
+  use BoomLooper.Tool,
+    name: "read_files",
+    description: "Read several files in ONE round trip. PREFER THIS over multiple `read_file` calls during discovery (e.g. reading Gemfile + package.json + README + Procfile.dev at once). Files that don't exist show up as `(error: ...)` so partial failures don't lose the rest.",
+    params: [
+      agent_id: {:string, required: true},
+      paths: {:string, required: true, description: ~s|JSON array of file paths relative to /workspace, e.g. '["Gemfile", "package.json", "README.md"]'|}
+    ]
 
   alias BoomLooper.Tools.Container.ReadFile
-
-  def __tool_name__, do: "read_files"
-
-  def __description__,
-    do:
-      "Read several files in ONE round trip. PREFER THIS over multiple `read_file` calls during discovery (e.g. reading Gemfile + package.json + README + Procfile.dev at once). Files that don't exist show up as `(error: ...)` so partial failures don't lose the rest."
-
-  def input_schema do
-    %{
-      "type" => "object",
-      "properties" => %{
-        "agent_id" => %{"type" => "string"},
-        "paths" => %{
-          "type" => "string",
-          "description" =>
-            ~s|JSON array of file paths relative to /workspace, e.g. '["Gemfile", "package.json", "README.md"]'|
-        }
-      },
-      "required" => ["agent_id", "paths"]
-    }
-  end
 
   def execute(%{agent_id: agent_id, paths: paths}, _assigns) do
     case Jason.decode(to_string(paths)) do

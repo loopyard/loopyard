@@ -90,4 +90,109 @@ defmodule BoomLooper.Tools.Container.Helpers do
   defp container_exists?(name) do
     match?({:ok, _}, Docker.docker(["inspect", "--format", "{{.Name}}", name]))
   end
+
+  @doc """
+  Stream output from a Port to a chat message, broadcasting chunks via PubSub.
+
+  Used by docker_compose and exec_stream tools to show real-time build/command output.
+  """
+  def stream_port_output(agent_id, port, command, msg_id, acc, timeout) do
+    receive do
+      {^port, {:data, data}} ->
+        acc = acc <> data
+
+        BoomLooper.ChatAgent.update_message(agent_id, msg_id, fn msg ->
+          %{msg | content: acc}
+        end)
+
+        Phoenix.PubSub.broadcast(
+          BoomLooper.PubSub,
+          "chat_agent:#{agent_id}",
+          {:stream_output, agent_id, data, command, msg_id}
+        )
+
+        stream_port_output(agent_id, port, command, msg_id, acc, timeout)
+
+      {^port, {:exit_status, code}} ->
+        BoomLooper.ChatAgent.update_message(agent_id, msg_id, fn msg ->
+          %{msg | role: :build_done, content: acc}
+        end)
+
+        status = if code == 0, do: "completed", else: "exited (code #{code})"
+
+        Phoenix.PubSub.broadcast(
+          BoomLooper.PubSub,
+          "chat_agent:#{agent_id}",
+          {:chat_message, agent_id,
+           %{role: :system, content: "Command #{status}", timestamp: DateTime.utc_now()}}
+        )
+    after
+      timeout ->
+        Port.close(port)
+
+        BoomLooper.ChatAgent.update_message(agent_id, msg_id, fn msg ->
+          %{msg | role: :build_failed, content: acc}
+        end)
+
+        Phoenix.PubSub.broadcast(
+          BoomLooper.PubSub,
+          "chat_agent:#{agent_id}",
+          {:chat_message, agent_id,
+           %{
+             role: :system,
+             content: "Command timed out after #{div(timeout, 1_000)}s",
+             timestamp: DateTime.utc_now()
+           }}
+        )
+    end
+  end
+
+  @doc """
+  Sync .boomlooper/workspace/ files from a Docker volume to the host filesystem.
+
+  Reads Dockerfile and docker-compose.yml from the volume and writes them to the
+  host project directory, processing compose variable substitutions.
+  """
+  def sync_volume_to_host(volume_name, project_dir) do
+    host_dir = Path.join(project_dir, ".boomlooper/workspace")
+    File.mkdir_p!(host_dir)
+
+    # Sync Dockerfile (no substitution needed)
+    case BoomLooper.VolumeManager.read_file(volume_name, ".boomlooper/workspace/Dockerfile") do
+      {:ok, content} -> File.write!(Path.join(host_dir, "Dockerfile"), content)
+      {:error, _} -> :ok
+    end
+
+    # Sync docker-compose.yml with full processing
+    ws_id = Path.basename(project_dir)
+
+    case BoomLooper.VolumeManager.read_file(
+           volume_name,
+           ".boomlooper/workspace/docker-compose.yml"
+         ) do
+      {:ok, content} ->
+        processed =
+          case BoomLooper.Compose.process_agent_compose(content, ws_id) do
+            {:ok, json} ->
+              json
+
+            {:error, _} ->
+              content |> String.replace("${CODE_VOLUME}", volume_name)
+          end
+
+        processed =
+          String.replace(
+            processed,
+            ~r/context["\s:]*\/workspace/,
+            "context: #{host_dir}"
+          )
+
+        File.write!(Path.join(host_dir, "docker-compose.yml"), processed)
+
+      {:error, _} ->
+        :ok
+    end
+
+    :ok
+  end
 end

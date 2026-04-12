@@ -1,23 +1,13 @@
 defmodule BoomLooper.Tools.Container.ReadFile do
-  @moduledoc false
+  use BoomLooper.Tool,
+    name: "read_file",
+    description: "Read a file from the workspace. Path is relative to /workspace.",
+    params: [
+      agent_id: {:string, required: true},
+      path: {:string, required: true, description: "File path relative to /workspace"}
+    ]
 
   alias BoomLooper.Tools.Container.Helpers
-
-  def __tool_name__, do: "read_file"
-
-  def __description__,
-    do: "Read a file from the workspace. Path is relative to /workspace."
-
-  def input_schema do
-    %{
-      "type" => "object",
-      "properties" => %{
-        "agent_id" => %{"type" => "string"},
-        "path" => %{"type" => "string", "description" => "File path relative to /workspace"}
-      },
-      "required" => ["agent_id", "path"]
-    }
-  end
 
   def execute(%{agent_id: agent_id, path: path}, _assigns) do
     with {:ok, _} <- Helpers.validate_workspace_path(path) do

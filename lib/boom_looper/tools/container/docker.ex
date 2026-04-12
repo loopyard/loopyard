@@ -1,29 +1,12 @@
 defmodule BoomLooper.Tools.Container.Docker do
-  @moduledoc false
-
-  def __tool_name__, do: "docker"
-
-  def __description__,
-    do: "Run any Docker CLI command. Use for inspecting containers, volumes, images, networks, etc."
-
-  def input_schema do
-    %{
-      "type" => "object",
-      "properties" => %{
-        "agent_id" => %{"type" => "string"},
-        "command" => %{
-          "type" => "string",
-          "description" =>
-            "Docker command (e.g. 'ps -a', 'volume ls', 'inspect mycontainer', 'images')"
-        },
-        "timeout" => %{
-          "type" => "integer",
-          "description" => "Max seconds to run (default: 30)"
-        }
-      },
-      "required" => ["agent_id", "command"]
-    }
-  end
+  use BoomLooper.Tool,
+    name: "docker",
+    description: "Run any Docker CLI command. Use for inspecting containers, volumes, images, networks, etc.",
+    params: [
+      agent_id: {:string, required: true},
+      command: {:string, required: true, description: "Docker command (e.g. 'ps -a', 'volume ls', 'inspect mycontainer', 'images')"},
+      timeout: {:integer, description: "Max seconds to run (default: 30)"}
+    ]
 
   def execute(%{agent_id: _agent_id, command: command} = params, _assigns) do
     timeout_seconds = Map.get(params, :timeout, 30)

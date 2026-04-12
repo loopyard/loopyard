@@ -1,29 +1,15 @@
 defmodule BoomLooper.Tools.Container.Logs do
-  @moduledoc false
+  use BoomLooper.Tool,
+    name: "logs",
+    description: "View container logs (works on running AND stopped/crashed containers). Pass 'service' to see a specific service's logs (e.g. 'dev', 'postgres'). Use service_containers first to see what's available.",
+    params: [
+      agent_id: {:string, required: true},
+      service: {:string, description: "Service name to get logs for (e.g. 'dev', 'postgres', 'redis')"},
+      lines: :integer
+    ]
 
   alias BoomLooper.Docker
   alias BoomLooper.Tools.Container.Helpers
-
-  def __tool_name__, do: "logs"
-
-  def __description__,
-    do:
-      "View container logs (works on running AND stopped/crashed containers). Pass 'service' to see a specific service's logs (e.g. 'dev', 'postgres'). Use service_containers first to see what's available."
-
-  def input_schema do
-    %{
-      "type" => "object",
-      "properties" => %{
-        "agent_id" => %{"type" => "string"},
-        "service" => %{
-          "type" => "string",
-          "description" => "Service name to get logs for (e.g. 'dev', 'postgres', 'redis')"
-        },
-        "lines" => %{"type" => "integer"}
-      },
-      "required" => ["agent_id"]
-    }
-  end
 
   def execute(%{agent_id: agent_id} = params, _assigns) do
     service = Map.get(params, :service)

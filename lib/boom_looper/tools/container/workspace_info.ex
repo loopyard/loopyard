@@ -1,18 +1,10 @@
 defmodule BoomLooper.Tools.Container.WorkspaceInfo do
-  @moduledoc false
-
-  def __tool_name__, do: "workspace_info"
-  def __description__, do: "Get workspace metadata: ID, volume name, paths, container names"
-
-  def input_schema do
-    %{
-      "type" => "object",
-      "properties" => %{
-        "agent_id" => %{"type" => "string"}
-      },
-      "required" => ["agent_id"]
-    }
-  end
+  use BoomLooper.Tool,
+    name: "workspace_info",
+    description: "Get workspace metadata: ID, volume name, paths, container names",
+    params: [
+      agent_id: {:string, required: true}
+    ]
 
   def execute(%{agent_id: agent_id}, _assigns) do
     case BoomLooper.ChatAgent.get_state(agent_id) do

@@ -1,29 +1,14 @@
 defmodule BoomLooper.Tools.Container.WriteFile do
-  @moduledoc false
+  use BoomLooper.Tool,
+    name: "write_file",
+    description: "Write a file to the workspace. Use for Dockerfile, docker-compose.yml, config files, etc. Path is relative to /workspace.",
+    params: [
+      agent_id: {:string, required: true},
+      path: {:string, required: true, description: "File path relative to /workspace (e.g. '.boomlooper/workspace/Dockerfile' or '.boomlooper/workspace/docker-compose.yml')"},
+      content: {:string, required: true, description: "File content"}
+    ]
 
   alias BoomLooper.Tools.Container.Helpers
-
-  def __tool_name__, do: "write_file"
-
-  def __description__,
-    do:
-      "Write a file to the workspace. Use for Dockerfile, docker-compose.yml, config files, etc. Path is relative to /workspace."
-
-  def input_schema do
-    %{
-      "type" => "object",
-      "properties" => %{
-        "agent_id" => %{"type" => "string"},
-        "path" => %{
-          "type" => "string",
-          "description" =>
-            "File path relative to /workspace (e.g. '.boomlooper/workspace/Dockerfile' or '.boomlooper/workspace/docker-compose.yml')"
-        },
-        "content" => %{"type" => "string", "description" => "File content"}
-      },
-      "required" => ["agent_id", "path", "content"]
-    }
-  end
 
   def execute(%{agent_id: agent_id, path: path, content: content}, _assigns) do
     with {:ok, _} <- Helpers.validate_workspace_path(path),

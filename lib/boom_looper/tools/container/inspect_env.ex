@@ -1,24 +1,13 @@
 defmodule BoomLooper.Tools.Container.InspectEnv do
-  @moduledoc false
+  use BoomLooper.Tool,
+    name: "inspect_env",
+    description: "Inspect the container environment: installed languages, databases, tools, running processes, listening ports",
+    params: [
+      agent_id: {:string, required: true}
+    ]
 
   alias BoomLooper.Docker
   alias BoomLooper.Tools.Container.Helpers
-
-  def __tool_name__, do: "inspect_env"
-
-  def __description__,
-    do:
-      "Inspect the container environment: installed languages, databases, tools, running processes, listening ports"
-
-  def input_schema do
-    %{
-      "type" => "object",
-      "properties" => %{
-        "agent_id" => %{"type" => "string"}
-      },
-      "required" => ["agent_id"]
-    }
-  end
 
   def execute(%{agent_id: agent_id}, _assigns) do
     case Helpers.resolve_container(agent_id) do

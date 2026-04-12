@@ -1,23 +1,12 @@
 defmodule BoomLooper.Tools.Container.ServiceContainers do
-  @moduledoc false
+  use BoomLooper.Tool,
+    name: "service_containers",
+    description: "List all containers for this workspace. Call ONCE after rebuild completes. Do NOT poll — if containers aren't up, read logs instead.",
+    params: [
+      agent_id: {:string, required: true}
+    ]
 
   alias BoomLooper.Docker
-
-  def __tool_name__, do: "service_containers"
-
-  def __description__,
-    do:
-      "List all containers for this workspace. Call ONCE after rebuild completes. Do NOT poll — if containers aren't up, read logs instead."
-
-  def input_schema do
-    %{
-      "type" => "object",
-      "properties" => %{
-        "agent_id" => %{"type" => "string"}
-      },
-      "required" => ["agent_id"]
-    }
-  end
 
   def execute(%{agent_id: agent_id}, _assigns) do
     case BoomLooper.ChatAgent.get_state(agent_id) do

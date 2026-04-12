@@ -1,29 +1,14 @@
 defmodule BoomLooper.Tools.Container.MultiEdit do
-  @moduledoc false
+  use BoomLooper.Tool,
+    name: "multi_edit",
+    description: "Apply many edits to one file as a single atomic read-modify-write. Cheaper than calling `edit` N times. Edits run in order against the running result, so a later edit can match text produced by an earlier one. If ANY edit fails, the file is not written.",
+    params: [
+      agent_id: {:string, required: true},
+      path: {:string, required: true, description: "File path relative to /workspace"},
+      edits: {:string, required: true, description: ~s|JSON array of edits, e.g. '[{"old_string": "foo", "new_string": "bar"}, {"old_string": "baz", "new_string": "qux", "replace_all": true}]'|}
+    ]
 
   alias BoomLooper.Tools.Container.Helpers
-
-  def __tool_name__, do: "multi_edit"
-
-  def __description__,
-    do:
-      "Apply many edits to one file as a single atomic read-modify-write. Cheaper than calling `edit` N times. Edits run in order against the running result, so a later edit can match text produced by an earlier one. If ANY edit fails, the file is not written."
-
-  def input_schema do
-    %{
-      "type" => "object",
-      "properties" => %{
-        "agent_id" => %{"type" => "string"},
-        "path" => %{"type" => "string", "description" => "File path relative to /workspace"},
-        "edits" => %{
-          "type" => "string",
-          "description" =>
-            ~s|JSON array of edits, e.g. '[{"old_string": "foo", "new_string": "bar"}, {"old_string": "baz", "new_string": "qux", "replace_all": true}]'|
-        }
-      },
-      "required" => ["agent_id", "path", "edits"]
-    }
-  end
 
   def execute(%{agent_id: agent_id, path: path, edits: edits}, _assigns) do
     case Jason.decode(to_string(edits)) do

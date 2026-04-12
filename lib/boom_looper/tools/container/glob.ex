@@ -1,38 +1,16 @@
 defmodule BoomLooper.Tools.Container.Glob do
-  @moduledoc false
+  use BoomLooper.Tool,
+    name: "glob",
+    description: "Find files in the workspace by glob pattern (e.g. '*.json', '**/*.ts', 'app/**/*.vue'). Returns paths relative to /workspace. PREFER THIS over `exec(\"find ...\")`. Excludes the same junk dirs as `grep`.",
+    params: [
+      agent_id: {:string, required: true},
+      pattern: {:string, required: true, description: "Glob pattern. '*' matches one segment, '**' matches any depth. Examples: '*.json', '**/*.ts', 'app/**/*.vue'"},
+      path: {:string, description: "Subdirectory under /workspace to search from (default: whole workspace)"},
+      head_limit: {:integer, description: "Max files to return (default: 200)"}
+    ]
 
   alias BoomLooper.Docker
   alias BoomLooper.Tools.Container.Helpers
-
-  def __tool_name__, do: "glob"
-
-  def __description__,
-    do:
-      "Find files in the workspace by glob pattern (e.g. '*.json', '**/*.ts', 'app/**/*.vue'). Returns paths relative to /workspace. PREFER THIS over `exec(\"find ...\")`. Excludes the same junk dirs as `grep`."
-
-  def input_schema do
-    %{
-      "type" => "object",
-      "properties" => %{
-        "agent_id" => %{"type" => "string"},
-        "pattern" => %{
-          "type" => "string",
-          "description" =>
-            "Glob pattern. '*' matches one segment, '**' matches any depth. Examples: '*.json', '**/*.ts', 'app/**/*.vue'"
-        },
-        "path" => %{
-          "type" => "string",
-          "description" =>
-            "Subdirectory under /workspace to search from (default: whole workspace)"
-        },
-        "head_limit" => %{
-          "type" => "integer",
-          "description" => "Max files to return (default: 200)"
-        }
-      },
-      "required" => ["agent_id", "pattern"]
-    }
-  end
 
   def execute(%{agent_id: agent_id, pattern: pattern} = params, _assigns) do
     path = Map.get(params, :path, ".") |> Helpers.normalize_search_path()

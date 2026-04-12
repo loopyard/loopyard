@@ -1,36 +1,16 @@
 defmodule BoomLooper.Tools.Container.Tree do
-  @moduledoc false
+  use BoomLooper.Tool,
+    name: "tree",
+    description: "Print a directory tree from inside the workspace. ONE call gives spatial awareness of the whole project — file types, sizes, hierarchy. PREFER THIS over `exec(\"ls -la\")` or `exec(\"find ...\")` for discovery. Auto-excludes .git, node_modules, vendor/bundle, _build, deps, .next, dist, target, .venv, __pycache__.",
+    params: [
+      agent_id: {:string, required: true},
+      path: {:string, description: "Subdirectory under /workspace (default: whole workspace)"},
+      depth: {:integer, description: "Max depth to descend (default: 3, max: 8)"},
+      max_entries: {:integer, description: "Max entries to print (default: 200)"}
+    ]
 
   alias BoomLooper.Docker
   alias BoomLooper.Tools.Container.Helpers
-
-  def __tool_name__, do: "tree"
-
-  def __description__,
-    do:
-      "Print a directory tree from inside the workspace. ONE call gives spatial awareness of the whole project — file types, sizes, hierarchy. PREFER THIS over `exec(\"ls -la\")` or `exec(\"find ...\")` for discovery. Auto-excludes .git, node_modules, vendor/bundle, _build, deps, .next, dist, target, .venv, __pycache__."
-
-  def input_schema do
-    %{
-      "type" => "object",
-      "properties" => %{
-        "agent_id" => %{"type" => "string"},
-        "path" => %{
-          "type" => "string",
-          "description" => "Subdirectory under /workspace (default: whole workspace)"
-        },
-        "depth" => %{
-          "type" => "integer",
-          "description" => "Max depth to descend (default: 3, max: 8)"
-        },
-        "max_entries" => %{
-          "type" => "integer",
-          "description" => "Max entries to print (default: 200)"
-        }
-      },
-      "required" => ["agent_id"]
-    }
-  end
 
   def execute(%{agent_id: agent_id} = params, _assigns) do
     path = params |> Map.get(:path, ".") |> Helpers.normalize_search_path()

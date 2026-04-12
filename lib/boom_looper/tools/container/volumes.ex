@@ -1,22 +1,11 @@
 defmodule BoomLooper.Tools.Container.Volumes do
-  @moduledoc false
-
-  def __tool_name__, do: "volumes"
-  def __description__, do: "List and inspect Docker volumes for this workspace"
-
-  def input_schema do
-    %{
-      "type" => "object",
-      "properties" => %{
-        "agent_id" => %{"type" => "string"},
-        "action" => %{
-          "type" => "string",
-          "description" => "Action: 'list' (default), 'ls <volume> [path]', 'info <volume>'"
-        }
-      },
-      "required" => ["agent_id"]
-    }
-  end
+  use BoomLooper.Tool,
+    name: "volumes",
+    description: "List and inspect Docker volumes for this workspace",
+    params: [
+      agent_id: {:string, required: true},
+      action: {:string, description: "Action: 'list' (default), 'ls <volume> [path]', 'info <volume>'"}
+    ]
 
   def execute(%{agent_id: agent_id} = params, _assigns) do
     action = Map.get(params, :action, "list")

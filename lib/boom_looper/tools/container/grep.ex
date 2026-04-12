@@ -1,50 +1,19 @@
 defmodule BoomLooper.Tools.Container.Grep do
-  @moduledoc false
+  use BoomLooper.Tool,
+    name: "grep",
+    description: "Recursive content search inside the workspace. Returns structured matches (file:line: content). PREFER THIS over `exec(\"grep -rn ...\")`. Excludes .git/node_modules/vendor/_build/deps/.next/dist/target/.venv/__pycache__ automatically.",
+    params: [
+      agent_id: {:string, required: true},
+      pattern: {:string, required: true, description: "Text to search for. Fixed string by default — pass regex=true for extended regex (grep -E)."},
+      path: {:string, description: "Subdirectory under /workspace to search (default: whole workspace)"},
+      include: {:string, description: "File pattern to filter, e.g. '*.json' or '*.{ts,vue}'"},
+      regex: {:boolean, description: "Treat pattern as extended regex (default: false — fixed string)"},
+      output_mode: {:string, description: "'lines' (default — file:line: content) or 'files' (just unique file paths)"},
+      head_limit: {:integer, description: "Max matches to return (default: 200)"}
+    ]
 
   alias BoomLooper.Docker
   alias BoomLooper.Tools.Container.Helpers
-
-  def __tool_name__, do: "grep"
-
-  def __description__,
-    do:
-      "Recursive content search inside the workspace. Returns structured matches (file:line: content). PREFER THIS over `exec(\"grep -rn ...\")`. Excludes .git/node_modules/vendor/_build/deps/.next/dist/target/.venv/__pycache__ automatically."
-
-  def input_schema do
-    %{
-      "type" => "object",
-      "properties" => %{
-        "agent_id" => %{"type" => "string"},
-        "pattern" => %{
-          "type" => "string",
-          "description" =>
-            "Text to search for. Fixed string by default — pass regex=true for extended regex (grep -E)."
-        },
-        "path" => %{
-          "type" => "string",
-          "description" => "Subdirectory under /workspace to search (default: whole workspace)"
-        },
-        "include" => %{
-          "type" => "string",
-          "description" => "File pattern to filter, e.g. '*.json' or '*.{ts,vue}'"
-        },
-        "regex" => %{
-          "type" => "boolean",
-          "description" => "Treat pattern as extended regex (default: false — fixed string)"
-        },
-        "output_mode" => %{
-          "type" => "string",
-          "description" =>
-            "'lines' (default — file:line: content) or 'files' (just unique file paths)"
-        },
-        "head_limit" => %{
-          "type" => "integer",
-          "description" => "Max matches to return (default: 200)"
-        }
-      },
-      "required" => ["agent_id", "pattern"]
-    }
-  end
 
   def execute(%{agent_id: agent_id, pattern: pattern} = params, _assigns) do
     path = Map.get(params, :path, ".") |> Helpers.normalize_search_path()
