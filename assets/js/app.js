@@ -86,7 +86,6 @@ Hooks.TailScroll = {
   }
 }
 
-// Clears input after submit, focuses on agent select
 Hooks.ChatForm = {
   mounted() {
     const ta = this.el.querySelector("#chat-input")
