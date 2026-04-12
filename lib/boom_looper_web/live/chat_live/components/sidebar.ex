@@ -10,6 +10,18 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Sidebar do
     service_status_text: 1, exit_reason: 1, derive_volume_description: 1
   ]
 
+  # Sync card is only relevant when the session has actually connected
+  # (running, paused) or has a real problem (errored with a non-container
+  # error). Don't show it during the normal "container not up yet" phase
+  # — that's not a sync problem, it's just the workspace booting.
+  defp sync_relevant?(nil), do: false
+  defp sync_relevant?(%{status: :running}), do: true
+  defp sync_relevant?(%{status: :paused}), do: true
+  defp sync_relevant?(%{status: :errored, last_error: err}) when is_binary(err) do
+    not String.contains?(err, "container") and not String.contains?(err, "No sync process")
+  end
+  defp sync_relevant?(_), do: false
+
   # --- Sidebar ---
 
   def sidebar(assigns) do
@@ -43,8 +55,10 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Sidebar do
         </.link>
       </div>
       <div class="flex-1 overflow-y-auto">
-        <%!-- Sync section - only for Local workspaces --%>
-        <div :if={@is_local_source?} class="px-3 pt-3 pb-1">
+        <%!-- Sync section - only show when sync is actually relevant.
+             Hidden when: not Local, no sync process, or container not up yet.
+             Showing "sync error" before a container exists is confusing. --%>
+        <div :if={@is_local_source? && sync_relevant?(@sync_status)} class="px-3 pt-3 pb-1">
           <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-semibold mb-1.5">Local sync</div>
           <.sync_card workspace_id={@workspace_id} sync={@sync_status || %{}} />
         </div>
