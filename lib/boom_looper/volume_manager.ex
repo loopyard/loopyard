@@ -256,7 +256,11 @@ defmodule BoomLooper.VolumeManager do
         # Clone on the HOST using the host's git binary. Picks up SSH keys,
         # credential helpers, .gitconfig — whatever the user has configured.
         # No Docker container, no image pull needed.
-        tmp_dir = Path.join(System.tmp_dir!(), "bl-clone-#{:erlang.unique_integer([:positive])}")
+        #
+        # Use /tmp/colima (mounted into Colima VM by default) instead of
+        # System.tmp_dir! (/var/folders/...) which isn't accessible to Docker.
+        tmp_dir = Path.join("/tmp/colima", "bl-clone-#{:erlang.unique_integer([:positive])}")
+        File.mkdir_p!(Path.dirname(tmp_dir))
 
         try do
           case host_git_clone(git_url, branch, tmp_dir, callback) do
