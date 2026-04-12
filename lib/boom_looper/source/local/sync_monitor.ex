@@ -142,12 +142,13 @@ defmodule BoomLooper.Source.Local.SyncMonitor do
 
   @impl true
   def handle_cast(:restart, state) do
-    # User-initiated restart is worth doing synchronously in a task:
-    # terminate the old session, then probe to create a new one. Reset
-    # the backoff counter so we try right away.
+    # User-initiated restart: terminate old session, transition to
+    # :starting (guarantees a broadcast even if the probe ends up in the
+    # same state), then probe to create a new session.
     cancel_probe(state)
     Mutagen.terminate_sync(state.workspace_id)
     state = %{state | consecutive_errors: 0}
+    state = transition(state, :starting, nil)
     {:noreply, start_probe(state)}
   end
 
