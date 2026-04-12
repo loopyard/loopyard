@@ -8,6 +8,7 @@ defmodule BoomLooperWeb.ChatLive do
   import BoomLooperWeb.Components.Sidebar, only: [
     status_dot: 1, service_dot: 1, service_detail: 1, first_host_port: 1, thinking_word: 1
   ]
+  import BoomLooperWeb.Components.Source.Local.SyncCard, only: [sync_card: 1]
 
   # chat_msg/streaming_bubble — chat message rendering extracted into
   # its own module so this file stays navigable. See `Live.ChatLive.Messages`.
@@ -29,10 +30,21 @@ defmodule BoomLooperWeb.ChatLive do
 
 
   defp mount_with_workspace(socket, workspace, extra_assigns) do
+    is_local? = extra_assigns[:project] && extra_assigns[:project][:source_type] == :local
+
     if connected?(socket) do
       ChatAgent.subscribe()
       BoomLooper.Workspace.ServiceManager.subscribe()
       BoomLooper.Docker.Observer.subscribe()
+
+      # Local workspaces broadcast sync-session state changes on their own
+      # PubSub topic; the sidebar shows them in a small "Sync" card.
+      if is_local? do
+        Phoenix.PubSub.subscribe(
+          BoomLooper.PubSub,
+          BoomLooper.Source.Local.SyncMonitor.topic(workspace.id)
+        )
+      end
 
       # Start workspace supervisor async — don't block mount
       send(self(), {:start_workspace, workspace.path})
@@ -88,7 +100,15 @@ defmodule BoomLooperWeb.ChatLive do
      |> assign(:all_service_logs, [])
      |> assign(:stream_buffer, StreamBuffer.new())
      |> assign(:building, false)
-     |> assign(:console_container, nil)}
+     |> assign(:console_container, nil)
+     |> assign(:is_local_source?, is_local?)
+     |> assign(:sync_status, initial_sync_status(workspace.id, is_local?))}
+  end
+
+  defp initial_sync_status(_workspace_id, false), do: nil
+
+  defp initial_sync_status(workspace_id, true) do
+    BoomLooper.Source.Local.SyncMonitor.status(workspace_id)
   end
 
   @impl true
@@ -416,6 +436,21 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   @impl true
+  def handle_event("sync_restart", %{"workspace-id" => ws_id}, socket) do
+    BoomLooper.Source.Local.SyncMonitor.restart(ws_id)
+    {:noreply, socket}
+  end
+
+  def handle_event("sync_pause", %{"workspace-id" => ws_id}, socket) do
+    BoomLooper.Source.Local.SyncMonitor.pause(ws_id)
+    {:noreply, socket}
+  end
+
+  def handle_event("sync_resume", %{"workspace-id" => ws_id}, socket) do
+    BoomLooper.Source.Local.SyncMonitor.resume(ws_id)
+    {:noreply, socket}
+  end
+
   def handle_event("refresh_container", _params, socket) do
     {:noreply, fetch_container_data(socket)}
   end
@@ -632,6 +667,15 @@ defmodule BoomLooperWeb.ChatLive do
       ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
       {service_statuses, _volumes} = load_sidebar_from_observer(path, ws_id)
       {:noreply, assign(socket, :service_statuses, service_statuses)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info({:source_sync, ws_id, status}, socket) do
+    if ws_id == socket.assigns.workspace.id do
+      {:noreply, assign(socket, :sync_status, status)}
     else
       {:noreply, socket}
     end
@@ -1004,6 +1048,7 @@ defmodule BoomLooperWeb.ChatLive do
           services_loaded={@services_loaded} volumes_loaded={@volumes_loaded}
           live_action={@live_action} volumes={@volumes} base_path={@base_path}
           host={@host}
+          is_local_source?={@is_local_source?} sync_status={@sync_status}
         />
         <%!-- Main content: hidden on mobile when sidebar is showing (index/new with no selection) --%>
         <main class={"flex-1 flex flex-col min-w-0 #{if @live_action in [:index, :new] && !@selected_id && !@selected_service, do: "hidden md:flex", else: "flex"}"}>
@@ -1113,6 +1158,12 @@ defmodule BoomLooperWeb.ChatLive do
         </.link>
       </div>
       <div class="flex-1 overflow-y-auto">
+        <%!-- Sync section - only for Local workspaces --%>
+        <div :if={@is_local_source?} class="px-3 pt-3 pb-1">
+          <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-semibold mb-1.5">Local sync</div>
+          <.sync_card workspace_id={@workspace_id} sync={@sync_status || %{}} />
+        </div>
+
         <%!-- Agents section - always show header --%>
         <div class="px-3 pt-3 pb-1">
           <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-semibold mb-1.5">Agents</div>
