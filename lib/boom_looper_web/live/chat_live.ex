@@ -386,8 +386,16 @@ defmodule BoomLooperWeb.ChatLive do
 
   @impl true
   def handle_event("sync_restart", %{"workspace-id" => ws_id}, socket) do
-    BoomLooper.Source.Local.SyncMonitor.restart(ws_id)
-    {:noreply, socket}
+    case BoomLooper.Source.Local.SyncMonitor.whereis(ws_id) do
+      nil ->
+        # No SyncMonitor running — update the card to show the real state
+        {:noreply, assign(socket, :sync_status, %{status: :stopped, last_error: "No sync process — workspace container may not be running", last_checked_at: DateTime.utc_now()})}
+
+      _pid ->
+        BoomLooper.Source.Local.SyncMonitor.restart(ws_id)
+        # Immediately show "starting" so the button feels responsive
+        {:noreply, assign(socket, :sync_status, %{status: :starting, last_error: nil, last_checked_at: DateTime.utc_now()})}
+    end
   end
 
   def handle_event("sync_pause", %{"workspace-id" => ws_id}, socket) do
