@@ -399,24 +399,27 @@ defmodule BoomLooper.ProjectRegistry do
         File.rm_rf(virtual_dir)
       end)
 
-      # Clean up volumes and compose resources in the background (slow Docker ops)
-      Task.start(fn ->
-        Enum.each(workspaces, fn ws ->
-          try do
-            ws_id = Workspace.workspace_id(ws.path)
-            virtual_dir = Path.join([Workspace.home_dir(), "workspaces", ws_id])
-            BoomLooper.Compose.down_volumes(virtual_dir, ws_id)
+      # Clean up volumes and compose resources synchronously. This used to
+      # run in a background Task, but fire-and-forget cleanup caused volume
+      # leaks — failures were silently swallowed and the caller (eval runner)
+      # would race the cleanup with the next workspace creation.
+      Enum.each(workspaces, fn ws ->
+        try do
+          ws_id = ws.id
+          virtual_dir = Path.join([Workspace.home_dir(), "workspaces", ws_id])
+          BoomLooper.Compose.down_volumes(virtual_dir, ws_id)
 
-            if project[:volume_based] do
-              BoomLooper.VolumeManager.delete_volume(ws[:volume])
-              BoomLooper.VolumeManager.delete_volume(BoomLooper.VolumeManager.cache_volume_name(ws.id))
-            end
-          rescue
-            _ -> :ok
-          catch
-            _, _ -> :ok
-          end
-        end)
+          # Delete code + cache volumes (always, not just volume_based)
+          BoomLooper.VolumeManager.delete_volume(BoomLooper.VolumeManager.code_volume_name(ws_id))
+          BoomLooper.VolumeManager.delete_volume(BoomLooper.VolumeManager.cache_volume_name(ws_id))
+
+          # Also try the old naming convention in case any legacy volumes exist
+          BoomLooper.VolumeManager.delete_volume("code-#{ws_id}")
+        rescue
+          _ -> :ok
+        catch
+          _, _ -> :ok
+        end
       end)
     end
 

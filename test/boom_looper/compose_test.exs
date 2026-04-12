@@ -33,8 +33,8 @@ defmodule BoomLooper.ComposeTest do
       config = Jason.decode!(result)
 
       web_volumes = config["services"]["web"]["volumes"]
-      assert Enum.any?(web_volumes, &String.starts_with?(&1, "code-abcd:"))
-      assert config["volumes"]["code-abcd"]["external"] == true
+      assert Enum.any?(web_volumes, &String.starts_with?(&1, "bl-abcd-code:"))
+      assert config["volumes"]["bl-abcd-code"]["external"] == true
     end
 
     test "strips host ports from port mappings" do
@@ -67,7 +67,7 @@ defmodule BoomLooper.ComposeTest do
       config = Jason.decode!(result)
 
       assert config["services"]["web"]["build"] == "."
-      assert "code-abcd:/workspace" in config["services"]["web"]["volumes"]
+      assert "bl-abcd-code:/workspace" in config["services"]["web"]["volumes"]
     end
   end
 

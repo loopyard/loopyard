@@ -176,7 +176,10 @@ defmodule BoomLooper.Workspace do
   def volume_name_for(workspace_id) do
     case BoomLooper.ProjectRegistry.get_workspace(workspace_id) do
       %{volume: vol} when is_binary(vol) -> vol
-      _ -> "code-#{workspace_id}"
+      # Always use the canonical naming. The old fallback "code-#{workspace_id}"
+      # created ghost volumes that never got cleaned up because cleanup uses
+      # VolumeManager.code_volume_name/1 which returns "bl-#{ws_id}-code".
+      _ -> BoomLooper.VolumeManager.code_volume_name(workspace_id)
     end
   end
 end
