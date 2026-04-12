@@ -28,8 +28,19 @@ defmodule BoomLooperWeb.ProjectLive do
        |> assign(:project, project)
        |> assign(:workspaces, load_workspaces(project, [:agents]))
        |> assign(:confirming_remove, false)
-       |> assign(:editing_name, false)}
+       |> assign(:editing_name, false)
+       |> assign(:removing, false)}
     end
+  end
+
+  @impl true
+  def handle_async(:remove_project, {:ok, _}, socket) do
+    {:noreply, push_navigate(socket, to: "/")}
+  end
+
+  def handle_async(:remove_project, {:exit, _reason}, socket) do
+    # Cleanup failed but the project is probably gone from ETS anyway
+    {:noreply, push_navigate(socket, to: "/")}
   end
 
   @impl true
@@ -106,8 +117,19 @@ defmodule BoomLooperWeb.ProjectLive do
 
   @impl true
   def handle_event("remove_project", _params, socket) do
-    ProjectRegistry.remove_project(socket.assigns.project.id)
-    {:noreply, push_navigate(socket, to: "/")}
+    # Show "removing" immediately — the actual cleanup (compose down,
+    # volume deletion) can take 10+ seconds. Without this, the button
+    # appears to do nothing and users click it repeatedly.
+    project_id = socket.assigns.project.id
+
+    socket =
+      socket
+      |> assign(:removing, true)
+      |> start_async(:remove_project, fn ->
+        ProjectRegistry.remove_project(project_id)
+      end)
+
+    {:noreply, socket}
   end
 
   @impl true
@@ -238,6 +260,13 @@ defmodule BoomLooperWeb.ProjectLive do
         <div class="max-w-2xl mx-auto px-4 py-8">
           <.flash_banner flash={@flash} kind={:error} />
 
+          <%= if @removing do %>
+            <div class="text-center py-16">
+              <div class="inline-block w-6 h-6 border-2 border-zinc-300 dark:border-zinc-600 border-t-violet-500 rounded-full animate-spin mb-4"></div>
+              <h2 class="text-lg font-semibold text-zinc-600 dark:text-zinc-300">Removing {@project.name}...</h2>
+              <p class="text-sm text-zinc-400 dark:text-zinc-500 mt-1">Stopping containers and cleaning up volumes</p>
+            </div>
+          <% else %>
           <%= if @confirming_remove do %>
             <.remove_confirmation project={@project} details={removal_details(@project)} />
           <% else %>
@@ -325,6 +354,7 @@ defmodule BoomLooperWeb.ProjectLive do
                 + Workspace
               </button>
             </form>
+          <% end %>
           <% end %>
         </div>
       </div>
