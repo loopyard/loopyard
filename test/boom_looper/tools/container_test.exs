@@ -38,6 +38,27 @@ defmodule BoomLooper.Tools.ContainerTest do
         assert schema["type"] == "object", "#{tool_mod} schema must have type object"
       end
     end
+
+    test "every tool schema is JSON-serializable (catches sigil/AST leaks)" do
+      # This test would have caught the ~s|...| sigil bug that crashed
+      # tools/list and created a hot restart loop hammering the API.
+      for tool_mod <- Container.__tool_server__().tools do
+        schema = tool_mod.input_schema()
+        description = tool_mod.__description__()
+        name = tool_mod.__tool_name__()
+
+        # Build the full MCP tool definition — exactly what tools/list returns
+        tool_def = %{
+          "name" => name,
+          "description" => description,
+          "inputSchema" => schema
+        }
+
+        assert {:ok, _json} = Jason.encode(tool_def),
+          "#{tool_mod} tool definition is not JSON-serializable — " <>
+          "check for unevaluated sigils or AST nodes in params"
+      end
+    end
   end
 
   describe "Exec validation" do
