@@ -574,9 +574,13 @@ defmodule BoomLooperWeb.ChatLive do
 
   def handle_event("view_file", %{"path" => path} = params, socket) do
     volume_name = params["volume"] || socket.assigns.selected_volume
+    BoomLooper.EventLog.info("chat_live", "view_file: path=#{path} volume=#{volume_name}")
 
     {:noreply,
-     start_async(socket, :file_content, fn ->
+     socket
+     |> assign(:file_content, :loading)
+     |> assign(:file_path, path)
+     |> start_async(:file_content, fn ->
        case BoomLooper.VolumeIO.read_file(volume_name, path) do
          {:ok, content} -> %{path: path, content: content}
          {:error, _} -> %{path: path, content: "(could not read file)"}

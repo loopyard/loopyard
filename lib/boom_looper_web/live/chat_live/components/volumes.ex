@@ -214,7 +214,10 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Volumes do
       </div>
 
       <%!-- File content viewer --%>
-      <div :if={@file_content} class="border-t border-zinc-200 dark:border-zinc-700/80">
+      <div :if={@file_content == :loading} class="border-t border-zinc-200 dark:border-zinc-700/80 p-6">
+        <.skeleton rows={6} />
+      </div>
+      <div :if={@file_content && @file_content != :loading} class="border-t border-zinc-200 dark:border-zinc-700/80">
         <div class="px-4 py-2 flex items-center justify-between bg-zinc-50 dark:bg-zinc-800/50">
           <span class="text-xs font-mono text-zinc-500 dark:text-zinc-400">{@file_path}</span>
           <button phx-click="close_file_viewer" class="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300">
