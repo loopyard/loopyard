@@ -362,9 +362,10 @@ defmodule BoomLooper.EvalRunner do
 
         ProjectRegistry.remove_project(project.id)
 
-        # Prune leaked temp containers (alpine, alpine/git) from
+        # Prune leaked temp containers and orphaned volumes from
         # timed-out VolumeManager operations during the teardown above.
         BoomLooper.Docker.prune_temp_containers()
+        BoomLooper.VolumeManager.prune_orphaned_volumes()
 
         Process.sleep(3_000)
     end
