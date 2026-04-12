@@ -22,11 +22,57 @@ defmodule BoomLooper.Tools.ContainerTest do
     end
   end
 
+  describe "validate_workspace_path/1" do
+    test "accepts relative paths" do
+      assert {:ok, "/workspace/src/main.rs"} = Container.validate_workspace_path("src/main.rs")
+    end
+
+    test "accepts absolute paths within /workspace" do
+      assert {:ok, "/workspace/src/main.rs"} = Container.validate_workspace_path("/workspace/src/main.rs")
+    end
+
+    test "accepts /workspace itself" do
+      assert {:ok, "/workspace"} = Container.validate_workspace_path("/workspace")
+    end
+
+    test "rejects path traversal with .." do
+      assert {:error, msg} = Container.validate_workspace_path("../../../etc/passwd")
+      assert msg =~ "must be within /workspace"
+    end
+
+    test "rejects absolute paths outside /workspace" do
+      assert {:error, msg} = Container.validate_workspace_path("/etc/passwd")
+      assert msg =~ "must be within /workspace"
+    end
+
+    test "rejects paths with null bytes" do
+      assert {:error, msg} = Container.validate_workspace_path("src/main\0.rs")
+      assert msg =~ "null bytes"
+    end
+
+    test "rejects non-string input" do
+      assert {:error, _} = Container.validate_workspace_path(123)
+    end
+
+    test "normalizes paths with embedded .." do
+      # /workspace/foo/../../etc → /etc (outside workspace)
+      assert {:error, _} = Container.validate_workspace_path("/workspace/foo/../../etc")
+    end
+
+    test "allows paths with .. that stay inside workspace" do
+      assert {:ok, "/workspace/bar"} = Container.validate_workspace_path("/workspace/foo/../bar")
+    end
+  end
+
   describe "do_write_file/3" do
-    test "rejects paths with .." do
-      # This should work without a real agent because path validation happens first
+    test "rejects paths escaping workspace" do
       assert {:error, msg} = Container.do_write_file("any-agent", "../etc/passwd", "content")
-      assert msg =~ ".."
+      assert msg =~ "must be within /workspace"
+    end
+
+    test "rejects absolute paths outside workspace" do
+      assert {:error, msg} = Container.do_write_file("any-agent", "/etc/passwd", "content")
+      assert msg =~ "must be within /workspace"
     end
 
     test "returns error when agent has no workspace" do
@@ -36,9 +82,14 @@ defmodule BoomLooper.Tools.ContainerTest do
   end
 
   describe "do_read_file/2" do
-    test "rejects paths with .." do
+    test "rejects paths escaping workspace" do
       assert {:error, msg} = Container.do_read_file("any-agent", "../etc/passwd")
-      assert msg =~ ".."
+      assert msg =~ "must be within /workspace"
+    end
+
+    test "rejects absolute paths outside workspace" do
+      assert {:error, msg} = Container.do_read_file("any-agent", "/etc/passwd")
+      assert msg =~ "must be within /workspace"
     end
 
     test "returns error when agent has no workspace" do

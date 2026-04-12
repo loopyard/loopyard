@@ -10,6 +10,33 @@ defmodule BoomLooper.Tools.Container do
   alias BoomLooper.Docker
   alias BoomLooper.Workspace.ServiceManager
 
+  # --- Path validation ---
+
+  @doc """
+  Validate that a file path stays within /workspace.
+  Rejects path traversal (../), absolute paths outside /workspace,
+  and null bytes. Returns {:ok, normalized} or {:error, reason}.
+  """
+  def validate_workspace_path(path) when is_binary(path) do
+    cond do
+      String.contains?(path, <<0>>) ->
+        {:error, "Path contains null bytes"}
+
+      true ->
+        # Normalize: relative paths resolve against /workspace,
+        # absolute paths are taken as-is
+        normalized = Path.expand(path, "/workspace")
+
+        if String.starts_with?(normalized, "/workspace/") or normalized == "/workspace" do
+          {:ok, normalized}
+        else
+          {:error, "Path must be within /workspace: #{path}"}
+        end
+    end
+  end
+
+  def validate_workspace_path(_), do: {:error, "Path must be a string"}
+
   # --- Public API ---
 
   def do_exec(agent_id, command, opts \\ %{}) do
@@ -305,10 +332,7 @@ defmodule BoomLooper.Tools.Container do
   end
 
   def do_write_file(agent_id, path, content) do
-    # Sanitize path - must be relative, no ..
-    if String.contains?(path, "..") do
-      {:error, "Path cannot contain '..'"}
-    else
+    with {:ok, _} <- validate_workspace_path(path) do
       case BoomLooper.ChatAgent.get_state(agent_id) do
         %{workspace_id: workspace_id} when is_binary(workspace_id) ->
           volume_name = BoomLooper.Workspace.volume_name_for(workspace_id)
@@ -335,9 +359,7 @@ defmodule BoomLooper.Tools.Container do
   end
 
   def do_read_file(agent_id, path) do
-    if String.contains?(path, "..") do
-      {:error, "Path cannot contain '..'"}
-    else
+    with {:ok, _} <- validate_workspace_path(path) do
       case BoomLooper.ChatAgent.get_state(agent_id) do
         %{workspace_id: workspace_id} when is_binary(workspace_id) ->
           volume_name = BoomLooper.Workspace.volume_name_for(workspace_id)
@@ -362,18 +384,16 @@ defmodule BoomLooper.Tools.Container do
   def do_edit(agent_id, path, old_string, new_string, opts \\ %{}) do
     replace_all? = Map.get(opts, :replace_all, false)
 
-    cond do
-      String.contains?(path, "..") ->
-        {:error, "Path cannot contain '..'"}
+    with {:ok, _} <- validate_workspace_path(path) do
+      cond do
+        old_string == "" ->
+          {:error, "old_string must not be empty (use write_file to create a new file)"}
 
-      old_string == "" ->
-        {:error, "old_string must not be empty (use write_file to create a new file)"}
+        old_string == new_string ->
+          {:error, "old_string and new_string are identical — nothing to change"}
 
-      old_string == new_string ->
-        {:error, "old_string and new_string are identical — nothing to change"}
-
-      true ->
-        with {:ok, workspace_id} <- agent_workspace_id(agent_id) do
+        true ->
+          with {:ok, workspace_id} <- agent_workspace_id(agent_id) do
           volume_name = BoomLooper.Workspace.volume_name_for(workspace_id)
 
           case BoomLooper.VolumeManager.read_file(volume_name, path) do
@@ -387,6 +407,7 @@ defmodule BoomLooper.Tools.Container do
               {:error, "Failed to read #{path}: #{inspect(reason)}"}
           end
         end
+      end
     end
   end
 
@@ -440,28 +461,27 @@ defmodule BoomLooper.Tools.Container do
   written — atomicity guarantee.
   """
   def do_multi_edit(agent_id, path, edits) when is_list(edits) do
-    cond do
-      String.contains?(path, "..") ->
-        {:error, "Path cannot contain '..'"}
+    with {:ok, _} <- validate_workspace_path(path) do
+      cond do
+        edits == [] ->
+          {:error, "edits list must not be empty"}
 
-      edits == [] ->
-        {:error, "edits list must not be empty"}
+        true ->
+          with {:ok, workspace_id} <- agent_workspace_id(agent_id) do
+            volume_name = BoomLooper.Workspace.volume_name_for(workspace_id)
 
-      true ->
-        with {:ok, workspace_id} <- agent_workspace_id(agent_id) do
-          volume_name = BoomLooper.Workspace.volume_name_for(workspace_id)
+            case BoomLooper.VolumeManager.read_file(volume_name, path) do
+              {:ok, content} ->
+                apply_multi_edit(volume_name, path, content, edits)
 
-          case BoomLooper.VolumeManager.read_file(volume_name, path) do
-            {:ok, content} ->
-              apply_multi_edit(volume_name, path, content, edits)
+              {:error, :not_found} ->
+                {:error, "File not found: #{path}"}
 
-            {:error, :not_found} ->
-              {:error, "File not found: #{path}"}
-
-            {:error, reason} ->
-              {:error, "Failed to read #{path}: #{inspect(reason)}"}
+              {:error, reason} ->
+                {:error, "Failed to read #{path}: #{inspect(reason)}"}
+            end
           end
-        end
+      end
     end
   end
 
@@ -536,15 +556,14 @@ defmodule BoomLooper.Tools.Container do
     output_mode = Map.get(opts, :output_mode, "lines")
     head_limit = Map.get(opts, :head_limit, 200)
 
-    cond do
-      String.contains?(path, "..") ->
-        {:error, "Path cannot contain '..'"}
+    with {:ok, _} <- validate_workspace_path(path) do
+      cond do
+        pattern == "" ->
+          {:error, "pattern must not be empty"}
 
-      pattern == "" ->
-        {:error, "pattern must not be empty"}
-
-      true ->
-        do_grep_in_container(agent_id, pattern, path, include, regex?, output_mode, head_limit)
+        true ->
+          do_grep_in_container(agent_id, pattern, path, include, regex?, output_mode, head_limit)
+      end
     end
   end
 
@@ -632,15 +651,14 @@ defmodule BoomLooper.Tools.Container do
     path = Map.get(opts, :path, ".") |> normalize_search_path()
     head_limit = Map.get(opts, :head_limit, 200)
 
-    cond do
-      String.contains?(path, "..") ->
-        {:error, "Path cannot contain '..'"}
+    with {:ok, _} <- validate_workspace_path(path) do
+      cond do
+        pattern == "" ->
+          {:error, "pattern must not be empty"}
 
-      pattern == "" ->
-        {:error, "pattern must not be empty"}
-
-      true ->
-        do_glob_in_container(agent_id, pattern, path, head_limit)
+        true ->
+          do_glob_in_container(agent_id, pattern, path, head_limit)
+      end
     end
   end
 
@@ -934,15 +952,14 @@ defmodule BoomLooper.Tools.Container do
     depth = Map.get(opts, :depth, 3)
     max_entries = Map.get(opts, :max_entries, 200)
 
-    cond do
-      String.contains?(path, "..") ->
-        {:error, "Path cannot contain '..'"}
+    with {:ok, _} <- validate_workspace_path(path) do
+      cond do
+        depth < 1 or depth > 8 ->
+          {:error, "depth must be between 1 and 8"}
 
-      depth < 1 or depth > 8 ->
-        {:error, "depth must be between 1 and 8"}
-
-      true ->
-        do_tree_in_container(agent_id, path, depth, max_entries)
+        true ->
+          do_tree_in_container(agent_id, path, depth, max_entries)
+      end
     end
   end
 
