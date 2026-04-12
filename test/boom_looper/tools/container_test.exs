@@ -13,11 +13,31 @@ defmodule BoomLooper.Tools.ContainerTest do
       assert info.name == "boom-looper-container"
     end
 
-    test "has all expected tools" do
+    test "has all 20 expected tools" do
       tool_names = Container.__tool_server__().tools |> Enum.map(& &1.__tool_name__()) |> MapSet.new()
-      expected = ~w(exec exec_stream logs inspect_env ports service_containers write_file read_file docker docker_compose workspace_info volumes)
+
+      expected =
+        ~w(exec exec_stream logs inspect_env ports service_containers write_file read_file
+           edit multi_edit grep glob probe_http tree inspect_service read_files
+           docker docker_compose workspace_info volumes)
+
+      assert MapSet.size(tool_names) == 20
+
       for name <- expected do
         assert name in tool_names, "missing tool: #{name}"
+      end
+    end
+
+    test "each tool module exports the required interface" do
+      for tool_mod <- Container.__tool_server__().tools do
+        assert function_exported?(tool_mod, :__tool_name__, 0), "#{tool_mod} missing __tool_name__/0"
+        assert function_exported?(tool_mod, :__description__, 0), "#{tool_mod} missing __description__/0"
+        assert function_exported?(tool_mod, :input_schema, 0), "#{tool_mod} missing input_schema/0"
+        assert function_exported?(tool_mod, :execute, 2), "#{tool_mod} missing execute/2"
+
+        schema = tool_mod.input_schema()
+        assert is_map(schema), "#{tool_mod}.input_schema/0 must return a map"
+        assert schema["type"] == "object", "#{tool_mod} schema must have type object"
       end
     end
   end

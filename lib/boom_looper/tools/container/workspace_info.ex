@@ -1,0 +1,42 @@
+defmodule BoomLooper.Tools.Container.WorkspaceInfo do
+  @moduledoc false
+
+  def __tool_name__, do: "workspace_info"
+  def __description__, do: "Get workspace metadata: ID, volume name, paths, container names"
+
+  def input_schema do
+    %{
+      "type" => "object",
+      "properties" => %{
+        "agent_id" => %{"type" => "string"}
+      },
+      "required" => ["agent_id"]
+    }
+  end
+
+  def execute(%{agent_id: agent_id}, _assigns) do
+    case BoomLooper.ChatAgent.get_state(agent_id) do
+      %{workspace_id: workspace_id} = state when is_binary(workspace_id) ->
+        volume_name = BoomLooper.Workspace.volume_name_for(workspace_id)
+        project_dir = Path.join([BoomLooper.Workspace.home_dir(), "workspaces", workspace_id])
+        compose_project = BoomLooper.Compose.project_name(workspace_id)
+
+        info = %{
+          workspace_id: workspace_id,
+          volume_name: volume_name,
+          project_dir: project_dir,
+          compose_project: compose_project,
+          compose_file: ".boomlooper/workspace/docker-compose.yml",
+          dockerfile: ".boomlooper/workspace/Dockerfile",
+          workspace_container: "#{compose_project}-workspace-1",
+          working_dir: state[:working_dir],
+          bind_mount: state[:bind_mount]
+        }
+
+        {:ok, Jason.encode!(info, pretty: true)}
+
+      _ ->
+        {:error, "Agent #{agent_id} has no workspace"}
+    end
+  end
+end
