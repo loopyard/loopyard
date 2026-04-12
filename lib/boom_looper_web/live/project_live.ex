@@ -193,7 +193,7 @@ defmodule BoomLooperWeb.ProjectLive do
         # ServiceStatus reads from docker-compose.yml — gives us all defined
         # services plus their current running state. Show total (so empty
         # workspaces don't look configurationless) and running side by side.
-        statuses = BoomLooper.Workspace.ServiceStatus.for_workspace(workspace.path)
+        statuses = BoomLooper.Docker.Observer.services_for(workspace.id)
         %{service_count: length(statuses), services_running: Enum.count(statuses, & &1.status == :running)}
       catch
         :exit, _ -> %{service_count: 0, services_running: 0}

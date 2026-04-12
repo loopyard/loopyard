@@ -221,7 +221,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Volumes do
             Close
           </button>
         </div>
-        <pre class="p-4 text-sm font-mono text-zinc-700 dark:text-zinc-300 overflow-x-auto max-h-[60vh] overflow-y-auto whitespace-pre-wrap break-all">{@file_content}</pre>
+        <BoomLooperWeb.Live.ChatLive.Components.Viewers.FileViewer.file_viewer path={@file_path} content={@file_content} />
       </div>
     </div>
     """

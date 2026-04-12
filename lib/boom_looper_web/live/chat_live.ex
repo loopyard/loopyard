@@ -878,14 +878,14 @@ defmodule BoomLooperWeb.ChatLive do
 
   @impl true
   def handle_info({:fetch_service_logs, service_name}, socket) do
-    path = socket.assigns.workspace.path
-    {:noreply, ServiceLogs.start_service_logs_fetch(socket, path, service_name)}
+    ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
+    {:noreply, ServiceLogs.start_service_logs_fetch(socket, ws_id, service_name)}
   end
 
   @impl true
   def handle_info(:fetch_all_service_logs, socket) do
-    path = socket.assigns.workspace.path
-    {:noreply, ServiceLogs.start_all_service_logs_fetch(socket, path)}
+    ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
+    {:noreply, ServiceLogs.start_all_service_logs_fetch(socket, ws_id)}
   end
 
   @impl true
@@ -984,50 +984,10 @@ defmodule BoomLooperWeb.ChatLive do
   # services, then merge running state from Observer's container list.
   # Volumes: directly from Observer's volume list for this workspace.
   defp load_sidebar_from_observer(_workspace_path, workspace_id) do
-    # Read the compose file from workspace.compose_dir — the single source
-    # of truth for where compose files live. Never compute the path ad-hoc.
-    workspace = BoomLooper.ProjectRegistry.get_workspace(workspace_id)
-    compose_dir = workspace && workspace[:compose_dir] || BoomLooper.Workspace.compose_dir(workspace_id)
-    defined = BoomLooper.Workspace.ServiceStatus.list_defined_services(compose_dir)
-
-    # Running state from Observer's cached container list
-    project_name = BoomLooper.Compose.project_name(workspace_id)
-    observer_containers = BoomLooper.Docker.Observer.containers_for(workspace_id)
-
-    service_statuses =
-      if defined != [] do
-        Enum.map(defined, fn svc ->
-          container_name = "#{project_name}-#{svc.name}-1"
-          container = Enum.find(observer_containers, &(&1.name == container_name))
-
-          if container && container.running do
-            struct!(svc, %{
-              status: :running,
-              container: container_name,
-              ports: container.host_ports || %{}
-            })
-          else
-            struct!(svc, %{status: :stopped, container: container_name})
-          end
-        end)
-      else
-        # No compose file yet — derive from Observer containers directly
-        observer_containers
-        |> Enum.reject(&(String.ends_with?(&1.name, "-workspace-1")))
-        |> Enum.map(fn c ->
-          service_name = c.name
-            |> String.replace_prefix("#{project_name}-", "")
-            |> String.replace_suffix("-1", "")
-
-          %BoomLooper.Workspace.ServiceStatus.Service{
-            name: service_name,
-            type: :process,
-            status: if(c.running, do: :running, else: :stopped),
-            container: c.name,
-            ports: c.host_ports || %{}
-          }
-        end)
-      end
+    # Single source of truth: Observer.services_for reads the compose file
+    # from Workspace.compose_dir (always correct) and merges with cached
+    # container state. No ad-hoc path computation, no direct Docker calls.
+    service_statuses = BoomLooper.Docker.Observer.services_for(workspace_id)
 
     volumes =
       BoomLooper.Docker.Observer.volumes_for(workspace_id)
