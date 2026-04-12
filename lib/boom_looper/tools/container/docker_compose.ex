@@ -11,7 +11,9 @@ defmodule BoomLooper.Tools.Container.DockerCompose do
   alias BoomLooper.Tools.Container.Helpers
 
   def execute(%{agent_id: agent_id, command: command} = params, _assigns) do
-    timeout_seconds = Map.get(params, :timeout, 300)
+    # Default 10 minutes for builds (image pulls can be slow).
+    # The agent can override with a shorter timeout for quick commands.
+    timeout_seconds = Map.get(params, :timeout, 600)
 
     case BoomLooper.ChatAgent.get_state(agent_id) do
       %{workspace_id: workspace_id} when is_binary(workspace_id) ->
