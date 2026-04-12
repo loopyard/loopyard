@@ -36,14 +36,8 @@ defmodule BoomLooper.WorkspaceGroup do
   defp source_children(workspace_id) do
     with %{project_id: project_id} = workspace <- BoomLooper.ProjectRegistry.get_workspace(workspace_id),
          %{source_type: :local} <- BoomLooper.ProjectRegistry.get_project(project_id) do
-      # For Local workspaces: use the explicit worktree_path if set,
-      # fall back to the workspace's path (the host repo itself for
-      # main workspaces and pre-refactor workspaces), and only use
-      # Worktree.path_for as a last resort (branch workspaces created
-      # by the adapter).
       worktree_path =
         workspace[:worktree_path] ||
-          workspace[:path] ||
           BoomLooper.Source.Local.Worktree.path_for(workspace_id)
 
       [
