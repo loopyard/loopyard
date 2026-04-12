@@ -20,6 +20,20 @@ BoomLooper is a **Docker control plane** with **AI agents** wired into it.
 
 **The key insight:** agents don't get special access. They use the same `docker exec` path that the terminal console uses. The workspace config they write is the same config a human could edit. The MCP tools are just structured wrappers around the same Docker and file operations. This means anything an agent does is visible, reproducible, and debuggable by a human.
 
+## Source adapters: where code comes from
+
+The `Source` behaviour (`lib/boom_looper/source.ex`) defines how a project's code is materialized. Each project carries a `source_type` (`:local` or `:github`). `Source.for_project/1` dispatches to the right adapter.
+
+**Local** (`Source.Local`): the user already has the code on their machine. `ProjectRegistry.add(path)` registers it. Files live in a Docker volume; Mutagen syncs the volume with a host-side git worktree. Git is a host-side human concern — agents edit files, humans commit/push.
+
+**GitHub** (future): OAuth, clone via API, PR integration. The stub forwards to `add_from_url` today.
+
+**Rules:**
+- The orchestration layer (`ServiceManager`, `ChatAgent`, `ProjectRegistry`) never calls adapter internals directly — only through `Source.for_project(project).callback(...)`.
+- Adapter-specific code lives under `lib/boom_looper/source/local/` (or `github/`). Nothing about mutagen, host worktrees, or local-path handling leaks into orchestration modules.
+- Both adapters coexist at runtime — dispatch is per-project based on `source_type`.
+- **Eval runner clones with host git then registers as Local.** The clone is eval scaffolding, not a Source adapter concern. Local assumes the user already has the code.
+
 ## Docs
 
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — System design, supervisor tree, container model, data flow
@@ -65,7 +79,18 @@ mix boom.rpc 'BoomLooper.EvalRunner.list_evals()'           # list all
 mix boom.rpc 'BoomLooper.EvalRunner.status()'               # check progress
 ```
 
-Every eval starts fresh (tears down existing project first). Configs and run results are tracked in git; project clones are gitignored. When an eval fails, fix the **prompts** or **tools**, not the eval target. See `/eval` skill for details.
+Every eval starts fresh (tears down existing project first via `remove_project` — the same path real users hit). Configs and run results are tracked in git; project clones are gitignored. When an eval fails, fix the **prompts** or **tools**, not the eval target. See `/eval` skill for details.
+
+### Evals go through the Local code path
+
+Evals clone a git URL using the **host's git binary** into `evals/<name>/project/`, then call `ProjectRegistry.add(project_path)` — registering it as a **Local project**. From that point on, the eval exercises exactly the same code as a real user adding a local project.
+
+**Why this matters:** evals are our integration test harness for the Local path. Every eval run implicitly tests `Source.Local`, `remove_project`, workspace creation, volume seeding, and container lifecycle. If the Local path has a resource leak, evals will catch it.
+
+**What evals must NOT do:**
+- Ad-hoc cleanup (manually stopping workspaces, deleting volumes, wiping agents.log). Call `remove_project` instead — it dispatches through the Source adapter where the tested cleanup logic lives.
+- Use `add_from_url` — that's the (future) GitHub adapter path. Evals clone on the host and register as Local.
+- Shell out to docker directly for anything remove_project already handles.
 
 ### Eval integrity: no nudges, no overfitting
 
@@ -131,6 +156,21 @@ Don't bury behavior in LiveView private functions. If it has logic worth getting
 Unit tests should run in under 2 seconds total. If a test needs Docker, external services, or takes >1 second, tag it with `@tag :docker` or `@tag :slow` and exclude from default runs. Run full suite in CI.
 
 **Example:** `AgentLog` tests run in 0.1s because they use temp files and injected ETS tables, not real workspaces.
+
+### Test macro-generated schemas are serializable
+
+If a macro generates data that will be JSON-encoded at runtime (tool schemas, MCP protocol messages, API responses), write a test that encodes it. The `tools/list` crash taught us this: a `~s|...|` sigil in a tool param description survived compilation as an AST tuple, crashed `Jason.encode!` at runtime, and created a hot restart loop.
+
+```elixir
+test "every tool schema is JSON-serializable" do
+  for tool_mod <- Container.__tool_server__().tools do
+    tool_def = %{"name" => tool_mod.__tool_name__(), "inputSchema" => tool_mod.input_schema()}
+    assert {:ok, _} = Jason.encode(tool_def), "#{tool_mod} not serializable"
+  end
+end
+```
+
+This test catches the entire class of "macro stored AST instead of evaluated value" bugs.
 
 ### Test the real path, not a mock of it
 
@@ -327,7 +367,29 @@ Never `docker exec apt-get`. It doesn't persist across container restarts.
 
 ### Auto-restart dead CLI sessions
 
-ChatAgent checks `session_alive?` before every send. Restarts with exponential backoff. No auto-replay (causes crash loops).
+ChatAgent checks `session_alive?` before every send. Restarts with exponential backoff (2s, 4s, 8s, 16s, 32s). After 5 consecutive crashes, gives up and marks the agent `:crashed` — the user must fix the underlying issue. Counter resets on successful `stream_done`. No auto-replay of user messages (causes crash loops).
+
+**The bug this prevents:** a `tools/list` serialization bug (unevaluated sigil in a tool description) caused every session to crash on startup. Without backoff, the agent hot-looped restarts and hammered the Claude API until rate-limited.
+
+### Resource cleanup goes through remove_project
+
+When tearing down a project (eval cleanup, user deletion, system reset), always call `ProjectRegistry.remove_project/1`. It dispatches through the Source adapter to clean up adapter-specific resources (Local: mutagen session, host worktree, volumes; GitHub: volumes). Never write ad-hoc cleanup that manually stops workspaces, deletes volumes, or wipes agent logs — if `remove_project` doesn't handle it, fix `remove_project`.
+
+**The bug this prevents:** the eval runner had 50 lines of inline cleanup code that duplicated `remove_project` but missed edge cases, leaking 700+ Docker volumes over a weekend.
+
+### Docker volume naming must be canonical
+
+Volume names are **always** `bl-<workspace_id>-code`. Never create volumes with other naming conventions (the old `code-<workspace_id>` pattern created ghost volumes that never got cleaned up). `VolumeManager.code_volume_name/1` is the single source of truth. `Workspace.volume_name_for/1` looks up the workspace's registered volume, falling back to `code_volume_name` — never to an ad-hoc format.
+
+### Never silently swallow errors in cleanup
+
+```elixir
+# BAD — hides why volumes leak
+rescue _ -> :ok
+
+# GOOD — cleanup continues but you can diagnose failures
+rescue e -> Logger.warning("[Module] cleanup failed: #{Exception.message(e)}")
+```
 
 ### Every Task must be supervised
 
