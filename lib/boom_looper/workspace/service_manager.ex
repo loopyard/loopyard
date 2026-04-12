@@ -66,7 +66,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
   def restart_dev_streaming(project_dir, callback) when is_function(callback, 1) do
     workspace_id = Workspace.workspace_id(project_dir)
     volume_name = Workspace.volume_name_for(workspace_id)
-    effective_dir = Path.join([Workspace.home_dir(), "workspaces", workspace_id])
+    effective_dir = Workspace.compose_dir(workspace_id)
     File.mkdir_p!(effective_dir)
 
     # Capture port assignments BEFORE stopping containers so we can pin them
@@ -126,7 +126,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
   def restart_workspace_streaming(project_dir, callback) when is_function(callback, 1) do
     workspace_id = Workspace.workspace_id(project_dir)
     volume_name = Workspace.volume_name_for(workspace_id)
-    effective_dir = Path.join([Workspace.home_dir(), "workspaces", workspace_id])
+    effective_dir = Workspace.compose_dir(workspace_id)
     File.mkdir_p!(effective_dir)
 
     # Capture ports BEFORE tearing down
@@ -162,7 +162,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
   @doc "Stop containers, rebuild with streaming output for volume-based workspaces."
   def restart_workspace_streaming_volume(workspace_id, volume_name, callback) when is_function(callback, 1) do
-    project_dir = Path.join([Workspace.home_dir(), "workspaces", workspace_id])
+    project_dir = Workspace.compose_dir(workspace_id)
     File.mkdir_p!(project_dir)
 
     port_map = Compose.capture_port_map(workspace_id)
@@ -226,7 +226,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
     volume_name = Workspace.volume_name_for(workspace_id)
 
     # All workspaces use a virtual dir for compose files + metadata
-    effective_project_dir = Path.join([Workspace.home_dir(), "workspaces", workspace_id])
+    effective_project_dir = Workspace.compose_dir(workspace_id)
     File.mkdir_p!(effective_project_dir)
 
     # If project_dir is a real local path (not already a virtual dir), we'll

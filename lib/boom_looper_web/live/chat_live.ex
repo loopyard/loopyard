@@ -521,7 +521,7 @@ defmodule BoomLooperWeb.ChatLive do
 
   def handle_event("restart_service", %{"service_name" => name}, socket) do
     ws_id = socket.assigns.workspace_entry.id
-    effective_dir = Path.join([BoomLooper.Workspace.home_dir(), "workspaces", ws_id])
+    effective_dir = BoomLooper.Workspace.compose_dir(ws_id)
     BoomLooper.Compose.compose(effective_dir, ws_id, ["restart", name], timeout: 30_000)
     {:noreply, socket}
   end
@@ -550,7 +550,8 @@ defmodule BoomLooperWeb.ChatLive do
           start_async(socket, :file_tree, fn -> BoomLooper.VolumeManager.tree(volume_name) end)
 
         :git when socket.assigns.git_log == [] ->
-          start_async(socket, :git_data, fn -> load_git_data(socket.assigns) end)
+          git_assigns = Map.take(socket.assigns, [:project, :workspace_entry])
+          start_async(socket, :git_data, fn -> load_git_data(git_assigns) end)
 
         _ ->
           socket
@@ -588,12 +589,14 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   def handle_event("view_diff", %{"path" => path}, socket) do
+    project = socket.assigns.project
+    workspace_entry = socket.assigns.workspace_entry
+
     {:noreply,
      start_async(socket, :diff_content, fn ->
-       adapter = BoomLooper.Source.for_project(socket.assigns.project)
-       workspace_entry = socket.assigns.workspace_entry
+       adapter = BoomLooper.Source.for_project(project)
 
-       case adapter.git_diff(socket.assigns.project, workspace_entry, file: path) do
+       case adapter.git_diff(project, workspace_entry, file: path) do
          {:ok, diff} -> diff
          {:error, _} -> "(could not load diff)"
        end
@@ -601,13 +604,14 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   def handle_event("view_commit", %{"sha" => sha}, socket) do
+    project = socket.assigns.project
+    workspace_entry = socket.assigns.workspace_entry
+
     {:noreply,
      start_async(socket, :diff_content, fn ->
-       adapter = BoomLooper.Source.for_project(socket.assigns.project)
-       workspace_entry = socket.assigns.workspace_entry
+       adapter = BoomLooper.Source.for_project(project)
 
-       # Show the diff for this specific commit
-       case adapter.git_diff(socket.assigns.project, workspace_entry, ref: "#{sha}~1..#{sha}") do
+       case adapter.git_diff(project, workspace_entry, ref: "#{sha}~1..#{sha}") do
          {:ok, diff} -> diff
          {:error, _} -> "(could not load diff for commit #{String.slice(sha, 0..6)})"
        end
@@ -983,7 +987,7 @@ defmodule BoomLooperWeb.ChatLive do
     # Read the compose file from workspace.compose_dir — the single source
     # of truth for where compose files live. Never compute the path ad-hoc.
     workspace = BoomLooper.ProjectRegistry.get_workspace(workspace_id)
-    compose_dir = workspace && workspace[:compose_dir] || Path.join([BoomLooper.Workspace.home_dir(), "workspaces", workspace_id])
+    compose_dir = workspace && workspace[:compose_dir] || BoomLooper.Workspace.compose_dir(workspace_id)
     defined = BoomLooper.Workspace.ServiceStatus.list_defined_services(compose_dir)
 
     # Running state from Observer's cached container list

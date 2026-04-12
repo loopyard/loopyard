@@ -218,7 +218,8 @@ defmodule BoomLooperWeb.ProjectLive do
 
   defp removal_details(project) do
     # For volume-based projects, use the workspace dir
-    project_dir = project[:path] || Path.join([BoomLooper.Workspace.home_dir(), "workspaces", hd(ProjectRegistry.list_workspaces(project.id) |> Enum.map(& &1.id))])
+    ws_ids = ProjectRegistry.list_workspaces(project.id) |> Enum.map(& &1.id)
+    project_dir = project[:path] || (ws_ids != [] && BoomLooper.Workspace.compose_dir(hd(ws_ids))) || "unknown"
     boomlooper_dir = Path.join(project_dir, ".boomlooper")
     workspace_dir = Path.join(boomlooper_dir, "workspace")
 

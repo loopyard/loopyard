@@ -98,7 +98,7 @@ defmodule BoomLooper.Source.Local do
         worktree_path: worktree_path,
         volume: volume_name,
         volume_based: true,
-        path: Path.join([Workspace.home_dir(), "workspaces", workspace_id]),
+        path: Workspace.compose_dir(workspace_id),
         is_main: false,
         status: :stopped,
         added_at: DateTime.utc_now()

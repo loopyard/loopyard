@@ -14,7 +14,7 @@ defmodule BoomLooper.ChatAgent.Persistence do
   @doc "Returns the agent log path for a workspace, or nil if no workspace_id."
   def log_path(nil), do: nil
   def log_path(workspace_id) do
-    virtual_dir = Path.join([BoomLooper.Workspace.home_dir(), "workspaces", workspace_id])
+    virtual_dir = BoomLooper.Workspace.compose_dir(workspace_id)
     Path.join([virtual_dir, ".boomlooper", "workspace", "agents.log"])
   end
 
