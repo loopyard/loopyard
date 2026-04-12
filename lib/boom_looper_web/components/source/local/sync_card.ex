@@ -17,17 +17,19 @@ defmodule BoomLooperWeb.Components.Source.Local.SyncCard do
     required: true,
     doc:
       "Status map from SyncMonitor.status/1: %{status, last_error, last_checked_at}. Safe to pass nil."
+  attr :waiting, :boolean, default: false,
+    doc: "True when the sync error is just 'container not ready yet' — show neutral state, not error."
 
   def sync_card(assigns) do
     ~H"""
     <div class="rounded border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-xs text-zinc-600 dark:text-zinc-400">
       <div class="flex items-center justify-between gap-2">
         <div class="flex items-center gap-2 min-w-0">
-          <div class={"w-2 h-2 rounded-full flex-none #{dot_class(@sync)}"}></div>
+          <div class={"w-2 h-2 rounded-full flex-none #{dot_class(@sync, @waiting)}"}></div>
           <span class="font-medium text-zinc-700 dark:text-zinc-300">Sync</span>
-          <span class="truncate">{status_label(@sync)}</span>
+          <span class="truncate">{status_label(@sync, @waiting)}</span>
         </div>
-        <div class="flex items-center gap-1">
+        <div :if={!@waiting} class="flex items-center gap-1">
           <button
             type="button"
             phx-click="sync_restart"
@@ -57,9 +59,7 @@ defmodule BoomLooperWeb.Components.Source.Local.SyncCard do
           <% end %>
         </div>
       </div>
-      <%= if err = error(@sync) do %>
-        <div class="mt-1 text-red-500 truncate" title={err}>{err}</div>
-      <% end %>
+      <div :if={!@waiting && error(@sync)} class="mt-1 text-red-500 truncate" title={error(@sync)}>{error(@sync)}</div>
     </div>
     """
   end
@@ -70,7 +70,8 @@ defmodule BoomLooperWeb.Components.Source.Local.SyncCard do
   defp error(%{last_error: err}) when is_binary(err) and err != "", do: err
   defp error(_), do: nil
 
-  defp dot_class(sync) do
+  defp dot_class(_sync, true), do: "bg-zinc-400 animate-pulse"
+  defp dot_class(sync, _waiting) do
     case status(sync) do
       :running -> "bg-emerald-500"
       :paused -> "bg-amber-400"
@@ -80,7 +81,8 @@ defmodule BoomLooperWeb.Components.Source.Local.SyncCard do
     end
   end
 
-  defp status_label(sync) do
+  defp status_label(_sync, true), do: "waiting for container…"
+  defp status_label(sync, _waiting) do
     case status(sync) do
       :running -> "running"
       :paused -> "paused"

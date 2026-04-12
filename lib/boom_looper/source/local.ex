@@ -84,6 +84,11 @@ defmodule BoomLooper.Source.Local do
 
     with {:ok, worktree_path} <- Worktree.create(project.path, workspace_id, branch),
          :ok <- VolumeManager.create_volume(volume_name) do
+      # Copy .boomlooper config from main repo to the new worktree so it
+      # inherits Dockerfile, docker-compose.yml, and workspace metadata.
+      # Skip agents.log (agent state is per-workspace).
+      copy_boomlooper_config(project.path, worktree_path)
+
       workspace = %{
         id: workspace_id,
         project_id: project.id,
@@ -135,6 +140,37 @@ defmodule BoomLooper.Source.Local do
 
   @impl true
   def remove_project(_project), do: :ok
+
+  # Copy .boomlooper config from the main repo to a new worktree.
+  # This gives the worktree the same Dockerfile, docker-compose.yml,
+  # and workspace metadata (name, system prompt) as main.
+  defp copy_boomlooper_config(main_path, worktree_path) do
+    src_repo = Path.join(main_path, ".boomlooper/repo")
+    src_workspace = Path.join(main_path, ".boomlooper/workspace")
+    dst_repo = Path.join(worktree_path, ".boomlooper/repo")
+    dst_workspace = Path.join(worktree_path, ".boomlooper/workspace")
+
+    if File.dir?(src_repo) do
+      File.mkdir_p!(dst_repo)
+      # Copy workspace.json (project name, system prompt)
+      for file <- ~w(workspace.json) do
+        src = Path.join(src_repo, file)
+        if File.exists?(src), do: File.cp!(src, Path.join(dst_repo, file))
+      end
+    end
+
+    if File.dir?(src_workspace) do
+      File.mkdir_p!(dst_workspace)
+      # Copy Dockerfile and docker-compose.yml (not agents.log)
+      for file <- ~w(Dockerfile docker-compose.yml) do
+        src = Path.join(src_workspace, file)
+        if File.exists?(src), do: File.cp!(src, Path.join(dst_workspace, file))
+      end
+    end
+  rescue
+    e ->
+      Logger.warning("[Source.Local] Failed to copy .boomlooper config to worktree: #{Exception.message(e)}")
+  end
 
   # --- Queries ---
 

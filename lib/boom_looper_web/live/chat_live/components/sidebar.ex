@@ -10,17 +10,15 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Sidebar do
     service_status_text: 1, exit_reason: 1, derive_volume_description: 1
   ]
 
-  # Sync card is only relevant when the session has actually connected
-  # (running, paused) or has a real problem (errored with a non-container
-  # error). Don't show it during the normal "container not up yet" phase
-  # — that's not a sync problem, it's just the workspace booting.
   defp sync_relevant?(nil), do: false
-  defp sync_relevant?(%{status: :running}), do: true
-  defp sync_relevant?(%{status: :paused}), do: true
-  defp sync_relevant?(%{status: :errored, last_error: err}) when is_binary(err) do
-    not String.contains?(err, "container") and not String.contains?(err, "No sync process")
+  defp sync_relevant?(_), do: true
+
+  # Container-related sync errors are "waiting" states, not real errors
+  defp sync_waiting?(%{status: :errored, last_error: err}) when is_binary(err) do
+    String.contains?(err, "container") or String.contains?(err, "No sync process")
   end
-  defp sync_relevant?(_), do: false
+  defp sync_waiting?(%{status: s}) when s in [:starting, :unknown], do: true
+  defp sync_waiting?(_), do: false
 
   # --- Sidebar ---
 
@@ -55,15 +53,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Sidebar do
         </.link>
       </div>
       <div class="flex-1 overflow-y-auto">
-        <%!-- Sync section - only show when sync is actually relevant.
-             Hidden when: not Local, no sync process, or container not up yet.
-             Showing "sync error" before a container exists is confusing. --%>
-        <div :if={@is_local_source? && sync_relevant?(@sync_status)} class="px-3 pt-3 pb-1">
-          <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-semibold mb-1.5">Local sync</div>
-          <.sync_card workspace_id={@workspace_id} sync={@sync_status || %{}} />
-        </div>
-
-        <%!-- Agents section - always show header --%>
+        <%!-- Agents --%>
         <div class="px-3 pt-3 pb-1">
           <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-semibold mb-1.5">Agents</div>
           <div :if={@agents != []} class="space-y-0.5">
@@ -72,7 +62,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Sidebar do
           <p :if={@agents == []} class="text-xs text-zinc-400 dark:text-zinc-500 py-1">No agents</p>
         </div>
 
-        <%!-- Services section - only show when services exist or still loading --%>
+        <%!-- Services --%>
         <div :if={@service_statuses != [] || !@services_loaded} class="px-3 pt-3 pb-1">
           <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-semibold mb-1.5">Services</div>
           <div :if={@service_statuses != []} class="space-y-0.5">
@@ -81,7 +71,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Sidebar do
           <p :if={!@services_loaded} class="text-xs text-zinc-400 dark:text-zinc-500 py-1">Loading...</p>
         </div>
 
-        <%!-- Volumes section - always show header --%>
+        <%!-- Volumes --%>
         <div class="px-3 pt-3 pb-1">
           <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-semibold mb-1.5">Volumes</div>
           <div :if={@volumes != []} class="space-y-0.5">
@@ -89,6 +79,12 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Sidebar do
           </div>
           <p :if={!@volumes_loaded} class="text-xs text-zinc-400 dark:text-zinc-500 py-1">Loading...</p>
           <p :if={@volumes_loaded && @volumes == []} class="text-xs text-zinc-400 dark:text-zinc-500 py-1">No volumes</p>
+        </div>
+
+        <%!-- Local sync — below volumes since it's about volume ↔ host file sync --%>
+        <div :if={@is_local_source? && sync_relevant?(@sync_status)} class="px-3 pt-3 pb-1">
+          <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-semibold mb-1.5">Local sync</div>
+          <.sync_card workspace_id={@workspace_id} sync={@sync_status || %{}} waiting={sync_waiting?(@sync_status)} />
         </div>
       </div>
     </aside>
