@@ -13,6 +13,7 @@ Hooks.ScrollBottom = {
   mounted() {
     this._userScrolledUp = false
     this._lastPath = window.location.pathname
+    this._lastHeight = 0
     this._setupScroll()
 
     this.handleEvent("scroll_bottom", () => {
@@ -26,16 +27,32 @@ Hooks.ScrollBottom = {
   updated() {
     const currentPath = window.location.pathname
     if (currentPath !== this._lastPath) {
+      // Navigated to a different agent/page — reset scroll state
       this._lastPath = currentPath
       this._userScrolledUp = false
+      this._lastHeight = 0
       this._setupScroll()
+      return
+    }
+
+    // Content changed (messages loaded, new message arrived).
+    // Scroll to bottom unless user has scrolled up to read.
+    if (!this._userScrolledUp) {
+      const el = document.getElementById("messages")
+      if (el && el.scrollHeight !== this._lastHeight) {
+        this._lastHeight = el.scrollHeight
+        requestAnimationFrame(() => { el.scrollTop = el.scrollHeight })
+      }
     }
   },
 
   _setupScroll() {
     const el = document.getElementById("messages")
     if (el) {
-      requestAnimationFrame(() => { el.scrollTop = el.scrollHeight })
+      requestAnimationFrame(() => {
+        el.scrollTop = el.scrollHeight
+        this._lastHeight = el.scrollHeight
+      })
 
       if (!this._scrollListenerAdded) {
         el.addEventListener("scroll", () => {
