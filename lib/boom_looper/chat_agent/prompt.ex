@@ -79,7 +79,7 @@ defmodule BoomLooper.ChatAgent.Prompt do
     """
     Workspace container: #{container}. YOUR AGENT ID: #{agent_id}. Pass agent_id to every tool call.
 
-    Use boom-looper-container MCP tools for ALL work. `exec` for quick commands, `exec_stream` for long-running ones. #{workspace_note}. Dev server runs in a separate container — use `logs` and `service_status` to check it.
+    Use boom-looper-container MCP tools for ALL work. `exec` for quick commands, `exec_stream` for long-running ones. ALWAYS use the `docker_compose` MCP tool — never run `docker compose` via Bash. #{workspace_note}. Dev server runs in a separate container — use `logs` and `service_status` to check it.
     """
   end
 
@@ -108,6 +108,8 @@ defmodule BoomLooper.ChatAgent.Prompt do
     - `docker` — run docker commands (e.g. "ps", "volume ls")
     - `exec` — run commands in the workspace container
     - `logs` — get container logs
+
+    CRITICAL: ALWAYS use the `docker_compose` MCP tool for compose commands. NEVER run `docker compose` via Bash or `exec`. The MCP tool sets the correct project name, syncs compose files, and streams output to the UI. Running compose directly creates containers with wrong names that the platform can't manage.
 
     Use `${CODE_VOLUME}:/workspace` in your compose file — it gets substituted automatically.
 
