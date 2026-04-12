@@ -623,6 +623,8 @@ defmodule BoomLooper.ChatAgent do
   @impl true
   def handle_info({:stream_done, id}, %{id: id} = state) do
     state = %{state | status: :idle}
+    # Reset crash counter — a successful turn means the session is healthy
+    state = Map.put(state, :consecutive_crashes, 0)
     broadcast(@topic, {:chat_agent_status_changed, id, :idle})
     {:noreply, state}
   end
@@ -695,28 +697,51 @@ defmodule BoomLooper.ChatAgent do
     end
   end
 
-  # Linked streaming task died — auto-restart session
+  # Linked streaming task died — auto-restart session with backoff.
+  # Without backoff, a deterministic crash (e.g. tools/list serialization
+  # bug) creates a hot restart loop that hammers the Claude API until
+  # rate-limited.
+  @max_consecutive_crashes 5
+  @crash_backoff_base_ms 2_000
+
   @impl true
   def handle_info({:EXIT, _pid, reason}, %{status: :thinking} = state) when reason != :normal do
     BoomLooper.EventLog.warning("agent:#{state.name}", "Streaming task died: #{inspect(reason)}")
     id = state.id
+    consecutive = Map.get(state, :consecutive_crashes, 0) + 1
 
-    # Try to auto-restart the session
-    case state.backend.start_session(state.session_opts) do
-      {:ok, new_session} ->
-        recovered_msg = %{role: :system, content: "Session crashed — restarted automatically.", timestamp: DateTime.utc_now()}
-        {state, recovered_msg} = append_message(%{state | session: new_session, status: :idle, errors: state.errors + 1}, recovered_msg)
-        broadcast("chat_agent:#{id}", {:chat_message, id, recovered_msg})
-        broadcast(@topic, {:chat_agent_status_changed, id, :idle})
-        {:noreply, state}
+    if consecutive > @max_consecutive_crashes do
+      error_msg = %{role: :error, content: "Agent crashed #{consecutive} times in a row — giving up. Fix the underlying issue and restart manually.", timestamp: DateTime.utc_now()}
+      {state, error_msg} = append_message(state, error_msg)
+      state = %{state | status: :crashed, errors: state.errors + 1}
+      state = Map.put(state, :consecutive_crashes, consecutive)
+      broadcast("chat_agent:#{id}", {:chat_message, id, error_msg})
+      broadcast(@topic, {:chat_agent_status_changed, id, :crashed})
+      {:noreply, state}
+    else
+      # Exponential backoff: 2s, 4s, 8s, 16s, 32s
+      backoff_ms = @crash_backoff_base_ms * :math.pow(2, consecutive - 1) |> trunc()
+      BoomLooper.EventLog.info("agent:#{state.name}", "Backing off #{backoff_ms}ms before restart (crash ##{consecutive})")
+      Process.sleep(backoff_ms)
 
-      {:error, _} ->
-        error_msg = %{role: :error, content: "Agent session crashed. Send a message to retry.", timestamp: DateTime.utc_now()}
-        {state, error_msg} = append_message(state, error_msg)
-        state = %{state | status: :idle, errors: state.errors + 1}
-        broadcast("chat_agent:#{id}", {:chat_message, id, error_msg})
-        broadcast(@topic, {:chat_agent_status_changed, id, :idle})
-        {:noreply, state}
+      case state.backend.start_session(state.session_opts) do
+        {:ok, new_session} ->
+          recovered_msg = %{role: :system, content: "Session crashed — restarted automatically (attempt #{consecutive}).", timestamp: DateTime.utc_now()}
+          {state, recovered_msg} = append_message(%{state | session: new_session, status: :idle, errors: state.errors + 1}, recovered_msg)
+          state = Map.put(state, :consecutive_crashes, consecutive)
+          broadcast("chat_agent:#{id}", {:chat_message, id, recovered_msg})
+          broadcast(@topic, {:chat_agent_status_changed, id, :idle})
+          {:noreply, state}
+
+        {:error, _} ->
+          error_msg = %{role: :error, content: "Agent session crashed. Send a message to retry.", timestamp: DateTime.utc_now()}
+          {state, error_msg} = append_message(state, error_msg)
+          state = %{state | status: :idle, errors: state.errors + 1}
+          state = Map.put(state, :consecutive_crashes, consecutive)
+          broadcast("chat_agent:#{id}", {:chat_message, id, error_msg})
+          broadcast(@topic, {:chat_agent_status_changed, id, :idle})
+          {:noreply, state}
+      end
     end
   end
 
