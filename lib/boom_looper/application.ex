@@ -57,6 +57,11 @@ defmodule BoomLooper.Application do
       )
     end
 
+    # Detect Docker credential store misconfiguration. If credsStore is
+    # set to "desktop" but Docker Desktop isn't running (colima users),
+    # every docker pull/build hangs waiting for docker-credential-desktop.
+    check_docker_creds_store()
+
     # Restore persisted projects from ~/.boomlooper/projects.json
     # ServiceManager will reconnect to any running containers
     BoomLooper.ProjectRegistry.restore()
@@ -72,5 +77,39 @@ defmodule BoomLooper.Application do
   def config_change(changed, _new, removed) do
     BoomLooperWeb.Endpoint.config_change(changed, removed)
     :ok
+  end
+
+  # Docker Desktop's credential helper hangs when Desktop isn't running.
+  # Colima users hit this: every pull/build freezes for minutes. Detect
+  # it at startup and warn loudly so they fix it before wasting time.
+  defp check_docker_creds_store do
+    docker_config = Path.join(System.user_home!(), ".docker/config.json")
+
+    with {:ok, json} <- File.read(docker_config),
+         {:ok, config} <- Jason.decode(json),
+         "desktop" <- config["credsStore"] do
+      # Check if docker-credential-desktop actually works
+      case System.cmd("docker-credential-desktop", ["list"], stderr_to_stdout: true) do
+        {_, 0} ->
+          :ok
+
+        _ ->
+          Logger.error("""
+          [BoomLooper] Docker credential store is set to "desktop" but \
+          docker-credential-desktop is not responding. This causes every \
+          docker pull and build to hang.
+
+          Fix: run this command to switch to the macOS keychain:
+
+            python3 -c "import json; c=json.load(open('#{docker_config}')); c['credsStore']='osxkeychain'; json.dump(c,open('#{docker_config}','w'),indent=2)"
+
+          Or run: /setup
+          """)
+      end
+    else
+      _ -> :ok
+    end
+  rescue
+    _ -> :ok
   end
 end

@@ -84,7 +84,7 @@ export MIX_HOME="$PWD/.mix_home" HEX_HOME="$PWD/.hex_home"
 mix local.hex --force && mix deps.get && mix assets.setup && mix assets.build
 ```
 
-### 4. Start the server
+### 6. Start the server
 
 ```bash
 export MIX_HOME="$PWD/.mix_home" HEX_HOME="$PWD/.hex_home"
@@ -93,7 +93,7 @@ mix boom.server
 
 **Important:** Always set `MIX_HOME` and `HEX_HOME` before running mix commands. This uses a project-local Hex installation to avoid conflicts with your system Hex.
 
-### 5. Remote access
+### 7. Remote access
 
 Once the server is running, jack in from another terminal with `mix boom.rpc`:
 
