@@ -454,7 +454,7 @@ Don't add telemetry subscribers — that's for the operator to configure. Just e
 
 ### Keep it simple
 
-Don't add infrastructure users have to install, configure, or manage. If a feature requires `sudo`, system packages, or manual setup steps, it's too complex. The app should work out of the box with `mix phx.server`.
+Don't add infrastructure users have to install, configure, or manage. If a feature requires `sudo`, system packages, or manual setup steps, it's too complex. The app should work out of the box with `mix boom.setup && mix boom.server`.
 
 Don't add toggles for things that should just be on. Don't add config files for things that have sensible defaults. Don't add "advanced" sections that hide complexity — either the feature is simple enough to be always-on, or it's not ready.
 

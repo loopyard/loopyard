@@ -24,15 +24,8 @@ macOS only. Requires [Homebrew](https://brew.sh).
 ```bash
 git clone https://github.com/boomlooper/boomlooper.git
 cd boomlooper
-bin/setup
-```
-
-This installs Elixir, Docker Desktop, and Claude Code CLI via Homebrew, then builds the app.
-
-Start the server:
-
-```bash
-mix phx.server
+mix boom.setup    # installs deps, fixes Docker config, builds assets
+mix boom.server   # starts the server
 ```
 
 Launch from any project directory:

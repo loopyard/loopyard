@@ -50,7 +50,7 @@ If there are no tests, the PR is not ready.
 ## Check: Complexity
 
 - Does the feature require the user to install something, run sudo, or configure anything?
-- If yes, can it be simpler? The app should work with `mix phx.server`.
+- If yes, can it be simpler? The app should work with `mix boom.setup && mix boom.server`.
 - Are there toggles or config that should just be on by default?
 
 ## Check: Compilation

@@ -43,60 +43,26 @@ Any valid Elixir expression works.
 
 ## Linux
 
-Install dependencies manually:
-
-```bash
-# Erlang & Elixir
-sudo apt-get install -y software-properties-common
-wget https://packages.erlang-solutions.com/erlang-solutions_2.0_all.deb
-sudo dpkg -i erlang-solutions_2.0_all.deb
-sudo apt-get update
-sudo apt-get install -y esl-erlang elixir
-
-# Docker
-sudo apt-get install -y docker.io docker-compose-plugin
-sudo usermod -aG docker $USER
-# Log out and back in for group change
-
-# Node.js + Claude Code CLI
-sudo apt-get install -y nodejs npm
-npm install -g @anthropic-ai/claude-code
-```
-
-Then clone and build:
+Install Erlang, Elixir, Docker, and Node.js via your package manager, then:
 
 ```bash
 git clone https://github.com/boomlooper/boomlooper.git
 cd boomlooper
-export MIX_HOME="$PWD/.mix_home" HEX_HOME="$PWD/.hex_home"
-mix local.hex --force && mix deps.get && mix assets.setup && mix assets.build
-```
-
-Start the server (remember to set the env vars in each new terminal):
-
-```bash
-export MIX_HOME="$PWD/.mix_home" HEX_HOME="$PWD/.hex_home"
+mix boom.setup
 mix boom.server
 ```
 
-For remote access, see step 5 in the macOS section above.
+`mix boom.setup` skips Brewfile on Linux (no brew) but handles everything else.
 
 ## Troubleshooting
 
-**"BEAM file was compiled for an old version"**: You forgot to set the environment variables. Run:
-```bash
-export MIX_HOME="$PWD/.mix_home" HEX_HOME="$PWD/.hex_home"
-mix local.hex --force
-```
-Then try again.
+**Compilation errors after update**: Run `mix boom.setup` to re-fetch deps and rebuild assets.
 
-**`mix phx.server` fails with "could not compile dependency"**: Run `mix deps.clean --all && mix deps.get` and try again.
+**Docker not found**: Make sure your Docker runtime is installed and running. Verify with `docker info`.
 
-**Docker not found**: Make sure your Docker runtime is installed and running. On macOS use Docker Desktop, OrbStack, or Colima. On Linux use docker.io. Verify with `docker info`.
+**Docker pulls hang**: Run `mix boom.setup` — it detects and fixes the Docker Desktop credential store issue automatically.
 
-**Claude CLI not found**: `npm install -g @anthropic-ai/claude-code`. Make sure Node.js is installed.
-
-**Port 4000 in use**: Set a different port with `PORT=4001 mix phx.server`.
+**Port 4000 in use**: `PORT=4001 mix boom.server`.
 
 ## ARM64 / Apple Silicon Service Images
 
