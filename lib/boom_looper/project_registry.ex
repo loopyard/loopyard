@@ -1,11 +1,13 @@
 defmodule BoomLooper.ProjectRegistry do
   @moduledoc """
-  Registry of projects (git repos) and their workspaces (worktrees).
+  Registry of projects (git repos).
   Each project can have multiple workspaces, each with its own containers and agents.
 
   Projects are stored in ETS for fast access, and persisted to
   `~/.boomlooper/projects.json` via `ProjectStore`. On startup,
   `restore/0` re-registers persisted projects.
+
+  Workspace functions are delegated to `BoomLooper.WorkspaceRegistry`.
   """
 
   require Logger
@@ -13,9 +15,17 @@ defmodule BoomLooper.ProjectRegistry do
   alias BoomLooper.Git
   alias BoomLooper.ProjectStore
   alias BoomLooper.Workspace
+  alias BoomLooper.WorkspaceRegistry
 
   @projects_table :project_registry
-  @workspaces_table :workspace_registry
+
+  # Delegate workspace functions to WorkspaceRegistry for backwards compatibility
+  defdelegate get_workspace(id), to: WorkspaceRegistry
+  defdelegate list_workspaces(project_id), to: WorkspaceRegistry
+  defdelegate add_workspace(project_id, branch_name), to: WorkspaceRegistry
+  defdelegate remove_workspace(workspace_id), to: WorkspaceRegistry
+  defdelegate update_workspace_status(workspace_id, status), to: WorkspaceRegistry
+  defdelegate workspace_id(path), to: WorkspaceRegistry
 
   @doc false
   def ensure_ets_tables, do: :ok
@@ -59,13 +69,13 @@ defmodule BoomLooper.ProjectRegistry do
     end
 
     # Find or create workspace
-    workspace = case get_workspace(workspace_id) do
+    workspace = case WorkspaceRegistry.get_workspace(workspace_id) do
       nil ->
         volume_name = BoomLooper.VolumeManager.code_volume_name(workspace_id)
         # Compute path so all workspaces have the same shape
         computed_path = Path.join([Workspace.home_dir(), "workspaces", workspace_id])
         # First branch added is considered main (typically "main" or "master")
-        existing_workspaces = list_workspaces(project_id)
+        existing_workspaces = WorkspaceRegistry.list_workspaces(project_id)
         is_main = existing_workspaces == []
 
         ws = %{
@@ -81,7 +91,7 @@ defmodule BoomLooper.ProjectRegistry do
           status: :stopped,
           added_at: DateTime.utc_now()
         }
-        :ets.insert(@workspaces_table, {workspace_id, ws})
+        WorkspaceRegistry.insert(workspace_id, ws)
         ws
 
       existing ->
@@ -118,7 +128,7 @@ defmodule BoomLooper.ProjectRegistry do
         Logger.error("[ProjectRegistry] Clone failed for #{git_url}: #{reason}")
 
         # Roll back the ETS entries we just inserted so a retry can re-create them.
-        :ets.delete(@workspaces_table, workspace_id)
+        WorkspaceRegistry.delete(workspace_id)
         :ets.delete(@projects_table, project_id)
 
         {:error, "Clone failed: #{reason}"}
@@ -152,7 +162,7 @@ defmodule BoomLooper.ProjectRegistry do
             _ -> "main"
           end
 
-        workspace = find_or_create_workspace(project.id, workspace_name, project.path)
+        workspace = WorkspaceRegistry.find_or_create_workspace(project.id, workspace_name, project.path)
 
         if project[:is_git] do
           discover_worktrees(project)
@@ -349,7 +359,7 @@ defmodule BoomLooper.ProjectRegistry do
   """
   def remove_project(id) do
     project = get_project(id)
-    workspaces = list_workspaces(id)
+    workspaces = WorkspaceRegistry.list_workspaces(id)
 
     # Stop all agents and clean up ETS entries
     all_agents = BoomLooper.ChatAgent.list_agents()
@@ -427,155 +437,19 @@ defmodule BoomLooper.ProjectRegistry do
     BoomLooper.Docker.prune_temp_containers()
 
     # Remove from ETS
-    Enum.each(workspaces, fn ws -> :ets.delete(@workspaces_table, ws.id) end)
+    Enum.each(workspaces, fn ws -> WorkspaceRegistry.delete(ws.id) end)
     :ets.delete(@projects_table, id)
     :ok
   end
 
-  # --- Workspaces ---
-
-  @doc "List workspaces for a project."
-  def list_workspaces(project_id) do
-    :ets.tab2list(@workspaces_table)
-    |> Enum.map(fn {_id, workspace} -> normalize_workspace(workspace) end)
-    |> Enum.filter(&(&1.project_id == project_id))
-    |> Enum.sort_by(fn w -> if w.name == "main", do: "0", else: w.name end)
-  end
-
-  @doc "Get a workspace by ID."
-  def get_workspace(id) do
-    case :ets.lookup(@workspaces_table, id) do
-      [{^id, workspace}] -> normalize_workspace(workspace)
-      [] -> nil
-    end
-  end
-
-  # Ensure all workspaces have consistent shape (path, is_main)
-  defp normalize_workspace(ws) do
-    ws
-    |> maybe_add_path()
-    |> maybe_add_is_main()
-  end
-
-  defp maybe_add_path(%{path: _} = ws), do: ws
-  defp maybe_add_path(%{volume_based: true, id: id} = ws) do
-    Map.put(ws, :path, Path.join([Workspace.home_dir(), "workspaces", id]))
-  end
-  defp maybe_add_path(ws), do: ws
-
-  defp maybe_add_is_main(%{is_main: _} = ws), do: ws
-  defp maybe_add_is_main(ws), do: Map.put(ws, :is_main, false)
-
-  @doc """
-  Add a new workspace to a project. Delegates to the project's Source adapter.
-  Returns {:ok, workspace} or {:error, reason}.
-  """
-  def add_workspace(project_id, branch_name) do
-    project = get_project(project_id)
-
-    unless project do
-      {:error, "Project not found"}
-    else
-      # Check if a workspace with this branch is already registered
-      existing = list_workspaces(project_id) |> Enum.find(&(&1.name == branch_name))
-      if existing do
-        {:ok, existing}
-      else
-        adapter = BoomLooper.Source.for_project(project)
-
-        case adapter.create_workspace(project, branch_name, []) do
-          {:ok, workspace} ->
-            :ets.insert(@workspaces_table, {workspace.id, workspace})
-            {:ok, workspace}
-
-          {:error, reason} ->
-            {:error, reason}
-        end
-      end
-    end
-  end
-
-  @doc """
-  Remove a workspace. Stops containers and tears down adapter-owned state
-  (host worktree, volume, sync session, etc.). Cannot remove the main
-  workspace.
-  """
-  def remove_workspace(workspace_id) do
-    workspace = get_workspace(workspace_id)
-
-    cond do
-      is_nil(workspace) ->
-        {:error, "Workspace not found"}
-
-      workspace.is_main ->
-        {:error, "Cannot remove the main workspace"}
-
-      true ->
-        project = get_project(workspace.project_id)
-        adapter = BoomLooper.Source.for_project(project || %{})
-        adapter.remove_workspace(project || %{}, workspace)
-        :ets.delete(@workspaces_table, workspace_id)
-        :ok
-    end
-  end
-
-  @doc "Update workspace status (e.g. :running, :stopped)."
-  def update_workspace_status(workspace_id, status) do
-    case :ets.lookup(@workspaces_table, workspace_id) do
-      [{^workspace_id, workspace}] ->
-        updated = %{workspace | status: status}
-        :ets.insert(@workspaces_table, {workspace_id, updated})
-        {:ok, updated}
-      [] ->
-        {:error, "Workspace not found"}
-    end
-  end
-
   # --- Private ---
-
-  defp find_or_create_workspace(project_id, workspace_name, path) do
-    id = workspace_id(path)
-    case get_workspace(id) do
-      nil -> create_workspace(project_id, workspace_name, path)
-      existing -> existing
-    end
-  end
-
-  defp create_workspace(project_id, workspace_name, path) do
-    project = get_project(project_id)
-    is_main = path == project.path
-    id = workspace_id(path)
-
-    # For Local projects, the main workspace's worktree path IS the host
-    # repo itself — mutagen syncs the host repo directly with the volume.
-    # Branch workspaces get their own worktree created by the adapter.
-    worktree_path =
-      cond do
-        project && project[:source_type] == :local && is_main -> path
-        true -> nil
-      end
-
-    workspace = %{
-      id: id,
-      project_id: project_id,
-      name: workspace_name,
-      path: path,
-      worktree_path: worktree_path,
-      branch: workspace_name,
-      is_main: is_main,
-      status: :stopped,
-      added_at: DateTime.utc_now()
-    }
-    :ets.insert(@workspaces_table, {id, workspace})
-    workspace
-  end
 
   defp discover_worktrees(project) do
     case Git.worktree_list(project.path) do
       {:ok, worktrees} ->
         Enum.each(worktrees, fn wt ->
           workspace_name = wt[:branch] || "detached"
-          find_or_create_workspace(project.id, workspace_name, wt.path)
+          WorkspaceRegistry.find_or_create_workspace(project.id, workspace_name, wt.path)
         end)
 
       {:error, _} ->
@@ -585,11 +459,6 @@ defmodule BoomLooper.ProjectRegistry do
 
   @doc "Generate a project ID from a repo path."
   def project_id(path) do
-    Workspace.workspace_id(path)
-  end
-
-  @doc "Generate a workspace ID from a worktree path."
-  def workspace_id(path) do
     Workspace.workspace_id(path)
   end
 end
