@@ -5,7 +5,7 @@ defmodule BoomLooper.Tools.Container.MultiEdit do
     params: [
       agent_id: {:string, required: true},
       path: {:string, required: true, description: "File path relative to /workspace"},
-      edits: {:string, required: true, description: ~s|JSON array of edits, e.g. '[{"old_string": "foo", "new_string": "bar"}, {"old_string": "baz", "new_string": "qux", "replace_all": true}]'|}
+      edits: {:string, required: true, description: "JSON array of edits, e.g. '[{\"old_string\": \"foo\", \"new_string\": \"bar\"}, {\"old_string\": \"baz\", \"new_string\": \"qux\", \"replace_all\": true}]'"}
     ]
 
   alias BoomLooper.Tools.Container.Helpers
