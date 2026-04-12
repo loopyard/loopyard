@@ -205,7 +205,30 @@ defmodule BoomLooper.InvariantsTest do
   end
 
   # ---------------------------------------------------------------
-  # 6. Ad-hoc virtual dir computation should be minimized
+  # 6. LiveViews must not call ServiceStatus.for_workspace directly
+  # ---------------------------------------------------------------
+
+  describe "service data invariants" do
+    test "no LiveView/component calls ServiceStatus.for_workspace directly" do
+      violations =
+        Path.wildcard("lib/boom_looper_web/**/*.ex")
+        |> Enum.flat_map(fn path ->
+          content = File.read!(path)
+          if String.contains?(content, "ServiceStatus.for_workspace") do
+            [path |> String.replace("lib/", "")]
+          else
+            []
+          end
+        end)
+
+      assert violations == [],
+        "LiveViews must use Observer.services_for(workspace_id), not " <>
+        "ServiceStatus.for_workspace: #{inspect(violations)}"
+    end
+  end
+
+  # ---------------------------------------------------------------
+  # 7. Ad-hoc virtual dir computation should be minimized
   # ---------------------------------------------------------------
   # Every `Path.join([..., "workspaces", id])` is a potential source of
   # path drift. The canonical way to get the compose/virtual dir is via

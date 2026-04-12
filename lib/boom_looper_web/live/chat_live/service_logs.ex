@@ -70,11 +70,11 @@ defmodule BoomLooperWeb.Live.ChatLive.ServiceLogs do
   service. Sends `:service_logs_fetched` back to the calling LiveView process.
   Returns the socket unchanged.
   """
-  def start_service_logs_fetch(socket, path, service_name) do
+  def start_service_logs_fetch(socket, workspace_id, service_name) do
     lv = self()
 
     Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
-      service_statuses = BoomLooper.Workspace.ServiceStatus.for_workspace(path)
+      service_statuses = BoomLooper.Docker.Observer.services_for(workspace_id)
       logs = fetch_service_container_logs(service_statuses, service_name)
       send(lv, {:service_logs_fetched, service_name, service_statuses, logs})
     end)
@@ -87,11 +87,11 @@ defmodule BoomLooperWeb.Live.ChatLive.ServiceLogs do
   Sends `:all_service_logs_fetched` back to the calling LiveView process.
   Returns the socket unchanged.
   """
-  def start_all_service_logs_fetch(socket, path) do
+  def start_all_service_logs_fetch(socket, workspace_id) do
     lv = self()
 
     Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
-      service_statuses = BoomLooper.Workspace.ServiceStatus.for_workspace(path)
+      service_statuses = BoomLooper.Docker.Observer.services_for(workspace_id)
       all_logs = fetch_all_service_logs(service_statuses)
       send(lv, {:all_service_logs_fetched, service_statuses, all_logs})
     end)

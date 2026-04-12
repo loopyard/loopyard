@@ -77,6 +77,59 @@ defmodule BoomLooper.Docker.Observer do
     Enum.filter(volumes(), &(&1.workspace_id == workspace_id))
   end
 
+  @doc """
+  Full service list for a workspace: defined services from the compose file
+  merged with running state from the Observer's container cache.
+
+  This is the ONLY function UI code should call for service data. It reads
+  the compose file from workspace.compose_dir (via Workspace.compose_dir/1)
+  and merges with cached container state — never shells out to Docker.
+
+  Returns a list of `%ServiceStatus.Service{}` structs.
+  """
+  def services_for(workspace_id) do
+    compose_dir = BoomLooper.Workspace.compose_dir(workspace_id)
+    project_name = BoomLooper.Compose.project_name(workspace_id)
+    observer_containers = containers_for(workspace_id)
+
+    defined = BoomLooper.Workspace.ServiceStatus.list_defined_services(compose_dir)
+
+    if defined != [] do
+      Enum.map(defined, fn svc ->
+        container_name = "#{project_name}-#{svc.name}-1"
+        container = Enum.find(observer_containers, &(&1.name == container_name))
+
+        if container && container.running do
+          struct!(svc, %{
+            status: :running,
+            container: container_name,
+            ports: container[:host_ports] || %{}
+          })
+        else
+          struct!(svc, %{status: :stopped, container: container_name})
+        end
+      end)
+    else
+      # No compose file — derive from running containers
+      observer_containers
+      |> Enum.reject(&String.ends_with?(&1.name, "-workspace-1"))
+      |> Enum.map(fn c ->
+        service_name =
+          c.name
+          |> String.replace_prefix("#{project_name}-", "")
+          |> String.replace_suffix("-1", "")
+
+        %BoomLooper.Workspace.ServiceStatus.Service{
+          name: service_name,
+          type: :process,
+          status: if(c.running, do: :running, else: :stopped),
+          container: c.name,
+          ports: c[:host_ports] || %{}
+        }
+      end)
+    end
+  end
+
   @doc "Full snapshot: containers + volumes + timestamp."
   def snapshot do
     %{
