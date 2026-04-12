@@ -1306,7 +1306,7 @@ defmodule BoomLooperWeb.ChatLive do
           <span :if={@service && @service != "workspace"} class="text-[10px] text-zinc-400 dark:text-zinc-500">{@service}</span>
         </div>
       </div>
-      <span class="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono flex-none">{@vol.size}</span>
+      <span :if={@vol[:size]} class="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono flex-none">{@vol.size}</span>
     </div>
     """
   end

@@ -261,7 +261,13 @@ defmodule BoomLooper.ProjectRegistry do
     # whichever key the project actually has so the rename round-trips.
     records =
       projects
-      |> Enum.map(fn p -> %{path: p[:path] || p[:git_url], name: p.name} end)
+      |> Enum.map(fn p ->
+        %{
+          path: p[:path] || p[:git_url],
+          name: p.name,
+          source_type: p[:source_type]
+        }
+      end)
       |> Enum.reject(&is_nil(&1.path))
 
     ProjectStore.save(records)
@@ -348,6 +354,8 @@ defmodule BoomLooper.ProjectRegistry do
     # Stop all agents and clean up ETS entries
     all_agents = BoomLooper.ChatAgent.list_agents()
 
+    adapter = BoomLooper.Source.for_project(project || %{})
+
     Enum.each(workspaces, fn workspace ->
       # Match agents by workspace_id or path
       all_agents
@@ -362,6 +370,10 @@ defmodule BoomLooper.ProjectRegistry do
       end)
 
       BoomLooper.WorkspaceSupervisor.stop_workspace(workspace.id)
+
+      # Let the Source adapter clean up adapter-specific state (e.g.
+      # Local: terminate mutagen session, remove host worktree).
+      adapter.remove_workspace(project || %{}, workspace)
     end)
 
     if project do
