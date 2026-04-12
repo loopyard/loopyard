@@ -44,7 +44,7 @@ defmodule BoomLooperWeb.Components.ToolSummary do
       {"service_containers", _} -> "Service containers"
       {"list_secrets", _} -> "Listed available secrets"
       {"get_secret", %{"key" => k}} -> "Retrieved secret: #{k}"
-      {"ToolSearch", %{"query" => q}} -> "Searching for tools: #{String.slice(q, 0..60)}"
+      {"ToolSearch", _} -> "Claude is loading tools..."
       {"WebSearch", %{"query" => q}} -> "Web search: #{String.slice(q, 0..60)}"
       {"WebFetch", %{"url" => url}} -> "Fetching #{String.slice(url, 0..80)}"
       {name, _} -> name |> String.replace("_", " ") |> String.capitalize()
