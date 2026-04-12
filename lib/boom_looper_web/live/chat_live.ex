@@ -1014,13 +1014,13 @@ defmodule BoomLooperWeb.ChatLive do
             log_opts = if log_service, do: Map.put(log_opts, :service, log_service), else: log_opts
 
             logs =
-              case BoomLooper.Tools.Container.do_logs(id, log_opts) do
+              case BoomLooper.Tools.Container.Logs.execute(%{agent_id: id, lines: log_opts[:lines], service: log_opts[:service]}, %{}) do
                 {:ok, output} -> output
                 {:error, err} -> "Error: #{err}"
               end
 
             env =
-              case BoomLooper.Tools.Container.do_inspect(id) do
+              case BoomLooper.Tools.Container.InspectEnv.execute(%{agent_id: id}, %{}) do
                 {:ok, output} -> output
                 _ -> nil
               end
