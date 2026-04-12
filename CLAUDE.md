@@ -106,10 +106,23 @@ If you're fixing a bug, write a test that reproduces it BEFORE writing the fix. 
 
 Don't bury behavior in LiveView private functions. If it has logic worth getting right, it belongs in its own module with its own tests. LiveViews should be thin — they handle events, delegate to modules, and render.
 
+**No file over ~300 lines.** If a module is growing past that, it has multiple concerns and should be split. We've learned this repeatedly:
+- `container.ex` (1500 lines, 20 tools) → 22 files, no file over 200 lines
+- `chat_live.ex` (1717 lines) → 852 lines + 5 extracted modules (components, service_logs, agent_lifecycle, compose_check, messages)
+- `chat_agent.ex` (1148 lines) → ~950 lines + prompt, tool_config, persistence submodules
+- `project_registry.ex` → split into ProjectRegistry + WorkspaceRegistry
+- `volume_manager.ex` → split into VolumeManager + VolumeIO + VolumeCloner
+
+**LiveView extraction pattern:** extract into modules under `live/chat_live/`. Each module exports functions that take and return sockets. The LiveView's handlers become one-line delegates:
+- `ChatLive.Components` (use macro that imports Sidebar, Chat, Services, States, Formatters)
+- `ChatLive.AgentLifecycle` — spawn, select, list agents
+- `ChatLive.ServiceLogs` — fetch, refresh, format service logs
+- `ChatLive.ComposeCheck` — async compose file detection
+
 **Examples of what to extract:**
-- `StreamBuffer` — streaming accumulation logic extracted from chat_live.ex private functions. 31 unit tests cover rolling window, upsert, restore, boundary conditions.
-- `Terminal.build_cmd/1` — command construction extracted as a public function so tests can validate the PTY setup without Docker.
-- `LogViewer` — rendering components extracted to `BoomLooperWeb.Components.LogViewer` with their own test file.
+- `StreamBuffer` — streaming accumulation logic. 31 unit tests.
+- `Terminal.build_cmd/1` — command construction testable without Docker.
+- Pure formatters (`time_ago`, `exit_reason`, `service_status_text`) → `Components.Formatters`
 
 **The pattern:** if you find yourself writing complex logic inside `defp` in a LiveView, stop. Extract it. Test it. Wire the LiveView to call it.
 
@@ -297,7 +310,7 @@ Views read from ETS/GenServers. They never create or modify infrastructure state
 ### Message URL rules
 
 - Real `<a href>` with `target="_blank" rel="noopener"`. No JS hacks.
-- EVERY broadcast must include the message `:id`. Broadcast `List.last(state.messages)` after `append_message`.
+- EVERY broadcast must include the message `:id`. `append_message` returns `{state, msg}` — broadcast the returned `msg`, never `List.last(state.messages)`.
 - No tokens — simple URLs: `/messages/:agent_id/:msg_id`
 
 ### Streaming sync
@@ -314,7 +327,69 @@ Never `docker exec apt-get`. It doesn't persist across container restarts.
 
 ### Auto-restart dead CLI sessions
 
-ChatAgent checks `session_alive?` before every send. Restarts silently. No auto-replay (causes crash loops).
+ChatAgent checks `session_alive?` before every send. Restarts with exponential backoff. No auto-replay (causes crash loops).
+
+### Every Task must be supervised
+
+Never `Task.start(fn -> ... end)`. Always `Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn -> ... end)`. Unsupervised tasks crash silently — nobody notices, nothing retries, the work just disappears. `Task.start_link` is acceptable only when the parent GenServer needs to detect the crash (e.g., ChatAgent's streaming task).
+
+### ETS tables are owned by StateKeeper
+
+Never create ETS tables from random modules. All named tables are defined in `StateKeeper.@tables` and created in `StateKeeper.init/1`. No `ensure_ets_table` pattern — if the table doesn't exist, something is deeply wrong and should crash loudly. `StateKeeper.ensure_tables!/0` exists only for test setup.
+
+### Never block a LiveView on Docker
+
+Any Docker call (shell-out, container inspect, log fetch) takes 100ms+. Never call these synchronously in `handle_info`, `handle_event`, or `handle_params`. Use `Task.Supervisor.start_child` + `send(self(), {:result, data})` or `start_async/3`. The LiveView process must stay responsive to PubSub messages and user events.
+
+For container/volume state that LiveViews need on every render, use `Docker.Observer` — it maintains an ETS cache updated by `docker events` stream. Zero Docker calls from LiveViews for status data.
+
+### MCP tools are one module per tool
+
+Each tool lives in its own file under `lib/boom_looper/tools/container/`. No monolithic tool files with 20 tools crammed together.
+
+**Tool module structure:**
+```elixir
+defmodule BoomLooper.Tools.Container.Exec do
+  use BoomLooper.Tool,
+    name: "exec",
+    description: "Run a shell command inside the container.",
+    params: [
+      agent_id: {:string, required: true},
+      command: {:string, required: true},
+      timeout: {:integer, description: "Max seconds (default: 120)"}
+    ]
+
+  def execute(%{agent_id: id, command: cmd} = params, _assigns) do
+    # tool logic — the ONLY function you write
+  end
+end
+```
+
+The `BoomLooper.Tool` macro generates `__tool_name__/0`, `__description__/0`, and `input_schema/0`. You just write `execute/2`. Params arrive with atom keys (SDK atomizes them).
+
+The toolkit module (`BoomLooper.Tools.Container`) lists all tool modules in `__tool_server__/0`. Server name `"boom-looper-container"` must not change (agent prompts reference it).
+
+**No `do_` prefix.** The main function is `execute/2`. If a tool needs private helpers, name them descriptively — `apply_edit`, `format_probe_result`, etc.
+
+Shared helpers live in `BoomLooper.Tools.Container.Helpers` — resolve_container, validate_workspace_path, etc.
+
+### Validate inputs at tool boundaries
+
+Every MCP tool validates its inputs before doing work:
+- **Paths**: `Helpers.validate_workspace_path/1` — rejects traversal, absolute paths outside /workspace, null bytes
+- **Strings**: `Helpers.validate_string(value, field, max_bytes)` — rejects non-strings, oversized inputs, null bytes
+- **Timeouts**: `Helpers.validate_timeout/1` — must be 1-3600 seconds
+
+Use `with` chains at the top of `execute/2` to bail early on bad input.
+
+### Emit telemetry on key operations
+
+Wrap slow or important operations in `:telemetry.span/3`:
+- `Docker.docker/2` emits `[:boom_looper, :docker, :command]`
+- `Compose.up/2` and `down/2` emit `[:boom_looper, :compose, :up/:down]`
+- `ChatAgent` emits `[:boom_looper, :agent, :message]` on user messages
+
+Don't add telemetry subscribers — that's for the operator to configure. Just emit the events.
 
 ### Keep it simple
 
@@ -366,22 +441,55 @@ When a pattern exists, use it. Don't write your own version.
 | Need | Use | Don't |
 |------|-----|-------|
 | Compose file path | `Compose.compose_path(project_dir)` | `Path.join([dir, ".boomlooper", "workspace", "docker-compose.yml"])` |
+| Any docker command | `Docker.docker(args)` | `System.cmd("docker", args)` |
+| Streaming docker | `Docker.stream(args, callback)` | `Port.open + System.find_executable("docker")` |
 | Container running? | `Docker.container_running?(name)` | `System.cmd("docker", ["inspect", ...])` |
 | Container ports | `Docker.container_ports(name)` | `System.cmd("docker", ["port", ...])` |
 | Service list | `ServiceStatus.for_workspace(path)` | `System.cmd("docker", ["ps", ...])` + parsing |
+| Container/volume state | `Docker.Observer.containers()` / `.volumes()` | `docker ps` from LiveViews |
 | Project name | `Compose.project_name(workspace_id)` | `"bl-#{workspace_id}"` hardcoded |
+| Registry lookup | `RegistryHelper.whereis/call/cast` | `case Registry.lookup(...) do [{pid, _}] -> ...` |
+| Read file from volume | `VolumeIO.read_file(vol, path)` | `Docker.exec_in(container, "cat ...")` |
+| Write file to volume | `VolumeIO.write_file(vol, path, content)` | Rolling your own base64 + docker exec |
+| Clone repo into volume | `VolumeCloner.clone_into_volume(vol, url)` | Inline git clone + docker run |
 
-If you're shelling out to docker for something, check if there's already a wrapper in `Docker` or `Compose` modules first.
+**Every Docker CLI call goes through `BoomLooper.Docker`.** No `System.cmd("docker", ...)` anywhere else. Docker.docker/2 handles timeouts, telemetry, and error formatting. Docker.stream/3 handles long-running commands with callbacks. Docker.open_port/1 handles raw port needs (Observer events, terminal).
 
 ## Terminology
 
 - **Project** = a git repo. Managed by `ProjectRegistry`.
-- **Workspace** = a working directory (git worktree) within a project. Each gets its own containers, volumes, agents.
+- **Workspace** = a working directory (git worktree) within a project. Each gets its own containers, volumes, agents. Managed by `WorkspaceRegistry`.
 - **WorkspaceSupervisor** = top-level DynamicSupervisor for all workspace subtrees.
 - **WorkspaceGroup** = per-workspace Supervisor (ServiceManager + AgentSupervisor + ContainerMonitor).
+- **Tool** = an MCP tool module under `Tools.Container.*`. One file per tool. Uses `BoomLooper.Tool` macro.
+- **Toolkit** = `Tools.Container` — lists all tool modules in `__tool_server__/0`.
 - Infrastructure files (`Dockerfile`, `docker-compose.yml`) live in `.boomlooper/workspace/` (gitignored). Metadata (`workspace.json` with project name, system prompt) lives in `.boomlooper/repo/` (can be tracked in git).
 - User-level data in `~/.boomlooper/` (overridable with `BOOMLOOPER_HOME` env var).
 - URLs: `/projects/:project_id/workspaces/:workspace_id/agents/:id`, `/messages/:agent_id/:msg_id`
+
+## Key modules
+
+| Module | Responsibility |
+|--------|---------------|
+| `Docker` | All Docker CLI calls — `docker/2`, `stream/3`, `open_port/1` |
+| `Docker.Observer` | Event-driven ETS cache of container/volume state |
+| `Compose` | Docker Compose operations (up, down, ps, logs) |
+| `ChatAgent` | GenServer per agent session — messages, streaming, persistence |
+| `ChatAgent.Prompt` | System prompt construction |
+| `ChatAgent.ToolConfig` | MCP server/tool wiring |
+| `ChatAgent.Persistence` | ETF log append for durability |
+| `ProjectRegistry` | Project CRUD + ETS + disk persistence |
+| `WorkspaceRegistry` | Workspace CRUD + ETS |
+| `VolumeManager` | Volume CRUD (create, remove, list) |
+| `VolumeIO` | File read/write inside volumes |
+| `VolumeCloner` | Git clone → volume pipeline |
+| `StateKeeper` | Sole ETS table owner |
+| `RegistryHelper` | DRY wrappers for Registry.lookup |
+| `StreamBuffer` | Rolling-window streaming accumulator |
+| `EventLog` | System event log (ETS + Logger) |
+| `Tools.Container` | MCP toolkit — lists 20 tool modules |
+| `Tools.Container.Helpers` | Shared tool helpers (resolve_container, validate_path) |
+| `BoomLooper.Tool` | Macro for defining tool modules |
 
 ## Stack
 
@@ -399,8 +507,10 @@ Elixir 1.19 / OTP 28, Phoenix 1.7 / LiveView 1.1, Claude Code SDK (`claude_code`
 
 ETS remains the runtime store for fast multiplayer access; the log is the durable backing store.
 
+**Message storage:** Messages are stored as a reversed list internally for O(1) append. `append_message` returns `{state, msg}` — the msg has its ID assigned. `summary/1` reverses before exposing to readers. Capped at 1000 messages in memory; the ETF log retains the full history.
+
 **Log format:** Length-prefixed binary records using `:erlang.term_to_binary`. Events: `{:agent, id, data}`, `{:msg, agent_id, msg}`, `{:msg_update, agent_id, msg_id, changes}`.
 
 ## Known issues
 
-- Agent message history grows unbounded (future: log compaction)
+- Agent log compaction not implemented (append-only log grows, replay gets slower over time)
