@@ -5,7 +5,7 @@ defmodule BoomLooperWeb.ChatLive do
   alias BoomLooper.ChatAgent
   alias BoomLooper.StreamBuffer
 
-  import BoomLooperWeb.Live.ChatLive.Components
+  use BoomLooperWeb.Live.ChatLive.Components
   alias BoomLooperWeb.Live.ChatLive.{AgentLifecycle, ServiceLogs, ComposeCheck}
 
   @impl true
