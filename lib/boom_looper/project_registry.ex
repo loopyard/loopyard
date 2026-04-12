@@ -17,6 +17,9 @@ defmodule BoomLooper.ProjectRegistry do
   @projects_table :project_registry
   @workspaces_table :workspace_registry
 
+  @doc false
+  def ensure_ets_tables, do: :ok
+
   # --- Projects ---
 
   @doc """
@@ -137,9 +140,6 @@ defmodule BoomLooper.ProjectRegistry do
   Returns {:ok, project, workspace} or {:error, reason}.
   """
   def add(path) do
-    ensure_ets_tables()
-
-<<<<<<< HEAD
     case BoomLooper.Source.Local.add_project(path, []) do
       {:ok, built} ->
         project = upsert_project(built)
@@ -151,14 +151,6 @@ defmodule BoomLooper.ProjectRegistry do
             {:ok, branch} -> branch
             _ -> "main"
           end
-=======
-    unless File.dir?(path) do
-      {:error, "Directory does not exist: #{path}"}
-    else
-      case Git.repo_root(path) do
-        {:ok, repo_root} ->
-          project = find_or_create_project(repo_root)
->>>>>>> 5354ea0 (state_keeper: become sole ETS table owner, remove ensure_ets_table callsites)
 
         workspace = find_or_create_workspace(project.id, workspace_name, project.path)
 
@@ -460,12 +452,7 @@ defmodule BoomLooper.ProjectRegistry do
   Add a new workspace to a project. Delegates to the project's Source adapter.
   Returns {:ok, workspace} or {:error, reason}.
   """
-<<<<<<< HEAD
   def add_workspace(project_id, branch_name) do
-    ensure_ets_tables()
-=======
-  def add_workspace(project_id, workspace_name) do
->>>>>>> 5354ea0 (state_keeper: become sole ETS table owner, remove ensure_ets_table callsites)
     project = get_project(project_id)
 
     unless project do
