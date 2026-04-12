@@ -131,35 +131,33 @@ defmodule BoomLooper.EvalRunner do
 
     # Always start fresh — tear down any existing project
     BoomLooper.IExSession.working("eval: #{eval_name} — cleaning")
-    clean_project(source, is_git_url)
+    project_path = eval_project_path(eval_name)
+    clean_eval_project(project_path)
 
-    # Also delete any stale volume that might exist from manual testing
-    # This ensures we start truly fresh even if clean_project didn't find a registered project
+    # For git URLs: clone into evals/<name>/project/ using the host's git
+    # binary (picks up SSH keys, credential helpers, etc). The cloned dir
+    # is then registered as a Local project — no special GitHub adapter.
     if is_git_url do
       branch = Keyword.get(opts, :branch, "main")
-      expected_ws_id = Workspace.workspace_id_from_git(source, branch)
-      expected_volume = BoomLooper.VolumeManager.code_volume_name(expected_ws_id)
-      BoomLooper.VolumeManager.delete_volume(expected_volume)
+      BoomLooper.IExSession.working("eval: #{eval_name} — cloning")
+      File.rm_rf!(project_path)
+      File.mkdir_p!(Path.dirname(project_path))
 
-      # Also tear down any containers using this workspace_id
-      virtual_dir = Path.join([Workspace.home_dir(), "workspaces", expected_ws_id])
-      try do
-        BoomLooper.Compose.down_volumes(virtual_dir, expected_ws_id)
-      catch
-        _, _ -> :ok
+      case host_git_clone(source, branch, project_path) do
+        {:ok, _} -> :ok
+        {:error, reason} ->
+          record_eval_failure(eval_name, source, started_at, "Clone failed: #{reason}")
+          raise "Clone failed: #{reason}"
       end
     end
 
-    # Add the project (git URL or local path)
+    # Add the project via the Local path (works for both git-cloned and
+    # local-path evals — the Local adapter just needs a directory with code)
     BoomLooper.IExSession.working("eval: #{eval_name} — adding project")
-    case add_project(source, is_git_url, opts) do
+    effective_source = if is_git_url, do: project_path, else: Path.expand(source)
+    case ProjectRegistry.add(effective_source) do
       {:ok, project, workspace} ->
-        # For volume-based workspaces, use the virtual dir as project_dir
-        project_dir = if workspace[:volume_based] do
-          Path.join([Workspace.home_dir(), "workspaces", workspace.id])
-        else
-          workspace.path
-        end
+        project_dir = workspace.path
 
         # Start workspace supervisor
         case BoomLooper.WorkspaceSupervisor.start_workspace(workspace.id, project_dir) do
@@ -177,20 +175,16 @@ defmodule BoomLooper.EvalRunner do
 
         id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
 
+        volume_name = BoomLooper.Workspace.volume_name_for(workspace.id)
+
         agent_opts = [
           id: id,
           name: "Setup",
           working_dir: project_dir,
           started_by: "eval_runner",
-          workspace_id: workspace.id
+          workspace_id: workspace.id,
+          volume: volume_name
         ]
-
-        # Volume-based workspaces use volume mount, local use bind mount
-        agent_opts = if workspace[:volume_based] do
-          Keyword.put(agent_opts, :volume, workspace.volume)
-        else
-          Keyword.put(agent_opts, :bind_mount, workspace.path)
-        end
 
         ChatAgent.register_booting(id, "Setup", project_dir)
         Task.start(fn -> BoomLooper.AgentBoot.boot(id, agent_opts) end)
@@ -274,24 +268,60 @@ defmodule BoomLooper.EvalRunner do
     String.starts_with?(source, "git@")
   end
 
-  defp add_project(source, true = _is_git_url, opts) do
-    branch = Keyword.get(opts, :branch, "main")
-    ProjectRegistry.add_from_url(source, branch: branch)
+  # Path where eval project clones live: evals/<name>/project/
+  defp eval_project_path(eval_name) do
+    Path.join([File.cwd!(), "evals", eval_name, "project"])
   end
 
-  defp add_project(source, false = _is_git_url, _opts) do
-    ProjectRegistry.add(Path.expand(source))
-  end
+  @clone_timeout 300_000
 
-  defp clean_project(source, is_git_url) do
-    project = if is_git_url do
-      ProjectRegistry.list_projects()
-      |> Enum.find(&(&1[:git_url] == source))
+  # Clone a git repo using the host's git binary (picks up SSH keys,
+  # credential helpers, .gitconfig). This is eval-specific infrastructure —
+  # Local projects assume the user already cloned.
+  defp host_git_clone(git_url, branch, dest) do
+    git_path = System.find_executable("git")
+
+    unless git_path do
+      {:error, "git not found on host PATH"}
     else
-      path = Path.expand(source)
-      ProjectRegistry.list_projects()
-      |> Enum.find(&(&1[:path] == path))
+      port = Port.open(
+        {:spawn_executable, git_path},
+        [:binary, :exit_status, :stderr_to_stdout,
+         {:args, ["clone", "--branch", branch, "--depth", "1", git_url, dest]}]
+      )
+
+      collect_port_output(port, "", @clone_timeout)
     end
+  end
+
+  defp collect_port_output(port, acc, timeout) do
+    receive do
+      {^port, {:data, data}} ->
+        collect_port_output(port, acc <> data, timeout)
+
+      {^port, {:exit_status, 0}} ->
+        {:ok, acc}
+
+      {^port, {:exit_status, _code}} ->
+        {:error, acc}
+    after
+      timeout ->
+        Port.close(port)
+        {:error, acc <> "\n(timed out)"}
+    end
+  end
+
+  defp record_eval_failure(eval_name, source, started_at, error) do
+    duration_ms = System.monotonic_time(:millisecond) - started_at
+    result = %{outcome: :failed, error: error, source: source, project_name: eval_name, duration_ms: duration_ms}
+    BoomLooper.StateKeeper.put_eval(eval_name, %{pid: self(), source: source, started_at: DateTime.utc_now(), status: :done, result: result})
+  end
+
+  defp clean_eval_project(project_path) do
+    # Find the registered project by path
+    expanded = Path.expand(project_path)
+    project = ProjectRegistry.list_projects()
+      |> Enum.find(&(&1[:path] == expanded))
 
     case project do
       nil -> :ok
