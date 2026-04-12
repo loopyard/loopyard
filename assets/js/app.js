@@ -13,55 +13,51 @@ Hooks.ScrollBottom = {
   mounted() {
     this._userScrolledUp = false
     this._lastPath = window.location.pathname
-    this._lastHeight = 0
-    this._setupScroll()
+    this._initialScrollDone = false
 
+    // Server pushes this when a new message arrives
     this.handleEvent("scroll_bottom", () => {
       if (!this._userScrolledUp) {
         const el = document.getElementById("messages")
         if (el) el.scrollTop = el.scrollHeight
       }
     })
+
+    this._attachScrollListener()
   },
 
   updated() {
     const currentPath = window.location.pathname
     if (currentPath !== this._lastPath) {
-      // Navigated to a different agent/page — reset scroll state
       this._lastPath = currentPath
       this._userScrolledUp = false
-      this._lastHeight = 0
-      this._setupScroll()
-      return
+      this._initialScrollDone = false
     }
 
-    // Content changed (messages loaded, new message arrived).
-    // Scroll to bottom unless user has scrolled up to read.
-    if (!this._userScrolledUp) {
+    // Scroll to bottom ONCE after messages first render (handle_params loads them
+    // after mount, so mounted() fires with an empty list). After that, only the
+    // server's push_event("scroll_bottom") triggers scrolling — never updated().
+    // This prevents fighting with the user's scroll on mobile.
+    if (!this._initialScrollDone) {
       const el = document.getElementById("messages")
-      if (el && el.scrollHeight !== this._lastHeight) {
-        this._lastHeight = el.scrollHeight
+      if (el && el.scrollHeight > el.clientHeight) {
+        this._initialScrollDone = true
         requestAnimationFrame(() => { el.scrollTop = el.scrollHeight })
       }
     }
   },
 
-  _setupScroll() {
+  _attachScrollListener() {
     const el = document.getElementById("messages")
-    if (el) {
-      requestAnimationFrame(() => {
-        el.scrollTop = el.scrollHeight
-        this._lastHeight = el.scrollHeight
-      })
+    if (!el) return
 
-      if (!this._scrollListenerAdded) {
-        el.addEventListener("scroll", () => {
-          const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50
-          this._userScrolledUp = !atBottom
-        })
-        this._scrollListenerAdded = true
-      }
-    }
+    // Use a small delay so scroll events from programmatic scrolls settle
+    // before we check position. Prevents touch-scroll on mobile from being
+    // immediately overridden.
+    el.addEventListener("scroll", () => {
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50
+      this._userScrolledUp = !atBottom
+    }, { passive: true })
   }
 }
 

@@ -92,9 +92,12 @@ defmodule BoomLooperWeb.Live.ChatLive.AgentLifecycle do
   or `:not_found`.
   """
   def select_agent(socket, id) do
+    # Always unsubscribe from previous AND current agent ID to prevent
+    # double subscriptions on mobile reconnect / handle_params re-fire.
     if prev = socket.assigns.selected_id do
       ChatAgent.unsubscribe(prev)
     end
+    ChatAgent.unsubscribe(id)
 
     case ChatAgent.get_state(id) do
       nil ->

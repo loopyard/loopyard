@@ -558,24 +558,29 @@ defmodule BoomLooperWeb.ChatLive do
 
   @impl true
   def handle_info({:chat_message, id, msg}, socket) when id == socket.assigns.selected_id do
-    socket = if msg.role == :assistant, do: assign(socket, :streaming_text, ""), else: socket
+    # Guard against duplicate messages (mobile reconnect can cause double PubSub subscriptions)
+    if msg[:id] && Enum.any?(socket.assigns.messages, &(&1[:id] == msg[:id])) do
+      {:noreply, socket}
+    else
+      socket = if msg.role == :assistant, do: assign(socket, :streaming_text, ""), else: socket
 
-    # If build was running and we get a post-build message, mark build as done
-    socket =
-      if socket.assigns.building && msg.role in [:system, :error] do
-        messages = Enum.map(socket.assigns.messages, fn
-          %{role: :build} = m -> %{m | role: :build_done}
-          other -> other
-        end)
-        socket |> assign(:messages, messages) |> assign(:building, false)
-      else
-        socket
-      end
+      # If build was running and we get a post-build message, mark build as done
+      socket =
+        if socket.assigns.building && msg.role in [:system, :error] do
+          messages = Enum.map(socket.assigns.messages, fn
+            %{role: :build} = m -> %{m | role: :build_done}
+            other -> other
+          end)
+          socket |> assign(:messages, messages) |> assign(:building, false)
+        else
+          socket
+        end
 
-    {:noreply,
-     socket
-     |> assign(:messages, socket.assigns.messages ++ [msg])
-     |> push_event("scroll_bottom", %{})}
+      {:noreply,
+       socket
+       |> assign(:messages, socket.assigns.messages ++ [msg])
+       |> push_event("scroll_bottom", %{})}
+    end
   end
 
   @impl true

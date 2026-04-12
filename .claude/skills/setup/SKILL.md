@@ -43,7 +43,39 @@ colima start --cpu 4 --memory 8 --disk 100 --vm-type vz --vz-rosetta
 
 Verify with `docker info`.
 
-### 3. Clone and build
+### 3. Fix Docker credential store (colima users)
+
+If you're using colima instead of Docker Desktop, the credential store must be switched from `desktop` to `osxkeychain`. Without this, every `docker pull` and `docker build` hangs waiting for Docker Desktop's credential helper (which isn't running).
+
+```bash
+# Check current setting
+grep credsStore ~/.docker/config.json
+
+# If it says "desktop", fix it:
+python3 -c "
+import json
+with open('$HOME/.docker/config.json') as f: c = json.load(f)
+c['credsStore'] = 'osxkeychain'
+with open('$HOME/.docker/config.json', 'w') as f: json.dump(c, f, indent=2)
+print('Fixed: credsStore set to osxkeychain')
+"
+```
+
+Also remove stale Docker Desktop buildx builders that cause timeouts:
+```bash
+docker buildx rm default 2>/dev/null
+docker buildx rm desktop-linux 2>/dev/null
+```
+
+### 4. Install Brewfile dependencies
+
+```bash
+brew bundle install
+```
+
+This installs fswatch (live reload), mutagen (Local workspace sync), and other tools.
+
+### 5. Clone and build
 
 ```bash
 git clone https://github.com/boomlooper/boomlooper.git
