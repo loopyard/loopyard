@@ -335,6 +335,61 @@ defmodule BoomLooper.ChatAgentTest do
     end
   end
 
+  describe "message ordering and cap" do
+    setup do
+      id = "msg-cap-test-#{:rand.uniform(100_000)}"
+
+      {:ok, _pid} =
+        BoomLooper.TestHelpers.start_agent(
+          id: id,
+          name: "Cap Test",
+          working_dir: File.cwd!(),
+          started_by: "test"
+        )
+
+      on_exit(fn ->
+        try do
+          ChatAgent.stop_agent(id)
+        catch
+          :exit, _ -> :ok
+        end
+
+        Process.sleep(50)
+      end)
+
+      %{id: id}
+    end
+
+    test "messages are returned in chronological order", %{id: id} do
+      ChatAgent.send_message(id, "first")
+      Process.sleep(100)
+      ChatAgent.send_message(id, "second")
+      Process.sleep(100)
+
+      state = ChatAgent.get_state(id)
+      user_msgs = Enum.filter(state.messages, &(&1.role == :user))
+      contents = Enum.map(user_msgs, & &1.content)
+      assert contents == ["first", "second"]
+    end
+
+    test "messages are capped at 1000", %{id: id} do
+      # Directly inject messages via the GenServer to avoid CLI overhead
+      [{pid, _}] = Registry.lookup(BoomLooper.ChatAgentRegistry, id)
+
+      for i <- 1..1050 do
+        msg = %{role: :system, content: "msg-#{i}", timestamp: DateTime.utc_now()}
+        GenServer.cast(pid, {:append_external_message, msg})
+      end
+
+      Process.sleep(200)
+      state = ChatAgent.get_state(id)
+      assert length(state.messages) <= 1000
+      # Newest messages should be preserved (oldest trimmed)
+      last = List.last(state.messages)
+      assert last.content == "msg-1050"
+    end
+  end
+
   describe "build_system_prompt/6" do
     test "setup agent prompt stays under CLI argument limit" do
       prompt = ChatAgent.build_system_prompt("test-id", "/tmp/project", nil, nil, nil)
