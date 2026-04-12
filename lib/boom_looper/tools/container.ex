@@ -1219,15 +1219,51 @@ defmodule BoomLooper.Tools.Container do
         compose_file = BoomLooper.Compose.compose_path(project_dir)
         project_name = BoomLooper.Compose.project_name(workspace_id)
 
-        # Parse command string into args
         args = String.split(command, ~r/\s+/, trim: true)
         full_args = ["-f", compose_file, "-p", project_name | args]
 
-        BoomLooper.Compose.compose_cmd(full_args, timeout_seconds * 1_000)
+        # Stream build/up commands so the user sees progress in real time.
+        # Other commands (ps, logs, config) run non-streaming.
+        if Enum.any?(args, &(&1 in ~w(up build))) do
+          do_docker_compose_stream(agent_id, full_args, command, timeout_seconds)
+        else
+          BoomLooper.Compose.compose_cmd(full_args, timeout_seconds * 1_000)
+        end
 
       _ ->
         {:error, "Agent #{agent_id} has no workspace"}
     end
+  end
+
+  defp do_docker_compose_stream(agent_id, full_args, command, timeout_seconds) do
+    # Create a stream message in chat so output shows in the chat window
+    stream_msg = %{role: :build, title: "docker compose #{command}", content: "", timestamp: DateTime.utc_now()}
+    stream_msg = BoomLooper.ChatAgent.append_message_ets(agent_id, stream_msg)
+    msg_id = if stream_msg, do: stream_msg.id, else: :crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false)
+
+    # Run in background Task, streaming each chunk via PubSub
+    Task.start(fn ->
+      docker_path = if BoomLooper.Compose.docker_compose_v2?() do
+        System.find_executable("docker")
+      else
+        System.find_executable("docker-compose")
+      end
+
+      port_args = if BoomLooper.Compose.docker_compose_v2?() do
+        ["compose" | full_args]
+      else
+        full_args
+      end
+
+      port = Port.open(
+        {:spawn_executable, docker_path},
+        [:binary, :exit_status, :stderr_to_stdout, {:args, port_args}]
+      )
+
+      stream_port_output(agent_id, port, "docker compose #{command}", msg_id, "", timeout_seconds * 1_000)
+    end)
+
+    {:ok, "Streaming: docker compose #{command}"}
   end
 
   # Sync .boomlooper/workspace/ from volume to host filesystem
