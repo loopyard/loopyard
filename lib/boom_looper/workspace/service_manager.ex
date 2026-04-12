@@ -7,7 +7,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
   """
   use GenServer, restart: :transient
 
-  alias BoomLooper.{Compose, Workspace}
+  alias BoomLooper.{Compose, RegistryHelper, Workspace}
   alias BoomLooper.Workspace.ServiceStatus
 
   @services_topic "workspace_services"
@@ -31,16 +31,16 @@ defmodule BoomLooper.Workspace.ServiceManager do
   end
 
   def start_services(project_dir) do
-    case Registry.lookup(BoomLooper.ServiceManagerRegistry, project_dir) do
-      [{pid, _}] -> GenServer.call(pid, :start_services, 600_000)
-      [] -> {:error, :service_manager_not_running}
+    case RegistryHelper.call(BoomLooper.ServiceManagerRegistry, project_dir, :start_services, 600_000) do
+      {:ok, result} -> result
+      {:error, :not_found} -> {:error, :service_manager_not_running}
     end
   end
 
   def stop_services(project_dir) do
-    case Registry.lookup(BoomLooper.ServiceManagerRegistry, project_dir) do
-      [{pid, _}] -> GenServer.call(pid, :stop_services, 30_000)
-      [] -> :ok
+    case RegistryHelper.call(BoomLooper.ServiceManagerRegistry, project_dir, :stop_services, 30_000) do
+      {:ok, result} -> result
+      {:error, :not_found} -> :ok
     end
   end
 
@@ -53,9 +53,9 @@ defmodule BoomLooper.Workspace.ServiceManager do
   end
 
   def restart_workspace_container(project_dir) do
-    case Registry.lookup(BoomLooper.ServiceManagerRegistry, project_dir) do
-      [{pid, _}] -> GenServer.call(pid, :restart, 600_000)
-      [] -> :ok
+    case RegistryHelper.call(BoomLooper.ServiceManagerRegistry, project_dir, :restart, 600_000) do
+      {:ok, result} -> result
+      {:error, :not_found} -> :ok
     end
   end
 
@@ -113,9 +113,9 @@ defmodule BoomLooper.Workspace.ServiceManager do
     end
 
     # Reconnect state
-    case Registry.lookup(BoomLooper.ServiceManagerRegistry, project_dir) do
-      [{pid, _}] -> GenServer.call(pid, :reconnect, 30_000)
-      [] -> :ok
+    case RegistryHelper.call(BoomLooper.ServiceManagerRegistry, project_dir, :reconnect, 30_000) do
+      {:ok, result} -> result
+      {:error, :not_found} -> :ok
     end
 
     result
@@ -150,9 +150,9 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
     result = Compose.up_stream(effective_dir, workspace_id, callback)
 
-    case Registry.lookup(BoomLooper.ServiceManagerRegistry, project_dir) do
-      [{pid, _}] -> GenServer.call(pid, :reconnect, 30_000)
-      [] -> :ok
+    case RegistryHelper.call(BoomLooper.ServiceManagerRegistry, project_dir, :reconnect, 30_000) do
+      {:ok, result} -> result
+      {:error, :not_found} -> :ok
     end
 
     result
@@ -183,9 +183,9 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
     result = Compose.up_stream(project_dir, workspace_id, callback)
 
-    case Registry.lookup(BoomLooper.ServiceManagerRegistry, project_dir) do
-      [{pid, _}] -> GenServer.call(pid, :reconnect, 30_000)
-      [] -> :ok
+    case RegistryHelper.call(BoomLooper.ServiceManagerRegistry, project_dir, :reconnect, 30_000) do
+      {:ok, result} -> result
+      {:error, :not_found} -> :ok
     end
 
     result

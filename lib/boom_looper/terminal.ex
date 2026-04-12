@@ -6,6 +6,7 @@ defmodule BoomLooper.Terminal do
   use GenServer
   require Logger
 
+  alias BoomLooper.RegistryHelper
   @registry BoomLooper.TerminalRegistry
 
   def start_link(opts) do
@@ -15,9 +16,9 @@ defmodule BoomLooper.Terminal do
 
   @doc "Get or start a terminal session for a container."
   def get_or_start(container) do
-    case Registry.lookup(@registry, container) do
-      [{pid, _}] -> {:ok, pid}
-      [] ->
+    case RegistryHelper.whereis(@registry, container) do
+      {:ok, pid} -> {:ok, pid}
+      :error ->
         DynamicSupervisor.start_child(BoomLooper.TerminalSupervisor,
           {__MODULE__, container: container})
     end
@@ -25,34 +26,28 @@ defmodule BoomLooper.Terminal do
 
   @doc "Send input (keystrokes) to the terminal."
   def send_input(container, data) do
-    case Registry.lookup(@registry, container) do
-      [{pid, _}] -> GenServer.cast(pid, {:input, data})
-      [] -> {:error, :not_running}
+    case RegistryHelper.whereis(@registry, container) do
+      {:ok, pid} -> GenServer.cast(pid, {:input, data})
+      :error -> {:error, :not_running}
     end
   end
 
   @doc "Resize the terminal."
   def resize(container, cols, rows) do
-    case Registry.lookup(@registry, container) do
-      [{pid, _}] -> GenServer.cast(pid, {:resize, cols, rows})
-      [] -> :ok
-    end
+    RegistryHelper.cast(@registry, container, {:resize, cols, rows})
   end
 
   @doc "Get the output buffer for late joiners."
   def get_buffer(container) do
-    case Registry.lookup(@registry, container) do
-      [{pid, _}] -> GenServer.call(pid, :get_buffer)
-      [] -> ""
+    case RegistryHelper.call(@registry, container, :get_buffer) do
+      {:ok, buffer} -> buffer
+      {:error, :not_found} -> ""
     end
   end
 
   @doc "Clear the buffer and broadcast clear to all viewers."
   def clear_buffer(container) do
-    case Registry.lookup(@registry, container) do
-      [{pid, _}] -> GenServer.cast(pid, :clear)
-      [] -> :ok
-    end
+    RegistryHelper.cast(@registry, container, :clear)
   end
 
   @doc "PubSub topic for terminal output. Distinct from the channel topic
