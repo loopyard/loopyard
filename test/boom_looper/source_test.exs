@@ -21,4 +21,14 @@ defmodule BoomLooper.SourceTest do
       assert Source.for_project(%{}) == BoomLooper.Source.Local
     end
   end
+
+  describe "supports_git?/1" do
+    test "returns true for Source.Local" do
+      assert Source.supports_git?(BoomLooper.Source.Local)
+    end
+
+    test "returns true for Source.GitHub (stubs exist)" do
+      assert Source.supports_git?(BoomLooper.Source.GitHub)
+    end
+  end
 end

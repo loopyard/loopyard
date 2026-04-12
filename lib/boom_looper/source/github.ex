@@ -45,4 +45,17 @@ defmodule BoomLooper.Source.GitHub do
 
   @impl true
   def on_container_down(_workspace), do: :ok
+
+  # Git operations not supported for GitHub source (yet)
+  @impl true
+  def git_log(_project, _workspace, _opts \\ []), do: {:error, :not_implemented}
+
+  @impl true
+  def git_status(_project, _workspace), do: {:error, :not_implemented}
+
+  @impl true
+  def git_diff(_project, _workspace, _opts \\ []), do: {:error, :not_implemented}
+
+  @impl true
+  def git_show(_project, _workspace, _ref, _path), do: {:error, :not_implemented}
 end
