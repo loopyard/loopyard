@@ -390,6 +390,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
         {:ok, _} ->
           replay_agent_log(state.project_dir, state.workspace_id)
           new_state = %{state | running: true, volume_name: volume_name}
+          notify_source_container_up(state.workspace_id)
           broadcast_service_update(new_state)
           {:ok, new_state}
 
@@ -405,12 +406,39 @@ defmodule BoomLooper.Workspace.ServiceManager do
   end
 
   defp do_stop(state) do
+    notify_source_container_down(state.workspace_id)
+
     case Compose.down(state.project_dir, state.workspace_id) do
       {:ok, _} -> :ok
       {:error, reason} ->
         require Logger
         Logger.warning("[ServiceManager] compose down failed: #{reason}")
     end
+  end
+
+  # Notify the Source adapter that this workspace's container is up/down.
+  # Local workspaces use this to start/pause their mutagen sync session.
+  # Safe to call for any source — no-ops on GitHub and unregistered workspaces.
+  defp notify_source_container_up(workspace_id) do
+    with %{project_id: project_id} = workspace <- BoomLooper.ProjectRegistry.get_workspace(workspace_id),
+         project when is_map(project) <- BoomLooper.ProjectRegistry.get_project(project_id) do
+      BoomLooper.Source.for_project(project).on_container_up(workspace)
+    else
+      _ -> :ok
+    end
+  rescue
+    _ -> :ok
+  end
+
+  defp notify_source_container_down(workspace_id) do
+    with %{project_id: project_id} = workspace <- BoomLooper.ProjectRegistry.get_workspace(workspace_id),
+         project when is_map(project) <- BoomLooper.ProjectRegistry.get_project(project_id) do
+      BoomLooper.Source.for_project(project).on_container_down(workspace)
+    else
+      _ -> :ok
+    end
+  rescue
+    _ -> :ok
   end
 
   defp broadcast_service_update(state) do

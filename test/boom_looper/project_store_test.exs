@@ -51,10 +51,11 @@ defmodule BoomLooper.ProjectStoreTest do
       File.mkdir_p!(Path.dirname(ProjectStore.path()))
       File.write!(ProjectStore.path(), Jason.encode!(data))
 
-      assert ProjectStore.load() == [
-        %{path: "/path/to/project1", name: nil},
-        %{path: "/path/to/project2", name: nil}
-      ]
+      loaded = ProjectStore.load()
+      assert Enum.map(loaded, & &1.path) == ["/path/to/project1", "/path/to/project2"]
+      assert Enum.all?(loaded, &(&1.name == nil))
+      # Legacy records are migrated inline — paths infer as :local.
+      assert Enum.all?(loaded, &(&1.source_type == :local))
     end
 
     test "ignores records without path key" do
@@ -69,10 +70,36 @@ defmodule BoomLooper.ProjectStoreTest do
       File.mkdir_p!(Path.dirname(ProjectStore.path()))
       File.write!(ProjectStore.path(), Jason.encode!(data))
 
-      assert ProjectStore.load() == [
-        %{path: "/valid/path", name: nil},
-        %{path: "/another/valid", name: nil}
-      ]
+      loaded = ProjectStore.load()
+      assert Enum.map(loaded, & &1.path) == ["/valid/path", "/another/valid"]
+    end
+
+    test "infers github source_type from git URLs" do
+      data = %{
+        "version" => 2,
+        "projects" => [
+          %{"path" => "git@github.com:owner/repo.git"},
+          %{"path" => "https://github.com/owner/repo.git"}
+        ]
+      }
+      File.mkdir_p!(Path.dirname(ProjectStore.path()))
+      File.write!(ProjectStore.path(), Jason.encode!(data))
+
+      loaded = ProjectStore.load()
+      assert Enum.all?(loaded, &(&1.source_type == :github))
+    end
+
+    test "honors explicit source_type in the file" do
+      data = %{
+        "version" => 2,
+        "projects" => [
+          %{"path" => "/any/path", "source_type" => "github"}
+        ]
+      }
+      File.mkdir_p!(Path.dirname(ProjectStore.path()))
+      File.write!(ProjectStore.path(), Jason.encode!(data))
+
+      assert [%{source_type: :github}] = ProjectStore.load()
     end
   end
 
@@ -85,11 +112,11 @@ defmodule BoomLooper.ProjectStoreTest do
       {:ok, content} = File.read(ProjectStore.path())
       data = Jason.decode!(content)
 
-      assert data["version"] == 1
-      assert data["projects"] == [
-        %{"path" => "/path/one"},
-        %{"path" => "/path/two"}
-      ]
+      assert data["version"] == 2
+      paths = Enum.map(data["projects"], & &1["path"])
+      assert paths == ["/path/one", "/path/two"]
+      types = Enum.map(data["projects"], & &1["source_type"])
+      assert types == ["local", "local"]
     end
 
     test "creates parent directories", %{tmp_dir: tmp_dir} do
@@ -111,24 +138,27 @@ defmodule BoomLooper.ProjectStoreTest do
       ProjectStore.save(["/old/path"])
       ProjectStore.save(["/new/path"])
 
-      assert ProjectStore.load() == [%{path: "/new/path", name: nil}]
+      assert [%{path: "/new/path", name: nil}] = ProjectStore.load()
     end
   end
 
   describe "add/1" do
     test "creates file and adds path" do
       assert :ok = ProjectStore.add("/my/project")
-      assert ProjectStore.load() == [%{path: "/my/project", name: nil}]
+      assert [%{path: "/my/project", name: nil, source_type: :local}] = ProjectStore.load()
+    end
+
+    test "accepts explicit source_type" do
+      assert :ok = ProjectStore.add("/my/project", source_type: :local)
+      assert [%{source_type: :local}] = ProjectStore.load()
     end
 
     test "appends to existing paths" do
       ProjectStore.add("/first")
       ProjectStore.add("/second")
 
-      assert ProjectStore.load() == [
-        %{path: "/first", name: nil},
-        %{path: "/second", name: nil}
-      ]
+      paths = ProjectStore.load() |> Enum.map(& &1.path)
+      assert paths == ["/first", "/second"]
     end
 
     test "is idempotent - no duplicates" do
@@ -136,17 +166,15 @@ defmodule BoomLooper.ProjectStoreTest do
       ProjectStore.add("/same/path")
       ProjectStore.add("/same/path")
 
-      assert ProjectStore.load() == [%{path: "/same/path", name: nil}]
+      assert [%{path: "/same/path"}] = ProjectStore.load()
     end
 
     test "preserves existing paths when adding new" do
       ProjectStore.add("/existing")
       ProjectStore.add("/new")
 
-      assert ProjectStore.load() == [
-        %{path: "/existing", name: nil},
-        %{path: "/new", name: nil}
-      ]
+      paths = ProjectStore.load() |> Enum.map(& &1.path)
+      assert paths == ["/existing", "/new"]
     end
   end
 
@@ -158,17 +186,15 @@ defmodule BoomLooper.ProjectStoreTest do
 
       ProjectStore.remove("/remove")
 
-      assert ProjectStore.load() == [
-        %{path: "/keep", name: nil},
-        %{path: "/also-keep", name: nil}
-      ]
+      paths = ProjectStore.load() |> Enum.map(& &1.path)
+      assert paths == ["/keep", "/also-keep"]
     end
 
     test "handles removing non-existent path" do
       ProjectStore.add("/exists")
       ProjectStore.remove("/does-not-exist")
 
-      assert ProjectStore.load() == [%{path: "/exists", name: nil}]
+      assert [%{path: "/exists"}] = ProjectStore.load()
     end
 
     test "handles removing from empty file" do

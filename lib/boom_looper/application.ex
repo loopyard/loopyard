@@ -20,6 +20,7 @@ defmodule BoomLooper.Application do
       {Registry, keys: :unique, name: BoomLooper.ServiceManagerRegistry},
       {Registry, keys: :unique, name: BoomLooper.WorkspaceRegistry},
       {Registry, keys: :unique, name: BoomLooper.WorkspaceAgentRegistry},
+      {Registry, keys: :unique, name: BoomLooper.SyncMonitorRegistry},
       {Registry, keys: :unique, name: BoomLooper.TerminalRegistry},
       {DynamicSupervisor, name: BoomLooper.TerminalSupervisor, strategy: :one_for_one},
       {Task.Supervisor, name: BoomLooper.TaskSupervisor},
@@ -43,6 +44,15 @@ defmodule BoomLooper.Application do
     # LiveView callback exceeds 500ms in production. The :timer.tc
     # mount tests catch this locally; this is the prod safety net.
     BoomLooperWeb.SlowMountLogger.attach()
+
+    # Warn loudly if mutagen isn't installed — Local workspaces need it for
+    # host ↔ volume sync. GitHub workspaces still work without it.
+    unless BoomLooper.Source.Local.Mutagen.installed?() do
+      Logger.warning(
+        "[BoomLooper] mutagen not found on $PATH. Local workspaces will not sync " <>
+          "with the host. Install it with: brew bundle install"
+      )
+    end
 
     # Restore persisted projects from ~/.boomlooper/projects.json
     # ServiceManager will reconnect to any running containers

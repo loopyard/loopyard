@@ -56,6 +56,8 @@ defmodule BoomLooper.ProjectRegistry do
           git_url: git_url,
           is_git: true,
           volume_based: true,
+          source_type: :github,
+          source_config: %{git_url: git_url, branch: branch},
           added_at: DateTime.utc_now()
         }
         :ets.insert(@projects_table, {project_id, proj})
@@ -142,44 +144,55 @@ defmodule BoomLooper.ProjectRegistry do
   end
 
   @doc """
-  Add a project from a directory path. Detects the git repo root,
-  creates the project, and registers the current workspace.
+  Add a project from a directory path. Delegates project construction to
+  the Local source adapter and handles ETS + ProjectStore persistence.
   Returns {:ok, project, workspace} or {:error, reason}.
   """
   def add(path) do
-    path = Path.expand(path)
+    ensure_ets_tables()
 
-    unless File.dir?(path) do
-      {:error, "Directory does not exist: #{path}"}
-    else
-      ensure_ets_tables()
+    case BoomLooper.Source.Local.add_project(path, []) do
+      {:ok, built} ->
+        project = upsert_project(built)
 
-      case Git.repo_root(path) do
-        {:ok, repo_root} ->
-          project = find_or_create_project(repo_root)
+        # Register the current workspace. For a git repo we use the
+        # current branch; otherwise "main".
+        workspace_name =
+          case Git.current_branch(project.path) do
+            {:ok, branch} -> branch
+            _ -> "main"
+          end
 
-          # Register the current workspace
-          {:ok, branch_name} = Git.current_branch(path)
-          workspace = find_or_create_workspace(project.id, branch_name, path)
+        workspace = find_or_create_workspace(project.id, workspace_name, project.path)
 
-          # Also discover existing worktrees
+        if project[:is_git] do
           discover_worktrees(project)
+        end
 
-          # Persist to disk
-          ProjectStore.add(project.path)
+        ProjectStore.add(project.path, source_type: :local)
 
-          {:ok, project, workspace}
+        {:ok, project, workspace}
 
-        {:error, _} ->
-          # Not a git repo — treat as a single-workspace project
-          project = find_or_create_project(path)
-          workspace = find_or_create_workspace(project.id, "main", path)
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
 
-          # Persist to disk
-          ProjectStore.add(project.path)
+  # Insert-or-update: if the project already exists in ETS we preserve its
+  # current name (users may have renamed it) and overlay any new
+  # source_type / source_config from the adapter.
+  defp upsert_project(built) do
+    case get_project(built.id) do
+      nil ->
+        name = unique_name(built.name, built.id)
+        project = Map.put(built, :name, name)
+        :ets.insert(@projects_table, {project.id, project})
+        project
 
-          {:ok, project, workspace}
-      end
+      existing ->
+        merged = Map.merge(built, %{name: existing.name})
+        :ets.insert(@projects_table, {merged.id, merged})
+        merged
     end
   end
 
@@ -454,24 +467,26 @@ defmodule BoomLooper.ProjectRegistry do
   defp maybe_add_is_main(ws), do: Map.put(ws, :is_main, false)
 
   @doc """
-  Add a new workspace to a project. Creates a git worktree.
+  Add a new workspace to a project. Delegates to the project's Source adapter.
   Returns {:ok, workspace} or {:error, reason}.
   """
-  def add_workspace(project_id, workspace_name) do
+  def add_workspace(project_id, branch_name) do
     ensure_ets_tables()
     project = get_project(project_id)
 
     unless project do
       {:error, "Project not found"}
     else
-      # Check if workspace already registered
-      existing = list_workspaces(project_id) |> Enum.find(&(&1.name == workspace_name))
+      # Check if a workspace with this branch is already registered
+      existing = list_workspaces(project_id) |> Enum.find(&(&1.name == branch_name))
       if existing do
         {:ok, existing}
       else
-        case Git.worktree_add(project.path, workspace_name) do
-          {:ok, worktree_path} ->
-            workspace = create_workspace(project_id, workspace_name, worktree_path)
+        adapter = BoomLooper.Source.for_project(project)
+
+        case adapter.create_workspace(project, branch_name, []) do
+          {:ok, workspace} ->
+            :ets.insert(@workspaces_table, {workspace.id, workspace})
             {:ok, workspace}
 
           {:error, reason} ->
@@ -482,19 +497,25 @@ defmodule BoomLooper.ProjectRegistry do
   end
 
   @doc """
-  Remove a workspace. Stops containers and removes the git worktree.
-  Cannot remove the main workspace.
+  Remove a workspace. Stops containers and tears down adapter-owned state
+  (host worktree, volume, sync session, etc.). Cannot remove the main
+  workspace.
   """
   def remove_workspace(workspace_id) do
     ensure_ets_tables()
     workspace = get_workspace(workspace_id)
 
     cond do
-      is_nil(workspace) -> {:error, "Workspace not found"}
-      workspace.is_main -> {:error, "Cannot remove the main workspace"}
+      is_nil(workspace) ->
+        {:error, "Workspace not found"}
+
+      workspace.is_main ->
+        {:error, "Cannot remove the main workspace"}
+
       true ->
-        # Remove worktree
-        Git.worktree_remove(workspace.path)
+        project = get_project(workspace.project_id)
+        adapter = BoomLooper.Source.for_project(project || %{})
+        adapter.remove_workspace(project || %{}, workspace)
         :ets.delete(@workspaces_table, workspace_id)
         :ok
     end
@@ -515,32 +536,6 @@ defmodule BoomLooper.ProjectRegistry do
 
   # --- Private ---
 
-  defp find_or_create_project(repo_path) do
-    id = project_id(repo_path)
-    case get_project(id) do
-      nil ->
-        ws_id = Workspace.workspace_id(repo_path)
-        raw_name = case Workspace.load_from_volume("code-#{ws_id}") do
-          {:ok, ws} when ws.name != nil -> ws.name
-          _ -> default_name_from_path(repo_path) || Path.basename(repo_path)
-        end
-        name = unique_name(raw_name, id)
-
-        project = %{
-          id: id,
-          name: name,
-          path: repo_path,
-          is_git: Git.is_repo?(repo_path),
-          added_at: DateTime.utc_now()
-        }
-        :ets.insert(@projects_table, {id, project})
-        project
-
-      existing ->
-        existing
-    end
-  end
-
   defp find_or_create_workspace(project_id, workspace_name, path) do
     id = workspace_id(path)
     case get_workspace(id) do
@@ -554,11 +549,22 @@ defmodule BoomLooper.ProjectRegistry do
     is_main = path == project.path
     id = workspace_id(path)
 
+    # For Local projects, the main workspace's worktree path IS the host
+    # repo itself — mutagen syncs the host repo directly with the volume.
+    # Branch workspaces get their own worktree created by the adapter.
+    worktree_path =
+      cond do
+        project && project[:source_type] == :local && is_main -> path
+        true -> nil
+      end
+
     workspace = %{
       id: id,
       project_id: project_id,
       name: workspace_name,
       path: path,
+      worktree_path: worktree_path,
+      branch: workspace_name,
       is_main: is_main,
       status: :stopped,
       added_at: DateTime.utc_now()

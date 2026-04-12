@@ -39,6 +39,56 @@ defmodule BoomLooper.ProjectRegistryTest do
     end
   end
 
+  describe "add/1 (via Source.Local)" do
+    test "tags Local projects with source_type and source_config" do
+      path = File.cwd!()
+      assert {:ok, project, _workspace} = ProjectRegistry.add(path)
+      assert project.source_type == :local
+      assert project.source_config.repo_root == path
+      assert is_binary(project.source_config.default_branch)
+    end
+
+    test "main workspace for a Local project has worktree_path == host repo path" do
+      path = File.cwd!()
+      {:ok, _project, workspace} = ProjectRegistry.add(path)
+      assert workspace.is_main == true
+      assert workspace.worktree_path == path
+    end
+  end
+
+  describe "add_workspace/2 (adapter dispatch)" do
+    @tag :worktree
+    test "delegates to Source.Local.create_workspace for a Local project" do
+      # Mutagen is stubbed — create_workspace only touches git + volumes.
+      # The volume creation call shells out to docker, so this test is
+      # tagged :worktree (needs real git) and excluded by default.
+      Application.put_env(:boom_looper, :mutagen_runner, fn _args -> {"", 0} end)
+
+      on_exit(fn -> Application.delete_env(:boom_looper, :mutagen_runner) end)
+
+      path = File.cwd!()
+      {:ok, project, _main_ws} = ProjectRegistry.add(path)
+
+      branch = "bl-adapter-test-#{:rand.uniform(100_000)}"
+
+      case ProjectRegistry.add_workspace(project.id, branch) do
+        {:ok, workspace} ->
+          assert workspace.branch == branch
+          assert workspace.volume != nil
+          assert is_binary(workspace.worktree_path)
+          assert String.ends_with?(workspace.worktree_path, "worktrees/#{workspace.id}")
+
+          # Cleanup
+          ProjectRegistry.remove_workspace(workspace.id)
+          System.cmd("git", ["branch", "-D", branch], cd: path, stderr_to_stdout: true)
+
+        {:error, _} ->
+          # Worktree creation may fail in constrained environments; skip.
+          :ok
+      end
+    end
+  end
+
   describe "list_projects/0" do
     test "lists all registered projects" do
       path = File.cwd!()

@@ -18,14 +18,35 @@ defmodule BoomLooper.WorkspaceGroup do
     workspace_id = Keyword.fetch!(opts, :workspace_id)
     project_dir = Keyword.fetch!(opts, :project_dir)
 
-    children = [
+    base_children = [
       {BoomLooper.Workspace.ServiceManager, project_dir: project_dir, workspace_id: workspace_id},
       {DynamicSupervisor, name: agent_sup_name(workspace_id), strategy: :one_for_one},
       {BoomLooper.ContainerMonitor, project_dir: project_dir, workspace_id: workspace_id}
     ]
 
+    children = base_children ++ source_children(workspace_id)
+
     # Give Docker operations time to recover — default 3/5s is too tight for I/O
     Supervisor.init(children, strategy: :one_for_all, max_restarts: 10, max_seconds: 60)
+  end
+
+  # Source-specific children (e.g. Local workspaces get a SyncMonitor that
+  # owns the mutagen session). Looked up via the ETS registry so adapters
+  # stay decoupled from the supervisor tree.
+  defp source_children(workspace_id) do
+    with %{project_id: project_id} = workspace <- BoomLooper.ProjectRegistry.get_workspace(workspace_id),
+         %{source_type: :local} <- BoomLooper.ProjectRegistry.get_project(project_id) do
+      worktree_path =
+        workspace[:worktree_path] ||
+          BoomLooper.Source.Local.Worktree.path_for(workspace_id)
+
+      [
+        {BoomLooper.Source.Local.SyncMonitor,
+         workspace_id: workspace_id, worktree_path: worktree_path}
+      ]
+    else
+      _ -> []
+    end
   end
 
   @doc "Start a ChatAgent under this workspace's agent supervisor."
