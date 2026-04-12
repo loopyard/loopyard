@@ -28,7 +28,7 @@ defmodule BoomLooper.EvalRunner do
 
   alias BoomLooper.ChatAgent
   alias BoomLooper.ProjectRegistry
-  alias BoomLooper.Workspace
+
 
   # Heavy Rails apps (chatwoot, discourse) need more than 30 minutes
   # for clone + image build + bundle install + asset precompile. The
@@ -318,62 +318,23 @@ defmodule BoomLooper.EvalRunner do
   end
 
   defp clean_eval_project(project_path) do
-    # Find the registered project by path
+    # Find the registered project by path and tear it down through the
+    # standard application path: remove_project dispatches through the
+    # Source adapter (stops agents, workspace supervisors, tears down
+    # containers, deletes volumes, cleans up worktrees/sync sessions).
+    # No ad-hoc cleanup — if this leaks, the fix goes in remove_project
+    # where it benefits everyone, not just evals.
     expanded = Path.expand(project_path)
-    project = ProjectRegistry.list_projects()
-      |> Enum.find(&(&1[:path] == expanded))
 
-    case project do
-      nil -> :ok
+    case Enum.find(ProjectRegistry.list_projects(), &(&1[:path] == expanded)) do
+      nil ->
+        :ok
+
       project ->
         Logger.info("[EvalRunner] Cleaning up existing project #{project.id}")
-
-        # Kill all agents for this project
-        for agent <- ChatAgent.list_agents(),
-            agent[:working_dir] == project[:path] ||
-            agent[:workspace_id] in workspace_ids_for(project.id) do
-          ChatAgent.stop_agent(agent.id)
-          ChatAgent.remove_agent(agent.id)
-        end
-
-        # Stop workspace supervisors, tear down containers, wipe volumes
-        workspaces = ProjectRegistry.list_workspaces(project.id)
-        Enum.each(workspaces, fn ws ->
-          ws_id = ws.id
-
-          BoomLooper.WorkspaceSupervisor.stop_workspace(ws_id)
-
-          virtual_dir = Path.join([Workspace.home_dir(), "workspaces", ws_id])
-          try do
-            BoomLooper.Compose.down_volumes(virtual_dir, ws_id)
-          rescue
-            _ -> :ok
-          catch
-            _, _ -> :ok
-          end
-
-          # Delete external code volume
-          BoomLooper.VolumeManager.delete_volume(BoomLooper.VolumeManager.code_volume_name(ws_id))
-
-          # Delete agents.log so stale agents aren't replayed
-          agents_log = Path.join([virtual_dir, ".boomlooper", "workspace", "agents.log"])
-          File.rm(agents_log)
-        end)
-
         ProjectRegistry.remove_project(project.id)
-
-        # Prune leaked temp containers and orphaned volumes from
-        # timed-out VolumeManager operations during the teardown above.
-        BoomLooper.Docker.prune_temp_containers()
-        BoomLooper.VolumeManager.prune_orphaned_volumes()
-
-        Process.sleep(3_000)
+        Process.sleep(1_000)
     end
-  end
-
-  defp workspace_ids_for(project_id) do
-    ProjectRegistry.list_workspaces(project_id)
-    |> Enum.map(& &1.id)
   end
 
   defp extract_name(source) do
