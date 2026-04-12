@@ -27,10 +27,12 @@ defmodule BoomLooper.SourceTest do
       assert Source.supports_git?(BoomLooper.Source.Local)
     end
 
-    test "returns true for Source.GitHub (stubs exported)" do
-      # GitHub adapter has git stubs that return {:error, :not_implemented}
-      # but the functions are exported, so supports_git? is true
-      assert Source.supports_git?(BoomLooper.Source.GitHub)
+    test "GitHub git stubs return :not_implemented" do
+      # GitHub adapter exports git functions but they return :not_implemented
+      assert {:error, :not_implemented} = BoomLooper.Source.GitHub.git_log(nil, nil, [])
+      assert {:error, :not_implemented} = BoomLooper.Source.GitHub.git_status(nil, nil)
+      assert {:error, :not_implemented} = BoomLooper.Source.GitHub.git_diff(nil, nil, [])
+      assert {:error, :not_implemented} = BoomLooper.Source.GitHub.git_show(nil, nil, "HEAD", "f")
     end
   end
 end
