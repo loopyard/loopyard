@@ -3,7 +3,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Chat do
   use Phoenix.Component
 
   alias Phoenix.LiveView.JS
-  import BoomLooperWeb.Components.Sidebar, only: [status_dot: 1, thinking_word: 1]
+  import BoomLooperWeb.Components.Sidebar, only: [status_dot: 1]
   import BoomLooperWeb.Live.ChatLive.Messages, only: [chat_msg: 1, streaming_bubble: 1]
   import BoomLooperWeb.Live.ChatLive.Components.Formatters, only: [time_ago: 1]
 
@@ -147,11 +147,11 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Chat do
         <.streaming_bubble :if={@streaming_text != ""} text={@streaming_text} />
         <.thinking_indicator :if={@agent.status == :thinking && @streaming_text == ""} messages={@messages} />
       </div>
-      <div class="flex-none border-t border-zinc-200 dark:border-zinc-700/80 p-3 md:p-4 safe-area-bottom">
+      <div id="chat-form-wrapper" phx-update="ignore" class="flex-none border-t border-zinc-200 dark:border-zinc-700/80 p-3 md:p-4 safe-area-bottom">
         <form id="chat-form" phx-submit="send_message" phx-hook="ChatForm" class="flex gap-2">
           <textarea
             name="message" id="chat-input" rows="1"
-            placeholder={if @agent.status == :thinking, do: "Agent is #{thinking_word(@agent.id)}...", else: "Type a message..."}
+            placeholder="Type a message..."
             autocomplete="off"
             class="flex-1 rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-2.5 text-sm
                    text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 resize-none
