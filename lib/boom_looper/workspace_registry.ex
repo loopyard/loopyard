@@ -144,6 +144,7 @@ defmodule BoomLooper.WorkspaceRegistry do
     |> maybe_add_path()
     |> maybe_add_is_main()
     |> maybe_add_worktree_path()
+    |> maybe_add_compose_dir()
   end
 
   defp maybe_add_path(%{path: _} = ws), do: ws
@@ -165,12 +166,21 @@ defmodule BoomLooper.WorkspaceRegistry do
     virtual_prefix = Path.join(Workspace.home_dir(), "workspaces")
 
     if String.starts_with?(path, virtual_prefix) do
-      # Virtual workspace dir (volume-based) — no host worktree
       ws
     else
-      # Real host path — this IS the worktree for Local projects
       Map.put(ws, :worktree_path, path)
     end
   end
   defp maybe_add_worktree_path(ws), do: ws
+
+  # The compose file always lives in the virtual workspace dir, never in
+  # the host project dir. This is the single source of truth for "where
+  # does ServiceManager read/write compose files." Every consumer —
+  # sidebar, service status, tools — reads from workspace.compose_dir
+  # instead of computing the path ad-hoc.
+  defp maybe_add_compose_dir(%{compose_dir: dir} = ws) when is_binary(dir), do: ws
+  defp maybe_add_compose_dir(%{id: id} = ws) do
+    Map.put(ws, :compose_dir, Path.join([Workspace.home_dir(), "workspaces", id]))
+  end
+  defp maybe_add_compose_dir(ws), do: ws
 end
