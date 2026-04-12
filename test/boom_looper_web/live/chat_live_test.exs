@@ -192,18 +192,19 @@ defmodule BoomLooperWeb.ChatLiveTest do
   end
 
   describe "new agent screen" do
-    test "navigating to /new shows agent type picker", %{conn: conn, workspace: ws, setup_agent_id: _setup_agent_id} do
+    test "navigating to /new shows agent prompt screen with presets", %{conn: conn, workspace: ws, setup_agent_id: _setup_agent_id} do
       {:ok, _view, html} = live(conn, ws_new_path(ws))
       assert html =~ "New Agent"
-      assert html =~ "Agent"
-      assert html =~ "Setup Agent"
+      assert html =~ "Launch Agent"
+      assert html =~ "Set up dev environment"
+      assert html =~ "Presets"
     end
 
-    test "launching a blank agent redirects to chat", %{conn: conn, workspace: ws, setup_agent_id: _setup_agent_id} do
+    test "launching an agent with preset redirects to chat", %{conn: conn, workspace: ws, setup_agent_id: _setup_agent_id} do
       {:ok, view, _html} = live(conn, ws_new_path(ws))
 
       view
-      |> element("button[phx-click='spawn_agent'][phx-value-type='blank']")
+      |> element("button[phx-click='spawn_agent_with_message'][phx-value-preset='setup']")
       |> render_click()
 
       {path, _flash} = assert_redirect(view)
@@ -215,7 +216,7 @@ defmodule BoomLooperWeb.ChatLiveTest do
       {:ok, view, _html} = live(conn, ws_new_path(ws))
 
       view
-      |> element("button[phx-click='spawn_agent'][phx-value-type='blank']")
+      |> element("button[phx-click='spawn_agent_with_message'][phx-value-preset='setup']")
       |> render_click()
 
       {path, _flash} = assert_redirect(view)

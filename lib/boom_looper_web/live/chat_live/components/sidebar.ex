@@ -123,40 +123,42 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Sidebar do
     <div class="flex-1 overflow-y-auto p-6 md:p-8">
       <div class="max-w-2xl mx-auto">
         <h2 class="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mb-1">New Agent</h2>
-        <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-6">Choose an agent type for this workspace.</p>
+        <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-4">Start an agent with a task, or pick a preset below.</p>
 
-        <div class="space-y-3">
-          <button phx-click="spawn_agent" phx-value-type="blank"
-            class="w-full text-left rounded-lg border border-zinc-200 dark:border-zinc-700 p-4 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group">
-            <div class="flex items-center gap-3">
-              <div class="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-500 dark:text-zinc-400 group-hover:bg-violet-100 dark:group-hover:bg-violet-900/30 group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-4 h-4">
-                  <path d="M1 8.849c0 1 .738 1.851 1.734 1.947L3 10.82v2.429a.75.75 0 0 0 1.28.53l1.92-1.92-.531-.53-.53-.53-1.39 1.39V10.5a.75.75 0 0 0-.663-.744C2.478 9.682 2 9.296 2 8.849c0-.853.597-1.595 1.453-1.853a.75.75 0 0 0 .527-.663c.188-2.18 2.032-3.833 4.2-3.833.725 0 1.41.18 2.006.505A.75.75 0 0 0 11.26 2.3a4.377 4.377 0 0 0-.973-.595A5.28 5.28 0 0 0 8.18 1C5.461 1 3.243 3.01 3.015 5.629 1.837 6.15 1 7.399 1 8.849Z" />
-                  <path d="M7.657 6.768a.75.75 0 0 1 1.06 0l1.768 1.768a.75.75 0 1 1-1.06 1.06l-.488-.488v1.517a.75.75 0 0 1-1.5 0V9.108l-.488.488a.75.75 0 0 1-1.06-1.06l1.768-1.768Z" />
-                  <path d="M12.568 4.235a3.033 3.033 0 0 1 .453 5.753.75.75 0 0 0-.553.665c-.003.046-.005.088-.009.125H11a.75.75 0 0 0 0 1.5h1.75c.69 0 1.25-.56 1.25-1.25 0-.046-.002-.091-.006-.135a4.533 4.533 0 0 0-.705-8.558 4.353 4.353 0 0 0-.835-.11.75.75 0 1 0-.086 1.498c.181.013.36.042.534.089l-.334-.577Z" />
-                </svg>
-              </div>
-              <div>
-                <div class="text-sm font-medium text-zinc-900 dark:text-zinc-100">Agent</div>
-                <div class="text-xs text-zinc-500 dark:text-zinc-400">General-purpose. Has container tools. You tell it what to do.</div>
-              </div>
-            </div>
+        <form id="new-agent-form" phx-submit="spawn_agent_with_message" class="space-y-4">
+          <textarea
+            name="message" id="new-agent-input" rows="3"
+            placeholder="What should this agent work on? (leave blank to start empty)"
+            class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-3 text-sm
+                   text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 resize-none
+                   focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+          ></textarea>
+          <button type="submit"
+            class="rounded-lg bg-zinc-900 dark:bg-zinc-100 px-5 py-2.5 text-sm font-medium text-white dark:text-zinc-900
+                   hover:bg-zinc-700 dark:hover:bg-zinc-300 transition-colors">
+            Launch Agent
           </button>
+        </form>
 
-          <button phx-click="spawn_agent" phx-value-type="setup"
-            class="w-full text-left rounded-lg border border-zinc-200 dark:border-zinc-700 p-4 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group">
-            <div class="flex items-center gap-3">
-              <div class="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-500 dark:text-zinc-400 group-hover:bg-amber-100 dark:group-hover:bg-amber-900/30 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-4 h-4">
-                  <path fill-rule="evenodd" d="M6.955 1.45A.5.5 0 0 1 7.452 1h1.096a.5.5 0 0 1 .497.45l.17 1.699c.484.12.94.312 1.356.562l1.321-.916a.5.5 0 0 1 .67.033l.774.775a.5.5 0 0 1 .034.67l-.916 1.32c.25.417.443.873.563 1.357l1.699.17a.5.5 0 0 1 .45.497v1.096a.5.5 0 0 1-.45.497l-1.699.17c-.12.484-.312.94-.562 1.356l.916 1.321a.5.5 0 0 1-.034.67l-.774.774a.5.5 0 0 1-.67.033l-1.32-.916c-.417.25-.874.443-1.357.563l-.17 1.699a.5.5 0 0 1-.497.45H7.452a.5.5 0 0 1-.497-.45l-.17-1.699a4.973 4.973 0 0 1-1.356-.562l-1.321.916a.5.5 0 0 1-.67-.033l-.775-.775a.5.5 0 0 1-.033-.67l.916-1.32a4.972 4.972 0 0 1-.563-1.357l-1.699-.17A.5.5 0 0 1 1 8.548V7.452a.5.5 0 0 1 .45-.497l1.699-.17c.12-.484.312-.94.562-1.356l-.916-1.321a.5.5 0 0 1 .033-.67l.775-.774a.5.5 0 0 1 .67-.033l1.32.916c.417-.25.874-.443 1.357-.563l.17-1.699ZM11 8a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" clip-rule="evenodd" />
-                </svg>
-              </div>
-              <div>
-                <div class="text-sm font-medium text-zinc-900 dark:text-zinc-100">Setup Agent</div>
-                <div class="text-xs text-zinc-500 dark:text-zinc-400">Examines the project and configures Dockerfile, docker-compose.yml, and services from scratch.</div>
-              </div>
-            </div>
-          </button>
+        <div class="mt-6 pt-6 border-t border-zinc-200 dark:border-zinc-700/80">
+          <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-semibold mb-3">Presets</div>
+          <div class="space-y-2">
+            <button phx-click="spawn_agent_with_message" phx-value-preset="setup"
+              class="w-full text-left rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
+              <div class="text-sm font-medium text-zinc-900 dark:text-zinc-100">Set up dev environment</div>
+              <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Write Dockerfile + docker-compose.yml, start services, install deps.</div>
+            </button>
+            <button phx-click="spawn_agent_with_message" phx-value-preset="debug"
+              class="w-full text-left rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
+              <div class="text-sm font-medium text-zinc-900 dark:text-zinc-100">Debug failing services</div>
+              <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Check service logs, diagnose errors, fix configuration.</div>
+            </button>
+            <button phx-click="spawn_agent_with_message" phx-value-preset="explore"
+              class="w-full text-left rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
+              <div class="text-sm font-medium text-zinc-900 dark:text-zinc-100">Explore the codebase</div>
+              <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Read files, search code, understand the project structure.</div>
+            </button>
+          </div>
         </div>
 
         <div class="mt-6">

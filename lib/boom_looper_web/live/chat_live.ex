@@ -280,8 +280,8 @@ defmodule BoomLooperWeb.ChatLive do
         {:noreply, socket}
 
       not result.has_config ->
-        # No workspace.json AND no agents → truly fresh workspace, auto-launch Setup.
-        AgentLifecycle.spawn_setup_agent(socket)
+        # No workspace.json AND no agents → truly fresh workspace, auto-launch with setup preset.
+        AgentLifecycle.do_spawn_agent(socket, initial_message: preset_message("setup"))
 
       true ->
         # Config exists — workspace was set up before. Don't auto-spawn.
@@ -323,8 +323,14 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   @impl true
-  def handle_event("spawn_agent", %{"type" => "setup"}, socket) do
-    AgentLifecycle.spawn_setup_agent(socket)
+  def handle_event("spawn_agent_with_message", %{"preset" => preset}, socket) do
+    AgentLifecycle.do_spawn_agent(socket, initial_message: preset_message(preset))
+  end
+
+  def handle_event("spawn_agent_with_message", %{"message" => message}, socket) do
+    message = String.trim(message)
+    opts = if message == "", do: [], else: [initial_message: message]
+    AgentLifecycle.do_spawn_agent(socket, opts)
   end
 
   def handle_event("spawn_agent", _params, socket) do
@@ -760,6 +766,21 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   defp workspace_path(socket), do: socket.assigns.base_path
+
+  defp preset_message("setup") do
+    guide = BoomLooper.ChatAgent.setup_guide()
+    guide <> "\n\n---\n\nLook at the project in /workspace and set up a development environment. Examine the project files to understand what language, framework, and tools are needed."
+  end
+
+  defp preset_message("debug") do
+    "Check `service_status` for all services. For any that are crashed or unhealthy, pull their logs and diagnose the issue. Fix what you can."
+  end
+
+  defp preset_message("explore") do
+    "Explore the project in /workspace. Use `tree` to see the structure, then read key files (README, package.json/Gemfile/mix.exs, config files) and give me a summary of what this project is and how it's built."
+  end
+
+  defp preset_message(_), do: nil
 
   # Derive sidebar service + volume state from Docker.Observer's ETS
   # cache. Zero docker calls — microsecond reads. The Observer

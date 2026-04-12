@@ -53,36 +53,18 @@ defmodule BoomLooperWeb.Live.ChatLive.AgentLifecycle do
     ]
 
     agent_opts = if service_name, do: agent_opts ++ [service_name: service_name], else: agent_opts
-    boot_opts = if service_name, do: [service_name: service_name], else: []
+    initial_message = Keyword.get(opts, :initial_message)
 
-    ChatAgent.register_booting(id, name, working_dir, boot_opts)
-    boot_opts = if service_name, do: [service_name: service_name], else: [initial_message: :none]
+    boot_opts =
+      cond do
+        service_name -> [service_name: service_name]
+        initial_message -> [initial_message: initial_message]
+        true -> [initial_message: :none]
+      end
+
+    register_opts = if service_name, do: [service_name: service_name], else: []
+    ChatAgent.register_booting(id, name, working_dir, register_opts)
     Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn -> BoomLooper.AgentBoot.boot(id, agent_opts, boot_opts) end)
-
-    {:noreply, push_navigate(socket, to: "#{socket.assigns.base_path}/agents/#{id}")}
-  end
-
-  @doc """
-  Spawn the Setup agent for initial workspace configuration.
-  Returns `{:noreply, socket}`.
-  """
-  def spawn_setup_agent(socket) do
-    workspace = socket.assigns.workspace
-    id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
-    name = "Setup"
-    ws_id = BoomLooper.Workspace.workspace_id(workspace.path)
-
-    agent_opts = [
-      id: id,
-      name: name,
-      working_dir: workspace.path,
-      started_by: "auto_setup",
-      bind_mount: workspace.path,
-      workspace_id: ws_id
-    ]
-
-    ChatAgent.register_booting(id, name, workspace.path)
-    Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn -> BoomLooper.AgentBoot.boot(id, agent_opts) end)
 
     {:noreply, push_navigate(socket, to: "#{socket.assigns.base_path}/agents/#{id}")}
   end
