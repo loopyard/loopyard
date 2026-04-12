@@ -394,6 +394,12 @@ rescue e -> Logger.warning("[Module] cleanup failed: #{Exception.message(e)}")
 
 Never `Task.start(fn -> ... end)`. Always `Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn -> ... end)`. Unsupervised tasks crash silently — nobody notices, nothing retries, the work just disappears. `Task.start_link` is acceptable only when the parent GenServer needs to detect the crash (e.g., ChatAgent's streaming task).
 
+### New fields go in normalize, not in fallback chains
+
+When you add a field to a workspace (or project), pre-existing records in ETS won't have it. Don't scatter fallback logic across consumers — add the backfill to `WorkspaceRegistry.normalize_workspace/1` (or the project equivalent). That function runs on every ETS read and is the single place for "if this field is missing, here's how to compute it."
+
+**The bug this prevents:** `worktree_path` was added but pre-refactor workspaces had `nil`. WorkspaceGroup, SyncMonitor, and Source.Local each wrote their own fallback to compute it — three different implementations that drifted. The fix: one backfill rule in `normalize_workspace`, zero fallbacks anywhere else.
+
 ### ETS tables are owned by StateKeeper
 
 Never create ETS tables from random modules. All named tables are defined in `StateKeeper.@tables` and created in `StateKeeper.init/1`. No `ensure_ets_table` pattern — if the table doesn't exist, something is deeply wrong and should crash loudly. `StateKeeper.ensure_tables!/0` exists only for test setup.
