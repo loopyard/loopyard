@@ -154,10 +154,12 @@ defmodule BoomLooper.ProjectRegistry do
       {:ok, built} ->
         project = upsert_project(built)
 
-        # Register the current workspace. For a git repo we use the
-        # current branch; otherwise "main".
+        # Register the current workspace. Use the branch name, but fall
+        # back to "main" for detached HEAD or non-git repos. A detached
+        # HEAD at the project root is still the main workspace.
         workspace_name =
           case Git.current_branch(project.path) do
+            {:ok, "detached-" <> _} -> "main"
             {:ok, branch} -> branch
             _ -> "main"
           end
@@ -450,8 +452,19 @@ defmodule BoomLooper.ProjectRegistry do
     case Git.worktree_list(project.path) do
       {:ok, worktrees} ->
         Enum.each(worktrees, fn wt ->
-          workspace_name = wt[:branch] || "detached"
-          WorkspaceRegistry.find_or_create_workspace(project.id, workspace_name, wt.path)
+          # Skip the main worktree (same path as project) — it's already
+          # registered as the main workspace. Also skip detached worktrees
+          # that don't have a branch name.
+          cond do
+            wt.path == project.path ->
+              :ok
+
+            wt[:branch] == nil || wt[:detached] ->
+              :ok
+
+            true ->
+              WorkspaceRegistry.find_or_create_workspace(project.id, wt.branch, wt.path)
+          end
         end)
 
       {:error, _} ->
