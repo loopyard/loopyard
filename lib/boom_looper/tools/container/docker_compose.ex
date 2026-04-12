@@ -27,7 +27,9 @@ defmodule BoomLooper.Tools.Container.DockerCompose do
         args = String.split(command, ~r/\s+/, trim: true)
         full_args = ["-f", compose_file, "-p", project_name | args]
 
-        # Stream build/up commands so the user sees progress in real time.
+        # Stream build/up to the chat window AND return the result to the
+        # agent synchronously. The agent blocks until done — it needs the
+        # exit status to know whether to proceed or debug.
         if Enum.any?(args, &(&1 in ~w(up build))) do
           compose_stream(agent_id, full_args, command, timeout_seconds)
         else
@@ -39,6 +41,10 @@ defmodule BoomLooper.Tools.Container.DockerCompose do
     end
   end
 
+  # Run compose synchronously while streaming each output chunk to the
+  # chat window via PubSub. Returns {:ok, output} or {:error, output}
+  # to the agent when done — the agent sees the full result and can
+  # decide what to do next.
   defp compose_stream(agent_id, full_args, command, timeout_seconds) do
     stream_msg = %{
       role: :build,
@@ -54,37 +60,66 @@ defmodule BoomLooper.Tools.Container.DockerCompose do
         do: stream_msg.id,
         else: :crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false)
 
-    Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
-      docker_path =
-        if BoomLooper.Compose.docker_compose_v2?() do
-          System.find_executable("docker")
-        else
-          System.find_executable("docker-compose")
-        end
+    docker_path =
+      if BoomLooper.Compose.docker_compose_v2?() do
+        System.find_executable("docker")
+      else
+        System.find_executable("docker-compose")
+      end
 
-      port_args =
-        if BoomLooper.Compose.docker_compose_v2?() do
-          ["compose" | full_args]
-        else
-          full_args
-        end
+    port_args =
+      if BoomLooper.Compose.docker_compose_v2?() do
+        ["compose" | full_args]
+      else
+        full_args
+      end
 
-      port =
-        Port.open(
-          {:spawn_executable, docker_path},
-          [:binary, :exit_status, :stderr_to_stdout, {:args, port_args}]
+    port =
+      Port.open(
+        {:spawn_executable, docker_path},
+        [:binary, :exit_status, :stderr_to_stdout, {:args, port_args}]
+      )
+
+    # Collect output synchronously, streaming each chunk to the chat
+    collect_and_stream(agent_id, port, command, msg_id, "", timeout_seconds * 1_000)
+  end
+
+  defp collect_and_stream(agent_id, port, command, msg_id, acc, timeout) do
+    receive do
+      {^port, {:data, data}} ->
+        acc = acc <> data
+
+        # Update the streaming message in ETS + broadcast to LiveView
+        BoomLooper.ChatAgent.update_message(agent_id, msg_id, fn msg ->
+          %{msg | content: acc}
+        end)
+
+        Phoenix.PubSub.broadcast(
+          BoomLooper.PubSub,
+          "chat_agent:#{agent_id}",
+          {:stream_output, agent_id, data, "docker compose #{command}", msg_id}
         )
 
-      Helpers.stream_port_output(
-        agent_id,
-        port,
-        "docker compose #{command}",
-        msg_id,
-        "",
-        timeout_seconds * 1_000
-      )
-    end)
+        collect_and_stream(agent_id, port, command, msg_id, acc, timeout)
 
-    {:ok, "Streaming: docker compose #{command}"}
+      {^port, {:exit_status, 0}} ->
+        # Mark message as done
+        BoomLooper.ChatAgent.update_message(agent_id, msg_id, fn msg ->
+          %{msg | role: :build_done, content: acc}
+        end)
+
+        {:ok, acc}
+
+      {^port, {:exit_status, code}} ->
+        BoomLooper.ChatAgent.update_message(agent_id, msg_id, fn msg ->
+          %{msg | role: :build_done, content: acc}
+        end)
+
+        {:error, "docker compose #{command} exited with code #{code}:\n#{acc}"}
+    after
+      timeout ->
+        Port.close(port)
+        {:error, "docker compose #{command} timed out after #{div(timeout, 1000)}s:\n#{acc}"}
+    end
   end
 end
