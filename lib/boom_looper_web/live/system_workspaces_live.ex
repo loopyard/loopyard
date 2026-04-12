@@ -77,6 +77,14 @@ defmodule BoomLooperWeb.SystemWorkspacesLive do
     {:noreply, refresh(socket)}
   end
 
+  def handle_info({:workspace_restarted, ws_id, :ok}, socket) do
+    {:noreply, socket |> put_flash(:info, "Restarted #{ws_id}") |> refresh()}
+  end
+
+  def handle_info({:workspace_restarted, ws_id, {:error, reason}}, socket) do
+    {:noreply, put_flash(socket, :error, "Failed to restart #{ws_id}: #{inspect(reason)}")}
+  end
+
   # Catch-all so unknown PubSub messages don't crash the LiveView.
   def handle_info(_msg, socket), do: {:noreply, socket}
 
@@ -88,13 +96,16 @@ defmodule BoomLooperWeb.SystemWorkspacesLive do
 
   @impl true
   def handle_event("restart_workspace", %{"id" => ws_id, "path" => path}, socket) do
-    BoomLooper.WorkspaceSupervisor.stop_workspace(ws_id)
-    Process.sleep(500)
+    lv = self()
+    Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
+      BoomLooper.WorkspaceSupervisor.stop_workspace(ws_id)
+      case BoomLooper.WorkspaceSupervisor.start_workspace(ws_id, path) do
+        {:ok, _} -> send(lv, {:workspace_restarted, ws_id, :ok})
+        {:error, reason} -> send(lv, {:workspace_restarted, ws_id, {:error, reason}})
+      end
+    end)
 
-    case BoomLooper.WorkspaceSupervisor.start_workspace(ws_id, path) do
-      {:ok, _} -> {:noreply, put_flash(socket, :info, "Restarted #{ws_id}")}
-      {:error, reason} -> {:noreply, put_flash(socket, :error, "Failed: #{inspect(reason)}")}
-    end
+    {:noreply, put_flash(socket, :info, "Restarting #{ws_id}...")}
   end
 
   @impl true

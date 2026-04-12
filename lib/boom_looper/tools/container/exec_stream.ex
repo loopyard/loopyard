@@ -25,7 +25,7 @@ defmodule BoomLooper.Tools.Container.ExecStream do
             else: :crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false)
 
         # Run in background Task
-        Task.start(fn ->
+        Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
           port =
             Port.open(
               {:spawn_executable, System.find_executable("docker")},

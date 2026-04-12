@@ -4,7 +4,7 @@ defmodule BoomLooper.Tools.Container.ReadFiles do
     description: "Read several files in ONE round trip. PREFER THIS over multiple `read_file` calls during discovery (e.g. reading Gemfile + package.json + README + Procfile.dev at once). Files that don't exist show up as `(error: ...)` so partial failures don't lose the rest.",
     params: [
       agent_id: {:string, required: true},
-      paths: {:string, required: true, description: ~s|JSON array of file paths relative to /workspace, e.g. '["Gemfile", "package.json", "README.md"]'|}
+      paths: {:string, required: true, description: "JSON array of file paths relative to /workspace, e.g. '[\"Gemfile\", \"package.json\", \"README.md\"]'"}
     ]
 
   alias BoomLooper.Tools.Container.ReadFile

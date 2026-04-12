@@ -116,7 +116,7 @@ defmodule BoomLooperWeb.SystemLive do
       BoomLooper.ChatAgent.remove_agent(agent.id)
     end
 
-    Task.start(fn ->
+    Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
       Application.stop(:boom_looper)
       Process.sleep(500)
       Application.ensure_all_started(:boom_looper)

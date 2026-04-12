@@ -54,7 +54,7 @@ defmodule BoomLooper.Tools.Container.DockerCompose do
         do: stream_msg.id,
         else: :crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false)
 
-    Task.start(fn ->
+    Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
       docker_path =
         if BoomLooper.Compose.docker_compose_v2?() do
           System.find_executable("docker")
