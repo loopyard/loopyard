@@ -1,19 +1,10 @@
 # Architecture
 
-## Terminology
-
-| Term | Meaning |
-|------|---------|
-| **Project** | A git repository registered with BoomLooper |
-| **Workspace** | A working directory (git worktree) within a project. Each workspace gets its own containers, volumes, and agents |
-| **WorkspaceSupervisor** | Top-level DynamicSupervisor managing all workspace subtrees |
-| **WorkspaceGroup** | Per-workspace Supervisor (ServiceManager + AgentSupervisor + ContainerMonitor) |
-
 ## Two layers (views vs infrastructure)
 
 The app is split into two independent layers that can restart without affecting each other:
 
-1. **Infrastructure layer** — StateKeeper (ETS table owner), PubSub, Registries, WorkspaceSupervisor, ServiceManagers, ChatAgents, ContainerMonitor, Terminal. Runs containers, manages agent lifecycles, holds all state. Survives web hot reloads.
+1. **Infrastructure layer** — StateKeeper (ETS table owner), PubSub, Registries, Docker.Observer, WorkspaceSupervisor, ServiceManagers, ChatAgents, ContainerMonitor, Terminal. Runs containers, manages agent lifecycles, holds all state. Survives web hot reloads.
 
 2. **Web layer** — LiveViews, Controllers, Channels, Endpoint. Reads state from infrastructure and renders UI. Can restart freely without killing agents or containers.
 
@@ -21,58 +12,57 @@ The app is split into two independent layers that can restart without affecting 
 
 ```
 BoomLooper.Supervisor (:one_for_one)
-  ├── StateKeeper (owns ETS tables — starts first, lives longest)
+  ├── LogBuffer
+  ├── IExSession
+  ├── StateKeeper (sole ETS table owner — starts first, lives longest)
   ├── Phoenix.PubSub
-  ├── Registry × 5 (ChatAgent, ServiceManager, Workspace, WorkspaceAgent, Terminal)
+  ├── Registry × 6 (ChatAgent, ServiceManager, Workspace, WorkspaceAgent, SyncMonitor, Terminal)
   ├── DynamicSupervisor (TerminalSupervisor)
+  ├── Task.Supervisor (TaskSupervisor — all fire-and-forget Tasks go here)
   ├── WorkspaceSupervisor (DynamicSupervisor)
   │   └── WorkspaceGroup (Supervisor, :one_for_all)
   │       ├── ServiceManager (manages Docker Compose services)
   │       ├── AgentSupervisor (DynamicSupervisor)
   │       │   └── ChatAgent × N
   │       └── ContainerMonitor (polls Docker health every 5s)
+  ├── SSHServer
+  ├── Docker.Observer (event-driven container/volume cache)
   └── BoomLooperWeb.Endpoint
 ```
 
-Stopping a workspace cascades: agents die with their supervisor. ServiceManager.terminate does NOT call compose down — containers persist across server reboots. Only `POST /system/reset` explicitly tears down containers.
+**Key properties:**
+- StateKeeper starts first, creates ALL named ETS tables, and lives longest. No other module creates ETS tables.
+- Docker.Observer starts before Endpoint so the ETS cache is warm for the first LiveView mount.
+- ServiceManager.terminate does NOT call compose down — containers persist across server reboots.
+- Every fire-and-forget Task runs under TaskSupervisor (never bare `Task.start`).
 
 ## Container model (Docker Compose)
 
-Each workspace's containers are orchestrated via Docker Compose. `ServiceManager` generates `docker-compose.yml` from the workspace config and manages the lifecycle.
+Each workspace's containers are orchestrated via Docker Compose. Agents write `Dockerfile` and `docker-compose.yml` directly to `.boomlooper/workspace/`. ServiceManager runs compose up/down.
 
 ```
 Compose project: bl-{workspace_id}
-  ├── workspace (alpine + git + gh, agents exec here)
-  ├── dev (built from project Dockerfile, runs dev command)
+  ├── workspace (built from Dockerfile, agents exec here, sleep infinity)
+  ├── dev (built from Dockerfile, runs dev command)
   ├── postgres (stock service)
   └── redis (stock service)
 ```
-
-- **Workspace container** — Built from the project Dockerfile (`.boomlooper/workspace/Dockerfile`). Always running (`sleep infinity`). Agents exec here via `docker exec`. Only created when a Dockerfile is configured.
-- **Dev container** — Built from the same project Dockerfile. Runs the dev command (e.g. `bin/dev`). Only created when a dev process is configured. Hot reloads via inotify through shared volume.
-- **Stock services** — postgres, redis, etc. Own containers, own images.
 
 All containers share a Docker network and the code volume. Container naming: `bl-{workspace_id}-{service}-1`.
 
 ### Volume-based architecture
 
-All workspaces use Docker named volumes for code storage (no bind mounts):
+All workspaces use Docker named volumes for code storage:
 
 ```
 code-{workspace_id} (named volume)
   ├── workspace container mounts /workspace
   ├── dev container mounts /workspace
-  └── inotify works between containers
+  └── inotify works between containers (same Linux filesystem)
 ```
 
-- **Git projects**: `VolumeManager.clone_into_volume` clones the repo into the volume
-- **Local projects**: `VolumeManager.copy_to_volume` copies code to volume on first start
-
-Benefits:
-- No Unix socket issues (bind mounts break Rails sockets on macOS)
-- inotify works for hot reload between containers (same Linux filesystem)
-- No platform binary conflicts (node_modules, deps)
-- Workspace container always available, even without project Dockerfile
+- **Git projects**: `VolumeCloner.clone_into_volume` clones the repo using host git, then copies into volume
+- **Local projects**: `VolumeIO.copy_to_volume` rsyncs code to volume on first start
 
 ### Container persistence
 
@@ -83,126 +73,200 @@ Containers survive server reboots:
 - If not found: does full `compose up --build`
 - `POST /system/reset` is the only path that calls `compose down`
 
+## Docker interface
+
+**Every Docker CLI call goes through `BoomLooper.Docker`.** No `System.cmd("docker", ...)` anywhere else.
+
+| Function | Use case |
+|----------|----------|
+| `Docker.docker(args, opts)` | One-shot commands. Returns `{:ok, output}` or `{:error, output}`. Has timeout, telemetry, env options. |
+| `Docker.stream(args, callback, opts)` | Long-running commands with streaming output. Calls `callback` per chunk. |
+| `Docker.open_port(args, opts)` | Raw Port for custom stream handling (Observer events, terminal). |
+
+`Docker.Observer` maintains an ETS cache of all `bl-*` containers and volumes, updated by `docker events` stream. LiveViews read from ETS (microseconds) instead of shelling out to docker (100ms+).
+
+## MCP tool architecture
+
+Each agent tool is a standalone module. No monolithic tool files.
+
+```
+lib/boom_looper/tools/
+├── container.ex              ← toolkit (lists 20 tool modules in __tool_server__/0)
+├── container/
+│   ├── helpers.ex            ← shared: resolve_container, validate_path, etc.
+│   ├── exec.ex               ← one tool
+│   ├── exec_stream.ex
+│   ├── write_file.ex
+│   ├── read_file.ex
+│   ├── edit.ex
+│   ├── multi_edit.ex
+│   ├── grep.ex
+│   ├── glob.ex
+│   ├── tree.ex
+│   ├── logs.ex
+│   ├── docker.ex
+│   ├── docker_compose.ex
+│   ├── inspect_env.ex
+│   ├── inspect_service.ex
+│   ├── service_containers.ex
+│   ├── ports.ex
+│   ├── probe_http.ex
+│   ├── probe_formatter.ex
+│   ├── read_files.ex
+│   ├── workspace_info.ex
+│   └── volumes.ex
+├── agents.ex                 ← agent-to-agent tools
+├── secrets.ex                ← secret management tools
+└── workspace.ex              ← workspace metadata tools
+```
+
+**Tool module structure** (using `BoomLooper.Tool` macro):
+
+```elixir
+defmodule BoomLooper.Tools.Container.Exec do
+  use BoomLooper.Tool,
+    name: "exec",
+    description: "Run a shell command inside the container.",
+    params: [
+      agent_id: {:string, required: true},
+      command: {:string, required: true},
+      timeout: {:integer, description: "Max seconds (default: 120)"}
+    ]
+
+  def execute(%{agent_id: id, command: cmd} = params, _assigns) do
+    # tool logic
+  end
+end
+```
+
+The macro generates `__tool_name__/0`, `__description__/0`, `input_schema/0`. You just write `execute/2`. Params arrive with atom keys (SDK atomizes them via `safe_atomize_keys`).
+
+**Discovery pipeline:**
+1. `ChatAgent.ToolConfig.default_tools()` → `[Tools.Agents, Tools.Container, Tools.Secrets]`
+2. `build_mcp_servers/1` calls `__tool_server__()` on each → `%{name => module}` map
+3. `build_allowed_tools/2` iterates tools, builds `"mcp__server__tool"` strings
+4. Passed to Claude SDK session → CLI contacts BEAM via JSONRPC for tool calls
+
+## ChatAgent internals
+
+Each `ChatAgent` is a GenServer owning a Claude Code SDK session (CLI subprocess).
+
+**Message storage:** Reversed list internally for O(1) prepend. `append_message` returns `{state, msg}`. `summary/1` reverses before exposing to readers. Capped at 1000 messages in memory — the ETF agent log retains full history.
+
+**Submodules:**
+- `ChatAgent.Prompt` — system prompt construction
+- `ChatAgent.ToolConfig` — MCP server/tool wiring
+- `ChatAgent.Persistence` — ETF log append
+
+**State flow:**
+```
+GenServer state (source of truth, reversed message list)
+    ↓ summary(state) — reverses messages
+ETS (read by LiveViews, get_state, get_message)
+    ↓ PubSub broadcast (includes message with ID)
+LiveViews (render updates)
+```
+
+**Session recovery:** ChatAgent auto-restarts dead CLI sessions with exponential backoff (1s → 2s → 4s, max 30s). Builds a resume message from recent activity so the new session can continue.
+
+## LiveView architecture
+
+LiveViews are thin — they handle events, delegate to modules, and render.
+
+```
+lib/boom_looper_web/live/
+├── chat_live.ex              ← mount, handle_*, render (~850 lines)
+├── chat_live/
+│   ├── components.ex         ← imports all component submodules
+│   ├── components/
+│   │   ├── sidebar.ex        ← sidebar, service_item, volume_item, agent_list_item
+│   │   ├── chat.ex           ← chat_header, agent_view, chat_panel, container_panel
+│   │   ├── services.ex       ← service_log_view, console_view, all_services_view
+│   │   ├── states.ex         ← booting_screen, empty_state
+│   │   └── formatters.ex     ← time_ago, exit_reason, service_status_text (pure functions)
+│   ├── agent_lifecycle.ex    ← spawn, select, list agents
+│   ├── service_logs.ex       ← fetch, refresh service logs (async via TaskSupervisor)
+│   ├── compose_check.ex      ← async compose file detection
+│   └── messages.ex           ← chat_msg, streaming_bubble components
+```
+
+**Key patterns:**
+- Mount renders instantly with loading skeletons. Slow data arrives via `start_async/3`.
+- Docker.Observer provides container/volume state from ETS (zero docker calls from LiveViews).
+- Service log fetching runs in TaskSupervisor — LiveView never blocks on `docker logs`.
+- All shared state flows through GenServer → PubSub → all LiveViews.
+
+## ETS tables
+
+All owned by `StateKeeper`. Created once in `init/1`.
+
+| Table | Type | Purpose |
+|-------|------|---------|
+| `:chat_agents` | set | Agent state summaries (read by LiveViews) |
+| `:project_registry` | set | Project records |
+| `:workspace_registry` | set | Workspace records |
+| `:event_log` | ordered_set | System events (newest-first, capped at 200) |
+| `:service_status_cache` | set | Service status per workspace |
+| `:docker_observer` | set | Container/volume snapshot from Docker.Observer |
+| `:boom_looper_evals` | set | Eval run state |
+
+## Agent persistence
+
+Agents and messages are persisted to an append-only ETF log at `~/.boomlooper/workspaces/{id}/.boomlooper/workspace/agents.log`.
+
+On server restart:
+1. ServiceManager detects running containers via `Compose.ps`
+2. Calls `replay_agent_log` to restore agent state to ETS
+3. Starts ChatAgent GenServers with `resume: true` for each restored agent
+4. Each agent loads messages from ETS and starts a fresh Claude session
+
+**Log format:** Length-prefixed binary records using `:erlang.term_to_binary`. Events: `{:agent, id, data}`, `{:msg, agent_id, msg}`, `{:msg_update, agent_id, msg_id, changes}`, `{:agent_removed, id}`.
+
+## Telemetry
+
+Key operations emit telemetry spans:
+
+| Event | Module | Metadata |
+|-------|--------|----------|
+| `[:boom_looper, :docker, :command]` | `Docker.docker/2` | `%{args: args, timeout: timeout}` |
+| `[:boom_looper, :compose, :up]` | `Compose.up/2` | `%{workspace_id: id}` |
+| `[:boom_looper, :compose, :down]` | `Compose.down/2` | `%{workspace_id: id}` |
+| `[:boom_looper, :agent, :message]` | `ChatAgent` | `%{agent_id: id, role: :user}` |
+
+No subscribers configured by default — attach your own handlers for logging/metrics.
+
 ## Directory structure
 
 ```
 # Code volume (Docker named volume code-{workspace_id})
 /workspace/                     ← project root inside containers
 └── .boomlooper/
-    └── repo/
-        └── workspace.json      ← config (Dockerfile content, services, env vars, dev command)
+    ├── repo/
+    │   └── workspace.json      ← metadata (name, system prompt)
+    └── workspace/
+        ├── Dockerfile          ← agent-written
+        └── docker-compose.yml  ← agent-written
 
 # BoomLooper home directory
 ~/.boomlooper/
 ├── workspaces/
-│   └── {workspace_id}/         ← per-workspace generated files
+│   └── {workspace_id}/
 │       └── .boomlooper/workspace/
-│           ├── docker-compose.yml  ← generated by Compose.generate
+│           ├── docker-compose.yml  ← processed by Compose (host copy)
 │           └── agents.log          ← append-only agent state log
-├── builds/
-│   └── {workspace_id}/         ← build context for dev container
-│       └── Dockerfile          ← written from workspace.json
+├── projects.json               ← persisted project list
 └── secrets.json                ← user-level secret storage
 ```
 
-Config lives in `.boomlooper/repo/workspace.json` inside the code volume. The `VolumeManager` reads/writes this config directly from the volume. Generated files (compose, agent logs) live in `~/.boomlooper/workspaces/{id}/`.
-
-## How agents work
-
-Each `ChatAgent` is a GenServer owning a `ClaudeCode` SDK session (claude CLI subprocess). When a user sends a message, the agent streams the response via PubSub. The LiveView subscribes and renders updates in real-time.
-
-Agents have MCP tools for interacting with their workspace:
-- **Container tools** (`container.ex`): `exec`, `exec_stream`, `logs`, `inspect_env`, `ports`
-- **Workspace tools** (`workspace.ex`): `set_dockerfile`, `set_dev_command`, `add_service`, `rebuild`, etc.
-
-All container tool calls resolve to the compose workspace container via `resolve_container(agent_id)`.
-
-### exec vs exec_stream
-
-- `exec` — synchronous, blocks until command completes, returns output. For quick commands (< 2 min).
-- `exec_stream` — async, streams output into the chat as a `:build` message. For long-running commands (builds, tests, ping, installs). Output accumulates in ETS via GenServer casts.
-
-### State flow
-
-```
-GenServer state (source of truth)
-    ↓ summary(state)
-ETS (read by LiveViews, get_state, get_message)
-    ↓ PubSub broadcast
-LiveViews (render updates)
-```
-
-All mutations go through the GenServer. `append_message_ets` and `update_message` route through the GenServer via casts when it's alive, ensuring state consistency. `append_external_message` also broadcasts to PubSub so both the agent and LiveView subscribers see the message.
-
-## Messages as resources
-
-Every chat message has a unique ID and its own URL. No tokens/signatures — simple URLs.
-
-- **Live page**: `/messages/:agent_id/:msg_id` — LiveView, auto-tailing for streams
-- **Raw text**: `/messages/:agent_id/:msg_id/raw` — plain text for copying
-
-### Message lifecycle
-
-1. `append_message(state, msg)` assigns a unique ID (8-byte random, base64)
-2. GenServer state updated, synced to ETS via `summary(state)`
-3. PubSub broadcast includes the message WITH its ID (`List.last(state.messages)`)
-4. LiveView receives broadcast, renders message with link
-
-### Streaming messages
-
-`exec_stream` creates a `:build` message via `append_message_ets` (GenServer cast), then streams data via a background Task. Each data chunk updates the message via `update_message` (also GenServer cast). PubSub broadcasts `{:stream_output, agent_id, data, title, msg_id}`.
-
-On page reload: `select_agent` initializes `build_log` from existing `:build` message content, so new stream data appends correctly.
-
-## Service health lifecycle
-
-Services go through health states: `:stopped` → `:started` → `:healthy` (or `:crashed`).
-
-- `:started` — container running, ports not yet accepting connections
-- `:healthy` — TCP port check passes (`:gen_tcp.connect` + recv to distinguish Docker proxy from real listener)
-- `:crashed` — container exited with non-zero code
-
-ContainerMonitor polls every 5 seconds and broadcasts health changes via PubSub.
-
 ## Terminal (interactive console)
 
-The Terminal GenServer wraps `docker exec -it` via `script(1)` for PTY allocation. Without `script`, Erlang Ports don't provide a real TTY, causing `docker exec -it` to fail immediately.
+The Terminal GenServer wraps `docker exec -it` via `script(1)` for PTY allocation. Without `script`, Erlang Ports don't provide a real TTY.
 
 - macOS: `script -q /dev/null docker exec -it container sh`
 - Linux: `script -qc "docker exec -it container sh" /dev/null`
 - Fallback: `docker exec -i container sh` (no PTY)
 
-Connected via Phoenix Channel (`terminal:container_name`). Multiplayer — all viewers share one session. 50KB output buffer for late joiners.
-
-## Key files
-
-| File | Purpose |
-|------|---------|
-| `lib/boom_looper/state_keeper.ex` | Owns ETS tables, survives hot reloads |
-| `lib/boom_looper/workspace_group.ex` | Per-workspace Supervisor (ServiceManager + AgentSupervisor + ContainerMonitor) |
-| `lib/boom_looper/workspace_supervisor.ex` | DynamicSupervisor for workspace subtrees |
-| `lib/boom_looper/chat_agent.ex` | GenServer wrapping Claude Code SDK session |
-| `lib/boom_looper/compose.ex` | Generates docker-compose.yml, wraps compose CLI |
-| `lib/boom_looper/volume_manager.ex` | Manages Docker volumes (create, clone, copy, file ops) |
-| `lib/boom_looper/workspace/service_manager.ex` | Manages Docker Compose services, reconnects on reboot |
-| `lib/boom_looper/docker.ex` | Docker CLI wrapper (exec, ports, health, state) |
-| `lib/boom_looper/terminal.ex` | GenServer for interactive terminal sessions (PTY via script) |
-| `lib/boom_looper/container_monitor.ex` | Polls Docker health, broadcasts status changes |
-| `lib/boom_looper/event_log.ex` | Append-only event log for debugging |
-| `lib/boom_looper/project_registry.ex` | Projects + workspaces registry (ETS) |
-| `lib/boom_looper/git.ex` | Git CLI wrapper (worktree add/remove/list) |
-| `lib/boom_looper/workspace.ex` | Workspace config (load/save .boomlooper/repo/workspace.json) |
-| `lib/boom_looper/tools/workspace.ex` | MCP tools: set_dockerfile, set_dev_command, add_service, rebuild |
-| `lib/boom_looper/tools/container.ex` | MCP tools: exec, exec_stream, logs, inspect, ports |
-| `lib/boom_looper/tools/agents.ex` | MCP tools: list/message other agents |
-| `lib/boom_looper_web/live/chat_live.ex` | Workspace-level chat UI (agents + services + chat panel) |
-| `lib/boom_looper_web/live/message_live.ex` | Single message view (live, multiplayer, auto-tailing) |
-| `lib/boom_looper_web/live/project_list_live.ex` | Home page (projects list) |
-| `lib/boom_looper_web/live/project_live.ex` | Project page (workspaces with start/stop) |
-| `lib/boom_looper_web/controllers/output_controller.ex` | Raw text endpoint + URL generation |
-| `lib/boom_looper_web/controllers/debug_controller.ex` | System debug/reset endpoints |
-| `lib/boom_looper_web/controllers/launch_controller.ex` | CLI launch onramp |
-| `lib/boom_looper_web/channels/terminal_channel.ex` | WebSocket for terminal I/O |
+Connected via Phoenix Channel (`terminal:container_name`). PubSub topic (`terminal_output:container_name`) is deliberately different from the channel topic to avoid double-delivery. Multiplayer — all viewers share one session. 50KB output buffer for late joiners.
 
 ## JS hooks
 
