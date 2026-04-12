@@ -8,102 +8,38 @@ user_invocable: true
 
 Get Boom Looper running on a new machine.
 
-## macOS
+## Quick start
 
-### 1. Check dependencies
+### 1. Prerequisites
 
-```bash
-which elixir && elixir --version
-which docker || echo "Install Docker - see step 2"
-which claude || echo "Install with: npm install -g @anthropic-ai/claude-code"
-```
+You need a Docker runtime. Pick ONE:
 
-### 2. Docker runtime
-
-Check if Docker is already running:
-
-```bash
-docker info >/dev/null 2>&1 && echo "Docker is running" || echo "Docker not running"
-```
-
-If Docker is running, skip to step 3. Otherwise, pick ONE of these options:
-
-**Option A: Docker Desktop** (easiest)
-Download from https://www.docker.com/products/docker-desktop/ and start it.
-
-**Option B: OrbStack** (fast, nice GUI)
-Download from https://orbstack.dev/ or `brew install orbstack`. Start it and it auto-configures Docker.
-
-**Option C: Colima** (lightweight, CLI-only)
-Use the `colima-setup` skill to configure with optimal resources, or manually:
-```bash
-brew install colima docker
-colima start --cpu 4 --memory 8 --disk 100 --vm-type vz --vz-rosetta
-```
+- **Colima** (recommended): `brew install colima docker && colima start --cpu 4 --memory 8 --disk 100 --vm-type vz --vz-rosetta`
+- **OrbStack**: `brew install orbstack` and start it
+- **Docker Desktop**: Download from docker.com
 
 Verify with `docker info`.
 
-### 3. Fix Docker credential store (colima users)
-
-If you're using colima instead of Docker Desktop, the credential store must be switched from `desktop` to `osxkeychain`. Without this, every `docker pull` and `docker build` hangs waiting for Docker Desktop's credential helper (which isn't running).
-
-```bash
-# Check current setting
-grep credsStore ~/.docker/config.json
-
-# If it says "desktop", fix it:
-python3 -c "
-import json
-with open('$HOME/.docker/config.json') as f: c = json.load(f)
-c['credsStore'] = 'osxkeychain'
-with open('$HOME/.docker/config.json', 'w') as f: json.dump(c, f, indent=2)
-print('Fixed: credsStore set to osxkeychain')
-"
-```
-
-Also remove stale Docker Desktop buildx builders that cause timeouts:
-```bash
-docker buildx rm default 2>/dev/null
-docker buildx rm desktop-linux 2>/dev/null
-```
-
-### 4. Install Brewfile dependencies
-
-```bash
-brew bundle install
-```
-
-This installs fswatch (live reload), mutagen (Local workspace sync), and other tools.
-
-### 5. Clone and build
+### 2. Setup + run
 
 ```bash
 git clone https://github.com/boomlooper/boomlooper.git
 cd boomlooper
-export MIX_HOME="$PWD/.mix_home" HEX_HOME="$PWD/.hex_home"
-mix local.hex --force && mix deps.get && mix assets.setup && mix assets.build
+mix boom.setup    # installs everything, fixes Docker config
+mix boom.server   # starts the server
 ```
 
-### 6. Start the server
+`mix boom.setup` handles Brewfile deps, Docker credential store fixes, Hex/Rebar, Mix deps, and assets. Safe to re-run.
 
-```bash
-export MIX_HOME="$PWD/.mix_home" HEX_HOME="$PWD/.hex_home"
-mix boom.server
-```
+### 3. Remote access
 
-**Important:** Always set `MIX_HOME` and `HEX_HOME` before running mix commands. This uses a project-local Hex installation to avoid conflicts with your system Hex.
-
-### 7. Remote access
-
-Once the server is running, jack in from another terminal with `mix boom.rpc`:
+Once the server is running, jack in from another terminal:
 
 ```bash
 mix boom.rpc "BoomLooper.ProjectRegistry.list_projects()"
-mix boom.rpc "BoomLooper.ChatAgent.list_agents()"
-mix boom.rpc ":ets.tab2list(:project_registry)"
 ```
 
-Any valid Elixir expression works. The UI shows an indicator while you're connected.
+Any valid Elixir expression works.
 
 ## Linux
 

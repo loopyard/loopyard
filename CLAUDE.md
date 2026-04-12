@@ -42,9 +42,8 @@ The `Source` behaviour (`lib/boom_looper/source.ex`) defines how a project's cod
 ## Quick start
 
 ```bash
-export MIX_HOME="$PWD/.mix_home" HEX_HOME="$PWD/.hex_home"
-mix local.hex --force && mix deps.get && mix assets.setup && mix assets.build
-mix phx.server
+mix boom.setup     # installs deps, fixes Docker config, builds assets
+mix boom.server    # starts the server with distributed node for remote access
 ```
 
 Launch from any project directory: `open "http://localhost:4000/launch/SECRET?path=$(pwd)"`
