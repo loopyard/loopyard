@@ -205,6 +205,35 @@ defmodule BoomLooper.InvariantsTest do
   end
 
   # ---------------------------------------------------------------
+  # 6. Ad-hoc virtual dir computation should be minimized
+  # ---------------------------------------------------------------
+  # Every `Path.join([..., "workspaces", id])` is a potential source of
+  # path drift. The canonical way to get the compose/virtual dir is via
+  # `workspace.compose_dir` (set by normalize_workspace). This test
+  # counts ad-hoc computations so we can track them going DOWN, not up.
+
+  describe "virtual dir computation" do
+    test "ad-hoc virtual dir paths are tracked (should decrease over time)" do
+      count =
+        Path.wildcard("lib/**/*.ex")
+        |> Enum.flat_map(fn path ->
+          content = File.read!(path)
+          # Match the pattern: Path.join([..., "workspaces", ...])
+          Regex.scan(~r/Path\.join\(\[.*"workspaces"/, content)
+        end)
+        |> length()
+
+      # Current count as of this commit. If you're adding a new one,
+      # you should be using workspace.compose_dir instead.
+      # If you're removing one, update this number downward.
+      assert count <= 18,
+        "Ad-hoc virtual dir computations increased to #{count}. " <>
+        "Use workspace.compose_dir from the workspace record instead of " <>
+        "computing Path.join([home_dir(), \"workspaces\", id]) inline."
+    end
+  end
+
+  # ---------------------------------------------------------------
   # Helpers
   # ---------------------------------------------------------------
 
