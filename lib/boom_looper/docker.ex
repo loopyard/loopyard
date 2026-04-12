@@ -126,6 +126,31 @@ defmodule BoomLooper.Docker do
   end
 
   @doc """
+  Remove orphaned temp containers (alpine, alpine/git) that leaked from
+  timed-out VolumeManager operations. `docker run --rm` doesn't fire when
+  the Task owning the port is killed, so containers in Created/Exited
+  state accumulate. Call this during project teardown and eval cleanup.
+  """
+  def prune_temp_containers do
+    for ancestor <- ["alpine", "alpine/git"] do
+      case docker(["ps", "-a", "--filter", "ancestor=#{ancestor}",
+                    "--filter", "status=created", "--filter", "status=exited",
+                    "--format", "{{.ID}}"], timeout: 10_000) do
+        {:ok, output} ->
+          ids = output |> String.trim() |> String.split("\n", trim: true)
+          Enum.each(ids, fn id ->
+            docker(["rm", "-f", id], timeout: 5_000)
+          end)
+          length(ids)
+
+        _ ->
+          0
+      end
+    end
+    |> Enum.sum()
+  end
+
+  @doc """
   Execute a raw docker CLI command. Returns {:ok, output} or {:error, output}.
 
   Options:

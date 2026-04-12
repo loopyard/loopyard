@@ -423,6 +423,9 @@ defmodule BoomLooper.ProjectRegistry do
       end)
     end
 
+    # Prune leaked temp containers from VolumeManager operations
+    BoomLooper.Docker.prune_temp_containers()
+
     # Remove from ETS
     Enum.each(workspaces, fn ws -> :ets.delete(@workspaces_table, ws.id) end)
     :ets.delete(@projects_table, id)

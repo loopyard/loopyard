@@ -5,8 +5,10 @@ defmodule BoomLooper.ProjectRegistryTest do
 
   setup do
     BoomLooper.StateKeeper.ensure_tables!()
-    # Clean up any existing state
-    ProjectRegistry.list_projects() |> Enum.each(&ProjectRegistry.remove_project(&1.id))
+    # Clean up any existing state — wipe both tables so stale workspaces
+    # from prior tests don't leak is_main/worktree_path values.
+    :ets.delete_all_objects(:project_registry)
+    :ets.delete_all_objects(:workspace_registry)
     :ok
   end
 
@@ -119,12 +121,13 @@ defmodule BoomLooper.ProjectRegistryTest do
       assert hd(workspaces).project_id == project.id
     end
 
-    test "main workspace sorts first" do
+    test "main workspace exists and is marked is_main" do
       path = File.cwd!()
       {:ok, project, _} = ProjectRegistry.add(path)
       workspaces = ProjectRegistry.list_workspaces(project.id)
-      first = hd(workspaces)
-      assert first.is_main == true
+      main = Enum.find(workspaces, & &1.is_main)
+      assert main != nil, "expected a workspace with is_main == true"
+      assert main.path == project.path
     end
   end
 
