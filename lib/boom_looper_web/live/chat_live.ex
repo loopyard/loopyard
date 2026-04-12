@@ -789,9 +789,11 @@ defmodule BoomLooperWeb.ChatLive do
   # Services: read docker-compose.yml (fast local file) for DEFINED
   # services, then merge running state from Observer's container list.
   # Volumes: directly from Observer's volume list for this workspace.
-  defp load_sidebar_from_observer(workspace_path, workspace_id) do
-    # Defined services from the compose file (fast — local file read)
-    defined = BoomLooper.Workspace.ServiceStatus.list_defined_services(workspace_path)
+  defp load_sidebar_from_observer(_workspace_path, workspace_id) do
+    # The compose file lives in the virtual dir (workspaces/<id>/), not
+    # in the host project dir. ServiceManager writes it there.
+    effective_dir = Path.join([BoomLooper.Workspace.home_dir(), "workspaces", workspace_id])
+    defined = BoomLooper.Workspace.ServiceStatus.list_defined_services(effective_dir)
 
     # Running state from Observer's cached container list
     project_name = BoomLooper.Compose.project_name(workspace_id)
