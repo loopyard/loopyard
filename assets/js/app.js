@@ -124,16 +124,14 @@ Hooks.ChatForm = {
     const textarea = this._textarea
     if (!textarea) return
 
-    // Grab and clear atomically — no window where a second submit
-    // could read the same value.
+    // Grab and clear atomically — the buffer is consumed in one shot.
+    // Any subsequent submit (double-click, rapid Enter) reads "" and no-ops.
     const text = textarea.value.trim()
     textarea.value = ""
     textarea.style.height = "auto"
 
     if (!text) return
-    if (text === this._lastSent) return  // exact dupe guard
 
-    this._lastSent = text
     this.pushEvent("send_message", { message: text })
     textarea.focus()
   }
