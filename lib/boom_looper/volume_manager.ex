@@ -271,6 +271,86 @@ defmodule BoomLooper.VolumeManager do
     end
   end
 
+  @doc """
+  List directory contents in a volume as structured entries.
+  Returns {:ok, list} where each entry is %{type, size, path, name}.
+
+  Options:
+    - :depth — max find depth (default 1)
+  """
+  def tree(volume_name, path \\ ".", opts \\ []) do
+    depth = Keyword.get(opts, :depth, 1)
+    full_path = Path.join("/workspace", path)
+
+    shell_quote = fn s -> "'" <> String.replace(s, "'", "'\"'\"'") <> "'" end
+
+    cmd =
+      "find #{shell_quote.(full_path)} -mindepth 1 -maxdepth #{depth} " <>
+        "-not -path '*/.git*' -not -path '*/node_modules*' " <>
+        "-not -path '*/_build*' -not -path '*/deps/*' " <>
+        "-not -path '*/vendor/bundle*' -not -path '*/.next*' " <>
+        "-not -path '*/dist*' -not -path '*/target*' " <>
+        "-not -path '*/.venv*' -not -path '*/__pycache__*' " <>
+        "-printf '%y\\t%s\\t%P\\n' 2>/dev/null | head -200"
+
+    case find_container_for_volume(volume_name) do
+      {:ok, container} ->
+        case Docker.exec_in(container, cmd, timeout: 15_000) do
+          {:ok, output} -> {:ok, parse_tree(output)}
+          {:error, reason} -> {:error, reason}
+        end
+
+      :none ->
+        {:error, :no_container}
+    end
+  end
+
+  defp find_container_for_volume(volume_name) do
+    case Regex.run(~r/^bl-([a-f0-9]+)-code$/, volume_name) do
+      [_, workspace_id] ->
+        container = "bl-#{workspace_id}-workspace-1"
+
+        if Docker.container_running?(container) do
+          {:ok, container}
+        else
+          :none
+        end
+
+      _ ->
+        :none
+    end
+  end
+
+  defp parse_tree(output) do
+    output
+    |> String.split("\n", trim: true)
+    |> Enum.map(fn line ->
+      case String.split(line, "\t", parts: 3) do
+        [type_char, size, path] ->
+          type = if type_char == "d", do: :dir, else: :file
+
+          %{
+            type: type,
+            size: parse_int(size),
+            path: path,
+            name: Path.basename(path)
+          }
+
+        _ ->
+          nil
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.sort_by(fn e -> {if(e.type == :dir, do: 0, else: 1), e.name} end)
+  end
+
+  defp parse_int(s) do
+    case Integer.parse(s) do
+      {n, _} -> n
+      :error -> 0
+    end
+  end
+
   # --- Volume Naming ---
 
   @doc """
