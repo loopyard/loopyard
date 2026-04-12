@@ -65,4 +65,66 @@ defmodule BoomLooperWeb.Components.Common do
     </div>
     """
   end
+
+  @doc """
+  Detail panel wrapper — the outer flex column that every detail view uses.
+
+      <.detail_panel>
+        <:header>Title</:header>
+        Content here
+      </.detail_panel>
+  """
+  slot :header, required: true
+  slot :inner_block, required: true
+
+  def detail_panel(assigns) do
+    ~H"""
+    <div class="flex-1 flex flex-col min-h-0">
+      <div class="flex-none border-b border-zinc-200 dark:border-zinc-700/80 px-4 md:px-5 h-12 flex items-center gap-3">
+        {render_slot(@header)}
+      </div>
+      {render_slot(@inner_block)}
+    </div>
+    """
+  end
+
+  @doc """
+  Small control button used in detail view headers.
+
+      <.control_btn>Restart</.control_btn>
+      <.control_btn variant={:primary}>+ Debug Agent</.control_btn>
+  """
+  attr :variant, :atom, default: :default, values: [:default, :primary]
+  attr :rest, :global, include: ~w(phx-click phx-value-service_name phx-value-workspace-id phx-value-volume_name data-confirm)
+  slot :inner_block, required: true
+
+  def control_btn(%{variant: :primary} = assigns) do
+    ~H"""
+    <button class="px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-violet-600 dark:text-violet-400 transition-colors" {@rest}>
+      {render_slot(@inner_block)}
+    </button>
+    """
+  end
+
+  def control_btn(assigns) do
+    ~H"""
+    <button class="px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors" {@rest}>
+      {render_slot(@inner_block)}
+    </button>
+    """
+  end
+
+  @doc """
+  Status dot — colored circle for running/stopped/error states.
+
+      <.dot color="bg-emerald-500" />
+      <.dot color="bg-red-500" />
+  """
+  attr :color, :string, required: true
+
+  def dot(assigns) do
+    ~H"""
+    <div class={"w-2 h-2 rounded-full flex-none #{@color}"}></div>
+    """
+  end
 end

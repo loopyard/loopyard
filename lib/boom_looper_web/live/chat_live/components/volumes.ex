@@ -2,6 +2,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Volumes do
   @moduledoc "Volume detail view component."
   use Phoenix.Component
 
+  import BoomLooperWeb.Components.Common, only: [detail_panel: 1, dot: 1]
   import BoomLooperWeb.Live.ChatLive.Components.Formatters, only: [derive_volume_description: 1]
 
   attr :volume_name, :string, required: true
@@ -22,24 +23,22 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Volumes do
         true -> :data
       end
 
-    is_code = vol_type == :code
-
     assigns =
       assigns
       |> assign(:vol, vol)
       |> assign(:description, description)
       |> assign(:vol_type, vol_type)
-      |> assign(:is_code, is_code)
+      |> assign(:is_code, vol_type == :code)
 
     ~H"""
-    <div class="flex-1 flex flex-col min-h-0">
-      <div class="flex-none border-b border-zinc-200 dark:border-zinc-700/80 px-4 md:px-5 h-12 flex items-center gap-3">
-        <div class="w-2 h-2 rounded-full flex-none bg-blue-400"></div>
+    <.detail_panel>
+      <:header>
+        <.dot color="bg-blue-400" />
         <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{@description || @volume_name}</span>
         <span :if={@vol_type} class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400">
           {@vol_type}
         </span>
-      </div>
+      </:header>
       <div class="flex-1 overflow-y-auto p-6 md:p-8">
         <div :if={@vol} class="max-w-lg space-y-4">
           <div class="rounded-lg border border-zinc-200 dark:border-zinc-700/80 divide-y divide-zinc-200 dark:divide-zinc-700/80">
@@ -83,7 +82,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Volumes do
           Volume not found.
         </div>
       </div>
-    </div>
+    </.detail_panel>
     """
   end
 end

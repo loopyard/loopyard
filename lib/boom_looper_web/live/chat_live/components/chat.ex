@@ -2,6 +2,8 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Chat do
   @moduledoc "Chat panel components: agent_view, agent_header, chat_panel, thinking_indicator, context_panel, container_panel."
   use Phoenix.Component
 
+  import BoomLooperWeb.Components.Common, only: [dot: 1]
+
   alias Phoenix.LiveView.JS
   import BoomLooperWeb.Components.Sidebar, only: [status_dot: 1]
   import BoomLooperWeb.Live.ChatLive.Messages, only: [chat_msg: 1, streaming_bubble: 1]
@@ -92,7 +94,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Chat do
     <div class="flex-none border-b border-zinc-200 dark:border-zinc-700/80">
       <div class="flex items-center justify-between px-3 md:px-5 h-12 gap-2">
         <div class="flex items-center gap-2 md:gap-3 min-w-0">
-          <div class={"w-2 h-2 rounded-full flex-none #{status_dot(@agent.status)}"}></div>
+          <.dot color={status_dot(@agent.status)} />
           <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate">{@agent.name}</span>
           <span :if={@agent[:last_activity_at]} class="text-xs text-zinc-400 dark:text-zinc-500 hidden sm:block flex-none">
             {time_ago(@agent[:last_activity_at])}

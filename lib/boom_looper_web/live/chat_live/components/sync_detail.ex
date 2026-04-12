@@ -2,9 +2,8 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.SyncDetail do
   @moduledoc "Sync detail view component for local workspace file sync."
   use Phoenix.Component
 
+  import BoomLooperWeb.Components.Common, only: [detail_panel: 1, control_btn: 1, dot: 1]
   import BoomLooperWeb.Format, only: [shorten_path: 1]
-
-  @button_class "px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors"
 
   attr :sync_status, :map, default: nil
   attr :workspace_id, :string, required: true
@@ -13,22 +12,20 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.SyncDetail do
   def sync_detail(assigns) do
     sync = assigns.sync_status || %{}
     status = Map.get(sync, :status, :stopped)
-    last_error = Map.get(sync, :last_error)
 
     assigns =
       assigns
       |> assign(:sync, sync)
       |> assign(:status, status)
-      |> assign(:last_error, last_error)
-      |> assign(:button_class, @button_class)
+      |> assign(:last_error, Map.get(sync, :last_error))
 
     ~H"""
-    <div class="flex-1 flex flex-col min-h-0">
-      <div class="flex-none border-b border-zinc-200 dark:border-zinc-700/80 px-4 md:px-5 h-12 flex items-center gap-3">
-        <div class={"w-2 h-2 rounded-full flex-none #{dot_class(@status)}"}></div>
+    <.detail_panel>
+      <:header>
+        <.dot color={dot_color(@status)} />
         <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Local Sync</span>
         <span class="text-xs text-zinc-400 dark:text-zinc-500">{status_label(@status)}</span>
-      </div>
+      </:header>
       <div class="flex-1 overflow-y-auto p-6 md:p-8">
         <div class="max-w-lg space-y-4">
           <div class="rounded-lg border border-zinc-200 dark:border-zinc-700/80 divide-y divide-zinc-200 dark:divide-zinc-700/80">
@@ -51,42 +48,21 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.SyncDetail do
           </div>
 
           <div class="flex items-center gap-2">
-            <button
-              phx-click="sync_restart"
-              phx-value-workspace-id={@workspace_id}
-              class={@button_class}
-            >
-              Restart
-            </button>
-            <%= if @status == :paused do %>
-              <button
-                phx-click="sync_resume"
-                phx-value-workspace-id={@workspace_id}
-                class={@button_class}
-              >
-                Resume
-              </button>
-            <% else %>
-              <button
-                phx-click="sync_pause"
-                phx-value-workspace-id={@workspace_id}
-                class={@button_class}
-              >
-                Pause
-              </button>
-            <% end %>
+            <.control_btn phx-click="sync_restart" phx-value-workspace-id={@workspace_id}>Restart</.control_btn>
+            <.control_btn :if={@status == :paused} phx-click="sync_resume" phx-value-workspace-id={@workspace_id}>Resume</.control_btn>
+            <.control_btn :if={@status != :paused} phx-click="sync_pause" phx-value-workspace-id={@workspace_id}>Pause</.control_btn>
           </div>
         </div>
       </div>
-    </div>
+    </.detail_panel>
     """
   end
 
-  defp dot_class(:running), do: "bg-emerald-500"
-  defp dot_class(:paused), do: "bg-amber-400"
-  defp dot_class(:errored), do: "bg-red-500"
-  defp dot_class(:starting), do: "bg-blue-400 animate-pulse"
-  defp dot_class(_), do: "bg-zinc-400"
+  defp dot_color(:running), do: "bg-emerald-500"
+  defp dot_color(:paused), do: "bg-amber-400"
+  defp dot_color(:errored), do: "bg-red-500"
+  defp dot_color(:starting), do: "bg-blue-400 animate-pulse"
+  defp dot_color(_), do: "bg-zinc-400"
 
   defp status_label(:running), do: "running"
   defp status_label(:paused), do: "paused"
@@ -99,5 +75,4 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.SyncDetail do
   defp status_text_class(:paused), do: "text-amber-600 dark:text-amber-400"
   defp status_text_class(:errored), do: "text-red-600 dark:text-red-400"
   defp status_text_class(_), do: "text-zinc-600 dark:text-zinc-400"
-
 end

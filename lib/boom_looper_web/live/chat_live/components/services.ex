@@ -2,6 +2,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Services do
   @moduledoc "Service-related views: service_log_view, console_view, all_services_view."
   use Phoenix.Component
 
+  import BoomLooperWeb.Components.Common, only: [detail_panel: 1, control_btn: 1, dot: 1]
   import BoomLooperWeb.Components.LogViewer
   import BoomLooperWeb.Components.Sidebar, only: [service_dot: 1, service_detail: 1, first_host_port: 1]
 
@@ -11,9 +12,9 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Services do
     assigns = assign(assigns, svc: svc, first_port: first_port)
 
     ~H"""
-    <div class="flex-1 flex flex-col min-h-0">
-      <div class="flex-none border-b border-zinc-200 dark:border-zinc-700/80 px-4 md:px-5 h-12 flex items-center gap-3">
-        <div :if={@svc} class={"w-2 h-2 rounded-full flex-none #{service_dot(@svc)}"}></div>
+    <.detail_panel>
+      <:header>
+        <.dot :if={@svc} color={service_dot(@svc)} />
         <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{@service_name}</span>
         <span :if={@svc} class="text-xs text-zinc-400 dark:text-zinc-500 font-mono">{service_detail(@svc)}</span>
         <a :if={@first_port} href={"http://#{@host}:#{@first_port}"} target="_blank"
@@ -21,26 +22,20 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Services do
           {@host}:{@first_port}
         </a>
         <div class="ml-auto flex items-center gap-2">
-          <button phx-click="restart_service" phx-value-service_name={@service_name}
-            class="px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors">
-            Restart
-          </button>
+          <.control_btn phx-click="restart_service" phx-value-service_name={@service_name}>Restart</.control_btn>
           <.link navigate={"#{@base_path}/services/#{@service_name}/console"}
-            class="px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors">
+            class="inline-block px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors">
             Console
           </.link>
           <a :if={@first_port} href={"http://#{@host}:#{@first_port}"} target="_blank" rel="noopener"
             class="px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors">
             Open
           </a>
-          <button phx-click="spawn_service_agent" phx-value-service_name={@service_name}
-            class="px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-violet-600 dark:text-violet-400 transition-colors">
-            + Debug Agent
-          </button>
+          <.control_btn variant={:primary} phx-click="spawn_service_agent" phx-value-service_name={@service_name}>+ Debug Agent</.control_btn>
         </div>
-      </div>
+      </:header>
       <.log_panel id="service-logs" content={@logs} />
-    </div>
+    </.detail_panel>
     """
   end
 
@@ -52,8 +47,8 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Services do
     assigns = assign(assigns, :ssh_cmd, ssh_cmd)
 
     ~H"""
-    <div class="flex-1 flex flex-col min-h-0">
-      <div class="flex-none border-b border-zinc-200 dark:border-zinc-700/80 px-4 md:px-5 h-12 flex items-center gap-3">
+    <.detail_panel>
+      <:header>
         <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{@service_name}</span>
         <span class="text-xs text-zinc-400 dark:text-zinc-500">console</span>
         <div :if={@ssh_cmd} class="ml-auto">
@@ -69,7 +64,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Services do
             SSH
           </button>
         </div>
-      </div>
+      </:header>
       <div
         :if={@container}
         id={"terminal-#{@container}"}
@@ -81,18 +76,18 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Services do
       <div :if={!@container} class="flex-1 flex items-center justify-center">
         <p class="text-sm text-zinc-400">Service not running</p>
       </div>
-    </div>
+    </.detail_panel>
     """
   end
 
   def all_services_view(assigns) do
     ~H"""
-    <div class="flex-1 flex flex-col min-h-0">
-      <div class="flex-none border-b border-zinc-200 dark:border-zinc-700/80 px-4 md:px-5 h-12 flex items-center">
+    <.detail_panel>
+      <:header>
         <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">All Services</span>
-      </div>
+      </:header>
       <.log_multi_service logs={@all_service_logs} />
-    </div>
+    </.detail_panel>
     """
   end
 end
