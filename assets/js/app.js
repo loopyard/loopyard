@@ -89,51 +89,27 @@ Hooks.TailScroll = {
 // Clears input after submit, focuses on agent select
 Hooks.ChatForm = {
   mounted() {
-    this._lastSent = null  // tracks the last sent text to prevent dupes
-    const textarea = this.el.querySelector("#chat-input")
-    this._textarea = textarea
+    const ta = this.el.querySelector("#chat-input")
 
-    if (textarea) {
-      // Enter submits, Shift+Enter adds newline
-      textarea.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && !e.shiftKey) {
-          e.preventDefault()
-          this._submit()
-        }
-      })
-
-      // Auto-resize textarea
-      textarea.addEventListener("input", () => {
-        textarea.style.height = "auto"
-        textarea.style.height = Math.min(textarea.scrollHeight, 200) + "px"
-      })
+    const submit = () => {
+      const text = ta.value.trim()
+      ta.value = ""
+      ta.style.height = "auto"
+      if (text) this.pushEvent("send_message", { message: text })
+      ta.focus()
     }
 
-    // Intercept native form submit (Send button click)
-    this.el.addEventListener("submit", (e) => {
-      e.preventDefault()
-      this._submit()
+    ta.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit() }
     })
 
-    this.handleEvent("focus_input", () => {
-      if (this._textarea) this._textarea.focus()
+    ta.addEventListener("input", () => {
+      ta.style.height = "auto"
+      ta.style.height = Math.min(ta.scrollHeight, 200) + "px"
     })
-  },
 
-  _submit() {
-    const textarea = this._textarea
-    if (!textarea) return
-
-    // Grab and clear atomically — the buffer is consumed in one shot.
-    // Any subsequent submit (double-click, rapid Enter) reads "" and no-ops.
-    const text = textarea.value.trim()
-    textarea.value = ""
-    textarea.style.height = "auto"
-
-    if (!text) return
-
-    this.pushEvent("send_message", { message: text })
-    textarea.focus()
+    this.el.addEventListener("submit", (e) => { e.preventDefault(); submit() })
+    this.handleEvent("focus_input", () => ta.focus())
   }
 }
 
