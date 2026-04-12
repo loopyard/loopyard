@@ -6,9 +6,10 @@ defmodule BoomLooper.EvalRunnerTest do
   setup do
     BoomLooper.StateKeeper.ensure_tables!()
 
-    # Clean up projects from previous tests
-    BoomLooper.ProjectRegistry.list_projects()
-    |> Enum.each(&BoomLooper.ProjectRegistry.remove_project(&1.id))
+    # Wipe ETS directly — faster than remove_project which does synchronous
+    # Docker cleanup and can timeout.
+    :ets.delete_all_objects(:project_registry)
+    :ets.delete_all_objects(:workspace_registry)
 
     # Clean up eval run output (not the eval configs)
     for dir <- Path.wildcard("evals/*/runs") do

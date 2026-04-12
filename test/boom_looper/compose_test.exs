@@ -71,6 +71,87 @@ defmodule BoomLooper.ComposeTest do
     end
   end
 
+  describe "process_agent_compose/2 structural validation" do
+    test "output is valid JSON and has required top-level keys" do
+      compose = """
+      services:
+        workspace:
+          build: .
+          volumes:
+            - ${CODE_VOLUME}:/workspace
+          ports:
+            - "3000"
+        postgres:
+          image: postgres:16
+          volumes:
+            - pgdata:/var/lib/postgresql/data
+      volumes:
+        pgdata:
+      """
+
+      {:ok, result} = Compose.process_agent_compose(compose, "test1")
+      assert {:ok, config} = Jason.decode(result)
+
+      # Top-level structure
+      assert Map.has_key?(config, "services")
+      assert Map.has_key?(config, "volumes")
+
+      # Code volume declared as external with canonical name
+      assert config["volumes"]["bl-test1-code"]["external"] == true
+
+      # Service volumes reference the code volume correctly
+      ws_volumes = config["services"]["workspace"]["volumes"]
+      assert Enum.any?(ws_volumes, &String.starts_with?(&1, "bl-test1-code:"))
+
+      # Host ports are stripped
+      assert config["services"]["workspace"]["ports"] == ["3000"]
+    end
+
+    test "handles agent-written literal volume names (not ${CODE_VOLUME})" do
+      # Agents sometimes write the volume name literally instead of using
+      # the placeholder. process_agent_compose should correct the volume
+      # declaration regardless.
+      compose = %{
+        "services" => %{
+          "workspace" => %{
+            "volumes" => ["my-code-vol:/workspace"]
+          }
+        },
+        "volumes" => %{
+          "my-code-vol" => %{"external" => true}
+        }
+      }
+
+      {:ok, result} = Compose.process_agent_compose(Jason.encode!(compose), "xyz1")
+      config = Jason.decode!(result)
+
+      # The canonical code volume MUST be declared
+      assert config["volumes"]["bl-xyz1-code"]["external"] == true
+    end
+
+    test "preserves non-code service volumes" do
+      compose = %{
+        "services" => %{
+          "postgres" => %{
+            "image" => "postgres:16",
+            "volumes" => ["pgdata:/var/lib/postgresql/data"]
+          }
+        },
+        "volumes" => %{
+          "pgdata" => nil
+        }
+      }
+
+      {:ok, result} = Compose.process_agent_compose(Jason.encode!(compose), "pres")
+      config = Jason.decode!(result)
+
+      # pgdata should still be there
+      assert Map.has_key?(config["volumes"], "pgdata")
+      # postgres service volumes unchanged
+      assert "pgdata:/var/lib/postgresql/data" in config["services"]["postgres"]["volumes"]
+    end
+  end
+
   describe "collect_port_output/4" do
     test "succeeds with callback on zero exit" do
       me = self()

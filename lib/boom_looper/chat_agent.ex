@@ -702,7 +702,9 @@ defmodule BoomLooper.ChatAgent do
   # bug) creates a hot restart loop that hammers the Claude API until
   # rate-limited.
   @max_consecutive_crashes 5
-  @crash_backoff_base_ms 2_000
+  # Configurable via Application env for tests:
+  #   Application.put_env(:boom_looper, :crash_backoff_base_ms, 0)
+  @default_crash_backoff_base_ms 2_000
 
   @impl true
   def handle_info({:EXIT, _pid, reason}, %{status: :thinking} = state) when reason != :normal do
@@ -720,7 +722,8 @@ defmodule BoomLooper.ChatAgent do
       {:noreply, state}
     else
       # Exponential backoff: 2s, 4s, 8s, 16s, 32s
-      backoff_ms = @crash_backoff_base_ms * :math.pow(2, consecutive - 1) |> trunc()
+      base = Application.get_env(:boom_looper, :crash_backoff_base_ms, @default_crash_backoff_base_ms)
+      backoff_ms = base * :math.pow(2, consecutive - 1) |> trunc()
       BoomLooper.EventLog.info("agent:#{state.name}", "Backing off #{backoff_ms}ms before restart (crash ##{consecutive})")
       Process.sleep(backoff_ms)
 

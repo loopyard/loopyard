@@ -7,7 +7,10 @@ defmodule BoomLooperWeb.ProjectLiveTest do
 
   setup do
     BoomLooper.StateKeeper.ensure_tables!()
-    ProjectRegistry.list_projects() |> Enum.each(&ProjectRegistry.remove_project(&1.id))
+    # Wipe ETS directly — much faster than calling remove_project which
+    # does synchronous Docker cleanup and can timeout in tests.
+    :ets.delete_all_objects(:project_registry)
+    :ets.delete_all_objects(:workspace_registry)
 
     path = File.cwd!()
     {:ok, project, workspace} = ProjectRegistry.add(path)
@@ -54,6 +57,7 @@ defmodule BoomLooperWeb.ProjectLiveTest do
       assert ProjectRegistry.get_project(project.id) != nil
     end
 
+    @tag timeout: 5_000
     test "cancel returns to project view", %{conn: conn, project: project} do
       {:ok, view, _html} = live(conn, "/projects/#{project.id}")
       view |> element("button", "Remove project") |> render_click()
@@ -64,6 +68,7 @@ defmodule BoomLooperWeb.ProjectLiveTest do
       assert ProjectRegistry.get_project(project.id) != nil
     end
 
+    @tag :docker
     test "confirming removes project and redirects home", %{conn: conn, project: project} do
       {:ok, view, _html} = live(conn, "/projects/#{project.id}")
       view |> element("button", "Remove project") |> render_click()

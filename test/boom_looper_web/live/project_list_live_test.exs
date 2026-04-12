@@ -5,7 +5,8 @@ defmodule BoomLooperWeb.ProjectListLiveTest do
 
   setup do
     BoomLooper.StateKeeper.ensure_tables!()
-    BoomLooper.ProjectRegistry.list_projects() |> Enum.each(&BoomLooper.ProjectRegistry.remove_project(&1.id))
+    :ets.delete_all_objects(:project_registry)
+    :ets.delete_all_objects(:workspace_registry)
     :ok
   end
 
