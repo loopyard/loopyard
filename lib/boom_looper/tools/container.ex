@@ -1225,15 +1225,25 @@ defmodule BoomLooper.Tools.Container do
       {:error, _} -> :ok
     end
 
-    # Sync docker-compose.yml with variable substitution
+    # Sync docker-compose.yml with full processing: volume name correction,
+    # external volume declaration, host port stripping. The agent may write
+    # a literal volume name (e.g. "code-848d") instead of ${CODE_VOLUME},
+    # so we must use the YAML-aware process_agent_compose — a simple
+    # string replace isn't enough.
+    ws_id = Path.basename(project_dir)
+
     case BoomLooper.VolumeManager.read_file(volume_name, ".boomlooper/workspace/docker-compose.yml") do
       {:ok, content} ->
-        # Substitute variables that agents use in their compose files
-        # ${CODE_VOLUME} -> actual volume name
-        # /workspace context -> host path (for Dockerfile access)
-        processed = content
-          |> String.replace("${CODE_VOLUME}", volume_name)
-          |> String.replace(~r/context:\s*\/workspace/, "context: #{host_dir}")
+        processed =
+          case BoomLooper.Compose.process_agent_compose(content, ws_id) do
+            {:ok, json} -> json
+            {:error, _} ->
+              # Fallback: at least do the string replacement
+              content |> String.replace("${CODE_VOLUME}", volume_name)
+          end
+
+        # Also fix Dockerfile build context from /workspace to host path
+        processed = String.replace(processed, ~r/context["\s:]*\/workspace/, "context: #{host_dir}")
         File.write!(Path.join(host_dir, "docker-compose.yml"), processed)
       {:error, _} ->
         :ok
