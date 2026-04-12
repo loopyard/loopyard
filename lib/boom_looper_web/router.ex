@@ -27,6 +27,8 @@ defmodule BoomLooperWeb.Router do
     live "/projects/:project_id/workspaces/:workspace_id/services", ChatLive, :services
     live "/projects/:project_id/workspaces/:workspace_id/services/:service_name", ChatLive, :service
     live "/projects/:project_id/workspaces/:workspace_id/services/:service_name/console", ChatLive, :console
+    live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name", ChatLive, :volume
+    live "/projects/:project_id/workspaces/:workspace_id/sync", ChatLive, :sync
 
     live "/system", SystemLive, :index
     live "/system/workspaces", SystemWorkspacesLive, :index

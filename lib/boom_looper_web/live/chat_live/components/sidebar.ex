@@ -5,7 +5,6 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Sidebar do
   import BoomLooperWeb.Components.Sidebar, only: [
     status_dot: 1, service_dot: 1, service_detail: 1, first_host_port: 1, thinking_word: 1
   ]
-  import BoomLooperWeb.Components.Source.Local.SyncCard, only: [sync_card: 1]
   import BoomLooperWeb.Live.ChatLive.Components.Formatters, only: [
     service_status_text: 1, exit_reason: 1, derive_volume_description: 1
   ]
@@ -19,6 +18,28 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Sidebar do
   end
   defp sync_waiting?(%{status: s}) when s in [:starting, :unknown], do: true
   defp sync_waiting?(_), do: false
+
+  defp sync_dot(sync) do
+    cond do
+      sync_waiting?(sync) -> "bg-zinc-400 animate-pulse"
+      match?(%{status: :running}, sync) -> "bg-emerald-500"
+      match?(%{status: :paused}, sync) -> "bg-amber-400"
+      match?(%{status: :errored}, sync) -> "bg-red-500"
+      match?(%{status: :starting}, sync) -> "bg-blue-400 animate-pulse"
+      true -> "bg-zinc-400"
+    end
+  end
+
+  defp sync_label(sync) do
+    cond do
+      sync_waiting?(sync) -> "waiting"
+      match?(%{status: :running}, sync) -> "running"
+      match?(%{status: :paused}, sync) -> "paused"
+      match?(%{status: :errored}, sync) -> "error"
+      match?(%{status: :starting}, sync) -> "starting"
+      true -> "stopped"
+    end
+  end
 
   # --- Sidebar ---
 
@@ -36,7 +57,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Sidebar do
     <aside class={[
       "flex-none border-r border-zinc-200 dark:border-zinc-700/80 flex flex-col bg-zinc-50 dark:bg-zinc-900/50",
       "w-full md:w-80",
-      if(@live_action in [:chat, :container, :service, :console, :services] || @selected_id || @selected_service,
+      if(@live_action in [:chat, :container, :service, :console, :services, :volume, :sync] || @selected_id || @selected_service,
         do: "hidden md:flex",
         else: "flex")
     ]}>
@@ -84,7 +105,11 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Sidebar do
         <%!-- Local sync — below volumes since it's about volume ↔ host file sync --%>
         <div :if={@is_local_source? && sync_relevant?(@sync_status)} class="px-3 pt-3 pb-1">
           <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-semibold mb-1.5">Local sync</div>
-          <.sync_card workspace_id={@workspace_id} sync={@sync_status || %{}} waiting={sync_waiting?(@sync_status)} />
+          <.link navigate={"#{@base_path}/sync"} class="flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors hover:bg-white/60 dark:hover:bg-zinc-800/40">
+            <div class={"w-1.5 h-1.5 rounded-full flex-none #{sync_dot(@sync_status)}"}></div>
+            <span class="truncate text-zinc-600 dark:text-zinc-400">Sync</span>
+            <span class="text-[10px] text-zinc-400 dark:text-zinc-500 ml-auto flex-none">{sync_label(@sync_status)}</span>
+          </.link>
         </div>
       </div>
     </aside>
@@ -149,7 +174,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Sidebar do
     |> assign(:service, service)
 
     ~H"""
-    <div class="flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors hover:bg-white/60 dark:hover:bg-zinc-800/40">
+    <.link navigate={"#{@base_path}/volumes/#{@vol.name}"} class="flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors hover:bg-white/60 dark:hover:bg-zinc-800/40">
       <div class="flex items-center gap-2 min-w-0 flex-1">
         <div class="w-1.5 h-1.5 rounded-full flex-none bg-blue-400"></div>
         <div class="min-w-0 flex-1">
@@ -158,7 +183,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Sidebar do
         </div>
       </div>
       <span :if={@vol[:size]} class="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono flex-none">{@vol.size}</span>
-    </div>
+    </.link>
     """
   end
 

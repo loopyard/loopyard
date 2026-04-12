@@ -20,13 +20,21 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Services do
           class="text-xs font-mono text-violet-500 hover:text-violet-400 transition-colors">
           {@host}:{@first_port}
         </a>
-        <div class="ml-auto flex items-center gap-3">
+        <div class="ml-auto flex items-center gap-2">
+          <button phx-click="restart_service" phx-value-service_name={@service_name}
+            class="px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors">
+            Restart
+          </button>
           <.link navigate={"#{@base_path}/services/#{@service_name}/console"}
-            class="text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors">
+            class="px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors">
             Console
           </.link>
+          <a :if={@first_port} href={"http://#{@host}:#{@first_port}"} target="_blank" rel="noopener"
+            class="px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors">
+            Open
+          </a>
           <button phx-click="spawn_service_agent" phx-value-service_name={@service_name}
-            class="text-xs font-medium text-violet-600 dark:text-violet-400 hover:text-violet-500 transition-colors">
+            class="px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-violet-600 dark:text-violet-400 transition-colors">
             + Debug Agent
           </button>
         </div>

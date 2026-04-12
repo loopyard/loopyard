@@ -90,6 +90,7 @@ defmodule BoomLooperWeb.ChatLive do
      |> assign(:boot_log, [])
      |> assign(:editing_name, false)
      |> assign(:selected_service, nil)
+     |> assign(:selected_volume, nil)
      |> assign(:service_logs, "")
      |> assign(:all_service_logs, [])
      |> assign(:stream_buffer, StreamBuffer.new())
@@ -222,6 +223,23 @@ defmodule BoomLooperWeb.ChatLive do
     else
       {:noreply, socket}
     end
+  end
+
+  def handle_params(%{"volume_name" => name}, _uri, %{assigns: %{live_action: :volume}} = socket) do
+    {:noreply,
+     socket
+     |> assign(:selected_id, nil)
+     |> assign(:selected_agent, nil)
+     |> assign(:selected_service, nil)
+     |> assign(:selected_volume, name)}
+  end
+
+  def handle_params(_params, _uri, %{assigns: %{live_action: :sync}} = socket) do
+    {:noreply,
+     socket
+     |> assign(:selected_id, nil)
+     |> assign(:selected_agent, nil)
+     |> assign(:selected_service, nil)}
   end
 
   def handle_params(_params, _uri, socket), do: {:noreply, assign(socket, :tab, :chat)}
@@ -413,6 +431,19 @@ defmodule BoomLooperWeb.ChatLive do
   def handle_event("sync_resume", %{"workspace-id" => ws_id}, socket) do
     BoomLooper.Source.Local.SyncMonitor.resume(ws_id)
     {:noreply, socket}
+  end
+
+  def handle_event("restart_service", %{"service_name" => name}, socket) do
+    ws_id = socket.assigns.workspace_entry.id
+    effective_dir = Path.join([BoomLooper.Workspace.home_dir(), "workspaces", ws_id])
+    BoomLooper.Compose.compose(effective_dir, ws_id, ["restart", name], timeout: 30_000)
+    {:noreply, socket}
+  end
+
+  def handle_event("delete_volume", %{"volume_name" => name}, socket) do
+    BoomLooper.Docker.docker(["volume", "rm", name])
+    BoomLooper.Docker.Observer.poll_now()
+    {:noreply, push_navigate(socket, to: workspace_path(socket))}
   end
 
   def handle_event("refresh_container", _params, socket) do
@@ -861,9 +892,11 @@ defmodule BoomLooperWeb.ChatLive do
           <.service_log_view :if={@live_action == :service} service_name={@selected_service} service_statuses={@service_statuses} logs={@service_logs} base_path={@base_path} host={@host} />
           <.console_view :if={@live_action == :console} service_name={@selected_service} container={@console_container} />
           <.all_services_view :if={@live_action == :services} all_service_logs={@all_service_logs} />
-          <.booting_screen :if={@live_action not in [:new, :service, :services, :console] && @booting_agent_id && !@selected_agent} agent_id={@booting_agent_id} status={@boot_status} boot_log={@boot_log} />
-          <.empty_state :if={@live_action not in [:new, :service, :services, :console] && !@booting_agent_id && !@selected_agent} />
-          <.agent_view :if={@live_action not in [:new, :service, :services, :console] && @selected_agent} {assigns} />
+          <.volume_detail :if={@live_action == :volume} volume_name={@selected_volume} volumes={@volumes} workspace_id={@workspace.id} base_path={@base_path} />
+          <.sync_detail :if={@live_action == :sync} sync_status={@sync_status} workspace_id={@workspace.id} workspace={@workspace} />
+          <.booting_screen :if={@live_action not in [:new, :service, :services, :console, :volume, :sync] && @booting_agent_id && !@selected_agent} agent_id={@booting_agent_id} status={@boot_status} boot_log={@boot_log} />
+          <.empty_state :if={@live_action not in [:new, :service, :services, :console, :volume, :sync] && !@booting_agent_id && !@selected_agent} />
+          <.agent_view :if={@live_action not in [:new, :service, :services, :console, :volume, :sync] && @selected_agent} {assigns} />
         </main>
       </div>
     </div>
