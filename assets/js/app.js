@@ -89,6 +89,7 @@ Hooks.TailScroll = {
 // Clears input after submit, focuses on agent select
 Hooks.ChatForm = {
   mounted() {
+    this._submitting = false
     const textarea = this.el.querySelector("#chat-input")
 
     // Enter submits, Shift+Enter adds newline
@@ -96,7 +97,7 @@ Hooks.ChatForm = {
       textarea.addEventListener("keydown", (e) => {
         if (e.key === "Enter" && !e.shiftKey) {
           e.preventDefault()
-          this.el.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }))
+          this._submit(textarea)
         }
       })
 
@@ -107,14 +108,9 @@ Hooks.ChatForm = {
       })
     }
 
-    this.el.addEventListener("submit", () => {
-      if (textarea) {
-        setTimeout(() => {
-          textarea.value = ""
-          textarea.style.height = "auto"
-          textarea.focus()
-        }, 10)
-      }
+    this.el.addEventListener("submit", (e) => {
+      e.preventDefault()
+      if (textarea) this._submit(textarea)
     })
 
     this.handleEvent("focus_input", () => {
@@ -123,6 +119,22 @@ Hooks.ChatForm = {
         if (input) input.focus()
       }, 100)
     })
+  },
+
+  _submit(textarea) {
+    if (this._submitting) return
+    const text = textarea.value.trim()
+    if (!text) return
+
+    this._submitting = true
+    this.pushEvent("send_message", { message: text })
+
+    textarea.value = ""
+    textarea.style.height = "auto"
+    textarea.focus()
+
+    // Re-enable after a short debounce to prevent double-clicks
+    setTimeout(() => { this._submitting = false }, 300)
   }
 }
 
