@@ -56,11 +56,10 @@ defmodule BoomLooper.AgentBoot do
       {:ok, _pid} ->
         Logger.info("[AgentBoot] #{id} Claude session started successfully")
 
-        # Send initial message
-        msg = initial_message || default_message(ws_config, service_name)
-
-        if msg do
-          ChatAgent.send_message(id, msg)
+        # Send initial message (skip if explicitly :none — blank agents wait for user input)
+        unless initial_message == :none do
+          msg = initial_message || default_message(ws_config, service_name)
+          if msg, do: ChatAgent.send_message(id, msg)
         end
 
         :ok

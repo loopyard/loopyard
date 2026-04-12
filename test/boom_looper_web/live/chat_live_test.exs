@@ -192,20 +192,19 @@ defmodule BoomLooperWeb.ChatLiveTest do
   end
 
   describe "new agent screen" do
-    test "navigating to /new shows agent picker when config exists", %{conn: conn, workspace: ws, setup_agent_id: _setup_agent_id} do
-      # Config exists and agents exist → shows the new agent picker form
+    test "navigating to /new shows agent type picker", %{conn: conn, workspace: ws, setup_agent_id: _setup_agent_id} do
       {:ok, _view, html} = live(conn, ws_new_path(ws))
       assert html =~ "New Agent"
-      assert html =~ "Launch Agent"
+      assert html =~ "Agent"
+      assert html =~ "Setup Agent"
     end
 
-    test "launching an agent redirects to chat", %{conn: conn, workspace: ws, setup_agent_id: _setup_agent_id} do
-      # Submit the spawn form → redirects to the new agent's chat
+    test "launching a blank agent redirects to chat", %{conn: conn, workspace: ws, setup_agent_id: _setup_agent_id} do
       {:ok, view, _html} = live(conn, ws_new_path(ws))
 
       view
-      |> element("form[phx-submit='spawn_agent']")
-      |> render_submit(%{})
+      |> element("button[phx-click='spawn_agent'][phx-value-type='blank']")
+      |> render_click()
 
       {path, _flash} = assert_redirect(view)
       assert path =~ "/projects/#{ws.project_id}/workspaces/#{ws.id}/agents/"
@@ -216,8 +215,8 @@ defmodule BoomLooperWeb.ChatLiveTest do
       {:ok, view, _html} = live(conn, ws_new_path(ws))
 
       view
-      |> element("form[phx-submit='spawn_agent']")
-      |> render_submit(%{})
+      |> element("button[phx-click='spawn_agent'][phx-value-type='blank']")
+      |> render_click()
 
       {path, _flash} = assert_redirect(view)
       assert path =~ "/projects/#{ws.project_id}/workspaces/#{ws.id}/agents/"

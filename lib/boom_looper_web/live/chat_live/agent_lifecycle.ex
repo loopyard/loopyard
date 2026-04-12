@@ -56,7 +56,8 @@ defmodule BoomLooperWeb.Live.ChatLive.AgentLifecycle do
     boot_opts = if service_name, do: [service_name: service_name], else: []
 
     ChatAgent.register_booting(id, name, working_dir, boot_opts)
-    Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn -> BoomLooper.AgentBoot.boot(id, agent_opts, service_name: service_name) end)
+    boot_opts = if service_name, do: [service_name: service_name], else: [initial_message: :none]
+    Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn -> BoomLooper.AgentBoot.boot(id, agent_opts, boot_opts) end)
 
     {:noreply, push_navigate(socket, to: "#{socket.assigns.base_path}/agents/#{id}")}
   end

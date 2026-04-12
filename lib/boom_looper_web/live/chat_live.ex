@@ -323,6 +323,10 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   @impl true
+  def handle_event("spawn_agent", %{"type" => "setup"}, socket) do
+    AgentLifecycle.spawn_setup_agent(socket)
+  end
+
   def handle_event("spawn_agent", _params, socket) do
     AgentLifecycle.do_spawn_agent(socket)
   end
