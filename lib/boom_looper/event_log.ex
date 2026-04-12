@@ -3,13 +3,31 @@ defmodule BoomLooper.EventLog do
   Append-only event log for system activity. Captures lifecycle events
   (agent crashes, container deaths, session restarts, errors) so they
   can be dumped via /debug for troubleshooting.
+
+  Events are written directly to ETS (always available regardless of
+  Logger level) and also emitted to Logger for console output.
   """
+  require Logger
 
   @ets_table :event_log
   @max_events 200
 
-  @doc "Log an event. Source is like 'agent:Setup', 'service:dev', 'docker', 'system'."
-  def log(level, source, message) do
+  def info(source, message) do
+    write(:info, source, message)
+    Logger.info(message, boom_looper: source)
+  end
+
+  def warning(source, message) do
+    write(:warning, source, message)
+    Logger.warning(message, boom_looper: source)
+  end
+
+  def error(source, message) do
+    write(:error, source, message)
+    Logger.error(message, boom_looper: source)
+  end
+
+  defp write(level, source, message) do
     key = System.monotonic_time(:nanosecond)
     event = %{
       timestamp: DateTime.utc_now(),
@@ -19,12 +37,7 @@ defmodule BoomLooper.EventLog do
     }
     :ets.insert(@ets_table, {key, event})
     trim()
-    :ok
   end
-
-  def info(source, message), do: log(:info, source, message)
-  def warning(source, message), do: log(:warning, source, message)
-  def error(source, message), do: log(:error, source, message)
 
   @doc "Get last N events, newest first."
   def recent(n \\ 50) do

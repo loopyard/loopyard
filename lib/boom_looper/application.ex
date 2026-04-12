@@ -45,6 +45,9 @@ defmodule BoomLooper.Application do
     # mount tests catch this locally; this is the prod safety net.
     BoomLooperWeb.SlowMountLogger.attach()
 
+    # EventLog handler captures boom_looper-tagged Logger events into ETS
+    # EventLog now writes directly to ETS AND emits to Logger
+
     # Warn loudly if mutagen isn't installed — Local workspaces need it for
     # host ↔ volume sync. GitHub workspaces still work without it.
     unless BoomLooper.Source.Local.Mutagen.installed?() do

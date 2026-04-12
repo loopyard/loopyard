@@ -4,8 +4,6 @@ defmodule BoomLooper.EventLogTest do
   alias BoomLooper.EventLog
 
   setup do
-    # Clear events between tests. Tables are pre-created by StateKeeper
-    # when the application starts.
     :ets.delete_all_objects(:event_log)
     :ok
   end
@@ -27,7 +25,6 @@ defmodule BoomLooper.EventLogTest do
 
       events = EventLog.recent()
       assert length(events) == 3
-      # recent/1 returns newest first
       assert Enum.map(events, & &1.message) == ["third", "second", "first"]
     end
 
@@ -58,7 +55,6 @@ defmodule BoomLooper.EventLogTest do
       events = EventLog.recent(300)
       assert length(events) == 200
 
-      # Oldest events should be trimmed — newest should remain
       messages = Enum.map(events, & &1.message)
       assert "msg 210" in messages
       refute "msg 1" in messages
@@ -75,4 +71,16 @@ defmodule BoomLooper.EventLogTest do
     end
   end
 
+  describe "Logger integration" do
+    @tag capture_log: true
+    test "warning and error events also appear in Logger output" do
+      import ExUnit.CaptureLog
+
+      log = capture_log(fn ->
+        EventLog.warning("test-logger", "visible warning")
+      end)
+
+      assert log =~ "visible warning"
+    end
+  end
 end
