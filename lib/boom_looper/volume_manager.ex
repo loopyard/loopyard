@@ -14,7 +14,6 @@ defmodule BoomLooper.VolumeManager do
 
   alias BoomLooper.Docker
 
-  @clone_timeout 300_000  # 5 minutes
 
   # Delegate file I/O to VolumeIO for backwards compatibility
   defdelegate read_file(volume_name, path), to: BoomLooper.VolumeIO
@@ -236,38 +235,6 @@ defmodule BoomLooper.VolumeManager do
   @doc """
   Clone a git repository into a running workspace container.
   Faster than clone_into_volume because it uses the already-running container.
-
-  Options:
-    - branch: branch to checkout (default: main)
-    - token: GitHub token for auth (optional)
-  """
-  def clone_in_container(workspace_id, git_url, opts \\ []) do
-    branch = Keyword.get(opts, :branch, "main")
-    token = Keyword.get(opts, :token)
-    container = "bl-#{workspace_id}-workspace-1"
-
-    auth_url = if token, do: BoomLooper.VolumeCloner.inject_token(git_url, token), else: git_url
-
-    clone_cmd = "git clone --branch #{branch} --depth 1 '#{auth_url}' /workspace"
-
-    case Docker.docker(["exec", container, "sh", "-c", clone_cmd], timeout: @clone_timeout) do
-      {:ok, output} -> {:ok, output}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  @doc """
-  Pull latest changes in a volume (git pull).
-  Requires workspace container to be running.
-  """
-  def pull_in_container(workspace_id) do
-    container = "bl-#{workspace_id}-workspace-1"
-
-    case Docker.docker(["exec", container, "git", "-C", "/workspace", "pull"]) do
-      {:ok, output} -> {:ok, output}
-      {:error, reason} -> {:error, reason}
-    end
-  end
 
   @doc """
   Check if a volume has code (not empty).

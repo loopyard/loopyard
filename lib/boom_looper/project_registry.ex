@@ -426,9 +426,11 @@ defmodule BoomLooper.ProjectRegistry do
           # Also try the old naming convention in case any legacy volumes exist
           BoomLooper.VolumeManager.delete_volume("code-#{ws_id}")
         rescue
-          _ -> :ok
+          e ->
+            Logger.warning("[ProjectRegistry] Cleanup failed for workspace #{ws.id}: #{Exception.message(e)}")
         catch
-          _, _ -> :ok
+          kind, reason ->
+            Logger.warning("[ProjectRegistry] Cleanup caught #{kind} for workspace #{ws.id}: #{inspect(reason)}")
         end
       end)
     end

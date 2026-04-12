@@ -42,8 +42,6 @@ defmodule BoomLooperWeb.LiveViewAsyncContractTest do
     {:VolumeManager, :copy_to_volume},
     {:VolumeManager, :glob},
     {:VolumeManager, :clone_into_volume},
-    {:VolumeManager, :clone_in_container},
-    {:VolumeManager, :pull_in_container},
     {:VolumeManager, :prune_orphaned_volumes},
     {:VolumeManager, :delete_volume},
     {:VolumeManager, :create_volume},
