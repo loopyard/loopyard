@@ -241,6 +241,13 @@ defmodule BoomLooperWeb.ChatLive do
       !result.has_compose ->
         {:noreply, push_navigate(socket, to: "#{workspace_path(socket)}/new")}
 
+      result.has_config ->
+        # Compose file AND workspace.json exist but agents list is empty.
+        # This means the workspace was set up before — agents just haven't
+        # been restored from the ETF log yet (server restart). Do NOT
+        # auto-spawn a new agent. Just stay on index and wait for restore.
+        {:noreply, socket}
+
       true ->
         AgentLifecycle.do_spawn_agent(socket)
     end
@@ -255,11 +262,11 @@ defmodule BoomLooperWeb.ChatLive do
         {:noreply, socket}
 
       not result.has_config ->
-        # No workspace.json AND no agents → auto-launch Setup agent.
+        # No workspace.json AND no agents → truly fresh workspace, auto-launch Setup.
         AgentLifecycle.spawn_setup_agent(socket)
 
       true ->
-        # Config exists, just show the picker.
+        # Config exists — workspace was set up before. Don't auto-spawn.
         {:noreply, socket}
     end
   end
