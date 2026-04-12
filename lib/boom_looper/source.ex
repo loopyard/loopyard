@@ -1,0 +1,49 @@
+defmodule BoomLooper.Source do
+  @moduledoc """
+  Behaviour that defines how a project's code is materialized and kept in
+  sync with the host (or a remote). Each implementation — `Source.Local`,
+  `Source.GitHub` (future), etc. — owns one kind of backend.
+
+  The rest of the system (ProjectRegistry, ServiceManager, LiveViews) never
+  calls into an implementation directly. It calls `Source.for_project/1` to
+  resolve the adapter module, then invokes behaviour callbacks on it. That
+  is the only public entry point.
+
+  Local and other adapters can coexist at runtime: each project carries a
+  `source_type` atom (`:local` | `:github`) that decides dispatch.
+  """
+
+  @type project :: map()
+  @type workspace :: map()
+
+  # --- Lifecycle ---
+
+  @callback add_project(input :: any, opts :: keyword) ::
+              {:ok, project} | {:error, term}
+
+  @callback create_workspace(project, branch :: String.t(), opts :: keyword) ::
+              {:ok, workspace} | {:error, term}
+
+  @callback remove_workspace(project, workspace) :: :ok
+  @callback remove_project(project) :: :ok
+
+  # --- Queries (cheap — callable from render paths) ---
+
+  @callback checkout_path(workspace) :: String.t() | nil
+  @callback current_revision(workspace) :: {:ok, String.t()} | {:error, term}
+  @callback dirty?(workspace) :: boolean
+
+  # --- Container lifecycle hooks (called by ServiceManager) ---
+
+  @callback on_container_up(workspace) :: :ok
+  @callback on_container_down(workspace) :: :ok
+
+  @doc """
+  Resolve the adapter module for a project. Returns the module name.
+  Falls back to `Source.Local` for legacy records missing `:source_type`.
+  """
+  def for_project(%{source_type: :local}), do: BoomLooper.Source.Local
+  def for_project(%{source_type: :github}), do: BoomLooper.Source.GitHub
+  def for_project(%{git_url: url}) when is_binary(url), do: BoomLooper.Source.GitHub
+  def for_project(_), do: BoomLooper.Source.Local
+end
