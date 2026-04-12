@@ -280,10 +280,10 @@ defmodule BoomLooper.Source.Local.SyncMonitor do
       :errored ->
         {:error, :session_errored}
 
-      :unknown ->
-        {:error, :unknown}
-
-      :missing ->
+      status when status in [:unknown, :missing] ->
+        # :unknown means the daemon may not be running yet (e.g. just
+        # installed, or machine rebooted). Try to create the session —
+        # mutagen auto-starts its daemon on first use.
         create_session(workspace_id, worktree_path, container_name)
     end
   end
