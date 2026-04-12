@@ -89,15 +89,16 @@ Hooks.TailScroll = {
 // Clears input after submit, focuses on agent select
 Hooks.ChatForm = {
   mounted() {
-    this._submitting = false
+    this._lastSent = null  // tracks the last sent text to prevent dupes
     const textarea = this.el.querySelector("#chat-input")
+    this._textarea = textarea
 
-    // Enter submits, Shift+Enter adds newline
     if (textarea) {
+      // Enter submits, Shift+Enter adds newline
       textarea.addEventListener("keydown", (e) => {
         if (e.key === "Enter" && !e.shiftKey) {
           e.preventDefault()
-          this._submit(textarea)
+          this._submit()
         }
       })
 
@@ -108,33 +109,33 @@ Hooks.ChatForm = {
       })
     }
 
+    // Intercept native form submit (Send button click)
     this.el.addEventListener("submit", (e) => {
       e.preventDefault()
-      if (textarea) this._submit(textarea)
+      this._submit()
     })
 
     this.handleEvent("focus_input", () => {
-      setTimeout(() => {
-        const input = document.getElementById("chat-input")
-        if (input) input.focus()
-      }, 100)
+      if (this._textarea) this._textarea.focus()
     })
   },
 
-  _submit(textarea) {
-    if (this._submitting) return
+  _submit() {
+    const textarea = this._textarea
+    if (!textarea) return
+
+    // Grab and clear atomically — no window where a second submit
+    // could read the same value.
     const text = textarea.value.trim()
-    if (!text) return
-
-    this._submitting = true
-    this.pushEvent("send_message", { message: text })
-
     textarea.value = ""
     textarea.style.height = "auto"
-    textarea.focus()
 
-    // Re-enable after a short debounce to prevent double-clicks
-    setTimeout(() => { this._submitting = false }, 300)
+    if (!text) return
+    if (text === this._lastSent) return  // exact dupe guard
+
+    this._lastSent = text
+    this.pushEvent("send_message", { message: text })
+    textarea.focus()
   }
 }
 
