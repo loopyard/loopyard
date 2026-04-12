@@ -47,6 +47,28 @@ defmodule BoomLooper.DockerTest do
     end
   end
 
+  describe "telemetry" do
+    @describetag :docker
+
+    test "docker/2 emits telemetry span events" do
+      ref = make_ref()
+      handler_id = "test-telemetry-#{inspect(ref)}"
+
+      :telemetry.attach(handler_id, [:boom_looper, :docker, :command, :stop],
+        fn _name, measurements, metadata, {pid, test_ref} ->
+          send(pid, {:telemetry_stop, test_ref, measurements, metadata})
+        end, {self(), ref})
+
+      # This may fail if docker isn't installed, but the telemetry fires either way
+      Docker.docker(["version"])
+
+      assert_receive {:telemetry_stop, ^ref, %{duration: duration}, %{args: ["version"]}}, 5_000
+      assert is_integer(duration)
+
+      :telemetry.detach(handler_id)
+    end
+  end
+
   describe "stream/3" do
     test "returns error when docker not in PATH" do
       # We can't easily test the streaming loop without docker, but we can

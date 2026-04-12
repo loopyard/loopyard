@@ -136,17 +136,22 @@ defmodule BoomLooper.Docker do
     timeout = Keyword.get(opts, :timeout, 120_000)
     env = Keyword.get(opts, :env, [])
     cmd_opts = [stderr_to_stdout: true] ++ if(env == [], do: [], else: [env: env])
+    meta = %{args: args, timeout: timeout}
 
-    task =
-      Task.async(fn ->
-        System.cmd("docker", args, cmd_opts)
-      end)
+    :telemetry.span([:boom_looper, :docker, :command], meta, fn ->
+      task =
+        Task.async(fn ->
+          System.cmd("docker", args, cmd_opts)
+        end)
 
-    case Task.yield(task, timeout) || Task.shutdown(task) do
-      {:ok, {output, 0}} -> {:ok, output}
-      {:ok, {output, _code}} -> {:error, String.trim(output)}
-      nil -> {:error, "Docker command timed out after #{timeout}ms"}
-    end
+      result = case Task.yield(task, timeout) || Task.shutdown(task) do
+        {:ok, {output, 0}} -> {:ok, output}
+        {:ok, {output, _code}} -> {:error, String.trim(output)}
+        nil -> {:error, "Docker command timed out after #{timeout}ms"}
+      end
+
+      {result, %{}}
+    end)
   end
 
   @doc """

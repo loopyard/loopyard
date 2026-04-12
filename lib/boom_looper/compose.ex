@@ -143,7 +143,10 @@ defmodule BoomLooper.Compose do
 
   @doc "Start all services."
   def up(project_dir, workspace_id) do
-    compose(project_dir, workspace_id, ["up", "-d", "--build"], timeout: 600_000)
+    :telemetry.span([:boom_looper, :compose, :up], %{workspace_id: workspace_id}, fn ->
+      result = compose(project_dir, workspace_id, ["up", "-d", "--build"], timeout: 600_000)
+      {result, %{}}
+    end)
   end
 
   @doc """
@@ -251,7 +254,10 @@ defmodule BoomLooper.Compose do
 
   @doc "Stop all services."
   def down(project_dir, workspace_id) do
-    compose(project_dir, workspace_id, ["down"], timeout: 30_000)
+    :telemetry.span([:boom_looper, :compose, :down], %{workspace_id: workspace_id}, fn ->
+      result = compose(project_dir, workspace_id, ["down"], timeout: 30_000)
+      {result, %{}}
+    end)
   end
 
   @doc "Stop all services and remove volumes (clean slate)."

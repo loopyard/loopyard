@@ -433,6 +433,8 @@ defmodule BoomLooper.ChatAgent do
 
   @impl true
   def handle_cast({:send_message, text}, state) do
+    :telemetry.execute([:boom_looper, :agent, :message], %{}, %{agent_id: state.id, role: :user})
+
     # Auto-restart session if dead
     state = ensure_session_alive(state)
 
