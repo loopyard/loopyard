@@ -659,7 +659,7 @@ defmodule BoomLooperWeb.ChatLive do
   @impl true
   def handle_info({:docker_state_changed, _snapshot}, socket) do
     ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
-    {service_statuses, volumes} = load_sidebar_from_observer(socket.assigns.workspace.path, ws_id)
+    {service_statuses, volumes} = load_sidebar_from_observer(nil, ws_id)
 
     {:noreply,
      socket
@@ -673,8 +673,17 @@ defmodule BoomLooperWeb.ChatLive do
 
   @impl true
   def handle_info({:services_updated, path, _statuses}, socket) do
-    if path == socket.assigns.workspace.path do
-      ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
+    # ServiceManager broadcasts on canonical_dir (host path) or project_dir
+    # (virtual dir). Match either against our workspace's known paths.
+    ws = socket.assigns.workspace
+    ws_entry = socket.assigns[:workspace_entry]
+
+    matches = path == ws.path or
+      (ws_entry && path == ws_entry[:path]) or
+      (ws_entry && path == ws_entry[:compose_dir])
+
+    if matches do
+      ws_id = ws_entry && ws_entry.id || ws.id
       {service_statuses, _volumes} = load_sidebar_from_observer(path, ws_id)
       {:noreply, assign(socket, :service_statuses, service_statuses)}
     else
@@ -790,10 +799,11 @@ defmodule BoomLooperWeb.ChatLive do
   # services, then merge running state from Observer's container list.
   # Volumes: directly from Observer's volume list for this workspace.
   defp load_sidebar_from_observer(_workspace_path, workspace_id) do
-    # The compose file lives in the virtual dir (workspaces/<id>/), not
-    # in the host project dir. ServiceManager writes it there.
-    effective_dir = Path.join([BoomLooper.Workspace.home_dir(), "workspaces", workspace_id])
-    defined = BoomLooper.Workspace.ServiceStatus.list_defined_services(effective_dir)
+    # Read the compose file from workspace.compose_dir — the single source
+    # of truth for where compose files live. Never compute the path ad-hoc.
+    workspace = BoomLooper.ProjectRegistry.get_workspace(workspace_id)
+    compose_dir = workspace && workspace[:compose_dir] || Path.join([BoomLooper.Workspace.home_dir(), "workspaces", workspace_id])
+    defined = BoomLooper.Workspace.ServiceStatus.list_defined_services(compose_dir)
 
     # Running state from Observer's cached container list
     project_name = BoomLooper.Compose.project_name(workspace_id)

@@ -127,6 +127,32 @@ defmodule BoomLooper.WorkspaceRegistryTest do
     end
   end
 
+  describe "compose_dir normalization" do
+    test "always points to the virtual workspace dir" do
+      WorkspaceRegistry.insert("ws-cd", %{
+        id: "ws-cd", project_id: "p1", name: "main",
+        path: "/tmp/myproject", is_main: true, status: :stopped
+      })
+
+      ws = WorkspaceRegistry.get_workspace("ws-cd")
+      assert ws.compose_dir == Path.join([BoomLooper.Workspace.home_dir(), "workspaces", "ws-cd"])
+      # compose_dir should never be the host project path
+      refute ws.compose_dir == "/tmp/myproject"
+    end
+
+    test "preserves explicit compose_dir" do
+      custom = "/custom/compose/dir"
+      WorkspaceRegistry.insert("ws-cd2", %{
+        id: "ws-cd2", project_id: "p1", name: "main",
+        path: "/tmp/proj", compose_dir: custom,
+        is_main: true, status: :stopped
+      })
+
+      ws = WorkspaceRegistry.get_workspace("ws-cd2")
+      assert ws.compose_dir == custom
+    end
+  end
+
   describe "workspace_id/1" do
     test "generates deterministic ID from path" do
       id1 = WorkspaceRegistry.workspace_id("/tmp/my-project")
