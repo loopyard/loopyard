@@ -90,6 +90,90 @@ defmodule BoomLooper.Git do
     Path.join([repo_path, ".worktrees", branch_name])
   end
 
+  @doc """
+  Get recent commit log. Returns {:ok, list} where each entry is
+  %{sha, message, author, date}.
+
+  Options:
+    - :limit — max number of commits (default 20)
+  """
+  def log(path, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 20)
+
+    case git(["log", "--oneline", "--format=%H\t%s\t%an\t%aI", "-#{limit}"], cd: path) do
+      {:ok, output} ->
+        entries =
+          output
+          |> String.trim()
+          |> String.split("\n", trim: true)
+          |> Enum.map(fn line ->
+            case String.split(line, "\t", parts: 4) do
+              [sha, message, author, date] ->
+                %{sha: sha, message: message, author: author, date: date}
+
+              _ ->
+                nil
+            end
+          end)
+          |> Enum.reject(&is_nil/1)
+
+        {:ok, entries}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Get working tree status (porcelain format).
+  Returns {:ok, list} where each entry is %{status, path}.
+  """
+  def status(path) do
+    case git(["status", "--porcelain"], cd: path) do
+      {:ok, output} ->
+        entries =
+          output
+          |> String.split("\n", trim: true)
+          |> Enum.map(fn line ->
+            status_code = String.slice(line, 0, 2) |> String.trim()
+            file_path = String.slice(line, 3..-1//1)
+            %{status: status_code, path: file_path}
+          end)
+
+        {:ok, entries}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Get diff output.
+
+  Options:
+    - :ref — compare against a specific ref (e.g. "HEAD~1")
+    - :file — limit diff to a specific file
+  """
+  def diff(path, opts \\ []) do
+    ref = Keyword.get(opts, :ref)
+    file = Keyword.get(opts, :file)
+
+    args =
+      ["diff"] ++
+        if(ref, do: [ref], else: []) ++
+        if(file, do: ["--", file], else: [])
+
+    git(args, cd: path)
+  end
+
+  @doc """
+  Show file contents at a specific ref.
+  Returns {:ok, content} or {:error, reason}.
+  """
+  def show(path, ref, file) do
+    git(["show", "#{ref}:#{file}"], cd: path)
+  end
+
   # --- Private ---
 
   defp git(args, opts \\ []) do

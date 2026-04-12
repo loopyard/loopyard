@@ -52,6 +52,95 @@ defmodule BoomLooper.GitTest do
     end
   end
 
+  describe "log/2" do
+    test "returns recent commits from this repo" do
+      assert {:ok, entries} = Git.log(File.cwd!(), limit: 5)
+      assert length(entries) > 0
+      assert length(entries) <= 5
+
+      first = hd(entries)
+      assert is_binary(first.sha)
+      assert String.length(first.sha) == 40
+      assert is_binary(first.message)
+      assert is_binary(first.author)
+      assert is_binary(first.date)
+    end
+
+    test "returns commits from a temp repo" do
+      tmp = make_temp_repo()
+
+      assert {:ok, entries} = Git.log(tmp)
+      assert length(entries) == 2
+      assert hd(entries).message == "second commit"
+      assert List.last(entries).message == "initial commit"
+
+      File.rm_rf!(tmp)
+    end
+
+    test "returns error for non-git directory" do
+      tmp = Path.join(System.tmp_dir!(), "boom-looper-git-log-#{:rand.uniform(100_000)}")
+      File.mkdir_p!(tmp)
+      assert {:error, _} = Git.log(tmp)
+      File.rm_rf!(tmp)
+    end
+  end
+
+  describe "status/1" do
+    test "returns empty list for clean repo" do
+      tmp = make_temp_repo()
+      assert {:ok, []} = Git.status(tmp)
+      File.rm_rf!(tmp)
+    end
+
+    test "returns modified files" do
+      tmp = make_temp_repo()
+      File.write!(Path.join(tmp, "new_file.txt"), "hello")
+      assert {:ok, entries} = Git.status(tmp)
+      assert length(entries) == 1
+      assert hd(entries).status == "??"
+      assert hd(entries).path == "new_file.txt"
+      File.rm_rf!(tmp)
+    end
+  end
+
+  describe "diff/2" do
+    test "returns empty diff for clean repo" do
+      tmp = make_temp_repo()
+      assert {:ok, ""} = Git.diff(tmp)
+      File.rm_rf!(tmp)
+    end
+
+    test "returns diff for modified tracked file" do
+      tmp = make_temp_repo()
+      File.write!(Path.join(tmp, "README.md"), "changed content")
+      assert {:ok, diff_output} = Git.diff(tmp)
+      assert diff_output =~ "changed content"
+      File.rm_rf!(tmp)
+    end
+
+    test "returns diff against a ref" do
+      tmp = make_temp_repo()
+      assert {:ok, diff_output} = Git.diff(tmp, ref: "HEAD~1")
+      assert diff_output =~ "second file"
+      File.rm_rf!(tmp)
+    end
+  end
+
+  describe "show/3" do
+    test "shows file at HEAD" do
+      tmp = make_temp_repo()
+      assert {:ok, content} = Git.show(tmp, "HEAD", "README.md")
+      assert content =~ "hello"
+      File.rm_rf!(tmp)
+    end
+
+    test "returns error for non-existent file" do
+      tmp = make_temp_repo()
+      assert {:error, _} = Git.show(tmp, "HEAD", "nope.txt")
+      File.rm_rf!(tmp)
+    end
+  end
+
   describe "worktree_add and remove" do
     @tag :worktree
     test "creates and removes a worktree" do
@@ -76,5 +165,24 @@ defmodule BoomLooper.GitTest do
           IO.puts("Skipping worktree test: #{reason}")
       end
     end
+  end
+
+  # Creates a temp git repo with 2 commits for testing
+  defp make_temp_repo do
+    tmp = Path.join(System.tmp_dir!(), "boom-looper-git-test-#{:rand.uniform(100_000)}")
+    File.mkdir_p!(tmp)
+    System.cmd("git", ["init"], cd: tmp, stderr_to_stdout: true)
+    System.cmd("git", ["config", "user.email", "test@test.com"], cd: tmp)
+    System.cmd("git", ["config", "user.name", "Test"], cd: tmp)
+
+    File.write!(Path.join(tmp, "README.md"), "hello")
+    System.cmd("git", ["add", "."], cd: tmp)
+    System.cmd("git", ["commit", "-m", "initial commit"], cd: tmp, stderr_to_stdout: true)
+
+    File.write!(Path.join(tmp, "second.txt"), "second file")
+    System.cmd("git", ["add", "."], cd: tmp)
+    System.cmd("git", ["commit", "-m", "second commit"], cd: tmp, stderr_to_stdout: true)
+
+    tmp
   end
 end
