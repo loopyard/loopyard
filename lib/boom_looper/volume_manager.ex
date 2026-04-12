@@ -11,9 +11,6 @@ defmodule BoomLooper.VolumeManager do
 
   alias BoomLooper.Docker
 
-  # Use plain alpine (always cached locally) + install git inline rather
-  # than alpine/git which often hangs on pull from Docker Hub.
-  @clone_image "alpine:latest"
   @clone_timeout 300_000  # 5 minutes
 
   # --- Volume Operations ---
@@ -250,33 +247,36 @@ defmodule BoomLooper.VolumeManager do
   """
   def clone_into_volume(volume_name, git_url, opts \\ []) do
     branch = Keyword.get(opts, :branch, "main")
-    token = Keyword.get(opts, :token)
     callback = Keyword.get(opts, :callback, fn _ -> :ok end)
 
-    # Create volume first
     case create_volume(volume_name) do
       :ok ->
-        # Build clone command
-        auth_url = if token, do: inject_token(git_url, token), else: git_url
-
-        clone_args = [
-          "run", "--rm",
-          "-v", "#{volume_name}:/workspace",
-          @clone_image,
-          "sh", "-c",
-          "apk add --no-cache git >/dev/null 2>&1 && git clone --branch #{branch} --depth 1 '#{auth_url}' /workspace"
-        ]
-
         Logger.info("[VolumeManager] Cloning #{git_url} (branch: #{branch}) into volume #{volume_name}")
 
-        case Docker.stream(clone_args, callback, timeout: @clone_timeout) do
-          {:ok, output} ->
-            Logger.info("[VolumeManager] Clone completed successfully")
-            {:ok, output}
+        # Clone on the HOST using the host's git binary. Picks up SSH keys,
+        # credential helpers, .gitconfig — whatever the user has configured.
+        # No Docker container, no image pull needed.
+        tmp_dir = Path.join(System.tmp_dir!(), "bl-clone-#{:erlang.unique_integer([:positive])}")
 
-          {:error, output} ->
-            Logger.error("[VolumeManager] Clone failed: #{output}")
-            {:error, output}
+        try do
+          case host_git_clone(git_url, branch, tmp_dir, callback) do
+            {:ok, _} ->
+              case copy_to_volume(volume_name, tmp_dir, callback: callback) do
+                {:ok, _} ->
+                  Logger.info("[VolumeManager] Clone completed successfully")
+                  {:ok, "cloned"}
+
+                {:error, reason} ->
+                  Logger.error("[VolumeManager] Copy to volume failed: #{reason}")
+                  {:error, reason}
+              end
+
+            {:error, reason} ->
+              Logger.error("[VolumeManager] Clone failed: #{reason}")
+              {:error, reason}
+          end
+        after
+          File.rm_rf(tmp_dir)
         end
 
       {:error, reason} ->
@@ -492,6 +492,42 @@ defmodule BoomLooper.VolumeManager do
   end
 
   # --- Private ---
+
+  # Clone a git repo on the host using the host's git binary. Picks up
+  # SSH keys, credential helpers, .gitconfig — whatever the user has.
+  defp host_git_clone(git_url, branch, dest, callback) do
+    git_path = System.find_executable("git")
+
+    unless git_path do
+      {:error, "git not found on host PATH"}
+    else
+      port = Port.open(
+        {:spawn_executable, git_path},
+        [:binary, :exit_status, :stderr_to_stdout,
+         {:args, ["clone", "--branch", branch, "--depth", "1", git_url, dest]}]
+      )
+
+      collect_clone_output(port, callback, "", @clone_timeout)
+    end
+  end
+
+  defp collect_clone_output(port, callback, acc, timeout) do
+    receive do
+      {^port, {:data, data}} ->
+        callback.(data)
+        collect_clone_output(port, callback, acc <> data, timeout)
+
+      {^port, {:exit_status, 0}} ->
+        {:ok, acc}
+
+      {^port, {:exit_status, _code}} ->
+        {:error, acc}
+    after
+      timeout ->
+        Port.close(port)
+        {:error, acc <> "\n(timed out)"}
+    end
+  end
 
   defp inject_token(git_url, token) do
     # Convert git@github.com:owner/repo.git to https://token@github.com/owner/repo.git
