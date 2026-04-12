@@ -223,10 +223,9 @@ defmodule BoomLooper.InvariantsTest do
         end)
         |> length()
 
-      # Current count as of this commit. If you're adding a new one,
-      # you should be using workspace.compose_dir instead.
-      # If you're removing one, update this number downward.
-      assert count <= 18,
+      # 3 remaining: compose_dir/1 definition, normalize path backfill,
+      # normalize compose_dir backfill. Everything else uses compose_dir/1.
+      assert count <= 3,
         "Ad-hoc virtual dir computations increased to #{count}. " <>
         "Use workspace.compose_dir from the workspace record instead of " <>
         "computing Path.join([home_dir(), \"workspaces\", id]) inline."

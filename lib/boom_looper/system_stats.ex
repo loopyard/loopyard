@@ -217,7 +217,7 @@ defmodule BoomLooper.SystemStats do
           [{pid, _}] -> Process.alive?(pid)
           _ ->
             # Try virtual dir
-            virtual_dir = Path.join([BoomLooper.Workspace.home_dir(), "workspaces", ws_id])
+            virtual_dir = BoomLooper.Workspace.compose_dir(ws_id)
             case Registry.lookup(BoomLooper.ServiceManagerRegistry, virtual_dir) do
               [{pid, _}] -> Process.alive?(pid)
               _ -> false

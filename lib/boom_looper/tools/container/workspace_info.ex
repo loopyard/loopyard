@@ -10,7 +10,7 @@ defmodule BoomLooper.Tools.Container.WorkspaceInfo do
     case BoomLooper.ChatAgent.get_state(agent_id) do
       %{workspace_id: workspace_id} = state when is_binary(workspace_id) ->
         volume_name = BoomLooper.Workspace.volume_name_for(workspace_id)
-        project_dir = Path.join([BoomLooper.Workspace.home_dir(), "workspaces", workspace_id])
+        project_dir = BoomLooper.Workspace.compose_dir(workspace_id)
         compose_project = BoomLooper.Compose.project_name(workspace_id)
 
         info = %{

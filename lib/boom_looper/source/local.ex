@@ -98,7 +98,7 @@ defmodule BoomLooper.Source.Local do
         worktree_path: worktree_path,
         volume: volume_name,
         volume_based: true,
-        path: Path.join([Workspace.home_dir(), "workspaces", workspace_id]),
+        path: Workspace.compose_dir(workspace_id),
         is_main: false,
         status: :stopped,
         added_at: DateTime.utc_now()
@@ -186,6 +186,44 @@ defmodule BoomLooper.Source.Local do
   @impl true
   def dirty?(%{id: id}), do: Worktree.dirty?(id)
   def dirty?(_), do: false
+
+  # --- Git operations ---
+
+  @impl true
+  def git_log(_project, workspace, opts \\ []) do
+    case worktree_path_for(workspace) do
+      {:ok, path} -> Git.log(path, opts)
+      {:error, _} = err -> err
+    end
+  end
+
+  @impl true
+  def git_status(_project, workspace) do
+    case worktree_path_for(workspace) do
+      {:ok, path} -> Git.status(path)
+      {:error, _} = err -> err
+    end
+  end
+
+  @impl true
+  def git_diff(_project, workspace, opts \\ []) do
+    case worktree_path_for(workspace) do
+      {:ok, path} -> Git.diff(path, opts)
+      {:error, _} = err -> err
+    end
+  end
+
+  @impl true
+  def git_show(_project, workspace, ref, file) do
+    case worktree_path_for(workspace) do
+      {:ok, path} -> Git.show(path, ref, file)
+      {:error, _} = err -> err
+    end
+  end
+
+  defp worktree_path_for(%{worktree_path: path}) when is_binary(path), do: {:ok, path}
+  defp worktree_path_for(%{path: path}) when is_binary(path), do: {:ok, path}
+  defp worktree_path_for(_), do: {:error, :no_workspace_path}
 
   # --- Container hooks ---
 

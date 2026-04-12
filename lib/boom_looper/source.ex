@@ -38,6 +38,23 @@ defmodule BoomLooper.Source do
   @callback on_container_up(workspace) :: :ok
   @callback on_container_down(workspace) :: :ok
 
+  # --- Optional git callbacks ---
+
+  @callback git_log(project, workspace, opts :: keyword) :: {:ok, list} | {:error, term}
+  @callback git_status(project, workspace) :: {:ok, list} | {:error, term}
+  @callback git_diff(project, workspace, opts :: keyword) :: {:ok, String.t()} | {:error, term}
+  @callback git_show(project, workspace, ref :: String.t(), path :: String.t()) ::
+              {:ok, String.t()} | {:error, term}
+
+  @optional_callbacks git_log: 3, git_status: 2, git_diff: 3, git_show: 4
+
+  @doc """
+  Check if an adapter module supports git operations.
+  """
+  def supports_git?(adapter) do
+    function_exported?(adapter, :git_log, 3)
+  end
+
   @doc """
   Resolve the adapter module for a project. Returns the module name.
   Falls back to `Source.Local` for legacy records missing `:source_type`.

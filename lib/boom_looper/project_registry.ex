@@ -73,7 +73,7 @@ defmodule BoomLooper.ProjectRegistry do
       nil ->
         volume_name = BoomLooper.VolumeManager.code_volume_name(workspace_id)
         # Compute path so all workspaces have the same shape
-        computed_path = Path.join([Workspace.home_dir(), "workspaces", workspace_id])
+        computed_path = Workspace.compose_dir(workspace_id)
         # First branch added is considered main (typically "main" or "master")
         existing_workspaces = WorkspaceRegistry.list_workspaces(project_id)
         is_main = existing_workspaces == []
@@ -407,7 +407,7 @@ defmodule BoomLooper.ProjectRegistry do
       # leftover log, resurrecting ghost agents from the previous run.
       # This was the cause of the "two Setup agents" bug.
       Enum.each(workspaces, fn ws ->
-        virtual_dir = Path.join([Workspace.home_dir(), "workspaces", ws.id])
+        virtual_dir = Workspace.compose_dir(ws.id)
         File.rm_rf(virtual_dir)
       end)
 
@@ -418,7 +418,7 @@ defmodule BoomLooper.ProjectRegistry do
       Enum.each(workspaces, fn ws ->
         try do
           ws_id = ws.id
-          virtual_dir = Path.join([Workspace.home_dir(), "workspaces", ws_id])
+          virtual_dir = Workspace.compose_dir(ws_id)
           BoomLooper.Compose.down_volumes(virtual_dir, ws_id)
 
           # Delete code + cache volumes (always, not just volume_based)

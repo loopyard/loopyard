@@ -108,6 +108,14 @@ defmodule BoomLooper.Workspace do
   end
 
   @doc """
+  The virtual dir where compose files, Dockerfiles, and agent logs live
+  for a workspace. This is the ONLY correct way to get this path.
+  """
+  def compose_dir(workspace_id) do
+    Path.join([home_dir(), "workspaces", workspace_id])
+  end
+
+  @doc """
   Resolve workspace ID from a project directory path.
 
   For volume-based workspaces (paths like `.../workspaces/{id}`), extracts the ID directly.

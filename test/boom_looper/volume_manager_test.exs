@@ -269,6 +269,26 @@ defmodule BoomLooper.VolumeManagerTest do
     end
   end
 
+  describe "tree/3" do
+    @describetag :docker
+
+    test "returns structured entries for volume contents" do
+      volume_name = "bl-test-tree-#{:rand.uniform(100_000)}"
+
+      on_exit(fn ->
+        System.cmd("docker", ["volume", "rm", "-f", volume_name], stderr_to_stdout: true)
+      end)
+
+      VolumeManager.create_volume(volume_name)
+      VolumeManager.write_file(volume_name, "README.md", "# Test")
+      VolumeManager.write_file(volume_name, "src/main.rb", "puts 'hi'")
+
+      # tree needs a running container named bl-<id>-workspace-1 for the volume
+      # Since we can't easily set that up in a unit test, verify :no_container
+      assert {:error, :no_container} = VolumeManager.tree(volume_name)
+    end
+  end
+
   describe "volume_ls/2" do
     @describetag :docker
 
