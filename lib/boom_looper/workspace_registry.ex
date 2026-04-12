@@ -121,23 +121,20 @@ defmodule BoomLooper.WorkspaceRegistry do
     is_main = path == project.path
     id = workspace_id(path)
 
-    worktree_path =
-      cond do
-        project && project[:source_type] == :local && is_main -> path
-        true -> nil
-      end
-
     workspace = %{
       id: id,
       project_id: project_id,
       name: workspace_name,
       path: path,
-      worktree_path: worktree_path,
       branch: workspace_name,
       is_main: is_main,
       status: :stopped,
       added_at: DateTime.utc_now()
     }
+
+    # normalize_workspace backfills worktree_path from path for Local
+    # workspaces, so we don't need to set it explicitly here.
+    workspace = normalize_workspace(workspace)
     :ets.insert(@workspaces_table, {id, workspace})
     workspace
   end
@@ -146,6 +143,7 @@ defmodule BoomLooper.WorkspaceRegistry do
     ws
     |> maybe_add_path()
     |> maybe_add_is_main()
+    |> maybe_add_worktree_path()
   end
 
   defp maybe_add_path(%{path: _} = ws), do: ws
@@ -156,4 +154,23 @@ defmodule BoomLooper.WorkspaceRegistry do
 
   defp maybe_add_is_main(%{is_main: _} = ws), do: ws
   defp maybe_add_is_main(ws), do: Map.put(ws, :is_main, false)
+
+  # Backfill worktree_path for pre-refactor Local workspaces. The rule:
+  # if worktree_path is nil and path points to a real host directory
+  # (not a virtual workspace dir under BOOMLOOPER_HOME/workspaces/),
+  # the path IS the worktree — set it. This is the single source of
+  # truth for "where should Mutagen sync to."
+  defp maybe_add_worktree_path(%{worktree_path: path} = ws) when is_binary(path), do: ws
+  defp maybe_add_worktree_path(%{path: path} = ws) when is_binary(path) do
+    virtual_prefix = Path.join(Workspace.home_dir(), "workspaces")
+
+    if String.starts_with?(path, virtual_prefix) do
+      # Virtual workspace dir (volume-based) — no host worktree
+      ws
+    else
+      # Real host path — this IS the worktree for Local projects
+      Map.put(ws, :worktree_path, path)
+    end
+  end
+  defp maybe_add_worktree_path(ws), do: ws
 end

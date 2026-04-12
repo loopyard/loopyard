@@ -84,8 +84,9 @@ defmodule BoomLooper.InvariantsTest do
 
           if String.contains?(content, "System.cmd(\"docker\"") do
             mod = path |> String.replace("lib/", "") |> String.replace(".ex", "")
-            # Docker.ex is the only allowed caller
-            if String.contains?(mod, "docker") do
+            # Docker.ex is the only allowed caller. Mix tasks run outside
+            # the app and can't use BoomLooper.Docker, so they're exempt.
+            if String.contains?(mod, "docker") or String.contains?(mod, "mix/tasks") do
               []
             else
               [mod]

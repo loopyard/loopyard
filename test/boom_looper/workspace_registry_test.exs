@@ -77,6 +77,56 @@ defmodule BoomLooper.WorkspaceRegistryTest do
     end
   end
 
+  describe "worktree_path normalization" do
+    test "backfills worktree_path from path for host-dir workspaces" do
+      # Simulate a pre-refactor workspace: has path but no worktree_path
+      WorkspaceRegistry.insert("ws-local", %{
+        id: "ws-local", project_id: "p1", name: "main",
+        path: "/tmp/myproject", is_main: true, status: :stopped
+      })
+
+      ws = WorkspaceRegistry.get_workspace("ws-local")
+      assert ws.worktree_path == "/tmp/myproject",
+        "worktree_path should be backfilled from path for host-dir workspaces"
+    end
+
+    test "does NOT backfill for virtual workspace dirs" do
+      virtual_path = Path.join([BoomLooper.Workspace.home_dir(), "workspaces", "ws-virt"])
+
+      WorkspaceRegistry.insert("ws-virt", %{
+        id: "ws-virt", project_id: "p1", name: "main",
+        path: virtual_path, is_main: true, status: :stopped
+      })
+
+      ws = WorkspaceRegistry.get_workspace("ws-virt")
+      refute ws[:worktree_path],
+        "worktree_path should NOT be set for virtual workspace dirs"
+    end
+
+    test "preserves explicit worktree_path" do
+      WorkspaceRegistry.insert("ws-explicit", %{
+        id: "ws-explicit", project_id: "p1", name: "feature",
+        path: "/tmp/myproject",
+        worktree_path: "/tmp/custom-worktree",
+        is_main: false, status: :stopped
+      })
+
+      ws = WorkspaceRegistry.get_workspace("ws-explicit")
+      assert ws.worktree_path == "/tmp/custom-worktree",
+        "explicit worktree_path should not be overwritten"
+    end
+
+    test "find_or_create_workspace sets worktree_path for host paths" do
+      :ets.insert(:project_registry, {"p-local", %{
+        id: "p-local", name: "test", path: "/tmp/anotherproject",
+        source_type: :local, is_git: true
+      }})
+
+      ws = WorkspaceRegistry.find_or_create_workspace("p-local", "main", "/tmp/anotherproject")
+      assert ws.worktree_path == "/tmp/anotherproject"
+    end
+  end
+
   describe "workspace_id/1" do
     test "generates deterministic ID from path" do
       id1 = WorkspaceRegistry.workspace_id("/tmp/my-project")
