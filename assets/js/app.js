@@ -107,6 +107,24 @@ Hooks.ChatForm = {
     })
 
     this.el.addEventListener("submit", (e) => { e.preventDefault(); submit() })
+
+    // iOS keyboard fix: when the virtual keyboard opens, iOS resizes the
+    // viewport which pushes the whole page up. Use visualViewport to detect
+    // the keyboard height and offset only the chat container.
+    if (window.visualViewport) {
+      const page = document.getElementById("chat-page")
+      if (page) {
+        const onViewportChange = () => {
+          const keyboardOffset = window.innerHeight - window.visualViewport.height
+          page.style.height = `${window.visualViewport.height}px`
+          page.style.transform = keyboardOffset > 0
+            ? `translateY(${window.visualViewport.offsetTop}px)`
+            : ""
+        }
+        window.visualViewport.addEventListener("resize", onViewportChange)
+        window.visualViewport.addEventListener("scroll", onViewportChange)
+      }
+    }
     this.handleEvent("focus_input", () => ta.focus())
   }
 }
