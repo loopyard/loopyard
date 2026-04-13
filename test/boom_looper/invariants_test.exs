@@ -225,6 +225,47 @@ defmodule BoomLooper.InvariantsTest do
         "LiveViews must use Observer.services_for(workspace_id), not " <>
         "ServiceStatus.for_workspace: #{inspect(violations)}"
     end
+
+    test "every service_statuses assignment in chat_live is guarded against empty replacement" do
+      # The sidebar flapping bug was caused by unguarded assignments that
+      # replaced a non-empty service list with []. Every assignment except
+      # mount (first render) must go through guard_service_statuses/2.
+      content = File.read!("lib/boom_looper_web/live/chat_live.ex")
+
+      # Find all functions that assign :service_statuses by looking at
+      # function-level blocks. Each block that assigns service_statuses
+      # must either be mount (first value) or contain guard_service_statuses
+      # somewhere in the same function.
+      lines = String.split(content, "\n")
+
+      # Split into function blocks at def/defp boundaries
+      # For each assign(:service_statuses, ...) line, check if
+      # guard_service_statuses appears within the preceding 10 lines
+      assignments =
+        lines
+        |> Enum.with_index(1)
+        |> Enum.filter(fn {line, _} ->
+          String.contains?(line, "assign") and
+            String.contains?(line, ":service_statuses") and
+            not String.contains?(line, "assigns.service_statuses")
+        end)
+
+      unguarded =
+        Enum.filter(assignments, fn {_line, n} ->
+          # Check the surrounding context (10 lines before) for a guard
+          context = Enum.slice(lines, max(0, n - 11), 12) |> Enum.join("\n")
+          not String.contains?(context, "guard_service_statuses") and
+            not String.contains?(context, "mount_with_workspace")
+        end)
+        |> Enum.map(fn {line, n} -> "line #{n}: #{String.trim(line)}" end)
+
+      # Exactly 1 unguarded assignment is allowed: mount's initial value.
+      # Everything else must use guard_service_statuses to prevent flapping.
+      assert length(unguarded) <= 1,
+        "Unguarded service_statuses assignments will cause sidebar flapping. " <>
+          "Use guard_service_statuses(socket, new_statuses):\n" <>
+          Enum.join(unguarded, "\n")
+    end
   end
 
   # ---------------------------------------------------------------
