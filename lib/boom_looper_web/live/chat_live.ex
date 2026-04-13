@@ -234,80 +234,54 @@ defmodule BoomLooperWeb.ChatLive do
     end
   end
 
-  def handle_params(%{"volume_name" => name}, uri, %{assigns: %{live_action: :volume}} = socket) do
-    is_code = String.contains?(name, "code")
+  # Volume info page
+  def handle_params(%{"volume_name" => name}, _uri, %{assigns: %{live_action: :volume}} = socket) do
+    {:noreply, setup_volume(socket, name, :info)}
+  end
 
-    adapter =
-      if socket.assigns[:project] do
-        BoomLooper.Source.for_project(socket.assigns.project)
-      end
+  # File browser: /volumes/:name/files/path/to/thing
+  def handle_params(%{"volume_name" => name, "path" => path_parts}, _uri, %{assigns: %{live_action: :volume_file}} = socket) do
+    file_path = Path.join(path_parts)
+    socket = setup_volume(socket, name, :files)
 
-    supports_git = is_code && adapter && BoomLooper.Source.supports_git?(adapter)
-
-    # URL state from query params: ?tab=files&path=app/models&file=user.rb
-    query = uri |> URI.parse() |> Map.get(:query) |> then(&(URI.decode_query(&1 || "")))
-    tab = case query["tab"] do
-      "files" -> :files
-      "git" -> :git
-      _ -> :info
-    end
-    browse_path = query["path"] || "."
-    view_file = query["file"]
-
-    # Only reset state when switching to a different volume
-    socket =
-      if socket.assigns[:selected_volume] != name do
-        socket
-        |> assign(:selected_id, nil)
-        |> assign(:selected_agent, nil)
-        |> assign(:selected_service, nil)
-        |> assign(:selected_volume, name)
-        |> assign(:file_tree, nil)
-        |> assign(:file_content, nil)
-        |> assign(:file_path, nil)
-        |> assign(:git_log, [])
-        |> assign(:git_status, [])
-        |> assign(:diff_content, nil)
-        |> assign(:supports_git, supports_git)
-      else
-        socket
-      end
+    # If the last segment has an extension, it's a file. Otherwise a directory.
+    is_file = Path.extname(file_path) != ""
 
     socket =
-      socket
-      |> assign(:volume_tab, tab)
-      |> assign(:browse_path, browse_path)
+      if is_file do
+        dir = Path.dirname(file_path)
+        dir = if dir == ".", do: ".", else: dir
 
-    # Load file tree when on Files tab and path changed
-    socket =
-      if tab == :files && (socket.assigns.file_tree == nil || socket.assigns.browse_path != browse_path) do
         socket
+        |> assign(:browse_path, dir)
         |> assign(:file_tree, :loading)
-        |> assign(:browse_path, browse_path)
-        |> start_async(:file_tree, fn -> BoomLooper.VolumeManager.tree(name, browse_path) end)
-      else
-        socket
-      end
-
-    # Load file content when ?file= is set
-    socket =
-      if view_file && view_file != socket.assigns[:file_path] do
-        socket
         |> assign(:file_content, :loading)
-        |> assign(:file_path, view_file)
+        |> assign(:file_path, file_path)
+        |> start_async(:file_tree, fn -> BoomLooper.VolumeManager.tree(name, dir) end)
         |> start_async(:file_content, fn ->
-          case BoomLooper.VolumeIO.read_file(name, view_file) do
-            {:ok, content} -> %{path: view_file, content: content}
-            {:error, _} -> %{path: view_file, content: "(could not read file)"}
+          case BoomLooper.VolumeIO.read_file(name, file_path) do
+            {:ok, content} -> %{path: file_path, content: content}
+            {:error, _} -> %{path: file_path, content: "(could not read file)"}
           end
         end)
       else
-        if is_nil(view_file), do: assign(socket, file_content: nil, file_path: nil), else: socket
+        socket
+        |> assign(:browse_path, file_path)
+        |> assign(:file_content, nil)
+        |> assign(:file_path, nil)
+        |> assign(:file_tree, :loading)
+        |> start_async(:file_tree, fn -> BoomLooper.VolumeManager.tree(name, file_path) end)
       end
 
-    # Load git data when on Git tab
+    {:noreply, socket}
+  end
+
+  # Git view
+  def handle_params(%{"volume_name" => name}, _uri, %{assigns: %{live_action: :volume_git}} = socket) do
+    socket = setup_volume(socket, name, :git)
+
     socket =
-      if tab == :git && socket.assigns.git_log == [] do
+      if socket.assigns.git_log == [] do
         git_assigns = Map.take(socket.assigns, [:project, :workspace_entry])
         start_async(socket, :git_data, fn -> load_git_data(git_assigns) end)
       else
@@ -959,6 +933,33 @@ defmodule BoomLooperWeb.ChatLive do
 
   defp workspace_path(socket), do: socket.assigns.base_path
 
+  defp setup_volume(socket, name, tab) do
+    is_code = String.contains?(name, "code")
+    adapter = if socket.assigns[:project], do: BoomLooper.Source.for_project(socket.assigns.project)
+    supports_git = is_code && adapter && BoomLooper.Source.supports_git?(adapter)
+
+    socket =
+      if socket.assigns[:selected_volume] != name do
+        socket
+        |> assign(:selected_id, nil)
+        |> assign(:selected_agent, nil)
+        |> assign(:selected_service, nil)
+        |> assign(:selected_volume, name)
+        |> assign(:file_tree, nil)
+        |> assign(:file_content, nil)
+        |> assign(:file_path, nil)
+        |> assign(:git_log, [])
+        |> assign(:git_status, [])
+        |> assign(:diff_content, nil)
+        |> assign(:supports_git, supports_git)
+      else
+        socket
+      end
+
+    assign(socket, :volume_tab, tab)
+  end
+
+
 
   defp preset_message("setup") do
     guide = BoomLooper.ChatAgent.setup_guide()
@@ -1094,9 +1095,9 @@ defmodule BoomLooperWeb.ChatLive do
           <.all_services_view :if={@live_action == :services} all_service_logs={@all_service_logs} />
           <.volume_detail :if={@live_action in [:volume, :volume_file, :volume_git]} volume_name={@selected_volume} volumes={@volumes} workspace_id={@workspace.id} base_path={@base_path} volume_tab={@volume_tab} file_tree={@file_tree} file_content={@file_content} file_path={@file_path} browse_path={@browse_path} git_log={@git_log} git_status={@git_status} diff_content={@diff_content} supports_git={@supports_git} />
           <.sync_detail :if={@live_action == :sync} sync_status={@sync_status} workspace_id={@workspace.id} workspace={@workspace} />
-          <.booting_screen :if={@live_action not in [:new, :service, :services, :console, :volume, :sync] && @booting_agent_id && !@selected_agent} agent_id={@booting_agent_id} status={@boot_status} boot_log={@boot_log} />
-          <.empty_state :if={@live_action not in [:new, :service, :services, :console, :volume, :sync] && !@booting_agent_id && !@selected_agent} />
-          <.agent_view :if={@live_action not in [:new, :service, :services, :console, :volume, :sync] && @selected_agent} {assigns} />
+          <.booting_screen :if={@live_action not in [:new, :service, :services, :console, :volume, :volume_file, :volume_git, :sync] && @booting_agent_id && !@selected_agent} agent_id={@booting_agent_id} status={@boot_status} boot_log={@boot_log} />
+          <.empty_state :if={@live_action not in [:new, :service, :services, :console, :volume, :volume_file, :volume_git, :sync] && !@booting_agent_id && !@selected_agent} />
+          <.agent_view :if={@live_action not in [:new, :service, :services, :console, :volume, :volume_file, :volume_git, :sync] && @selected_agent} {assigns} />
         </main>
       </div>
     </div>
