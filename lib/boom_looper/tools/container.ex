@@ -30,7 +30,8 @@ defmodule BoomLooper.Tools.Container do
     Container.DockerCompose,
     Container.WorkspaceInfo,
     Container.Volumes,
-    Container.FileUrl
+    Container.FileUrl,
+    Container.AppUrl
   ]
 
   def __tool_server__ do

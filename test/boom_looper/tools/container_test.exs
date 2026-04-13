@@ -17,7 +17,7 @@ defmodule BoomLooper.Tools.ContainerTest do
       expected =
         ~w(exec exec_stream logs inspect_env ports service_containers write_file read_file
            edit multi_edit grep glob probe_http tree inspect_service read_files
-           docker docker_compose workspace_info volumes file_url)
+           docker docker_compose workspace_info volumes file_url app_url)
 
       assert MapSet.size(tool_names) == length(expected)
 
