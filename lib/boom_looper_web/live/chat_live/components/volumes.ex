@@ -53,9 +53,9 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Volumes do
         <%!-- Tab bar - only show Files/Git for code volumes --%>
         <div :if={@is_code} class="border-b border-zinc-200 dark:border-zinc-700/80 px-4">
           <nav class="flex gap-4 -mb-px">
-            <.tab_button label="Info" tab={:info} current={@volume_tab} />
-            <.tab_button label="Files" tab={:files} current={@volume_tab} />
-            <.tab_button :if={@supports_git} label="Git" tab={:git} current={@volume_tab} />
+            <.tab_button label="Info" tab={:info} current={@volume_tab} href={"#{@base_path}/volumes/#{@volume_name}"} />
+            <.tab_button label="Files" tab={:files} current={@volume_tab} href={"#{@base_path}/volumes/#{@volume_name}/files"} />
+            <.tab_button :if={@supports_git} label="Git" tab={:git} current={@volume_tab} href={"#{@base_path}/volumes/#{@volume_name}/git"} />
           </nav>
         </div>
 
@@ -85,15 +85,13 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Volumes do
       if active do
         "py-2.5 text-xs font-medium border-b-2 border-violet-500 text-violet-600 dark:text-violet-400"
       else
-        "py-2.5 text-xs font-medium border-b-2 border-transparent text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 cursor-pointer"
+        "py-2.5 text-xs font-medium border-b-2 border-transparent text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300"
       end
 
     assigns = assign(assigns, :classes, classes)
 
     ~H"""
-    <button phx-click="volume_tab" phx-value-tab={@tab} class={@classes}>
-      {@label}
-    </button>
+    <.link patch={@href} class={@classes}>{@label}</.link>
     """
   end
 
