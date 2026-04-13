@@ -20,13 +20,19 @@ defmodule BoomLooper.Tools.Agents do
     id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
     workspace_id = BoomLooper.ProjectRegistry.workspace_id(working_dir)
 
-    case BoomLooper.WorkspaceGroup.start_agent(workspace_id,
-           id: id,
-           name: name,
-           working_dir: working_dir,
-           bind_mount: working_dir,
-           started_by: "agent"
-         ) do
+    opts = [
+      id: id,
+      name: name,
+      working_dir: working_dir,
+      started_by: "agent"
+    ]
+
+    opts =
+      if BoomLooper.Workspace.container_running?(workspace_id),
+        do: opts,
+        else: opts ++ [bind_mount: working_dir]
+
+    case BoomLooper.WorkspaceGroup.start_agent(workspace_id, opts) do
       {:ok, _pid} -> {:ok, %{id: id, name: name}}
       {:error, reason} -> {:error, "Failed to spawn: #{inspect(reason)}"}
     end

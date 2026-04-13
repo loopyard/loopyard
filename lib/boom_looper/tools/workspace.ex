@@ -77,38 +77,12 @@ defmodule BoomLooper.Tools.Workspace do
         {:error, reason} -> {:error, "Failed to save config: #{inspect(reason)}"}
       end
     else
-      with_bind_mount(agent_id, fn project_dir ->
-        ws = case Workspace.load(project_dir) do
-          {:ok, existing} -> existing
-          _ -> %Workspace{}
-        end
-
-        updated = update_fn.(ws)
-
-        case Workspace.save(project_dir, updated) do
-          :ok -> {:ok, success_msg}
-          {:error, reason} -> {:error, "Failed to save config: #{inspect(reason)}"}
-        end
-      end)
+      {:error, "Agent #{agent_id} has no workspace — cannot update config"}
     end
   end
 
   # --- Private ---
 
-  defp with_bind_mount(agent_id, callback) do
-    case find_bind_mount(agent_id) do
-      {:ok, project_dir} -> callback.(project_dir)
-      :error -> {:error, "Agent #{agent_id} has no bind mount"}
-    end
-  end
-
-  defp find_bind_mount(agent_id) do
-    case BoomLooper.ChatAgent.get_state(agent_id) do
-      %{bind_mount: dir} when is_binary(dir) -> {:ok, dir}
-      %{working_dir: dir} when is_binary(dir) -> {:ok, dir}
-      _ -> :error
-    end
-  end
 
   defp find_workspace_id(agent_id) do
     case BoomLooper.ChatAgent.get_state(agent_id) do

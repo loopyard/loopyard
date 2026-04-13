@@ -116,6 +116,15 @@ defmodule BoomLooper.Workspace do
   end
 
   @doc """
+  Check if the workspace container is running. When true, agents should
+  use container tools (exec, read_file) — not host-side file access.
+  """
+  def container_running?(workspace_id) do
+    container = BoomLooper.Workspace.ServiceManager.service_container_name(workspace_id, "workspace")
+    BoomLooper.Docker.container_running?(container)
+  end
+
+  @doc """
   Resolve workspace ID from a project directory path.
 
   For volume-based workspaces (paths like `.../workspaces/{id}`), extracts the ID directly.
