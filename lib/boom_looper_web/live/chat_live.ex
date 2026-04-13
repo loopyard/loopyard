@@ -300,12 +300,14 @@ defmodule BoomLooperWeb.ChatLive do
     file_path = Path.join(path_parts)
     socket = setup_volume(socket, name, :git)
 
+    assigns = Map.take(socket.assigns, [:project, :workspace_entry])
+
     {:noreply,
      socket
      |> assign(:diff_content, :loading)
      |> assign(:diff_path, file_path)
      |> start_async(:git_file_diff, fn ->
-       load_file_diff(socket.assigns, file_path, :unstaged)
+       load_file_diff(assigns, file_path, :unstaged)
      end)}
   end
 
@@ -313,26 +315,28 @@ defmodule BoomLooperWeb.ChatLive do
   def handle_params(%{"volume_name" => name, "path" => path_parts}, _uri, %{assigns: %{live_action: :git_staged_diff}} = socket) do
     file_path = Path.join(path_parts)
     socket = setup_volume(socket, name, :git)
+    assigns = Map.take(socket.assigns, [:project, :workspace_entry])
 
     {:noreply,
      socket
      |> assign(:diff_content, :loading)
      |> assign(:diff_path, file_path)
      |> start_async(:git_file_diff, fn ->
-       load_file_diff(socket.assigns, file_path, :staged)
+       load_file_diff(assigns, file_path, :staged)
      end)}
   end
 
   # Git commit detail
   def handle_params(%{"volume_name" => name, "sha" => sha}, _uri, %{assigns: %{live_action: :git_commit}} = socket) do
     socket = setup_volume(socket, name, :git)
+    assigns = Map.take(socket.assigns, [:project, :workspace_entry])
 
     {:noreply,
      socket
      |> assign(:commit_detail, :loading)
      |> assign(:commit_sha, sha)
      |> start_async(:git_commit_detail, fn ->
-       load_commit_detail(socket.assigns, sha)
+       load_commit_detail(assigns, sha)
      end)}
   end
 
@@ -340,6 +344,7 @@ defmodule BoomLooperWeb.ChatLive do
   def handle_params(%{"volume_name" => name, "sha" => sha, "path" => path_parts}, _uri, %{assigns: %{live_action: :git_commit_file}} = socket) do
     file_path = Path.join(path_parts)
     socket = setup_volume(socket, name, :git)
+    assigns = Map.take(socket.assigns, [:project, :workspace_entry])
 
     {:noreply,
      socket
@@ -347,7 +352,7 @@ defmodule BoomLooperWeb.ChatLive do
      |> assign(:diff_path, file_path)
      |> assign(:commit_sha, sha)
      |> start_async(:git_file_diff, fn ->
-       load_commit_file_diff(socket.assigns, sha, file_path)
+       load_commit_file_diff(assigns, sha, file_path)
      end)}
   end
 

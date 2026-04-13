@@ -55,4 +55,10 @@ defmodule BoomLooper.Source.GitHub do
   def git_diff(_project, _workspace, _opts \\ []), do: {:error, :not_implemented}
   @impl true
   def git_show(_project, _workspace, _ref, _path), do: {:error, :not_implemented}
+  @impl true
+  def git_diff_staged(_project, _workspace, _opts \\ []), do: {:error, :not_implemented}
+  @impl true
+  def git_commit_detail(_project, _workspace, _sha), do: {:error, :not_implemented}
+  @impl true
+  def git_commit_diff(_project, _workspace, _sha, _opts \\ []), do: {:error, :not_implemented}
 end

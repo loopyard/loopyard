@@ -221,6 +221,7 @@ defmodule BoomLooper.Source.Local do
     end
   end
 
+  @impl true
   def git_diff_staged(_project, workspace, opts \\ []) do
     case worktree_path_for(workspace) do
       {:ok, path} -> Git.diff_staged(path, opts)
@@ -228,6 +229,7 @@ defmodule BoomLooper.Source.Local do
     end
   end
 
+  @impl true
   def git_commit_detail(_project, workspace, sha) do
     case worktree_path_for(workspace) do
       {:ok, path} -> Git.commit_detail(path, sha)
@@ -235,6 +237,7 @@ defmodule BoomLooper.Source.Local do
     end
   end
 
+  @impl true
   def git_commit_diff(_project, workspace, sha, opts \\ []) do
     case worktree_path_for(workspace) do
       {:ok, path} -> Git.commit_diff(path, sha, opts)

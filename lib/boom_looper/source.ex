@@ -43,10 +43,13 @@ defmodule BoomLooper.Source do
   @callback git_log(project, workspace, opts :: keyword) :: {:ok, list} | {:error, term}
   @callback git_status(project, workspace) :: {:ok, list} | {:error, term}
   @callback git_diff(project, workspace, opts :: keyword) :: {:ok, String.t()} | {:error, term}
+  @callback git_diff_staged(project, workspace, opts :: keyword) :: {:ok, String.t()} | {:error, term}
   @callback git_show(project, workspace, ref :: String.t(), path :: String.t()) ::
               {:ok, String.t()} | {:error, term}
+  @callback git_commit_detail(project, workspace, sha :: String.t()) :: {:ok, map} | {:error, term}
+  @callback git_commit_diff(project, workspace, sha :: String.t(), opts :: keyword) :: {:ok, String.t()} | {:error, term}
 
-  @optional_callbacks git_log: 3, git_status: 2, git_diff: 3, git_show: 4
+  @optional_callbacks git_log: 3, git_status: 2, git_diff: 3, git_diff_staged: 3, git_show: 4, git_commit_detail: 3, git_commit_diff: 4
 
   @doc """
   Check if an adapter module supports git operations.

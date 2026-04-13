@@ -549,7 +549,6 @@ defmodule BoomLooper.ChatAgent do
   end
 
   @impl true
-  @impl true
   def handle_cast({:append_external_message, msg}, state) do
     {state, msg} = append_message(state, msg)
     :ets.insert(@ets_table, {state.id, summary(state)})

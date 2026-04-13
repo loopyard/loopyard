@@ -28,6 +28,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Messages do
   attr :idx, :integer, required: true
   attr :agent_id, :string, required: true
   attr :workspace_id, :string, default: nil
+  attr :host, :string, default: "localhost"
 
   def chat_msg(%{msg: %{role: :user}} = assigns) do
     assigns = assign(assigns, :url, msg_url(assigns))
