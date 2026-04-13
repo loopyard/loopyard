@@ -1,5 +1,6 @@
 defmodule BoomLooper.Tools.WorkspaceTest do
   use ExUnit.Case
+  @moduletag timeout: 15_000
 
   alias BoomLooper.Tools.Workspace, as: WorkspaceTools
 

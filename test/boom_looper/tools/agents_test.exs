@@ -1,5 +1,6 @@
 defmodule BoomLooper.Tools.AgentsTest do
   use ExUnit.Case
+  @moduletag timeout: 15_000
 
   alias BoomLooper.Tools.Agents
 

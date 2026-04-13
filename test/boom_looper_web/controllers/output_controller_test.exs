@@ -1,5 +1,6 @@
 defmodule BoomLooperWeb.OutputControllerTest do
   use BoomLooperWeb.ConnCase
+  @moduletag timeout: 15_000
 
   describe "show/2" do
     setup do
