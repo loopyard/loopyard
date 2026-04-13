@@ -1117,9 +1117,9 @@ defmodule BoomLooperWeb.ChatLive do
           <.all_services_view :if={@live_action == :services} all_service_logs={@all_service_logs} />
           <.volume_detail :if={@live_action in [:volume, :volume_files_root, :volume_file, :volume_git]} volume_name={@selected_volume} volumes={@volumes} workspace_id={@workspace.id} base_path={@base_path} volume_tab={@volume_tab} file_tree={@file_tree} file_content={@file_content} file_path={@file_path} browse_path={@browse_path} git_log={@git_log} git_status={@git_status} diff_content={@diff_content} supports_git={@supports_git} />
           <.sync_detail :if={@live_action == :sync} sync_status={@sync_status} workspace_id={@workspace.id} workspace={@workspace} />
-          <.booting_screen :if={@live_action not in [:new, :service, :services, :console, :volume, :volume_file, :volume_git, :sync] && @booting_agent_id && !@selected_agent} agent_id={@booting_agent_id} status={@boot_status} boot_log={@boot_log} />
-          <.empty_state :if={@live_action not in [:new, :service, :services, :console, :volume, :volume_file, :volume_git, :sync] && !@booting_agent_id && !@selected_agent} />
-          <.agent_view :if={@live_action not in [:new, :service, :services, :console, :volume, :volume_file, :volume_git, :sync] && @selected_agent} {assigns} />
+          <.booting_screen :if={@live_action in [:index, :chat, :container] && @booting_agent_id && !@selected_agent} agent_id={@booting_agent_id} status={@boot_status} boot_log={@boot_log} />
+          <.empty_state :if={@live_action in [:index, :chat, :container] && !@booting_agent_id && !@selected_agent} />
+          <.agent_view :if={@live_action in [:index, :chat, :container] && @selected_agent} {assigns} />
         </main>
       </div>
     </div>
