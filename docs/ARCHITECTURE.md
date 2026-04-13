@@ -1,5 +1,17 @@
 # Architecture
 
+## Docker-first principle
+
+Everything inside a dev environment is Docker: compose clusters, named volumes, container images. There is no host filesystem access from agents or running containers.
+
+**Source adapters are the ingress layer.** `Source.Local` syncs host files into the Docker volume via Mutagen. `Source.GitHub` (future) clones via API into the volume. But once code is in the volume, everything is Docker. Source adapters don't participate in the dev environment — they just get code in.
+
+**Agents and humans see the same state through the same interfaces.** Agents use MCP tools (`exec`, `read_file`, `docker_compose`) that go through `Docker.exec_in` and `VolumeIO`. Humans see the same data in the UI (service logs, file browser, terminal console). The terminal console uses the same `docker exec` path as agent tools.
+
+**Tool output truncation.** Agent tool output is truncated (via `Helpers.truncate_for_agent`, ~80 lines) to save context tokens. Humans see the full output streamed to the chat UI and log panels. This means agents get bounded summaries while humans can scroll through everything.
+
+**The boundary.** `Source.Local` touches the host (Mutagen sync, git worktrees). Everything else is Docker. Agents never read or write the host filesystem. All file operations go through `VolumeIO` (which uses `docker run` with the volume mounted). All command execution goes through `Docker.exec_in`.
+
 ## Two layers (views vs infrastructure)
 
 The app is split into two independent layers that can restart without affecting each other:
@@ -38,7 +50,7 @@ BoomLooper.Supervisor (:one_for_one)
 
 ## Container model (Docker Compose)
 
-Each workspace's containers are orchestrated via Docker Compose. Agents write `Dockerfile` and `docker-compose.yml` directly to `.boomlooper/workspace/`. ServiceManager runs compose up/down.
+Each workspace's containers are orchestrated via Docker Compose. Agents write `Dockerfile` and `docker-compose.yml` directly to `.boomlooper/workspace/`. ServiceManager runs compose up/down. The code volume is the source of truth for project files — all containers mount it at `/workspace`, and all file operations (agent tools, terminal, VolumeIO) go through Docker.
 
 ```
 Compose project: bl-{workspace_id}
@@ -140,6 +152,8 @@ end
 ```
 
 The macro generates `__tool_name__/0`, `__description__/0`, `input_schema/0`. You just write `execute/2`. Params arrive with atom keys (SDK atomizes them via `safe_atomize_keys`).
+
+**Tool output truncation:** Long command output is truncated for agents (via `Helpers.truncate_for_agent`, ~80 lines) to conserve context tokens. The full output is streamed to the chat UI for human viewers. This keeps agent context bounded while giving humans complete visibility.
 
 **Discovery pipeline:**
 1. `ChatAgent.ToolConfig.default_tools()` → `[Tools.Agents, Tools.Container, Tools.Secrets]`

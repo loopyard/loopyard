@@ -8,6 +8,10 @@ user_invocable: true
 
 Never ship a fix you haven't verified. Reproduce it in a test first.
 
+## Context
+
+Dev environments run in Docker containers. Agents exec into containers via MCP tools. Tests run inside containers via `exec`. File changes go through Docker volumes, not the host filesystem.
+
 ## Step 1: Reproduce
 
 Write a test that demonstrates the bug. The test must FAIL before you fix anything.

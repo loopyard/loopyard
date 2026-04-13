@@ -10,6 +10,8 @@ Run an automated eval that launches a project in BoomLooper and monitors the set
 
 **Critical principle: zero nudges.** An eval only truly passes if the agent completes setup with NO human intervention. If nudges are needed, that's a system failure to fix — not a successful eval.
 
+Evals test the full Docker-based setup flow: source adapter seeds the volume, agent writes Dockerfile and docker-compose.yml, containers build and start, agent installs deps and verifies HTTP from the host. No host filesystem shortcuts.
+
 ## Prerequisites
 
 - BoomLooper must be running (`mix boom.server`)
