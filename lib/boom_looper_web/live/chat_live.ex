@@ -150,11 +150,8 @@ defmodule BoomLooperWeb.ChatLive do
       existing_setup ->
         {:noreply, push_navigate(socket, to: "#{workspace_path(socket)}/agents/#{existing_setup.id}")}
 
-      # Decision between "auto-launch setup" and "show new-agent picker"
-      # depends on whether workspace.json exists in the code volume —
-      # that's a docker exec/run. Defer it via start_async so the page
-      # paints immediately. Picker renders by default; the auto-launch
-      # branch fires from handle_async if has_config turns out false.
+      # No agents at all — check if this is a truly fresh workspace
+      # (no compose file) and auto-launch setup if so.
       socket.assigns.agents == [] ->
         {:noreply, ComposeCheck.kick_compose_check(socket, :new)}
 
@@ -224,15 +221,7 @@ defmodule BoomLooperWeb.ChatLive do
       |> assign(:selected_service, nil)
       |> assign(:tab, :chat)
 
-    if socket.assigns.agents == [] do
-      # Empty workspace: we need to know whether docker-compose.yml exists
-      # before deciding between auto-spawn and /new. Reading the volume is
-      # a docker shell-out — DO NOT block handle_params on it. Kick it off
-      # via start_async; the navigate happens from handle_async.
-      {:noreply, ComposeCheck.kick_compose_check(socket, :index)}
-    else
-      {:noreply, socket}
-    end
+    {:noreply, socket}
   end
 
   # Volume info page
@@ -309,30 +298,9 @@ defmodule BoomLooperWeb.ChatLive do
 
   def handle_params(_params, _uri, socket), do: {:noreply, assign(socket, :tab, :chat)}
 
-  # --- Async compose check ---
+  # --- Async compose check (only for :new — auto-launch setup for fresh workspaces) ---
 
   @impl true
-  def handle_async(:compose_check, {:ok, %{origin: :index} = result}, socket) do
-    cond do
-      # Raced — agents arrived while we were waiting; just stay put.
-      socket.assigns.agents != [] ->
-        {:noreply, socket}
-
-      socket.assigns.live_action != :index ->
-        {:noreply, socket}
-
-      !result.has_compose ->
-        # No compose file — truly fresh workspace, go to /new
-        {:noreply, push_navigate(socket, to: "#{workspace_path(socket)}/new")}
-
-      true ->
-        # Compose file exists — workspace was set up before. Don't auto-spawn.
-        # Agents will restore from the ETF log. The compose file IS the proof
-        # of setup — workspace.json is optional metadata.
-        {:noreply, socket}
-    end
-  end
-
   def handle_async(:compose_check, {:ok, %{origin: :new} = result}, socket) do
     cond do
       socket.assigns.live_action != :new ->
