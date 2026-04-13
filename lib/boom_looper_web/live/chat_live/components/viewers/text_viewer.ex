@@ -45,7 +45,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Viewers.TextViewer do
           Raw
         </a>
       </div>
-      <div class="flex-1 overflow-auto">
+      <div class="flex-1 overflow-auto highlight">
           <table class="text-sm font-mono leading-relaxed w-full border-collapse">
             <tbody>
               <tr :for={{line, idx} <- Enum.with_index(@lines, 1)}>
