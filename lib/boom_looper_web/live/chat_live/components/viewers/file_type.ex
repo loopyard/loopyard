@@ -46,7 +46,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Viewers.FileType do
     cond do
       ext in ~w(.ex .exs) -> "elixir"
       ext in ~w(.erl .hrl) -> "erlang"
-      ext in ~w(.rb .rake .gemspec) -> "ruby"
+      ext in ~w(.rb .rake .gemspec .ru .builder .jbuilder .thor) -> "ruby"
       ext in ~w(.py .pyw) -> "python"
       ext in ~w(.js .mjs .cjs) -> "javascript"
       ext in ~w(.ts .mts .cts) -> "typescript"
@@ -79,8 +79,15 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Viewers.FileType do
       ext in ~w(.tf .hcl) -> "hcl"
       ext in ~w(.proto) -> "protobuf"
       ext in ~w(.dockerfile) or name == "dockerfile" -> "dockerfile"
-      name in ~w(gemfile rakefile) -> "ruby"
+      name in ~w(gemfile rakefile guardfile vagrantfile berksfile capfile podfile
+                 dangerfile fastfile appfile matchfile pluginfile snapfile
+                 thorfile config.ru .pryrc .irbrc .gemrc) -> "ruby"
+      name == "brewfile" -> "ruby"
       name == "makefile" -> "makefile"
+      name == "procfile" -> "yaml"
+      name in ~w(cmakelists.txt) -> "makefile"
+      name in ~w(.bashrc .bash_profile .zshrc .zprofile .profile) -> "bash"
+      name in ~w(.gitignore .gitattributes .dockerignore .env .env.example) -> "bash"
       true -> nil
     end
   end

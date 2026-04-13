@@ -51,10 +51,27 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Viewers.FileTypeTest do
       assert FileType.language("app.css") == "css"
     end
 
-    test "recognizes special filenames" do
-      assert FileType.language("Gemfile") == "ruby"
+    test "recognizes Ruby special filenames" do
+      for name <- ~w(Gemfile Rakefile Guardfile Vagrantfile Berksfile Capfile
+                     Podfile Dangerfile Fastfile Brewfile config.ru .pryrc .irbrc .gemrc) do
+        assert FileType.language(name) == "ruby", "expected ruby for #{name}"
+      end
+    end
+
+    test "recognizes Ruby extensions" do
+      for ext <- ~w(.rb .rake .gemspec .ru .builder .jbuilder .thor) do
+        assert FileType.language("file#{ext}") == "ruby", "expected ruby for #{ext}"
+      end
+    end
+
+    test "recognizes other special filenames" do
       assert FileType.language("Dockerfile") == "dockerfile"
       assert FileType.language("Makefile") == "makefile"
+      assert FileType.language("Procfile") == "yaml"
+      assert FileType.language(".bashrc") == "bash"
+      assert FileType.language(".zshrc") == "bash"
+      assert FileType.language(".gitignore") == "bash"
+      assert FileType.language(".env") == "bash"
     end
 
     test "returns nil for unknown" do

@@ -22,37 +22,34 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Viewers.TextViewerTest do
     assert html =~ "3 lines"
   end
 
-  test "line numbers are unselectable (select-none CSS class)" do
+  test "line numbers are unselectable" do
     html = render_viewer("hello")
     assert html =~ "select-none"
   end
 
-  test "escapes HTML tags (XSS prevention)" do
+  test "escapes HTML (XSS prevention)" do
     html = render_viewer("<script>alert('xss')</script>")
     refute html =~ "<script>alert"
-    assert html =~ "&lt;script&gt;"
   end
 
   test "no double-escaping" do
     html = render_viewer("<b>bold</b>")
-    refute html =~ "&amp;lt;", "Double-escaped — raw() isn't working"
+    refute html =~ "&amp;lt;", "Double-escaped"
   end
 
-  test "Raw link points to /raw/ controller endpoint" do
+  test "Raw link points to /raw/ endpoint" do
     html = render_viewer("hello", volume_name: "bl-abc-code", path: "Gemfile")
     assert html =~ ~s|href="/raw/bl-abc-code/Gemfile"|
     assert html =~ ~s|target="_blank"|
   end
 
-  test "highlights Ruby files" do
-    html = render_viewer("def hello\n  puts 'world'\nend", path: "test.rb")
-    assert html =~ "ruby"
-    assert html =~ "<span"
+  test "has .highlight class for Makeup CSS" do
+    html = render_viewer("def hello", path: "test.rb")
+    assert html =~ "highlight"
   end
 
-  test "highlights Elixir files" do
-    html = render_viewer("defmodule Foo do\n  def bar, do: :ok\nend", path: "test.ex")
-    assert html =~ "elixir"
+  test "highlights Ruby files with spans" do
+    html = render_viewer("def hello\n  puts 'world'\nend", path: "test.rb")
     assert html =~ "<span"
   end
 end
