@@ -520,6 +520,15 @@ defmodule BoomLooper.ChatAgent do
         restart_msg = %{role: :system, content: "CLI session restarted", timestamp: DateTime.utc_now()}
         {state, restart_msg} = append_message(state, restart_msg)
         broadcast("chat_agent:#{state.id}", {:chat_message, state.id, restart_msg})
+
+        # Send context summary so the agent knows what it was working on.
+        # Without this, a restart wipes all context — the agent wakes up
+        # with amnesia and the user has to re-explain everything.
+        resume_msg = build_resume_message(state)
+        if resume_msg do
+          GenServer.cast(self(), {:send_message, resume_msg})
+        end
+
         {:noreply, state}
 
       {:error, reason} ->
