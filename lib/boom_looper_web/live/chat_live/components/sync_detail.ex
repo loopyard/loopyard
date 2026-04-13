@@ -47,6 +47,42 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.SyncDetail do
             </div>
           </div>
 
+          <%!-- Mutagen details --%>
+          <% details = @sync[:details] %>
+          <div :if={details} class="rounded-lg border border-zinc-200 dark:border-zinc-700/80 divide-y divide-zinc-200 dark:divide-zinc-700/80">
+            <div :if={details[:status_text]} class="px-4 py-3 flex items-center justify-between">
+              <span class="text-xs text-zinc-400 dark:text-zinc-500">Mutagen</span>
+              <span class="text-sm font-mono text-zinc-700 dark:text-zinc-300">{details.status_text}</span>
+            </div>
+            <div :if={details[:alpha_files]} class="px-4 py-3 flex items-center justify-between">
+              <span class="text-xs text-zinc-400 dark:text-zinc-500">Host files</span>
+              <span class="text-sm font-mono text-zinc-700 dark:text-zinc-300">{details.alpha_files.files} ({details.alpha_files.size})</span>
+            </div>
+            <div :if={details[:beta_files]} class="px-4 py-3 flex items-center justify-between">
+              <span class="text-xs text-zinc-400 dark:text-zinc-500">Container files</span>
+              <span class="text-sm font-mono text-zinc-700 dark:text-zinc-300">{details.beta_files.files} ({details.beta_files.size})</span>
+            </div>
+            <div :if={details[:conflicts] && details.conflicts > 0} class="px-4 py-3 flex items-center justify-between">
+              <span class="text-xs text-zinc-400 dark:text-zinc-500">Conflicts</span>
+              <span class="text-sm font-medium text-amber-500">{details.conflicts}</span>
+            </div>
+            <div :if={details[:scan_problems] && details.scan_problems > 0} class="px-4 py-3 flex items-center justify-between">
+              <span class="text-xs text-zinc-400 dark:text-zinc-500">Scan problems</span>
+              <span class="text-sm font-medium text-amber-500">{details.scan_problems}</span>
+            </div>
+            <div class="px-4 py-3 flex items-center gap-3">
+              <span class="text-xs text-zinc-400 dark:text-zinc-500">Connections</span>
+              <span class="flex items-center gap-1.5 text-xs">
+                <span class={"w-1.5 h-1.5 rounded-full #{if details[:alpha_connected], do: "bg-green-500", else: "bg-red-500"}"}></span>
+                host
+              </span>
+              <span class="flex items-center gap-1.5 text-xs">
+                <span class={"w-1.5 h-1.5 rounded-full #{if details[:beta_connected], do: "bg-green-500", else: "bg-red-500"}"}></span>
+                container
+              </span>
+            </div>
+          </div>
+
           <div class="flex items-center gap-2">
             <.control_btn phx-click="sync_restart" phx-value-workspace-id={@workspace_id}>Restart</.control_btn>
             <.control_btn :if={@status == :paused} phx-click="sync_resume" phx-value-workspace-id={@workspace_id}>Resume</.control_btn>

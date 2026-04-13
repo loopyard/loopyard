@@ -160,7 +160,7 @@ defmodule BoomLooper.Source.Local.Mutagen do
   # contains lines like "Status: Watching for changes" or "Status: Paused".
   # We only care about three outcomes so we match loosely on substrings.
   defp parse_status(out) do
-    cond do
+    status = cond do
       String.match?(out, ~r/Status:.*Paused/i) -> :paused
       String.match?(out, ~r/Status:.*Problem/i) -> :errored
       String.match?(out, ~r/Status:.*Error/i) -> :errored
@@ -168,6 +168,55 @@ defmodule BoomLooper.Source.Local.Mutagen do
       String.match?(out, ~r/Status:/) -> :running
       true -> :unknown
     end
+
+    # Return enriched status if we can parse details
+    case parse_details(out) do
+      nil -> status
+      details -> {:rich, status, details}
+    end
+  end
+
+  @doc "Parse the full `mutagen sync list` output into structured details."
+  def parse_details(out) do
+    status_line = case Regex.run(~r/Status:\s*(.+)/, out) do
+      [_, text] -> String.trim(text)
+      _ -> nil
+    end
+
+    alpha_connected = String.match?(out, ~r/Alpha:.*\n\s+URL:.*\n\s+Connected:\s*Yes/s)
+    beta_connected = String.match?(out, ~r/Beta:.*\n\s+URL:.*\n\s+Connected:\s*Yes/s)
+
+    alpha_files = case Regex.run(~r/Alpha:.*?(\d+) files.*?\(([^)]+)\)/s, out) do
+      [_, count, size] -> %{files: String.to_integer(count), size: size}
+      _ -> nil
+    end
+
+    beta_files = case Regex.run(~r/Beta:.*?(\d+) files.*?\(([^)]+)\)/s, out) do
+      [_, count, size] -> %{files: String.to_integer(count), size: size}
+      _ -> nil
+    end
+
+    conflicts = case Regex.run(~r/Conflicts:\s*(\d+)/, out) do
+      [_, n] -> String.to_integer(n)
+      _ -> 0
+    end
+
+    scan_problems = case Regex.run(~r/Scan problems:\s*(\d+)/, out) do
+      [_, n] -> String.to_integer(n)
+      _ -> 0
+    end
+
+    %{
+      status_text: status_line,
+      alpha_connected: alpha_connected,
+      beta_connected: beta_connected,
+      alpha_files: alpha_files,
+      beta_files: beta_files,
+      conflicts: conflicts,
+      scan_problems: scan_problems
+    }
+  rescue
+    _ -> nil
   end
 
   defp run(args) do

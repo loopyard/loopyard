@@ -62,7 +62,8 @@ defmodule BoomLooper.Source.Local.SyncMonitor do
     last_error: nil,
     last_checked_at: nil,
     consecutive_errors: 0,
-    removing: false
+    removing: false,
+    sync_details: nil
   ]
 
   # --- Public API ---
@@ -272,6 +273,15 @@ defmodule BoomLooper.Source.Local.SyncMonitor do
   # Runs inside the probe task (not the GenServer). Must not touch state.
   defp do_probe(workspace_id, worktree_path, container_name) do
     case Mutagen.session_status(workspace_id) do
+      {:rich, :running, details} ->
+        {:ok, :running, details}
+
+      {:rich, :paused, details} ->
+        {:ok, :paused, details}
+
+      {:rich, :errored, _details} ->
+        {:error, :session_errored}
+
       :running ->
         {:ok, :running}
 
@@ -282,9 +292,6 @@ defmodule BoomLooper.Source.Local.SyncMonitor do
         {:error, :session_errored}
 
       status when status in [:unknown, :missing] ->
-        # :unknown means the daemon may not be running yet (e.g. just
-        # installed, or machine rebooted). Try to create the session —
-        # mutagen auto-starts its daemon on first use.
         create_session(workspace_id, worktree_path, container_name)
     end
   end
@@ -332,9 +339,19 @@ defmodule BoomLooper.Source.Local.SyncMonitor do
 
   # --- Probe result → state transitions ---
 
+  defp apply_probe_result(state, {:ok, :running, details}) do
+    %{state | consecutive_errors: 0, sync_details: details}
+    |> transition(:running, nil)
+  end
+
   defp apply_probe_result(state, {:ok, :running}) do
     %{state | consecutive_errors: 0}
     |> transition(:running, nil)
+  end
+
+  defp apply_probe_result(state, {:ok, :paused, details}) do
+    %{state | sync_details: details}
+    |> transition(:paused, nil)
   end
 
   defp apply_probe_result(state, {:ok, :paused}) do
@@ -395,11 +412,17 @@ defmodule BoomLooper.Source.Local.SyncMonitor do
   end
 
   defp status_map(state) do
-    %{
+    base = %{
       status: state.status,
       last_error: state.last_error,
       last_checked_at: state.last_checked_at
     }
+
+    if state.sync_details do
+      Map.put(base, :details, state.sync_details)
+    else
+      base
+    end
   end
 
   # Exponential backoff: 5s × 2^n, capped at 60s. Reset when we reach
