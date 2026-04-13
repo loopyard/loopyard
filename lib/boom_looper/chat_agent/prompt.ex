@@ -80,6 +80,8 @@ defmodule BoomLooper.ChatAgent.Prompt do
     Workspace container: #{container}. YOUR AGENT ID: #{agent_id}. Pass agent_id to every tool call.
 
     Use boom-looper-container MCP tools for ALL work. `exec` for quick commands, `exec_stream` for long-running ones. ALWAYS use the `docker_compose` MCP tool — never run `docker compose` via Bash. #{workspace_note}. Dev server runs in a separate container — use `logs` and `service_status` to check it.
+
+    IMPORTANT: Container ports (e.g. 3000) are NOT accessible from the host. Docker maps them to random host ports. Use `probe_http` to find the real URL, or `service_containers` to see port mappings (e.g. 0.0.0.0:32794->3000/tcp means the app is at localhost:32794).
     """
   end
 

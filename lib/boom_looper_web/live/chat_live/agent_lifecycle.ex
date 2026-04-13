@@ -43,14 +43,21 @@ defmodule BoomLooperWeb.Live.ChatLive.AgentLifecycle do
         true -> auto_name()
       end
 
+    # If a workspace container is running, the agent should use container
+    # tools (exec, read_file, write_file) instead of host-side Bash/Read/Edit.
+    # Only set bind_mount if no container exists (pre-setup state).
+    ws_container = BoomLooper.Workspace.ServiceManager.service_container_name(ws_id, "workspace")
+    has_container = BoomLooper.Docker.container_running?(ws_container)
+
     agent_opts = [
       id: id,
       name: name,
       working_dir: working_dir,
       started_by: "browser",
-      bind_mount: working_dir,
       workspace_id: ws_id
     ]
+
+    agent_opts = if has_container, do: agent_opts, else: agent_opts ++ [bind_mount: working_dir]
 
     agent_opts = if service_name, do: agent_opts ++ [service_name: service_name], else: agent_opts
     initial_message = Keyword.get(opts, :initial_message)
