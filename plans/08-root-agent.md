@@ -86,3 +86,25 @@ end
 - Should there be only one Root Agent, or can there be multiple?
 - Should Root have a budget/rate limit to prevent runaway infrastructure changes?
 - How does Root auth work in prod? (env var? admin UI? API key?)
+
+## Host binary punchthrough
+
+Root Agent (or a curated set of host tools) could punch through to host
+binaries for deployment and ops workflows:
+
+- `fly deploy` — deploy to Fly.io from the host workstation
+- `gh pr create` — create PRs using the host's GitHub auth
+- `git push` — push from the host's git config with SSH keys
+- `aws`, `gcloud`, `kubectl` — cloud CLIs that need host credentials
+
+These are NOT container tools — they run on the host because they need
+the host's credentials, SSH keys, and CLI configs. They'd be a
+`Tools.Host` MCP server available only to Root agents.
+
+**Safety:** Each host binary is explicitly registered (not a generic
+"run anything on host" escape hatch). The tool wraps a specific binary
+with specific allowed arguments. Gates can require approval per-call.
+
+**Alternative:** Run these in a privileged container with host credential
+mounts. This keeps the Docker boundary intact while still accessing
+host secrets. Tradeoff: more Docker complexity vs cleaner security model.

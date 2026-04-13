@@ -122,10 +122,10 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.ContextPanel do
           <span class="text-zinc-400">Model</span>
           <span class="text-zinc-500 italic">awaiting first response</span>
         </div>
-        <.info_row label="Total tokens" value={format_number(@total_tokens)} />
-        <.info_row label="Input" value={format_number(@agent[:total_input_tokens] || 0)} />
-        <.info_row label="Output" value={format_number(@agent[:total_output_tokens] || 0)} />
-        <.info_row label="Cache hits" value={format_number(@agent[:total_cache_read_tokens] || 0)} />
+        <.info_row label="Total tokens" value={compact_number(@total_tokens)} />
+        <.info_row label="Input" value={compact_number(@agent[:total_input_tokens] || 0)} />
+        <.info_row label="Output" value={compact_number(@agent[:total_output_tokens] || 0)} />
+        <.info_row label="Cache hits" value={compact_number(@agent[:total_cache_read_tokens] || 0)} />
         <.info_row label="Cost" value={"$#{Float.round((@agent[:total_cost_usd] || 0.0) * 1.0, 4)}"} />
       </div>
     </div>
@@ -179,11 +179,11 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.ContextPanel do
   end
 
   @doc "Format a number with K/M suffixes for compact display."
-  def format_number(n) when is_integer(n) and n >= 1_000_000, do: "#{Float.round(n / 1_000_000, 1)}M"
-  def format_number(n) when is_integer(n) and n >= 1_000, do: "#{Float.round(n / 1_000, 1)}K"
-  def format_number(n) when is_integer(n), do: Integer.to_string(n)
-  def format_number(n) when is_float(n), do: format_number(round(n))
-  def format_number(_), do: "0"
+  def compact_number(n) when is_integer(n) and n >= 1_000_000, do: "#{Float.round(n / 1_000_000, 1)}M"
+  def compact_number(n) when is_integer(n) and n >= 1_000, do: "#{Float.round(n / 1_000, 1)}K"
+  def compact_number(n) when is_integer(n), do: Integer.to_string(n)
+  def compact_number(n) when is_float(n), do: compact_number(round(n))
+  def compact_number(_), do: "0"
 
   @doc "Build Docker context info from agent state."
   def docker_ctx(agent) do

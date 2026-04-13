@@ -114,20 +114,27 @@ defmodule BoomLooper.Agent.Backend.ClaudeCodeTest do
   end
 
   describe "translate/1 — ResultMessage" do
-    test "returns empty list (skip to avoid duplicates)" do
+    test "returns SessionResult with usage stats" do
       msg = %ClaudeCode.Message.ResultMessage{
         type: :result,
         subtype: :success,
         is_error: false,
         duration_ms: 100.0,
         duration_api_ms: 80.0,
-        num_turns: 1,
+        num_turns: 3,
         session_id: "sess_1",
         total_cost_usd: 0.01,
-        usage: %{}
+        usage: %{input_tokens: 1000, output_tokens: 500, cache_read_input_tokens: 200},
+        model_usage: %{"claude-sonnet-4-20250514" => %{}}
       }
 
-      assert [] = Backend.translate(msg)
+      assert [%BoomLooper.Agent.Event.SessionResult{} = result] = Backend.translate(msg)
+      assert result.model == "claude-sonnet-4-20250514"
+      assert result.input_tokens == 1000
+      assert result.output_tokens == 500
+      assert result.cache_read_tokens == 200
+      assert result.cost_usd == 0.01
+      assert result.num_turns == 3
     end
   end
 

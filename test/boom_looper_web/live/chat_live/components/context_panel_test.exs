@@ -5,31 +5,31 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.ContextPanelTest do
 
   describe "format_number/1" do
     test "formats small numbers as-is" do
-      assert ContextPanel.format_number(0) == "0"
-      assert ContextPanel.format_number(42) == "42"
-      assert ContextPanel.format_number(999) == "999"
+      assert ContextPanel.compact_number(0) == "0"
+      assert ContextPanel.compact_number(42) == "42"
+      assert ContextPanel.compact_number(999) == "999"
     end
 
     test "formats thousands with K suffix" do
-      assert ContextPanel.format_number(1_000) == "1.0K"
-      assert ContextPanel.format_number(1_500) == "1.5K"
-      assert ContextPanel.format_number(42_000) == "42.0K"
+      assert ContextPanel.compact_number(1_000) == "1.0K"
+      assert ContextPanel.compact_number(1_500) == "1.5K"
+      assert ContextPanel.compact_number(42_000) == "42.0K"
       # 999_999 is just under 1M so it gets K suffix
-      result = ContextPanel.format_number(999_999)
+      result = ContextPanel.compact_number(999_999)
       assert result =~ "K"
     end
 
     test "formats millions with M suffix" do
-      assert ContextPanel.format_number(1_000_000) == "1.0M"
-      assert ContextPanel.format_number(2_500_000) == "2.5M"
+      assert ContextPanel.compact_number(1_000_000) == "1.0M"
+      assert ContextPanel.compact_number(2_500_000) == "2.5M"
     end
 
     test "handles floats" do
-      assert ContextPanel.format_number(1500.7) == "1.5K"
+      assert ContextPanel.compact_number(1500.7) == "1.5K"
     end
 
     test "handles nil/other" do
-      assert ContextPanel.format_number(nil) == "0"
+      assert ContextPanel.compact_number(nil) == "0"
     end
   end
 
