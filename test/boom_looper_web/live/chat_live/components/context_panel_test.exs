@@ -90,4 +90,32 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.ContextPanelTest do
       assert "list_secrets" in tools
     end
   end
+
+  describe "short_tool/1" do
+    test "strips MCP server prefix" do
+      assert ContextPanel.short_tool("mcp__boom-looper-container__exec") == "exec"
+      assert ContextPanel.short_tool("mcp__boom-looper-agents__list_agents") == "list_agents"
+    end
+
+    test "passes non-MCP names through" do
+      assert ContextPanel.short_tool("Bash") == "Bash"
+      assert ContextPanel.short_tool("Read") == "Read"
+    end
+  end
+
+  describe "short_model/1" do
+    test "shortens Claude model names" do
+      assert ContextPanel.short_model("claude-sonnet-4-20250514") == "sonnet-4"
+      assert ContextPanel.short_model("claude-opus-4-6-20250605") == "opus-4-6"
+      assert ContextPanel.short_model("claude-haiku-4-5-20251001") == "haiku-4-5"
+    end
+
+    test "handles nil" do
+      assert ContextPanel.short_model(nil) == nil
+    end
+
+    test "handles unknown model strings" do
+      assert ContextPanel.short_model("gpt-4") == "gpt-4"
+    end
+  end
 end

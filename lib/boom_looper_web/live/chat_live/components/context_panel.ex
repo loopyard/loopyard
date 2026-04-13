@@ -54,12 +54,18 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.ContextPanel do
     <div class="px-4 py-3 space-y-2">
       <h4 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Info</h4>
       <div class="space-y-1.5 text-xs">
-        <.info_row label="Status" value={@agent.status} />
+        <div class="flex justify-between">
+          <span class="text-zinc-400">Status</span>
+          <span class="font-medium text-zinc-700 dark:text-zinc-300">
+            {if @agent[:active_tool] && @agent.status == :thinking, do: "using #{short_tool(@agent.active_tool)}", else: @agent.status}
+          </span>
+        </div>
+        <.info_row label="Turns" value={@agent[:turns] || 0} />
         <.info_row label="Tool calls" value={@agent.tool_calls} />
         <.info_row label="Errors" value={@agent.errors} class={if @agent.errors > 0, do: "text-red-500"} />
         <.info_row label="Messages" value={length(@agent.messages)} />
         <.info_row :if={@agent[:started_at]} label="Started" value={time_ago(@agent.started_at)} />
-        <.info_row :if={@agent[:started_by]} label="Started by" value={@agent.started_by} />
+        <.info_row :if={@agent[:last_activity_at]} label="Last active" value={time_ago(@agent.last_activity_at)} />
       </div>
     </div>
     """
@@ -97,21 +103,25 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.ContextPanel do
   end
 
   defp claude_usage(assigns) do
+    total_tokens = (assigns.agent[:total_input_tokens] || 0) + (assigns.agent[:total_output_tokens] || 0)
+    assigns = assign(assigns, :total_tokens, total_tokens)
+
     ~H"""
     <div class="px-4 py-3 border-t border-zinc-200 dark:border-zinc-700/80 space-y-2">
       <h4 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Claude</h4>
       <div class="space-y-1.5 text-xs">
         <div :if={@agent[:model]} class="flex justify-between">
           <span class="text-zinc-400">Model</span>
-          <span class="font-mono text-zinc-700 dark:text-zinc-300">{@agent.model}</span>
+          <span class="font-mono text-zinc-700 dark:text-zinc-300">{short_model(@agent.model)}</span>
         </div>
         <div :if={!@agent[:model]} class="flex justify-between">
           <span class="text-zinc-400">Model</span>
-          <span class="text-zinc-500 italic">waiting for first response</span>
+          <span class="text-zinc-500 italic">awaiting first response</span>
         </div>
-        <.info_row label="Input tokens" value={format_number(@agent[:total_input_tokens] || 0)} />
-        <.info_row label="Output tokens" value={format_number(@agent[:total_output_tokens] || 0)} />
-        <.info_row label="Cache read" value={format_number(@agent[:total_cache_read_tokens] || 0)} />
+        <.info_row label="Total tokens" value={format_number(@total_tokens)} />
+        <.info_row label="Input" value={format_number(@agent[:total_input_tokens] || 0)} />
+        <.info_row label="Output" value={format_number(@agent[:total_output_tokens] || 0)} />
+        <.info_row label="Cache hits" value={format_number(@agent[:total_cache_read_tokens] || 0)} />
         <.info_row label="Cost" value={"$#{Float.round((@agent[:total_cost_usd] || 0.0) * 1.0, 4)}"} />
       </div>
     </div>
@@ -145,6 +155,23 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.ContextPanel do
       <span class={@class || "font-medium text-zinc-700 dark:text-zinc-300"}>{@value}</span>
     </div>
     """
+  end
+
+  @doc "Shorten MCP tool name for display (strip server prefix)."
+  def short_tool("mcp__" <> rest) do
+    case String.split(rest, "__", parts: 2) do
+      [_server, name] -> name
+      _ -> rest
+    end
+  end
+  def short_tool(name), do: name
+
+  @doc "Shorten model name for display."
+  def short_model(nil), do: nil
+  def short_model(model) when is_binary(model) do
+    model
+    |> String.replace("claude-", "")
+    |> String.replace(~r/-\d{8}$/, "")
   end
 
   @doc "Format a number with K/M suffixes for compact display."
