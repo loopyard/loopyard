@@ -12,49 +12,53 @@ Hooks.Terminal = createTerminalHook()
 Hooks.ScrollBottom = {
   mounted() {
     this._userScrolledUp = false
+    this._observedEl = null
+    this._observer = null
 
     this.handleEvent("scroll_bottom", () => {
       if (!this._userScrolledUp) this._scrollToBottom()
     })
 
-    // Watch for messages appearing in the DOM (handle_params loads them
-    // after mount, so the div is empty on first render).
-    this._observeMessages()
+    this._setup()
   },
 
   updated() {
-    // Nothing — all scrolling is driven by MutationObserver + push_event.
-    // updated() was unreliable because LiveView doesn't always re-render
-    // the hook's parent element when assigns change.
+    // LiveView navigation replaces the #messages element — re-attach.
+    this._setup()
   },
 
-  _scrollToBottom() {
+  _setup() {
     const el = document.getElementById("messages")
-    if (el) el.scrollTop = el.scrollHeight
-  },
+    if (!el || el === this._observedEl) return
 
-  _observeMessages() {
-    const el = document.getElementById("messages")
-    if (!el) return
+    // Reset scroll state for new page
+    this._userScrolledUp = false
 
-    // Scroll listener: track if user scrolled up
+    // Clean up old observer
+    if (this._observer) this._observer.disconnect()
+
+    // Track user scroll
     el.addEventListener("scroll", () => {
       const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50
       this._userScrolledUp = !atBottom
     }, { passive: true })
 
-    // MutationObserver: scroll to bottom when new children appear
-    // (messages loaded from handle_params, or new message from PubSub)
-    const observer = new MutationObserver(() => {
+    // Watch for children added (messages loading)
+    this._observer = new MutationObserver(() => {
       if (!this._userScrolledUp) {
         requestAnimationFrame(() => this._scrollToBottom())
       }
     })
+    this._observer.observe(el, { childList: true, subtree: true })
+    this._observedEl = el
 
-    observer.observe(el, { childList: true, subtree: true })
-
-    // Also scroll now in case messages already rendered
+    // Scroll now
     requestAnimationFrame(() => this._scrollToBottom())
+  },
+
+  _scrollToBottom() {
+    const el = document.getElementById("messages")
+    if (el) el.scrollTop = el.scrollHeight
   }
 }
 
