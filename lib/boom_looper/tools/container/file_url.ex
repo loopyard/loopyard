@@ -25,7 +25,7 @@ defmodule BoomLooper.Tools.Container.FileUrl do
             |> String.trim_leading("./")
             |> String.trim_leading("workspace/")
 
-          {:ok, "/projects/#{project_id}/workspaces/#{workspace_id}/volumes/#{volume_name}/files/#{clean}"}
+          {:ok, Path.join(["/projects", project_id, "workspaces", workspace_id, "volumes", volume_name, "files", clean])}
         else
           {:error, "Could not determine project for workspace #{workspace_id}"}
         end
