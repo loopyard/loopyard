@@ -1082,7 +1082,7 @@ defmodule BoomLooperWeb.ChatLive do
           is_local_source?={@is_local_source?} sync_status={@sync_status}
         />
         <%!-- Main content: hidden on mobile when sidebar is showing (index/new with no selection) --%>
-        <main class={"flex-1 flex flex-col min-w-0 #{if @live_action in [:index, :new] && !@selected_id && !@selected_service, do: "hidden md:flex", else: "flex"}"}>
+        <main class={"flex-1 flex flex-col min-w-0 #{if @live_action == :index && !@selected_id && !@selected_service, do: "hidden md:flex", else: "flex"}"}>
           <.new_agent_screen :if={@live_action == :new} workspace={@workspace} base_path={@base_path} />
           <.service_log_view :if={@live_action == :service} service_name={@selected_service} service_statuses={@service_statuses} logs={@service_logs} base_path={@base_path} host={@host} />
           <.console_view :if={@live_action == :console} service_name={@selected_service} container={@console_container} />
