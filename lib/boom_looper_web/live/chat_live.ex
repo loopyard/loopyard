@@ -441,6 +441,10 @@ defmodule BoomLooperWeb.ChatLive do
       # Don't add optimistically — let PubSub broadcast handle it for ALL viewers.
       # This ensures multiplayer: every viewer (including the sender) sees the
       # message via the same path.
+      # Set the base_url from the user's actual connection so tools like
+      # app_url/file_url generate links that work from the user's browser
+      # (could be localhost, LAN IP, or a tunnel hostname).
+      ChatAgent.set_base_url(socket.assigns.selected_id, connection_base_url(socket))
       ChatAgent.send_message(socket.assigns.selected_id, message)
       {:noreply, socket}
     else
@@ -910,6 +914,26 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   # --- Private ---
+
+  # Build the base URL from the user's actual connection. This is what
+  # tools like app_url/file_url use to generate clickable links.
+  # Respects LAN IPs (10.0.1.123), tunnel hostnames, etc.
+  defp connection_base_url(socket) do
+    case socket.host_uri do
+      %URI{scheme: scheme, host: host, port: port} when is_binary(host) and host != "" ->
+        scheme = scheme || "http"
+
+        if port && port not in [80, 443] do
+          "#{scheme}://#{host}:#{port}"
+        else
+          "#{scheme}://#{host}"
+        end
+
+      _ ->
+        port = Application.get_env(:boom_looper, BoomLooperWeb.Endpoint)[:http][:port] || 4000
+        "http://localhost:#{port}"
+    end
+  end
 
   defp upsert_stream_message(socket, data, title, msg_id) do
     stream_buffer = socket.assigns.stream_buffer

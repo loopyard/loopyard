@@ -26,6 +26,7 @@ defmodule BoomLooper.ChatAgent do
     :started_by,
     :last_activity_at,
     :service_name,
+    :base_url,
     status: :idle,
     messages: [],
     tool_calls: 0,
@@ -45,6 +46,11 @@ defmodule BoomLooper.ChatAgent do
 
   def send_message(id, text) do
     GenServer.cast(via(id), {:send_message, text})
+  end
+
+  @doc "Set the base URL for this agent (used by app_url/file_url tools). Called by the LiveView with the user's actual connection origin."
+  def set_base_url(id, base_url) do
+    GenServer.cast(via(id), {:set_base_url, base_url})
   end
 
   def get_state(id) do
@@ -541,6 +547,11 @@ defmodule BoomLooper.ChatAgent do
   end
 
   @impl true
+  def handle_cast({:set_base_url, base_url}, state) do
+    {:noreply, %{state | base_url: base_url}}
+  end
+
+  @impl true
   def handle_cast({:append_external_message, msg}, state) do
     {state, msg} = append_message(state, msg)
     :ets.insert(@ets_table, {state.id, summary(state)})
@@ -947,7 +958,8 @@ defmodule BoomLooper.ChatAgent do
       messages: Enum.reverse(state.messages),
       tool_calls: state.tool_calls,
       errors: state.errors,
-      service_name: state.service_name
+      service_name: state.service_name,
+      base_url: state.base_url
     }
   end
 
