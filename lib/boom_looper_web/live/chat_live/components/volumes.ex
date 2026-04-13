@@ -193,7 +193,6 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Volumes do
           :for={entry <- @file_tree}
           phx-click={if entry.type == :dir, do: "browse_dir", else: "view_file"}
           phx-value-path={entry.path}
-          phx-value-volume={@volume_name}
           class="w-full px-4 py-2 flex items-center justify-between text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
         >
           <span class="flex items-center gap-2">

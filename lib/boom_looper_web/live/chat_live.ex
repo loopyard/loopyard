@@ -234,8 +234,7 @@ defmodule BoomLooperWeb.ChatLive do
     end
   end
 
-  def handle_params(%{"volume_name" => name}, _uri, %{assigns: %{live_action: :volume}} = socket) do
-    # Check if this is a code volume and if the source adapter supports git
+  def handle_params(%{"volume_name" => name}, uri, %{assigns: %{live_action: :volume}} = socket) do
     is_code = String.contains?(name, "code")
 
     adapter =
@@ -245,21 +244,75 @@ defmodule BoomLooperWeb.ChatLive do
 
     supports_git = is_code && adapter && BoomLooper.Source.supports_git?(adapter)
 
+    # URL state from query params: ?tab=files&path=app/models&file=user.rb
+    query = uri |> URI.parse() |> Map.get(:query) |> then(&(URI.decode_query(&1 || "")))
+    tab = case query["tab"] do
+      "files" -> :files
+      "git" -> :git
+      _ -> :info
+    end
+    browse_path = query["path"] || "."
+    view_file = query["file"]
+
+    # Only reset state when switching to a different volume
+    socket =
+      if socket.assigns[:selected_volume] != name do
+        socket
+        |> assign(:selected_id, nil)
+        |> assign(:selected_agent, nil)
+        |> assign(:selected_service, nil)
+        |> assign(:selected_volume, name)
+        |> assign(:file_tree, nil)
+        |> assign(:file_content, nil)
+        |> assign(:file_path, nil)
+        |> assign(:git_log, [])
+        |> assign(:git_status, [])
+        |> assign(:diff_content, nil)
+        |> assign(:supports_git, supports_git)
+      else
+        socket
+      end
+
     socket =
       socket
-      |> assign(:selected_id, nil)
-      |> assign(:selected_agent, nil)
-      |> assign(:selected_service, nil)
-      |> assign(:selected_volume, name)
-      |> assign(:volume_tab, :info)
-      |> assign(:file_tree, nil)
-      |> assign(:file_content, nil)
-      |> assign(:file_path, nil)
-      |> assign(:browse_path, ".")
-      |> assign(:git_log, [])
-      |> assign(:git_status, [])
-      |> assign(:diff_content, nil)
-      |> assign(:supports_git, supports_git)
+      |> assign(:volume_tab, tab)
+      |> assign(:browse_path, browse_path)
+
+    # Load file tree when on Files tab and path changed
+    socket =
+      if tab == :files && (socket.assigns.file_tree == nil || socket.assigns.browse_path != browse_path) do
+        socket
+        |> assign(:file_tree, :loading)
+        |> assign(:browse_path, browse_path)
+        |> start_async(:file_tree, fn -> BoomLooper.VolumeManager.tree(name, browse_path) end)
+      else
+        socket
+      end
+
+    # Load file content when ?file= is set
+    socket =
+      if view_file && view_file != socket.assigns[:file_path] do
+        socket
+        |> assign(:file_content, :loading)
+        |> assign(:file_path, view_file)
+        |> start_async(:file_content, fn ->
+          case BoomLooper.VolumeIO.read_file(name, view_file) do
+            {:ok, content} -> %{path: view_file, content: content}
+            {:error, _} -> %{path: view_file, content: "(could not read file)"}
+          end
+        end)
+      else
+        if is_nil(view_file), do: assign(socket, file_content: nil, file_path: nil), else: socket
+      end
+
+    # Load git data when on Git tab
+    socket =
+      if tab == :git && socket.assigns.git_log == [] do
+        git_assigns = Map.take(socket.assigns, [:project, :workspace_entry])
+        start_async(socket, :git_data, fn -> load_git_data(git_assigns) end)
+      else
+        socket
+      end
 
     {:noreply, socket}
   end
@@ -532,64 +585,22 @@ defmodule BoomLooperWeb.ChatLive do
     {:noreply, push_navigate(socket, to: workspace_path(socket))}
   end
 
-  def handle_event("volume_tab", %{"tab" => tab_str}, socket) do
-    tab =
-      case tab_str do
-        "info" -> :info
-        "files" -> :files
-        "git" -> :git
-        _ -> :info
-      end
-
-    socket = assign(socket, :volume_tab, tab)
-
-    socket =
-      case tab do
-        :files when is_nil(socket.assigns.file_tree) ->
-          volume_name = socket.assigns.selected_volume
-          start_async(socket, :file_tree, fn -> BoomLooper.VolumeManager.tree(volume_name) end)
-
-        :git when socket.assigns.git_log == [] ->
-          git_assigns = Map.take(socket.assigns, [:project, :workspace_entry])
-          start_async(socket, :git_data, fn -> load_git_data(git_assigns) end)
-
-        _ ->
-          socket
-      end
-
-    {:noreply, socket}
+  def handle_event("volume_tab", %{"tab" => tab}, socket) do
+    {:noreply, push_patch(socket, to: volume_url(socket, tab: tab))}
   end
 
   def handle_event("browse_dir", %{"path" => path}, socket) do
-    volume_name = socket.assigns.selected_volume
-
-    {:noreply,
-     socket
-     |> assign(:browse_path, path)
-     |> assign(:file_content, nil)
-     |> assign(:file_path, nil)
-     |> assign(:file_tree, :loading)
-     |> start_async(:file_tree, fn -> BoomLooper.VolumeManager.tree(volume_name, path) end)}
+    {:noreply, push_patch(socket, to: volume_url(socket, tab: "files", path: path))}
   end
 
-  def handle_event("view_file", %{"path" => path} = params, socket) do
-    volume_name = params["volume"] || socket.assigns.selected_volume
-    BoomLooper.EventLog.info("chat_live", "view_file: path=#{path} volume=#{volume_name}")
-
-    {:noreply,
-     socket
-     |> assign(:file_content, :loading)
-     |> assign(:file_path, path)
-     |> start_async(:file_content, fn ->
-       case BoomLooper.VolumeIO.read_file(volume_name, path) do
-         {:ok, content} -> %{path: path, content: content}
-         {:error, _} -> %{path: path, content: "(could not read file)"}
-       end
-     end)}
+  def handle_event("view_file", %{"path" => path}, socket) do
+    browse = socket.assigns.browse_path
+    {:noreply, push_patch(socket, to: volume_url(socket, tab: "files", path: browse, file: path))}
   end
 
   def handle_event("close_file_viewer", _params, socket) do
-    {:noreply, socket |> assign(:file_content, nil) |> assign(:file_path, nil)}
+    browse = socket.assigns.browse_path
+    {:noreply, push_patch(socket, to: volume_url(socket, tab: "files", path: browse))}
   end
 
   def handle_event("view_diff", %{"path" => path}, socket) do
@@ -965,6 +976,12 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   defp workspace_path(socket), do: socket.assigns.base_path
+
+  defp volume_url(socket, params) do
+    base = "#{workspace_path(socket)}/volumes/#{socket.assigns.selected_volume}"
+    query = params |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "." end) |> URI.encode_query()
+    if query == "", do: base, else: "#{base}?#{query}"
+  end
 
   defp preset_message("setup") do
     guide = BoomLooper.ChatAgent.setup_guide()
