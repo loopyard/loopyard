@@ -323,6 +323,37 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Chat do
         </div>
       </div>
 
+      <%!-- Claude usage --%>
+      <div class="px-4 py-3 border-t border-zinc-200 dark:border-zinc-700/80 space-y-2">
+        <h4 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Claude</h4>
+        <div class="space-y-1.5 text-xs">
+          <div :if={@agent[:model]} class="flex justify-between">
+            <span class="text-zinc-400">Model</span>
+            <span class="font-mono text-zinc-700 dark:text-zinc-300">{@agent.model}</span>
+          </div>
+          <div :if={!@agent[:model]} class="flex justify-between">
+            <span class="text-zinc-400">Model</span>
+            <span class="text-zinc-500 italic">waiting for first response</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-zinc-400">Input tokens</span>
+            <span class="font-mono text-zinc-700 dark:text-zinc-300">{format_number(@agent[:total_input_tokens] || 0)}</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-zinc-400">Output tokens</span>
+            <span class="font-mono text-zinc-700 dark:text-zinc-300">{format_number(@agent[:total_output_tokens] || 0)}</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-zinc-400">Cache read</span>
+            <span class="font-mono text-zinc-700 dark:text-zinc-300">{format_number(@agent[:total_cache_read_tokens] || 0)}</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-zinc-400">Cost</span>
+            <span class="font-mono text-zinc-700 dark:text-zinc-300">${Float.round((@agent[:total_cost_usd] || 0.0) * 1.0, 4)}</span>
+          </div>
+        </div>
+      </div>
+
       <%!-- MCP Tools --%>
       <div class="px-4 py-3 border-t border-zinc-200 dark:border-zinc-700/80">
         <h4 class="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Tools</h4>
@@ -353,6 +384,12 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Chat do
     </aside>
     """
   end
+
+  defp format_number(n) when is_integer(n) and n >= 1_000_000, do: "#{Float.round(n / 1_000_000, 1)}M"
+  defp format_number(n) when is_integer(n) and n >= 1_000, do: "#{Float.round(n / 1_000, 1)}K"
+  defp format_number(n) when is_integer(n), do: Integer.to_string(n)
+  defp format_number(n) when is_float(n), do: format_number(round(n))
+  defp format_number(_), do: "0"
 
   defp agent_docker_context(agent) do
     ws_id = agent[:workspace_id]

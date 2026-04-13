@@ -73,8 +73,20 @@ defmodule BoomLooper.Agent.Backend.ClaudeCode do
     end)
   end
 
-  # ResultMessage is a summary of the full turn — skip to avoid duplicates.
-  def translate(%ClaudeCode.Message.ResultMessage{}), do: []
+  def translate(%ClaudeCode.Message.ResultMessage{} = msg) do
+    usage = msg.usage || %{}
+    model = msg.model_usage |> Map.keys() |> List.first()
+
+    [%Event.SessionResult{
+      model: model,
+      input_tokens: usage[:input_tokens] || 0,
+      output_tokens: usage[:output_tokens] || 0,
+      cache_read_tokens: usage[:cache_read_input_tokens] || 0,
+      cost_usd: msg.total_cost_usd || 0.0,
+      duration_ms: msg.duration_ms || 0.0,
+      num_turns: msg.num_turns || 0
+    }]
+  end
 
   def translate(_), do: []
 

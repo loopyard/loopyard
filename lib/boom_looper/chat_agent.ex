@@ -31,7 +31,12 @@ defmodule BoomLooper.ChatAgent do
     messages: [],
     tool_calls: 0,
     errors: 0,
-    stream_ref: nil
+    stream_ref: nil,
+    model: nil,
+    total_input_tokens: 0,
+    total_output_tokens: 0,
+    total_cache_read_tokens: 0,
+    total_cost_usd: 0.0
   ]
 
   @topic "chat_agents"
@@ -633,6 +638,19 @@ defmodule BoomLooper.ChatAgent do
           broadcast("chat_agent:#{id}", {:chat_text_delta, id, text})
           state
 
+        %Event.SessionResult{} = result ->
+          # Accumulate token usage across turns
+          state = %{state |
+            model: result.model || state.model,
+            total_input_tokens: state.total_input_tokens + result.input_tokens,
+            total_output_tokens: state.total_output_tokens + result.output_tokens,
+            total_cache_read_tokens: state.total_cache_read_tokens + result.cache_read_tokens,
+            total_cost_usd: state.total_cost_usd + result.cost_usd
+          }
+          :ets.insert(@ets_table, {id, summary(state)})
+          broadcast(@topic, {:chat_agent_status_changed, id, state.status})
+          state
+
         _ ->
           state
       end
@@ -959,7 +977,12 @@ defmodule BoomLooper.ChatAgent do
       tool_calls: state.tool_calls,
       errors: state.errors,
       service_name: state.service_name,
-      base_url: state.base_url
+      base_url: state.base_url,
+      model: state.model,
+      total_input_tokens: state.total_input_tokens,
+      total_output_tokens: state.total_output_tokens,
+      total_cache_read_tokens: state.total_cache_read_tokens,
+      total_cost_usd: state.total_cost_usd
     }
   end
 
