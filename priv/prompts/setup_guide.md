@@ -14,7 +14,11 @@ All containers share a code volume mounted at `/workspace`. Use `${CODE_VOLUME}:
 
 ## Your tools
 
-All filesystem tools operate on `/workspace` inside the running workspace container — paths are relative to the project root. **You have NO host-side filesystem access.** Use the MCP tools below for everything.
+All filesystem tools operate on `/workspace` inside the running workspace container — paths are relative to the project root. **You have NO host-side filesystem access.** Everything goes through Docker. Use the MCP tools below for everything.
+
+**Tool output is truncated** to save your context window — you'll see the last ~80 lines of long command output. The user sees the full output in their UI. If you need more detail, use `grep` or `read_file` on specific files instead of dumping entire logs.
+
+**Container ports are NOT host ports.** Docker maps container ports (e.g. 3000) to random host ports. Use `probe_http` to verify the dev server from the host's perspective, or `service_containers` to see port mappings (e.g. `0.0.0.0:32794->3000/tcp`).
 
 ### Discovery — pick the right tool to orient yourself
 

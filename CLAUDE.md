@@ -10,15 +10,17 @@ All UI state is server-driven (assigns, PubSub). Never rely on client-side state
 
 ## How it works
 
-BoomLooper is a **Docker control plane** with **AI agents** wired into it.
+BoomLooper is a **Docker control plane** with **AI agents** wired into it. Dev environments are Docker all the way down — compose clusters, named volumes, container images. Code lives in Docker volumes. Agents and humans interact with it exclusively through Docker.
 
-**The control plane:** Each project gets a Docker Compose stack — a workspace container (where agents exec commands), dev server containers (running the app), and stock services (postgres, redis, etc.). Agents write `Dockerfile` and `docker-compose.yml` directly to `.boomlooper/workspace/`. BoomLooper manages the container lifecycle, monitors health, and reconnects to running containers across server restarts.
+**The control plane:** Each project gets a Docker Compose cluster — a workspace container (where agents exec commands), dev server containers (running the app), and stock services (postgres, redis, etc.). Code lives in a named Docker volume (`bl-<workspace_id>-code`) mounted at `/workspace` in every container. Agents write `Dockerfile` and `docker-compose.yml` directly to `.boomlooper/workspace/`. BoomLooper manages the container lifecycle, monitors health, and reconnects to running containers across server restarts.
 
-**The agents:** Claude Code sessions run as GenServer processes. Each agent exec's into the workspace container to read/write code and run commands. Agents use MCP tools from `boom-looper-container`: `exec` for commands, `write_file` for Dockerfile/docker-compose.yml, `docker_compose` for container lifecycle, `logs` for debugging. The setup agent bootstraps a project from scratch by examining the codebase and writing infrastructure files directly.
+**Source adapters — the ingress layer:** Source adapters (`Source.Local`, `Source.GitHub`) are how code gets INTO the volume, but they don't participate in the dev environment. Local uses Mutagen to sync host filesystem to the Docker volume. GitHub clones via API into the volume. Once code is in the volume, everything is Docker — agents have NO host filesystem access when containers are running.
+
+**The agents:** Claude Code sessions run as GenServer processes. Each agent exec's into the workspace container to read/write code and run commands. Agents use MCP tools from `boom-looper-container`: `exec` for commands, `write_file` for Dockerfile/docker-compose.yml, `docker_compose` for container lifecycle, `logs` for debugging. All tool operations go through Docker — `Docker.exec_in` for commands, `VolumeIO` for file I/O. Tool output is truncated for agents (via `Helpers.truncate_for_agent`, ~80 lines) to save context tokens, but streamed in full to the UI for humans. The setup agent bootstraps a project from scratch by examining the codebase and writing infrastructure files directly.
 
 **The multiplayer layer:** Everything is wired through PubSub. Chat messages, terminal I/O, service status changes, build output — all broadcast to every connected viewer. LiveViews subscribe and render. The terminal system supports both browser (xterm.js via Phoenix Channel) and SSH access to the same shared session. Multiple people can watch an agent work, type in the same terminal, or monitor services simultaneously.
 
-**The key insight:** agents don't get special access. They use the same `docker exec` path that the terminal console uses. The workspace config they write is the same config a human could edit. The MCP tools are just structured wrappers around the same Docker and file operations. This means anything an agent does is visible, reproducible, and debuggable by a human.
+**The key insight:** agents and humans use the same tools and views. Agents use MCP tools (`exec`, `read_file`, `docker_compose`). Humans see the same data in the UI (service logs, file browser, terminal). The MCP tools are structured wrappers around the same Docker operations the terminal console uses. This means anything an agent does is visible, reproducible, and debuggable by a human.
 
 ## Source adapters: where code comes from
 
@@ -547,9 +549,11 @@ When a pattern exists, use it. Don't write your own version.
 | `ChatAgent.Persistence` | ETF log append for durability |
 | `ProjectRegistry` | Project CRUD + ETS + disk persistence |
 | `WorkspaceRegistry` | Workspace CRUD + ETS |
+| `Source` | Behaviour for code ingress adapters (Local, GitHub) |
+| `Source.Local` | Host ↔ volume sync via Mutagen + git worktrees |
 | `VolumeManager` | Volume CRUD (create, remove, list) |
-| `VolumeIO` | File read/write inside volumes |
-| `VolumeCloner` | Git clone → volume pipeline |
+| `VolumeIO` | File read/write inside Docker volumes (no host filesystem) |
+| `VolumeCloner` | Git clone → Docker volume pipeline |
 | `StateKeeper` | Sole ETS table owner |
 | `RegistryHelper` | DRY wrappers for Registry.lookup |
 | `StreamBuffer` | Rolling-window streaming accumulator |

@@ -165,6 +165,14 @@ Test file: `test/boom_looper/service_manager_terminate_test.exs`
 - **Extracted module**: Gets its own test file immediately. Don't defer.
 - **Pure functions**: Always test — they're the cheapest tests to write.
 
+## Docker boundary
+
+Agent tools must go through Docker, never the host filesystem. Tests should verify this boundary:
+
+- **Tool tests** should verify operations go through `Docker.exec_in` or `VolumeIO`, never host `File` operations. If a tool reads a file, it should use `VolumeIO.read_file/2` (which runs a `docker run` under the hood), not `File.read/1`.
+- **Truncation tests** should verify agents get bounded output. `Helpers.truncate_for_agent/1` caps tool output at ~80 lines. Test that long output is truncated and short output passes through unchanged.
+- **Tests tagged `:docker`** require a running Docker daemon. These test the real Docker path (volume I/O, container exec, compose lifecycle). Excluded from default runs.
+
 ## Known test issues
 
 - Claude CLI not available in test environment — `send_message` triggers stream errors (expected, non-blocking)

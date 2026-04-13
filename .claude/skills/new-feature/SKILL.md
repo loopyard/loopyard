@@ -8,6 +8,10 @@ user_invocable: true
 
 Build features the right way: isolated module first, tests first, then integrate.
 
+## Context
+
+Dev environments run in Docker containers. Agents exec into containers via MCP tools. File changes go through Docker volumes, not the host filesystem. Tests that touch agent behavior should verify operations go through `Docker.exec_in` or `VolumeIO`.
+
 ## Step 1: Plan the boundary
 
 Before writing any code, answer:

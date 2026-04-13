@@ -47,6 +47,12 @@ If there are no tests, the PR is not ready.
 - If someone joins late, do they see the current state?
 - If someone clears/resets, does everyone see it?
 
+## Check: Docker boundary
+
+- Do any changes leak host filesystem access? Agent tools must go through `Docker.exec_in` or `VolumeIO`, never host `File` operations.
+- Are new tools properly using `Helpers.truncate_for_agent` for bounded output?
+- Do file operations stay within the Docker volume (`/workspace`), not the host?
+
 ## Check: Complexity
 
 - Does the feature require the user to install something, run sudo, or configure anything?
