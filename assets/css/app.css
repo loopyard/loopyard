@@ -121,14 +121,6 @@
   .h-screen { height: 100dvh !important; }
 }
 
-/* Chat page: fixed position so iOS keyboard can't push it.
-   The flex column layout shrinks the messages area naturally
-   when the viewport shrinks (dvh handles keyboard on modern iOS). */
-#chat-page {
-  position: fixed;
-  inset: 0;
-  overflow: hidden;
-}
 
 /* Safe area for notched/dynamic island devices */
 @supports (padding: env(safe-area-inset-bottom)) {
