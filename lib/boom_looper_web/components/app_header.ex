@@ -16,6 +16,7 @@ defmodule BoomLooperWeb.Components.AppHeader do
   """
   attr :breadcrumbs, :list, default: []
   attr :iex_session, :map, default: %{level: nil}
+  attr :current_path, :string, default: "/"
   slot :inner_block
 
   def header(assigns) do
@@ -27,7 +28,7 @@ defmodule BoomLooperWeb.Components.AppHeader do
       </div>
       <div class="flex items-center gap-4">
         {render_slot(@inner_block)}
-        <.link navigate="/connect" class="text-xs text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">Remote</.link>
+        <.link navigate={"/connect?path=#{URI.encode(@current_path)}"} class="text-xs text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">Remote</.link>
         <.link navigate="/system" class="text-xs text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">System</.link>
       </div>
     </header>

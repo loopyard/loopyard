@@ -64,7 +64,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Chat do
         <BoomLooperWeb.Components.AppHeader.iex_indicator :if={@iex_session.level} session={@iex_session} />
       </div>
       <div class="flex items-center gap-4 flex-none hidden md:flex">
-        <.link navigate="/connect" class="text-xs text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">Remote</.link>
+        <.link navigate={"/connect?path=#{URI.encode(@base_path)}"} class="text-xs text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">Remote</.link>
         <.link navigate="/system" class="text-xs text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">System</.link>
       </div>
     </header>
