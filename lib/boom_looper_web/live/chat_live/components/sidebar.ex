@@ -9,16 +9,18 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Sidebar do
     service_status_text: 1, exit_reason: 1, derive_volume_description: 1
   ]
 
-  defp sync_relevant?(nil), do: false
+  # Always show sync for Local workspaces — even nil means "initializing"
   defp sync_relevant?(_), do: true
 
   # Container-related sync errors are "waiting" states, not real errors
+  defp sync_waiting?(nil), do: true
   defp sync_waiting?(%{status: :errored, last_error: err}) when is_binary(err) do
     String.contains?(err, "container") or String.contains?(err, "No sync process")
   end
   defp sync_waiting?(%{status: s}) when s in [:starting, :unknown], do: true
   defp sync_waiting?(_), do: false
 
+  defp sync_dot(nil), do: "bg-zinc-400 animate-pulse"
   defp sync_dot(sync) do
     cond do
       sync_waiting?(sync) -> "bg-zinc-400 animate-pulse"
@@ -30,6 +32,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Sidebar do
     end
   end
 
+  defp sync_label(nil), do: "initializing"
   defp sync_label(sync) do
     cond do
       sync_waiting?(sync) -> "waiting"
