@@ -289,6 +289,16 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Chat do
         </div>
       </div>
 
+      <%!-- MCP Tools --%>
+      <div class="px-4 py-3 border-t border-zinc-200 dark:border-zinc-700/80">
+        <h4 class="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Tools</h4>
+        <div class="flex flex-wrap gap-1">
+          <span :for={tool <- mcp_tool_names()} class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400">
+            {tool}
+          </span>
+        </div>
+      </div>
+
       <%!-- Container section --%>
       <div :if={@has_container} class="border-t border-zinc-200 dark:border-zinc-700/80">
         <div class="px-4 py-3">
@@ -308,5 +318,14 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Chat do
       </div>
     </aside>
     """
+  end
+
+  defp mcp_tool_names do
+    BoomLooper.ChatAgent.ToolConfig.default_tools()
+    |> Enum.flat_map(fn mod ->
+      info = mod.__tool_server__()
+      Enum.map(info.tools, & &1.__tool_name__())
+    end)
+    |> Enum.sort()
   end
 end
