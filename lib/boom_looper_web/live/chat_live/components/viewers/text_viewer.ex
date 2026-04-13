@@ -26,7 +26,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Viewers.TextViewer do
         <span :if={@language} class="font-mono">{@language}</span>
       </div>
       <div class="flex-1 overflow-auto">
-        <pre class="text-sm font-mono leading-relaxed p-4 text-zinc-700 dark:text-zinc-300">{@rendered}</pre>
+        <pre class="text-sm font-mono leading-relaxed p-4 text-zinc-700 dark:text-zinc-300">{Phoenix.HTML.raw(@rendered)}</pre>
       </div>
     </div>
     """
