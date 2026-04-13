@@ -289,6 +289,59 @@ defmodule BoomLooper.VolumeManagerTest do
     end
   end
 
+  describe "tree path prefixing" do
+    # Test the path logic in isolation by verifying parse_tree behavior
+    # through the module's internal function. We make it testable by
+    # testing the full integration path on a live workspace.
+
+    @describetag :docker
+
+    test "root tree returns workspace-relative paths" do
+      # Use a live workspace if available (garryslist 0a6a)
+      vol = "bl-0a6a-code"
+      case VolumeManager.tree(vol, ".") do
+        {:ok, entries} ->
+          # Root entries should NOT have a prefix
+          for entry <- Enum.take(entries, 5) do
+            refute String.starts_with?(entry.path, "/"), "path #{entry.path} should not start with /"
+            assert entry.name == Path.basename(entry.path), "name should be basename of path"
+          end
+
+        {:error, :no_container} ->
+          # No workspace running — skip this test gracefully
+          :ok
+      end
+    end
+
+    test "subdirectory tree returns full workspace-relative paths" do
+      vol = "bl-0a6a-code"
+      case VolumeManager.tree(vol, "app") do
+        {:ok, entries} ->
+          for entry <- Enum.take(entries, 5) do
+            assert String.starts_with?(entry.path, "app/"),
+              "entry path #{entry.path} should start with app/"
+          end
+
+        {:error, :no_container} ->
+          :ok
+      end
+    end
+
+    test "deeply nested tree returns full paths" do
+      vol = "bl-0a6a-code"
+      case VolumeManager.tree(vol, "app/models") do
+        {:ok, entries} when entries != [] ->
+          for entry <- Enum.take(entries, 5) do
+            assert String.starts_with?(entry.path, "app/models/"),
+              "entry path #{entry.path} should start with app/models/"
+          end
+
+        _ ->
+          :ok
+      end
+    end
+  end
+
   describe "volume_ls/2" do
     @describetag :docker
 

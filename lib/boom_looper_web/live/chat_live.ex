@@ -253,40 +253,33 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   # File browser: /volumes/:name/files/path/to/thing
+  # Could be a file or a directory — we try to read it as a file AND load
+  # the parent directory tree. If the file read fails, handle_async falls
+  # back to treating it as a directory.
   def handle_params(%{"volume_name" => name, "path" => path_parts}, _uri, %{assigns: %{live_action: :volume_file}} = socket) do
     file_path = Path.join(path_parts)
     socket = setup_volume(socket, name, :files)
+    dir = Path.dirname(file_path)
+    dir = if dir == ".", do: ".", else: dir
 
-    # If the last segment has an extension, it's a file. Otherwise a directory.
-    is_file = Path.extname(file_path) != ""
-
-    socket =
-      if is_file do
-        dir = Path.dirname(file_path)
-        dir = if dir == ".", do: ".", else: dir
-
-        socket
-        |> assign(:browse_path, dir)
-        |> assign(:file_tree, :loading)
-        |> assign(:file_content, :loading)
-        |> assign(:file_path, file_path)
-        |> start_async(:file_tree, fn -> BoomLooper.VolumeManager.tree(name, dir) end)
-        |> start_async(:file_content, fn ->
-          case BoomLooper.VolumeIO.read_file(name, file_path) do
-            {:ok, content} -> %{path: file_path, content: content}
-            {:error, _} -> %{path: file_path, content: "(could not read file)"}
-          end
-        end)
-      else
-        socket
-        |> assign(:browse_path, file_path)
-        |> assign(:file_content, nil)
-        |> assign(:file_path, nil)
-        |> assign(:file_tree, :loading)
-        |> start_async(:file_tree, fn -> BoomLooper.VolumeManager.tree(name, file_path) end)
-      end
-
-    {:noreply, socket}
+    {:noreply,
+     socket
+     |> assign(:browse_path, dir)
+     |> assign(:file_tree, :loading)
+     |> assign(:file_content, :loading)
+     |> assign(:file_path, file_path)
+     |> start_async(:file_tree, fn -> BoomLooper.VolumeManager.tree(name, dir) end)
+     |> start_async(:file_content, fn ->
+       case BoomLooper.VolumeIO.read_file(name, file_path) do
+         {:ok, content} -> %{path: file_path, content: content}
+         {:error, _} ->
+           # Not a file — try as directory
+           case BoomLooper.VolumeManager.tree(name, file_path) do
+             {:ok, entries} -> %{path: file_path, is_dir: true, entries: entries}
+             {:error, _} -> %{path: file_path, content: nil, not_found: true}
+           end
+       end
+     end)}
   end
 
   # Git view
@@ -394,12 +387,28 @@ defmodule BoomLooperWeb.ChatLive do
     {:noreply, assign(socket, :file_tree, [])}
   end
 
-  def handle_async(:file_content, {:ok, %{path: path, content: content}}, socket) do
+  # File read succeeded — show the file
+  def handle_async(:file_content, {:ok, %{content: content, path: path}}, socket) when is_binary(content) do
     {:noreply, socket |> assign(:file_content, content) |> assign(:file_path, path)}
   end
 
+  # Path was a directory, not a file — show directory listing instead
+  def handle_async(:file_content, {:ok, %{is_dir: true, path: path, entries: entries}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:file_content, nil)
+     |> assign(:file_path, nil)
+     |> assign(:browse_path, path)
+     |> assign(:file_tree, entries)}
+  end
+
+  # File not found
+  def handle_async(:file_content, {:ok, %{not_found: true, path: path}}, socket) do
+    {:noreply, socket |> assign(:file_content, "File not found: #{path}") |> assign(:file_path, path)}
+  end
+
   def handle_async(:file_content, {:exit, _reason}, socket) do
-    {:noreply, socket}
+    {:noreply, assign(socket, :file_content, nil)}
   end
 
   def handle_async(:git_data, {:ok, {log_result, status_result}}, socket) do

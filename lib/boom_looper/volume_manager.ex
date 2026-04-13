@@ -293,10 +293,13 @@ defmodule BoomLooper.VolumeManager do
         "-not -path '*/.venv*' -not -path '*/__pycache__*' " <>
         "-printf '%y\\t%s\\t%P\\n' 2>/dev/null | head -200"
 
+    # Normalize browse path for prepending to relative results
+    prefix = if path in [".", ""], do: "", else: String.trim_trailing(path, "/") <> "/"
+
     case find_container_for_volume(volume_name) do
       {:ok, container} ->
         case Docker.exec_in(container, cmd, timeout: 15_000) do
-          {:ok, output} -> {:ok, parse_tree(output)}
+          {:ok, output} -> {:ok, parse_tree(output, prefix)}
           {:error, reason} -> {:error, reason}
         end
 
@@ -321,19 +324,21 @@ defmodule BoomLooper.VolumeManager do
     end
   end
 
-  defp parse_tree(output) do
+  defp parse_tree(output, prefix) do
     output
     |> String.split("\n", trim: true)
     |> Enum.map(fn line ->
       case String.split(line, "\t", parts: 3) do
-        [type_char, size, path] ->
+        [type_char, size, relative_path] ->
           type = if type_char == "d", do: :dir, else: :file
+          # Prepend the browse directory so paths are workspace-root-relative
+          full_path = prefix <> relative_path
 
           %{
             type: type,
             size: parse_int(size),
-            path: path,
-            name: Path.basename(path)
+            path: full_path,
+            name: Path.basename(relative_path)
           }
 
         _ ->
