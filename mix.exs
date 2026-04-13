@@ -40,7 +40,9 @@ defmodule BoomLooper.MixProject do
       {:dotenvy, "~> 0.9"},
       {:lazy_html, ">= 0.1.0", only: :test},
       {:eqrcode, "~> 0.1.10"},
-      {:yaml_elixir, "~> 2.9"}
+      {:yaml_elixir, "~> 2.9"},
+      {:makeup, "~> 1.2"},
+      {:makeup_syntect, "~> 0.1"}
     ]
   end
 

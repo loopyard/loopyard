@@ -95,6 +95,7 @@ defmodule BoomLooperWeb.ChatLive do
      |> assign(:file_tree, nil)
      |> assign(:file_content, nil)
      |> assign(:file_path, nil)
+     |> assign(:file_mode, :code)
      |> assign(:browse_path, ".")
      |> assign(:git_log, [])
      |> assign(:git_status, [])
@@ -236,7 +237,8 @@ defmodule BoomLooperWeb.ChatLive do
 
   # Volume info page
   def handle_params(%{"volume_name" => name}, _uri, %{assigns: %{live_action: :volume}} = socket) do
-    {:noreply, setup_volume(socket, name, :info)}
+    # Default to files view — more useful than info
+    {:noreply, push_patch(socket, to: "#{socket.assigns.base_path}/volumes/#{name}/files")}
   end
 
   # File browser root: /volumes/:name/files
@@ -320,17 +322,14 @@ defmodule BoomLooperWeb.ChatLive do
         {:noreply, socket}
 
       !result.has_compose ->
+        # No compose file — truly fresh workspace, go to /new
         {:noreply, push_navigate(socket, to: "#{workspace_path(socket)}/new")}
 
-      result.has_config ->
-        # Compose file AND workspace.json exist but agents list is empty.
-        # This means the workspace was set up before — agents just haven't
-        # been restored from the ETF log yet (server restart). Do NOT
-        # auto-spawn a new agent. Just stay on index and wait for restore.
-        {:noreply, socket}
-
       true ->
-        AgentLifecycle.do_spawn_agent(socket)
+        # Compose file exists — workspace was set up before. Don't auto-spawn.
+        # Agents will restore from the ETF log. The compose file IS the proof
+        # of setup — workspace.json is optional metadata.
+        {:noreply, socket}
     end
   end
 
@@ -342,13 +341,13 @@ defmodule BoomLooperWeb.ChatLive do
       socket.assigns.agents != [] ->
         {:noreply, socket}
 
-      not result.has_config ->
-        # No workspace.json AND no agents → truly fresh workspace, auto-launch with setup preset.
-        AgentLifecycle.do_spawn_agent(socket, initial_message: preset_message("setup"))
+      result.has_compose ->
+        # Compose file exists — workspace was set up. Show the agent picker.
+        {:noreply, socket}
 
       true ->
-        # Config exists — workspace was set up before. Don't auto-spawn.
-        {:noreply, socket}
+        # No compose file AND no agents → truly fresh workspace, auto-launch setup.
+        AgentLifecycle.do_spawn_agent(socket, initial_message: preset_message("setup"))
     end
   end
 
@@ -573,6 +572,11 @@ defmodule BoomLooperWeb.ChatLive do
     effective_dir = BoomLooper.Workspace.compose_dir(ws_id)
     BoomLooper.Compose.compose(effective_dir, ws_id, ["restart", name], timeout: 30_000)
     {:noreply, socket}
+  end
+
+  def handle_event("set_file_mode", %{"mode" => mode}, socket) do
+    mode = if mode == "raw", do: :raw, else: :code
+    {:noreply, assign(socket, :file_mode, mode)}
   end
 
   def handle_event("delete_volume", %{"volume_name" => name}, socket) do
@@ -1115,7 +1119,7 @@ defmodule BoomLooperWeb.ChatLive do
           <.service_log_view :if={@live_action == :service} service_name={@selected_service} service_statuses={@service_statuses} logs={@service_logs} base_path={@base_path} host={@host} />
           <.console_view :if={@live_action == :console} service_name={@selected_service} container={@console_container} />
           <.all_services_view :if={@live_action == :services} all_service_logs={@all_service_logs} />
-          <.volume_detail :if={@live_action in [:volume, :volume_files_root, :volume_file, :volume_git]} volume_name={@selected_volume} volumes={@volumes} workspace_id={@workspace.id} base_path={@base_path} volume_tab={@volume_tab} file_tree={@file_tree} file_content={@file_content} file_path={@file_path} browse_path={@browse_path} git_log={@git_log} git_status={@git_status} diff_content={@diff_content} supports_git={@supports_git} />
+          <.volume_detail :if={@live_action in [:volume, :volume_files_root, :volume_file, :volume_git]} volume_name={@selected_volume} volumes={@volumes} workspace_id={@workspace.id} base_path={@base_path} volume_tab={@volume_tab} file_tree={@file_tree} file_content={@file_content} file_path={@file_path} file_mode={@file_mode} browse_path={@browse_path} git_log={@git_log} git_status={@git_status} diff_content={@diff_content} supports_git={@supports_git} />
           <.sync_detail :if={@live_action == :sync} sync_status={@sync_status} workspace_id={@workspace.id} workspace={@workspace} />
           <.booting_screen :if={@live_action in [:index, :chat, :container] && @booting_agent_id && !@selected_agent} agent_id={@booting_agent_id} status={@boot_status} boot_log={@boot_log} />
           <.empty_state :if={@live_action in [:index, :chat, :container] && !@booting_agent_id && !@selected_agent} />

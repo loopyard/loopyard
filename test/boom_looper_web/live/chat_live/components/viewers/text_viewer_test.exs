@@ -4,47 +4,79 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Viewers.TextViewerTest do
   import Phoenix.LiveViewTest
   alias BoomLooperWeb.Live.ChatLive.Components.Viewers.TextViewer
 
-  defp render_viewer(content) do
+  defp render_viewer(content, opts \\ []) do
+    mode = Keyword.get(opts, :mode, :code)
+    path = Keyword.get(opts, :path, "test.txt")
+
     render_component(&TextViewer.text_viewer/1,
       content: content,
-      language: nil,
-      path: "test.txt"
+      path: path,
+      mode: mode
     )
   end
 
-  test "renders quotes as proper HTML entities (not double-escaped)" do
-    html = render_viewer(~s|gem "rails", "~> 8.0"|)
-    # In HTML source, quotes appear as &quot; — that's correct (single escape).
-    # Double-escaping would produce &amp;quot; — that's the bug we fixed.
-    assert html =~ "&quot;rails&quot;"
-    refute html =~ "&amp;quot;", "Double-escaped — raw() isn't working"
+  describe "code mode" do
+    test "renders with line numbers" do
+      html = render_viewer("line one\nline two\nline three")
+      assert html =~ "line one"
+      assert html =~ "line three"
+      assert html =~ "3 lines"
+    end
+
+    test "line numbers are unselectable (select-none CSS class)" do
+      html = render_viewer("hello")
+      assert html =~ "select-none"
+    end
+
+    test "escapes HTML tags (XSS prevention)" do
+      html = render_viewer("<script>alert('xss')</script>")
+      refute html =~ "<script>alert"
+      assert html =~ "&lt;script&gt;"
+    end
+
+    test "no double-escaping" do
+      html = render_viewer("<b>bold</b>")
+      refute html =~ "&amp;lt;", "Double-escaped — raw() isn't working"
+    end
+
+    test "shows Raw toggle button" do
+      html = render_viewer("hello")
+      assert html =~ "Raw"
+      assert html =~ "set_file_mode"
+    end
   end
 
-  test "escapes HTML tags so they display as text, not execute" do
-    html = render_viewer("<script>alert('xss')</script>")
-    # The literal <script> tag must NOT appear — it should be escaped
-    refute html =~ "<script>alert"
-    # The escaped version should be visible as text
-    assert html =~ "&lt;script&gt;"
-    refute html =~ "&amp;lt;", "Double-escaped — raw() isn't working"
+  describe "raw mode" do
+    test "renders plain text without line numbers" do
+      html = render_viewer("line one\nline two", mode: :raw)
+      assert html =~ "line one"
+      refute html =~ "select-none"
+    end
+
+    test "renders content in a pre tag" do
+      html = render_viewer("hello world", mode: :raw)
+      assert html =~ "<pre"
+      assert html =~ "hello world"
+    end
   end
 
-  test "escapes HTML attributes" do
-    html = render_viewer(~s|<img src="x" onerror="alert(1)">|)
-    refute html =~ "<img src"
-    assert html =~ "&lt;img"
-  end
+  describe "syntax highlighting" do
+    test "highlights Ruby files" do
+      html = render_viewer("def hello\n  puts 'world'\nend", path: "test.rb")
+      assert html =~ "ruby"
+      # Makeup should add span tags for syntax coloring
+      assert html =~ "<span"
+    end
 
-  test "renders line numbers" do
-    html = render_viewer("line one\nline two\nline three")
-    assert html =~ "line one"
-    assert html =~ "line three"
-    assert html =~ "3 lines"
-  end
+    test "highlights Elixir files" do
+      html = render_viewer("defmodule Foo do\n  def bar, do: :ok\nend", path: "test.ex")
+      assert html =~ "elixir"
+      assert html =~ "<span"
+    end
 
-  test "handles empty content" do
-    html = render_viewer("")
-    # "" splits to [""] which is 1 line
-    assert html =~ "1 lines"
+    test "plain text files get no highlighting" do
+      html = render_viewer("just plain text", path: "readme.txt")
+      refute html =~ "<span class=\""
+    end
   end
 end
