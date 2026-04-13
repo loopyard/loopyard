@@ -35,7 +35,9 @@ defmodule BoomLooper.ChatAgent do
     total_input_tokens: 0,
     total_output_tokens: 0,
     total_cache_read_tokens: 0,
-    total_cost_usd: 0.0
+    total_cost_usd: 0.0,
+    active_tool: nil,
+    turns: 0
   ]
 
   @topic "chat_agents"
@@ -611,16 +613,16 @@ defmodule BoomLooper.ChatAgent do
         %Event.ToolCall{name: tool_name, input: tool_input} ->
           tool_msg = %{role: :tool, tool: tool_name, input: tool_input, timestamp: now}
           {state, tool_msg} = append_message(state, tool_msg)
-        state = %{state | last_activity_at: now, tool_calls: state.tool_calls + 1}
-          Persistence.persist_message(state,tool_msg)
+          state = %{state | last_activity_at: now, tool_calls: state.tool_calls + 1, active_tool: tool_name}
+          Persistence.persist_message(state, tool_msg)
           broadcast("chat_agent:#{id}", {:chat_message, id, tool_msg})
           state
 
         %Event.ToolResult{content: content, is_error: is_error} ->
           result_msg = %{role: :tool_result, content: content, is_error: is_error, timestamp: now}
           {state, result_msg} = append_message(state, result_msg)
-        state = %{state | last_activity_at: now}
-          Persistence.persist_message(state,result_msg)
+          state = %{state | last_activity_at: now, active_tool: nil}
+          Persistence.persist_message(state, result_msg)
           broadcast("chat_agent:#{id}", {:chat_message, id, result_msg})
           state
 
@@ -651,8 +653,7 @@ defmodule BoomLooper.ChatAgent do
 
   @impl true
   def handle_info({:stream_done, id}, %{id: id} = state) do
-    state = %{state | status: :idle}
-    # Reset crash counter — a successful turn means the session is healthy
+    state = %{state | status: :idle, active_tool: nil, turns: state.turns + 1}
     state = Map.put(state, :consecutive_crashes, 0)
     broadcast(@topic, {:chat_agent_status_changed, id, :idle})
     {:noreply, state}
@@ -972,7 +973,9 @@ defmodule BoomLooper.ChatAgent do
       total_input_tokens: state.total_input_tokens,
       total_output_tokens: state.total_output_tokens,
       total_cache_read_tokens: state.total_cache_read_tokens,
-      total_cost_usd: state.total_cost_usd
+      total_cost_usd: state.total_cost_usd,
+      active_tool: state.active_tool,
+      turns: state.turns
     }
   end
 
