@@ -326,16 +326,20 @@ defmodule BoomLooperWeb.ProjectLive do
               </.link>
             </div>
 
-            <form :if={@project.is_git} phx-submit="add_workspace" class="flex gap-2">
-              <input type="text" name="name" placeholder="Workspace name..." autocomplete="off"
-                class="flex-1 rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-3 text-sm font-mono
-                       text-zinc-600 dark:text-zinc-300 placeholder:text-zinc-400
-                       focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400" />
-              <button type="submit"
-                class="rounded-xl border border-zinc-200 dark:border-zinc-700 px-5 py-3 text-sm font-medium text-zinc-600 dark:text-zinc-400
-                       hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors flex-none">
-                + Workspace
-              </button>
+            <form :if={@project.is_git} phx-submit="add_workspace" class="space-y-2">
+              <div class="text-xs font-medium text-zinc-500 dark:text-zinc-400">New workspace from branch</div>
+              <div class="flex gap-2">
+                <input type="text" name="name" placeholder="branch name (e.g. feature/login)" autocomplete="off"
+                  class="flex-1 rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-3 text-sm font-mono
+                         text-zinc-600 dark:text-zinc-300 placeholder:text-zinc-400
+                         focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400" />
+                <button type="submit"
+                  class="rounded-xl border border-zinc-200 dark:border-zinc-700 px-5 py-3 text-sm font-medium text-zinc-600 dark:text-zinc-400
+                         hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors flex-none">
+                  Create
+                </button>
+              </div>
+              <p class="text-xs text-zinc-400 dark:text-zinc-500">Creates a git worktree for this branch with its own containers and agents.</p>
             </form>
           <% end %>
           <% end %>
