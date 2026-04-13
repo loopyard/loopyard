@@ -9,6 +9,8 @@ defmodule BoomLooperWeb.Components.Common do
   """
   use Phoenix.Component
 
+  import BoomLooperWeb.Components.AppHeader, only: [header: 1]
+
   @doc """
   Flash strip — green for `:info`, red for `:error`. Renders nothing if
   the corresponding flash key isn't set.
@@ -125,6 +127,48 @@ defmodule BoomLooperWeb.Components.Common do
   def dot(assigns) do
     ~H"""
     <div class={"w-2 h-2 rounded-full flex-none #{@color}"}></div>
+    """
+  end
+
+  @doc """
+  Standard page shell for all non-chat pages. Provides consistent
+  layout: full-height dark/light bg, header, and centered content area.
+
+      <.page_shell breadcrumbs={[{"Boom Looper", "/"}]} iex_session={@iex_session}>
+        Page content here
+      </.page_shell>
+
+  Options:
+    * `max_width` — content width: `:sm`, `:md`, `:lg`, `:xl` (default `:lg`)
+  """
+  attr :breadcrumbs, :list, required: true
+  attr :iex_session, :map, required: true
+  attr :max_width, :atom, default: :lg, values: [:sm, :md, :lg, :xl]
+  attr :flash, :map, default: %{}
+  slot :header_actions
+  slot :inner_block, required: true
+
+  def page_shell(assigns) do
+    width_class = case assigns.max_width do
+      :sm -> "max-w-xl"
+      :md -> "max-w-2xl"
+      :lg -> "max-w-5xl"
+      :xl -> "max-w-6xl"
+    end
+
+    assigns = assign(assigns, :width_class, width_class)
+
+    ~H"""
+    <div class="min-h-screen bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
+      <.header breadcrumbs={@breadcrumbs} iex_session={@iex_session}>
+        {render_slot(@header_actions)}
+      </.header>
+      <.flash_banner flash={@flash} kind={:error} class="mx-4 mt-2" />
+      <.flash_banner flash={@flash} kind={:info} class="mx-4 mt-2" />
+      <div class={"#{@width_class} mx-auto px-4 md:px-6 py-6"}>
+        {render_slot(@inner_block)}
+      </div>
+    </div>
     """
   end
 end
