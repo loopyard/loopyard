@@ -57,7 +57,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Sidebar do
     <aside class={[
       "flex-none border-r border-zinc-200 dark:border-zinc-700/80 flex flex-col bg-zinc-50 dark:bg-zinc-900/50",
       "w-full md:w-80",
-      if(@live_action in [:chat, :container, :service, :console, :services, :volume, :volume_file, :volume_git, :sync] || @selected_id || @selected_service,
+      if(@live_action in [:chat, :container, :service, :console, :services, :volume, :volume_files_root, :volume_file, :volume_git, :sync] || @selected_id || @selected_service,
         do: "hidden md:flex",
         else: "flex")
     ]}>
