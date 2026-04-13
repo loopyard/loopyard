@@ -76,12 +76,16 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Chat do
   def agent_view(assigns) do
     ~H"""
     <div class="flex-1 flex min-h-0">
-      <div class="flex-1 flex flex-col min-w-0 min-h-0">
-        <.agent_header agent={@selected_agent} tab={@tab} has_container={@has_container} />
-        <.chat_panel :if={@tab == :chat} messages={@messages} streaming_text={@streaming_text} agent={@selected_agent} workspace_id={@workspace.id} host={@host} />
+      <%!-- Main content: hidden on mobile when viewing context panel --%>
+      <div class={["flex-1 flex flex-col min-w-0 min-h-0", if(@tab == :context_panel, do: "hidden lg:flex", else: "flex")]}>
+        <.agent_header agent={@selected_agent} tab={@tab} has_container={@has_container} base_path={@base_path} />
+        <.chat_panel :if={@tab in [:chat, :context_panel]} messages={@messages} streaming_text={@streaming_text} agent={@selected_agent} workspace_id={@workspace.id} host={@host} />
         <.container_panel :if={@tab == :container} env={@container_env} logs={@container_logs} log_service={@container_log_service} has_container={@has_container} />
       </div>
-      <.context_panel agent={@selected_agent} has_container={@has_container} container_env={@container_env} container_logs={@container_logs} editing_name={@editing_name} />
+      <%!-- Context panel: always visible on lg+, full-screen on mobile when :context_panel --%>
+      <div class={if @tab == :context_panel, do: "flex-1 lg:w-80 lg:flex-none", else: ""}>
+        <.context_panel agent={@selected_agent} has_container={@has_container} container_env={@container_env} container_logs={@container_logs} editing_name={@editing_name} mobile={@tab == :context_panel} />
+      </div>
     </div>
     """
   end
@@ -132,6 +136,10 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Chat do
           class={"px-3 py-1.5 text-xs font-medium border-b-2 transition-colors #{if @tab == :container, do: "border-violet-500 text-violet-600 dark:text-violet-400", else: "border-transparent text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"}"}>
           Container
         </button>
+        <.link navigate={"#{@base_path}/agents/#{@agent.id}/context"}
+          class={"lg:hidden px-3 py-1.5 text-xs font-medium border-b-2 transition-colors #{if @tab == :context_panel, do: "border-violet-500 text-violet-600 dark:text-violet-400", else: "border-transparent text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"}"}>
+          Info
+        </.link>
       </div>
     </div>
     """

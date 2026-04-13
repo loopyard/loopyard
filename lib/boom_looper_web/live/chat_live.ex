@@ -116,8 +116,13 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   @impl true
-  def handle_params(%{"id" => id}, _uri, %{assigns: %{live_action: action}} = socket) do
-    tab = if action == :container, do: :container, else: :chat
+  def handle_params(%{"id" => id}, _uri, %{assigns: %{live_action: action}} = socket)
+      when action in [:chat, :container, :context_panel] do
+    tab = case action do
+      :container -> :container
+      :context_panel -> :context_panel
+      _ -> :chat
+    end
 
     socket =
       if socket.assigns.selected_id != id do
@@ -1086,7 +1091,7 @@ defmodule BoomLooperWeb.ChatLive do
           <.sync_detail :if={@live_action == :sync} sync_status={@sync_status} workspace_id={@workspace.id} workspace={@workspace} />
           <.booting_screen :if={@live_action in [:index, :chat, :container] && @booting_agent_id && !@selected_agent} agent_id={@booting_agent_id} status={@boot_status} boot_log={@boot_log} />
           <.empty_state :if={@live_action in [:index, :chat, :container] && !@booting_agent_id && !@selected_agent} />
-          <.agent_view :if={@live_action in [:index, :chat, :container] && @selected_agent} {assigns} />
+          <.agent_view :if={@live_action in [:index, :chat, :container, :context_panel] && @selected_agent} {assigns} />
         </main>
       </div>
     </div>

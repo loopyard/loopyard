@@ -12,10 +12,14 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.ContextPanel do
   attr :container_env, :string, default: nil
   attr :container_logs, :string, default: ""
   attr :editing_name, :boolean, default: false
+  attr :mobile, :boolean, default: false
 
   def context_panel(assigns) do
     ~H"""
-    <aside class="hidden lg:flex w-80 flex-none border-l border-zinc-200 dark:border-zinc-700/80 flex-col bg-zinc-50 dark:bg-zinc-900/50 overflow-y-auto">
+    <aside class={[
+      "flex-col bg-zinc-50 dark:bg-zinc-900/50 overflow-y-auto border-l border-zinc-200 dark:border-zinc-700/80",
+      if(@mobile, do: "flex flex-1", else: "hidden lg:flex w-80 flex-none")
+    ]}>
       <div class="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700/80">
         <h3 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Agent Context</h3>
       </div>

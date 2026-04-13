@@ -31,7 +31,6 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Services do
             class="px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors">
             Open
           </a>
-          <.control_btn variant={:primary} phx-click="spawn_service_agent" phx-value-service_name={@service_name}>+ Debug Agent</.control_btn>
         </div>
       </:header>
       <.log_panel id="service-logs" content={@logs} />
