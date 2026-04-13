@@ -12,52 +12,49 @@ Hooks.Terminal = createTerminalHook()
 Hooks.ScrollBottom = {
   mounted() {
     this._userScrolledUp = false
-    this._lastPath = window.location.pathname
-    this._initialScrollDone = false
 
-    // Server pushes this when a new message arrives
     this.handleEvent("scroll_bottom", () => {
-      if (!this._userScrolledUp) {
-        const el = document.getElementById("messages")
-        if (el) el.scrollTop = el.scrollHeight
-      }
+      if (!this._userScrolledUp) this._scrollToBottom()
     })
 
-    this._attachScrollListener()
+    // Watch for messages appearing in the DOM (handle_params loads them
+    // after mount, so the div is empty on first render).
+    this._observeMessages()
   },
 
   updated() {
-    const currentPath = window.location.pathname
-    if (currentPath !== this._lastPath) {
-      this._lastPath = currentPath
-      this._userScrolledUp = false
-      this._initialScrollDone = false
-    }
-
-    // Scroll to bottom ONCE after messages first render (handle_params loads them
-    // after mount, so mounted() fires with an empty list). After that, only the
-    // server's push_event("scroll_bottom") triggers scrolling — never updated().
-    // This prevents fighting with the user's scroll on mobile.
-    if (!this._initialScrollDone) {
-      const el = document.getElementById("messages")
-      if (el && el.children.length > 0) {
-        this._initialScrollDone = true
-        requestAnimationFrame(() => { el.scrollTop = el.scrollHeight })
-      }
-    }
+    // Nothing — all scrolling is driven by MutationObserver + push_event.
+    // updated() was unreliable because LiveView doesn't always re-render
+    // the hook's parent element when assigns change.
   },
 
-  _attachScrollListener() {
+  _scrollToBottom() {
+    const el = document.getElementById("messages")
+    if (el) el.scrollTop = el.scrollHeight
+  },
+
+  _observeMessages() {
     const el = document.getElementById("messages")
     if (!el) return
 
-    // Use a small delay so scroll events from programmatic scrolls settle
-    // before we check position. Prevents touch-scroll on mobile from being
-    // immediately overridden.
+    // Scroll listener: track if user scrolled up
     el.addEventListener("scroll", () => {
       const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50
       this._userScrolledUp = !atBottom
     }, { passive: true })
+
+    // MutationObserver: scroll to bottom when new children appear
+    // (messages loaded from handle_params, or new message from PubSub)
+    const observer = new MutationObserver(() => {
+      if (!this._userScrolledUp) {
+        requestAnimationFrame(() => this._scrollToBottom())
+      }
+    })
+
+    observer.observe(el, { childList: true, subtree: true })
+
+    // Also scroll now in case messages already rendered
+    requestAnimationFrame(() => this._scrollToBottom())
   }
 }
 
