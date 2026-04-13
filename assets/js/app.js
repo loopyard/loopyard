@@ -99,8 +99,10 @@ Hooks.ChatForm = {
     })
 
     ta.addEventListener("input", () => {
-      ta.style.height = "auto"
-      ta.style.height = Math.min(ta.scrollHeight, 200) + "px"
+      requestAnimationFrame(() => {
+        ta.style.height = "auto"
+        ta.style.height = Math.min(ta.scrollHeight, 200) + "px"
+      })
     })
 
     this.el.addEventListener("submit", (e) => { e.preventDefault(); submit() })
