@@ -13,6 +13,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components do
       import BoomLooperWeb.Live.ChatLive.Components.Services
       import BoomLooperWeb.Live.ChatLive.Components.Volumes
       import BoomLooperWeb.Live.ChatLive.Components.SyncDetail
+      import BoomLooperWeb.Live.ChatLive.Components.ContextPanel
       import BoomLooperWeb.Live.ChatLive.Components.States
       import BoomLooperWeb.Live.ChatLive.Components.Formatters
     end

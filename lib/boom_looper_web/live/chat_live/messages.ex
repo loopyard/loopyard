@@ -58,13 +58,14 @@ defmodule BoomLooperWeb.Live.ChatLive.Messages do
 
   def chat_msg(%{msg: %{role: :assistant}} = assigns) do
     assigns = assign(assigns, :url, msg_url(assigns))
+    assigns = assign(assigns, :rendered_content, rewrite_localhost_urls(assigns.msg.content, assigns[:host]))
 
     ~H"""
     <div class="flex gap-3 mt-3 mb-1 group/msg">
       <div class="flex-none w-7 h-7 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center mt-0.5">
         <span class="text-xs font-bold text-violet-600 dark:text-violet-400">C</span>
       </div>
-      <div class="relative max-w-[85%] rounded-2xl rounded-tl-sm bg-zinc-100 dark:bg-zinc-800 px-4 py-2.5" id={"msg-#{hash_content(@msg.content)}"} phx-hook="Markdown" data-source={@msg.content}>
+      <div class="relative max-w-[85%] rounded-2xl rounded-tl-sm bg-zinc-100 dark:bg-zinc-800 px-4 py-2.5" id={"msg-#{hash_content(@msg.content)}"} phx-hook="Markdown" data-source={@rendered_content}>
         <a :if={@url} href={@url} target="_blank" rel="noopener"
           class="absolute top-2 right-2 p-1 rounded-md text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 opacity-0 group-hover/msg:opacity-100 transition-opacity"
           title="Open">
@@ -217,4 +218,19 @@ defmodule BoomLooperWeb.Live.ChatLive.Messages do
         content
     end
   end
+
+  # Rewrite http://localhost:<port> URLs in message content to use the
+  # viewer's actual hostname. Tools emit localhost URLs (host-agnostic);
+  # this function makes them work for each viewer (LAN IP, tunnel, etc.).
+  # Only rewrites URLs with explicit ports (http://localhost:32794/...) —
+  # plain localhost without a port is left alone (it's a BoomLooper-relative
+  # path that the browser handles).
+  defp rewrite_localhost_urls(content, nil), do: content
+  defp rewrite_localhost_urls(content, "localhost"), do: content
+
+  defp rewrite_localhost_urls(content, host) when is_binary(content) and is_binary(host) do
+    String.replace(content, "http://localhost:", "http://#{host}:")
+  end
+
+  defp rewrite_localhost_urls(content, _host), do: content
 end

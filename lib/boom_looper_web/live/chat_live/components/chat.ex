@@ -1,13 +1,13 @@
 defmodule BoomLooperWeb.Live.ChatLive.Components.Chat do
-  @moduledoc "Chat panel components: agent_view, agent_header, chat_panel, thinking_indicator, context_panel, container_panel."
+  @moduledoc "Chat panel components: agent_view, agent_header, chat_panel, thinking_indicator, container_panel."
   use Phoenix.Component
 
   import BoomLooperWeb.Components.Common, only: [dot: 1]
-
-  alias Phoenix.LiveView.JS
   import BoomLooperWeb.Components.Sidebar, only: [status_dot: 1]
   import BoomLooperWeb.Live.ChatLive.Messages, only: [chat_msg: 1, streaming_bubble: 1]
   import BoomLooperWeb.Live.ChatLive.Components.Formatters, only: [time_ago: 1]
+  import BoomLooperWeb.Live.ChatLive.Components.ContextPanel, only: [context_panel: 1]
+
 
   def chat_header(assigns) do
     # Mobile back button has two modes:
@@ -144,7 +144,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Chat do
     <div class="flex-1 flex flex-col min-h-0">
       <div id="messages" class="flex-1 overflow-y-auto px-4 md:px-6 py-4 space-y-1">
         <div :for={{msg, idx} <- Enum.with_index(@messages)}>
-          <.chat_msg msg={msg} idx={idx} agent_id={@agent.id} workspace_id={@workspace_id} />
+          <.chat_msg msg={msg} idx={idx} agent_id={@agent.id} workspace_id={@workspace_id} host={@host} />
         </div>
         <.streaming_bubble :if={@streaming_text != ""} text={@streaming_text} />
         <.thinking_indicator :if={@agent.status == :thinking && @streaming_text == ""} messages={@messages} />
@@ -240,172 +240,4 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Chat do
     """
   end
 
-  # --- Context Panel (right sidebar) ---
-
-  def context_panel(assigns) do
-    ~H"""
-    <aside class="hidden lg:flex w-80 flex-none border-l border-zinc-200 dark:border-zinc-700/80 flex-col bg-zinc-50 dark:bg-zinc-900/50 overflow-y-auto">
-      <div class="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700/80">
-        <h3 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Agent Context</h3>
-      </div>
-
-      <%!-- Name (click to edit) --%>
-      <div class="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700/80">
-        <form :if={@editing_name} phx-submit="rename_agent" phx-click-away="cancel_rename" class="flex items-center gap-2">
-          <input type="text" name="name" value={@agent.name} autofocus phx-mounted={JS.dispatch("focus")}
-            class="flex-1 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-1.5 text-sm
-                   text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-violet-500/30" />
-          <button type="submit" class="text-xs text-violet-600 dark:text-violet-400 hover:underline flex-none">Save</button>
-        </form>
-        <div :if={!@editing_name} phx-click="start_rename" class="cursor-pointer group flex items-center gap-2">
-          <span class="text-sm font-medium text-zinc-900 dark:text-zinc-100">{@agent.name}</span>
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3 h-3 text-zinc-300 dark:text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity">
-            <path d="M13.488 2.513a1.75 1.75 0 0 0-2.475 0L6.75 6.774a2.75 2.75 0 0 0-.596.892l-.848 2.047a.75.75 0 0 0 .98.98l2.047-.848a2.75 2.75 0 0 0 .892-.596l4.261-4.262a1.75 1.75 0 0 0 0-2.474Z" />
-            <path d="M4.75 3.5c-.69 0-1.25.56-1.25 1.25v6.5c0 .69.56 1.25 1.25 1.25h6.5c.69 0 1.25-.56 1.25-1.25V9A.75.75 0 0 1 14 9v2.25A2.75 2.75 0 0 1 11.25 14h-6.5A2.75 2.75 0 0 1 2 11.25v-6.5A2.75 2.75 0 0 1 4.75 2H7a.75.75 0 0 1 0 1.5H4.75Z" />
-          </svg>
-        </div>
-      </div>
-
-      <%!-- Agent Info --%>
-      <div class="px-4 py-3 space-y-2">
-        <h4 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Info</h4>
-        <div class="space-y-1.5 text-xs">
-          <div class="flex justify-between">
-            <span class="text-zinc-400">Status</span>
-            <span class="font-medium text-zinc-700 dark:text-zinc-300">{@agent.status}</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-zinc-400">Tool calls</span>
-            <span class="font-medium text-zinc-700 dark:text-zinc-300">{@agent.tool_calls}</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-zinc-400">Errors</span>
-            <span class={"font-medium #{if @agent.errors > 0, do: "text-red-500", else: "text-zinc-700 dark:text-zinc-300"}"}>{@agent.errors}</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-zinc-400">Messages</span>
-            <span class="font-medium text-zinc-700 dark:text-zinc-300">{length(@agent.messages)}</span>
-          </div>
-          <div :if={@agent[:started_at]} class="flex justify-between">
-            <span class="text-zinc-400">Started</span>
-            <span class="text-zinc-700 dark:text-zinc-300">{time_ago(@agent.started_at)}</span>
-          </div>
-          <div :if={@agent[:started_by]} class="flex justify-between">
-            <span class="text-zinc-400">Started by</span>
-            <span class="text-zinc-700 dark:text-zinc-300">{@agent.started_by}</span>
-          </div>
-        </div>
-      </div>
-
-      <%!-- Docker context --%>
-      <% agent_ctx = agent_docker_context(@agent) %>
-      <div :if={agent_ctx.container} class="px-4 py-3 border-t border-zinc-200 dark:border-zinc-700/80 space-y-2">
-        <h4 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Docker</h4>
-        <div class="space-y-1.5 text-xs">
-          <div>
-            <span class="text-zinc-400">Container</span>
-            <div class="font-mono text-zinc-700 dark:text-zinc-300 truncate mt-0.5">{agent_ctx.container}</div>
-          </div>
-          <div :if={agent_ctx.volume}>
-            <span class="text-zinc-400">Volume</span>
-            <div class="font-mono text-zinc-700 dark:text-zinc-300 truncate mt-0.5">{agent_ctx.volume}</div>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-zinc-400">Mode</span>
-            <span class={"font-medium #{if agent_ctx.mode == :container, do: "text-emerald-600 dark:text-emerald-400", else: "text-amber-600 dark:text-amber-400"}"}>
-              {agent_ctx.mode}
-            </span>
-          </div>
-          <div :if={agent_ctx.workspace_id}>
-            <span class="text-zinc-400">Workspace</span>
-            <div class="font-mono text-zinc-700 dark:text-zinc-300 mt-0.5">{agent_ctx.workspace_id}</div>
-          </div>
-        </div>
-      </div>
-
-      <%!-- Claude usage --%>
-      <div class="px-4 py-3 border-t border-zinc-200 dark:border-zinc-700/80 space-y-2">
-        <h4 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Claude</h4>
-        <div class="space-y-1.5 text-xs">
-          <div :if={@agent[:model]} class="flex justify-between">
-            <span class="text-zinc-400">Model</span>
-            <span class="font-mono text-zinc-700 dark:text-zinc-300">{@agent.model}</span>
-          </div>
-          <div :if={!@agent[:model]} class="flex justify-between">
-            <span class="text-zinc-400">Model</span>
-            <span class="text-zinc-500 italic">waiting for first response</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-zinc-400">Input tokens</span>
-            <span class="font-mono text-zinc-700 dark:text-zinc-300">{format_number(@agent[:total_input_tokens] || 0)}</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-zinc-400">Output tokens</span>
-            <span class="font-mono text-zinc-700 dark:text-zinc-300">{format_number(@agent[:total_output_tokens] || 0)}</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-zinc-400">Cache read</span>
-            <span class="font-mono text-zinc-700 dark:text-zinc-300">{format_number(@agent[:total_cache_read_tokens] || 0)}</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-zinc-400">Cost</span>
-            <span class="font-mono text-zinc-700 dark:text-zinc-300">${Float.round((@agent[:total_cost_usd] || 0.0) * 1.0, 4)}</span>
-          </div>
-        </div>
-      </div>
-
-      <%!-- MCP Tools --%>
-      <div class="px-4 py-3 border-t border-zinc-200 dark:border-zinc-700/80">
-        <h4 class="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Tools</h4>
-        <div class="flex flex-wrap gap-1">
-          <span :for={tool <- mcp_tool_names()} class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400">
-            {tool}
-          </span>
-        </div>
-      </div>
-
-      <%!-- Container section --%>
-      <div :if={@has_container} class="border-t border-zinc-200 dark:border-zinc-700/80">
-        <div class="px-4 py-3">
-          <div class="flex items-center justify-between mb-2">
-            <h4 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Container</h4>
-            <button phx-click="refresh_container" class="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">
-              Refresh
-            </button>
-          </div>
-          <div :if={@container_env} class="mb-2">
-            <pre class="text-[10px] font-mono text-zinc-500 dark:text-zinc-500 overflow-x-auto whitespace-pre-wrap max-h-32 overflow-y-auto">{@container_env}</pre>
-          </div>
-          <div :if={@container_logs != ""}>
-            <pre class="text-[10px] font-mono bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-green-400 rounded p-2 overflow-auto whitespace-pre-wrap max-h-40">{@container_logs}</pre>
-          </div>
-        </div>
-      </div>
-    </aside>
-    """
-  end
-
-  defp format_number(n) when is_integer(n) and n >= 1_000_000, do: "#{Float.round(n / 1_000_000, 1)}M"
-  defp format_number(n) when is_integer(n) and n >= 1_000, do: "#{Float.round(n / 1_000, 1)}K"
-  defp format_number(n) when is_integer(n), do: Integer.to_string(n)
-  defp format_number(n) when is_float(n), do: format_number(round(n))
-  defp format_number(_), do: "0"
-
-  defp agent_docker_context(agent) do
-    ws_id = agent[:workspace_id]
-    container = if ws_id, do: "bl-#{ws_id}-workspace-1"
-    volume = if ws_id, do: "bl-#{ws_id}-code"
-    mode = if agent[:bind_mount], do: :bind_mount, else: :container
-
-    %{container: container, volume: volume, workspace_id: ws_id, mode: mode}
-  end
-
-  defp mcp_tool_names do
-    BoomLooper.ChatAgent.ToolConfig.default_tools()
-    |> Enum.flat_map(fn mod ->
-      info = mod.__tool_server__()
-      Enum.map(info.tools, & &1.__tool_name__())
-    end)
-    |> Enum.sort()
-  end
 end
