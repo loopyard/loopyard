@@ -842,20 +842,9 @@ defmodule BoomLooperWeb.ChatLive do
     ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
     {service_statuses, volumes} = load_sidebar_from_observer(nil, ws_id)
 
-    # Never replace a non-empty service list with an empty one — that
-    # causes the sidebar to flash. If Observer temporarily has no data
-    # (event stream reconnecting, compose file not yet synced), keep
-    # the last known good state.
-    service_statuses =
-      if service_statuses == [] and socket.assigns.service_statuses != [] do
-        socket.assigns.service_statuses
-      else
-        service_statuses
-      end
-
     {:noreply,
      socket
-     |> assign(:service_statuses, service_statuses)
+     |> assign(:service_statuses, guard_service_statuses(socket, service_statuses))
      |> assign(:volumes, volumes)}
   end
 
@@ -878,15 +867,7 @@ defmodule BoomLooperWeb.ChatLive do
       ws_id = ws_entry && ws_entry.id || ws.id
       {service_statuses, _volumes} = load_sidebar_from_observer(path, ws_id)
 
-      # Never replace a non-empty service list with empty
-      service_statuses =
-        if service_statuses == [] and socket.assigns.service_statuses != [] do
-          socket.assigns.service_statuses
-        else
-          service_statuses
-        end
-
-      {:noreply, assign(socket, :service_statuses, service_statuses)}
+      {:noreply, assign(socket, :service_statuses, guard_service_statuses(socket, service_statuses))}
     else
       {:noreply, socket}
     end
@@ -943,6 +924,9 @@ defmodule BoomLooperWeb.ChatLive do
 
   @impl true
   def handle_info({:service_logs_fetched, service_name, service_statuses, logs}, socket) do
+    # Guard: never replace non-empty service list with empty
+    service_statuses = guard_service_statuses(socket, service_statuses)
+
     socket =
       socket
       |> assign(:service_statuses, service_statuses)
@@ -955,6 +939,9 @@ defmodule BoomLooperWeb.ChatLive do
 
   @impl true
   def handle_info({:all_service_logs_fetched, service_statuses, all_logs}, socket) do
+    # Guard: never replace non-empty service list with empty
+    service_statuses = guard_service_statuses(socket, service_statuses)
+
     {:noreply,
      socket
      |> assign(:service_statuses, service_statuses)
@@ -963,6 +950,18 @@ defmodule BoomLooperWeb.ChatLive do
 
   @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  # Never replace a non-empty service list with []. During Observer cache
+  # wipes, compose file syncs, or async task races, the new list can be
+  # temporarily empty. Showing an empty sidebar and then refilling it a
+  # moment later is the "flapping" bug. Keep the last known good state.
+  defp guard_service_statuses(socket, new_statuses) do
+    if new_statuses == [] and socket.assigns.service_statuses != [] do
+      socket.assigns.service_statuses
+    else
+      new_statuses
+    end
+  end
 
   # --- Private ---
 
