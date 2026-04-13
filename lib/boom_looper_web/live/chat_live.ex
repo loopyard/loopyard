@@ -889,16 +889,16 @@ defmodule BoomLooperWeb.ChatLive do
 
   @impl true
   def handle_info(:refresh_service_logs, socket) do
+    ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
+
     case socket.assigns.live_action do
       :service ->
-        path = socket.assigns.workspace.path
         ServiceLogs.schedule_log_refresh()
-        {:noreply, ServiceLogs.start_service_logs_fetch(socket, path, socket.assigns.selected_service)}
+        {:noreply, ServiceLogs.start_service_logs_fetch(socket, ws_id, socket.assigns.selected_service)}
 
       :services ->
-        path = socket.assigns.workspace.path
         ServiceLogs.schedule_log_refresh()
-        {:noreply, ServiceLogs.start_all_service_logs_fetch(socket, path)}
+        {:noreply, ServiceLogs.start_all_service_logs_fetch(socket, ws_id)}
 
       _ ->
         {:noreply, socket}
