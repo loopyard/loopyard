@@ -585,23 +585,6 @@ defmodule BoomLooperWeb.ChatLive do
     {:noreply, push_navigate(socket, to: workspace_path(socket))}
   end
 
-  def handle_event("volume_tab", %{"tab" => tab}, socket) do
-    {:noreply, push_patch(socket, to: volume_url(socket, tab: tab))}
-  end
-
-  def handle_event("browse_dir", %{"path" => path}, socket) do
-    {:noreply, push_patch(socket, to: volume_url(socket, tab: "files", path: path))}
-  end
-
-  def handle_event("view_file", %{"path" => path}, socket) do
-    browse = socket.assigns.browse_path
-    {:noreply, push_patch(socket, to: volume_url(socket, tab: "files", path: browse, file: path))}
-  end
-
-  def handle_event("close_file_viewer", _params, socket) do
-    browse = socket.assigns.browse_path
-    {:noreply, push_patch(socket, to: volume_url(socket, tab: "files", path: browse))}
-  end
 
   def handle_event("view_diff", %{"path" => path}, socket) do
     project = socket.assigns.project
@@ -976,11 +959,6 @@ defmodule BoomLooperWeb.ChatLive do
 
   defp workspace_path(socket), do: socket.assigns.base_path
 
-  defp volume_url(socket, params) do
-    base = "#{workspace_path(socket)}/volumes/#{socket.assigns.selected_volume}"
-    query = params |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "." end) |> URI.encode_query()
-    if query == "", do: base, else: "#{base}?#{query}"
-  end
 
   defp preset_message("setup") do
     guide = BoomLooper.ChatAgent.setup_guide()

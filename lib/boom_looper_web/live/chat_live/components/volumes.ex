@@ -66,7 +66,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Volumes do
 
         <%!-- Files tab --%>
         <div :if={@volume_tab == :files}>
-          <.files_tab file_tree={@file_tree} file_content={@file_content} file_path={@file_path} browse_path={@browse_path} volume_name={@volume_name} />
+          <.files_tab file_tree={@file_tree} file_content={@file_content} file_path={@file_path} browse_path={@browse_path} volume_name={@volume_name} base_path={@base_path} />
         </div>
 
         <%!-- Git tab --%>
@@ -153,45 +153,85 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Volumes do
   attr :file_path, :string, default: nil
   attr :browse_path, :string, default: "."
   attr :volume_name, :string, required: true
+  attr :base_path, :string, required: true
 
   defp files_tab(assigns) do
+    # Two modes: browsing a directory, or viewing a file
+    viewing_file = assigns.file_path && assigns.file_content
+
+    assigns = assign(assigns, :viewing_file, viewing_file)
+
     ~H"""
-    <div class="divide-y divide-zinc-200 dark:divide-zinc-700/80">
-      <%!-- Breadcrumb path --%>
-      <div :if={@browse_path != "."} class="px-4 py-2 flex items-center gap-1 text-xs text-zinc-400 dark:text-zinc-500">
-        <button phx-click="browse_dir" phx-value-path="." class="hover:text-zinc-600 dark:hover:text-zinc-300">
+    <%= if @viewing_file do %>
+      <.file_view path={@file_path} content={@file_content} browse_path={@browse_path} base_path={@base_path} volume_name={@volume_name} />
+    <% else %>
+      <.directory_listing file_tree={@file_tree} browse_path={@browse_path} base_path={@base_path} volume_name={@volume_name} />
+    <% end %>
+    """
+  end
+
+  defp file_view(assigns) do
+    ~H"""
+    <div class="flex flex-col h-full">
+      <%!-- File header with breadcrumb back to directory --%>
+      <div class="flex-none px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center gap-1 text-xs">
+        <.link patch={"#{@base_path}/volumes/#{@volume_name}/files"} class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300">
           /workspace
-        </button>
-        <span :for={segment <- path_segments(@browse_path)}>
-          <span class="mx-0.5">/</span>
-          <button phx-click="browse_dir" phx-value-path={segment.path} class="hover:text-zinc-600 dark:hover:text-zinc-300">
+        </.link>
+        <span :for={segment <- path_segments(@path)} class="flex items-center gap-1">
+          <span class="text-zinc-400">/</span>
+          <.link patch={"#{@base_path}/volumes/#{@volume_name}/files/#{segment.path}"} class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300">
             {segment.name}
-          </button>
+          </.link>
         </span>
       </div>
 
-      <%!-- Loading state --%>
+      <%!-- File content --%>
+      <div :if={@content == :loading} class="flex-1 p-6">
+        <.skeleton rows={12} />
+      </div>
+      <div :if={@content && @content != :loading} class="flex-1 overflow-auto">
+        <BoomLooperWeb.Live.ChatLive.Components.Viewers.FileViewer.file_viewer path={@path} content={@content} />
+      </div>
+    </div>
+    """
+  end
+
+  defp directory_listing(assigns) do
+    ~H"""
+    <div>
+      <%!-- Breadcrumb --%>
+      <div :if={@browse_path != "."} class="px-4 py-2 flex items-center gap-1 text-xs text-zinc-400 dark:text-zinc-500 border-b border-zinc-200 dark:border-zinc-700/80">
+        <.link patch={"#{@base_path}/volumes/#{@volume_name}/files"} class="hover:text-zinc-600 dark:hover:text-zinc-300">
+          /workspace
+        </.link>
+        <span :for={segment <- path_segments(@browse_path)}>
+          <span class="mx-0.5">/</span>
+          <.link patch={"#{@base_path}/volumes/#{@volume_name}/files/#{segment.path}"} class="hover:text-zinc-600 dark:hover:text-zinc-300">
+            {segment.name}
+          </.link>
+        </span>
+      </div>
+
+      <%!-- Loading --%>
       <div :if={@file_tree == :loading} class="p-6">
         <.skeleton rows={8} />
       </div>
 
-      <%!-- Tree listing --%>
+      <%!-- Tree --%>
       <div :if={is_list(@file_tree)} class="divide-y divide-zinc-100 dark:divide-zinc-800">
-        <%!-- Parent dir link --%>
-        <button
+        <.link
           :if={@browse_path != "."}
-          phx-click="browse_dir"
-          phx-value-path={parent_path(@browse_path)}
-          class="w-full px-4 py-2 flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+          patch={"#{@base_path}/volumes/#{@volume_name}/files/#{parent_path(@browse_path)}"}
+          class="block w-full px-4 py-2 text-sm text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
         >
-          <span class="text-zinc-400">..</span>
-        </button>
+          ..
+        </.link>
 
-        <button
+        <.link
           :for={entry <- @file_tree}
-          phx-click={if entry.type == :dir, do: "browse_dir", else: "view_file"}
-          phx-value-path={entry.path}
-          class="w-full px-4 py-2 flex items-center justify-between text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+          patch={"#{@base_path}/volumes/#{@volume_name}/files/#{entry.path}"}
+          class="flex items-center justify-between px-4 py-2 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
         >
           <span class="flex items-center gap-2">
             <span :if={entry.type == :dir} class="text-zinc-400 dark:text-zinc-500 text-xs w-4 text-center">&#x25B8;</span>
@@ -203,25 +243,11 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Volumes do
           <span :if={entry.type == :file} class="text-xs text-zinc-400 dark:text-zinc-500 tabular-nums">
             {format_bytes(entry.size)}
           </span>
-        </button>
+        </.link>
 
         <div :if={@file_tree == []} class="px-4 py-6 text-sm text-zinc-400 dark:text-zinc-500 text-center">
           Empty directory
         </div>
-      </div>
-
-      <%!-- File content viewer --%>
-      <div :if={@file_content == :loading} class="border-t border-zinc-200 dark:border-zinc-700/80 p-6">
-        <.skeleton rows={6} />
-      </div>
-      <div :if={@file_content && @file_content != :loading} class="border-t border-zinc-200 dark:border-zinc-700/80">
-        <div class="px-4 py-2 flex items-center justify-between bg-zinc-50 dark:bg-zinc-800/50">
-          <span class="text-xs font-mono text-zinc-500 dark:text-zinc-400">{@file_path}</span>
-          <button phx-click="close_file_viewer" class="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300">
-            Close
-          </button>
-        </div>
-        <BoomLooperWeb.Live.ChatLive.Components.Viewers.FileViewer.file_viewer path={@file_path} content={@file_content} />
       </div>
     </div>
     """
