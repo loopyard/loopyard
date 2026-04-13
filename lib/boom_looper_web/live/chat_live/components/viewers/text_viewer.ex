@@ -16,7 +16,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Viewers.TextViewer do
 
   attr :path, :string, required: true
   attr :content, :string, required: true
-  attr :mode, :atom, default: :code
+  attr :volume_name, :string, default: nil
 
   def text_viewer(assigns) do
     language = FileType.language(assigns.path)
@@ -35,20 +35,17 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Viewers.TextViewer do
           <span>{@line_count} lines</span>
           <span :if={@language} class="font-mono">{@language}</span>
         </div>
-        <div class="flex items-center gap-2">
-          <button
-            phx-click="set_file_mode"
-            phx-value-mode={if @mode == :code, do: "raw", else: "code"}
-            class={"px-2 py-0.5 rounded text-xs #{if @mode == :raw, do: "bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300", else: "hover:bg-zinc-200 dark:hover:bg-zinc-700"}"}
-          >
-            Raw
-          </button>
-        </div>
+        <a
+          :if={@volume_name}
+          href={"/raw/#{@volume_name}/#{@path}"}
+          target="_blank"
+          rel="noopener"
+          class="px-2 py-0.5 rounded text-xs hover:bg-zinc-200 dark:hover:bg-zinc-700"
+        >
+          Raw
+        </a>
       </div>
       <div class="flex-1 overflow-auto">
-        <%= if @mode == :raw do %>
-          <pre class="text-sm font-mono leading-relaxed p-4 text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap">{@content}</pre>
-        <% else %>
           <table class="text-sm font-mono leading-relaxed w-full border-collapse">
             <tbody>
               <tr :for={{line, idx} <- Enum.with_index(@lines, 1)}>
@@ -57,7 +54,6 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Viewers.TextViewer do
               </tr>
             </tbody>
           </table>
-        <% end %>
       </div>
     </div>
     """

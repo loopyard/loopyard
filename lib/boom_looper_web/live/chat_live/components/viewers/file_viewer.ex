@@ -13,7 +13,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Viewers.FileViewer do
   attr :path, :string, required: true
   attr :content, :string, required: true
   attr :size, :integer, default: nil
-  attr :mode, :atom, default: :code
+  attr :volume_name, :string, default: nil
 
   def file_viewer(assigns) do
     file_type = FileType.detect(assigns.path)
@@ -29,7 +29,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Viewers.FileViewer do
     assigns = assign(assigns, :file_type, file_type)
 
     ~H"""
-    <TextViewer.text_viewer :if={@file_type == :text} path={@path} content={@content} mode={@mode} />
+    <TextViewer.text_viewer :if={@file_type == :text} path={@path} content={@content} volume_name={@volume_name} />
     <ImageViewer.image_viewer :if={@file_type == :image} path={@path} content={@content} />
     <BinaryViewer.binary_viewer :if={@file_type in [:binary, :unknown]} path={@path} size={@size} />
     """

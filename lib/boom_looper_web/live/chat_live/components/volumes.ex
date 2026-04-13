@@ -14,7 +14,6 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Volumes do
   attr :file_tree, :any, default: nil
   attr :file_content, :any, default: nil
   attr :file_path, :string, default: nil
-  attr :file_mode, :atom, default: :code
   attr :browse_path, :string, default: "."
   attr :git_log, :list, default: []
   attr :git_status, :list, default: []
@@ -67,7 +66,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Volumes do
 
         <%!-- Files tab --%>
         <div :if={@volume_tab == :files}>
-          <.files_tab file_tree={@file_tree} file_content={@file_content} file_path={@file_path} file_mode={@file_mode} browse_path={@browse_path} volume_name={@volume_name} base_path={@base_path} />
+          <.files_tab file_tree={@file_tree} file_content={@file_content} file_path={@file_path} browse_path={@browse_path} volume_name={@volume_name} base_path={@base_path} />
         </div>
 
         <%!-- Git tab --%>
@@ -152,7 +151,6 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Volumes do
   attr :file_tree, :any, default: nil
   attr :file_content, :any, default: nil
   attr :file_path, :string, default: nil
-  attr :file_mode, :atom, default: :code
   attr :browse_path, :string, default: "."
   attr :volume_name, :string, required: true
   attr :base_path, :string, required: true
@@ -165,7 +163,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Volumes do
 
     ~H"""
     <%= if @viewing_file do %>
-      <.file_view path={@file_path} content={@file_content} file_mode={@file_mode} browse_path={@browse_path} base_path={@base_path} volume_name={@volume_name} />
+      <.file_view path={@file_path} content={@file_content} browse_path={@browse_path} base_path={@base_path} volume_name={@volume_name} />
     <% else %>
       <.directory_listing file_tree={@file_tree} browse_path={@browse_path} base_path={@base_path} volume_name={@volume_name} />
     <% end %>
@@ -193,7 +191,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Volumes do
         <.skeleton rows={12} />
       </div>
       <div :if={@content && @content != :loading} class="flex-1 overflow-auto">
-        <BoomLooperWeb.Live.ChatLive.Components.Viewers.FileViewer.file_viewer path={@path} content={@content} mode={@file_mode} />
+        <BoomLooperWeb.Live.ChatLive.Components.Viewers.FileViewer.file_viewer path={@path} content={@content} volume_name={@volume_name} />
       </div>
     </div>
     """

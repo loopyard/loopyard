@@ -6,10 +6,11 @@ defmodule BoomLooperWeb.ChatLiveTest do
   defp create_workspace do
     tmp_dir = Path.join(System.tmp_dir!(), "boom-looper-chat-test-#{:rand.uniform(100_000)}")
     File.mkdir_p!(tmp_dir)
-    # Create a minimal workspace config so auto-spawn Setup doesn't trigger on /new
-    repo_dir = Path.join(tmp_dir, ".boomlooper/repo")
-    File.mkdir_p!(repo_dir)
-    File.write!(Path.join(repo_dir, "workspace.json"), Jason.encode!(%{"name" => "test"}))
+    # Create a compose file so auto-spawn Setup doesn't trigger on /new.
+    # The compose file IS the proof that setup already ran.
+    ws_dir = Path.join(tmp_dir, ".boomlooper/workspace")
+    File.mkdir_p!(ws_dir)
+    File.write!(Path.join(ws_dir, "docker-compose.yml"), Jason.encode!(%{"services" => %{}}))
     {:ok, _project, workspace} = BoomLooper.ProjectRegistry.add(tmp_dir)
     {workspace, tmp_dir}
   end
@@ -160,10 +161,10 @@ defmodule BoomLooperWeb.ChatLiveTest do
       expected_path = Path.join([BoomLooper.Workspace.home_dir(), "workspaces", workspace_id])
       File.mkdir_p!(expected_path)
 
-      # Create workspace config so auto-spawn Setup doesn't trigger
-      repo_dir = Path.join(expected_path, ".boomlooper/repo")
-      File.mkdir_p!(repo_dir)
-      File.write!(Path.join(repo_dir, "workspace.json"), Jason.encode!(%{"name" => "test"}))
+      # Create compose file so auto-spawn Setup doesn't trigger
+      ws_dir = Path.join(expected_path, ".boomlooper/workspace")
+      File.mkdir_p!(ws_dir)
+      File.write!(Path.join(ws_dir, "docker-compose.yml"), Jason.encode!(%{"services" => %{}}))
 
       # Create an agent for this workspace
       agent_id = "vol-agent-#{:rand.uniform(100_000)}"
@@ -248,6 +249,45 @@ defmodule BoomLooperWeb.ChatLiveTest do
       catch
         :exit, _ -> :ok
       end
+    end
+  end
+
+  describe "auto-spawn behavior" do
+    test ":index never auto-spawns agents", %{conn: conn, workspace: ws} do
+      # Stop all agents so the workspace appears empty
+      BoomLooper.ChatAgent.list_agents()
+      |> Enum.filter(&(&1[:workspace_id] == ws.id || &1[:bind_mount] == ws.path || &1[:working_dir] == ws.path))
+      |> Enum.each(&BoomLooper.ChatAgent.stop_agent(&1.id))
+
+      Process.sleep(100)
+
+      # Open index — should NOT auto-spawn
+      {:ok, _view, html} = live(conn, ws_path(ws))
+
+      # Should show empty state, not redirect or spawn
+      refute html =~ "Starting agent"
+
+      # Count agents — should be zero for this workspace (stopped agents don't count)
+      agents = BoomLooper.ChatAgent.list_agents()
+        |> Enum.filter(&(&1[:workspace_id] == ws.id && &1.status not in [:stopped, :crashed]))
+      assert agents == []
+    end
+
+    test ":index with existing agents shows them without spawning new ones", %{conn: conn, workspace: ws, setup_agent_id: agent_id} do
+      agent_count_before = length(BoomLooper.ChatAgent.list_agents())
+
+      {:ok, _view, _html} = live(conn, ws_path(ws))
+      Process.sleep(200)
+
+      agent_count_after = length(BoomLooper.ChatAgent.list_agents())
+      assert agent_count_after == agent_count_before
+    end
+
+    test ":new with compose file shows picker without auto-spawning", %{conn: conn, workspace: ws} do
+      # Workspace already has compose file from setup
+      {:ok, _view, html} = live(conn, ws_new_path(ws))
+      assert html =~ "New Agent"
+      assert html =~ "Presets"
     end
   end
 

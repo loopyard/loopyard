@@ -41,6 +41,7 @@ defmodule BoomLooperWeb.Router do
     live "/messages/:agent_id/:msg_id", MessageLive, :show
     get "/messages/:agent_id/:msg_id/raw", OutputController, :show
 
+    get "/raw/:volume_name/*path", RawFileController, :show
     get "/launch/:secret", LaunchController, :launch
   end
 
