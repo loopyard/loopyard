@@ -304,42 +304,29 @@ defmodule BoomLooperWeb.ProjectLive do
             <div class="space-y-2 mb-8">
               <.link :for={workspace <- @workspaces}
                 navigate={"/projects/#{@project.id}/workspaces/#{workspace.id}"}
-                class="block rounded-xl border border-zinc-200 dark:border-zinc-700 p-4 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group">
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-2 min-w-0 flex-1">
-                    <div class={"w-2 h-2 rounded-full flex-none #{if workspace.status == :running, do: "bg-green-500", else: "bg-zinc-400"}"}></div>
-                    <span class="text-sm font-medium truncate">{workspace.name}</span>
-                    <span :if={workspace[:is_main]} class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500">default</span>
-                    <span :if={workspace.agent_count > 0} class="text-xs font-medium text-violet-600 dark:text-violet-400 bg-violet-100 dark:bg-violet-900/30 rounded-full px-2 py-0.5">
-                      {workspace.agent_count} agent{if workspace.agent_count != 1, do: "s"}
-                    </span>
-                    <span :if={workspace.service_count > 0}
-                      class={[
-                        "text-xs font-medium rounded-full px-2 py-0.5 inline-flex items-center gap-1",
-                        if(workspace.services_running == workspace.service_count,
-                          do: "text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30",
-                          else: "text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800")
-                      ]}
-                      title={"#{workspace.services_running} of #{workspace.service_count} services running"}>
-                      <span class={"w-1.5 h-1.5 rounded-full #{if workspace.services_running == workspace.service_count, do: "bg-green-500", else: "bg-zinc-400"}"}></span>
-                      {workspace.services_running}/{workspace.service_count} service{if workspace.service_count != 1, do: "s"}
-                    </span>
-                    <span :if={workspace.volume_count > 0} class="text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30 rounded-full px-2 py-0.5">
-                      {workspace.volume_count} volume{if workspace.volume_count != 1, do: "s"}
-                    </span>
+                class={[
+                  "block rounded-xl border p-4 transition-colors",
+                  if(workspace.status == :running,
+                    do: "border-green-300 dark:border-green-800 bg-green-50/50 dark:bg-green-950/20 hover:border-green-400",
+                    else: "border-zinc-200 dark:border-zinc-700 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50")
+                ]}>
+                <div class="flex items-center gap-3">
+                  <div class={"w-2.5 h-2.5 rounded-full flex-none #{if workspace.status == :running, do: "bg-green-500", else: "bg-zinc-400"}"}></div>
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-2">
+                      <span class="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate">{workspace.name}</span>
+                      <span :if={workspace[:is_main]} class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 flex-none">default</span>
+                    </div>
+                    <p :if={workspace.status == :running} class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                      {workspace.agent_count} agent{if workspace.agent_count != 1, do: "s"} · {workspace.services_running} service{if workspace.services_running != 1, do: "s"} running
+                    </p>
+                    <p :if={workspace.status != :running} class="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">
+                      Stopped
+                    </p>
                   </div>
-                  <div class="flex items-center gap-2 flex-none opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button :if={workspace.status != :running} phx-click="start_workspace" phx-value-id={workspace.id}
-                      class="text-xs font-medium text-green-600 dark:text-green-400 hover:text-green-500 transition-colors"
-                      title="Start workspace">
-                      Start
-                    </button>
-                    <button :if={workspace.status == :running} phx-click="stop_workspace" phx-value-id={workspace.id}
-                      class="text-xs font-medium text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
-                      title="Stop workspace">
-                      Stop
-                    </button>
-                  </div>
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-4 h-4 text-zinc-300 dark:text-zinc-600 flex-none">
+                    <path fill-rule="evenodd" d="M6.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 0 1-1.06-1.06L8.94 8 6.22 5.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
+                  </svg>
                 </div>
               </.link>
             </div>
