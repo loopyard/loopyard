@@ -62,14 +62,12 @@ defmodule BoomLooperWeb.ProjectLive do
   end
 
   @impl true
-  def handle_event("add_workspace", %{"name" => name}, socket) do
-    default_branch = get_in(socket.assigns.project, [:source_config, :default_branch]) || "main"
-    name = case String.trim(name) do
-      "" -> default_branch
-      trimmed -> trimmed
-    end
+  def handle_event("add_workspace", params, socket) do
+    name = String.trim(params["name"] || "")
+    _from = String.trim(params["from"] || "main")
 
     if name != "" do
+      # TODO: pass `from` to create_workspace so the branch is created off that base
       case ProjectRegistry.add_workspace(socket.assigns.project.id, name) do
         {:ok, workspace} ->
           {:noreply, push_navigate(socket, to: "/projects/#{socket.assigns.project.id}/workspaces/#{workspace.id}")}
@@ -330,21 +328,30 @@ defmodule BoomLooperWeb.ProjectLive do
               </.link>
             </div>
 
-            <form :if={@project.is_git} phx-submit="add_workspace" class="space-y-2">
-              <div class="text-xs font-medium text-zinc-500 dark:text-zinc-400">New workspace from branch</div>
-              <div class="flex gap-2">
-                <% default_branch = get_in(@project, [:source_config, :default_branch]) || "main" %>
-                <input type="text" name="name" placeholder={"branch name (default: #{default_branch})"} autocomplete="off"
-                  class="flex-1 rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-3 text-sm font-mono
-                         text-zinc-600 dark:text-zinc-300 placeholder:text-zinc-400
-                         focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400" />
-                <button type="submit"
-                  class="rounded-xl border border-zinc-200 dark:border-zinc-700 px-5 py-3 text-sm font-medium text-zinc-600 dark:text-zinc-400
-                         hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors flex-none">
-                  Create
-                </button>
+            <% default_branch = get_in(@project, [:source_config, :default_branch]) || "main" %>
+            <form :if={@project.is_git} phx-submit="add_workspace" class="space-y-3">
+              <div class="text-xs font-medium text-zinc-500 dark:text-zinc-400">New workspace</div>
+              <div class="space-y-2">
+                <div>
+                  <label class="block text-xs text-zinc-400 dark:text-zinc-500 mb-1">Branch from</label>
+                  <input type="text" name="from" value={default_branch} autocomplete="off"
+                    class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-800/50 px-3 py-2 text-sm font-mono
+                           text-zinc-600 dark:text-zinc-300
+                           focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400" />
+                </div>
+                <div>
+                  <label class="block text-xs text-zinc-400 dark:text-zinc-500 mb-1">New branch name</label>
+                  <input type="text" name="name" placeholder="e.g. bradgessler/fix-login" autocomplete="off"
+                    class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm font-mono
+                           text-zinc-600 dark:text-zinc-300 placeholder:text-zinc-400
+                           focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400" />
+                </div>
               </div>
-              <p class="text-xs text-zinc-400 dark:text-zinc-500">Creates a git worktree for this branch with its own containers and agents.</p>
+              <button type="submit"
+                class="rounded-lg border border-zinc-200 dark:border-zinc-700 px-5 py-2.5 text-sm font-medium text-zinc-600 dark:text-zinc-400
+                       hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
+                Create workspace
+              </button>
             </form>
           <% end %>
           <% end %>
