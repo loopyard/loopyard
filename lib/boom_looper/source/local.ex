@@ -221,6 +221,27 @@ defmodule BoomLooper.Source.Local do
     end
   end
 
+  def git_diff_staged(_project, workspace, opts \\ []) do
+    case worktree_path_for(workspace) do
+      {:ok, path} -> Git.diff_staged(path, opts)
+      {:error, _} = err -> err
+    end
+  end
+
+  def git_commit_detail(_project, workspace, sha) do
+    case worktree_path_for(workspace) do
+      {:ok, path} -> Git.commit_detail(path, sha)
+      {:error, _} = err -> err
+    end
+  end
+
+  def git_commit_diff(_project, workspace, sha, opts \\ []) do
+    case worktree_path_for(workspace) do
+      {:ok, path} -> Git.commit_diff(path, sha, opts)
+      {:error, _} = err -> err
+    end
+  end
+
   defp worktree_path_for(%{worktree_path: path}) when is_binary(path), do: {:ok, path}
   defp worktree_path_for(%{path: path}) when is_binary(path), do: {:ok, path}
   defp worktree_path_for(_), do: {:error, :no_workspace_path}

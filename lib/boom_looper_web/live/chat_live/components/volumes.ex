@@ -71,7 +71,12 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Volumes do
 
         <%!-- Git tab --%>
         <div :if={@volume_tab == :git}>
-          <.git_tab git_log={@git_log} git_status={@git_status} diff_content={@diff_content} />
+          <BoomLooperWeb.Live.ChatLive.Components.Viewers.GitViewer.git_overview
+            git_status={@git_status}
+            git_log={@git_log}
+            base_path={@base_path}
+            volume_name={@volume_name}
+          />
         </div>
       </div>
     </.detail_panel>

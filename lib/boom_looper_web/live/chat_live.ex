@@ -99,6 +99,9 @@ defmodule BoomLooperWeb.ChatLive do
      |> assign(:git_log, [])
      |> assign(:git_status, [])
      |> assign(:diff_content, nil)
+     |> assign(:diff_path, nil)
+     |> assign(:commit_detail, nil)
+     |> assign(:commit_sha, nil)
      |> assign(:supports_git, false)
      |> assign(:service_logs, "")
      |> assign(:all_service_logs, [])
@@ -292,6 +295,62 @@ defmodule BoomLooperWeb.ChatLive do
     {:noreply, socket}
   end
 
+  # Git diff for unstaged file
+  def handle_params(%{"volume_name" => name, "path" => path_parts}, _uri, %{assigns: %{live_action: :git_diff}} = socket) do
+    file_path = Path.join(path_parts)
+    socket = setup_volume(socket, name, :git)
+
+    {:noreply,
+     socket
+     |> assign(:diff_content, :loading)
+     |> assign(:diff_path, file_path)
+     |> start_async(:git_file_diff, fn ->
+       load_file_diff(socket.assigns, file_path, :unstaged)
+     end)}
+  end
+
+  # Git diff for staged file
+  def handle_params(%{"volume_name" => name, "path" => path_parts}, _uri, %{assigns: %{live_action: :git_staged_diff}} = socket) do
+    file_path = Path.join(path_parts)
+    socket = setup_volume(socket, name, :git)
+
+    {:noreply,
+     socket
+     |> assign(:diff_content, :loading)
+     |> assign(:diff_path, file_path)
+     |> start_async(:git_file_diff, fn ->
+       load_file_diff(socket.assigns, file_path, :staged)
+     end)}
+  end
+
+  # Git commit detail
+  def handle_params(%{"volume_name" => name, "sha" => sha}, _uri, %{assigns: %{live_action: :git_commit}} = socket) do
+    socket = setup_volume(socket, name, :git)
+
+    {:noreply,
+     socket
+     |> assign(:commit_detail, :loading)
+     |> assign(:commit_sha, sha)
+     |> start_async(:git_commit_detail, fn ->
+       load_commit_detail(socket.assigns, sha)
+     end)}
+  end
+
+  # Git commit file diff
+  def handle_params(%{"volume_name" => name, "sha" => sha, "path" => path_parts}, _uri, %{assigns: %{live_action: :git_commit_file}} = socket) do
+    file_path = Path.join(path_parts)
+    socket = setup_volume(socket, name, :git)
+
+    {:noreply,
+     socket
+     |> assign(:diff_content, :loading)
+     |> assign(:diff_path, file_path)
+     |> assign(:commit_sha, sha)
+     |> start_async(:git_file_diff, fn ->
+       load_commit_file_diff(socket.assigns, sha, file_path)
+     end)}
+  end
+
   def handle_params(_params, _uri, %{assigns: %{live_action: :sync}} = socket) do
     {:noreply,
      socket
@@ -406,6 +465,22 @@ defmodule BoomLooperWeb.ChatLive do
 
   def handle_async(:diff_content, {:exit, _reason}, socket) do
     {:noreply, socket}
+  end
+
+  def handle_async(:git_file_diff, {:ok, diff}, socket) when is_binary(diff) do
+    {:noreply, assign(socket, :diff_content, diff)}
+  end
+
+  def handle_async(:git_file_diff, _, socket) do
+    {:noreply, assign(socket, :diff_content, "(could not load diff)")}
+  end
+
+  def handle_async(:git_commit_detail, {:ok, commit}, socket) when is_map(commit) do
+    {:noreply, assign(socket, :commit_detail, commit)}
+  end
+
+  def handle_async(:git_commit_detail, _, socket) do
+    {:noreply, assign(socket, :commit_detail, nil)}
   end
 
   # --- Events ---
@@ -989,6 +1064,45 @@ defmodule BoomLooperWeb.ChatLive do
     end
   end
 
+  defp load_file_diff(assigns, file_path, type) do
+    project = assigns.project
+    workspace_entry = assigns.workspace_entry
+    adapter = BoomLooper.Source.for_project(project)
+
+    result =
+      case type do
+        :staged -> adapter.git_diff_staged(project, workspace_entry, file: file_path)
+        :unstaged -> adapter.git_diff(project, workspace_entry, file: file_path)
+      end
+
+    case result do
+      {:ok, diff} -> diff
+      _ -> "(could not load diff)"
+    end
+  end
+
+  defp load_commit_detail(assigns, sha) do
+    project = assigns.project
+    workspace_entry = assigns.workspace_entry
+    adapter = BoomLooper.Source.for_project(project)
+
+    case adapter.git_commit_detail(project, workspace_entry, sha) do
+      {:ok, commit} -> commit
+      _ -> nil
+    end
+  end
+
+  defp load_commit_file_diff(assigns, sha, file_path) do
+    project = assigns.project
+    workspace_entry = assigns.workspace_entry
+    adapter = BoomLooper.Source.for_project(project)
+
+    case adapter.git_commit_diff(project, workspace_entry, sha, file: file_path) do
+      {:ok, diff} -> diff
+      _ -> "(could not load diff)"
+    end
+  end
+
   # Derive sidebar service + volume state from Docker.Observer's ETS
   # cache. Zero docker calls — microsecond reads. The Observer
   # maintains the cache via the `docker events` stream.
@@ -1088,6 +1202,35 @@ defmodule BoomLooperWeb.ChatLive do
           <.console_view :if={@live_action == :console} service_name={@selected_service} container={@console_container} />
           <.all_services_view :if={@live_action == :services} all_service_logs={@all_service_logs} />
           <.volume_detail :if={@live_action in [:volume, :volume_files_root, :volume_file, :volume_git]} volume_name={@selected_volume} volumes={@volumes} workspace_id={@workspace.id} base_path={@base_path} volume_tab={@volume_tab} file_tree={@file_tree} file_content={@file_content} file_path={@file_path} browse_path={@browse_path} git_log={@git_log} git_status={@git_status} diff_content={@diff_content} supports_git={@supports_git} />
+          <%= if @live_action in [:git_diff, :git_staged_diff] && @diff_content && @diff_content != :loading do %>
+            <div class="flex flex-col h-full">
+              <div class="flex-none px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center gap-2 text-xs">
+                <.link patch={"#{@base_path}/volumes/#{@selected_volume}/git"} class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300">← Git</.link>
+                <span class="text-zinc-300 dark:text-zinc-600">·</span>
+                <span class="font-mono text-zinc-600 dark:text-zinc-400">{@diff_path}</span>
+                <span :if={@live_action == :git_staged_diff} class="text-green-600 dark:text-green-400 text-[10px] font-semibold uppercase">staged</span>
+              </div>
+              <BoomLooperWeb.Live.ChatLive.Components.Viewers.GitViewer.diff_viewer diff={@diff_content} path={@diff_path} />
+            </div>
+          <% end %>
+          <%= if @live_action == :git_commit && is_map(@commit_detail) do %>
+            <div class="flex flex-col h-full">
+              <div class="flex-none px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80 text-xs">
+                <.link patch={"#{@base_path}/volumes/#{@selected_volume}/git"} class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300">← Git</.link>
+              </div>
+              <BoomLooperWeb.Live.ChatLive.Components.Viewers.GitViewer.commit_detail commit={@commit_detail} base_path={@base_path} volume_name={@selected_volume} />
+            </div>
+          <% end %>
+          <%= if @live_action == :git_commit_file && @diff_content && @diff_content != :loading do %>
+            <div class="flex flex-col h-full">
+              <div class="flex-none px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center gap-2 text-xs">
+                <.link patch={"#{@base_path}/volumes/#{@selected_volume}/git/commits/#{@commit_sha}"} class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300">← {String.slice(@commit_sha || "", 0..6)}</.link>
+                <span class="text-zinc-300 dark:text-zinc-600">·</span>
+                <span class="font-mono text-zinc-600 dark:text-zinc-400">{@diff_path}</span>
+              </div>
+              <BoomLooperWeb.Live.ChatLive.Components.Viewers.GitViewer.diff_viewer diff={@diff_content} path={@diff_path} />
+            </div>
+          <% end %>
           <.sync_detail :if={@live_action == :sync} sync_status={@sync_status} workspace_id={@workspace.id} workspace={@workspace} />
           <.booting_screen :if={@live_action in [:index, :chat, :container] && @booting_agent_id && !@selected_agent} agent_id={@booting_agent_id} status={@boot_status} boot_log={@boot_log} />
           <.empty_state :if={@live_action in [:index, :chat, :container] && !@booting_agent_id && !@selected_agent} />

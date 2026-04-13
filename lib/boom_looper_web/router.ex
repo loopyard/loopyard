@@ -32,6 +32,10 @@ defmodule BoomLooperWeb.Router do
     live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/files", ChatLive, :volume_files_root
     live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/files/*path", ChatLive, :volume_file
     live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/git", ChatLive, :volume_git
+    live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/git/diff/*path", ChatLive, :git_diff
+    live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/git/staged/*path", ChatLive, :git_staged_diff
+    live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/git/commits/:sha", ChatLive, :git_commit
+    live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/git/commits/:sha/diff/*path", ChatLive, :git_commit_file
     live "/projects/:project_id/workspaces/:workspace_id/sync", ChatLive, :sync
 
     live "/system", SystemLive, :index

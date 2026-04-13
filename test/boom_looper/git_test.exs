@@ -86,19 +86,62 @@ defmodule BoomLooper.GitTest do
   end
 
   describe "status/1" do
-    test "returns empty list for clean repo" do
+    test "returns empty staged and unstaged for clean repo" do
       tmp = make_temp_repo()
-      assert {:ok, []} = Git.status(tmp)
+      assert {:ok, %{staged: [], unstaged: []}} = Git.status(tmp)
       File.rm_rf!(tmp)
     end
 
-    test "returns modified files" do
+    test "untracked files appear in unstaged" do
       tmp = make_temp_repo()
       File.write!(Path.join(tmp, "new_file.txt"), "hello")
-      assert {:ok, entries} = Git.status(tmp)
-      assert length(entries) == 1
-      assert hd(entries).status == "??"
-      assert hd(entries).path == "new_file.txt"
+      assert {:ok, %{staged: staged, unstaged: unstaged}} = Git.status(tmp)
+      assert staged == []
+      assert length(unstaged) == 1
+      assert hd(unstaged).status == "??"
+      assert hd(unstaged).path == "new_file.txt"
+      File.rm_rf!(tmp)
+    end
+
+    test "staged files appear in staged" do
+      tmp = make_temp_repo()
+      File.write!(Path.join(tmp, "staged.txt"), "hello")
+      System.cmd("git", ["add", "staged.txt"], cd: tmp)
+      assert {:ok, %{staged: staged, unstaged: unstaged}} = Git.status(tmp)
+      assert length(staged) == 1
+      assert hd(staged).status == "A"
+      assert hd(staged).path == "staged.txt"
+      assert unstaged == []
+      File.rm_rf!(tmp)
+    end
+
+    test "modified file appears in unstaged, staged version in staged" do
+      tmp = make_temp_repo()
+      # Modify an existing tracked file
+      File.write!(Path.join(tmp, "README.md"), "changed")
+      System.cmd("git", ["add", "README.md"], cd: tmp)
+      # Modify again after staging
+      File.write!(Path.join(tmp, "README.md"), "changed again")
+
+      assert {:ok, %{staged: staged, unstaged: unstaged}} = Git.status(tmp)
+      assert length(staged) == 1
+      assert hd(staged).status == "M"
+      assert length(unstaged) == 1
+      assert hd(unstaged).status == "M"
+      File.rm_rf!(tmp)
+    end
+  end
+
+  describe "commit_detail/2" do
+    test "returns files changed with insertions/deletions" do
+      tmp = make_temp_repo()
+      {:ok, log} = Git.log(tmp, limit: 1)
+      sha = hd(log).sha
+
+      assert {:ok, detail} = Git.commit_detail(tmp, sha)
+      assert detail.sha == sha
+      assert is_binary(detail.message)
+      assert is_list(detail.files)
       File.rm_rf!(tmp)
     end
   end

@@ -126,25 +126,118 @@ defmodule BoomLooper.Git do
 
   @doc """
   Get working tree status (porcelain format).
-  Returns {:ok, list} where each entry is %{status, path}.
+  Returns {:ok, %{staged: [...], unstaged: [...]}} where each entry is
+  %{status: "M"|"A"|"D"|"??", path: "..."}.
+
+  Git's porcelain format uses two columns: XY where X = index (staged)
+  and Y = worktree (unstaged). We split these into two lists.
   """
   def status(path) do
     case git(["status", "--porcelain"], cd: path) do
       {:ok, output} ->
-        entries =
+        {staged, unstaged} =
           output
           |> String.split("\n", trim: true)
-          |> Enum.map(fn line ->
-            status_code = String.slice(line, 0, 2) |> String.trim()
+          |> Enum.reduce({[], []}, fn line, {staged_acc, unstaged_acc} ->
+            index = String.at(line, 0)
+            worktree = String.at(line, 1)
             file_path = String.slice(line, 3..-1//1)
-            %{status: status_code, path: file_path}
+
+            staged_acc =
+              if index not in [" ", "?", nil] do
+                [%{status: index, path: file_path} | staged_acc]
+              else
+                staged_acc
+              end
+
+            unstaged_acc =
+              cond do
+                index == "?" and worktree == "?" ->
+                  [%{status: "??", path: file_path} | unstaged_acc]
+                worktree not in [" ", nil] ->
+                  [%{status: worktree, path: file_path} | unstaged_acc]
+                true ->
+                  unstaged_acc
+              end
+
+            {staged_acc, unstaged_acc}
           end)
 
-        {:ok, entries}
+        {:ok, %{staged: Enum.reverse(staged), unstaged: Enum.reverse(unstaged)}}
 
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  @doc """
+  Get diff for staged changes only.
+  """
+  def diff_staged(path, opts \\ []) do
+    file = Keyword.get(opts, :file)
+    args = ["diff", "--cached"] ++ if(file, do: ["--", file], else: [])
+    git(args, cd: path)
+  end
+
+  @doc """
+  Get commit detail: files changed with insertions/deletions.
+  Returns {:ok, %{sha, message, author, date, files: [%{path, insertions, deletions, status}]}}.
+  """
+  def commit_detail(path, sha) do
+    case git(["show", "--format=%H\t%s\t%an\t%aI", "--stat=200", "--numstat", sha], cd: path) do
+      {:ok, output} ->
+        lines = String.split(output, "\n", trim: true)
+
+        case lines do
+          [header | rest] ->
+            case String.split(header, "\t", parts: 4) do
+              [sha, message, author, date] ->
+                files = parse_numstat(rest)
+
+                {:ok, %{
+                  sha: sha,
+                  message: message,
+                  author: author,
+                  date: date,
+                  files: files
+                }}
+
+              _ ->
+                {:error, "Could not parse commit header"}
+            end
+
+          _ ->
+            {:error, "Empty commit output"}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Get the diff for a specific commit.
+  Options:
+    - :file — limit to a specific file
+  """
+  def commit_diff(path, sha, opts \\ []) do
+    file = Keyword.get(opts, :file)
+    args = ["show", "--format=", sha] ++ if(file, do: ["--", file], else: [])
+    git(args, cd: path)
+  end
+
+  defp parse_numstat(lines) do
+    lines
+    |> Enum.flat_map(fn line ->
+      case String.split(line, "\t", parts: 3) do
+        [ins, del, path] when ins != "" ->
+          insertions = if ins == "-", do: 0, else: String.to_integer(ins)
+          deletions = if del == "-", do: 0, else: String.to_integer(del)
+          [%{path: path, insertions: insertions, deletions: deletions}]
+        _ ->
+          []
+      end
+    end)
   end
 
   @doc """
