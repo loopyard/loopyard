@@ -360,11 +360,12 @@ defmodule BoomLooper.ChatAgentTest do
       %{id: id}
     end
 
+    @tag timeout: 10_000
     test "messages are returned in chronological order", %{id: id} do
       ChatAgent.send_message(id, "first")
-      Process.sleep(100)
+      Process.sleep(500)
       ChatAgent.send_message(id, "second")
-      Process.sleep(100)
+      Process.sleep(500)
 
       state = ChatAgent.get_state(id)
       user_msgs = Enum.filter(state.messages, &(&1.role == :user))
@@ -372,6 +373,7 @@ defmodule BoomLooper.ChatAgentTest do
       assert contents == ["first", "second"]
     end
 
+    @tag timeout: 10_000
     test "messages are capped at 1000", %{id: id} do
       # Directly inject messages via the GenServer to avoid CLI overhead
       [{pid, _}] = Registry.lookup(BoomLooper.ChatAgentRegistry, id)

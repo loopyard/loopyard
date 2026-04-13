@@ -2,6 +2,8 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Viewers.BinaryViewer do
   @moduledoc "Placeholder for binary files that can't be previewed."
   use Phoenix.Component
 
+  import BoomLooperWeb.Format, only: [format_bytes: 1]
+
   attr :path, :string, required: true
   attr :size, :integer, default: nil
 
@@ -19,9 +21,4 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Viewers.BinaryViewer do
     </div>
     """
   end
-
-  defp format_bytes(n) when n < 1024, do: "#{n} B"
-  defp format_bytes(n) when n < 1_048_576, do: "#{Float.round(n / 1024, 1)} KB"
-  defp format_bytes(n) when n < 1_073_741_824, do: "#{Float.round(n / 1_048_576, 1)} MB"
-  defp format_bytes(n), do: "#{Float.round(n / 1_073_741_824, 1)} GB"
 end

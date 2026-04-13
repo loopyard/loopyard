@@ -1,6 +1,10 @@
 defmodule BoomLooperWeb.MessageLiveTest do
   use BoomLooperWeb.ConnCase
 
+  # These tests send_message which triggers Claude CLI (unavailable in CI).
+  # The stream errors out but the user message is saved. Give extra time.
+  @moduletag timeout: 15_000
+
   import Phoenix.LiveViewTest
 
   alias BoomLooper.ChatAgent
@@ -27,9 +31,10 @@ defmodule BoomLooperWeb.MessageLiveTest do
       started_by: "test"
     )
 
-    # Send a message so we have something to look up
+    # Send a message so we have something to look up.
+    # On CI without Claude CLI, the stream errors out but the user message is saved.
     ChatAgent.send_message(agent_id, "hello world")
-    Process.sleep(200)
+    Process.sleep(1_000)
 
     on_exit(fn ->
       try do

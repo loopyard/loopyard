@@ -52,7 +52,7 @@ defmodule BoomLooper.Source do
   Check if an adapter module supports git operations.
   """
   def supports_git?(adapter) do
-    function_exported?(adapter, :git_log, 3)
+    Code.ensure_loaded?(adapter) and function_exported?(adapter, :git_log, 3)
   end
 
   @doc """
