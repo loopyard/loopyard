@@ -72,46 +72,48 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Viewers.TextViewer do
   end
 
   defp makeup_highlight(line, language) do
-    # makeup_syntect uses file extensions to identify languages
-    ext = language_to_ext(language)
+    syntect_lang = syntect_language(language)
 
     try do
-      highlighted = Makeup.highlight(line, lexer: MakeupSyntect, lexer_options: [extension: ext])
-      # Makeup wraps in <pre><code> — strip those, we handle our own layout
-      stripped =
-        highlighted
+      tokens = MakeupSyntect.tokenize(line, language: syntect_lang)
+
+      html =
+        Makeup.Formatters.HTML.HTMLFormatter.format_as_iolist(tokens)
+        |> IO.iodata_to_binary()
+        # Strip the <pre><code> wrapper — we handle layout ourselves
         |> String.replace(~r/<pre[^>]*><code[^>]*>/, "")
         |> String.replace(~r/<\/code><\/pre>/, "")
         |> String.trim()
 
-      {:ok, stripped}
+      {:ok, html}
     rescue
       _ -> :error
     end
   end
 
-  # Map our language names to file extensions that syntect recognizes
-  defp language_to_ext("elixir"), do: "ex"
-  defp language_to_ext("ruby"), do: "rb"
-  defp language_to_ext("javascript"), do: "js"
-  defp language_to_ext("typescript"), do: "ts"
-  defp language_to_ext("python"), do: "py"
-  defp language_to_ext("html"), do: "html"
-  defp language_to_ext("css"), do: "css"
-  defp language_to_ext("json"), do: "json"
-  defp language_to_ext("yaml"), do: "yml"
-  defp language_to_ext("markdown"), do: "md"
-  defp language_to_ext("shell"), do: "sh"
-  defp language_to_ext("sql"), do: "sql"
-  defp language_to_ext("go"), do: "go"
-  defp language_to_ext("rust"), do: "rs"
-  defp language_to_ext("dockerfile"), do: "Dockerfile"
-  defp language_to_ext("toml"), do: "toml"
-  defp language_to_ext("xml"), do: "xml"
-  defp language_to_ext("c"), do: "c"
-  defp language_to_ext("cpp"), do: "cpp"
-  defp language_to_ext("java"), do: "java"
-  defp language_to_ext("swift"), do: "swift"
-  defp language_to_ext("kotlin"), do: "kt"
-  defp language_to_ext(lang), do: lang
+  # MakeupSyntect uses full language names (case-sensitive)
+  defp syntect_language("elixir"), do: "Elixir"
+  defp syntect_language("ruby"), do: "Ruby"
+  defp syntect_language("javascript"), do: "JavaScript"
+  defp syntect_language("typescript"), do: "TypeScript"
+  defp syntect_language("python"), do: "Python"
+  defp syntect_language("html"), do: "HTML"
+  defp syntect_language("css"), do: "CSS"
+  defp syntect_language("json"), do: "JSON"
+  defp syntect_language("yaml"), do: "YAML"
+  defp syntect_language("markdown"), do: "Markdown"
+  defp syntect_language("shell"), do: "Bourne Again Shell (bash)"
+  defp syntect_language("sql"), do: "SQL"
+  defp syntect_language("go"), do: "Go"
+  defp syntect_language("rust"), do: "Rust"
+  defp syntect_language("dockerfile"), do: "Dockerfile"
+  defp syntect_language("toml"), do: "TOML"
+  defp syntect_language("xml"), do: "XML"
+  defp syntect_language("c"), do: "C"
+  defp syntect_language("cpp"), do: "C++"
+  defp syntect_language("java"), do: "Java"
+  defp syntect_language("swift"), do: "Swift"
+  defp syntect_language("kotlin"), do: "Kotlin"
+  defp syntect_language("erlang"), do: "Erlang"
+  defp syntect_language(lang), do: lang
 end
