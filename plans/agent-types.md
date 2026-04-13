@@ -1,18 +1,20 @@
-# Agent Types: composable agents with selectable tool servers
+# Agent Types: composable agents with tools, computers, and gates
 
 ## Problem
 
-All agents get the same tools today. A Setup agent has browser tools it doesn't need. A QA agent doesn't have browser tools it does need. There's no way to create a "Code Review" agent that only reads files and can't modify anything.
+All agents get the same tools and the same container today. A Setup agent has browser tools it doesn't need. A QA agent doesn't have browser tools it does need. A data agent needs Python and psql but gets a Ruby environment. There's no way to create a "Code Review" agent that only reads files and can't modify anything.
 
-As we add more sidecar MCP servers (browser, secrets, databases, etc.), every agent getting every tool becomes noisy and confusing. Agents need to be composable: a name + a curated set of tools.
+As we add more sidecar MCP servers (browser, secrets, databases, etc.), every agent getting every tool becomes noisy and confusing. Agents need to be composable.
 
 ## Design
 
-### Agent = Name + Tool Selection
+### Agent = Name + Tools + Computer + Gates
 
 An agent is defined by:
 - **Name** — human-readable ("QA", "Setup", "Code Review", "Browser Dude")
-- **Tool servers** — which MCP servers this agent gets (toggled on/off)
+- **Tools** — which MCP servers this agent gets (toggled on/off)
+- **Computer** — what Dockerfile/container it runs in (its installed software, runtime, capabilities)
+- **Gates** — which tools require human approval (see `plans/human-gates.md`)
 - **System prompt** — optional custom instructions for this agent type
 
 ### Tool Server Metadata
@@ -161,6 +163,69 @@ Each preset/type can carry a system prompt fragment:
 
 This already exists (`ChatAgent.Prompt.build_system_prompt`) — just needs to accept the agent type's prompt fragment alongside the workspace config.
 
+### Computer: the agent's container
+
+The Dockerfile IS the agent's capability declaration. Today every agent
+shares the same workspace container. With agent types, each type gets its
+own container definition.
+
+**Why separate containers:**
+- A QA agent needs Chromium (~130MB). The developer agent doesn't.
+- A data agent needs Python + pandas + psql client. The setup agent doesn't.
+- A code review agent needs nothing but the source code and a linter. Tiny image.
+- Isolation: a runaway agent can't trash another agent's environment.
+
+**How it works:**
+
+Each agent type has a Dockerfile (or references a base image):
+
+```elixir
+%AgentType{
+  name: "QA",
+  tools: ["boom-looper-container", "boom-looper-browser"],
+  computer: %{
+    dockerfile: "FROM mcr.microsoft.com/playwright:v1.40.0-focal\nRUN npm i -g playwright",
+    # OR reference a pre-built image:
+    image: "bl-qa-agent:latest",
+    # The code volume is always mounted at /workspace
+    volumes: ["${CODE_VOLUME}:/workspace"],
+    # Internal network access to other services
+    networks: ["default"]
+  },
+  gates: %{"exec" => :approve},
+  system_prompt: "You are a QA agent..."
+}
+```
+
+**Container lifecycle:**
+- Agent is created → its container starts (built from the type's Dockerfile)
+- Agent exec's into ITS container, not the shared workspace container
+- Multiple agents of the same type share an image (built once, reused)
+- Agent is stopped → container stops. Agent is removed → container is removed.
+- The code volume is shared across all agent containers — they all see the same files
+
+**Presets with computers:**
+
+| Preset | Computer | Tools | Use case |
+|--------|----------|-------|----------|
+| Setup | Full dev env (Ruby/Node/Python, Docker CLI, git) | Workspace, Agents | Bootstrap projects |
+| Developer | Project-specific (from project's Dockerfile) | Workspace, Agents | Write code |
+| QA | Playwright + Chromium | Workspace, Browser, Agents | Visual testing |
+| Code Review | Alpine + linters only | Workspace (read-only) | Review without modifying |
+| Data | Python + pandas + psql | Workspace, Database | Data analysis |
+
+**The key insight:** the computer and the tools are two sides of the same
+capability. The computer is what's installed (raw executables, libraries,
+runtimes). The tools are the structured API the agent uses to interact
+(MCP tool calls). A QA agent needs Chromium installed (computer) AND the
+screenshot tool (MCP). One without the other is useless.
+
+**Shared vs isolated:**
+- All agent containers mount the same code volume (`${CODE_VOLUME}:/workspace`)
+- Service containers (postgres, redis, dev server) are shared infrastructure
+- Agent containers are per-type — isolated environments for different jobs
+- The compose stack grows: workspace, dev, postgres, redis + qa-agent, data-agent, etc.
+
 ### Implementation order
 
 1. Add `title` and `description` to `__tool_server__/0` in each toolkit module
@@ -168,5 +233,8 @@ This already exists (`ChatAgent.Prompt.build_system_prompt`) — just needs to a
 3. Update "New Agent" UI to show tool selection
 4. Store selected tool servers on the agent record
 5. `ToolConfig.resolve_servers` builds MCP server map from selection
-6. Presets — saved name + tool selection, per-project or global
-7. Per-tool granularity (phase 2)
+6. **Agent containers** — each agent type gets its own container from a Dockerfile/image
+7. Agent exec routes to the agent's own container (not the shared workspace container)
+8. Presets — saved name + tool selection + computer + gates, per-project or global
+9. Per-tool granularity (phase 2)
+10. Gate policies per agent type (see `plans/human-gates.md`)
