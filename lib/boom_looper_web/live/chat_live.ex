@@ -831,6 +831,17 @@ defmodule BoomLooperWeb.ChatLive do
     ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
     {service_statuses, volumes} = load_sidebar_from_observer(nil, ws_id)
 
+    # Never replace a non-empty service list with an empty one — that
+    # causes the sidebar to flash. If Observer temporarily has no data
+    # (event stream reconnecting, compose file not yet synced), keep
+    # the last known good state.
+    service_statuses =
+      if service_statuses == [] and socket.assigns.service_statuses != [] do
+        socket.assigns.service_statuses
+      else
+        service_statuses
+      end
+
     {:noreply,
      socket
      |> assign(:service_statuses, service_statuses)
@@ -855,6 +866,15 @@ defmodule BoomLooperWeb.ChatLive do
     if matches do
       ws_id = ws_entry && ws_entry.id || ws.id
       {service_statuses, _volumes} = load_sidebar_from_observer(path, ws_id)
+
+      # Never replace a non-empty service list with empty
+      service_statuses =
+        if service_statuses == [] and socket.assigns.service_statuses != [] do
+          socket.assigns.service_statuses
+        else
+          service_statuses
+        end
+
       {:noreply, assign(socket, :service_statuses, service_statuses)}
     else
       {:noreply, socket}
