@@ -121,10 +121,13 @@
   .h-screen { height: 100dvh !important; }
 }
 
-/* Prevent body scroll when virtual keyboard is open (iOS) */
+/* Chat page: fixed position so iOS keyboard can't push it.
+   The flex column layout shrinks the messages area naturally
+   when the viewport shrinks (dvh handles keyboard on modern iOS). */
 #chat-page {
+  position: fixed;
+  inset: 0;
   overflow: hidden;
-  /* Will be set dynamically by visualViewport handler in app.js */
 }
 
 /* Safe area for notched/dynamic island devices */
