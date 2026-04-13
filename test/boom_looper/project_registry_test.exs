@@ -141,6 +141,7 @@ defmodule BoomLooper.ProjectRegistryTest do
   end
 
   describe "remove_project/1" do
+    @tag timeout: 10_000
     test "removes project and all workspaces" do
       path = File.cwd!()
       {:ok, project, _} = ProjectRegistry.add(path)

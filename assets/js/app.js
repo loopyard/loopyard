@@ -40,7 +40,7 @@ Hooks.ScrollBottom = {
     // This prevents fighting with the user's scroll on mobile.
     if (!this._initialScrollDone) {
       const el = document.getElementById("messages")
-      if (el && el.scrollHeight > el.clientHeight) {
+      if (el && el.children.length > 0) {
         this._initialScrollDone = true
         requestAnimationFrame(() => { el.scrollTop = el.scrollHeight })
       }

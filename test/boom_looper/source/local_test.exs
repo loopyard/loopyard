@@ -42,9 +42,10 @@ defmodule BoomLooper.Source.LocalTest do
 
         assert {:ok, project} = Local.add_project(dir)
         assert project.source_type == :local
-        assert project.path == dir
+        # Git resolves symlinks (e.g. /var → /private/var on macOS)
+        assert String.ends_with?(project.path, Path.basename(dir))
         assert project.is_git == true
-        assert project.source_config.repo_root == dir
+        assert String.ends_with?(project.source_config.repo_root, Path.basename(dir))
         assert is_binary(project.source_config.default_branch)
 
         File.rm_rf!(dir)

@@ -20,6 +20,8 @@ defmodule BoomLooperWeb.Live.ChatLive.Messages do
 
   import BoomLooperWeb.Components.LogViewer, only: [log_inline: 1]
 
+  alias BoomLooperWeb.Components.Ansi
+
   alias BoomLooperWeb.Components.ToolSummary
 
   attr :msg, :map, required: true
@@ -108,7 +110,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Messages do
       <div class="w-4 h-4 rounded bg-red-100 dark:bg-red-900/30 flex items-center justify-center flex-none mt-0.5">
         <span class="text-[10px] font-bold text-red-500">!</span>
       </div>
-      <span class="text-xs text-red-600 dark:text-red-400">{@msg.content}</span>
+      <span class="text-xs text-red-600 dark:text-red-400">{Ansi.to_html(@msg.content)}</span>
       <span class="text-[10px] text-zinc-300 dark:text-zinc-600 flex-none">{Calendar.strftime(@msg.timestamp, "%H:%M:%S")}</span>
     </div>
     """
@@ -186,7 +188,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Messages do
     ~H"""
     <div class="pl-10 py-0.5">
       <pre class={"p-3 rounded-lg text-xs font-mono overflow-x-auto max-h-80 overflow-y-auto whitespace-pre-wrap
-                   #{if @is_error, do: "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300", else: "bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-green-400"}"}>{@display}</pre>
+                   #{if @is_error, do: "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300", else: "bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-zinc-300"}"}>{Ansi.to_html(@display)}</pre>
       <div class="flex items-center gap-2 mt-1">
         <p :if={@truncated} class="text-[10px] text-zinc-400 dark:text-zinc-500">... truncated ({@line_count - 40} more lines)</p>
         <a :if={@url} href={@url} target="_blank" rel="noopener" class="text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors">open</a>
