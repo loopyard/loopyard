@@ -280,6 +280,8 @@ defmodule BoomLooper.InvariantsTest do
     test "ad-hoc virtual dir paths are tracked (should decrease over time)" do
       count =
         Path.wildcard("lib/**/*.ex")
+        # Exclude tool files that construct URL route paths (not virtual dirs)
+        |> Enum.reject(&String.contains?(&1, "tools/container/"))
         |> Enum.flat_map(fn path ->
           content = File.read!(path)
           # Match the pattern: Path.join([..., "workspaces", ...])
