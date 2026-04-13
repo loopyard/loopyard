@@ -11,15 +11,15 @@ defmodule BoomLooper.Tools.ContainerTest do
       assert info.name == "boom-looper-container"
     end
 
-    test "has all 20 expected tools" do
+    test "has all expected tools" do
       tool_names = Container.__tool_server__().tools |> Enum.map(& &1.__tool_name__()) |> MapSet.new()
 
       expected =
         ~w(exec exec_stream logs inspect_env ports service_containers write_file read_file
            edit multi_edit grep glob probe_http tree inspect_service read_files
-           docker docker_compose workspace_info volumes)
+           docker docker_compose workspace_info volumes file_url)
 
-      assert MapSet.size(tool_names) == 20
+      assert MapSet.size(tool_names) == length(expected)
 
       for name <- expected do
         assert name in tool_names, "missing tool: #{name}"
