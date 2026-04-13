@@ -14,7 +14,11 @@ defmodule BoomLooper.Tools.Container.ReadFile do
       case BoomLooper.ChatAgent.get_state(agent_id) do
         %{workspace_id: workspace_id} when is_binary(workspace_id) ->
           volume_name = BoomLooper.Workspace.volume_name_for(workspace_id)
-          BoomLooper.VolumeManager.read_file(volume_name, path)
+
+          case BoomLooper.VolumeManager.read_file(volume_name, path) do
+            {:ok, content} -> {:ok, Helpers.truncate_for_agent(content, max: 16_000)}
+            {:error, reason} -> {:error, reason}
+          end
 
         _ ->
           {:error, "Agent #{agent_id} has no workspace"}

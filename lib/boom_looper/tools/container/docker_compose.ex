@@ -10,6 +10,8 @@ defmodule BoomLooper.Tools.Container.DockerCompose do
 
   alias BoomLooper.Tools.Container.Helpers
 
+  alias BoomLooper.Tools.Container.Helpers
+
   def execute(%{agent_id: agent_id, command: command} = params, _assigns) do
     # Default 10 minutes for builds (image pulls can be slow).
     # The agent can override with a shorter timeout for quick commands.
@@ -105,23 +107,28 @@ defmodule BoomLooper.Tools.Container.DockerCompose do
         collect_and_stream(agent_id, port, command, msg_id, acc, timeout)
 
       {^port, {:exit_status, 0}} ->
-        # Mark message as done
         BoomLooper.ChatAgent.update_message(agent_id, msg_id, fn msg ->
           %{msg | role: :build_done, content: acc}
         end)
 
-        {:ok, acc}
+        # Return only the tail to the agent — the full output is in the
+        # streaming message (visible in chat). Don't burn tokens on 100K+
+        # of build logs that Claude will never need in full.
+        summary = "docker compose #{command} completed successfully"
+        {:ok, "#{summary}\n\n#{Helpers.truncate_for_agent(acc, max: 4_000, tail: 50)}"}
 
       {^port, {:exit_status, code}} ->
         BoomLooper.ChatAgent.update_message(agent_id, msg_id, fn msg ->
           %{msg | role: :build_done, content: acc}
         end)
 
-        {:error, "docker compose #{command} exited with code #{code}:\n#{acc}"}
+        summary = "docker compose #{command} exited with code #{code}"
+        {:error, "#{summary}\n\n#{Helpers.truncate_for_agent(acc, max: 4_000, tail: 50)}"}
     after
       timeout ->
         Port.close(port)
-        {:error, "docker compose #{command} timed out after #{div(timeout, 1000)}s:\n#{acc}"}
+        summary = "docker compose #{command} timed out after #{div(timeout, 1000)}s"
+        {:error, "#{summary}\n\n#{Helpers.truncate_for_agent(acc, max: 4_000, tail: 50)}"}
     end
   end
 end

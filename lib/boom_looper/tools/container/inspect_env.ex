@@ -36,7 +36,7 @@ defmodule BoomLooper.Tools.Container.InspectEnv do
             "## #{label}\n#{output}"
           end)
 
-        {:ok, Enum.join(results, "\n\n")}
+        {:ok, Helpers.truncate_for_agent(Enum.join(results, "\n\n"))}
 
       {:error, reason} ->
         {:error, reason}

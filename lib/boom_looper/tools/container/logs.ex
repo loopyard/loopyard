@@ -15,16 +15,22 @@ defmodule BoomLooper.Tools.Container.Logs do
     service = Map.get(params, :service)
     lines = Map.get(params, :lines, 200)
 
-    if service do
-      case Helpers.resolve_service_container(agent_id, service) do
-        {:ok, container} -> Docker.container_logs(container, tail: lines)
-        {:error, reason} -> {:error, reason}
+    result =
+      if service do
+        case Helpers.resolve_service_container(agent_id, service) do
+          {:ok, container} -> Docker.container_logs(container, tail: lines)
+          {:error, reason} -> {:error, reason}
+        end
+      else
+        case Helpers.resolve_container(agent_id) do
+          {:ok, container} -> Docker.container_logs(container, tail: lines)
+          {:error, reason} -> {:error, reason}
+        end
       end
-    else
-      case Helpers.resolve_container(agent_id) do
-        {:ok, container} -> Docker.container_logs(container, tail: lines)
-        {:error, reason} -> {:error, reason}
-      end
+
+    case result do
+      {:ok, output} -> {:ok, Helpers.truncate_for_agent(output)}
+      other -> other
     end
   end
 end

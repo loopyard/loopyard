@@ -92,6 +92,27 @@ defmodule BoomLooper.Tools.Container.Helpers do
   end
 
   @doc """
+  Truncate tool output for the agent's context window.
+
+  The full output stays in the chat (streaming messages, build logs).
+  The agent only gets a summary + tail so it can decide what to do
+  without burning thousands of tokens on build noise.
+  """
+  @max_agent_output 8_000
+
+  def truncate_for_agent(output, opts \\ []) do
+    max = Keyword.get(opts, :max, @max_agent_output)
+    tail_lines = Keyword.get(opts, :tail, 80)
+
+    if byte_size(output) <= max do
+      output
+    else
+      tail = output |> String.split("\n") |> Enum.take(-tail_lines) |> Enum.join("\n")
+      "... (#{byte_size(output)} bytes total, showing last #{tail_lines} lines)\n\n#{tail}"
+    end
+  end
+
+  @doc """
   Stream output from a Port to a chat message, broadcasting chunks via PubSub.
 
   Used by docker_compose and exec_stream tools to show real-time build/command output.

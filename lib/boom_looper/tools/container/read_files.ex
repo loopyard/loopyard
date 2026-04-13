@@ -7,7 +7,7 @@ defmodule BoomLooper.Tools.Container.ReadFiles do
       paths: {:string, required: true, description: "JSON array of file paths relative to /workspace, e.g. '[\"Gemfile\", \"package.json\", \"README.md\"]'"}
     ]
 
-  alias BoomLooper.Tools.Container.ReadFile
+  alias BoomLooper.Tools.Container.{Helpers, ReadFile}
 
   def execute(%{agent_id: agent_id, paths: paths}, _assigns) do
     case Jason.decode(to_string(paths)) do
@@ -42,7 +42,7 @@ defmodule BoomLooper.Tools.Container.ReadFiles do
             end
           end)
 
-        {:ok, format_multi_read(results)}
+        {:ok, Helpers.truncate_for_agent(format_multi_read(results), max: 32_000)}
     end
   end
 

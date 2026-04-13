@@ -22,7 +22,10 @@ defmodule BoomLooper.Tools.Container.Exec do
       opts = if params[:workdir], do: Keyword.put(opts, :workdir, params.workdir), else: opts
       opts = Keyword.put(opts, :timeout, timeout * 1_000)
 
-      Docker.exec_in(container, command, opts)
+      case Docker.exec_in(container, command, opts) do
+        {:ok, output} -> {:ok, Helpers.truncate_for_agent(output)}
+        {:error, output} -> {:error, Helpers.truncate_for_agent(output)}
+      end
     end
   end
 end

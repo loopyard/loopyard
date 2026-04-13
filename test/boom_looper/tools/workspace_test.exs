@@ -24,18 +24,26 @@ defmodule BoomLooper.Tools.WorkspaceTest do
   end
 
   describe "workspace metadata tools" do
+    @describetag :docker
     setup do
       tmp_dir = Path.join(System.tmp_dir!(), "boom-looper-ws-tool-test-#{:rand.uniform(100_000)}")
       File.mkdir_p!(tmp_dir)
 
       id = "ws-tool-test-#{:rand.uniform(100_000)}"
+      workspace_id = BoomLooper.Workspace.workspace_id(tmp_dir)
+
+      # Create workspace config dir so save_to_volume can write
+      # (In tests without Docker, volume ops fall back to the virtual dir)
+      virtual_dir = Path.join([BoomLooper.Workspace.home_dir(), "workspaces", workspace_id])
+      repo_dir = Path.join([virtual_dir, ".boomlooper", "repo"])
+      File.mkdir_p!(repo_dir)
 
       {:ok, _pid} =
         BoomLooper.TestHelpers.start_agent(
           id: id,
           name: "Workspace Tool Test",
           working_dir: tmp_dir,
-          bind_mount: tmp_dir,
+          workspace_id: workspace_id,
           started_by: "test"
         )
 
@@ -185,9 +193,10 @@ defmodule BoomLooper.Tools.WorkspaceTest do
       %{agent_id: id}
     end
 
-    test "do_update_config falls back to working_dir", %{agent_id: id} do
+    test "do_update_config returns error without workspace_id", %{agent_id: id} do
       result = WorkspaceTools.do_update_config(id, fn ws -> %{ws | name: "Fallback"} end, "ok")
-      assert {:ok, _} = result
+      assert {:error, msg} = result
+      assert msg =~ "has no workspace"
     end
   end
 end
