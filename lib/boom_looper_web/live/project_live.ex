@@ -255,12 +255,7 @@ defmodule BoomLooperWeb.ProjectLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
-      <.header breadcrumbs={[{"Boom Looper", "/"}, {@project.name, nil}]} iex_session={@iex_session} />
-      <div class="flex-1 overflow-y-auto">
-        <div class="max-w-2xl mx-auto px-4 py-8">
-          <.flash_banner flash={@flash} kind={:error} />
-
+    <.page_shell breadcrumbs={[{"Boom Looper", "/"}, {@project.name, nil}]} iex_session={@iex_session} max_width={:md} flash={@flash}>
           <%= if @removing do %>
             <div class="text-center py-16">
               <div class="inline-block w-6 h-6 border-2 border-zinc-300 dark:border-zinc-600 border-t-violet-500 rounded-full animate-spin mb-4"></div>
@@ -344,9 +339,7 @@ defmodule BoomLooperWeb.ProjectLive do
             </form>
           <% end %>
           <% end %>
-        </div>
-      </div>
-    </div>
+    </.page_shell>
     """
   end
 

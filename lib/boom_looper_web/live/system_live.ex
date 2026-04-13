@@ -132,21 +132,20 @@ defmodule BoomLooperWeb.SystemLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="min-h-screen bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
-      <.header breadcrumbs={[{"Boom Looper", "/"}, {"System", nil}]} iex_session={@iex_session}>
+    <.page_shell breadcrumbs={[{"Boom Looper", "/"}, {"System", nil}]} iex_session={@iex_session} max_width={:lg} flash={@flash}>
+      <:header_actions>
         <button phx-click="reboot" data-confirm="This will stop all agents and restart the app. Continue?"
           class="text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded px-2 py-1 transition-colors">
           Reboot
         </button>
-      </.header>
-
-      <div class="max-w-5xl mx-auto px-4 md:px-6 py-6 space-y-8">
+      </:header_actions>
+      <div class="space-y-8">
         <.host_section host_cpu={@host_cpu} host_memory={@host_memory} host_disk={@host_disk} host_uptime={@host_uptime} />
         <.beam_section beam={@beam} />
         <.drilldown_section counts={@counts} />
         <.log_section logs={@logs} />
       </div>
-    </div>
+    </.page_shell>
     """
   end
 

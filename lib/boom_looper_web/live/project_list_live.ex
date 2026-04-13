@@ -59,12 +59,7 @@ defmodule BoomLooperWeb.ProjectListLive do
     assigns = assign(assigns, :has_projects, has_projects)
 
     ~H"""
-    <div class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
-      <.header breadcrumbs={[{"Boom Looper", nil}]} iex_session={@iex_session} />
-      <div class="flex-1 overflow-y-auto">
-        <div class="max-w-xl mx-auto px-4 py-8">
-          <.flash_banner flash={@flash} kind={:error} />
-
+    <.page_shell breadcrumbs={[{"Boom Looper", nil}]} iex_session={@iex_session} max_width={:sm} flash={@flash}>
           <%!-- Empty state --%>
           <div :if={!@has_projects} class="mb-8">
             <h2 class="text-xl font-semibold mb-2">Add a project to get started</h2>
@@ -136,9 +131,7 @@ defmodule BoomLooperWeb.ProjectListLive do
               </form>
             </div>
           </div>
-        </div>
-      </div>
-    </div>
+    </.page_shell>
     """
   end
 

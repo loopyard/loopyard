@@ -80,14 +80,12 @@ defmodule BoomLooperWeb.SystemDockerLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="min-h-screen bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
-      <.header breadcrumbs={[{"Boom Looper", "/"}, {"System", "/system"}, {"Docker", nil}]} iex_session={@iex_session} />
-
-      <div class="max-w-6xl mx-auto px-4 md:px-6 py-6 space-y-8">
+    <.page_shell breadcrumbs={[{"Boom Looper", "/"}, {"System", "/system"}, {"Docker", nil}]} iex_session={@iex_session} max_width={:xl} flash={@flash}>
+      <div class="space-y-8">
         <.containers_section containers={@containers} stats={@container_stats} />
         <.volumes_section volumes={@volumes} />
       </div>
-    </div>
+    </.page_shell>
     """
   end
 

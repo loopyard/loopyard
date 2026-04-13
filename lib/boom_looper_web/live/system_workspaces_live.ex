@@ -111,13 +111,7 @@ defmodule BoomLooperWeb.SystemWorkspacesLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="min-h-screen bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
-      <.header breadcrumbs={[{"Boom Looper", "/"}, {"System", "/system"}, {"Workspaces", nil}]} iex_session={@iex_session} />
-
-      <div class="max-w-5xl mx-auto px-4 md:px-6 py-6">
-        <.flash_banner flash={@flash} kind={:info} />
-        <.flash_banner flash={@flash} kind={:error} />
-
+    <.page_shell breadcrumbs={[{"Boom Looper", "/"}, {"System", "/system"}, {"Workspaces", nil}]} iex_session={@iex_session} max_width={:lg} flash={@flash}>
         <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
           Workspaces <span class="text-zinc-400 font-normal">({length(@workspaces)})</span>
         </h2>
@@ -127,8 +121,7 @@ defmodule BoomLooperWeb.SystemWorkspacesLive do
         <div :if={@workspaces != []} class="space-y-2">
           <.workspace_row :for={ws <- @workspaces} ws={ws} containers={@container_counts} />
         </div>
-      </div>
-    </div>
+    </.page_shell>
     """
   end
 
