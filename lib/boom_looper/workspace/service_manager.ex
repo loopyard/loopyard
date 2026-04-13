@@ -18,7 +18,6 @@ defmodule BoomLooper.Workspace.ServiceManager do
     :canonical_dir,     # original project dir (used for registry and broadcasts)
     :workspace_id,
     :volume_name,       # code volume name (code-<workspace_id>)
-    :source_path,       # original local path (copied to volume on first run)
     running: false,
     rebuilding: false
   ]
@@ -229,16 +228,11 @@ defmodule BoomLooper.Workspace.ServiceManager do
     effective_project_dir = Workspace.compose_dir(workspace_id)
     File.mkdir_p!(effective_project_dir)
 
-    # If project_dir is a real local path (not already a virtual dir), we'll
-    # copy code from it to the volume on first start
-    source_path = if project_dir != effective_project_dir, do: project_dir
-
     state = %__MODULE__{
       project_dir: effective_project_dir,
       canonical_dir: project_dir,
       workspace_id: workspace_id,
-      volume_name: volume_name,
-      source_path: source_path
+      volume_name: volume_name
     }
 
     # Seed the ETS cache immediately so service_status/1 returns something
@@ -357,19 +351,10 @@ defmodule BoomLooper.Workspace.ServiceManager do
     volume_name = state.volume_name || "code-#{state.workspace_id}"
     BoomLooper.VolumeManager.create_volume(volume_name)
 
-    # For local path projects, copy code to volume if not already done
-    if state.source_path && !BoomLooper.VolumeManager.volume_has_code?(volume_name) do
-      BoomLooper.EventLog.info("workspace:#{state.workspace_id}",
-        "Copying code from #{state.source_path} to volume #{volume_name}")
-
-      case BoomLooper.VolumeManager.copy_to_volume(volume_name, state.source_path) do
-        {:ok, _} ->
-          BoomLooper.EventLog.info("workspace:#{state.workspace_id}", "Code copied successfully")
-
-        {:error, reason} ->
-          BoomLooper.EventLog.error("workspace:#{state.workspace_id}", "Failed to copy code: #{reason}")
-      end
-    end
+    # Local projects: Mutagen handles host ↔ volume sync (via SyncMonitor).
+    # We do NOT copy code here — Mutagen is the single path for getting
+    # files into the volume. If Mutagen isn't installed, the workspace
+    # will start but the volume will be empty until sync is configured.
 
     # Check for agent-written compose file in the volume
     compose_path = Compose.compose_path(state.project_dir)
