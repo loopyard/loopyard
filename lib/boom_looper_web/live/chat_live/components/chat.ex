@@ -282,9 +282,43 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Chat do
             <span class="text-zinc-400">Errors</span>
             <span class={"font-medium #{if @agent.errors > 0, do: "text-red-500", else: "text-zinc-700 dark:text-zinc-300"}"}>{@agent.errors}</span>
           </div>
+          <div class="flex justify-between">
+            <span class="text-zinc-400">Messages</span>
+            <span class="font-medium text-zinc-700 dark:text-zinc-300">{length(@agent.messages)}</span>
+          </div>
           <div :if={@agent[:started_at]} class="flex justify-between">
             <span class="text-zinc-400">Started</span>
             <span class="text-zinc-700 dark:text-zinc-300">{time_ago(@agent.started_at)}</span>
+          </div>
+          <div :if={@agent[:started_by]} class="flex justify-between">
+            <span class="text-zinc-400">Started by</span>
+            <span class="text-zinc-700 dark:text-zinc-300">{@agent.started_by}</span>
+          </div>
+        </div>
+      </div>
+
+      <%!-- Docker context --%>
+      <% agent_ctx = agent_docker_context(@agent) %>
+      <div :if={agent_ctx.container} class="px-4 py-3 border-t border-zinc-200 dark:border-zinc-700/80 space-y-2">
+        <h4 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Docker</h4>
+        <div class="space-y-1.5 text-xs">
+          <div>
+            <span class="text-zinc-400">Container</span>
+            <div class="font-mono text-zinc-700 dark:text-zinc-300 truncate mt-0.5">{agent_ctx.container}</div>
+          </div>
+          <div :if={agent_ctx.volume}>
+            <span class="text-zinc-400">Volume</span>
+            <div class="font-mono text-zinc-700 dark:text-zinc-300 truncate mt-0.5">{agent_ctx.volume}</div>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-zinc-400">Mode</span>
+            <span class={"font-medium #{if agent_ctx.mode == :container, do: "text-emerald-600 dark:text-emerald-400", else: "text-amber-600 dark:text-amber-400"}"}>
+              {agent_ctx.mode}
+            </span>
+          </div>
+          <div :if={agent_ctx.workspace_id}>
+            <span class="text-zinc-400">Workspace</span>
+            <div class="font-mono text-zinc-700 dark:text-zinc-300 mt-0.5">{agent_ctx.workspace_id}</div>
           </div>
         </div>
       </div>
@@ -318,6 +352,15 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Chat do
       </div>
     </aside>
     """
+  end
+
+  defp agent_docker_context(agent) do
+    ws_id = agent[:workspace_id]
+    container = if ws_id, do: "bl-#{ws_id}-workspace-1"
+    volume = if ws_id, do: "bl-#{ws_id}-code"
+    mode = if agent[:bind_mount], do: :bind_mount, else: :container
+
+    %{container: container, volume: volume, workspace_id: ws_id, mode: mode}
   end
 
   defp mcp_tool_names do
