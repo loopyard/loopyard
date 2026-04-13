@@ -42,9 +42,9 @@ defmodule BoomLooperWeb.Components.ToolSummaryTest do
 
     # --- New tool summaries ---
 
-    test "ToolSearch shows query" do
+    test "ToolSearch shows human-readable message" do
       assert ToolSummary.summarize("ToolSearch", %{"query" => "database migration"}) ==
-               "Searching for tools: database migration"
+               "Claude is loading tools..."
     end
 
     test "WebSearch shows query" do

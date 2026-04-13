@@ -13,6 +13,8 @@ defmodule BoomLooperWeb.Components.LogViewer do
   """
   use Phoenix.Component
 
+  alias BoomLooperWeb.Components.Ansi
+
   @doc """
   Full-height scrollable log panel with auto-tail behavior.
 
@@ -31,12 +33,15 @@ defmodule BoomLooperWeb.Components.LogViewer do
   attr :class, :string, default: ""
 
   def log_panel(assigns) do
+    ansi_html = Ansi.to_html(assigns.content)
+    assigns = assign(assigns, :ansi_html, ansi_html)
+
     ~H"""
     <pre
       id={@id}
       phx-hook="TailScroll"
-      class={"flex-1 px-4 py-3 text-xs font-mono overflow-auto whitespace-pre-wrap bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-green-400 #{@class}"}
-    >{@content}</pre>
+      class={"flex-1 px-4 py-3 text-xs font-mono overflow-auto whitespace-pre-wrap bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-zinc-300 #{@class}"}
+    >{@ansi_html}</pre>
     """
   end
 
@@ -85,7 +90,7 @@ defmodule BoomLooperWeb.Components.LogViewer do
           open
         </a>
       </div>
-      <pre class={"px-3 py-2 text-xs font-mono text-zinc-800 dark:text-green-400 bg-zinc-100 dark:bg-zinc-950 whitespace-pre-wrap overflow-y-auto #{if @status == :building, do: "max-h-64", else: "max-h-32"}"}>{@display}</pre>
+      <pre class={"px-3 py-2 text-xs font-mono text-zinc-800 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-950 whitespace-pre-wrap overflow-y-auto #{if @status == :building, do: "max-h-64", else: "max-h-32"}"}>{Ansi.to_html(@display)}</pre>
     </div>
     """
   end
@@ -131,7 +136,7 @@ defmodule BoomLooperWeb.Components.LogViewer do
     ~H"""
     <div :for={line <- @lines} class="flex text-xs font-mono leading-relaxed">
       <span class={"#{@color} w-36 text-right flex-none select-none"}>{@padded_name} |</span>
-      <span class="text-zinc-300 ml-2 whitespace-pre-wrap break-all">{line}</span>
+      <span class="text-zinc-300 ml-2 whitespace-pre-wrap break-all">{Ansi.to_html(line)}</span>
     </div>
     """
   end

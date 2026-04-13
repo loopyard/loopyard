@@ -47,7 +47,9 @@ defmodule BoomLooperWeb.ChatLiveTest do
   # Add services to workspace config so ServiceStatus finds them
   # Write docker-compose.yml with given services (ServiceStatus reads from this file)
   defp add_services_to_workspace(ws, services) do
-    compose_dir = Path.join([ws.path, ".boomlooper", "workspace"])
+    # Write to the virtual compose dir (where Observer.services_for reads),
+    # not to ws.path (the host project dir).
+    compose_dir = Path.join([BoomLooper.Workspace.compose_dir(ws.id), ".boomlooper", "workspace"])
     File.mkdir_p!(compose_dir)
 
     services_yaml = services
@@ -537,7 +539,7 @@ defmodule BoomLooperWeb.ChatLiveTest do
 
     test "process services appear in sidebar", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
       # Add a process service (not a stock service like postgres/redis)
-      compose_dir = Path.join([ws.path, ".boomlooper", "workspace"])
+      compose_dir = Path.join([BoomLooper.Workspace.compose_dir(ws.id), ".boomlooper", "workspace"])
       File.mkdir_p!(compose_dir)
       content = """
       services:

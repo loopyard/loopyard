@@ -94,6 +94,28 @@
 .markdown-body-user a { color: #e9d5ff; }
 .markdown-body-user blockquote { border-left-color: rgba(255, 255, 255, 0.4); color: rgba(255, 255, 255, 0.8); }
 
+/* ANSI color classes for log output */
+.ansi-bold { font-weight: 700; }
+.ansi-dim { opacity: 0.6; }
+.ansi-italic { font-style: italic; }
+.ansi-underline { text-decoration: underline; }
+.ansi-black { color: #4b5563; }
+.ansi-red { color: #ef4444; }
+.ansi-green { color: #22c55e; }
+.ansi-yellow { color: #eab308; }
+.ansi-blue { color: #3b82f6; }
+.ansi-magenta { color: #a855f7; }
+.ansi-cyan { color: #06b6d4; }
+.ansi-white { color: #e5e7eb; }
+.ansi-bright-black { color: #6b7280; }
+.ansi-bright-red { color: #f87171; }
+.ansi-bright-green { color: #4ade80; }
+.ansi-bright-yellow { color: #facc15; }
+.ansi-bright-blue { color: #60a5fa; }
+.ansi-bright-magenta { color: #c084fc; }
+.ansi-bright-cyan { color: #22d3ee; }
+.ansi-bright-white { color: #f9fafb; }
+
 /* Safari iOS: use dvh instead of vh for correct height with dynamic toolbar */
 @supports (height: 100dvh) {
   .h-screen { height: 100dvh !important; }
