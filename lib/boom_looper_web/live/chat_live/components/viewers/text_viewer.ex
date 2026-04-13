@@ -16,7 +16,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Viewers.TextViewer do
 
   attr :path, :string, required: true
   attr :content, :string, required: true
-  attr :volume_name, :string, required: true
+  attr :mode, :atom, default: :code
 
   def text_viewer(assigns) do
     language = FileType.language(assigns.path)
