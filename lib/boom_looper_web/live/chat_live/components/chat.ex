@@ -78,7 +78,7 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Chat do
     <div class="flex-1 flex min-h-0">
       <div class="flex-1 flex flex-col min-w-0 min-h-0">
         <.agent_header agent={@selected_agent} tab={@tab} has_container={@has_container} />
-        <.chat_panel :if={@tab == :chat} messages={@messages} streaming_text={@streaming_text} agent={@selected_agent} workspace_id={@workspace.id} />
+        <.chat_panel :if={@tab == :chat} messages={@messages} streaming_text={@streaming_text} agent={@selected_agent} workspace_id={@workspace.id} host={@host} />
         <.container_panel :if={@tab == :container} env={@container_env} logs={@container_logs} log_service={@container_log_service} has_container={@has_container} />
       </div>
       <.context_panel agent={@selected_agent} has_container={@has_container} container_env={@container_env} container_logs={@container_logs} editing_name={@editing_name} />
