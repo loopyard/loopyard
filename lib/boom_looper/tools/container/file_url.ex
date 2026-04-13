@@ -16,10 +16,13 @@ defmodule BoomLooper.Tools.Container.FileUrl do
 
         if project_id do
           clean = path |> String.trim_leading("/") |> String.trim_leading("./") |> String.trim_leading("workspace/")
-          # Use the user's connection origin, not hardcoded localhost
-          base = state[:base_url] || fallback_base_url()
+          base_uri = parse_base_url(state[:base_url])
 
-          {:ok, "#{base}/projects/#{project_id}/workspaces/#{workspace_id}/volumes/#{volume_name}/files/#{clean}"}
+          url =
+            %URI{base_uri | path: "/projects/#{project_id}/workspaces/#{workspace_id}/volumes/#{volume_name}/files/#{clean}"}
+            |> URI.to_string()
+
+          {:ok, url}
         else
           {:error, "Could not determine project for workspace #{workspace_id}"}
         end
@@ -29,8 +32,18 @@ defmodule BoomLooper.Tools.Container.FileUrl do
     end
   end
 
-  defp fallback_base_url do
+  @doc false
+  def parse_base_url(nil) do
     port = Application.get_env(:boom_looper, BoomLooperWeb.Endpoint)[:http][:port] || 4000
-    "http://localhost:#{port}"
+    %URI{scheme: "http", host: "localhost", port: port}
+  end
+
+  def parse_base_url(base_url) do
+    case URI.parse(base_url) do
+      %URI{host: host} = uri when is_binary(host) and host != "" ->
+        %URI{uri | scheme: uri.scheme || "http"}
+      _ ->
+        parse_base_url(nil)
+    end
   end
 end

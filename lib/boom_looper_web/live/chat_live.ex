@@ -920,18 +920,13 @@ defmodule BoomLooperWeb.ChatLive do
   # Respects LAN IPs (10.0.1.123), tunnel hostnames, etc.
   defp connection_base_url(socket) do
     case socket.host_uri do
-      %URI{scheme: scheme, host: host, port: port} when is_binary(host) and host != "" ->
-        scheme = scheme || "http"
-
-        if port && port not in [80, 443] do
-          "#{scheme}://#{host}:#{port}"
-        else
-          "#{scheme}://#{host}"
-        end
+      %URI{host: host} = uri when is_binary(host) and host != "" ->
+        %URI{uri | scheme: uri.scheme || "http", path: nil, query: nil, fragment: nil}
+        |> URI.to_string()
 
       _ ->
         port = Application.get_env(:boom_looper, BoomLooperWeb.Endpoint)[:http][:port] || 4000
-        "http://localhost:#{port}"
+        URI.to_string(%URI{scheme: "http", host: "localhost", port: port})
     end
   end
 

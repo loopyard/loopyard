@@ -18,10 +18,14 @@ defmodule BoomLooper.Tools.Container.AppUrl do
 
         case find_host_port(workspace_id, container) do
           {:ok, host_port} ->
-            clean = if String.starts_with?(route_path, "/"), do: route_path, else: "/#{route_path}"
-            # Use the user's connection hostname, not localhost
-            host = extract_host(state[:base_url]) || "localhost"
-            {:ok, "http://#{host}:#{host_port}#{clean}"}
+            base_uri = parse_base_url(state[:base_url])
+            clean_path = if String.starts_with?(route_path, "/"), do: route_path, else: "/#{route_path}"
+
+            url =
+              %URI{base_uri | port: String.to_integer("#{host_port}"), path: clean_path}
+              |> URI.to_string()
+
+            {:ok, url}
 
           :no_ports ->
             {:error, "#{container} has no mapped ports. Is it running? Try `service_containers` to check."}
@@ -32,12 +36,14 @@ defmodule BoomLooper.Tools.Container.AppUrl do
     end
   end
 
-  # Extract just the hostname from a base_url like "http://10.0.1.123:4000"
-  defp extract_host(nil), do: nil
-  defp extract_host(base_url) do
+  @doc false
+  def parse_base_url(nil), do: %URI{scheme: "http", host: "localhost", port: 80}
+  def parse_base_url(base_url) do
     case URI.parse(base_url) do
-      %URI{host: host} when is_binary(host) and host != "" -> host
-      _ -> nil
+      %URI{host: host} = uri when is_binary(host) and host != "" ->
+        %URI{uri | scheme: uri.scheme || "http"}
+      _ ->
+        %URI{scheme: "http", host: "localhost", port: 80}
     end
   end
 
