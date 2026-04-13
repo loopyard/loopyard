@@ -88,19 +88,128 @@ Screenshots come back as base64 PNG. The chat message renderer shows them as `<i
 4. **Chat image rendering** — extend message renderer to display base64 images inline
 5. **Agent prompt** — teach agents when to use browser tools vs container tools
 
+### Live stream + agent snapshots: two views of one browser
+
+The browser session is shared between the human and the agent, but
+they see it differently:
+
+**Human sees: live video feed in the chat.**
+Chrome's `Page.startScreencast` (CDP) sends JPEG frames at 2-5 fps.
+The MCP server streams them to BoomLooper via PubSub (same pattern as
+docker compose build output). The chat LiveView renders each frame as
+an `<img>` that updates in place — poor man's video, no WebRTC, no
+ffmpeg, just rapid-fire JPEGs over the existing LiveView socket.
+
+**Agent sees: nothing (it doesn't watch video).**
+When the agent needs to "look" at the page, it grabs a single
+screenshot from the same browser session — `Page.captureScreenshot`
+via CDP. Instant, one frame, returned as tool result. The agent
+reasons about the static image, decides what to do next, navigates,
+and grabs another snapshot if needed.
+
+**Both happen simultaneously.** Chrome supports screencast and
+single-frame capture at the same time. Same browser, same session,
+same cookies, same page state.
+
+**Session lifecycle:**
+1. Agent first calls a browser tool → browser session starts, stream begins
+2. Human watches the live feed in the chat while the agent works
+3. Agent grabs screenshots when it needs to "look"
+4. Agent navigates (login, click, fill forms) — human sees it live
+5. Agent finishes → stream stays alive (human can keep watching)
+6. Session dies when agent conversation ends or explicit `browser.close()`
+
+**Clips for replay:**
+The stream is live — ephemeral. For replayable content, the agent can
+call `browser.record(steps: [...])` which captures the navigation as a
+WebM file (Playwright's built-in `video.path()`). The chat renders it
+as a `<video>` element. The agent gets both: a video clip to reference
+later and a final screenshot for its own reasoning.
+
+### MCP tools (updated)
+
+**`browser.open`** — start a browser session, begin streaming to chat
+```
+browser.open(url: "http://dev:3000/")
+# Stream begins, human sees the page live
+```
+
+**`browser.navigate`** — navigate within the session
+```
+browser.navigate(url: "/users/1")
+browser.navigate(actions: [
+  {fill: "#email", value: "admin@test.com"},
+  {click: "[type=submit]"}
+])
+```
+
+**`browser.screenshot`** — grab a snapshot (for the agent's reasoning)
+```
+browser.screenshot()
+# Returns base64 PNG — agent can "see" what the page looks like
+```
+
+**`browser.record`** — capture a navigation flow as a video clip
+```
+browser.record(steps: [
+  {goto: "/login"},
+  {fill: "#email", value: "admin@test.com"},
+  {click: "[type=submit]"},
+  {wait: "networkidle"},
+  {goto: "/dashboard"}
+])
+# Returns a WebM clip + final screenshot
+```
+
+**`browser.close`** — end the session, stop the stream
+
+### Streaming implementation
+
+No video encoding needed. Just JPEGs:
+
+```
+Chrome (CDP Page.startScreencast)
+  → JPEG frame every 200-500ms
+  → MCP server receives frame
+  → PubSub broadcast {:browser_frame, agent_id, jpeg_data}
+  → LiveView handle_info updates an <img> tag's src
+  → Human sees "video" in the chat
+```
+
+The LiveView renders it as:
+```heex
+<img src={"data:image/jpeg;base64,#{@browser_frame}"} class="rounded-lg" />
+```
+
+Updated on every PubSub message. At 5fps that's one assign update
+every 200ms — well within LiveView's capacity.
+
 ### What NOT to do
 
-- Don't save cookies/sessions — they go stale. Build state fresh each time.
-- Don't drive the browser interactively like integration tests — one-shot render, screenshot, done.
-- Don't run the browser on the host — keep it in Docker so it works everywhere.
-- Don't make it heavy — Chromium binary is ~130MB but it's cached in the container image. Each screenshot is sub-second.
+- Don't save cookies/sessions across conversations — build auth state fresh each time.
+- Don't use ffmpeg or WebRTC for the stream — JPEG frames over PubSub are simpler and good enough.
+- Don't run the browser on the host — keep it in Docker.
+- Don't make the agent "watch" the video stream — it grabs snapshots when it needs to look. Video is for humans.
 
 ### Mobile bonus
 
-Screenshots solve mobile completely. You can't click `localhost:32794` on your phone, but you CAN see a screenshot in the chat. The agent builds, screenshots, you review — all in the same chat, on any device.
+The live stream solves mobile completely. You can't click `localhost:32794`
+on your phone, but you CAN watch the agent work in the chat — live video
+of every page it navigates. Screenshots are stills you review after the
+fact; the stream is watching it happen.
 
 ### Future: BoomLooper as proxy
 
-An even better mobile story: BoomLooper proxies the dev server. You browse `boomlooper.local:4000/proxy/dev/users/1` and BoomLooper forwards to `dev:3000/users/1` inside Docker. Same host, same port, works from any device. The proxy can inject cookies, capture HAR files, and the agent can observe your browsing session to understand what you're looking at.
+An even better mobile story: BoomLooper proxies the dev server. You browse
+`boomlooper.local:4000/proxy/dev/users/1` and BoomLooper forwards to
+`dev:3000/users/1` inside Docker. Same host, same port, works from any
+device. The proxy can inject cookies, capture HAR files, and the agent can
+observe your browsing session to understand what you're looking at.
 
-This is a bigger architectural change but builds naturally on top of the browser container — the proxy would reuse the same Playwright instance for cookie management.
+### Future: human takes over the browser
+
+The stream is one-way today (watch only). But Chrome's CDP also accepts
+input events — mouse clicks, keyboard input. A future version could let
+the human click inside the streamed view to interact with the page,
+effectively sharing a browser session with the agent. The agent navigates,
+the human clicks a button, the agent sees the result.
