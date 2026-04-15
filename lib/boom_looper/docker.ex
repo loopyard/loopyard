@@ -160,24 +160,75 @@ defmodule BoomLooper.Docker do
   def docker(args, opts \\ []) do
     timeout = Keyword.get(opts, :timeout, 120_000)
     env = Keyword.get(opts, :env, [])
+    retry = Keyword.get(opts, :retry, true)
     cmd_opts = [stderr_to_stdout: true] ++ if(env == [], do: [], else: [env: env])
     meta = %{args: args, timeout: timeout}
 
     :telemetry.span([:boom_looper, :docker, :command], meta, fn ->
-      task =
-        Task.async(fn ->
-          System.cmd("docker", args, cmd_opts)
-        end)
-
-      result = case Task.yield(task, timeout) || Task.shutdown(task) do
-        {:ok, {output, 0}} -> {:ok, output}
-        {:ok, {output, _code}} -> {:error, String.trim(output)}
-        nil -> {:error, "Docker command timed out after #{timeout}ms"}
-      end
-
+      result = run_with_retry(args, cmd_opts, timeout, retry)
       {result, %{}}
     end)
   end
+
+  # Retry the docker command iff the failure looks like a *transient*
+  # daemon problem — connection refused, dial failures, colima
+  # pause/restart. We don't retry:
+  #
+  #   * timeouts (caller gave us a budget and we burned it)
+  #   * non-transient errors like "No such container" (retrying just
+  #     delays the real failure and spams the daemon)
+  #
+  # Three attempts with exponential backoff (100ms, 300ms, 900ms)
+  # covers the common "daemon blip" window. Bypass with `retry: false`
+  # when a caller wants strict single-shot semantics (e.g. health
+  # probes that want the raw truth).
+  defp run_with_retry(args, cmd_opts, timeout, retry?, attempt \\ 1) do
+    case run_once(args, cmd_opts, timeout) do
+      {:ok, _} = ok ->
+        ok
+
+      {:error, output} = err ->
+        cond do
+          not retry? -> err
+          attempt >= 3 -> err
+          not transient_error?(output) -> err
+
+          true ->
+            Process.sleep(backoff_ms(attempt))
+            run_with_retry(args, cmd_opts, timeout, retry?, attempt + 1)
+        end
+    end
+  end
+
+  defp run_once(args, cmd_opts, timeout) do
+    task = Task.async(fn -> System.cmd("docker", args, cmd_opts) end)
+
+    case Task.yield(task, timeout) || Task.shutdown(task) do
+      {:ok, {output, 0}} -> {:ok, output}
+      {:ok, {output, _code}} -> {:error, String.trim(output)}
+      nil -> {:error, "Docker command timed out after #{timeout}ms"}
+    end
+  end
+
+  # Patterns that indicate the Docker daemon is briefly unreachable,
+  # not that the command itself is wrong. Any of these is worth one or
+  # two retries; none of them require operator intervention to resolve.
+  @doc false
+  def transient_error?(output) when is_binary(output) do
+    String.contains?(output, "Cannot connect to the Docker daemon") or
+      String.contains?(output, "error during connect") or
+      String.contains?(output, "dial unix") or
+      String.contains?(output, "connection refused") or
+      String.contains?(output, "i/o timeout") or
+      String.contains?(output, "EOF") or
+      String.contains?(output, "request canceled")
+  end
+
+  def transient_error?(_), do: false
+
+  defp backoff_ms(1), do: 100
+  defp backoff_ms(2), do: 300
+  defp backoff_ms(_), do: 900
 
   @doc """
   Stream a docker command, invoking `callback` with each chunk of output.

@@ -99,4 +99,39 @@ defmodule BoomLooper.DockerTest do
       assert_received {^ref, :chunk, _}
     end
   end
+
+  describe "transient_error?/1" do
+    test "recognizes daemon-connection failures as transient" do
+      for msg <- [
+            "Cannot connect to the Docker daemon at unix:///var/run/docker.sock",
+            "error during connect: Post http://docker/v1.41/containers/create",
+            "dial unix /var/run/docker.sock: connect: no such file or directory",
+            "connection refused",
+            "net/http: request canceled while waiting for connection",
+            "read unix @->/var/run/docker.sock: i/o timeout",
+            "EOF"
+          ] do
+        assert Docker.transient_error?(msg),
+               "expected #{inspect(msg)} to be treated as transient"
+      end
+    end
+
+    test "does NOT retry domain errors that aren't going to fix themselves" do
+      for msg <- [
+            "Error: No such container: nope",
+            "Error response from daemon: No such volume: ghost-vol",
+            "Error response from daemon: conflict: unable to delete",
+            "invalid reference format"
+          ] do
+        refute Docker.transient_error?(msg),
+               "expected #{inspect(msg)} to NOT be treated as transient"
+      end
+    end
+
+    test "non-binary input returns false" do
+      refute Docker.transient_error?(nil)
+      refute Docker.transient_error?(:atom)
+      refute Docker.transient_error?(123)
+    end
+  end
 end
