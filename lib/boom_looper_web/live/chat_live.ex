@@ -6,7 +6,7 @@ defmodule BoomLooperWeb.ChatLive do
   alias BoomLooper.StreamBuffer
 
   use BoomLooperWeb.Live.ChatLive.Components
-  alias BoomLooperWeb.Live.ChatLive.{AgentLifecycle, ServiceLogs}
+  alias BoomLooperWeb.Live.ChatLive.{AgentLifecycle, DiffLoader, ServiceLogs}
 
   @impl true
   def mount(%{"project_id" => project_id, "workspace_id" => workspace_id}, _session, socket) do
@@ -297,15 +297,14 @@ defmodule BoomLooperWeb.ChatLive do
   def handle_params(%{"volume_name" => name, "path" => path_parts}, _uri, %{assigns: %{live_action: :git_diff}} = socket) do
     file_path = Path.join(path_parts)
     socket = setup_volume(socket, name, :git)
-
-    assigns = Map.take(socket.assigns, [:project, :workspace_entry])
+    %{project: project, workspace_entry: workspace_entry} = socket.assigns
 
     {:noreply,
      socket
      |> assign(:diff_content, :loading)
      |> assign(:diff_path, file_path)
      |> start_async(:git_file_diff, fn ->
-       load_file_diff(assigns, file_path, :unstaged)
+       DiffLoader.file_diff(project, workspace_entry, file_path, :unstaged)
      end)}
   end
 
@@ -313,28 +312,28 @@ defmodule BoomLooperWeb.ChatLive do
   def handle_params(%{"volume_name" => name, "path" => path_parts}, _uri, %{assigns: %{live_action: :git_staged_diff}} = socket) do
     file_path = Path.join(path_parts)
     socket = setup_volume(socket, name, :git)
-    assigns = Map.take(socket.assigns, [:project, :workspace_entry])
+    %{project: project, workspace_entry: workspace_entry} = socket.assigns
 
     {:noreply,
      socket
      |> assign(:diff_content, :loading)
      |> assign(:diff_path, file_path)
      |> start_async(:git_file_diff, fn ->
-       load_file_diff(assigns, file_path, :staged)
+       DiffLoader.file_diff(project, workspace_entry, file_path, :staged)
      end)}
   end
 
   # Git commit detail
   def handle_params(%{"volume_name" => name, "sha" => sha}, _uri, %{assigns: %{live_action: :git_commit}} = socket) do
     socket = setup_volume(socket, name, :git)
-    assigns = Map.take(socket.assigns, [:project, :workspace_entry])
+    %{project: project, workspace_entry: workspace_entry} = socket.assigns
 
     {:noreply,
      socket
      |> assign(:commit_detail, :loading)
      |> assign(:commit_sha, sha)
      |> start_async(:git_commit_detail, fn ->
-       load_commit_detail(assigns, sha)
+       DiffLoader.commit_detail(project, workspace_entry, sha)
      end)}
   end
 
@@ -342,7 +341,7 @@ defmodule BoomLooperWeb.ChatLive do
   def handle_params(%{"volume_name" => name, "sha" => sha, "path" => path_parts}, _uri, %{assigns: %{live_action: :git_commit_file}} = socket) do
     file_path = Path.join(path_parts)
     socket = setup_volume(socket, name, :git)
-    assigns = Map.take(socket.assigns, [:project, :workspace_entry])
+    %{project: project, workspace_entry: workspace_entry} = socket.assigns
 
     {:noreply,
      socket
@@ -350,7 +349,7 @@ defmodule BoomLooperWeb.ChatLive do
      |> assign(:diff_path, file_path)
      |> assign(:commit_sha, sha)
      |> start_async(:git_file_diff, fn ->
-       load_commit_file_diff(assigns, sha, file_path)
+       DiffLoader.commit_file_diff(project, workspace_entry, sha, file_path)
      end)}
   end
 
@@ -647,32 +646,20 @@ defmodule BoomLooperWeb.ChatLive do
   # --- Git diff viewer events ---
 
   def handle_event("view_diff", %{"path" => path}, socket) do
-    project = socket.assigns.project
-    workspace_entry = socket.assigns.workspace_entry
+    %{project: project, workspace_entry: workspace_entry} = socket.assigns
 
     {:noreply,
      start_async(socket, :diff_content, fn ->
-       adapter = BoomLooper.Source.for_project(project)
-
-       case adapter.git_diff(project, workspace_entry, file: path) do
-         {:ok, diff} -> diff
-         {:error, _} -> "(could not load diff)"
-       end
+       DiffLoader.working_file_diff(project, workspace_entry, path)
      end)}
   end
 
   def handle_event("view_commit", %{"sha" => sha}, socket) do
-    project = socket.assigns.project
-    workspace_entry = socket.assigns.workspace_entry
+    %{project: project, workspace_entry: workspace_entry} = socket.assigns
 
     {:noreply,
      start_async(socket, :diff_content, fn ->
-       adapter = BoomLooper.Source.for_project(project)
-
-       case adapter.git_diff(project, workspace_entry, ref: "#{sha}~1..#{sha}") do
-         {:ok, diff} -> diff
-         {:error, _} -> "(could not load diff for commit #{String.slice(sha, 0..6)})"
-       end
+       DiffLoader.commit_diff(project, workspace_entry, sha)
      end)}
   end
 
@@ -1098,44 +1085,6 @@ defmodule BoomLooperWeb.ChatLive do
     end
   end
 
-  defp load_file_diff(assigns, file_path, type) do
-    project = assigns.project
-    workspace_entry = assigns.workspace_entry
-    adapter = BoomLooper.Source.for_project(project)
-
-    result =
-      case type do
-        :staged -> adapter.git_diff_staged(project, workspace_entry, file: file_path)
-        :unstaged -> adapter.git_diff(project, workspace_entry, file: file_path)
-      end
-
-    case result do
-      {:ok, diff} -> diff
-      _ -> "(could not load diff)"
-    end
-  end
-
-  defp load_commit_detail(assigns, sha) do
-    project = assigns.project
-    workspace_entry = assigns.workspace_entry
-    adapter = BoomLooper.Source.for_project(project)
-
-    case adapter.git_commit_detail(project, workspace_entry, sha) do
-      {:ok, commit} -> commit
-      _ -> nil
-    end
-  end
-
-  defp load_commit_file_diff(assigns, sha, file_path) do
-    project = assigns.project
-    workspace_entry = assigns.workspace_entry
-    adapter = BoomLooper.Source.for_project(project)
-
-    case adapter.git_commit_diff(project, workspace_entry, sha, file: file_path) do
-      {:ok, diff} -> diff
-      _ -> "(could not load diff)"
-    end
-  end
 
   # Derive sidebar service + volume state from Docker.Observer's ETS
   # cache. Zero docker calls — microsecond reads. The Observer
