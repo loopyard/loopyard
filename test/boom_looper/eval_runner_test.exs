@@ -209,4 +209,52 @@ defmodule BoomLooper.EvalRunnerTest do
       assert EvalRunner.count_session_crashes(state) == 1
     end
   end
+
+  describe "has_real_project_files?/1" do
+    # This is the classifier that decides whether the host→volume
+    # sync has populated the workspace enough to let the agent start.
+    # A false positive here lets the agent run against an empty
+    # volume and bootstrap a bogus app (bookstack #7 did this).
+    # A false negative just delays the eval.
+
+    test "false on an empty volume" do
+      listing = """
+      total 8
+      drwxr-xr-x    2 root     root          4096 Apr 15 15:04 .
+      drwxr-xr-x    1 root     root          4096 Apr 15 15:04 ..
+      """
+
+      refute EvalRunner.has_real_project_files?(listing)
+    end
+
+    test "false when only the .boomlooper config dir is present" do
+      listing = """
+      total 12
+      drwxr-xr-x    3 root     root          4096 Apr 15 15:04 .
+      drwxr-xr-x    1 root     root          4096 Apr 15 15:04 ..
+      drwxr-xr-x    3 root     root          4096 Apr 15 15:04 .boomlooper
+      """
+
+      refute EvalRunner.has_real_project_files?(listing)
+    end
+
+    test "true when real project files are present" do
+      listing = """
+      total 40
+      drwxr-xr-x    7 root     root          4096 Apr 15 15:04 .
+      drwxr-xr-x    1 root     root          4096 Apr 15 15:04 ..
+      drwxr-xr-x    3 root     root          4096 Apr 15 15:04 .boomlooper
+      drwxr-xr-x    8 root     root          4096 Apr 15 15:04 .git
+      -rw-r--r--    1 root     root           340 Apr 15 15:04 README.md
+      drwxr-xr-x    2 root     root          4096 Apr 15 15:04 app
+      """
+
+      assert EvalRunner.has_real_project_files?(listing)
+    end
+
+    test "tolerates non-string input" do
+      refute EvalRunner.has_real_project_files?(nil)
+      refute EvalRunner.has_real_project_files?([])
+    end
+  end
 end

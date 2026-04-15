@@ -186,6 +186,17 @@ defmodule BoomLooper.EvalRunner do
           volume: volume_name
         ]
 
+        # Wait for the initial host→volume sync to populate /workspace
+        # before we let the agent loose. Without this, the agent can
+        # fire its first `tree` / `read_files` against an empty volume,
+        # conclude there's no project, and bootstrap a bogus minimal
+        # app to satisfy the HTTP probe — a false-success masquerading
+        # as a real one. Observed on bookstack run #7: agent saw empty
+        # /workspace, wrote 111 bytes of package.json, eval recorded
+        # success/1n for a completely wrong project.
+        BoomLooper.IExSession.working("eval: #{eval_name} — waiting for sync")
+        wait_for_workspace_populated(workspace.id, _timeout_ms = 120_000)
+
         ChatAgent.register_booting(id, "Setup", project_dir)
         Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn -> BoomLooper.AgentBoot.boot(id, agent_opts) end)
 
@@ -539,6 +550,97 @@ defmodule BoomLooper.EvalRunner do
           Process.sleep(interval)
           poll_agent(agent_id, deadline, interval, workspace_key, nudges, max_nudges, crashes_handled)
       end
+    end
+  end
+
+  @doc """
+  Busy-wait until the workspace volume contains project files (not just
+  the `.boomlooper/` config dir we copy in).
+
+  The Local source adapter clones/worktrees on the host and relies on
+  Mutagen to sync into the code volume. Initial sync takes seconds for
+  small repos, a minute+ for large ones (discourse, plane, bookstack
+  with many node_modules). Starting the agent before the sync lands
+  means `/workspace` looks empty and the agent invents a bogus app.
+
+  Returns `:ok` once `/workspace` has any entry outside `.boomlooper/`,
+  `{:error, :timeout}` if it never populates in `timeout_ms`. Soft
+  failure — EvalRunner proceeds either way; the timeout branch logs a
+  warning so the run file shows a misleading result can be diagnosed.
+  """
+  def wait_for_workspace_populated(workspace_id, timeout_ms) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    volume_name = BoomLooper.Workspace.volume_name_for(workspace_id)
+    wait_for_workspace_populated_loop(volume_name, deadline, workspace_id)
+  end
+
+  defp wait_for_workspace_populated_loop(volume_name, deadline, workspace_id) do
+    case BoomLooper.VolumeManager.volume_ls(volume_name, "/") do
+      {:ok, listing} when is_binary(listing) ->
+        if has_real_project_files?(listing) do
+          :ok
+        else
+          maybe_retry(volume_name, deadline, workspace_id)
+        end
+
+      _ ->
+        maybe_retry(volume_name, deadline, workspace_id)
+    end
+  end
+
+  # `volume_ls` returns raw `ls -la` output. A genuinely-empty volume
+  # looks like:
+  #
+  #     total 8
+  #     drwxr-xr-x    2 root  root  4096 ... .
+  #     drwxr-xr-x    1 root  root  4096 ... ..
+  #
+  # A volume with our compose config copied in adds `.boomlooper`. A
+  # volume with actual project files has MORE entries beyond those.
+  # We detect "real files" by parsing each line for its basename and
+  # rejecting the known-noise names.
+  @doc false
+  def has_real_project_files?(listing) when is_binary(listing) do
+    noise = [".", "..", ".boomlooper"]
+
+    listing
+    |> String.split("\n", trim: true)
+    |> Enum.any?(fn line ->
+      # `ls -la` output format: "perms links owner group size mon day time/year name"
+      # Skip the "total N" header and any line too short to be a file row.
+      case String.split(line, ~r/\s+/, trim: true) do
+        ["total", _bytes] ->
+          false
+
+        parts when length(parts) >= 9 ->
+          name = parts |> List.last() |> to_string()
+          name not in noise and name != ""
+
+        _ ->
+          false
+      end
+    end)
+  end
+
+  def has_real_project_files?(_), do: false
+
+  defp maybe_retry(volume_name, deadline, workspace_id) do
+    if System.monotonic_time(:millisecond) >= deadline do
+      Logger.warning(
+        "[EvalRunner] workspace #{workspace_id} volume still empty after wait — " <>
+          "agent may see an empty /workspace and produce a false success"
+      )
+
+      BoomLooper.EventLog.warning(
+        "eval:#{workspace_id}",
+        "Initial sync did not populate /workspace before timeout. " <>
+          "Agent will start anyway; watch for bogus 'minimal app' outcomes."
+      )
+
+      {:error, :timeout}
+    else
+      Process.sleep(1_000)
+      wait_for_workspace_populated_loop(volume_name, deadline, workspace_id)
     end
   end
 
