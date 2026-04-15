@@ -303,6 +303,16 @@ If the internal curl works but the host-side curl fails, your app is bound to `1
 - **Gitea / any Go Gin app** — check `HTTP_ADDR` / `ListenAddr` config; default is often `0.0.0.0` but some set `localhost`.
 - **Express / Fastify / Hono** — default `0.0.0.0` usually, but double-check `app.listen(port, host)` wasn't passed `'127.0.0.1'`.
 
+### When the dev service is a webserver (nginx / Apache / Caddy)
+
+Some projects ship a dev container that runs **nginx or Apache** in front of PHP-FPM / Passenger / Unicorn / Puma. The app's own bind setting is irrelevant in that case — **the webserver is what listens on the published port**. Check its config:
+
+- **nginx** — `listen 80;` defaults to all interfaces; `listen 127.0.0.1:80;` does not. If the project ships a custom `nginx.conf` or `sites-enabled/*`, grep it for `listen` and make sure no entry binds to `127.0.0.1` or `localhost`.
+- **Apache** — `Listen 80` = all interfaces; `Listen 127.0.0.1:80` = loopback only. Check `ports.conf`, `apache2.conf`, or the included vhosts.
+- **Caddy / Traefik** — check the `address` / `entrypoints` config for `127.0.0.1` vs `:`.
+
+Rule of thumb: whatever process is bound to the container port you published needs to accept traffic on `0.0.0.0`, not `127.0.0.1`. That might be the app itself, or a webserver in front of it. Grep the project's webserver configs before trusting defaults.
+
 **The `dev` service is mandatory and must publish a port** — Your docker-compose.yml MUST have a service literally named `dev` with an explicit `ports:` mapping. Never collapse the dev server into the `workspace` container. Never rename or remove the `dev` service. The eval runner looks for `bl-<ws>-dev-1` with a published host port.
 
 **Once HTTP 200, STOP** — The instant the host-side probe returns HTTP 200/301/302, you are done. Do not rewrite the Dockerfile to "clean things up". Do not add warmup scripts. Do not install additional tools "to make debugging easier". Every `docker_compose up -d --build` after success changes the published host port and gives the eval runner a moment where it can't reach the dev server — that counts as a failure. The working state is the final state.

@@ -36,15 +36,31 @@ defmodule BoomLooper.Tools.Container.ProbeFormatter do
       end)
       |> Enum.join("\n")
 
+    # attempted entries carry the failure kind (:refused / :timeout /
+    # :other) + a human detail string so the agent can tell "nothing's
+    # listening" from "app is still booting."
     attempted_urls =
       attempted
-      |> Enum.map(fn {container, container_port, host_port} ->
-        "  http://localhost:#{host_port}#{path}  (mapped from #{container}:#{container_port})"
+      |> Enum.map(fn {container, container_port, host_port, kind, detail} ->
+        "  http://localhost:#{host_port}#{path}  " <>
+          "(mapped from #{container}:#{container_port}) — #{kind}: #{detail}"
       end)
       |> Enum.join("\n")
 
+    headline =
+      cond do
+        Enum.all?(attempted, fn {_, _, _, k, _} -> k == :timeout end) ->
+          "Every probe TIMED OUT (TCP connected but no HTTP response in 30s). The port IS bound — the app is slow to respond. This is usually a cold-start."
+
+        Enum.all?(attempted, fn {_, _, _, k, _} -> k == :refused end) ->
+          "Every probe was REFUSED (TCP not accepting). The port is not bound — likely 127.0.0.1 inside the container, or wrong port."
+
+        true ->
+          "Probes failed with mixed reasons. See per-URL detail below."
+      end
+
     """
-    Connection refused on every host port I tried.
+    #{headline}
 
     URLs probed (in order):
     #{attempted_urls}
@@ -52,16 +68,37 @@ defmodule BoomLooper.Tools.Container.ProbeFormatter do
     Container states:
     #{state_lines}
 
-    Likely causes:
-    - Your dev server is bound to 127.0.0.1 inside the container (Rails default,
-      Vite default, Flask default). Bind to 0.0.0.0:
-        Rails:    `bin/rails server -b 0.0.0.0` or set BINDING=0.0.0.0
-        Vite:     `--host 0.0.0.0` or `server.host = true`
-        Flask:    `flask run --host=0.0.0.0`
-        Django:   `python manage.py runserver 0.0.0.0:8000`
-        Next.js:  binds to 0.0.0.0 by default — should be fine
-    - Dev server is still booting. Check `logs service="dev"` and wait, then retry.
-    - Wrong port: run `inspect_service name="dev"` to see what's actually listening.
+    Likely causes (in priority order):
+
+    1. **The process bound to the container port is listening on 127.0.0.1.**
+       Whatever listens on the container port MUST bind to 0.0.0.0. Check
+       what's actually listening from INSIDE the container:
+
+          exec command="ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null"
+
+       If you see `127.0.0.1:<port>` next to the process, that's the bug.
+       A correct bind looks like `0.0.0.0:<port>` or `*:<port>` or `:::<port>`.
+
+       Fix depends on WHAT is listening:
+         - Rails       — `bin/rails server -b 0.0.0.0` / BINDING=0.0.0.0
+         - Vite        — `--host 0.0.0.0` / `server.host = true` in vite.config
+         - Flask       — `flask run --host=0.0.0.0`
+         - Django      — `python manage.py runserver 0.0.0.0:8000`
+         - Laravel     — `php artisan serve --host=0.0.0.0`
+         - php -S      — `php -S 0.0.0.0:<port>`
+         - nginx       — grep the conf for `listen`; replace `127.0.0.1:` with empty or `0.0.0.0:`
+         - Apache      — grep ports.conf / sites-enabled; `Listen 80` not `Listen 127.0.0.1:80`
+         - Caddy       — the `:port` site block binds all interfaces; `127.0.0.1:port` binds loopback
+         - Go/Express  — `app.listen(port, '0.0.0.0')` or unset the host arg
+
+    2. **Dev server is still booting.** Big apps (Rails asset precompile,
+       Next.js first build) can take 60–120s. Check `logs service="dev"`.
+       If you see "Listening on 0.0.0.0" or similar, wait and retry.
+
+    3. **Wrong port published.** Run `inspect_service name="dev"` and verify
+       the published host port matches the container port the server is
+       actually listening on. Mismatches happen when the Dockerfile CMD
+       uses a different port than `ports:` in compose declares.
     """
   end
 end
