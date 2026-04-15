@@ -18,8 +18,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
     :canonical_dir,     # original project dir (used for registry and broadcasts)
     :workspace_id,
     :volume_name,       # code volume name (code-<workspace_id>)
-    running: false,
-    rebuilding: false
+    running: false
   ]
 
   # --- Public API ---
@@ -49,147 +48,6 @@ defmodule BoomLooper.Workspace.ServiceManager do
       [{_, statuses}] -> {:ok, statuses}
       [] -> {:ok, []}
     end
-  end
-
-  def restart_workspace_container(project_dir) do
-    case RegistryHelper.call(BoomLooper.ServiceManagerRegistry, project_dir, :restart, 600_000) do
-      {:ok, result} -> result
-      {:error, :not_found} -> :ok
-    end
-  end
-
-  @doc """
-  Rebuild dev containers only, keeping workspace container running.
-  Workspace container stays up so agents can continue exec'ing into it.
-  """
-  def restart_dev_streaming(project_dir, callback) when is_function(callback, 1) do
-    workspace_id = Workspace.workspace_id(project_dir)
-    volume_name = Workspace.volume_name_for(workspace_id)
-    effective_dir = Workspace.compose_dir(workspace_id)
-    File.mkdir_p!(effective_dir)
-
-    # Capture port assignments BEFORE stopping containers so we can pin them
-    port_map = Compose.capture_port_map(workspace_id)
-
-    compose_path = Compose.compose_path(effective_dir)
-    File.mkdir_p!(Path.dirname(compose_path))
-
-    case BoomLooper.VolumeManager.read_file(volume_name, ".boomlooper/workspace/docker-compose.yml") do
-      {:ok, content} when content != "" ->
-        case Compose.process_agent_compose(content, workspace_id, port_map: port_map) do
-          {:ok, processed} -> File.write!(compose_path, processed)
-          {:error, reason} ->
-            callback.("Error processing compose file: #{reason}\n")
-            {:error, reason}
-        end
-
-      _ ->
-        callback.("No docker-compose.yml found. Agent must write it first.\n")
-        {:error, :no_compose_file}
-    end
-
-    # Stop dev containers (not workspace) - use compose ps to find them
-    case Compose.ps(effective_dir, workspace_id) do
-      {:ok, services} ->
-        services
-        |> Enum.filter(fn s -> s.name != "workspace" end)
-        |> Enum.each(fn s ->
-          Compose.compose(effective_dir, workspace_id, ["stop", s.name], timeout: 30_000)
-        end)
-      _ -> :ok
-    end
-
-    # Find services to start (everything except workspace)
-    result = case Compose.compose(effective_dir, workspace_id, ["config", "--services"]) do
-      {:ok, output} ->
-        services = output |> String.trim() |> String.split("\n", trim: true) |> Enum.reject(&(&1 == "workspace"))
-        if services != [] do
-          Compose.up_services_stream(effective_dir, workspace_id, services, callback)
-        else
-          {:ok, "No services to start"}
-        end
-      _ ->
-        {:ok, "No services configured"}
-    end
-
-    # Reconnect state
-    case RegistryHelper.call(BoomLooper.ServiceManagerRegistry, project_dir, :reconnect, 30_000) do
-      {:ok, result} -> result
-      {:error, :not_found} -> :ok
-    end
-
-    result
-  end
-
-  @doc "Stop containers, rebuild with streaming output, then reconnect state."
-  def restart_workspace_streaming(project_dir, callback) when is_function(callback, 1) do
-    workspace_id = Workspace.workspace_id(project_dir)
-    volume_name = Workspace.volume_name_for(workspace_id)
-    effective_dir = Workspace.compose_dir(workspace_id)
-    File.mkdir_p!(effective_dir)
-
-    # Capture ports BEFORE tearing down
-    port_map = Compose.capture_port_map(workspace_id)
-
-    Compose.down(effective_dir, workspace_id)
-
-    compose_path = Compose.compose_path(effective_dir)
-    File.mkdir_p!(Path.dirname(compose_path))
-
-    case BoomLooper.VolumeManager.read_file(volume_name, ".boomlooper/workspace/docker-compose.yml") do
-      {:ok, content} when content != "" ->
-        case Compose.process_agent_compose(content, workspace_id, port_map: port_map) do
-          {:ok, processed} ->
-            File.write!(compose_path, processed)
-          {:error, reason} ->
-            callback.("Error processing compose file: #{reason}\n")
-        end
-
-      _ ->
-        callback.("No docker-compose.yml found. Agent must write it first.\n")
-    end
-
-    result = Compose.up_stream(effective_dir, workspace_id, callback)
-
-    case RegistryHelper.call(BoomLooper.ServiceManagerRegistry, project_dir, :reconnect, 30_000) do
-      {:ok, result} -> result
-      {:error, :not_found} -> :ok
-    end
-
-    result
-  end
-
-  @doc "Stop containers, rebuild with streaming output for volume-based workspaces."
-  def restart_workspace_streaming_volume(workspace_id, volume_name, callback) when is_function(callback, 1) do
-    project_dir = Workspace.compose_dir(workspace_id)
-    File.mkdir_p!(project_dir)
-
-    port_map = Compose.capture_port_map(workspace_id)
-
-    Compose.down(project_dir, workspace_id)
-
-    compose_path = Compose.compose_path(project_dir)
-    File.mkdir_p!(Path.dirname(compose_path))
-
-    case BoomLooper.VolumeManager.read_file(volume_name, ".boomlooper/workspace/docker-compose.yml") do
-      {:ok, content} when content != "" ->
-        case Compose.process_agent_compose(content, workspace_id, port_map: port_map) do
-          {:ok, processed} -> File.write!(compose_path, processed)
-          {:error, reason} -> callback.("Error processing compose file: #{reason}\n")
-        end
-
-      _ ->
-        callback.("No docker-compose.yml found. Agent must write it first.\n")
-    end
-
-    result = Compose.up_stream(project_dir, workspace_id, callback)
-
-    case RegistryHelper.call(BoomLooper.ServiceManagerRegistry, project_dir, :reconnect, 30_000) do
-      {:ok, result} -> result
-      {:error, :not_found} -> :ok
-    end
-
-    result
   end
 
   def service_exec(project_dir, service_name, command) do
@@ -269,10 +127,6 @@ defmodule BoomLooper.Workspace.ServiceManager do
   end
 
   @impl true
-  def handle_call(:start_services, _from, %{rebuilding: true} = state) do
-    {:reply, {:error, "A rebuild is in progress."}, state}
-  end
-
   def handle_call(:start_services, _from, state) do
     # Don't restart if already running
     if state.running do
@@ -303,19 +157,6 @@ defmodule BoomLooper.Workspace.ServiceManager do
     new_state = %{state | running: false}
     broadcast_service_update(new_state)
     {:reply, :ok, new_state}
-  end
-
-  @impl true
-  def handle_call(:restart, _from, state) do
-    state = %{state | rebuilding: true}
-    do_stop(state)
-
-    case do_start(state) do
-      {:ok, new_state} ->
-        {:reply, :ok, %{new_state | rebuilding: false}}
-      {:error, reason} ->
-        {:reply, {:error, reason}, %{state | rebuilding: false, running: false}}
-    end
   end
 
   @impl true

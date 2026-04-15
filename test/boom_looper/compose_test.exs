@@ -194,57 +194,6 @@ defmodule BoomLooper.ComposeTest do
     end
   end
 
-  describe "collect_port_output/4" do
-    test "succeeds with callback on zero exit" do
-      me = self()
-
-      port = Port.open(
-        {:spawn_executable, System.find_executable("echo")},
-        [:binary, :exit_status, {:args, ["hello", "world"]}]
-      )
-
-      result = Compose.collect_port_output(port, fn chunk -> send(me, {:chunk, chunk}) end, "", 5_000)
-
-      assert {:ok, output} = result
-      assert output =~ "hello world"
-      assert_received {:chunk, _}
-    end
-
-    test "returns error on non-zero exit" do
-      port = Port.open(
-        {:spawn_executable, System.find_executable("sh")},
-        [:binary, :exit_status, {:args, ["-c", "echo fail && exit 1"]}]
-      )
-
-      result = Compose.collect_port_output(port, fn _ -> :ok end, "", 5_000)
-
-      assert {:error, output} = result
-      assert output =~ "fail"
-    end
-
-    test "returns error with accumulated output on timeout" do
-      port = Port.open(
-        {:spawn_executable, System.find_executable("sleep")},
-        [:binary, :exit_status, {:args, ["10"]}]
-      )
-
-      result = Compose.collect_port_output(port, fn _ -> :ok end, "partial", 100)
-      assert {:error, output} = result
-      assert output =~ "partial"
-      assert output =~ "timed out"
-    end
-
-    test "detects arm64_unsupported in output" do
-      port = Port.open(
-        {:spawn_executable, System.find_executable("echo")},
-        [:binary, :exit_status, {:args, ["no matching manifest for linux/arm64"]}]
-      )
-
-      result = Compose.collect_port_output(port, fn _ -> :ok end, "", 5_000)
-      assert {:error, :arm64_unsupported, _output} = result
-    end
-  end
-
   describe "validate_no_host_mounts/1 — volumes" do
     test "accepts named-volume short-form mounts" do
       compose = %{

@@ -4,25 +4,23 @@ A prioritized list of known, scoped improvements for BoomLooper. Ordered within 
 
 ## Reliability (prevents user-visible outages)
 
-1. **Unify the compose lifecycle.** `do_start`, `restart_workspace_container`, `rebuild`, `restart_dev_streaming`, `restart_workspace_streaming`, etc. — six code paths, each with slightly different locking, error surfacing, and streaming. Consolidate to `ensure_started`, `ensure_stopped`, `rebuild` with shared error handling. Everything else layers on top.
-
-2. **Docker retry at the CLI layer.** `Docker.docker/2` fails hard on any transient error (daemon restart, socket hiccup, colima pause). A small retry-with-backoff wrapper absorbs most of those without leaking into every call site. Pair with a circuit breaker so we don't hammer a dying daemon.
+1. **Docker retry at the CLI layer.** `Docker.docker/2` fails hard on any transient error (daemon restart, socket hiccup, colima pause). A small retry-with-backoff wrapper absorbs most of those without leaking into every call site. Pair with a circuit breaker so we don't hammer a dying daemon.
 
 ## Simplicity (less to read, less to misunderstand)
 
-3. **Split the big modules.** `ChatAgent` (~1000 lines) mixes session management, message persistence, streaming, ETS, boot recovery, and restart logic. `chat_live.ex` (~1200 lines) is handle_event/handle_info soup. Extract by concern — no behavior change, just visibility. Every new feature in those files costs more than the last one.
+2. **Split the big modules.** `ChatAgent` (~1000 lines) mixes session management, message persistence, streaming, ETS, boot recovery, and restart logic. `chat_live.ex` (~1200 lines) is handle_event/handle_info soup. Extract by concern — no behavior change, just visibility. Every new feature in those files costs more than the last one.
 
-4. **One config story.** Settings live in env vars, `~/.boomlooper/`, `workspace.json`, `.boomlooper/workspace/`, compose files, and hardcoded module attributes. Write `docs/CONFIG.md` mapping every knob and, where cheap, collapse duplicate stores.
+3. **One config story.** Settings live in env vars, `~/.boomlooper/`, `workspace.json`, `.boomlooper/workspace/`, compose files, and hardcoded module attributes. Write `docs/CONFIG.md` mapping every knob and, where cheap, collapse duplicate stores.
 
 ## Robustness (handles edge cases gracefully)
 
-5. **Explicit agent state machine.** Statuses (`:booting`, `:idle`, `:thinking`, `:stopped`, `:crashed`, `:destroying`) are set from many call sites and checked by eyeballing. Owning transitions in one module (`transition(:booting, :started) -> :idle`) makes illegal states unrepresentable. The "remove agent → restart Claude → remove again" race hints at this gap.
+4. **Explicit agent state machine.** Statuses (`:booting`, `:idle`, `:thinking`, `:stopped`, `:crashed`, `:destroying`) are set from many call sites and checked by eyeballing. Owning transitions in one module (`transition(:booting, :started) -> :idle`) makes illegal states unrepresentable. The "remove agent → restart Claude → remove again" race hints at this gap.
 
-6. **End-to-end integration test.** 300+ unit tests, zero end-to-end. Add one test that spawns a ChatAgent, writes a compose, runs `docker compose up`, execs a command, reads output, tears down. Gated behind `--include docker` so it doesn't slow the fast suite. Catches lifecycle regressions that unit tests by construction can't see.
+5. **End-to-end integration test.** 300+ unit tests, zero end-to-end. Add one test that spawns a ChatAgent, writes a compose, runs `docker compose up`, execs a command, reads output, tears down. Gated behind `--include docker` so it doesn't slow the fast suite. Catches lifecycle regressions that unit tests by construction can't see.
 
-7. **Volume disk usage visible and bounded.**
+6. **Volume disk usage visible and bounded.**
 
-8. **Consider SQLite + Ecto for persistent state (later).** Today ETS + an append-only ETF log per workspace is the storage substrate. Works fine at current scale but cross-cuts: registry persistence, agent messages, projects, workspace metadata each have bespoke persistence paths. SQLite via Ecto would give us a single queryable store, real transactions, trivial backups, and compaction-for-free. Not urgent — the current setup is fast and has no real bugs pointing at it. Revisit when (a) we want cross-workspace queries, (b) log compaction + migration machinery starts feeling more complex than a schema, or (c) we add multi-node features that need a shared store. No quota, no sidebar indicator, no warning. A runaway agent writes until Docker errors with an opaque message. First step: size badge next to each volume in the sidebar. Next step: soft quota per workspace with a clear message on exceed.
+7. **Consider SQLite + Ecto for persistent state (later).** Today ETS + an append-only ETF log per workspace is the storage substrate. Works fine at current scale but cross-cuts: registry persistence, agent messages, projects, workspace metadata each have bespoke persistence paths. SQLite via Ecto would give us a single queryable store, real transactions, trivial backups, and compaction-for-free. Not urgent — the current setup is fast and has no real bugs pointing at it. Revisit when (a) we want cross-workspace queries, (b) log compaction + migration machinery starts feeling more complex than a schema, or (c) we add multi-node features that need a shared store. No quota, no sidebar indicator, no warning. A runaway agent writes until Docker errors with an opaque message. First step: size badge next to each volume in the sidebar. Next step: soft quota per workspace with a clear message on exceed.
 
 ## How to work this list
 

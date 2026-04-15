@@ -527,42 +527,6 @@ defmodule BoomLooper.Compose do
     end)
   end
 
-  @doc """
-  Start all services with streaming output. Calls `callback` with each chunk of output.
-  Returns {:ok, full_output} or {:error, full_output} when done.
-  """
-  def up_stream(project_dir, workspace_id, callback) when is_function(callback, 1) do
-    compose_file = compose_path(project_dir)
-    project = project_name(workspace_id)
-
-    base_args = ["-f", compose_file, "-p", project, "up", "-d", "--build", "--force-recreate"]
-
-    # Use docker compose v2 (plugin) or standalone docker-compose
-    if docker_compose_v2?() do
-      stream_compose(["compose" | base_args], callback)
-    else
-      stream_docker_compose(base_args, callback)
-    end
-  end
-
-  @doc """
-  Start specific services with streaming output. Calls `callback` with each chunk of output.
-  Returns {:ok, full_output} or {:error, full_output} when done.
-  """
-  def up_services_stream(project_dir, workspace_id, service_names, callback)
-      when is_list(service_names) and is_function(callback, 1) do
-    compose_file = compose_path(project_dir)
-    project = project_name(workspace_id)
-
-    base_args = ["-f", compose_file, "-p", project, "up", "-d", "--build", "--force-recreate" | service_names]
-
-    if docker_compose_v2?() do
-      stream_compose(["compose" | base_args], callback)
-    else
-      stream_docker_compose(base_args, callback)
-    end
-  end
-
   @doc "Check if `docker compose` v2 plugin is available. Result is cached."
   def docker_compose_v2? do
     case :persistent_term.get(:docker_compose_v2, :unchecked) do
@@ -580,54 +544,6 @@ defmodule BoomLooper.Compose do
     end
   rescue
     _ -> false
-  end
-
-  defp stream_compose(args, callback) do
-    BoomLooper.Docker.stream(args, callback, timeout: 600_000)
-  end
-
-  defp stream_docker_compose(args, callback) do
-    dc_path = System.find_executable("docker-compose")
-
-    unless dc_path do
-      {:error, "docker-compose not found"}
-    else
-      port = Port.open(
-        {:spawn_executable, dc_path},
-        [:binary, :exit_status, :stderr_to_stdout, {:args, args}]
-      )
-
-      collect_port_output(port, callback, "", 600_000)
-    end
-  end
-
-  @doc false
-  def collect_port_output(port, callback, acc, timeout) do
-    receive do
-      {^port, {:data, data}} ->
-        callback.(data)
-        new_acc = acc <> data
-
-        # Fail fast on known fatal errors
-        cond do
-          String.contains?(new_acc, "no matching manifest for linux/arm64") ->
-            Port.close(port)
-            {:error, :arm64_unsupported, new_acc}
-
-          true ->
-            collect_port_output(port, callback, new_acc, timeout)
-        end
-
-      {^port, {:exit_status, 0}} ->
-        {:ok, acc}
-
-      {^port, {:exit_status, _code}} ->
-        {:error, acc}
-    after
-      timeout ->
-        Port.close(port)
-        {:error, acc <> "\n(timed out)"}
-    end
   end
 
   @doc "Stop all services."
