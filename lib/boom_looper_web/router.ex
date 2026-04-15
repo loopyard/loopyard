@@ -20,23 +20,23 @@ defmodule BoomLooperWeb.Router do
 
     live "/", ProjectListLive, :index
     live "/projects/:project_id", ProjectLive, :index
-    live "/projects/:project_id/workspaces/:workspace_id", ChatLive, :index
-    live "/projects/:project_id/workspaces/:workspace_id/new", ChatLive, :new
-    live "/projects/:project_id/workspaces/:workspace_id/agents/:id", ChatLive, :chat
-    live "/projects/:project_id/workspaces/:workspace_id/agents/:id/container", ChatLive, :container
-    live "/projects/:project_id/workspaces/:workspace_id/agents/:id/context", ChatLive, :context_panel
-    live "/projects/:project_id/workspaces/:workspace_id/services", ChatLive, :services
-    live "/projects/:project_id/workspaces/:workspace_id/services/:service_name", ChatLive, :service
-    live "/projects/:project_id/workspaces/:workspace_id/services/:service_name/console", ChatLive, :console
-    live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name", ChatLive, :volume
-    live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/files", ChatLive, :volume_files_root
-    live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/files/*path", ChatLive, :volume_file
-    live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/git", ChatLive, :volume_git
-    live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/git/diff/*path", ChatLive, :git_diff
-    live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/git/staged/*path", ChatLive, :git_staged_diff
-    live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/git/commits/:sha", ChatLive, :git_commit
-    live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/git/commits/:sha/diff/*path", ChatLive, :git_commit_file
-    live "/projects/:project_id/workspaces/:workspace_id/sync", ChatLive, :sync
+    live "/projects/:project_id/workspaces/:workspace_id", WorkspaceLive, :index
+    live "/projects/:project_id/workspaces/:workspace_id/new", WorkspaceLive, :new
+    live "/projects/:project_id/workspaces/:workspace_id/agents/:id", WorkspaceLive, :chat
+    live "/projects/:project_id/workspaces/:workspace_id/agents/:id/container", WorkspaceLive, :container
+    live "/projects/:project_id/workspaces/:workspace_id/agents/:id/context", WorkspaceLive, :context_panel
+    live "/projects/:project_id/workspaces/:workspace_id/services", WorkspaceLive, :services
+    live "/projects/:project_id/workspaces/:workspace_id/services/:service_name", WorkspaceLive, :service
+    live "/projects/:project_id/workspaces/:workspace_id/services/:service_name/console", WorkspaceLive, :console
+    live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name", WorkspaceLive, :volume
+    live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/files", WorkspaceLive, :volume_files_root
+    live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/files/*path", WorkspaceLive, :volume_file
+    live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/git", WorkspaceLive, :volume_git
+    live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/git/diff/*path", WorkspaceLive, :git_diff
+    live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/git/staged/*path", WorkspaceLive, :git_staged_diff
+    live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/git/commits/:sha", WorkspaceLive, :git_commit
+    live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/git/commits/:sha/diff/*path", WorkspaceLive, :git_commit_file
+    live "/projects/:project_id/workspaces/:workspace_id/sync", WorkspaceLive, :sync
 
     live "/system", SystemLive, :index
     live "/system/workspaces", SystemWorkspacesLive, :index

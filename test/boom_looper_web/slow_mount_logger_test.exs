@@ -52,13 +52,13 @@ defmodule BoomLooperWeb.SlowMountLoggerTest do
           SlowMountLogger.handle_event(
             [:phoenix, :live_view, :handle_params, :stop],
             %{duration: duration_native},
-            %{socket: %{view: BoomLooperWeb.ChatLive}},
+            %{socket: %{view: BoomLooperWeb.WorkspaceLive}},
             nil
           )
         end)
 
       assert log =~ "handle_params"
-      assert log =~ "ChatLive"
+      assert log =~ "WorkspaceLive"
     end
   end
 

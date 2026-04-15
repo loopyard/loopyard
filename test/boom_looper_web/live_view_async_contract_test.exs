@@ -4,7 +4,7 @@ defmodule BoomLooperWeb.LiveViewAsyncContractTest do
   `handle_params/3` body contains a synchronous slow call.
 
   This test exists because we shipped this exact bug TWICE:
-  - chat_live `:index` handle_params calling `VolumeManager.read_file`
+  - workspace_live `:index` handle_params calling `VolumeManager.read_file`
   - project_live mount calling `ServiceStatus.for_workspace` in a loop
 
   Both regressions made the page take seconds to paint. The unit-level

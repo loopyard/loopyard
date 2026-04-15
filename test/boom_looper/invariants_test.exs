@@ -226,11 +226,11 @@ defmodule BoomLooper.InvariantsTest do
         "ServiceStatus.for_workspace: #{inspect(violations)}"
     end
 
-    test "every service_statuses assignment in chat_live is guarded against empty replacement" do
+    test "every service_statuses assignment in workspace_live is guarded against empty replacement" do
       # The sidebar flapping bug was caused by unguarded assignments that
       # replaced a non-empty service list with []. Every assignment except
       # mount (first render) must go through guard_service_statuses/2.
-      content = File.read!("lib/boom_looper_web/live/chat_live.ex")
+      content = File.read!("lib/boom_looper_web/live/workspace_live.ex")
 
       # Find all functions that assign :service_statuses by looking at
       # function-level blocks. Each block that assigns service_statuses

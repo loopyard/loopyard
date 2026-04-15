@@ -1,7 +1,7 @@
 defmodule BoomLooper.Tools.Container.UrlToolsTest do
   use ExUnit.Case, async: true
 
-  alias BoomLooperWeb.Live.ChatLive.Messages
+  alias BoomLooperWeb.Live.WorkspaceLive.Messages
 
   describe "rewrite_localhost_urls (via Messages module)" do
     # The rewrite happens in the message renderer, not in the tool.
