@@ -31,6 +31,17 @@ BoomLooper is a **Docker control plane** with **AI agents** wired into it. Dev e
 - **[docs/CODE_RULES.md](docs/CODE_RULES.md)** — Hard-won rules that prevent real bugs. **Read before editing code.**
 - **[docs/SOURCE_ADAPTERS.md](docs/SOURCE_ADAPTERS.md)** — Source adapter rules (Local, GitHub)
 - **[docs/EVALS.md](docs/EVALS.md)** — Eval runner, integrity rules, how to fix failures
+- **[docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md)** — Prioritized backlog of scoped improvements. Add entries when you find something worth doing but not shipping today.
+- **[plans/](plans/)** — Scoped design plans for features in flight. Read the relevant plan before implementing; update it when the plan evolves during implementation.
+
+**Update docs when you ship a major change or feature.** Specifically:
+- New MCP tool, compose rule, source adapter, or security boundary → update the doc that owns that concern (`SECURITY.md`, `SOURCE_ADAPTERS.md`, the tool toolkit's `@moduledoc`).
+- New config key / env var / on-disk file → add a row to `CONFIG.md`.
+- New architectural seam (supervisor, GenServer, data flow) → update the relevant section of `ARCHITECTURE.md`.
+- Hard-won rule that prevents a real bug → add to `CODE_RULES.md` so the next contributor doesn't repeat the mistake.
+- Finding worth tracking but not shipping → `IMPROVEMENTS.md`.
+- Feature plan that spans multiple commits → `plans/<feature>.md` at start; delete or archive when merged.
+Docs that silently drift are worse than no docs. The commit that ships the behavior change ships the doc change.
 
 ## Quick start
 
