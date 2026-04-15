@@ -13,10 +13,18 @@ defmodule BoomLooper.ChatAgent.Prompt do
   # or a file the agent reads.
   @max_system_prompt_chars 2000
 
-  @setup_guide File.read!(Path.join(:code.priv_dir(:boom_looper), "prompts/setup_guide.md"))
+  # Read at runtime instead of baking into a module attribute so
+  # edits to setup_guide.md take effect without recompiling this
+  # module. Edits to .md files don't trigger `mix recompile` — a
+  # compile-time @ attribute would silently serve the old guide to
+  # every agent until someone remembered to touch this file.
+  # The file is small (<20 KB), read is cheap.
+  @external_resource "priv/prompts/setup_guide.md"
 
   @doc false
-  def setup_guide, do: @setup_guide
+  def setup_guide do
+    File.read!(Path.join(:code.priv_dir(:boom_looper), "prompts/setup_guide.md"))
+  end
 
   @doc false
   def build_system_prompt(agent_id, bind_mount, workspace_id, workspace, service_name) do

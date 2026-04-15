@@ -466,6 +466,17 @@ defmodule BoomLooper.EvalRunner do
   # --- Polling ---
 
   defp poll_agent(agent_id, deadline, interval, workspace_key, nudges, max_nudges) do
+    poll_agent(agent_id, deadline, interval, workspace_key, nudges, max_nudges, 0)
+  end
+
+  # crashes_handled tracks how many distinct "Agent stopped responding"
+  # errors we've already issued recovery prompts for. Each SDK crash
+  # prints one such error; we retry with a goal-reminding message once
+  # per crash, without counting it as a nudge. Without this counter, a
+  # single crash with any follow-up messages (tool calls the agent
+  # made after auto-session-restart) would cause the detector to miss
+  # the crash and the next :idle would burn a real nudge.
+  defp poll_agent(agent_id, deadline, interval, workspace_key, nudges, max_nudges, crashes_handled) do
     now = System.monotonic_time(:millisecond)
 
     if now >= deadline do
@@ -484,33 +495,41 @@ defmodule BoomLooper.EvalRunner do
       case ChatAgent.get_state(agent_id) do
         nil ->
           Process.sleep(interval)
-          poll_agent(agent_id, deadline, interval, workspace_key, nudges, max_nudges)
+          poll_agent(agent_id, deadline, interval, workspace_key, nudges, max_nudges, crashes_handled)
 
         %{status: status} when status in [:booting, :thinking] ->
           Process.sleep(interval)
-          poll_agent(agent_id, deadline, interval, workspace_key, nudges, max_nudges)
+          poll_agent(agent_id, deadline, interval, workspace_key, nudges, max_nudges, crashes_handled)
 
         %{status: :idle} = state ->
+          crashes_now = count_session_crashes(state)
+
           cond do
             length(state.messages) < 2 ->
               Process.sleep(interval)
-              poll_agent(agent_id, deadline, interval, workspace_key, nudges, max_nudges)
+              poll_agent(agent_id, deadline, interval, workspace_key, nudges, max_nudges, crashes_handled)
 
-            # If the MOST RECENT message is a "session died, retry"
-            # error, that's Claude Code SDK instability — not the
-            # agent running out of ideas. Send a plain "Continue."
-            # to restart the session WITHOUT counting it as a nudge.
-            # The nudge counter is a teaching signal, not a retry
-            # counter — conflating them makes "zero nudges" unreachable
-            # on long evals because any SDK hiccup bumps the count.
-            session_died?(state) ->
-              Logger.info("[EvalRunner] Session crash detected, retrying (not counted as nudge)")
-              ChatAgent.send_message(agent_id, "Continue.")
+            # A new SDK crash has appeared since we last handled one.
+            # Send a goal-reminding recovery message WITHOUT counting
+            # as a nudge. This catches crashes even when tool calls
+            # appear after the error in the message list — the old
+            # List.last(messages) check missed those.
+            crashes_now > crashes_handled ->
+              Logger.info(
+                "[EvalRunner] Session crash ##{crashes_now} detected, retrying (not counted as nudge)"
+              )
+
+              ChatAgent.send_message(agent_id,
+                "Your session died mid-task. Resume where you left off: the goal is a " <>
+                  "web service reachable from the HOST at http://localhost:<published_port>. " <>
+                  "Keep iterating — run `docker_compose up -d`, check `inspect_service dev`, " <>
+                  "and `probe_http` until it returns HTTP 2xx/3xx. Don't go idle until that's true.")
+
               Process.sleep(interval)
-              poll_agent(agent_id, deadline, interval, workspace_key, nudges, max_nudges)
+              poll_agent(agent_id, deadline, interval, workspace_key, nudges, max_nudges, crashes_now)
 
             true ->
-              handle_idle_probe(agent_id, state, deadline, interval, workspace_key, nudges, max_nudges)
+              handle_idle_probe(agent_id, state, deadline, interval, workspace_key, nudges, max_nudges, crashes_handled)
           end
 
         %{status: status} = state when status in [:stopped, :crashed] ->
@@ -518,26 +537,31 @@ defmodule BoomLooper.EvalRunner do
 
         _other ->
           Process.sleep(interval)
-          poll_agent(agent_id, deadline, interval, workspace_key, nudges, max_nudges)
+          poll_agent(agent_id, deadline, interval, workspace_key, nudges, max_nudges, crashes_handled)
       end
     end
   end
 
-  # The SDK's "session died" error surfaces as a message with role :error
-  # and content that contains "Agent stopped responding". When THIS is the
-  # most recent message, the agent went idle because the CLI crashed, not
-  # because it ran out of ideas.
-  defp session_died?(%{messages: messages}) do
-    case List.last(messages) do
+  @doc """
+  Count how many "Agent stopped responding" error messages are in the
+  agent's history. The SDK crash flow appends exactly one such error
+  per crash. Comparing this count against what we've already retried
+  tells us whether a *new* crash happened since our last pass, even if
+  the agent produced tool/assistant messages after the error.
+
+  Public so tests can target it without dragging the whole poll loop in.
+  """
+  def count_session_crashes(%{messages: messages}) do
+    Enum.count(messages, fn
       %{role: :error, content: content} when is_binary(content) ->
         String.contains?(content, "Agent stopped responding")
 
       _ ->
         false
-    end
+    end)
   end
 
-  defp handle_idle_probe(agent_id, state, deadline, interval, workspace_key, nudges, max_nudges) do
+  defp handle_idle_probe(agent_id, state, deadline, interval, workspace_key, nudges, max_nudges, crashes_handled) do
     case probe_web_service(workspace_key) do
       {:ok, status, body} when status in 200..399 ->
         Logger.info("[EvalRunner] Web service healthy (HTTP #{status}), declaring success")
@@ -557,7 +581,7 @@ defmodule BoomLooper.EvalRunner do
           nudge_msg = "The web service is returning HTTP #{status}. Here's the response body — fix the issue:\n\n```\n#{body}\n```"
           ChatAgent.send_message(agent_id, nudge_msg)
           Process.sleep(interval)
-          poll_agent(agent_id, deadline, interval, workspace_key, nudges + 1, max_nudges)
+          poll_agent(agent_id, deadline, interval, workspace_key, nudges + 1, max_nudges, crashes_handled)
         end
 
       :no_response ->
@@ -569,7 +593,7 @@ defmodule BoomLooper.EvalRunner do
           nudge_msg = build_stall_nudge(workspace_key, nudges + 1, max_nudges)
           ChatAgent.send_message(agent_id, nudge_msg)
           Process.sleep(interval)
-          poll_agent(agent_id, deadline, interval, workspace_key, nudges + 1, max_nudges)
+          poll_agent(agent_id, deadline, interval, workspace_key, nudges + 1, max_nudges, crashes_handled)
         end
     end
   end

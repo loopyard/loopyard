@@ -135,4 +135,78 @@ defmodule BoomLooper.EvalRunnerTest do
       assert content =~ "Nudges:** 3"
     end
   end
+
+  describe "count_session_crashes/1" do
+    # Used by poll_agent to detect a *new* SDK crash since the last
+    # retry, even when tool/assistant messages appear after the error
+    # (which is common because ChatAgent auto-restarts sessions).
+    # The old `List.last(messages)` check missed those cases and
+    # burned a real nudge on what was actually a crash recovery.
+
+    test "counts zero when no crash error is present" do
+      state = %{
+        messages: [
+          %{role: :user, content: "hi"},
+          %{role: :assistant, content: "hello"}
+        ]
+      }
+
+      assert EvalRunner.count_session_crashes(state) == 0
+    end
+
+    test "counts the 'Agent stopped responding' errors" do
+      state = %{
+        messages: [
+          %{role: :user, content: "setup"},
+          %{role: :error, content: "Agent stopped responding. Send a message to retry."},
+          %{role: :assistant, content: "recovered"},
+          %{role: :tool, content: "ran something"},
+          %{role: :error, content: "Agent stopped responding. Send a message to retry."},
+          %{role: :assistant, content: "recovered again"}
+        ]
+      }
+
+      assert EvalRunner.count_session_crashes(state) == 2
+    end
+
+    test "ignores :error messages that aren't session-death crashes" do
+      state = %{
+        messages: [
+          %{role: :error, content: "bundle install failed"},
+          %{role: :error, content: "database does not exist"}
+        ]
+      }
+
+      assert EvalRunner.count_session_crashes(state) == 0
+    end
+
+    test "detects crash even when followup tool calls exist (the old bug)" do
+      # This is exactly the shape that made the old
+      # `List.last(messages)` check return false and burn a nudge:
+      # the crash is buried under later tool/assistant messages.
+      state = %{
+        messages: [
+          %{role: :user, content: "setup"},
+          %{role: :error, content: "Agent stopped responding. Send a message to retry."},
+          %{role: :assistant, content: "Trying to recover"},
+          %{role: :tool, content: "exec echo hi"},
+          %{role: :tool_result, content: "hi"}
+        ]
+      }
+
+      assert EvalRunner.count_session_crashes(state) == 1
+    end
+
+    test "ignores messages with non-binary content without crashing" do
+      state = %{
+        messages: [
+          %{role: :error, content: nil},
+          %{role: :error, content: ["list content"]},
+          %{role: :error, content: "Agent stopped responding. Send a message to retry."}
+        ]
+      }
+
+      assert EvalRunner.count_session_crashes(state) == 1
+    end
+  end
 end

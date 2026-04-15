@@ -226,22 +226,29 @@ WORKDIR /workspace
 - Use `-slim` variants for smaller images
 - Split heavy installs into separate `RUN` commands for better caching
 
-## Multiple Dockerfiles
+## Multiple Dockerfiles (you can have as many as you need)
 
-If you need different images for different services:
+**You are NOT limited to one Dockerfile.** `.boomlooper/workspace/` can hold any number of Dockerfiles — one per service image if that's what the project needs. The docker-compose.yml wires each service to its Dockerfile via `build.dockerfile`. Use this when services need different base images, toolchains, or build steps (e.g. Node worker vs Python API vs Rails web — each gets its own Dockerfile).
 
 ```yaml
 services:
-  workspace:
-    build: .
-
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web       # Rails + Ruby
   worker:
     build:
       context: .
-      dockerfile: Dockerfile.worker
+      dockerfile: Dockerfile.worker    # Python + ML deps
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend  # Node + Vite
 ```
 
-Write each Dockerfile separately via `write_file` to `.boomlooper/workspace/`.
+Write each Dockerfile separately via `write_file` to `.boomlooper/workspace/Dockerfile.<name>`. The `context: .` resolves to `.boomlooper/workspace/` — so `COPY` lines inside each Dockerfile reference paths relative to that directory.
+
+A single `Dockerfile` works for the common case where every service shares the same runtime. Only split when services genuinely need different images.
 
 ## Verification loop (MANDATORY — run after EVERY docker_compose up)
 
@@ -292,6 +299,9 @@ If the internal curl works but the host-side curl fails, your app is bound to `1
 - **Next.js** binds to `0.0.0.0` by default in dev mode. Safe.
 - **Vite** defaults to `localhost`. Use `--host 0.0.0.0` or `server.host = true` in vite.config.
 - **Flask/Django** defaults to `127.0.0.1`. Use `flask run --host=0.0.0.0` or `python manage.py runserver 0.0.0.0:8000`.
+- **Laravel / PHP `artisan serve`** defaults to `127.0.0.1:8000`. Use `php artisan serve --host=0.0.0.0 --port=8000`. The same applies to the built-in `php -S` server — always pass `0.0.0.0:<port>`.
+- **Gitea / any Go Gin app** — check `HTTP_ADDR` / `ListenAddr` config; default is often `0.0.0.0` but some set `localhost`.
+- **Express / Fastify / Hono** — default `0.0.0.0` usually, but double-check `app.listen(port, host)` wasn't passed `'127.0.0.1'`.
 
 **The `dev` service is mandatory and must publish a port** — Your docker-compose.yml MUST have a service literally named `dev` with an explicit `ports:` mapping. Never collapse the dev server into the `workspace` container. Never rename or remove the `dev` service. The eval runner looks for `bl-<ws>-dev-1` with a published host port.
 
