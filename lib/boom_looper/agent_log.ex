@@ -238,6 +238,123 @@ defmodule BoomLooper.AgentLog do
   end
 
   @doc """
+  Rewrite the log as a minimal snapshot of its current state.
+
+  The log is append-only: every message, message update, and agent
+  update is a record. A long-running workspace accumulates tens of
+  megabytes of records that collapse, on replay, to a state of only
+  a few thousand messages. Replay of that history gets slow, then
+  flaky, then fails. Compaction rewrites the file as exactly the
+  record sequence needed to reproduce the current state from scratch:
+  one `{:agent, id, data}` record per agent, followed by one
+  `{:msg, id, msg}` per message.
+
+  Atomic: writes to `<path>.compacting`, then `File.rename/2`. A crash
+  mid-write leaves the original file untouched.
+
+  ## Options
+
+    * `:log_path` — path to the log file (required)
+    * `:version`  — log version (required; same semantics as `append/2`)
+
+  Returns `{:ok, %{before: bytes, after: bytes, agents: n, messages: n}}`
+  or `{:error, reason}`. Running compact/1 on a missing file is a
+  no-op returning `{:ok, %{before: 0, after: 0, agents: 0, messages: 0}}`.
+  """
+  def compact(opts) do
+    path = Keyword.fetch!(opts, :log_path)
+    version = Keyword.fetch!(opts, :version)
+
+    case File.stat(path) do
+      {:ok, %{size: before_size}} ->
+        case replay(log_path: path, version: version) do
+          {:ok, state} ->
+            do_compact(path, version, state, before_size)
+
+          {:error, _} = err ->
+            err
+        end
+
+      {:error, :enoent} ->
+        {:ok, %{before: 0, after: 0, agents: 0, messages: 0}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Compact the log iff it's bigger than the threshold.
+
+  Called at startup (see `ServiceManager.init`) so every workspace
+  boot trims its log if it's grown past the threshold. Cheap no-op
+  when the file is small.
+
+  Options:
+    * `:log_path` — path to the log file (required)
+    * `:version`  — log version (required)
+    * `:threshold_bytes` — minimum size before compacting (default: 5 MB)
+  """
+  def maybe_compact(opts) do
+    path = Keyword.fetch!(opts, :log_path)
+    threshold = Keyword.get(opts, :threshold_bytes, 5_000_000)
+
+    case File.stat(path) do
+      {:ok, %{size: size}} when size >= threshold ->
+        compact(opts)
+
+      _ ->
+        {:ok, :skipped}
+    end
+  end
+
+  defp do_compact(path, version, state, before_size) do
+    temp_path = path <> ".compacting"
+    File.rm(temp_path)
+
+    # Ensure meta header on the temp file first, then append snapshot
+    # events. The ordering is: one :agent record per agent, then all
+    # its messages as :msg records. Replaying this yields the same
+    # in-memory state we started from.
+    ensure_meta_header(temp_path, version)
+
+    message_count =
+      Enum.reduce(state, 0, fn {agent_id, agent_data}, acc ->
+        messages = Map.get(agent_data, :messages, [])
+        agent_meta = Map.delete(agent_data, :messages)
+
+        write_record(temp_path, {:agent, agent_id, agent_meta})
+
+        for msg <- messages do
+          write_record(temp_path, {:msg, agent_id, msg})
+        end
+
+        acc + length(messages)
+      end)
+
+    case File.rename(temp_path, path) do
+      :ok ->
+        after_size =
+          case File.stat(path) do
+            {:ok, %{size: s}} -> s
+            _ -> 0
+          end
+
+        {:ok,
+         %{
+           before: before_size,
+           after: after_size,
+           agents: map_size(state),
+           messages: message_count
+         }}
+
+      {:error, reason} ->
+        File.rm(temp_path)
+        {:error, {:rename_failed, reason}}
+    end
+  end
+
+  @doc """
   Read all events from the log without applying them.
   Useful for debugging/inspection. Excludes meta record.
   """

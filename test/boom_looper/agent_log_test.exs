@@ -686,4 +686,115 @@ defmodule BoomLooper.AgentLogTest do
       end)
     end
   end
+
+  describe "compact/1" do
+    test "rewrites the log as a minimal snapshot and shrinks the file",
+         %{log_path: log_path} do
+      # Write many record types that collapse to a small final state:
+      # one agent with ten messages, each updated three times (the
+      # exact streaming pattern that bloats the file for long chats),
+      # plus churn on a second agent that ultimately gets removed.
+      AgentLog.append({:agent, "a1", %{name: "A1"}}, log_path: log_path, version: @version)
+
+      for i <- 1..10 do
+        AgentLog.append(
+          {:msg, "a1", %{id: "m#{i}", role: :user, content: "msg #{i}"}},
+          log_path: log_path,
+          version: @version
+        )
+
+        for _ <- 1..3 do
+          AgentLog.append(
+            {:msg_update, "a1", "m#{i}", %{content: "msg #{i} updated"}},
+            log_path: log_path,
+            version: @version
+          )
+        end
+      end
+
+      AgentLog.append({:agent, "a2", %{name: "A2"}}, log_path: log_path, version: @version)
+
+      AgentLog.append(
+        {:msg, "a2", %{id: "m99", role: :user, content: "scratch"}},
+        log_path: log_path,
+        version: @version
+      )
+
+      AgentLog.append({:agent_removed, "a2"}, log_path: log_path, version: @version)
+
+      {:ok, state_before} = AgentLog.replay(log_path: log_path, version: @version)
+
+      {:ok, %{before: before_bytes, after: after_bytes, agents: agents, messages: messages}} =
+        AgentLog.compact(log_path: log_path, version: @version)
+
+      assert after_bytes < before_bytes, "compaction should shrink the file"
+      assert agents == 1
+      assert messages == 10
+
+      # Replaying the compacted log yields the same in-memory state.
+      {:ok, state_after} = AgentLog.replay(log_path: log_path, version: @version)
+      assert state_before == state_after
+    end
+
+    test "no-op when the file doesn't exist", %{log_path: log_path} do
+      refute File.exists?(log_path)
+
+      assert {:ok, %{before: 0, after: 0, agents: 0, messages: 0}} =
+               AgentLog.compact(log_path: log_path, version: @version)
+    end
+
+    test "atomic — temp file is gone after success", %{log_path: log_path} do
+      AgentLog.append({:agent, "a1", %{name: "A"}}, log_path: log_path, version: @version)
+      {:ok, _} = AgentLog.compact(log_path: log_path, version: @version)
+
+      refute File.exists?(log_path <> ".compacting")
+    end
+  end
+
+  describe "maybe_compact/1" do
+    test "skips when the file is under the threshold",
+         %{log_path: log_path} do
+      AgentLog.append({:agent, "a1", %{name: "A"}}, log_path: log_path, version: @version)
+      before = File.stat!(log_path).size
+
+      assert {:ok, :skipped} =
+               AgentLog.maybe_compact(
+                 log_path: log_path,
+                 version: @version,
+                 threshold_bytes: 1_000_000
+               )
+
+      assert File.stat!(log_path).size == before
+    end
+
+    test "compacts when over the threshold",
+         %{log_path: log_path} do
+      for _ <- 1..100 do
+        AgentLog.append(
+          {:msg_update, "a1", "m1", %{content: String.duplicate("x", 200)}},
+          log_path: log_path,
+          version: @version
+        )
+      end
+
+      AgentLog.append({:agent, "a1", %{name: "A"}}, log_path: log_path, version: @version)
+
+      assert {:ok, %{before: b, after: a}} =
+               AgentLog.maybe_compact(
+                 log_path: log_path,
+                 version: @version,
+                 threshold_bytes: 100
+               )
+
+      assert a < b
+    end
+
+    test "no-op when the file doesn't exist",
+         %{log_path: log_path} do
+      refute File.exists?(log_path)
+
+      assert {:ok, :skipped} =
+               AgentLog.maybe_compact(log_path: log_path, version: @version)
+    end
+  end
 end

@@ -492,6 +492,19 @@ defmodule BoomLooper.Workspace.ServiceManager do
   defp replay_agent_log(project_dir, workspace_id) do
     log_path = Path.join([project_dir, ".boomlooper", "workspace", "agents.log"])
 
+    # Log is append-only. Compact it at boot if it's grown past the
+    # threshold so replay stays fast on long-running workspaces.
+    case BoomLooper.AgentLog.maybe_compact(log_path: log_path, version: @log_version) do
+      {:ok, %{before: b, after: a, agents: ag, messages: m}} when b != a ->
+        BoomLooper.EventLog.info(
+          "workspace:#{workspace_id}",
+          "Compacted agent log: #{b} → #{a} bytes (#{ag} agents, #{m} messages)"
+        )
+
+      _ ->
+        :ok
+    end
+
     case BoomLooper.AgentLog.replay(log_path: log_path, version: @log_version, ets_table: :chat_agents) do
       {:ok, agents} when map_size(agents) > 0 ->
         BoomLooper.EventLog.info("workspace", "Restored #{map_size(agents)} agent(s) from log, starting...")
