@@ -286,8 +286,13 @@ defmodule BoomLooper.Workspace.ServiceStatus do
   end
 
   defp parse_ports(ports_str) do
-    # Parse "0.0.0.0:32961->3000/tcp, ..." into %{3000 => 32961}
-    Regex.scan(~r/0\.0\.0\.0:(\d+)->(\d+)/, ports_str)
+    # Parse "127.0.0.1:32961->3000/tcp, ..." (or 0.0.0.0 / [::]) into
+    # %{3000 => 32961}. See BoomLooper.Docker.Observer.parse_host_ports/1
+    # for the same pattern — both modules parse `docker ps --format
+    # {{.Ports}}` output. The hardcoded 0.0.0.0 version silently
+    # returned empty maps once we bound published ports to 127.0.0.1
+    # for workspace isolation.
+    Regex.scan(~r/(?:\[::\]|(?:\d{1,3}\.){3}\d{1,3}):(\d+)->(\d+)/, ports_str)
     |> Map.new(fn [_, host_port, container_port] ->
       {String.to_integer(container_port), String.to_integer(host_port)}
     end)

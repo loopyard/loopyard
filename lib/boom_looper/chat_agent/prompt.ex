@@ -91,7 +91,7 @@ defmodule BoomLooper.ChatAgent.Prompt do
 
     Long command output is truncated — you'll see the last ~80 lines. The full output is visible to the user in the chat. Use `grep` or `read_file` for targeted lookups instead of dumping entire logs.
 
-    IMPORTANT: Container ports (e.g. 3000) are NOT accessible from the host. Docker maps them to random host ports. Use `probe_http` to find the real URL, or `service_containers` to see port mappings (e.g. 0.0.0.0:32794->3000/tcp means the app is at localhost:32794).
+    IMPORTANT: Container ports (e.g. 3000) are NOT accessible from the host. Docker maps them to random host ports. Use `probe_http` to find the real URL, or `service_containers` to see port mappings (e.g. 127.0.0.1:32794->3000/tcp means the app is at localhost:32794).
 
     When the user asks to see something they can click:
     - `app_url(path: "/users")` → URL to the running dev server (correct host port). Use this after building a feature or when the user says "show me", "open it", "let me see it".
