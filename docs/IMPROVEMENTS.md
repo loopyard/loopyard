@@ -4,9 +4,9 @@ A prioritized list of known, scoped improvements for BoomLooper. Ordered within 
 
 ## Simplicity (less to read, less to misunderstand)
 
-1. **Split the big modules.** `ChatAgent` (~1000 lines) mixes session management, message persistence, streaming, ETS, boot recovery, and restart logic. `chat_live.ex` (~1200 lines) is handle_event/handle_info soup. Extract by concern — no behavior change, just visibility. Every new feature in those files costs more than the last one.
+1. **One config story.** Settings live in env vars, `~/.boomlooper/`, `workspace.json`, `.boomlooper/workspace/`, compose files, and hardcoded module attributes. Write `docs/CONFIG.md` mapping every knob and, where cheap, collapse duplicate stores.
 
-2. **One config story.** Settings live in env vars, `~/.boomlooper/`, `workspace.json`, `.boomlooper/workspace/`, compose files, and hardcoded module attributes. Write `docs/CONFIG.md` mapping every knob and, where cheap, collapse duplicate stores.
+2. **Continue splitting the big modules.** `ChatAgent` (~960 lines) and `chat_live.ex` (~1280 lines) still mix too many concerns. OSProcess was extracted and section-header comments were added for navigation, but the clearest remaining wins are: pull stream-event `handle_info` clauses into `ChatAgent.Streaming`, pull the `init_fresh` / `init_resume` / `start_session` boot path into `ChatAgent.Boot`, and pull the sync + diff `handle_event` clusters in chat_live into their own modules. Each is a moderate, well-scoped refactor; do one at a time to keep diffs reviewable.
 
 ## Robustness (handles edge cases gracefully)
 

@@ -549,6 +549,8 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   @impl true
+  # --- UI state events ---
+
   def handle_event("switch_tab", %{"tab" => tab}, socket) do
     tab = case tab do
       "chat" -> :chat
@@ -568,6 +570,8 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
   @impl true
+  # --- Source-adapter sync events (Local/Mutagen) ---
+
   def handle_event("sync_restart", %{"workspace-id" => ws_id}, socket) do
     case BoomLooper.Source.Local.SyncMonitor.whereis(ws_id) do
       nil ->
@@ -590,6 +594,8 @@ defmodule BoomLooperWeb.ChatLive do
     BoomLooper.Source.Local.SyncMonitor.resume(ws_id)
     {:noreply, socket}
   end
+
+  # --- Cluster events (Docker Compose + volumes) ---
 
   def handle_event("restart_service", %{"service_name" => name}, socket) do
     ws_id = socket.assigns.workspace_entry.id
@@ -638,6 +644,8 @@ defmodule BoomLooperWeb.ChatLive do
   end
 
 
+  # --- Git diff viewer events ---
+
   def handle_event("view_diff", %{"path" => path}, socket) do
     project = socket.assigns.project
     workspace_entry = socket.assigns.workspace_entry
@@ -671,6 +679,8 @@ defmodule BoomLooperWeb.ChatLive do
   def handle_event("close_diff", _params, socket) do
     {:noreply, assign(socket, :diff_content, nil)}
   end
+
+  # --- Container view events ---
 
   def handle_event("refresh_container", _params, socket) do
     {:noreply, fetch_container_data(socket)}

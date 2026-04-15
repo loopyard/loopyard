@@ -282,6 +282,14 @@ defmodule BoomLooper.ChatAgent do
     Phoenix.PubSub.unsubscribe(BoomLooper.PubSub, "chat_agent:#{agent_id}")
   end
 
+  # --- GenServer init and session startup ---
+  #
+  # init/1 dispatches to init_fresh (brand-new agent) or init_resume
+  # (log-replay case). Both end up calling start_session/3 which
+  # builds the Claude SDK session options and kicks off the CLI
+  # subprocess via the configured backend. See docs/ARCHITECTURE.md
+  # for the full boot flow.
+  #
   # --- Callbacks ---
 
   @impl true
@@ -440,6 +448,13 @@ defmodule BoomLooper.ChatAgent do
   end
 
   @impl true
+  # --- Message flow ---
+  #
+  # send_message/stop/restart_session/rename are the hot path for user
+  # (and agent→agent, now gated) interaction. Appending messages,
+  # broadcasting to subscribers, and journaling to the ETF log all
+  # happen here.
+
   def handle_cast({:send_message, text}, state) do
     :telemetry.execute([:boom_looper, :agent, :message], %{}, %{agent_id: state.id, role: :user})
 
@@ -596,6 +611,14 @@ defmodule BoomLooper.ChatAgent do
   end
 
   @impl true
+  # --- Stream event handling ---
+  #
+  # The Claude SDK streams events (:stream_event, :stream_done,
+  # :stream_timeout, :stream_error) as the CLI produces output. These
+  # clauses maintain the agent's in-flight message, broadcast chunks
+  # to viewers via PubSub, and transition the agent's status when a
+  # turn completes or fails.
+
   def handle_info({:stream_event, id, event}, %{id: id} = state) do
     now = DateTime.utc_now()
 
@@ -786,7 +809,7 @@ defmodule BoomLooper.ChatAgent do
     # Port.close alone doesn't kill the OS process — we must find and kill it.
     if state.session && state.backend do
       # Grab the OS PID before stopping (the port will be gone after stop)
-      os_pid = get_session_os_pid(state.session)
+      os_pid = BoomLooper.ChatAgent.OSProcess.pid_of(state.session)
 
       try do
         task = Task.async(fn -> state.backend.stop(state.session) end)
@@ -798,7 +821,7 @@ defmodule BoomLooper.ChatAgent do
       end
 
       # Force-kill the OS process if it's still around
-      if os_pid, do: kill_os_process(os_pid)
+      if os_pid, do: BoomLooper.ChatAgent.OSProcess.kill(os_pid)
     end
 
     unless state.status in [:stopped, :destroying] do
@@ -806,40 +829,6 @@ defmodule BoomLooper.ChatAgent do
       :ets.insert(@ets_table, {state.id, summary(crashed)})
       broadcast(@topic, {:chat_agent_stopped, summary(crashed)})
     end
-  end
-
-  defp get_session_os_pid(session) do
-    # Walk the process tree: Session → children → find the adapter with a Port
-    try do
-      {:links, links} = Process.info(session, :links)
-      Enum.find_value(links, fn pid ->
-        if is_pid(pid) and Process.alive?(pid) do
-          try do
-            state = :sys.get_state(pid, 500)
-            if is_map(state) and Map.has_key?(state, :port) and is_port(state.port) do
-              case Port.info(state.port, :os_pid) do
-                {:os_pid, os_pid} -> os_pid
-                _ -> nil
-              end
-            end
-          catch
-            _, _ -> nil
-          end
-        end
-      end)
-    rescue
-      _ -> nil
-    catch
-      _, _ -> nil
-    end
-  end
-
-  defp kill_os_process(os_pid) do
-    System.cmd("kill", ["-9", "#{os_pid}"], stderr_to_stdout: true)
-  rescue
-    _ -> :ok
-  catch
-    _, _ -> :ok
   end
 
   # --- Private ---
