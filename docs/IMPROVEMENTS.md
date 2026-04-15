@@ -4,7 +4,7 @@ A prioritized list of known, scoped improvements for BoomLooper. Ordered within 
 
 ## Simplicity (less to read, less to misunderstand)
 
-1. **Continue splitting the big modules.** `ChatAgent` (~960 lines) and `chat_live.ex` (~1280 lines) still mix too many concerns. OSProcess was extracted and section-header comments were added for navigation, but the clearest remaining wins are: pull stream-event `handle_info` clauses into `ChatAgent.Streaming`, pull the `init_fresh` / `init_resume` / `start_session` boot path into `ChatAgent.Boot`, and pull the sync + diff `handle_event` clusters in chat_live into their own modules. Each is a moderate, well-scoped refactor; do one at a time to keep diffs reviewable.
+1. **Split chat_live.ex handler clusters.** `chat_live.ex` (~1280 lines) has three clusters of `handle_event` clauses with their own vocabulary that only touch assigns at the edges: git-diff viewer, source-adapter sync controls, and compose cluster controls. Extract each into its own module (pattern: same as `agent_lifecycle.ex`, which already did this for spawn/select). `ChatAgent` is **not** on this list — despite its size, it's one GenServer managing one session with interleaved state transitions; splitting it would be proximate complexity, not a real concern boundary. Section-header comments in `chat_agent.ex` are enough.
 
 ## Robustness (handles edge cases gracefully)
 
