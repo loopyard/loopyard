@@ -55,9 +55,11 @@ defmodule BoomLooper.WorkspaceRegistry do
   end
 
   @doc """
-  Remove a workspace. Stops containers and tears down adapter-owned state
-  (host worktree, volume, sync session, etc.). Cannot remove the main
-  workspace.
+  Remove a workspace. Routes through `Workspace.Destructor.destroy/1`
+  which stops agents, tears down containers/networks/volumes, runs the
+  source adapter's teardown, removes the compose dir on the host, and
+  clears ETS. Idempotent — safe to re-run on a partially-destroyed
+  workspace. Cannot remove the main workspace.
   """
   def remove_workspace(workspace_id) do
     workspace = get_workspace(workspace_id)
@@ -70,11 +72,7 @@ defmodule BoomLooper.WorkspaceRegistry do
         {:error, "Cannot remove the main workspace"}
 
       true ->
-        project = BoomLooper.ProjectRegistry.get_project(workspace.project_id)
-        adapter = BoomLooper.Source.for_project(project || %{})
-        adapter.remove_workspace(project || %{}, workspace)
-        :ets.delete(@workspaces_table, workspace_id)
-        :ok
+        BoomLooper.Workspace.Destructor.destroy(workspace_id)
     end
   end
 

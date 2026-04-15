@@ -363,29 +363,12 @@ defmodule BoomLooper.ProjectRegistry do
     project = get_project(id)
     workspaces = WorkspaceRegistry.list_workspaces(id)
 
-    # Stop all agents and clean up ETS entries
-    all_agents = BoomLooper.ChatAgent.list_agents()
-
-    adapter = BoomLooper.Source.for_project(project || %{})
-
+    # Per-workspace teardown (agents, containers, volumes, compose dir,
+    # adapter state, ETS) is centralized in Workspace.Destructor —
+    # same code path as single-workspace deletion, so there's one place
+    # to keep correct.
     Enum.each(workspaces, fn workspace ->
-      # Match agents by workspace_id or path
-      all_agents
-      |> Enum.filter(fn a ->
-        a[:workspace_id] == workspace.id ||
-        a[:bind_mount] == workspace[:path] ||
-        a[:working_dir] == workspace[:path]
-      end)
-      |> Enum.each(fn agent ->
-        BoomLooper.ChatAgent.stop_agent(agent.id)
-        BoomLooper.ChatAgent.remove_agent(agent.id)
-      end)
-
-      BoomLooper.WorkspaceSupervisor.stop_workspace(workspace.id)
-
-      # Let the Source adapter clean up adapter-specific state (e.g.
-      # Local: terminate mutagen session, remove host worktree).
-      adapter.remove_workspace(project || %{}, workspace)
+      BoomLooper.Workspace.Destructor.destroy(workspace.id)
     end)
 
     if project do

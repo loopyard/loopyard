@@ -8,25 +8,21 @@ A prioritized list of known, scoped improvements for BoomLooper. Ordered within 
 
 2. **Unify the compose lifecycle.** `do_start`, `restart_workspace_container`, `rebuild`, `restart_dev_streaming`, `restart_workspace_streaming`, etc. — six code paths, each with slightly different locking, error surfacing, and streaming. Consolidate to `ensure_started`, `ensure_stopped`, `rebuild` with shared error handling. Everything else layers on top.
 
-3. **Workspace cleanup on deletion.** Today, deleting a workspace leaves orphans: containers, named volumes, compose networks, agent log files, ETS entries, Mutagen sync sessions. After a few weeks, users have gigabytes of ghost volumes and stale `bl-*` containers. Write one `Workspace.destroy/1` that tears everything down in a defined order, with tests asserting no residue.
-
-4. **Docker retry at the CLI layer.** `Docker.docker/2` fails hard on any transient error (daemon restart, socket hiccup, colima pause). A small retry-with-backoff wrapper absorbs most of those without leaking into every call site. Pair with a circuit breaker so we don't hammer a dying daemon.
+3. **Docker retry at the CLI layer.** `Docker.docker/2` fails hard on any transient error (daemon restart, socket hiccup, colima pause). A small retry-with-backoff wrapper absorbs most of those without leaking into every call site. Pair with a circuit breaker so we don't hammer a dying daemon.
 
 ## Simplicity (less to read, less to misunderstand)
 
-5. **Split the big modules.** `ChatAgent` (~1000 lines) mixes session management, message persistence, streaming, ETS, boot recovery, and restart logic. `chat_live.ex` (~1200 lines) is handle_event/handle_info soup. Extract by concern — no behavior change, just visibility. Every new feature in those files costs more than the last one.
+4. **Split the big modules.** `ChatAgent` (~1000 lines) mixes session management, message persistence, streaming, ETS, boot recovery, and restart logic. `chat_live.ex` (~1200 lines) is handle_event/handle_info soup. Extract by concern — no behavior change, just visibility. Every new feature in those files costs more than the last one.
 
-6. **One config story.** Settings live in env vars, `~/.boomlooper/`, `workspace.json`, `.boomlooper/workspace/`, compose files, and hardcoded module attributes. Write `docs/CONFIG.md` mapping every knob and, where cheap, collapse duplicate stores.
+5. **One config story.** Settings live in env vars, `~/.boomlooper/`, `workspace.json`, `.boomlooper/workspace/`, compose files, and hardcoded module attributes. Write `docs/CONFIG.md` mapping every knob and, where cheap, collapse duplicate stores.
 
 ## Robustness (handles edge cases gracefully)
 
-7. **Explicit agent state machine.** Statuses (`:booting`, `:idle`, `:thinking`, `:stopped`, `:crashed`, `:destroying`) are set from many call sites and checked by eyeballing. Owning transitions in one module (`transition(:booting, :started) -> :idle`) makes illegal states unrepresentable. The "remove agent → restart Claude → remove again" race hints at this gap.
+6. **Explicit agent state machine.** Statuses (`:booting`, `:idle`, `:thinking`, `:stopped`, `:crashed`, `:destroying`) are set from many call sites and checked by eyeballing. Owning transitions in one module (`transition(:booting, :started) -> :idle`) makes illegal states unrepresentable. The "remove agent → restart Claude → remove again" race hints at this gap.
 
-8. **End-to-end integration test.** 300+ unit tests, zero end-to-end. Add one test that spawns a ChatAgent, writes a compose, runs `docker compose up`, execs a command, reads output, tears down. Gated behind `--include docker` so it doesn't slow the fast suite. Catches lifecycle regressions that unit tests by construction can't see.
+7. **End-to-end integration test.** 300+ unit tests, zero end-to-end. Add one test that spawns a ChatAgent, writes a compose, runs `docker compose up`, execs a command, reads output, tears down. Gated behind `--include docker` so it doesn't slow the fast suite. Catches lifecycle regressions that unit tests by construction can't see.
 
-9. **Surface silent failures uniformly.** `{:error, _} -> false`, `rescue _ -> :ok`, and `_ -> :ok` swallow errors in several places (Secrets read, ServiceManager async init, Mutagen reconnection). Rule: every silent swallow goes to `EventLog` with a human-actionable message.
-
-10. **Volume disk usage visible and bounded.** No quota, no sidebar indicator, no warning. A runaway agent writes until Docker errors with an opaque message. First step: size badge next to each volume in the sidebar. Next step: soft quota per workspace with a clear message on exceed.
+8. **Volume disk usage visible and bounded.** No quota, no sidebar indicator, no warning. A runaway agent writes until Docker errors with an opaque message. First step: size badge next to each volume in the sidebar. Next step: soft quota per workspace with a clear message on exceed.
 
 ## How to work this list
 
