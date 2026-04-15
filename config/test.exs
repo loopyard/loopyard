@@ -14,4 +14,8 @@ config :phoenix_live_view, :enable_expensive_runtime_checks, true
 config :boom_looper,
   auth_password: nil,
   auth_username: nil,
-  clone_mode: :disabled
+  clone_mode: :disabled,
+  # Default every ChatAgent in tests to a no-op backend so we never
+  # accidentally spawn the real Claude CLI subprocess. Individual
+  # tests can still pass `backend: SomeOther` in opts to override.
+  default_agent_backend: BoomLooper.Agent.Backend.Fake

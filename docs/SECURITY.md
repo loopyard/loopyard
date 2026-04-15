@@ -102,9 +102,19 @@ All file I/O goes through `VolumeIO` against the agent's own volume (`volume_nam
 
 `BoomLooper.Secrets` entries carry an optional `scope: [workspace_id | project_id]`. Empty scope = global; non-empty = only matching workspaces/projects. `Tools.Secrets` derives the requesting agent's workspace and project from the session and filters. Out-of-scope `get_secret` returns "not found" — indistinguishable from a missing key, so one agent can't probe for another project's secret names.
 
+## Notes on the BEAM-side Docker plane
+
+The BoomLooper BEAM makes Docker CLI calls of its own (not through agent tools). These calls are the control plane and are intentionally trusted:
+
+- `Docker.docker/2` is the single wrapper. Every call originates from an operator- or system-initiated path (ServiceManager lifecycle, Observer polling, Destructor teardown), never from a tool invocation.
+- `Docker.Observer` periodically runs `docker ps`, `docker volume ls`, and `docker system df -v` (the last one added for sidebar volume size badges). All are **read-only** — no state mutation. Observer does not issue `docker run`, `docker rm`, or `docker exec`.
+- Agent-initiated Docker operations go through the scoped tools (`docker_compose` with `-p bl-<workspace_id>`, `exec_in` with the workspace's own container). The agent can never invoke `Docker.docker/2` directly — the raw CLI tool was removed (see Boundaries § 1).
+
+If a new BEAM-side Docker call is added, it should follow the same pattern: workspace-scoped if it targets containers/volumes, and only reachable from operator/system paths (not from MCP tool handlers).
+
 ## Residual risks (accepted)
 
-- **Resource exhaustion.** No per-container CPU/memory limits, no cap on concurrent `exec_stream` tasks, no volume size quota, no agent log compaction. A runaway agent can starve the host. Defer until there's a settings story for limits.
+- **Resource exhaustion.** Per-container CPU/memory limits aren't enforced, no cap on concurrent `exec_stream` tasks, no hard volume size quota (size badges in the sidebar make usage visible but don't bound it). Agent log compaction IS implemented (see `AgentLog.maybe_compact/2`). A runaway agent can still starve the host; adding resource limits is tracked in `docs/IMPROVEMENTS.md`.
 - **In-workspace prompt injection.** Content from `read_file`, `grep`, `WebFetch`, `logs` flows into the agent's context. A malicious file can still instruct the agent to pollute its own workspace — rewrite its Dockerfile, add a backdoor to its code, etc. Our boundaries prevent this from reaching other workspaces; containing it within a workspace is the user's review problem.
 - **Eval sinks in the BEAM.** We rely on the fact that agent input never reaches `Code.eval_string`, `String.to_atom/1`, `:erlang.binary_to_term/1` without `:safe`, or unguarded dynamic `apply/3`. Enforced by not doing that, not by runtime greps (which agents can encode around). Any new code that parses agent-supplied input must be reviewed with this in mind.
 - **`mix boom.rpc` has full BEAM access.** By design — it's the operator tool. Do not expose `rpc`-style endpoints to agents.

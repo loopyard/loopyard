@@ -430,7 +430,16 @@ defmodule BoomLooper.ChatAgent do
     service_name = Keyword.get(params, :service_name)
 
     tools = Keyword.get(opts, :tools, ToolConfig.default_tools())
-    backend = Keyword.get(opts, :backend, BoomLooper.Agent.Backend.ClaudeCode)
+
+    # Backend defaults: opts override > app config > ClaudeCode.
+    # Tests set `:default_agent_backend` to `BoomLooper.Agent.Backend.Fake`
+    # in config/test.exs so any test that boots a ChatAgent without an
+    # explicit override gets a no-op backend instead of timing out on
+    # the real CLI.
+    default_backend =
+      Application.get_env(:boom_looper, :default_agent_backend, BoomLooper.Agent.Backend.ClaudeCode)
+
+    backend = Keyword.get(opts, :backend, default_backend)
     workspace = if workspace_id, do: load_workspace_config(workspace_id), else: nil
     system_prompt = Prompt.build_system_prompt(id, bind_mount, workspace_id, workspace, service_name)
 

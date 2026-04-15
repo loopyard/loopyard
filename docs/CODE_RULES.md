@@ -12,12 +12,23 @@ If you're fixing a bug, write a test that reproduces it BEFORE writing the fix. 
 
 Don't bury behavior in LiveView private functions. If it has logic worth getting right, it belongs in its own module with its own tests. LiveViews should be thin — they handle events, delegate to modules, and render.
 
-**No file over ~300 lines.** If a module is growing past that, it has multiple concerns and should be split. We've learned this repeatedly:
-- `container.ex` (1500 lines, 20 tools) → 22 files, no file over 200 lines
-- `workspace_live.ex` (was `chat_live.ex`, 1717 lines) → ~1200 lines + 7 extracted modules (components, service_logs, agent_lifecycle, messages, diff_loader, file_browser, state_machine reference)
-- `chat_agent.ex` (1148 lines) → ~990 lines + prompt, tool_config, persistence, os_process, state_machine submodules
-- `project_registry.ex` → split into ProjectRegistry + WorkspaceRegistry
-- `volume_manager.ex` → split into VolumeManager + VolumeIO + VolumeCloner
+**~300 lines is the soft ceiling.** If a module is growing past that, ask: is this multiple concerns, or one tight concern with its own vocabulary?
+
+*Split* when the functions cluster into groups that don't share state in interesting ways — each cluster has its own vocabulary and a reader can understand one without loading the other.
+
+*Don't split* when the module is **proximate complexity**: a single GenServer where state transitions are interleaved, a LiveView multiplexing over many routes against one subscription set. Splitting those spreads one state machine across files and makes every reader chase callbacks. Prefer section-header comments there.
+
+Historical wins (real concerns, not just size):
+- `container.ex` (1500 lines, 20 tools) → 22 files, one per tool. Each tool was independent — clear win.
+- `project_registry.ex` → `ProjectRegistry` + `WorkspaceRegistry`. Different lifecycles, different callers.
+- `volume_manager.ex` → `VolumeManager` + `VolumeIO` + `VolumeCloner`. Different boundaries (CLI / file I/O / clone pipeline).
+
+Current files over 300 that stay whole on purpose:
+- `workspace_live.ex` (~1200). The workspace view multiplexes chat + file browser + git viewer + volumes + services against one PubSub subscription set. The **render pipeline and shared live data are the concern** — splitting into per-tool LiveViews loses multiplayer cohesion (see docs/ARCHITECTURE.md § LiveView architecture). Handler clusters with their own vocabulary (`DiffLoader`, `FileBrowser`) ARE extracted. The remaining size is genuine multiplexing, not mixed concerns.
+- `chat_agent.ex` (~990). One GenServer per agent session. Send/stop/restart/stream transitions are interleaved — extracting them would thread the same state across files. Section-header comments navigate by concern; OS-process and state-machine helpers are extracted as separate modules.
+- `compose.ex` (~560). One subject (Docker Compose lifecycle + validation). No internal vocabulary split.
+
+Rule of thumb the next time this comes up: **can a reader understand half this file without reading the other half?** If yes, split. If no, section-header it.
 
 **LiveView extraction pattern:** extract into modules under `live/workspace_live/`. Each module exports functions that take and return sockets. The LiveView's handlers become one-line delegates:
 - `WorkspaceLive.Components` (use macro that imports Sidebar, Chat, Services, States, Formatters, ContextPanel, SyncDetail, Volumes)
