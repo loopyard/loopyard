@@ -405,15 +405,21 @@ defmodule BoomLooper.Docker.Observer do
     end
   end
 
-  # Parse "0.0.0.0:33958->3000/tcp, ..." into %{3000 => 33958}
-  defp parse_host_ports(ports_str) when is_binary(ports_str) do
-    Regex.scan(~r/0\.0\.0\.0:(\d+)->(\d+)/, ports_str)
+  # Parse "127.0.0.1:33958->3000/tcp, ..." (or 0.0.0.0:... / [::]:...)
+  # into %{3000 => 33958}. We bind published ports to 127.0.0.1 for
+  # per-workspace network isolation (see docs/SECURITY.md § Network
+  # isolation), so the IP portion of `docker ps --format {{.Ports}}`
+  # is no longer 0.0.0.0. Match any IPv4 literal or IPv6 `[::]` prefix
+  # so the sidebar link survives changes to the host bind address.
+  @doc false
+  def parse_host_ports(ports_str) when is_binary(ports_str) do
+    Regex.scan(~r/(?:\[::\]|(?:\d{1,3}\.){3}\d{1,3}):(\d+)->(\d+)/, ports_str)
     |> Map.new(fn [_, host_port, container_port] ->
       {String.to_integer(container_port), String.to_integer(host_port)}
     end)
   end
 
-  defp parse_host_ports(_), do: %{}
+  def parse_host_ports(_), do: %{}
 
   # ── Debounce ──
 
