@@ -41,7 +41,8 @@ defmodule BoomLooper.Secrets do
           %{key: key, name: entry["name"] || key, scope: entry["scope"] || []}
         end)
 
-      _ ->
+      {:error, reason} ->
+        log_store_error("list", reason)
         []
     end
   end
@@ -71,7 +72,8 @@ defmodule BoomLooper.Secrets do
           nil -> :not_found
         end
 
-      _ ->
+      {:error, reason} ->
+        log_store_error("get/1", reason)
         :not_found
     end
   end
@@ -98,7 +100,8 @@ defmodule BoomLooper.Secrets do
             :not_found
         end
 
-      _ ->
+      {:error, reason} ->
+        log_store_error("get/3", reason)
         :not_found
     end
   end
@@ -132,6 +135,18 @@ defmodule BoomLooper.Secrets do
   end
 
   # --- Private ---
+
+  # If the secrets file is present but unreadable or invalid JSON, an
+  # agent would otherwise see "no secrets" or "not found" and have no
+  # way to know why its credentials are missing. Log once per call so
+  # the user/operator can investigate.
+  defp log_store_error(op, reason) do
+    BoomLooper.EventLog.error(
+      "secrets",
+      "Failed to read secrets store (#{op}): #{inspect(reason)}. " <>
+        "Path: #{storage_path()}. Secrets appear empty until this is fixed."
+    )
+  end
 
   defp visible_to?(scope, _workspace_id, _project_id) when scope in [nil, []], do: true
 

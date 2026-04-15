@@ -211,15 +211,33 @@ defmodule BoomLooper.Tools.Container.Helpers do
   def sync_volume_to_host(volume_name, project_dir) do
     host_dir = Path.join(project_dir, ".boomlooper/workspace")
     File.mkdir_p!(host_dir)
+    ws_id = Path.basename(project_dir)
 
-    # Sync Dockerfile (no substitution needed)
+    # Sync Dockerfile (no substitution needed). Missing Dockerfile is
+    # unusual — surface it so the user/agent can react rather than
+    # hitting a cryptic `docker compose build` error later.
     case BoomLooper.VolumeManager.read_file(volume_name, ".boomlooper/workspace/Dockerfile") do
-      {:ok, content} -> File.write!(Path.join(host_dir, "Dockerfile"), content)
-      {:error, _} -> :ok
+      {:ok, content} ->
+        File.write!(Path.join(host_dir, "Dockerfile"), content)
+
+      {:error, :not_found} ->
+        BoomLooper.EventLog.warning("workspace:#{ws_id}",
+          "No Dockerfile at .boomlooper/workspace/Dockerfile in the volume. " <>
+            "Write one via `write_file` before `docker_compose build`.")
+
+      {:error, reason} ->
+        BoomLooper.EventLog.error("workspace:#{ws_id}",
+          "Failed to read Dockerfile from volume: #{inspect(reason)}")
     end
 
-    # Sync docker-compose.yml with full processing + sticky ports
-    ws_id = Path.basename(project_dir)
+    # Sync docker-compose.yml with full processing + sticky ports.
+    #
+    # If `process_agent_compose/3` rejects the file (host bind mount,
+    # privileged, external network, etc.), we do NOT fall back to the
+    # raw content. Writing a rejected compose file would let a
+    # sandbox-escaping compose reach `docker compose up` from the
+    # agent-initiated `docker_compose` tool path, bypassing the
+    # validation we just ran. See docs/SECURITY.md.
     port_map = BoomLooper.Compose.capture_port_map(ws_id)
 
     case BoomLooper.VolumeManager.read_file(
@@ -227,26 +245,35 @@ defmodule BoomLooper.Tools.Container.Helpers do
            ".boomlooper/workspace/docker-compose.yml"
          ) do
       {:ok, content} ->
-        processed =
-          case BoomLooper.Compose.process_agent_compose(content, ws_id, port_map: port_map) do
-            {:ok, json} ->
-              json
+        case BoomLooper.Compose.process_agent_compose(content, ws_id, port_map: port_map) do
+          {:ok, processed} ->
+            processed =
+              String.replace(
+                processed,
+                ~r/context["\s:]*\/workspace/,
+                "context: #{host_dir}"
+              )
 
-            {:error, _} ->
-              content |> String.replace("${CODE_VOLUME}", volume_name)
-          end
+            File.write!(Path.join(host_dir, "docker-compose.yml"), processed)
 
-        processed =
-          String.replace(
-            processed,
-            ~r/context["\s:]*\/workspace/,
-            "context: #{host_dir}"
-          )
+          {:error, reason} ->
+            BoomLooper.EventLog.error(
+              "workspace:#{ws_id}",
+              "docker-compose.yml rejected by security validator — cluster " <>
+                "command will not run until it's fixed.\n\n#{reason}"
+            )
 
-        File.write!(Path.join(host_dir, "docker-compose.yml"), processed)
+            {:error, reason}
+        end
 
-      {:error, _} ->
-        :ok
+      {:error, :not_found} ->
+        BoomLooper.EventLog.warning("workspace:#{ws_id}",
+          "No docker-compose.yml at .boomlooper/workspace/docker-compose.yml " <>
+            "in the volume. Write one via `write_file` before `docker_compose up`.")
+
+      {:error, reason} ->
+        BoomLooper.EventLog.error("workspace:#{ws_id}",
+          "Failed to read docker-compose.yml from volume: #{inspect(reason)}")
     end
 
     :ok
