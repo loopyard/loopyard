@@ -185,12 +185,32 @@ defmodule BoomLooper.ChatAgent do
 
   @doc "Remove a stopped/crashed agent — transitions to :destroying, cleans up Docker, then removes from sidebar"
   def remove_agent(id) do
-    # Transition to :destroying so all viewers see the state
+    # Transition to :destroying via the StateMachine so we reject the
+    # "remove → restart → remove again" race: once an agent is
+    # :destroying, a second remove_agent call is a no-op instead of
+    # re-broadcasting and re-entering cleanup.
     case :ets.lookup(@ets_table, id) do
+      [{^id, %{status: :destroying}}] ->
+        :ok
+
       [{^id, summary}] ->
-        destroying = %{summary | status: :destroying}
-        :ets.insert(@ets_table, {id, destroying})
-        broadcast(@topic, {:chat_agent_status_changed, id, :destroying})
+        case BoomLooper.ChatAgent.StateMachine.transition(summary.status, :destroying) do
+          {:ok, :destroying} ->
+            destroying = %{summary | status: :destroying}
+            :ets.insert(@ets_table, {id, destroying})
+            broadcast(@topic, {:chat_agent_status_changed, id, :destroying})
+
+          {:error, reason} ->
+            BoomLooper.EventLog.warning(
+              "agent:#{summary[:name] || id}",
+              "remove_agent: invalid status transition #{inspect(reason)} — " <>
+                "proceeding with cleanup anyway"
+            )
+
+            destroying = %{summary | status: :destroying}
+            :ets.insert(@ets_table, {id, destroying})
+            broadcast(@topic, {:chat_agent_status_changed, id, :destroying})
+        end
 
       [] ->
         :ok
@@ -267,7 +287,18 @@ defmodule BoomLooper.ChatAgent do
         [] -> summary
       end
     end)
-    |> Enum.sort_by(& &1[:started_at], {:desc, DateTime})
+    # Agents without a started_at (e.g. test-seeded ETS rows, half-
+    # populated boot state) would crash `DateTime.compare/2`. Treat
+    # missing timestamps as "oldest" so sort is total and safe.
+    |> Enum.sort_by(
+      & &1[:started_at],
+      fn
+        nil, nil -> true
+        nil, _ -> false
+        _, nil -> true
+        a, b -> DateTime.compare(a, b) != :lt
+      end
+    )
   end
 
   def subscribe do

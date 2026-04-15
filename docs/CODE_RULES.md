@@ -14,16 +14,17 @@ Don't bury behavior in LiveView private functions. If it has logic worth getting
 
 **No file over ~300 lines.** If a module is growing past that, it has multiple concerns and should be split. We've learned this repeatedly:
 - `container.ex` (1500 lines, 20 tools) → 22 files, no file over 200 lines
-- `chat_live.ex` (1717 lines) → 852 lines + 5 extracted modules (components, service_logs, agent_lifecycle, compose_check, messages)
-- `chat_agent.ex` (1148 lines) → ~950 lines + prompt, tool_config, persistence submodules
+- `workspace_live.ex` (was `chat_live.ex`, 1717 lines) → ~1200 lines + 7 extracted modules (components, service_logs, agent_lifecycle, messages, diff_loader, file_browser, state_machine reference)
+- `chat_agent.ex` (1148 lines) → ~990 lines + prompt, tool_config, persistence, os_process, state_machine submodules
 - `project_registry.ex` → split into ProjectRegistry + WorkspaceRegistry
 - `volume_manager.ex` → split into VolumeManager + VolumeIO + VolumeCloner
 
-**LiveView extraction pattern:** extract into modules under `live/chat_live/`. Each module exports functions that take and return sockets. The LiveView's handlers become one-line delegates:
-- `ChatLive.Components` (use macro that imports Sidebar, Chat, Services, States, Formatters)
-- `ChatLive.AgentLifecycle` — spawn, select, list agents
-- `ChatLive.ServiceLogs` — fetch, refresh, format service logs
-- `ChatLive.ComposeCheck` — async compose file detection
+**LiveView extraction pattern:** extract into modules under `live/workspace_live/`. Each module exports functions that take and return sockets. The LiveView's handlers become one-line delegates:
+- `WorkspaceLive.Components` (use macro that imports Sidebar, Chat, Services, States, Formatters, ContextPanel, SyncDetail, Volumes)
+- `WorkspaceLive.AgentLifecycle` — spawn, select, list agents
+- `WorkspaceLive.ServiceLogs` — fetch, refresh, format service logs
+- `WorkspaceLive.DiffLoader` — git diff / commit fetches (adapter-scoped)
+- `WorkspaceLive.FileBrowser` — volume file browser (tree + probe_path)
 
 **Examples of what to extract:**
 - `StreamBuffer` — streaming accumulation logic. 31 unit tests.

@@ -425,4 +425,49 @@ defmodule BoomLooper.ChatAgentTest do
         "Full prompt is #{String.length(prompt)} chars, max is 2000."
     end
   end
+
+  describe "remove_agent/1 is idempotent (state-machine guard)" do
+    # The "remove → restart Claude → remove again" race used to
+    # re-broadcast :chat_agent_status_changed for an already-destroying
+    # agent, confusing watchers. With the StateMachine wired in,
+    # calling remove_agent on an agent already in :destroying is a no-op.
+
+    setup do
+      id = "remove-idempotent-test-#{:rand.uniform(1_000_000)}"
+
+      :ets.insert(
+        :chat_agents,
+        {id,
+         %{id: id, name: "test", status: :idle, messages: [], workspace_id: nil}}
+      )
+
+      on_exit(fn -> :ets.delete(:chat_agents, id) end)
+      %{id: id}
+    end
+
+    test "second remove on a :destroying agent doesn't re-broadcast",
+         %{id: id} do
+      ChatAgent.subscribe()
+
+      # First call: :idle → :destroying → ETS delete. Both broadcasts
+      # should land.
+      ChatAgent.remove_agent(id)
+
+      assert_receive {:chat_agent_status_changed, ^id, :destroying}, 500
+      assert_receive {:chat_agent_removed, ^id}, 500
+
+      # Simulate the race: re-insert a :destroying entry as if another
+      # viewer still had it cached, and call remove_agent again. The
+      # StateMachine guard must detect this and skip re-broadcasting.
+      :ets.insert(
+        :chat_agents,
+        {id,
+         %{id: id, name: "test", status: :destroying, messages: [], workspace_id: nil}}
+      )
+
+      ChatAgent.remove_agent(id)
+
+      refute_receive {:chat_agent_status_changed, ^id, :destroying}, 200
+    end
+  end
 end

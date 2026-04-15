@@ -191,18 +191,23 @@ LiveViews are thin — they handle events, delegate to modules, and render.
 
 ```
 lib/boom_looper_web/live/
-├── chat_live.ex              ← mount, handle_*, render (~850 lines)
-├── chat_live/
+├── workspace_live.ex         ← mount, handle_*, render (the workspace view: chat + file browser + git viewer + …)
+├── workspace_live/
 │   ├── components.ex         ← imports all component submodules
 │   ├── components/
 │   │   ├── sidebar.ex        ← sidebar, service_item, volume_item, agent_list_item
 │   │   ├── chat.ex           ← chat_header, agent_view, chat_panel, container_panel
 │   │   ├── services.ex       ← service_log_view, console_view, all_services_view
 │   │   ├── states.ex         ← booting_screen, empty_state
+│   │   ├── context_panel.ex  ← right-rail agent context pane
+│   │   ├── sync_detail.ex    ← Local-source sync status detail page
+│   │   ├── volumes.ex        ← volume detail + tabs
+│   │   ├── viewers/          ← file + git + image + binary + syntax viewers
 │   │   └── formatters.ex     ← time_ago, exit_reason, service_status_text (pure functions)
 │   ├── agent_lifecycle.ex    ← spawn, select, list agents
+│   ├── diff_loader.ex        ← git diff / commit fetches (adapter-scoped pure fns)
+│   ├── file_browser.ex       ← volume file browser (tree + probe_path)
 │   ├── service_logs.ex       ← fetch, refresh service logs (async via TaskSupervisor)
-│   ├── compose_check.ex      ← async compose file detection
 │   └── messages.ex           ← chat_msg, streaming_bubble components
 ```
 
