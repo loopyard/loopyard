@@ -346,6 +346,12 @@ defmodule BoomLooper.Docker.Observer do
            "--format", "{{.Name}}"
          ]) do
       {:ok, output} ->
+        # One `docker system df -v` call returns sizes for every volume;
+        # far cheaper than `docker volume inspect` per volume or spinning
+        # up an alpine container for `du`. If it fails we still emit the
+        # volume list without sizes — the sidebar badge is optional UX.
+        sizes = fetch_volume_sizes()
+
         output
         |> String.split("\n", trim: true)
         |> Enum.map(fn name ->
@@ -354,12 +360,40 @@ defmodule BoomLooper.Docker.Observer do
           summary = BoomLooper.VolumeManager.volume_summary(name)
 
           Map.merge(summary, %{
-            workspace_id: extract_workspace_id(name)
+            workspace_id: extract_workspace_id(name),
+            size: Map.get(sizes, name)
           })
         end)
 
       _ ->
         []
+    end
+  end
+
+  # Returns `%{volume_name => size_string}` for every local volume. Uses
+  # `docker system df -v` which reports all volume sizes in one call.
+  # The `--format '{{json .}}'` variant emits a JSON object with a
+  # `Volumes` array whose entries have `Name` and `Size` (pre-formatted
+  # like "145.3MB").
+  defp fetch_volume_sizes do
+    case BoomLooper.Docker.docker(["system", "df", "-v", "--format", "{{json .}}"],
+           timeout: 5_000,
+           retry: false
+         ) do
+      {:ok, json} ->
+        case Jason.decode(json) do
+          {:ok, %{"Volumes" => volumes}} when is_list(volumes) ->
+            for %{"Name" => name, "Size" => size} <- volumes,
+                is_binary(name) and is_binary(size),
+                into: %{},
+                do: {name, size}
+
+          _ ->
+            %{}
+        end
+
+      _ ->
+        %{}
     end
   end
 
