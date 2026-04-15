@@ -6,7 +6,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
   alias BoomLooper.StreamBuffer
 
   use BoomLooperWeb.Live.WorkspaceLive.Components
-  alias BoomLooperWeb.Live.WorkspaceLive.{AgentLifecycle, DiffLoader, ServiceLogs}
+  alias BoomLooperWeb.Live.WorkspaceLive.{AgentLifecycle, DiffLoader, FileBrowser, ServiceLogs}
 
   @impl true
   def mount(%{"project_id" => project_id, "workspace_id" => workspace_id}, _session, socket) do
@@ -238,44 +238,16 @@ defmodule BoomLooperWeb.WorkspaceLive do
   # File browser root: /volumes/:name/files
   def handle_params(%{"volume_name" => name}, _uri, %{assigns: %{live_action: :volume_files_root}} = socket) do
     socket = setup_volume(socket, name, :files)
-
-    {:noreply,
-     socket
-     |> assign(:browse_path, ".")
-     |> assign(:file_content, nil)
-     |> assign(:file_path, nil)
-     |> assign(:file_tree, :loading)
-     |> start_async(:file_tree, fn -> BoomLooper.VolumeManager.tree(name, ".") end)}
+    {:noreply, FileBrowser.enter_root(socket, name)}
   end
 
   # File browser: /volumes/:name/files/path/to/thing
-  # Could be a file or a directory — we try to read it as a file AND load
-  # the parent directory tree. If the file read fails, handle_async falls
-  # back to treating it as a directory.
+  # Could be a file or a directory — FileBrowser probes both and the
+  # :file_content handle_async dispatches on the returned shape.
   def handle_params(%{"volume_name" => name, "path" => path_parts}, _uri, %{assigns: %{live_action: :volume_file}} = socket) do
     file_path = Path.join(path_parts)
     socket = setup_volume(socket, name, :files)
-    dir = Path.dirname(file_path)
-    dir = if dir == ".", do: ".", else: dir
-
-    {:noreply,
-     socket
-     |> assign(:browse_path, dir)
-     |> assign(:file_tree, :loading)
-     |> assign(:file_content, :loading)
-     |> assign(:file_path, file_path)
-     |> start_async(:file_tree, fn -> BoomLooper.VolumeManager.tree(name, dir) end)
-     |> start_async(:file_content, fn ->
-       case BoomLooper.VolumeIO.read_file(name, file_path) do
-         {:ok, content} -> %{path: file_path, content: content}
-         {:error, _} ->
-           # Not a file — try as directory
-           case BoomLooper.VolumeManager.tree(name, file_path) do
-             {:ok, entries} -> %{path: file_path, is_dir: true, entries: entries}
-             {:error, _} -> %{path: file_path, content: nil, not_found: true}
-           end
-       end
-     end)}
+    {:noreply, FileBrowser.enter_path(socket, name, file_path)}
   end
 
   # Git view
@@ -1035,9 +1007,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
         |> assign(:selected_agent, nil)
         |> assign(:selected_service, nil)
         |> assign(:selected_volume, name)
-        |> assign(:file_tree, nil)
-        |> assign(:file_content, nil)
-        |> assign(:file_path, nil)
+        |> FileBrowser.reset()
         |> assign(:git_log, [])
         |> assign(:git_status, [])
         |> assign(:diff_content, nil)
