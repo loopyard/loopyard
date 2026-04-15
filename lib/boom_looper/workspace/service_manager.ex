@@ -201,12 +201,11 @@ defmodule BoomLooper.Workspace.ServiceManager do
     compose_path = Compose.compose_path(state.project_dir)
     File.mkdir_p!(Path.dirname(compose_path))
 
-    # Capture any existing port assignments (e.g. containers still running after GenServer restart)
-    port_map = Compose.capture_port_map(state.workspace_id)
-
+    # Port assignments now come from BoomLooper.PortRegistry inside
+    # process_agent_compose/3 — no more port_map capture at this layer.
     has_compose = case BoomLooper.VolumeManager.read_file(volume_name, ".boomlooper/workspace/docker-compose.yml") do
       {:ok, content} when content != "" ->
-        case Compose.process_agent_compose(content, state.workspace_id, port_map: port_map) do
+        case Compose.process_agent_compose(content, state.workspace_id) do
           {:ok, processed} ->
             File.write!(compose_path, processed)
             true

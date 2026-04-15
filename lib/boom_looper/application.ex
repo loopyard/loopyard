@@ -25,6 +25,7 @@ defmodule BoomLooper.Application do
       {DynamicSupervisor, name: BoomLooper.TerminalSupervisor, strategy: :one_for_one},
       {Task.Supervisor, name: BoomLooper.TaskSupervisor},
       BoomLooper.WorkspaceSupervisor,
+      BoomLooper.PortRegistry,
       BoomLooper.SSHServer,
 
       # Docker event-driven cache — starts the event stream + initial
@@ -65,6 +66,12 @@ defmodule BoomLooper.Application do
     # Restore persisted projects from ~/.boomlooper/projects.json
     # ServiceManager will reconnect to any running containers
     BoomLooper.ProjectRegistry.restore()
+
+    # Load persisted port assignments from ~/.boomlooper/ports.json,
+    # or seed from legacy sticky port maps on first boot. Must run
+    # AFTER ProjectRegistry.restore/0 so the migration path can see
+    # every known workspace.
+    BoomLooper.PortRegistry.restore()
 
     port = Application.get_env(:boom_looper, BoomLooperWeb.Endpoint)[:http][:port] || 4000
     IO.puts("\n  Launch from any project directory:")

@@ -238,14 +238,12 @@ defmodule BoomLooper.Tools.Container.Helpers do
     # sandbox-escaping compose reach `docker compose up` from the
     # agent-initiated `docker_compose` tool path, bypassing the
     # validation we just ran. See docs/SECURITY.md.
-    port_map = BoomLooper.Compose.capture_port_map(ws_id)
-
     case BoomLooper.VolumeManager.read_file(
            volume_name,
            ".boomlooper/workspace/docker-compose.yml"
          ) do
       {:ok, content} ->
-        case BoomLooper.Compose.process_agent_compose(content, ws_id, port_map: port_map) do
+        case BoomLooper.Compose.process_agent_compose(content, ws_id) do
           {:ok, processed} ->
             processed =
               String.replace(

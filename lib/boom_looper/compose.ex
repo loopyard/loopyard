@@ -13,21 +13,19 @@ defmodule BoomLooper.Compose do
   Agents write standard compose syntax. We:
   1. Replace ${CODE_VOLUME} placeholder with actual volume name
   2. Ensure the code volume is declared as external
-  3. Pin host ports from previous run (sticky ports across restarts)
+  3. Assign host ports via `BoomLooper.PortRegistry` (sticky per workspace)
 
-  Options:
-    * `:port_map` — `%{"service_name" => %{container_port => host_port}}` from the
-      previous run. If a service had port 33870→3000, we pin "33870:3000" so the
-      URL stays stable across restarts. If omitted, ports are dynamically allocated.
+  All emitted port specs are `"127.0.0.1:<registry_port>:<container>"` — the
+  loopback binding keeps ports off the LAN by default; explicit exposure
+  will be a separate TCP proxy layer (v2).
   """
-  def process_agent_compose(compose_content, workspace_id, opts \\ []) do
+  def process_agent_compose(compose_content, workspace_id, _opts \\ []) do
     code_volume = Workspace.volume_name_for(workspace_id)
-    port_map = Keyword.get(opts, :port_map, %{})
 
     case parse_compose(compose_content) do
       {:ok, compose} ->
         with :ok <- validate_no_host_mounts(compose) do
-          compose = process_services(compose, code_volume, port_map)
+          compose = process_services(compose, code_volume, workspace_id)
           compose = ensure_code_volume(compose, code_volume)
           {:ok, Jason.encode!(compose, pretty: true)}
         end
@@ -379,12 +377,12 @@ defmodule BoomLooper.Compose do
     end
   end
 
-  defp process_services(compose, code_volume, port_map) do
+  defp process_services(compose, code_volume, workspace_id) do
     update_in(compose, ["services"], fn services ->
       services
       |> Enum.map(fn {name, svc} ->
         svc = update_volumes_placeholder(svc, code_volume)
-        svc = pin_or_strip_ports(svc, Map.get(port_map, name, %{}))
+        svc = assign_registry_ports(svc, workspace_id, name)
         {name, svc}
       end)
       |> Map.new()
@@ -411,39 +409,48 @@ defmodule BoomLooper.Compose do
   end
   defp update_volumes_placeholder(svc, _), do: svc
 
-  # Pin previously-assigned host ports so URLs survive restarts.
-  # Falls back to dynamic allocation if no previous mapping exists.
-  defp pin_or_strip_ports(svc, prev_ports) when is_map(svc) do
+  # Replace each service's `ports:` list with
+  # `"127.0.0.1:<registry_port>:<container_port>"` entries, asking
+  # `BoomLooper.PortRegistry` for the host-side port. The registry is
+  # sticky per `{workspace_id, service, container_port}` so the same
+  # URL works across restarts.
+  #
+  # Loopback-only binding keeps ports off the LAN by default. Explicit
+  # exposure (v2) is a separate TCP proxy that fronts the loopback
+  # port without rewriting compose.
+  defp assign_registry_ports(svc, workspace_id, service_name) when is_map(svc) do
     case svc["ports"] do
       ports when is_list(ports) ->
-        pinned = Enum.map(ports, &pin_port(&1, prev_ports))
-        Map.put(svc, "ports", pinned)
-      _ -> svc
+        assigned =
+          Enum.map(ports, &emit_port(&1, workspace_id, service_name))
+
+        Map.put(svc, "ports", assigned)
+
+      _ ->
+        svc
     end
   end
-  defp pin_or_strip_ports(svc, _), do: svc
 
-  # If we have a previous host port for this container port, pin it.
-  # Otherwise strip to container-only for dynamic allocation.
-  #
-  # All emitted ports bind to 127.0.0.1 instead of the default 0.0.0.0.
-  # Loopback-only means:
-  #   1. Other workspaces' containers can't reach this service via the
-  #      Docker host gateway — the whole point of per-workspace network
-  #      isolation is defeated if ports are reachable at `<docker-host>:<port>`.
-  #   2. Machines on the LAN can't hit dev servers without authenticating
-  #      through BoomLooper. Local multiplayer goes via the Phoenix app;
-  #      agent containers are not publicly exposed.
-  defp pin_port(port_spec, prev_ports) when is_binary(port_spec) do
+  defp assign_registry_ports(svc, _workspace_id, _service_name), do: svc
+
+  defp emit_port(port_spec, workspace_id, service_name) when is_binary(port_spec) do
     container_port = extract_container_port(port_spec)
 
-    case Map.get(prev_ports, container_port) || Map.get(prev_ports, to_string(container_port)) do
-      nil -> "127.0.0.1::#{container_port}"
-      host_port -> "127.0.0.1:#{host_port}:#{container_port}"
+    case BoomLooper.PortRegistry.assign(workspace_id, service_name, container_port) do
+      {:ok, host_port} ->
+        "127.0.0.1:#{host_port}:#{container_port}"
+
+      {:error, :port_pool_exhausted} ->
+        # Fail-open by letting Docker pick a random port. Logged in
+        # PortRegistry; the user will see the pool-exhausted warning
+        # in EventLog. Better to emit something compose-valid than to
+        # crash the whole compose processing pipeline.
+        "127.0.0.1::#{container_port}"
     end
   end
-  defp pin_port(port_spec, prev_ports) when is_integer(port_spec) do
-    pin_port(to_string(port_spec), prev_ports)
+
+  defp emit_port(port_spec, workspace_id, service_name) when is_integer(port_spec) do
+    emit_port(to_string(port_spec), workspace_id, service_name)
   end
 
   # Extract the container port number from various formats

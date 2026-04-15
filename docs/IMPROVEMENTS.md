@@ -4,7 +4,7 @@ A prioritized list of known, scoped improvements for BoomLooper. Ordered within 
 
 ## In flight
 
-1. **Port registry + controlled exposure.** Plan: [`plans/port-registry.md`](../plans/port-registry.md). v1 introduces `BoomLooper.PortRegistry` as a single global pool (default `4000..9999`) that owns host port allocation; agents keep writing container-side-only `ports:` entries. v2 adds explicit exposure: a padlock toggle per service + a `/system/ports` audit page showing bytes, connected IPs, container/workspace/project associations, and open/close/remove buttons. v3 plugs tunnel backends (Cloudflare / Tailscale / wireguard) into the same `PortExposer` dispatch.
+1. **Port registry — v2 (controlled exposure).** v1 shipped (`BoomLooper.PortRegistry` + `PortStore` + `ports.json` persistence + Compose wiring + Destructor release + AppUrl lookup). Plan: [`plans/port-registry.md`](../plans/port-registry.md) § "v2 (next session)". Build `PortExposer` under a DynamicSupervisor — an Elixir `:gen_tcp` proxy listening on `0.0.0.0:<host_port>` forwarding to `127.0.0.1:<host_port>`. Sidebar padlock toggle per service (operator-only, confirmation dialog). `/system/ports` route showing every registry entry with live activity (bytes in/out, connection count, remote IPs) and per-row Open/Close/Remove buttons. Persist `exposed: bool` in `ports.json` so exposures survive BEAM restarts. EventLog entries on expose/revoke.
 
 ## Simplicity (less to read, less to misunderstand)
 

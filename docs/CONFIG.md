@@ -24,6 +24,7 @@ Read via `Application.get_env(:boom_looper, key)`. Overridable at runtime in `co
 | `:mutagen_runner` | `&System.cmd/3` | Injection seam for the Mutagen CLI. Tests override with a fake to avoid shelling out. |
 | `:container_ready_check` | `nil` | Injection seam for SyncMonitor's "is the destination container up" probe. Tests override; production uses the real Docker check. |
 | `:crash_backoff_base_ms` | `1_000` | Base backoff for the CLI auto-restart loop in `ChatAgent`. Exponential from here up to a cap. |
+| `BoomLooper.PortRegistry, :port_range` | `4000..9999` | Host port range used by `PortRegistry.assign/3`. Exhaustion returns `{:error, :port_pool_exhausted}`. Keep it outside the ephemeral port range to avoid collisions with transient outbound connections. |
 | `BoomLooperWeb.Endpoint, :http, :port` | `4000` | HTTP port. Env-overridable via `PORT` in `runtime.exs`. |
 
 ## Compile-time module attributes
@@ -62,6 +63,7 @@ Lives at `${BOOMLOOPER_HOME}/workspaces/<workspace_id>/` (the "compose dir") and
 | `${BOOMLOOPER_HOME}/workspaces/<id>/docker-compose.yml` | Processed compose file written by ServiceManager for `docker compose` CLI commands. Derived from the volume copy. |
 | `${BOOMLOOPER_HOME}/workspaces/<id>/.boomlooper/workspace/*` | Synced snapshot of volume-side compose + Dockerfile (via `sync_volume_to_host/2`). |
 | `${BOOMLOOPER_HOME}/projects.json` | `ProjectStore` persistence — one row per project (git URL, path, volume flag). |
+| `${BOOMLOOPER_HOME}/ports.json` | `PortStore` persistence — every `PortRegistry` entry (workspace / service / container_port → host_port). See [SECURITY.md § 4](SECURITY.md). |
 | `${BOOMLOOPER_HOME}/secrets.json` | Secret store with optional per-secret `scope: [workspace_id | project_id]`. See [SECURITY.md](SECURITY.md). |
 | `${BOOMLOOPER_HOME}/cookie` | Erlang distribution cookie for `mix boom.rpc`. |
 | `${BOOMLOOPER_HOME}/ssh/ssh_host_*_key` | SSH host keys for the built-in server. |

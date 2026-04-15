@@ -1,7 +1,17 @@
 defmodule BoomLooper.ComposeTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: false
 
   alias BoomLooper.Compose
+
+  # Process_agent_compose now emits ports assigned by
+  # BoomLooper.PortRegistry. Each test clears the registry table so
+  # assignments start from the bottom of the range, making the
+  # expected output predictable.
+  setup do
+    BoomLooper.StateKeeper.ensure_tables!()
+    :ets.delete_all_objects(:port_registry)
+    :ok
+  end
 
   describe "project_name/1" do
     test "uses bl- prefix" do
@@ -53,7 +63,7 @@ defmodule BoomLooper.ComposeTest do
       assert msg =~ "host port pin"
     end
 
-    test "pins host ports from port_map with loopback binding (sticky across restarts)" do
+    test "assigns host ports via PortRegistry (sticky across calls, loopback-bound)" do
       compose = %{
         "services" => %{
           "dev" => %{"ports" => ["3000"]},
@@ -61,37 +71,38 @@ defmodule BoomLooper.ComposeTest do
         }
       }
 
-      port_map = %{
-        "dev" => %{3000 => 33870},
-        "postgres" => %{5432 => 33871}
-      }
+      {:ok, result1} = Compose.process_agent_compose(Jason.encode!(compose), "abcd")
+      config1 = Jason.decode!(result1)
 
-      {:ok, result} =
-        Compose.process_agent_compose(Jason.encode!(compose), "abcd", port_map: port_map)
+      # Every emitted port is loopback-bound via the registry.
+      dev_port = hd(config1["services"]["dev"]["ports"])
+      pg_port = hd(config1["services"]["postgres"]["ports"])
+      assert String.starts_with?(dev_port, "127.0.0.1:")
+      assert String.ends_with?(dev_port, ":3000")
+      assert String.starts_with?(pg_port, "127.0.0.1:")
+      assert String.ends_with?(pg_port, ":5432")
+      assert dev_port != pg_port
 
-      config = Jason.decode!(result)
-
-      assert config["services"]["dev"]["ports"] == ["127.0.0.1:33870:3000"]
-      assert config["services"]["postgres"]["ports"] == ["127.0.0.1:33871:5432"]
+      # Re-running against the same workspace yields the same ports —
+      # the registry entry is sticky.
+      {:ok, result2} = Compose.process_agent_compose(Jason.encode!(compose), "abcd")
+      config2 = Jason.decode!(result2)
+      assert config2["services"]["dev"]["ports"] == [dev_port]
+      assert config2["services"]["postgres"]["ports"] == [pg_port]
     end
 
-    test "falls back to dynamic (loopback-only) when port_map has no entry for a service" do
-      compose = %{
-        "services" => %{
-          "dev" => %{"ports" => ["3000"]},
-          "worker" => %{"ports" => ["4000"]}
-        }
-      }
+    test "distinct workspaces get distinct host ports for the same container port" do
+      compose = %{"services" => %{"dev" => %{"ports" => ["3000"]}}}
 
-      port_map = %{"dev" => %{3000 => 33870}}
+      {:ok, r1} = Compose.process_agent_compose(Jason.encode!(compose), "ws-a")
+      {:ok, r2} = Compose.process_agent_compose(Jason.encode!(compose), "ws-b")
 
-      {:ok, result} =
-        Compose.process_agent_compose(Jason.encode!(compose), "abcd", port_map: port_map)
+      p1 = Jason.decode!(r1)["services"]["dev"]["ports"] |> hd()
+      p2 = Jason.decode!(r2)["services"]["dev"]["ports"] |> hd()
 
-      config = Jason.decode!(result)
-
-      assert config["services"]["dev"]["ports"] == ["127.0.0.1:33870:3000"]
-      assert config["services"]["worker"]["ports"] == ["127.0.0.1::4000"]
+      assert p1 != p2
+      assert String.ends_with?(p1, ":3000")
+      assert String.ends_with?(p2, ":3000")
     end
 
     test "handles YAML input" do
@@ -145,8 +156,10 @@ defmodule BoomLooper.ComposeTest do
       ws_volumes = config["services"]["workspace"]["volumes"]
       assert Enum.any?(ws_volumes, &String.starts_with?(&1, "bl-test1-code:"))
 
-      # Host ports are dynamic (no port_map provided) and loopback-only.
-      assert config["services"]["workspace"]["ports"] == ["127.0.0.1::3000"]
+      # Host port is assigned by PortRegistry and loopback-bound.
+      [port_spec] = config["services"]["workspace"]["ports"]
+      assert String.starts_with?(port_spec, "127.0.0.1:")
+      assert String.ends_with?(port_spec, ":3000")
     end
 
     test "handles agent-written literal volume names (not ${CODE_VOLUME})" do
@@ -479,16 +492,14 @@ defmodule BoomLooper.ComposeTest do
       end
     end
 
-    test "loopback binding re-applies sticky host ports from port_map" do
+    test "re-processing the same workspace yields the same registry-assigned port" do
       compose = ~s|{"services":{"dev":{"image":"x","ports":["3000"]}}}|
 
-      {:ok, json} =
-        Compose.process_agent_compose(compose, "ws-sticky",
-          port_map: %{"dev" => %{3000 => 33870}}
-        )
+      {:ok, json1} = Compose.process_agent_compose(compose, "ws-sticky")
+      {:ok, json2} = Compose.process_agent_compose(compose, "ws-sticky")
 
-      decoded = Jason.decode!(json)
-      assert decoded["services"]["dev"]["ports"] == ["127.0.0.1:33870:3000"]
+      assert Jason.decode!(json1)["services"]["dev"]["ports"] ==
+               Jason.decode!(json2)["services"]["dev"]["ports"]
     end
   end
 end

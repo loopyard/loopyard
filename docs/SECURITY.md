@@ -74,16 +74,21 @@ Validation runs in two places:
 - `Tools.Container.WriteFile` — at write time, so the agent sees the error immediately.
 - `Compose.process_agent_compose/3` — before every `docker compose up`. Defense in depth; catches compose files written by other paths.
 
-### 4. Network isolation
+### 4. Network isolation and port allocation
 
 Each workspace gets its own default Compose network (`bl-<workspace_id>_default`). Docker's `DOCKER-ISOLATION-*` iptables rules prevent cross-bridge traffic between Compose projects.
 
-The one remaining leak — published ports on `0.0.0.0` — is closed by forcing all emitted port specs to bind `127.0.0.1`:
+Host port allocation is owned by `BoomLooper.PortRegistry` — one global pool (default `4000..9999`, configurable). Workspaces request ports via `assign/3`; the registry returns the lowest free port and pins it to `{workspace_id, service, container_port}`. Sticky for the life of the workspace; released by `Workspace.Destructor.destroy/1`. Persisted to `~/.boomlooper/ports.json` so assignments survive BEAM restarts.
 
-- `"3000"` → `"127.0.0.1::3000"` (dynamic host port)
-- Sticky: `"127.0.0.1:33870:3000"`
+Agents still can't pin host ports — `validate_service_ports` rejects any port spec with a host side. They write container-side only (e.g. `ports: ["3000"]`); the registry fills in the host side during `Compose.process_agent_compose/3`.
 
-Other workspaces' containers cannot reach `<docker-host-ip>:<port>` because loopback is host-local. LAN machines cannot reach dev containers either — they must go through the BoomLooper Phoenix app.
+Every emitted port spec binds `127.0.0.1`:
+
+- Compose emits `"127.0.0.1:<registry_port>:<container_port>"` for every service port.
+- Other workspaces' containers cannot reach `<docker-host-ip>:<port>` because loopback is host-local.
+- LAN machines cannot reach dev containers by default.
+
+**Explicit exposure (v2, not yet implemented):** a padlock toggle per service spawns a BoomLooper-owned TCP proxy that listens on `0.0.0.0:<registry_port>` and forwards to `127.0.0.1:<registry_port>`. Compose stays loopback-bound forever; the proxy is the public listener, revocable instantly, per `(workspace, service, port)` only, operator-only. Disabling exposure closes the proxy — no container restart, no stale public binding.
 
 ### 5. Filesystem sandbox
 
@@ -125,7 +130,7 @@ Before merging anything that touches tools, MCP servers, compose processing, or 
 
 1. **Tools:** does the new tool resolve workspace/container/volume from the agent's own session state? Does it reject calls where `params.agent_id` != `assigns.agent_id`? If it exposes volume/container names as parameters, are they prefix-validated against the agent's workspace?
 2. **Compose:** does `validate_no_host_mounts/1` need a new rejection case? If you added a compose key that can affect the host, the answer is yes.
-3. **Ports:** does the change still go through `pin_port/2` so it ends up loopback-bound?
+3. **Ports:** any new path that publishes a host port must call `BoomLooper.PortRegistry.assign/3`. No `docker run -p <host>:<container>` with a hardcoded host port. No compose `ports:` line with a host-side value. Every emitted port binds `127.0.0.1` — exposure is a separate proxy layer, not a compose rewrite.
 4. **Secrets:** any new secret surface must respect `Secrets.list/2` and `Secrets.get/3` — not the unscoped `list/0` / `get/1`, which are admin-only.
 5. **Tests:** every boundary has a test that proves it rejects the attack (see `test/boom_looper/compose_test.exs`, `test/boom_looper/secrets_test.exs`, `test/boom_looper/tool_authorization_test.exs`, `test/boom_looper/tools/container/volumes_test.exs`, `test/boom_looper/tools/container/write_file_test.exs`). Keep them green. New boundaries get new tests.
 

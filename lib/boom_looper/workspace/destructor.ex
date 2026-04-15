@@ -45,6 +45,7 @@ defmodule BoomLooper.Workspace.Destructor do
       adapter_teardown(workspace)
       remove_named_volumes(workspace_id, workspace)
       remove_compose_dir(workspace_id)
+      release_ports(workspace_id)
       clear_ets(workspace_id)
 
       EventLog.info("workspace:#{workspace_id}", "destroy: complete")
@@ -141,6 +142,15 @@ defmodule BoomLooper.Workspace.Destructor do
       dir = Workspace.compose_dir(workspace_id)
       File.rm_rf(dir)
       :ok
+    end)
+  end
+
+  # Return the workspace's assigned host ports to the PortRegistry
+  # pool. Runs after compose_down so the containers are already
+  # unbound and no ServiceManager is still holding a port.
+  defp release_ports(workspace_id) do
+    step(workspace_id, "release ports", fn ->
+      BoomLooper.PortRegistry.release_workspace(workspace_id)
     end)
   end
 

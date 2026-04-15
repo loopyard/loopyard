@@ -24,7 +24,10 @@ defmodule BoomLooper.StateKeeper do
     {:event_log, [:named_table, :public, :ordered_set]},
     {:service_status_cache, [:named_table, :public, :set, {:read_concurrency, true}]},
     {:docker_observer, [:named_table, :public, :set, {:read_concurrency, true}]},
-    {:boom_looper_evals, [:named_table, :public, :set]}
+    {:boom_looper_evals, [:named_table, :public, :set]},
+    # BoomLooper.PortRegistry entries keyed by {workspace_id, service, container_port}.
+    # Writes serialize through the PortRegistry GenServer; reads go direct.
+    {:port_registry, [:named_table, :public, :set, {:read_concurrency, true}]}
   ]
 
   def start_link(_opts) do

@@ -23,7 +23,7 @@ defmodule BoomLooper.Tools.Container.AppUrl do
         project_name = BoomLooper.Compose.project_name(workspace_id)
         container = "#{project_name}-#{service}-1"
 
-        case find_host_port(workspace_id, container) do
+        case find_host_port(workspace_id, service, container) do
           {:ok, host_port} ->
             clean_path = if String.starts_with?(route_path, "/"), do: route_path, else: "/#{route_path}"
 
@@ -42,7 +42,30 @@ defmodule BoomLooper.Tools.Container.AppUrl do
     end
   end
 
-  defp find_host_port(workspace_id, container) do
+  # Prefer the registry — it has the assignment even when the
+  # container is momentarily stopped or restarting. Fall through to
+  # Docker for legacy workspaces or services that somehow ended up
+  # container-bound without a registry entry.
+  defp find_host_port(workspace_id, service, container) do
+    case registry_host_port(workspace_id, service) do
+      {:ok, _} = ok ->
+        ok
+
+      :none ->
+        docker_host_port(workspace_id, container)
+    end
+  end
+
+  defp registry_host_port(workspace_id, service) do
+    entries = BoomLooper.PortRegistry.list_for_workspace(workspace_id)
+
+    case Enum.find(entries, &(&1.service == service)) do
+      %{host_port: host_port} -> {:ok, host_port}
+      nil -> :none
+    end
+  end
+
+  defp docker_host_port(workspace_id, container) do
     case BoomLooper.Docker.container_ports(container) do
       {:ok, ports} when map_size(ports) > 0 ->
         {_container_port, host_port} = Enum.at(ports, 0)
