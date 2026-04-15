@@ -43,3 +43,45 @@ jobs:
       - name: Run tests
         run: mix test --exclude docker --exclude macos --exclude ssh --exclude terminal
         timeout-minutes: 10
+
+  docker-e2e:
+    # End-to-end tests that spin up real Docker containers. GitHub's
+    # ubuntu-latest runners have Docker pre-installed, so there's no
+    # docker-in-docker dance — just include the `:docker` tag. Runs in
+    # a separate job so a flaky E2E doesn't block the fast unit suite.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.18"
+          otp-version: "27"
+
+      - name: Cache deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ hashFiles('mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-
+
+      - name: Install dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Compile
+        run: mix compile
+
+      - name: Pull alpine image (avoid first-run pull in tests)
+        run: docker pull alpine:3.19
+
+      - name: Run docker E2E tests
+        # Include only :docker; exclude others. The fast suite ran in
+        # the job above.
+        run: mix test --only docker --exclude macos --exclude ssh --exclude terminal
+        timeout-minutes: 15
