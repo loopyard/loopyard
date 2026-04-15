@@ -90,4 +90,85 @@ defmodule BoomLooper.Source.Local.MutagenTest do
       assert :unknown = Mutagen.session_status("x")
     end
   end
+
+  describe "parse_details/1" do
+    @full_output """
+    Name: bl-abc123
+    Identifier: sync_abc123
+    Alpha:
+      URL: /Users/me/.boomlooper/worktrees/abc123
+      Connected: Yes
+      Watching: polling (5s interval)
+      Scanned files: 142 files (3.2 MB)
+    Beta:
+      URL: docker://bl-abc123-workspace-1/workspace
+      Connected: Yes
+      Watching: polling (5s interval)
+      Scanned files: 142 files (3.2 MB)
+    Status: Watching for changes
+    """
+
+    test "parses connected endpoints and file counts from full output" do
+      details = Mutagen.parse_details(@full_output)
+
+      assert details.status_text == "Watching for changes"
+      assert details.alpha_connected == true
+      assert details.beta_connected == true
+      assert details.alpha_files == %{files: 142, size: "3.2 MB"}
+      assert details.beta_files == %{files: 142, size: "3.2 MB"}
+      assert details.conflicts == 0
+      assert details.scan_problems == 0
+    end
+
+    test "returns nil for minimal output without Alpha/Beta blocks" do
+      assert Mutagen.parse_details("Name: bl-x\nStatus: Watching for changes\n") == nil
+    end
+
+    test "parses disconnected beta" do
+      out = """
+      Name: bl-abc
+      Alpha:
+        URL: /tmp/wt
+        Connected: Yes
+      Beta:
+        URL: docker://bl-abc-ws-1/workspace
+        Connected: No
+      Status: Waiting for beta
+      """
+
+      details = Mutagen.parse_details(out)
+      assert details.alpha_connected == true
+      assert details.beta_connected == false
+      assert details.status_text == "Waiting for beta"
+    end
+
+    test "parses conflicts and scan problems" do
+      out = """
+      Name: bl-abc
+      Alpha:
+        URL: /tmp/wt
+        Connected: Yes
+      Beta:
+        URL: docker://bl-abc-ws-1/workspace
+        Connected: Yes
+      Status: Problem synchronizing
+      Conflicts: 3
+      Scan problems: 1
+      """
+
+      details = Mutagen.parse_details(out)
+      assert details.conflicts == 3
+      assert details.scan_problems == 1
+    end
+
+    test "session_status returns {:rich, status, details} for full output" do
+      stub_runner(fn _args ->
+        {@full_output, 0}
+      end)
+
+      assert {:rich, :running, details} = Mutagen.session_status("abc123")
+      assert details.status_text == "Watching for changes"
+      assert details.alpha_connected == true
+    end
+  end
 end

@@ -49,17 +49,40 @@ defmodule BoomLooper.ChatAgent.ToolConfig do
   @doc "Returns the list of native tools denied for container-only agents."
   def denied_native_tools_for_container_agents, do: @denied_native_tools_for_container_agents
 
-  @doc "Returns the default tool modules for a ChatAgent session."
+  @doc """
+  Returns the default tool modules for a ChatAgent session.
+
+  Agents are scoped to a single workspace. They do NOT get the Agents
+  toolkit (spawn/message/stop other agents) — that was a usability and
+  security disaster: agents would auto-spawn siblings and cross
+  workspace boundaries. If an agent-to-agent tool comes back, it MUST
+  be restricted to the same workspace and gated behind explicit user
+  opt-in.
+  """
   def default_tools do
-    # Note: Workspace tools removed - agents use direct docker_compose/write_file instead
-    [BoomLooper.Tools.Agents, BoomLooper.Tools.Container, BoomLooper.Tools.Secrets]
+    [BoomLooper.Tools.Container, BoomLooper.Tools.Secrets]
   end
 
-  @doc "Builds the MCP server map from tool modules."
-  def build_mcp_servers(tool_modules) do
+  @doc """
+  Builds the MCP server map from tool modules.
+
+  When `agent_id` is supplied, each entry is configured with
+  `assigns: %{agent_id: agent_id}` so tools can verify that any
+  `agent_id` the model sends in its JSON params matches the session's
+  bound identity (see `BoomLooper.Tool.authorize_agent/2`). This turns
+  `agent_id` from a "rule the model follows" into a runtime boundary:
+  copy-pasting another agent's id into this session is inert — the
+  bound id wins.
+
+  Called with just tool_modules (no agent_id) for test harnesses and
+  tooling that don't run under a session.
+  """
+  def build_mcp_servers(tool_modules, agent_id \\ nil) do
+    assigns = if agent_id, do: %{agent_id: agent_id}, else: %{}
+
     Map.new(tool_modules, fn mod ->
       info = mod.__tool_server__()
-      {info.name, mod}
+      {info.name, %{module: mod, assigns: assigns}}
     end)
   end
 

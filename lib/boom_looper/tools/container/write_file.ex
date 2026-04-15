@@ -10,6 +10,41 @@ defmodule BoomLooper.Tools.Container.WriteFile do
 
   alias BoomLooper.Tools.Container.Helpers
 
+  # Compose files are parsed and rejected here so the agent gets the
+  # error immediately at write time, not hours later when compose-up
+  # fails. The same validator runs again in `Compose.process_agent_compose/3`
+  # — defense in depth: even if someone writes the file out-of-band, it
+  # can't boot a host-mounted container.
+  defp validate_compose_if_needed(path, content) do
+    if String.ends_with?(path, "docker-compose.yml") do
+      case parse_and_validate_compose(content) do
+        :ok -> :ok
+        {:error, _} = err -> err
+      end
+    else
+      :ok
+    end
+  end
+
+  defp parse_and_validate_compose(content) do
+    parsed =
+      case Jason.decode(content) do
+        {:ok, map} -> {:ok, map}
+        {:error, _} ->
+          case YamlElixir.read_from_string(content) do
+            {:ok, map} -> {:ok, map}
+            {:error, _} -> :skip
+          end
+      end
+
+    case parsed do
+      {:ok, compose} -> BoomLooper.Compose.validate_no_host_mounts(compose)
+      # Unparseable content — let compose-up itself surface the syntax
+      # error. We only enforce the boundary; we're not a linter.
+      :skip -> :ok
+    end
+  end
+
   def execute(%{agent_id: agent_id, path: path, content: content}, _assigns) do
     with {:ok, _} <- Helpers.validate_workspace_path(path),
          :ok <- Helpers.validate_string(path, "path", 500),
@@ -28,9 +63,15 @@ defmodule BoomLooper.Tools.Container.WriteFile do
               content
             end
 
-          case BoomLooper.VolumeManager.write_file(volume_name, path, content) do
-            :ok -> {:ok, "Wrote #{byte_size(content)} bytes to #{path}"}
-            {:error, reason} -> {:error, "Failed to write file: #{reason}"}
+          with :ok <- validate_compose_if_needed(path, content),
+               :ok <- BoomLooper.VolumeManager.write_file(volume_name, path, content) do
+            {:ok, "Wrote #{byte_size(content)} bytes to #{path}"}
+          else
+            {:error, reason} when is_binary(reason) ->
+              {:error, reason}
+
+            {:error, reason} ->
+              {:error, "Failed to write file: #{inspect(reason)}"}
           end
 
         _ ->

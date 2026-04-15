@@ -20,21 +20,45 @@ defmodule BoomLooper.ChatAgent.ToolConfigTest do
     test "includes expected tool modules" do
       tools = ToolConfig.default_tools()
       assert BoomLooper.Tools.Container in tools
-      assert BoomLooper.Tools.Agents in tools
       assert BoomLooper.Tools.Secrets in tools
+    end
+
+    test "does NOT include the Agents toolkit (workspace boundary)" do
+      tools = ToolConfig.default_tools()
+      refute Code.ensure_loaded?(BoomLooper.Tools.Agents),
+             "Tools.Agents should be deleted, not just unlinked"
+      refute Enum.any?(tools, &(&1 == BoomLooper.Tools.Agents))
+    end
+
+    test "container toolkit does NOT expose raw `docker` CLI tool" do
+      info = BoomLooper.Tools.Container.__tool_server__()
+      tool_names = Enum.map(info.tools, & &1.__tool_name__())
+      refute "docker" in tool_names
+      refute Code.ensure_loaded?(BoomLooper.Tools.Container.Docker),
+             "Tools.Container.Docker should be deleted, not just unlinked"
     end
   end
 
-  describe "build_mcp_servers/1" do
-    test "builds a map from tool modules" do
+  describe "build_mcp_servers/2" do
+    test "builds a map from tool modules with empty assigns when no agent_id" do
       tools = ToolConfig.default_tools()
       servers = ToolConfig.build_mcp_servers(tools)
       assert is_map(servers)
       assert map_size(servers) == length(tools)
 
-      for {name, mod} <- servers do
+      for {name, config} <- servers do
         assert is_binary(name) or is_atom(name)
+        assert %{module: mod, assigns: %{}} = config
         assert mod in tools
+      end
+    end
+
+    test "threads agent_id into every server's assigns" do
+      tools = ToolConfig.default_tools()
+      servers = ToolConfig.build_mcp_servers(tools, "agent-abc")
+
+      for {_name, config} <- servers do
+        assert %{module: _, assigns: %{agent_id: "agent-abc"}} = config
       end
     end
   end

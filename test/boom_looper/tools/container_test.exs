@@ -3,7 +3,7 @@ defmodule BoomLooper.Tools.ContainerTest do
 
   alias BoomLooper.Tools.Container
   alias BoomLooper.Tools.Container.{Exec, WriteFile, ReadFile, Logs, InspectEnv, Ports,
-    ServiceContainers, Docker, WorkspaceInfo, Volumes, Helpers}
+    ServiceContainers, WorkspaceInfo, Volumes, Helpers}
 
   describe "toolkit" do
     test "has correct server name" do
@@ -14,10 +14,12 @@ defmodule BoomLooper.Tools.ContainerTest do
     test "has all expected tools" do
       tool_names = Container.__tool_server__().tools |> Enum.map(& &1.__tool_name__()) |> MapSet.new()
 
+      # `docker` (raw CLI) is intentionally excluded — it was a workspace
+      # escape hatch. See BoomLooper.Tools.Container for the rationale.
       expected =
         ~w(exec exec_stream logs inspect_env ports service_containers write_file read_file
            edit multi_edit grep glob probe_http tree inspect_service read_files
-           docker docker_compose workspace_info volumes file_url app_url)
+           docker_compose workspace_info volumes file_url app_url)
 
       assert MapSet.size(tool_names) == length(expected)
 
@@ -200,19 +202,6 @@ defmodule BoomLooper.Tools.ContainerTest do
     test "Volumes returns error when agent has no workspace" do
       assert {:error, msg} = Volumes.execute(%{agent_id: "nonexistent"}, %{})
       assert msg =~ "no workspace"
-    end
-  end
-
-  describe "Docker tool" do
-    @describetag :docker
-
-    test "runs docker commands" do
-      assert {:ok, output} = Docker.execute(%{agent_id: "_", command: "ps --format '{{.Names}}'"}, %{})
-      assert is_binary(output)
-    end
-
-    test "returns error for invalid commands" do
-      assert {:error, _} = Docker.execute(%{agent_id: "_", command: "invalid-subcommand-xyz", timeout: 5}, %{})
     end
   end
 

@@ -83,11 +83,13 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.ContextPanelTest do
       assert "exec" in tools
       assert "read_file" in tools
 
-      # Agent tools
-      assert "list_agents" in tools
-
       # Secret tools
       assert "list_secrets" in tools
+
+      # Agent tools are intentionally NOT present — agents cannot spawn
+      # or message each other; see ChatAgent.ToolConfig.default_tools/0.
+      refute "list_agents" in tools
+      refute "spawn_agent" in tools
     end
   end
 

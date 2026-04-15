@@ -105,6 +105,17 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Chat do
           </span>
         </div>
         <div class="flex items-center gap-1 md:gap-2 flex-none">
+          <%!--
+            Mobile-only navigation into the Agent Context pane. On lg+
+            the pane is always visible in the right rail, so we hide
+            the link. Mirrors the "Menu" back-link on the left that
+            returns to the sidebar — sidebar → chat → context.
+          --%>
+          <.link navigate={"#{@base_path}/agents/#{@agent.id}/context"}
+            class="lg:hidden text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded-md px-2 py-1"
+            aria-label="Agent context">
+            Info
+          </.link>
           <button :if={@agent.status in [:idle, :thinking]} phx-click="restart_session" phx-value-id={@agent.id}
             class="text-xs font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10 rounded-md px-2 py-1 hidden sm:block">
             Restart CLI

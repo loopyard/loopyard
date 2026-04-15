@@ -369,7 +369,18 @@ defmodule BoomLooper.Workspace.ServiceManager do
           {:ok, processed} ->
             File.write!(compose_path, processed)
             true
-          {:error, _} ->
+
+          {:error, reason} ->
+            # Don't crash the cluster, but log an actionable error so the
+            # sidebar / agent `logs` tool surface it. The message from
+            # `validate_no_host_mounts` already tells the reader what to
+            # change and why.
+            BoomLooper.EventLog.error(
+              "workspace:#{state.workspace_id}",
+              "Agent compose file rejected — cluster will not start until " <>
+                "it's fixed.\n\n#{reason}"
+            )
+
             false
         end
       _ ->

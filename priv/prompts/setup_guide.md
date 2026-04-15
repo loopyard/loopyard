@@ -52,8 +52,8 @@ All filesystem tools operate on `/workspace` inside the running workspace contai
 | `exec` | Run a shell command in the workspace container. Use for installs (`bundle install`, `npm install`), migrations, tests, or anything that's not a routine file or HTTP op. **Don't use `exec` for file ops** — `edit`/`grep`/`glob` are faster. **Don't use `exec` for HTTP probing** — `probe_http` matches the runner. |
 | `exec_stream` | Long-running command with streaming output (e.g. `tail -f`) |
 | `docker_compose` | Run any compose command (`up -d --build`, `ps`, `logs dev`, `down`) |
-| `docker` | Run any docker command (`ps`, `volume ls`, `inspect`) |
 | `logs` | Shortcut for container logs (use `inspect_service` instead when you also need state/ports) |
+| `volumes` | List/inspect Docker volumes — only volumes belonging to this workspace are visible |
 
 ### Discovery: orient with `tree`, then `read_files`
 
@@ -194,6 +194,19 @@ volumes:
 - Declare `code:` as an external volume with `name: ${CODE_VOLUME}` — the system substitutes the actual volume name
 - Only specify container ports (e.g. `"3000"`), not host:container — Docker picks host ports
 - Service names become hostnames in the network (postgres, redis, etc.)
+
+### Forbidden (the compose file will be rejected)
+Workspaces are sandboxed. The following keys punch through that sandbox and are rejected by BoomLooper when it processes your compose file:
+
+- **Host bind mounts** — e.g. `- /etc:/host/etc`, `- ./src:/app`, or any `type: bind`. There is no host filesystem to reach from inside a workspace container. If the existing project you're adapting has bind mounts, convert them: put the files into a named volume (write them via `write_file` under `/workspace/...` before `docker_compose up`) and mount that volume instead.
+- `privileged: true`
+- `network_mode: host`, `pid: host`, `ipc: host`, `userns_mode: host`
+- `devices: [...]` — direct host device access
+- Top-level volumes whose `driver_opts.device` is a host path (that's a bind mount in disguise)
+- **Host port pins** — `"8080:3000"` or `"127.0.0.1:8080:3000"`. List only the container port (`"3000"`); BoomLooper assigns the host port and keeps it sticky across restarts. Pinning invites collisions between workspaces.
+- **External networks** — `networks: { foo: { external: true } }`. The default compose network (`<project>_default`) is already isolated per workspace; joining an external network would let this service reach other workspaces' containers.
+
+Named volumes (including `${CODE_VOLUME}`) are fine. Published ports are bound to `127.0.0.1` on the host automatically — BoomLooper's UI routes browser traffic to them. If you hit one of these errors, the message tells you what to change and why — follow it literally.
 
 ## Dockerfile template
 

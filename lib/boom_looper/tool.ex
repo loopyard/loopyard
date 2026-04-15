@@ -50,8 +50,69 @@ defmodule BoomLooper.Tool do
 
       @doc false
       def input_schema, do: unquote(Macro.escape(schema))
+
+      @before_compile BoomLooper.Tool
     end
   end
+
+  @doc false
+  defmacro __before_compile__(_env) do
+    # Wrap the tool's execute/2 with the agent_id authorization check.
+    # The user defines `def execute(params, assigns)` normally; we make
+    # it overridable and inject an outer execute that verifies the
+    # `params.agent_id` the model sent matches the `assigns.agent_id`
+    # the runtime bound to this MCP session at spawn. Mismatch ⇒ reject.
+    #
+    # When `assigns` has no bound id (e.g. direct-call tests that pass
+    # `%{}`), authorization is skipped. Production always sets it via
+    # `ChatAgent.ToolConfig.build_mcp_servers/2`.
+    quote do
+      defoverridable execute: 2
+
+      def execute(params, assigns) do
+        case BoomLooper.Tool.authorize_agent(params, assigns) do
+          :ok -> super(params, assigns)
+          {:error, _} = err -> err
+        end
+      end
+    end
+  end
+
+  @doc """
+  Authorize a tool call against the session-bound agent_id.
+
+  Each ChatAgent spawns its own MCP server with `assigns = %{agent_id: id}`
+  — the runtime identity of *this* agent's session. The JSON param
+  `agent_id` is still accepted for schema compatibility but is only
+  advisory: it must match the bound id, or the call is rejected.
+
+  Returns `:ok` when:
+    * assigns has no bound id (test harness direct-calling a tool)
+    * params.agent_id matches assigns.agent_id
+    * params.agent_id is absent (tools that don't need it)
+
+  Returns `{:error, message}` when the caller passed someone else's id.
+  """
+  def authorize_agent(params, assigns) when is_map(params) and is_map(assigns) do
+    bound = assigns[:agent_id] || assigns["agent_id"]
+    supplied = params[:agent_id] || params["agent_id"]
+
+    cond do
+      is_nil(bound) -> :ok
+      is_nil(supplied) -> :ok
+      bound == supplied -> :ok
+
+      true ->
+        {:error,
+         "agent_id mismatch: this tool call is bound to session " <>
+           "#{inspect(bound)} but was asked to act as #{inspect(supplied)}. " <>
+           "Agents may only operate on their own workspace. Use your own " <>
+           "agent_id (shown in the system prompt) — you cannot target " <>
+           "another agent's workspace by passing its id."}
+    end
+  end
+
+  def authorize_agent(_, _), do: :ok
 
   defp build_schema(params) do
     {properties, required} =

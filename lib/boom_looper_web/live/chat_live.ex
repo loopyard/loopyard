@@ -6,7 +6,7 @@ defmodule BoomLooperWeb.ChatLive do
   alias BoomLooper.StreamBuffer
 
   use BoomLooperWeb.Live.ChatLive.Components
-  alias BoomLooperWeb.Live.ChatLive.{AgentLifecycle, ServiceLogs, ComposeCheck}
+  alias BoomLooperWeb.Live.ChatLive.{AgentLifecycle, ServiceLogs}
 
   @impl true
   def mount(%{"project_id" => project_id, "workspace_id" => workspace_id}, _session, socket) do
@@ -109,7 +109,8 @@ defmodule BoomLooperWeb.ChatLive do
      |> assign(:building, false)
      |> assign(:console_container, nil)
      |> assign(:is_local_source?, is_local?)
-     |> assign(:sync_status, initial_sync_status(workspace.id, is_local?))}
+     |> assign(:sync_status, initial_sync_status(workspace.id, is_local?))
+     |> assign(:services_busy, nil)}
   end
 
   defp initial_sync_status(_workspace_id, false), do: nil
@@ -157,12 +158,9 @@ defmodule BoomLooperWeb.ChatLive do
       existing_setup ->
         {:noreply, push_navigate(socket, to: "#{workspace_path(socket)}/agents/#{existing_setup.id}")}
 
-      # No agents at all — check if this is a truly fresh workspace
-      # (no compose file) and auto-launch setup if so.
-      socket.assigns.agents == [] ->
-        {:noreply, ComposeCheck.kick_compose_check(socket, :new)}
-
       true ->
+        # Show the New Agent screen. Setup only runs when the user picks
+        # the Setup preset explicitly — no auto-launch on blank workspaces.
         {:noreply, socket}
     end
   end
@@ -366,33 +364,7 @@ defmodule BoomLooperWeb.ChatLive do
 
   def handle_params(_params, _uri, socket), do: {:noreply, assign(socket, :tab, :chat)}
 
-  # --- Async compose check (only for :new — auto-launch setup for fresh workspaces) ---
-
   @impl true
-  def handle_async(:compose_check, {:ok, %{origin: :new} = result}, socket) do
-    cond do
-      socket.assigns.live_action != :new ->
-        {:noreply, socket}
-
-      socket.assigns.agents != [] ->
-        {:noreply, socket}
-
-      result.has_compose ->
-        # Compose file exists — workspace was set up. Show the agent picker.
-        {:noreply, socket}
-
-      true ->
-        # No compose file AND no agents → truly fresh workspace, auto-launch setup.
-        AgentLifecycle.do_spawn_agent(socket, initial_message: preset_message("setup"))
-    end
-  end
-
-  def handle_async(:compose_check, {:exit, _reason}, socket) do
-    # Failed to read the volume (docker hung, volume gone, etc.). Don't
-    # block the user — let them stay on whatever page they're on.
-    {:noreply, socket}
-  end
-
   def handle_async({:container_data, id}, {:ok, result}, socket) do
     # Discard if the user has switched to a different agent in the meantime.
     if socket.assigns.selected_id == id do
@@ -626,6 +598,38 @@ defmodule BoomLooperWeb.ChatLive do
     {:noreply, socket}
   end
 
+  def handle_event("start_services", _params, socket) do
+    if socket.assigns.services_busy do
+      {:noreply, socket}
+    else
+      project_dir = socket.assigns.workspace.path
+      parent = self()
+
+      Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
+        result = BoomLooper.Workspace.ServiceManager.start_services(project_dir)
+        send(parent, {:services_command_done, :starting, result})
+      end)
+
+      {:noreply, assign(socket, :services_busy, :starting)}
+    end
+  end
+
+  def handle_event("stop_services", _params, socket) do
+    if socket.assigns.services_busy do
+      {:noreply, socket}
+    else
+      project_dir = socket.assigns.workspace.path
+      parent = self()
+
+      Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
+        result = BoomLooper.Workspace.ServiceManager.stop_services(project_dir)
+        send(parent, {:services_command_done, :stopping, result})
+      end)
+
+      {:noreply, assign(socket, :services_busy, :stopping)}
+    end
+  end
+
 
   def handle_event("delete_volume", %{"volume_name" => name}, socket) do
     BoomLooper.Docker.docker(["volume", "rm", name])
@@ -682,6 +686,21 @@ defmodule BoomLooperWeb.ChatLive do
   # --- PubSub ---
 
   @impl true
+  def handle_info({:services_command_done, _kind, result}, socket) do
+    BoomLooper.Docker.Observer.poll_now()
+
+    socket =
+      case result do
+        {:error, reason} ->
+          put_flash(socket, :error, "Services command failed: #{inspect(reason)}")
+
+        _ ->
+          socket
+      end
+
+    {:noreply, assign(socket, :services_busy, nil)}
+  end
+
   def handle_info({:chat_agent_started, agent_summary}, socket) do
     socket = assign(socket, :agents, AgentLifecycle.list_workspace_agents(socket.assigns.workspace.path))
 
@@ -1199,6 +1218,7 @@ defmodule BoomLooperWeb.ChatLive do
           live_action={@live_action} volumes={@volumes} base_path={@base_path}
           host={@host}
           is_local_source?={@is_local_source?} sync_status={@sync_status}
+          services_busy={@services_busy}
         />
         <%!-- Main content: hidden on mobile when sidebar is showing (index/new with no selection) --%>
         <main class={"flex-1 flex flex-col min-w-0 #{if @live_action == :index && !@selected_id && !@selected_service, do: "hidden md:flex", else: "flex"}"}>

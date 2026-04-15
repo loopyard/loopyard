@@ -16,8 +16,10 @@ defmodule BoomLooper.Tools.Workspace do
     field :agent_id, :string, required: true
     field :name, :string, required: true
 
-    def execute(%{agent_id: agent_id, name: name}) do
-      BoomLooper.Tools.Workspace.do_set_project_name(agent_id, name)
+    def execute(%{agent_id: agent_id, name: name} = params, assigns) do
+      with :ok <- BoomLooper.Tool.authorize_agent(params, assigns) do
+        BoomLooper.Tools.Workspace.do_set_project_name(agent_id, name)
+      end
     end
   end
 
@@ -25,10 +27,12 @@ defmodule BoomLooper.Tools.Workspace do
     field :agent_id, :string, required: true
     field :system_prompt, :string, required: true
 
-    def execute(%{agent_id: agent_id, system_prompt: prompt}) do
-      BoomLooper.Tools.Workspace.do_update_config(agent_id, fn ws ->
-        %{ws | system_prompt: prompt}
-      end, "Wrote system prompt to workspace config. Future agents will see this.")
+    def execute(%{agent_id: agent_id, system_prompt: prompt} = params, assigns) do
+      with :ok <- BoomLooper.Tool.authorize_agent(params, assigns) do
+        BoomLooper.Tools.Workspace.do_update_config(agent_id, fn ws ->
+          %{ws | system_prompt: prompt}
+        end, "Wrote system prompt to workspace config. Future agents will see this.")
+      end
     end
   end
 

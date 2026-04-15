@@ -1,6 +1,29 @@
 defmodule BoomLooper.Tools.Container.Helpers do
   @moduledoc """
   Shared helpers used by multiple container tool modules.
+
+  ## Security invariants (see docs/SECURITY.md)
+
+  The resolvers in this module are the **only** sanctioned way a tool
+  derives the container or volume it will act on. Tools MUST NOT accept
+  a `container_name`, `volume_name`, `workspace_id`, or `project_dir`
+  parameter from the agent — they pass the agent's id to one of:
+
+    * `resolve_container/1` — the agent's workspace container.
+    * `resolve_service_container/2` — another service in the agent's
+      own compose project (verified to exist).
+    * `agent_workspace_id/1` — just the workspace id, for callers that
+      build their own derived names.
+
+  Each of these reads `workspace_id` from the agent's own ChatAgent
+  state (in ETS). An agent cannot cross the boundary by passing a
+  different id because the session-bound `agent_id` wrapper in
+  `BoomLooper.Tool` rejects mismatched caller-supplied ids before the
+  tool body runs.
+
+  `validate_workspace_path/1` is the filesystem sandbox: every file
+  tool normalizes its input path against `/workspace/` and rejects
+  anything that escapes it.
   """
 
   alias BoomLooper.Docker
@@ -41,6 +64,11 @@ defmodule BoomLooper.Tools.Container.Helpers do
   def validate_timeout(seconds) when is_number(seconds) and seconds >= 1 and seconds <= 3600, do: :ok
   def validate_timeout(_), do: {:error, "timeout must be between 1 and 3600 seconds"}
 
+  @doc """
+  Resolve the agent's own workspace container. The agent_id comes from
+  the session-bound MCP assigns (verified upstream); the workspace_id
+  is read from the agent's ETS state — never from a tool parameter.
+  """
   def resolve_container(agent_id) do
     case BoomLooper.ChatAgent.get_state(agent_id) do
       %{workspace_id: workspace_id} when is_binary(workspace_id) ->
@@ -52,6 +80,12 @@ defmodule BoomLooper.Tools.Container.Helpers do
     end
   end
 
+  @doc """
+  Resolve a named service container within the agent's own compose
+  project. The service name is an agent-supplied param, but it's
+  combined with the agent's own workspace_id — an agent cannot reach
+  a service belonging to another workspace.
+  """
   def resolve_service_container(agent_id, service_name) do
     case BoomLooper.ChatAgent.get_state(agent_id) do
       %{workspace_id: workspace_id} when is_binary(workspace_id) ->

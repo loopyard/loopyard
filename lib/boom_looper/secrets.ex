@@ -8,6 +8,19 @@ defmodule BoomLooper.Secrets do
 
   Agents request secrets at runtime via MCP tools rather than having
   them pre-injected into containers as environment variables.
+
+  ## Scoping
+
+  Each secret may carry an optional `scope` field — a list of workspace
+  IDs and/or project IDs that are allowed to see the secret. When the
+  list is empty or absent the secret is **global** (visible to every
+  agent). When present, only agents whose workspace or project matches
+  an entry in the list may `list` or `get` the secret.
+
+  This prevents the "GitHub token for project X leaks into project Y"
+  class of quiet cross-project secret drift. Callers that know the
+  requesting agent's context pass `scope/2` to filter; callers that
+  don't (admin/CLI/tests) use the unfiltered `list/0` and `get/1`.
   """
 
   defp storage_dir, do: BoomLooper.Workspace.home_dir()
@@ -16,12 +29,16 @@ defmodule BoomLooper.Secrets do
   @doc "Returns the path to the secrets storage file"
   def storage_path, do: Path.join(storage_dir(), @storage_file)
 
-  @doc "List all secret keys and names (not values)"
+  @doc """
+  List all secret keys and names (not values). Unscoped — returns every
+  secret including scoped ones. Intended for admin UIs and tests.
+  Agent-facing code should use `list/2`.
+  """
   def list do
     case read_store() do
       {:ok, store} ->
         Enum.map(store, fn {key, entry} ->
-          %{key: key, name: entry["name"] || key}
+          %{key: key, name: entry["name"] || key, scope: entry["scope"] || []}
         end)
 
       _ ->
@@ -29,7 +46,23 @@ defmodule BoomLooper.Secrets do
     end
   end
 
-  @doc "Get a secret value by key"
+  @doc """
+  List secrets visible to the agent at `workspace_id` / `project_id`.
+
+  Returns globally-scoped secrets plus any secret whose `scope` list
+  contains the workspace_id or project_id. A `nil` identifier means
+  "this axis is unknown" — such secrets won't match on that axis.
+  """
+  def list(workspace_id, project_id) do
+    Enum.filter(list(), fn entry ->
+      visible_to?(entry.scope, workspace_id, project_id)
+    end)
+  end
+
+  @doc """
+  Unscoped `get` — returns the value regardless of scope. Intended for
+  admin/CLI/tests. Agent-facing code should use `get/3`.
+  """
   def get(key) do
     case read_store() do
       {:ok, store} ->
@@ -43,14 +76,45 @@ defmodule BoomLooper.Secrets do
     end
   end
 
-  @doc "Store a secret"
-  def put(key, name, value) do
+  @doc """
+  Get a secret value, scoped to the agent's workspace/project.
+
+  Returns `:not_found` both when the secret doesn't exist AND when it
+  exists but is scoped to other workspaces/projects — indistinguishable
+  on purpose, so one agent can't probe for secret names belonging to
+  another.
+  """
+  def get(key, workspace_id, project_id) do
+    case read_store() do
+      {:ok, store} ->
+        case Map.get(store, key) do
+          %{"value" => value} = entry ->
+            scope = entry["scope"] || []
+            if visible_to?(scope, workspace_id, project_id),
+              do: {:ok, value},
+              else: :not_found
+
+          nil ->
+            :not_found
+        end
+
+      _ ->
+        :not_found
+    end
+  end
+
+  @doc """
+  Store a secret. Optional `scope` restricts visibility to a list of
+  workspace IDs and/or project IDs. An empty list (the default) means
+  the secret is global.
+  """
+  def put(key, name, value, scope \\ []) when is_list(scope) do
     store = case read_store() do
       {:ok, s} -> s
       _ -> %{}
     end
 
-    entry = %{"name" => name, "value" => value}
+    entry = %{"name" => name, "value" => value, "scope" => scope}
     store = Map.put(store, key, entry)
     write_store(store)
   end
@@ -68,6 +132,17 @@ defmodule BoomLooper.Secrets do
   end
 
   # --- Private ---
+
+  defp visible_to?(scope, _workspace_id, _project_id) when scope in [nil, []], do: true
+
+  defp visible_to?(scope, workspace_id, project_id) when is_list(scope) do
+    Enum.any?(scope, fn id ->
+      (is_binary(workspace_id) and id == workspace_id) or
+        (is_binary(project_id) and id == project_id)
+    end)
+  end
+
+  defp visible_to?(_, _, _), do: false
 
   defp read_store do
     path = storage_path()

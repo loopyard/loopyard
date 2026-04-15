@@ -26,14 +26,347 @@ defmodule BoomLooper.Compose do
 
     case parse_compose(compose_content) do
       {:ok, compose} ->
-        compose = process_services(compose, code_volume, port_map)
-        compose = ensure_code_volume(compose, code_volume)
-        {:ok, Jason.encode!(compose, pretty: true)}
+        with :ok <- validate_no_host_mounts(compose) do
+          compose = process_services(compose, code_volume, port_map)
+          compose = ensure_code_volume(compose, code_volume)
+          {:ok, Jason.encode!(compose, pretty: true)}
+        end
 
       {:error, reason} ->
         {:error, reason}
     end
   end
+
+  @doc """
+  Reject compose files that mount host paths into containers.
+
+  Agents run in their workspace container (with /workspace from a named
+  Docker volume). Allowing `- /etc:/host/etc` or `type: bind` would punch
+  straight through the workspace boundary — the whole point of the
+  container sandbox is that agents CAN'T reach the host filesystem.
+
+  Named volumes (including the workspace code volume) are fine; host
+  paths are not. We parse short-form (`src:dst[:mode]`) and long-form
+  (`%{"type" => ...}`) volume entries, plus top-level volume declarations
+  with `driver_opts.device`.
+
+  Returns `:ok` or `{:error, reason}`.
+  """
+  def validate_no_host_mounts(compose) when is_map(compose) do
+    with :ok <- validate_service_volumes(compose),
+         :ok <- validate_top_level_volumes(compose),
+         :ok <- validate_service_host_escapes(compose),
+         :ok <- validate_service_ports(compose),
+         :ok <- validate_networks(compose) do
+      :ok
+    end
+  end
+
+  # Published ports: agents must NOT pin a specific host port.
+  # BoomLooper allocates host ports dynamically and remembers the
+  # assignment across restarts (sticky ports). A pinned host port
+  # invites collisions between workspaces ("I want 3000" × N agents),
+  # and could be used to squat on a port another workspace is already
+  # using. We accept only container-side specifications and add the
+  # loopback binding ourselves in `pin_port/2`.
+  defp validate_service_ports(compose) do
+    services = Map.get(compose, "services", %{}) || %{}
+
+    Enum.reduce_while(services, :ok, fn {name, svc}, _acc ->
+      ports = (is_map(svc) && Map.get(svc, "ports")) || []
+
+      case check_port_entries(name, ports) do
+        :ok -> {:cont, :ok}
+        {:error, _} = err -> {:halt, err}
+      end
+    end)
+  end
+
+  defp check_port_entries(_name, ports) when not is_list(ports), do: :ok
+
+  defp check_port_entries(name, ports) do
+    Enum.reduce_while(ports, :ok, fn entry, _acc ->
+      case check_port(name, entry) do
+        :ok -> {:cont, :ok}
+        {:error, _} = err -> {:halt, err}
+      end
+    end)
+  end
+
+  # Accept:
+  #   - `"3000"` or `3000` — container port, we pick the host port
+  # Reject:
+  #   - `"8080:3000"` — host port pinned
+  #   - `"127.0.0.1:8080:3000"` — ditto, with explicit host IP
+  #   - `%{"published" => _}` long form
+  defp check_port(_name, n) when is_integer(n), do: :ok
+
+  defp check_port(name, entry) when is_binary(entry) do
+    case String.split(entry, ":") do
+      [_container] ->
+        :ok
+
+      _ ->
+        {:error,
+         "service #{name}: host port pin is not allowed (#{inspect(entry)}).\n\n" <>
+           "Why: BoomLooper assigns host ports dynamically and keeps them sticky " <>
+           "across restarts. Pinning invites collisions between workspaces and " <>
+           "lets one workspace squat on another's port.\n\n" <>
+           "Fix: list only the container port — `\"3000\"` instead of `\"8080:3000\"`. " <>
+           "BoomLooper will pick a free host port and reuse the same one on restart."}
+    end
+  end
+
+  defp check_port(name, %{"published" => _} = entry) do
+    {:error,
+     "service #{name}: host port pin is not allowed (#{inspect(entry)}). " <>
+       "Use the short form with only a container port (e.g. `\"3000\"`)."}
+  end
+
+  defp check_port(_name, entry) when is_map(entry), do: :ok
+
+  defp check_port(name, entry),
+    do: {:error, "service #{name}: invalid port entry #{inspect(entry)}"}
+
+  # Top-level and per-service `networks:` must not reference external
+  # networks — that would attach the container to a Docker network
+  # BoomLooper doesn't own, breaking the per-workspace isolation that
+  # `docker compose -p <project>` gives us by default.
+  defp validate_networks(compose) do
+    with :ok <- validate_top_level_networks(compose),
+         :ok <- validate_service_networks(compose) do
+      :ok
+    end
+  end
+
+  defp validate_top_level_networks(compose) do
+    networks = Map.get(compose, "networks", %{}) || %{}
+
+    Enum.reduce_while(networks, :ok, fn {name, spec}, _acc ->
+      cond do
+        is_map(spec) and spec["external"] == true ->
+          {:halt,
+           {:error,
+            "top-level network #{inspect(name)}: `external: true` is not allowed. " <>
+              "Joining a network BoomLooper doesn't own lets this service reach " <>
+              "containers from other workspaces. Drop the `external` flag or " <>
+              "remove the network entry — the default compose network is already " <>
+              "isolated per workspace."}}
+
+        true ->
+          {:cont, :ok}
+      end
+    end)
+  end
+
+  defp validate_service_networks(compose) do
+    services = Map.get(compose, "services", %{}) || %{}
+
+    Enum.reduce_while(services, :ok, fn {name, svc}, _acc ->
+      case check_service_networks(name, (is_map(svc) && svc["networks"]) || nil) do
+        :ok -> {:cont, :ok}
+        {:error, _} = err -> {:halt, err}
+      end
+    end)
+  end
+
+  defp check_service_networks(_name, nil), do: :ok
+  defp check_service_networks(_name, networks) when networks in [%{}, []], do: :ok
+
+  defp check_service_networks(name, networks) when is_map(networks) do
+    if Enum.any?(networks, fn {_n, cfg} -> is_map(cfg) and cfg["external"] == true end) do
+      {:error,
+       "service #{name}: a joined network declares `external: true`. " <>
+         "Agents may not attach services to networks BoomLooper doesn't own."}
+    else
+      :ok
+    end
+  end
+
+  defp check_service_networks(_name, networks) when is_list(networks), do: :ok
+  defp check_service_networks(_name, _), do: :ok
+
+  # Block the other common ways a compose service can punch through the
+  # container boundary: privileged mode, sharing host namespaces, direct
+  # device access. These are all runtime grants that defeat the sandbox
+  # just as thoroughly as a bind mount — no point blocking one and not
+  # the others.
+  defp validate_service_host_escapes(compose) do
+    services = Map.get(compose, "services", %{}) || %{}
+
+    Enum.reduce_while(services, :ok, fn {name, svc}, _acc ->
+      case check_host_escape(name, svc) do
+        :ok -> {:cont, :ok}
+        {:error, _} = err -> {:halt, err}
+      end
+    end)
+  end
+
+  defp check_host_escape(name, svc) when is_map(svc) do
+    cond do
+      svc["privileged"] == true ->
+        {:error,
+         "service #{name}: `privileged: true` is not allowed. " <>
+           "Privileged containers can remount the host filesystem and " <>
+           "reach other workspaces. Drop the key, or if you genuinely " <>
+           "need a capability use `cap_add: [SPECIFIC_CAP]` instead."}
+
+      svc["network_mode"] == "host" ->
+        {:error,
+         "service #{name}: `network_mode: host` is not allowed. " <>
+           "Host networking lets this service bind to the host's ports " <>
+           "(clashing with other workspaces) and reach host services " <>
+           "directly. Use the default bridge network; expose ports via " <>
+           "the `ports:` key so BoomLooper can route them."}
+
+      svc["pid"] == "host" ->
+        {:error,
+         "service #{name}: `pid: host` is not allowed — it exposes every " <>
+           "host process (including other workspaces' containers) to this " <>
+           "service. Remove the key."}
+
+      svc["ipc"] == "host" ->
+        {:error,
+         "service #{name}: `ipc: host` is not allowed — it shares the host's " <>
+           "IPC namespace across workspaces. Remove the key."}
+
+      svc["userns_mode"] == "host" ->
+        {:error,
+         "service #{name}: `userns_mode: host` is not allowed — it disables " <>
+           "user-namespace isolation. Remove the key."}
+
+      is_list(svc["devices"]) and svc["devices"] != [] ->
+        {:error,
+         "service #{name}: `devices:` is not allowed (#{inspect(svc["devices"])}). " <>
+           "Direct host device access breaks the workspace boundary. Remove " <>
+           "the key or find a userspace alternative."}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp check_host_escape(_name, _), do: :ok
+
+  defp validate_service_volumes(compose) do
+    services = Map.get(compose, "services", %{}) || %{}
+
+    Enum.reduce_while(services, :ok, fn {svc_name, svc}, _acc ->
+      volumes = (is_map(svc) && Map.get(svc, "volumes")) || []
+
+      case check_service_volume_entries(svc_name, volumes) do
+        :ok -> {:cont, :ok}
+        {:error, _} = err -> {:halt, err}
+      end
+    end)
+  end
+
+  defp check_service_volume_entries(_svc_name, volumes) when not is_list(volumes), do: :ok
+
+  defp check_service_volume_entries(svc_name, volumes) do
+    Enum.reduce_while(volumes, :ok, fn entry, _acc ->
+      case check_service_volume(svc_name, entry) do
+        :ok -> {:cont, :ok}
+        {:error, _} = err -> {:halt, err}
+      end
+    end)
+  end
+
+  # Short form: "source:target[:mode]". Source that looks like a host
+  # path (starts with /, ., ~) is rejected. A bare name is a named
+  # volume — allowed. The ${CODE_VOLUME} placeholder is resolved later
+  # to a bare volume name, so it's also allowed here.
+  defp check_service_volume(svc_name, entry) when is_binary(entry) do
+    source =
+      case String.split(entry, ":", parts: 2) do
+        [src, _rest] -> src
+        [src] -> src
+      end
+
+    cond do
+      source == "" ->
+        {:error, "service #{svc_name}: empty volume source"}
+
+      host_path?(source) ->
+        {:error,
+         "service #{svc_name}: host bind mount is not allowed (#{inspect(entry)}).\n\n" <>
+           "Why: the workspace runs in its own Docker container — there is no host " <>
+           "filesystem to mount. Bind mounts would also cross into other workspaces.\n\n" <>
+           "Fix: replace the bind mount with a named volume. If the container needs " <>
+           "seed files (config, fixtures, the app source), write them into the volume " <>
+           "via `write_file` (paths under `/workspace/...`) BEFORE running " <>
+           "`docker_compose up`, then mount the named volume instead. The source tree " <>
+           "is already in the `${CODE_VOLUME}` volume mounted at /workspace."}
+
+      true ->
+        :ok
+    end
+  end
+
+  # Long form: %{"type" => "bind" | "volume" | "tmpfs", ...}
+  defp check_service_volume(svc_name, %{"type" => type} = entry) do
+    cond do
+      type == "bind" ->
+        {:error,
+         "service #{svc_name}: `type: bind` is not allowed (#{inspect(entry)}). " <>
+           "Use named volumes only."}
+
+      type in ["volume", "tmpfs"] ->
+        :ok
+
+      true ->
+        {:error, "service #{svc_name}: unsupported volume type #{inspect(type)}"}
+    end
+  end
+
+  defp check_service_volume(_svc_name, entry) when is_map(entry), do: :ok
+  defp check_service_volume(svc_name, entry),
+    do: {:error, "service #{svc_name}: invalid volume entry #{inspect(entry)}"}
+
+  # Top-level `volumes:` declarations. Allow `external: true`, empty map,
+  # or driver configs that don't point a named volume at a host path via
+  # `driver_opts.device`.
+  defp validate_top_level_volumes(compose) do
+    volumes = Map.get(compose, "volumes", %{}) || %{}
+
+    Enum.reduce_while(volumes, :ok, fn {name, spec}, _acc ->
+      case check_top_level_volume(name, spec) do
+        :ok -> {:cont, :ok}
+        {:error, _} = err -> {:halt, err}
+      end
+    end)
+  end
+
+  defp check_top_level_volume(_name, nil), do: :ok
+  defp check_top_level_volume(_name, spec) when spec == %{}, do: :ok
+
+  defp check_top_level_volume(name, spec) when is_map(spec) do
+    device =
+      case Map.get(spec, "driver_opts") do
+        %{"device" => d} -> d
+        _ -> nil
+      end
+
+    if is_binary(device) and host_path?(device) do
+      {:error,
+       "top-level volume #{inspect(name)}: driver_opts.device points at a host path " <>
+         "(#{inspect(device)}). Host-backed volumes are not allowed."}
+    else
+      :ok
+    end
+  end
+
+  defp check_top_level_volume(_name, _), do: :ok
+
+  defp host_path?(s) when is_binary(s) do
+    String.starts_with?(s, "/") or
+      String.starts_with?(s, "./") or
+      String.starts_with?(s, "../") or
+      s == "." or s == ".." or
+      String.starts_with?(s, "~")
+  end
+
+  defp host_path?(_), do: false
 
   defp parse_compose(content) do
     case Jason.decode(content) do
@@ -92,12 +425,21 @@ defmodule BoomLooper.Compose do
 
   # If we have a previous host port for this container port, pin it.
   # Otherwise strip to container-only for dynamic allocation.
+  #
+  # All emitted ports bind to 127.0.0.1 instead of the default 0.0.0.0.
+  # Loopback-only means:
+  #   1. Other workspaces' containers can't reach this service via the
+  #      Docker host gateway — the whole point of per-workspace network
+  #      isolation is defeated if ports are reachable at `<docker-host>:<port>`.
+  #   2. Machines on the LAN can't hit dev servers without authenticating
+  #      through BoomLooper. Local multiplayer goes via the Phoenix app;
+  #      agent containers are not publicly exposed.
   defp pin_port(port_spec, prev_ports) when is_binary(port_spec) do
     container_port = extract_container_port(port_spec)
 
     case Map.get(prev_ports, container_port) || Map.get(prev_ports, to_string(container_port)) do
-      nil -> container_port_str(port_spec)
-      host_port -> "#{host_port}:#{container_port}"
+      nil -> "127.0.0.1::#{container_port}"
+      host_port -> "127.0.0.1:#{host_port}:#{container_port}"
     end
   end
   defp pin_port(port_spec, prev_ports) when is_integer(port_spec) do
@@ -113,15 +455,6 @@ defmodule BoomLooper.Compose do
     end
     # Strip protocol suffix like /tcp
     port_str |> String.split("/") |> hd() |> String.to_integer()
-  end
-
-  # Strip to container-only (dynamic allocation)
-  defp container_port_str(port_spec) when is_binary(port_spec) do
-    case String.split(port_spec, ":") do
-      [_host, container] -> container
-      [container] -> container
-      [_ip, _host, container] -> container
-    end
   end
 
   @doc """

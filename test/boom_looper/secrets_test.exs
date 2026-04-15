@@ -92,4 +92,71 @@ defmodule BoomLooper.SecretsTest do
       assert :ok = Secrets.delete("totally_nonexistent_key")
     end
   end
+
+  describe "scoped access" do
+    setup do
+      for key <- ["global_key", "ws_key", "project_key", "multi_key"] do
+        Secrets.delete(key)
+      end
+
+      Secrets.put("global_key", "Global", "global-value")
+      Secrets.put("ws_key", "WS-only", "ws-value", ["ws-alpha"])
+      Secrets.put("project_key", "Project-only", "proj-value", ["proj-x"])
+
+      # A secret scoped to two different axes (workspace AND project)
+      Secrets.put("multi_key", "Multi", "multi-value", ["ws-beta", "proj-y"])
+
+      on_exit(fn ->
+        for key <- ["global_key", "ws_key", "project_key", "multi_key"] do
+          Secrets.delete(key)
+        end
+      end)
+
+      :ok
+    end
+
+    test "global secrets are visible from any workspace/project" do
+      assert {:ok, "global-value"} = Secrets.get("global_key", "ws-zzz", "proj-zzz")
+      assert {:ok, "global-value"} = Secrets.get("global_key", nil, nil)
+    end
+
+    test "workspace-scoped secrets return :not_found outside the scope" do
+      assert :not_found = Secrets.get("ws_key", "ws-different", "proj-different")
+      assert {:ok, "ws-value"} = Secrets.get("ws_key", "ws-alpha", "proj-whatever")
+    end
+
+    test "project-scoped secrets return :not_found outside the scope" do
+      assert :not_found = Secrets.get("project_key", "ws-anything", "proj-different")
+      assert {:ok, "proj-value"} = Secrets.get("project_key", "ws-anything", "proj-x")
+    end
+
+    test "a secret scoped to multiple ids is reachable via any of them" do
+      assert {:ok, "multi-value"} = Secrets.get("multi_key", "ws-beta", nil)
+      assert {:ok, "multi-value"} = Secrets.get("multi_key", nil, "proj-y")
+      assert :not_found = Secrets.get("multi_key", "ws-other", "proj-other")
+    end
+
+    test "list/2 filters scoped secrets the caller can't see" do
+      visible = Secrets.list("ws-alpha", "proj-other") |> Enum.map(& &1.key)
+
+      assert "global_key" in visible
+      assert "ws_key" in visible
+      refute "project_key" in visible
+      refute "multi_key" in visible
+    end
+
+    test "list/0 remains unscoped for admin/CLI callers" do
+      all = Secrets.list() |> Enum.map(& &1.key)
+      assert "global_key" in all
+      assert "ws_key" in all
+      assert "project_key" in all
+      assert "multi_key" in all
+    end
+
+    test "scoped get is indistinguishable from missing (no probing)" do
+      # An agent outside the scope cannot tell whether the secret exists.
+      assert :not_found = Secrets.get("ws_key", "ws-outside", nil)
+      assert :not_found = Secrets.get("genuinely-missing", "ws-alpha", nil)
+    end
+  end
 end

@@ -156,10 +156,12 @@ The macro generates `__tool_name__/0`, `__description__/0`, `input_schema/0`. Yo
 **Tool output truncation:** Long command output is truncated for agents (via `Helpers.truncate_for_agent`, ~80 lines) to conserve context tokens. The full output is streamed to the chat UI for human viewers. This keeps agent context bounded while giving humans complete visibility.
 
 **Discovery pipeline:**
-1. `ChatAgent.ToolConfig.default_tools()` → `[Tools.Agents, Tools.Container, Tools.Secrets]`
-2. `build_mcp_servers/1` calls `__tool_server__()` on each → `%{name => module}` map
-3. `build_allowed_tools/2` iterates tools, builds `"mcp__server__tool"` strings
-4. Passed to Claude SDK session → CLI contacts BEAM via JSONRPC for tool calls
+1. `ChatAgent.ToolConfig.default_tools()` → `[Tools.Container, Tools.Secrets]`. The former `Tools.Agents` toolkit is gone on purpose — see [SECURITY.md](SECURITY.md).
+2. `build_mcp_servers(tools, agent_id)` returns `%{name => %{module: mod, assigns: %{agent_id: id}}}`. The SDK threads `assigns` into every `execute(params, assigns)` call; tools cross-check the model-supplied `agent_id` param against the session-bound id.
+3. `build_allowed_tools/2` iterates tools, builds `"mcp__server__tool"` strings.
+4. Passed to Claude SDK session → CLI contacts BEAM via JSONRPC for tool calls.
+
+**Security boundaries enforced here:** session-bound `agent_id` (tools reject mismatched ids), workspace-scoped tool resolution (every tool derives its container/volume from the agent's own state), compose validation (no host mounts, host networking, privileged, external networks, host port pins), loopback-only port publishing, scoped secrets. Full model in [SECURITY.md](SECURITY.md).
 
 ## ChatAgent internals
 

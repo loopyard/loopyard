@@ -32,18 +32,6 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Sidebar do
     end
   end
 
-  defp sync_label(nil), do: "initializing"
-  defp sync_label(sync) do
-    cond do
-      sync_waiting?(sync) -> "waiting"
-      match?(%{status: :running}, sync) -> "running"
-      match?(%{status: :paused}, sync) -> "paused"
-      match?(%{status: :errored}, sync) -> "error"
-      match?(%{status: :starting}, sync) -> "starting"
-      true -> "stopped"
-    end
-  end
-
   # --- Sidebar ---
 
   def sidebar(assigns) do
@@ -88,7 +76,13 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Sidebar do
 
         <%!-- Services --%>
         <div :if={@service_statuses != [] || !@services_loaded} class="px-3 pt-3 pb-1">
-          <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-semibold mb-1.5">Services</div>
+          <div class="flex items-center justify-between mb-1.5">
+            <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-semibold">Services</div>
+            <.services_toggle
+              service_statuses={@service_statuses}
+              services_busy={@services_busy}
+            />
+          </div>
           <div :if={@service_statuses != []} class="space-y-0.5">
             <.service_item :for={svc <- @service_statuses} svc={svc} base_path={@base_path} selected={@selected_service == svc.name} host={@host} />
           </div>
@@ -105,13 +99,15 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Sidebar do
           <p :if={@volumes_loaded && @volumes == []} class="text-xs text-zinc-400 dark:text-zinc-500 py-1">No volumes</p>
         </div>
 
-        <%!-- Local sync — below volumes since it's about volume ↔ host file sync --%>
+        <%!--
+          Host file sync — only relevant for Local source adapters. A
+          GitHub-sourced workspace wouldn't have this row since code
+          arrives via clone, not host filesystem sync.
+        --%>
         <div :if={@is_local_source? && sync_relevant?(@sync_status)} class="px-3 pt-3 pb-1">
-          <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-semibold mb-1.5">Local sync</div>
           <.link navigate={"#{@base_path}/sync"} class="flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors hover:bg-white/60 dark:hover:bg-zinc-800/40">
             <div class={"w-1.5 h-1.5 rounded-full flex-none #{sync_dot(@sync_status)}"}></div>
-            <span class="truncate text-zinc-600 dark:text-zinc-400">Sync</span>
-            <span class="text-[10px] text-zinc-400 dark:text-zinc-500 ml-auto flex-none">{sync_label(@sync_status)}</span>
+            <span class="truncate text-zinc-600 dark:text-zinc-400">Host file sync</span>
           </.link>
         </div>
       </div>
@@ -169,6 +165,52 @@ defmodule BoomLooperWeb.Live.ChatLive.Components.Sidebar do
         </div>
       </div>
     </div>
+    """
+  end
+
+  # --- Services cluster toggle ---
+
+  defp any_running?(statuses), do: Enum.any?(statuses, &(&1.status == :running))
+
+  attr :service_statuses, :list, required: true
+  attr :services_busy, :atom, default: nil
+
+  defp services_toggle(assigns) do
+    assigns = assign(assigns, :running, any_running?(assigns.service_statuses))
+
+    ~H"""
+    <button
+      type="button"
+      phx-click={if @running, do: "stop_services", else: "start_services"}
+      disabled={@services_busy != nil}
+      title={cond do
+        @services_busy == :starting -> "Starting services..."
+        @services_busy == :stopping -> "Stopping services..."
+        @running -> "Stop all services"
+        true -> "Start all services"
+      end}
+      class={[
+        "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors",
+        "border border-zinc-200 dark:border-zinc-700",
+        if(@services_busy, do: "text-zinc-400 dark:text-zinc-500 cursor-not-allowed",
+          else: "text-zinc-500 dark:text-zinc-400 hover:bg-white dark:hover:bg-zinc-800")
+      ]}
+    >
+      <%= cond do %>
+        <% @services_busy == :starting -> %>
+          <div class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></div>
+          <span>Starting</span>
+        <% @services_busy == :stopping -> %>
+          <div class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></div>
+          <span>Stopping</span>
+        <% @running -> %>
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-2.5 h-2.5"><path d="M4.5 4.5a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1h-7Z" /></svg>
+          <span>Stop</span>
+        <% true -> %>
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-2.5 h-2.5"><path d="M4.5 3.5v9l7-4.5-7-4.5Z" /></svg>
+          <span>Start</span>
+      <% end %>
+    </button>
     """
   end
 

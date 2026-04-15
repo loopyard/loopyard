@@ -1,7 +1,7 @@
 defmodule BoomLooper.Tools.Container.Volumes do
   use BoomLooper.Tool,
     name: "volumes",
-    description: "List and inspect Docker volumes for this workspace",
+    description: "List and inspect Docker volumes for this workspace. Foreign volumes are rejected — you can only see volumes belonging to your own workspace.",
     params: [
       agent_id: {:string, required: true},
       action: {:string, description: "Action: 'list' (default), 'ls <volume> [path]', 'info <volume>'"}
@@ -20,12 +20,16 @@ defmodule BoomLooper.Tools.Container.Volumes do
             end
 
           {:ls, volume_name, path} ->
-            BoomLooper.VolumeManager.volume_ls(volume_name, path)
+            with :ok <- authorize_volume(workspace_id, volume_name) do
+              BoomLooper.VolumeManager.volume_ls(volume_name, path)
+            end
 
           {:info, volume_name} ->
-            case BoomLooper.VolumeManager.volume_info(volume_name) do
-              nil -> {:error, "Volume not found: #{volume_name}"}
-              info -> {:ok, Jason.encode!(info, pretty: true)}
+            with :ok <- authorize_volume(workspace_id, volume_name) do
+              case BoomLooper.VolumeManager.volume_info(volume_name) do
+                nil -> {:error, "Volume not found: #{volume_name}"}
+                info -> {:ok, Jason.encode!(info, pretty: true)}
+              end
             end
         end
 
@@ -33,6 +37,21 @@ defmodule BoomLooper.Tools.Container.Volumes do
         {:error, "Agent #{agent_id} has no workspace"}
     end
   end
+
+  # Enforce workspace boundary: a volume belongs to a workspace iff its
+  # name starts with "bl-<workspace_id>". This is the same prefix used
+  # by VolumeManager.list_workspace_volumes/1.
+  defp authorize_volume(workspace_id, volume_name) when is_binary(volume_name) do
+    if String.starts_with?(volume_name, "bl-#{workspace_id}") do
+      :ok
+    else
+      {:error,
+       "Volume #{volume_name} does not belong to this workspace. You can only access " <>
+         "volumes prefixed with bl-#{workspace_id}. Use `volumes list` to see yours."}
+    end
+  end
+
+  defp authorize_volume(_, _), do: {:error, "volume name must be a string"}
 
   defp parse_volume_action(action) do
     case String.split(String.trim(action), ~r/\s+/, parts: 3) do
