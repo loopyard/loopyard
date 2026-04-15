@@ -209,5 +209,53 @@ refresh your browser when you save files and it does not affect production.
 .highlight .vi {color: #f8f8f2; } /* :name_variable_instance */
 .highlight .vm {color: #f8f8f2; } /* :name_variable_magic */
 
-/* Override highlight background for dark mode */
+/* Container background follows the surrounding viewer — the text
+   viewer paints its own light/dark background so we stay transparent. */
 .highlight { background-color: transparent; }
+
+/* Light-mode syntax theme.
+   The Monokai colors above are designed for a dark background: text
+   tokens like `.n`, `.p`, `.nv` are `#f8f8f2` (near-white), which
+   disappears on the light-mode viewer's white background. These
+   overrides restore readable colors on light backgrounds.
+   Inspired by GitHub's default light theme. */
+@media (prefers-color-scheme: light) {
+  .highlight                 { color: #24292e; }
+  .highlight .hll            { background-color: #f1f8ff; }
+
+  /* Comments */
+  .highlight .c,   .highlight .c1,  .highlight .cm, .highlight .cp,
+  .highlight .cpf, .highlight .cs,  .highlight .ch                    { color: #6a737d; font-style: italic; }
+  .highlight .gu                                                       { color: #6a737d; }
+
+  /* Keywords / operators (GitHub red) */
+  .highlight .k,   .highlight .kc,  .highlight .kd, .highlight .kn,
+  .highlight .kp,  .highlight .kr,  .highlight .kt                    { color: #d73a49; }
+  .highlight .o,   .highlight .ow,  .highlight .nt                    { color: #d73a49; }
+
+  /* Strings (dark blue) */
+  .highlight .s,   .highlight .s1,  .highlight .s2, .highlight .sa,
+  .highlight .sb,  .highlight .sc,  .highlight .sd, .highlight .sh,
+  .highlight .si,  .highlight .sr,  .highlight .ss, .highlight .sx,
+  .highlight .dl                                                       { color: #032f62; }
+  .highlight .se                                                       { color: #005cc5; }
+
+  /* Numbers / literals (GitHub blue) */
+  .highlight .l,   .highlight .ld,  .highlight .m,  .highlight .mb,
+  .highlight .mf,  .highlight .mh,  .highlight .mi, .highlight .mo,
+  .highlight .il                                                       { color: #005cc5; }
+
+  /* Names: functions/classes/decorators use purple; plain identifiers
+     use body text. */
+  .highlight .nf,  .highlight .nc,  .highlight .nd, .highlight .ne,
+  .highlight .na,  .highlight .fm,  .highlight .nx                    { color: #6f42c1; }
+  .highlight .no                                                       { color: #005cc5; }
+  .highlight .n,   .highlight .nb,  .highlight .nn, .highlight .nv,
+  .highlight .bp,  .highlight .ni,  .highlight .nl, .highlight .py,
+  .highlight .vc,  .highlight .vg,  .highlight .vi, .highlight .vm,
+  .highlight .p                                                        { color: #24292e; }
+
+  /* Diffs */
+  .highlight .gi                                                       { color: #22863a; }
+  .highlight .gd                                                       { color: #b31d28; }
+}
