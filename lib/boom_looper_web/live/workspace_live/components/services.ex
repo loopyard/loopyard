@@ -22,7 +22,25 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Services do
           {@host}:{@first_port}
         </a>
         <div class="ml-auto flex items-center gap-2">
-          <.control_btn phx-click="restart_service" phx-value-service_name={@service_name}>Restart</.control_btn>
+          <%!--
+            Running → Restart (kick the container). Crashed/stopped →
+            Start (compose up -d brings it back, which `restart` on
+            a stopped container won't do). When we can't tell (no
+            service record yet), show Start so the button always
+            points at a useful action.
+          --%>
+          <.control_btn :if={@svc && @svc.status == :running}
+            phx-click="restart_service" phx-value-service_name={@service_name}>
+            Restart
+          </.control_btn>
+          <.control_btn :if={!@svc || @svc.status != :running}
+            phx-click="start_service" phx-value-service_name={@service_name}>
+            Start
+          </.control_btn>
+          <.control_btn :if={@svc && @svc.status == :running}
+            phx-click="stop_service" phx-value-service_name={@service_name}>
+            Stop
+          </.control_btn>
           <.link navigate={"#{@base_path}/services/#{@service_name}/console"}
             class="inline-block px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors">
             Console

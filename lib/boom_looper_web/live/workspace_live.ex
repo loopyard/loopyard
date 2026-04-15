@@ -575,6 +575,25 @@ defmodule BoomLooperWeb.WorkspaceLive do
     {:noreply, socket}
   end
 
+  def handle_event("start_service", %{"service_name" => name}, socket) do
+    ws_id = socket.assigns.workspace_entry.id
+    effective_dir = BoomLooper.Workspace.compose_dir(ws_id)
+    # `up -d <service>` brings a stopped/crashed service back without
+    # touching the rest of the compose project. `restart` is a no-op
+    # on a non-running container, which is why the single-button
+    # "Restart" was the wrong call to show in the log view when the
+    # service isn't running.
+    BoomLooper.Compose.compose(effective_dir, ws_id, ["up", "-d", name], timeout: 60_000)
+    {:noreply, socket}
+  end
+
+  def handle_event("stop_service", %{"service_name" => name}, socket) do
+    ws_id = socket.assigns.workspace_entry.id
+    effective_dir = BoomLooper.Workspace.compose_dir(ws_id)
+    BoomLooper.Compose.compose(effective_dir, ws_id, ["stop", name], timeout: 30_000)
+    {:noreply, socket}
+  end
+
   def handle_event("start_services", _params, socket) do
     if socket.assigns.services_busy do
       {:noreply, socket}
