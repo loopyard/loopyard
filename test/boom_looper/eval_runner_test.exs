@@ -257,4 +257,16 @@ defmodule BoomLooper.EvalRunnerTest do
       refute EvalRunner.has_real_project_files?([])
     end
   end
+
+  describe "wait_for_workspace_container/2" do
+    test "times out when the container never comes up" do
+      # A workspace_id we know has no container — the helper should
+      # return {:error, :timeout} after the budget, not hang.
+      assert {:error, :timeout} =
+               EvalRunner.wait_for_workspace_container(
+                 "wait-ctnr-test-#{:rand.uniform(1_000_000)}",
+                 200
+               )
+    end
+  end
 end

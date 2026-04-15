@@ -186,16 +186,27 @@ defmodule BoomLooper.EvalRunner do
           volume: volume_name
         ]
 
-        # Wait for the initial host→volume sync to populate /workspace
-        # before we let the agent loose. Without this, the agent can
-        # fire its first `tree` / `read_files` against an empty volume,
-        # conclude there's no project, and bootstrap a bogus minimal
-        # app to satisfy the HTTP probe — a false-success masquerading
-        # as a real one. Observed on bookstack run #7: agent saw empty
-        # /workspace, wrote 111 bytes of package.json, eval recorded
-        # success/1n for a completely wrong project.
+        # Before spawning the agent we wait for two things:
+        #
+        # 1. The host → volume sync populates /workspace with real
+        #    project files. Without this, the agent's first `tree` /
+        #    `read_files` sees an empty volume and bootstraps a stub
+        #    app to satisfy the HTTP probe — a false success.
+        # 2. The workspace container is actually running. Without
+        #    this, every `tree` / `exec` / `grep` fails with
+        #    "No such container: bl-<ws>-workspace-1" and the agent's
+        #    only recovery path is to write its own minimal compose
+        #    (observed on discourse run: 266s duration, 15 tool calls,
+        #    bogus hello-world server).
+        #
+        # Soft failures on both — EvalRunner logs and proceeds anyway
+        # rather than blocking the whole suite on a slow clone or a
+        # container that's taking forever to boot.
         BoomLooper.IExSession.working("eval: #{eval_name} — waiting for sync")
         wait_for_workspace_populated(workspace.id, _timeout_ms = 120_000)
+
+        BoomLooper.IExSession.working("eval: #{eval_name} — waiting for workspace container")
+        wait_for_workspace_container(workspace.id, _timeout_ms = 120_000)
 
         ChatAgent.register_booting(id, "Setup", project_dir)
         Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn -> BoomLooper.AgentBoot.boot(id, agent_opts) end)
@@ -641,6 +652,48 @@ defmodule BoomLooper.EvalRunner do
     else
       Process.sleep(1_000)
       wait_for_workspace_populated_loop(volume_name, deadline, workspace_id)
+    end
+  end
+
+  @doc """
+  Busy-wait until the workspace container (`bl-<ws>-workspace-1`) is
+  running. Without this, the agent's first `tree` / `exec` / `grep`
+  fails with "No such container" and the agent's only recovery path
+  is to write its own minimal compose — a bogus setup path that
+  bypasses the real project.
+
+  Returns `:ok` when the container is up, `{:error, :timeout}` when
+  it doesn't come up in `timeout_ms`. Soft failure (logged + warned),
+  same pattern as wait_for_workspace_populated/2.
+  """
+  def wait_for_workspace_container(workspace_id, timeout_ms) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    container = BoomLooper.Workspace.ServiceManager.service_container_name(workspace_id, "workspace")
+    wait_for_workspace_container_loop(container, deadline, workspace_id)
+  end
+
+  defp wait_for_workspace_container_loop(container, deadline, workspace_id) do
+    cond do
+      BoomLooper.Docker.container_running?(container) ->
+        :ok
+
+      System.monotonic_time(:millisecond) >= deadline ->
+        Logger.warning(
+          "[EvalRunner] workspace container #{container} not running after wait — " <>
+            "agent tools (tree/exec/grep) will fail and it may write a bogus minimal compose"
+        )
+
+        BoomLooper.EventLog.warning(
+          "eval:#{workspace_id}",
+          "Workspace container did not come up before timeout. Agent will start " <>
+            "anyway but expect it to fail investigating the project."
+        )
+
+        {:error, :timeout}
+
+      true ->
+        Process.sleep(1_000)
+        wait_for_workspace_container_loop(container, deadline, workspace_id)
     end
   end
 
