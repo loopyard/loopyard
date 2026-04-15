@@ -80,7 +80,10 @@ Results are written to `evals/<name>/runs/<timestamp>.md` (sibling to `project/`
 2. Read results in `evals/<name>/runs/`
 3. Diagnose — jack in with `mix boom.rpc` to inspect live state
 4. Fix prompt or code
-5. Hot-reload: `mix boom.rpc 'IEx.Helpers.recompile()'`
+5. Hot-reload: `mix boom.rpc 'BoomLooper.HotReload.reload()'`
+
+   **Don't use `IEx.Helpers.recompile()` alone.** If `mix compile` already ran in a separate shell (VS Code, editor save, CI), `recompile()` returns `:noop` and the BEAM keeps serving the OLD bytecode — your fix won't take effect and you'll chase a ghost. `BoomLooper.HotReload.reload/0` re-purges and re-loads every `BoomLooper.*` / `BoomLooperWeb.*` module whose `.beam` file was written in the last minute, which covers the common mix-compile-then-reload case. Verify the reload worked by calling the fixed function and inspecting its output before re-running an eval.
+
 6. Run again, compare
 
 ## Avoiding Overfitting
