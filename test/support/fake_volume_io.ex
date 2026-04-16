@@ -23,10 +23,34 @@ defmodule BoomLooper.Test.FakeVolumeIO do
   returns the volume name to pass wherever a real code volume would go.
   """
   def seed(volume, files) when is_list(files) do
+    Process.put({__MODULE__, :volume_files, volume}, Enum.map(files, fn {p, _} -> p end))
+
     for {path, content} <- files do
       Process.put({__MODULE__, volume, path}, content)
     end
 
     volume
+  end
+
+  @doc """
+  Walk the seeded files and write any that live under `src_rel` into
+  `dest_abs`, preserving relative paths.
+  """
+  def mirror_dir(volume, src_rel, dest_abs) do
+    paths = Process.get({__MODULE__, :volume_files, volume}, [])
+
+    for path <- paths, under?(path, src_rel) do
+      content = Process.get({__MODULE__, volume, path})
+      target = Path.join(dest_abs, path)
+      File.mkdir_p!(Path.dirname(target))
+      File.write!(target, content)
+    end
+
+    :ok
+  end
+
+  defp under?(_path, "."), do: true
+  defp under?(path, prefix) do
+    String.starts_with?(path, prefix <> "/") or path == prefix
   end
 end

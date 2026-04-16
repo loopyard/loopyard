@@ -107,6 +107,33 @@ defmodule BoomLooper.VolumeIO do
     end
   end
 
+  @doc """
+  Mirror a directory from a volume to a local host path. Uses tar piped
+  through docker so one round-trip covers the whole tree. Missing source
+  directory is not an error — the destination just stays untouched.
+
+  Returns `:ok` or `{:error, reason}`.
+  """
+  def mirror_dir(volume_name, src_rel, dest_abs)
+      when is_binary(volume_name) and is_binary(src_rel) and is_binary(dest_abs) do
+    File.mkdir_p!(dest_abs)
+
+    # Use a shell pipeline to tar from the volume and untar on the host.
+    # `|| true` swallows the "no such directory" case so we exit 0 when
+    # the volume simply has no `.claude/`.
+    cmd =
+      "docker run --rm -v #{volume_name}:/workspace alpine " <>
+        "sh -c 'cd /workspace && tar cf - #{src_rel} 2>/dev/null || true' " <>
+        "| tar xf - -C #{dest_abs} 2>/dev/null || true"
+
+    case System.shell(cmd, stderr_to_stdout: true) do
+      {_, 0} -> :ok
+      {out, code} -> {:error, "mirror_dir exited #{code}: #{out}"}
+    end
+  rescue
+    e -> {:error, Exception.message(e)}
+  end
+
   # Find a running workspace container that has this volume mounted
   defp find_container_for_volume(volume_name) do
     # Volume names are like bl-{workspace_id}-code

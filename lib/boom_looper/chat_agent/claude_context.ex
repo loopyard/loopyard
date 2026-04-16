@@ -80,22 +80,57 @@ defmodule BoomLooper.ChatAgent.ClaudeContext do
 
   defp mirror_from_volume(workspace_id, working_dir) do
     volume = BoomLooper.VolumeManager.code_volume_name(workspace_id)
+
+    # Pull the entire .claude/ tree in one docker round-trip so skills,
+    # commands, agents, and hooks tag along without per-file reads.
+    mirror_claude_dir(volume, working_dir)
+
     written = mirror_well_known(volume, working_dir, []) ++ mirror_imports(volume, working_dir)
 
-    if written == [] do
+    # Count .claude/ files that the directory mirror wrote so the log
+    # accurately reflects what the agent will see.
+    claude_tree = list_mirrored_claude_files(working_dir)
+    total = Enum.uniq(written ++ claude_tree)
+
+    if total == [] do
       :skip
     else
       Logger.info(
-        "[ClaudeContext] mirrored #{length(written)} file(s) from " <>
-          "#{volume} → #{working_dir}: #{Enum.join(written, ", ")}"
+        "[ClaudeContext] mirrored #{length(total)} file(s) from " <>
+          "#{volume} → #{working_dir}"
       )
 
-      {:ok, written}
+      {:ok, total}
     end
   rescue
     e ->
       Logger.warning("[ClaudeContext] mirror failed: #{Exception.message(e)}")
       {:error, Exception.message(e)}
+  end
+
+  defp mirror_claude_dir(volume, working_dir) do
+    case volume_reader() do
+      mod when is_atom(mod) ->
+        if function_exported?(mod, :mirror_dir, 3) do
+          mod.mirror_dir(volume, ".claude", working_dir)
+        else
+          :ok
+        end
+    end
+  end
+
+  defp list_mirrored_claude_files(working_dir) do
+    claude_dir = Path.join(working_dir, ".claude")
+
+    if File.dir?(claude_dir) do
+      claude_dir
+      |> Path.join("**")
+      |> Path.wildcard()
+      |> Enum.filter(&File.regular?/1)
+      |> Enum.map(&Path.relative_to(&1, working_dir))
+    else
+      []
+    end
   end
 
   defp mirror_well_known(volume, working_dir, acc) do

@@ -119,6 +119,25 @@ defmodule BoomLooper.ChatAgent.ClaudeContextTest do
       ws_id = seed_ws([])
       assert :skip = ClaudeContext.mirror(ws_id, dir)
     end
+
+    test "mirrors the full .claude/ tree including skills", %{tmp_dir: dir} do
+      ws_id =
+        seed_ws([
+          {"CLAUDE.md", "main"},
+          {".claude/skills/review-pr/SKILL.md", "# Review PR skill"},
+          {".claude/skills/review-pr/helpers.sh", "echo hi"},
+          {".claude/commands/deploy.md", "/deploy command"},
+          {".claude/agents/tester.md", "testing agent"}
+        ])
+
+      {:ok, paths} = ClaudeContext.mirror(ws_id, dir)
+      assert ".claude/skills/review-pr/SKILL.md" in paths
+      assert ".claude/commands/deploy.md" in paths
+      assert ".claude/agents/tester.md" in paths
+
+      assert File.read!(Path.join(dir, ".claude/skills/review-pr/SKILL.md")) =~ "Review PR"
+      assert File.read!(Path.join(dir, ".claude/commands/deploy.md")) =~ "deploy"
+    end
   end
 
   # --- Helpers ---

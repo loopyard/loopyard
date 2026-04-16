@@ -49,3 +49,6 @@ evals/*/project/
 projects.json
 
 /tmp/
+
+ports.json
+worktrees/
