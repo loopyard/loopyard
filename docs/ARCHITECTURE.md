@@ -171,8 +171,13 @@ Each `ChatAgent` is a GenServer owning a Claude Code SDK session (CLI subprocess
 
 **Submodules:**
 - `ChatAgent.Prompt` — system prompt construction
+- `ChatAgent.ClaudeContext` — mirrors CLAUDE.md + `.claude/` from the code volume to `working_dir` so the CLI's native discovery finds them
 - `ChatAgent.ToolConfig` — MCP server/tool wiring
 - `ChatAgent.Persistence` — ETF log append
+
+**System prompt composition:** We pass `append_system_prompt` (NOT `system_prompt`) to the Claude Code SDK so the CLI's default system prompt — which handles `CLAUDE.md` discovery, slash command docs, and native tool descriptions — stays active. Our BoomLooper-specific rules are appended on top. Using `system_prompt` would replace the default and silently turn off `CLAUDE.md` loading.
+
+**CLAUDE.md for container-only workspaces:** GitHub workspaces store code exclusively in a volume; `working_dir` is an empty bookkeeping dir and the CLI has nothing to discover. `ClaudeContext.mirror/2` pulls `CLAUDE.md`, `CLAUDE.local.md`, `.claude/` (settings + skills + commands + agents + hooks), and any `@`-imported files from the volume into `working_dir` before the session starts. Local workspaces skip the mirror (host is already the source of truth via Mutagen).
 
 **State flow:**
 ```

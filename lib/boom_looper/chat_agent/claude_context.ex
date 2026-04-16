@@ -100,6 +100,17 @@ defmodule BoomLooper.ChatAgent.ClaudeContext do
           "#{volume} → #{working_dir}"
       )
 
+      # Surface to EventLog so users can see CLAUDE.md was picked up.
+      # The agent won't say "I read CLAUDE.md" — this is the only signal.
+      has_claude_md? = Enum.any?(total, &String.ends_with?(&1, "CLAUDE.md"))
+      claude_dir_count = Enum.count(total, &String.starts_with?(&1, ".claude/"))
+      note = if has_claude_md?, do: "CLAUDE.md + ", else: ""
+
+      BoomLooper.EventLog.info(
+        "agent:context",
+        "Loaded #{length(total)} Claude Code file(s) (#{note}#{claude_dir_count} .claude/ entries)"
+      )
+
       {:ok, total}
     end
   rescue
