@@ -55,10 +55,10 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
       <div class="flex-none p-3 border-b border-zinc-200 dark:border-zinc-700/80">
         <.link
           navigate={"#{@base_path}/new"}
-          class="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 px-3.5 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-400
-                 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+          class="focus-ring w-full inline-flex items-center justify-center gap-2 rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 min-h-11 text-sm font-medium text-zinc-700 dark:text-zinc-300
+                 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-4 h-4">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-4 h-4" aria-hidden="true">
             <path d="M8.75 3.75a.75.75 0 0 0-1.5 0v3.5h-3.5a.75.75 0 0 0 0 1.5h3.5v3.5a.75.75 0 0 0 1.5 0v-3.5h3.5a.75.75 0 0 0 0-1.5h-3.5v-3.5Z" />
           </svg>
           New Agent
@@ -67,7 +67,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
       <div class="flex-1 overflow-y-auto">
         <%!-- Agents --%>
         <div class="px-3 pt-3 pb-1">
-          <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-semibold mb-1.5">Agents</div>
+          <div class="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 font-semibold mb-1.5">Agents</div>
           <div :if={@agents != []} class="space-y-0.5">
             <.agent_list_item :for={agent <- @agents} agent={agent} selected={@selected_id == agent.id} />
           </div>
@@ -77,7 +77,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         <%!-- Services --%>
         <div :if={@service_statuses != [] || !@services_loaded} class="px-3 pt-3 pb-1">
           <div class="flex items-center justify-between mb-1.5">
-            <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-semibold">Services</div>
+            <div class="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 font-semibold">Services</div>
             <.services_toggle
               service_statuses={@service_statuses}
               services_busy={@services_busy}
@@ -91,7 +91,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
 
         <%!-- Volumes --%>
         <div class="px-3 pt-3 pb-1">
-          <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-semibold mb-1.5">Volumes</div>
+          <div class="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 font-semibold mb-1.5">Volumes</div>
           <div :if={@volumes != []} class="space-y-0.5">
             <.volume_item :for={vol <- @volumes} vol={vol} base_path={@base_path} />
           </div>
@@ -140,7 +140,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         </form>
 
         <div class="mt-6 pt-6 border-t border-zinc-200 dark:border-zinc-700/80">
-          <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-semibold mb-3">Presets</div>
+          <div class="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 font-semibold mb-3">Presets</div>
           <div class="space-y-2">
             <button phx-click="spawn_agent_with_message" phx-value-preset="setup"
               class="w-full text-left rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
