@@ -1,10 +1,13 @@
 defmodule BoomLooperWeb.Live.WorkspaceLive.Components.ContextPanel do
   @moduledoc """
   Agent Context sidebar panel — shows agent info, Docker context,
-  Claude usage stats, and available MCP tools.
+  Claude usage stats, and available MCP tools. Uses the shared
+  BoomLooperWeb.Components.SideNav building blocks for consistent
+  section rhythm with the workspace sidebar.
   """
   use Phoenix.Component
 
+  import BoomLooperWeb.Components.SideNav, only: [section: 1, info_row: 1]
   import BoomLooperWeb.Live.WorkspaceLive.Components.Formatters, only: [time_ago: 1]
 
   attr :agent, :map, required: true
@@ -20,12 +23,21 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.ContextPanel do
       "flex-col h-full bg-zinc-50 dark:bg-zinc-900/50 overflow-y-auto border-l border-zinc-200 dark:border-zinc-700/80",
       if(@mobile, do: "flex flex-1", else: "hidden lg:flex w-80 flex-none")
     ]}>
-      <div class="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700/80">
-        <h3 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Agent Context</h3>
-      </div>
-
       <.agent_name agent={@agent} editing_name={@editing_name} />
-      <.agent_info agent={@agent} />
+
+      <.section label="Info">
+        <.info_row
+          label="Status"
+          value={if @agent[:active_tool] && @agent.status == :thinking, do: "using #{short_tool(@agent.active_tool)}", else: @agent.status}
+        />
+        <.info_row label="Turns" value={@agent[:turns] || 0} />
+        <.info_row label="Tool calls" value={@agent.tool_calls} />
+        <.info_row label="Errors" value={@agent.errors} class={if @agent.errors > 0, do: "text-red-500 font-medium"} />
+        <.info_row label="Messages" value={length(@agent.messages)} />
+        <.info_row :if={@agent[:started_at]} label="Started" value={time_ago(@agent.started_at)} />
+        <.info_row :if={@agent[:last_activity_at]} label="Last active" value={time_ago(@agent.last_activity_at)} />
+      </.section>
+
       <.docker_context agent={@agent} />
       <.claude_usage agent={@agent} />
       <.tool_list />
@@ -35,41 +47,19 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.ContextPanel do
 
   defp agent_name(assigns) do
     ~H"""
-    <div class="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700/80">
+    <div class="px-3 py-3 md:py-2 border-b border-zinc-200 dark:border-zinc-700/80">
       <form :if={@editing_name} phx-submit="rename_agent" phx-click-away="cancel_rename" class="flex items-center gap-2">
         <input type="text" name="name" value={@agent.name} autofocus phx-mounted={Phoenix.LiveView.JS.dispatch("focus")}
           class="flex-1 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-1.5 text-sm
                  text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-violet-500/30" />
-        <button type="submit" class="text-xs text-violet-600 dark:text-violet-400 hover:underline flex-none">Save</button>
+        <button type="submit" class="focus-ring text-xs font-medium text-violet-600 dark:text-violet-400 hover:underline flex-none">Save</button>
       </form>
-      <div :if={!@editing_name} phx-click="start_rename" class="cursor-pointer group flex items-center gap-2">
+      <div :if={!@editing_name} phx-click="start_rename" class="cursor-pointer group flex items-center gap-2 px-2">
         <span class="text-sm font-medium text-zinc-900 dark:text-zinc-100">{@agent.name}</span>
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3 h-3 text-zinc-300 dark:text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3 h-3 text-zinc-300 dark:text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden="true">
           <path d="M13.488 2.513a1.75 1.75 0 0 0-2.475 0L6.75 6.774a2.75 2.75 0 0 0-.596.892l-.848 2.047a.75.75 0 0 0 .98.98l2.047-.848a2.75 2.75 0 0 0 .892-.596l4.261-4.262a1.75 1.75 0 0 0 0-2.474Z" />
           <path d="M4.75 3.5c-.69 0-1.25.56-1.25 1.25v6.5c0 .69.56 1.25 1.25 1.25h6.5c.69 0 1.25-.56 1.25-1.25V9A.75.75 0 0 1 14 9v2.25A2.75 2.75 0 0 1 11.25 14h-6.5A2.75 2.75 0 0 1 2 11.25v-6.5A2.75 2.75 0 0 1 4.75 2H7a.75.75 0 0 1 0 1.5H4.75Z" />
         </svg>
-      </div>
-    </div>
-    """
-  end
-
-  defp agent_info(assigns) do
-    ~H"""
-    <div class="px-4 py-3 space-y-2">
-      <h4 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Info</h4>
-      <div class="space-y-1.5 text-xs">
-        <div class="flex justify-between">
-          <span class="text-zinc-400">Status</span>
-          <span class="font-medium text-zinc-700 dark:text-zinc-300">
-            {if @agent[:active_tool] && @agent.status == :thinking, do: "using #{short_tool(@agent.active_tool)}", else: @agent.status}
-          </span>
-        </div>
-        <.info_row label="Turns" value={@agent[:turns] || 0} />
-        <.info_row label="Tool calls" value={@agent.tool_calls} />
-        <.info_row label="Errors" value={@agent.errors} class={if @agent.errors > 0, do: "text-red-500"} />
-        <.info_row label="Messages" value={length(@agent.messages)} />
-        <.info_row :if={@agent[:started_at]} label="Started" value={time_ago(@agent.started_at)} />
-        <.info_row :if={@agent[:last_activity_at]} label="Last active" value={time_ago(@agent.last_activity_at)} />
       </div>
     </div>
     """
@@ -80,29 +70,16 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.ContextPanel do
     assigns = assign(assigns, :ctx, ctx)
 
     ~H"""
-    <div :if={@ctx.container} class="px-4 py-3 border-t border-zinc-200 dark:border-zinc-700/80 space-y-2">
-      <h4 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Docker</h4>
-      <div class="space-y-1.5 text-xs">
-        <div>
-          <span class="text-zinc-400">Container</span>
-          <div class="font-mono text-zinc-700 dark:text-zinc-300 truncate mt-0.5">{@ctx.container}</div>
-        </div>
-        <div :if={@ctx.volume}>
-          <span class="text-zinc-400">Volume</span>
-          <div class="font-mono text-zinc-700 dark:text-zinc-300 truncate mt-0.5">{@ctx.volume}</div>
-        </div>
-        <div class="flex justify-between">
-          <span class="text-zinc-400">Mode</span>
-          <span class={"font-medium #{if @ctx.mode == :container, do: "text-emerald-600 dark:text-emerald-400", else: "text-amber-600 dark:text-amber-400"}"}>
-            {@ctx.mode}
-          </span>
-        </div>
-        <div :if={@ctx.workspace_id}>
-          <span class="text-zinc-400">Workspace</span>
-          <div class="font-mono text-zinc-700 dark:text-zinc-300 mt-0.5">{@ctx.workspace_id}</div>
-        </div>
-      </div>
-    </div>
+    <.section :if={@ctx.container} label="Docker">
+      <.info_row label="Container" value={@ctx.container} monospace class="text-zinc-700 dark:text-zinc-300" />
+      <.info_row :if={@ctx.volume} label="Volume" value={@ctx.volume} monospace class="text-zinc-700 dark:text-zinc-300" />
+      <.info_row
+        label="Mode"
+        value={@ctx.mode}
+        class={if @ctx.mode == :container, do: "text-emerald-600 dark:text-emerald-400 font-medium", else: "text-amber-600 dark:text-amber-400 font-medium"}
+      />
+      <.info_row :if={@ctx.workspace_id} label="Workspace" value={@ctx.workspace_id} monospace class="text-zinc-700 dark:text-zinc-300" />
+    </.section>
     """
   end
 
@@ -111,24 +88,26 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.ContextPanel do
     assigns = assign(assigns, :total_tokens, total_tokens)
 
     ~H"""
-    <div class="px-4 py-3 border-t border-zinc-200 dark:border-zinc-700/80 space-y-2">
-      <h4 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Claude</h4>
-      <div class="space-y-1.5 text-xs">
-        <div :if={@agent[:model]} class="flex justify-between">
-          <span class="text-zinc-400">Model</span>
-          <span class="font-mono text-zinc-700 dark:text-zinc-300">{short_model(@agent.model)}</span>
-        </div>
-        <div :if={!@agent[:model]} class="flex justify-between">
-          <span class="text-zinc-400">Model</span>
-          <span class="text-zinc-500 italic">awaiting first response</span>
-        </div>
-        <.info_row label="Total tokens" value={compact_number(@total_tokens)} />
-        <.info_row label="Input" value={compact_number(@agent[:total_input_tokens] || 0)} />
-        <.info_row label="Output" value={compact_number(@agent[:total_output_tokens] || 0)} />
-        <.info_row label="Cache hits" value={compact_number(@agent[:total_cache_read_tokens] || 0)} />
-        <.info_row label="Cost" value={"$#{Float.round((@agent[:total_cost_usd] || 0.0) * 1.0, 4)}"} />
-      </div>
-    </div>
+    <.section label="Claude">
+      <.info_row
+        :if={@agent[:model]}
+        label="Model"
+        value={short_model(@agent.model)}
+        monospace
+        class="text-zinc-700 dark:text-zinc-300"
+      />
+      <.info_row
+        :if={!@agent[:model]}
+        label="Model"
+        value="awaiting first response"
+        class="text-zinc-500 italic"
+      />
+      <.info_row label="Total tokens" value={compact_number(@total_tokens)} />
+      <.info_row label="Input" value={compact_number(@agent[:total_input_tokens] || 0)} />
+      <.info_row label="Output" value={compact_number(@agent[:total_output_tokens] || 0)} />
+      <.info_row label="Cache hits" value={compact_number(@agent[:total_cache_read_tokens] || 0)} />
+      <.info_row label="Cost" value={"$#{Float.round((@agent[:total_cost_usd] || 0.0) * 1.0, 4)}"} />
+    </.section>
     """
   end
 
@@ -137,27 +116,13 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.ContextPanel do
     assigns = assign(assigns, :tools, tools)
 
     ~H"""
-    <div class="px-4 py-3 border-t border-zinc-200 dark:border-zinc-700/80">
-      <h4 class="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Tools</h4>
-      <div class="flex flex-wrap gap-1">
-        <span :for={tool <- @tools} class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400">
+    <.section label="Tools">
+      <div class="flex flex-wrap gap-1 px-2">
+        <span :for={tool <- @tools} class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400">
           {tool}
         </span>
       </div>
-    </div>
-    """
-  end
-
-  # --- Shared helpers ---
-
-  defp info_row(assigns) do
-    assigns = assigns |> Map.put_new(:class, nil)
-
-    ~H"""
-    <div class="flex justify-between">
-      <span class="text-zinc-400">{@label}</span>
-      <span class={@class || "font-medium text-zinc-700 dark:text-zinc-300"}>{@value}</span>
-    </div>
+    </.section>
     """
   end
 

@@ -5,6 +5,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
   import BoomLooperWeb.Components.Sidebar, only: [
     status_dot: 1, service_dot: 1, service_detail: 1, first_host_port: 1, thinking_word: 1
   ]
+  import BoomLooperWeb.Components.SideNav, only: [section: 1, row: 1, empty: 1]
   import BoomLooperWeb.Live.WorkspaceLive.Components.Formatters, only: [
     service_status_text: 1, exit_reason: 1, derive_volume_description: 1
   ]
@@ -54,69 +55,42 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
     ]}>
       <.workspace_header workspace_running={@workspace_running} services_busy={@services_busy} />
 
-      <div class="flex-1 overflow-y-auto divide-y divide-zinc-200 dark:divide-zinc-800/80">
-        <.sidebar_section label="Agents">
-          <div :if={@agents != []} class="space-y-px">
-            <.agent_list_item :for={agent <- @agents} agent={agent} selected={@selected_id == agent.id} />
-          </div>
-          <p :if={@agents == []} class="px-2 text-xs text-zinc-400 dark:text-zinc-500">No agents</p>
-          <.link
-            navigate={"#{@base_path}/new"}
-            class="focus-ring mt-1 flex items-center gap-2 px-2 py-1.5 md:py-1 min-h-11 md:min-h-0 rounded text-sm text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-colors"
-          >
+      <div class="flex-1 overflow-y-auto">
+        <.section label="Agents">
+          <.agent_list_item :for={agent <- @agents} agent={agent} selected={@selected_id == agent.id} />
+          <.empty :if={@agents == []} text="No agents" />
+          <.row navigate={"#{@base_path}/new"} class="text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3.5 h-3.5 flex-none" aria-hidden="true">
               <path d="M8.75 3.75a.75.75 0 0 0-1.5 0v3.5h-3.5a.75.75 0 0 0 0 1.5h3.5v3.5a.75.75 0 0 0 1.5 0v-3.5h3.5a.75.75 0 0 0 0-1.5h-3.5v-3.5Z" />
             </svg>
             <span>New agent</span>
-          </.link>
-        </.sidebar_section>
+          </.row>
+        </.section>
 
-        <.sidebar_section :if={@service_statuses != [] || !@services_loaded} label="Services">
-          <div :if={@service_statuses != []} class="space-y-px">
-            <.service_item :for={svc <- @service_statuses} svc={svc} base_path={@base_path} selected={@selected_service == svc.name} host={@host} workspace_id={@workspace_id} />
-          </div>
-          <p :if={!@services_loaded} class="px-2 text-xs text-zinc-400 dark:text-zinc-500">Loading...</p>
-        </.sidebar_section>
+        <.section :if={@service_statuses != [] || !@services_loaded} label="Services">
+          <.service_item :for={svc <- @service_statuses} svc={svc} base_path={@base_path} selected={@selected_service == svc.name} host={@host} workspace_id={@workspace_id} />
+          <.empty :if={!@services_loaded} text="Loading..." />
+        </.section>
 
         <%!-- Volumes + Host file sync live in one group. Sync is
              conceptually a volume data-source, and shoving it into its
              own labeled section created an orphan row with ~40px of
              dead space above it. --%>
-        <.sidebar_section label="Volumes">
-          <div :if={@volumes != []} class="space-y-px">
-            <.volume_item :for={vol <- @volumes} vol={vol} base_path={@base_path} />
-          </div>
-          <p :if={!@volumes_loaded} class="px-2 text-xs text-zinc-400 dark:text-zinc-500">Loading...</p>
-          <p :if={@volumes_loaded && @volumes == []} class="px-2 text-xs text-zinc-400 dark:text-zinc-500">No volumes</p>
-          <.link
+        <.section label="Volumes">
+          <.volume_item :for={vol <- @volumes} vol={vol} base_path={@base_path} />
+          <.empty :if={!@volumes_loaded} text="Loading..." />
+          <.empty :if={@volumes_loaded && @volumes == []} text="No volumes" />
+          <.row
             :if={@is_local_source? && sync_relevant?(@sync_status)}
             navigate={"#{@base_path}/sync"}
-            class="focus-ring mt-px flex items-center gap-2 px-2 py-1.5 md:py-1 min-h-11 md:min-h-0 rounded text-sm transition-colors hover:bg-white/60 dark:hover:bg-zinc-800/40"
+            aria_label="Open host file sync status"
           >
-            <div class={"w-1.5 h-1.5 rounded-full flex-none #{sync_dot(@sync_status)}"} aria-hidden="true"></div>
+            <span class={"w-1.5 h-1.5 rounded-full flex-none #{sync_dot(@sync_status)}"} aria-hidden="true"></span>
             <span class="truncate text-zinc-600 dark:text-zinc-400">Host file sync</span>
-          </.link>
-        </.sidebar_section>
+          </.row>
+        </.section>
       </div>
     </aside>
-    """
-  end
-
-  # Every group shares the exact same vertical rhythm. Previously each
-  # section set its own padding and the visual beat drifted — most
-  # obvious where "Host file sync" sat in its own orphan section with
-  # ~40px of dead space around it.
-  attr :label, :string, required: true
-  slot :inner_block, required: true
-
-  defp sidebar_section(assigns) do
-    ~H"""
-    <section class="px-3 py-3 md:py-2">
-      <h3 class="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 font-semibold mb-1.5 md:mb-1 px-2">
-        {@label}
-      </h3>
-      {render_slot(@inner_block)}
-    </section>
     """
   end
 
@@ -240,16 +214,19 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
     assigns = assign(assigns, :first_port, host_port)
 
     ~H"""
-    <div class={"grid grid-cols-[1fr_auto] items-center gap-2 px-2 py-1.5 md:py-1 min-h-11 md:min-h-0 rounded text-sm transition-colors #{if @selected, do: "bg-white dark:bg-zinc-800 shadow-sm", else: "hover:bg-white/60 dark:hover:bg-zinc-800/40"}"}>
-      <.link navigate={"#{@base_path}/services/#{@svc.name}"} class="focus-ring flex items-center gap-2 min-w-0" aria-label={"Open #{@svc.name} service"}>
-        <div class={"w-1.5 h-1.5 rounded-full flex-none #{service_dot(@svc)}"} aria-hidden="true"></div>
+    <.row as={:div} selected={@selected} class="grid grid-cols-[1fr_auto]">
+      <.link
+        navigate={"#{@base_path}/services/#{@svc.name}"}
+        class="focus-ring flex items-center gap-2 min-w-0 -mx-2 px-2 h-full rounded"
+        aria-label={"Open #{@svc.name} service"}
+      >
+        <span class={"w-1.5 h-1.5 rounded-full flex-none #{service_dot(@svc)}"} aria-hidden="true"></span>
         <span class="truncate text-zinc-600 dark:text-zinc-400">{@svc.name}</span>
       </.link>
-      <%!-- Trailing slot: ALWAYS rendered (even empty) at a min-width
-           so the port button popping in can't push the service name.
-           One slot holds one of: port action, status text, detail text,
-           crash info — never stacked, never shifting. --%>
-      <div class="flex items-center justify-end min-w-[92px] min-h-8">
+      <%!-- Trailing slot always reserves 92px so the port button
+           popping in can't push the service name. One slot holds one
+           of: port action, status text, detail, crash info. --%>
+      <div class="flex items-center justify-end min-w-[92px]">
         <.port_action
           :if={@first_port && Map.get(@svc, :container_port) && @svc.status == :running}
           host={@host}
@@ -260,7 +237,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         <span :if={!@first_port && !service_status_text(@svc) && @svc.status == :running} class="text-xs text-zinc-500 dark:text-zinc-400 font-mono truncate max-w-[88px]">{service_detail(@svc)}</span>
         <span :if={@svc.status == :crashed && @svc.exit_info} class="text-xs text-red-500 truncate max-w-[88px]">{exit_reason(@svc.exit_info)}</span>
       </div>
-    </div>
+    </.row>
     """
   end
 
@@ -300,7 +277,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
       aria-label={@label}
       title={@label}
       class={[
-        "focus-ring flex-none inline-flex items-center justify-center min-h-8 min-w-11 text-xs font-mono font-medium px-2 py-1 rounded transition-colors ml-auto",
+        "focus-ring flex-none inline-flex items-center justify-center min-h-8 md:min-h-6 min-w-11 text-xs font-mono font-medium px-2 rounded transition-colors ml-auto",
         if(@exposed?,
           do: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25",
           else: "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700")
@@ -321,43 +298,31 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
     |> assign(:service, service)
 
     ~H"""
-    <.link
-      navigate={"#{@base_path}/volumes/#{@vol.name}"}
-      class="focus-ring flex items-center gap-2 px-2 py-1.5 md:py-1 min-h-11 md:min-h-0 rounded text-sm transition-colors hover:bg-white/60 dark:hover:bg-zinc-800/40"
-      aria-label={"Open #{@description} volume"}
-    >
-      <div class="flex items-center gap-2 min-w-0 flex-1">
-        <div class="w-1.5 h-1.5 rounded-full flex-none bg-blue-400" aria-hidden="true"></div>
-        <div class="min-w-0 flex-1">
-          <span class="truncate text-zinc-600 dark:text-zinc-400 block">{@description}</span>
-          <span :if={@service && @service != "workspace"} class="text-xs text-zinc-500 dark:text-zinc-500">{@service}</span>
-        </div>
-      </div>
+    <.row navigate={"#{@base_path}/volumes/#{@vol.name}"} aria_label={"Open #{@description} volume"}>
+      <span class="w-1.5 h-1.5 rounded-full flex-none bg-blue-400" aria-hidden="true"></span>
+      <span class="truncate text-zinc-600 dark:text-zinc-400 flex-1">{@description}</span>
+      <span :if={@service && @service != "workspace"} class="text-xs text-zinc-500 flex-none">{@service}</span>
       <span :if={@vol[:size]} class="text-xs text-zinc-500 dark:text-zinc-400 font-mono flex-none">{@vol.size}</span>
-    </.link>
+    </.row>
     """
   end
 
   def agent_list_item(assigns) do
     ~H"""
     <div class="flex items-stretch gap-1">
-      <button
-        phx-click="select_agent"
-        phx-value-id={@agent.id}
-        aria-label={"Open agent #{@agent.name} (status: #{@agent.status})"}
-        aria-current={if @selected, do: "true", else: "false"}
-        class={"focus-ring flex-1 text-left px-2 py-1.5 md:py-1 min-h-11 md:min-h-0 rounded text-sm transition-colors
-               #{if @selected, do: "bg-white dark:bg-zinc-800 shadow-sm", else: "hover:bg-white/60 dark:hover:bg-zinc-800/40"}"}
+      <.row
+        phx_click="select_agent"
+        phx_value={%{id: @agent.id}}
+        selected={@selected}
+        aria_label={"Open agent #{@agent.name} (status: #{@agent.status})"}
+        class="flex-1"
       >
-        <div class="flex items-center gap-2">
-          <div class={"w-1.5 h-1.5 rounded-full flex-none #{status_dot(@agent.status)}"} aria-hidden="true"></div>
-          <span class="truncate text-zinc-600 dark:text-zinc-400">{@agent.name}</span>
-          <span :if={@agent.status == :booting} class="text-xs text-violet-500 dark:text-violet-400 flex-none">booting</span>
-          <span :if={@agent.status == :thinking} class="text-xs text-amber-600 dark:text-amber-500 flex-none">{thinking_word(@agent.id)}</span>
-          <span :if={@agent.status == :destroying} class="text-xs text-red-500 dark:text-red-400 flex-none">destroying</span>
-        </div>
-        <div :if={@agent.status == :booting} class="mt-1 ml-[18px] text-xs text-zinc-500 dark:text-zinc-400 truncate">{@agent[:boot_status] || "Initializing..."}</div>
-      </button>
+        <span class={"w-1.5 h-1.5 rounded-full flex-none #{status_dot(@agent.status)}"} aria-hidden="true"></span>
+        <span class="truncate text-zinc-600 dark:text-zinc-400">{@agent.name}</span>
+        <span :if={@agent.status == :booting} class="text-xs text-violet-500 dark:text-violet-400 flex-none">booting</span>
+        <span :if={@agent.status == :thinking} class="text-xs text-amber-600 dark:text-amber-500 flex-none">{thinking_word(@agent.id)}</span>
+        <span :if={@agent.status == :destroying} class="text-xs text-red-500 dark:text-red-400 flex-none">destroying</span>
+      </.row>
       <button
         :if={@agent.status in [:stopped, :crashed]}
         phx-click="remove_agent"
