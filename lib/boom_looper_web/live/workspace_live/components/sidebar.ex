@@ -53,7 +53,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         do: "hidden md:flex",
         else: "flex")
     ]}>
-      <.workspace_header workspace_running={@workspace_running} services_busy={@services_busy} />
+      <.workspace_header workspace_state={@workspace_state} />
 
       <div class="flex-1 overflow-y-auto">
         <.section label="Agents">
@@ -94,27 +94,26 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
     """
   end
 
-  # Primary sidebar header: workspace state + Start/Stop. This is the
-  # highest-priority thing a user needs to see/act on, so it goes at
-  # the top where the "New Agent" button used to be. The New Agent
-  # link moved down into the Agents section where it belongs
-  # contextually.
-  attr :workspace_running, :boolean, required: true
-  attr :services_busy, :atom, default: nil
+  # Primary sidebar header: workspace state + Start/Stop. Driven by
+  # the single :workspace_state atom (:stopped | :starting | :running
+  # | :stopping) so UI reflects exactly one truth instead of mixing a
+  # boolean running-flag with a separate busy-flag.
+  attr :workspace_state, :atom, required: true
 
   defp workspace_header(assigns) do
-    {label, dot_class} =
-      cond do
-        assigns.services_busy == :starting -> {"Starting…", "bg-blue-400 animate-pulse"}
-        assigns.services_busy == :stopping -> {"Stopping…", "bg-amber-400 animate-pulse"}
-        assigns.workspace_running -> {"Running", "bg-emerald-500"}
-        true -> {"Stopped", "bg-zinc-400"}
+    {label, dot_class, button} =
+      case assigns.workspace_state do
+        :starting -> {"Starting…", "bg-blue-400 animate-pulse", :none}
+        :stopping -> {"Stopping…", "bg-amber-400 animate-pulse", :none}
+        :running -> {"Running", "bg-emerald-500", :stop}
+        :stopped -> {"Stopped", "bg-zinc-400", :start}
       end
 
     assigns =
       assigns
       |> assign(:label, label)
       |> assign(:dot_class, dot_class)
+      |> assign(:button, button)
 
     ~H"""
     <div class="flex-none border-b border-zinc-200 dark:border-zinc-700/80 px-3 py-2.5 md:py-2 flex items-center gap-2">
@@ -123,7 +122,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         <span class="text-sm font-medium text-zinc-700 dark:text-zinc-200 truncate">Workspace {@label}</span>
       </div>
       <button
-        :if={@workspace_running && !@services_busy}
+        :if={@button == :stop}
         type="button"
         phx-click="shutdown_workspace"
         aria-label="Stop workspace"
@@ -135,7 +134,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         Stop
       </button>
       <button
-        :if={!@workspace_running && !@services_busy}
+        :if={@button == :start}
         type="button"
         phx-click="boot_workspace"
         aria-label="Start workspace"

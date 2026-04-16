@@ -126,19 +126,42 @@ defmodule BoomLooperWeb.WorkspaceLive do
      |> assign(:console_container, nil)
      |> assign(:is_local_source?, is_local?)
      |> assign(:sync_status, initial_sync_status(workspace.id, is_local?))
-     |> assign(:services_busy, nil)
-     |> assign(:workspace_running, workspace_effectively_running?(workspace.id, service_statuses))}
+     |> assign(:workspace_state, derive_workspace_state(workspace.id, service_statuses, nil))}
   end
 
-  # "Is the workspace usable right now?" — the UX question, not the
-  # supervisor-tree question. Containers being up in Docker is what
-  # matters to the user; our GenServer tree can be absent right after
-  # a server restart even though the dev server is still serving HTTP.
-  defp workspace_effectively_running?(workspace_id, service_statuses) do
-    supervisor_up? = BoomLooper.WorkspaceSupervisor.workspace_running?(workspace_id)
+  # The single source of truth for the workspace Start/Stop pill.
+  # Returns one of :stopped | :starting | :running | :stopping.
+  #
+  # `previous` is the assign's current value (or nil on mount). We
+  # respect explicit in-flight transitions (:starting / :stopping)
+  # from the user until observer data says the transition completed:
+  #
+  #   :starting  + any container up       → :running
+  #   :stopping  + no containers up       → :stopped
+  #   :starting  + no containers up yet   → stays :starting (waiting)
+  #   :stopping  + containers still up    → stays :stopping (waiting)
+  #
+  # When there's no in-flight transition, state is purely derived from
+  # container state — supervisor being up is not sufficient, because a
+  # supervisor with no containers isn't a "running" workspace.
+  defp derive_workspace_state(workspace_id, service_statuses, previous) do
     any_running? = Enum.any?(service_statuses, &(&1.status == :running))
+    supervisor_up? = BoomLooper.WorkspaceSupervisor.workspace_running?(workspace_id)
 
-    supervisor_up? or any_running?
+    case previous do
+      :starting ->
+        if any_running?, do: :running, else: :starting
+
+      :stopping ->
+        if any_running?, do: :stopping, else: :stopped
+
+      _ ->
+        cond do
+          any_running? -> :running
+          supervisor_up? -> :running
+          true -> :stopped
+        end
+    end
   end
 
   defp any_running_containers?(workspace_id) do
@@ -536,15 +559,24 @@ defmodule BoomLooperWeb.WorkspaceLive do
   end
 
   @impl true
-  def handle_event("toggle_port_exposure", %{"service" => svc, "container_port" => cport, "expose" => expose}, socket) do
-    workspace_id = BoomLooper.ProjectRegistry.workspace_id(socket.assigns.workspace.path)
+  def handle_event("toggle_port_exposure", %{"service" => svc_name, "container_port" => cport, "expose" => expose}, socket) do
+    workspace_id = socket.assigns.workspace.id
     cport = String.to_integer(cport)
     exposed? = expose == "true"
 
-    case BoomLooper.PortRegistry.set_exposure(workspace_id, svc, cport, exposed?) do
+    case BoomLooper.PortRegistry.set_exposure(workspace_id, svc_name, cport, exposed?) do
       :ok ->
-        {service_statuses, _vols} = load_sidebar_from_observer(nil, workspace_id)
-        {:noreply, assign(socket, :service_statuses, guard_service_statuses(socket, service_statuses))}
+        # Surgical update: patch ONLY the toggled service's :exposed
+        # flag in assigns. Re-running load_sidebar_from_observer here
+        # re-renders every service and briefly shows the fallback
+        # annotation path, which is what made the port button flicker
+        # off then on.
+        updated =
+          Enum.map(socket.assigns.service_statuses, fn s ->
+            if s.name == svc_name, do: Map.put(s, :exposed, exposed?), else: s
+          end)
+
+        {:noreply, assign(socket, :service_statuses, updated)}
 
       {:error, reason} ->
         require Logger
@@ -648,56 +680,36 @@ defmodule BoomLooperWeb.WorkspaceLive do
   end
 
   def handle_event("boot_workspace", _params, socket) do
+    # Flip to :starting immediately so the UI shows the transitional
+    # state. The actual start runs async — observer events will flip
+    # us to :running when containers come up.
     send(self(), {:start_workspace, socket.assigns.workspace.path})
-    {:noreply, socket}
+    {:noreply, assign(socket, :workspace_state, :starting)}
   end
 
   @impl true
   def handle_event("shutdown_workspace", _params, socket) do
-    workspace_id = socket.assigns.workspace.id
+    ws_id = socket.assigns.workspace.id
     parent = self()
 
+    # Real stop: compose down (containers actually exit), THEN tear
+    # down our supervisor tree. Previously we only stopped the
+    # supervisor, which left containers running — the UI would show
+    # "Stopped" then flicker back to "Running" on the next observer
+    # tick because nothing had actually stopped.
     Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
-      BoomLooper.WorkspaceSupervisor.stop_workspace(workspace_id)
-      BoomLooper.ProjectRegistry.update_workspace_status(workspace_id, :stopped)
+      effective_dir = BoomLooper.Workspace.compose_dir(ws_id)
+      BoomLooper.Compose.down(effective_dir, ws_id)
+      BoomLooper.WorkspaceSupervisor.stop_workspace(ws_id)
+      BoomLooper.ProjectRegistry.update_workspace_status(ws_id, :stopped)
+      BoomLooper.Docker.Observer.poll_now()
       send(parent, :workspace_stopped)
     end)
 
-    {:noreply, assign(socket, :services_busy, :stopping)}
+    {:noreply, assign(socket, :workspace_state, :stopping)}
   end
 
   @impl true
-  def handle_event("start_services", _params, socket) do
-    if socket.assigns.services_busy do
-      {:noreply, socket}
-    else
-      project_dir = socket.assigns.workspace.path
-      parent = self()
-
-      Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
-        result = BoomLooper.Workspace.ServiceManager.start_services(project_dir)
-        send(parent, {:services_command_done, :starting, result})
-      end)
-
-      {:noreply, assign(socket, :services_busy, :starting)}
-    end
-  end
-
-  def handle_event("stop_services", _params, socket) do
-    if socket.assigns.services_busy do
-      {:noreply, socket}
-    else
-      project_dir = socket.assigns.workspace.path
-      parent = self()
-
-      Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
-        result = BoomLooper.Workspace.ServiceManager.stop_services(project_dir)
-        send(parent, {:services_command_done, :stopping, result})
-      end)
-
-      {:noreply, assign(socket, :services_busy, :stopping)}
-    end
-  end
 
 
   def handle_event("delete_volume", %{"volume_name" => name}, socket) do
@@ -747,21 +759,6 @@ defmodule BoomLooperWeb.WorkspaceLive do
   # --- PubSub ---
 
   @impl true
-  def handle_info({:services_command_done, _kind, result}, socket) do
-    BoomLooper.Docker.Observer.poll_now()
-
-    socket =
-      case result do
-        {:error, reason} ->
-          put_flash(socket, :error, "Services command failed: #{inspect(reason)}")
-
-        _ ->
-          socket
-      end
-
-    {:noreply, assign(socket, :services_busy, nil)}
-  end
-
   def handle_info({:chat_agent_started, agent_summary}, socket) do
     socket = assign(socket, :agents, AgentLifecycle.list_workspace_agents(socket.assigns.workspace.path))
 
@@ -939,8 +936,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
 
     {:noreply,
      socket
-     |> assign(:workspace_running, false)
-     |> assign(:services_busy, nil)
+     |> assign(:workspace_state, :stopped)
      |> assign(:service_statuses, service_statuses)
      |> assign(:volumes, volumes)
      |> assign(:agents, [])}
@@ -950,14 +946,16 @@ defmodule BoomLooperWeb.WorkspaceLive do
   def handle_info({:start_workspace, path}, socket) do
     workspace_id = BoomLooper.ProjectRegistry.workspace_id(path)
 
-    # Start workspace in a Task so it doesn't block the LiveView process.
-    # Service statuses will arrive via PubSub when ServiceManager starts.
+    # Start workspace in a Task so it doesn't block the LiveView. The
+    # supervisor start triggers compose up inside ServiceManager.
+    # docker_state_changed events flip us from :starting → :running.
     Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
       BoomLooper.WorkspaceSupervisor.start_workspace(workspace_id, path)
       BoomLooper.ProjectRegistry.update_workspace_status(workspace_id, :running)
+      BoomLooper.Docker.Observer.poll_now()
     end)
 
-    {:noreply, assign(socket, :workspace_running, true)}
+    {:noreply, socket}
   end
 
   # Docker.Observer broadcasts when container/volume state changes.
@@ -967,12 +965,13 @@ defmodule BoomLooperWeb.WorkspaceLive do
     ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
     {service_statuses, volumes} = load_sidebar_from_observer(nil, ws_id)
     guarded = guard_service_statuses(socket, service_statuses)
+    new_state = derive_workspace_state(ws_id, guarded, socket.assigns.workspace_state)
 
     {:noreply,
      socket
      |> assign(:service_statuses, guarded)
      |> assign(:volumes, volumes)
-     |> assign(:workspace_running, workspace_effectively_running?(ws_id, guarded))}
+     |> assign(:workspace_state, new_state)}
   end
 
   def handle_info({:docker_state_reset}, socket) do
@@ -1338,8 +1337,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
           live_action={@live_action} volumes={@volumes} base_path={@base_path}
           host={@host}
           is_local_source?={@is_local_source?} sync_status={@sync_status}
-          services_busy={@services_busy}
-          workspace_running={@workspace_running}
+          workspace_state={@workspace_state}
         />
         <%!-- Main content: hidden on mobile when sidebar is showing (index/new with no selection) --%>
         <main id="main-content" class={"flex-1 flex flex-col min-w-0 #{if @live_action == :index && !@selected_id && !@selected_service, do: "hidden md:flex", else: "flex"}"}>
@@ -1348,12 +1346,12 @@ defmodule BoomLooperWeb.WorkspaceLive do
                of service state — sending new messages is what the running
                workspace gates. --%>
           <.workspace_not_running
-            :if={!@workspace_running && !@selected_agent && @live_action != :new}
+            :if={@workspace_state in [:stopped, :starting] && !@selected_agent && @live_action != :new}
             workspace={@workspace}
-            services_busy={@services_busy}
+            workspace_state={@workspace_state}
           />
           <.new_agent_screen :if={@live_action == :new} workspace={@workspace} base_path={@base_path} />
-          <.service_log_view :if={@workspace_running && @live_action == :service} service_name={@selected_service} service_statuses={@service_statuses} logs={@service_logs} base_path={@base_path} host={@host} />
+          <.service_log_view :if={@workspace_state == :running && @live_action == :service} service_name={@selected_service} service_statuses={@service_statuses} logs={@service_logs} base_path={@base_path} host={@host} />
           <.console_view :if={@live_action == :console} service_name={@selected_service} container={@console_container} />
           <.all_services_view :if={@live_action == :services} all_service_logs={@all_service_logs} />
           <.volume_detail :if={@live_action in [:volume, :volume_files_root, :volume_file, :volume_git]} volume_name={@selected_volume} volumes={@volumes} workspace_id={@workspace.id} base_path={@base_path} volume_tab={@volume_tab} file_tree={@file_tree} file_content={@file_content} file_path={@file_path} browse_path={@browse_path} git_log={@git_log} git_status={@git_status} diff_content={@diff_content} supports_git={@supports_git} />

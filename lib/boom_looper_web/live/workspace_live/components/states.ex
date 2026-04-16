@@ -39,20 +39,20 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.States do
         <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-6">
           This workspace isn't running. Start it to bring up containers, agents, and dev services.
         </p>
-        <%= if @services_busy == :starting do %>
+        <%= if @workspace_state == :starting do %>
           <div class="inline-flex items-center gap-2 text-sm text-zinc-500 animate-pulse">
-            <svg class="w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <svg class="w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
-            Starting...
+            Starting workspace...
           </div>
         <% else %>
           <button
             phx-click="boot_workspace"
-            class="inline-flex items-center gap-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white px-6 py-3 text-sm font-medium transition-colors"
+            class="focus-ring inline-flex items-center gap-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white px-6 py-3 text-sm font-medium transition-colors"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5" aria-hidden="true">
               <path d="M6.3 2.84A1.5 1.5 0 0 0 4 4.11v11.78a1.5 1.5 0 0 0 2.3 1.27l9.344-5.891a1.5 1.5 0 0 0 0-2.538L6.3 2.841Z" />
             </svg>
             Start workspace
