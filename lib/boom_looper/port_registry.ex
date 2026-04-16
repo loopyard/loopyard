@@ -156,7 +156,8 @@ defmodule BoomLooper.PortRegistry do
 
     state = %{
       port_range: port_range,
-      persist: persist
+      persist: persist,
+      reserved: reserved_ports()
     }
 
     # Persistence restore is NOT done here — it runs via explicit
@@ -298,15 +299,58 @@ defmodule BoomLooper.PortRegistry do
 
   # --- Private ---
 
+  # Ports the registry must NEVER hand out: anything BoomLooper itself
+  # binds (Phoenix endpoint, SSH server) or similar host services. Without
+  # this, compose port 4000 would get assigned over Phoenix's own :4000,
+  # displacing the dev UI with a workspace container.
+  defp reserved_ports do
+    endpoint_port =
+      case Application.get_env(:boom_looper, BoomLooperWeb.Endpoint) do
+        nil -> nil
+        cfg -> get_in(cfg, [:http, :port])
+      end
+
+    [endpoint_port]
+    |> Enum.reject(&is_nil/1)
+    |> MapSet.new()
+  end
+
   defp find_free_port(range) do
+    find_free_port(range, reserved_ports())
+  end
+
+  defp find_free_port(range, reserved) do
     taken =
       :ets.tab2list(@table)
       |> MapSet.new(fn {_, entry} -> entry.host_port end)
+      |> MapSet.union(reserved)
 
+    # Walk the range, skip registry-taken + reserved, then trial-bind
+    # each candidate to confirm no OTHER process (docker proxy, node,
+    # whatever) is already holding it. Without this we'd hand out an
+    # occupied port and the container would fail to start with
+    # EADDRINUSE — or worse, hijack a port we didn't know about.
     first_free =
-      Enum.find(range, fn port -> not MapSet.member?(taken, port) end)
+      Enum.find(range, fn port ->
+        not MapSet.member?(taken, port) and port_os_free?(port)
+      end)
 
     if first_free, do: {:ok, first_free}, else: {:error, :port_pool_exhausted}
+  end
+
+  # Trial-listen on 0.0.0.0:<port>. Success = nobody has it. We bind to
+  # 0.0.0.0 on purpose — a port held on 127.0.0.1 would still fail the
+  # 0.0.0.0 bind, and a port held on 0.0.0.0 blocks loopback too. Either
+  # way, if this bind succeeds the port is genuinely free for our use.
+  defp port_os_free?(port) do
+    case :gen_tcp.listen(port, [:binary, ip: {0, 0, 0, 0}, active: false]) do
+      {:ok, sock} ->
+        :gen_tcp.close(sock)
+        true
+
+      {:error, _} ->
+        false
+    end
   end
 
   defp persist(%{persist: false}), do: :ok

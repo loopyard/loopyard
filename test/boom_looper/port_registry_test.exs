@@ -25,11 +25,16 @@ defmodule BoomLooper.PortRegistryTest do
     BoomLooper.StateKeeper.ensure_tables!()
     :ets.delete_all_objects(:port_registry)
 
-    # Use the application-supervised registry (already running),
-    # reconfigured per-test for a tight range + no persistence so
-    # exhaustion cases fire fast without touching ~/.boomlooper.
-    # Restore production settings on exit.
-    range = Map.get(context, :range, 4000..4009)
+    # Build a range anchored at a provably-free port. Since v2, the
+    # registry trial-binds candidates; a fixed range like 4000..4009
+    # would collide with whatever the dev environment happens to
+    # occupy and flake randomly.
+    #
+    # Tests that care about exhaustion override with @tag range_size: 2.
+    range_size = Map.get(context, :range_size, 10)
+    base = free_port()
+    range = base..(base + range_size - 1)
+
     :ok = PortRegistry.configure(port_range: range, persist: false)
 
     on_exit(fn ->
@@ -87,11 +92,29 @@ defmodule BoomLooper.PortRegistryTest do
       assert hosts == Enum.take(range, 5)
     end
 
-    @tag range: 4000..4001
+    @tag range_size: 2
     test "returns :port_pool_exhausted when every port is taken" do
       {:ok, _} = PortRegistry.assign("ws1", "dev", 3000)
       {:ok, _} = PortRegistry.assign("ws2", "dev", 3000)
       assert {:error, :port_pool_exhausted} = PortRegistry.assign("ws3", "dev", 3000)
+    end
+
+    test "skips ports the OS already has bound" do
+      # Hold a real OS-level listener on an in-range port. Registry must
+      # see it as taken even though it's not in its own ETS table, and
+      # hand out the NEXT port instead.
+      port = free_port()
+      {:ok, holder} = :gen_tcp.listen(port, [:binary, ip: {0, 0, 0, 0}, active: false])
+
+      :ok = PortRegistry.configure(port_range: port..(port + 5), persist: false)
+
+      try do
+        {:ok, assigned} = PortRegistry.assign("skip-os", "dev", 3000)
+        refute assigned == port
+        assert assigned > port and assigned <= port + 5
+      after
+        :gen_tcp.close(holder)
+      end
     end
   end
 
@@ -154,7 +177,7 @@ defmodule BoomLooper.PortRegistryTest do
       assert entry.legacy == true
     end
 
-    test "legacy ports count as in-use for future assigns" do
+    test "legacy ports count as in-use for future assigns", %{range: range} do
       # 32771 is outside our configured range but the allocator must
       # still know it's taken so nothing can double-assign it even if
       # the range grows later.
@@ -162,7 +185,7 @@ defmodule BoomLooper.PortRegistryTest do
 
       # New assigns still come from the configured range, unaffected
       {:ok, host} = PortRegistry.assign("ws2", "dev", 3000)
-      assert host >= 4000 and host <= 4009
+      assert host >= range.first and host <= range.last
     end
 
     test "calling seed twice with the same key overwrites (idempotent)" do

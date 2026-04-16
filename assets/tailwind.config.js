@@ -12,8 +12,12 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
-        sans: ['"DM Sans"', 'system-ui', 'sans-serif'],
+        // System stacks only — no custom font downloads. Serif is the
+        // primary family (applied via <body class="font-serif">); mono
+        // stays sharp for terminal/technical bits.
+        serif: ['ui-serif', 'Georgia', 'Cambria', '"Times New Roman"', 'Times', 'serif'],
+        sans: ['ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', 'sans-serif'],
+        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', '"Cascadia Code"', 'Consolas', 'monospace'],
       },
     },
   },
