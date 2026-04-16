@@ -52,7 +52,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         do: "hidden md:flex",
         else: "flex")
     ]}>
-      <div class="flex-none p-3 border-b border-zinc-200 dark:border-zinc-700/80">
+      <div class="flex-none p-3 md:p-2 border-b border-zinc-200 dark:border-zinc-700/80">
         <.link
           navigate={"#{@base_path}/new"}
           class="focus-ring w-full inline-flex items-center justify-center gap-2 rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 min-h-11 text-sm font-medium text-zinc-700 dark:text-zinc-300
@@ -66,8 +66,8 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
       </div>
       <div class="flex-1 overflow-y-auto">
         <%!-- Agents --%>
-        <div class="px-3 pt-3 pb-1">
-          <div class="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 font-semibold mb-1.5">Agents</div>
+        <div class="px-3 pt-3 md:pt-2 pb-1 md:pb-0.5">
+          <div class="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 font-semibold mb-1">Agents</div>
           <div :if={@agents != []} class="space-y-0.5">
             <.agent_list_item :for={agent <- @agents} agent={agent} selected={@selected_id == agent.id} />
           </div>
@@ -75,8 +75,8 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         </div>
 
         <%!-- Services --%>
-        <div :if={@service_statuses != [] || !@services_loaded} class="px-3 pt-3 pb-1">
-          <div class="flex items-center justify-between mb-1.5">
+        <div :if={@service_statuses != [] || !@services_loaded} class="px-3 pt-3 md:pt-2 pb-1 md:pb-0.5">
+          <div class="flex items-center justify-between mb-1">
             <div class="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 font-semibold">Services</div>
             <.services_toggle
               service_statuses={@service_statuses}
@@ -90,8 +90,8 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         </div>
 
         <%!-- Volumes --%>
-        <div class="px-3 pt-3 pb-1">
-          <div class="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 font-semibold mb-1.5">Volumes</div>
+        <div class="px-3 pt-3 md:pt-2 pb-1 md:pb-0.5">
+          <div class="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 font-semibold mb-1">Volumes</div>
           <div :if={@volumes != []} class="space-y-0.5">
             <.volume_item :for={vol <- @volumes} vol={vol} base_path={@base_path} />
           </div>
@@ -104,7 +104,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
           GitHub-sourced workspace wouldn't have this row since code
           arrives via clone, not host filesystem sync.
         --%>
-        <div :if={@is_local_source? && sync_relevant?(@sync_status)} class="px-3 pt-3 pb-1">
+        <div :if={@is_local_source? && sync_relevant?(@sync_status)} class="px-3 pt-3 md:pt-2 pb-1 md:pb-0.5">
           <.link navigate={"#{@base_path}/sync"} class="flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors hover:bg-white/60 dark:hover:bg-zinc-800/40">
             <div class={"w-1.5 h-1.5 rounded-full flex-none #{sync_dot(@sync_status)}"}></div>
             <span class="truncate text-zinc-600 dark:text-zinc-400">Host file sync</span>
@@ -225,7 +225,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
     assigns = assign(assigns, :first_port, host_port)
 
     ~H"""
-    <div class={"grid grid-cols-[1fr_auto] items-center gap-2 px-2 py-1.5 min-h-11 md:min-h-0 rounded text-sm transition-colors #{if @selected, do: "bg-white dark:bg-zinc-800 shadow-sm", else: "hover:bg-white/60 dark:hover:bg-zinc-800/40"}"}>
+    <div class={"grid grid-cols-[1fr_auto] items-center gap-2 px-2 py-1.5 md:py-1 min-h-11 md:min-h-0 rounded text-sm transition-colors #{if @selected, do: "bg-white dark:bg-zinc-800 shadow-sm", else: "hover:bg-white/60 dark:hover:bg-zinc-800/40"}"}>
       <.link navigate={"#{@base_path}/services/#{@svc.name}"} class="focus-ring flex items-center gap-2 min-w-0" aria-label={"Open #{@svc.name} service"}>
         <div class={"w-1.5 h-1.5 rounded-full flex-none #{service_dot(@svc)}"} aria-hidden="true"></div>
         <span class="truncate text-zinc-600 dark:text-zinc-400">{@svc.name}</span>
@@ -308,7 +308,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
     ~H"""
     <.link
       navigate={"#{@base_path}/volumes/#{@vol.name}"}
-      class="focus-ring flex items-center gap-2 px-2 py-1.5 min-h-11 md:min-h-0 rounded text-sm transition-colors hover:bg-white/60 dark:hover:bg-zinc-800/40"
+      class="focus-ring flex items-center gap-2 px-2 py-1.5 md:py-1 min-h-11 md:min-h-0 rounded text-sm transition-colors hover:bg-white/60 dark:hover:bg-zinc-800/40"
       aria-label={"Open #{@description} volume"}
     >
       <div class="flex items-center gap-2 min-w-0 flex-1">
@@ -331,7 +331,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         phx-value-id={@agent.id}
         aria-label={"Open agent #{@agent.name} (status: #{@agent.status})"}
         aria-current={if @selected, do: "true", else: "false"}
-        class={"focus-ring flex-1 text-left px-2 py-1.5 min-h-11 md:min-h-0 rounded text-sm transition-colors
+        class={"focus-ring flex-1 text-left px-2 py-1.5 md:py-1 min-h-11 md:min-h-0 rounded text-sm transition-colors
                #{if @selected, do: "bg-white dark:bg-zinc-800 shadow-sm", else: "hover:bg-white/60 dark:hover:bg-zinc-800/40"}"}
       >
         <div class="flex items-center gap-2">
