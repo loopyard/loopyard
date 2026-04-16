@@ -52,24 +52,23 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         do: "hidden md:flex",
         else: "flex")
     ]}>
-      <div class="flex-none p-3 md:p-2 border-b border-zinc-200 dark:border-zinc-700/80">
-        <.link
-          navigate={"#{@base_path}/new"}
-          class="focus-ring w-full inline-flex items-center justify-center gap-2 rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 min-h-11 text-sm font-medium text-zinc-700 dark:text-zinc-300
-                 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-4 h-4" aria-hidden="true">
-            <path d="M8.75 3.75a.75.75 0 0 0-1.5 0v3.5h-3.5a.75.75 0 0 0 0 1.5h3.5v3.5a.75.75 0 0 0 1.5 0v-3.5h3.5a.75.75 0 0 0 0-1.5h-3.5v-3.5Z" />
-          </svg>
-          New Agent
-        </.link>
-      </div>
+      <.workspace_header workspace_running={@workspace_running} services_busy={@services_busy} />
+
       <div class="flex-1 overflow-y-auto divide-y divide-zinc-200 dark:divide-zinc-800/80">
         <.sidebar_section label="Agents">
           <div :if={@agents != []} class="space-y-px">
             <.agent_list_item :for={agent <- @agents} agent={agent} selected={@selected_id == agent.id} />
           </div>
           <p :if={@agents == []} class="px-2 text-xs text-zinc-400 dark:text-zinc-500">No agents</p>
+          <.link
+            navigate={"#{@base_path}/new"}
+            class="focus-ring mt-1 flex items-center gap-2 px-2 py-1.5 md:py-1 min-h-11 md:min-h-0 rounded text-sm text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3.5 h-3.5 flex-none" aria-hidden="true">
+              <path d="M8.75 3.75a.75.75 0 0 0-1.5 0v3.5h-3.5a.75.75 0 0 0 0 1.5h3.5v3.5a.75.75 0 0 0 1.5 0v-3.5h3.5a.75.75 0 0 0 0-1.5h-3.5v-3.5Z" />
+            </svg>
+            <span>New agent</span>
+          </.link>
         </.sidebar_section>
 
         <.sidebar_section :if={@service_statuses != [] || !@services_loaded} label="Services">
@@ -99,8 +98,6 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
           </.link>
         </.sidebar_section>
       </div>
-
-      <.workspace_footer workspace_running={@workspace_running} services_busy={@services_busy} />
     </aside>
     """
   end
@@ -123,13 +120,15 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
     """
   end
 
-  # Sticky footer: workspace state + Stop control. When stopped the
-  # main area already shows a big "Start workspace" CTA, so we don't
-  # duplicate it here — the footer just goes dark.
+  # Primary sidebar header: workspace state + Start/Stop. This is the
+  # highest-priority thing a user needs to see/act on, so it goes at
+  # the top where the "New Agent" button used to be. The New Agent
+  # link moved down into the Agents section where it belongs
+  # contextually.
   attr :workspace_running, :boolean, required: true
   attr :services_busy, :atom, default: nil
 
-  defp workspace_footer(assigns) do
+  defp workspace_header(assigns) do
     {label, dot_class} =
       cond do
         assigns.services_busy == :starting -> {"Starting…", "bg-blue-400 animate-pulse"}
@@ -144,19 +143,19 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
       |> assign(:dot_class, dot_class)
 
     ~H"""
-    <div class="flex-none border-t border-zinc-200 dark:border-zinc-700/80 px-3 py-2 md:py-1.5 flex items-center gap-2">
+    <div class="flex-none border-b border-zinc-200 dark:border-zinc-700/80 px-3 py-2.5 md:py-2 flex items-center gap-2">
       <div class="flex items-center gap-2 min-w-0 flex-1">
-        <div class={"w-1.5 h-1.5 rounded-full flex-none #{@dot_class}"} aria-hidden="true"></div>
-        <span class="text-xs text-zinc-600 dark:text-zinc-400 truncate">Workspace {@label}</span>
+        <div class={"w-2 h-2 rounded-full flex-none #{@dot_class}"} aria-hidden="true"></div>
+        <span class="text-sm font-medium text-zinc-700 dark:text-zinc-200 truncate">Workspace {@label}</span>
       </div>
       <button
         :if={@workspace_running && !@services_busy}
         type="button"
         phx-click="shutdown_workspace"
         aria-label="Stop workspace"
-        class="focus-ring inline-flex items-center gap-1 rounded px-2 min-h-8 text-xs font-medium border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-white dark:hover:bg-zinc-800 transition-colors"
+        class="focus-ring inline-flex items-center gap-1.5 rounded-md px-3 min-h-9 md:min-h-8 text-xs font-medium border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 hover:bg-white dark:hover:bg-zinc-800 transition-colors"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-2.5 h-2.5" aria-hidden="true">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3 h-3" aria-hidden="true">
           <path d="M4.5 4.5a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1h-7Z" />
         </svg>
         Stop
@@ -166,9 +165,9 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         type="button"
         phx-click="boot_workspace"
         aria-label="Start workspace"
-        class="focus-ring inline-flex items-center gap-1 rounded px-2 min-h-8 text-xs font-medium bg-violet-600 hover:bg-violet-700 text-white transition-colors"
+        class="focus-ring inline-flex items-center gap-1.5 rounded-md px-3 min-h-9 md:min-h-8 text-xs font-medium bg-violet-600 hover:bg-violet-700 active:bg-violet-800 text-white transition-colors"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-2.5 h-2.5" aria-hidden="true">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3 h-3" aria-hidden="true">
           <path d="M4.5 3.5v9l7-4.5-7-4.5Z" />
         </svg>
         Start
