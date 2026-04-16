@@ -4,10 +4,36 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
 
   import BoomLooperWeb.Components.Common, only: [dot: 1]
   import BoomLooperWeb.Components.Sidebar, only: [status_dot: 1]
+  import BoomLooperWeb.Components.Breadcrumbs, only: [breadcrumbs: 1]
   import BoomLooperWeb.Live.WorkspaceLive.Messages, only: [chat_msg: 1, streaming_bubble: 1]
   import BoomLooperWeb.Live.WorkspaceLive.Components.Formatters, only: [time_ago: 1]
   import BoomLooperWeb.Live.WorkspaceLive.Components.ContextPanel, only: [context_panel: 1]
 
+
+  # Build the breadcrumb trail for this workspace view.
+  #   Boom Looper / {project.name or workspace.name} / {branch if not main}
+  # Last crumb has `nil` path so the Breadcrumbs component renders it
+  # as the current page (no link, aria-current="page").
+  defp workspace_crumbs(assigns) do
+    entry = assigns.workspace_entry
+    branch_crumb? = entry && !entry[:is_main]
+
+    crumbs = [{"Boom Looper", "/"}]
+
+    crumbs =
+      if assigns.project do
+        crumbs ++ [{assigns.workspace.name, "/projects/#{assigns.project.id}"}]
+      else
+        crumbs ++ [{assigns.workspace.name, nil}]
+      end
+
+    if branch_crumb? do
+      crumbs ++ [{entry.name, nil}]
+    else
+      # Re-mark last crumb as current page (path = nil)
+      List.update_at(crumbs, -1, fn {label, _} -> {label, nil} end)
+    end
+  end
 
   def chat_header(assigns) do
     # Mobile back button has two modes:
@@ -25,11 +51,16 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
           {:navigate, "/", "Projects"}
       end
 
+    crumbs = workspace_crumbs(assigns)
+    mobile_crumbs = Enum.take(crumbs, -1)
+
     assigns =
       assigns
       |> assign(:back_kind, back_kind)
       |> assign(:back_target, back_target)
       |> assign(:back_label, back_label)
+      |> assign(:crumbs, crumbs)
+      |> assign(:mobile_crumbs, mobile_crumbs)
 
     ~H"""
     <header class="flex-none h-14 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center justify-between px-4 md:px-5">
@@ -54,12 +85,8 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
           </svg>
           <span class="truncate">{@back_label}</span>
         </.link>
-        <.link navigate="/" class="text-sm font-medium hover:text-violet-600 dark:hover:text-violet-400 transition-colors hidden md:block">Boom Looper</.link>
-        <span class="text-zinc-300 dark:text-zinc-600 hidden md:block">/</span>
-        <.link :if={@project} navigate={"/projects/#{@project.id}"} class="text-sm font-medium hover:text-violet-600 dark:hover:text-violet-400 transition-colors truncate">{@workspace.name}</.link>
-        <span :if={!@project} class="text-sm font-medium truncate">{@workspace.name}</span>
-        <span :if={@workspace_entry && !@workspace_entry[:is_main]} class="text-zinc-300 dark:text-zinc-600 hidden sm:block">/</span>
-        <span :if={@workspace_entry && !@workspace_entry[:is_main]} class="text-sm font-medium hidden sm:block truncate">{@workspace_entry.name}</span>
+        <.breadcrumbs crumbs={@crumbs} class="hidden md:flex" />
+        <.breadcrumbs crumbs={@mobile_crumbs} class="md:hidden" />
         <BoomLooperWeb.Components.AppHeader.iex_indicator :if={@iex_session.level} session={@iex_session} />
       </div>
       <div class="flex items-center gap-2 flex-none hidden md:flex">

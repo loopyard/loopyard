@@ -5,6 +5,8 @@ defmodule BoomLooperWeb.Components.AppHeader do
   """
   use Phoenix.Component
 
+  import BoomLooperWeb.Components.Breadcrumbs, only: [breadcrumbs: 1]
+
   @doc """
   Renders the app header bar.
 
@@ -51,26 +53,6 @@ defmodule BoomLooperWeb.Components.AppHeader do
       </div>
     </header>
     """
-  end
-
-  defp breadcrumbs(assigns) do
-    ~H"""
-    <div class="flex items-center gap-2 min-w-0">
-      <span :for={{label, path, is_last} <- with_last(@crumbs)}>
-        <.link :if={!is_last} navigate={path} class="text-sm font-semibold tracking-tight hover:text-violet-600 dark:hover:text-violet-400 transition-colors">{label}</.link>
-        <span :if={is_last} class="text-sm font-medium">{label}</span>
-        <span :if={!is_last} class="text-zinc-300 dark:text-zinc-600 ml-2">/</span>
-      </span>
-    </div>
-    """
-  end
-
-  defp with_last([]), do: []
-  defp with_last(crumbs) do
-    last_idx = length(crumbs) - 1
-    crumbs
-    |> Enum.with_index()
-    |> Enum.map(fn {{label, path}, idx} -> {label, path, idx == last_idx} end)
   end
 
   def iex_indicator(assigns) do
