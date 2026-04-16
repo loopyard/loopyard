@@ -217,24 +217,34 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
   # --- Sidebar items ---
 
   def service_item(assigns) do
-    first_port = first_host_port(assigns.svc.ports)
-    assigns = assign(assigns, :first_port, first_port)
+    # Prefer the registry-assigned host_port (stable) over observer's
+    # svc.ports map (flaps to empty during container state transitions).
+    # annotate_exposure in workspace_live writes :host_port from the
+    # registry when available.
+    host_port = Map.get(assigns.svc, :host_port) || first_host_port(assigns.svc.ports)
+    assigns = assign(assigns, :first_port, host_port)
 
     ~H"""
-    <div class={"flex items-center gap-2 px-2 py-1.5 min-h-11 md:min-h-0 rounded text-sm transition-colors #{if @selected, do: "bg-white dark:bg-zinc-800 shadow-sm", else: "hover:bg-white/60 dark:hover:bg-zinc-800/40"}"}>
-      <.link navigate={"#{@base_path}/services/#{@svc.name}"} class="focus-ring flex items-center gap-2 min-w-0 flex-1" aria-label={"Open #{@svc.name} service"}>
+    <div class={"grid grid-cols-[1fr_auto] items-center gap-2 px-2 py-1.5 min-h-11 md:min-h-0 rounded text-sm transition-colors #{if @selected, do: "bg-white dark:bg-zinc-800 shadow-sm", else: "hover:bg-white/60 dark:hover:bg-zinc-800/40"}"}>
+      <.link navigate={"#{@base_path}/services/#{@svc.name}"} class="focus-ring flex items-center gap-2 min-w-0" aria-label={"Open #{@svc.name} service"}>
         <div class={"w-1.5 h-1.5 rounded-full flex-none #{service_dot(@svc)}"} aria-hidden="true"></div>
         <span class="truncate text-zinc-600 dark:text-zinc-400">{@svc.name}</span>
       </.link>
-      <.port_action
-        :if={@first_port && @svc.status == :running && Map.get(@svc, :container_port)}
-        host={@host}
-        port={@first_port}
-        svc={@svc}
-      />
-      <span :if={service_status_text(@svc)} class="text-[10px] text-blue-400 ml-auto flex-none">{service_status_text(@svc)}</span>
-      <span :if={!service_status_text(@svc) && !@first_port && @svc.status == :running} class="text-[10px] text-zinc-400 dark:text-zinc-500 ml-auto font-mono truncate max-w-[100px]">{service_detail(@svc)}</span>
-      <span :if={@svc.status == :crashed && @svc.exit_info} class="text-[10px] text-red-500 ml-auto truncate max-w-[140px]">{exit_reason(@svc.exit_info)}</span>
+      <%!-- Trailing slot: ALWAYS rendered (even empty) at a min-width
+           so the port button popping in can't push the service name.
+           One slot holds one of: port action, status text, detail text,
+           crash info — never stacked, never shifting. --%>
+      <div class="flex items-center justify-end min-w-[92px] min-h-8">
+        <.port_action
+          :if={@first_port && Map.get(@svc, :container_port) && @svc.status == :running}
+          host={@host}
+          port={@first_port}
+          svc={@svc}
+        />
+        <span :if={!@first_port && service_status_text(@svc)} class="text-xs text-blue-500 dark:text-blue-400">{service_status_text(@svc)}</span>
+        <span :if={!@first_port && !service_status_text(@svc) && @svc.status == :running} class="text-xs text-zinc-500 dark:text-zinc-400 font-mono truncate max-w-[88px]">{service_detail(@svc)}</span>
+        <span :if={@svc.status == :crashed && @svc.exit_info} class="text-xs text-red-500 truncate max-w-[88px]">{exit_reason(@svc.exit_info)}</span>
+      </div>
     </div>
     """
   end

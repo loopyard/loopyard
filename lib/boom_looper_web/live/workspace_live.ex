@@ -1156,35 +1156,51 @@ defmodule BoomLooperWeb.WorkspaceLive do
     {service_statuses, volumes}
   end
 
-  # Decorate a service entry with `:exposed` (boolean) and `:container_port`
-  # for the first published port, so the sidebar can render the public/private
-  # toggle. nil container_port = no published ports = no toggle.
+  # Decorate a service entry with port + exposure info for the sidebar.
+  #
+  # Registry is the source of truth — it's stable across container
+  # restarts and observer poll blips. Observer's svc.ports map is
+  # transiently empty while a container is transitioning states, which
+  # used to cause the "open port" button to flap in and out of the UI.
+  #
+  # Algorithm:
+  #   1. If PortRegistry has an entry for this service, use it. Done.
+  #   2. Otherwise bootstrap from observer (pre-registry workspace) —
+  #      seed the registry so subsequent renders take path 1.
+  #   3. If neither has anything, no button to show.
   defp annotate_exposure(svc, workspace_id) do
-    case first_container_port(svc) do
-      nil ->
-        Map.merge(svc, %{exposed: false, container_port: nil})
+    case registry_entry_for_service(workspace_id, svc.name) do
+      {:ok, entry} ->
+        Map.merge(svc, %{
+          exposed: entry.exposed,
+          container_port: entry.container_port,
+          host_port: entry.host_port
+        })
 
-      cport ->
-        case BoomLooper.PortRegistry.get(workspace_id, svc.name, cport) do
-          {:ok, %{exposed: exposed?}} ->
-            Map.merge(svc, %{exposed: exposed?, container_port: cport})
+      :none ->
+        case first_container_port(svc) do
+          nil ->
+            Map.merge(svc, %{exposed: false, container_port: nil, host_port: nil})
 
-          :none ->
-            # Port exists but isn't in PortRegistry — pre-registry workspace
-            # or Docker-assigned ephemeral port. Backfill it so the operator
-            # can manage exposure going forward.
+          cport ->
             host_port = svc.ports |> Map.values() |> List.first()
 
             if host_port do
               hp = if(is_binary(host_port), do: String.to_integer(host_port), else: host_port)
-
               BoomLooper.PortRegistry.seed(workspace_id, svc.name, cport, hp)
-
-              Map.merge(svc, %{exposed: false, container_port: cport})
+              Map.merge(svc, %{exposed: false, container_port: cport, host_port: hp})
             else
-              Map.merge(svc, %{exposed: false, container_port: nil})
+              Map.merge(svc, %{exposed: false, container_port: nil, host_port: nil})
             end
         end
+    end
+  end
+
+  defp registry_entry_for_service(workspace_id, service_name) do
+    case BoomLooper.PortRegistry.list_for_workspace(workspace_id)
+         |> Enum.find(&(&1.service == service_name)) do
+      nil -> :none
+      entry -> {:ok, entry}
     end
   end
 
