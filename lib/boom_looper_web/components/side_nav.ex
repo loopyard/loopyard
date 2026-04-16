@@ -143,6 +143,10 @@ defmodule BoomLooperWeb.Components.SideNav do
   end
 
   # --- Info row: label / value pair (used in Agent Context) ---
+  #
+  # Same horizontal padding as `row/1` and `section/1`'s label so that
+  # labels, row contents, and key/value pairs all share one left edge.
+  # That's the alignment the user expects when scanning a sidebar.
   attr :label, :string, required: true
   attr :value, :any, required: true
   attr :class, :string, default: nil
@@ -150,7 +154,7 @@ defmodule BoomLooperWeb.Components.SideNav do
 
   def info_row(assigns) do
     ~H"""
-    <div class="flex items-center justify-between gap-3 min-h-6 text-xs">
+    <div class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-6 text-xs">
       <span class="text-zinc-500 dark:text-zinc-500 flex-none">{@label}</span>
       <span class={[
         "truncate",
