@@ -40,20 +40,32 @@ defmodule BoomLooperWeb.WorkspaceLive do
         )
       end
 
-      # If the workspace is already running (containers alive from a
-      # previous visit or server restart), reconnect silently. Otherwise
-      # DON'T auto-start — the user clicks the explicit Start button.
-      if BoomLooper.WorkspaceSupervisor.workspace_running?(workspace.id) do
+      # Silent reconnect: if our supervisor tree is already running OR
+      # there are live containers for this workspace, bring up the
+      # supervisor so PubSub + ChatAgent reconnect logic runs. The user
+      # only sees the explicit "Start workspace" button when there is
+      # genuinely nothing alive for this workspace.
+      supervisor_up? = BoomLooper.WorkspaceSupervisor.workspace_running?(workspace.id)
+      containers_up? = any_running_containers?(workspace.id)
+
+      if supervisor_up? or containers_up? do
         send(self(), {:start_workspace, workspace.path})
       end
     end
 
     socket = if connected?(socket), do: subscribe_iex(socket), else: assign(socket, :iex_session, %{level: nil})
 
+    # Agents survive server restarts via an append-only ETF log. On a
+    # fresh boot the :chat_agents ETS table is empty and list_agents
+    # returns []. Pre-populate from the log so the sidebar shows the
+    # agent list even before the workspace is started. ChatAgent
+    # processes start later (when ServiceManager runs).
+    ws_id = extra_assigns[:workspace_entry] && extra_assigns[:workspace_entry].id || workspace.id
+    prime_agents_from_log(workspace.path, ws_id)
+
     # Services + volumes come from Docker.Observer's ETS cache (instant,
     # zero docker calls). The sidebar renders immediately with real data.
     agents = AgentLifecycle.list_workspace_agents(workspace.path)
-    ws_id = extra_assigns[:workspace_entry] && extra_assigns[:workspace_entry].id || workspace.id
     {service_statuses, volumes} = load_sidebar_from_observer(workspace.path, ws_id)
 
     base_path = if extra_assigns[:project] do
@@ -115,7 +127,25 @@ defmodule BoomLooperWeb.WorkspaceLive do
      |> assign(:is_local_source?, is_local?)
      |> assign(:sync_status, initial_sync_status(workspace.id, is_local?))
      |> assign(:services_busy, nil)
-     |> assign(:workspace_running, BoomLooper.WorkspaceSupervisor.workspace_running?(workspace.id))}
+     |> assign(:workspace_running, workspace_effectively_running?(workspace.id, service_statuses))}
+  end
+
+  # "Is the workspace usable right now?" — the UX question, not the
+  # supervisor-tree question. Containers being up in Docker is what
+  # matters to the user; our GenServer tree can be absent right after
+  # a server restart even though the dev server is still serving HTTP.
+  defp workspace_effectively_running?(workspace_id, service_statuses) do
+    supervisor_up? = BoomLooper.WorkspaceSupervisor.workspace_running?(workspace_id)
+    any_running? = Enum.any?(service_statuses, &(&1.status == :running))
+
+    supervisor_up? or any_running?
+  end
+
+  defp any_running_containers?(workspace_id) do
+    BoomLooper.Docker.Observer.containers_for(workspace_id)
+    |> Enum.any?(&Map.get(&1, :running, false))
+  rescue
+    _ -> false
   end
 
   defp initial_sync_status(_workspace_id, false), do: nil
@@ -936,11 +966,13 @@ defmodule BoomLooperWeb.WorkspaceLive do
   def handle_info({:docker_state_changed, _snapshot}, socket) do
     ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
     {service_statuses, volumes} = load_sidebar_from_observer(nil, ws_id)
+    guarded = guard_service_statuses(socket, service_statuses)
 
     {:noreply,
      socket
-     |> assign(:service_statuses, guard_service_statuses(socket, service_statuses))
-     |> assign(:volumes, volumes)}
+     |> assign(:service_statuses, guarded)
+     |> assign(:volumes, volumes)
+     |> assign(:workspace_running, workspace_effectively_running?(ws_id, guarded))}
   end
 
   def handle_info({:docker_state_reset}, socket) do
@@ -1156,6 +1188,30 @@ defmodule BoomLooperWeb.WorkspaceLive do
     {service_statuses, volumes}
   end
 
+  # Populate :chat_agents ETS from the workspace's persisted agent log.
+  # Idempotent — safe to call multiple times or when ServiceManager has
+  # already run replay. Does NOT start ChatAgent GenServers; the log
+  # contents are just made visible to `list_agents/0` so the sidebar can
+  # render agents as stopped (their status in the log is preserved,
+  # typically :idle, which matches "available but not actively thinking").
+  defp prime_agents_from_log(project_dir, _workspace_id) do
+    log_path = Path.join([project_dir, ".boomlooper", "workspace", "agents.log"])
+
+    # Skip if the log isn't there yet (brand-new workspace) or if the
+    # expected agents are already in ETS (ServiceManager beat us to it).
+    if File.exists?(log_path) do
+      BoomLooper.AgentLog.replay(
+        log_path: log_path,
+        version: 1,
+        ets_table: :chat_agents
+      )
+    end
+  rescue
+    e ->
+      require Logger
+      Logger.warning("[workspace_live] prime_agents_from_log failed: #{Exception.message(e)}")
+  end
+
   # Decorate a service entry with port + exposure info for the sidebar.
   #
   # Registry is the source of truth — it's stable across container
@@ -1286,8 +1342,16 @@ defmodule BoomLooperWeb.WorkspaceLive do
         />
         <%!-- Main content: hidden on mobile when sidebar is showing (index/new with no selection) --%>
         <main id="main-content" class={"flex-1 flex flex-col min-w-0 #{if @live_action == :index && !@selected_id && !@selected_service, do: "hidden md:flex", else: "flex"}"}>
-          <.workspace_not_running :if={!@workspace_running} workspace={@workspace} services_busy={@services_busy} />
-          <.new_agent_screen :if={@workspace_running && @live_action == :new} workspace={@workspace} base_path={@base_path} />
+          <%!-- Stopped-workspace screen only when the user isn't looking
+               at a specific agent. Agent history stays readable regardless
+               of service state — sending new messages is what the running
+               workspace gates. --%>
+          <.workspace_not_running
+            :if={!@workspace_running && !@selected_agent && @live_action != :new}
+            workspace={@workspace}
+            services_busy={@services_busy}
+          />
+          <.new_agent_screen :if={@live_action == :new} workspace={@workspace} base_path={@base_path} />
           <.service_log_view :if={@workspace_running && @live_action == :service} service_name={@selected_service} service_statuses={@service_statuses} logs={@service_logs} base_path={@base_path} host={@host} />
           <.console_view :if={@live_action == :console} service_name={@selected_service} container={@console_container} />
           <.all_services_view :if={@live_action == :services} all_service_logs={@all_service_logs} />
