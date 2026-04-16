@@ -1339,6 +1339,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
           host={@host}
           is_local_source?={@is_local_source?} sync_status={@sync_status}
           services_busy={@services_busy}
+          workspace_running={@workspace_running}
         />
         <%!-- Main content: hidden on mobile when sidebar is showing (index/new with no selection) --%>
         <main id="main-content" class={"flex-1 flex flex-col min-w-0 #{if @live_action == :index && !@selected_id && !@selected_service, do: "hidden md:flex", else: "flex"}"}>
