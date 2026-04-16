@@ -472,13 +472,18 @@ defmodule BoomLooper.ChatAgent do
     # work on the host dir.
     container_only? = is_nil(bind_mount)
 
+    # `append_system_prompt` preserves the CLI's default system prompt
+    # (which handles CLAUDE.md auto-discovery, slash command docs, native
+    # tool descriptions, etc.) and appends our BoomLooper-specific rules
+    # on top. Using `system_prompt` would REPLACE the default and the
+    # agent would stop seeing CLAUDE.md and other native context.
     base_opts = [
       cwd: working_dir,
       permission_mode: :accept_edits,
       dangerously_skip_permissions: true,
       mcp_servers: ToolConfig.build_mcp_servers(tools, id),
       allowed_tools: ToolConfig.build_allowed_tools(tools, container_only?),
-      system_prompt: system_prompt
+      append_system_prompt: system_prompt
     ]
 
     session_opts =
