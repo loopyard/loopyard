@@ -443,6 +443,15 @@ defmodule BoomLooper.ChatAgent do
     workspace = if workspace_id, do: load_workspace_config(workspace_id), else: nil
     system_prompt = Prompt.build_system_prompt(id, bind_mount, workspace_id, workspace, service_name)
 
+    # Mirror CLAUDE.md + .claude/ from the workspace volume into working_dir
+    # (a no-op for Local workspaces where Mutagen already puts them on the
+    # host). The Claude Code CLI does its own discovery from cwd, so after
+    # this runs the agent sees the same project memory a human would get
+    # from running `claude` in that repo.
+    if workspace_id do
+      BoomLooper.ChatAgent.ClaudeContext.mirror(workspace_id, working_dir)
+    end
+
     # Containerized agents (volume-based, no bind_mount) MUST NOT use
     # host-side filesystem tools. Their workspace lives inside a Docker
     # volume; the host's view of `working_dir` is empty. If a container
