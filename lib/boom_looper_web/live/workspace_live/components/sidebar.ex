@@ -129,7 +129,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         class="focus-ring inline-flex items-center gap-1.5 rounded-md px-3 min-h-9 md:min-h-8 text-xs font-medium border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 hover:bg-white dark:hover:bg-zinc-800 transition-colors"
       >
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3 h-3" aria-hidden="true">
-          <path d="M4.5 4.5a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1h-7Z" />
+          <rect x="3" y="3" width="10" height="10" rx="1.5" />
         </svg>
         Stop
       </button>
