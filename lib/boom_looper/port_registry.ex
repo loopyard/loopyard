@@ -101,6 +101,24 @@ defmodule BoomLooper.PortRegistry do
   end
 
   @doc """
+  Open (`true`) or close (`false`) public exposure for a registered
+  port. Toggling the field and starting/stopping the `PortExposer`
+  GenServer are done atomically inside the registry's GenServer so
+  the flag and the listener can never drift.
+
+  Returns `:ok` on success; `{:error, :not_registered}` if the key
+  doesn't exist; `{:error, reason}` if the listener can't bind.
+  """
+  def set_exposure(workspace_id, service, container_port, exposed?)
+      when is_binary(workspace_id) and is_binary(service) and
+             is_integer(container_port) and is_boolean(exposed?) do
+    GenServer.call(
+      __MODULE__,
+      {:set_exposure, workspace_id, service, container_port, exposed?}
+    )
+  end
+
+  @doc """
   Application supervisor callback: load persisted entries into ETS,
   or migrate from legacy `Compose.capture_port_map/1` if there's no
   `ports.json` yet.
@@ -183,19 +201,58 @@ defmodule BoomLooper.PortRegistry do
   end
 
   def handle_call({:release_workspace, ws}, _from, state) do
-    keys_to_delete =
+    entries =
       :ets.tab2list(@table)
       |> Enum.filter(fn {{w, _, _}, _} -> w == ws end)
-      |> Enum.map(fn {key, _} -> key end)
 
-    Enum.each(keys_to_delete, &:ets.delete(@table, &1))
+    for {key, entry} <- entries do
+      # Stop any running exposer so we don't leak a listener on the
+      # host port after the workspace is gone.
+      if entry.exposed do
+        toggle_exposer(key, entry, false)
+      end
 
-    if keys_to_delete != [] do
-      EventLog.info("ports", "Released #{length(keys_to_delete)} port(s) for workspace #{ws}")
+      :ets.delete(@table, key)
+    end
+
+    if entries != [] do
+      EventLog.info("ports", "Released #{length(entries)} port(s) for workspace #{ws}")
       persist(state)
     end
 
     {:reply, :ok, state}
+  end
+
+  def handle_call({:set_exposure, ws, svc, cport, exposed?}, _from, state) do
+    key = {ws, svc, cport}
+
+    case :ets.lookup(@table, key) do
+      [] ->
+        {:reply, {:error, :not_registered}, state}
+
+      [{^key, entry}] when entry.exposed == exposed? ->
+        # No-op: already in the desired state. Don't churn the
+        # listener or spam EventLog.
+        {:reply, :ok, state}
+
+      [{^key, entry}] ->
+        case toggle_exposer(key, entry, exposed?) do
+          :ok ->
+            updated = %{entry | exposed: exposed?}
+            :ets.insert(@table, {key, updated})
+            persist(state)
+            {:reply, :ok, state}
+
+          {:error, reason} = err ->
+            EventLog.error(
+              "ports",
+              "Failed to #{if exposed?, do: "open", else: "close"} exposure " <>
+                "for #{ws}/#{svc}/#{cport}: #{inspect(reason)}"
+            )
+
+            {:reply, err, state}
+        end
+    end
   end
 
   def handle_call({:seed, ws, svc, cport, host_port}, _from, state) do
@@ -263,9 +320,58 @@ defmodule BoomLooper.PortRegistry do
     for entry <- PortStore.load() do
       key = {entry.workspace_id, entry.service, entry.container_port}
       :ets.insert(@table, {key, entry})
+
+      # Re-open exposure for entries that were exposed at shutdown.
+      # Failures are logged but non-fatal — the registry entry stays
+      # with exposed: true so the UI can surface the broken state
+      # and the operator can retry.
+      if entry.exposed do
+        case start_exposer(key, entry) do
+          :ok ->
+            :ok
+
+          {:error, reason} ->
+            require Logger
+
+            Logger.warning(
+              "[PortRegistry] Could not re-open exposure for " <>
+                "#{inspect(key)}: #{inspect(reason)}"
+            )
+        end
+      end
     end
 
     :ok
+  end
+
+  # Start or stop the PortExposer for a given key, depending on the
+  # target state. Returns :ok on success or {:error, reason}.
+  defp toggle_exposer(key, entry, true) do
+    case BoomLooper.PortExposer.whereis(key) do
+      nil -> start_exposer(key, entry)
+      _pid -> :ok
+    end
+  end
+
+  defp toggle_exposer(key, _entry, false) do
+    case BoomLooper.PortExposer.whereis(key) do
+      nil ->
+        :ok
+
+      pid ->
+        DynamicSupervisor.terminate_child(BoomLooper.PortExposerSupervisor, pid)
+        :ok
+    end
+  end
+
+  defp start_exposer(key, entry) do
+    spec = {BoomLooper.PortExposer, key: key, host_port: entry.host_port}
+
+    case DynamicSupervisor.start_child(BoomLooper.PortExposerSupervisor, spec) do
+      {:ok, _pid} -> :ok
+      {:error, {:already_started, _}} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   # Migration path — runs once on first boot after upgrade. Walks every

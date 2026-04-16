@@ -250,7 +250,10 @@ defmodule BoomLooperWeb.SystemLive do
     ~H"""
     <section>
       <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">Cluster</h2>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <.drilldown_card href="/system/ports" title="Ports" subtitle="Host port assignments + exposure">
+          <span class="text-zinc-400">audit + expose</span>
+        </.drilldown_card>
         <.drilldown_card href="/system/workspaces" title="Workspaces" subtitle="Per-workspace health & restart controls">
           <%= case @counts do %>
             <% %{ok?: true, result: %{workspaces: w, agents: a}} -> %>

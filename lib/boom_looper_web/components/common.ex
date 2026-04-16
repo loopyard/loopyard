@@ -160,7 +160,7 @@ defmodule BoomLooperWeb.Components.Common do
 
     ~H"""
     <div class="min-h-screen bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
-      <.header breadcrumbs={@breadcrumbs} iex_session={@iex_session}>
+      <.header breadcrumbs={@breadcrumbs} iex_session={@iex_session} host_exposed={BoomLooper.HostExposer.exposed?()}>
         {render_slot(@header_actions)}
       </.header>
       <.flash_banner flash={@flash} kind={:error} class="mx-4 mt-2" />

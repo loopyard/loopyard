@@ -84,7 +84,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
             />
           </div>
           <div :if={@service_statuses != []} class="space-y-0.5">
-            <.service_item :for={svc <- @service_statuses} svc={svc} base_path={@base_path} selected={@selected_service == svc.name} host={@host} />
+            <.service_item :for={svc <- @service_statuses} svc={svc} base_path={@base_path} selected={@selected_service == svc.name} host={@host} workspace_id={@workspace_id} />
           </div>
           <p :if={!@services_loaded} class="text-xs text-zinc-400 dark:text-zinc-500 py-1">Loading...</p>
         </div>
@@ -226,14 +226,54 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         <div class={"w-1.5 h-1.5 rounded-full flex-none #{service_dot(@svc)}"}></div>
         <span class="truncate text-zinc-600 dark:text-zinc-400">{@svc.name}</span>
       </.link>
-      <a :if={@first_port && @svc.status == :running} href={"http://#{@host}:#{@first_port}"} target="_blank"
-        class="text-[10px] text-violet-500 hover:text-violet-400 font-mono ml-auto flex-none transition-colors">
-        :{@first_port}
-      </a>
+      <.port_action
+        :if={@first_port && @svc.status == :running && Map.get(@svc, :container_port)}
+        host={@host}
+        port={@first_port}
+        svc={@svc}
+      />
       <span :if={service_status_text(@svc)} class="text-[10px] text-blue-400 ml-auto flex-none">{service_status_text(@svc)}</span>
       <span :if={!service_status_text(@svc) && !@first_port && @svc.status == :running} class="text-[10px] text-zinc-400 dark:text-zinc-500 ml-auto font-mono truncate max-w-[100px]">{service_detail(@svc)}</span>
       <span :if={@svc.status == :crashed && @svc.exit_info} class="text-[10px] text-red-500 ml-auto truncate max-w-[140px]">{exit_reason(@svc.exit_info)}</span>
     </div>
+    """
+  end
+
+  # Single affordance per running service:
+  #   * closed (loopback-only) → gray "open port" — click exposes + opens URL
+  #   * open (0.0.0.0)         → green ":<port>"  — click just opens URL
+  #
+  # Closing an exposed port happens from /system/ports, not here.
+  attr :host, :string, required: true
+  attr :port, :integer, required: true
+  attr :svc, :map, required: true
+
+  def port_action(assigns) do
+    exposed? = Map.get(assigns.svc, :exposed, false)
+
+    assigns =
+      assigns
+      |> assign(:exposed?, exposed?)
+      |> assign(:url, "http://#{assigns.host}:#{assigns.port}")
+
+    ~H"""
+    <a
+      href={@url}
+      target="_blank"
+      phx-click={unless @exposed?, do: "toggle_port_exposure"}
+      phx-value-service={@svc.name}
+      phx-value-container_port={Map.get(@svc, :container_port)}
+      phx-value-expose="true"
+      title={if @exposed?, do: "Open #{@url} (port is public)", else: "Open and expose on 0.0.0.0"}
+      class={[
+        "flex-none text-[10px] font-mono font-medium px-1.5 py-0.5 rounded transition-colors ml-auto",
+        if(@exposed?,
+          do: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25",
+          else: "text-zinc-400 dark:text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-700")
+      ]}
+    >
+      {if @exposed?, do: ":#{@port}", else: "open port"}
+    </a>
     """
   end
 

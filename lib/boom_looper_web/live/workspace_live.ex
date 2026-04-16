@@ -40,8 +40,12 @@ defmodule BoomLooperWeb.WorkspaceLive do
         )
       end
 
-      # Start workspace supervisor async — don't block mount
-      send(self(), {:start_workspace, workspace.path})
+      # If the workspace is already running (containers alive from a
+      # previous visit or server restart), reconnect silently. Otherwise
+      # DON'T auto-start — the user clicks the explicit Start button.
+      if BoomLooper.WorkspaceSupervisor.workspace_running?(workspace.id) do
+        send(self(), {:start_workspace, workspace.path})
+      end
     end
 
     socket = if connected?(socket), do: subscribe_iex(socket), else: assign(socket, :iex_session, %{level: nil})
@@ -110,7 +114,8 @@ defmodule BoomLooperWeb.WorkspaceLive do
      |> assign(:console_container, nil)
      |> assign(:is_local_source?, is_local?)
      |> assign(:sync_status, initial_sync_status(workspace.id, is_local?))
-     |> assign(:services_busy, nil)}
+     |> assign(:services_busy, nil)
+     |> assign(:workspace_running, BoomLooper.WorkspaceSupervisor.workspace_running?(workspace.id))}
   end
 
   defp initial_sync_status(_workspace_id, false), do: nil
@@ -501,6 +506,24 @@ defmodule BoomLooperWeb.WorkspaceLive do
   end
 
   @impl true
+  def handle_event("toggle_port_exposure", %{"service" => svc, "container_port" => cport, "expose" => expose}, socket) do
+    workspace_id = BoomLooper.ProjectRegistry.workspace_id(socket.assigns.workspace.path)
+    cport = String.to_integer(cport)
+    exposed? = expose == "true"
+
+    case BoomLooper.PortRegistry.set_exposure(workspace_id, svc, cport, exposed?) do
+      :ok ->
+        {service_statuses, _vols} = load_sidebar_from_observer(nil, workspace_id)
+        {:noreply, assign(socket, :service_statuses, guard_service_statuses(socket, service_statuses))}
+
+      {:error, reason} ->
+        require Logger
+        Logger.warning("[workspace_live] toggle_port_exposure failed: #{inspect(reason)}")
+        {:noreply, socket}
+    end
+  end
+
+  @impl true
   def handle_event("start_rename", _params, socket) do
     {:noreply, assign(socket, :editing_name, true)}
   end
@@ -594,6 +617,26 @@ defmodule BoomLooperWeb.WorkspaceLive do
     {:noreply, socket}
   end
 
+  def handle_event("boot_workspace", _params, socket) do
+    send(self(), {:start_workspace, socket.assigns.workspace.path})
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("shutdown_workspace", _params, socket) do
+    workspace_id = socket.assigns.workspace.id
+    parent = self()
+
+    Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
+      BoomLooper.WorkspaceSupervisor.stop_workspace(workspace_id)
+      BoomLooper.ProjectRegistry.update_workspace_status(workspace_id, :stopped)
+      send(parent, :workspace_stopped)
+    end)
+
+    {:noreply, assign(socket, :services_busy, :stopping)}
+  end
+
+  @impl true
   def handle_event("start_services", _params, socket) do
     if socket.assigns.services_busy do
       {:noreply, socket}
@@ -860,6 +903,20 @@ defmodule BoomLooperWeb.WorkspaceLive do
 
 
   @impl true
+  def handle_info(:workspace_stopped, socket) do
+    ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
+    {service_statuses, volumes} = load_sidebar_from_observer(nil, ws_id)
+
+    {:noreply,
+     socket
+     |> assign(:workspace_running, false)
+     |> assign(:services_busy, nil)
+     |> assign(:service_statuses, service_statuses)
+     |> assign(:volumes, volumes)
+     |> assign(:agents, [])}
+  end
+
+  @impl true
   def handle_info({:start_workspace, path}, socket) do
     workspace_id = BoomLooper.ProjectRegistry.workspace_id(path)
 
@@ -870,7 +927,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
       BoomLooper.ProjectRegistry.update_workspace_status(workspace_id, :running)
     end)
 
-    {:noreply, socket}
+    {:noreply, assign(socket, :workspace_running, true)}
   end
 
   # Docker.Observer broadcasts when container/volume state changes.
@@ -1086,7 +1143,9 @@ defmodule BoomLooperWeb.WorkspaceLive do
     # Single source of truth: Observer.services_for reads the compose file
     # from Workspace.compose_dir (always correct) and merges with cached
     # container state. No ad-hoc path computation, no direct Docker calls.
-    service_statuses = BoomLooper.Docker.Observer.services_for(workspace_id)
+    service_statuses =
+      BoomLooper.Docker.Observer.services_for(workspace_id)
+      |> Enum.map(&annotate_exposure(&1, workspace_id))
 
     volumes =
       BoomLooper.Docker.Observer.volumes_for(workspace_id)
@@ -1096,6 +1155,47 @@ defmodule BoomLooperWeb.WorkspaceLive do
 
     {service_statuses, volumes}
   end
+
+  # Decorate a service entry with `:exposed` (boolean) and `:container_port`
+  # for the first published port, so the sidebar can render the public/private
+  # toggle. nil container_port = no published ports = no toggle.
+  defp annotate_exposure(svc, workspace_id) do
+    case first_container_port(svc) do
+      nil ->
+        Map.merge(svc, %{exposed: false, container_port: nil})
+
+      cport ->
+        case BoomLooper.PortRegistry.get(workspace_id, svc.name, cport) do
+          {:ok, %{exposed: exposed?}} ->
+            Map.merge(svc, %{exposed: exposed?, container_port: cport})
+
+          :none ->
+            # Port exists but isn't in PortRegistry — pre-registry workspace
+            # or Docker-assigned ephemeral port. Backfill it so the operator
+            # can manage exposure going forward.
+            host_port = svc.ports |> Map.values() |> List.first()
+
+            if host_port do
+              hp = if(is_binary(host_port), do: String.to_integer(host_port), else: host_port)
+
+              BoomLooper.PortRegistry.seed(workspace_id, svc.name, cport, hp)
+
+              Map.merge(svc, %{exposed: false, container_port: cport})
+            else
+              Map.merge(svc, %{exposed: false, container_port: nil})
+            end
+        end
+    end
+  end
+
+  defp first_container_port(%{ports: ports}) when is_map(ports) and map_size(ports) > 0 do
+    ports |> Map.keys() |> Enum.sort() |> List.first() |> to_integer()
+  end
+
+  defp first_container_port(_), do: nil
+
+  defp to_integer(n) when is_integer(n), do: n
+  defp to_integer(n) when is_binary(n), do: String.to_integer(n)
 
   # Kicks off three Docker calls (container_running?, do_logs, do_inspect)
   # in a single Task. Mounted callers (handle_params for the container tab)
@@ -1170,8 +1270,9 @@ defmodule BoomLooperWeb.WorkspaceLive do
         />
         <%!-- Main content: hidden on mobile when sidebar is showing (index/new with no selection) --%>
         <main class={"flex-1 flex flex-col min-w-0 #{if @live_action == :index && !@selected_id && !@selected_service, do: "hidden md:flex", else: "flex"}"}>
-          <.new_agent_screen :if={@live_action == :new} workspace={@workspace} base_path={@base_path} />
-          <.service_log_view :if={@live_action == :service} service_name={@selected_service} service_statuses={@service_statuses} logs={@service_logs} base_path={@base_path} host={@host} />
+          <.workspace_not_running :if={!@workspace_running} workspace={@workspace} services_busy={@services_busy} />
+          <.new_agent_screen :if={@workspace_running && @live_action == :new} workspace={@workspace} base_path={@base_path} />
+          <.service_log_view :if={@workspace_running && @live_action == :service} service_name={@selected_service} service_statuses={@service_statuses} logs={@service_logs} base_path={@base_path} host={@host} />
           <.console_view :if={@live_action == :console} service_name={@selected_service} container={@console_container} />
           <.all_services_view :if={@live_action == :services} all_service_logs={@all_service_logs} />
           <.volume_detail :if={@live_action in [:volume, :volume_files_root, :volume_file, :volume_git]} volume_name={@selected_volume} volumes={@volumes} workspace_id={@workspace.id} base_path={@base_path} volume_tab={@volume_tab} file_tree={@file_tree} file_content={@file_content} file_path={@file_path} browse_path={@browse_path} git_log={@git_log} git_status={@git_status} diff_content={@diff_content} supports_git={@supports_git} />

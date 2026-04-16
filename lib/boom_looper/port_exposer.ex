@@ -1,0 +1,298 @@
+defmodule BoomLooper.PortExposer do
+  @moduledoc """
+  TCP proxy that fronts a loopback-bound registry port on `0.0.0.0`.
+
+  BoomLooper binds every Docker-published port to `127.0.0.1` so
+  nothing is reachable from the LAN by default. When an operator
+  toggles exposure on for `{workspace, service, container_port}`,
+  this GenServer opens an `:inet` listener on `0.0.0.0:<host_port>`
+  and forwards connections to `127.0.0.1:<host_port>`. Closing the
+  exposure terminates the GenServer; the listener socket and every
+  in-flight connection drop within milliseconds.
+
+  No `docker compose` rewrite. No container restart. The compose
+  file stays loopback-only forever — the exposer is what goes
+  public, and the user sees exactly one "padlock open" signal per
+  exposed port.
+
+  ## Counters
+
+  Every byte forwarded in either direction is tallied. `status/1`
+  returns bytes_in / bytes_out / connection count / peer IPs. The
+  audit trail of expose/revoke events lives in EventLog; counters
+  are a "what's happening right now" view and reset on restart.
+  """
+
+  use GenServer
+
+  require Logger
+
+  alias BoomLooper.EventLog
+
+  # --- Public API ---
+
+  def start_link(opts) do
+    key = Keyword.fetch!(opts, :key)
+    GenServer.start_link(__MODULE__, opts, name: via(key))
+  end
+
+  @doc "Return the exposer pid for a registry entry, or nil."
+  def whereis({_ws, _svc, _cport} = key) do
+    case Registry.lookup(BoomLooper.PortExposerRegistry, key) do
+      [{pid, _}] -> pid
+      [] -> nil
+    end
+  end
+
+  @doc """
+  Live status for the exposer at this key. `:not_running` when no
+  exposer is up.
+  """
+  def status({_ws, _svc, _cport} = key) do
+    case whereis(key) do
+      nil -> :not_running
+      pid -> GenServer.call(pid, :status, 1_000)
+    end
+  end
+
+  # --- Callbacks ---
+
+  @impl true
+  def init(opts) do
+    key = Keyword.fetch!(opts, :key)
+    host_port = Keyword.fetch!(opts, :host_port)
+    upstream_host = opts |> Keyword.get(:upstream_host, {127, 0, 0, 1}) |> normalize_host()
+    upstream_port = Keyword.get(opts, :upstream_port, host_port)
+
+    case :gen_tcp.listen(host_port, [
+           :binary,
+           packet: :raw,
+           active: false,
+           reuseaddr: true,
+           ip: {0, 0, 0, 0}
+         ]) do
+      {:ok, listen_sock} ->
+        state = %{
+          key: key,
+          host_port: host_port,
+          upstream_host: upstream_host,
+          upstream_port: upstream_port,
+          listen_sock: listen_sock,
+          accept_task: nil,
+          # client_sock => %{peer: "ip", upstream: upstream_sock}
+          clients: %{},
+          # upstream_sock => client_sock  (reverse index for O(1) forward)
+          upstream_to_client: %{},
+          bytes_in: 0,
+          bytes_out: 0,
+          opened_at: DateTime.utc_now()
+        }
+
+        {ws, svc, cport} = key
+
+        EventLog.info(
+          "ports:#{ws}",
+          "Exposed #{svc}/#{cport} on 0.0.0.0:#{host_port} " <>
+            "(forwarding to 127.0.0.1:#{host_port})"
+        )
+
+        {:ok, state, {:continue, :start_accepting}}
+
+      {:error, reason} ->
+        Logger.error("[PortExposer] Listen on #{host_port} failed: #{inspect(reason)}")
+        {:stop, {:listen_failed, reason}}
+    end
+  end
+
+  @impl true
+  def handle_continue(:start_accepting, state) do
+    {:noreply, spawn_acceptor(state)}
+  end
+
+  @impl true
+  def handle_call(:status, _from, state) do
+    status = %{
+      host_port: state.host_port,
+      bytes_in: state.bytes_in,
+      bytes_out: state.bytes_out,
+      connection_count: map_size(state.clients),
+      peers:
+        state.clients
+        |> Map.values()
+        |> Enum.map(& &1.peer)
+        |> Enum.uniq(),
+      opened_at: state.opened_at
+    }
+
+    {:reply, status, state}
+  end
+
+  @impl true
+  def handle_info({:accepted, client_sock}, state) do
+    state = handle_accepted(state, client_sock)
+    {:noreply, spawn_acceptor(state)}
+  end
+
+  def handle_info({:tcp, sock, data}, state) do
+    state = forward_data(state, sock, data)
+    :inet.setopts(sock, active: :once)
+    {:noreply, state}
+  end
+
+  def handle_info({:tcp_closed, sock}, state) do
+    {:noreply, close_pair(state, sock)}
+  end
+
+  def handle_info({:tcp_error, sock, _reason}, state) do
+    {:noreply, close_pair(state, sock)}
+  end
+
+  def handle_info({:EXIT, pid, _reason}, %{accept_task: pid} = state) do
+    # Acceptor task crashed — respawn.
+    {:noreply, spawn_acceptor(%{state | accept_task: nil})}
+  end
+
+  def handle_info(_other, state), do: {:noreply, state}
+
+  @impl true
+  def terminate(_reason, state) do
+    :gen_tcp.close(state.listen_sock)
+
+    for {client, %{upstream: upstream}} <- state.clients do
+      safe_close(client)
+      safe_close(upstream)
+    end
+
+    {ws, svc, cport} = state.key
+    EventLog.info("ports:#{ws}", "Revoked exposure of #{svc}/#{cport}")
+    :ok
+  end
+
+  # --- Private ---
+
+  defp via(key) do
+    {:via, Registry, {BoomLooper.PortExposerRegistry, key}}
+  end
+
+  defp spawn_acceptor(%{accept_task: nil} = state) do
+    server = self()
+    listen_sock = state.listen_sock
+
+    task_pid =
+      spawn_link(fn ->
+        case :gen_tcp.accept(listen_sock) do
+          {:ok, client} ->
+            :ok = :gen_tcp.controlling_process(client, server)
+            send(server, {:accepted, client})
+
+          {:error, :closed} ->
+            :ok
+
+          {:error, reason} ->
+            Logger.warning("[PortExposer] accept/1 returned #{inspect(reason)}")
+        end
+      end)
+
+    %{state | accept_task: task_pid}
+  end
+
+  defp spawn_acceptor(state), do: state
+
+  defp handle_accepted(state, client_sock) do
+    peer = peer_ip(client_sock)
+
+    case :gen_tcp.connect(state.upstream_host, state.upstream_port, [
+           :binary,
+           packet: :raw,
+           active: :once
+         ], 2_000) do
+      {:ok, upstream_sock} ->
+        :inet.setopts(client_sock, active: :once)
+        :ok = :gen_tcp.controlling_process(upstream_sock, self())
+
+        %{
+          state
+          | clients: Map.put(state.clients, client_sock, %{peer: peer, upstream: upstream_sock}),
+            upstream_to_client: Map.put(state.upstream_to_client, upstream_sock, client_sock)
+        }
+
+      {:error, reason} ->
+        Logger.warning(
+          "[PortExposer] upstream connect to #{inspect(state.upstream_host)}:#{state.upstream_port} failed: #{inspect(reason)}"
+        )
+
+        :gen_tcp.close(client_sock)
+        state
+    end
+  end
+
+  # Data from a CLIENT socket → forward upstream, count as bytes_in.
+  # Data from an UPSTREAM socket → forward to its client, count as bytes_out.
+  defp forward_data(state, sock, data) do
+    cond do
+      Map.has_key?(state.clients, sock) ->
+        %{upstream: upstream} = Map.get(state.clients, sock)
+        :gen_tcp.send(upstream, data)
+        %{state | bytes_in: state.bytes_in + byte_size(data)}
+
+      client = Map.get(state.upstream_to_client, sock) ->
+        :gen_tcp.send(client, data)
+        %{state | bytes_out: state.bytes_out + byte_size(data)}
+
+      true ->
+        state
+    end
+  end
+
+  # Closing either side of a pair tears down both.
+  defp close_pair(state, sock) do
+    cond do
+      entry = Map.get(state.clients, sock) ->
+        safe_close(sock)
+        safe_close(entry.upstream)
+
+        %{
+          state
+          | clients: Map.delete(state.clients, sock),
+            upstream_to_client: Map.delete(state.upstream_to_client, entry.upstream)
+        }
+
+      client = Map.get(state.upstream_to_client, sock) ->
+        safe_close(sock)
+        safe_close(client)
+
+        %{
+          state
+          | clients: Map.delete(state.clients, client),
+            upstream_to_client: Map.delete(state.upstream_to_client, sock)
+        }
+
+      true ->
+        state
+    end
+  end
+
+  defp peer_ip(sock) do
+    case :inet.peername(sock) do
+      {:ok, {ip, _port}} -> ip |> Tuple.to_list() |> Enum.join(".")
+      _ -> "unknown"
+    end
+  end
+
+  defp safe_close(sock) do
+    try do
+      :gen_tcp.close(sock)
+    rescue
+      _ -> :ok
+    catch
+      _, _ -> :ok
+    end
+  end
+
+  defp normalize_host({_, _, _, _} = tuple), do: tuple
+
+  defp normalize_host(str) when is_binary(str) do
+    {:ok, ip} = str |> String.to_charlist() |> :inet.parse_address()
+    ip
+  end
+end

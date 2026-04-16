@@ -40,6 +40,23 @@ defmodule BoomLooper.PortRegistryTest do
     %{range: range}
   end
 
+  defp free_port do
+    {:ok, sock} = :gen_tcp.listen(0, [])
+    {:ok, port} = :inet.port(sock)
+    :gen_tcp.close(sock)
+    port
+  end
+
+  defp wait_until(fun, tries \\ 40) do
+    cond do
+      tries <= 0 -> :timeout
+      fun.() -> :ok
+      true ->
+        Process.sleep(25)
+        wait_until(fun, tries - 1)
+    end
+  end
+
   describe "assign/3" do
     test "returns {:ok, host_port} with the lowest unused port", %{range: range} do
       assert {:ok, host_port} = PortRegistry.assign("ws1", "dev", 3000)
@@ -153,6 +170,69 @@ defmodule BoomLooper.PortRegistryTest do
       :ok = PortRegistry.seed("ws1", "dev", 3000, 32771)
 
       assert [_one] = PortRegistry.list_for_workspace("ws1")
+    end
+  end
+
+  describe "set_exposure/4" do
+    test "true starts a PortExposer on the registered host_port" do
+      port = free_port()
+      :ok = PortRegistry.seed("ws-e", "dev", 3000, port)
+
+      assert :ok = PortRegistry.set_exposure("ws-e", "dev", 3000, true)
+
+      assert pid = BoomLooper.PortExposer.whereis({"ws-e", "dev", 3000})
+      assert is_pid(pid) and Process.alive?(pid)
+
+      assert {:ok, %{exposed: true}} = PortRegistry.get("ws-e", "dev", 3000)
+
+      :ok = PortRegistry.set_exposure("ws-e", "dev", 3000, false)
+    end
+
+    test "false stops the running exposer" do
+      port = free_port()
+      :ok = PortRegistry.seed("ws-e", "dev", 3000, port)
+
+      :ok = PortRegistry.set_exposure("ws-e", "dev", 3000, true)
+      pid = BoomLooper.PortExposer.whereis({"ws-e", "dev", 3000})
+
+      :ok = PortRegistry.set_exposure("ws-e", "dev", 3000, false)
+
+      # Eventually consistent — DynamicSupervisor.terminate_child returns
+      # before Registry unregistration completes.
+      :ok = wait_until(fn -> not Process.alive?(pid) end)
+      assert nil == BoomLooper.PortExposer.whereis({"ws-e", "dev", 3000})
+      assert {:ok, %{exposed: false}} = PortRegistry.get("ws-e", "dev", 3000)
+    end
+
+    test "returns :not_registered for unknown keys" do
+      assert {:error, :not_registered} =
+               PortRegistry.set_exposure("nope", "dev", 3000, true)
+    end
+
+    test "is a no-op when the desired state already matches" do
+      port = free_port()
+      :ok = PortRegistry.seed("ws-e", "dev", 3000, port)
+
+      :ok = PortRegistry.set_exposure("ws-e", "dev", 3000, true)
+      pid = BoomLooper.PortExposer.whereis({"ws-e", "dev", 3000})
+
+      # Second call should not churn the listener.
+      :ok = PortRegistry.set_exposure("ws-e", "dev", 3000, true)
+      assert pid == BoomLooper.PortExposer.whereis({"ws-e", "dev", 3000})
+
+      :ok = PortRegistry.set_exposure("ws-e", "dev", 3000, false)
+    end
+
+    test "release_workspace/1 stops any running exposer for the workspace" do
+      port = free_port()
+      :ok = PortRegistry.seed("ws-rel", "dev", 3000, port)
+      :ok = PortRegistry.set_exposure("ws-rel", "dev", 3000, true)
+      pid = BoomLooper.PortExposer.whereis({"ws-rel", "dev", 3000})
+
+      :ok = PortRegistry.release_workspace("ws-rel")
+
+      :ok = wait_until(fn -> not Process.alive?(pid) end)
+      assert nil == BoomLooper.PortExposer.whereis({"ws-rel", "dev", 3000})
     end
   end
 

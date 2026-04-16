@@ -26,7 +26,10 @@ defmodule BoomLooper.Application do
       {Task.Supervisor, name: BoomLooper.TaskSupervisor},
       BoomLooper.WorkspaceSupervisor,
       BoomLooper.PortRegistry,
+      {Registry, keys: :unique, name: BoomLooper.PortExposerRegistry},
+      {DynamicSupervisor, name: BoomLooper.PortExposerSupervisor, strategy: :one_for_one},
       BoomLooper.SSHServer,
+      BoomLooper.HostExposer,
 
       # Docker event-driven cache — starts the event stream + initial
       # snapshot so LiveViews can read container/volume state from ETS
@@ -72,6 +75,11 @@ defmodule BoomLooper.Application do
     # AFTER ProjectRegistry.restore/0 so the migration path can see
     # every known workspace.
     BoomLooper.PortRegistry.restore()
+
+    # Restore host exposure setting from ~/.boomlooper/host_exposure.json.
+    # If the operator had exposed the endpoint last session, re-bind to
+    # 0.0.0.0 by restarting the endpoint. Must run AFTER Endpoint starts.
+    BoomLooper.HostExposer.restore()
 
     port = Application.get_env(:boom_looper, BoomLooperWeb.Endpoint)[:http][:port] || 4000
     IO.puts("\n  Launch from any project directory:")

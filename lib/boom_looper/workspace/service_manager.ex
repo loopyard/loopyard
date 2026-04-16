@@ -143,6 +143,11 @@ defmodule BoomLooper.Workspace.ServiceManager do
   def handle_call(:reconnect, _from, state) do
     BoomLooper.EventLog.info("workspace:#{state.workspace_id}", "Reconnecting to existing compose containers")
 
+    # Reprocess compose to ensure port bindings go through the registry
+    # (loopback enforcement). Pre-registry workspaces have 0.0.0.0 ports;
+    # this rewrites them to 127.0.0.1 and re-ups to apply the change.
+    ensure_compose_ports(state)
+
     # Replay agent log to restore agent state to ETS and start agents
     replay_agent_log(state.project_dir, state.workspace_id)
 
@@ -247,6 +252,41 @@ defmodule BoomLooper.Workspace.ServiceManager do
       replay_agent_log(state.project_dir, state.workspace_id)
       {:ok, %{state | volume_name: volume_name}}
     end
+  end
+
+  # Re-read the compose file from the volume, reprocess it through the
+  # registry (so all port bindings become 127.0.0.1:registry_port), and
+  # `docker compose up -d` to apply. This is idempotent — if the compose
+  # file is already correct, the up is a no-op.
+  defp ensure_compose_ports(state) do
+    volume_name = state.volume_name || "code-#{state.workspace_id}"
+    compose_path = Compose.compose_path(state.project_dir)
+
+    with {:ok, content} when content != "" <-
+           BoomLooper.VolumeManager.read_file(volume_name, ".boomlooper/workspace/docker-compose.yml"),
+         {:ok, processed} <- Compose.process_agent_compose(content, state.workspace_id) do
+      # Only re-up if the processed file differs from what's on disk.
+      current = File.read(compose_path)
+
+      if current != {:ok, processed} do
+        File.mkdir_p!(Path.dirname(compose_path))
+        File.write!(compose_path, processed)
+        Compose.up(state.project_dir, state.workspace_id)
+
+        BoomLooper.EventLog.info(
+          "workspace:#{state.workspace_id}",
+          "Reprocessed compose to enforce loopback port bindings"
+        )
+      end
+    else
+      _ -> :ok
+    end
+  rescue
+    e ->
+      BoomLooper.EventLog.warning(
+        "workspace:#{state.workspace_id}",
+        "ensure_compose_ports failed: #{Exception.message(e)}"
+      )
   end
 
   defp do_stop(state) do
