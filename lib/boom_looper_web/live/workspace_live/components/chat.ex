@@ -54,18 +54,27 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
           </svg>
           <span class="truncate">{@back_label}</span>
         </.link>
-        <.link navigate="/" class="text-sm font-semibold tracking-tight hover:text-violet-600 dark:hover:text-violet-400 transition-colors hidden md:block">Boom Looper</.link>
+        <.link navigate="/" class="text-sm font-medium hover:text-violet-600 dark:hover:text-violet-400 transition-colors hidden md:block">Boom Looper</.link>
         <span class="text-zinc-300 dark:text-zinc-600 hidden md:block">/</span>
         <.link :if={@project} navigate={"/projects/#{@project.id}"} class="text-sm font-medium hover:text-violet-600 dark:hover:text-violet-400 transition-colors truncate">{@workspace.name}</.link>
         <span :if={!@project} class="text-sm font-medium truncate">{@workspace.name}</span>
         <span :if={@workspace_entry && !@workspace_entry[:is_main]} class="text-zinc-300 dark:text-zinc-600 hidden sm:block">/</span>
-        <span :if={@workspace_entry && !@workspace_entry[:is_main]} class="text-sm text-zinc-500 dark:text-zinc-400 hidden sm:block truncate">{@workspace_entry.name}</span>
-        <span class="text-sm text-zinc-400 dark:text-zinc-500 hidden sm:block flex-none">{@agent_count} agent{if @agent_count != 1, do: "s"}</span>
+        <span :if={@workspace_entry && !@workspace_entry[:is_main]} class="text-sm font-medium hidden sm:block truncate">{@workspace_entry.name}</span>
         <BoomLooperWeb.Components.AppHeader.iex_indicator :if={@iex_session.level} session={@iex_session} />
       </div>
-      <div class="flex items-center gap-4 flex-none hidden md:flex">
-        <.link navigate={"/connect?path=#{URI.encode(@base_path)}"} class="text-xs text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">Remote</.link>
-        <.link navigate="/system" class="text-xs text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">System</.link>
+      <div class="flex items-center gap-2 flex-none hidden md:flex">
+        <.link
+          navigate={"/connect?path=#{URI.encode(@base_path)}"}
+          class="focus-ring inline-flex items-center px-2 py-1 text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 transition-colors rounded"
+        >
+          Remote
+        </.link>
+        <.link
+          navigate="/system"
+          class="focus-ring inline-flex items-center px-2 py-1 text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 transition-colors rounded"
+        >
+          System
+        </.link>
       </div>
     </header>
     """

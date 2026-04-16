@@ -3,6 +3,62 @@
 @import "tailwindcss/utilities";
 @import "@xterm/xterm/css/xterm.css";
 
+/* Accessibility — design tokens
+ *
+ * --tap-min:   44×44 CSS px is the WCAG AA + Apple HIG touch-target floor.
+ * --focus-*:   High-contrast focus ring used by `.focus-ring` utility below.
+ *              Never rely on default browser outlines (they get suppressed
+ *              by our dark backgrounds) and never set outline: none without
+ *              an equivalent replacement.
+ */
+:root {
+  --tap-min: 44px;
+  --focus-ring-color: #7c3aed;
+  --focus-ring-offset: 2px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --focus-ring-color: #a78bfa;
+  }
+}
+
+/* Any element that receives keyboard focus gets this ring. Applied via
+ * the `focus-ring` utility class on every button/link we author. */
+.focus-ring:focus-visible {
+  outline: 2px solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+  border-radius: 6px;
+}
+
+/* On touch devices, shrink-wrapped links/buttons need a hit area
+ * expansion even when the visible element is smaller. This preserves
+ * compact visual density while giving fingers 44×44 to land on. */
+@media (pointer: coarse) {
+  .tap-target {
+    position: relative;
+  }
+  .tap-target::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
+    transform: translate(-50%, -50%);
+    top: 50%;
+    left: 50%;
+  }
+}
+
+/* Respect reduced-motion preference — disable all non-essential motion. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

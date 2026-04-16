@@ -221,9 +221,9 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
     assigns = assign(assigns, :first_port, first_port)
 
     ~H"""
-    <div class={"flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors #{if @selected, do: "bg-white dark:bg-zinc-800 shadow-sm", else: "hover:bg-white/60 dark:hover:bg-zinc-800/40"}"}>
-      <.link navigate={"#{@base_path}/services/#{@svc.name}"} class="flex items-center gap-2 min-w-0 flex-1">
-        <div class={"w-1.5 h-1.5 rounded-full flex-none #{service_dot(@svc)}"}></div>
+    <div class={"flex items-center gap-2 px-2 py-1.5 min-h-11 md:min-h-0 rounded text-sm transition-colors #{if @selected, do: "bg-white dark:bg-zinc-800 shadow-sm", else: "hover:bg-white/60 dark:hover:bg-zinc-800/40"}"}>
+      <.link navigate={"#{@base_path}/services/#{@svc.name}"} class="focus-ring flex items-center gap-2 min-w-0 flex-1" aria-label={"Open #{@svc.name} service"}>
+        <div class={"w-1.5 h-1.5 rounded-full flex-none #{service_dot(@svc)}"} aria-hidden="true"></div>
         <span class="truncate text-zinc-600 dark:text-zinc-400">{@svc.name}</span>
       </.link>
       <.port_action
@@ -256,20 +256,29 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
       |> assign(:exposed?, exposed?)
       |> assign(:url, "http://#{assigns.host}:#{assigns.port}")
 
+    label =
+      if assigns.exposed?,
+        do: "Open #{assigns.url} in a new tab — port is public",
+        else: "Open #{assigns.url} in a new tab and expose it on 0.0.0.0"
+
+    assigns = assign(assigns, :label, label)
+
     ~H"""
     <a
       href={@url}
       target="_blank"
+      rel="noopener noreferrer"
       phx-click={unless @exposed?, do: "toggle_port_exposure"}
       phx-value-service={@svc.name}
       phx-value-container_port={Map.get(@svc, :container_port)}
       phx-value-expose="true"
-      title={if @exposed?, do: "Open #{@url} (port is public)", else: "Open and expose on 0.0.0.0"}
+      aria-label={@label}
+      title={@label}
       class={[
-        "flex-none text-[10px] font-mono font-medium px-1.5 py-0.5 rounded transition-colors ml-auto",
+        "focus-ring flex-none inline-flex items-center justify-center min-h-8 min-w-11 text-xs font-mono font-medium px-2 py-1 rounded transition-colors ml-auto",
         if(@exposed?,
           do: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25",
-          else: "text-zinc-400 dark:text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-700")
+          else: "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700")
       ]}
     >
       {if @exposed?, do: ":#{@port}", else: "open port"}
@@ -287,42 +296,53 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
     |> assign(:service, service)
 
     ~H"""
-    <.link navigate={"#{@base_path}/volumes/#{@vol.name}"} class="flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors hover:bg-white/60 dark:hover:bg-zinc-800/40">
+    <.link
+      navigate={"#{@base_path}/volumes/#{@vol.name}"}
+      class="focus-ring flex items-center gap-2 px-2 py-1.5 min-h-11 md:min-h-0 rounded text-sm transition-colors hover:bg-white/60 dark:hover:bg-zinc-800/40"
+      aria-label={"Open #{@description} volume"}
+    >
       <div class="flex items-center gap-2 min-w-0 flex-1">
-        <div class="w-1.5 h-1.5 rounded-full flex-none bg-blue-400"></div>
+        <div class="w-1.5 h-1.5 rounded-full flex-none bg-blue-400" aria-hidden="true"></div>
         <div class="min-w-0 flex-1">
           <span class="truncate text-zinc-600 dark:text-zinc-400 block">{@description}</span>
-          <span :if={@service && @service != "workspace"} class="text-[10px] text-zinc-400 dark:text-zinc-500">{@service}</span>
+          <span :if={@service && @service != "workspace"} class="text-xs text-zinc-500 dark:text-zinc-500">{@service}</span>
         </div>
       </div>
-      <span :if={@vol[:size]} class="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono flex-none">{@vol.size}</span>
+      <span :if={@vol[:size]} class="text-xs text-zinc-500 dark:text-zinc-400 font-mono flex-none">{@vol.size}</span>
     </.link>
     """
   end
 
   def agent_list_item(assigns) do
     ~H"""
-    <button
-      phx-click="select_agent"
-      phx-value-id={@agent.id}
-      class={"w-full text-left px-2 py-1.5 rounded text-sm transition-colors
-             #{if @selected, do: "bg-white dark:bg-zinc-800 shadow-sm", else: "hover:bg-white/60 dark:hover:bg-zinc-800/40"}"}
-    >
-      <div class="flex items-center gap-2">
-        <div class={"w-1.5 h-1.5 rounded-full flex-none #{status_dot(@agent.status)}"}></div>
-        <span class="truncate text-zinc-600 dark:text-zinc-400">{@agent.name}</span>
-        <span :if={@agent.status == :booting} class="text-xs text-violet-400 flex-none">booting</span>
-        <span :if={@agent.status == :thinking} class="text-xs text-amber-500 flex-none">{thinking_word(@agent.id)}</span>
-        <span :if={@agent.status == :destroying} class="text-xs text-red-400 flex-none">destroying</span>
-        <span :if={@agent.status in [:stopped, :crashed]}
-          phx-click="remove_agent" phx-value-id={@agent.id}
-          class="ml-auto text-xs text-zinc-400 hover:text-red-500 dark:hover:text-red-400 flex-none transition-colors"
-          title="Remove agent">
-          &times;
-        </span>
-      </div>
-      <div :if={@agent.status == :booting} class="mt-1 ml-[18px] text-xs text-zinc-400 dark:text-zinc-500 truncate">{@agent[:boot_status] || "Initializing..."}</div>
-    </button>
+    <div class="flex items-stretch gap-1">
+      <button
+        phx-click="select_agent"
+        phx-value-id={@agent.id}
+        aria-label={"Open agent #{@agent.name} (status: #{@agent.status})"}
+        aria-current={if @selected, do: "true", else: "false"}
+        class={"focus-ring flex-1 text-left px-2 py-1.5 min-h-11 md:min-h-0 rounded text-sm transition-colors
+               #{if @selected, do: "bg-white dark:bg-zinc-800 shadow-sm", else: "hover:bg-white/60 dark:hover:bg-zinc-800/40"}"}
+      >
+        <div class="flex items-center gap-2">
+          <div class={"w-1.5 h-1.5 rounded-full flex-none #{status_dot(@agent.status)}"} aria-hidden="true"></div>
+          <span class="truncate text-zinc-600 dark:text-zinc-400">{@agent.name}</span>
+          <span :if={@agent.status == :booting} class="text-xs text-violet-500 dark:text-violet-400 flex-none">booting</span>
+          <span :if={@agent.status == :thinking} class="text-xs text-amber-600 dark:text-amber-500 flex-none">{thinking_word(@agent.id)}</span>
+          <span :if={@agent.status == :destroying} class="text-xs text-red-500 dark:text-red-400 flex-none">destroying</span>
+        </div>
+        <div :if={@agent.status == :booting} class="mt-1 ml-[18px] text-xs text-zinc-500 dark:text-zinc-400 truncate">{@agent[:boot_status] || "Initializing..."}</div>
+      </button>
+      <button
+        :if={@agent.status in [:stopped, :crashed]}
+        phx-click="remove_agent"
+        phx-value-id={@agent.id}
+        aria-label={"Remove agent #{@agent.name}"}
+        class="focus-ring inline-flex items-center justify-center min-w-11 min-h-11 md:min-w-8 md:min-h-8 text-zinc-400 hover:text-red-500 dark:hover:text-red-400 rounded transition-colors"
+      >
+        <span aria-hidden="true">&times;</span>
+      </button>
+    </div>
     """
   end
 end

@@ -1254,7 +1254,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
   def render(assigns) do
     ~H"""
     <div id="chat-page" phx-hook="ScrollBottom" class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
-      <.chat_header workspace={@workspace} project={@project} workspace_entry={@workspace_entry} agent_count={length(@agents)} live_action={@live_action} base_path={@base_path} iex_session={@iex_session} />
+      <.chat_header workspace={@workspace} project={@project} workspace_entry={@workspace_entry} live_action={@live_action} base_path={@base_path} iex_session={@iex_session} />
       <.flash_banner flash={@flash} kind={:error} class="mx-4 mt-2" />
       <div class="flex-1 flex min-h-0">
         <%!-- Sidebar: always visible on md+, full-screen on mobile when no agent/service selected --%>
@@ -1269,7 +1269,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
           services_busy={@services_busy}
         />
         <%!-- Main content: hidden on mobile when sidebar is showing (index/new with no selection) --%>
-        <main class={"flex-1 flex flex-col min-w-0 #{if @live_action == :index && !@selected_id && !@selected_service, do: "hidden md:flex", else: "flex"}"}>
+        <main id="main-content" class={"flex-1 flex flex-col min-w-0 #{if @live_action == :index && !@selected_id && !@selected_service, do: "hidden md:flex", else: "flex"}"}>
           <.workspace_not_running :if={!@workspace_running} workspace={@workspace} services_busy={@services_busy} />
           <.new_agent_screen :if={@workspace_running && @live_action == :new} workspace={@workspace} base_path={@base_path} />
           <.service_log_view :if={@workspace_running && @live_action == :service} service_name={@selected_service} service_statuses={@service_statuses} logs={@service_logs} base_path={@base_path} host={@host} />

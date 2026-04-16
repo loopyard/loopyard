@@ -29,16 +29,25 @@ defmodule BoomLooperWeb.Components.AppHeader do
       </div>
       <div class="flex items-center gap-4">
         {render_slot(@inner_block)}
-        <.link navigate={"/connect?path=#{URI.encode(@current_path)}"} class={[
-          "text-xs transition-colors flex items-center gap-1.5",
-          if(@host_exposed,
-            do: "text-emerald-600 dark:text-emerald-400 hover:text-emerald-500",
-            else: "text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300")
-        ]}>
-          <span :if={@host_exposed} class="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-none"></span>
+        <.link
+          navigate={"/connect?path=#{URI.encode(@current_path)}"}
+          aria-label={if @host_exposed, do: "Remote access — exposed. Open connect page.", else: "Remote access — private. Open connect page."}
+          class={[
+            "focus-ring inline-flex items-center gap-1.5 px-2 min-h-11 md:min-h-0 md:py-1 text-sm font-medium transition-colors rounded",
+            if(@host_exposed,
+              do: "text-emerald-600 dark:text-emerald-400 hover:text-emerald-500",
+              else: "text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100")
+          ]}
+        >
+          <span :if={@host_exposed} class="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-none" aria-hidden="true"></span>
           Remote
         </.link>
-        <.link navigate="/system" class="text-xs text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">System</.link>
+        <.link
+          navigate="/system"
+          class="focus-ring inline-flex items-center px-2 min-h-11 md:min-h-0 md:py-1 text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 transition-colors rounded"
+        >
+          System
+        </.link>
       </div>
     </header>
     """
