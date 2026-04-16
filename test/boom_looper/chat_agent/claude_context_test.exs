@@ -42,12 +42,30 @@ defmodule BoomLooper.ChatAgent.ClaudeContextTest do
       assert :skip = ClaudeContext.mirror("ws-missing", "/nope/does/not/exist")
     end
 
-    test "skips when host already has CLAUDE.md", %{tmp_dir: dir} do
+    test "skips when host already has CLAUDE.md (unknown source, fallback)", %{tmp_dir: dir} do
       File.write!(Path.join(dir, "CLAUDE.md"), "host copy")
       ws_id = seed_ws([{"CLAUDE.md", "volume copy"}])
 
       assert :skip = ClaudeContext.mirror(ws_id, dir)
       assert File.read!(Path.join(dir, "CLAUDE.md")) == "host copy"
+    end
+
+    test "skips for Local workspaces even when volume has CLAUDE.md", %{tmp_dir: dir} do
+      ws_id = seed_ws([{"CLAUDE.md", "volume copy"}])
+      register_project(ws_id, :local)
+
+      assert :skip = ClaudeContext.mirror(ws_id, dir)
+      refute File.exists?(Path.join(dir, "CLAUDE.md"))
+    end
+
+    test "re-mirrors for GitHub workspaces even when host has CLAUDE.md", %{tmp_dir: dir} do
+      File.write!(Path.join(dir, "CLAUDE.md"), "stale host copy")
+      ws_id = seed_ws([{"CLAUDE.md", "fresh volume copy"}])
+      register_project(ws_id, :github)
+
+      assert {:ok, paths} = ClaudeContext.mirror(ws_id, dir)
+      assert "CLAUDE.md" in paths
+      assert File.read!(Path.join(dir, "CLAUDE.md")) == "fresh volume copy"
     end
 
     test "writes top-level CLAUDE.md from the volume", %{tmp_dir: dir} do
@@ -147,5 +165,28 @@ defmodule BoomLooper.ChatAgent.ClaudeContextTest do
     volume = BoomLooper.VolumeManager.code_volume_name(ws_id)
     FakeVolumeIO.seed(volume, files)
     ws_id
+  end
+
+  # Register a fake project + workspace so ClaudeContext's
+  # ProjectRegistry lookup returns a source_type. We insert directly
+  # into ETS since we just need the reads to succeed.
+  defp register_project(ws_id, source_type) do
+    BoomLooper.StateKeeper.ensure_tables!()
+    project_id = "proj-#{ws_id}"
+
+    :ets.insert(
+      :project_registry,
+      {project_id, %{id: project_id, source_type: source_type, name: "fake"}}
+    )
+
+    :ets.insert(
+      :workspace_registry,
+      {ws_id, %{id: ws_id, project_id: project_id, name: "fake-ws", path: "/tmp/fake"}}
+    )
+
+    on_exit(fn ->
+      :ets.delete(:project_registry, project_id)
+      :ets.delete(:workspace_registry, ws_id)
+    end)
   end
 end

@@ -62,7 +62,7 @@ defmodule BoomLooper.ChatAgent.ClaudeContext do
       not File.dir?(working_dir) ->
         :skip
 
-      has_host_claude?(working_dir) ->
+      host_is_source_of_truth?(workspace_id, working_dir) ->
         :skip
 
       true ->
@@ -74,8 +74,33 @@ defmodule BoomLooper.ChatAgent.ClaudeContext do
 
   # --- Internals ---
 
-  defp has_host_claude?(working_dir) do
-    File.exists?(Path.join(working_dir, "CLAUDE.md"))
+  # Local workspaces: host path IS the project — Mutagen syncs it with
+  # the volume, and the user might be actively editing CLAUDE.md. Never
+  # touch it. We detect Local by asking the ProjectRegistry; if that
+  # lookup fails, fall back to "host has CLAUDE.md" as a conservative
+  # heuristic (pre-existing host file = don't clobber).
+  defp host_is_source_of_truth?(workspace_id, working_dir) do
+    case project_source_type(workspace_id) do
+      :local ->
+        true
+
+      :github ->
+        false
+
+      _unknown ->
+        File.exists?(Path.join(working_dir, "CLAUDE.md"))
+    end
+  end
+
+  defp project_source_type(workspace_id) do
+    with %{project_id: pid} <- BoomLooper.ProjectRegistry.get_workspace(workspace_id),
+         %{source_type: source_type} <- BoomLooper.ProjectRegistry.get_project(pid) do
+      source_type
+    else
+      _ -> nil
+    end
+  rescue
+    _ -> nil
   end
 
   defp mirror_from_volume(workspace_id, working_dir) do
