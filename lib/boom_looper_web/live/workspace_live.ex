@@ -61,7 +61,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
     # agent list even before the workspace is started. ChatAgent
     # processes start later (when ServiceManager runs).
     ws_id = extra_assigns[:workspace_entry] && extra_assigns[:workspace_entry].id || workspace.id
-    prime_agents_from_log(workspace.path, ws_id)
+    prime_agents_from_log(ws_id)
 
     # Services + volumes come from Docker.Observer's ETS cache (instant,
     # zero docker calls). The sidebar renders immediately with real data.
@@ -1205,22 +1205,41 @@ defmodule BoomLooperWeb.WorkspaceLive do
   # contents are just made visible to `list_agents/0` so the sidebar can
   # render agents as stopped (their status in the log is preserved,
   # typically :idle, which matches "available but not actively thinking").
-  defp prime_agents_from_log(project_dir, _workspace_id) do
-    log_path = Path.join([project_dir, ".boomlooper", "workspace", "agents.log"])
+  # Agents persist to ~/.boomlooper/workspaces/<ws_id>/.boomlooper/workspace/
+  # agents.log — the SAME virtual dir Persistence writes to and ServiceManager
+  # reads from. Previously this used `workspace.path` (the user's project
+  # directory) which is the wrong location, so a server restart with the
+  # cluster stopped meant the sidebar showed "No agents" even with a valid
+  # log sitting on disk. Cluster-up path still worked because ServiceManager
+  # already replays from the correct path; this is specifically the LV's
+  # cluster-down fallback.
+  defp prime_agents_from_log(workspace_id) do
+    log_path = BoomLooper.ChatAgent.Persistence.log_path(workspace_id)
 
-    # Skip if the log isn't there yet (brand-new workspace) or if the
-    # expected agents are already in ETS (ServiceManager beat us to it).
-    if File.exists?(log_path) do
-      BoomLooper.AgentLog.replay(
-        log_path: log_path,
-        version: 1,
-        ets_table: :chat_agents
-      )
+    cond do
+      is_nil(log_path) or not File.exists?(log_path) ->
+        :ok
+
+      workspace_already_in_ets?(workspace_id) ->
+        # ServiceManager already replayed for this workspace. Don't
+        # overwrite live agents' runtime status with stale log status.
+        :ok
+
+      true ->
+        BoomLooper.AgentLog.replay(
+          log_path: log_path,
+          version: 1,
+          ets_table: :chat_agents
+        )
     end
   rescue
     e ->
       require Logger
       Logger.warning("[workspace_live] prime_agents_from_log failed: #{Exception.message(e)}")
+  end
+
+  defp workspace_already_in_ets?(workspace_id) do
+    Enum.any?(BoomLooper.ChatAgent.list_agents(), &(&1[:workspace_id] == workspace_id))
   end
 
   # Decorate a service entry with port + exposure info for the sidebar.
