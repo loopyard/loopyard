@@ -69,10 +69,16 @@ defmodule BoomLooperWeb.Components.Sidebar do
   attr :selected, :boolean, default: false
 
   def agent_item(assigns) do
-    assigns = assign(assigns, :dot_class, status_dot(assigns.agent.status))
+    display = agent_display_status(assigns.agent)
+
+    assigns =
+      assigns
+      |> assign(:display, display)
+      |> assign(:dot_class, status_dot(display))
 
     ~H"""
     <.sidebar_item
+      :if={@display != :hidden}
       selected={@selected}
       dot_class={@dot_class}
       name={@agent.name}
@@ -80,16 +86,31 @@ defmodule BoomLooperWeb.Components.Sidebar do
       click_value={@agent.id}
     >
       <:status_label>
-        <span :if={@agent.status == :booting} class="text-xs text-violet-400 flex-none">booting</span>
-        <span :if={@agent.status == :thinking} class="text-xs text-amber-500 flex-none">{thinking_word(@agent.id)}</span>
-        <span :if={@agent.status == :destroying} class="text-xs text-red-400 flex-none">destroying</span>
+        <span :if={@display == :thinking} class="text-xs text-violet-500 flex-none">{thinking_word(@agent.id)}</span>
+        <span :if={@display == :sleeping} class="text-xs text-zinc-400 flex-none">Sleeping</span>
+        <span :if={@display == :crashed} class="text-xs text-red-500 flex-none">Crashed</span>
       </:status_label>
       <:actions></:actions>
       <:subtitle>
-        <div :if={@agent.status == :booting} class="mt-1 ml-[18px] px-2 text-xs text-zinc-400 dark:text-zinc-500 truncate">{@agent[:boot_status] || "Initializing..."}</div>
+        <div :if={@display == :sleeping && @agent[:last_activity_at]} class="mt-1 ml-[18px] px-2 text-xs text-zinc-400 dark:text-zinc-500 truncate">last reply {time_ago_short(@agent.last_activity_at)}</div>
+        <div :if={@agent[:status] == :booting} class="mt-1 ml-[18px] px-2 text-xs text-zinc-400 dark:text-zinc-500 truncate">{@agent[:boot_status] || "Initializing..."}</div>
       </:subtitle>
     </.sidebar_item>
     """
+  end
+
+  defp time_ago_short(nil), do: ""
+
+  defp time_ago_short(dt) do
+    diff = DateTime.diff(DateTime.utc_now(), dt, :second)
+
+    cond do
+      diff < 5 -> "just now"
+      diff < 60 -> "#{diff}s ago"
+      diff < 3600 -> "#{div(diff, 60)}m ago"
+      diff < 86_400 -> "#{div(diff, 3600)}h ago"
+      true -> "#{div(diff, 86_400)}d ago"
+    end
   end
 
   # --- Console ---
@@ -141,12 +162,55 @@ defmodule BoomLooperWeb.Components.Sidebar do
 
   # --- Status helpers (public for use in headers/panels) ---
 
-  def status_dot(:booting), do: "bg-violet-400 animate-pulse"
-  def status_dot(:idle), do: "bg-green-500"
-  def status_dot(:thinking), do: "bg-amber-400 animate-pulse"
-  def status_dot(:stopped), do: "bg-zinc-400"
+  @doc """
+  Translate an agent's internal status + liveness into the human-facing
+  display state. Four visible states:
+
+      :ready    — GenServer alive, CLI idle, waiting for input
+      :thinking — a turn is in flight (includes :booting for simplicity)
+      :sleeping — log exists but no GenServer (restart, user-stopped, etc.)
+      :crashed  — session crashed in a way the agent couldn't recover from
+
+  Plus `:hidden` for `:destroying` — the agent is about to be removed
+  from the UI entirely.
+  """
+  def agent_display_status(%{id: id} = agent) do
+    status = Map.get(agent, :status)
+
+    cond do
+      status == :destroying -> :hidden
+      not agent_alive?(id) -> :sleeping
+      status in [:idle, nil] -> :ready
+      status in [:thinking, :booting] -> :thinking
+      status == :stopped -> :sleeping
+      status == :crashed -> :crashed
+      true -> :ready
+    end
+  end
+
+  defp agent_alive?(id) do
+    case Registry.lookup(BoomLooper.ChatAgentRegistry, id) do
+      [{pid, _}] -> Process.alive?(pid)
+      _ -> false
+    end
+  end
+
+  # Dot classes for both internal (:idle/:thinking/…) and display
+  # (:ready/:thinking/:sleeping/:crashed) atoms. The four display states
+  # are what `agent_display_status/1` returns and what the UI should
+  # pass in; the raw atoms stay supported for places that still render
+  # the internal status directly (chat header, etc.) — they map onto
+  # the same four visible colors.
+  def status_dot(:ready), do: "bg-green-500"
+  def status_dot(:thinking), do: "bg-violet-500 animate-pulse"
+  def status_dot(:sleeping), do: "bg-zinc-400"
   def status_dot(:crashed), do: "bg-red-500"
-  def status_dot(:destroying), do: "bg-red-400 animate-pulse"
+  def status_dot(:hidden), do: "bg-zinc-400"
+  # Internal-atom fallbacks
+  def status_dot(:idle), do: "bg-green-500"
+  def status_dot(:booting), do: "bg-violet-500 animate-pulse"
+  def status_dot(:stopped), do: "bg-zinc-400"
+  def status_dot(:destroying), do: "bg-zinc-400"
   def status_dot(_), do: "bg-zinc-400"
 
   # Service status states → dot color:

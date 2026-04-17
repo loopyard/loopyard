@@ -97,7 +97,7 @@ defmodule BoomLooperWeb.Components.Common do
       <.control_btn variant={:primary}>+ Debug Agent</.control_btn>
   """
   attr :variant, :atom, default: :default, values: [:default, :primary]
-  attr :rest, :global, include: ~w(phx-click phx-value-service_name phx-value-workspace-id phx-value-volume_name data-confirm)
+  attr :rest, :global, include: ~w(phx-click phx-value-id phx-value-service_name phx-value-workspace-id phx-value-volume_name data-confirm)
   slot :inner_block, required: true
 
   def control_btn(%{variant: :primary} = assigns) do

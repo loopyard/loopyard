@@ -152,35 +152,53 @@ defmodule BoomLooper.ChatAgent do
   @doc "Start a stopped/crashed agent — starts a new GenServer and resumes from saved state"
   def start_agent(id) do
     case :ets.lookup(@ets_table, id) do
-      [{^id, summary}] when summary.status in [:stopped, :crashed] ->
-        # Build opts from saved summary
-        opts = [
-          id: id,
-          name: summary.name,
-          working_dir: summary[:working_dir],
-          bind_mount: summary[:bind_mount],
-          workspace_id: summary[:workspace_id],
-          volume: summary[:volume],
-          resume: true
-        ] |> Enum.reject(fn {_k, v} -> is_nil(v) end)
-
-        # Start under the workspace's agent supervisor if available, otherwise global
-        supervisor = if summary[:workspace_id] do
-          BoomLooper.WorkspaceGroup.agent_sup_name(summary[:workspace_id])
-        else
-          BoomLooper.AgentSupervisor
-        end
-
-        case DynamicSupervisor.start_child(supervisor, {__MODULE__, opts}) do
-          {:ok, _pid} -> :ok
-          {:error, reason} -> {:error, reason}
-        end
-
-      [{^id, summary}] ->
-        {:error, "Agent is #{summary.status}, not stopped or crashed"}
-
       [] ->
         {:error, "Agent not found"}
+
+      [{^id, summary}] ->
+        # The REAL check is whether a GenServer is actually running. ETS
+        # status can be stale after a crash (still :idle even though the
+        # process is gone). Registry is authoritative about liveness.
+        case agent_alive?(id) do
+          true ->
+            {:error, "Agent already running"}
+
+          false ->
+            do_start_agent(id, summary)
+        end
+    end
+  end
+
+  defp agent_alive?(id) do
+    case Registry.lookup(BoomLooper.ChatAgentRegistry, id) do
+      [{pid, _}] -> Process.alive?(pid)
+      _ -> false
+    end
+  end
+
+  defp do_start_agent(id, summary) do
+    opts =
+      [
+        id: id,
+        name: summary.name,
+        working_dir: summary[:working_dir],
+        bind_mount: summary[:bind_mount],
+        workspace_id: summary[:workspace_id],
+        volume: summary[:volume],
+        resume: true
+      ]
+      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+
+    supervisor =
+      if summary[:workspace_id] do
+        BoomLooper.WorkspaceGroup.agent_sup_name(summary[:workspace_id])
+      else
+        BoomLooper.AgentSupervisor
+      end
+
+    case DynamicSupervisor.start_child(supervisor, {__MODULE__, opts}) do
+      {:ok, _pid} -> :ok
+      {:error, reason} -> {:error, reason}
     end
   end
 

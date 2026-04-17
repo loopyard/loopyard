@@ -3,7 +3,8 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
   use Phoenix.Component
 
   import BoomLooperWeb.Components.Sidebar, only: [
-    status_dot: 1, service_dot: 1, service_detail: 1, first_host_port: 1, thinking_word: 1
+    status_dot: 1, agent_display_status: 1, service_dot: 1, service_detail: 1,
+    first_host_port: 1, thinking_word: 1
   ]
   import BoomLooperWeb.Components.SideNav, only: [section: 1, row: 1, empty: 1]
   import BoomLooperWeb.Live.WorkspaceLive.Components.Formatters, only: [
@@ -307,23 +308,26 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
   end
 
   def agent_list_item(assigns) do
+    display = agent_display_status(assigns.agent)
+    assigns = assign(assigns, :display, display)
+
     ~H"""
-    <div class="flex items-stretch gap-1">
+    <div :if={@display != :hidden} class="flex items-stretch gap-1">
       <.row
         phx_click="select_agent"
         phx_value={%{id: @agent.id}}
         selected={@selected}
-        aria_label={"Open agent #{@agent.name} (status: #{@agent.status})"}
+        aria_label={"Open agent #{@agent.name} (#{@display})"}
         class="flex-1"
       >
-        <span class={"w-1.5 h-1.5 rounded-full flex-none #{status_dot(@agent.status)}"} aria-hidden="true"></span>
+        <span class={"w-1.5 h-1.5 rounded-full flex-none #{status_dot(@display)}"} aria-hidden="true"></span>
         <span class="truncate text-zinc-600 dark:text-zinc-400">{@agent.name}</span>
-        <span :if={@agent.status == :booting} class="text-xs text-violet-500 dark:text-violet-400 flex-none">booting</span>
-        <span :if={@agent.status == :thinking} class="text-xs text-amber-600 dark:text-amber-500 flex-none">{thinking_word(@agent.id)}</span>
-        <span :if={@agent.status == :destroying} class="text-xs text-red-500 dark:text-red-400 flex-none">destroying</span>
+        <span :if={@display == :thinking} class="text-xs text-violet-500 dark:text-violet-400 flex-none">{thinking_word(@agent.id)}</span>
+        <span :if={@display == :sleeping} class="text-xs text-zinc-400 dark:text-zinc-500 flex-none">Sleeping</span>
+        <span :if={@display == :crashed} class="text-xs text-red-500 dark:text-red-400 flex-none">Crashed</span>
       </.row>
       <button
-        :if={@agent.status in [:stopped, :crashed]}
+        :if={@display in [:sleeping, :crashed]}
         phx-click="remove_agent"
         phx-value-id={@agent.id}
         aria-label={"Remove agent #{@agent.name}"}

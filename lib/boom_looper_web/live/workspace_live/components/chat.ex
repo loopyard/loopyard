@@ -2,8 +2,8 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
   @moduledoc "Chat panel components: agent_view, agent_header, chat_panel, thinking_indicator, container_panel."
   use Phoenix.Component
 
-  import BoomLooperWeb.Components.Common, only: [dot: 1]
-  import BoomLooperWeb.Components.Sidebar, only: [status_dot: 1]
+  import BoomLooperWeb.Components.Common, only: [dot: 1, control_btn: 1]
+  import BoomLooperWeb.Components.Sidebar, only: [status_dot: 1, agent_display_status: 1]
   import BoomLooperWeb.Components.Breadcrumbs, only: [breadcrumbs: 1]
   import BoomLooperWeb.Live.WorkspaceLive.Messages, only: [chat_msg: 1, streaming_bubble: 1]
   import BoomLooperWeb.Live.WorkspaceLive.Components.Formatters, only: [time_ago: 1]
@@ -152,22 +152,24 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
             aria-label="Agent context">
             Info
           </.link>
-          <button :if={@agent.status in [:idle, :thinking]} phx-click="restart_session" phx-value-id={@agent.id}
-            class="text-xs font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10 rounded-md px-2 py-1 hidden sm:block">
-            Restart CLI
-          </button>
-          <button :if={@agent.status in [:idle, :thinking]} phx-click="stop_agent" phx-value-id={@agent.id}
-            class="text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-md px-2 py-1">
+          <%!-- Two primary actions, mutually exclusive. Stop shows while
+               the agent is Ready or Thinking; Start shows while it's
+               Sleeping or Crashed. (No "Restart CLI" — Stop + Start
+               gives the same effect by replaying from the log.)
+               Matches the service-control button style for visual
+               consistency across the workspace. --%>
+          <.control_btn :if={agent_display_status(@agent) in [:ready, :thinking]}
+            phx-click="stop_agent" phx-value-id={@agent.id}>
             Stop
-          </button>
-          <button :if={@agent.status in [:stopped, :crashed]} phx-click="start_agent" phx-value-id={@agent.id}
-            class="text-xs font-medium text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-500/10 rounded-md px-2 py-1">
+          </.control_btn>
+          <.control_btn :if={agent_display_status(@agent) in [:sleeping, :crashed]}
+            variant={:primary} phx-click="start_agent" phx-value-id={@agent.id}>
             Start
-          </button>
-          <button :if={@agent.status in [:stopped, :crashed]} phx-click="remove_agent" phx-value-id={@agent.id}
-            class="text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded-md px-2 py-1">
+          </.control_btn>
+          <.control_btn :if={agent_display_status(@agent) in [:sleeping, :crashed]}
+            phx-click="remove_agent" phx-value-id={@agent.id}>
             Remove
-          </button>
+          </.control_btn>
           <span :if={@agent.status == :destroying}
             class="text-xs font-medium text-red-400 px-2 py-1">
             Destroying...

@@ -94,6 +94,12 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.AgentLifecycle do
     end
     ChatAgent.unsubscribe(id)
 
+    # Sleeping → wake. If the agent exists in ETS but no GenServer is
+    # alive, spawn a new one with resume: true so it rebuilds state
+    # from the log. The subsequent get_state below picks up the
+    # freshly-running agent.
+    maybe_wake_agent(id)
+
     case ChatAgent.get_state(id) do
       nil ->
         :not_found
@@ -152,5 +158,31 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.AgentLifecycle do
     |> Enum.filter(fn a ->
       a[:bind_mount] == workspace_path || a[:working_dir] == workspace_path
     end)
+  end
+
+  # Wake a sleeping agent — agent exists in ETS but its GenServer is gone
+  # (server restart without ServiceManager replay, user stopped it, crash).
+  # Spawns a new ChatAgent with resume: true; init_resume pulls the rest
+  # of the opts (working_dir, bind_mount, workspace_id, agent_type) from
+  # the agent's saved ETS entry. No-op if the agent is already running
+  # or has no ETS entry at all.
+  defp maybe_wake_agent(id) do
+    case Registry.lookup(BoomLooper.ChatAgentRegistry, id) do
+      [{pid, _}] ->
+        if Process.alive?(pid), do: :ok, else: do_wake(id)
+
+      _ ->
+        do_wake(id)
+    end
+  end
+
+  defp do_wake(id) do
+    case ChatAgent.get_state(id) do
+      %{workspace_id: workspace_id} when is_binary(workspace_id) ->
+        BoomLooper.WorkspaceGroup.start_agent(workspace_id, id: id, resume: true)
+
+      _ ->
+        :ok
+    end
   end
 end
