@@ -335,10 +335,14 @@ defmodule BoomLooper.Workspace.ServiceManager do
     # Cache in ETS so service_status/1 never blocks on the GenServer
     :ets.insert(@status_table, {broadcast_dir, all_statuses})
 
+    # Notification-only. Subscribers re-read from the ETS cache or the
+    # Observer. Shipping the statuses blob in the broadcast was wasted
+    # serialization across every connected LiveView — none of them
+    # actually used the payload.
     Phoenix.PubSub.broadcast(
       BoomLooper.PubSub,
       @services_topic,
-      {:services_updated, broadcast_dir, all_statuses}
+      {:services_updated, broadcast_dir}
     )
   end
 

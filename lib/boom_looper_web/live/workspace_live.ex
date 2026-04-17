@@ -964,7 +964,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
   # Docker.Observer broadcasts when container/volume state changes.
   # Re-derive sidebar state from the cache — zero docker calls.
   @impl true
-  def handle_info({:docker_state_changed, _snapshot}, socket) do
+  def handle_info({:docker_state_changed}, socket) do
     ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
     {service_statuses, volumes} = load_sidebar_from_observer(nil, ws_id)
     guarded = guard_service_statuses(socket, service_statuses)
@@ -982,7 +982,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
   end
 
   @impl true
-  def handle_info({:services_updated, path, _statuses}, socket) do
+  def handle_info({:services_updated, path}, socket) do
     # ServiceManager broadcasts on canonical_dir (host path) or project_dir
     # (virtual dir). Match either against our workspace's known paths.
     ws = socket.assigns.workspace

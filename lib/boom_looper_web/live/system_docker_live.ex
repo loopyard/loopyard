@@ -42,13 +42,16 @@ defmodule BoomLooperWeb.SystemDockerLive do
   end
 
   # Docker.Observer broadcasts when container/volume state changes.
-  # We just swap the assigns — no docker calls from this LiveView.
+  # Notification-only — we re-read from Observer's ETS cache rather
+  # than trusting a payload that may or may not match the shape we
+  # need (this is the pattern that caused the sidebar-flash bug in
+  # workspace_live). Still zero docker calls; reads are ETS-local.
   @impl true
-  def handle_info({:docker_state_changed, snapshot}, socket) do
+  def handle_info({:docker_state_changed}, socket) do
     {:noreply,
      socket
-     |> assign(:containers, snapshot.containers)
-     |> assign(:volumes, snapshot.volumes)}
+     |> assign(:containers, BoomLooper.Docker.Observer.containers())
+     |> assign(:volumes, BoomLooper.Docker.Observer.volumes())}
   end
 
   # Observer lost connection to Docker — show whatever we had last

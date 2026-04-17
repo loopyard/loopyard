@@ -58,7 +58,7 @@ defmodule BoomLooperWeb.SystemWorkspacesLive do
   defp bool_to_int(_), do: 0
 
   @impl true
-  def handle_info({:docker_state_changed, _snapshot}, socket) do
+  def handle_info({:docker_state_changed}, socket) do
     {:noreply, refresh(socket)}
   end
 
@@ -73,7 +73,7 @@ defmodule BoomLooperWeb.SystemWorkspacesLive do
     {:noreply, refresh(socket)}
   end
 
-  def handle_info({:services_updated, _path, _statuses}, socket) do
+  def handle_info({:services_updated, _path}, socket) do
     {:noreply, refresh(socket)}
   end
 

@@ -315,7 +315,12 @@ defmodule BoomLooper.Docker.Observer do
     snapshot = %{containers: containers, volumes: volumes}
 
     if snapshot != state.prev do
-      broadcast({:docker_state_changed, snapshot})
+      # Notification-only. Subscribers re-read from the ETS cache
+      # (Observer.containers/0, .volumes/0, .services_for/1). Shipping
+      # the snapshot in the broadcast let consumers bypass the cache
+      # API and drift from what the UI actually needs — one such drift
+      # caused the sidebar-port flash.
+      broadcast({:docker_state_changed})
     end
 
     %{state | prev: snapshot}

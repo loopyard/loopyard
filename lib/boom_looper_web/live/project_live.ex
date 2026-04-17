@@ -151,7 +151,7 @@ defmodule BoomLooperWeb.ProjectLive do
   end
 
   @impl true
-  def handle_info({:services_updated, _path, _statuses}, socket) do
+  def handle_info({:services_updated, _path}, socket) do
     {:noreply, assign(socket, :workspaces, load_workspaces(socket.assigns.project, [:agents, :services, :volumes]))}
   end
 
