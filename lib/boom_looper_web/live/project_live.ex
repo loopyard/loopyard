@@ -23,10 +23,16 @@ defmodule BoomLooperWeb.ProjectLive do
 
       socket = if connected?(socket), do: subscribe_iex(socket), else: assign(socket, :iex_session, %{level: nil})
 
+      # Seed counts with zeros so the template has safe keys to read.
+      # The :agents section is cheap (ETS), load it synchronously. The
+      # :fetch_service_counts message (sent above when connected) fills in
+      # :services and :volumes via start_async — never blocks the LV.
+      seeded = load_workspaces(project, [:agents], seed_defaults(project))
+
       {:ok,
        socket
        |> assign(:project, project)
-       |> assign(:workspaces, load_workspaces(project, [:agents]))
+       |> assign(:workspaces, seeded)
        |> assign(:confirming_remove, false)
        |> assign(:editing_name, false)
        |> assign(:removing, false)}
@@ -41,6 +47,14 @@ defmodule BoomLooperWeb.ProjectLive do
   def handle_async(:remove_project, {:exit, _reason}, socket) do
     # Cleanup failed but the project is probably gone from ETS anyway
     {:noreply, push_navigate(socket, to: "/")}
+  end
+
+  def handle_async(:fill_sections, {:ok, workspaces}, socket) do
+    {:noreply, assign(socket, :workspaces, workspaces)}
+  end
+
+  def handle_async(:fill_sections, {:exit, _reason}, socket) do
+    {:noreply, socket}
   end
 
   @impl true
@@ -147,34 +161,67 @@ defmodule BoomLooperWeb.ProjectLive do
   @impl true
   def handle_info({event, _}, socket)
       when event in [:chat_agent_started, :chat_agent_stopped, :chat_agent_booting, :chat_agent_removed] do
-    {:noreply, assign(socket, :workspaces, load_workspaces(socket.assigns.project, [:agents, :services, :volumes]))}
+    # Agent events only affect agent_count — don't re-walk services/volumes.
+    # Each re-walk used to reshell to Docker for every volume across every
+    # workspace, blocking the LV for tens of seconds on machines with many
+    # volumes. Load only what changed; merge with existing counts.
+    {:noreply, assign(socket, :workspaces, merge_sections(socket, [:agents]))}
   end
 
   @impl true
   def handle_info({:services_updated, _path}, socket) do
-    {:noreply, assign(socket, :workspaces, load_workspaces(socket.assigns.project, [:agents, :services, :volumes]))}
+    # Services changed — agent_count and volume_count don't move because of this.
+    {:noreply, assign(socket, :workspaces, merge_sections(socket, [:services]))}
   end
 
   @impl true
   def handle_info(:fetch_service_counts, socket) do
-    {:noreply, assign(socket, :workspaces, load_workspaces(socket.assigns.project, [:agents, :services, :volumes]))}
+    # Initial async fill after mount. Load all three sections off the LV
+    # process via start_async so a slow Docker call can't block message
+    # processing. The result comes back through handle_async/:fill_sections.
+    project = socket.assigns.project
+    existing = socket.assigns.workspaces
+
+    {:noreply,
+     start_async(socket, :fill_sections, fn ->
+       load_workspaces(project, [:agents, :services, :volumes], existing)
+     end)}
   end
 
   @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
-  # Caller asks for the slices it wants by listing them. The default mount
-  # asks only for :agents (cheap, in-memory) so the page paints instantly;
-  # async handlers come back and ask for :services and :volumes once Docker
-  # is willing to talk.
-  defp load_workspaces(project, sections) do
+  # Rebuild workspaces from ProjectRegistry + requested sections. The initial
+  # mount asks only for :agents; :fetch_service_counts fills the rest via
+  # start_async. Sections not listed are returned as empty maps so callers
+  # can merge over existing assigns without wiping counts.
+  defp load_workspaces(project, sections, existing \\ []) do
     ctx = %{agents: if(:agents in sections, do: ChatAgent.list_agents(), else: [])}
 
     ProjectRegistry.list_workspaces(project.id)
     |> Enum.map(fn workspace ->
-      Enum.reduce([:agents, :services, :volumes], workspace, fn section, ws ->
+      prior = Enum.find(existing, &(&1.id == workspace.id)) || %{}
+      base = Map.merge(prior, workspace)
+
+      Enum.reduce([:agents, :services, :volumes], base, fn section, ws ->
         Map.merge(ws, load_section(section, sections, workspace, ctx))
       end)
+    end)
+  end
+
+  # Merge fresh data for the requested sections into the existing assigns
+  # without re-fetching the rest. Used by handle_info callbacks that only
+  # need to refresh what they know changed.
+  defp merge_sections(socket, sections) do
+    load_workspaces(socket.assigns.project, sections, socket.assigns.workspaces)
+  end
+
+  # Starting point for every workspace's count fields. Ensures the template
+  # always has these keys, even before the async sections fill arrives.
+  defp seed_defaults(project) do
+    ProjectRegistry.list_workspaces(project.id)
+    |> Enum.map(fn ws ->
+      Map.merge(ws, %{agent_count: 0, service_count: 0, services_running: 0, volume_count: 0})
     end)
   end
 
@@ -185,7 +232,7 @@ defmodule BoomLooperWeb.ProjectLive do
       end)
       %{agent_count: count}
     else
-      %{agent_count: 0}
+      %{}
     end
   end
 
@@ -201,19 +248,20 @@ defmodule BoomLooperWeb.ProjectLive do
         :exit, _ -> %{service_count: 0, services_running: 0}
       end
     else
-      %{service_count: 0, services_running: 0}
+      %{}
     end
   end
 
   defp load_section(:volumes, sections, workspace, _ctx) do
     if :volumes in sections do
-      count = case BoomLooper.VolumeManager.list_workspace_volumes(workspace.id) do
-        {:ok, vols} -> length(vols)
-        _ -> 0
-      end
+      # Read from Docker.Observer's ETS cache — O(1), no shell-out. The
+      # old path called VolumeManager.list_workspace_volumes which ran
+      # `docker volume ls` + `docker volume inspect` + `docker run alpine du`
+      # per volume. On machines with many volumes that blocked the LV.
+      count = length(BoomLooper.Docker.Observer.volumes_for(workspace.id))
       %{volume_count: count}
     else
-      %{volume_count: 0}
+      %{}
     end
   end
 
