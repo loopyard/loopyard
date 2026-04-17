@@ -392,11 +392,11 @@ defmodule BoomLooper.ChatAgentTest do
     end
   end
 
-  describe "build_system_prompt/6" do
+  describe "build_system_prompt/2" do
     test "setup agent prompt stays under CLI argument limit" do
-      prompt = ChatAgent.build_system_prompt("test-id", "/tmp/project", nil, nil, nil)
+      prompt = ChatAgent.build_system_prompt("test-id", agent_type: "setup", bind_mount: "/tmp/project")
       assert String.length(prompt) <= 2000,
-        "Setup prompt is #{String.length(prompt)} chars, max is 2000. Move content to priv/prompts/ or CLAUDE.md."
+        "Setup prompt is #{String.length(prompt)} chars, max is 2000."
     end
 
     test "container agent prompt stays under limit" do
@@ -407,7 +407,14 @@ defmodule BoomLooper.ChatAgentTest do
         branch: nil
       }
 
-      prompt = ChatAgent.build_system_prompt("test-id", "/tmp/project", "abcd", workspace, nil)
+      prompt =
+        ChatAgent.build_system_prompt("test-id",
+          bind_mount: "/tmp/project",
+          workspace_id: "abcd",
+          workspace: workspace,
+          agent_type: "coding"
+        )
+
       assert String.length(prompt) <= 2000,
         "Container prompt is #{String.length(prompt)} chars, max is 2000."
     end
@@ -420,7 +427,15 @@ defmodule BoomLooper.ChatAgentTest do
         branch: nil
       }
 
-      prompt = ChatAgent.build_system_prompt("test-id", "/tmp/project", "abcd", workspace, "postgres")
+      prompt =
+        ChatAgent.build_system_prompt("test-id",
+          bind_mount: "/tmp/project",
+          workspace_id: "abcd",
+          workspace: workspace,
+          service_name: "postgres",
+          agent_type: "coding"
+        )
+
       assert String.length(prompt) <= 2000,
         "Full prompt is #{String.length(prompt)} chars, max is 2000."
     end

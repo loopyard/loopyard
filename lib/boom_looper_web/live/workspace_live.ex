@@ -501,7 +501,10 @@ defmodule BoomLooperWeb.WorkspaceLive do
 
   @impl true
   def handle_event("spawn_agent_with_message", %{"preset" => preset}, socket) do
-    AgentLifecycle.do_spawn_agent(socket, initial_message: preset_message(preset))
+    AgentLifecycle.do_spawn_agent(socket,
+      initial_message: preset_message(preset),
+      agent_type: preset_agent_type(preset)
+    )
   end
 
   def handle_event("spawn_agent_with_message", %{"message" => message}, socket) do
@@ -1129,8 +1132,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
 
 
   defp preset_message("setup") do
-    guide = BoomLooper.ChatAgent.setup_guide()
-    guide <> "\n\n---\n\nLook at the project in /workspace and set up a development environment. Examine the project files to understand what language, framework, and tools are needed."
+    "Look at the project in /workspace and set up a development environment. Start by reading `setup_guide.md` with `read_agent_file` — it has the full playbook."
   end
 
   defp preset_message("debug") do
@@ -1142,6 +1144,9 @@ defmodule BoomLooperWeb.WorkspaceLive do
   end
 
   defp preset_message(_), do: nil
+
+  defp preset_agent_type("setup"), do: "setup"
+  defp preset_agent_type(_), do: "coding"
 
   defp load_git_data(assigns) do
     project = assigns.project

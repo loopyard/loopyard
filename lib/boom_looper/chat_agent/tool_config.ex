@@ -60,7 +60,7 @@ defmodule BoomLooper.ChatAgent.ToolConfig do
   opt-in.
   """
   def default_tools do
-    [BoomLooper.Tools.Container, BoomLooper.Tools.Secrets]
+    [BoomLooper.Tools.Container, BoomLooper.Tools.Secrets, BoomLooper.Tools.AgentFiles]
   end
 
   @doc """

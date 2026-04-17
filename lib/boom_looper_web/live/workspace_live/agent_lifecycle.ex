@@ -36,6 +36,11 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.AgentLifecycle do
         _ -> nil
       end
 
+    # agent_type: explicit opt > ws_config-aware default (setup if unconfigured, coding otherwise)
+    agent_type =
+      Keyword.get(opts, :agent_type) ||
+        if ws_config, do: "coding", else: "setup"
+
     name =
       cond do
         service_name -> "#{service_name}-agent"
@@ -48,7 +53,8 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.AgentLifecycle do
       name: name,
       working_dir: working_dir,
       started_by: "browser",
-      workspace_id: ws_id
+      workspace_id: ws_id,
+      agent_type: agent_type
     ]
 
     # Only set bind_mount if no workspace container exists (pre-setup state).

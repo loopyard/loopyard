@@ -3,19 +3,34 @@ defmodule BoomLooper.ChatAgent.PromptTest do
 
   alias BoomLooper.ChatAgent.Prompt
 
-  describe "build_system_prompt/5" do
-    test "setup agent prompt (no workspace) includes agent ID" do
-      prompt = Prompt.build_system_prompt("test-id", "/tmp/project", nil, nil, nil)
+  describe "build_system_prompt/2" do
+    test "default agent (coding) includes agent ID and container info" do
+      prompt = Prompt.build_system_prompt("test-id", bind_mount: "/tmp/project")
       assert prompt =~ "test-id"
+      assert prompt =~ "boom-looper-container"
+      assert prompt =~ "coding agent"
+    end
+
+    test "setup agent includes setup-specific body and catalog" do
+      prompt = Prompt.build_system_prompt("test-id", agent_type: "setup", bind_mount: "/tmp/project")
+      assert prompt =~ "Setup agent"
+      assert prompt =~ "setup_guide.md"
+      # Catalog enumerates real files in the folder
+      assert prompt =~ "stacks/"
+    end
+
+    test "coding agent has a small definition (fits comfortably in system prompt)" do
+      prompt = Prompt.build_system_prompt("test-id", agent_type: "coding", bind_mount: "/tmp/project")
+      assert String.length(prompt) <= 2000
     end
 
     test "setup agent prompt stays under CLI argument limit" do
-      prompt = Prompt.build_system_prompt("test-id", "/tmp/project", nil, nil, nil)
+      prompt = Prompt.build_system_prompt("test-id", agent_type: "setup", bind_mount: "/tmp/project")
       assert String.length(prompt) <= 2000,
-        "Setup prompt is #{String.length(prompt)} chars, max is 2000."
+             "Setup prompt is #{String.length(prompt)} chars, max is 2000."
     end
 
-    test "container agent prompt includes workspace info" do
+    test "container agent prompt with workspace stays under limit" do
       workspace = %BoomLooper.Workspace{
         name: "test-project",
         system_prompt: "This is a Rails app.",
@@ -23,22 +38,17 @@ defmodule BoomLooper.ChatAgent.PromptTest do
         branch: nil
       }
 
-      prompt = Prompt.build_system_prompt("test-id", "/tmp/project", "abcd", workspace, nil)
+      prompt =
+        Prompt.build_system_prompt("test-id",
+          bind_mount: "/tmp/project",
+          workspace_id: "abcd",
+          workspace: workspace,
+          agent_type: "coding"
+        )
+
       assert prompt =~ "test-project"
       assert prompt =~ "Rails app"
-    end
-
-    test "container agent prompt stays under limit" do
-      workspace = %BoomLooper.Workspace{
-        name: "test-project",
-        system_prompt: "This is a Rails app.",
-        git_url: nil,
-        branch: nil
-      }
-
-      prompt = Prompt.build_system_prompt("test-id", "/tmp/project", "abcd", workspace, nil)
-      assert String.length(prompt) <= 2000,
-        "Container prompt is #{String.length(prompt)} chars, max is 2000."
+      assert String.length(prompt) <= 2000
     end
 
     test "container agent with service stays under limit" do
@@ -49,12 +59,19 @@ defmodule BoomLooper.ChatAgent.PromptTest do
         branch: nil
       }
 
-      prompt = Prompt.build_system_prompt("test-id", "/tmp/project", "abcd", workspace, "postgres")
-      assert String.length(prompt) <= 2000,
-        "Full prompt is #{String.length(prompt)} chars, max is 2000."
+      prompt =
+        Prompt.build_system_prompt("test-id",
+          bind_mount: "/tmp/project",
+          workspace_id: "abcd",
+          workspace: workspace,
+          service_name: "postgres",
+          agent_type: "coding"
+        )
+
+      assert String.length(prompt) <= 2000
     end
 
-    test "service agent prompt includes service name" do
+    test "service agent prompt includes service name and container" do
       workspace = %BoomLooper.Workspace{
         name: "test-project",
         system_prompt: nil,
@@ -62,61 +79,63 @@ defmodule BoomLooper.ChatAgent.PromptTest do
         branch: nil
       }
 
-      prompt = Prompt.build_system_prompt("test-id", nil, "ws-123", workspace, "redis")
+      prompt =
+        Prompt.build_system_prompt("test-id",
+          workspace_id: "ws-123",
+          workspace: workspace,
+          service_name: "redis",
+          agent_type: "coding"
+        )
+
       assert prompt =~ "redis"
       assert prompt =~ "Service agent"
     end
-  end
 
-  describe "setup_base_prompt/2" do
-    test "includes agent ID and tool instructions" do
-      prompt = Prompt.setup_base_prompt("agent-42", nil)
-      assert prompt =~ "agent-42"
-      assert prompt =~ "write_file"
-      assert prompt =~ "docker_compose"
+    test "unknown agent_type falls back to base prompt without crashing" do
+      prompt = Prompt.build_system_prompt("test-id", agent_type: "nonexistent", bind_mount: "/tmp")
+      # Still includes the base prompt with the agent id
+      assert prompt =~ "test-id"
+      assert prompt =~ "boom-looper-container"
     end
   end
 
-  describe "container_base_prompt/3" do
+  describe "base_prompt/3" do
     test "includes agent ID and MCP tool instructions" do
-      prompt = Prompt.container_base_prompt("agent-99", nil, "ws-abc")
+      prompt = Prompt.base_prompt("agent-99", nil, "ws-abc")
       assert prompt =~ "agent-99"
       assert prompt =~ "boom-looper-container"
       assert prompt =~ "Docker volume"
     end
   end
 
-  describe "workspace_prompt/2" do
+  describe "workspace_prompt/1" do
     test "includes workspace name" do
       workspace = %BoomLooper.Workspace{name: "my-project", system_prompt: nil, git_url: nil, branch: nil}
-      prompt = Prompt.workspace_prompt(workspace, nil)
+      prompt = Prompt.workspace_prompt(workspace)
       assert prompt =~ "my-project"
     end
 
     test "includes custom system prompt when set" do
       workspace = %BoomLooper.Workspace{name: "my-project", system_prompt: "Use Ruby 3.3", git_url: nil, branch: nil}
-      prompt = Prompt.workspace_prompt(workspace, nil)
+      prompt = Prompt.workspace_prompt(workspace)
       assert prompt =~ "Use Ruby 3.3"
     end
-  end
 
-  describe "setup_prompt/1" do
-    test "includes bind_mount path when provided" do
-      prompt = Prompt.setup_prompt("/home/user/project")
-      assert prompt =~ "/home/user/project"
-    end
-
-    test "omits path note when bind_mount is nil" do
-      prompt = Prompt.setup_prompt(nil)
-      refute prompt =~ " at "
+    test "nil workspace returns empty string" do
+      assert Prompt.workspace_prompt(nil) == ""
     end
   end
 
-  describe "setup_guide/0" do
-    test "returns the setup guide content from priv" do
-      guide = Prompt.setup_guide()
-      assert is_binary(guide)
-      assert String.length(guide) > 0
+  describe "service_prompt/2" do
+    test "includes service name and container name" do
+      prompt = Prompt.service_prompt("redis", "ws-abc")
+      assert prompt =~ "redis"
+      assert prompt =~ "Service agent"
+    end
+
+    test "empty when service or workspace is nil" do
+      assert Prompt.service_prompt(nil, "ws-abc") == ""
+      assert Prompt.service_prompt("redis", nil) == ""
     end
   end
 end

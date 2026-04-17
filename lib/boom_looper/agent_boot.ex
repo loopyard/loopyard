@@ -20,11 +20,12 @@ defmodule BoomLooper.AgentBoot do
     working_dir = Keyword.fetch!(agent_opts, :working_dir)
     service_name = Keyword.get(opts, :service_name)
     initial_message = Keyword.get(opts, :initial_message)
+    agent_type = Keyword.get(agent_opts, :agent_type) || BoomLooper.Agents.Registry.default_agent_name()
     # Use workspace_id from opts if provided (volume-based workspaces pass it),
     # otherwise compute from path (bind-mount workspaces)
     workspace_id = Keyword.get(agent_opts, :workspace_id) || Workspace.workspace_id(working_dir)
 
-    # Load workspace config from volume (nil if no config yet — Setup agent will create it)
+    # Load workspace config from volume (nil if no config yet)
     # Volume-based workspaces pass the volume name, otherwise compute from workspace_id
     volume_name = Keyword.get(agent_opts, :volume) || "code-#{workspace_id}"
     ws_config =
@@ -58,7 +59,7 @@ defmodule BoomLooper.AgentBoot do
 
         # Send initial message (skip if explicitly :none — blank agents wait for user input)
         unless initial_message == :none do
-          msg = initial_message || default_message(ws_config, service_name)
+          msg = initial_message || default_message(agent_type, ws_config, service_name)
           if msg, do: ChatAgent.send_message(id, msg)
         end
 
@@ -81,21 +82,19 @@ defmodule BoomLooper.AgentBoot do
       {:error, reason}
   end
 
-  defp default_message(ws_config, service_name) do
+  defp default_message(agent_type, ws_config, service_name) do
     cond do
       service_name ->
         "Check the logs for the #{service_name} service and help me debug any issues."
 
-      !ws_config ->
-        guide = ChatAgent.setup_guide()
-        guide <> "\n\n---\n\nLook at the project in /workspace and help me set up a development environment. Examine the project files to understand what language, framework, and tools are needed."
+      agent_type == "setup" ->
+        "Look at the project in /workspace and set up a development environment. Start by reading `setup_guide.md` with `read_agent_file` — it has the full playbook."
 
       ws_config && ws_config.dockerfile ->
         "The workspace has an existing configuration. Check `service_status` — if services are running and healthy, you're good. If not, run `rebuild` then install dependencies via `exec`."
 
       true ->
-        guide = ChatAgent.setup_guide()
-        guide <> "\n\n---\n\nLook at the project in /workspace and help me set up a development environment. Examine the project files to understand what language, framework, and tools are needed."
+        nil
     end
   end
 end

@@ -26,6 +26,7 @@ defmodule BoomLooper.ChatAgent do
     :started_by,
     :last_activity_at,
     :service_name,
+    :agent_type,
     status: :idle,
     messages: [],
     tool_calls: 0,
@@ -340,11 +341,14 @@ defmodule BoomLooper.ChatAgent do
   defp init_resume(id, opts) do
     case :ets.lookup(@ets_table, id) do
       [{^id, saved}] ->
+        agent_type = saved[:agent_type] || BoomLooper.Agents.Registry.default_agent_name()
+
         {session, session_opts, backend} = start_session(id, opts,
           working_dir: saved.working_dir,
           bind_mount: saved.bind_mount,
           workspace_id: saved.workspace_id,
-          service_name: saved[:service_name]
+          service_name: saved[:service_name],
+          agent_type: agent_type
         )
 
         state = %__MODULE__{
@@ -363,7 +367,8 @@ defmodule BoomLooper.ChatAgent do
           messages: saved.messages,
           tool_calls: saved[:tool_calls] || 0,
           errors: saved[:errors] || 0,
-          service_name: saved[:service_name]
+          service_name: saved[:service_name],
+          agent_type: agent_type
         }
 
         :ets.insert(@ets_table, {id, summary(state)})
@@ -385,12 +390,14 @@ defmodule BoomLooper.ChatAgent do
     bind_mount = Keyword.get(opts, :bind_mount)
     workspace_id = Keyword.get(opts, :workspace_id)
     service_name = Keyword.get(opts, :service_name)
+    agent_type = Keyword.get(opts, :agent_type) || BoomLooper.Agents.Registry.default_agent_name()
 
     {session, session_opts, backend} = start_session(id, opts,
       working_dir: working_dir,
       bind_mount: bind_mount,
       workspace_id: workspace_id,
       service_name: service_name,
+      agent_type: agent_type,
       max_turns: 50
     )
 
@@ -410,7 +417,8 @@ defmodule BoomLooper.ChatAgent do
       last_activity_at: now,
       status: :idle,
       messages: [],
-      service_name: service_name
+      service_name: service_name,
+      agent_type: agent_type
     }
 
     summary = summary(state)
@@ -428,6 +436,7 @@ defmodule BoomLooper.ChatAgent do
     bind_mount = Keyword.get(params, :bind_mount)
     workspace_id = Keyword.get(params, :workspace_id)
     service_name = Keyword.get(params, :service_name)
+    agent_type = Keyword.get(params, :agent_type) || BoomLooper.Agents.Registry.default_agent_name()
 
     tools = Keyword.get(opts, :tools, ToolConfig.default_tools())
 
@@ -441,7 +450,15 @@ defmodule BoomLooper.ChatAgent do
 
     backend = Keyword.get(opts, :backend, default_backend)
     workspace = if workspace_id, do: load_workspace_config(workspace_id), else: nil
-    system_prompt = Prompt.build_system_prompt(id, bind_mount, workspace_id, workspace, service_name)
+
+    system_prompt =
+      Prompt.build_system_prompt(id,
+        bind_mount: bind_mount,
+        workspace_id: workspace_id,
+        workspace: workspace,
+        service_name: service_name,
+        agent_type: agent_type
+      )
 
     # Mirror CLAUDE.md + .claude/ from the workspace volume into working_dir
     # (a no-op for Local workspaces where Mutagen already puts them on the
@@ -1011,6 +1028,7 @@ defmodule BoomLooper.ChatAgent do
       tool_calls: state.tool_calls,
       errors: state.errors,
       service_name: state.service_name,
+      agent_type: state.agent_type,
       model: state.model,
       total_input_tokens: state.total_input_tokens,
       total_output_tokens: state.total_output_tokens,
@@ -1025,12 +1043,8 @@ defmodule BoomLooper.ChatAgent do
     Phoenix.PubSub.broadcast(BoomLooper.PubSub, topic, message)
   end
 
-  # --- Delegated public API (backward compatibility) ---
+  # --- Delegated public API ---
 
   @doc false
-  defdelegate build_system_prompt(agent_id, bind_mount, workspace_id, workspace, service_name),
-    to: Prompt
-
-  @doc false
-  defdelegate setup_guide(), to: Prompt
+  defdelegate build_system_prompt(agent_id, opts), to: Prompt
 end

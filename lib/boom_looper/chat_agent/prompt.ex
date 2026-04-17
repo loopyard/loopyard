@@ -2,60 +2,52 @@ defmodule BoomLooper.ChatAgent.Prompt do
   @moduledoc """
   System prompt construction for ChatAgent sessions.
 
-  Pure functions that build the system prompt from agent identity,
-  workspace config, and service context. No GenServer state needed.
+  Pure functions that build the system prompt from the agent's type
+  (a folder under `priv/agents/` or its user/project overrides), the
+  workspace config, and the service context. No GenServer state needed.
   """
   require Logger
+
+  alias BoomLooper.Agents.Registry
 
   # The system prompt is passed as a CLI argument (--system-prompt).
   # If it's too long, the OS will SIGKILL the CLI process (exit 137).
   # Keep it under this limit. Anything larger should go in CLAUDE.md
-  # or a file the agent reads.
+  # or a file the agent reads via `read_agent_file`.
   @max_system_prompt_chars 2000
 
-  # Read at runtime instead of baking into a module attribute so
-  # edits to setup_guide.md take effect without recompiling this
-  # module. Edits to .md files don't trigger `mix recompile` — a
-  # compile-time @ attribute would silently serve the old guide to
-  # every agent until someone remembered to touch this file.
-  # The file is small (<20 KB), read is cheap.
-  @external_resource "priv/prompts/setup_guide.md"
+  @doc """
+  Build the system prompt for an agent session.
 
-  @doc false
-  def setup_guide do
-    File.read!(Path.join(:code.priv_dir(:boom_looper), "prompts/setup_guide.md"))
-  end
+  `agent_type` identifies the folder under `priv/agents/` (or a
+  user/project override). If the type can't be resolved, falls back
+  to the default agent.
+  """
+  def build_system_prompt(agent_id, opts) when is_list(opts) do
+    bind_mount = Keyword.get(opts, :bind_mount)
+    workspace_id = Keyword.get(opts, :workspace_id)
+    workspace = Keyword.get(opts, :workspace)
+    service_name = Keyword.get(opts, :service_name)
+    agent_type = Keyword.get(opts, :agent_type) || Registry.default_agent_name()
 
-  @doc false
-  def build_system_prompt(agent_id, bind_mount, workspace_id, workspace, service_name) do
-    # System prompt: ONLY identity + agent ID. Must stay small.
-    base = if workspace do
-      container_base_prompt(agent_id, bind_mount, workspace_id)
-    else
-      setup_base_prompt(agent_id, bind_mount)
-    end
+    parts = [
+      base_prompt(agent_id, bind_mount, workspace_id),
+      agent_definition(agent_type),
+      workspace_prompt(workspace),
+      service_prompt(service_name, workspace_id)
+    ]
 
-    parts = [base]
-
-    parts = if workspace do
-      parts ++ [workspace_prompt(workspace, bind_mount)]
-    else
-      parts ++ [setup_prompt(bind_mount)]
-    end
-
-    parts = if service_name && workspace_id && workspace do
-      parts ++ [service_agent_prompt(service_name, workspace_id, workspace)]
-    else
+    prompt =
       parts
-    end
-
-    prompt = Enum.join(parts, "\n")
+      |> Enum.reject(&is_nil/1)
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.join("\n\n")
 
     if String.length(prompt) > @max_system_prompt_chars do
       Logger.warning(
         "[ChatAgent] System prompt is #{String.length(prompt)} chars " <>
-        "(limit #{@max_system_prompt_chars}). CLI may be SIGKILL'd. " <>
-        "Move content to priv/prompts/ or CLAUDE.md."
+          "(limit #{@max_system_prompt_chars}). CLI may be SIGKILL'd. " <>
+          "Move content into agent files or CLAUDE.md."
       )
     end
 
@@ -63,18 +55,7 @@ defmodule BoomLooper.ChatAgent.Prompt do
   end
 
   @doc false
-  def service_agent_prompt(service_name, workspace_id, _workspace) do
-    # Workspace metadata no longer carries services/processes — that info
-    # lives in docker-compose.yml directly. Just point the agent at the
-    # right container and let it use `logs` / `exec` to investigate.
-    container =
-      BoomLooper.Workspace.ServiceManager.service_container_name(workspace_id, service_name)
-
-    "\nService agent for #{service_name} (container: #{container}). Use `logs` to check output."
-  end
-
-  @doc false
-  def container_base_prompt(agent_id, _bind_mount, workspace_id) do
+  def base_prompt(agent_id, _bind_mount, workspace_id) do
     container =
       if workspace_id do
         BoomLooper.Workspace.ServiceManager.service_container_name(workspace_id, "workspace")
@@ -82,12 +63,10 @@ defmodule BoomLooper.ChatAgent.Prompt do
         "bl-unknown-workspace-1"
       end
 
-    workspace_note = "/workspace is a Docker volume that persists across container restarts"
-
     """
     Workspace container: #{container}. YOUR AGENT ID: #{agent_id}. Pass agent_id to every tool call.
 
-    Use boom-looper-container MCP tools for ALL work. `exec` for quick commands, `exec_stream` for long-running ones. ALWAYS use the `docker_compose` MCP tool — never run `docker compose` via Bash. #{workspace_note}. Dev server runs in a separate container — use `logs` and `service_status` to check it.
+    Use boom-looper-container MCP tools for ALL work. `exec` for quick commands, `exec_stream` for long-running ones. ALWAYS use the `docker_compose` MCP tool — never run `docker compose` via Bash. /workspace is a Docker volume that persists across container restarts. Dev server runs in a separate container — use `logs` and `service_status` to check it.
 
     Long command output is truncated — you'll see the last ~80 lines. The full output is visible to the user in the chat. Use `grep` or `read_file` for targeted lookups instead of dumping entire logs.
 
@@ -101,54 +80,45 @@ defmodule BoomLooper.ChatAgent.Prompt do
   end
 
   @doc false
-  def workspace_prompt(workspace, _bind_mount) do
-    custom = if workspace.system_prompt, do: "\n#{workspace.system_prompt}\n", else: ""
+  def agent_definition(agent_type) do
+    case Registry.get(agent_type) do
+      {:ok, agent} ->
+        body = agent.body || ""
+        catalog_str = catalog_section(agent)
+        [body, catalog_str] |> Enum.reject(&(&1 == "")) |> Enum.join("\n\n")
 
-    """
-    ## Workspace: #{workspace.name || "Unnamed"}
-    #{custom}
-    """
+      {:error, _} ->
+        Logger.warning("[ChatAgent] Unknown agent_type #{inspect(agent_type)}; using empty definition")
+        ""
+    end
+  end
+
+  defp catalog_section(agent) do
+    case Registry.catalog(agent) do
+      [] -> ""
+      files -> "Agent files (use `read_agent_file`): " <> Enum.join(files, ", ")
+    end
   end
 
   @doc false
-  def setup_base_prompt(agent_id, _bind_mount) do
-    """
-    You are a Setup agent. YOUR AGENT ID: #{agent_id}
+  def workspace_prompt(nil), do: ""
 
-    Pass your agent_id "#{agent_id}" to every tool call.
+  def workspace_prompt(workspace) do
+    name = Map.get(workspace, :name) || "Unnamed"
+    custom = Map.get(workspace, :system_prompt)
 
-    Steps: read project files → write Dockerfile → write docker-compose.yml → docker_compose up → exec setup → verify.
-
-    Tools:
-    - `write_file` — write Dockerfile and docker-compose.yml to `.boomlooper/workspace/`
-    - `docker_compose` — run compose commands (e.g. "up -d --build", "ps", "logs dev")
-    - `docker` — run docker commands (e.g. "ps", "volume ls")
-    - `exec` — run commands in the workspace container
-    - `logs` — get container logs
-
-    CRITICAL: ALWAYS use the `docker_compose` MCP tool for compose commands. NEVER run `docker compose` via Bash or `exec`. The MCP tool sets the correct project name, syncs compose files, and streams output to the UI. Running compose directly creates containers with wrong names that the platform can't manage.
-
-    Long command output is truncated — you'll see the last ~80 lines. The full output is visible to the user in the chat. Use `grep` or `read_file` for targeted lookups instead of dumping entire logs.
-
-    Use `${CODE_VOLUME}:/workspace` in your compose file — it gets substituted automatically.
-
-    """
+    custom_block = if custom, do: "\n#{custom}", else: ""
+    "## Workspace: #{name}#{custom_block}"
   end
 
   @doc false
-  def setup_prompt(bind_mount) do
-    path_note = if bind_mount, do: " at #{bind_mount}", else: ""
+  def service_prompt(nil, _), do: ""
+  def service_prompt(_, nil), do: ""
 
-    """
-    ## Workspace Setup
+  def service_prompt(service_name, workspace_id) do
+    container =
+      BoomLooper.Workspace.ServiceManager.service_container_name(workspace_id, service_name)
 
-    New project#{path_note}. Write docker-compose.yml and Dockerfile directly:
-    1. Read project files to understand the stack
-    2. `write_file` path=`.boomlooper/workspace/Dockerfile`
-    3. `write_file` path=`.boomlooper/workspace/docker-compose.yml`
-    4. `docker_compose("up -d --build")`
-    5. `exec` to install deps/run migrations
-    6. `docker_compose("logs dev")` to verify
-    """
+    "Service agent for #{service_name} (container: #{container}). Use `logs` to check output."
   end
 end
