@@ -54,7 +54,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         do: "hidden md:flex",
         else: "flex")
     ]}>
-      <.workspace_header workspace_state={@workspace_state} />
+      <.workspace_header workspace_state={@workspace_state} workspace_state_since={@workspace_state_since} />
 
       <div class="flex-1 overflow-y-auto">
         <.section label="Agents">
@@ -96,18 +96,25 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
   end
 
   # Primary sidebar header: workspace state + Start/Stop. Driven by
-  # the single :workspace_state atom (:stopped | :starting | :running
-  # | :stopping) so UI reflects exactly one truth instead of mixing a
-  # boolean running-flag with a separate busy-flag.
+  # the single :workspace_state atom (:stopped | :starting | :started
+  # | :stopping), validated through BoomLooper.Cluster.StateMachine.
+  # :workspace_state_since carries the transition timestamp so the
+  # header can show "Starting… 12s" during in-flight transitions.
   attr :workspace_state, :atom, required: true
+  attr :workspace_state_since, :any, default: nil
 
   defp workspace_header(assigns) do
     {label, dot_class, button} =
       case assigns.workspace_state do
-        :starting -> {"Starting…", "bg-blue-400 animate-pulse", :none}
-        :stopping -> {"Stopping…", "bg-amber-400 animate-pulse", :none}
-        :running -> {"Running", "bg-emerald-500", :stop}
+        :starting -> {"Starting", "bg-blue-400 animate-pulse", :none}
+        :stopping -> {"Stopping", "bg-amber-400 animate-pulse", :none}
+        :started -> {"Running", "bg-emerald-500", :stop}
         :stopped -> {"Stopped", "bg-zinc-400", :start}
+      end
+
+    elapsed =
+      if assigns.workspace_state in [:starting, :stopping] and assigns.workspace_state_since do
+        DateTime.diff(DateTime.utc_now(), assigns.workspace_state_since, :second)
       end
 
     assigns =
@@ -115,12 +122,13 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
       |> assign(:label, label)
       |> assign(:dot_class, dot_class)
       |> assign(:button, button)
+      |> assign(:elapsed, elapsed)
 
     ~H"""
     <div class="flex-none border-b border-zinc-200 dark:border-zinc-700/80 px-3 py-2.5 md:py-2 flex items-center gap-2">
       <div class="flex items-center gap-2 min-w-0 flex-1">
         <div class={"w-2 h-2 rounded-full flex-none #{@dot_class}"} aria-hidden="true"></div>
-        <span class="text-sm font-medium text-zinc-700 dark:text-zinc-200 truncate">Workspace {@label}</span>
+        <span class="text-sm font-medium text-zinc-700 dark:text-zinc-200 truncate">Workspace {@label}<span :if={@elapsed} class="text-zinc-400 dark:text-zinc-500 font-normal">… {@elapsed}s</span></span>
       </div>
       <button
         :if={@button == :stop}

@@ -126,41 +126,48 @@ defmodule BoomLooperWeb.WorkspaceLive do
      |> assign(:console_container, nil)
      |> assign(:is_local_source?, is_local?)
      |> assign(:sync_status, initial_sync_status(workspace.id, is_local?))
-     |> assign(:workspace_state, derive_workspace_state(workspace.id, service_statuses, nil))}
+     |> assign(:workspace_state, derive_workspace_state(workspace.id, service_statuses, nil))
+     |> assign(:workspace_state_since, DateTime.utc_now())}
   end
 
   # The single source of truth for the workspace Start/Stop pill.
-  # Returns one of :stopped | :starting | :running | :stopping.
+  # Returns one of :stopped | :starting | :started | :stopping.
+  # Validated against BoomLooper.Cluster.StateMachine so illegal moves
+  # (e.g. :stopped → :started without going through :starting) never
+  # land in the assigns.
   #
-  # `previous` is the assign's current value (or nil on mount). We
-  # respect explicit in-flight transitions (:starting / :stopping)
-  # from the user until observer data says the transition completed:
+  # `previous` is the assign's current value (or nil on mount). User
+  # intent drives transitional states; observer data drives confirmed
+  # states:
   #
-  #   :starting  + any container up       → :running
-  #   :stopping  + no containers up       → :stopped
-  #   :starting  + no containers up yet   → stays :starting (waiting)
-  #   :stopping  + containers still up    → stays :stopping (waiting)
+  #   :starting  + any container up       → :started   (user-start confirmed)
+  #   :stopping  + no containers up       → :stopped   (user-stop confirmed)
+  #   :starting  + no containers up yet   → :starting  (waiting)
+  #   :stopping  + containers still up    → :stopping  (waiting)
   #
-  # When there's no in-flight transition, state is purely derived from
-  # container state — supervisor being up is not sufficient, because a
-  # supervisor with no containers isn't a "running" workspace.
-  defp derive_workspace_state(workspace_id, service_statuses, previous) do
+  # Without a user-initiated transition in flight, state is derived
+  # purely from container reality — any container up means :started,
+  # none up means :stopped. The old code had a `supervisor_up? →
+  # :running` fallback that lied when compose up failed mid-build:
+  # WorkspaceGroup stayed alive (doesn't crash on compose failure)
+  # so the UI reported "Running" despite zero containers. Supervisor
+  # presence is not equal to "services are up."
+  defp derive_workspace_state(_workspace_id, service_statuses, previous) do
     any_running? = Enum.any?(service_statuses, &(&1.status == :running))
-    supervisor_up? = BoomLooper.WorkspaceSupervisor.workspace_running?(workspace_id)
 
-    case previous do
-      :starting ->
-        if any_running?, do: :running, else: :starting
+    target =
+      case previous do
+        :starting -> if any_running?, do: :started, else: :starting
+        :stopping -> if any_running?, do: :stopping, else: :stopped
+        _ -> if any_running?, do: :started, else: :stopped
+      end
 
-      :stopping ->
-        if any_running?, do: :stopping, else: :stopped
-
-      _ ->
-        cond do
-          any_running? -> :running
-          supervisor_up? -> :running
-          true -> :stopped
-        end
+    # Gate transitions through the state machine. Same-state is a
+    # no-op and always legal. Anything illegal falls back to the
+    # observable truth (:started or :stopped from any_running?).
+    case BoomLooper.Cluster.StateMachine.transition(previous || target, target) do
+      {:ok, state} -> state
+      {:error, _} -> if any_running?, do: :started, else: :stopped
     end
   end
 
@@ -169,6 +176,21 @@ defmodule BoomLooperWeb.WorkspaceLive do
     |> Enum.any?(&Map.get(&1, :running, false))
   rescue
     _ -> false
+  end
+
+  # Commit a new workspace_state and stamp the entered_at timestamp iff
+  # the state actually changed. The sidebar pill reads
+  # `:workspace_state_since` to show elapsed time during :starting /
+  # :stopping transitions; pinning the timestamp on every same-state
+  # broadcast would make "Starting… Ns" counter reset to 0 repeatedly.
+  defp transition_workspace_state(socket, new_state) do
+    if socket.assigns.workspace_state == new_state do
+      socket
+    else
+      socket
+      |> assign(:workspace_state, new_state)
+      |> assign(:workspace_state_since, DateTime.utc_now())
+    end
   end
 
   defp initial_sync_status(_workspace_id, false), do: nil
@@ -676,9 +698,9 @@ defmodule BoomLooperWeb.WorkspaceLive do
   def handle_event("boot_workspace", _params, socket) do
     # Flip to :starting immediately so the UI shows the transitional
     # state. The actual start runs async — observer events will flip
-    # us to :running when containers come up.
+    # us to :started when containers come up.
     send(self(), {:start_workspace, socket.assigns.workspace.path})
-    {:noreply, assign(socket, :workspace_state, :starting)}
+    {:noreply, transition_workspace_state(socket, :starting)}
   end
 
   @impl true
@@ -700,7 +722,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
       send(parent, :workspace_stopped)
     end)
 
-    {:noreply, assign(socket, :workspace_state, :stopping)}
+    {:noreply, transition_workspace_state(socket, :stopping)}
   end
 
   @impl true
@@ -930,7 +952,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
 
     {:noreply,
      socket
-     |> assign(:workspace_state, :stopped)
+     |> transition_workspace_state(:stopped)
      |> assign(:service_statuses, service_statuses)
      |> assign(:volumes, volumes)
      |> assign(:agents, [])}
@@ -965,7 +987,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
      socket
      |> assign(:service_statuses, guarded)
      |> assign(:volumes, volumes)
-     |> assign(:workspace_state, new_state)}
+     |> transition_workspace_state(new_state)}
   end
 
   def handle_info({:docker_state_reset}, socket) do
@@ -1369,6 +1391,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
           host={@host}
           is_local_source?={@is_local_source?} sync_status={@sync_status}
           workspace_state={@workspace_state}
+          workspace_state_since={@workspace_state_since}
         />
         <%!-- Main content: hidden on mobile when sidebar is showing (index/new with no selection) --%>
         <main id="main-content" class={"flex-1 flex flex-col min-w-0 #{if @live_action == :index && !@selected_id && !@selected_service, do: "hidden md:flex", else: "flex"}"}>
@@ -1376,13 +1399,19 @@ defmodule BoomLooperWeb.WorkspaceLive do
                at a specific agent. Agent history stays readable regardless
                of service state — sending new messages is what the running
                workspace gates. --%>
+          <%!-- Cluster is down → show the big "Start workspace" empty
+               state, except on views that carry their own empty state
+               (service / console / new-agent). Those views render
+               their own "this is stopped" screen inside themselves so
+               the sidebar context stays consistent while the user is
+               exploring. --%>
           <.workspace_not_running
-            :if={@workspace_state in [:stopped, :starting] && !@selected_agent && @live_action != :new}
+            :if={@workspace_state in [:stopped, :starting] && !@selected_agent && @live_action not in [:new, :service, :console]}
             workspace={@workspace}
             workspace_state={@workspace_state}
           />
           <.new_agent_screen :if={@live_action == :new} workspace={@workspace} base_path={@base_path} />
-          <.service_log_view :if={@workspace_state == :running && @live_action == :service} service_name={@selected_service} service_statuses={@service_statuses} logs={@service_logs} base_path={@base_path} host={@host} />
+          <.service_log_view :if={@live_action == :service} service_name={@selected_service} service_statuses={@service_statuses} logs={@service_logs} base_path={@base_path} host={@host} workspace_state={@workspace_state} />
           <.console_view :if={@live_action == :console} service_name={@selected_service} container={@console_container} />
           <.all_services_view :if={@live_action == :services} all_service_logs={@all_service_logs} />
           <.volume_detail :if={@live_action in [:volume, :volume_files_root, :volume_file, :volume_git]} volume_name={@selected_volume} volumes={@volumes} workspace_id={@workspace.id} base_path={@base_path} volume_tab={@volume_tab} file_tree={@file_tree} file_content={@file_content} file_path={@file_path} browse_path={@browse_path} git_log={@git_log} git_status={@git_status} diff_content={@diff_content} supports_git={@supports_git} />

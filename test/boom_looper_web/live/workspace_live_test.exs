@@ -616,48 +616,10 @@ defmodule BoomLooperWeb.WorkspaceLiveTest do
     end
   end
 
-  describe "restart CLI" do
-    setup %{workspace: ws} do
-      id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
-
-      {:ok, _pid} =
-        BoomLooper.TestHelpers.start_agent(
-          id: id,
-          name: "Restart CLI Test",
-          working_dir: ws.path,
-          bind_mount: ws.path,
-          started_by: "test"
-        )
-
-      on_exit(fn ->
-        try do
-          BoomLooper.ChatAgent.stop_agent(id)
-        catch
-          :exit, _ -> :ok
-        end
-      end)
-
-      %{agent_id: id}
-    end
-
-    test "shows restart CLI button for active agents", %{conn: conn, agent_id: id, workspace: ws} do
-      {:ok, view, _html} = live(conn, ws_chat_path(ws, id))
-      assert has_element?(view, "button[phx-click='restart_session']")
-    end
-
-    test "restart_session event triggers agent restart", %{conn: conn, agent_id: id, workspace: ws} do
-      {:ok, view, _html} = live(conn, ws_chat_path(ws, id))
-
-      view
-      |> element("button[phx-click='restart_session']")
-      |> render_click()
-
-      # Agent should still be accessible after restart
-      Process.sleep(100)
-      state = BoomLooper.ChatAgent.get_state(id)
-      assert state.status == :idle
-    end
-  end
+  # The "Restart CLI" button was removed — Stop + Start from the chat
+  # header produces the same fresh-CLI-from-log effect. The underlying
+  # ChatAgent.restart_session/1 API stays for the in-process auto-
+  # recovery path; tests for that live in test/boom_looper/chat_agent_test.exs.
 
   describe "context panel" do
     setup %{workspace: ws} do
