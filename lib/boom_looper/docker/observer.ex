@@ -64,12 +64,27 @@ defmodule BoomLooper.Docker.Observer do
     Enum.filter(containers(), &(&1.workspace_id == workspace_id))
   end
 
-  @doc "All `bl-*` volumes. Returns `[%{name, workspace_id}, ...]`."
+  @doc """
+  All `bl-*` volumes. Returns `[%{name, workspace_id, size, ...}, ...]`.
+
+  Merges the stable volume list with the separately-stored size map.
+  Sizes update on every snapshot but don't contribute to the snapshot
+  comparison that drives broadcasts — see `do_snapshot/1`.
+  """
   def volumes do
-    case :ets.lookup(@table, :volumes) do
-      [{_, list}] -> list
-      _ -> []
-    end
+    list =
+      case :ets.lookup(@table, :volumes) do
+        [{_, list}] -> list
+        _ -> []
+      end
+
+    sizes =
+      case :ets.lookup(@table, :volume_sizes) do
+        [{_, sizes}] -> sizes
+        _ -> %{}
+      end
+
+    Enum.map(list, fn v -> Map.put(v, :size, Map.get(sizes, v.name)) end)
   end
 
   @doc "Volumes for one workspace."
@@ -284,12 +299,19 @@ defmodule BoomLooper.Docker.Observer do
   defp do_snapshot(state) do
     containers = fetch_containers()
     volumes = fetch_volumes()
+    volume_sizes = fetch_volume_sizes()
     now = DateTime.utc_now()
 
     :ets.insert(@table, {:containers, containers})
     :ets.insert(@table, {:volumes, volumes})
+    :ets.insert(@table, {:volume_sizes, volume_sizes})
     :ets.insert(@table, {:last_snapshot_at, now})
 
+    # `snapshot` carries only identity + functional state. Volatile
+    # metrics (container uptime strings, volume byte sizes) live in
+    # separate ETS slots and are NOT part of this comparison — otherwise
+    # every tick of uptime or every byte written to a volume would
+    # broadcast and flash the sidebar.
     snapshot = %{containers: containers, volumes: volumes}
 
     if snapshot != state.prev do
@@ -322,13 +344,17 @@ defmodule BoomLooper.Docker.Observer do
   defp parse_container_line(line) do
     case String.split(line, "\t", parts: 3) do
       [name, status, ports_str] ->
+        # `status` is Docker's raw "Up 5 seconds" / "Exited (0) 3 minutes
+        # ago" string. The uptime portion ticks every second and used to
+        # make every snapshot compare unequal, triggering a broadcast
+        # and a sidebar re-render on every tick. Keep only the identity +
+        # functional state; UI derives what it needs from `running`.
         running = String.starts_with?(status, "Up")
         workspace_id = extract_workspace_id(name)
         host_ports = parse_host_ports(ports_str)
 
         %{
           name: name,
-          status: status,
           running: running,
           workspace_id: workspace_id,
           host_ports: host_ports
@@ -346,12 +372,12 @@ defmodule BoomLooper.Docker.Observer do
            "--format", "{{.Name}}"
          ]) do
       {:ok, output} ->
-        # One `docker system df -v` call returns sizes for every volume;
-        # far cheaper than `docker volume inspect` per volume or spinning
-        # up an alpine container for `du`. If it fails we still emit the
-        # volume list without sizes — the sidebar badge is optional UX.
-        sizes = fetch_volume_sizes()
-
+        # Volume sizes used to be attached here, but they grow over time
+        # (as files are written) and flipped the snapshot != prev check
+        # every snapshot — broadcasting constant docker_state_changed
+        # events that flashed the sidebar. Sizes are now a separate
+        # concern: see :volume_sizes ETS slot and `volume_size/1`. The
+        # snapshot comparison stays stable when only sizes change.
         output
         |> String.split("\n", trim: true)
         |> Enum.map(fn name ->
@@ -359,10 +385,7 @@ defmodule BoomLooper.Docker.Observer do
           # using VolumeManager's pure name parser — no docker calls.
           summary = BoomLooper.VolumeManager.volume_summary(name)
 
-          Map.merge(summary, %{
-            workspace_id: extract_workspace_id(name),
-            size: Map.get(sizes, name)
-          })
+          Map.merge(summary, %{workspace_id: extract_workspace_id(name)})
         end)
 
       _ ->

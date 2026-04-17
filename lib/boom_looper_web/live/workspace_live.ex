@@ -1052,29 +1052,27 @@ defmodule BoomLooperWeb.WorkspaceLive do
   end
 
   @impl true
-  def handle_info({:service_logs_fetched, service_name, service_statuses, logs}, socket) do
-    # Guard: never replace non-empty service list with empty
-    service_statuses = guard_service_statuses(socket, service_statuses)
-
+  def handle_info({:service_logs_fetched, service_name, logs}, socket) do
+    # Intentionally does NOT touch service_statuses. The log fetch task
+    # used to ship the raw (un-annotated) service list back alongside the
+    # logs, and assigning it here wiped the annotated host_port/exposed/
+    # container_port fields — causing the port button to flash off every
+    # 3s until the next docker_state_changed re-annotated. The LV's own
+    # assigns are already fresh via docker_state_changed broadcasts.
     socket =
-      socket
-      |> assign(:service_statuses, service_statuses)
-      |> then(fn s ->
-        if s.assigns[:selected_service] == service_name, do: assign(s, :service_logs, logs), else: s
-      end)
+      if socket.assigns[:selected_service] == service_name do
+        assign(socket, :service_logs, logs)
+      else
+        socket
+      end
 
     {:noreply, socket}
   end
 
   @impl true
-  def handle_info({:all_service_logs_fetched, service_statuses, all_logs}, socket) do
-    # Guard: never replace non-empty service list with empty
-    service_statuses = guard_service_statuses(socket, service_statuses)
-
-    {:noreply,
-     socket
-     |> assign(:service_statuses, service_statuses)
-     |> assign(:all_service_logs, all_logs)}
+  def handle_info({:all_service_logs_fetched, all_logs}, socket) do
+    # Same rule: logs only, don't clobber annotated service_statuses.
+    {:noreply, assign(socket, :all_service_logs, all_logs)}
   end
 
   @impl true

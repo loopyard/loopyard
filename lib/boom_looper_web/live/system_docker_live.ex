@@ -126,7 +126,7 @@ defmodule BoomLooperWeb.SystemDockerLive do
                   <td class="px-3 py-2 font-mono">{stat_field(stat, :cpu)}</td>
                   <td class="px-3 py-2 font-mono">{stat_field(stat, :mem_usage)}</td>
                   <td class="px-3 py-2 font-mono">{stat_field(stat, :pids)}</td>
-                  <td class="px-3 py-2 font-mono text-zinc-500 truncate max-w-[200px]" title={c.status}>{c.status}</td>
+                  <td class="px-3 py-2 font-mono text-zinc-500 truncate max-w-[200px]">{if c.running, do: "running", else: "stopped"}</td>
                   <td class="px-3 py-2">
                     <button phx-click="kill_container" phx-value-name={c.name}
                       data-confirm={"Force-remove container #{c.name}?"}

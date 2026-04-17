@@ -74,9 +74,15 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.ServiceLogs do
     lv = self()
 
     Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
-      service_statuses = BoomLooper.Docker.Observer.services_for(workspace_id)
-      logs = fetch_service_container_logs(service_statuses, service_name)
-      send(lv, {:service_logs_fetched, service_name, service_statuses, logs})
+      # Internal use only — we need the service list to look up the container
+      # name for the log tail. DO NOT ship this list back to the LiveView:
+      # it's un-annotated (no host_port/exposed/container_port merged in) and
+      # would overwrite the LV's annotated service_statuses, causing the port
+      # button to flash off then back on when the next docker_state_changed
+      # arrives and re-annotates.
+      svcs = BoomLooper.Docker.Observer.services_for(workspace_id)
+      logs = fetch_service_container_logs(svcs, service_name)
+      send(lv, {:service_logs_fetched, service_name, logs})
     end)
 
     socket
@@ -91,9 +97,11 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.ServiceLogs do
     lv = self()
 
     Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
-      service_statuses = BoomLooper.Docker.Observer.services_for(workspace_id)
-      all_logs = fetch_all_service_logs(service_statuses)
-      send(lv, {:all_service_logs_fetched, service_statuses, all_logs})
+      # Same rule as start_service_logs_fetch: use the service list only to
+      # know which containers to tail; never echo it back to the LV.
+      svcs = BoomLooper.Docker.Observer.services_for(workspace_id)
+      all_logs = fetch_all_service_logs(svcs)
+      send(lv, {:all_service_logs_fetched, all_logs})
     end)
 
     socket
