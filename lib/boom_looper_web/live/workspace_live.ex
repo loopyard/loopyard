@@ -657,29 +657,20 @@ defmodule BoomLooperWeb.WorkspaceLive do
   # --- Cluster events (Docker Compose + volumes) ---
 
   def handle_event("restart_service", %{"service_name" => name}, socket) do
-    ws_id = socket.assigns.workspace_entry.id
-    effective_dir = BoomLooper.Workspace.compose_dir(ws_id)
-    BoomLooper.Compose.compose(effective_dir, ws_id, ["restart", name], timeout: 30_000)
-    {:noreply, socket}
+    run_compose_async(socket, ["restart", name], 30_000)
   end
 
   def handle_event("start_service", %{"service_name" => name}, socket) do
-    ws_id = socket.assigns.workspace_entry.id
-    effective_dir = BoomLooper.Workspace.compose_dir(ws_id)
     # `up -d <service>` brings a stopped/crashed service back without
     # touching the rest of the compose project. `restart` is a no-op
     # on a non-running container, which is why the single-button
     # "Restart" was the wrong call to show in the log view when the
     # service isn't running.
-    BoomLooper.Compose.compose(effective_dir, ws_id, ["up", "-d", name], timeout: 60_000)
-    {:noreply, socket}
+    run_compose_async(socket, ["up", "-d", name], 60_000)
   end
 
   def handle_event("stop_service", %{"service_name" => name}, socket) do
-    ws_id = socket.assigns.workspace_entry.id
-    effective_dir = BoomLooper.Workspace.compose_dir(ws_id)
-    BoomLooper.Compose.compose(effective_dir, ws_id, ["stop", name], timeout: 30_000)
-    {:noreply, socket}
+    run_compose_async(socket, ["stop", name], 30_000)
   end
 
   def handle_event("boot_workspace", _params, socket) do
@@ -1082,6 +1073,24 @@ defmodule BoomLooperWeb.WorkspaceLive do
   # wipes, compose file syncs, or async task races, the new list can be
   # temporarily empty. Showing an empty sidebar and then refilling it a
   # moment later is the "flapping" bug. Keep the last known good state.
+  # Compose commands can take tens of seconds (restart/stop) to minutes
+  # (start with image build). Running them inline in handle_event used
+  # to block this LV — pending PubSub messages, other user events, all
+  # queued for the duration. The docker_events stream picks up the
+  # container transition and broadcasts :docker_state_changed when the
+  # async task completes, so the sidebar updates without us waiting on
+  # the Task result here. Fire and forget.
+  defp run_compose_async(socket, args, timeout) do
+    ws_id = socket.assigns.workspace_entry.id
+    effective_dir = BoomLooper.Workspace.compose_dir(ws_id)
+
+    Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
+      BoomLooper.Compose.compose(effective_dir, ws_id, args, timeout: timeout)
+    end)
+
+    {:noreply, socket}
+  end
+
   defp guard_service_statuses(socket, new_statuses) do
     if new_statuses == [] and socket.assigns.service_statuses != [] do
       socket.assigns.service_statuses
