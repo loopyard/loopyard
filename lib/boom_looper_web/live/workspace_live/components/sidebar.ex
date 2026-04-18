@@ -54,7 +54,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         do: "hidden md:flex",
         else: "flex")
     ]}>
-      <.workspace_header workspace_state={@workspace_state} workspace_state_since={@workspace_state_since} />
+      <.workspace_header workspace_state={@workspace_state} workspace_state_since={@workspace_state_since} docker_connected?={Map.get(assigns, :docker_connected?, true)} />
 
       <div class="flex-1 overflow-y-auto">
         <.section label="Agents">
@@ -100,8 +100,13 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
   # | :stopping), validated through BoomLooper.Cluster.StateMachine.
   # :workspace_state_since carries the transition timestamp so the
   # header can show "Starting… 12s" during in-flight transitions.
+  # :docker_connected? — when false, pill carries a "(Docker
+  # disconnected)" suffix and hides the Start/Stop button since the
+  # action would fail anyway. The stored state is held across the
+  # disconnect window so reconnection snaps back to truth.
   attr :workspace_state, :atom, required: true
   attr :workspace_state_since, :any, default: nil
+  attr :docker_connected?, :boolean, default: true
 
   defp workspace_header(assigns) do
     {label, dot_class, button} =
@@ -117,6 +122,10 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         DateTime.diff(DateTime.utc_now(), assigns.workspace_state_since, :second)
       end
 
+    # Disconnect suppresses the action button — clicking Start while
+    # Docker is unreachable would just fail and dump errors.
+    button = if assigns.docker_connected?, do: button, else: :none
+
     assigns =
       assigns
       |> assign(:label, label)
@@ -127,8 +136,11 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
     ~H"""
     <div class="flex-none border-b border-zinc-200 dark:border-zinc-700/80 px-3 py-2.5 md:py-2 flex items-center gap-2">
       <div class="flex items-center gap-2 min-w-0 flex-1">
-        <div class={"w-2 h-2 rounded-full flex-none #{@dot_class}"} aria-hidden="true"></div>
-        <span class="text-sm font-medium text-zinc-700 dark:text-zinc-200 truncate">Workspace {@label}<span :if={@elapsed} class="text-zinc-400 dark:text-zinc-500 font-normal">… {@elapsed}s</span></span>
+        <div class={"w-2 h-2 rounded-full flex-none #{if @docker_connected?, do: @dot_class, else: "bg-amber-400 animate-pulse"}"} aria-hidden="true"></div>
+        <span class="text-sm font-medium text-zinc-700 dark:text-zinc-200 truncate">
+          <span :if={@docker_connected?}>Workspace {@label}<span :if={@elapsed} class="text-zinc-400 dark:text-zinc-500 font-normal">… {@elapsed}s</span></span>
+          <span :if={!@docker_connected?} class="text-amber-600 dark:text-amber-400">Docker disconnected</span>
+        </span>
       </div>
       <button
         :if={@button == :stop}

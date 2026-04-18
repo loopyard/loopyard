@@ -153,22 +153,39 @@ defmodule BoomLooperWeb.WorkspaceLive do
   # so the UI reported "Running" despite zero containers. Supervisor
   # presence is not equal to "services are up."
   defp derive_workspace_state(_workspace_id, service_statuses, previous) do
-    any_running? = Enum.any?(service_statuses, &(&1.status == :running))
+    # If the Docker event stream is down, Observer returns an empty
+    # container list — not because nothing is running, but because we
+    # can't see. Collapsing that into :stopped is the "lying UI" bug
+    # from the other direction: it tells the user their services are
+    # gone when really they're invisible. Hold the previous state
+    # until Docker comes back; the Observer reconnects and fires a
+    # fresh :docker_state_changed which re-derives on real data.
+    if not docker_connected?() do
+      previous || :stopped
+    else
+      any_running? = Enum.any?(service_statuses, &(&1.status == :running))
 
-    target =
-      case previous do
-        :starting -> if any_running?, do: :started, else: :starting
-        :stopping -> if any_running?, do: :stopping, else: :stopped
-        _ -> if any_running?, do: :started, else: :stopped
+      target =
+        case previous do
+          :starting -> if any_running?, do: :started, else: :starting
+          :stopping -> if any_running?, do: :stopping, else: :stopped
+          _ -> if any_running?, do: :started, else: :stopped
+        end
+
+      # Gate transitions through the state machine. Same-state is a
+      # no-op and always legal. Anything illegal falls back to the
+      # observable truth (:started or :stopped from any_running?).
+      case BoomLooper.Cluster.StateMachine.transition(previous || target, target) do
+        {:ok, state} -> state
+        {:error, _} -> if any_running?, do: :started, else: :stopped
       end
-
-    # Gate transitions through the state machine. Same-state is a
-    # no-op and always legal. Anything illegal falls back to the
-    # observable truth (:started or :stopped from any_running?).
-    case BoomLooper.Cluster.StateMachine.transition(previous || target, target) do
-      {:ok, state} -> state
-      {:error, _} -> if any_running?, do: :started, else: :stopped
     end
+  end
+
+  defp docker_connected? do
+    BoomLooper.Docker.Observer.connected?()
+  rescue
+    _ -> false
   end
 
   defp any_running_containers?(workspace_id) do
@@ -1392,6 +1409,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
           is_local_source?={@is_local_source?} sync_status={@sync_status}
           workspace_state={@workspace_state}
           workspace_state_since={@workspace_state_since}
+          docker_connected?={docker_connected?()}
         />
         <%!-- Main content: hidden on mobile when sidebar is showing (index/new with no selection) --%>
         <main id="main-content" class={"flex-1 flex flex-col min-w-0 #{if @live_action == :index && !@selected_id && !@selected_service, do: "hidden md:flex", else: "flex"}"}>
