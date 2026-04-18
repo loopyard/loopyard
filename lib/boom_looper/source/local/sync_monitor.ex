@@ -381,6 +381,31 @@ defmodule BoomLooper.Source.Local.SyncMonitor do
   # --- Transitions + broadcasts ---
 
   defp transition(state, new_status, error, opts \\ []) do
+    # Gate through the state machine so illegal moves (e.g. a late
+    # :running probe landing after the user stopped the session) don't
+    # silently re-animate a dead sync. Invalid transitions are logged
+    # and ignored — the stored state stays as-is.
+    case BoomLooper.Source.Local.SyncMonitor.StateMachine.transition(
+           state.status,
+           new_status
+         ) do
+      {:ok, _} ->
+        do_transition(state, new_status, error, opts)
+
+      {:error, {:invalid_transition, from, to}} ->
+        require Logger
+
+        Logger.warning(
+          "[SyncMonitor] ignored invalid transition #{inspect(from)} → #{inspect(to)} " <>
+            "for workspace=#{state.workspace_id}" <>
+            if(error, do: " (error: #{inspect(error)})", else: "")
+        )
+
+        state
+    end
+  end
+
+  defp do_transition(state, new_status, error, opts) do
     new_errors =
       cond do
         Keyword.get(opts, :bump_errors, false) -> state.consecutive_errors + 1

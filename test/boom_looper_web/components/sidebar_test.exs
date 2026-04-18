@@ -94,16 +94,40 @@ defmodule BoomLooperWeb.Components.SidebarTest do
   end
 
   describe "agent_item/1" do
-    test "renders agent name and status dot" do
+    # agent_display_status/1 checks ChatAgentRegistry to decide if an
+    # agent is "Sleeping" (no live GenServer) vs. Ready/Thinking. For
+    # these rendering tests to assert the live states, register a
+    # dummy pid under the agent id so the liveness check passes.
+    defp register_live_agent(id) do
+      {:ok, pid} = Task.start_link(fn -> receive do _ -> :ok end end)
+      {:ok, _} = Registry.register(BoomLooper.ChatAgentRegistry, id, nil)
+      on_exit_stop(pid)
+      pid
+    end
+
+    defp on_exit_stop(pid) do
+      ExUnit.Callbacks.on_exit(fn -> send(pid, :stop) end)
+    end
+
+    test "renders agent name and status dot (live idle → green/Ready)" do
+      register_live_agent("a1")
       agent = %{id: "a1", name: "Test Agent", status: :idle}
       html = render_comp(&agent_item/1, %{agent: agent, selected: false})
       assert html =~ "Test Agent"
       assert html =~ "bg-green-500"
     end
 
+    test "no live GenServer → Sleeping (gray, no green)" do
+      agent = %{id: "orphan", name: "Agent", status: :idle}
+      html = render_comp(&agent_item/1, %{agent: agent, selected: false})
+      assert html =~ "Sleeping"
+      assert html =~ "bg-zinc-400"
+      refute html =~ "bg-green-500"
+    end
+
     test "no remove button in sidebar for any status" do
       for status <- [:idle, :thinking, :stopped, :crashed, :booting] do
-        agent = %{id: "a1", name: "Agent", status: status}
+        agent = %{id: "no-remove-#{status}", name: "Agent", status: status}
         html = render_comp(&agent_item/1, %{agent: agent, selected: false})
         refute html =~ "remove_agent", "expected no remove_agent for status #{status}"
         refute html =~ "&times;", "expected no × for status #{status}"
@@ -111,7 +135,8 @@ defmodule BoomLooperWeb.Components.SidebarTest do
     end
 
     test "shows boot status subtitle when booting" do
-      agent = %{id: "a1", name: "Agent", status: :booting, boot_status: "Building image..."}
+      register_live_agent("a1-booting")
+      agent = %{id: "a1-booting", name: "Agent", status: :booting, boot_status: "Building image..."}
       html = render_comp(&agent_item/1, %{agent: agent, selected: false})
       assert html =~ "Building image..."
     end
