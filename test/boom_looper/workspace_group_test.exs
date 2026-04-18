@@ -34,12 +34,16 @@ defmodule BoomLooper.WorkspaceGroupTest do
       refute WorkspaceSupervisor.workspace_running?(workspace_id)
     end
 
-    test "starting an already-running workspace returns :already_running" do
+    test "starting an already-running workspace is idempotent" do
       path = File.cwd!()
       workspace_id = BoomLooper.Workspace.workspace_id(path)
 
       {:ok, _} = WorkspaceSupervisor.start_workspace(workspace_id, path)
-      assert {:ok, :already_running} = WorkspaceSupervisor.start_workspace(workspace_id, path)
+      # Second call returns :ok regardless of whether it hit the
+      # :already_running short-circuit (healthy) or the auto-recovery
+      # rebuild (ServiceManager died between calls). Both are "you're
+      # good" outcomes for the caller.
+      assert {:ok, _} = WorkspaceSupervisor.start_workspace(workspace_id, path)
 
       WorkspaceSupervisor.stop_workspace(workspace_id)
     end

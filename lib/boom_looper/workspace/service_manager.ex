@@ -241,15 +241,25 @@ defmodule BoomLooper.Workspace.ServiceManager do
           new_state = %{state | running: true, volume_name: volume_name}
           notify_source_container_up(state.workspace_id)
           broadcast_service_update(new_state)
+          broadcast_compose_result(state.workspace_id, :ok)
           {:ok, new_state}
 
         {:error, reason} ->
           BoomLooper.EventLog.error("workspace:#{state.workspace_id}", "Compose up failed: #{reason}")
+          broadcast_compose_result(state.workspace_id, {:error, reason})
           {:error, reason}
       end
     else
       BoomLooper.EventLog.info("workspace:#{state.workspace_id}", "No docker-compose.yml yet, waiting for agent to write it")
       replay_agent_log(state.project_dir, state.workspace_id)
+      # No compose file → nothing actually starting. Unblock the LV's
+      # :starting pill so it can settle back to :stopped instead of
+      # spinning forever waiting for a cluster that was never going
+      # to come up.
+      broadcast_compose_result(
+        state.workspace_id,
+        {:error, "No docker-compose.yml — agent needs to write one"}
+      )
       {:ok, %{state | volume_name: volume_name}}
     end
   end
@@ -293,10 +303,14 @@ defmodule BoomLooper.Workspace.ServiceManager do
     notify_source_container_down(state.workspace_id)
 
     case Compose.down(state.project_dir, state.workspace_id) do
-      {:ok, _} -> :ok
+      {:ok, _} ->
+        broadcast_compose_result(state.workspace_id, :ok)
+        :ok
+
       {:error, reason} ->
         require Logger
         Logger.warning("[ServiceManager] compose down failed: #{reason}")
+        broadcast_compose_result(state.workspace_id, {:error, reason})
     end
   end
 
@@ -323,6 +337,18 @@ defmodule BoomLooper.Workspace.ServiceManager do
     end
   rescue
     _ -> :ok
+  end
+
+  # Fire a notification that a compose up/down attempt has completed —
+  # either succeeded or definitively failed. LVs in :starting / :stopping
+  # pick this up to transition out of the transitional state so they're
+  # not stuck waiting for a broadcast that will never come.
+  defp broadcast_compose_result(workspace_id, result) do
+    Phoenix.PubSub.broadcast(
+      BoomLooper.PubSub,
+      @services_topic,
+      {:compose_result, workspace_id, result}
+    )
   end
 
   defp broadcast_service_update(state) do

@@ -40,12 +40,15 @@ defmodule BoomLooperWeb.WorkspaceLive do
         )
       end
 
-      # Silent reconnect: if our supervisor tree is already running OR
+      # Silent reconnect: if our supervisor tree is already healthy OR
       # there are live containers for this workspace, bring up the
-      # supervisor so PubSub + ChatAgent reconnect logic runs. The user
-      # only sees the explicit "Start workspace" button when there is
-      # genuinely nothing alive for this workspace.
-      supervisor_up? = BoomLooper.WorkspaceSupervisor.workspace_running?(workspace.id)
+      # supervisor so PubSub + ChatAgent reconnect logic runs. Use
+      # workspace_healthy? (not workspace_running?) so a partial
+      # group with a dead ServiceManager doesn't count as "running" —
+      # that state used to leave the LV stuck at :starting after a
+      # failed compose because start_workspace short-circuited on
+      # :already_running.
+      supervisor_up? = BoomLooper.WorkspaceSupervisor.workspace_healthy?(workspace.id)
       containers_up? = any_running_containers?(workspace.id)
 
       if supervisor_up? or containers_up? do
@@ -187,6 +190,12 @@ defmodule BoomLooperWeb.WorkspaceLive do
   rescue
     _ -> false
   end
+
+  defp truncate(bin, max) when is_binary(bin) do
+    if byte_size(bin) > max, do: binary_part(bin, 0, max) <> "…", else: bin
+  end
+
+  defp truncate(other, max), do: other |> inspect() |> truncate(max)
 
   defp any_running_containers?(workspace_id) do
     BoomLooper.Docker.Observer.containers_for(workspace_id)
@@ -1009,6 +1018,43 @@ defmodule BoomLooperWeb.WorkspaceLive do
 
   def handle_info({:docker_state_reset}, socket) do
     {:noreply, socket}
+  end
+
+  # ServiceManager fires this when a compose up/down attempt has
+  # completed — success OR definitive failure. Without this, a compose
+  # up that bombed out during build (missing Dockerfile, etc.) would
+  # leave the LV pinned at :starting forever: the :docker_state_changed
+  # pathway never flips us to :started (no containers come up) and
+  # there's no other signal saying "give up." This is the signal.
+  @impl true
+  def handle_info({:compose_result, workspace_id, result}, socket) do
+    ws = socket.assigns.workspace
+    ws_entry = socket.assigns[:workspace_entry]
+    our_id = (ws_entry && ws_entry.id) || ws.id
+
+    if workspace_id == our_id do
+      target =
+        case {socket.assigns.workspace_state, result} do
+          {:starting, :ok} -> :started
+          {:starting, {:error, _}} -> :stopped
+          {:stopping, :ok} -> :stopped
+          {:stopping, {:error, _}} -> :started
+          _ -> socket.assigns.workspace_state
+        end
+
+      socket =
+        case result do
+          {:error, reason} ->
+            put_flash(socket, :error, "Cluster didn't start: #{truncate(reason, 200)}")
+
+          :ok ->
+            socket
+        end
+
+      {:noreply, transition_workspace_state(socket, target)}
+    else
+      {:noreply, socket}
+    end
   end
 
   @impl true

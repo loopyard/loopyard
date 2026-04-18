@@ -292,6 +292,13 @@ defmodule BoomLooper.ChatAgent do
     broadcast(@topic, {:chat_agent_boot_failed, id, reason})
   end
 
+  # How long an agent is allowed to stay in :booting before we
+  # conclude its boot Task died without running its failure handler
+  # (task supervisor shutdown, OS kill, etc.) and forcibly surface
+  # it as :crashed so the UI's Start button appears. Anything under
+  # this window is still legitimately booting.
+  @stuck_booting_seconds 300
+
   def list_agents do
     :ets.tab2list(@ets_table)
     |> Enum.map(fn {_id, summary} ->
@@ -303,7 +310,19 @@ defmodule BoomLooper.ChatAgent do
           catch
             :exit, _ -> summary
           end
-        [] -> summary
+
+        [] ->
+          # No live GenServer. If the summary claims :booting and it's
+          # been sitting there longer than @stuck_booting_seconds, the
+          # boot task has almost certainly died without running its
+          # rescue/catch clauses (TaskSupervisor shutdown, OS kill,
+          # etc). Present it as :crashed so the user sees a real
+          # action (Start/Remove) instead of a perpetual spinner.
+          if stuck_booting?(summary) do
+            %{summary | status: :crashed}
+          else
+            summary
+          end
       end
     end)
     # Agents without a started_at (e.g. test-seeded ETS rows, half-
@@ -1030,6 +1049,12 @@ defmodule BoomLooper.ChatAgent do
   end
 
   defp via(id), do: {:via, Registry, {BoomLooper.ChatAgentRegistry, id}}
+
+  defp stuck_booting?(%{status: :booting, started_at: %DateTime{} = t}) do
+    DateTime.diff(DateTime.utc_now(), t, :second) > @stuck_booting_seconds
+  end
+
+  defp stuck_booting?(_), do: false
 
   defp summary(state) do
     %{
