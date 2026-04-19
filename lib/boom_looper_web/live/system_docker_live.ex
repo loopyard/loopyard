@@ -27,6 +27,7 @@ defmodule BoomLooperWeb.SystemDockerLive do
       |> assign_iex()
       |> assign(:containers, observer.containers)
       |> assign(:volumes, observer.volumes)
+      |> assign(:docker_connected, BoomLooper.Docker.Observer.connected?())
       |> assign(:container_stats, AsyncResult.loading())
 
     if connected?(socket) do
@@ -48,18 +49,38 @@ defmodule BoomLooperWeb.SystemDockerLive do
   # workspace_live). Still zero docker calls; reads are ETS-local.
   @impl true
   def handle_info({:docker_state_changed}, socket) do
-    {:noreply,
-     socket
-     |> assign(:containers, BoomLooper.Docker.Observer.containers())
-     |> assign(:volumes, BoomLooper.Docker.Observer.volumes())}
+    {:noreply, refresh_from_observer(socket)}
   end
 
-  # Observer lost connection to Docker — show whatever we had last
+  # Observer cache wiped (≥ @stale_cache_threshold consecutive fetch
+  # failures). Re-read from ETS so the empty cache reaches the template
+  # — otherwise the page shows the pre-wipe snapshot indefinitely.
   def handle_info({:docker_state_reset}, socket) do
-    {:noreply, socket}
+    {:noreply, refresh_from_observer(socket)}
+  end
+
+  # Event stream died (daemon restart / Colima pause). Cache is still
+  # populated with the last-known state; we just need to flip the
+  # :docker_connected flag so the UI can render a "stale" badge.
+  def handle_info({:docker_state_disconnected}, socket) do
+    {:noreply, assign(socket, :docker_connected, false)}
+  end
+
+  # Event stream came back. Re-read and clear the stale badge.
+  def handle_info({:docker_state_reconnected}, socket) do
+    {:noreply,
+     socket
+     |> assign(:docker_connected, true)
+     |> refresh_from_observer()}
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  defp refresh_from_observer(socket) do
+    socket
+    |> assign(:containers, BoomLooper.Docker.Observer.containers())
+    |> assign(:volumes, BoomLooper.Docker.Observer.volumes())
+  end
 
   @impl true
   def handle_async(key, {:ok, value}, socket) do

@@ -1065,8 +1065,34 @@ defmodule BoomLooperWeb.WorkspaceLive do
      |> transition_workspace_state(new_state)}
   end
 
+  # Observer cache wiped (≥ stale_cache_threshold consecutive fetch
+  # failures) or initial bootstrap failure. Re-read from ETS so the
+  # sidebar reflects the empty cache; otherwise it'd keep showing
+  # services/volumes that are no longer authoritative.
   def handle_info({:docker_state_reset}, socket) do
-    {:noreply, socket}
+    ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
+    {service_statuses, volumes} = load_sidebar_from_observer(nil, ws_id)
+    guarded = guard_service_statuses(socket, service_statuses)
+
+    {:noreply,
+     socket
+     |> assign(:service_statuses, guarded)
+     |> assign(:volumes, volumes)}
+  end
+
+  # Event stream to Docker died — cache is retained but now stale.
+  # Flip the connectivity flag so the sidebar's "Docker disconnected"
+  # badge renders. `derive_workspace_state` holds the previous state
+  # during the disconnect window, so the Start/Stop button stays sane.
+  def handle_info({:docker_state_disconnected}, socket) do
+    {:noreply, assign(socket, :docker_connected, false)}
+  end
+
+  # Stream back. Flip the flag and let the next :docker_state_changed
+  # (which the reconnect bootstrap always emits after its snapshot)
+  # refresh the sidebar.
+  def handle_info({:docker_state_reconnected}, socket) do
+    {:noreply, assign(socket, :docker_connected, true)}
   end
 
   # ServiceManager fires this when a compose up/down attempt has

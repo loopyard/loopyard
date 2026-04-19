@@ -160,11 +160,37 @@ defmodule BoomLooperWeb.ProjectLive do
 
   @impl true
   def handle_info({event, _}, socket)
-      when event in [:chat_agent_started, :chat_agent_stopped, :chat_agent_booting, :chat_agent_removed] do
+      when event in [
+             :chat_agent_started,
+             :chat_agent_stopped,
+             :chat_agent_booting,
+             :chat_agent_removed,
+             # Supervisor restart after a crash or log replay. Without
+             # this, a workspace card stays showing the agent as
+             # :crashed even though the new GenServer is alive — same
+             # root cause as the workspace-LV sidebar sleepy-agent bug.
+             :chat_agent_resumed,
+             # Rename changes agent metadata we render in the card.
+             :chat_agent_renamed,
+             # Boot progress ticks through this; each change updates
+             # the "Initializing…" label.
+             :chat_agent_boot_status,
+             # Boot blew up — badge needs to flip from :booting to the
+             # real failure state so the user can retry.
+             :chat_agent_boot_failed
+           ] do
     # Agent events only affect agent_count — don't re-walk services/volumes.
     # Each re-walk used to reshell to Docker for every volume across every
     # workspace, blocking the LV for tens of seconds on machines with many
     # volumes. Load only what changed; merge with existing counts.
+    {:noreply, assign(socket, :workspaces, merge_sections(socket, [:agents]))}
+  end
+
+  # Status changes ship `{tag, id, status}`, not `{tag, payload}` — the
+  # two-element catch-all above won't match. Route through the same
+  # agent-section merge so the card reflects the new status immediately.
+  @impl true
+  def handle_info({:chat_agent_status_changed, _id, _status}, socket) do
     {:noreply, assign(socket, :workspaces, merge_sections(socket, [:agents]))}
   end
 
