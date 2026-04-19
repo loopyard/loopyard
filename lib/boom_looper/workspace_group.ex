@@ -21,6 +21,11 @@ defmodule BoomLooper.WorkspaceGroup do
     base_children = [
       {BoomLooper.Workspace.ServiceManager, project_dir: project_dir, workspace_id: workspace_id},
       {DynamicSupervisor, name: agent_sup_name(workspace_id), strategy: :one_for_one},
+      # RestartController owns every agent respawn decision. Must
+      # start after the agent DynamicSupervisor (it calls
+      # start_child against it) and before ContainerMonitor
+      # (doesn't matter but keeps related things adjacent).
+      {BoomLooper.ChatAgent.RestartController, workspace_id: workspace_id},
       {BoomLooper.ContainerMonitor, project_dir: project_dir, workspace_id: workspace_id}
     ]
 
@@ -49,11 +54,18 @@ defmodule BoomLooper.WorkspaceGroup do
     end
   end
 
-  @doc "Start a ChatAgent under this workspace's agent supervisor."
+  @doc """
+  Start a ChatAgent under this workspace.
+
+  Routes through `BoomLooper.ChatAgent.RestartController` so crash
+  tracking + quarantine are enforced from the first spawn. Returns
+  `{:error, :quarantined}` if the agent id is currently in
+  quarantine (operator must `release/1` first).
+  """
   def start_agent(workspace_id, agent_opts) do
     case agent_sup_pid(workspace_id) do
       nil -> {:error, :workspace_not_running}
-      _pid -> DynamicSupervisor.start_child(agent_sup_name(workspace_id), {BoomLooper.ChatAgent, agent_opts})
+      _pid -> BoomLooper.ChatAgent.RestartController.start_agent(workspace_id, agent_opts)
     end
   end
 

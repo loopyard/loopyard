@@ -74,7 +74,8 @@ defmodule BoomLooperWeb.SystemLive do
     %{
       workspaces: length(BoomLooper.ProjectRegistry.list_projects()),
       agents: length(BoomLooper.ChatAgent.list_agents()),
-      cli: length(SystemStats.claude_cli_processes())
+      cli: length(SystemStats.claude_cli_processes()),
+      quarantined: length(BoomLooper.ChatAgent.RestartController.list_quarantined())
     }
   end
 
@@ -250,7 +251,7 @@ defmodule BoomLooperWeb.SystemLive do
     ~H"""
     <section>
       <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">Cluster</h2>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
         <.drilldown_card href="/system/ports" title="Ports" subtitle="Host port assignments + exposure">
           <span class="text-zinc-400">audit + expose</span>
         </.drilldown_card>
@@ -267,6 +268,17 @@ defmodule BoomLooperWeb.SystemLive do
           <%= case @counts do %>
             <% %{ok?: true, result: %{cli: cli}} -> %>
               <span class="font-mono">{cli}</span> claude CLI processes
+            <% _ -> %>
+              <span class="text-zinc-400">loading…</span>
+          <% end %>
+        </.drilldown_card>
+
+        <.drilldown_card href="/system/quarantine" title="Quarantine" subtitle="Agents blocked from restart after crash loops">
+          <%= case @counts do %>
+            <% %{ok?: true, result: %{quarantined: 0}} -> %>
+              <span class="text-emerald-600 dark:text-emerald-400">0 quarantined</span>
+            <% %{ok?: true, result: %{quarantined: n}} -> %>
+              <span class="text-red-600 dark:text-red-400 font-mono">{n}</span> <span class="text-red-600 dark:text-red-400">quarantined — investigate</span>
             <% _ -> %>
               <span class="text-zinc-400">loading…</span>
           <% end %>

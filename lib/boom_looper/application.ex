@@ -17,6 +17,10 @@ defmodule BoomLooper.Application do
       BoomLooper.StateKeeper,
       {Phoenix.PubSub, name: BoomLooper.PubSub},
       {Registry, keys: :unique, name: BoomLooper.ChatAgentRegistry},
+      # Per-workspace RestartController registry — one controller per
+      # workspace tracks crash history and decides whether to respawn
+      # or quarantine each ChatAgent.
+      {Registry, keys: :unique, name: BoomLooper.ChatAgent.RestartControllerRegistry},
       {Registry, keys: :unique, name: BoomLooper.ServiceManagerRegistry},
       {Registry, keys: :unique, name: BoomLooper.WorkspaceRegistry},
       {Registry, keys: :unique, name: BoomLooper.WorkspaceAgentRegistry},

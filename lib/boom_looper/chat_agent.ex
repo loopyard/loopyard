@@ -5,7 +5,12 @@ defmodule BoomLooper.ChatAgent do
   Unlike the PTY-based Agent, this uses the JSON protocol
   for a proper multiplayer chat experience.
   """ # Force recompile: 2026-03-26T14:55
-  use GenServer, restart: :transient
+  # :temporary — the DynamicSupervisor never auto-restarts. The
+  # BoomLooper.ChatAgent.RestartController GenServer owns every
+  # respawn decision synchronously, which gives us exact quarantine
+  # semantics: the Nth crash quarantines before the N+1th can occur.
+  # See plans/coordination-hardening.md Move #10.
+  use GenServer, restart: :temporary
   require Logger
 
   alias BoomLooper.Agent.Event

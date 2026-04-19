@@ -67,6 +67,15 @@ defmodule BoomLooperWeb.BroadcastCoverageTest do
     :docker_state_reconnected
   ]
 
+  # SystemQuarantineLive subscribes to "chat_agents" but only cares
+  # about the quarantine-specific events. Other agent lifecycle
+  # events fall through to the catch-all intentionally — they don't
+  # change the quarantine list.
+  @system_quarantine_live_required_events [
+    :chat_agent_quarantined,
+    :chat_agent_released
+  ]
+
   test "workspace_live handles every event it subscribes to" do
     assert_handlers_exist(
       "lib/boom_looper_web/live/workspace_live.ex",
@@ -85,6 +94,13 @@ defmodule BoomLooperWeb.BroadcastCoverageTest do
     assert_handlers_exist(
       "lib/boom_looper_web/live/system_docker_live.ex",
       @system_docker_live_required_events
+    )
+  end
+
+  test "system_quarantine_live handles every quarantine event" do
+    assert_handlers_exist(
+      "lib/boom_looper_web/live/system_quarantine_live.ex",
+      @system_quarantine_live_required_events
     )
   end
 
