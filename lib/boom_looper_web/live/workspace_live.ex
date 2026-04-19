@@ -888,11 +888,10 @@ defmodule BoomLooperWeb.WorkspaceLive do
   def handle_info({:chat_agent_stopped, _}, socket) do
     agents = AgentLifecycle.list_workspace_agents(socket.assigns.workspace.path)
 
-    selected =
-      if socket.assigns.selected_id,
-        do: Enum.find(agents, &(&1.id == socket.assigns.selected_id))
-
-    {:noreply, socket |> assign(:agents, agents) |> assign(:selected_agent, selected)}
+    {:noreply,
+     socket
+     |> assign(:agents, agents)
+     |> refresh_selected_agent(socket.assigns.selected_id)}
   end
 
   @impl true
@@ -920,8 +919,10 @@ defmodule BoomLooperWeb.WorkspaceLive do
 
     socket =
       if id == socket.assigns.selected_id do
-        selected = Enum.find(agents, &(&1.id == id))
-        assign(socket, :selected_agent, selected)
+        # Pull the fresh summary from ETS — not the stale copy in
+        # the sidebar list. Otherwise we clobber the live token/cost
+        # counts every time an agent is renamed.
+        refresh_selected_agent(socket, id)
       else
         socket
       end
@@ -940,8 +941,12 @@ defmodule BoomLooperWeb.WorkspaceLive do
 
     socket =
       if id == socket.assigns.selected_id do
-        selected = Enum.find(agents, &(&1.id == id))
-        assign(socket, :selected_agent, selected)
+        # Pull the fresh summary from ETS. Using the stale sidebar
+        # list would reset the context panel's tokens/cost to whatever
+        # they were the last time the sidebar rebuilt — which was the
+        # original "awaiting first response" latched-low-water mark.
+        # Every :idle ↔ :thinking cycle used to nuke the Claude panel.
+        refresh_selected_agent(socket, id)
       else
         socket
       end

@@ -43,7 +43,15 @@ defmodule BoomLooper.ChatAgent.ToolConfig do
     "Glob",
     "Grep",
     "MultiEdit",
-    "NotebookEdit"
+    "NotebookEdit",
+    # Task spawns a sub-agent that shares our MCP session but has its
+    # own synthetic agent_id. Every MCP tool call the sub-agent makes
+    # is rejected by BoomLooper.Tool.authorize_agent/2 ("agent_id
+    # mismatch"), silently looping until it burns tokens or gives up.
+    # Sub-agents would also violate our workspace boundary (one agent
+    # = one workspace_id). Until we design sub-agent identity properly,
+    # disable Task.
+    "Task"
   ]
 
   @doc "Returns the list of native tools denied for container-only agents."
