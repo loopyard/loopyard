@@ -44,7 +44,13 @@ defmodule BoomLooper.StateKeeper do
     # crash), the crash counters survive — otherwise quarantine gets
     # reset and an agent that was 4-of-5 crashes resets to 0-of-5.
     # Move #10 bug fix (audit item HIGH #3).
-    {:restart_controller_history, [:named_table, :public, :set, {:read_concurrency, true}]}
+    {:restart_controller_history, [:named_table, :public, :set, {:read_concurrency, true}]},
+    # BoomLooper.Saga.Recorder — last 100 saga run records keyed by
+    # saga_id. Previously created in Recorder.init/1 directly, which
+    # violated the "StateKeeper is the sole ETS owner" invariant and
+    # meant a Recorder crash dropped every recorded saga. Owned here
+    # now so recovery is trivial. Audit item MEDIUM #10.
+    {:saga_recorder, [:named_table, :public, :set, {:read_concurrency, true}]}
   ]
 
   def start_link(_opts) do

@@ -135,15 +135,21 @@ defmodule BoomLooper.Agent.ReconcilerTest do
 
   describe "reconcile_now telemetry" do
     test "emits [:reconcile, :run] with duration, drift_count, checked" do
-      handler_id = :reconcile_run_test
+      # Previous version attached a handler that called `send(self(), ...)`
+      # from inside the closure — but `self()` inside the closure is
+      # the telemetry dispatcher, not the test pid, so the message
+      # went nowhere. Capture the test pid BEFORE attaching. Audit
+      # MEDIUM #9.
+      test_pid = self()
+      handler_id = "reconcile-run-test-#{System.unique_integer([:positive])}"
 
       :telemetry.attach(
         handler_id,
         [:boom_looper, :reconcile, :run],
         fn _event, measurements, metadata, _config ->
-          send(self(), {:telemetry, measurements, metadata})
+          send(test_pid, {:telemetry, measurements, metadata})
         end,
-        self()
+        nil
       )
 
       on_exit(fn -> :telemetry.detach(handler_id) end)
@@ -153,10 +159,12 @@ defmodule BoomLooper.Agent.ReconcilerTest do
       :ets.insert(:chat_agents, {id, %{id: id, status: :idle, messages: [], name: "T"}})
 
       Reconciler.reconcile_now()
-      # Telemetry events are emitted synchronously, but we use the
-      # test's process pid via the config — need to actually check
-      # the run result since the :telemetry.attach closure doesn't
-      # know about 'self()' — bypass: inspect the result directly.
+
+      assert_receive {:telemetry, measurements, metadata}, 500
+      assert is_integer(measurements.duration_ms)
+      assert measurements.drift_count == 1
+      assert measurements.checked >= 1
+      assert metadata.reconciler == :agents
     end
 
     test "reconcile_now returns ran_at, duration_ms, checked, drift_count, drifts" do

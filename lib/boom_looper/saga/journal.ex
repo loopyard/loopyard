@@ -259,6 +259,15 @@ defmodule BoomLooper.Saga.Journal do
               "but no resume handler is registered; falling back to rollback"
           )
 
+          # Emit dedicated telemetry so operators running telemetry-
+          # forwarders don't have to grep logs for the downgrade.
+          # Audit MEDIUM #6.
+          :telemetry.execute(
+            [:boom_looper, :saga, :resume_forward_downgraded],
+            %{count: 1},
+            %{saga: saga.name, saga_id: saga.saga_id, reason: :no_handler_registered}
+          )
+
           dispatch_rollback(saga)
 
           %{acc | dispatched: acc.dispatched + 1, rolled_back: acc.rolled_back + 1}

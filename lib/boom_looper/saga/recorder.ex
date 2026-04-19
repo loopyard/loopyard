@@ -110,10 +110,12 @@ defmodule BoomLooper.Saga.Recorder do
 
   @impl true
   def init(_) do
-    # Single ordered_set keyed by saga_id so newest-first reads are
-    # an Enum.sort_by call rather than a full-table walk.
-    :ets.new(@table, [:named_table, :public, :set, {:read_concurrency, true}])
-
+    # ETS table is owned by StateKeeper (audit MEDIUM #10). Previously
+    # this module called `:ets.new/2` directly, which meant a Recorder
+    # crash destroyed the table and every recorded saga was lost.
+    # StateKeeper-owned means the table survives any number of
+    # Recorder restarts.
+    BoomLooper.StateKeeper.ensure_tables!()
     attach_handlers()
 
     {:ok, %{}}
