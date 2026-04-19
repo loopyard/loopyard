@@ -835,6 +835,30 @@ defmodule BoomLooperWeb.WorkspaceLive do
   end
 
   @impl true
+  def handle_info({:chat_agent_resumed, summary}, socket) do
+    # Resume = an agent supervisor (re)started the GenServer after a
+    # crash or log replay. Without this handler the sidebar would
+    # latch at whatever `:chat_agent_status_changed` last said — often
+    # `:crashed` — even though the new GenServer is alive and idle.
+    # That's the "it says Sleeping but the agent is actually up" bug.
+    agents =
+      Enum.map(socket.assigns.agents, fn a ->
+        if a.id == summary.id, do: summary, else: a
+      end)
+
+    socket = assign(socket, :agents, agents)
+
+    socket =
+      if summary.id == socket.assigns.selected_id do
+        refresh_selected_agent(socket, summary.id)
+      else
+        socket
+      end
+
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_info({:chat_agent_booting, summary}, socket) do
     {:noreply, assign(socket, :agents, AgentLifecycle.list_workspace_agents(socket.assigns.workspace.path))
      |> then(fn s ->
