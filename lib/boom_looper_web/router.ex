@@ -44,6 +44,7 @@ defmodule BoomLooperWeb.Router do
     live "/system/ports", SystemPortsLive, :index
     live "/system/quarantine", SystemQuarantineLive, :index
     live "/system/events", SystemEventsLive, :index
+    live "/system/sagas", SystemSagasLive, :index
     live "/connect", ConnectLive, :index
 
     live "/messages/:agent_id/:msg_id", MessageLive, :show

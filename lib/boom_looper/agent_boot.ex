@@ -2,11 +2,36 @@ defmodule BoomLooper.AgentBoot do
   @moduledoc """
   Shared agent boot logic used by both the LiveView and the System API.
   Handles service startup and sending the initial message.
+
+  ## Saga structure (Move #7a)
+
+  The boot flow runs as a `BoomLooper.Saga` so each step's failure
+  triggers explicit rollback of prior steps. Steps:
+
+    1. `:load_config` — read workspace config from the volume. Pure
+       read; no rollback.
+    2. `:ensure_services` — if the workspace container isn't already
+       running, kick off compose-up via `ServiceManager.start_services`.
+       For Setup agents, a compose-up failure is a soft error (they
+       exist to fix broken infrastructure). Rollback: no-op. Services
+       staying up on failure is fine — the next boot reuses them, and
+       tearing down a cluster because one agent failed to start would
+       harm other users on the same workspace.
+    3. `:start_agent` — spawn the ChatAgent GenServer under the
+       workspace supervisor (with one rebuild-retry). Rollback:
+       `ChatAgent.stop_agent/1` — terminates the GenServer so we don't
+       leak it when step 4 fails.
+    4. `:send_initial_message` — cast the first user message. Only
+       fires if `initial_message` isn't `:none` and a default message
+       exists.
+
+  On failure, `boot_failed/2` is called outside the saga so the UI
+  sees the transient `:chat_agent_boot_failed` event and clears the
+  `:booting` ETS entry regardless of which saga step tripped.
   """
   require Logger
 
-  alias BoomLooper.ChatAgent
-  alias BoomLooper.Workspace
+  alias BoomLooper.{ChatAgent, Saga, Workspace}
 
   @doc """
   Boot an agent: start services, start the Claude session, and send the initial message.
@@ -20,103 +45,186 @@ defmodule BoomLooper.AgentBoot do
     working_dir = Keyword.fetch!(agent_opts, :working_dir)
     service_name = Keyword.get(opts, :service_name)
     initial_message = Keyword.get(opts, :initial_message)
-    agent_type = Keyword.get(agent_opts, :agent_type) || BoomLooper.Agents.Registry.default_agent_name()
+    agent_type =
+      Keyword.get(agent_opts, :agent_type) || BoomLooper.Agents.Registry.default_agent_name()
+
     # Use workspace_id from opts if provided (volume-based workspaces pass it),
     # otherwise compute from path (bind-mount workspaces)
     workspace_id = Keyword.get(agent_opts, :workspace_id) || Workspace.workspace_id(working_dir)
 
-    # Load workspace config from volume (nil if no config yet)
     # Volume-based workspaces pass the volume name, otherwise compute from workspace_id
     volume_name = Keyword.get(agent_opts, :volume) || "code-#{workspace_id}"
-    ws_config =
-      case Workspace.load_from_volume(volume_name) do
-        {:ok, ws} -> ws
-        _ -> nil
-      end
 
-    # Start services if workspace container isn't running.
-    #
-    # For a Setup agent, a compose-up failure is a SOFT error: the
-    # whole point of a Setup agent is to fix broken infrastructure.
-    # If the user is staring at a workspace whose docker-compose.yml
-    # references a Dockerfile that doesn't exist yet, the Setup
-    # agent needs to come up so it can write the Dockerfile and
-    # retry. Blocking spawn on compose-up deadlocks the flow — the
-    # user can't summon the one agent type designed to fix this.
-    #
-    # For other agent types, a failed compose means there's no
-    # container to exec into — boot still fails since the tools
-    # won't work. Those errors surface as the same boot-failed
-    # message the user saw before.
-    ws_container = Workspace.ServiceManager.service_container_name(workspace_id, "workspace")
+    steps = [
+      load_config_step(volume_name),
+      ensure_services_step(id, workspace_id, working_dir, agent_type),
+      start_agent_step(id, workspace_id, agent_opts, working_dir, agent_type),
+      send_initial_message_step(id, agent_type, initial_message, service_name)
+    ]
 
-    unless BoomLooper.Docker.container_running?(ws_container) do
-      ChatAgent.update_boot_status(id, "Starting services...")
+    saga_result =
+      Saga.run(steps,
+        name: :boot_agent,
+        context: %{id: id, workspace_id: workspace_id, agent_type: agent_type},
+        metadata: %{agent_id: id, workspace_id: workspace_id, agent_type: agent_type}
+      )
 
-      case Workspace.ServiceManager.start_services(working_dir) do
-        {:ok, _} ->
-          :ok
-
-        {:error, :service_manager_not_running} ->
-          :ok
-
-        {:error, reason} when agent_type == "setup" ->
-          Logger.warning(
-            "[AgentBoot] #{id} compose up failed; booting Setup agent anyway so it can fix the cluster: #{inspect(reason)}"
-          )
-
-          ChatAgent.update_boot_status(id, "Cluster unhealthy — Setup agent will diagnose")
-          :ok
-
-        {:error, reason} ->
-          ChatAgent.boot_failed(id, reason)
-          raise "Service start failed: #{inspect(reason)}"
-      end
-    end
-
-    # Start the agent GenServer
-    ChatAgent.update_boot_status(id, "Starting Claude session...")
-    Logger.info("[AgentBoot] #{id} starting Claude session ws=#{workspace_id} type=#{agent_type}")
-
-    case start_agent_with_retry(workspace_id, agent_opts, working_dir) do
-      {:ok, _pid} ->
-        Logger.info("[AgentBoot] #{id} Claude session started successfully")
-        BoomLooper.EventLog.info(
-          "agent_boot:#{workspace_id}",
-          "Agent #{id} (#{agent_type}) Claude session started"
-        )
-
-        # Send initial message (skip if explicitly :none — blank agents wait for user input)
-        unless initial_message == :none do
-          msg = initial_message || default_message(agent_type, ws_config, service_name)
-          if msg, do: ChatAgent.send_message(id, msg)
-        end
-
+    case saga_result do
+      {:ok, _ctx} ->
         :ok
 
-      {:error, reason} ->
-        Logger.error("[AgentBoot] #{id} start_agent failed: #{inspect(reason)}")
+      {:error, {:step_failed, step, reason}, _rollback_outcome} ->
+        Logger.error("[AgentBoot] #{id} saga step #{step} failed: #{inspect(reason)}")
 
         BoomLooper.EventLog.error(
           "agent_boot:#{workspace_id}",
-          "start_agent failed reason=#{inspect(reason)} " <>
-            "ws_id=#{workspace_id} type=#{agent_type} " <>
-            "group=#{inspect(BoomLooper.WorkspaceGroup.whereis(workspace_id))}"
+          "boot saga failed at #{step}: #{inspect(reason)} " <>
+            "ws_id=#{workspace_id} type=#{agent_type}"
         )
 
         ChatAgent.boot_failed(id, reason)
         {:error, reason}
     end
-  rescue
-    e ->
-      Logger.error("[AgentBoot] #{id} crashed: #{Exception.message(e)}")
-      ChatAgent.boot_failed(id, Exception.message(e))
-      {:error, Exception.message(e)}
-  catch
-    :exit, reason ->
-      Logger.error("[AgentBoot] #{id} exited: #{inspect(reason)}")
-      ChatAgent.boot_failed(id, "Boot process exited: #{inspect(reason)}")
-      {:error, reason}
+  end
+
+  # --- Saga steps ---
+
+  # Load workspace config from volume. Read-only; no rollback.
+  defp load_config_step(volume_name) do
+    %{
+      name: :load_config,
+      run: fn _ctx ->
+        ws_config =
+          case Workspace.load_from_volume(volume_name) do
+            {:ok, ws} -> ws
+            _ -> nil
+          end
+
+        {:ok, %{ws_config: ws_config}}
+      end
+    }
+  end
+
+  # Ensure services are running. Soft-fail for Setup agents (they
+  # exist to FIX the cluster; blocking them on a broken cluster
+  # deadlocks the fix path). For every other agent type, compose-up
+  # failure halts the saga.
+  #
+  # Rollback: no-op. Services staying up doesn't leak — the next
+  # boot reuses them, and tearing the cluster down because one
+  # agent failed to spawn would harm other agents or users on
+  # the same workspace.
+  defp ensure_services_step(id, workspace_id, working_dir, agent_type) do
+    %{
+      name: :ensure_services,
+      run: fn _ctx ->
+        ws_container =
+          Workspace.ServiceManager.service_container_name(workspace_id, "workspace")
+
+        if BoomLooper.Docker.container_running?(ws_container) do
+          {:ok, %{services_started_here: false}}
+        else
+          ChatAgent.update_boot_status(id, "Starting services...")
+
+          case Workspace.ServiceManager.start_services(working_dir) do
+            {:ok, _} ->
+              {:ok, %{services_started_here: true}}
+
+            {:error, :service_manager_not_running} ->
+              # ServiceManager hasn't been supervised yet — not fatal;
+              # start_agent_with_retry below will rebuild the workspace
+              # supervisor on first spawn attempt.
+              {:ok, %{services_started_here: false}}
+
+            {:error, reason} when agent_type == "setup" ->
+              Logger.warning(
+                "[AgentBoot] #{id} compose up failed; booting Setup agent anyway " <>
+                  "so it can fix the cluster: #{inspect(reason)}"
+              )
+
+              ChatAgent.update_boot_status(
+                id,
+                "Cluster unhealthy — Setup agent will diagnose"
+              )
+
+              {:ok, %{services_started_here: false}}
+
+            {:error, reason} ->
+              {:error, {:service_start_failed, reason}}
+          end
+        end
+      end
+    }
+  end
+
+  # Spawn the ChatAgent GenServer. Rollback stops it so a
+  # later-step failure doesn't leak a running agent.
+  defp start_agent_step(id, workspace_id, agent_opts, working_dir, agent_type) do
+    %{
+      name: :start_agent,
+      run: fn _ctx ->
+        ChatAgent.update_boot_status(id, "Starting Claude session...")
+
+        Logger.info(
+          "[AgentBoot] #{id} starting Claude session ws=#{workspace_id} type=#{agent_type}"
+        )
+
+        case start_agent_with_retry(workspace_id, agent_opts, working_dir) do
+          {:ok, pid} ->
+            Logger.info("[AgentBoot] #{id} Claude session started successfully")
+
+            BoomLooper.EventLog.info(
+              "agent_boot:#{workspace_id}",
+              "Agent #{id} (#{agent_type}) Claude session started"
+            )
+
+            {:ok, %{agent_pid: pid}}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+      end,
+      rollback: fn _ctx ->
+        # Best-effort — agent may already be gone. stop_agent is
+        # a cast-based call in ChatAgent; it's idempotent against
+        # missing agents.
+        try do
+          ChatAgent.stop_agent(id)
+        rescue
+          _ -> :ok
+        catch
+          _, _ -> :ok
+        end
+
+        :ok
+      end
+    }
+  end
+
+  # Send the initial user message. Fire-and-forget cast; a cast
+  # can't fail synchronously. Included as a saga step so the
+  # send-or-skip decision is visible in `/system/sagas` alongside
+  # the earlier steps.
+  defp send_initial_message_step(id, agent_type, initial_message, service_name) do
+    %{
+      name: :send_initial_message,
+      run: fn ctx ->
+        ws_config = Map.get(ctx, :ws_config)
+
+        if initial_message == :none do
+          {:ok, %{initial_message: :skipped}}
+        else
+          msg = initial_message || default_message(agent_type, ws_config, service_name)
+
+          if msg do
+            ChatAgent.send_message(id, msg)
+            {:ok, %{initial_message: :sent}}
+          else
+            {:ok, %{initial_message: :none}}
+          end
+        end
+      end
+    }
   end
 
   # Retry agent spawn once if the workspace supervisor isn't

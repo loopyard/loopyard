@@ -2,8 +2,21 @@ defmodule BoomLooper.WorkspaceSupervisor do
   @moduledoc """
   Top-level DynamicSupervisor that holds all workspace subtrees.
   Each workspace gets its own Supervisor with ServiceManager + AgentSupervisor.
+
+  ## Saga-wrapped start (Move #7a)
+
+  `start_workspace/2` runs as a `BoomLooper.Saga` when it needs to
+  rebuild an unhealthy group. The saga makes the stop-then-start
+  sequence atomic: if the `start_child` fails after the stop,
+  rollback is a no-op (we couldn't bring the old group back anyway,
+  and the stop is not reversible), but `/system/sagas` surfaces the
+  failed step with the underlying reason so the operator knows the
+  workspace is down. In the common no-rebuild case (group missing
+  OR healthy) we skip the saga ceremony — there's only one step.
   """
   use DynamicSupervisor
+
+  alias BoomLooper.Saga
 
   def start_link(init_arg) do
     DynamicSupervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
@@ -18,8 +31,7 @@ defmodule BoomLooper.WorkspaceSupervisor do
   def start_workspace(workspace_id, project_dir) do
     case BoomLooper.WorkspaceGroup.whereis(workspace_id) do
       nil ->
-        DynamicSupervisor.start_child(__MODULE__,
-          {BoomLooper.WorkspaceGroup, workspace_id: workspace_id, project_dir: project_dir})
+        start_child(workspace_id, project_dir)
 
       _pid ->
         # WorkspaceGroup exists — but its ServiceManager child might
@@ -38,13 +50,51 @@ defmodule BoomLooper.WorkspaceSupervisor do
             "[WorkspaceSupervisor] #{workspace_id} group alive but ServiceManager missing; restarting group"
           )
 
-          stop_workspace(workspace_id)
-
-          DynamicSupervisor.start_child(
-            __MODULE__,
-            {BoomLooper.WorkspaceGroup, workspace_id: workspace_id, project_dir: project_dir}
-          )
+          rebuild_saga(workspace_id, project_dir)
         end
+    end
+  end
+
+  defp start_child(workspace_id, project_dir) do
+    DynamicSupervisor.start_child(
+      __MODULE__,
+      {BoomLooper.WorkspaceGroup, workspace_id: workspace_id, project_dir: project_dir}
+    )
+  end
+
+  # The two-step rebuild flow: stop the unhealthy group, then start
+  # a fresh one. Step 1 (stop) has no rollback — we can't un-stop
+  # a supervisor, and the reason we stopped it is that it was
+  # already unhealthy. Step 2 (start) has no rollback either: if
+  # the start fails we just return the error to the caller. The
+  # saga wrapping buys us telemetry + `/system/sagas` visibility
+  # for this otherwise-invisible multi-step transaction.
+  defp rebuild_saga(workspace_id, project_dir) do
+    steps = [
+      %{
+        name: :stop_unhealthy_group,
+        run: fn _ctx ->
+          stop_workspace(workspace_id)
+          {:ok, %{}}
+        end
+      },
+      %{
+        name: :start_fresh_group,
+        run: fn _ctx ->
+          case start_child(workspace_id, project_dir) do
+            {:ok, pid} -> {:ok, %{pid: pid}}
+            {:error, reason} -> {:error, reason}
+          end
+        end
+      }
+    ]
+
+    case Saga.run(steps,
+           name: :rebuild_workspace,
+           metadata: %{workspace_id: workspace_id}
+         ) do
+      {:ok, %{pid: pid}} -> {:ok, pid}
+      {:error, {:step_failed, _step, reason}, _} -> {:error, reason}
     end
   end
 

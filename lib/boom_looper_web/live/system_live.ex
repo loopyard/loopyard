@@ -76,7 +76,8 @@ defmodule BoomLooperWeb.SystemLive do
       workspaces: length(BoomLooper.ProjectRegistry.list_projects()),
       agents: length(BoomLooper.ChatAgent.list_agents()),
       cli: length(SystemStats.claude_cli_processes()),
-      quarantined: length(BoomLooper.ChatAgent.RestartController.list_quarantined())
+      quarantined: length(BoomLooper.ChatAgent.RestartController.list_quarantined()),
+      sagas: BoomLooper.Saga.Recorder.summary()
     }
   end
 
@@ -339,6 +340,19 @@ defmodule BoomLooperWeb.SystemLive do
 
         <.drilldown_card href="/system/events" title="Events" subtitle="Live PubSub timeline — paste into any bug report">
           <span class="text-zinc-400">tap + filter</span>
+        </.drilldown_card>
+
+        <.drilldown_card href="/system/sagas" title="Sagas" subtitle="Multi-step ops — succeeded / rolled back / failed">
+          <%= case @counts do %>
+            <% %{ok?: true, result: %{sagas: %{rollback_failed: n}}} when n > 0 -> %>
+              <span class="text-red-600 dark:text-red-400 font-mono">{n}</span> <span class="text-red-600 dark:text-red-400">rollbacks failed — investigate</span>
+            <% %{ok?: true, result: %{sagas: %{total: 0}}} -> %>
+              <span class="text-zinc-400">none recorded</span>
+            <% %{ok?: true, result: %{sagas: %{total: t, succeeded: s}}} -> %>
+              <span class="font-mono">{s}</span>/<span class="font-mono">{t}</span> succeeded
+            <% _ -> %>
+              <span class="text-zinc-400">loading…</span>
+          <% end %>
         </.drilldown_card>
       </div>
     </section>

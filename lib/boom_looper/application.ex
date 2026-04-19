@@ -46,6 +46,12 @@ defmodule BoomLooper.Application do
       # Must start after PubSub; order vs. Observer doesn't matter.
       BoomLooper.Events.Tap,
 
+      # Saga recorder — attaches to BoomLooper.Saga telemetry and
+      # keeps the last 100 runs in ETS for /system/sagas. Move #7a.
+      # Must start before the first saga runs (which happens on any
+      # workspace start / agent boot, i.e. well after app boot).
+      BoomLooper.Saga.Recorder,
+
       # Periodic reconciler: diffs :chat_agents ETS against
       # ChatAgentRegistry every 30s and corrects drift where
       # Registry is authoritative. Must start after StateKeeper
