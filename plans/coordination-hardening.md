@@ -217,15 +217,13 @@ Design: each subsystem has a public `health/0` returning `:healthy | {:degraded,
 
 **Observable in `/system/health`:** tree of components with status, last state change, dependencies between them (ChatAgent degraded → because Claude CLI breaker open → because N timeouts in 30s).
 
-### 12. Unclean-shutdown safe mode
+### 12. ~~Unclean-shutdown safe mode~~ — DROPPED
 
-If BEAM exits cleanly, we write a `clean_shutdown` marker. If that marker is missing on boot, prior shutdown was crash/kill/power-loss. In that case, enter **safe mode**: run all reconcilers before accepting new work, refuse to start new workspaces/agents until the reconcile passes, surface a "Recovering…" banner with a log of what got fixed.
+**Considered and rejected during planning.** The idea: detect unclean prior shutdown via a marker file, run reconcilers on boot, gate new allocations until reconciliation completes.
 
-This is cheap to build (~50 lines) and is the difference between "boot and hope" and "boot and verify." Catches the compounding-corruption case: if a prior crash left orphan containers AND the reconciler has a bug, we don't just paper over it — we know recovery isn't clean.
+**Why dropped:** the corruption class it addresses is already narrowed by the moves above — reconcilers (#6) run every 30s continuously, OwnedState (#4) shrinks partial-write risk, quarantine (#10) bounds crash cascades. Safe mode is belt-and-suspenders against the intersection of "unclean shutdown" + "new work within 30s" + "reconciler bug that mishandles the race." Three conditional bugs, none shipped. Adding a mode to prevent that intersection introduces its own new failure modes (reconciler hangs at boot, boot-loops, false-positive unclean detection, test-env friction) that are more likely than the thing being prevented.
 
-**Kills:** "prior crash left state we never noticed, new work compounded the corruption." Operator sees recovery status before using the system.
-
-**Observable in `/system/health`:** bold banner during safe mode, recovery log (what reconcilers corrected), transition to normal only when everything's green.
+Design principle: **don't add modes for theoretical incidents.** If the compounding-corruption scenario manifests in practice, we revisit — informed by what actually went wrong rather than speculation.
 
 ## Observability in `/system`
 
@@ -248,7 +246,6 @@ Every move ships with a surface on `/system` so the guarantee is visible, not ju
 | #9 saga journal | `/system/sagas` (extended) | in-flight sagas on boot, resumed vs rolled-back count, failed rollbacks |
 | #10 quarantine | `/system/quarantine` | quarantined actors + reason; quarantined events + trigger; un-quarantine controls |
 | #11 graceful degradation | `/system/health` | component tree: healthy / degraded / down + dependency graph |
-| #12 safe mode | `/system/health` | boot-time banner during recovery; log of what reconcilers corrected |
 
 **First page to land: `/system/events`.** It's the backbone. Everything else either reads from the same ETS ring buffer or composes its own view of the data stream. Build it early (week 2 with move #2) and the rest of the observability surfaces become cheap composites.
 
@@ -273,7 +270,7 @@ These are the prod signals. LiveDashboard consumes them for free; a downstream O
 | 5 | #7a sagas + #7b resource ownership | 4 days | no partial-success states; no orphan resources |
 | 6 | #7c property tests + #7d circuit breakers | 3 days | transition invariants tested; retry-storms bounded |
 | 7 | #8 checkpoints + #9 saga journal | 3 days | bounded recovery time; durable transactions |
-| 8 | #10 quarantine + #11 degradation + #12 safe mode | 3 days | crash-loops bounded; partial outages visible; unclean boot detected |
+| 8 | #10 quarantine + #11 degradation | 2 days | crash-loops bounded; partial outages visible |
 
 Each move is independently valuable and shippable. The ordering is load-bearing: #1 is a prerequisite for #4 (need a single mutation site) and #7c (need pure functions to property-test), #2 is a prerequisite for #3 (behaviour references the structs), #7 piggybacks on the publisher wrapper from #2.
 
@@ -303,7 +300,6 @@ Weeks 5–6 are optional if weeks 1–4 close the bug classes we're hitting. Rev
 - Every saga either completes or rolls back cleanly on boot — no in-flight sagas survive a restart without resolution.
 - No actor restarts more than N times in T seconds without transitioning to `:quarantined` with an alert. Operators see crash loops before they burn hours.
 - `/system/health` reflects reality: a Docker outage shows degraded components with a clear dependency chain, not a blank UI.
-- Unclean shutdown triggers safe-mode boot with reconciler log visible. System refuses new work until recovery is confirmed.
 
 ## Complexity review: which moves are worth it as specified
 
