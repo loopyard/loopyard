@@ -27,7 +27,12 @@ defmodule BoomLooper.StateKeeper do
     {:boom_looper_evals, [:named_table, :public, :set]},
     # BoomLooper.PortRegistry entries keyed by {workspace_id, service, container_port}.
     # Writes serialize through the PortRegistry GenServer; reads go direct.
-    {:port_registry, [:named_table, :public, :set, {:read_concurrency, true}]}
+    {:port_registry, [:named_table, :public, :set, {:read_concurrency, true}]},
+    # Ring buffer for BoomLooper.Events.Tap — every broadcast on every
+    # known topic. ordered_set keyed by a monotonic counter so the
+    # newest records come out with a single :ets.select_reverse.
+    # Plan: Move #7.
+    {:events_tap, [:named_table, :public, :ordered_set, {:read_concurrency, true}]}
   ]
 
   def start_link(_opts) do

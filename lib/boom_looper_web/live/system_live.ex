@@ -283,6 +283,10 @@ defmodule BoomLooperWeb.SystemLive do
               <span class="text-zinc-400">loading…</span>
           <% end %>
         </.drilldown_card>
+
+        <.drilldown_card href="/system/events" title="Events" subtitle="Live PubSub timeline — paste into any bug report">
+          <span class="text-zinc-400">tap + filter</span>
+        </.drilldown_card>
       </div>
     </section>
     """

@@ -41,6 +41,11 @@ defmodule BoomLooper.Application do
       # before Endpoint (first LiveView mount).
       BoomLooper.Docker.Observer,
 
+      # Events tap — subscribes to every BoomLooper global topic and
+      # ring-buffers broadcasts with timestamps. Drives /system/events.
+      # Must start after PubSub; order vs. Observer doesn't matter.
+      BoomLooper.Events.Tap,
+
       # --- Web layer (can restart independently) ---
       BoomLooperWeb.Endpoint
     ]
