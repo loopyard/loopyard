@@ -66,7 +66,16 @@ defmodule BoomLooper.AgentBoot do
       Saga.run(steps,
         name: :boot_agent,
         context: %{id: id, workspace_id: workspace_id, agent_type: agent_type},
-        metadata: %{agent_id: id, workspace_id: workspace_id, agent_type: agent_type}
+        metadata: %{agent_id: id, workspace_id: workspace_id, agent_type: agent_type},
+        # :rollback is the safest default for mid-crash recovery.
+        # If the BEAM dies between :start_agent and
+        # :send_initial_message, resuming forward would try to re-send
+        # the initial message to an agent that may already have
+        # processed it (non-idempotent: creates duplicate user
+        # messages and confuses Claude). Rolling back instead stops
+        # the agent cleanly and surfaces the failure in
+        # /system/sagas — the user just retries the boot.
+        on_resume: :rollback
       )
 
     case saga_result do

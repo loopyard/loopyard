@@ -12,7 +12,7 @@ defmodule BoomLooperWeb.SystemSagasLive do
   use BoomLooperWeb, :live_view
   use BoomLooperWeb.IExAware
 
-  alias BoomLooper.Saga.Recorder
+  alias BoomLooper.Saga.{Journal, Recorder}
 
   @refresh_ms 1_000
 
@@ -26,6 +26,7 @@ defmodule BoomLooperWeb.SystemSagasLive do
       |> assign(:saga_filter, saga_filter)
       |> assign(:sagas, load_sagas(saga_filter))
       |> assign(:summary, Recorder.summary())
+      |> assign(:incomplete_sagas, load_incomplete())
 
     if connected?(socket), do: schedule_refresh()
     {:ok, socket}
@@ -43,7 +44,8 @@ defmodule BoomLooperWeb.SystemSagasLive do
      socket
      |> assign(:saga_filter, saga_filter)
      |> assign(:sagas, load_sagas(saga_filter))
-     |> assign(:summary, Recorder.summary())}
+     |> assign(:summary, Recorder.summary())
+     |> assign(:incomplete_sagas, load_incomplete())}
   end
 
   @impl true
@@ -53,7 +55,8 @@ defmodule BoomLooperWeb.SystemSagasLive do
     {:noreply,
      socket
      |> assign(:sagas, load_sagas(socket.assigns.saga_filter))
-     |> assign(:summary, Recorder.summary())}
+     |> assign(:summary, Recorder.summary())
+     |> assign(:incomplete_sagas, load_incomplete())}
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
@@ -62,6 +65,19 @@ defmodule BoomLooperWeb.SystemSagasLive do
 
   defp load_sagas(nil), do: Recorder.recent(limit: 100)
   defp load_sagas(saga), do: Recorder.recent(saga: String.to_existing_atom(saga), limit: 100)
+
+  # Incomplete sagas from the on-disk journal — these are sagas whose
+  # BEAM died mid-run and haven't yet been resolved. Empty in the
+  # steady state. Any entry here is a red-banner condition.
+  defp load_incomplete do
+    try do
+      Journal.incomplete()
+    rescue
+      _ -> []
+    catch
+      _, _ -> []
+    end
+  end
 
   defp saga_names(sagas), do: sagas |> Enum.map(& &1.saga) |> Enum.uniq() |> Enum.sort()
 
@@ -91,12 +107,61 @@ defmodule BoomLooperWeb.SystemSagasLive do
             operator should investigate.
           </p>
 
+          <.incomplete_banner :if={@incomplete_sagas != []} incomplete={@incomplete_sagas} />
           <.summary_cards summary={@summary} />
           <.filter_bar sagas={@sagas} current={@saga_filter} all_names={saga_names(@sagas)} />
           <.saga_table sagas={@sagas} />
         </section>
       </div>
     </.page_shell>
+    """
+  end
+
+  attr :incomplete, :list, required: true
+
+  defp incomplete_banner(assigns) do
+    ~H"""
+    <div class="mb-4 rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4">
+      <div class="flex items-start gap-3">
+        <div class="flex-shrink-0 text-red-600 dark:text-red-400 text-xl leading-none">!</div>
+        <div class="flex-1">
+          <div class="text-sm font-semibold text-red-800 dark:text-red-200">
+            {length(@incomplete)} incomplete saga{if length(@incomplete) == 1, do: "", else: "s"} — BEAM crashed mid-run
+          </div>
+          <p class="text-xs text-red-700 dark:text-red-300 mt-1">
+            These sagas were recorded in the on-disk journal but never completed or rolled back.
+            On the next boot (or right now, via the automatic resume path) each is handled per its
+            declared <code class="font-mono">on_resume</code> strategy: rollback, resume-forward, or manual.
+          </p>
+          <div class="mt-3 space-y-1.5">
+            <.incomplete_row :for={s <- @incomplete} saga={s} />
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  attr :saga, :map, required: true
+
+  defp incomplete_row(assigns) do
+    ~H"""
+    <div class="flex items-center gap-2 text-xs font-mono">
+      <span class="text-red-700 dark:text-red-300 font-semibold">{@saga.name}</span>
+      <span class="text-red-500 dark:text-red-400">#{@saga.saga_id}</span>
+      <span class="text-red-600 dark:text-red-400">
+        strategy={@saga.on_resume}
+      </span>
+      <span :if={@saga.started_step} class="text-red-600 dark:text-red-400">
+        crashed at {@saga.started_step}
+      </span>
+      <span :if={@saga.completed_steps != []} class="text-red-500 dark:text-red-400">
+        — completed: {Enum.join(@saga.completed_steps, ", ")}
+      </span>
+      <span :if={map_size(@saga.metadata) > 0} class="text-red-500 dark:text-red-400 ml-auto">
+        {inspect(@saga.metadata)}
+      </span>
+    </div>
     """
   end
 

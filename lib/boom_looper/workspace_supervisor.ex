@@ -91,7 +91,18 @@ defmodule BoomLooper.WorkspaceSupervisor do
 
     case Saga.run(steps,
            name: :rebuild_workspace,
-           metadata: %{workspace_id: workspace_id}
+           metadata: %{workspace_id: workspace_id},
+           # Rebuild steps aren't safely idempotent across a BEAM
+           # crash: step 1 terminates the old group via
+           # DynamicSupervisor; on a crashed-mid-rebuild resume the
+           # old group is already gone (normal supervisor restart
+           # brought nothing back), and a forward-resume would try
+           # to start_child for a workspace whose prior state we
+           # can't reason about. Rolling back — which here is a
+           # no-op because neither step declares a rollback — at
+           # least surfaces the incident in /system/sagas so the
+           # operator knows to retry.
+           on_resume: :rollback
          ) do
       {:ok, %{pid: pid}} -> {:ok, pid}
       {:error, {:step_failed, _step, reason}, _} -> {:error, reason}

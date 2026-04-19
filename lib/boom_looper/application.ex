@@ -111,6 +111,23 @@ defmodule BoomLooper.Application do
     # 0.0.0.0 by restarting the endpoint. Must run AFTER Endpoint starts.
     BoomLooper.HostExposer.restore()
 
+    # Scan the saga journal for incomplete sagas (BEAM crashed
+    # mid-saga last run) and dispatch each per its declared
+    # on_resume strategy — :rollback auto-reverts, :manual surfaces
+    # on /system/sagas for the operator. Non-blocking: rollback
+    # tasks are spawned under BoomLooper.TaskSupervisor. Must run
+    # AFTER TaskSupervisor starts (part of the child list above).
+    # Move #9.
+    case BoomLooper.Saga.Journal.resume_all_on_boot() do
+      %{incomplete: 0} ->
+        :ok
+
+      %{incomplete: n} = summary ->
+        Logger.warning(
+          "[BoomLooper] found #{n} incomplete saga(s) on boot: #{inspect(summary)}"
+        )
+    end
+
     port = Application.get_env(:boom_looper, BoomLooperWeb.Endpoint)[:http][:port] || 4000
     IO.puts("\n  Launch from any project directory:")
     IO.puts("  open \"http://localhost:#{port}/launch/#{secret}?path=$(pwd)\"\n")

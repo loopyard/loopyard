@@ -143,11 +143,16 @@ defmodule BoomLooper.Saga do
           optional(:rollback) => rollback_fn()
         }
 
+  @typedoc "Resume-on-boot strategy declared by the caller. Defaults to `:rollback`."
+  @type on_resume :: :rollback | :resume_forward | :manual
+
   @typedoc "Saga options."
   @type opts :: [
           name: atom(),
           context: context(),
-          metadata: map()
+          metadata: map(),
+          journal?: boolean(),
+          on_resume: on_resume()
         ]
 
   @typedoc "Successful saga result."
@@ -173,6 +178,13 @@ defmodule BoomLooper.Saga do
       output. Defaults to `%{}`.
     * `:metadata` — free-form map attached to every telemetry event
       for this saga (e.g. `%{workspace_id: "..."}`). Defaults to `%{}`.
+    * `:journal?` — whether to durably record saga progress to the
+      on-disk journal for resume-on-boot (Move #9). Defaults to `true`.
+      Tests that don't care about durability can pass `false` to skip
+      the I/O.
+    * `:on_resume` — strategy for handling this saga if the BEAM
+      crashes mid-run and the saga is found incomplete on next boot.
+      Default `:rollback` (safest). See `BoomLooper.Saga.Journal`.
 
   See the module doc for the return shapes.
   """
@@ -181,9 +193,27 @@ defmodule BoomLooper.Saga do
     name = Keyword.fetch!(opts, :name)
     context = Keyword.get(opts, :context, %{})
     metadata = Keyword.get(opts, :metadata, %{})
+    # Default journaling is ON in dev/prod, OFF in test. Tests that
+    # exercise the journal explicitly opt in by passing
+    # `journal?: true` — see test/boom_looper/saga/journal_test.exs.
+    # This keeps the bulk of the async saga suite free of cross-test
+    # journal-file races while still leaving durability on by default
+    # for real runs.
+    default_journal = Application.get_env(:boom_looper, :saga_journal_default, true)
+    journal? = Keyword.get(opts, :journal?, default_journal)
+    on_resume = Keyword.get(opts, :on_resume, :rollback)
 
     saga_id = make_saga_id()
     started_at = System.monotonic_time(:microsecond)
+
+    if journal? do
+      step_names = Enum.map(steps, &step_name_for_journal/1)
+
+      BoomLooper.Saga.Journal.append(
+        {:saga_started, saga_id, name, metadata, on_resume, step_names,
+         System.system_time(:millisecond)}
+      )
+    end
 
     :telemetry.execute(
       [:boom_looper, :saga, :started],
@@ -191,9 +221,13 @@ defmodule BoomLooper.Saga do
       Map.merge(metadata, %{saga: name, saga_id: saga_id})
     )
 
-    case run_steps(steps, context, [], name, saga_id, metadata) do
+    case run_steps(steps, context, [], name, saga_id, metadata, journal?) do
       {:ok, final_context, completed_steps} ->
         duration_us = System.monotonic_time(:microsecond) - started_at
+
+        if journal? do
+          BoomLooper.Saga.Journal.append({:saga_completed, saga_id})
+        end
 
         :telemetry.execute(
           [:boom_looper, :saga, :completed],
@@ -204,12 +238,19 @@ defmodule BoomLooper.Saga do
         {:ok, final_context}
 
       {:error, {:step_failed, failed_step, reason}, context_at_failure, completed_steps} ->
-        rollback_result = rollback_steps(completed_steps, context_at_failure, name, saga_id, metadata)
+        rollback_result =
+          rollback_steps(completed_steps, context_at_failure, name, saga_id, metadata, journal?)
 
         duration_us = System.monotonic_time(:microsecond) - started_at
 
         case rollback_result do
           :ok ->
+            if journal? do
+              BoomLooper.Saga.Journal.append(
+                {:saga_rolled_back, saga_id, {:step_failed, failed_step, reason}}
+              )
+            end
+
             :telemetry.execute(
               [:boom_looper, :saga, :rolled_back],
               %{count: length(completed_steps), duration_us: duration_us},
@@ -224,6 +265,13 @@ defmodule BoomLooper.Saga do
             {:error, {:step_failed, failed_step, reason}, :rolled_back}
 
           {:partial, failed_rollbacks} ->
+            if journal? do
+              BoomLooper.Saga.Journal.append(
+                {:saga_rolled_back, saga_id,
+                 {:partial, {:step_failed, failed_step, reason}, failed_rollbacks}}
+              )
+            end
+
             :telemetry.execute(
               [:boom_looper, :saga, :rolled_back],
               %{
@@ -245,20 +293,40 @@ defmodule BoomLooper.Saga do
     end
   end
 
+  # Pull the step name for journaling. Steps that have bad shape will
+  # still blow up later in `validate_step!` inside the forward pass —
+  # we fall back to `:unknown` here so the journaling doesn't itself
+  # raise on a malformed step list.
+  defp step_name_for_journal(%{name: name}) when is_atom(name), do: name
+  defp step_name_for_journal(_), do: :unknown
+
   # ── Forward pass ──
 
-  defp run_steps([], context, completed, _name, _saga_id, _meta) do
+  defp run_steps([], context, completed, _name, _saga_id, _meta, _journal?) do
     {:ok, context, Enum.reverse(completed)}
   end
 
-  defp run_steps([step | rest], context, completed, name, saga_id, meta) do
+  defp run_steps([step | rest], context, completed, name, saga_id, meta, journal?) do
     step = validate_step!(step)
+
+    # Journal BEFORE executing. If we crash mid-run we want the record
+    # of "step X started" on disk so resume knows which step was
+    # potentially half-done. See Saga.Journal module doc.
+    if journal? do
+      BoomLooper.Saga.Journal.append({:step_started, saga_id, step.name, context})
+    end
 
     started_at = System.monotonic_time(:microsecond)
 
     case safe_run(step.run, context) do
       {:ok, updates} when is_map(updates) ->
         duration_us = System.monotonic_time(:microsecond) - started_at
+
+        merged = Map.merge(context, updates)
+
+        if journal? do
+          BoomLooper.Saga.Journal.append({:step_succeeded, saga_id, step.name, merged})
+        end
 
         :telemetry.execute(
           [:boom_looper, :saga, :step_succeeded],
@@ -270,10 +338,14 @@ defmodule BoomLooper.Saga do
         # reverse them once at the end (for the success branch) or
         # iterate them forward here (for the rollback branch — which
         # then walks them newest-first to get LIFO order).
-        run_steps(rest, Map.merge(context, updates), [step | completed], name, saga_id, meta)
+        run_steps(rest, merged, [step | completed], name, saga_id, meta, journal?)
 
       {:error, reason} ->
         duration_us = System.monotonic_time(:microsecond) - started_at
+
+        if journal? do
+          BoomLooper.Saga.Journal.append({:step_failed, saga_id, step.name, inspect(reason)})
+        end
 
         :telemetry.execute(
           [:boom_looper, :saga, :step_failed],
@@ -290,6 +362,12 @@ defmodule BoomLooper.Saga do
 
       other ->
         duration_us = System.monotonic_time(:microsecond) - started_at
+
+        if journal? do
+          BoomLooper.Saga.Journal.append(
+            {:step_failed, saga_id, step.name, inspect({:bad_return, other})}
+          )
+        end
 
         :telemetry.execute(
           [:boom_looper, :saga, :step_failed],
@@ -326,12 +404,12 @@ defmodule BoomLooper.Saga do
 
   # `completed_steps` is in forward order. We walk it in reverse so
   # the most-recently-completed step rolls back first (LIFO).
-  defp rollback_steps(completed_steps, context, name, saga_id, meta) do
+  defp rollback_steps(completed_steps, context, name, saga_id, meta, journal?) do
     failed =
       completed_steps
       |> Enum.reverse()
       |> Enum.reduce([], fn step, acc ->
-        case run_rollback(step, context, name, saga_id, meta) do
+        case run_rollback(step, context, name, saga_id, meta, journal?) do
           :ok -> acc
           {:error, reason} -> [{step.name, reason} | acc]
         end
@@ -346,7 +424,7 @@ defmodule BoomLooper.Saga do
     end
   end
 
-  defp run_rollback(%{rollback: rollback_fn} = step, context, name, saga_id, meta)
+  defp run_rollback(%{rollback: rollback_fn} = step, context, name, saga_id, meta, journal?)
        when is_function(rollback_fn, 1) do
     started_at = System.monotonic_time(:microsecond)
 
@@ -364,6 +442,10 @@ defmodule BoomLooper.Saga do
 
     case result do
       :ok ->
+        if journal? do
+          BoomLooper.Saga.Journal.append({:step_rolled_back, saga_id, step.name})
+        end
+
         :telemetry.execute(
           [:boom_looper, :saga, :step_rolled_back],
           %{duration_us: duration_us},
@@ -373,6 +455,12 @@ defmodule BoomLooper.Saga do
         :ok
 
       {:error, reason} = err ->
+        if journal? do
+          BoomLooper.Saga.Journal.append(
+            {:rollback_failed, saga_id, step.name, inspect(reason)}
+          )
+        end
+
         Logger.warning(
           "[Saga] #{name} rollback step #{step.name} failed: #{inspect(reason)}"
         )
@@ -392,6 +480,12 @@ defmodule BoomLooper.Saga do
 
       other ->
         reason = {:bad_return, other}
+
+        if journal? do
+          BoomLooper.Saga.Journal.append(
+            {:rollback_failed, saga_id, step.name, inspect(reason)}
+          )
+        end
 
         Logger.warning(
           "[Saga] #{name} rollback step #{step.name} returned bad value: #{inspect(other)}"
@@ -414,7 +508,7 @@ defmodule BoomLooper.Saga do
 
   # Step with no rollback — nothing to undo. Happens for read-only
   # or "register with something idempotent" steps.
-  defp run_rollback(_step_without_rollback, _context, _name, _saga_id, _meta), do: :ok
+  defp run_rollback(_step_without_rollback, _context, _name, _saga_id, _meta, _journal?), do: :ok
 
   # ── Helpers ──
 
