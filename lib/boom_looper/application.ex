@@ -46,6 +46,12 @@ defmodule BoomLooper.Application do
       # Must start after PubSub; order vs. Observer doesn't matter.
       BoomLooper.Events.Tap,
 
+      # Periodic reconciler: diffs :chat_agents ETS against
+      # ChatAgentRegistry every 30s and corrects drift where
+      # Registry is authoritative. Must start after StateKeeper
+      # (reads ETS) and ChatAgentRegistry (looks up pids).
+      BoomLooper.Agent.Reconciler,
+
       # --- Web layer (can restart independently) ---
       BoomLooperWeb.Endpoint
     ]
