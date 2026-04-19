@@ -76,11 +76,15 @@ defmodule BoomLooper.AgentBoot do
 
     # Start the agent GenServer
     ChatAgent.update_boot_status(id, "Starting Claude session...")
-    Logger.info("[AgentBoot] #{id} starting Claude session")
+    Logger.info("[AgentBoot] #{id} starting Claude session ws=#{workspace_id} type=#{agent_type}")
 
-    case BoomLooper.WorkspaceGroup.start_agent(workspace_id, agent_opts) do
+    case start_agent_with_retry(workspace_id, agent_opts, working_dir) do
       {:ok, _pid} ->
         Logger.info("[AgentBoot] #{id} Claude session started successfully")
+        BoomLooper.EventLog.info(
+          "agent_boot:#{workspace_id}",
+          "Agent #{id} (#{agent_type}) Claude session started"
+        )
 
         # Send initial message (skip if explicitly :none — blank agents wait for user input)
         unless initial_message == :none do
@@ -92,6 +96,14 @@ defmodule BoomLooper.AgentBoot do
 
       {:error, reason} ->
         Logger.error("[AgentBoot] #{id} start_agent failed: #{inspect(reason)}")
+
+        BoomLooper.EventLog.error(
+          "agent_boot:#{workspace_id}",
+          "start_agent failed reason=#{inspect(reason)} " <>
+            "ws_id=#{workspace_id} type=#{agent_type} " <>
+            "group=#{inspect(BoomLooper.WorkspaceGroup.whereis(workspace_id))}"
+        )
+
         ChatAgent.boot_failed(id, reason)
         {:error, reason}
     end
@@ -105,6 +117,36 @@ defmodule BoomLooper.AgentBoot do
       Logger.error("[AgentBoot] #{id} exited: #{inspect(reason)}")
       ChatAgent.boot_failed(id, "Boot process exited: #{inspect(reason)}")
       {:error, reason}
+  end
+
+  # Retry agent spawn once if the workspace supervisor isn't
+  # registered. That error is almost always transient — a prior
+  # compose-up failure left the group in a partial state, or the
+  # supervisor tree was mid-restart when the user clicked. Auto-
+  # recover via WorkspaceSupervisor.start_workspace (now handles
+  # partial-state rebuilds), then try again. If it still fails,
+  # the error bubbles with the real cause.
+  defp start_agent_with_retry(workspace_id, agent_opts, working_dir) do
+    case BoomLooper.WorkspaceGroup.start_agent(workspace_id, agent_opts) do
+      {:error, :workspace_not_running} ->
+        Logger.info("[AgentBoot] #{workspace_id} supervisor missing; rebuilding and retrying")
+
+        BoomLooper.EventLog.info(
+          "agent_boot:#{workspace_id}",
+          "Rebuilding workspace supervisor before retrying agent spawn"
+        )
+
+        case BoomLooper.WorkspaceSupervisor.start_workspace(workspace_id, working_dir) do
+          {:ok, _} ->
+            BoomLooper.WorkspaceGroup.start_agent(workspace_id, agent_opts)
+
+          {:error, reason} ->
+            {:error, {:workspace_start_failed, reason}}
+        end
+
+      other ->
+        other
+    end
   end
 
   defp default_message(agent_type, ws_config, service_name) do
