@@ -14,6 +14,11 @@ Each of these is a real bug shipped this sprint:
 6. **Partial-success states** — multi-step operations (start workspace, boot agent) fail midway and leave inconsistent state that relies on reconcilers to clean up. _(Missing Dockerfile → compose fails → workspace half-registered, half-supervised.)_
 7. **Orphan resources** — Docker containers, port bindings, streaming tasks, CLI subprocesses survive their Elixir owner. Resource cleanup relies on scattered `trap_exit` / `terminate/2` that's easy to miss. _(OS processes that outlive the agent.)_
 8. **Retry-storm amplification** — one external dependency failure (Docker daemon, Claude API) triggers uncoordinated retries across every caller. No circuit breaker. _(Colima crash → 10 workspaces each backing off + retrying simultaneously.)_
+9. **Unbounded recovery time** — every boot replays the full log from day one. Grows linearly with uptime. At some point replay times out and agents silently don't restore.
+10. **Mid-operation crashes leave unrecoverable state** — saga running, BEAM dies, reboot. No record of how far we got, so we either restart from scratch (possibly creating duplicates) or manually diagnose.
+11. **Silent crash loops** — actor crashes and restarts dozens of times per hour with no surface signal. Logs are noisy but no alarm. _(Seen: 26 resumes/hour on one agent.)_
+12. **Upstream outage looks like our bug** — Docker daemon down → half the UI blank → users report "BoomLooper broken" when actually it's Colima. No degradation markers.
+13. **Unclean shutdown compounds silently** — power loss or `kill -9` leaves half-written log / orphan containers / uncommitted saga. Next boot acts normal, corruption compounds.
 
 ## The seven design moves
 
@@ -164,6 +169,64 @@ Publisher modules emit `:telemetry.execute([:boom_looper, :events, :publish], %{
 
 **Kills:** "we couldn't reproduce the race." Next sleepy-agent report, you read the tape.
 
+## Recovery axis
+
+The moves above prevent bad states. These ensure the system heals when they happen anyway — because crashes, corruption, and operator errors are inevitable.
+
+### 8. Checkpoint-based recovery
+
+Today log replay is O(history). A workspace running for months takes seconds to reload and will eventually exceed timeouts. Compaction exists but runs ad-hoc.
+
+Design: every N minutes (or M log records), the state owner writes a **snapshot** to disk and truncates the log. On boot: load snapshot, replay log-since-snapshot. Recovery time becomes bounded and predictable, independent of uptime.
+
+Snapshot format: the current summary map, serialized. Log entries after the snapshot replay on top. If snapshot is corrupt, fall back to the previous snapshot — always keep two.
+
+**Kills:** "recovery time grows unboundedly with uptime." Also catches log corruption: a snapshot won't load → fall back + log anomaly, rather than the current "replay fails partway, silently drop agents."
+
+**Observable in `/system/recovery`:** snapshot size + age per actor, last recovery time on boot, whether fallback was used.
+
+### 9. Saga journal with resume-on-boot
+
+Sagas (#7a) solve partial-success during a run. They don't solve "BEAM crashed mid-saga." A saga that started `compose up`, wrote the ETS entry, then the node died — on reboot, is the saga done? Abandoned? Reversed?
+
+Design: each saga step commits its progress to a disk journal before execution. On boot, scan the journal for incomplete sagas. For each: either resume from the last completed step (if idempotent and external state confirms) or run rollback-from-here. No saga is ever abandoned.
+
+**Kills:** "BEAM crashed mid-workspace-start, now there's half-state that survives reboot." Sagas become durable transactions.
+
+**Observable in `/system/sagas`:** in-flight saga count, last resumed saga on boot, any saga that failed rollback (red alert — needs manual).
+
+### 10. Quarantine for crash-looping actors
+
+We already saw an agent restart 26 times in an hour with no surface signal. Supervisors happily honor `restart: :transient` until heat death.
+
+Design: the supervisor (or a sibling monitor) tracks restart frequency per child. After N crashes in T seconds (say 5 in 60), the child moves to `:quarantined` — stopped, marked unhealthy, broadcast to operators. The trigger message (if identifiable) is captured for forensics. Manual restart via UI or `mix boom.rpc`.
+
+For agents specifically: if the same event class keeps crashing the GenServer (poisoned-message shape), the pure transition function (move #1) can hash the event and refuse to apply it if the same hash crashed us in the last T seconds. Event goes to a `:quarantined_events` ETS slot for inspection. Actor survives.
+
+**Kills:** restart-storm burning CPU, API tokens, and log space. Poisoned messages no longer drag the whole actor down.
+
+**Observable in `/system/quarantine`:** list of quarantined actors + reason, list of quarantined events + trigger. One-click un-quarantine for operators.
+
+### 11. Graceful degradation markers
+
+Today when Docker dies, half the UI shows blank. Other half silently retries. No clear "this feature is degraded, this one still works."
+
+Design: each subsystem has a public `health/0` returning `:healthy | {:degraded, reason} | {:down, reason}`. Aggregated at `/system/health` as a component tree. Circuit breakers (#7d) feed directly into this — breaker open → feature degraded. The UI reads the tree and renders banners / disables buttons accordingly: "Docker daemon unreachable; container operations queued." Users know exactly what works and what doesn't.
+
+**Kills:** the "is this broken or is the UI just slow?" experience during upstream outages. Partial functionality stays useful instead of looking fully broken.
+
+**Observable in `/system/health`:** tree of components with status, last state change, dependencies between them (ChatAgent degraded → because Claude CLI breaker open → because N timeouts in 30s).
+
+### 12. Unclean-shutdown safe mode
+
+If BEAM exits cleanly, we write a `clean_shutdown` marker. If that marker is missing on boot, prior shutdown was crash/kill/power-loss. In that case, enter **safe mode**: run all reconcilers before accepting new work, refuse to start new workspaces/agents until the reconcile passes, surface a "Recovering…" banner with a log of what got fixed.
+
+This is cheap to build (~50 lines) and is the difference between "boot and hope" and "boot and verify." Catches the compounding-corruption case: if a prior crash left orphan containers AND the reconciler has a bug, we don't just paper over it — we know recovery isn't clean.
+
+**Kills:** "prior crash left state we never noticed, new work compounded the corruption." Operator sees recovery status before using the system.
+
+**Observable in `/system/health`:** bold banner during safe mode, recovery log (what reconcilers corrected), transition to normal only when everything's green.
+
 ## Observability in `/system`
 
 Every move ships with a surface on `/system` so the guarantee is visible, not just structural. If we can't see it, we can't trust it.
@@ -181,6 +244,11 @@ Every move ships with a surface on `/system` so the guarantee is visible, not ju
 | #7b resource ownership | `/system/orphans` | Docker/OS resources with no live owner; owner actors missing expected resources |
 | #7c property tests | CI output | shrink counterexamples per actor; invariant violations |
 | #7d circuit breakers | `/system/breakers` | state per breaker (closed/open/half-open), trip count, last trip timestamp, fail rate |
+| #8 checkpoint recovery | `/system/recovery` | snapshot size + age per actor; last boot's recovery time; fallback usage |
+| #9 saga journal | `/system/sagas` (extended) | in-flight sagas on boot, resumed vs rolled-back count, failed rollbacks |
+| #10 quarantine | `/system/quarantine` | quarantined actors + reason; quarantined events + trigger; un-quarantine controls |
+| #11 graceful degradation | `/system/health` | component tree: healthy / degraded / down + dependency graph |
+| #12 safe mode | `/system/health` | boot-time banner during recovery; log of what reconcilers corrected |
 
 **First page to land: `/system/events`.** It's the backbone. Everything else either reads from the same ETS ring buffer or composes its own view of the data stream. Build it early (week 2 with move #2) and the rest of the observability surfaces become cheap composites.
 
@@ -204,6 +272,8 @@ These are the prod signals. LiveDashboard consumes them for free; a downstream O
 | 4 | #5 deadlines + #6 reconcilers | 3 days | no stuck states; cache drift detected & corrected |
 | 5 | #7a sagas + #7b resource ownership | 4 days | no partial-success states; no orphan resources |
 | 6 | #7c property tests + #7d circuit breakers | 3 days | transition invariants tested; retry-storms bounded |
+| 7 | #8 checkpoints + #9 saga journal | 3 days | bounded recovery time; durable transactions |
+| 8 | #10 quarantine + #11 degradation + #12 safe mode | 3 days | crash-loops bounded; partial outages visible; unclean boot detected |
 
 Each move is independently valuable and shippable. The ordering is load-bearing: #1 is a prerequisite for #4 (need a single mutation site) and #7c (need pure functions to property-test), #2 is a prerequisite for #3 (behaviour references the structs), #7 piggybacks on the publisher wrapper from #2.
 
@@ -229,6 +299,11 @@ Weeks 5–6 are optional if weeks 1–4 close the bug classes we're hitting. Rev
 - Property tests (via `StreamData`) cover every state-machine actor's transition function. CI green.
 - Every call to an external dependency goes through a named circuit breaker. Tripping one doesn't cascade.
 - `mix compile --warnings-as-errors` and Dialyzer in CI. No warnings merged.
+- Boot time from a log of any size is O(snapshot), not O(history). Checkpoints keep recovery bounded.
+- Every saga either completes or rolls back cleanly on boot — no in-flight sagas survive a restart without resolution.
+- No actor restarts more than N times in T seconds without transitioning to `:quarantined` with an alert. Operators see crash loops before they burn hours.
+- `/system/health` reflects reality: a Docker outage shows degraded components with a clear dependency chain, not a blank UI.
+- Unclean shutdown triggers safe-mode boot with reconciler log visible. System refuses new work until recovery is confirmed.
 
 ## Open questions
 
