@@ -26,13 +26,39 @@ defmodule BoomLooper.WorkspaceGroup do
       # start_child against it) and before ContainerMonitor
       # (doesn't matter but keeps related things adjacent).
       {BoomLooper.ChatAgent.RestartController, workspace_id: workspace_id},
-      {BoomLooper.ContainerMonitor, project_dir: project_dir, workspace_id: workspace_id}
+      {BoomLooper.ContainerMonitor, project_dir: project_dir, workspace_id: workspace_id},
+      # Checkpointer owns the agent-log snapshot schedule. One per
+      # workspace so a broken snapshot on workspace A can't block
+      # snapshots on workspace B. Move #8.
+      checkpointer_child_spec(workspace_id)
     ]
 
     children = base_children ++ source_children(workspace_id)
 
     # Give Docker operations time to recover — default 3/5s is too tight for I/O
     Supervisor.init(children, strategy: :one_for_all, max_restarts: 10, max_seconds: 60)
+  end
+
+  # Agent-log checkpointer spec. Resolves the log path the same way
+  # `BoomLooper.ChatAgent.Persistence` does, and uses `via/1` so the
+  # checkpointer is looked up by workspace_id from anywhere (e.g. the
+  # `/system/recovery` page).
+  defp checkpointer_child_spec(workspace_id) do
+    log_path =
+      Path.join([
+        BoomLooper.Workspace.compose_dir(workspace_id),
+        ".boomlooper",
+        "workspace",
+        "agents.log"
+      ])
+
+    {BoomLooper.AgentLog.Checkpointer,
+     [
+       workspace_id: workspace_id,
+       log_path: log_path,
+       version: 1,
+       name: BoomLooper.AgentLog.Checkpointer.via(workspace_id)
+     ]}
   end
 
   # Source-specific children (e.g. Local workspaces get a SyncMonitor that

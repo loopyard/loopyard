@@ -27,6 +27,9 @@ defmodule BoomLooper.Application do
       # workspace tracks crash history and decides whether to respawn
       # or quarantine each ChatAgent.
       {Registry, keys: :unique, name: BoomLooper.ChatAgent.RestartControllerRegistry},
+      # Per-workspace Checkpointer registry — one checkpointer per
+      # workspace owns the agent-log snapshot schedule. Move #8.
+      {Registry, keys: :unique, name: BoomLooper.AgentLog.CheckpointerRegistry},
       {Registry, keys: :unique, name: BoomLooper.ServiceManagerRegistry},
       {Registry, keys: :unique, name: BoomLooper.WorkspaceRegistry},
       {Registry, keys: :unique, name: BoomLooper.WorkspaceAgentRegistry},

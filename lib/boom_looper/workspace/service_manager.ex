@@ -415,9 +415,30 @@ defmodule BoomLooper.Workspace.ServiceManager do
         :ok
     end
 
-    case BoomLooper.AgentLog.replay(log_path: log_path, version: @log_version, ets_table: :chat_agents) do
-      {:ok, agents} when map_size(agents) > 0 ->
-        BoomLooper.EventLog.info("workspace", "Restored #{map_size(agents)} agent(s) from log, starting...")
+    # Use fallback-aware replay: if the primary log is corrupt, automatically
+    # try <path>.prev (maintained by the Checkpointer via
+    # compact_keep_previous/1). Emits :fallback_used telemetry on recovery
+    # so /system/recovery can surface boot-time corruption events.
+    replay_result =
+      BoomLooper.AgentLog.replay_with_fallback(
+        log_path: log_path,
+        version: @log_version,
+        ets_table: :chat_agents,
+        telemetry_metadata: %{workspace_id: workspace_id}
+      )
+
+    case replay_result do
+      {:ok, agents, source} when map_size(agents) > 0 ->
+        source_note =
+          case source do
+            :primary -> ""
+            :previous -> " (recovered from .prev — primary log was corrupt)"
+          end
+
+        BoomLooper.EventLog.info(
+          "workspace",
+          "Restored #{map_size(agents)} agent(s) from log#{source_note}, starting..."
+        )
 
         for {agent_id, _agent_data} <- agents do
           start_restored_agent(workspace_id, agent_id)
@@ -425,7 +446,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
         :ok
 
-      {:ok, _} ->
+      {:ok, _, _source} ->
         :ok
 
       {:error, {:version_mismatch, file: file_v, requested: @log_version}} ->

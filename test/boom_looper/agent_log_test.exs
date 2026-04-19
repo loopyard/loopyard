@@ -797,4 +797,270 @@ defmodule BoomLooper.AgentLogTest do
                AgentLog.maybe_compact(log_path: log_path, version: @version)
     end
   end
+
+  describe "compact_keep_previous/1" do
+    test "moves current log to .prev before compacting", %{log_path: log_path} do
+      AgentLog.append({:agent, "a1", %{name: "A1"}}, log_path: log_path, version: @version)
+
+      for i <- 1..5 do
+        AgentLog.append(
+          {:msg, "a1", %{id: "m#{i}", content: "msg #{i}"}},
+          log_path: log_path,
+          version: @version
+        )
+      end
+
+      original = File.read!(log_path)
+
+      assert {:ok, stats} =
+               AgentLog.compact_keep_previous(log_path: log_path, version: @version)
+
+      # .prev contains the pre-compaction file
+      prev_path = log_path <> ".prev"
+      assert File.exists?(prev_path)
+      assert File.read!(prev_path) == original
+
+      # current is the compacted snapshot
+      assert File.exists?(log_path)
+      assert stats.agents == 1
+      assert stats.messages == 5
+    end
+
+    test "second compaction overwrites the older .prev with the most recent primary",
+         %{log_path: log_path} do
+      # First snapshot round
+      AgentLog.append({:agent, "a1", %{name: "A1"}}, log_path: log_path, version: @version)
+      {:ok, _} = AgentLog.compact_keep_previous(log_path: log_path, version: @version)
+
+      first_prev = File.read!(log_path <> ".prev")
+
+      # Second round with more data
+      AgentLog.append(
+        {:msg, "a1", %{id: "m1", content: "hi"}},
+        log_path: log_path,
+        version: @version
+      )
+
+      before_second = File.read!(log_path)
+
+      {:ok, _} = AgentLog.compact_keep_previous(log_path: log_path, version: @version)
+
+      # .prev now holds the previous (middle) state, not the very first
+      second_prev = File.read!(log_path <> ".prev")
+      assert second_prev == before_second
+      refute second_prev == first_prev
+    end
+
+    test "no-op when the file doesn't exist", %{log_path: log_path} do
+      refute File.exists?(log_path)
+
+      assert {:ok, %{before: 0, after: 0, agents: 0, messages: 0}} =
+               AgentLog.compact_keep_previous(log_path: log_path, version: @version)
+
+      refute File.exists?(log_path <> ".prev")
+    end
+
+    test "replay after compaction yields the same state as before",
+         %{log_path: log_path} do
+      AgentLog.append({:agent, "a1", %{name: "A1"}}, log_path: log_path, version: @version)
+
+      for i <- 1..10 do
+        AgentLog.append(
+          {:msg, "a1", %{id: "m#{i}", role: :user, content: "msg #{i}"}},
+          log_path: log_path,
+          version: @version
+        )
+
+        AgentLog.append(
+          {:msg_update, "a1", "m#{i}", %{content: "msg #{i} final"}},
+          log_path: log_path,
+          version: @version
+        )
+      end
+
+      {:ok, state_before} = AgentLog.replay(log_path: log_path, version: @version)
+
+      assert {:ok, _stats} =
+               AgentLog.compact_keep_previous(log_path: log_path, version: @version)
+
+      {:ok, state_after} = AgentLog.replay(log_path: log_path, version: @version)
+      assert state_before == state_after
+    end
+
+    test "leaves the compacting temp file absent on success", %{log_path: log_path} do
+      AgentLog.append({:agent, "a1", %{name: "A1"}}, log_path: log_path, version: @version)
+      {:ok, _} = AgentLog.compact_keep_previous(log_path: log_path, version: @version)
+
+      refute File.exists?(log_path <> ".compacting")
+    end
+  end
+
+  describe "replay_with_fallback/1" do
+    test "loads primary when primary is valid", %{log_path: log_path} do
+      AgentLog.append({:agent, "a1", %{name: "A1"}}, log_path: log_path, version: @version)
+
+      assert {:ok, state, :primary} =
+               AgentLog.replay_with_fallback(log_path: log_path, version: @version)
+
+      assert Map.has_key?(state, "a1")
+    end
+
+    test "returns empty state when neither primary nor .prev exist", %{log_path: log_path} do
+      assert {:ok, state, :primary} =
+               AgentLog.replay_with_fallback(log_path: log_path, version: @version)
+
+      assert state == %{}
+    end
+
+    test "falls back to .prev when primary is corrupt (garbage bytes)",
+         %{log_path: log_path} do
+      # Write a valid .prev with an agent
+      prev_path = log_path <> ".prev"
+      AgentLog.append({:agent, "a1", %{name: "A1"}}, log_path: prev_path, version: @version)
+
+      # Write a corrupt primary file (garbage that won't yield a valid meta header)
+      File.write!(log_path, "this is complete garbage, not a valid log file at all")
+
+      assert {:ok, state, :previous} =
+               AgentLog.replay_with_fallback(log_path: log_path, version: @version)
+
+      assert Map.has_key?(state, "a1")
+    end
+
+    test "falls back to .prev when primary has version mismatch",
+         %{log_path: log_path} do
+      # Primary at v1, .prev at v1, but we ask for v2 — primary mismatch
+      AgentLog.append({:agent, "a_primary", %{name: "primary"}}, log_path: log_path, version: 1)
+
+      prev_path = log_path <> ".prev"
+      AgentLog.append({:agent, "a_prev", %{name: "prev"}}, log_path: prev_path, version: 1)
+
+      # Asking for v2 — both mismatched. Primary mismatch first; .prev mismatch → error
+      # But both mismatch so we should surface the mismatch error, not crash.
+      assert {:error, _} =
+               AgentLog.replay_with_fallback(log_path: log_path, version: 2)
+    end
+
+    test "uses primary when .prev exists but primary is valid", %{log_path: log_path} do
+      # Both exist — primary must win
+      AgentLog.append(
+        {:agent, "from_primary", %{name: "primary"}},
+        log_path: log_path,
+        version: @version
+      )
+
+      prev_path = log_path <> ".prev"
+
+      AgentLog.append(
+        {:agent, "from_prev", %{name: "prev"}},
+        log_path: prev_path,
+        version: @version
+      )
+
+      assert {:ok, state, :primary} =
+               AgentLog.replay_with_fallback(log_path: log_path, version: @version)
+
+      assert Map.has_key?(state, "from_primary")
+      refute Map.has_key?(state, "from_prev")
+    end
+
+    test "treats zero-length primary as missing, not corruption",
+         %{log_path: log_path} do
+      # Primary exists but is empty (not just missing)
+      File.write!(log_path, "")
+
+      # Empty primary is not "corruption worth falling back from". Treat as
+      # "no events yet" → empty state, :primary marker. This mirrors the
+      # behaviour of replay/1 on a missing file.
+      assert {:ok, state, :primary} =
+               AgentLog.replay_with_fallback(log_path: log_path, version: @version)
+
+      assert state == %{}
+    end
+
+    test "populates ETS when primary loads", %{log_path: log_path} do
+      table = :ets.new(:fallback_test_1, [:set, :public])
+
+      try do
+        AgentLog.append(
+          {:agent, "a1", %{name: "A1"}},
+          log_path: log_path,
+          version: @version
+        )
+
+        assert {:ok, _state, :primary} =
+                 AgentLog.replay_with_fallback(
+                   log_path: log_path,
+                   version: @version,
+                   ets_table: table
+                 )
+
+        assert [{"a1", _}] = :ets.lookup(table, "a1")
+      after
+        :ets.delete(table)
+      end
+    end
+
+    test "populates ETS when .prev is used", %{log_path: log_path} do
+      table = :ets.new(:fallback_test_2, [:set, :public])
+
+      try do
+        prev_path = log_path <> ".prev"
+        AgentLog.append({:agent, "a1", %{name: "A1"}}, log_path: prev_path, version: @version)
+
+        File.write!(log_path, "garbage")
+
+        assert {:ok, _state, :previous} =
+                 AgentLog.replay_with_fallback(
+                   log_path: log_path,
+                   version: @version,
+                   ets_table: table
+                 )
+
+        assert [{"a1", _}] = :ets.lookup(table, "a1")
+      after
+        :ets.delete(table)
+      end
+    end
+  end
+
+  describe "keep-two-snapshots integration with corruption" do
+    test "many records → compact_keep_previous → corrupt primary → replay_with_fallback recovers",
+         %{log_path: log_path} do
+      # Build a realistic log
+      AgentLog.append({:agent, "a1", %{name: "Agent 1"}}, log_path: log_path, version: @version)
+      AgentLog.append({:agent, "a2", %{name: "Agent 2"}}, log_path: log_path, version: @version)
+
+      for i <- 1..50 do
+        AgentLog.append(
+          {:msg, "a1", %{id: "m1_#{i}", content: "msg #{i}"}},
+          log_path: log_path,
+          version: @version
+        )
+
+        AgentLog.append(
+          {:msg, "a2", %{id: "m2_#{i}", content: "msg #{i}"}},
+          log_path: log_path,
+          version: @version
+        )
+      end
+
+      # Take a snapshot (keep-previous semantics)
+      {:ok, _} = AgentLog.compact_keep_previous(log_path: log_path, version: @version)
+      assert File.exists?(log_path <> ".prev")
+
+      # Now simulate the primary getting corrupted after compaction
+      {:ok, expected_state} = AgentLog.replay(log_path: log_path, version: @version)
+
+      # Corrupt it
+      File.write!(log_path, "totally garbage bytes that fail to parse")
+
+      # Fallback kicks in and we recover .prev's state (which is the original
+      # pre-compaction log, replaying to the same state).
+      assert {:ok, recovered, :previous} =
+               AgentLog.replay_with_fallback(log_path: log_path, version: @version)
+
+      assert recovered == expected_state
+    end
+  end
 end

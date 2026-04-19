@@ -73,6 +73,7 @@ defmodule BoomLooperWeb.SystemLive do
 
   defp load_counts do
     resources = BoomLooper.Resources.all()
+    checkpointers = BoomLooper.AgentLog.Checkpointer.list_all()
 
     %{
       workspaces: length(BoomLooper.ProjectRegistry.list_projects()),
@@ -83,6 +84,13 @@ defmodule BoomLooperWeb.SystemLive do
       resources: %{
         total: length(resources),
         stale: Enum.count(resources, &(not &1.owner_alive?))
+      },
+      recovery: %{
+        total: length(checkpointers),
+        failed:
+          Enum.count(checkpointers, fn c ->
+            match?({:error, _}, c.last_result)
+          end)
       }
     }
   end
@@ -369,6 +377,19 @@ defmodule BoomLooperWeb.SystemLive do
               <span class="text-zinc-400">none tracked</span>
             <% %{ok?: true, result: %{resources: %{total: t}}} -> %>
               <span class="font-mono">{t}</span> tracked
+            <% _ -> %>
+              <span class="text-zinc-400">loading…</span>
+          <% end %>
+        </.drilldown_card>
+
+        <.drilldown_card href="/system/recovery" title="Recovery" subtitle="Per-workspace snapshot health; bounded boot time">
+          <%= case @counts do %>
+            <% %{ok?: true, result: %{recovery: %{failed: n}}} when n > 0 -> %>
+              <span class="text-red-600 dark:text-red-400 font-mono">{n}</span> <span class="text-red-600 dark:text-red-400">failed — investigate</span>
+            <% %{ok?: true, result: %{recovery: %{total: 0}}} -> %>
+              <span class="text-zinc-400">none running</span>
+            <% %{ok?: true, result: %{recovery: %{total: t}}} -> %>
+              <span class="font-mono">{t}</span> workspaces checkpointed
             <% _ -> %>
               <span class="text-zinc-400">loading…</span>
           <% end %>

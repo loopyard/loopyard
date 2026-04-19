@@ -26,6 +26,7 @@ defmodule BoomLooper.ChatAgent.Persistence do
         # Log the full summary so replay produces complete ETS entries
         agent_data = summary_fn.(state) |> Map.delete(:messages)
         AgentLog.append({:agent, state.id, agent_data}, log_path: path, version: @log_version)
+        notify_checkpointer(state.workspace_id)
     end
   end
 
@@ -33,7 +34,9 @@ defmodule BoomLooper.ChatAgent.Persistence do
   def persist_message(state, msg) do
     case log_path(state.workspace_id) do
       nil -> :ok
-      path -> AgentLog.append({:msg, state.id, msg}, log_path: path, version: @log_version)
+      path ->
+        AgentLog.append({:msg, state.id, msg}, log_path: path, version: @log_version)
+        notify_checkpointer(state.workspace_id)
     end
   end
 
@@ -41,7 +44,23 @@ defmodule BoomLooper.ChatAgent.Persistence do
   def persist_message_update(state, msg_id, changes) do
     case log_path(state.workspace_id) do
       nil -> :ok
-      path -> AgentLog.append({:msg_update, state.id, msg_id, changes}, log_path: path, version: @log_version)
+      path ->
+        AgentLog.append({:msg_update, state.id, msg_id, changes}, log_path: path, version: @log_version)
+        notify_checkpointer(state.workspace_id)
     end
+  end
+
+  # Notify the per-workspace Checkpointer that a record was written.
+  # Soft dependency — if the Checkpointer isn't registered (e.g. in
+  # isolated tests), silently skip. Never blocks persistence.
+  defp notify_checkpointer(workspace_id) do
+    case Registry.lookup(BoomLooper.AgentLog.CheckpointerRegistry, workspace_id) do
+      [{pid, _}] -> BoomLooper.AgentLog.Checkpointer.notify_write(pid)
+      [] -> :ok
+    end
+  rescue
+    # Registry unavailable in a stripped-down test env — don't crash
+    # the GenServer over a failed observability hop.
+    _ -> :ok
   end
 end

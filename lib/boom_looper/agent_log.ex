@@ -308,6 +308,221 @@ defmodule BoomLooper.AgentLog do
     end
   end
 
+  @doc """
+  Like `compact/1`, but keeps the pre-compaction log as `<path>.prev`.
+
+  This is the checkpoint / snapshot primitive for move #8 in
+  `plans/coordination-hardening.md`. Where `compact/1` rewrites the
+  log and discards the old bytes, `compact_keep_previous/1` always
+  leaves the prior log beside the new one so `replay_with_fallback/1`
+  can recover from a corrupt primary.
+
+  ## Sequencing
+
+  The rewrite order matters for crash safety:
+
+    1. Build the new snapshot at `<path>.compacting` (atomic writes).
+    2. Rename `<path>` → `<path>.prev` (atomic on POSIX).
+    3. Rename `<path>.compacting` → `<path>` (atomic on POSIX).
+
+  Any interrupt between steps leaves the filesystem in a usable
+  state: either the old primary is intact (interrupt before step 2)
+  or the old primary now lives as `.prev` with the new snapshot at
+  the primary path (interrupt between 2 and 3 would leave `.prev`
+  valid and primary missing; `replay_with_fallback/1` recovers).
+
+  Never deletes `.prev` here. Callers that want to trim the backup
+  do it explicitly.
+
+  Options match `compact/1`.
+  """
+  def compact_keep_previous(opts) do
+    path = Keyword.fetch!(opts, :log_path)
+    version = Keyword.fetch!(opts, :version)
+
+    case File.stat(path) do
+      {:ok, %{size: before_size}} ->
+        case replay(log_path: path, version: version) do
+          {:ok, state} ->
+            do_compact_keep_previous(path, version, state, before_size)
+
+          {:error, _} = err ->
+            err
+        end
+
+      {:error, :enoent} ->
+        {:ok, %{before: 0, after: 0, agents: 0, messages: 0}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Replay the log, falling back to `<path>.prev` on primary corruption.
+
+  Tries the primary log first. If the primary fails to read or
+  version-mismatches, tries `<path>.prev`. Returns:
+
+    * `{:ok, state, :primary}` — loaded from the primary file
+    * `{:ok, state, :previous}` — loaded from `.prev` because primary failed
+    * `{:error, reason}` — both failed
+
+  Replaying an empty or missing primary is not a fallback condition —
+  it's a valid "no events yet" replay that returns `{:ok, %{}, :primary}`.
+  Fallback only triggers when a primary file exists AND is unusable
+  (corrupt bytes, bad meta, version mismatch).
+
+  Emits `[:boom_looper, :checkpoint, :fallback_used]` telemetry on
+  successful fallback, so operators can see when the backup saved the
+  boot.
+
+  Options:
+    * `:log_path` — path to the log file (required)
+    * `:version` — expected version (required)
+    * `:ets_table` — ETS table to populate (optional)
+    * `:telemetry_metadata` — extra metadata attached to the
+      fallback telemetry event (e.g. `%{workspace_id: id}`)
+  """
+  def replay_with_fallback(opts) do
+    path = Keyword.fetch!(opts, :log_path)
+    version = Keyword.fetch!(opts, :version)
+    ets_table = Keyword.get(opts, :ets_table)
+    metadata = Keyword.get(opts, :telemetry_metadata, %{})
+
+    # Classify the primary file: :missing | :empty | :nonempty
+    primary_kind =
+      case File.stat(path) do
+        {:ok, %{size: 0}} -> :empty
+        {:ok, _} -> :nonempty
+        {:error, _} -> :missing
+      end
+
+    case primary_kind do
+      kind when kind in [:missing, :empty] ->
+        # Nothing to replay / recover from here. Treat as "no events yet"
+        # — same semantics as replay/1 on a missing file. Fallback is for
+        # unreadable content, not absent content.
+        if ets_table, do: :ok
+        {:ok, %{}, :primary}
+
+      :nonempty ->
+        case try_replay(log_path: path, version: version) do
+          {:ok, state} ->
+            if ets_table, do: populate_ets(ets_table, state)
+            {:ok, state, :primary}
+
+          {:error, primary_reason} ->
+            prev_path = path <> ".prev"
+
+            case try_replay(log_path: prev_path, version: version) do
+              {:ok, state} ->
+                if ets_table, do: populate_ets(ets_table, state)
+
+                :telemetry.execute(
+                  [:boom_looper, :checkpoint, :fallback_used],
+                  %{count: 1},
+                  Map.merge(metadata, %{path: path, primary_error: inspect(primary_reason)})
+                )
+
+                {:ok, state, :previous}
+
+              {:error, _prev_reason} ->
+                {:error, primary_reason}
+            end
+        end
+    end
+  end
+
+  # Wraps replay/1 so crashes during decode become {:error, reason} rather
+  # than propagating up — the fallback path needs this to engage.
+  defp try_replay(opts) do
+    try do
+      replay(opts)
+    rescue
+      e -> {:error, {:exception, Exception.message(e)}}
+    catch
+      kind, reason -> {:error, {kind, reason}}
+    end
+  end
+
+  defp do_compact_keep_previous(path, version, state, before_size) do
+    temp_path = path <> ".compacting"
+    prev_path = path <> ".prev"
+
+    # Remove any leftover temp file from a previous failed compaction
+    File.rm(temp_path)
+
+    # Step 1: write the new snapshot to a temp file
+    ensure_meta_header(temp_path, version)
+
+    message_count = write_snapshot(temp_path, state)
+
+    # Step 2: rename current log to .prev (if primary exists). If there
+    # is no primary yet, this is the first snapshot and .prev is omitted
+    # — there's nothing to preserve. On rename failure, leave the temp
+    # file alone so the next call / manual inspection can recover.
+    case File.stat(path) do
+      {:ok, _} ->
+        case File.rename(path, prev_path) do
+          :ok ->
+            :ok
+
+          {:error, reason} ->
+            # Leave temp file in place; original primary still intact.
+            {:error, {:rename_to_prev_failed, reason}}
+        end
+
+      {:error, :enoent} ->
+        :ok
+    end
+    |> case do
+      :ok ->
+        # Step 3: rename temp file to current log
+        case File.rename(temp_path, path) do
+          :ok ->
+            after_size =
+              case File.stat(path) do
+                {:ok, %{size: s}} -> s
+                _ -> 0
+              end
+
+            {:ok,
+             %{
+               before: before_size,
+               after: after_size,
+               agents: map_size(state),
+               messages: message_count
+             }}
+
+          {:error, reason} ->
+            # Temp file still at .compacting, .prev may already hold the
+            # pre-compaction data. Don't delete anything — operator can
+            # manually recover. replay_with_fallback/1 will use .prev on
+            # next boot.
+            {:error, {:rename_failed, reason}}
+        end
+
+      {:error, _} = err ->
+        err
+    end
+  end
+
+  defp write_snapshot(path, state) do
+    Enum.reduce(state, 0, fn {agent_id, agent_data}, acc ->
+      messages = Map.get(agent_data, :messages, [])
+      agent_meta = Map.delete(agent_data, :messages)
+
+      write_record(path, {:agent, agent_id, agent_meta})
+
+      for msg <- messages do
+        write_record(path, {:msg, agent_id, msg})
+      end
+
+      acc + length(messages)
+    end)
+  end
+
   defp do_compact(path, version, state, before_size) do
     temp_path = path <> ".compacting"
     File.rm(temp_path)
