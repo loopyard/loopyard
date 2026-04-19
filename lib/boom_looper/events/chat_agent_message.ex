@@ -66,5 +66,5 @@ defmodule BoomLooper.Events.ChatAgentMessage.Subscriber do
   @callback on_text_delta(ChatAgentMessage.TextDelta.t(), socket) :: result
   @callback on_stream_output(ChatAgentMessage.StreamOutput.t(), socket) :: result
 
-  @optional_callbacks on_message: 2, on_text_delta: 2, on_stream_output: 2
+  # See plans/post-migration-audit.md MEDIUM #5 — no @optional_callbacks.
 end

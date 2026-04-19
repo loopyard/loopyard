@@ -330,8 +330,17 @@ defmodule BoomLooper.Docker.Observer do
     {:noreply, schedule_reconcile(state)}
   end
 
-  # Catch-all for unknown messages (PubSub, etc.)
-  def handle_info(_msg, state), do: {:noreply, state}
+  def handle_info(msg, state) do
+    Logger.warning("[Docker.Observer] unhandled: #{inspect(msg, limit: 200)}")
+
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, msg: inspect(msg, limit: 200)}
+    )
+
+    {:noreply, state}
+  end
 
   @impl true
   def handle_cast(:poll_now, state) do

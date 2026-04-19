@@ -80,12 +80,25 @@ defmodule BoomLooper.ChatAgent.RestartController do
     end
   end
 
-  @doc "Release a quarantined agent. Idempotent."
+  @doc """
+  Release a quarantined agent. Idempotent.
+
+  Clears the `:quarantined` flag + associated metadata from the
+  agent's ETS summary AND purges any crash history for this agent
+  so the next attempt starts with a clean 0-of-N counter. Does NOT
+  respawn the agent — the operator (or the UI's Start button) has
+  to call `ChatAgent.start_agent/1` next. The separation is
+  deliberate: operators typically want to investigate the crash
+  cause before re-launching.
+  """
   def release(agent_id) do
     case :ets.lookup(:chat_agents, agent_id) do
       [{^agent_id, summary}] ->
         cleared = Map.drop(summary, [:quarantined, :quarantine_reason, :quarantine_crashed_at])
         :ets.insert(:chat_agents, {agent_id, cleared})
+
+        workspace_id = Map.get(summary, :workspace_id)
+        if workspace_id, do: purge_history_for(workspace_id, agent_id)
 
         :telemetry.execute(@telemetry_released, %{count: 1}, %{agent_id: agent_id})
 
@@ -101,6 +114,12 @@ defmodule BoomLooper.ChatAgent.RestartController do
       [] ->
         :ok
     end
+  end
+
+  # Public wrapper so release/1 can clear history without plumbing
+  # state through the GenServer.
+  defp purge_history_for(workspace_id, agent_id) do
+    :ets.delete(:restart_controller_history, {workspace_id, agent_id})
   end
 
   @doc """
@@ -142,21 +161,47 @@ defmodule BoomLooper.ChatAgent.RestartController do
   @impl true
   def init(opts) do
     workspace_id = Keyword.fetch!(opts, :workspace_id)
+    BoomLooper.StateKeeper.ensure_tables!()
 
     state = %{
       workspace_id: workspace_id,
-      # Map: agent_id → [crashed_at_timestamps]. Cleared on successful
-      # respawn (clean run), rolled forward on each crash.
-      crash_history: %{},
-      # Map: monitor_ref → {agent_id, agent_opts}. Lets us re-spawn
-      # from the original opts when a ChatAgent crashes.
+      # Map: monitor_ref → {agent_id, agent_opts}. Lives only in
+      # process state — when this controller restarts, monitors are
+      # dead anyway and new ones get attached on the next
+      # start_agent call.
       monitors: %{},
-      # Map: agent_id → agent_opts. Keeps the opts available even
-      # if multiple monitors are in flight.
+      # Map: agent_id → agent_opts. Same lifetime reasoning as
+      # monitors: gets rebuilt on respawn.
       agent_opts: %{}
     }
 
+    # Crash history lives in ETS (`:restart_controller_history`)
+    # keyed by {workspace_id, agent_id}. WorkspaceGroup uses
+    # `:one_for_all` supervision, so a sibling crash restarts THIS
+    # controller — without ETS durability the in-memory crash
+    # counters would reset and an agent that was 4-of-5 crashes
+    # would get a fresh 0-of-5. That silently bypasses quarantine.
+    # See audit HIGH #3.
     {:ok, state}
+  end
+
+  @history_table :restart_controller_history
+
+  defp history_key(workspace_id, agent_id), do: {workspace_id, agent_id}
+
+  defp read_history(workspace_id, agent_id) do
+    case :ets.lookup(@history_table, history_key(workspace_id, agent_id)) do
+      [{_, stamps}] when is_list(stamps) -> stamps
+      _ -> []
+    end
+  end
+
+  defp write_history(workspace_id, agent_id, stamps) do
+    :ets.insert(@history_table, {history_key(workspace_id, agent_id), stamps})
+  end
+
+  defp clear_history(workspace_id, agent_id) do
+    :ets.delete(@history_table, history_key(workspace_id, agent_id))
   end
 
   @impl true
@@ -200,15 +245,27 @@ defmodule BoomLooper.ChatAgent.RestartController do
   end
 
   @impl true
-  def handle_info(_msg, state), do: {:noreply, state}
+  def handle_info(msg, state) do
+    Logger.warning(
+      "[RestartController] ws=#{state.workspace_id} unhandled: #{inspect(msg, limit: 200)}"
+    )
+
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, workspace_id: state.workspace_id, msg: inspect(msg, limit: 200)}
+    )
+
+    {:noreply, state}
+  end
 
   # ── Core: respawn or quarantine ──
 
   # Normal shutdown (stop/remove/destroy) — no respawn, no crash
-  # counted. Clean up tracking state.
+  # counted. Clean up tracking state + persisted history.
   defp handle_agent_down(state, agent_id, _opts, :normal) do
     state = update_in(state.agent_opts, &Map.delete(&1, agent_id))
-    state = update_in(state.crash_history, &Map.delete(&1, agent_id))
+    clear_history(state.workspace_id, agent_id)
     {:noreply, state}
   end
 
@@ -216,28 +273,29 @@ defmodule BoomLooper.ChatAgent.RestartController do
     # Supervisor-initiated shutdown (e.g. workspace tearing down).
     # Treat same as :normal.
     state = update_in(state.agent_opts, &Map.delete(&1, agent_id))
-    state = update_in(state.crash_history, &Map.delete(&1, agent_id))
+    clear_history(state.workspace_id, agent_id)
     {:noreply, state}
   end
 
   defp handle_agent_down(state, agent_id, _opts, {:shutdown, _}) do
     state = update_in(state.agent_opts, &Map.delete(&1, agent_id))
-    state = update_in(state.crash_history, &Map.delete(&1, agent_id))
+    clear_history(state.workspace_id, agent_id)
     {:noreply, state}
   end
 
   # Abnormal exit — count the crash, decide whether to respawn.
+  # Crash history is ETS-backed (audit HIGH #3) so WorkspaceGroup's
+  # :one_for_all restart of this controller can't reset the counter.
   defp handle_agent_down(state, agent_id, agent_opts, reason) do
     now = System.monotonic_time(:millisecond)
     {count, window_ms} = threshold()
 
     history =
-      state.crash_history
-      |> Map.get(agent_id, [])
+      read_history(state.workspace_id, agent_id)
       |> Enum.filter(&(now - &1 <= window_ms))
 
     history = [now | history]
-    state = put_in(state.crash_history[agent_id], history)
+    write_history(state.workspace_id, agent_id, history)
 
     Logger.warning(
       "[RestartController] #{agent_id} crashed (#{length(history)}/#{count} in window): " <>
@@ -289,8 +347,9 @@ defmodule BoomLooper.ChatAgent.RestartController do
         inspect(reason, limit: 100)
     )
 
-    # Clear tracking — if operator releases, we start fresh.
-    state = update_in(state.crash_history, &Map.delete(&1, agent_id))
+    # Clear tracking — if operator releases, we start fresh. History
+    # is in ETS; tracking is in-process.
+    clear_history(state.workspace_id, agent_id)
     state = update_in(state.agent_opts, &Map.delete(&1, agent_id))
     {:noreply, state}
   end

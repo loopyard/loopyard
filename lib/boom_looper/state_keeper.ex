@@ -37,7 +37,14 @@ defmodule BoomLooper.StateKeeper do
     # by {kind, id}. Reads go direct for list_for_owner / all; writes
     # serialize through the Janitor GenServer so the owner-index and
     # monitor refs stay consistent. Plan: Move #7b.
-    {:resource_registry, [:named_table, :public, :set, {:read_concurrency, true}]}
+    {:resource_registry, [:named_table, :public, :set, {:read_concurrency, true}]},
+    # BoomLooper.ChatAgent.RestartController crash history keyed by
+    # {workspace_id, agent_id}. Lives here so that when WorkspaceGroup
+    # restarts the RestartController (via :one_for_all on any sibling
+    # crash), the crash counters survive — otherwise quarantine gets
+    # reset and an agent that was 4-of-5 crashes resets to 0-of-5.
+    # Move #10 bug fix (audit item HIGH #3).
+    {:restart_controller_history, [:named_table, :public, :set, {:read_concurrency, true}]}
   ]
 
   def start_link(_opts) do

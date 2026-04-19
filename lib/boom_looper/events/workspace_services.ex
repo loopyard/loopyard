@@ -51,5 +51,5 @@ defmodule BoomLooper.Events.WorkspaceServices.Subscriber do
   @callback on_services_updated(WorkspaceServices.ServicesUpdated.t(), socket) :: result
   @callback on_compose_result(WorkspaceServices.ComposeResult.t(), socket) :: result
 
-  @optional_callbacks on_services_updated: 2, on_compose_result: 2
+  # See plans/post-migration-audit.md MEDIUM #5 — no @optional_callbacks.
 end

@@ -34,15 +34,10 @@ defmodule BoomLooper.Events.ChatAgent.Subscriber do
   @callback on_quarantined(ChatAgent.Quarantined.t(), socket) :: result
   @callback on_released(ChatAgent.Released.t(), socket) :: result
 
-  @optional_callbacks on_started: 2,
-                      on_stopped: 2,
-                      on_booting: 2,
-                      on_boot_status: 2,
-                      on_boot_failed: 2,
-                      on_removed: 2,
-                      on_renamed: 2,
-                      on_resumed: 2,
-                      on_status_changed: 2,
-                      on_quarantined: 2,
-                      on_released: 2
+  # NO @optional_callbacks. Move #3's primary contract is "missing
+  # callback = compile warning via @impl." Marking everything
+  # optional defeats that contract — silent drops become possible
+  # again. Subscribers that don't care about a specific event must
+  # implement the callback as `def on_x(_e, socket), do: {:noreply, socket}`
+  # — explicit opt-out, not silent drop. See audit MEDIUM #5.
 end

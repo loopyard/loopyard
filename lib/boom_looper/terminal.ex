@@ -159,7 +159,19 @@ defmodule BoomLooper.Terminal do
     {:stop, :normal, state}
   end
 
-  def handle_info(_msg, state), do: {:noreply, state}
+  def handle_info(msg, state) do
+    Logger.warning(
+      "[Terminal] container=#{state.container} unhandled: #{inspect(msg, limit: 200)}"
+    )
+
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, container: state.container, msg: inspect(msg, limit: 200)}
+    )
+
+    {:noreply, state}
+  end
 
   @impl true
   def terminate(_reason, state) do

@@ -910,40 +910,84 @@ defmodule BoomLooper.ChatAgent do
       Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :crashed})
       {:noreply, state}
     else
-      # Exponential backoff: 2s, 4s, 8s, 16s, 32s
-      # Delay math goes through BoomLooper.Retry so the schedule is
-      # consistent with other retry sites (see move #7d in
-      # plans/coordination-hardening.md). The control flow stays
-      # here because each "attempt" is a separate EXIT message, not
-      # a synchronous retry loop.
+      # Exponential backoff scheduled via `Process.send_after` — NOT
+      # synchronous sleep. A previous version slept inside this
+      # handler for up to 32s, blocking the mailbox: send_message
+      # casts, :stop, Claude stream events, and PubSub traffic all
+      # queued until the sleep returned. Move #7d's `backoff_ms/2`
+      # exists precisely so ChatAgent crash recovery can be an
+      # async sequence of `handle_info` events rather than a
+      # blocking loop. Schedule + return :noreply; the retry happens
+      # in `handle_info({:retry_session, consecutive})` below.
       base = Application.get_env(:boom_looper, :crash_backoff_base_ms, @default_crash_backoff_base_ms)
       backoff_ms = BoomLooper.Retry.backoff_ms(consecutive, {:exponential, base})
       BoomLooper.EventLog.info("agent:#{state.name}", "Backing off #{backoff_ms}ms before restart (crash ##{consecutive})")
-      Process.sleep(backoff_ms)
+      Process.send_after(self(), {:retry_session, consecutive}, backoff_ms)
+      state = Map.put(state, :consecutive_crashes, consecutive)
+      {:noreply, state}
+    end
+  end
 
-      case state.backend.start_session(state.session_opts) do
-        {:ok, new_session} ->
-          recovered_msg = %{role: :system, content: "Session crashed — restarted automatically (attempt #{consecutive}).", timestamp: DateTime.utc_now()}
-          {state, recovered_msg} = append_message(%{state | session: new_session, status: :idle, errors: state.errors + 1}, recovered_msg)
-          state = Map.put(state, :consecutive_crashes, consecutive)
-          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: recovered_msg})
-          Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
-          {:noreply, state}
+  # Scheduled by the :EXIT handler above after the backoff window.
+  # Actually performs the session restart + appends the outcome
+  # message. Kept out of the :EXIT handler so the mailbox stays
+  # responsive during the backoff.
+  @impl true
+  def handle_info({:retry_session, consecutive}, state) do
+    id = state.id
 
-        {:error, _} ->
-          error_msg = %{role: :error, content: "Agent session crashed. Send a message to retry.", timestamp: DateTime.utc_now()}
-          {state, error_msg} = append_message(state, error_msg)
-          state = %{state | status: :idle, errors: state.errors + 1}
-          state = Map.put(state, :consecutive_crashes, consecutive)
-          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: error_msg})
-          Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
-          {:noreply, state}
-      end
+    case state.backend.start_session(state.session_opts) do
+      {:ok, new_session} ->
+        recovered_msg = %{
+          role: :system,
+          content: "Session crashed — restarted automatically (attempt #{consecutive}).",
+          timestamp: DateTime.utc_now()
+        }
+
+        {state, recovered_msg} =
+          append_message(
+            %{state | session: new_session, status: :idle, errors: state.errors + 1},
+            recovered_msg
+          )
+
+        state = Map.put(state, :consecutive_crashes, consecutive)
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: recovered_msg})
+        Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
+        {:noreply, state}
+
+      {:error, _} ->
+        error_msg = %{
+          role: :error,
+          content: "Agent session crashed. Send a message to retry.",
+          timestamp: DateTime.utc_now()
+        }
+
+        {state, error_msg} = append_message(state, error_msg)
+        state = %{state | status: :idle, errors: state.errors + 1}
+        state = Map.put(state, :consecutive_crashes, consecutive)
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: error_msg})
+        Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
+        {:noreply, state}
     end
   end
 
   @impl true
-  def handle_info(_msg, state), do: {:noreply, state}
+  def handle_info(msg, state) do
+    # Log + telemetry for unknown messages (framework-fighting fix
+    # from plans/post-migration-audit.md). Unknown mailbox traffic
+    # previously landed in a silent `{:noreply, state}` catch-all,
+    # which is exactly how "why isn't my handler firing?" debug
+    # sessions started.
+    Logger.warning("[ChatAgent] #{state.id} unhandled message: #{inspect(msg, limit: 200)}")
+
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, agent_id: state.id, msg: inspect(msg, limit: 200)}
+    )
+
+    {:noreply, state}
+  end
 
   @impl true
   def terminate(_reason, state) do

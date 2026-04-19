@@ -54,8 +54,5 @@ defmodule BoomLooper.Events.DockerObserver.Subscriber do
   @callback on_disconnected(DockerObserver.Disconnected.t(), socket) :: result
   @callback on_reconnected(DockerObserver.Reconnected.t(), socket) :: result
 
-  @optional_callbacks on_changed: 2,
-                      on_reset: 2,
-                      on_disconnected: 2,
-                      on_reconnected: 2
+  # See plans/post-migration-audit.md MEDIUM #5 — no @optional_callbacks.
 end

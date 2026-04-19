@@ -42,5 +42,6 @@ defmodule BoomLooper.Events.SourceSync.Subscriber do
 
   @callback on_updated(SourceSync.Updated.t(), socket) :: result
 
-  @optional_callbacks on_updated: 2
+  # No @optional_callbacks — the point of Move #3 is compile-time
+  # enforcement. Explicit opt-out is `def on_updated(_, s), do: {:noreply, s}`.
 end

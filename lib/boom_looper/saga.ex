@@ -523,7 +523,22 @@ defmodule BoomLooper.Saga do
     """
   end
 
+  # saga_id must be unique across BEAM restarts. The durable journal
+  # (`sagas.log`) persists saga records keyed by saga_id; if the id
+  # generator restarts at 0 on every boot (which `:erlang.unique_integer`
+  # does), saga 42 from BEAM run A and saga 42 from BEAM run B merge in
+  # `build_sagas/1`, producing a Frankenstein record. On boot,
+  # `resume_all_on_boot/0` would then dispatch rollback for a saga that
+  # already completed, or skip an incomplete old saga because a new
+  # same-id saga succeeded.
+  #
+  # Compose `system_time` with `unique_integer` so the timestamp gives
+  # cross-boot uniqueness and the integer gives same-millisecond
+  # ordering within a single BEAM run. Format as a string so journal
+  # records stay grep-friendly and cross-BEAM comparisons are textual.
   defp make_saga_id do
-    :erlang.unique_integer([:positive, :monotonic])
+    ts = :erlang.system_time(:microsecond)
+    seq = :erlang.unique_integer([:positive, :monotonic])
+    "#{ts}-#{seq}"
   end
 end

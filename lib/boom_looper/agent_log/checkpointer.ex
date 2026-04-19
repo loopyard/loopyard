@@ -241,7 +241,19 @@ defmodule BoomLooper.AgentLog.Checkpointer do
     {:noreply, run_checkpoint(state)}
   end
 
-  def handle_info(_msg, state), do: {:noreply, state}
+  def handle_info(msg, state) do
+    Logger.warning(
+      "[AgentLog.Checkpointer] ws=#{state.workspace_id} unhandled: #{inspect(msg, limit: 200)}"
+    )
+
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, workspace_id: state.workspace_id, msg: inspect(msg, limit: 200)}
+    )
+
+    {:noreply, state}
+  end
 
   # ── Internals ──
 

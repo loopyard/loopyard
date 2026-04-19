@@ -116,14 +116,41 @@ defmodule BoomLooper.Resources.Janitor do
     # covers the standalone-test case where Janitor starts directly).
     BoomLooper.StateKeeper.ensure_tables!()
 
-    # Clean slate every start — any prior monitors are dead with the
-    # previous janitor, and ETS rows may reference stale pids from a
-    # previous BEAM lifetime if the table survived via StateKeeper.
-    # We can't recover monitors, so we must drop entries rather than
-    # silently hold "tracked" rows that will never release.
-    :ets.delete_all_objects(@table)
+    # Re-hydrate from ETS on every janitor start. A previous version
+    # did `delete_all_objects` unconditionally, leaking every
+    # currently-tracked resource: the row went away but the owner
+    # process was still alive, so when the owner eventually died
+    # nothing released the resource. Instead: re-monitor surviving
+    # owners, and drop only rows whose owner is provably dead.
+    state = rehydrate_from_ets(%{monitors: %{}, by_owner: %{}})
 
-    {:ok, %{monitors: %{}, by_owner: %{}}}
+    {:ok, state}
+  end
+
+  # Walk every existing row in the table. For each, check
+  # `Process.alive?(owner_pid)`:
+  #   * alive → set up a fresh Process.monitor, add to by_owner index,
+  #     leave the ETS row in place
+  #   * dead → delete the ETS row (and log telemetry as a recovered
+  #     orphan — this is drift the janitor corrected at boot)
+  defp rehydrate_from_ets(state) do
+    :ets.tab2list(@table)
+    |> Enum.reduce(state, fn {{kind, id} = key, owner_pid, _release_fn, _ts}, acc ->
+      if is_pid(owner_pid) and Process.alive?(owner_pid) do
+        acc = ensure_monitored(acc, owner_pid)
+        add_to_index(acc, owner_pid, key)
+      else
+        :ets.delete(@table, key)
+
+        :telemetry.execute(
+          [:boom_looper, :resources, :orphan],
+          %{count: 1},
+          %{kind: kind, id: id, reason: :owner_dead_on_janitor_restart}
+        )
+
+        acc
+      end
+    end)
   end
 
   # Track a resource. State tracks:
@@ -198,9 +225,17 @@ defmodule BoomLooper.Resources.Janitor do
     end
   end
 
-  # Any other message is not ours; the supervised GenServer stays
-  # crash-free rather than raising on unknown mail.
-  def handle_info(_msg, state), do: {:noreply, state}
+  def handle_info(msg, state) do
+    Logger.warning("[Resources.Janitor] unhandled: #{inspect(msg, limit: 200)}")
+
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, msg: inspect(msg, limit: 200)}
+    )
+
+    {:noreply, state}
+  end
 
   # ── Internal ──
 
