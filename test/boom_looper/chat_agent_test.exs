@@ -485,4 +485,143 @@ defmodule BoomLooper.ChatAgentTest do
       refute_receive {:chat_agent_status_changed, ^id, :destroying}, 200
     end
   end
+
+  describe "init_resume preserves durable fields" do
+    # Regression: `init_resume` used to hand-list the fields it copied
+    # from the saved ETS summary, so any field added to `summary/1`
+    # (tokens, cost, model, turns, active_tool) silently reset to its
+    # struct default on every resume. UI showed zero cost/tokens on an
+    # agent mid-work after any supervisor restart.
+    #
+    # Guarantee under test: every field `summary/1` exposes survives a
+    # resume round-trip via ETS. If someone adds a new summary field
+    # without wiring it into the struct defaults, this test fails.
+
+    setup do
+      id = "resume-preserve-#{:rand.uniform(1_000_000)}"
+      on_exit(fn ->
+        try do
+          ChatAgent.stop_agent(id)
+        catch
+          :exit, _ -> :ok
+        end
+
+        :ets.delete(:chat_agents, id)
+      end)
+
+      %{id: id}
+    end
+
+    test "resume rebuilds struct with tokens, cost, model, turns intact", %{id: id} do
+      saved = %{
+        id: id,
+        name: "Resume Test",
+        working_dir: File.cwd!(),
+        bind_mount: nil,
+        workspace_id: nil,
+        started_at: ~U[2026-01-01 00:00:00Z],
+        started_by: "test",
+        last_activity_at: ~U[2026-01-01 00:05:00Z],
+        status: :idle,
+        messages: [],
+        tool_calls: 7,
+        errors: 1,
+        service_name: nil,
+        agent_type: "coding",
+        model: "claude-opus-4-7",
+        total_input_tokens: 12_345,
+        total_output_tokens: 6_789,
+        total_cache_read_tokens: 99_000,
+        total_cost_usd: 1.234,
+        active_tool: nil,
+        turns: 42
+      }
+
+      :ets.insert(:chat_agents, {id, saved})
+
+      {:ok, _pid} =
+        BoomLooper.TestHelpers.start_agent(
+          id: id,
+          resume: true,
+          working_dir: File.cwd!(),
+          started_by: "test",
+          backend: BoomLooper.Agent.Backend.Fake
+        )
+
+      live = ChatAgent.get_state(id)
+
+      # Every durable summary field survives resume.
+      assert live.model == "claude-opus-4-7"
+      assert live.total_input_tokens == 12_345
+      assert live.total_output_tokens == 6_789
+      assert live.total_cache_read_tokens == 99_000
+      assert live.total_cost_usd == 1.234
+      assert live.turns == 42
+      assert live.tool_calls == 7
+      assert live.errors == 1
+      assert live.agent_type == "coding"
+      assert live.name == "Resume Test"
+      assert live.started_by == "test"
+      assert live.started_at == ~U[2026-01-01 00:00:00Z]
+    end
+
+    test "resume preserves message order across a subsequent append", %{id: id} do
+      # Summary stores messages oldest-first; internal state stores them
+      # newest-first. An earlier bug used the saved display-order list
+      # as the internal list, so post-resume appends reversed the older
+      # messages. This asserts order is stable end-to-end.
+      msgs = [
+        %{id: "a", role: :user, content: "first", timestamp: ~U[2026-01-01 00:00:00Z]},
+        %{id: "b", role: :assistant, content: "second", timestamp: ~U[2026-01-01 00:01:00Z]},
+        %{id: "c", role: :user, content: "third", timestamp: ~U[2026-01-01 00:02:00Z]}
+      ]
+
+      saved = %{
+        id: id,
+        name: "Order Test",
+        working_dir: File.cwd!(),
+        bind_mount: nil,
+        workspace_id: nil,
+        started_at: ~U[2026-01-01 00:00:00Z],
+        started_by: "test",
+        last_activity_at: ~U[2026-01-01 00:00:00Z],
+        status: :idle,
+        messages: msgs,
+        tool_calls: 0,
+        errors: 0,
+        service_name: nil,
+        agent_type: "coding",
+        model: nil,
+        total_input_tokens: 0,
+        total_output_tokens: 0,
+        total_cache_read_tokens: 0,
+        total_cost_usd: 0.0,
+        active_tool: nil,
+        turns: 0
+      }
+
+      :ets.insert(:chat_agents, {id, saved})
+
+      {:ok, pid} =
+        BoomLooper.TestHelpers.start_agent(
+          id: id,
+          resume: true,
+          working_dir: File.cwd!(),
+          started_by: "test",
+          backend: BoomLooper.Agent.Backend.Fake
+        )
+
+      # Force an external append (doesn't need the CLI) so we exercise
+      # the "append on top of resumed state" path.
+      # Use :user (not :system) so we don't trigger the idle→auto-continue
+      # cast that appends "Continue." and skews the ordering assertion.
+      new_msg = %{id: "d", role: :user, content: "fourth", timestamp: ~U[2026-01-01 00:03:00Z]}
+      GenServer.cast(pid, {:append_external_message, new_msg})
+      Process.sleep(50)
+
+      live = ChatAgent.get_state(id)
+      contents = Enum.map(live.messages, & &1.content)
+      assert contents == ["first", "second", "third", "fourth"]
+    end
+  end
 end

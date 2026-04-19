@@ -984,8 +984,13 @@ defmodule BoomLooperWeb.WorkspaceLive do
 
   @impl true
   def handle_info({:chat_text_delta, id, text}, socket) when id == socket.assigns.selected_id do
+    # Piggyback on delta events to keep :selected_agent fresh even when
+    # status transitions don't emit their own broadcast. Costs an ETS
+    # lookup per streamed chunk — cheap, and LiveView's assign diffing
+    # elides the render when the summary hasn't actually changed.
     {:noreply,
      socket
+     |> refresh_selected_agent(id)
      |> assign(:streaming_text, socket.assigns.streaming_text <> text)
      |> push_event("scroll_bottom", %{})}
   end

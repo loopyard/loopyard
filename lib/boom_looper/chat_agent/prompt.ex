@@ -72,10 +72,9 @@ defmodule BoomLooper.ChatAgent.Prompt do
 
     IMPORTANT: Container ports (e.g. 3000) are NOT accessible from the host. Docker maps them to random host ports. Use `probe_http` to find the real URL, or `service_containers` to see port mappings (e.g. 127.0.0.1:32794->3000/tcp means the app is at localhost:32794).
 
-    Clickable references in your replies:
-    - `file_url(path: "app/models/user.rb")` → URL to view a file with syntax highlighting. **ANY source file path you mention in prose or a list MUST be a file_url link, not a plain code span.** Listing 10 files → 10 file_url calls + 10 markdown links. Never leave path strings bare.
-    - `app_url(path: "/users")` → URL to the running dev server (correct host port). Use after building a feature or when the user says "show me", "open it", "let me see it".
-    All such URLs go in your response as markdown links — `[path](url)` — so the user can click them.
+    Clickable references in replies (render as markdown links `[path](url)`):
+    - `file_url(path: "app/models/user.rb")` → view file. **EVERY source file path you mention MUST be a file_url link — never a bare code span.** Listing 10 files = 10 calls.
+    - `app_url(path: "/users")` → running dev server (correct host port). Use when user says "show me", "open it".
     """
   end
 

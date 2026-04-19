@@ -253,20 +253,25 @@ defmodule BoomLooper.ChatAgent do
 
   @doc "Register an agent as booting in ETS so all viewers can see it"
   def register_booting(id, name, working_dir, opts \\ []) do
-    summary = %{
+    # Go through summary/1 so the booting entry carries every field
+    # summary exposes — tokens (0.0), cost, model (nil), turns, etc.
+    # Same reason as init_resume: the UI reads these unconditionally
+    # and a partial map would surface as KeyError or zeroed values
+    # that look real.
+    now = DateTime.utc_now()
+
+    stub = %__MODULE__{
       id: id,
       name: name,
       working_dir: working_dir,
       service_name: Keyword.get(opts, :service_name),
-      started_at: DateTime.utc_now(),
+      started_at: now,
       started_by: "browser",
-      last_activity_at: DateTime.utc_now(),
-      status: :booting,
-      messages: [],
-      tool_calls: 0,
-      errors: 0,
-      boot_status: "Initializing..."
+      last_activity_at: now,
+      status: :booting
     }
+
+    summary = stub |> summary() |> Map.put(:boot_status, "Initializing...")
 
     :ets.insert(@ets_table, {id, summary})
     broadcast(@topic, {:chat_agent_booting, summary})
@@ -374,7 +379,16 @@ defmodule BoomLooper.ChatAgent do
     end
   end
 
-  # Resume an agent from persisted state (after server restart)
+  # Resume an agent from persisted state (after server restart).
+  #
+  # Rebuild the struct from the saved summary verbatim, then overlay
+  # the runtime fields that don't persist (session, backend, etc).
+  # Past bug: hand-listing fields dropped `total_input_tokens`,
+  # `total_cost_usd`, `model`, `turns` — every resume silently zeroed
+  # the Claude panel. The general rule: summary is the contract.
+  # `struct(__MODULE__, saved)` ignores summary-only keys and fills
+  # missing defstruct fields with defaults, so adding a field to
+  # `summary/1` and the struct is enough — no resume update needed.
   defp init_resume(id, opts) do
     case :ets.lookup(@ets_table, id) do
       [{^id, saved}] ->
@@ -388,25 +402,26 @@ defmodule BoomLooper.ChatAgent do
           agent_type: agent_type
         )
 
-        state = %__MODULE__{
-          id: id,
-          name: saved.name,
-          session: session,
-          session_opts: session_opts,
-          backend: backend,
-          working_dir: saved.working_dir,
-          bind_mount: saved.bind_mount,
-          workspace_id: saved.workspace_id,
-          started_at: saved.started_at,
-          started_by: saved.started_by,
-          last_activity_at: DateTime.utc_now(),
-          status: :idle,
-          messages: saved.messages,
-          tool_calls: saved[:tool_calls] || 0,
-          errors: saved[:errors] || 0,
-          service_name: saved[:service_name],
-          agent_type: agent_type
-        }
+        # Summary stores messages oldest-first (display order); internal
+        # state stores them newest-first for O(1) prepend in append_message.
+        # Reverse back on load or the message list grows in the wrong
+        # direction across restart.
+        internal_messages = Enum.reverse(saved[:messages] || [])
+
+        state =
+          __MODULE__
+          |> struct(saved)
+          |> struct(
+            session: session,
+            session_opts: session_opts,
+            backend: backend,
+            last_activity_at: DateTime.utc_now(),
+            status: :idle,
+            stream_ref: nil,
+            active_tool: nil,
+            agent_type: agent_type,
+            messages: internal_messages
+          )
 
         :ets.insert(@ets_table, {id, summary(state)})
         broadcast(@topic, {:chat_agent_resumed, summary(state)})
@@ -762,7 +777,10 @@ defmodule BoomLooper.ChatAgent do
           state
 
         %Event.SessionResult{} = result ->
-          # Accumulate token usage across turns
+          # Accumulate token usage across turns. Persist after ETS
+          # insert — without this, tokens live only in RAM, and a
+          # server restart replays the original :agent record (frozen
+          # at init_fresh) so the Claude panel zeroes out.
           state = %{state |
             model: result.model || state.model,
             total_input_tokens: state.total_input_tokens + result.input_tokens,
@@ -771,6 +789,7 @@ defmodule BoomLooper.ChatAgent do
             total_cost_usd: state.total_cost_usd + result.cost_usd
           }
           :ets.insert(@ets_table, {id, summary(state)})
+          Persistence.persist_agent(state, &summary/1)
           broadcast(@topic, {:chat_agent_status_changed, id, state.status})
           state
 
@@ -783,8 +802,13 @@ defmodule BoomLooper.ChatAgent do
 
   @impl true
   def handle_info({:stream_done, id}, %{id: id} = state) do
+    # Turn counter and transient tool/ref are part of summary — without
+    # ETS sync + persist here, UI reads stale data and restart replay
+    # loses the increment.
     state = %{state | status: :idle, active_tool: nil, turns: state.turns + 1}
     state = Map.put(state, :consecutive_crashes, 0)
+    :ets.insert(@ets_table, {id, summary(state)})
+    Persistence.persist_agent(state, &summary/1)
     broadcast(@topic, {:chat_agent_status_changed, id, :idle})
     {:noreply, state}
   end
