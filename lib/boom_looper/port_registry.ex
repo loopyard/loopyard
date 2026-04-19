@@ -89,6 +89,17 @@ defmodule BoomLooper.PortRegistry do
   end
 
   @doc """
+  Release a single entry by `{workspace_id, service, container_port}`.
+  Used by the Resources janitor when the owning workspace supervisor
+  goes DOWN, and internally by `release_workspace/1`. Returns `:ok`
+  whether or not the entry existed.
+  """
+  def release_entry(workspace_id, service, container_port)
+      when is_binary(workspace_id) and is_binary(service) and is_integer(container_port) do
+    GenServer.call(__MODULE__, {:release_entry, workspace_id, service, container_port})
+  end
+
+  @doc """
   Migration helper: insert a legacy entry with a pre-assigned host
   port. Marks `legacy: true` so audits can tell these apart from
   normal assigns. The host_port counts as in-use for future `assign`
@@ -192,6 +203,7 @@ defmodule BoomLooper.PortRegistry do
             :ets.insert(@table, {key, entry})
             persist(state)
             EventLog.info("ports", "Assigned #{ws}/#{svc}/#{cport} → host #{host_port}")
+            track_port_binding(ws, svc, cport)
             {:reply, {:ok, host_port}, state}
 
           {:error, :port_pool_exhausted} = err ->
@@ -214,11 +226,39 @@ defmodule BoomLooper.PortRegistry do
       end
 
       :ets.delete(@table, key)
+      # Untrack explicitly — prevents the Resources janitor from
+      # double-releasing if the workspace supervisor dies later.
+      BoomLooper.Resources.release(:port_binding, key)
     end
 
     if entries != [] do
       EventLog.info("ports", "Released #{length(entries)} port(s) for workspace #{ws}")
       persist(state)
+    end
+
+    {:reply, :ok, state}
+  end
+
+  def handle_call({:release_entry, ws, svc, cport}, _from, state) do
+    key = {ws, svc, cport}
+
+    case :ets.lookup(@table, key) do
+      [{^key, entry}] ->
+        if entry.exposed do
+          toggle_exposer(key, entry, false)
+        end
+
+        :ets.delete(@table, key)
+        persist(state)
+        EventLog.info("ports", "Released #{ws}/#{svc}/#{cport}")
+        # Untrack from Resources too — idempotent, and handles the
+        # case where release_entry is called outside of the janitor
+        # DOWN path (future callers; today only the janitor task
+        # calls it, but don't leak tracking state if that changes).
+        BoomLooper.Resources.release(:port_binding, key)
+
+      [] ->
+        :ok
     end
 
     {:reply, :ok, state}
@@ -298,6 +338,44 @@ defmodule BoomLooper.PortRegistry do
   end
 
   # --- Private ---
+
+  # Register the port binding under the workspace supervisor pid so
+  # the Resources.Janitor releases it automatically when the group
+  # dies for any reason (normal shutdown, crash, :kill). If the
+  # workspace supervisor isn't up yet — e.g. seed / migration path
+  # runs before the group exists — we skip tracking. The next
+  # explicit `release_workspace/1` still works via direct ETS
+  # cleanup. Plan: Move #7b.
+  defp track_port_binding(ws, svc, cport) do
+    key = {ws, svc, cport}
+
+    case BoomLooper.WorkspaceGroup.whereis(ws) do
+      nil ->
+        :ok
+
+      pid when is_pid(pid) ->
+        BoomLooper.Resources.track(
+          pid,
+          :port_binding,
+          key,
+          fn ->
+            # The release runs inside the Janitor GenServer. We can't
+            # synchronously GenServer.call back into PortRegistry from
+            # here — if PortRegistry is in the middle of its own
+            # Resources.track call, we'd deadlock both processes. Run
+            # the release in a supervised Task so the Janitor's loop
+            # unblocks immediately.
+            Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
+              BoomLooper.PortRegistry.release_entry(ws, svc, cport)
+            end)
+
+            :ok
+          end
+        )
+
+        :ok
+    end
+  end
 
   # Ports the registry must NEVER hand out: anything BoomLooper itself
   # binds (Phoenix endpoint, SSH server) or similar host services. Without

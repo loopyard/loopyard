@@ -1,0 +1,114 @@
+defmodule BoomLooper.ResourceCoverageTest do
+  @moduledoc """
+  Static coverage check for Move #7b. Scans `lib/boom_looper/` for
+  patterns that allocate OS-level or long-lived OTP resources and
+  fails the build when a new site appears outside the explicit
+  allowlist or the `Resources.track/4` call path.
+
+  ## What it checks
+
+  The janitor releases resources only if the caller tracked them
+  via `Resources.track/4`. New code that calls `Port.open/2` or
+  hand-manages Mutagen sessions without going through the janitor
+  is an invitation to re-introduce the orphan-resource class we
+  just killed. The test fails in that case with an explicit
+  allowlist entry required — either track the resource or add a
+  documented justification.
+
+  ## Allowlist
+
+  Current `Port.open` sites that legitimately don't track via
+  `Resources`:
+
+    * `lib/boom_looper/docker.ex` — short-lived CLI shell-outs;
+      the Port is linked to the calling process (`Docker.docker/2`)
+      and dies with it. No lifetime beyond the call.
+
+    * `lib/boom_looper/terminal.ex` — GenServer-owned PTY; the
+      Port dies with the Terminal GenServer via BEAM Port linking.
+
+    * `lib/boom_looper/volume_cloner.ex` — short-lived git clone
+      subprocess, linked to the caller.
+
+    * `lib/boom_looper/eval_runner.ex` — short-lived eval
+      subprocess, linked to the caller.
+
+    * `lib/boom_looper/tools/container/docker_compose.ex` — docker
+      compose CLI, short-lived, linked to the caller.
+
+    * `lib/boom_looper/tools/container/exec_stream.ex` — docker
+      exec CLI wrapped in a supervised Task whose linked Port dies
+      with the Task. Task is the lifetime container.
+
+  Mutagen sessions are NOT in scope — the SyncMonitor design
+  explicitly preserves them across GenServer restarts (see
+  `BoomLooper.Resources` @moduledoc).
+  """
+  use ExUnit.Case, async: true
+
+  @lib_root Path.expand("../../lib/boom_looper", __DIR__)
+
+  @port_open_allowlist [
+    "lib/boom_looper/docker.ex",
+    "lib/boom_looper/terminal.ex",
+    "lib/boom_looper/volume_cloner.ex",
+    "lib/boom_looper/eval_runner.ex",
+    "lib/boom_looper/tools/container/docker_compose.ex",
+    "lib/boom_looper/tools/container/exec_stream.ex"
+  ]
+
+  test "every Port.open/2 site is either tracked or in the allowlist" do
+    offenders =
+      find_pattern_sites("Port.open(")
+      |> Enum.reject(fn rel ->
+        rel in @port_open_allowlist or String.starts_with?(rel, "lib/boom_looper/resources")
+      end)
+
+    assert offenders == [], """
+    New Port.open/2 site(s) found outside the allowlist:
+
+    #{Enum.map_join(offenders, "\n", &"  - #{&1}")}
+
+    If this Port's lifetime is bounded by the calling process (linked
+    to a GenServer or short-lived Task), add it to @port_open_allowlist
+    in #{__MODULE__} with a one-line justification. Otherwise, track it
+    via BoomLooper.Resources.track/4 so the janitor can release it
+    when the owner dies.
+    """
+  end
+
+  test "no module outside Resources.* calls :telemetry.execute for the :resources namespace" do
+    # Guard against accidental re-emission of resource telemetry from
+    # unexpected sites — the single emitter is Resources.Janitor so
+    # /system/orphans and downstream dashboards stay consistent.
+    offenders =
+      find_pattern_sites(":boom_looper, :resources")
+      |> Enum.reject(fn rel ->
+        String.starts_with?(rel, "lib/boom_looper/resources") or
+          String.starts_with?(rel, "lib/boom_looper/events_tap") or
+          rel == "lib/boom_looper/resources.ex"
+      end)
+
+    assert offenders == [], """
+    Unexpected :resources telemetry emission from:
+
+    #{Enum.map_join(offenders, "\n", &"  - #{&1}")}
+
+    Resource telemetry should only fire from BoomLooper.Resources.Janitor.
+    """
+  end
+
+  # --- Helpers ---
+
+  defp find_pattern_sites(pattern) do
+    Path.wildcard(Path.join(@lib_root, "**/*.ex"))
+    |> Enum.filter(fn file ->
+      case File.read(file) do
+        {:ok, content} -> String.contains?(content, pattern)
+        _ -> false
+      end
+    end)
+    |> Enum.map(&Path.relative_to(&1, Path.expand("../..", __DIR__)))
+    |> Enum.sort()
+  end
+end

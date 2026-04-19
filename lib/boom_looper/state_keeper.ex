@@ -32,7 +32,12 @@ defmodule BoomLooper.StateKeeper do
     # known topic. ordered_set keyed by a monotonic counter so the
     # newest records come out with a single :ets.select_reverse.
     # Plan: Move #7.
-    {:events_tap, [:named_table, :public, :ordered_set, {:read_concurrency, true}]}
+    {:events_tap, [:named_table, :public, :ordered_set, {:read_concurrency, true}]},
+    # BoomLooper.Resources.Janitor — tracked OS/OTP resources keyed
+    # by {kind, id}. Reads go direct for list_for_owner / all; writes
+    # serialize through the Janitor GenServer so the owner-index and
+    # monitor refs stay consistent. Plan: Move #7b.
+    {:resource_registry, [:named_table, :public, :set, {:read_concurrency, true}]}
   ]
 
   def start_link(_opts) do

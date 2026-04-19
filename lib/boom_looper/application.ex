@@ -15,6 +15,12 @@ defmodule BoomLooper.Application do
       BoomLooper.IExSession,
       # StateKeeper owns ETS tables — must start first, lives longest
       BoomLooper.StateKeeper,
+      # Resources janitor — monitors owner pids and releases tracked
+      # OS/OTP resources when an owner goes DOWN. Must start AFTER
+      # StateKeeper (needs :resource_registry ETS table) and BEFORE
+      # any subsystem that calls Resources.track/4 (PortRegistry,
+      # WorkspaceSupervisor). Plan: Move #7b.
+      BoomLooper.Resources.Janitor,
       {Phoenix.PubSub, name: BoomLooper.PubSub},
       {Registry, keys: :unique, name: BoomLooper.ChatAgentRegistry},
       # Per-workspace RestartController registry — one controller per

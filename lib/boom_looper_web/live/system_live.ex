@@ -72,12 +72,18 @@ defmodule BoomLooperWeb.SystemLive do
   end
 
   defp load_counts do
+    resources = BoomLooper.Resources.all()
+
     %{
       workspaces: length(BoomLooper.ProjectRegistry.list_projects()),
       agents: length(BoomLooper.ChatAgent.list_agents()),
       cli: length(SystemStats.claude_cli_processes()),
       quarantined: length(BoomLooper.ChatAgent.RestartController.list_quarantined()),
-      sagas: BoomLooper.Saga.Recorder.summary()
+      sagas: BoomLooper.Saga.Recorder.summary(),
+      resources: %{
+        total: length(resources),
+        stale: Enum.count(resources, &(not &1.owner_alive?))
+      }
     }
   end
 
@@ -350,6 +356,19 @@ defmodule BoomLooperWeb.SystemLive do
               <span class="text-zinc-400">none recorded</span>
             <% %{ok?: true, result: %{sagas: %{total: t, succeeded: s}}} -> %>
               <span class="font-mono">{s}</span>/<span class="font-mono">{t}</span> succeeded
+            <% _ -> %>
+              <span class="text-zinc-400">loading…</span>
+          <% end %>
+        </.drilldown_card>
+
+        <.drilldown_card href="/system/orphans" title="Orphans" subtitle="Tracked OS/OTP resources with live owner pid">
+          <%= case @counts do %>
+            <% %{ok?: true, result: %{resources: %{stale: stale}}} when stale > 0 -> %>
+              <span class="text-red-600 dark:text-red-400 font-mono">{stale}</span> <span class="text-red-600 dark:text-red-400">stale — cleanup leak</span>
+            <% %{ok?: true, result: %{resources: %{total: 0}}} -> %>
+              <span class="text-zinc-400">none tracked</span>
+            <% %{ok?: true, result: %{resources: %{total: t}}} -> %>
+              <span class="font-mono">{t}</span> tracked
             <% _ -> %>
               <span class="text-zinc-400">loading…</span>
           <% end %>
