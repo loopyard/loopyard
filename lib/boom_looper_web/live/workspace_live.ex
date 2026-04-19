@@ -197,6 +197,20 @@ defmodule BoomLooperWeb.WorkspaceLive do
 
   defp truncate(other, max), do: other |> inspect() |> truncate(max)
 
+  # Refresh the :selected_agent assign with the agent's latest summary
+  # (model, token counts, cost, turns). The context-panel template reads
+  # those fields from :selected_agent, but select_agent/2 only runs on
+  # mount / click — without this, the panel stays pinned at "awaiting
+  # first response" / 0 tokens even as the agent streams through turns.
+  # ETS has the current summary courtesy of ChatAgent's on-every-update
+  # writes, so this is an O(1) read.
+  defp refresh_selected_agent(socket, id) do
+    case :ets.lookup(:chat_agents, id) do
+      [{^id, summary}] -> assign(socket, :selected_agent, summary)
+      _ -> socket
+    end
+  end
+
   defp any_running_containers?(workspace_id) do
     BoomLooper.Docker.Observer.containers_for(workspace_id)
     |> Enum.any?(&Map.get(&1, :running, false))
@@ -958,6 +972,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
       {:noreply,
        socket
        |> assign(:messages, socket.assigns.messages ++ [msg])
+       |> refresh_selected_agent(id)
        |> push_event("scroll_bottom", %{})}
     end
   end
