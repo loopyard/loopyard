@@ -143,6 +143,43 @@ defmodule BoomLooper.ChatAgent.StateMachine do
   # land here as migration proceeds.
 
   @topic "chat_agents"
+  @max_messages 1000
+
+  # Build a message with a random ID and wall-clock timestamp. These
+  # two inputs are technically impure (ID generation uses crypto,
+  # timestamp reads the clock), but they're bounded and deterministic
+  # enough for state-machine purposes — same precedent as the
+  # existing ChatAgent.append_message/2.
+  defp build_message(role, content, extras \\ %{}) do
+    Map.merge(
+      %{
+        id: generate_msg_id(),
+        role: role,
+        content: content,
+        timestamp: DateTime.utc_now()
+      },
+      extras
+    )
+  end
+
+  defp generate_msg_id do
+    :crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false)
+  end
+
+  # Prepend to the reverse-order list (newest first in state; oldest
+  # first in the summary via Enum.reverse). Trim to @max_messages so
+  # long conversations don't bloat memory — the log has the full
+  # history for replay.
+  defp do_append_message(state, msg) do
+    msg = Map.put_new_lazy(msg, :id, fn -> generate_msg_id() end)
+    reversed = [msg | state.messages]
+    reversed = if length(reversed) > @max_messages, do: Enum.take(reversed, @max_messages), else: reversed
+    {%{state | messages: reversed}, msg}
+  end
+
+  # Per-agent topic name. Chat messages and text deltas broadcast
+  # here so each LV subscribes only to its own agent's stream.
+  defp agent_topic(id), do: "chat_agent:#{id}"
 
   @doc """
   Apply an event to the agent state.
@@ -184,6 +221,109 @@ defmodule BoomLooper.ChatAgent.StateMachine do
 
       {:error, _} = err ->
         err
+    end
+  end
+
+  # Session restart succeeded — the dispatcher called
+  # `backend.start_session/1` and got a new session pid. Transition
+  # to :idle, append a system message noting the restart, and emit
+  # all the usual side effects.
+  #
+  # Note: `build_resume_message/1` (which composes a context prompt
+  # from recent messages) runs in the dispatcher after step/2, since
+  # it depends on presentation concerns outside the state machine's
+  # scope and self-casts a follow-up {:send_message, _}.
+  def step(state, {:session_restarted, new_session}) do
+    # From :crashed, :stopped, or :idle (re-restart) all valid → :idle.
+    case transition(state.status, :idle) do
+      {:ok, :idle} ->
+        msg = build_message(:system, "CLI session restarted")
+        new_state = %{state | session: new_session, status: :idle}
+        {new_state, msg} = do_append_message(new_state, msg)
+        summary = summary_of(new_state)
+
+        effects = [
+          {:ets_put, :chat_agents, state.id, summary},
+          {:broadcast, @topic, {:chat_agent_status_changed, state.id, :idle}},
+          {:persist_message, msg},
+          {:broadcast, agent_topic(state.id), {:chat_message, state.id, msg}}
+        ]
+
+        {:ok, new_state, effects, :noreply}
+
+      {:error, _} = err ->
+        err
+    end
+  end
+
+  # Session restart failed — backend couldn't start a new CLI. Don't
+  # transition state (we stay wherever we were), append an error,
+  # bump error counter.
+  def step(state, {:session_restart_failed, reason}) do
+    msg = build_message(:error, "Failed to restart session: #{inspect(reason)}")
+    {new_state, msg} = do_append_message(%{state | errors: state.errors + 1}, msg)
+
+    effects = [
+      {:ets_put, :chat_agents, state.id, summary_of(new_state)},
+      {:persist_message, msg},
+      {:broadcast, agent_topic(state.id), {:chat_message, state.id, msg}}
+    ]
+
+    {:ok, new_state, effects, :noreply}
+  end
+
+  # Message injected from outside the normal stream (tool result,
+  # build hook, external bridge). Append + persist + broadcast.
+  # Auto-continue the agent if it's :idle and receives a :system
+  # message — the caller's intent is "here's new context, keep
+  # going." Implemented as a {:cast_self, _} effect so the actual
+  # send_message goes through the normal handle_cast path once step
+  # returns.
+  def step(state, {:append_external_message, msg}) do
+    {new_state, msg} = do_append_message(state, msg)
+    summary = summary_of(new_state)
+
+    base_effects = [
+      {:ets_put, :chat_agents, state.id, summary},
+      {:persist_message, msg},
+      {:broadcast, agent_topic(state.id), {:chat_message, state.id, msg}}
+    ]
+
+    effects =
+      if state.status == :idle and msg.role == :system do
+        base_effects ++ [{:cast_self, {:send_message, "Continue."}}]
+      else
+        base_effects
+      end
+
+    {:ok, new_state, effects, :noreply}
+  end
+
+  # Update an existing message in place (tool result streaming in,
+  # partial edit). Persist only the DIFF so the log stays lean.
+  def step(state, {:update_message, msg_id, update_fn}) when is_function(update_fn, 1) do
+    old_msg = Enum.find(state.messages, &(&1[:id] == msg_id))
+
+    if old_msg do
+      messages = Enum.map(state.messages, fn m ->
+        if m[:id] == msg_id, do: update_fn.(m), else: m
+      end)
+
+      new_state = %{state | messages: messages}
+      new_msg = Enum.find(new_state.messages, &(&1[:id] == msg_id))
+      changes = Map.drop(new_msg, [:id])
+
+      effects = [
+        {:ets_put, :chat_agents, state.id, summary_of(new_state)},
+        {:persist_message_update, msg_id, changes}
+      ]
+
+      {:ok, new_state, effects, :noreply}
+    else
+      # Unknown message ID is a no-op, not an error. Happens when
+      # late-arriving updates reference a message the cap has
+      # already trimmed — safely ignore.
+      {:ok, state, [], :noreply}
     end
   end
 

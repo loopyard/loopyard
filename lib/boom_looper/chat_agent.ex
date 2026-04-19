@@ -649,75 +649,43 @@ defmodule BoomLooper.ChatAgent do
 
   @impl true
   def handle_cast(:restart_session, state) do
-    # Stop the current session
+    # Imperative lifecycle (stops the old CLI, spawns a new one)
+    # stays here — step/2 handles what comes after. On success the
+    # state machine transitions to :idle + appends "CLI restarted"
+    # and we then build a context-resume message for the agent.
     if state.session do
       task = Task.async(fn -> state.backend.stop(state.session) end)
       Task.yield(task, 3_000) || Task.shutdown(task, :brutal_kill)
     end
 
-    # Start a fresh session with the same opts
     case state.backend.start_session(state.session_opts) do
       {:ok, new_session} ->
-        state = %{state | session: new_session, status: :idle}
-        :ets.insert(@ets_table, {state.id, summary(state)})
-        broadcast(@topic, {:chat_agent_status_changed, state.id, :idle})
+        {:noreply, new_state} =
+          dispatch(state, StateMachine.step(state, {:session_restarted, new_session}))
 
-        restart_msg = %{role: :system, content: "CLI session restarted", timestamp: DateTime.utc_now()}
-        {state, restart_msg} = append_message(state, restart_msg)
-        broadcast("chat_agent:#{state.id}", {:chat_message, state.id, restart_msg})
-
-        # Send context summary so the agent knows what it was working on.
-        # Without this, a restart wipes all context — the agent wakes up
-        # with amnesia and the user has to re-explain everything.
-        resume_msg = build_resume_message(state)
-        if resume_msg do
-          GenServer.cast(self(), {:send_message, resume_msg})
+        # Resume prompt composition lives in ChatAgent — it depends
+        # on presentation concerns (recent-messages formatting) that
+        # aren't part of the state machine's scope. Fired as a
+        # self-cast so the send-message path handles it uniformly.
+        if msg = build_resume_message(new_state) do
+          GenServer.cast(self(), {:send_message, msg})
         end
 
-        {:noreply, state}
+        {:noreply, new_state}
 
       {:error, reason} ->
-        error_msg = %{role: :error, content: "Failed to restart session: #{inspect(reason)}", timestamp: DateTime.utc_now()}
-        {state, error_msg} = append_message(state, error_msg)
-        state = %{state | errors: state.errors + 1}
-        broadcast("chat_agent:#{state.id}", {:chat_message, state.id, error_msg})
-        {:noreply, state}
+        dispatch(state, StateMachine.step(state, {:session_restart_failed, reason}))
     end
   end
 
   @impl true
   def handle_cast({:append_external_message, msg}, state) do
-    {state, msg} = append_message(state, msg)
-    :ets.insert(@ets_table, {state.id, summary(state)})
-    Persistence.persist_message(state,msg)
-    broadcast("chat_agent:#{state.id}", {:chat_message, state.id, msg})
-
-    # Auto-continue: if agent is idle and receives an external system message,
-    # prompt it to evaluate and continue. The agent decides if work is done.
-    if state.status == :idle && msg.role == :system do
-      GenServer.cast(self(), {:send_message, "Continue."})
-    end
-
-    {:noreply, state}
+    dispatch(state, StateMachine.step(state, {:append_external_message, msg}))
   end
 
   @impl true
   def handle_cast({:update_message, msg_id, update_fn}, state) do
-    old_msg = Enum.find(state.messages, &(&1[:id] == msg_id))
-    messages = Enum.map(state.messages, fn msg ->
-      if msg[:id] == msg_id, do: update_fn.(msg), else: msg
-    end)
-    state = %{state | messages: messages}
-    :ets.insert(@ets_table, {state.id, summary(state)})
-
-    # Persist the changes (diff between old and new)
-    new_msg = Enum.find(state.messages, &(&1[:id] == msg_id))
-    if old_msg && new_msg do
-      changes = Map.drop(new_msg, [:id])
-      Persistence.persist_message_update(state,msg_id, changes)
-    end
-
-    {:noreply, state}
+    dispatch(state, StateMachine.step(state, {:update_message, msg_id, update_fn}))
   end
 
   @impl true
