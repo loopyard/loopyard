@@ -57,10 +57,10 @@ defmodule BoomLooper.ChatAgent.RestartControllerTest do
       refute Map.has_key?(summary, :quarantine_crashed_at)
     end
 
-    test "broadcasts :chat_agent_released on the chat_agents topic", %{id: id} do
-      Phoenix.PubSub.subscribe(BoomLooper.PubSub, "chat_agents")
+    test "broadcasts Released on the chat_agents topic", %{id: id} do
+      BoomLooper.Events.ChatAgent.subscribe()
       :ok = RestartController.release(id)
-      assert_receive {:chat_agent_released, ^id}, 500
+      assert_receive %BoomLooper.Events.ChatAgent.Released{id: ^id}, 500
     end
 
     test "is idempotent — calling release on a released agent is :ok", %{id: id} do
@@ -262,7 +262,7 @@ defmodule BoomLooper.ChatAgent.RestartControllerTest do
     test "after N abnormal exits in window, the agent is quarantined and not respawned",
          %{workspace_id: workspace_id, path: path} do
       id = "crash-loop-#{:rand.uniform(1_000_000)}"
-      Phoenix.PubSub.subscribe(BoomLooper.PubSub, "chat_agents")
+      BoomLooper.Events.ChatAgent.subscribe()
 
       on_exit(fn ->
         try do
@@ -298,7 +298,7 @@ defmodule BoomLooper.ChatAgent.RestartControllerTest do
 
       # The 3rd crash should have triggered quarantine. Wait briefly
       # for the broadcast to land in our mailbox.
-      assert_receive {:chat_agent_quarantined, ^id, summary}, 2_000
+      assert_receive %BoomLooper.Events.ChatAgent.Quarantined{id: ^id, summary: summary}, 2_000
       assert summary.quarantined == true
       assert summary.quarantine_reason =~ "killed"
 

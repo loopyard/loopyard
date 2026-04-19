@@ -63,14 +63,14 @@ defmodule BoomLooper.Agent.ReconcilerTest do
       assert result.drift_count == 0
     end
 
-    test "corrections broadcast :chat_agent_status_changed so UIs refresh" do
+    test "corrections broadcast StatusChanged so UIs refresh" do
       id = "broadcast-#{:rand.uniform(1_000_000)}"
       :ets.insert(:chat_agents, {id, %{id: id, status: :idle, messages: [], name: "B"}})
 
-      Phoenix.PubSub.subscribe(BoomLooper.PubSub, "chat_agents")
+      BoomLooper.Events.ChatAgent.subscribe()
       Reconciler.reconcile_now()
 
-      assert_receive {:chat_agent_status_changed, ^id, :crashed}, 500
+      assert_receive %BoomLooper.Events.ChatAgent.StatusChanged{id: ^id, status: :crashed}, 500
     end
 
     test "multiple drifts in one scan all get corrected" do

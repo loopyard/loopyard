@@ -49,7 +49,7 @@ defmodule BoomLooper.TerminalEchoTest do
     test "command output is not duplicated" do
       container = "single-#{:rand.uniform(100_000)}"
       topic = Terminal.topic(container)
-      Phoenix.PubSub.subscribe(BoomLooper.PubSub, topic)
+      BoomLooper.Events.Terminal.subscribe(container)
 
       {:ok, pid} = start_terminal(container)
       drain()
@@ -76,7 +76,7 @@ defmodule BoomLooper.TerminalEchoTest do
     test "shell prompt is visible (PTY echo works)" do
       container = "prompt-#{:rand.uniform(100_000)}"
       topic = Terminal.topic(container)
-      Phoenix.PubSub.subscribe(BoomLooper.PubSub, topic)
+      BoomLooper.Events.Terminal.subscribe(container)
 
       {:ok, pid} = start_terminal(container)
 
@@ -102,7 +102,7 @@ defmodule BoomLooper.TerminalEchoTest do
 
       subscribers = for i <- 1..3 do
         spawn_link(fn ->
-          Phoenix.PubSub.subscribe(BoomLooper.PubSub, topic)
+          BoomLooper.Events.Terminal.subscribe(container)
           send(parent, {:subscribed, i})
 
           # Wait for the "go" signal
@@ -147,7 +147,7 @@ defmodule BoomLooper.TerminalEchoTest do
       {:ok, pid} = start_terminal(container)
 
       # Subscribe in the test process to see ALL output
-      Phoenix.PubSub.subscribe(BoomLooper.PubSub, topic)
+      BoomLooper.Events.Terminal.subscribe(container)
       drain()
 
       markers = for i <- 1..3 do
@@ -184,14 +184,14 @@ defmodule BoomLooper.TerminalEchoTest do
       assert Terminal.get_buffer(container) =~ "BEFORE_CLEAR"
 
       # Subscribe 2 viewers
-      Phoenix.PubSub.subscribe(BoomLooper.PubSub, topic)
+      BoomLooper.Events.Terminal.subscribe(container)
 
       parent = self()
       viewer2 = spawn_link(fn ->
-        Phoenix.PubSub.subscribe(BoomLooper.PubSub, topic)
+        BoomLooper.Events.Terminal.subscribe(container)
         send(parent, :viewer2_ready)
         receive do
-          :terminal_clear -> send(parent, :viewer2_cleared)
+          %BoomLooper.Events.Terminal.Clear{} -> send(parent, :viewer2_cleared)
         after
           3_000 -> send(parent, :viewer2_timeout)
         end
@@ -203,7 +203,7 @@ defmodule BoomLooper.TerminalEchoTest do
       Terminal.clear_buffer(container)
 
       # Both viewers should receive the clear broadcast
-      assert_receive :terminal_clear, 1_000
+      assert_receive %BoomLooper.Events.Terminal.Clear{}, 1_000
       assert_receive :viewer2_cleared, 1_000
 
       # Buffer should be empty
@@ -231,7 +231,7 @@ defmodule BoomLooper.TerminalEchoTest do
       Process.sleep(500)
 
       # Now subscribe (late joiner)
-      Phoenix.PubSub.subscribe(BoomLooper.PubSub, topic)
+      BoomLooper.Events.Terminal.subscribe(container)
 
       # The buffer should have the marker
       buffer = Terminal.get_buffer(container)
@@ -260,7 +260,7 @@ defmodule BoomLooper.TerminalEchoTest do
 
   defp drain do
     receive do
-      {:terminal_output, _} -> drain()
+      %BoomLooper.Events.Terminal.Output{} -> drain()
     after
       200 -> :ok
     end
@@ -272,7 +272,7 @@ defmodule BoomLooper.TerminalEchoTest do
 
   defp collect_loop(acc, timeout) do
     receive do
-      {:terminal_output, data} -> collect_loop(acc <> data, timeout)
+      %BoomLooper.Events.Terminal.Output{data: data} -> collect_loop(acc <> data, timeout)
     after
       timeout -> acc
     end

@@ -10,7 +10,6 @@ defmodule BoomLooper.Workspace.ServiceManager do
   alias BoomLooper.{Compose, RegistryHelper, Workspace}
   alias BoomLooper.Workspace.ServiceStatus
 
-  @services_topic "workspace_services"
   @status_table :service_status_cache
 
   defstruct [
@@ -56,7 +55,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
   end
 
   def subscribe do
-    Phoenix.PubSub.subscribe(BoomLooper.PubSub, @services_topic)
+    BoomLooper.Events.WorkspaceServices.subscribe()
   end
 
   @doc "Container name for a compose service"
@@ -344,11 +343,10 @@ defmodule BoomLooper.Workspace.ServiceManager do
   # pick this up to transition out of the transitional state so they're
   # not stuck waiting for a broadcast that will never come.
   defp broadcast_compose_result(workspace_id, result) do
-    Phoenix.PubSub.broadcast(
-      BoomLooper.PubSub,
-      @services_topic,
-      {:compose_result, workspace_id, result}
-    )
+    BoomLooper.Events.WorkspaceServices.publish(%BoomLooper.Events.WorkspaceServices.ComposeResult{
+      workspace_id: workspace_id,
+      result: result
+    })
   end
 
   defp broadcast_service_update(state) do
@@ -365,11 +363,9 @@ defmodule BoomLooper.Workspace.ServiceManager do
     # Observer. Shipping the statuses blob in the broadcast was wasted
     # serialization across every connected LiveView — none of them
     # actually used the payload.
-    Phoenix.PubSub.broadcast(
-      BoomLooper.PubSub,
-      @services_topic,
-      {:services_updated, broadcast_dir}
-    )
+    BoomLooper.Events.WorkspaceServices.publish(%BoomLooper.Events.WorkspaceServices.ServicesUpdated{
+      path: broadcast_dir
+    })
   end
 
   defp via(project_dir) do

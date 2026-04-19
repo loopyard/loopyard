@@ -145,7 +145,10 @@ defmodule BoomLooper.Tools.WorkspaceTest do
         timestamp: DateTime.utc_now()
       })
 
-      assert_receive {:chat_message, ^id, %{role: :system, content: "Container failed."}}, 1_000
+      assert_receive %BoomLooper.Events.ChatAgentMessage.Message{
+                       agent_id: ^id,
+                       msg: %{role: :system, content: "Container failed."}
+                     }, 1_000
     end
 
     test "system messages are visible to both agent and subscribers", %{agent_id: id} do
@@ -158,7 +161,10 @@ defmodule BoomLooper.Tools.WorkspaceTest do
       })
 
       # Subscriber gets it
-      assert_receive {:chat_message, ^id, %{role: :system, content: content}}, 1_000
+      assert_receive %BoomLooper.Events.ChatAgentMessage.Message{
+                       agent_id: ^id,
+                       msg: %{role: :system, content: content}
+                     }, 1_000
       assert content =~ "ARM64"
 
       # Agent state has it

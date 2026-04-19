@@ -160,11 +160,12 @@ defmodule BoomLooper.Tools.Container.Helpers do
           %{msg | content: acc}
         end)
 
-        Phoenix.PubSub.broadcast(
-          BoomLooper.PubSub,
-          "chat_agent:#{agent_id}",
-          {:stream_output, agent_id, data, command, msg_id}
-        )
+        BoomLooper.Events.ChatAgentMessage.publish(%BoomLooper.Events.ChatAgentMessage.StreamOutput{
+          agent_id: agent_id,
+          data: data,
+          title: command,
+          msg_id: msg_id
+        })
 
         stream_port_output(agent_id, port, command, msg_id, acc, timeout)
 
@@ -175,12 +176,10 @@ defmodule BoomLooper.Tools.Container.Helpers do
 
         status = if code == 0, do: "completed", else: "exited (code #{code})"
 
-        Phoenix.PubSub.broadcast(
-          BoomLooper.PubSub,
-          "chat_agent:#{agent_id}",
-          {:chat_message, agent_id,
-           %{role: :system, content: "Command #{status}", timestamp: DateTime.utc_now()}}
-        )
+        BoomLooper.Events.ChatAgentMessage.publish(%BoomLooper.Events.ChatAgentMessage.Message{
+          agent_id: agent_id,
+          msg: %{role: :system, content: "Command #{status}", timestamp: DateTime.utc_now()}
+        })
     after
       timeout ->
         Port.close(port)
@@ -189,16 +188,14 @@ defmodule BoomLooper.Tools.Container.Helpers do
           %{msg | role: :build_failed, content: acc}
         end)
 
-        Phoenix.PubSub.broadcast(
-          BoomLooper.PubSub,
-          "chat_agent:#{agent_id}",
-          {:chat_message, agent_id,
-           %{
-             role: :system,
-             content: "Command timed out after #{div(timeout, 1_000)}s",
-             timestamp: DateTime.utc_now()
-           }}
-        )
+        BoomLooper.Events.ChatAgentMessage.publish(%BoomLooper.Events.ChatAgentMessage.Message{
+          agent_id: agent_id,
+          msg: %{
+            role: :system,
+            content: "Command timed out after #{div(timeout, 1_000)}s",
+            timestamp: DateTime.utc_now()
+          }
+        })
     end
   end
 

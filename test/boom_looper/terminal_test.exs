@@ -89,7 +89,7 @@ defmodule BoomLooper.TerminalTest do
     end
 
     test "starts a session, receives output, and buffers it", %{container: container} do
-      Phoenix.PubSub.subscribe(BoomLooper.PubSub, Terminal.topic(container))
+      BoomLooper.Events.Terminal.subscribe(container)
 
       assert {:ok, pid} = Terminal.get_or_start(container)
       assert Process.alive?(pid)
@@ -98,7 +98,7 @@ defmodule BoomLooper.TerminalTest do
       Terminal.send_input(container, "echo hello-from-terminal\n")
 
       # Should receive output via PubSub
-      assert_receive {:terminal_output, data}, 3_000
+      assert_receive %BoomLooper.Events.Terminal.Output{data: data}, 3_000
       # May receive in chunks — collect output
       output = collect_output(data, 2_000)
       assert output =~ "hello-from-terminal"
@@ -116,7 +116,7 @@ defmodule BoomLooper.TerminalTest do
     end
 
     test "broadcasts exit when container shell exits", %{container: container} do
-      Phoenix.PubSub.subscribe(BoomLooper.PubSub, Terminal.topic(container))
+      BoomLooper.Events.Terminal.subscribe(container)
 
       {:ok, pid} = Terminal.get_or_start(container)
 
@@ -124,7 +124,7 @@ defmodule BoomLooper.TerminalTest do
       Terminal.send_input(container, "exit\n")
 
       # Should receive exit broadcast
-      assert_receive {:terminal_exit, _code}, 5_000
+      assert_receive %BoomLooper.Events.Terminal.Exit{code: _code}, 5_000
       Process.sleep(100)
       refute Process.alive?(pid)
     end
@@ -137,7 +137,7 @@ defmodule BoomLooper.TerminalTest do
 
   defp collect_output_loop(acc, timeout) do
     receive do
-      {:terminal_output, data} -> collect_output_loop(acc <> data, timeout)
+      %BoomLooper.Events.Terminal.Output{data: data} -> collect_output_loop(acc <> data, timeout)
     after
       timeout -> acc
     end

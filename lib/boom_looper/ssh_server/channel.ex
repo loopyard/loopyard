@@ -15,6 +15,7 @@ defmodule BoomLooper.SSHServer.Channel do
   """
   @behaviour :ssh_server_channel
 
+  alias BoomLooper.Events
   alias BoomLooper.Terminal
 
   # Ctrl+L (form feed) — clear screen signal
@@ -84,17 +85,17 @@ defmodule BoomLooper.SSHServer.Channel do
     {:ok, state}
   end
 
-  def handle_msg({:terminal_output, data}, state) do
+  def handle_msg(%Events.Terminal.Output{data: data}, state) do
     send_data(state, data)
     {:ok, state}
   end
 
-  def handle_msg(:terminal_clear, state) do
+  def handle_msg(%Events.Terminal.Clear{}, state) do
     send_data(state, "\e[2J\e[H")
     {:ok, state}
   end
 
-  def handle_msg({:terminal_exit, _code}, state) do
+  def handle_msg(%Events.Terminal.Exit{}, state) do
     send_data(state, "\r\nTerminal session ended.\r\n")
     if state.connection && state.channel_id do
       :ssh_connection.close(state.connection, state.channel_id)
@@ -114,7 +115,7 @@ defmodule BoomLooper.SSHServer.Channel do
   defp connect_terminal(state) do
     case Terminal.get_or_start(state.container) do
       {:ok, _pid} ->
-        Phoenix.PubSub.subscribe(BoomLooper.PubSub, Terminal.topic(state.container))
+        Events.Terminal.subscribe(state.container)
 
         buffer = Terminal.get_buffer(state.container)
         if buffer != "", do: send_data(state, buffer)

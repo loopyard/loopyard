@@ -7,6 +7,10 @@ defmodule BoomLooperWeb.MessageLive do
   use BoomLooperWeb, :live_view
   import BoomLooperWeb.Components.LogViewer
 
+  alias BoomLooper.Events
+
+  @behaviour BoomLooper.Events.ChatAgentMessage.Subscriber
+
   @impl true
   def mount(%{"agent_id" => agent_id, "msg_id" => msg_id}, _session, socket) do
     msg = BoomLooper.ChatAgent.get_message(agent_id, msg_id)
@@ -35,47 +39,64 @@ defmodule BoomLooperWeb.MessageLive do
     end
   end
 
-  # Handle streaming text deltas for assistant messages
+  # --- PubSub dispatch ---
+
   @impl true
-  def handle_info({:chat_text_delta, id, text}, socket) when id == socket.assigns.agent_id do
-    # Accumulate streaming text for real-time display
-    {:noreply, assign(socket, :streaming_text, socket.assigns.streaming_text <> text)}
-  end
+  def handle_info(%Events.ChatAgentMessage.Message{} = e, socket), do: on_message(e, socket)
+  def handle_info(%Events.ChatAgentMessage.TextDelta{} = e, socket), do: on_text_delta(e, socket)
+  def handle_info(%Events.ChatAgentMessage.StreamOutput{} = e, socket), do: on_stream_output(e, socket)
 
-  # Stream output for build/exec_stream - accumulate locally for instant updates
-  def handle_info({:stream_output, id, data, _title, msg_id}, socket)
-      when id == socket.assigns.agent_id and msg_id == socket.assigns.msg_id do
-    # Accumulate content locally instead of re-fetching from ETS
-    new_content = socket.assigns.stream_content <> data
-    {:noreply, socket |> assign(:stream_content, new_content) |> assign(:streaming, true)}
-  end
-
+  # Non-PubSub build-output events (sent as {:build_output, …} intra-
+  # process — not a publisher-module topic).
   def handle_info({:build_output, id, data}, socket) when id == socket.assigns.agent_id do
     # Accumulate build output locally
     new_content = socket.assigns.stream_content <> data
     {:noreply, socket |> assign(:stream_content, new_content) |> assign(:streaming, true)}
   end
 
-  # Handle new messages - refresh if this is our message being updated
-  def handle_info({:chat_message, id, %{id: msg_id} = msg}, socket)
+  def handle_info(_, socket), do: {:noreply, socket}
+
+  # --- Subscriber callbacks ---
+
+  # Streaming text deltas for assistant messages — accumulate for real-time display.
+  @impl Events.ChatAgentMessage.Subscriber
+  def on_text_delta(%Events.ChatAgentMessage.TextDelta{agent_id: id, text: text}, socket) when id == socket.assigns.agent_id do
+    {:noreply, assign(socket, :streaming_text, socket.assigns.streaming_text <> text)}
+  end
+
+  def on_text_delta(_e, socket), do: {:noreply, socket}
+
+  # Stream output for build/exec_stream — accumulate locally for instant updates.
+  @impl Events.ChatAgentMessage.Subscriber
+  def on_stream_output(%Events.ChatAgentMessage.StreamOutput{agent_id: id, msg_id: msg_id, data: data}, socket)
+      when id == socket.assigns.agent_id and msg_id == socket.assigns.msg_id do
+    new_content = socket.assigns.stream_content <> data
+    {:noreply, socket |> assign(:stream_content, new_content) |> assign(:streaming, true)}
+  end
+
+  def on_stream_output(_e, socket), do: {:noreply, socket}
+
+  # Completed chat messages — refresh if this is our message being updated.
+  @impl Events.ChatAgentMessage.Subscriber
+  def on_message(%Events.ChatAgentMessage.Message{agent_id: id, msg: %{id: msg_id} = msg}, socket)
       when id == socket.assigns.agent_id and msg_id == socket.assigns.msg_id do
     # Clear streaming text when full message arrives
     socket = if msg.role == :assistant, do: assign(socket, :streaming_text, ""), else: socket
     {:noreply, socket |> assign(:msg, msg) |> assign(:stream_content, msg.content || "")}
   end
 
-  # Build/stream complete (system message arrives)
-  def handle_info({:chat_message, id, %{role: role}}, socket)
+  # Build/stream complete (system message arrives) — refresh to pull the
+  # terminal role (:build_done / :build_failed) from ETS.
+  def on_message(%Events.ChatAgentMessage.Message{agent_id: id, msg: %{role: role}}, socket)
       when id == socket.assigns.agent_id and role in [:system, :error] do
     if socket.assigns.streaming do
-      # Final refresh to get the completed message state
       refresh_message(socket)
     else
       {:noreply, socket}
     end
   end
 
-  def handle_info(_, socket), do: {:noreply, socket}
+  def on_message(_e, socket), do: {:noreply, socket}
 
   defp refresh_message(socket) do
     msg = BoomLooper.ChatAgent.get_message(socket.assigns.agent_id, socket.assigns.msg_id)

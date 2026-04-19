@@ -13,11 +13,14 @@ defmodule BoomLooperWeb.SystemQuarantineLive do
   use BoomLooperWeb.IExAware
 
   alias BoomLooper.ChatAgent.RestartController
+  alias BoomLooper.Events
+
+  @behaviour BoomLooper.Events.ChatAgent.Subscriber
 
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
-      Phoenix.PubSub.subscribe(BoomLooper.PubSub, "chat_agents")
+      BoomLooper.Events.ChatAgent.subscribe()
     end
 
     {:ok,
@@ -30,21 +33,63 @@ defmodule BoomLooperWeb.SystemQuarantineLive do
     if connected?(socket), do: subscribe_iex(socket), else: assign(socket, :iex_session, %{level: nil})
   end
 
-  # Any quarantine-related event → refresh the list from ETS.
-  # Notification-only pattern (re-read authoritative state rather than
-  # trust the broadcast payload). Same shape as the other /system LVs.
+  # --- PubSub dispatch ---
+
   @impl true
-  def handle_info({:chat_agent_quarantined, _id, _summary}, socket) do
-    {:noreply, assign(socket, :quarantined, RestartController.list_quarantined())}
-  end
+  def handle_info(%Events.ChatAgent.Quarantined{} = e, socket), do: on_quarantined(e, socket)
+  def handle_info(%Events.ChatAgent.Released{} = e, socket), do: on_released(e, socket)
 
-  def handle_info({:chat_agent_released, _id}, socket) do
-    {:noreply, assign(socket, :quarantined, RestartController.list_quarantined())}
-  end
+  # Other chat_agents topic events are ignored here — the
+  # /system/quarantine page only cares about quarantine-specific
+  # transitions. The callbacks still exist (one per event on the topic)
+  # but return the socket unchanged, which is the explicit opt-out.
+  def handle_info(%Events.ChatAgent.Started{} = e, socket), do: on_started(e, socket)
+  def handle_info(%Events.ChatAgent.Stopped{} = e, socket), do: on_stopped(e, socket)
+  def handle_info(%Events.ChatAgent.Booting{} = e, socket), do: on_booting(e, socket)
+  def handle_info(%Events.ChatAgent.BootStatus{} = e, socket), do: on_boot_status(e, socket)
+  def handle_info(%Events.ChatAgent.BootFailed{} = e, socket), do: on_boot_failed(e, socket)
+  def handle_info(%Events.ChatAgent.Removed{} = e, socket), do: on_removed(e, socket)
+  def handle_info(%Events.ChatAgent.Renamed{} = e, socket), do: on_renamed(e, socket)
+  def handle_info(%Events.ChatAgent.Resumed{} = e, socket), do: on_resumed(e, socket)
+  def handle_info(%Events.ChatAgent.StatusChanged{} = e, socket), do: on_status_changed(e, socket)
 
-  # Other agent events are ignored here — the /system/quarantine page
-  # only cares about the quarantine-specific transitions.
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  # --- Subscriber callbacks ---
+  #
+  # Only quarantine events cause a list refresh. The rest are implicit
+  # no-ops so the @behaviour declaration has a matching implementation
+  # for every callback — a new event added to the topic will surface as
+  # a compile warning here until we decide whether it affects this page.
+
+  @impl Events.ChatAgent.Subscriber
+  def on_quarantined(_e, socket) do
+    {:noreply, assign(socket, :quarantined, RestartController.list_quarantined())}
+  end
+
+  @impl Events.ChatAgent.Subscriber
+  def on_released(_e, socket) do
+    {:noreply, assign(socket, :quarantined, RestartController.list_quarantined())}
+  end
+
+  @impl Events.ChatAgent.Subscriber
+  def on_started(_e, socket), do: {:noreply, socket}
+  @impl Events.ChatAgent.Subscriber
+  def on_stopped(_e, socket), do: {:noreply, socket}
+  @impl Events.ChatAgent.Subscriber
+  def on_booting(_e, socket), do: {:noreply, socket}
+  @impl Events.ChatAgent.Subscriber
+  def on_boot_status(_e, socket), do: {:noreply, socket}
+  @impl Events.ChatAgent.Subscriber
+  def on_boot_failed(_e, socket), do: {:noreply, socket}
+  @impl Events.ChatAgent.Subscriber
+  def on_removed(_e, socket), do: {:noreply, socket}
+  @impl Events.ChatAgent.Subscriber
+  def on_renamed(_e, socket), do: {:noreply, socket}
+  @impl Events.ChatAgent.Subscriber
+  def on_resumed(_e, socket), do: {:noreply, socket}
+  @impl Events.ChatAgent.Subscriber
+  def on_status_changed(_e, socket), do: {:noreply, socket}
 
   @impl true
   def handle_event("release", %{"id" => id}, socket) do

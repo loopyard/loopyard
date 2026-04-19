@@ -33,8 +33,6 @@ defmodule BoomLooper.IExSession do
 
   use GenServer
 
-  @topic "iex_session"
-
   def start_link(_), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
 
   # --- Public API ---
@@ -142,6 +140,8 @@ defmodule BoomLooper.IExSession do
 
   defp broadcast(state) do
     # Don't include claimed in broadcast - it's internal state
-    Phoenix.PubSub.broadcast(BoomLooper.PubSub, @topic, {:iex_session, Map.drop(state, [:claimed])})
+    BoomLooper.Events.IexSession.publish(%BoomLooper.Events.IexSession.Changed{
+      state: Map.drop(state, [:claimed])
+    })
   end
 end

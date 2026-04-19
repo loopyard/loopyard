@@ -16,6 +16,7 @@ defmodule BoomLooper.ChatAgent do
   alias BoomLooper.Agent.Event
   alias BoomLooper.AgentLog
   alias BoomLooper.ChatAgent.{Persistence, Prompt, ToolConfig}
+  alias BoomLooper.Events
 
 
   defstruct [
@@ -46,7 +47,6 @@ defmodule BoomLooper.ChatAgent do
     turns: 0
   ]
 
-  @topic "chat_agents"
   @ets_table :chat_agents
 
   # --- Public API ---
@@ -82,7 +82,7 @@ defmodule BoomLooper.ChatAgent do
           [{^id, summary}] ->
             stopped = %{summary | status: :stopped}
             :ets.insert(@ets_table, {id, stopped})
-            broadcast(@topic, {:chat_agent_stopped, stopped})
+            Events.ChatAgent.publish(%Events.ChatAgent.Stopped{summary: stopped})
 
           [] ->
             :ok
@@ -222,7 +222,7 @@ defmodule BoomLooper.ChatAgent do
           {:ok, :destroying} ->
             destroying = %{summary | status: :destroying}
             :ets.insert(@ets_table, {id, destroying})
-            broadcast(@topic, {:chat_agent_status_changed, id, :destroying})
+            Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :destroying})
 
           {:error, reason} ->
             BoomLooper.EventLog.warning(
@@ -233,7 +233,7 @@ defmodule BoomLooper.ChatAgent do
 
             destroying = %{summary | status: :destroying}
             :ets.insert(@ets_table, {id, destroying})
-            broadcast(@topic, {:chat_agent_status_changed, id, :destroying})
+            Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :destroying})
         end
 
       [] ->
@@ -253,7 +253,7 @@ defmodule BoomLooper.ChatAgent do
 
     # Remove from sidebar
     :ets.delete(@ets_table, id)
-    broadcast(@topic, {:chat_agent_removed, id})
+    Events.ChatAgent.publish(%Events.ChatAgent.Removed{id: id})
   end
 
   @doc "Register an agent as booting in ETS so all viewers can see it"
@@ -279,7 +279,7 @@ defmodule BoomLooper.ChatAgent do
     summary = stub |> summary() |> Map.put(:boot_status, "Initializing...")
 
     :ets.insert(@ets_table, {id, summary})
-    broadcast(@topic, {:chat_agent_booting, summary})
+    Events.ChatAgent.publish(%Events.ChatAgent.Booting{summary: summary})
     summary
   end
 
@@ -289,7 +289,7 @@ defmodule BoomLooper.ChatAgent do
       [{^id, summary}] ->
         updated = %{summary | boot_status: status_text, last_activity_at: DateTime.utc_now()}
         :ets.insert(@ets_table, {id, updated})
-        broadcast(@topic, {:chat_agent_boot_status, id, status_text})
+        Events.ChatAgent.publish(%Events.ChatAgent.BootStatus{id: id, status: status_text})
 
       [] ->
         :ok
@@ -299,7 +299,7 @@ defmodule BoomLooper.ChatAgent do
   @doc "Mark a booting agent as failed and remove it"
   def boot_failed(id, reason) do
     :ets.delete(@ets_table, id)
-    broadcast(@topic, {:chat_agent_boot_failed, id, reason})
+    Events.ChatAgent.publish(%Events.ChatAgent.BootFailed{id: id, reason: reason})
   end
 
   # How long an agent is allowed to stay in :booting before we
@@ -350,15 +350,15 @@ defmodule BoomLooper.ChatAgent do
   end
 
   def subscribe do
-    Phoenix.PubSub.subscribe(BoomLooper.PubSub, @topic)
+    BoomLooper.Events.ChatAgent.subscribe()
   end
 
   def subscribe(agent_id) do
-    Phoenix.PubSub.subscribe(BoomLooper.PubSub, "chat_agent:#{agent_id}")
+    BoomLooper.Events.ChatAgentMessage.subscribe(agent_id)
   end
 
   def unsubscribe(agent_id) do
-    Phoenix.PubSub.unsubscribe(BoomLooper.PubSub, "chat_agent:#{agent_id}")
+    BoomLooper.Events.ChatAgentMessage.unsubscribe(agent_id)
   end
 
   # --- GenServer init and session startup ---
@@ -429,7 +429,7 @@ defmodule BoomLooper.ChatAgent do
           )
 
         :ets.insert(@ets_table, {id, summary(state)})
-        broadcast(@topic, {:chat_agent_resumed, summary(state)})
+        Events.ChatAgent.publish(%Events.ChatAgent.Resumed{summary: summary(state)})
         BoomLooper.EventLog.info("agent:#{state.name}", "Resumed (#{id}) with #{length(state.messages)} messages")
 
         {:ok, state}
@@ -481,7 +481,7 @@ defmodule BoomLooper.ChatAgent do
     summary = summary(state)
     :ets.insert(@ets_table, {id, summary})
     Persistence.persist_agent(state, &summary/1)
-    broadcast(@topic, {:chat_agent_started, summary})
+    Events.ChatAgent.publish(%Events.ChatAgent.Started{summary: summary})
     BoomLooper.EventLog.info("agent:#{name}", "Started (#{id})")
 
     {:ok, state}
@@ -595,15 +595,15 @@ defmodule BoomLooper.ChatAgent do
     Persistence.persist_message(state,user_msg)
 
     # Broadcast with ID (last message has the ID assigned by append_message)
-    broadcast("chat_agent:#{state.id}", {:chat_message, state.id, user_msg})
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: user_msg})
 
     # Don't try to stream if session is still dead
     if not state.backend.session_alive?(state.session) do
-      broadcast(@topic, {:chat_agent_status_changed, state.id, :idle})
+      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :idle})
       {:noreply, state}
     else
       state = %{state | status: :thinking}
-      broadcast(@topic, {:chat_agent_status_changed, state.id, :thinking})
+      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :thinking})
 
       # Stream the response in a linked Task so we detect crashes
       me = self()
@@ -649,7 +649,7 @@ defmodule BoomLooper.ChatAgent do
 
     stopped = %{state | status: :stopped}
     :ets.insert(@ets_table, {state.id, summary(stopped)})
-    broadcast(@topic, {:chat_agent_stopped, summary(stopped)})
+    Events.ChatAgent.publish(%Events.ChatAgent.Stopped{summary: summary(stopped)})
     {:stop, :normal, stopped}
   end
 
@@ -666,11 +666,11 @@ defmodule BoomLooper.ChatAgent do
       {:ok, new_session} ->
         state = %{state | session: new_session, status: :idle}
         :ets.insert(@ets_table, {state.id, summary(state)})
-        broadcast(@topic, {:chat_agent_status_changed, state.id, :idle})
+        Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :idle})
 
         restart_msg = %{role: :system, content: "CLI session restarted", timestamp: DateTime.utc_now()}
         {state, restart_msg} = append_message(state, restart_msg)
-        broadcast("chat_agent:#{state.id}", {:chat_message, state.id, restart_msg})
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: restart_msg})
 
         # Send context summary so the agent knows what it was working on.
         # Without this, a restart wipes all context — the agent wakes up
@@ -686,7 +686,7 @@ defmodule BoomLooper.ChatAgent do
         error_msg = %{role: :error, content: "Failed to restart session: #{inspect(reason)}", timestamp: DateTime.utc_now()}
         {state, error_msg} = append_message(state, error_msg)
         state = %{state | errors: state.errors + 1}
-        broadcast("chat_agent:#{state.id}", {:chat_message, state.id, error_msg})
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: error_msg})
         {:noreply, state}
     end
   end
@@ -696,7 +696,7 @@ defmodule BoomLooper.ChatAgent do
     {state, msg} = append_message(state, msg)
     :ets.insert(@ets_table, {state.id, summary(state)})
     Persistence.persist_message(state,msg)
-    broadcast("chat_agent:#{state.id}", {:chat_message, state.id, msg})
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: msg})
 
     # Auto-continue: if agent is idle and receives an external system message,
     # prompt it to evaluate and continue. The agent decides if work is done.
@@ -729,7 +729,7 @@ defmodule BoomLooper.ChatAgent do
   @impl true
   def handle_cast({:rename, new_name}, state) do
     state = %{state | name: new_name}
-    broadcast(@topic, {:chat_agent_renamed, state.id, new_name})
+    Events.ChatAgent.publish(%Events.ChatAgent.Renamed{id: state.id, name: new_name})
     {:noreply, state}
   end
 
@@ -757,7 +757,7 @@ defmodule BoomLooper.ChatAgent do
           {state, assistant_msg} = append_message(state, assistant_msg)
         state = %{state | last_activity_at: now}
           Persistence.persist_message(state,assistant_msg)
-          broadcast("chat_agent:#{id}", {:chat_message, id, assistant_msg})
+          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: assistant_msg})
           state
 
         %Event.ToolCall{name: tool_name, input: tool_input} ->
@@ -765,7 +765,7 @@ defmodule BoomLooper.ChatAgent do
           {state, tool_msg} = append_message(state, tool_msg)
           state = %{state | last_activity_at: now, tool_calls: state.tool_calls + 1, active_tool: tool_name}
           Persistence.persist_message(state, tool_msg)
-          broadcast("chat_agent:#{id}", {:chat_message, id, tool_msg})
+          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: tool_msg})
           state
 
         %Event.ToolResult{content: content, is_error: is_error} ->
@@ -773,12 +773,12 @@ defmodule BoomLooper.ChatAgent do
           {state, result_msg} = append_message(state, result_msg)
           state = %{state | last_activity_at: now, active_tool: nil}
           Persistence.persist_message(state, result_msg)
-          broadcast("chat_agent:#{id}", {:chat_message, id, result_msg})
+          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: result_msg})
           state
 
         %Event.TextDelta{text: text} ->
           # Don't persist deltas - they're just streaming UI updates
-          broadcast("chat_agent:#{id}", {:chat_text_delta, id, text})
+          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.TextDelta{agent_id: id, text: text})
           state
 
         %Event.SessionResult{} = result ->
@@ -795,7 +795,7 @@ defmodule BoomLooper.ChatAgent do
           }
           :ets.insert(@ets_table, {id, summary(state)})
           Persistence.persist_agent(state, &summary/1)
-          broadcast(@topic, {:chat_agent_status_changed, id, state.status})
+          Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: state.status})
           state
 
         _ ->
@@ -814,7 +814,7 @@ defmodule BoomLooper.ChatAgent do
     state = Map.put(state, :consecutive_crashes, 0)
     :ets.insert(@ets_table, {id, summary(state)})
     Persistence.persist_agent(state, &summary/1)
-    broadcast(@topic, {:chat_agent_status_changed, id, :idle})
+    Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
     {:noreply, state}
   end
 
@@ -825,8 +825,8 @@ defmodule BoomLooper.ChatAgent do
     error_msg = %{role: :error, content: "Agent stopped responding. Send a message to retry.", timestamp: DateTime.utc_now()}
     {state, error_msg} = append_message(state, error_msg)
         state = %{state | status: :idle, errors: state.errors + 1}
-    broadcast("chat_agent:#{id}", {:chat_message, id, error_msg})
-    broadcast(@topic, {:chat_agent_status_changed, id, :idle})
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: error_msg})
+    Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
     {:noreply, state}
   end
 
@@ -857,8 +857,8 @@ defmodule BoomLooper.ChatAgent do
         {:ok, new_session} ->
           recovered_msg = %{role: :system, content: "Agent session restarted automatically.", timestamp: DateTime.utc_now()}
           {state, recovered_msg} = append_message(%{state | session: new_session, status: :idle}, recovered_msg)
-          broadcast("chat_agent:#{id}", {:chat_message, id, recovered_msg})
-          broadcast(@topic, {:chat_agent_status_changed, id, :idle})
+          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: recovered_msg})
+          Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
 
           # Auto-continue: send the agent a summary of what it was doing so it can resume
           resume_msg = build_resume_message(state)
@@ -872,16 +872,16 @@ defmodule BoomLooper.ChatAgent do
           fail_msg = %{role: :error, content: "Agent session crashed and failed to restart", timestamp: DateTime.utc_now()}
           {state, fail_msg} = append_message(state, fail_msg)
         state = %{state | status: :idle}
-          broadcast("chat_agent:#{id}", {:chat_message, id, fail_msg})
-          broadcast(@topic, {:chat_agent_status_changed, id, :idle})
+          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: fail_msg})
+          Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
           {:noreply, state}
       end
     else
       error_msg = %{role: :error, content: reason, timestamp: now}
       {state, error_msg} = append_message(state, error_msg)
         state = %{state | status: :idle, last_activity_at: now, errors: state.errors + 1}
-      broadcast("chat_agent:#{id}", {:chat_message, id, error_msg})
-      broadcast(@topic, {:chat_agent_status_changed, id, :idle})
+      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: error_msg})
+      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
       {:noreply, state}
     end
   end
@@ -906,8 +906,8 @@ defmodule BoomLooper.ChatAgent do
       {state, error_msg} = append_message(state, error_msg)
       state = %{state | status: :crashed, errors: state.errors + 1}
       state = Map.put(state, :consecutive_crashes, consecutive)
-      broadcast("chat_agent:#{id}", {:chat_message, id, error_msg})
-      broadcast(@topic, {:chat_agent_status_changed, id, :crashed})
+      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: error_msg})
+      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :crashed})
       {:noreply, state}
     else
       # Exponential backoff: 2s, 4s, 8s, 16s, 32s
@@ -926,8 +926,8 @@ defmodule BoomLooper.ChatAgent do
           recovered_msg = %{role: :system, content: "Session crashed — restarted automatically (attempt #{consecutive}).", timestamp: DateTime.utc_now()}
           {state, recovered_msg} = append_message(%{state | session: new_session, status: :idle, errors: state.errors + 1}, recovered_msg)
           state = Map.put(state, :consecutive_crashes, consecutive)
-          broadcast("chat_agent:#{id}", {:chat_message, id, recovered_msg})
-          broadcast(@topic, {:chat_agent_status_changed, id, :idle})
+          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: recovered_msg})
+          Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
           {:noreply, state}
 
         {:error, _} ->
@@ -935,8 +935,8 @@ defmodule BoomLooper.ChatAgent do
           {state, error_msg} = append_message(state, error_msg)
           state = %{state | status: :idle, errors: state.errors + 1}
           state = Map.put(state, :consecutive_crashes, consecutive)
-          broadcast("chat_agent:#{id}", {:chat_message, id, error_msg})
-          broadcast(@topic, {:chat_agent_status_changed, id, :idle})
+          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: error_msg})
+          Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
           {:noreply, state}
       end
     end
@@ -969,7 +969,7 @@ defmodule BoomLooper.ChatAgent do
     unless state.status in [:stopped, :destroying] do
       crashed = %{state | status: :crashed}
       :ets.insert(@ets_table, {state.id, summary(crashed)})
-      broadcast(@topic, {:chat_agent_stopped, summary(crashed)})
+      Events.ChatAgent.publish(%Events.ChatAgent.Stopped{summary: summary(crashed)})
     end
   end
 
@@ -1048,21 +1048,21 @@ defmodule BoomLooper.ChatAgent do
 
       restart_msg = %{role: :system, content: "Session lost — reconnecting...", timestamp: DateTime.utc_now()}
       {state, restart_msg} = append_message(state, restart_msg)
-      broadcast("chat_agent:#{state.id}", {:chat_message, state.id, restart_msg})
+      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: restart_msg})
 
       case state.backend.start_session(state.session_opts) do
         {:ok, new_session} ->
           BoomLooper.EventLog.info("agent:#{state.name}", "CLI session restarted")
           ok_msg = %{role: :system, content: "Reconnected.", timestamp: DateTime.utc_now()}
           {state, ok_msg} = append_message(%{state | session: new_session}, ok_msg)
-          broadcast("chat_agent:#{state.id}", {:chat_message, state.id, ok_msg})
+          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: ok_msg})
           state
 
         {:error, reason} ->
           BoomLooper.EventLog.error("agent:#{state.name}", "Failed to restart CLI: #{inspect(reason)}")
           fail_msg = %{role: :error, content: "Failed to reconnect: #{inspect(reason)}", timestamp: DateTime.utc_now()}
           {state, fail_msg} = append_message(state, fail_msg)
-          broadcast("chat_agent:#{state.id}", {:chat_message, state.id, fail_msg})
+          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: fail_msg})
           state
       end
     end
@@ -1116,9 +1116,11 @@ defmodule BoomLooper.ChatAgent do
     }
   end
 
-  defp broadcast(topic, message) do
-    Phoenix.PubSub.broadcast(BoomLooper.PubSub, topic, message)
-  end
+  # All broadcast from ChatAgent is done through the typed publisher
+  # modules `BoomLooper.Events.ChatAgent` (topic `"chat_agents"`) and
+  # `BoomLooper.Events.ChatAgentMessage` (topic `"chat_agent:{id}"`).
+  # The CI boundary test enforces that no other code path calls
+  # Phoenix.PubSub.broadcast directly.
 
   # --- Delegated public API ---
 

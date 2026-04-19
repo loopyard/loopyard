@@ -3,10 +3,21 @@ defmodule BoomLooperWeb.WorkspaceLive do
   use BoomLooperWeb.IExAware
 
   alias BoomLooper.ChatAgent
+  alias BoomLooper.Events
   alias BoomLooper.StreamBuffer
 
   use BoomLooperWeb.Live.WorkspaceLive.Components
   alias BoomLooperWeb.Live.WorkspaceLive.{AgentLifecycle, DiffLoader, FileBrowser, ServiceLogs}
+
+  # Move #3 strict subscriber behaviours — compile-time enforcement that
+  # every event published on these topics has a matching callback here.
+  # A new event added to any of the publishers shows up as a Dialyzer /
+  # `@impl` warning until we wire it in.
+  @behaviour BoomLooper.Events.ChatAgent.Subscriber
+  @behaviour BoomLooper.Events.ChatAgentMessage.Subscriber
+  @behaviour BoomLooper.Events.DockerObserver.Subscriber
+  @behaviour BoomLooper.Events.WorkspaceServices.Subscriber
+  @behaviour BoomLooper.Events.SourceSync.Subscriber
 
   @impl true
   def mount(%{"project_id" => project_id, "workspace_id" => workspace_id}, _session, socket) do
@@ -813,9 +824,135 @@ defmodule BoomLooperWeb.WorkspaceLive do
   end
 
   # --- PubSub ---
+  #
+  # Every PubSub broadcast we subscribe to arrives as a typed struct from
+  # BoomLooper.Events.*. The handle_info clauses below are two-line
+  # dispatches to the on_* callbacks declared by each Subscriber behaviour
+  # — missing callbacks compile-warn, so new events forced us to wire them
+  # explicitly or justify the drop. Per plans/coordination-hardening.md
+  # Move #3, each LV writes its own dispatch (no macro magic).
 
   @impl true
-  def handle_info({:chat_agent_started, agent_summary}, socket) do
+  def handle_info(%Events.ChatAgent.Started{} = e, socket), do: on_started(e, socket)
+  def handle_info(%Events.ChatAgent.Resumed{} = e, socket), do: on_resumed(e, socket)
+  def handle_info(%Events.ChatAgent.Booting{} = e, socket), do: on_booting(e, socket)
+  def handle_info(%Events.ChatAgent.BootStatus{} = e, socket), do: on_boot_status(e, socket)
+  def handle_info(%Events.ChatAgent.BootFailed{} = e, socket), do: on_boot_failed(e, socket)
+  def handle_info(%Events.ChatAgent.Stopped{} = e, socket), do: on_stopped(e, socket)
+  def handle_info(%Events.ChatAgent.Removed{} = e, socket), do: on_removed(e, socket)
+  def handle_info(%Events.ChatAgent.Renamed{} = e, socket), do: on_renamed(e, socket)
+  def handle_info(%Events.ChatAgent.StatusChanged{} = e, socket), do: on_status_changed(e, socket)
+  # Quarantine / release aren't rendered here (SystemQuarantineLive owns
+  # that surface) but we subscribe to the "chat_agents" topic so the
+  # behaviour forces us to acknowledge them explicitly instead of letting
+  # them slip into a catch-all.
+  def handle_info(%Events.ChatAgent.Quarantined{} = e, socket), do: on_quarantined(e, socket)
+  def handle_info(%Events.ChatAgent.Released{} = e, socket), do: on_released(e, socket)
+
+  def handle_info(%Events.ChatAgentMessage.Message{} = e, socket), do: on_message(e, socket)
+  def handle_info(%Events.ChatAgentMessage.TextDelta{} = e, socket), do: on_text_delta(e, socket)
+  def handle_info(%Events.ChatAgentMessage.StreamOutput{} = e, socket), do: on_stream_output(e, socket)
+
+  def handle_info(%Events.DockerObserver.Changed{} = e, socket), do: on_changed(e, socket)
+  def handle_info(%Events.DockerObserver.Reset{} = e, socket), do: on_reset(e, socket)
+  def handle_info(%Events.DockerObserver.Disconnected{} = e, socket), do: on_disconnected(e, socket)
+  def handle_info(%Events.DockerObserver.Reconnected{} = e, socket), do: on_reconnected(e, socket)
+
+  def handle_info(%Events.WorkspaceServices.ServicesUpdated{} = e, socket), do: on_services_updated(e, socket)
+  def handle_info(%Events.WorkspaceServices.ComposeResult{} = e, socket), do: on_compose_result(e, socket)
+
+  def handle_info(%Events.SourceSync.Updated{} = e, socket), do: on_updated(e, socket)
+
+  # Non-PubSub internal messages (send/2 self-dispatches, async task
+  # replies). These aren't subject to the publisher-module boundary
+  # because they never leave this process.
+
+  def handle_info(:workspace_stopped, socket) do
+    ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
+    {service_statuses, volumes} = load_sidebar_from_observer(nil, ws_id)
+
+    {:noreply,
+     socket
+     |> transition_workspace_state(:stopped)
+     |> assign(:service_statuses, service_statuses)
+     |> assign(:volumes, volumes)
+     |> assign(:agents, [])}
+  end
+
+  def handle_info({:start_workspace, path}, socket) do
+    workspace_id = BoomLooper.ProjectRegistry.workspace_id(path)
+
+    # Start workspace in a Task so it doesn't block the LiveView. The
+    # supervisor start triggers compose up inside ServiceManager.
+    # Subsequent DockerObserver.Changed events flip us from :starting → :running.
+    Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
+      BoomLooper.WorkspaceSupervisor.start_workspace(workspace_id, path)
+      BoomLooper.ProjectRegistry.update_workspace_status(workspace_id, :running)
+      BoomLooper.Docker.Observer.poll_now()
+    end)
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:build_output, id, data}, socket) when id == socket.assigns.selected_id do
+    upsert_stream_message(socket, data, "Building Docker image...", nil)
+  end
+
+  def handle_info({:fetch_service_logs, service_name}, socket) do
+    ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
+    {:noreply, ServiceLogs.start_service_logs_fetch(socket, ws_id, service_name)}
+  end
+
+  def handle_info(:fetch_all_service_logs, socket) do
+    ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
+    {:noreply, ServiceLogs.start_all_service_logs_fetch(socket, ws_id)}
+  end
+
+  def handle_info(:refresh_service_logs, socket) do
+    ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
+
+    case socket.assigns.live_action do
+      :service ->
+        ServiceLogs.schedule_log_refresh()
+        {:noreply, ServiceLogs.start_service_logs_fetch(socket, ws_id, socket.assigns.selected_service)}
+
+      :services ->
+        ServiceLogs.schedule_log_refresh()
+        {:noreply, ServiceLogs.start_all_service_logs_fetch(socket, ws_id)}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_info({:service_logs_fetched, service_name, logs}, socket) do
+    # Intentionally does NOT touch service_statuses. The log fetch task
+    # used to ship the raw (un-annotated) service list back alongside the
+    # logs, and assigning it here wiped the annotated host_port/exposed/
+    # container_port fields — causing the port button to flash off every
+    # 3s until the next docker_state_changed re-annotated. The LV's own
+    # assigns are already fresh via docker_state_changed broadcasts.
+    socket =
+      if socket.assigns[:selected_service] == service_name do
+        assign(socket, :service_logs, logs)
+      else
+        socket
+      end
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:all_service_logs_fetched, all_logs}, socket) do
+    # Same rule: logs only, don't clobber annotated service_statuses.
+    {:noreply, assign(socket, :all_service_logs, all_logs)}
+  end
+
+  def handle_info(_msg, socket), do: {:noreply, socket}
+
+  # --- ChatAgent subscriber callbacks ---
+
+  @impl Events.ChatAgent.Subscriber
+  def on_started(%Events.ChatAgent.Started{summary: agent_summary}, socket) do
     socket = assign(socket, :agents, AgentLifecycle.list_workspace_agents(socket.assigns.workspace.path))
 
     if socket.assigns.booting_agent_id && agent_summary.id == socket.assigns.booting_agent_id do
@@ -834,8 +971,8 @@ defmodule BoomLooperWeb.WorkspaceLive do
     end
   end
 
-  @impl true
-  def handle_info({:chat_agent_resumed, summary}, socket) do
+  @impl Events.ChatAgent.Subscriber
+  def on_resumed(%Events.ChatAgent.Resumed{summary: summary}, socket) do
     # Resume = an agent supervisor (re)started the GenServer after a
     # crash or log replay. Without this handler the sidebar would
     # latch at whatever `:chat_agent_status_changed` last said — often
@@ -858,8 +995,8 @@ defmodule BoomLooperWeb.WorkspaceLive do
     {:noreply, socket}
   end
 
-  @impl true
-  def handle_info({:chat_agent_booting, summary}, socket) do
+  @impl Events.ChatAgent.Subscriber
+  def on_booting(%Events.ChatAgent.Booting{summary: summary}, socket) do
     {:noreply, assign(socket, :agents, AgentLifecycle.list_workspace_agents(socket.assigns.workspace.path))
      |> then(fn s ->
        if s.assigns.selected_id == summary.id do
@@ -870,8 +1007,8 @@ defmodule BoomLooperWeb.WorkspaceLive do
      end)}
   end
 
-  @impl true
-  def handle_info({:chat_agent_boot_status, id, status_text}, socket) do
+  @impl Events.ChatAgent.Subscriber
+  def on_boot_status(%Events.ChatAgent.BootStatus{id: id, status: status_text}, socket) do
     agents =
       Enum.map(socket.assigns.agents, fn a ->
         if a.id == id, do: Map.put(a, :boot_status, status_text), else: a
@@ -891,8 +1028,8 @@ defmodule BoomLooperWeb.WorkspaceLive do
     {:noreply, socket}
   end
 
-  @impl true
-  def handle_info({:chat_agent_boot_failed, id, reason}, socket) do
+  @impl Events.ChatAgent.Subscriber
+  def on_boot_failed(%Events.ChatAgent.BootFailed{id: id, reason: reason}, socket) do
     socket = assign(socket, :agents, AgentLifecycle.list_workspace_agents(socket.assigns.workspace.path))
 
     socket =
@@ -908,8 +1045,8 @@ defmodule BoomLooperWeb.WorkspaceLive do
     {:noreply, socket}
   end
 
-  @impl true
-  def handle_info({:chat_agent_stopped, _}, socket) do
+  @impl Events.ChatAgent.Subscriber
+  def on_stopped(%Events.ChatAgent.Stopped{}, socket) do
     agents = AgentLifecycle.list_workspace_agents(socket.assigns.workspace.path)
 
     {:noreply,
@@ -918,8 +1055,8 @@ defmodule BoomLooperWeb.WorkspaceLive do
      |> refresh_selected_agent(socket.assigns.selected_id)}
   end
 
-  @impl true
-  def handle_info({:chat_agent_removed, id}, socket) do
+  @impl Events.ChatAgent.Subscriber
+  def on_removed(%Events.ChatAgent.Removed{id: id}, socket) do
     socket = assign(socket, :agents, AgentLifecycle.list_workspace_agents(socket.assigns.workspace.path))
 
     socket =
@@ -932,8 +1069,8 @@ defmodule BoomLooperWeb.WorkspaceLive do
     {:noreply, socket}
   end
 
-  @impl true
-  def handle_info({:chat_agent_renamed, id, new_name}, socket) do
+  @impl Events.ChatAgent.Subscriber
+  def on_renamed(%Events.ChatAgent.Renamed{id: id, name: new_name}, socket) do
     agents =
       Enum.map(socket.assigns.agents, fn a ->
         if a.id == id, do: %{a | name: new_name}, else: a
@@ -954,8 +1091,8 @@ defmodule BoomLooperWeb.WorkspaceLive do
     {:noreply, socket}
   end
 
-  @impl true
-  def handle_info({:chat_agent_status_changed, id, status}, socket) do
+  @impl Events.ChatAgent.Subscriber
+  def on_status_changed(%Events.ChatAgent.StatusChanged{id: id, status: status}, socket) do
     agents =
       Enum.map(socket.assigns.agents, fn a ->
         if a.id == id, do: %{a | status: status}, else: a
@@ -978,8 +1115,25 @@ defmodule BoomLooperWeb.WorkspaceLive do
     {:noreply, socket}
   end
 
-  @impl true
-  def handle_info({:chat_message, id, msg}, socket) when id == socket.assigns.selected_id do
+  @impl Events.ChatAgent.Subscriber
+  def on_quarantined(%Events.ChatAgent.Quarantined{}, socket) do
+    # Quarantine UI lives on /system/quarantine. The workspace sidebar
+    # already reflects the :crashed status that accompanies it via the
+    # separate StatusChanged event, so nothing to do here.
+    {:noreply, socket}
+  end
+
+  @impl Events.ChatAgent.Subscriber
+  def on_released(%Events.ChatAgent.Released{}, socket) do
+    # Release clears the quarantine flag; the subsequent Resumed or
+    # StatusChanged event is what updates the sidebar.
+    {:noreply, socket}
+  end
+
+  # --- ChatAgentMessage subscriber callbacks ---
+
+  @impl Events.ChatAgentMessage.Subscriber
+  def on_message(%Events.ChatAgentMessage.Message{agent_id: id, msg: msg}, socket) when id == socket.assigns.selected_id do
     # Guard against duplicate messages (mobile reconnect can cause double PubSub subscriptions)
     if msg[:id] && Enum.any?(socket.assigns.messages, &(&1[:id] == msg[:id])) do
       {:noreply, socket}
@@ -1006,8 +1160,10 @@ defmodule BoomLooperWeb.WorkspaceLive do
     end
   end
 
-  @impl true
-  def handle_info({:chat_text_delta, id, text}, socket) when id == socket.assigns.selected_id do
+  def on_message(%Events.ChatAgentMessage.Message{}, socket), do: {:noreply, socket}
+
+  @impl Events.ChatAgentMessage.Subscriber
+  def on_text_delta(%Events.ChatAgentMessage.TextDelta{agent_id: id, text: text}, socket) when id == socket.assigns.selected_id do
     # Piggyback on delta events to keep :selected_agent fresh even when
     # status transitions don't emit their own broadcast. Costs an ETS
     # lookup per streamed chunk — cheap, and LiveView's assign diffing
@@ -1019,40 +1175,21 @@ defmodule BoomLooperWeb.WorkspaceLive do
      |> push_event("scroll_bottom", %{})}
   end
 
+  def on_text_delta(%Events.ChatAgentMessage.TextDelta{}, socket), do: {:noreply, socket}
 
-  @impl true
-  def handle_info(:workspace_stopped, socket) do
-    ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
-    {service_statuses, volumes} = load_sidebar_from_observer(nil, ws_id)
-
-    {:noreply,
-     socket
-     |> transition_workspace_state(:stopped)
-     |> assign(:service_statuses, service_statuses)
-     |> assign(:volumes, volumes)
-     |> assign(:agents, [])}
+  @impl Events.ChatAgentMessage.Subscriber
+  def on_stream_output(%Events.ChatAgentMessage.StreamOutput{agent_id: id, data: data, title: title, msg_id: msg_id}, socket) when id == socket.assigns.selected_id do
+    upsert_stream_message(socket, data, title, msg_id)
   end
 
-  @impl true
-  def handle_info({:start_workspace, path}, socket) do
-    workspace_id = BoomLooper.ProjectRegistry.workspace_id(path)
+  def on_stream_output(%Events.ChatAgentMessage.StreamOutput{}, socket), do: {:noreply, socket}
 
-    # Start workspace in a Task so it doesn't block the LiveView. The
-    # supervisor start triggers compose up inside ServiceManager.
-    # docker_state_changed events flip us from :starting → :running.
-    Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
-      BoomLooper.WorkspaceSupervisor.start_workspace(workspace_id, path)
-      BoomLooper.ProjectRegistry.update_workspace_status(workspace_id, :running)
-      BoomLooper.Docker.Observer.poll_now()
-    end)
-
-    {:noreply, socket}
-  end
+  # --- DockerObserver subscriber callbacks ---
 
   # Docker.Observer broadcasts when container/volume state changes.
   # Re-derive sidebar state from the cache — zero docker calls.
-  @impl true
-  def handle_info({:docker_state_changed}, socket) do
+  @impl Events.DockerObserver.Subscriber
+  def on_changed(%Events.DockerObserver.Changed{}, socket) do
     ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
     {service_statuses, volumes} = load_sidebar_from_observer(nil, ws_id)
     guarded = guard_service_statuses(socket, service_statuses)
@@ -1069,7 +1206,8 @@ defmodule BoomLooperWeb.WorkspaceLive do
   # failures) or initial bootstrap failure. Re-read from ETS so the
   # sidebar reflects the empty cache; otherwise it'd keep showing
   # services/volumes that are no longer authoritative.
-  def handle_info({:docker_state_reset}, socket) do
+  @impl Events.DockerObserver.Subscriber
+  def on_reset(%Events.DockerObserver.Reset{}, socket) do
     ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
     {service_statuses, volumes} = load_sidebar_from_observer(nil, ws_id)
     guarded = guard_service_statuses(socket, service_statuses)
@@ -1084,25 +1222,29 @@ defmodule BoomLooperWeb.WorkspaceLive do
   # Flip the connectivity flag so the sidebar's "Docker disconnected"
   # badge renders. `derive_workspace_state` holds the previous state
   # during the disconnect window, so the Start/Stop button stays sane.
-  def handle_info({:docker_state_disconnected}, socket) do
+  @impl Events.DockerObserver.Subscriber
+  def on_disconnected(%Events.DockerObserver.Disconnected{}, socket) do
     {:noreply, assign(socket, :docker_connected, false)}
   end
 
-  # Stream back. Flip the flag and let the next :docker_state_changed
-  # (which the reconnect bootstrap always emits after its snapshot)
-  # refresh the sidebar.
-  def handle_info({:docker_state_reconnected}, socket) do
+  # Stream back. Flip the flag and let the next Changed event (which the
+  # reconnect bootstrap always emits after its snapshot) refresh the
+  # sidebar.
+  @impl Events.DockerObserver.Subscriber
+  def on_reconnected(%Events.DockerObserver.Reconnected{}, socket) do
     {:noreply, assign(socket, :docker_connected, true)}
   end
+
+  # --- WorkspaceServices subscriber callbacks ---
 
   # ServiceManager fires this when a compose up/down attempt has
   # completed — success OR definitive failure. Without this, a compose
   # up that bombed out during build (missing Dockerfile, etc.) would
-  # leave the LV pinned at :starting forever: the :docker_state_changed
-  # pathway never flips us to :started (no containers come up) and
-  # there's no other signal saying "give up." This is the signal.
-  @impl true
-  def handle_info({:compose_result, workspace_id, result}, socket) do
+  # leave the LV pinned at :starting forever: the Changed pathway never
+  # flips us to :started (no containers come up) and there's no other
+  # signal saying "give up." This is the signal.
+  @impl Events.WorkspaceServices.Subscriber
+  def on_compose_result(%Events.WorkspaceServices.ComposeResult{workspace_id: workspace_id, result: result}, socket) do
     ws = socket.assigns.workspace
     ws_entry = socket.assigns[:workspace_entry]
     our_id = (ws_entry && ws_entry.id) || ws.id
@@ -1132,8 +1274,8 @@ defmodule BoomLooperWeb.WorkspaceLive do
     end
   end
 
-  @impl true
-  def handle_info({:services_updated, path}, socket) do
+  @impl Events.WorkspaceServices.Subscriber
+  def on_services_updated(%Events.WorkspaceServices.ServicesUpdated{path: path}, socket) do
     # ServiceManager broadcasts on canonical_dir (host path) or project_dir
     # (virtual dir). Match either against our workspace's known paths.
     ws = socket.assigns.workspace
@@ -1153,81 +1295,16 @@ defmodule BoomLooperWeb.WorkspaceLive do
     end
   end
 
-  @impl true
-  def handle_info({:source_sync, ws_id, status}, socket) do
+  # --- SourceSync subscriber callbacks ---
+
+  @impl Events.SourceSync.Subscriber
+  def on_updated(%Events.SourceSync.Updated{workspace_id: ws_id, status: status}, socket) do
     if ws_id == socket.assigns.workspace.id do
       {:noreply, assign(socket, :sync_status, status)}
     else
       {:noreply, socket}
     end
   end
-
-  @impl true
-  def handle_info({:build_output, id, data}, socket) when id == socket.assigns.selected_id do
-    upsert_stream_message(socket, data, "Building Docker image...", nil)
-  end
-
-  @impl true
-  def handle_info({:stream_output, id, data, title, msg_id}, socket) when id == socket.assigns.selected_id do
-    upsert_stream_message(socket, data, title, msg_id)
-  end
-
-  @impl true
-  def handle_info({:fetch_service_logs, service_name}, socket) do
-    ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
-    {:noreply, ServiceLogs.start_service_logs_fetch(socket, ws_id, service_name)}
-  end
-
-  @impl true
-  def handle_info(:fetch_all_service_logs, socket) do
-    ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
-    {:noreply, ServiceLogs.start_all_service_logs_fetch(socket, ws_id)}
-  end
-
-  @impl true
-  def handle_info(:refresh_service_logs, socket) do
-    ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
-
-    case socket.assigns.live_action do
-      :service ->
-        ServiceLogs.schedule_log_refresh()
-        {:noreply, ServiceLogs.start_service_logs_fetch(socket, ws_id, socket.assigns.selected_service)}
-
-      :services ->
-        ServiceLogs.schedule_log_refresh()
-        {:noreply, ServiceLogs.start_all_service_logs_fetch(socket, ws_id)}
-
-      _ ->
-        {:noreply, socket}
-    end
-  end
-
-  @impl true
-  def handle_info({:service_logs_fetched, service_name, logs}, socket) do
-    # Intentionally does NOT touch service_statuses. The log fetch task
-    # used to ship the raw (un-annotated) service list back alongside the
-    # logs, and assigning it here wiped the annotated host_port/exposed/
-    # container_port fields — causing the port button to flash off every
-    # 3s until the next docker_state_changed re-annotated. The LV's own
-    # assigns are already fresh via docker_state_changed broadcasts.
-    socket =
-      if socket.assigns[:selected_service] == service_name do
-        assign(socket, :service_logs, logs)
-      else
-        socket
-      end
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info({:all_service_logs_fetched, all_logs}, socket) do
-    # Same rule: logs only, don't clobber annotated service_statuses.
-    {:noreply, assign(socket, :all_service_logs, all_logs)}
-  end
-
-  @impl true
-  def handle_info(_msg, socket), do: {:noreply, socket}
 
   # Never replace a non-empty service list with []. During Observer cache
   # wipes, compose file syncs, or async task races, the new list can be

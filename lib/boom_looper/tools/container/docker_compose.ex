@@ -98,11 +98,12 @@ defmodule BoomLooper.Tools.Container.DockerCompose do
           %{msg | content: acc}
         end)
 
-        Phoenix.PubSub.broadcast(
-          BoomLooper.PubSub,
-          "chat_agent:#{agent_id}",
-          {:stream_output, agent_id, data, "docker compose #{command}", msg_id}
-        )
+        BoomLooper.Events.ChatAgentMessage.publish(%BoomLooper.Events.ChatAgentMessage.StreamOutput{
+          agent_id: agent_id,
+          data: data,
+          title: "docker compose #{command}",
+          msg_id: msg_id
+        })
 
         collect_and_stream(agent_id, port, command, msg_id, acc, timeout)
 

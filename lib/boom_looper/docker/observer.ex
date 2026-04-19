@@ -45,7 +45,6 @@ defmodule BoomLooper.Docker.Observer do
   require Logger
 
   @table :docker_observer
-  @topic "docker_observer"
   @debounce_ms 500
 
   # Backstop reconciler: re-snapshot every interval even if no events
@@ -218,7 +217,7 @@ defmodule BoomLooper.Docker.Observer do
 
   @doc "Subscribe to state-change broadcasts."
   def subscribe do
-    Phoenix.PubSub.subscribe(BoomLooper.PubSub, @topic)
+    BoomLooper.Events.DockerObserver.subscribe()
   end
 
   @doc """
@@ -299,7 +298,7 @@ defmodule BoomLooper.Docker.Observer do
     )
 
     :ets.insert(@table, {:connected, false})
-    broadcast({:docker_state_disconnected})
+    BoomLooper.Events.DockerObserver.publish(%BoomLooper.Events.DockerObserver.Disconnected{})
 
     Process.send_after(self(), :retry_bootstrap, delay)
 
@@ -368,7 +367,7 @@ defmodule BoomLooper.Docker.Observer do
 
         # Reconnected successfully — reset backoff, notify subscribers
         # that cache is trustworthy again.
-        broadcast({:docker_state_reconnected})
+        BoomLooper.Events.DockerObserver.publish(%BoomLooper.Events.DockerObserver.Reconnected{})
         %{state | retry_attempt: 0}
 
       {:retry_scheduled, state} ->
@@ -448,7 +447,7 @@ defmodule BoomLooper.Docker.Observer do
       # the snapshot in the broadcast let consumers bypass the cache
       # API and drift from what the UI actually needs — one such drift
       # caused the sidebar-port flash.
-      broadcast({:docker_state_changed})
+      BoomLooper.Events.DockerObserver.publish(%BoomLooper.Events.DockerObserver.Changed{})
     end
 
     # Mirror the success-reset into ETS so health() reads it without
@@ -477,7 +476,7 @@ defmodule BoomLooper.Docker.Observer do
         :ets.insert(@table, {:containers, []})
         :ets.insert(@table, {:volumes, []})
         :ets.insert(@table, {:volume_sizes, %{}})
-        broadcast({:docker_state_reset})
+        BoomLooper.Events.DockerObserver.publish(%BoomLooper.Events.DockerObserver.Reset{})
 
         %{state | prev: %{containers: [], volumes: []}, snapshot_failures: failures}
 
@@ -675,7 +674,6 @@ defmodule BoomLooper.Docker.Observer do
     end
   end
 
-  defp broadcast(message) do
-    Phoenix.PubSub.broadcast(BoomLooper.PubSub, @topic, message)
-  end
+  # All broadcasts go through BoomLooper.Events.DockerObserver —
+  # the CI boundary test forbids Phoenix.PubSub.broadcast elsewhere.
 end

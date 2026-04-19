@@ -354,7 +354,7 @@ defmodule BoomLooperWeb.WorkspaceLiveTest do
           started_by: "test"
         )
 
-      assert_receive {:chat_agent_started, _}, 500
+      assert_receive %BoomLooper.Events.ChatAgent.Started{}, 500
 
       html = render(view)
       assert html =~ "Send"
@@ -415,7 +415,7 @@ defmodule BoomLooperWeb.WorkspaceLiveTest do
     test "stopped agent shows remove button", %{conn: conn, agent_id: id, workspace: ws} do
       BoomLooper.ChatAgent.subscribe()
       BoomLooper.ChatAgent.stop_agent(id)
-      assert_receive {:chat_agent_stopped, _}, 500
+      assert_receive %BoomLooper.Events.ChatAgent.Stopped{}, 500
 
       {:ok, view, _html} = live(conn, ws_chat_path(ws, id))
       assert has_element?(view, "button[phx-click='remove_agent']")
@@ -424,24 +424,24 @@ defmodule BoomLooperWeb.WorkspaceLiveTest do
     test "destroying state is broadcast to all viewers", %{conn: conn, agent_id: id, workspace: ws} do
       BoomLooper.ChatAgent.subscribe()
       BoomLooper.ChatAgent.stop_agent(id)
-      assert_receive {:chat_agent_stopped, _}, 500
+      assert_receive %BoomLooper.Events.ChatAgent.Stopped{}, 500
 
       {:ok, _view, _html} = live(conn, ws_chat_path(ws, id))
 
       BoomLooper.ChatAgent.remove_agent(id)
-      assert_receive {:chat_agent_status_changed, ^id, :destroying}, 1000
-      assert_receive {:chat_agent_removed, ^id}, 1000
+      assert_receive %BoomLooper.Events.ChatAgent.StatusChanged{id: ^id, status: :destroying}, 1000
+      assert_receive %BoomLooper.Events.ChatAgent.Removed{id: ^id}, 1000
     end
 
     @tag :docker
     test "destroying agent is eventually removed after cleanup", %{agent_id: id} do
       BoomLooper.ChatAgent.subscribe()
       BoomLooper.ChatAgent.stop_agent(id)
-      assert_receive {:chat_agent_stopped, _}, 500
+      assert_receive %BoomLooper.Events.ChatAgent.Stopped{}, 500
 
       BoomLooper.ChatAgent.remove_agent(id)
-      assert_receive {:chat_agent_status_changed, ^id, :destroying}, 1000
-      assert_receive {:chat_agent_removed, ^id}, 5000
+      assert_receive %BoomLooper.Events.ChatAgent.StatusChanged{id: ^id, status: :destroying}, 1000
+      assert_receive %BoomLooper.Events.ChatAgent.Removed{id: ^id}, 5000
     end
   end
 
@@ -607,9 +607,10 @@ defmodule BoomLooperWeb.WorkspaceLiveTest do
     test "service view renders service name in header", %{conn: conn, workspace: ws, setup_agent_id: _setup_agent_id} do
       {:ok, view, _html} = live(conn, "/projects/#{ws.project_id}/workspaces/#{ws.id}/services/postgres")
 
-      # Broadcast service statuses so the view has data
-      statuses = [%{name: "postgres", image: "postgres:16", running: true, container: "boom-looper-svc-test-pg", ports: %{}}]
-      Phoenix.PubSub.broadcast(BoomLooper.PubSub, "workspace_services", {:services_updated, ws.path, statuses})
+      # Broadcast service statuses so the view has data.
+      # The current ServicesUpdated event only carries the path;
+      # subscribers re-read statuses from ETS, so we don't ship the list.
+      BoomLooper.Events.WorkspaceServices.publish(%BoomLooper.Events.WorkspaceServices.ServicesUpdated{path: ws.path})
 
       html = flush_lv(view)
       assert html =~ "postgres"

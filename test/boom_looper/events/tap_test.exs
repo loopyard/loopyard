@@ -16,8 +16,19 @@ defmodule BoomLooper.Events.TapTest do
     # captures broadcasts from any concurrent test. Find OUR event
     # in the buffer rather than asserting on buffer shape.
 
-    test "chat_agents events are bucketed correctly" do
-      id = "cls-chat-#{System.unique_integer([:positive])}"
+    test "chat_agents events (struct form via publisher) are bucketed correctly" do
+      id = "cls-chat-struct-#{System.unique_integer([:positive])}"
+      BoomLooper.Events.ChatAgent.publish(%BoomLooper.Events.ChatAgent.Started{summary: %{id: id}})
+      Process.sleep(50)
+
+      event = Enum.find(Tap.recent(), &String.contains?(&1.payload, id))
+      assert event != nil
+      assert event.topic == "chat_agents"
+      assert event.tag == BoomLooper.Events.ChatAgent.Started
+    end
+
+    test "chat_agents events (legacy tuple fallback) are still bucketed" do
+      id = "cls-chat-tuple-#{System.unique_integer([:positive])}"
       Phoenix.PubSub.broadcast(BoomLooper.PubSub, "chat_agents", {:chat_agent_started, %{id: id}})
       Process.sleep(50)
 

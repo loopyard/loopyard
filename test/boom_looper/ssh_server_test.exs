@@ -72,8 +72,8 @@ defmodule BoomLooper.SSHServerTest do
 
   defp drain_pubsub do
     receive do
-      {:terminal_output, _} -> drain_pubsub()
-      :terminal_clear -> drain_pubsub()
+      %BoomLooper.Events.Terminal.Output{} -> drain_pubsub()
+      %BoomLooper.Events.Terminal.Clear{} -> drain_pubsub()
     after
       200 -> :ok
     end
@@ -85,7 +85,7 @@ defmodule BoomLooper.SSHServerTest do
   defp pubsub_loop(acc, remaining) do
     start = System.monotonic_time(:millisecond)
     receive do
-      {:terminal_output, data} ->
+      %BoomLooper.Events.Terminal.Output{data: data} ->
         pubsub_loop(acc <> data, remaining - (System.monotonic_time(:millisecond) - start))
     after
       remaining -> acc
@@ -151,7 +151,7 @@ defmodule BoomLooper.SSHServerTest do
       container = "ssh-raw-#{:rand.uniform(100_000)}"
       {:ok, terminal_pid} = start_terminal(container)
 
-      Phoenix.PubSub.subscribe(BoomLooper.PubSub, Terminal.topic(container))
+      BoomLooper.Events.Terminal.subscribe(container)
       drain_pubsub()
 
       {:ok, conn} = connect(container, user_dir, ssh_port)
@@ -195,7 +195,7 @@ defmodule BoomLooper.SSHServerTest do
       container = "ssh-mp-#{:rand.uniform(100_000)}"
       {:ok, terminal_pid} = start_terminal(container)
 
-      Phoenix.PubSub.subscribe(BoomLooper.PubSub, Terminal.topic(container))
+      BoomLooper.Events.Terminal.subscribe(container)
       drain_pubsub()
 
       {:ok, conn} = connect(container, user_dir, ssh_port)

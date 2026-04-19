@@ -19,12 +19,12 @@ defmodule BoomLooperWeb.IExAware do
       import BoomLooperWeb.Components.AppHeader, only: [header: 1]
 
       defp subscribe_iex(socket) do
-        Phoenix.PubSub.subscribe(BoomLooper.PubSub, "iex_session")
+        BoomLooper.Events.IexSession.subscribe()
         Phoenix.Component.assign(socket, :iex_session, BoomLooper.IExSession.current())
       end
 
       @impl true
-      def handle_info({:iex_session, state}, socket) do
+      def handle_info(%BoomLooper.Events.IexSession.Changed{state: state}, socket) do
         {:noreply, Phoenix.Component.assign(socket, :iex_session, state)}
       end
     end

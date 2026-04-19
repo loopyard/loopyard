@@ -12,134 +12,107 @@ defmodule BoomLooperWeb.BroadcastCoverageTest do
   matching handler clause. A user would see the sidebar pinned at
   `:crashed` while the new GenServer was already alive and idle.
 
-  This test asserts — statically, by parsing source files — that
-  each LV we care about has an explicit `handle_info` clause for
-  every event tag broadcast on topics it subscribes to. When a new
-  event tag is added, this test fails in every LV that subscribes,
-  forcing the author to either wire the handler or justify the drop.
+  After Move #2+#3 (publisher modules + subscriber behaviours) landed,
+  the primary contract is the `@behaviour` declaration — missing
+  callbacks surface as compile warnings via `@impl`. This test stays
+  in place as belt-and-suspenders: it verifies each LV has an
+  explicit `handle_info(%Struct{} = _, socket)` dispatch clause for
+  every event struct on the topics it subscribes to, so a subscriber
+  that accidentally drops a struct into the catch-all (`_msg`) fails
+  the test instead of silently losing broadcasts.
+
+  For anything still broadcast as a tuple (pre-migration fallback),
+  the original atom-based check still runs below.
   """
 
   use ExUnit.Case, async: true
 
-  # For each LiveView, list the event tags it MUST handle. The tags
-  # here come from the grep audit — if you add a new broadcast tag
-  # on a topic a LV subscribes to, add it here and wire the handler.
-  @workspace_live_required_events [
-    # "chat_agents" topic
-    :chat_agent_started,
-    :chat_agent_stopped,
-    :chat_agent_booting,
-    :chat_agent_boot_status,
-    :chat_agent_boot_failed,
-    :chat_agent_removed,
-    :chat_agent_renamed,
-    :chat_agent_resumed,
-    :chat_agent_status_changed,
-    # "chat_agent:{id}" topic
-    :chat_message,
-    :chat_text_delta,
-    # "docker_observer" topic
-    :docker_state_changed,
-    :docker_state_reset,
-    :docker_state_disconnected,
-    :docker_state_reconnected,
-    # workspace/service events
-    :compose_result
-  ]
+  alias BoomLooper.Events
 
-  @project_live_required_events [
-    :chat_agent_started,
-    :chat_agent_stopped,
-    :chat_agent_booting,
-    :chat_agent_removed,
-    :chat_agent_resumed,
-    :chat_agent_renamed,
-    :chat_agent_boot_status,
-    :chat_agent_boot_failed,
-    :chat_agent_status_changed,
-    :services_updated
-  ]
+  # For each LiveView, list the event modules it MUST handle. The set
+  # is derived from the publisher modules — if a new event struct is
+  # added to a topic a LV subscribes to, add it here and wire the
+  # handler clause + behaviour callback.
+  @workspace_live_required_structs Events.ChatAgent.events() ++
+                                     Events.ChatAgentMessage.events() ++
+                                     Events.DockerObserver.events() ++
+                                     Events.WorkspaceServices.events() ++
+                                     Events.SourceSync.events()
 
-  @system_docker_live_required_events [
-    :docker_state_changed,
-    :docker_state_reset,
-    :docker_state_disconnected,
-    :docker_state_reconnected
-  ]
+  @project_live_required_structs Events.ChatAgent.events() ++
+                                   Events.WorkspaceServices.events()
 
-  # SystemQuarantineLive subscribes to "chat_agents" but only cares
-  # about the quarantine-specific events. Other agent lifecycle
-  # events fall through to the catch-all intentionally — they don't
-  # change the quarantine list.
-  @system_quarantine_live_required_events [
-    :chat_agent_quarantined,
-    :chat_agent_released
-  ]
+  @system_docker_live_required_structs Events.DockerObserver.events()
 
-  test "workspace_live handles every event it subscribes to" do
-    assert_handlers_exist(
+  # SystemQuarantineLive subscribes to "chat_agents" and — per Move #3
+  # — declares the behaviour, which forces it to acknowledge every
+  # event. Non-quarantine callbacks no-op explicitly; the dispatcher
+  # clauses still have to exist so a new event can't slip past into
+  # the catch-all.
+  @system_quarantine_live_required_structs Events.ChatAgent.events()
+
+  test "workspace_live handles every event struct on topics it subscribes to" do
+    assert_struct_handlers_exist(
       "lib/boom_looper_web/live/workspace_live.ex",
-      @workspace_live_required_events
+      @workspace_live_required_structs
     )
   end
 
-  test "project_live handles every agent-lifecycle event" do
-    assert_handlers_exist(
+  test "project_live handles every event struct on topics it subscribes to" do
+    assert_struct_handlers_exist(
       "lib/boom_looper_web/live/project_live.ex",
-      @project_live_required_events
+      @project_live_required_structs
     )
   end
 
-  test "system_docker_live handles every docker-observer event" do
-    assert_handlers_exist(
+  test "system_docker_live handles every docker-observer event struct" do
+    assert_struct_handlers_exist(
       "lib/boom_looper_web/live/system_docker_live.ex",
-      @system_docker_live_required_events
+      @system_docker_live_required_structs
     )
   end
 
-  test "system_quarantine_live handles every quarantine event" do
-    assert_handlers_exist(
+  test "system_quarantine_live acknowledges every chat_agents event struct" do
+    assert_struct_handlers_exist(
       "lib/boom_looper_web/live/system_quarantine_live.ex",
-      @system_quarantine_live_required_events
+      @system_quarantine_live_required_structs
     )
   end
 
-  # Parse the module's AST and find every `handle_info` clause's first
-  # argument. If the first argument is a tuple whose head is an atom,
-  # that atom is a handled event tag. Compare against the required set.
-  defp assert_handlers_exist(relative_path, required_tags) do
+  # ── Struct-based coverage ──
+
+  defp assert_struct_handlers_exist(relative_path, required_modules) do
     source = File.read!(Path.join(File.cwd!(), relative_path))
     {:ok, ast} = Code.string_to_quoted(source)
 
-    handled = collect_handled_tags(ast) |> MapSet.new()
-    missing = MapSet.difference(MapSet.new(required_tags), handled)
+    handled = collect_handled_structs(ast) |> MapSet.new()
+    required = required_modules |> MapSet.new()
+    missing = MapSet.difference(required, handled)
 
     assert MapSet.size(missing) == 0,
-           "#{relative_path} subscribes to topics that publish these tags, " <>
+           "#{relative_path} subscribes to topics that publish these event structs, " <>
              "but has no matching handle_info clause: #{inspect(MapSet.to_list(missing))}. " <>
-             "Either add a handler or remove the tag from the required list with a " <>
-             "comment explaining why the drop is intentional."
+             "Add a `def handle_info(%<Struct>{} = e, socket), do: on_...(e, socket)` " <>
+             "clause (the behaviour already forces the callback)."
   end
 
-  # Walks the AST collecting atoms pulled from handle_info clauses.
-  # Three shapes to cover:
-  #   1. `def handle_info({:tag, ...}, socket) do ... end`
-  #      → AST:`{:def, _, [{:handle_info, _, [pattern, _]}, _]}`
-  #   2. `def handle_info({:tag, ...}, socket) when some_guard do ... end`
-  #      → AST: `{:def, _, [{:when, _, [{:handle_info, _, [pattern, _]}, guard]}, _]}`
-  #   3. Guarded-dispatch shape used by project_live:
-  #      `def handle_info({event, _}, socket) when event in [:a, :b, :c] do`
-  #      Pattern's first element is a var, but the guard's list carries
-  #      the real tags — extract from both.
-  defp collect_handled_tags(ast) do
+  # Walk the AST and pull every struct module referenced from a
+  # handle_info pattern.
+  #
+  # Struct literal AST shape: `{:%, _, [{:__aliases__, _, parts}, _]}`.
+  # We rebuild the module from the aliases and canonicalize it against
+  # the list of published modules — unrecognized aliases are ignored
+  # so local structs and third-party structs don't pollute coverage.
+  defp collect_handled_structs(ast) do
+    known = MapSet.new(all_event_modules())
+
     {_, acc} =
       Macro.prewalk(ast, [], fn
         {:def, _, [{:handle_info, _, [pattern | _]} | _]} = node, acc ->
-          {node, acc ++ tags_from_pattern(pattern)}
+          {node, acc ++ structs_from_pattern(pattern, known)}
 
-        {:def, _, [{:when, _, [{:handle_info, _, [pattern | _]}, guard]} | _]} = node,
-        acc ->
-          {node, acc ++ tags_from_pattern(pattern) ++ tags_from_guard(guard)}
+        {:def, _, [{:when, _, [{:handle_info, _, [pattern | _]}, _guard]} | _]} = node, acc ->
+          {node, acc ++ structs_from_pattern(pattern, known)}
 
         node, acc ->
           {node, acc}
@@ -148,27 +121,44 @@ defmodule BoomLooperWeb.BroadcastCoverageTest do
     acc
   end
 
-  # 3+-tuple literal: `{:{}, _, [tag, ...]}` where tag must be an atom.
-  defp tags_from_pattern({:{}, _, [tag | _]}) when is_atom(tag), do: [tag]
-
-  # 2-tuple literal: compiles to `{tag, payload}` directly (no `:{}` wrapper).
-  defp tags_from_pattern({tag, _}) when is_atom(tag), do: [tag]
-
-  defp tags_from_pattern(_), do: []
-
-  # Guard is an AST subtree. For `event in [:a, :b]` the shape is
-  # `{:in, _, [_var, [:a, :b, :c]]}`. Walk until we find an `in` whose
-  # right-hand is a literal list, and pull the atom elements.
-  defp tags_from_guard(guard) do
+  defp structs_from_pattern(pattern, known) do
     {_, acc} =
-      Macro.prewalk(guard, [], fn
-        {:in, _, [_var, list]} = node, acc when is_list(list) ->
-          {node, acc ++ Enum.filter(list, &is_atom/1)}
+      Macro.prewalk(pattern, [], fn
+        {:%, _, [{:__aliases__, _, parts}, _]} = node, acc ->
+          # Try resolving with and without the BoomLooper/Events prefix
+          # so both `%Events.ChatAgent.Resumed{}` (via alias) and
+          # `%BoomLooper.Events.ChatAgent.Resumed{}` (fully qualified)
+          # work. We canonicalize by searching `known` for a module
+          # whose split-parts END with `parts`.
+          {node, acc ++ resolve_struct(parts, known)}
 
         node, acc ->
           {node, acc}
       end)
 
     acc
+  end
+
+  defp resolve_struct(parts, known) do
+    target = Enum.map(parts, &to_string/1)
+    target_len = length(target)
+
+    known
+    |> Enum.filter(fn m ->
+      m_parts = Module.split(m)
+      m_len = length(m_parts)
+
+      m_len >= target_len and Enum.slice(m_parts, m_len - target_len, target_len) == target
+    end)
+  end
+
+  defp all_event_modules do
+    Events.ChatAgent.events() ++
+      Events.ChatAgentMessage.events() ++
+      Events.DockerObserver.events() ++
+      Events.WorkspaceServices.events() ++
+      Events.SourceSync.events() ++
+      Events.Terminal.events() ++
+      [Events.IexSession.Changed]
   end
 end

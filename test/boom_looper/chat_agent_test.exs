@@ -58,7 +58,10 @@ defmodule BoomLooper.ChatAgentTest do
       ChatAgent.restart_session(id)
 
       # Should receive a system message about the restart
-      assert_receive {:chat_message, ^id, %{role: :system, content: "CLI session restarted"}}, 5000
+      assert_receive %BoomLooper.Events.ChatAgentMessage.Message{
+                       agent_id: ^id,
+                       msg: %{role: :system, content: "CLI session restarted"}
+                     }, 5000
 
       # Agent should still be idle after restart
       state_after = ChatAgent.get_state(id)
@@ -185,7 +188,10 @@ defmodule BoomLooper.ChatAgentTest do
       state = ChatAgent.get_state(id)
       # Agent should still be idle (not errored), because the stale timeout was ignored
       assert state.status == :idle
-      refute_receive {:chat_message, ^id, %{role: :error}}, 100
+      refute_receive %BoomLooper.Events.ChatAgentMessage.Message{
+                       agent_id: ^id,
+                       msg: %{role: :error}
+                     }, 100
     end
 
     test "legacy stream_timeout without ref is ignored", %{id: id, pid: pid} do
@@ -468,8 +474,8 @@ defmodule BoomLooper.ChatAgentTest do
       # should land.
       ChatAgent.remove_agent(id)
 
-      assert_receive {:chat_agent_status_changed, ^id, :destroying}, 500
-      assert_receive {:chat_agent_removed, ^id}, 500
+      assert_receive %BoomLooper.Events.ChatAgent.StatusChanged{id: ^id, status: :destroying}, 500
+      assert_receive %BoomLooper.Events.ChatAgent.Removed{id: ^id}, 500
 
       # Simulate the race: re-insert a :destroying entry as if another
       # viewer still had it cached, and call remove_agent again. The
@@ -482,7 +488,7 @@ defmodule BoomLooper.ChatAgentTest do
 
       ChatAgent.remove_agent(id)
 
-      refute_receive {:chat_agent_status_changed, ^id, :destroying}, 200
+      refute_receive %BoomLooper.Events.ChatAgent.StatusChanged{id: ^id, status: :destroying}, 200
     end
   end
 

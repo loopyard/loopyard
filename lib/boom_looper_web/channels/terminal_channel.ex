@@ -1,6 +1,7 @@
 defmodule BoomLooperWeb.TerminalChannel do
   use Phoenix.Channel
 
+  alias BoomLooper.Events
   alias BoomLooper.Terminal
 
   @impl true
@@ -42,7 +43,7 @@ defmodule BoomLooperWeb.TerminalChannel do
     buffer = Terminal.get_buffer(container)
 
     # 2. Subscribe to PubSub — from this point we get live output
-    Phoenix.PubSub.subscribe(BoomLooper.PubSub, Terminal.topic(container))
+    Events.Terminal.subscribe(container)
 
     # 3. Send the buffer snapshot
     if buffer != "", do: push(socket, "output", %{data: buffer})
@@ -53,17 +54,17 @@ defmodule BoomLooperWeb.TerminalChannel do
     {:noreply, socket}
   end
 
-  def handle_info(:terminal_clear, socket) do
+  def handle_info(%Events.Terminal.Clear{}, socket) do
     push(socket, "clear", %{})
     {:noreply, socket}
   end
 
-  def handle_info({:terminal_output, data}, socket) do
+  def handle_info(%Events.Terminal.Output{data: data}, socket) do
     push(socket, "output", %{data: data})
     {:noreply, socket}
   end
 
-  def handle_info({:terminal_exit, code}, socket) do
+  def handle_info(%Events.Terminal.Exit{code: code}, socket) do
     push(socket, "exit", %{code: code})
     {:noreply, socket}
   end

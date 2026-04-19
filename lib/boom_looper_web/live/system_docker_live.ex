@@ -14,7 +14,10 @@ defmodule BoomLooperWeb.SystemDockerLive do
   use BoomLooperWeb.IExAware
 
   alias Phoenix.LiveView.AsyncResult
+  alias BoomLooper.Events
   alias BoomLooper.SystemStats
+
+  @behaviour BoomLooper.Events.DockerObserver.Subscriber
 
   @impl true
   def mount(_params, _session, socket) do
@@ -42,39 +45,48 @@ defmodule BoomLooperWeb.SystemDockerLive do
     if connected?(socket), do: subscribe_iex(socket), else: assign(socket, :iex_session, %{level: nil})
   end
 
+  @impl true
+  def handle_info(%Events.DockerObserver.Changed{} = e, socket), do: on_changed(e, socket)
+  def handle_info(%Events.DockerObserver.Reset{} = e, socket), do: on_reset(e, socket)
+  def handle_info(%Events.DockerObserver.Disconnected{} = e, socket), do: on_disconnected(e, socket)
+  def handle_info(%Events.DockerObserver.Reconnected{} = e, socket), do: on_reconnected(e, socket)
+
+  def handle_info(_msg, socket), do: {:noreply, socket}
+
   # Docker.Observer broadcasts when container/volume state changes.
   # Notification-only — we re-read from Observer's ETS cache rather
   # than trusting a payload that may or may not match the shape we
   # need (this is the pattern that caused the sidebar-flash bug in
   # workspace_live). Still zero docker calls; reads are ETS-local.
-  @impl true
-  def handle_info({:docker_state_changed}, socket) do
+  @impl Events.DockerObserver.Subscriber
+  def on_changed(_e, socket) do
     {:noreply, refresh_from_observer(socket)}
   end
 
   # Observer cache wiped (≥ @stale_cache_threshold consecutive fetch
   # failures). Re-read from ETS so the empty cache reaches the template
   # — otherwise the page shows the pre-wipe snapshot indefinitely.
-  def handle_info({:docker_state_reset}, socket) do
+  @impl Events.DockerObserver.Subscriber
+  def on_reset(_e, socket) do
     {:noreply, refresh_from_observer(socket)}
   end
 
   # Event stream died (daemon restart / Colima pause). Cache is still
   # populated with the last-known state; we just need to flip the
   # :docker_connected flag so the UI can render a "stale" badge.
-  def handle_info({:docker_state_disconnected}, socket) do
+  @impl Events.DockerObserver.Subscriber
+  def on_disconnected(_e, socket) do
     {:noreply, assign(socket, :docker_connected, false)}
   end
 
   # Event stream came back. Re-read and clear the stale badge.
-  def handle_info({:docker_state_reconnected}, socket) do
+  @impl Events.DockerObserver.Subscriber
+  def on_reconnected(_e, socket) do
     {:noreply,
      socket
      |> assign(:docker_connected, true)
      |> refresh_from_observer()}
   end
-
-  def handle_info(_msg, socket), do: {:noreply, socket}
 
   defp refresh_from_observer(socket) do
     socket

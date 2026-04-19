@@ -74,11 +74,14 @@ defmodule BoomLooper.Source.Local.SyncMonitorTest do
         ])
 
         ws_id = "runcase"
-        Phoenix.PubSub.subscribe(@pubsub, SyncMonitor.topic(ws_id))
+        BoomLooper.Events.SourceSync.subscribe(ws_id)
 
         _pid = start_monitor(ws_id, wt)
 
-        assert_receive {:source_sync, ^ws_id, %{status: :running}}, 500
+        assert_receive %BoomLooper.Events.SourceSync.Updated{
+                         workspace_id: ^ws_id,
+                         status: %{status: :running}
+                       }, 500
       end)
     end
   end
@@ -103,7 +106,10 @@ defmodule BoomLooper.Source.Local.SyncMonitorTest do
            ]}
         )
 
-      assert_receive {:source_sync, ^ws_id, %{status: :errored, last_error: err}}, 500
+      assert_receive %BoomLooper.Events.SourceSync.Updated{
+                       workspace_id: ^ws_id,
+                       status: %{status: :errored, last_error: err}
+                     }, 500
       assert is_binary(err)
       assert String.contains?(err, "worktree missing")
     end
@@ -136,11 +142,14 @@ defmodule BoomLooper.Source.Local.SyncMonitorTest do
         queue(agent, [{"session does not exist", 1}])
 
         ws_id = "notready-#{:rand.uniform(100_000)}"
-        Phoenix.PubSub.subscribe(@pubsub, SyncMonitor.topic(ws_id))
+        BoomLooper.Events.SourceSync.subscribe(ws_id)
 
         _pid = start_monitor(ws_id, wt)
 
-        assert_receive {:source_sync, ^ws_id, %{status: :errored, last_error: err}}, 2_000
+        assert_receive %BoomLooper.Events.SourceSync.Updated{
+                         workspace_id: ^ws_id,
+                         status: %{status: :errored, last_error: err}
+                       }, 2_000
         assert err =~ "container is not ready"
       end)
     end
@@ -158,8 +167,11 @@ defmodule BoomLooper.Source.Local.SyncMonitorTest do
         pid = start_monitor(ws_id, wt)
 
         # Wait for session creation to settle.
-        Phoenix.PubSub.subscribe(@pubsub, SyncMonitor.topic(ws_id))
-        assert_receive {:source_sync, ^ws_id, %{status: :running}}, 500
+        BoomLooper.Events.SourceSync.subscribe(ws_id)
+        assert_receive %BoomLooper.Events.SourceSync.Updated{
+                         workspace_id: ^ws_id,
+                         status: %{status: :running}
+                       }, 500
 
         # Record runner calls from this point on.
         test_pid = self()
@@ -189,8 +201,11 @@ defmodule BoomLooper.Source.Local.SyncMonitorTest do
         ws_id = "remove-#{:rand.uniform(100_000)}"
         pid = start_monitor(ws_id, wt)
 
-        Phoenix.PubSub.subscribe(@pubsub, SyncMonitor.topic(ws_id))
-        assert_receive {:source_sync, ^ws_id, %{status: :running}}, 500
+        BoomLooper.Events.SourceSync.subscribe(ws_id)
+        assert_receive %BoomLooper.Events.SourceSync.Updated{
+                         workspace_id: ^ws_id,
+                         status: %{status: :running}
+                       }, 500
 
         SyncMonitor.prepare_for_removal(ws_id)
 

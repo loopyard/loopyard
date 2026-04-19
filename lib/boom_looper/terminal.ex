@@ -128,7 +128,7 @@ defmodule BoomLooper.Terminal do
 
   @impl true
   def handle_cast(:clear, state) do
-    Phoenix.PubSub.broadcast(BoomLooper.PubSub, topic(state.container), :terminal_clear)
+    BoomLooper.Events.Terminal.publish(%BoomLooper.Events.Terminal.Clear{container: state.container})
     {:noreply, %{state | buffer: ""}}
   end
 
@@ -145,7 +145,7 @@ defmodule BoomLooper.Terminal do
 
   @impl true
   def handle_info({port, {:data, data}}, %{port: port} = state) do
-    Phoenix.PubSub.broadcast(BoomLooper.PubSub, topic(state.container), {:terminal_output, data})
+    BoomLooper.Events.Terminal.publish(%BoomLooper.Events.Terminal.Output{container: state.container, data: data})
 
     buffer = state.buffer <> data
     buffer = if byte_size(buffer) > 50_000, do: String.slice(buffer, -50_000..-1//1), else: buffer
@@ -155,7 +155,7 @@ defmodule BoomLooper.Terminal do
 
   def handle_info({port, {:exit_status, code}}, %{port: port} = state) do
     Logger.info("[Terminal] #{state.container} exited with code #{code}")
-    Phoenix.PubSub.broadcast(BoomLooper.PubSub, topic(state.container), {:terminal_exit, code})
+    BoomLooper.Events.Terminal.publish(%BoomLooper.Events.Terminal.Exit{container: state.container, code: code})
     {:stop, :normal, state}
   end
 

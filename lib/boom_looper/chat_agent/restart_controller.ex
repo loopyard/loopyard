@@ -89,11 +89,7 @@ defmodule BoomLooper.ChatAgent.RestartController do
 
         :telemetry.execute(@telemetry_released, %{count: 1}, %{agent_id: agent_id})
 
-        Phoenix.PubSub.broadcast(
-          BoomLooper.PubSub,
-          "chat_agents",
-          {:chat_agent_released, agent_id}
-        )
+        BoomLooper.Events.ChatAgent.publish(%BoomLooper.Events.ChatAgent.Released{id: agent_id})
 
         BoomLooper.EventLog.info(
           "quarantine:#{agent_id}",
@@ -273,11 +269,10 @@ defmodule BoomLooper.ChatAgent.RestartController do
 
         :ets.insert(:chat_agents, {agent_id, updated})
 
-        Phoenix.PubSub.broadcast(
-          BoomLooper.PubSub,
-          "chat_agents",
-          {:chat_agent_quarantined, agent_id, updated}
-        )
+        BoomLooper.Events.ChatAgent.publish(%BoomLooper.Events.ChatAgent.Quarantined{
+          id: agent_id,
+          summary: updated
+        })
 
       [] ->
         :ok

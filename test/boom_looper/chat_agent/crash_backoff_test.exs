@@ -58,7 +58,7 @@ defmodule BoomLooper.ChatAgent.CrashBackoffTest do
       send(pid, {:EXIT, self(), {:error, "test crash"}})
 
       # Should get a status change back to :idle (restarted)
-      assert_receive {:chat_agent_status_changed, ^id, :idle}, 1_000
+      assert_receive %BoomLooper.Events.ChatAgent.StatusChanged{id: ^id, status: :idle}, 1_000
 
       # Counter should be 1
       state = :sys.get_state(pid)
@@ -78,7 +78,7 @@ defmodule BoomLooper.ChatAgent.CrashBackoffTest do
       send(pid, {:EXIT, self(), {:error, "fatal crash"}})
 
       # Should mark as :crashed, not :idle
-      assert_receive {:chat_agent_status_changed, ^id, :crashed}, 1_000
+      assert_receive %BoomLooper.Events.ChatAgent.StatusChanged{id: ^id, status: :crashed}, 1_000
     end
 
     test "successful stream_done resets crash counter", %{id: id} do
@@ -93,7 +93,7 @@ defmodule BoomLooper.ChatAgent.CrashBackoffTest do
       # Simulate successful stream completion
       send(pid, {:stream_done, id})
 
-      assert_receive {:chat_agent_status_changed, ^id, :idle}, 1_000
+      assert_receive %BoomLooper.Events.ChatAgent.StatusChanged{id: ^id, status: :idle}, 1_000
 
       state = :sys.get_state(pid)
       assert Map.get(state, :consecutive_crashes) == 0

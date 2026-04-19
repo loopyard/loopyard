@@ -58,7 +58,6 @@ defmodule BoomLooper.Agent.Reconciler do
   require Logger
 
   @default_interval_ms 30_000
-  @topic "chat_agents"
 
   # ── Public API ──
 
@@ -180,11 +179,10 @@ defmodule BoomLooper.Agent.Reconciler do
     corrected = %{summary | status: :crashed}
     :ets.insert(:chat_agents, {id, corrected})
 
-    Phoenix.PubSub.broadcast(
-      BoomLooper.PubSub,
-      @topic,
-      {:chat_agent_status_changed, id, :crashed}
-    )
+    BoomLooper.Events.ChatAgent.publish(%BoomLooper.Events.ChatAgent.StatusChanged{
+      id: id,
+      status: :crashed
+    })
 
     :telemetry.execute(
       [:boom_looper, :reconcile, :drift],

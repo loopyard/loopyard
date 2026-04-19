@@ -119,18 +119,22 @@ defmodule BoomLooper.Events.Tap do
 
   # Every broadcast on a subscribed topic lands here. We don't know
   # which topic delivered it (PubSub doesn't include the topic in
-  # the message), so we classify by payload shape. For tuple-typed
-  # messages (the current pattern) the first element's atom prefix
-  # tells us the topic:
+  # the message), so we classify by payload shape.
   #
-  #   :chat_agent_*        → "chat_agents"
-  #   :docker_state_*      → "docker_observer"
-  #   :services_updated /
-  #   :compose_result      → "workspace_services"
+  # Move #2 (publisher modules) turned the common broadcasts into
+  # typed structs under `BoomLooper.Events.*`. For those, the struct's
+  # module prefix maps to the topic:
   #
-  # When Move #2 (publisher modules) lands and we start broadcasting
-  # structs, this classification simplifies to reading the struct
-  # module's topic attribute.
+  #   BoomLooper.Events.ChatAgent.*         → "chat_agents"
+  #   BoomLooper.Events.ChatAgentMessage.*  → "chat_agent:{id}"
+  #   BoomLooper.Events.DockerObserver.*    → "docker_observer"
+  #   BoomLooper.Events.WorkspaceServices.* → "workspace_services"
+  #   BoomLooper.Events.SourceSync.*        → "source_sync:{id}"
+  #   BoomLooper.Events.Terminal.*          → "terminal_output:{container}"
+  #   BoomLooper.Events.IexSession.*        → "iex_session"
+  #
+  # We keep the tuple classifier below as a fallback so any broadcast
+  # that hasn't been migrated yet still lands in a known topic bucket.
   @impl true
   def handle_info(msg, state) do
     seq = state.seq + 1
@@ -154,6 +158,16 @@ defmodule BoomLooper.Events.Tap do
 
   # ── Private ──
 
+  # Structs from Move #2 publisher modules — classify by module prefix.
+  defp classify_topic(%mod{}) do
+    mod
+    |> Module.split()
+    |> classify_topic_from_module_parts()
+  end
+
+  # Tuple-shaped broadcasts (anything that hasn't been migrated to a
+  # publisher module yet). Kept as a fallback so the tap surfaces them;
+  # when the last raw broadcast lands, this clause becomes dead code.
   defp classify_topic(msg) when is_tuple(msg) and tuple_size(msg) > 0 do
     case elem(msg, 0) do
       tag when is_atom(tag) ->
@@ -173,6 +187,31 @@ defmodule BoomLooper.Events.Tap do
   end
 
   defp classify_topic(_), do: "unknown"
+
+  # Given the split module path ["BoomLooper", "Events", "ChatAgent",
+  # "Resumed"], pull the third segment and map it to its topic string.
+  defp classify_topic_from_module_parts(["BoomLooper", "Events", "ChatAgent" | _]),
+    do: "chat_agents"
+
+  defp classify_topic_from_module_parts(["BoomLooper", "Events", "ChatAgentMessage" | _]),
+    do: "chat_agents"
+
+  defp classify_topic_from_module_parts(["BoomLooper", "Events", "DockerObserver" | _]),
+    do: "docker_observer"
+
+  defp classify_topic_from_module_parts(["BoomLooper", "Events", "WorkspaceServices" | _]),
+    do: "workspace_services"
+
+  defp classify_topic_from_module_parts(["BoomLooper", "Events", "SourceSync" | _]),
+    do: "source_sync"
+
+  defp classify_topic_from_module_parts(["BoomLooper", "Events", "Terminal" | _]),
+    do: "terminal_output"
+
+  defp classify_topic_from_module_parts(["BoomLooper", "Events", "IexSession" | _]),
+    do: "iex_session"
+
+  defp classify_topic_from_module_parts(_), do: "unknown"
 
   defp classify_tag(msg) when is_tuple(msg) and tuple_size(msg) > 0 do
     case elem(msg, 0) do

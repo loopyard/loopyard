@@ -84,7 +84,7 @@ defmodule BoomLooper.TerminalIntegrationTest do
   defp viewer_loop(acc, remaining) do
     start = System.monotonic_time(:millisecond)
     receive do
-      {:terminal_output, data} ->
+      %BoomLooper.Events.Terminal.Output{data: data} ->
         elapsed = System.monotonic_time(:millisecond) - start
         viewer_loop(acc <> data, remaining - elapsed)
     after
@@ -143,7 +143,7 @@ defmodule BoomLooper.TerminalIntegrationTest do
 
       viewers = for i <- 1..3 do
         spawn_link(fn ->
-          Phoenix.PubSub.subscribe(BoomLooper.PubSub, Terminal.topic(container))
+          BoomLooper.Events.Terminal.subscribe(container)
           send(parent, {:ready, i})
           receive do: (:go -> :ok)
 

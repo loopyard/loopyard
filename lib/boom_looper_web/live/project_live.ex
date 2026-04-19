@@ -3,7 +3,11 @@ defmodule BoomLooperWeb.ProjectLive do
 
   alias BoomLooper.ProjectRegistry
   alias BoomLooper.ChatAgent
+  alias BoomLooper.Events
   use BoomLooperWeb.IExAware
+
+  @behaviour BoomLooper.Events.ChatAgent.Subscriber
+  @behaviour BoomLooper.Events.WorkspaceServices.Subscriber
 
   @impl true
   def mount(%{"project_id" => project_id}, _session, socket) do
@@ -158,49 +162,24 @@ defmodule BoomLooperWeb.ProjectLive do
     end
   end
 
-  @impl true
-  def handle_info({event, _}, socket)
-      when event in [
-             :chat_agent_started,
-             :chat_agent_stopped,
-             :chat_agent_booting,
-             :chat_agent_removed,
-             # Supervisor restart after a crash or log replay. Without
-             # this, a workspace card stays showing the agent as
-             # :crashed even though the new GenServer is alive — same
-             # root cause as the workspace-LV sidebar sleepy-agent bug.
-             :chat_agent_resumed,
-             # Rename changes agent metadata we render in the card.
-             :chat_agent_renamed,
-             # Boot progress ticks through this; each change updates
-             # the "Initializing…" label.
-             :chat_agent_boot_status,
-             # Boot blew up — badge needs to flip from :booting to the
-             # real failure state so the user can retry.
-             :chat_agent_boot_failed
-           ] do
-    # Agent events only affect agent_count — don't re-walk services/volumes.
-    # Each re-walk used to reshell to Docker for every volume across every
-    # workspace, blocking the LV for tens of seconds on machines with many
-    # volumes. Load only what changed; merge with existing counts.
-    {:noreply, assign(socket, :workspaces, merge_sections(socket, [:agents]))}
-  end
-
-  # Status changes ship `{tag, id, status}`, not `{tag, payload}` — the
-  # two-element catch-all above won't match. Route through the same
-  # agent-section merge so the card reflects the new status immediately.
-  @impl true
-  def handle_info({:chat_agent_status_changed, _id, _status}, socket) do
-    {:noreply, assign(socket, :workspaces, merge_sections(socket, [:agents]))}
-  end
+  # --- PubSub dispatch + non-PubSub internals ---
 
   @impl true
-  def handle_info({:services_updated, _path}, socket) do
-    # Services changed — agent_count and volume_count don't move because of this.
-    {:noreply, assign(socket, :workspaces, merge_sections(socket, [:services]))}
-  end
+  def handle_info(%Events.ChatAgent.Started{} = e, socket), do: on_started(e, socket)
+  def handle_info(%Events.ChatAgent.Stopped{} = e, socket), do: on_stopped(e, socket)
+  def handle_info(%Events.ChatAgent.Booting{} = e, socket), do: on_booting(e, socket)
+  def handle_info(%Events.ChatAgent.Removed{} = e, socket), do: on_removed(e, socket)
+  def handle_info(%Events.ChatAgent.Resumed{} = e, socket), do: on_resumed(e, socket)
+  def handle_info(%Events.ChatAgent.Renamed{} = e, socket), do: on_renamed(e, socket)
+  def handle_info(%Events.ChatAgent.BootStatus{} = e, socket), do: on_boot_status(e, socket)
+  def handle_info(%Events.ChatAgent.BootFailed{} = e, socket), do: on_boot_failed(e, socket)
+  def handle_info(%Events.ChatAgent.StatusChanged{} = e, socket), do: on_status_changed(e, socket)
+  def handle_info(%Events.ChatAgent.Quarantined{} = e, socket), do: on_quarantined(e, socket)
+  def handle_info(%Events.ChatAgent.Released{} = e, socket), do: on_released(e, socket)
 
-  @impl true
+  def handle_info(%Events.WorkspaceServices.ServicesUpdated{} = e, socket), do: on_services_updated(e, socket)
+  def handle_info(%Events.WorkspaceServices.ComposeResult{} = e, socket), do: on_compose_result(e, socket)
+
   def handle_info(:fetch_service_counts, socket) do
     # Initial async fill after mount. Load all three sections off the LV
     # process via start_async so a slow Docker call can't block message
@@ -214,8 +193,66 @@ defmodule BoomLooperWeb.ProjectLive do
      end)}
   end
 
-  @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  # --- ChatAgent subscriber callbacks ---
+  #
+  # All agent lifecycle events that change the sidebar-card summary
+  # route through the same agent-section merge. Don't re-walk
+  # services/volumes — those are expensive docker calls and are
+  # refreshed on the dedicated ServicesUpdated event.
+
+  @impl Events.ChatAgent.Subscriber
+  def on_started(_e, socket), do: refresh_agents(socket)
+  @impl Events.ChatAgent.Subscriber
+  def on_stopped(_e, socket), do: refresh_agents(socket)
+  @impl Events.ChatAgent.Subscriber
+  def on_booting(_e, socket), do: refresh_agents(socket)
+  @impl Events.ChatAgent.Subscriber
+  def on_removed(_e, socket), do: refresh_agents(socket)
+  # Supervisor restart after a crash or log replay. Without this, a
+  # workspace card stays showing the agent as :crashed even though the
+  # new GenServer is alive — same root cause as the workspace-LV
+  # sidebar sleepy-agent bug.
+  @impl Events.ChatAgent.Subscriber
+  def on_resumed(_e, socket), do: refresh_agents(socket)
+  # Rename changes agent metadata we render in the card.
+  @impl Events.ChatAgent.Subscriber
+  def on_renamed(_e, socket), do: refresh_agents(socket)
+  # Boot progress ticks through this; each change updates the
+  # "Initializing…" label.
+  @impl Events.ChatAgent.Subscriber
+  def on_boot_status(_e, socket), do: refresh_agents(socket)
+  # Boot blew up — badge needs to flip from :booting to the real
+  # failure state so the user can retry.
+  @impl Events.ChatAgent.Subscriber
+  def on_boot_failed(_e, socket), do: refresh_agents(socket)
+  @impl Events.ChatAgent.Subscriber
+  def on_status_changed(_e, socket), do: refresh_agents(socket)
+
+  @impl Events.ChatAgent.Subscriber
+  def on_quarantined(_e, socket), do: {:noreply, socket}
+  @impl Events.ChatAgent.Subscriber
+  def on_released(_e, socket), do: {:noreply, socket}
+
+  defp refresh_agents(socket) do
+    {:noreply, assign(socket, :workspaces, merge_sections(socket, [:agents]))}
+  end
+
+  # --- WorkspaceServices subscriber callbacks ---
+
+  @impl Events.WorkspaceServices.Subscriber
+  def on_services_updated(_e, socket) do
+    # Services changed — agent_count and volume_count don't move because of this.
+    {:noreply, assign(socket, :workspaces, merge_sections(socket, [:services]))}
+  end
+
+  @impl Events.WorkspaceServices.Subscriber
+  def on_compose_result(_e, socket) do
+    # Compose result doesn't directly change what this page shows —
+    # the service status broadcast follows and drives the refresh.
+    {:noreply, socket}
+  end
 
   # Rebuild workspaces from ProjectRegistry + requested sections. The initial
   # mount asks only for :agents; :fetch_service_counts fills the rest via

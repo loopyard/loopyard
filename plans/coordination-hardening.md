@@ -314,7 +314,7 @@ Every abstraction is a liability. Before building any of these, check whether it
 ### Ship as specified (7 moves)
 
 - **#1 Pure transitions** — foundational, compile-checked exhaustiveness. Keep scoped to the 4–5 actors that actually have bugs. Resist applying to every GenServer.
-- **#2 Publisher modules** — straight refactor, low risk, high return. The CI grep is the enforcement.
+- **#2 Publisher modules** — straight refactor, low risk, high return. The CI grep is the enforcement. **(Shipped with Move #3 as one bundle — see the note below.)**
 - **#5 Deadlines** — one GenServer, existing `entered_at`. Main risk is wrong thresholds causing false-positive timeouts, which is worse than a stuck state. Start conservative (generous timeouts) and tighten from real data.
 - **#7 Event tap + telemetry** — dev/test only, pure observability, negligible risk.
 - **#7c Property tests** — free once #1 lands. Tests don't create bugs, they surface them.
@@ -323,7 +323,7 @@ Every abstraction is a liability. Before building any of these, check whether it
 
 ### Narrow the scope (4 moves)
 
-- **#3 Subscriber behaviours → skip the macro dispatcher.** The `@behaviour` + `@callback` part is fine. The macro that auto-generates `handle_info(%Struct{} = e, socket)` routing to the right callback is where bugs hide. Let each LV write its own two-line dispatch. Less DRY, less magic, same compile-time safety.
+- **#3 Subscriber behaviours → skip the macro dispatcher.** The `@behaviour` + `@callback` part is fine. The macro that auto-generates `handle_info(%Struct{} = e, socket)` routing to the right callback is where bugs hide. Let each LV write its own two-line dispatch. Less DRY, less magic, same compile-time safety. **(Shipped alongside Move #2 as one bundle. Lessons: bundling #2 + #3 was load-bearing — publishers can't change payload shape without subscribers being updated in the same commit or subscribers break invisibly. Doing them together meant every affected LV compiled against the new struct contract in one step. Per-topic rollout inside the single commit is still the safe cadence: migrate ChatAgent, run tests, migrate DockerObserver, run tests, etc. The boundary test `test/boom_looper/pubsub_boundary_test.exs` is what keeps new call sites from regressing.)**
 - **#4 OwnedState → start as a 30-line helper, not a framework.** Make `ChatAgent.put_state/2` do the atomic ETS+log+broadcast write. If WorkspaceGroup needs the same pattern later, extract a shared helper. Don't design a generic abstraction for a population of 1.
 - **#6 Reconcilers → only where source of truth is unambiguous.** Docker reconciler works because Docker is external truth. Agent reconciler (ETS vs Registry) is fine — Registry wins. **Workspace reconciler is risky** — if registry and supervisor tree disagree, which wins? A reconciler that "corrects" the wrong direction is a drift amplifier. Build the agent reconciler; defer the workspace one until we have a clear invariant.
 - **#11 Graceful degradation → flat health map, no dependency graph.** Start with `%{docker: :healthy, claude: :degraded, mutagen: :down}`. UI reads it and renders banners. The component dependency tree is framework-thinking for a population of 3 components. Add it later if we ever have 20.

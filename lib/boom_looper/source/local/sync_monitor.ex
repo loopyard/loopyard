@@ -46,7 +46,6 @@ defmodule BoomLooper.Source.Local.SyncMonitor do
   alias BoomLooper.Source.Local.{Mutagen, Worktree}
 
   @registry BoomLooper.SyncMonitorRegistry
-  @pubsub BoomLooper.PubSub
 
   @base_poll_interval 5_000
   @max_poll_interval 60_000
@@ -112,8 +111,13 @@ defmodule BoomLooper.Source.Local.SyncMonitor do
   """
   def prepare_for_removal(workspace_id), do: cast(workspace_id, :prepare_for_removal)
 
-  @doc "PubSub topic for status updates on a given workspace."
-  def topic(workspace_id), do: "source_sync:#{workspace_id}"
+  @doc """
+  PubSub topic for status updates on a given workspace.
+
+  Delegates to `BoomLooper.Events.SourceSync.topic/1` — the topic name is
+  owned by the publisher module now, this alias stays for older callers.
+  """
+  def topic(workspace_id), do: BoomLooper.Events.SourceSync.topic(workspace_id)
 
   # --- GenServer callbacks ---
 
@@ -429,11 +433,10 @@ defmodule BoomLooper.Source.Local.SyncMonitor do
   end
 
   defp broadcast(state) do
-    Phoenix.PubSub.broadcast(
-      @pubsub,
-      topic(state.workspace_id),
-      {:source_sync, state.workspace_id, status_map(state)}
-    )
+    BoomLooper.Events.SourceSync.publish(%BoomLooper.Events.SourceSync.Updated{
+      workspace_id: state.workspace_id,
+      status: status_map(state)
+    })
   end
 
   defp status_map(state) do

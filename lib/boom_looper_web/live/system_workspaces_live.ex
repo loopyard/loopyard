@@ -12,7 +12,12 @@ defmodule BoomLooperWeb.SystemWorkspacesLive do
   use BoomLooperWeb, :live_view
   use BoomLooperWeb.IExAware
 
+  alias BoomLooper.Events
   alias BoomLooper.SystemStats
+
+  @behaviour BoomLooper.Events.DockerObserver.Subscriber
+  @behaviour BoomLooper.Events.ChatAgent.Subscriber
+  @behaviour BoomLooper.Events.WorkspaceServices.Subscriber
 
   @impl true
   def mount(_params, _session, socket) do
@@ -57,26 +62,30 @@ defmodule BoomLooperWeb.SystemWorkspacesLive do
   defp bool_to_int(true), do: 1
   defp bool_to_int(_), do: 0
 
+  # --- PubSub dispatch ---
+
   @impl true
-  def handle_info({:docker_state_changed}, socket) do
-    {:noreply, refresh(socket)}
-  end
+  def handle_info(%Events.DockerObserver.Changed{} = e, socket), do: on_changed(e, socket)
+  def handle_info(%Events.DockerObserver.Reset{} = e, socket), do: on_reset(e, socket)
+  def handle_info(%Events.DockerObserver.Disconnected{} = e, socket), do: on_disconnected(e, socket)
+  def handle_info(%Events.DockerObserver.Reconnected{} = e, socket), do: on_reconnected(e, socket)
 
-  def handle_info({:docker_state_reset}, socket) do
-    {:noreply, assign(socket, :container_counts, %{})}
-  end
+  def handle_info(%Events.ChatAgent.Started{} = e, socket), do: on_started(e, socket)
+  def handle_info(%Events.ChatAgent.Stopped{} = e, socket), do: on_stopped(e, socket)
+  def handle_info(%Events.ChatAgent.Booting{} = e, socket), do: on_booting(e, socket)
+  def handle_info(%Events.ChatAgent.Removed{} = e, socket), do: on_removed(e, socket)
+  def handle_info(%Events.ChatAgent.StatusChanged{} = e, socket), do: on_status_changed(e, socket)
+  def handle_info(%Events.ChatAgent.Resumed{} = e, socket), do: on_resumed(e, socket)
+  def handle_info(%Events.ChatAgent.BootStatus{} = e, socket), do: on_boot_status(e, socket)
+  def handle_info(%Events.ChatAgent.BootFailed{} = e, socket), do: on_boot_failed(e, socket)
+  def handle_info(%Events.ChatAgent.Renamed{} = e, socket), do: on_renamed(e, socket)
+  def handle_info(%Events.ChatAgent.Quarantined{} = e, socket), do: on_quarantined(e, socket)
+  def handle_info(%Events.ChatAgent.Released{} = e, socket), do: on_released(e, socket)
 
-  # Any agent lifecycle event → re-pull workspace stats.
-  def handle_info({event, _}, socket)
-      when event in [:chat_agent_started, :chat_agent_stopped, :chat_agent_booting,
-                     :chat_agent_removed, :chat_agent_status_changed, :chat_agent_resumed] do
-    {:noreply, refresh(socket)}
-  end
+  def handle_info(%Events.WorkspaceServices.ServicesUpdated{} = e, socket), do: on_services_updated(e, socket)
+  def handle_info(%Events.WorkspaceServices.ComposeResult{} = e, socket), do: on_compose_result(e, socket)
 
-  def handle_info({:services_updated, _path}, socket) do
-    {:noreply, refresh(socket)}
-  end
-
+  # Non-PubSub internal messages from the restart task.
   def handle_info({:workspace_restarted, ws_id, :ok}, socket) do
     {:noreply, socket |> put_flash(:info, "Restarted #{ws_id}") |> refresh()}
   end
@@ -87,6 +96,52 @@ defmodule BoomLooperWeb.SystemWorkspacesLive do
 
   # Catch-all so unknown PubSub messages don't crash the LiveView.
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  # --- DockerObserver subscriber callbacks ---
+
+  @impl Events.DockerObserver.Subscriber
+  def on_changed(_e, socket), do: {:noreply, refresh(socket)}
+  @impl Events.DockerObserver.Subscriber
+  def on_reset(_e, socket), do: {:noreply, assign(socket, :container_counts, %{})}
+  @impl Events.DockerObserver.Subscriber
+  def on_disconnected(_e, socket), do: {:noreply, socket}
+  @impl Events.DockerObserver.Subscriber
+  def on_reconnected(_e, socket), do: {:noreply, refresh(socket)}
+
+  # --- ChatAgent subscriber callbacks ---
+  # Any agent lifecycle event → re-pull workspace stats. Events that only
+  # tweak per-agent metadata (rename, boot progress, quarantine flag)
+  # don't change the /system/workspaces per-workspace counts so they no-op.
+
+  @impl Events.ChatAgent.Subscriber
+  def on_started(_e, socket), do: {:noreply, refresh(socket)}
+  @impl Events.ChatAgent.Subscriber
+  def on_stopped(_e, socket), do: {:noreply, refresh(socket)}
+  @impl Events.ChatAgent.Subscriber
+  def on_booting(_e, socket), do: {:noreply, refresh(socket)}
+  @impl Events.ChatAgent.Subscriber
+  def on_removed(_e, socket), do: {:noreply, refresh(socket)}
+  @impl Events.ChatAgent.Subscriber
+  def on_status_changed(_e, socket), do: {:noreply, refresh(socket)}
+  @impl Events.ChatAgent.Subscriber
+  def on_resumed(_e, socket), do: {:noreply, refresh(socket)}
+  @impl Events.ChatAgent.Subscriber
+  def on_boot_status(_e, socket), do: {:noreply, socket}
+  @impl Events.ChatAgent.Subscriber
+  def on_boot_failed(_e, socket), do: {:noreply, refresh(socket)}
+  @impl Events.ChatAgent.Subscriber
+  def on_renamed(_e, socket), do: {:noreply, socket}
+  @impl Events.ChatAgent.Subscriber
+  def on_quarantined(_e, socket), do: {:noreply, socket}
+  @impl Events.ChatAgent.Subscriber
+  def on_released(_e, socket), do: {:noreply, socket}
+
+  # --- WorkspaceServices subscriber callbacks ---
+
+  @impl Events.WorkspaceServices.Subscriber
+  def on_services_updated(_e, socket), do: {:noreply, refresh(socket)}
+  @impl Events.WorkspaceServices.Subscriber
+  def on_compose_result(_e, socket), do: {:noreply, socket}
 
   defp refresh(socket) do
     socket
