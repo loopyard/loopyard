@@ -11,7 +11,14 @@ defmodule BoomLooper.InvariantsTest do
   hammering the Claude API). They turn CLAUDE.md rules from "things we
   hope people remember" into "things that fail CI when violated."
   """
-  use ExUnit.Case, async: true
+  # async: false — this test iterates every module under
+  # `BoomLooper.Tools.Container.*` and calls `__tool_name__/0`.
+  # Under full-suite load with parallel compilation, that races
+  # with the final loading of recently-edited tool modules,
+  # producing "module is not available" errors. Serial execution
+  # ensures every tool module is loaded before the invariant check
+  # runs. See plans/post-migration-audit.md NOTE #14.
+  use ExUnit.Case, async: false
 
   # ---------------------------------------------------------------
   # 1. Every tool schema is JSON-serializable

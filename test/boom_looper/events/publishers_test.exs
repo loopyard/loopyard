@@ -10,7 +10,13 @@ defmodule BoomLooper.Events.PublishersTest do
   invariants break, this test catches it before a subscriber has to.
   """
 
-  use ExUnit.Case, async: true
+  # async: false — the freshly-created publisher modules
+  # (`BoomLooper.Events.*`) race with Elixir's parallel compiler
+  # under full-suite load, producing flaky "module is not available"
+  # errors on `Events.X.subscribe/0` calls. Serialized test
+  # execution ensures the modules are fully loaded before any
+  # test calls into them. See plans/post-migration-audit.md NOTE #14.
+  use ExUnit.Case, async: false
 
   alias BoomLooper.Events
 
