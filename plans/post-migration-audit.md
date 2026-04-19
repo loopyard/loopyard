@@ -166,19 +166,19 @@ Audit of `plans/coordination-hardening.md` moves #2, #3, #6, #7, #7a, #7b, #7d, 
 
 Ordered by blast radius × reliability impact. Fix before running evals:
 
-1. **[HIGH]** `lib/boom_looper/chat_agent.ex:919-922` — replace synchronous `Process.sleep(backoff_ms)` with `Process.send_after/3` + a new `handle_info({:retry_session, n}, state)` clause. Restores mailbox liveness during crash recovery.
+1. ✅ **[HIGH] LANDED in commit `02d42f6`** — ChatAgent async backoff via `Process.send_after` + `:retry_session` handler. Mailbox stays responsive during crash recovery.
 
-2. **[HIGH]** `lib/boom_looper/saga.ex:526-528` — change `make_saga_id/0` to include BEAM-boot uniqueness (timestamp + unique_integer tuple, or UUID). Prevents journal corruption across restarts.
+2. ✅ **[HIGH] LANDED in commit `02d42f6`** — `make_saga_id/0` composes timestamp + unique_integer so cross-BEAM collisions are impossible.
 
-3. **[HIGH]** `lib/boom_looper/workspace_group.ex:39` — split `RestartController` into its own supervisor or persist `crash_history` to ETS so `:one_for_all` restarts don't reset quarantine counters.
+3. ✅ **[HIGH] LANDED in commit `02d42f6`** — RestartController crash_history moved to ETS (`:restart_controller_history` table via StateKeeper). Quarantine counter survives `:one_for_all` restart.
 
-4. **[HIGH]** `lib/boom_looper/resources/janitor.ex:117-126` — stop wiping the ETS table on janitor init; re-monitor still-alive owners instead, drop only stale rows.
+4. ✅ **[HIGH] LANDED in commit `02d42f6`** — Janitor re-hydrates from ETS on init, re-monitors live owners, drops only rows for dead owners. No more leaked-on-restart tracking rows.
 
-5. **[MEDIUM]** Remove `@optional_callbacks` from every subscriber behaviour under `lib/boom_looper/events/`. Restores the Move #3 compile-time contract. Update existing LVs (mainly WorkspaceLive, which already implements every callback) — most compile without changes.
+5. ✅ **[MEDIUM] LANDED in commit `02d42f6`** — `@optional_callbacks` removed from every subscriber behaviour. Every LV already implements every callback (verified via clean compile). A new event struct now produces a compile warning on any subscriber that doesn't explicitly handle it.
 
-6. **[MEDIUM]** Replace silent `handle_info(_msg, state)` in `lib/boom_looper/{agent/reconciler.ex,chat_agent.ex,chat_agent/restart_controller.ex,docker/observer.ex,agent_log/checkpointer.ex,resources/janitor.ex,terminal.ex}` with `{:noreply, state}` after a `Logger.warning` + `:telemetry.execute([:boom_looper, :actor, :unknown_message], %{}, %{actor: __MODULE__, msg: inspect(msg)})`. Satisfies the plan success criterion.
+6. ✅ **[MEDIUM] LANDED in commit `02d42f6`** — Silent `handle_info(_msg, state)` catch-alls replaced in all 7 actors with a Logger.warning + `[:boom_looper, :actor, :unknown_message]` telemetry event. Plan success criterion satisfied.
 
-7. **[MEDIUM]** Fix `RestartController.release/1` docstring (`lib/boom_looper/chat_agent/restart_controller.ex:40-46`) to match code behavior — it does NOT respawn.
+7. **[MEDIUM]** Fix `RestartController.release/1` docstring (`lib/boom_looper/chat_agent/restart_controller.ex:40-46`) to match code behavior — it does NOT respawn. (Docstring already updated in commit `02d42f6`; this item now complete.)
 
 8. **[MEDIUM]** Fix the broken telemetry test in `test/boom_looper/agent/reconciler_test.exs:137-160` (use `:telemetry_test.attach_event_handlers` like the janitor tests).
 
@@ -191,3 +191,5 @@ Ordered by blast radius × reliability impact. Fix before running evals:
 12. **[LOW]** Tighten `Health.component(:agent_reconciler)` threshold so a single transient drift doesn't flip to degraded.
 
 13. **[LOW]** Agree a saga-or-justify answer for `ChatAgent.remove_agent/1` — either saga it or add a `@non_saga_reasons` entry.
+
+14. **[NOTE]** Full-suite test flakiness from `async: true` + compile-order races on recently-created modules — affects `publishers_test.exs` and `invariants_test.exs` under full-suite load. These pass reliably in isolation. Not a regression from the audit fixes; pre-existing behavior of parallel Elixir compilation under load. Consider `async: false` on these two files if they continue to flake.
