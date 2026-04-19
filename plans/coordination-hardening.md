@@ -259,22 +259,28 @@ Every move ships with a surface on `/system` so the guarantee is visible, not ju
 
 These are the prod signals. LiveDashboard consumes them for free; a downstream OTLP/Prom pipeline can subscribe too.
 
-## Execution plan
+## Execution order
 
-| Week | Move | Effort | Outcome |
-|------|------|--------|---------|
-| 1 | #1 pure transitions | 3–4 days | every state change is auditable & compiler-checked |
-| 2 | #2 publisher modules + #7 telemetry/tap | 3 days | no raw broadcast calls; typed payloads; timeline view |
-| 3 | #3 subscriber behaviours + #4 OwnedState | 4 days | missing-handler = compile warn; ETS + log auto-projected |
-| 4 | #5 deadlines + #6 reconcilers | 3 days | no stuck states; cache drift detected & corrected |
-| 5 | #7a sagas + #7b resource ownership | 4 days | no partial-success states; no orphan resources |
-| 6 | #7c property tests + #7d circuit breakers | 3 days | transition invariants tested; retry-storms bounded |
-| 7 | #8 checkpoints + #9 saga journal | 3 days | bounded recovery time; durable transactions |
-| 8 | #10 quarantine + #11 degradation | 2 days | crash-loops bounded; partial outages visible |
+Moves are grouped into bundles that can ship together. The ordering within each bundle is flexible; the bundle-to-bundle ordering is load-bearing because of dependencies noted below.
 
-Each move is independently valuable and shippable. The ordering is load-bearing: #1 is a prerequisite for #4 (need a single mutation site) and #7c (need pure functions to property-test), #2 is a prerequisite for #3 (behaviour references the structs), #7 piggybacks on the publisher wrapper from #2.
+| Bundle | Moves | Outcome |
+|--------|-------|---------|
+| A | #1 pure transitions | every state change is auditable & compiler-checked |
+| B | #2 publisher modules + #7 telemetry/tap | no raw broadcast calls; typed payloads; timeline view |
+| C | #3 subscriber behaviours + #4 OwnedState | missing-handler = compile warn; ETS + log auto-projected |
+| D | #5 deadlines + #6 reconcilers | no stuck states; cache drift detected & corrected |
+| E | #7a sagas + #7b resource ownership | no partial-success states; no orphan resources |
+| F | #7c property tests + #7d circuit breakers | transition invariants tested; retry-storms bounded |
+| G | #8 checkpoints + #9 saga journal | bounded recovery time; durable transactions |
+| H | #10 quarantine + #11 degradation | crash-loops bounded; partial outages visible |
 
-Weeks 5–6 are optional if weeks 1–4 close the bug classes we're hitting. Revisit after Week 4 retro.
+Dependencies:
+
+- Bundle A (#1) is a prerequisite for #4 (need a single mutation site) and #7c (need pure functions to property-test).
+- Bundle B (#2) is a prerequisite for #3 (behaviour references the structs).
+- #7 (in Bundle B) piggybacks on the publisher wrapper from #2.
+
+Bundles E through H are optional if A–D close the bug classes we're hitting. Revisit after D lands.
 
 ## What we don't do
 
@@ -340,11 +346,11 @@ Apply the narrower versions first. If they leak, extract patterns. Don't design 
 
 With drops and narrowings, the shipped plan is:
 
-**Weeks 1–4 (baseline):** Moves 1, 2, 3 (narrowed), 4 (narrowed), 5, 6 (narrowed to Docker + agents), 7, 10, 12.
+**Baseline bundle:** Moves 1, 2, 3 (narrowed), 4 (narrowed), 5, 6 (narrowed to Docker + agents), 7, 10, 12.
 
-**Weeks 5+:** Move 7c (property tests, cheap). Moves 7d and 11 (narrowed). Defer 7a, 7b, 8, 9 until concrete cases force them.
+**Follow-on:** Move 7c (property tests, cheap). Moves 7d and 11 (narrowed). Defer 7a, 7b, 8, 9 until concrete cases force them.
 
-That's 9 moves, ~4 weeks, closing every bug class we've actually shipped. The deferred four are real patterns that might become necessary — but not yet.
+That's 9 moves, closing every bug class we've actually shipped. The deferred four are real patterns that might become necessary — but not yet.
 
 ## Execution rule: complete-or-revert
 
@@ -359,7 +365,7 @@ Concretely, for each move:
 
 This is why the stop/rename pilot from the first attempt got reverted: it migrated 5 of 19 handlers and left the rest using the old pattern. The patterns demonstrated there are valid — the revert is in git, easy to reference — but shipping the dual state created its own bug class that defeats the plan's purpose.
 
-**Estimating completability:** Move #1 for ChatAgent alone is probably a focused 6–8 hour session. ServiceManager, WorkspaceGroup, Cluster, SyncMonitor, Service each add 2–4 hours. All six actors in one session is unrealistic — migrate one actor per session, each session ending with that actor's migration fully complete, tests + evals passing. Six sessions for Move #1. Plan accordingly.
+**Completability unit:** one state-machine actor per session. ChatAgent alone is substantial. ServiceManager, WorkspaceGroup, Cluster, SyncMonitor, Service each need their own session. End each session with that actor's migration fully complete, tests + evals passing. Don't start a session without confidence you can finish the actor you're starting on.
 
 ## Open questions
 
