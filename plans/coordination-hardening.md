@@ -305,6 +305,51 @@ Weeks 5–6 are optional if weeks 1–4 close the bug classes we're hitting. Rev
 - `/system/health` reflects reality: a Docker outage shows degraded components with a clear dependency chain, not a blank UI.
 - Unclean shutdown triggers safe-mode boot with reconciler log visible. System refuses new work until recovery is confirmed.
 
+## Complexity review: which moves are worth it as specified
+
+Every abstraction is a liability. Before building any of these, check whether it's actually justified by the concrete cases we have — not by hypothetical future ones. Here's the honest grade per move:
+
+### Ship as specified (7 moves)
+
+- **#1 Pure transitions** — foundational, compile-checked exhaustiveness. Keep scoped to the 4–5 actors that actually have bugs. Resist applying to every GenServer.
+- **#2 Publisher modules** — straight refactor, low risk, high return. The CI grep is the enforcement.
+- **#5 Deadlines** — one GenServer, existing `entered_at`. Main risk is wrong thresholds causing false-positive timeouts, which is worse than a stuck state. Start conservative (generous timeouts) and tighten from real data.
+- **#7 Event tap + telemetry** — dev/test only, pure observability, negligible risk.
+- **#7c Property tests** — free once #1 lands. Tests don't create bugs, they surface them.
+- **#10 Quarantine** — directly addresses a shipped bug (26 restarts/hour). Worst-case failure mode is over-protective, easy to un-quarantine.
+- **#12 Safe mode** — ~50 lines, catches compounding corruption, no downside.
+
+### Narrow the scope (4 moves)
+
+- **#3 Subscriber behaviours → skip the macro dispatcher.** The `@behaviour` + `@callback` part is fine. The macro that auto-generates `handle_info(%Struct{} = e, socket)` routing to the right callback is where bugs hide. Let each LV write its own two-line dispatch. Less DRY, less magic, same compile-time safety.
+- **#4 OwnedState → start as a 30-line helper, not a framework.** Make `ChatAgent.put_state/2` do the atomic ETS+log+broadcast write. If WorkspaceGroup needs the same pattern later, extract a shared helper. Don't design a generic abstraction for a population of 1.
+- **#6 Reconcilers → only where source of truth is unambiguous.** Docker reconciler works because Docker is external truth. Agent reconciler (ETS vs Registry) is fine — Registry wins. **Workspace reconciler is risky** — if registry and supervisor tree disagree, which wins? A reconciler that "corrects" the wrong direction is a drift amplifier. Build the agent reconciler; defer the workspace one until we have a clear invariant.
+- **#11 Graceful degradation → flat health map, no dependency graph.** Start with `%{docker: :healthy, claude: :degraded, mutagen: :down}`. UI reads it and renders banners. The component dependency tree is framework-thinking for a population of 3 components. Add it later if we ever have 20.
+- **#7d Circuit breakers → consolidate existing backoff, don't build a new abstraction.** We have ad-hoc backoff in `Docker.docker/2` (3 retries) and ChatAgent crash-backoff (exponential). Extract those into a shared `Retry` helper. Skip full circuit-breaker state machine until a retry storm actually bites — the current ad-hoc limits already cap the damage.
+
+### Drop until a concrete case forces them (4 moves)
+
+- **#7a Sagas** — over-engineered for N=3 multi-step operations (start workspace, boot agent, destroy workspace). A saga framework has rollback-ordering bugs, idempotency requirements, and compensation semantics that take months to debug. Instead: write each multi-step op as an imperative function with explicit `try/rescue` cleanup. When we have 10+ similar ops, reconsider. Until then, sagas add a new bug class (failed rollbacks) to fix a bug class (partial success) that only rarely bites.
+- **#7b Resource ownership** — generic framework for a few specific owner-resource pairs (agent → CLI process, workspace → containers, PortRegistry → port bindings). Each already has its own mechanism (`Port` linking, compose, explicit registry). Fix leaks specifically when found. Don't unify.
+- **#8 Checkpoints** — premature. Current log compaction (shipped) handles the "log too big" case. We haven't hit "replay too slow" in practice. Build when we do. Wrong snapshot implementation = silent data loss, which is worse than the problem it solves.
+- **#9 Saga journal** — depends on #7a. If sagas don't ship, this doesn't exist. Even with sagas, durable transactions are where distributed-systems researchers go to die. Skip unless a specific incident justifies it.
+
+### Underlying principle
+
+**Frameworks for N=3 cases are almost always wrong.** The plan reads impressively because it names a pattern for every bug class. But each named pattern is also a liability: a thing you have to maintain, debug, and explain to new contributors. The real test: would I write a one-off fix for the next case, or reach for the framework? If "one-off fix" is faster and clearer, the framework is overhead.
+
+Apply the narrower versions first. If they leak, extract patterns. Don't design patterns in advance of three concrete cases that demand them.
+
+### Revised scope
+
+With drops and narrowings, the shipped plan is:
+
+**Weeks 1–4 (baseline):** Moves 1, 2, 3 (narrowed), 4 (narrowed), 5, 6 (narrowed to Docker + agents), 7, 10, 12.
+
+**Weeks 5+:** Move 7c (property tests, cheap). Moves 7d and 11 (narrowed). Defer 7a, 7b, 8, 9 until concrete cases force them.
+
+That's 9 moves, ~4 weeks, closing every bug class we've actually shipped. The deferred four are real patterns that might become necessary — but not yet.
+
 ## Open questions
 
 - **Scope of actors to convert to pure transitions.** Start with the four that caused real bugs (`ChatAgent`, `ServiceManager`, `WorkspaceGroup`, `Cluster`); defer `SyncMonitor`, `PortRegistry`, etc. unless they bite us.
