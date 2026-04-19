@@ -12,38 +12,66 @@ defmodule BoomLooper.Events.TapTest do
   end
 
   describe "topic classification" do
+    # All tap tests use unique ids — the tap is supervised and
+    # captures broadcasts from any concurrent test. Find OUR event
+    # in the buffer rather than asserting on buffer shape.
+
     test "chat_agents events are bucketed correctly" do
-      Phoenix.PubSub.broadcast(BoomLooper.PubSub, "chat_agents", {:chat_agent_started, %{id: "a"}})
+      id = "cls-chat-#{System.unique_integer([:positive])}"
+      Phoenix.PubSub.broadcast(BoomLooper.PubSub, "chat_agents", {:chat_agent_started, %{id: id}})
       Process.sleep(50)
 
-      events = Tap.recent()
-      assert [%{topic: "chat_agents", tag: :chat_agent_started}] = events
+      event = Enum.find(Tap.recent(), &String.contains?(&1.payload, id))
+      assert event != nil
+      assert event.topic == "chat_agents"
+      assert event.tag == :chat_agent_started
     end
 
     test "chat_agent_status_changed is classified as chat_agents" do
-      Phoenix.PubSub.broadcast(BoomLooper.PubSub, "chat_agents", {:chat_agent_status_changed, "id", :idle})
+      id = "cls-status-#{System.unique_integer([:positive])}"
+      Phoenix.PubSub.broadcast(BoomLooper.PubSub, "chat_agents", {:chat_agent_status_changed, id, :idle})
       Process.sleep(50)
 
-      events = Tap.recent()
-      assert Enum.any?(events, &(&1.topic == "chat_agents" and &1.tag == :chat_agent_status_changed))
+      event = Enum.find(Tap.recent(), &String.contains?(&1.payload, id))
+      assert event != nil
+      assert event.topic == "chat_agents"
+      assert event.tag == :chat_agent_status_changed
     end
 
     test "docker_observer events are bucketed correctly" do
+      # Observer broadcasts are tuple-only with no unique id in the
+      # payload — capture their sequence numbers as the unique
+      # discriminator.
+      before_seqs = Tap.recent() |> Enum.map(& &1.seq) |> MapSet.new()
       Phoenix.PubSub.broadcast(BoomLooper.PubSub, "docker_observer", {:docker_state_changed})
       Phoenix.PubSub.broadcast(BoomLooper.PubSub, "docker_observer", {:docker_state_disconnected})
       Process.sleep(50)
 
-      events = Tap.recent()
-      assert Enum.any?(events, &(&1.topic == "docker_observer" and &1.tag == :docker_state_changed))
-      assert Enum.any?(events, &(&1.topic == "docker_observer" and &1.tag == :docker_state_disconnected))
+      new_events =
+        Tap.recent() |> Enum.reject(&MapSet.member?(before_seqs, &1.seq))
+
+      assert Enum.any?(new_events, &(&1.topic == "docker_observer" and &1.tag == :docker_state_changed))
+      assert Enum.any?(new_events, &(&1.topic == "docker_observer" and &1.tag == :docker_state_disconnected))
     end
 
     test "workspace_services events are bucketed correctly" do
-      Phoenix.PubSub.broadcast(BoomLooper.PubSub, "workspace_services", {:services_updated, "/tmp/ws"})
-      Phoenix.PubSub.broadcast(BoomLooper.PubSub, "workspace_services", {:compose_result, "ws-1", :ok})
+      id = "cls-ws-#{System.unique_integer([:positive])}"
+
+      Phoenix.PubSub.broadcast(
+        BoomLooper.PubSub,
+        "workspace_services",
+        {:services_updated, "/tmp/#{id}"}
+      )
+
+      Phoenix.PubSub.broadcast(
+        BoomLooper.PubSub,
+        "workspace_services",
+        {:compose_result, id, :ok}
+      )
+
       Process.sleep(50)
 
-      events = Tap.recent()
+      events = Enum.filter(Tap.recent(), &String.contains?(&1.payload, id))
       assert Enum.any?(events, &(&1.topic == "workspace_services" and &1.tag == :services_updated))
       assert Enum.any?(events, &(&1.topic == "workspace_services" and &1.tag == :compose_result))
     end
