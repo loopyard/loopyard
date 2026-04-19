@@ -31,6 +31,7 @@ defmodule BoomLooperWeb.SystemLive do
       |> assign(:host_uptime, AsyncResult.loading())
       |> assign(:beam, SystemStats.beam_stats())
       |> assign(:counts, AsyncResult.loading())
+      |> assign(:health, BoomLooper.Health.overall())
       |> assign(:logs, BoomLooper.LogBuffer.recent(20))
 
     if connected?(socket) do
@@ -85,9 +86,11 @@ defmodule BoomLooperWeb.SystemLive do
   def handle_info(:refresh_fast, socket) do
     schedule_refresh(:fast)
     # BEAM stats are pure VM lookups; refresh in-place. Tail logs too.
+    # Health is also ETS-only reads, negligible cost.
     {:noreply,
      socket
      |> assign(:beam, SystemStats.beam_stats())
+     |> assign(:health, BoomLooper.Health.overall())
      |> assign(:logs, BoomLooper.LogBuffer.recent(20))
      |> kick_fast_slices()}
   end
@@ -141,6 +144,7 @@ defmodule BoomLooperWeb.SystemLive do
         </button>
       </:header_actions>
       <div class="space-y-8">
+        <.health_section health={@health} />
         <.host_section host_cpu={@host_cpu} host_memory={@host_memory} host_disk={@host_disk} host_uptime={@host_uptime} />
         <.beam_section beam={@beam} />
         <.drilldown_section counts={@counts} />
@@ -151,6 +155,55 @@ defmodule BoomLooperWeb.SystemLive do
   end
 
   # --- Host System ---
+
+  # --- Health (component status) ---
+
+  defp health_section(assigns) do
+    ~H"""
+    <section>
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">Component Health</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <.health_card :for={{component, status} <- @health} component={component} status={status} />
+      </div>
+    </section>
+    """
+  end
+
+  attr :component, :atom, required: true
+  attr :status, :any, required: true
+
+  defp health_card(assigns) do
+    ~H"""
+    <div class={health_card_class(@status)}>
+      <div class="flex items-center justify-between mb-1">
+        <div class="text-sm font-semibold">{humanize_component(@component)}</div>
+        <div class={"w-2 h-2 rounded-full " <> health_dot_class(@status)}></div>
+      </div>
+      <div class="text-xs text-zinc-600 dark:text-zinc-400">{BoomLooper.Health.format(@status)}</div>
+    </div>
+    """
+  end
+
+  defp health_card_class(:healthy),
+    do:
+      "rounded-lg border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-900/10 px-3 py-3"
+
+  defp health_card_class({:degraded, _}),
+    do:
+      "rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-3 py-3"
+
+  defp health_card_class({:down, _}),
+    do:
+      "rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-3 py-3"
+
+  defp health_dot_class(:healthy), do: "bg-emerald-500"
+  defp health_dot_class({:degraded, _}), do: "bg-amber-500 animate-pulse"
+  defp health_dot_class({:down, _}), do: "bg-red-500 animate-pulse"
+
+  defp humanize_component(:docker), do: "Docker"
+  defp humanize_component(:pubsub), do: "PubSub"
+  defp humanize_component(:agent_reconciler), do: "Agent reconciler"
+  defp humanize_component(other), do: other |> Atom.to_string() |> String.replace("_", " ")
 
   defp host_section(assigns) do
     ~H"""

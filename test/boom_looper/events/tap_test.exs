@@ -70,56 +70,82 @@ defmodule BoomLooper.Events.TapTest do
     end
 
     test "since_ms filter returns only events newer than the given monotonic time" do
-      # Capture 'now' after the setup broadcasts landed
       cutoff = System.monotonic_time(:millisecond)
       Process.sleep(10)
 
-      Phoenix.PubSub.broadcast(BoomLooper.PubSub, "chat_agents", {:chat_agent_booting, %{id: "new"}})
+      id = "since-test-#{System.unique_integer([:positive])}"
+      Phoenix.PubSub.broadcast(BoomLooper.PubSub, "chat_agents", {:chat_agent_booting, %{id: id}})
       Process.sleep(50)
 
       events = Tap.recent(since_ms: cutoff)
-      assert length(events) == 1
-      assert hd(events).tag == :chat_agent_booting
+      # There may be other broadcasts that landed after the cutoff
+      # (reconcilers, observer state, etc). Just assert OUR event is
+      # in there and nothing older than cutoff came through.
+      assert Enum.any?(events, &String.contains?(&1.payload, id))
+      assert Enum.all?(events, &(&1.inserted_at_ms > cutoff))
     end
 
     test "newest events come first" do
-      events = Tap.recent()
-      # Two of these are from setup; the newest is :chat_agent_stopped
-      [newest | _] = events
-      assert newest.tag == :chat_agent_stopped
+      # Emit one extra event whose position we can uniquely assert —
+      # other tests' broadcasts make "setup's stopped is newest"
+      # unreliable.
+      id = "newest-#{System.unique_integer([:positive])}"
+      Phoenix.PubSub.broadcast(BoomLooper.PubSub, "chat_agents", {:chat_agent_renamed, id, "latest"})
+      Process.sleep(50)
+
+      [newest | rest] = Tap.recent()
+      assert String.contains?(newest.payload, id)
+      # Ordering invariant: seq numbers are strictly descending.
+      seqs = [newest | rest] |> Enum.map(& &1.seq)
+      assert seqs == Enum.sort(seqs, :desc)
     end
   end
 
   describe "topic_counts/0" do
     test "returns per-topic count of captured events" do
+      # Take a baseline to avoid interference from other tests'
+      # broadcasts that may have landed in the tap earlier in the run.
+      before = Tap.topic_counts()
+
       Phoenix.PubSub.broadcast(BoomLooper.PubSub, "chat_agents", {:chat_agent_started, %{}})
       Phoenix.PubSub.broadcast(BoomLooper.PubSub, "chat_agents", {:chat_agent_stopped, %{}})
       Phoenix.PubSub.broadcast(BoomLooper.PubSub, "docker_observer", {:docker_state_changed})
       Process.sleep(50)
 
-      counts = Tap.topic_counts()
-      assert counts["chat_agents"] == 2
-      assert counts["docker_observer"] == 1
+      after_counts = Tap.topic_counts()
+      assert Map.get(after_counts, "chat_agents", 0) - Map.get(before, "chat_agents", 0) >= 2
+      assert Map.get(after_counts, "docker_observer", 0) - Map.get(before, "docker_observer", 0) >= 1
     end
   end
 
   describe "payload truncation" do
     test "oversized payloads are truncated with a marker" do
+      # Use a unique id so we can find OUR event among other tests'
+      # broadcasts that are also landing in the tap concurrently.
+      id = "truncate-oversized-#{System.unique_integer([:positive])}"
       big = String.duplicate("x", 5_000)
-      Phoenix.PubSub.broadcast(BoomLooper.PubSub, "chat_agents", {:chat_agent_started, %{blob: big}})
+      Phoenix.PubSub.broadcast(BoomLooper.PubSub, "chat_agents", {:chat_agent_started, %{id: id, blob: big}})
       Process.sleep(50)
 
-      [event] = Tap.recent()
+      event = find_event_by_id(id)
       assert String.ends_with?(event.payload, "…(truncated)")
       assert byte_size(event.payload) < 5_000
     end
 
     test "small payloads are NOT truncated" do
-      Phoenix.PubSub.broadcast(BoomLooper.PubSub, "chat_agents", {:chat_agent_started, %{id: "small"}})
+      id = "truncate-small-#{System.unique_integer([:positive])}"
+      Phoenix.PubSub.broadcast(BoomLooper.PubSub, "chat_agents", {:chat_agent_started, %{id: id}})
       Process.sleep(50)
 
-      [event] = Tap.recent()
+      event = find_event_by_id(id)
       refute String.ends_with?(event.payload, "…(truncated)")
     end
+  end
+
+  # Locate OUR broadcast among whatever else the tap has captured.
+  defp find_event_by_id(id) do
+    event = Enum.find(Tap.recent(), &String.contains?(&1.payload, id))
+    assert event != nil, "expected a tap event containing #{inspect(id)}"
+    event
   end
 end

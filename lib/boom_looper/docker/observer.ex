@@ -198,10 +198,21 @@ defmodule BoomLooper.Docker.Observer do
       tests verify the backstop timer is actually firing)
   """
   def health do
-    try do
-      GenServer.call(__MODULE__, :health, 2_000)
-    catch
-      :exit, _ -> %{connected: false, last_snapshot_at: nil, snapshot_failures: 0, reconciles: 0}
+    # Pure ETS reads — no GenServer.call, no blocking. Keeps callers
+    # (health dashboards, tests, rpc debug) fast even while the
+    # Observer is mid-snapshot and not answering calls.
+    %{
+      connected: connected?(),
+      last_snapshot_at: last_snapshot_at(),
+      snapshot_failures: read_counter(:snapshot_failures),
+      reconciles: read_counter(:reconciles)
+    }
+  end
+
+  defp read_counter(key) do
+    case :ets.lookup(@table, key) do
+      [{^key, n}] when is_integer(n) -> n
+      _ -> 0
     end
   end
 
@@ -314,7 +325,9 @@ defmodule BoomLooper.Docker.Observer do
   # "events are silently not firing" class of bug. Always reschedules
   # itself (even on snapshot failure) so the backstop keeps ticking.
   def handle_info(:reconcile, state) do
-    state = do_snapshot(%{state | reconcile_ref: nil, reconciles: state.reconciles + 1})
+    reconciles = state.reconciles + 1
+    :ets.insert(@table, {:reconciles, reconciles})
+    state = do_snapshot(%{state | reconcile_ref: nil, reconciles: reconciles})
     {:noreply, schedule_reconcile(state)}
   end
 
@@ -328,17 +341,8 @@ defmodule BoomLooper.Docker.Observer do
     {:noreply, do_snapshot(%{state | debounce_ref: nil})}
   end
 
-  @impl true
-  def handle_call(:health, _from, state) do
-    reply = %{
-      connected: connected?(),
-      last_snapshot_at: last_snapshot_at(),
-      snapshot_failures: state.snapshot_failures,
-      reconciles: state.reconciles
-    }
-
-    {:reply, reply, state}
-  end
+  # Note: no handle_call(:health) — health/0 reads purely from ETS
+  # to stay fast and non-blocking even while the Observer is busy.
 
   # ── Bootstrap: start stream FIRST, then snapshot ──
 
@@ -447,11 +451,16 @@ defmodule BoomLooper.Docker.Observer do
       broadcast({:docker_state_changed})
     end
 
+    # Mirror the success-reset into ETS so health() reads it without
+    # a GenServer round-trip. Same for snapshot_failures below.
+    :ets.insert(@table, {:snapshot_failures, 0})
+
     %{state | prev: snapshot, snapshot_failures: 0}
   end
 
   defp handle_snapshot_failure(state, c_result, v_result) do
     failures = state.snapshot_failures + 1
+    :ets.insert(@table, {:snapshot_failures, failures})
 
     Logger.warning(
       "[Docker.Observer] Snapshot failed (consecutive=#{failures}); " <>
