@@ -178,26 +178,24 @@ defmodule BoomLooper.Docker do
   #   * non-transient errors like "No such container" (retrying just
   #     delays the real failure and spams the daemon)
   #
-  # Three attempts with exponential backoff (100ms, 300ms, 900ms)
-  # covers the common "daemon blip" window. Bypass with `retry: false`
-  # when a caller wants strict single-shot semantics (e.g. health
-  # probes that want the raw truth).
-  defp run_with_retry(args, cmd_opts, timeout, retry?, attempt \\ 1) do
-    case run_once(args, cmd_opts, timeout) do
-      {:ok, _} = ok ->
-        ok
+  # Three attempts with 100ms/300ms/900ms backoff covers the common
+  # "daemon blip" window. Bypass with `retry: false` when a caller
+  # wants strict single-shot semantics (e.g. health probes that want
+  # the raw truth).
+  #
+  # Delegates to `BoomLooper.Retry` so the schedule math + attempt
+  # cap live in one place shared with other retry call sites. See
+  # plans/coordination-hardening.md move #7d.
+  defp run_with_retry(args, cmd_opts, timeout, false = _retry?) do
+    run_once(args, cmd_opts, timeout)
+  end
 
-      {:error, output} = err ->
-        cond do
-          not retry? -> err
-          attempt >= 3 -> err
-          not transient_error?(output) -> err
-
-          true ->
-            Process.sleep(backoff_ms(attempt))
-            run_with_retry(args, cmd_opts, timeout, retry?, attempt + 1)
-        end
-    end
+  defp run_with_retry(args, cmd_opts, timeout, true = _retry?) do
+    BoomLooper.Retry.run(fn -> run_once(args, cmd_opts, timeout) end,
+      max_attempts: 3,
+      backoff: {:custom, [100, 300, 900]},
+      transient?: &transient_error?/1
+    )
   end
 
   defp run_once(args, cmd_opts, timeout) do
@@ -225,10 +223,6 @@ defmodule BoomLooper.Docker do
   end
 
   def transient_error?(_), do: false
-
-  defp backoff_ms(1), do: 100
-  defp backoff_ms(2), do: 300
-  defp backoff_ms(_), do: 900
 
   @doc """
   Stream a docker command, invoking `callback` with each chunk of output.

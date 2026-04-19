@@ -911,8 +911,13 @@ defmodule BoomLooper.ChatAgent do
       {:noreply, state}
     else
       # Exponential backoff: 2s, 4s, 8s, 16s, 32s
+      # Delay math goes through BoomLooper.Retry so the schedule is
+      # consistent with other retry sites (see move #7d in
+      # plans/coordination-hardening.md). The control flow stays
+      # here because each "attempt" is a separate EXIT message, not
+      # a synchronous retry loop.
       base = Application.get_env(:boom_looper, :crash_backoff_base_ms, @default_crash_backoff_base_ms)
-      backoff_ms = base * :math.pow(2, consecutive - 1) |> trunc()
+      backoff_ms = BoomLooper.Retry.backoff_ms(consecutive, {:exponential, base})
       BoomLooper.EventLog.info("agent:#{state.name}", "Backing off #{backoff_ms}ms before restart (crash ##{consecutive})")
       Process.sleep(backoff_ms)
 
