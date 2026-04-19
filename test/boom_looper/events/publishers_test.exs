@@ -194,9 +194,16 @@ defmodule BoomLooper.Events.PublishersTest do
     test "every publish emits [:boom_looper, :events, :publish]" do
       test_pid = self()
       ref = make_ref()
+      # Use a unique handler id so cleanup only targets OUR handler.
+      # The previous implementation did
+      # `telemetry.list_handlers([]) |> Enum.each(detach)` which
+      # detached EVERY handler in the system — including the Saga
+      # Recorder and Checkpointer — causing those subsystems to
+      # silently stop recording for the rest of the test run.
+      handler_id = "test-publishers-telemetry-#{System.unique_integer([:positive])}"
 
       :telemetry.attach(
-        "test-#{System.unique_integer([:positive])}",
+        handler_id,
         [:boom_looper, :events, :publish],
         fn _event, measurements, meta, _ ->
           send(test_pid, {ref, measurements, meta})
@@ -208,8 +215,7 @@ defmodule BoomLooper.Events.PublishersTest do
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: "a1", status: :idle})
         assert_receive {^ref, %{count: 1}, %{topic: "chat_agents", event: Events.ChatAgent.StatusChanged}}
       after
-        :telemetry.list_handlers([])
-        |> Enum.each(fn %{id: id} -> :telemetry.detach(id) end)
+        :telemetry.detach(handler_id)
       end
     end
   end
