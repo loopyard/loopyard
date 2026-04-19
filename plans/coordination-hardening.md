@@ -329,12 +329,14 @@ Every abstraction is a liability. Before building any of these, check whether it
 - **#11 Graceful degradation → flat health map, no dependency graph.** Start with `%{docker: :healthy, claude: :degraded, mutagen: :down}`. UI reads it and renders banners. The component dependency tree is framework-thinking for a population of 3 components. Add it later if we ever have 20.
 - **#7d Circuit breakers → consolidate existing backoff, don't build a new abstraction.** We have ad-hoc backoff in `Docker.docker/2` (3 retries) and ChatAgent crash-backoff (exponential). Extract those into a shared `Retry` helper. Skip full circuit-breaker state machine until a retry storm actually bites — the current ad-hoc limits already cap the damage.
 
-### Drop until a concrete case forces them (4 moves)
+### Keep (restored from earlier drop)
 
-- **#7a Sagas** — over-engineered for N=3 multi-step operations (start workspace, boot agent, destroy workspace). A saga framework has rollback-ordering bugs, idempotency requirements, and compensation semantics that take months to debug. Instead: write each multi-step op as an imperative function with explicit `try/rescue` cleanup. When we have 10+ similar ops, reconsider. Until then, sagas add a new bug class (failed rollbacks) to fix a bug class (partial success) that only rarely bites.
-- **#7b Resource ownership** — generic framework for a few specific owner-resource pairs (agent → CLI process, workspace → containers, PortRegistry → port bindings). Each already has its own mechanism (`Port` linking, compose, explicit registry). Fix leaks specifically when found. Don't unify.
-- **#8 Checkpoints** — premature. Current log compaction (shipped) handles the "log too big" case. We haven't hit "replay too slow" in practice. Build when we do. Wrong snapshot implementation = silent data loss, which is worse than the problem it solves.
-- **#9 Saga journal** — depends on #7a. If sagas don't ship, this doesn't exist. Even with sagas, durable transactions are where distributed-systems researchers go to die. Skip unless a specific incident justifies it.
+These were dropped on complexity grounds in an earlier review. That review used the wrong metric. The only metric that matters is reliability + predictability, and all four of these pass that test when you separate "the thing they prevent" (open-ended, unbounded) from "the implementation risk they add" (bounded, testable).
+
+- **#7a Sagas** — partial-success state (workspace half-started after compose failure) is a real reliability class, not a corner case. Sagas make the multi-step operation either fully succeed or fully roll back. The "sagas have their own bugs" counter-argument is real but bounded by tests; the bugs they prevent are unbounded.
+- **#7b Resource ownership** — orphan resources (OS processes outliving their agent, port bindings outliving their workspace) are an unreliability class. One owner → one resource, enforced via behaviour + janitor, makes orphans structurally impossible rather than "we remembered `terminate/2`."
+- **#8 Checkpoints** — unbounded recovery time is literally a predictability failure. Log-replay-O(history) means boot time grows with uptime; at some point replay exceeds timeouts and agents silently don't restore. Snapshot + truncate makes recovery O(snapshot), bounded, predictable.
+- **#9 Saga journal** — sagas alone are only safe within a single BEAM lifetime. Journal + resume-on-boot makes them durable across crashes, which closes the "BEAM died mid-workspace-start, now there's persistent half-state" class.
 
 ### Underlying principle
 
@@ -344,13 +346,15 @@ Apply the narrower versions first. If they leak, extract patterns. Don't design 
 
 ### Revised scope
 
-With drops and narrowings, the shipped plan is:
+With narrowings (no drops — the earlier drops reversed after re-evaluating on reliability alone):
 
-**Baseline bundle:** Moves 1, 2, 3 (narrowed), 4 (narrowed), 5, 6 (narrowed to Docker + agents), 7, 10, 12.
+**Baseline bundle:** Moves 1, 2, 3 (narrowed), 4 (narrowed), 5, 6 (narrowed to Docker + agents), 7, 10, 11 (narrowed).
 
-**Follow-on:** Move 7c (property tests, cheap). Moves 7d and 11 (narrowed). Defer 7a, 7b, 8, 9 until concrete cases force them.
+**Reliability bundle (restored):** 7a sagas, 7b resource ownership, 8 checkpoints, 9 saga journal.
 
-That's 9 moves, closing every bug class we've actually shipped. The deferred four are real patterns that might become necessary — but not yet.
+**Follow-on:** 7c property tests (cheap), 7d (narrowed to a Retry helper).
+
+Twelve moves total. Every one passes the reliability/predictability test. Complexity of the abstractions is bounded by tests; the bugs they prevent are not.
 
 ## Execution rule: complete-or-revert
 
