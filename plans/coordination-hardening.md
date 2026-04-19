@@ -346,6 +346,21 @@ With drops and narrowings, the shipped plan is:
 
 That's 9 moves, ~4 weeks, closing every bug class we've actually shipped. The deferred four are real patterns that might become necessary — but not yet.
 
+## Execution rule: complete-or-revert
+
+**No half-finished migrations.** A migration either lands fully (all affected call sites converted, tests + evals green) or gets reverted to a single consistent state. The "5 of 19 handlers migrated, 14 still using the old pattern" shape is explicitly forbidden — it creates exactly the dual-pattern bug class this plan exists to prevent.
+
+Concretely, for each move:
+
+1. **Scope the full set of call sites before starting.** For Move #1 that's ~19 ChatAgent handlers plus the five other state-machine actors. Count them; know what "done" looks like.
+2. **Complete the migration in one session, or don't start that session.** If the bandwidth isn't there, pick a different move that IS completable.
+3. **Run the full test suite + relevant evals before committing.** Tests and evals are the completion signal, not "the handlers I looked at compiled."
+4. **If midway through you realize you can't finish, revert rather than ship.** Partial migrations are strictly worse than no migration. Reverted work still lives in git history as a reference for the next attempt.
+
+This is why the stop/rename pilot from the first attempt got reverted: it migrated 5 of 19 handlers and left the rest using the old pattern. The patterns demonstrated there are valid — the revert is in git, easy to reference — but shipping the dual state created its own bug class that defeats the plan's purpose.
+
+**Estimating completability:** Move #1 for ChatAgent alone is probably a focused 6–8 hour session. ServiceManager, WorkspaceGroup, Cluster, SyncMonitor, Service each add 2–4 hours. All six actors in one session is unrealistic — migrate one actor per session, each session ending with that actor's migration fully complete, tests + evals passing. Six sessions for Move #1. Plan accordingly.
+
 ## Open questions
 
 - **Scope of actors to convert to pure transitions.** Start with the four that caused real bugs (`ChatAgent`, `ServiceManager`, `WorkspaceGroup`, `Cluster`); defer `SyncMonitor`, `PortRegistry`, etc. unless they bite us.
