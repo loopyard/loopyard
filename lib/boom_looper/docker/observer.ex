@@ -47,7 +47,22 @@ defmodule BoomLooper.Docker.Observer do
   @table :docker_observer
   @topic "docker_observer"
   @debounce_ms 500
-  @retry_interval 5_000
+
+  # Backstop reconciler: re-snapshot every interval even if no events
+  # arrived. Covers the "event stream silently stopped emitting" case
+  # (kernel bug, daemon stall, filter evaluator corner case). 30s is
+  # a balance between freshness and shell-out frequency.
+  @reconcile_interval_ms 30_000
+
+  # Backoff schedule for event-stream reconnect. 1s → 60s cap. Resets
+  # to the head of the list on successful bootstrap.
+  @retry_backoff_ms [1_000, 2_000, 4_000, 8_000, 16_000, 30_000, 60_000]
+
+  # After this many consecutive snapshot fetches fail, the cache is
+  # considered stale enough that we clear it to avoid lying to the UI.
+  # One or two failures are just transient daemon hiccups — keep the
+  # last-known state through those.
+  @stale_cache_threshold 6
 
   # ── Public API (all ETS reads, zero GenServer hops) ──
 
@@ -170,6 +185,26 @@ defmodule BoomLooper.Docker.Observer do
     end
   end
 
+  @doc """
+  Observer health snapshot. Use for UI diagnostics and tests.
+
+  Fields:
+    * `:connected` — is the event stream attached?
+    * `:last_snapshot_at` — when did a fetch last successfully update the cache?
+    * `:snapshot_failures` — consecutive fetch failures since last success
+      (non-zero means the cache is running on last-known state; ≥
+      `@stale_cache_threshold` means it's been wiped)
+    * `:reconciles` — count of successful periodic reconciler runs (lets
+      tests verify the backstop timer is actually firing)
+  """
+  def health do
+    try do
+      GenServer.call(__MODULE__, :health, 2_000)
+    catch
+      :exit, _ -> %{connected: false, last_snapshot_at: nil, snapshot_failures: 0, reconciles: 0}
+    end
+  end
+
   @doc "Subscribe to state-change broadcasts."
   def subscribe do
     Phoenix.PubSub.subscribe(BoomLooper.PubSub, @topic)
@@ -193,8 +228,19 @@ defmodule BoomLooper.Docker.Observer do
   @impl true
   def init(_) do
     # ETS table is pre-created by BoomLooper.StateKeeper.
-    {:ok, %{table: @table, port: nil, debounce_ref: nil, prev: nil, line_buffer: ""},
-     {:continue, :bootstrap}}
+    state = %{
+      table: @table,
+      port: nil,
+      debounce_ref: nil,
+      reconcile_ref: nil,
+      prev: nil,
+      line_buffer: "",
+      retry_attempt: 0,
+      snapshot_failures: 0,
+      reconciles: 0
+    }
+
+    {:ok, state, {:continue, :bootstrap}}
   end
 
   @impl true
@@ -225,20 +271,33 @@ defmodule BoomLooper.Docker.Observer do
     {:noreply, state}
   end
 
-  # Event stream died
+  # Event stream died — the daemon went away or the port itself
+  # crashed. Keep the last-known cache visible (marked stale via
+  # :connected=false) and retry with exponential backoff. Blanking the
+  # UI on a 2-second Colima blip caused more confusion than a "last
+  # seen N seconds ago" badge, so the cache stays until either we
+  # reconnect (overwriting it) or @stale_cache_threshold consecutive
+  # snapshot failures wipe it below.
   def handle_info({port, {:exit_status, code}}, %{port: port} = state) do
-    Logger.warning("[Docker.Observer] Event stream exited (code #{code}). Wiping cache, retrying in #{@retry_interval}ms.")
+    delay = backoff_delay(state.retry_attempt)
 
-    # Wipe cache — state is now untrustworthy
-    :ets.insert(@table, {:containers, []})
-    :ets.insert(@table, {:volumes, []})
+    Logger.warning(
+      "[Docker.Observer] Event stream exited (code #{code}); " <>
+        "retry ##{state.retry_attempt + 1} in #{delay}ms. " <>
+        "Cache retained pending reconnect."
+    )
+
     :ets.insert(@table, {:connected, false})
+    broadcast({:docker_state_disconnected})
 
-    broadcast({:docker_state_reset})
+    Process.send_after(self(), :retry_bootstrap, delay)
 
-    # Retry after a delay
-    Process.send_after(self(), :retry_bootstrap, @retry_interval)
-    {:noreply, %{state | port: nil, prev: nil, line_buffer: ""}}
+    state =
+      state
+      |> cancel_reconcile()
+      |> Map.merge(%{port: nil, line_buffer: "", retry_attempt: state.retry_attempt + 1})
+
+    {:noreply, state}
   end
 
   # Retry bootstrap after stream death
@@ -251,6 +310,14 @@ defmodule BoomLooper.Docker.Observer do
     {:noreply, do_snapshot(%{state | debounce_ref: nil})}
   end
 
+  # Periodic reconciler — independent of event stream so we catch the
+  # "events are silently not firing" class of bug. Always reschedules
+  # itself (even on snapshot failure) so the backstop keeps ticking.
+  def handle_info(:reconcile, state) do
+    state = do_snapshot(%{state | reconcile_ref: nil, reconciles: state.reconciles + 1})
+    {:noreply, schedule_reconcile(state)}
+  end
+
   # Catch-all for unknown messages (PubSub, etc.)
   def handle_info(_msg, state), do: {:noreply, state}
 
@@ -261,18 +328,48 @@ defmodule BoomLooper.Docker.Observer do
     {:noreply, do_snapshot(%{state | debounce_ref: nil})}
   end
 
+  @impl true
+  def handle_call(:health, _from, state) do
+    reply = %{
+      connected: connected?(),
+      last_snapshot_at: last_snapshot_at(),
+      snapshot_failures: state.snapshot_failures,
+      reconciles: state.reconciles
+    }
+
+    {:reply, reply, state}
+  end
+
   # ── Bootstrap: start stream FIRST, then snapshot ──
 
   defp bootstrap(state) do
-    # Step 1: start the event stream so it begins buffering
-    state = start_event_stream(state)
+    # Step 1: start the event stream so it begins buffering. If this
+    # fails (daemon unreachable), start_event_stream schedules the
+    # next retry and returns state unchanged — we DON'T snapshot
+    # because there's nothing to snapshot.
+    case start_event_stream(state) do
+      {:ok, state} ->
+        # Step 2: snapshot while the stream buffers any concurrent
+        # changes. A snapshot failure here keeps the last-known cache.
+        state = do_snapshot(state)
 
-    # Step 2: snapshot while the stream buffers any concurrent changes
-    state = do_snapshot(state)
+        Logger.info(
+          "[Docker.Observer] Bootstrapped: #{length(containers())} containers, " <>
+            "#{length(volumes())} volumes"
+        )
 
-    Logger.info("[Docker.Observer] Bootstrapped: #{length(containers())} containers, #{length(volumes())} volumes")
+        # Start the backstop reconciler. Cheap if the event stream
+        # stays healthy; the safety net if it doesn't.
+        state = schedule_reconcile(state)
 
-    state
+        # Reconnected successfully — reset backoff, notify subscribers
+        # that cache is trustworthy again.
+        broadcast({:docker_state_reconnected})
+        %{state | retry_attempt: 0}
+
+      {:retry_scheduled, state} ->
+        state
+    end
   end
 
   defp start_event_stream(state) do
@@ -283,23 +380,50 @@ defmodule BoomLooper.Docker.Observer do
            "--format", "{{json .}}"
          ]) do
       {:error, reason} ->
-        Logger.error("[Docker.Observer] #{reason}")
+        delay = backoff_delay(state.retry_attempt)
+        Logger.error("[Docker.Observer] #{reason}; retry in #{delay}ms")
         :ets.insert(@table, {:connected, false})
-        Process.send_after(self(), :retry_bootstrap, @retry_interval)
-        state
+        Process.send_after(self(), :retry_bootstrap, delay)
+        {:retry_scheduled, %{state | retry_attempt: state.retry_attempt + 1}}
 
       port when is_port(port) ->
         :ets.insert(@table, {:connected, true})
-        %{state | port: port, line_buffer: ""}
+        {:ok, %{state | port: port, line_buffer: ""}}
     end
   end
 
   # ── Snapshot: one docker ps + one docker volume ls ──
+  #
+  # Fail-safe semantics: if either the containers or volumes fetch
+  # returns an error (CLI timeout, daemon blip), we KEEP the previous
+  # cache and bump snapshot_failures. Only after the counter passes
+  # @stale_cache_threshold do we wipe the cache and signal a reset —
+  # at that point the data is old enough that showing stale state
+  # would mislead more than blanking it.
+  #
+  # Past bug: a single `docker ps` timeout returned [] which got
+  # written to ETS, broadcasting {:docker_state_changed} and flashing
+  # every sidebar empty for the 500ms until the next snapshot filled
+  # it back in.
 
   defp do_snapshot(state) do
-    containers = fetch_containers()
-    volumes = fetch_volumes()
-    volume_sizes = fetch_volume_sizes()
+    case {fetch_containers(), fetch_volumes()} do
+      {{:ok, containers}, {:ok, volumes}} ->
+        commit_snapshot(state, containers, volumes)
+
+      {c_result, v_result} ->
+        handle_snapshot_failure(state, c_result, v_result)
+    end
+  end
+
+  defp commit_snapshot(state, containers, volumes) do
+    # Volume sizes are pulled separately — they're a nice-to-have and
+    # a failure here only drops size rendering, never container truth.
+    volume_sizes = fetch_volume_sizes() |> case do
+      {:ok, sizes} -> sizes
+      :error -> %{}
+    end
+
     now = DateTime.utc_now()
 
     :ets.insert(@table, {:containers, containers})
@@ -323,7 +447,37 @@ defmodule BoomLooper.Docker.Observer do
       broadcast({:docker_state_changed})
     end
 
-    %{state | prev: snapshot}
+    %{state | prev: snapshot, snapshot_failures: 0}
+  end
+
+  defp handle_snapshot_failure(state, c_result, v_result) do
+    failures = state.snapshot_failures + 1
+
+    Logger.warning(
+      "[Docker.Observer] Snapshot failed (consecutive=#{failures}); " <>
+        "containers=#{inspect(c_result)} volumes=#{inspect(v_result)}"
+    )
+
+    cond do
+      failures >= @stale_cache_threshold ->
+        Logger.error(
+          "[Docker.Observer] Stale-cache threshold hit (#{@stale_cache_threshold} " <>
+            "consecutive failures); wiping cache."
+        )
+
+        :ets.insert(@table, {:containers, []})
+        :ets.insert(@table, {:volumes, []})
+        :ets.insert(@table, {:volume_sizes, %{}})
+        broadcast({:docker_state_reset})
+
+        %{state | prev: %{containers: [], volumes: []}, snapshot_failures: failures}
+
+      true ->
+        # Keep last-known cache. UI reflects :connected=false (set on
+        # port exit) so viewers know they're looking at potentially
+        # stale data.
+        %{state | snapshot_failures: failures}
+    end
   end
 
   defp fetch_containers do
@@ -336,13 +490,16 @@ defmodule BoomLooper.Docker.Observer do
            env: [{"LC_ALL", "C"}]
          ) do
       {:ok, output} ->
-        output
-        |> String.split("\n", trim: true)
-        |> Enum.map(&parse_container_line/1)
-        |> Enum.reject(&is_nil/1)
+        parsed =
+          output
+          |> String.split("\n", trim: true)
+          |> Enum.map(&parse_container_line/1)
+          |> Enum.reject(&is_nil/1)
+
+        {:ok, parsed}
 
       _ ->
-        []
+        :error
     end
   end
 
@@ -383,18 +540,21 @@ defmodule BoomLooper.Docker.Observer do
         # events that flashed the sidebar. Sizes are now a separate
         # concern: see :volume_sizes ETS slot and `volume_size/1`. The
         # snapshot comparison stays stable when only sizes change.
-        output
-        |> String.split("\n", trim: true)
-        |> Enum.map(fn name ->
-          # Enrich with parsed purpose (type, service, description)
-          # using VolumeManager's pure name parser — no docker calls.
-          summary = BoomLooper.VolumeManager.volume_summary(name)
+        parsed =
+          output
+          |> String.split("\n", trim: true)
+          |> Enum.map(fn name ->
+            # Enrich with parsed purpose (type, service, description)
+            # using VolumeManager's pure name parser — no docker calls.
+            summary = BoomLooper.VolumeManager.volume_summary(name)
 
-          Map.merge(summary, %{workspace_id: extract_workspace_id(name)})
-        end)
+            Map.merge(summary, %{workspace_id: extract_workspace_id(name)})
+          end)
+
+        {:ok, parsed}
 
       _ ->
-        []
+        :error
     end
   end
 
@@ -402,7 +562,8 @@ defmodule BoomLooper.Docker.Observer do
   # `docker system df -v` which reports all volume sizes in one call.
   # The `--format '{{json .}}'` variant emits a JSON object with a
   # `Volumes` array whose entries have `Name` and `Size` (pre-formatted
-  # like "145.3MB").
+  # like "145.3MB"). Returns `{:ok, map}` or `:error` — callers tolerate
+  # size failures without blanking volume identity.
   defp fetch_volume_sizes do
     case BoomLooper.Docker.docker(["system", "df", "-v", "--format", "{{json .}}"],
            timeout: 5_000,
@@ -411,17 +572,20 @@ defmodule BoomLooper.Docker.Observer do
       {:ok, json} ->
         case Jason.decode(json) do
           {:ok, %{"Volumes" => volumes}} when is_list(volumes) ->
-            for %{"Name" => name, "Size" => size} <- volumes,
-                is_binary(name) and is_binary(size),
-                into: %{},
-                do: {name, size}
+            sizes =
+              for %{"Name" => name, "Size" => size} <- volumes,
+                  is_binary(name) and is_binary(size),
+                  into: %{},
+                  do: {name, size}
+
+            {:ok, sizes}
 
           _ ->
-            %{}
+            :error
         end
 
       _ ->
-        %{}
+        :error
     end
   end
 
@@ -458,6 +622,35 @@ defmodule BoomLooper.Docker.Observer do
 
   # Already scheduled — don't stack timers
   defp schedule_debounced_poll(state), do: state
+
+  # ── Reconciler ──
+
+  defp schedule_reconcile(state) do
+    state = cancel_reconcile(state)
+    ref = Process.send_after(self(), :reconcile, @reconcile_interval_ms)
+    %{state | reconcile_ref: ref}
+  end
+
+  defp cancel_reconcile(%{reconcile_ref: nil} = state), do: state
+
+  defp cancel_reconcile(%{reconcile_ref: ref} = state) do
+    Process.cancel_timer(ref)
+    %{state | reconcile_ref: nil}
+  end
+
+  # ── Backoff ──
+  #
+  # Walk the backoff list; stick on the final (largest) interval if
+  # we've been trying for longer than the table covers. Resetting
+  # retry_attempt to 0 on a successful bootstrap walks this back to
+  # the head of the list.
+  @doc false
+  def backoff_delay(attempt) do
+    Enum.at(@retry_backoff_ms, attempt, List.last(@retry_backoff_ms))
+  end
+
+  @doc false
+  def stale_cache_threshold, do: @stale_cache_threshold
 
   # ── Helpers ──
 
