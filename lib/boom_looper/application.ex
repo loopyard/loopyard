@@ -9,6 +9,14 @@ defmodule BoomLooper.Application do
     secret = :crypto.strong_rand_bytes(16) |> Base.url_encode64(padding: false)
     Application.put_env(:boom_looper, :launch_secret, secret)
 
+    # Register ChatAgent.summary/1 with its StateMachine so the pure
+    # step/2 function can build ETS entries without a circular compile
+    # dependency. See ChatAgent.StateMachine module doc for the
+    # rationale (Move #1 of plans/coordination-hardening.md).
+    BoomLooper.ChatAgent.StateMachine.configure_summary(
+      &BoomLooper.ChatAgent.summary_public/1
+    )
+
     children = [
       # --- Infrastructure layer (survives web reloads) ---
       BoomLooper.LogBuffer,

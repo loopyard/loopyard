@@ -10,7 +10,7 @@ defmodule BoomLooper.ChatAgent do
 
   alias BoomLooper.Agent.Event
   alias BoomLooper.AgentLog
-  alias BoomLooper.ChatAgent.{Persistence, Prompt, ToolConfig}
+  alias BoomLooper.ChatAgent.{Persistence, Prompt, StateMachine, ToolConfig}
 
 
   defstruct [
@@ -636,16 +636,15 @@ defmodule BoomLooper.ChatAgent do
 
   @impl true
   def handle_cast(:stop, state) do
+    # Backend.stop is imperative lifecycle (kill the CLI subprocess),
+    # not agent state — stays in the handler. State transition + ETS
+    # + broadcast + termination flow through the pure step function.
     if state.session do
-      # Stop in a task with timeout — backend.stop can hang if mid-stream
       task = Task.async(fn -> state.backend.stop(state.session) end)
       Task.yield(task, 3_000) || Task.shutdown(task, :brutal_kill)
     end
 
-    stopped = %{state | status: :stopped}
-    :ets.insert(@ets_table, {state.id, summary(stopped)})
-    broadcast(@topic, {:chat_agent_stopped, summary(stopped)})
-    {:stop, :normal, stopped}
+    dispatch(state, StateMachine.step(state, :stop))
   end
 
   @impl true
@@ -723,9 +722,7 @@ defmodule BoomLooper.ChatAgent do
 
   @impl true
   def handle_cast({:rename, new_name}, state) do
-    state = %{state | name: new_name}
-    broadcast(@topic, {:chat_agent_renamed, state.id, new_name})
-    {:noreply, state}
+    dispatch(state, StateMachine.step(state, {:rename, new_name}))
   end
 
   @impl true
@@ -1108,6 +1105,67 @@ defmodule BoomLooper.ChatAgent do
 
   defp broadcast(topic, message) do
     Phoenix.PubSub.broadcast(BoomLooper.PubSub, topic, message)
+  end
+
+  @doc false
+  # Public thin wrapper around the private summary/1. Used by
+  # `ChatAgent.StateMachine.step/2` via :persistent_term registration
+  # (see Application.start). Kept `@doc false` because external code
+  # should go through `get_state/1`.
+  def summary_public(state), do: summary(state)
+
+  # ────────────────────────────────────────────────────────────────
+  # Side-effect dispatcher (plans/coordination-hardening.md Move #1)
+  # ────────────────────────────────────────────────────────────────
+  #
+  # The pure `StateMachine.step/2` returns effects as data. This
+  # function converts them to actual IO. Adding a new effect kind to
+  # StateMachine requires a matching clause here — the `_` catchall
+  # is deliberately absent so the compiler flags unhandled effects.
+
+  defp apply_effects(state, effects) do
+    Enum.each(effects, &apply_effect(state, &1))
+  end
+
+  defp apply_effect(_state, {:broadcast, topic, message}) do
+    broadcast(topic, message)
+  end
+
+  defp apply_effect(_state, {:ets_put, table, key, value}) do
+    :ets.insert(table, {key, value})
+  end
+
+  defp apply_effect(state, {:persist_agent}) do
+    Persistence.persist_agent(state, &summary/1)
+  end
+
+  defp apply_effect(state, {:persist_message, msg}) do
+    Persistence.persist_message(state, msg)
+  end
+
+  defp apply_effect(state, {:persist_message_update, msg_id, changes}) do
+    Persistence.persist_message_update(state, msg_id, changes)
+  end
+
+  defp apply_effect(_state, {:cast_self, message}) do
+    GenServer.cast(self(), message)
+  end
+
+  # Apply side effects + return the appropriate GenServer reply tuple
+  # based on the continuation the step function returned.
+  defp dispatch(_state, {:ok, new_state, effects, :noreply}) do
+    apply_effects(new_state, effects)
+    {:noreply, new_state}
+  end
+
+  defp dispatch(_state, {:ok, new_state, effects, {:stop, reason}}) do
+    apply_effects(new_state, effects)
+    {:stop, reason, new_state}
+  end
+
+  defp dispatch(state, {:error, reason}) do
+    Logger.warning("[ChatAgent] #{state.id} invalid transition: #{inspect(reason)}")
+    {:noreply, state}
   end
 
   # --- Delegated public API ---
