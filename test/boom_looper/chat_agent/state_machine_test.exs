@@ -103,4 +103,52 @@ defmodule BoomLooper.ChatAgent.StateMachineTest do
       refute StateMachine.allowed_transition?(:backoff, :thinking)
     end
   end
+
+  describe ":rate_limited state" do
+    test ":rate_limited is a declared state" do
+      assert :rate_limited in StateMachine.states()
+    end
+
+    test ":thinking → :rate_limited + :idle → :rate_limited are both allowed" do
+      assert StateMachine.allowed_transition?(:thinking, :rate_limited)
+      assert StateMachine.allowed_transition?(:idle, :rate_limited)
+    end
+
+    test ":rate_limited → :idle is allowed (successful retry)" do
+      assert StateMachine.allowed_transition?(:rate_limited, :idle)
+    end
+
+    test ":rate_limited can pivot to :auth_expired (rate limit coupled with auth)" do
+      assert StateMachine.allowed_transition?(:rate_limited, :auth_expired)
+    end
+
+    test ":rate_limited can be stopped or destroyed mid-wait" do
+      assert StateMachine.allowed_transition?(:rate_limited, :stopped)
+      assert StateMachine.allowed_transition?(:rate_limited, :destroying)
+    end
+  end
+
+  describe ":auth_expired state" do
+    test ":auth_expired is a declared state" do
+      assert :auth_expired in StateMachine.states()
+    end
+
+    test ":thinking → :auth_expired + :idle → :auth_expired are both allowed" do
+      assert StateMachine.allowed_transition?(:thinking, :auth_expired)
+      assert StateMachine.allowed_transition?(:idle, :auth_expired)
+    end
+
+    test ":auth_expired → :idle allowed (user re-authenticated)" do
+      assert StateMachine.allowed_transition?(:auth_expired, :idle)
+    end
+
+    test ":auth_expired → :crashed allowed (underlying CLI may die)" do
+      assert StateMachine.allowed_transition?(:auth_expired, :crashed)
+    end
+
+    test ":auth_expired can be stopped or destroyed" do
+      assert StateMachine.allowed_transition?(:auth_expired, :stopped)
+      assert StateMachine.allowed_transition?(:auth_expired, :destroying)
+    end
+  end
 end
