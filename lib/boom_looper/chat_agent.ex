@@ -87,6 +87,14 @@ defmodule BoomLooper.ChatAgent do
     # Cleared on any different tool, user message, or stream_done.
     # See agent-sanity follow-up (answer to "what else?").
     last_tool_call: nil,
+    # Tool-call-runaway tracker: how many tool calls (ANY tool + ANY
+    # input, distinct from last_tool_call's same-tool repeat gate) the
+    # agent has made in the current turn. Many agents legitimately
+    # call 5-20 tools to gather context; anything over
+    # @turn_tool_limit is almost certainly runaway behavior. Warn
+    # once per turn. Reset on stream_done + on user :send_message.
+    tool_calls_this_turn: 0,
+    tool_runaway_warned: false,
     # FIFO queue of `:send_message` casts that arrived while the agent
     # was busy (:thinking, :backoff, :rate_limited, :auth_expired —
     # any status where a new stream Task can't start). Drained on
@@ -137,6 +145,13 @@ defmodule BoomLooper.ChatAgent do
   # trip on legitimate retry patterns but tight enough to surface
   # before the user burns another $5 of tokens watching it grind.
   @tool_loop_threshold 5
+
+  # Runaway cap: total tool calls in a single turn before we warn
+  # the user. Most legitimate turns make 5-20 tool calls (context
+  # gathering, edits, runs). 50 is a generous ceiling — past that
+  # it's almost certainly a loop the agent is stuck in, even if
+  # each call is technically different.
+  @turn_tool_limit 50
 
   # --- Public API ---
 
@@ -1106,7 +1121,13 @@ defmodule BoomLooper.ChatAgent do
         %Event.ToolCall{name: tool_name, input: tool_input} ->
           tool_msg = %{role: :tool, tool: tool_name, input: tool_input, timestamp: now}
           {state, tool_msg} = append_message(state, tool_msg)
-          state = %{state | last_activity_at: now, tool_calls: state.tool_calls + 1, active_tool: tool_name}
+
+          state = %{state |
+            last_activity_at: now,
+            tool_calls: state.tool_calls + 1,
+            active_tool: tool_name,
+            tool_calls_this_turn: state.tool_calls_this_turn + 1
+          }
 
           # Loop detection: same tool + same input N times in a row
           # almost always means the agent is stuck grinding. Fingerprint
@@ -1114,6 +1135,10 @@ defmodule BoomLooper.ChatAgent do
           # a visible warning so the user knows they can interrupt
           # instead of watching the tokens burn.
           state = maybe_detect_tool_loop(state, id, tool_name, tool_input)
+
+          # Runaway cap: even if individual calls differ, a 50+ tool-call
+          # turn is almost always the agent flailing. Warn once.
+          state = maybe_detect_tool_runaway(state, id)
 
           Persistence.persist_message(state, tool_msg)
           Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: tool_msg})
@@ -1222,7 +1247,9 @@ defmodule BoomLooper.ChatAgent do
       # Reset loop-detection counter at turn boundaries. A new turn is
       # a natural reset point — if the agent is truly still looping in
       # the next turn it'll hit the threshold again and re-warn.
-      last_tool_call: nil
+      last_tool_call: nil,
+      tool_calls_this_turn: 0,
+      tool_runaway_warned: false
     }
     state = Map.put(state, :consecutive_crashes, 0)
     state = schedule_idle_check(state)
@@ -2053,6 +2080,43 @@ defmodule BoomLooper.ChatAgent do
         %{state | tracked_cli_os_pid: nil}
     end
   end
+
+  # Runaway detection: count tool calls per turn (any tool, any
+  # input). One-shot warning at @turn_tool_limit so the user knows
+  # to stop the agent if it's thrashing. Different from
+  # maybe_detect_tool_loop which catches same-tool+same-input
+  # repeats — this catches agents that call 50 different things in
+  # a row without making progress.
+  defp maybe_detect_tool_runaway(%{tool_runaway_warned: true} = state, _id), do: state
+
+  defp maybe_detect_tool_runaway(%{tool_calls_this_turn: n} = state, id)
+       when n >= @turn_tool_limit do
+    :telemetry.execute(
+      [:boom_looper, :agent, :tool_runaway],
+      %{tool_calls_this_turn: n},
+      %{agent_id: id}
+    )
+
+    warn_msg = %{
+      role: :system,
+      content:
+        "⚠ Agent has made #{n} tool calls in this single turn. " <>
+          "WHY: that's far past the usual 5–20 — either it's stuck exploring or it's " <>
+          "looping with slightly-different inputs each time. " <>
+          "CONSEQUENCE: every tool call costs tokens and time. If the agent isn't making " <>
+          "visible progress, it's wasting both. " <>
+          "ACTION: click Stop to interrupt. Give the agent a more specific hint " <>
+          "(e.g. 'the file is in lib/foo.ex') and restart.",
+      timestamp: DateTime.utc_now()
+    }
+
+    {state, warn_msg} = append_message(state, warn_msg)
+    Persistence.persist_message(state, warn_msg)
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: warn_msg})
+    %{state | tool_runaway_warned: true}
+  end
+
+  defp maybe_detect_tool_runaway(state, _id), do: state
 
   # --- Tool-call loop detection ---
 

@@ -175,4 +175,88 @@ defmodule BoomLooper.ChatAgent.ToolLoopTest do
       assert loop_warn_count(state) == 1
     end
   end
+
+  describe "per-turn tool-call runaway detection" do
+    defp runaway_warn_count(state) do
+      Enum.count(state.messages, fn m ->
+        m.role == :system and String.contains?(m.content || "", "tool calls in this single turn")
+      end)
+    end
+
+    test "50+ DIFFERENT tool calls in one turn → runaway warning + telemetry", %{id: id} do
+      pid = agent_pid(id)
+      ref = install_ref(pid)
+
+      parent = self()
+      handler_id = "runaway-test-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:boom_looper, :agent, :tool_runaway],
+        fn _event, measurements, meta, _cfg ->
+          send(parent, {:runaway, measurements, meta})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      # 50 DISTINCT calls — the loop-detector doesn't fire (each input
+      # differs) but the runaway cap does.
+      for i <- 1..50 do
+        fire_tool_call(pid, id, ref, "grep", %{pattern: "pat-#{i}"})
+      end
+
+      _ = :sys.get_state(pid)
+
+      assert_receive {:runaway, measurements, meta}, 500
+      assert measurements.tool_calls_this_turn == 50
+      assert meta.agent_id == id
+
+      state = :sys.get_state(pid)
+      assert runaway_warn_count(state) == 1
+      assert state.tool_runaway_warned == true
+    end
+
+    test "49 tool calls → no warning (under threshold)", %{id: id} do
+      pid = agent_pid(id)
+      ref = install_ref(pid)
+
+      for i <- 1..49 do
+        fire_tool_call(pid, id, ref, "grep", %{pattern: "pat-#{i}"})
+      end
+
+      _ = :sys.get_state(pid)
+      state = :sys.get_state(pid)
+
+      assert runaway_warn_count(state) == 0
+    end
+
+    test "stream_done resets counter so next turn starts clean", %{id: id} do
+      pid = agent_pid(id)
+      ref = install_ref(pid)
+
+      for i <- 1..50, do: fire_tool_call(pid, id, ref, "grep", %{pattern: "pat-#{i}"})
+      _ = :sys.get_state(pid)
+
+      send(pid, {:stream_done, id, ref})
+      _ = :sys.get_state(pid)
+
+      state = :sys.get_state(pid)
+      assert state.tool_calls_this_turn == 0
+      assert state.tool_runaway_warned == false
+    end
+
+    test "going past 50 doesn't duplicate the warning (one-shot per turn)",
+         %{id: id} do
+      pid = agent_pid(id)
+      ref = install_ref(pid)
+
+      for i <- 1..70, do: fire_tool_call(pid, id, ref, "grep", %{pattern: "pat-#{i}"})
+      _ = :sys.get_state(pid)
+      state = :sys.get_state(pid)
+
+      assert runaway_warn_count(state) == 1
+    end
+  end
 end
