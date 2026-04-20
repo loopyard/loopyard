@@ -480,7 +480,30 @@ or silently skips everything after the torn record.
 - [ ] Failing test: persist_message with a non-writable path; assert
   agent survives + surfaces the degraded status.
 
-### 18. Context window utilization visibility + compaction trigger
+### 18. Context window utilization visibility — **DONE (visibility, not auto-compact)**
+
+- [x] `@context_windows` lookup table per model (claude-opus-4-7 →
+  1M tokens, claude-sonnet-4-6 → 200K, etc).
+- [x] On every `%Event.SessionResult{}`, compute
+  `(input_tokens + cache_read_tokens) / window_for(model)`. Store
+  in `state.context_utilization` + `summary/1`.
+- [x] One-shot inline warning at 85% threshold per turn: "⚠ Context
+  window N% full. Claude will silently drop the earliest turns…"
+  Clear the warn flag on stream_done so the warning re-fires on
+  later turns if utilization stays high.
+- [x] Telemetry: `[:boom_looper, :agent, :context_warning]`.
+- [x] Regression: `test/boom_looper/chat_agent/context_window_test.exs`
+  (5 tests).
+- [ ] Follow-up TODO: auto-compaction when utilization crosses some
+  threshold. The SDK doesn't expose a programmatic `/compact` API
+  yet — for now, users see the warning and can start a fresh agent
+  or /clear the CLI themselves. Revisit once the SDK gains
+  session-compaction support.
+- [ ] Follow-up TODO: surface the utilization as a progress bar on
+  the sidebar + context panel (green <70%, yellow 70–85%, red
+  >85%). Data is in the summary; only needs UI wiring.
+
+### 18-legacy. Design notes:
 
 **Gap**: Claude has a finite context window (200K tokens on Sonnet,
 1M on Opus 4.7). When full, the CLI silently starts dropping earliest

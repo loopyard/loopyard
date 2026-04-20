@@ -89,6 +89,17 @@ defmodule BoomLooper.ChatAgent do
     # SDK's query_queue might serialize but with undefined-to-us
     # interleaving). See agent-sanity #15.
     pending_sends: [],
+    # Fraction of the model's context window used by the current turn
+    # (0.0–1.0+). Computed from the last %Event.SessionResult{}'s
+    # `input_tokens` divided by the model's published window size.
+    # When >= 0.85 we append an inline warning so users know to
+    # /clear or start a fresh agent before the CLI silently drops
+    # earliest turns. See agent-sanity #18.
+    context_utilization: 0.0,
+    # True after we've warned about high utilization for this
+    # stream; cleared on next stream_done so the warning doesn't
+    # repeat every turn once the user acknowledges.
+    context_warning_sent: false,
     # Accumulates `%Event.TextDelta{}` chunks during a streaming turn.
     # If the stream completes successfully, `%Event.Text{}` arrives and
     # we reset this to "". If the stream is cut short (stream_error,
@@ -985,14 +996,31 @@ defmodule BoomLooper.ChatAgent do
           # waking up amnesiac.
           claude_sid = state.backend.session_id(state.session) || state.claude_session_id
 
+          # Context-window utilization. `input_tokens` is what Claude
+          # was sent THIS turn (cumulative conversation context, since
+          # we don't prune). Dividing by the model's window size gives
+          # us a live % full — when it climbs toward 1.0 the CLI will
+          # silently start dropping earliest turns. See agent-sanity #18.
+          window = context_window_for(result.model || state.model)
+          utilization =
+            if window > 0 do
+              (result.input_tokens + result.cache_read_tokens) / window
+            else
+              state.context_utilization
+            end
+
           state = %{state |
             model: result.model || state.model,
             total_input_tokens: state.total_input_tokens + result.input_tokens,
             total_output_tokens: state.total_output_tokens + result.output_tokens,
             total_cache_read_tokens: state.total_cache_read_tokens + result.cache_read_tokens,
             total_cost_usd: state.total_cost_usd + result.cost_usd,
-            claude_session_id: claude_sid
+            claude_session_id: claude_sid,
+            context_utilization: utilization
           }
+
+          state = maybe_warn_context_full(state, id, utilization)
+
           :ets.insert(@ets_table, {id, summary(state)})
           Persistence.persist_agent(state, &summary/1)
           Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: state.status})
@@ -1032,7 +1060,13 @@ defmodule BoomLooper.ChatAgent do
     # Clear in_flight_partial on clean stream_done — by now either an
     # Event.Text already finalized the assistant response, or the turn
     # ended with only tool calls. Either way, there's no orphan partial.
-    state = %{state | status: :idle, active_tool: nil, turns: state.turns + 1, in_flight_partial: ""}
+    state = %{state |
+      status: :idle,
+      active_tool: nil,
+      turns: state.turns + 1,
+      in_flight_partial: "",
+      context_warning_sent: false
+    }
     state = Map.put(state, :consecutive_crashes, 0)
     state = schedule_idle_check(state)
     :ets.insert(@ets_table, {id, summary(state)})
@@ -1789,6 +1823,73 @@ defmodule BoomLooper.ChatAgent do
     end
   end
 
+  # --- Context window utilization (agent-sanity #18) ---
+
+  # Published Claude model window sizes. Approximate; a few models
+  # support extended context variants but we pick the mainline default
+  # so our % estimate is on the conservative side (i.e. if we say 90%
+  # full, we're not lying to the user). When we encounter an unknown
+  # model name we return 0 to mean "no estimate" — the warn gate
+  # short-circuits on 0 so we don't spam warnings against a
+  # never-computed ratio.
+  @context_windows %{
+    "claude-opus-4-7" => 1_000_000,
+    "claude-opus-4-7-20250929" => 1_000_000,
+    "claude-opus-4-6" => 1_000_000,
+    "claude-opus-4-5" => 1_000_000,
+    "claude-sonnet-4-6" => 200_000,
+    "claude-sonnet-4-5" => 200_000,
+    "claude-sonnet-4-5-20250929" => 200_000,
+    "claude-haiku-4-5" => 200_000,
+    "claude-haiku-4-5-20251001" => 200_000
+  }
+
+  defp context_window_for(nil), do: 200_000
+  defp context_window_for(model) when is_binary(model) do
+    Map.get(@context_windows, model) ||
+      Enum.find_value(@context_windows, 0, fn {prefix, size} ->
+        if String.starts_with?(model, prefix), do: size
+      end)
+  end
+  defp context_window_for(_), do: 200_000
+
+  @context_warn_threshold 0.85
+
+  # One-shot warning when utilization crosses the threshold. Gated on
+  # `context_warning_sent` so we don't spam per-turn. stream_done
+  # resets the flag so the warning re-fires if utilization stays high
+  # in a later turn.
+  defp maybe_warn_context_full(state, id, utilization)
+       when utilization >= @context_warn_threshold do
+    if state.context_warning_sent do
+      state
+    else
+      pct = round(utilization * 100)
+
+      warn_msg = %{
+        role: :system,
+        content:
+          "⚠ Context window #{pct}% full. Claude will silently drop the earliest turns " <>
+            "once the window fills. Consider starting a fresh agent or running /clear " <>
+            "if you want to preserve recent context.",
+        timestamp: DateTime.utc_now()
+      }
+
+      :telemetry.execute(
+        [:boom_looper, :agent, :context_warning],
+        %{utilization: utilization},
+        %{agent_id: id, model: state.model}
+      )
+
+      {state, warn_msg} = append_message(state, warn_msg)
+      Persistence.persist_message(state, warn_msg)
+      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: warn_msg})
+      %{state | context_warning_sent: true}
+    end
+  end
+
+  defp maybe_warn_context_full(state, _id, _utilization), do: state
+
   # Drain the pending-sends queue if there's anything in it.
   # Called from turn-completion handlers (:stream_done /
   # :stream_error / :stream_timeout / :rate_limit_retry). Returns the
@@ -1943,7 +2044,8 @@ defmodule BoomLooper.ChatAgent do
       rate_limit_resets_at_ms: state.rate_limit_resets_at_ms,
       rate_limit_type: state.rate_limit_type,
       auth_error: state.auth_error,
-      prompt_hash: state.prompt_hash
+      prompt_hash: state.prompt_hash,
+      context_utilization: state.context_utilization
     }
   end
 
