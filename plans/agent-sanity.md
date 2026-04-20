@@ -471,7 +471,21 @@ to us. Today we surface `cache_read_tokens` + `input_tokens` but no
 - [ ] Failing test: simulate a SessionResult with utilization 0.9,
   assert compaction triggered + user sees the explanation.
 
-### 19. System prompt drift on resume
+### 19. System prompt drift on resume — **DONE**
+
+- [x] `start_session/3` now returns the prompt's SHA-256 hash.
+  `init_fresh` captures it; `summary/1` persists it so `init_resume`
+  can compare.
+- [x] On mismatch, init_resume appends an inline `⚠ System prompt
+  changed since this agent's last boot…` message + emits
+  `[:boom_looper, :agent, :prompt_drift]` telemetry with old/new
+  hashes.
+- [x] No-op for agents resumed without a saved hash (pre-fix
+  rows) — no marker, just populate the new hash for next time.
+- [x] Regression: `test/boom_looper/chat_agent/prompt_drift_test.exs`
+  (5 tests).
+
+### 19-legacy. Design notes:
 
 **Gap**: `build_system_prompt` is rebuilt from scratch on every
 `start_session`, pulling the latest CLAUDE.md + tool set. When we

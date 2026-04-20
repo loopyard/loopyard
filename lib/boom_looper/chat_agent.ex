@@ -62,6 +62,14 @@ defmodule BoomLooper.ChatAgent do
     # DOWN — covers the brutal_kill / node crash / :shutdown-timeout
     # cases where `terminate/2` never runs. See plans/agent-sanity.md #12.
     tracked_cli_os_pid: nil,
+    # SHA-256 of the system_prompt passed to `append_system_prompt` on
+    # start_session. Stored alongside claude_session_id so init_resume
+    # can detect when the prompt has changed between boots (CLAUDE.md
+    # edit, tool set updated, agent_type reassigned). When it differs,
+    # we emit telemetry + an inline marker so the user knows the agent
+    # is now operating under different instructions than its earlier
+    # turns were generated under. See agent-sanity #19.
+    prompt_hash: nil,
     # Accumulates `%Event.TextDelta{}` chunks during a streaming turn.
     # If the stream completes successfully, `%Event.Text{}` arrives and
     # we reset this to "". If the stream is cut short (stream_error,
@@ -435,7 +443,7 @@ defmodule BoomLooper.ChatAgent do
       [{^id, saved}] ->
         agent_type = saved[:agent_type] || BoomLooper.Agents.Registry.default_agent_name()
 
-        {session, session_opts, backend} = start_session(id, opts,
+        {session, session_opts, backend, new_prompt_hash} = start_session(id, opts,
           working_dir: saved.working_dir,
           bind_mount: saved.bind_mount,
           workspace_id: saved.workspace_id,
@@ -443,6 +451,15 @@ defmodule BoomLooper.ChatAgent do
           agent_type: agent_type,
           claude_session_id: saved[:claude_session_id]
         )
+
+        # Prompt-drift detection — agent-sanity #19. If the system prompt
+        # hash differs from the one captured last boot, the agent's
+        # behavior may change subtly from its earlier turns. Detect it
+        # here, surface it below after state is built.
+        saved_prompt_hash = saved[:prompt_hash]
+        prompt_changed? =
+          is_binary(saved_prompt_hash) and is_binary(new_prompt_hash) and
+            saved_prompt_hash != new_prompt_hash
 
         # Summary stores messages oldest-first (display order); internal
         # state stores them newest-first for O(1) prepend in append_message.
@@ -466,10 +483,39 @@ defmodule BoomLooper.ChatAgent do
             # Drop any stale tracked pid from the saved summary — the old
             # CLI OS pid is long dead from the previous BEAM. track_cli_os_pid
             # below registers the new one with the Janitor.
-            tracked_cli_os_pid: nil
+            tracked_cli_os_pid: nil,
+            prompt_hash: new_prompt_hash
           )
 
         state = track_cli_os_pid(state)
+
+        # Agent-sanity #19 — prompt drift marker. Announce the change in
+        # the conversation so the user isn't mystified if the agent
+        # behaves differently than it did pre-boot.
+        state =
+          if prompt_changed? do
+            :telemetry.execute(
+              [:boom_looper, :agent, :prompt_drift],
+              %{count: 1},
+              %{agent_id: id, old_hash: saved_prompt_hash, new_hash: new_prompt_hash}
+            )
+
+            drift_msg = %{
+              role: :system,
+              content:
+                "⚠ System prompt changed since this agent's last boot. Earlier turns in this " <>
+                  "conversation were generated under the prior instructions; new turns will " <>
+                  "follow the updated ones — behavior may differ.",
+              timestamp: DateTime.utc_now()
+            }
+
+            {state, drift_msg} = append_message(state, drift_msg)
+            Persistence.persist_message(state, drift_msg)
+            Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: drift_msg})
+            state
+          else
+            state
+          end
 
         :ets.insert(@ets_table, {id, summary(state)})
         Events.ChatAgent.publish(%Events.ChatAgent.Resumed{summary: summary(state)})
@@ -510,7 +556,7 @@ defmodule BoomLooper.ChatAgent do
     service_name = Keyword.get(opts, :service_name)
     agent_type = Keyword.get(opts, :agent_type) || BoomLooper.Agents.Registry.default_agent_name()
 
-    {session, session_opts, backend} = start_session(id, opts,
+    {session, session_opts, backend, prompt_hash} = start_session(id, opts,
       working_dir: working_dir,
       bind_mount: bind_mount,
       workspace_id: workspace_id,
@@ -536,7 +582,8 @@ defmodule BoomLooper.ChatAgent do
       status: :idle,
       messages: [],
       service_name: service_name,
-      agent_type: agent_type
+      agent_type: agent_type,
+      prompt_hash: prompt_hash
     }
 
     state = track_cli_os_pid(state)
@@ -649,7 +696,8 @@ defmodule BoomLooper.ChatAgent do
       end
 
     {:ok, session} = backend.start_session(session_opts)
-    {session, session_opts, backend}
+    prompt_hash = :crypto.hash(:sha256, system_prompt || "") |> Base.encode16(case: :lower)
+    {session, session_opts, backend, prompt_hash}
   end
 
   @impl true
@@ -1731,7 +1779,8 @@ defmodule BoomLooper.ChatAgent do
       rate_limit_status: state.rate_limit_status,
       rate_limit_resets_at_ms: state.rate_limit_resets_at_ms,
       rate_limit_type: state.rate_limit_type,
-      auth_error: state.auth_error
+      auth_error: state.auth_error,
+      prompt_hash: state.prompt_hash
     }
   end
 
