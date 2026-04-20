@@ -176,4 +176,52 @@ defmodule BoomLooper.ChatAgent.HardeningTest do
              end)
     end
   end
+
+  describe "non-binary send_message guard" do
+    test "nil send_message is rejected cleanly, agent survives", %{id: id} do
+      pid = agent_pid(id)
+
+      parent = self()
+      handler_id = "non-binary-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:boom_looper, :agent, :message_rejected],
+        fn _event, _m, meta, _cfg -> send(parent, {:rejected, meta}) end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      # Bypass the public send_message wrapper (which may type-check);
+      # cast directly with a nil payload.
+      GenServer.cast(pid, {:send_message, nil})
+      Process.sleep(50)
+
+      assert_receive {:rejected, meta}, 500
+      assert meta.reason == :non_binary
+
+      assert Process.alive?(pid)
+      state = :sys.get_state(pid)
+      assert state.status == :idle
+    end
+
+    test "atom payload is rejected", %{id: id} do
+      pid = agent_pid(id)
+
+      GenServer.cast(pid, {:send_message, :oops})
+      Process.sleep(50)
+
+      assert Process.alive?(pid)
+    end
+
+    test "integer payload is rejected", %{id: id} do
+      pid = agent_pid(id)
+
+      GenServer.cast(pid, {:send_message, 42})
+      Process.sleep(50)
+
+      assert Process.alive?(pid)
+    end
+  end
 end
