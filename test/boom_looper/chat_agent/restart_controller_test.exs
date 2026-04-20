@@ -372,4 +372,162 @@ defmodule BoomLooper.ChatAgent.RestartControllerTest do
       refute RestartController.quarantined?(id)
     end
   end
+
+  describe "crash_history persistence across controller restart" do
+    # Audit HIGH #3 (commit 02d42f6). WorkspaceGroup uses
+    # :one_for_all supervision — a sibling crash (ServiceManager,
+    # ContainerMonitor, Checkpointer) restarts the RestartController.
+    # Before the fix, crash_history lived in the GenServer's state
+    # map and was wiped by the restart: an agent that was 4-of-5
+    # crashes reset to 0-of-5, silently bypassing quarantine.
+    #
+    # These tests prove the history survives via ETS
+    # (:restart_controller_history, keyed by {workspace_id, agent_id})
+    # and that a post-restart controller still sees the pre-restart
+    # counter.
+
+    setup do
+      path = File.cwd!()
+      workspace_id = BoomLooper.Workspace.workspace_id(path)
+      {:ok, _} = BoomLooper.WorkspaceSupervisor.start_workspace(workspace_id, path)
+
+      on_exit(fn ->
+        BoomLooper.WorkspaceSupervisor.stop_workspace(workspace_id)
+        Process.sleep(50)
+      end)
+
+      %{workspace_id: workspace_id, path: path}
+    end
+
+    test "ETS-backed history survives a controller-only restart", %{workspace_id: workspace_id} do
+      agent_id = "history-persists-#{:rand.uniform(1_000_000)}"
+      on_exit(fn -> :ets.delete(:restart_controller_history, {workspace_id, agent_id}) end)
+
+      now = System.monotonic_time(:millisecond)
+      stamps = [now - 50, now - 100]
+
+      :ets.insert(:restart_controller_history, {{workspace_id, agent_id}, stamps})
+
+      old_pid = controller_pid(workspace_id)
+      assert is_pid(old_pid)
+
+      # Kill just the controller. WorkspaceGroup is :one_for_all so
+      # the siblings restart too — the registry gets re-registered
+      # when the new controller init/1 runs.
+      ref = Process.monitor(old_pid)
+      Process.exit(old_pid, :kill)
+      assert_receive {:DOWN, ^ref, :process, ^old_pid, _}, 1_000
+
+      new_pid = wait_for_new_controller(workspace_id, old_pid)
+      assert new_pid != old_pid
+
+      # The invariant: the history row is still in ETS after the
+      # controller restart. Pre-fix this lived in process state and
+      # would be gone.
+      assert [{{^workspace_id, ^agent_id}, persisted}] =
+               :ets.lookup(:restart_controller_history, {workspace_id, agent_id})
+
+      assert persisted == stamps
+    end
+
+    test "crash after controller restart counts pre-restart history toward quarantine",
+         %{workspace_id: workspace_id, path: path} do
+      # Threshold from suite setup: 3 crashes in 500ms. Pre-seed two
+      # stamps — one more crash should quarantine. Without the ETS
+      # fix the new controller would start with an empty map, the
+      # crash would count as 1/3, and the agent would respawn instead
+      # of quarantine.
+      agent_id = "quarantine-after-restart-#{:rand.uniform(1_000_000)}"
+
+      BoomLooper.Events.ChatAgent.subscribe()
+
+      on_exit(fn ->
+        try do
+          BoomLooper.ChatAgent.stop_agent(agent_id)
+        catch
+          :exit, _ -> :ok
+        end
+
+        :ets.delete(:chat_agents, agent_id)
+        :ets.delete(:restart_controller_history, {workspace_id, agent_id})
+      end)
+
+      now = System.monotonic_time(:millisecond)
+      # Two recent timestamps, still inside the 500ms window.
+      :ets.insert(
+        :restart_controller_history,
+        {{workspace_id, agent_id}, [now - 20, now - 40]}
+      )
+
+      # Force a :one_for_all restart of the WorkspaceGroup children
+      # by killing the RestartController.
+      old_pid = controller_pid(workspace_id)
+      assert is_pid(old_pid)
+      dref = Process.monitor(old_pid)
+      Process.exit(old_pid, :kill)
+      assert_receive {:DOWN, ^dref, :process, ^old_pid, _}, 1_000
+      _new_pid = wait_for_new_controller(workspace_id, old_pid)
+
+      # Now start an agent under the reborn controller and kill it.
+      # That DOWN is crash #3, which MUST quarantine on the basis of
+      # the pre-seeded stamps.
+      {:ok, _agent_pid} =
+        BoomLooper.TestHelpers.start_agent(
+          id: agent_id,
+          name: "PostRestartCrasher",
+          working_dir: path,
+          started_by: "test"
+        )
+
+      [{apid, _}] = Registry.lookup(BoomLooper.ChatAgentRegistry, agent_id)
+      Process.exit(apid, :kill)
+
+      assert_receive %BoomLooper.Events.ChatAgent.Quarantined{id: ^agent_id}, 2_000
+      assert RestartController.quarantined?(agent_id)
+    end
+  end
+
+  # ── Helpers ──
+
+  defp controller_pid(workspace_id) do
+    case Registry.lookup(
+           BoomLooper.ChatAgent.RestartControllerRegistry,
+           workspace_id
+         ) do
+      [{pid, _}] -> pid
+      [] -> nil
+    end
+  end
+
+  # Poll until a NEW controller pid is registered, or flunk on timeout.
+  # :one_for_all restart is async — we have to wait for the supervisor
+  # to bring the replacement up and register it.
+  defp wait_for_new_controller(workspace_id, old_pid, deadline_ms \\ 2_000) do
+    started = System.monotonic_time(:millisecond)
+
+    loop = fn loop ->
+      case controller_pid(workspace_id) do
+        nil ->
+          if System.monotonic_time(:millisecond) - started > deadline_ms do
+            flunk("no controller registered after restart")
+          end
+
+          Process.sleep(20)
+          loop.(loop)
+
+        ^old_pid ->
+          if System.monotonic_time(:millisecond) - started > deadline_ms do
+            flunk("controller did not restart (still #{inspect(old_pid)})")
+          end
+
+          Process.sleep(20)
+          loop.(loop)
+
+        new_pid ->
+          new_pid
+      end
+    end
+
+    loop.(loop)
+  end
 end

@@ -99,4 +99,99 @@ defmodule BoomLooper.ChatAgent.CrashBackoffTest do
       assert Map.get(state, :consecutive_crashes) == 0
     end
   end
+
+  describe ":retry_session session-replacement guard" do
+    # Audit-2 HIGH #2 (commit 35f07cc). The async-backoff fix kept
+    # state.status = :thinking during the backoff window. A user's
+    # send_message cast arriving mid-backoff called
+    # ensure_session_alive, replaced state.session with a fresh pid,
+    # and then the scheduled :retry_session spawned ANOTHER session —
+    # orphaning one CLI process per race.
+    #
+    # The fix carries the dead_session pid in the 3-tuple
+    # {:retry_session, consecutive, dead_session}. On fire, if
+    # state.session != dead_session the handler no-ops — the new
+    # session is owned by whoever replaced it.
+
+    test "retry_session no-ops when state.session was replaced mid-backoff", %{id: id} do
+      pid = agent_pid(id)
+      assert pid != nil
+
+      # Record the live session and synthesize a distinct "dead" pid
+      # that the scheduled message should have been tied to. Any pid
+      # != state.session triggers the guard; using self() keeps the
+      # test hermetic.
+      original_state = :sys.get_state(pid)
+      live_session = original_state.session
+
+      # Mark retry_from_session as if the :EXIT handler had queued a
+      # retry. If the guard fires we expect it to be deleted; if not,
+      # dispatch_retry_session deletes it too — so we also check
+      # state.session stayed put.
+      :sys.replace_state(pid, fn state ->
+        state
+        |> Map.put(:retry_from_session, self())
+      end)
+
+      # Capture any status broadcasts that would fire if the retry
+      # path actually ran (dispatch_retry_session always publishes
+      # :idle after start_session).
+      dead_session = self()
+      send(pid, {:retry_session, 1, dead_session})
+
+      # Give the GenServer time to process. No StatusChanged should
+      # arrive for this agent.
+      refute_receive %BoomLooper.Events.ChatAgent.StatusChanged{id: ^id}, 200
+
+      new_state = :sys.get_state(pid)
+
+      # state.session stayed exactly as it was — no new session got
+      # spawned by the no-op path.
+      assert new_state.session == live_session
+      assert Process.alive?(new_state.session)
+
+      # Guard cleared the retry_from_session stash.
+      refute Map.has_key?(new_state, :retry_from_session) and
+               Map.get(new_state, :retry_from_session) != nil
+
+      refute Map.get(new_state, :retry_from_session)
+    end
+
+    test "retry_session fires normally when state.session matches dead_session", %{id: id} do
+      pid = agent_pid(id)
+      assert pid != nil
+
+      original_state = :sys.get_state(pid)
+      dead_session = original_state.session
+
+      # Seed retry_from_session so we can check it's cleared after
+      # dispatch. Also force status back to :thinking so the retry
+      # transition → :idle is observable via the StatusChanged event.
+      :sys.replace_state(pid, fn state ->
+        state
+        |> Map.put(:retry_from_session, dead_session)
+        |> Map.put(:status, :thinking)
+      end)
+
+      send(pid, {:retry_session, 2, dead_session})
+
+      # dispatch_retry_session publishes :idle on successful restart.
+      assert_receive %BoomLooper.Events.ChatAgent.StatusChanged{id: ^id, status: :idle}, 1_000
+
+      new_state = :sys.get_state(pid)
+
+      # A NEW session replaced the dead one via backend.start_session/1.
+      # Fake backend returns a fresh GenServer pid each call.
+      assert new_state.session != dead_session
+      assert is_pid(new_state.session)
+      assert Process.alive?(new_state.session)
+
+      # retry_from_session was cleared by dispatch_retry_session.
+      refute Map.get(new_state, :retry_from_session)
+
+      # Consecutive counter was updated to the value carried by the
+      # scheduled message.
+      assert Map.get(new_state, :consecutive_crashes) == 2
+    end
+  end
 end

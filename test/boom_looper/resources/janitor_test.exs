@@ -162,6 +162,116 @@ defmodule BoomLooper.Resources.JanitorTest do
     end
   end
 
+  describe "rehydrate from ETS on janitor restart" do
+    # Audit HIGH #4 + audit-2 MEDIUM #3 (commits 02d42f6 + 35f07cc).
+    # The janitor used to call `:ets.delete_all_objects(@table)` on
+    # init, leaking every tracked resource whose owner survived the
+    # restart. Post-fix: it re-monitors surviving owners and drops
+    # only dead-owner rows. Audit-2 MEDIUM #3: dead-owner rows must
+    # ALSO run their release_fn before deletion, otherwise OS-level
+    # resources (e.g. port bindings) orphan.
+
+    test "surviving owner still has active tracking after janitor crash" do
+      test_pid = self()
+      {owner, _} = spawn_owner()
+
+      Resources.track(owner, :rehydrate_survivor, :r1, fn ->
+        send(test_pid, :released_after_rehydrate)
+      end)
+
+      assert [_] = :ets.lookup(Janitor.table(), {:rehydrate_survivor, :r1})
+
+      # Crash the janitor. The named supervisor will bring it back;
+      # on init it must re-monitor the still-alive owner so the
+      # release_fn fires when the owner eventually dies.
+      janitor_pid = Process.whereis(Janitor)
+      assert is_pid(janitor_pid)
+      ref = Process.monitor(janitor_pid)
+      Process.exit(janitor_pid, :kill)
+      assert_receive {:DOWN, ^ref, :process, ^janitor_pid, _}, 1_000
+
+      new_pid = wait_for_janitor_restart(janitor_pid)
+      assert new_pid != janitor_pid
+
+      # Row for the live owner stayed in ETS.
+      assert [{_, ^owner, _fn, _ts}] =
+               :ets.lookup(Janitor.table(), {:rehydrate_survivor, :r1})
+
+      # Now kill the owner — the new janitor must still fire the
+      # release_fn, proving it re-monitored the pid on rehydrate.
+      send(owner, :stop)
+      assert_receive :released_after_rehydrate, 1_000
+
+      # ETS row is cleaned up by the new janitor's DOWN handler.
+      # The release_fn's `send` runs just before `:ets.delete`, so
+      # receiving the message doesn't guarantee the row is gone yet
+      # — poll briefly.
+      wait_until(fn ->
+        :ets.lookup(Janitor.table(), {:rehydrate_survivor, :r1}) == []
+      end)
+    end
+
+    test "dead-owner release_fn runs during rehydrate, ETS row deleted" do
+      test_pid = self()
+
+      # Spawn an owner, track under it, then kill the owner BEFORE
+      # the janitor dies — simulating "owner already gone when the
+      # janitor restarts" (happens in practice when an owner's crash
+      # and a sibling crash are coincident).
+      owner = spawn(fn -> :ok end)
+      # Wait for owner to actually exit.
+      ref_owner = Process.monitor(owner)
+      assert_receive {:DOWN, ^ref_owner, :process, ^owner, _}, 500
+      refute Process.alive?(owner)
+
+      # Insert directly into ETS with the dead owner. Going through
+      # Resources.track/4 would monitor the pid and, since
+      # Process.monitor on a dead pid fires DOWN immediately, the
+      # live janitor would release the row BEFORE we get a chance to
+      # crash the janitor. Direct insert skips that path and sets up
+      # the "janitor was dead while owner died" race we want to test.
+      ts = System.monotonic_time(:microsecond)
+
+      :ets.insert(
+        Janitor.table(),
+        {{:rehydrate_dead, :r1}, owner, fn -> send(test_pid, :released_on_rehydrate) end, ts}
+      )
+
+      orphan_ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:boom_looper, :resources, :orphan]
+        ])
+
+      # Crash the janitor; the rehydrate path must fire the release_fn
+      # and delete the row (audit-2 MEDIUM #3).
+      janitor_pid = Process.whereis(Janitor)
+      assert is_pid(janitor_pid)
+      mref = Process.monitor(janitor_pid)
+      Process.exit(janitor_pid, :kill)
+      assert_receive {:DOWN, ^mref, :process, ^janitor_pid, _}, 1_000
+
+      _new_pid = wait_for_janitor_restart(janitor_pid)
+
+      # Release_fn fired during rehydrate (not just when the next
+      # DOWN arrives — there's no pid left to send DOWN).
+      assert_receive :released_on_rehydrate, 1_500
+
+      # Orphan telemetry fired with the rehydrate-specific reason.
+      assert_receive {[:boom_looper, :resources, :orphan], ^orphan_ref, _,
+                      %{kind: :rehydrate_dead, id: :r1, reason: :owner_dead_on_janitor_restart}},
+                     1_500
+
+      # ETS row gone. run_release fires telemetry/sends before the
+      # :ets.delete call inside rehydrate_from_ets, so the lookup
+      # can race the delete — poll briefly.
+      wait_until(fn ->
+        :ets.lookup(Janitor.table(), {:rehydrate_dead, :r1}) == []
+      end)
+
+      :telemetry.detach(orphan_ref)
+    end
+  end
+
   # ── Helpers ──
 
   defp spawn_owner do
@@ -174,5 +284,54 @@ defmodule BoomLooper.Resources.JanitorTest do
 
     ref = Process.monitor(pid)
     {pid, ref}
+  end
+
+  defp wait_until(fun, deadline_ms \\ 1_000) do
+    started = System.monotonic_time(:millisecond)
+
+    loop = fn loop ->
+      cond do
+        fun.() ->
+          :ok
+
+        System.monotonic_time(:millisecond) - started > deadline_ms ->
+          flunk("wait_until: condition not met within #{deadline_ms}ms")
+
+        true ->
+          Process.sleep(10)
+          loop.(loop)
+      end
+    end
+
+    loop.(loop)
+  end
+
+  defp wait_for_janitor_restart(old_pid, deadline_ms \\ 2_000) do
+    started = System.monotonic_time(:millisecond)
+
+    loop = fn loop ->
+      case Process.whereis(Janitor) do
+        nil ->
+          if System.monotonic_time(:millisecond) - started > deadline_ms do
+            flunk("janitor did not restart")
+          end
+
+          Process.sleep(20)
+          loop.(loop)
+
+        ^old_pid ->
+          if System.monotonic_time(:millisecond) - started > deadline_ms do
+            flunk("janitor pid unchanged after kill")
+          end
+
+          Process.sleep(20)
+          loop.(loop)
+
+        new_pid ->
+          new_pid
+      end
+    end
+
+    loop.(loop)
   end
 end
