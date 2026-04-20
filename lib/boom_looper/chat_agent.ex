@@ -654,7 +654,19 @@ defmodule BoomLooper.ChatAgent do
         # CLI OS pid is long dead from the previous BEAM. track_cli_os_pid
         # below registers the new one with the Janitor.
         tracked_cli_os_pid: nil,
-        prompt_hash: new_prompt_hash
+        prompt_hash: new_prompt_hash,
+        # Clear rate-limit + auth state on resume. By the time we're
+        # back online, the rate-limit window has probably reset and
+        # the user may have re-authenticated. Starting :idle with a
+        # clean slate is more useful than restoring :rate_limited +
+        # an old resets_at_ms timestamp. If the first turn hits the
+        # same limit / auth error, the SDK will emit it again and
+        # we'll flip back. Avoids "it's rate-limited but the window
+        # passed 3 days ago" dangling state.
+        rate_limit_status: :ok,
+        rate_limit_resets_at_ms: nil,
+        rate_limit_type: nil,
+        auth_error: nil
       )
 
     state = track_cli_os_pid(state)
