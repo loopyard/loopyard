@@ -421,11 +421,16 @@ defmodule BoomLooper.ChatAgentTest do
 
     @tag timeout: 10_000
     test "messages are capped at 1000", %{id: id} do
-      # Directly inject messages via the GenServer to avoid CLI overhead
+      # Directly inject messages via the GenServer to avoid CLI overhead.
+      # Use role: :user — :system triggers the auto-continue side effect
+      # in handle_cast({:append_external_message, ...}) which casts
+      # {:send_message, "Continue."} and would interleave "Continue."
+      # user messages with the numbered ones. We're testing cap
+      # behavior, not auto-continue semantics.
       [{pid, _}] = Registry.lookup(BoomLooper.ChatAgentRegistry, id)
 
       for i <- 1..1050 do
-        msg = %{role: :system, content: "msg-#{i}", timestamp: DateTime.utc_now()}
+        msg = %{role: :user, content: "msg-#{i}", timestamp: DateTime.utc_now()}
         GenServer.cast(pid, {:append_external_message, msg})
       end
 

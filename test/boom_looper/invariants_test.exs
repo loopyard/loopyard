@@ -155,11 +155,15 @@ defmodule BoomLooper.InvariantsTest do
     test "StateKeeper tables are referenced in application code" do
       state_keeper_source = File.read!("lib/boom_looper/state_keeper.ex")
 
-      # Extract table names from the @tables list (lines like `  :chat_agents,`)
+      # Extract table names from the @tables list. Each entry is a
+      # tuple `{:table_name, [opt1, opt2, ...]}`. The old regex picked
+      # up every atom (including :named_table from the options) which
+      # made the assertion fail against any option not referenced by
+      # app code. Match only the FIRST atom inside each tuple.
       table_names =
         Regex.scan(~r/@tables\s*\[(.*?)\]/s, state_keeper_source)
         |> Enum.flat_map(fn [_, body] ->
-          Regex.scan(~r/:(\w+)/, body) |> Enum.map(fn [_, name] -> name end)
+          Regex.scan(~r/\{:(\w+)\s*,/, body) |> Enum.map(fn [_, name] -> name end)
         end)
         |> Enum.uniq()
 
