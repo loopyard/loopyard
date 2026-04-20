@@ -1093,16 +1093,41 @@ defmodule BoomLooper.ChatAgent do
 
   @impl true
   def handle_cast({:update_message, msg_id, update_fn}, state) do
+    # Guard update_fn against raising. A bad caller (or a tool that
+    # returned a map the update_fn wasn't written to handle) shouldn't
+    # crash the agent — this is just a message-annotation path, not
+    # core state. On raise: log, emit telemetry, no-op.
     old_msg = Enum.find(state.messages, &(&1[:id] == msg_id))
-    messages = Enum.map(state.messages, fn msg ->
-      if msg[:id] == msg_id, do: update_fn.(msg), else: msg
-    end)
+
+    messages =
+      try do
+        Enum.map(state.messages, fn msg ->
+          if msg[:id] == msg_id, do: update_fn.(msg), else: msg
+        end)
+      rescue
+        e ->
+          :telemetry.execute(
+            [:boom_looper, :agent, :update_message_failed],
+            %{count: 1},
+            %{agent_id: state.id, msg_id: msg_id, reason: Exception.message(e)}
+          )
+
+          require Logger
+
+          Logger.warning(
+            "[ChatAgent] #{state.id} update_message for #{msg_id} raised: " <>
+              Exception.message(e) <> ". Message unchanged."
+          )
+
+          state.messages
+      end
+
     state = %{state | messages: messages}
     :ets.insert(@ets_table, {state.id, summary(state)})
 
     # Persist the changes (diff between old and new)
     new_msg = Enum.find(state.messages, &(&1[:id] == msg_id))
-    if old_msg && new_msg do
+    if old_msg && new_msg && new_msg != old_msg do
       changes = Map.drop(new_msg, [:id])
       Persistence.persist_message_update(state,msg_id, changes)
     end
