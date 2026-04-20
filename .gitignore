@@ -54,3 +54,5 @@ ports.json
 worktrees/
 
 .claude/scheduled_tasks.lock
+*.log
+sagas.log
