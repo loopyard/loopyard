@@ -220,6 +220,12 @@ defmodule BoomLooperWeb.Components.Sidebar do
     end
   end
 
+  # Fallback for malformed agent maps (missing :id or unexpected
+  # shape). Render as sleeping — neutral gray so the UI doesn't crash
+  # on a bad row from an upstream bug. Better to see "unknown" in the
+  # sidebar than take down the LiveView.
+  def agent_display_status(_other), do: :sleeping
+
   defp agent_alive?(id) do
     case Registry.lookup(BoomLooper.ChatAgentRegistry, id) do
       [{pid, _}] -> Process.alive?(pid)
