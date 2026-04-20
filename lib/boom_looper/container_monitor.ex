@@ -25,7 +25,18 @@ defmodule BoomLooper.ContainerMonitor do
     {:noreply, state}
   end
 
-  def handle_info(_, state), do: {:noreply, state}
+  def handle_info(msg, state) do
+    require Logger
+    Logger.warning("[ContainerMonitor] unhandled: #{inspect(msg, limit: 200)}")
+
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, msg: inspect(msg, limit: 200)}
+    )
+
+    {:noreply, state}
+  end
 
   defp schedule_poll do
     Process.send_after(self(), :poll, @poll_interval)

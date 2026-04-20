@@ -119,16 +119,24 @@ defmodule BoomLooper.Saga.Journal do
   @typedoc "Resume strategy declared by the saga."
   @type on_resume :: :rollback | :resume_forward | :manual
 
+  @typedoc ~S"""
+  saga_id produced by `BoomLooper.Saga.make_saga_id/0`. Formatted as
+  `"#{system_time_us}-#{monotonic_unique_integer}"` so it survives
+  BEAM restarts without colliding with integer ids from prior
+  lifetimes. Audit-2 MEDIUM #4.
+  """
+  @type saga_id :: String.t()
+
   @typedoc "Journal record variants (see module doc)."
   @type record ::
-          {:saga_started, integer(), atom(), map(), on_resume(), [atom()], integer()}
-          | {:step_started, integer(), atom(), map()}
-          | {:step_succeeded, integer(), atom(), map()}
-          | {:step_failed, integer(), atom(), term()}
-          | {:step_rolled_back, integer(), atom()}
-          | {:rollback_failed, integer(), atom(), term()}
-          | {:saga_completed, integer()}
-          | {:saga_rolled_back, integer(), term()}
+          {:saga_started, saga_id(), atom(), map(), on_resume(), [atom()], integer()}
+          | {:step_started, saga_id(), atom(), map()}
+          | {:step_succeeded, saga_id(), atom(), map()}
+          | {:step_failed, saga_id(), atom(), term()}
+          | {:step_rolled_back, saga_id(), atom()}
+          | {:rollback_failed, saga_id(), atom(), term()}
+          | {:saga_completed, saga_id()}
+          | {:saga_rolled_back, saga_id(), term()}
 
   # ── Public API ──
 
@@ -195,7 +203,7 @@ defmodule BoomLooper.Saga.Journal do
   Return the full ordered record trace for a saga_id, or `[]` if
   no such saga exists in the journal.
   """
-  @spec trace(integer()) :: [record()]
+  @spec trace(saga_id()) :: [record()]
   def trace(saga_id) do
     path()
     |> read_records()

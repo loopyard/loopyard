@@ -40,8 +40,19 @@ defmodule BoomLooper.LogBuffer do
 
   @impl true
   def init(:ok) do
-    :ets.new(@table, [:named_table, :public, :set])
-    :ets.insert(@table, {:counter, 0})
+    # ETS table is owned by StateKeeper (audit-2 MEDIUM #6). The
+    # previous `:ets.new/2` here meant a LogBuffer crash dropped
+    # every buffered log entry AND the Logger handler kept running
+    # — subsequent log lines landed in dead ETS space. StateKeeper
+    # ownership means the buffer survives LogBuffer restarts.
+    BoomLooper.StateKeeper.ensure_tables!()
+
+    # Seed the monotonic counter on fresh boot. On LogBuffer
+    # restart the counter survives in StateKeeper-owned ETS, so we
+    # don't collide with previously-written entries.
+    if :ets.lookup(@table, :counter) == [] do
+      :ets.insert(@table, {:counter, 0})
+    end
 
     # Install as an Erlang logger handler
     :logger.add_handler(@handler_id, __MODULE__, %{})

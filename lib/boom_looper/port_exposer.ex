@@ -152,7 +152,18 @@ defmodule BoomLooper.PortExposer do
     {:noreply, spawn_acceptor(%{state | accept_task: nil})}
   end
 
-  def handle_info(_other, state), do: {:noreply, state}
+  def handle_info(msg, state) do
+    require Logger
+    Logger.warning("[PortExposer] unhandled: #{inspect(msg, limit: 200)}")
+
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, msg: inspect(msg, limit: 200)}
+    )
+
+    {:noreply, state}
+  end
 
   @impl true
   def terminate(_reason, state) do

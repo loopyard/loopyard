@@ -131,15 +131,23 @@ defmodule BoomLooper.Resources.Janitor do
   # `Process.alive?(owner_pid)`:
   #   * alive → set up a fresh Process.monitor, add to by_owner index,
   #     leave the ETS row in place
-  #   * dead → delete the ETS row (and log telemetry as a recovered
-  #     orphan — this is drift the janitor corrected at boot)
+  #   * dead → RUN THE RELEASE_FN (the owner died during our absence
+  #     without anyone calling release), THEN delete the ETS row,
+  #     THEN emit orphan telemetry. The prior version dropped the
+  #     release_fn silently — for :port_binding kind that was a real
+  #     OS-port leak. Audit-2 MEDIUM #3.
   defp rehydrate_from_ets(state) do
     :ets.tab2list(@table)
-    |> Enum.reduce(state, fn {{kind, id} = key, owner_pid, _release_fn, _ts}, acc ->
+    |> Enum.reduce(state, fn {{kind, id} = key, owner_pid, release_fn, _ts}, acc ->
       if is_pid(owner_pid) and Process.alive?(owner_pid) do
         acc = ensure_monitored(acc, owner_pid)
         add_to_index(acc, owner_pid, key)
       else
+        # Run the release_fn FIRST so OS-level resources actually
+        # get cleaned up. run_release/4 already handles nil/bad
+        # functions safely. Only then delete the ETS row.
+        run_release(release_fn, kind, id, :owner_dead_on_janitor_restart)
+
         :ets.delete(@table, key)
 
         :telemetry.execute(

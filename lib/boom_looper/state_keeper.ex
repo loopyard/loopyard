@@ -50,7 +50,12 @@ defmodule BoomLooper.StateKeeper do
     # violated the "StateKeeper is the sole ETS owner" invariant and
     # meant a Recorder crash dropped every recorded saga. Owned here
     # now so recovery is trivial. Audit item MEDIUM #10.
-    {:saga_recorder, [:named_table, :public, :set, {:read_concurrency, true}]}
+    {:saga_recorder, [:named_table, :public, :set, {:read_concurrency, true}]},
+    # BoomLooper.LogBuffer — rolling log tail surfaced on /system.
+    # Moved here from LogBuffer.init/1 for the same reason as
+    # :saga_recorder: StateKeeper is sole ETS owner so buffered logs
+    # survive a LogBuffer GenServer crash. Audit-2 MEDIUM #6.
+    {:log_buffer, [:named_table, :public, :set]}
   ]
 
   def start_link(_opts) do

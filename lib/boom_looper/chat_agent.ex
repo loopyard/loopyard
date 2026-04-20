@@ -920,19 +920,18 @@ defmodule BoomLooper.ChatAgent do
       {:noreply, state}
     else
       # Exponential backoff scheduled via `Process.send_after` — NOT
-      # synchronous sleep. A previous version slept inside this
-      # handler for up to 32s, blocking the mailbox: send_message
-      # casts, :stop, Claude stream events, and PubSub traffic all
-      # queued until the sleep returned. Move #7d's `backoff_ms/2`
-      # exists precisely so ChatAgent crash recovery can be an
-      # async sequence of `handle_info` events rather than a
-      # blocking loop. Schedule + return :noreply; the retry happens
-      # in `handle_info({:retry_session, consecutive})` below.
+      # synchronous sleep. Audit-2 HIGH #2 note: we stash the dead
+      # session pid in state.retry_from_session so :retry_session
+      # can verify no one else (e.g. ensure_session_alive racing via
+      # a user's send_message) replaced state.session during the
+      # backoff. Without that guard, both paths would spawn a new
+      # session and orphan one CLI process per race.
       base = Application.get_env(:boom_looper, :crash_backoff_base_ms, @default_crash_backoff_base_ms)
       backoff_ms = BoomLooper.Retry.backoff_ms(consecutive, {:exponential, base})
       BoomLooper.EventLog.info("agent:#{state.name}", "Backing off #{backoff_ms}ms before restart (crash ##{consecutive})")
-      Process.send_after(self(), {:retry_session, consecutive}, backoff_ms)
+      Process.send_after(self(), {:retry_session, consecutive, state.session}, backoff_ms)
       state = Map.put(state, :consecutive_crashes, consecutive)
+      state = Map.put(state, :retry_from_session, state.session)
       {:noreply, state}
     end
   end
@@ -941,10 +940,41 @@ defmodule BoomLooper.ChatAgent do
   # Actually performs the session restart + appends the outcome
   # message. Kept out of the :EXIT handler so the mailbox stays
   # responsive during the backoff.
+  #
+  # Carries `dead_session` so we can detect whether ensure_session_alive
+  # (running from a send_message cast mid-backoff) already replaced
+  # state.session. If state.session != dead_session, a replacement
+  # already happened — skip the retry so we don't orphan a CLI
+  # process. Audit-2 HIGH #2.
   @impl true
-  def handle_info({:retry_session, consecutive}, state) do
+  def handle_info({:retry_session, consecutive, dead_session}, state) do
     id = state.id
 
+    cond do
+      state.session != dead_session and state.session != nil ->
+        # Another path already replaced the session. No-op; the new
+        # session is owned by whoever replaced it.
+        BoomLooper.EventLog.info(
+          "agent:#{state.name}",
+          "Skipped scheduled :retry_session (session already replaced by another path)"
+        )
+
+        state = Map.delete(state, :retry_from_session)
+        {:noreply, state}
+
+      true ->
+        dispatch_retry_session(state, id, consecutive)
+    end
+  end
+
+  # Legacy 2-tuple form (older scheduled messages from before the
+  # dead_session guard landed). Treat as a forced retry.
+  @impl true
+  def handle_info({:retry_session, consecutive}, state) do
+    dispatch_retry_session(state, state.id, consecutive)
+  end
+
+  defp dispatch_retry_session(state, id, consecutive) do
     case state.backend.start_session(state.session_opts) do
       {:ok, new_session} ->
         recovered_msg = %{
@@ -960,6 +990,7 @@ defmodule BoomLooper.ChatAgent do
           )
 
         state = Map.put(state, :consecutive_crashes, consecutive)
+        state = Map.delete(state, :retry_from_session)
         Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: recovered_msg})
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
         {:noreply, state}
@@ -974,13 +1005,21 @@ defmodule BoomLooper.ChatAgent do
         {state, error_msg} = append_message(state, error_msg)
         state = %{state | status: :idle, errors: state.errors + 1}
         state = Map.put(state, :consecutive_crashes, consecutive)
+        state = Map.delete(state, :retry_from_session)
         Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: error_msg})
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
         {:noreply, state}
     end
   end
 
+  # Normal-reason EXITs from linked streaming Tasks: happen on every
+  # successful turn when the stream Task's closure returns. trap_exit
+  # converts these to messages. Without this explicit clause they
+  # fell through to the unknown-message catch-all below, spamming
+  # warning logs + telemetry on every stream. See audit-2 HIGH #1.
   @impl true
+  def handle_info({:EXIT, _pid, :normal}, state), do: {:noreply, state}
+
   def handle_info(msg, state) do
     # Log + telemetry for unknown messages (framework-fighting fix
     # from plans/post-migration-audit.md). Unknown mailbox traffic
