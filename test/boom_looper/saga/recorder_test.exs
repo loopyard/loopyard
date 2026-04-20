@@ -116,6 +116,45 @@ defmodule BoomLooper.Saga.RecorderTest do
     end
   end
 
+  describe "missing saga_id metadata (defense-in-depth)" do
+    # A producer emitting a saga event without :saga_id is a bug
+    # anywhere in the chain. Previously the recorder silently dropped
+    # these — no log, no telemetry, no breadcrumbs. Now it warns +
+    # emits :actor.unknown_message, matching the handle_info pattern.
+
+    test "logs a warning when a saga event is missing :saga_id" do
+      import ExUnit.CaptureLog
+
+      log =
+        capture_log(fn ->
+          # Fire any non-:started saga event with no :saga_id. The
+          # recorder's handler routes into update/2, which now warns
+          # + emits telemetry instead of silently returning :ok.
+          :telemetry.execute([:boom_looper, :saga, :completed], %{}, %{saga: :bogus})
+          # Telemetry handlers run synchronously in the publishing
+          # process, so no sleep needed.
+        end)
+
+      assert log =~ "Saga.Recorder"
+      assert log =~ "missing :saga_id"
+    end
+
+    test "emits [:boom_looper, :actor, :unknown_message] telemetry" do
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:boom_looper, :actor, :unknown_message]
+        ])
+
+      :telemetry.execute([:boom_looper, :saga, :rolled_back], %{}, %{saga: :bogus})
+
+      assert_receive {[:boom_looper, :actor, :unknown_message], ^ref, %{count: 1},
+                      %{actor: BoomLooper.Saga.Recorder, reason: :missing_saga_id}},
+                     500
+
+      :telemetry.detach(ref)
+    end
+  end
+
   describe "recent/1 filtering" do
     test "filters to a single saga name" do
       Saga.run([%{name: :a, run: fn _ -> {:ok, %{}} end}], name: :filter_test_one)

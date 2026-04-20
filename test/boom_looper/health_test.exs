@@ -81,6 +81,70 @@ defmodule BoomLooper.HealthTest do
                match?({:degraded, _}, status) or
                match?({:down, _}, status)
     end
+
+    # The following tests drive the reconciler into specific last_run
+    # states to cover the threshold branches. Reconciler is a shared
+    # actor under the app tree, so we snapshot + restore state.
+    setup do
+      original = :sys.get_state(BoomLooper.Agent.Reconciler)
+      on_exit(fn -> :sys.replace_state(BoomLooper.Agent.Reconciler, fn _ -> original end) end)
+      :ok
+    end
+
+    test "healthy when drift_count is zero" do
+      :sys.replace_state(BoomLooper.Agent.Reconciler, fn state ->
+        %{state | last_run: %{ran_at: DateTime.utc_now(), drift_count: 0}}
+      end)
+
+      assert Health.component(:agent_reconciler) == :healthy
+    end
+
+    test "healthy when drift_count is below threshold (drift is the reconciler's JOB)" do
+      # Drift of 1-5 is NORMAL — transient booting/crashed blips during
+      # agent lifecycle. False-positive degraded banner every agent boot
+      # is worse than no banner.
+      for drift <- 1..5 do
+        :sys.replace_state(BoomLooper.Agent.Reconciler, fn state ->
+          %{state | last_run: %{ran_at: DateTime.utc_now(), drift_count: drift}}
+        end)
+
+        assert Health.component(:agent_reconciler) == :healthy,
+               "drift_count=#{drift} should NOT be degraded (within threshold)"
+      end
+    end
+
+    test "degraded when drift_count exceeds threshold" do
+      :sys.replace_state(BoomLooper.Agent.Reconciler, fn state ->
+        %{state | last_run: %{ran_at: DateTime.utc_now(), drift_count: 6}}
+      end)
+
+      assert {:degraded, reason} = Health.component(:agent_reconciler)
+      assert reason =~ "6 drift"
+    end
+
+    test "degraded when last scan is too stale (> 120s ago)" do
+      stale_ts = DateTime.add(DateTime.utc_now(), -150, :second)
+
+      :sys.replace_state(BoomLooper.Agent.Reconciler, fn state ->
+        %{state | last_run: %{ran_at: stale_ts, drift_count: 0}}
+      end)
+
+      assert {:degraded, reason} = Health.component(:agent_reconciler)
+      assert reason =~ "Last scan"
+    end
+
+    test "stale-scan check takes precedence over drift threshold" do
+      # Both conditions true: stale wins (more actionable signal —
+      # the reconciler itself is broken).
+      stale_ts = DateTime.add(DateTime.utc_now(), -200, :second)
+
+      :sys.replace_state(BoomLooper.Agent.Reconciler, fn state ->
+        %{state | last_run: %{ran_at: stale_ts, drift_count: 100}}
+      end)
+
+      assert {:degraded, reason} = Health.component(:agent_reconciler)
+      assert reason =~ "Last scan"
+    end
   end
 
   describe "component/1 — docker" do

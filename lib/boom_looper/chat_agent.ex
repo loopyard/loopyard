@@ -88,8 +88,17 @@ defmodule BoomLooper.ChatAgent do
             :ok
         end
 
-        # Force-stop the GenServer (kills linked streaming task too)
-        GenServer.stop(pid, :normal, 5_000)
+        # Force-stop the GenServer (kills linked streaming task too).
+        # Guard with Process.alive? so already-dead pids short-circuit
+        # — without the guard, GenServer.stop/3 on a noproc raises an
+        # exit that callers have to rescue. Matters most for AgentBoot
+        # rollback, where the agent is often already dying; the stop
+        # used to wait 5s for a no-op.
+        if Process.alive?(pid) do
+          GenServer.stop(pid, :normal, 5_000)
+        else
+          :ok
+        end
 
       [] ->
         :ok

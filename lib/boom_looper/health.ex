@@ -37,6 +37,18 @@ defmodule BoomLooper.Health do
 
   @components [:docker, :pubsub, :agent_reconciler]
 
+  # Drift is the reconciler's JOB — transient `:booting → :crashed`
+  # blips during agent lifecycle produce drift of 1 or 2 per scan.
+  # A false-positive "degraded" banner every agent boot is worse
+  # than no banner at all. Only flag degraded when drift is above
+  # a meaningful threshold (indicating agents are actually dying in
+  # bulk, not just a single transient blip).
+  @drift_degraded_threshold 5
+
+  # Reconciler scans every 30s; flag degraded when the last scan
+  # is too stale (reconciler stuck, crashed, or interval nuked).
+  @reconciler_stale_secs 120
+
   @doc "Every component we report on."
   def components, do: @components
 
@@ -100,14 +112,19 @@ defmodule BoomLooper.Health do
 
       %{ran_at: ran_at, drift_count: drift_count} ->
         secs_ago = DateTime.diff(DateTime.utc_now(), ran_at)
-        # Reconciler scans every 30s; if the last run is more than
-        # 2 minutes old, something's wrong with it (stuck, crashed,
-        # or the interval got nuked).
+        # Reconciler scans every 30s; if the last run is too stale,
+        # something's wrong with it (stuck, crashed, or the interval
+        # got nuked).
+        #
+        # For drift: the reconciler's job is to detect + correct
+        # drift, so any non-zero count is NORMAL during an agent
+        # boot blip. Only report degraded when drift exceeds a
+        # threshold (bulk failures, not a single transient).
         cond do
-          secs_ago > 120 ->
+          secs_ago > @reconciler_stale_secs ->
             {:degraded, "Last scan #{secs_ago}s ago (reconciler should tick every 30s)"}
 
-          drift_count > 0 ->
+          drift_count > @drift_degraded_threshold ->
             {:degraded, "Last scan corrected #{drift_count} drift(s) — agents are dying unexpectedly"}
 
           true ->

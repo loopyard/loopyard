@@ -258,7 +258,24 @@ defmodule BoomLooper.Saga.Recorder do
     end
   end
 
-  defp update(_meta_without_id, _fun), do: :ok
+  # Previously a silent `:ok`. A producer emitting a saga telemetry
+  # event without `:saga_id` in metadata is a bug anywhere in the
+  # chain — the recorder going mute with no signal left operators
+  # with no breadcrumbs. Match the `[:boom_looper, :actor,
+  # :unknown_message]` pattern used by the silent-handle_info fixes.
+  defp update(meta, _fun) do
+    Logger.warning(
+      "[Saga.Recorder] telemetry event missing :saga_id metadata: #{inspect(meta, limit: 200)}"
+    )
+
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, reason: :missing_saga_id, meta: inspect(meta, limit: 200)}
+    )
+
+    :ok
+  end
 
   # Every N inserts trim down to @max_records. Batched rather than
   # per-insert for the same reason as Events.Tap — the hot path is

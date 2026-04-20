@@ -22,6 +22,46 @@ defmodule BoomLooper.ChatAgentTest do
     end
   end
 
+  describe "stop_agent/1 on an already-dead pid" do
+    # AgentBoot rollback calls stop_agent on agents that may be
+    # mid-crash. Without an alive? guard, GenServer.stop waits up
+    # to 5s for a noproc exit. Guard short-circuits for dead pids,
+    # so rollback completes immediately.
+    test "short-circuits and returns :ok quickly" do
+      id = "stop-dead-#{:rand.uniform(1_000_000)}"
+
+      # Register a doomed process that dies immediately. Registry
+      # entry lingers briefly after the pid dies (Registry cleans
+      # up via monitor, which is async).
+      {:ok, pid} =
+        Task.start(fn ->
+          Registry.register(BoomLooper.ChatAgentRegistry, id, nil)
+          # Exit immediately so pid is dead but Registry may still
+          # return it.
+          :ok
+        end)
+
+      # Wait for the task to exit (Registry cleanup is async, so
+      # the lookup may still return the now-dead pid).
+      ref = Process.monitor(pid)
+      assert_receive {:DOWN, ^ref, _, _, _}, 500
+
+      # Even if Registry still has the dead pid, stop_agent must
+      # not block on a 5s GenServer.stop timeout.
+      {us, result} = :timer.tc(fn -> ChatAgent.stop_agent(id) end)
+      assert result == :ok
+      assert us < 500_000, "stop_agent on dead pid took #{div(us, 1000)}ms (expected <500ms)"
+    end
+
+    test "returns :ok quickly when there is no registered pid" do
+      id = "stop-unregistered-#{:rand.uniform(1_000_000)}"
+
+      {us, result} = :timer.tc(fn -> ChatAgent.stop_agent(id) end)
+      assert result == :ok
+      assert us < 100_000, "stop_agent with no registered pid took #{div(us, 1000)}ms"
+    end
+  end
+
   describe "restart_session/1" do
     setup do
       id = "restart-test-#{:rand.uniform(100_000)}"
