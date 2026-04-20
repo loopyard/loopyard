@@ -20,11 +20,28 @@ defmodule BoomLooper.TestSupport.RecordingBackend do
   end
 
   def reset do
-    if Process.whereis(__MODULE__) do
-      Agent.update(__MODULE__, fn _ -> %{starts: [], session_id_override: nil} end)
-    else
-      {:ok, _} = start_link([])
-      :ok
+    # whereis can return a PID that's dying, so the subsequent
+    # Agent.update races with the exit. Try-update, fall back to
+    # start. This survives Agent death between tests without racing.
+    case Process.whereis(__MODULE__) do
+      nil ->
+        {:ok, _} = start_link([])
+        :ok
+
+      pid when is_pid(pid) ->
+        try do
+          Agent.update(__MODULE__, fn _ -> %{starts: [], session_id_override: nil} end)
+        catch
+          :exit, _ ->
+            # Agent was alive when we checked, died by now. Start fresh.
+            # Process.whereis might still return the dead pid briefly —
+            # wait a tick and try start_link.
+            Process.sleep(10)
+            case Process.whereis(__MODULE__) do
+              nil -> {:ok, _} = start_link([]); :ok
+              _pid -> :ok
+            end
+        end
     end
   end
 

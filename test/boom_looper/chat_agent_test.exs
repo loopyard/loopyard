@@ -303,6 +303,9 @@ defmodule BoomLooper.ChatAgentTest do
       @impl BoomLooper.Agent.Backend
       def session_alive?(session), do: is_pid(session) and Process.alive?(session)
 
+      @impl BoomLooper.Agent.Backend
+      def session_id(_session), do: nil
+
       # GenServer that links to a PortAdapter child
       @impl GenServer
       def init(:ok) do

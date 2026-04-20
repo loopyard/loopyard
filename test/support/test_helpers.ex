@@ -23,6 +23,26 @@ defmodule BoomLooper.TestHelpers do
   def start_agent(opts) do
     path = Keyword.get(opts, :working_dir, File.cwd!())
     workspace_id = ensure_workspace(path)
-    BoomLooper.WorkspaceGroup.start_agent(workspace_id, opts)
+    start_agent_with_retry(workspace_id, opts, 3)
+  end
+
+  # Race: ensure_workspace can return :ok (subtree exists or was just
+  # started) BEFORE the per-workspace `AgentDynamicSupervisor` is
+  # fully registered. WorkspaceGroup.start_agent then returns
+  # {:error, :workspace_not_running}. Brief retry bridges the gap so
+  # test setup doesn't flake for unrelated timing reasons.
+  defp start_agent_with_retry(_workspace_id, _opts, 0) do
+    {:error, :workspace_not_running}
+  end
+
+  defp start_agent_with_retry(workspace_id, opts, attempts) do
+    case BoomLooper.WorkspaceGroup.start_agent(workspace_id, opts) do
+      {:error, :workspace_not_running} ->
+        Process.sleep(50)
+        start_agent_with_retry(workspace_id, opts, attempts - 1)
+
+      result ->
+        result
+    end
   end
 end
