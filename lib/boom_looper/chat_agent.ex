@@ -632,6 +632,12 @@ defmodule BoomLooper.ChatAgent do
           %{agent_id: id, old_hash: saved_prompt_hash, new_hash: new_prompt_hash}
         )
 
+        BoomLooper.EventLog.info(
+          "agent:#{id}",
+          "Prompt drift detected (old=#{String.slice(saved_prompt_hash, 0..7)} " <>
+            "new=#{String.slice(new_prompt_hash, 0..7)})"
+        )
+
         drift_msg = %{
           role: :system,
           content:
@@ -2207,6 +2213,11 @@ defmodule BoomLooper.ChatAgent do
       %{agent_id: id}
     )
 
+    BoomLooper.EventLog.warning(
+      "agent:#{state.name}",
+      "Tool-call runaway — #{n} tool calls in a single turn"
+    )
+
     warn_msg = %{
       role: :system,
       content:
@@ -2269,6 +2280,11 @@ defmodule BoomLooper.ChatAgent do
         [:boom_looper, :agent, :tool_loop_detected],
         %{consecutive: new_count},
         %{agent_id: id, tool: tool_name}
+      )
+
+      BoomLooper.EventLog.warning(
+        "agent:#{state.name}",
+        "Tool-call loop — `#{tool_name}` called #{new_count}× with same input"
       )
 
       warn_msg = %{
@@ -2345,6 +2361,11 @@ defmodule BoomLooper.ChatAgent do
         [:boom_looper, :agent, :context_warning],
         %{utilization: utilization},
         %{agent_id: id, model: state.model}
+      )
+
+      BoomLooper.EventLog.warning(
+        "agent:#{state.name}",
+        "Context window #{pct}% full (model=#{state.model || "?"})"
       )
 
       {state, warn_msg} = append_message(state, warn_msg)
