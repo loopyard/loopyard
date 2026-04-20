@@ -816,9 +816,24 @@ defmodule BoomLooper.ChatAgent do
         session_opts
       end
 
-    {:ok, session} = backend.start_session(session_opts)
-    prompt_hash = :crypto.hash(:sha256, system_prompt || "") |> Base.encode16(case: :lower)
-    {session, session_opts, backend, prompt_hash}
+    # backend.start_session/1 can fail with {:error, reason} — the CLI
+    # binary missing, auth failing before the first byte, an OS-level
+    # resource limit. Raising with a clear message here is better than
+    # the MatchError on {:error, _} this previously emitted: the
+    # supervisor log names the reason instead of the line number.
+    case backend.start_session(session_opts) do
+      {:ok, session} ->
+        prompt_hash = :crypto.hash(:sha256, system_prompt || "") |> Base.encode16(case: :lower)
+        {session, session_opts, backend, prompt_hash}
+
+      {:error, reason} ->
+        raise RuntimeError,
+          message:
+            "Failed to start CLI session for agent #{id}: #{inspect(reason)}. " <>
+              "Usually this means: the `claude` binary isn't on PATH, the workspace volume " <>
+              "is unreachable, or auth isn't configured. Run " <>
+              "`mix boom.rpc 'ClaudeCode.Test.smoke()'` to diagnose."
+    end
   end
 
   @impl true
