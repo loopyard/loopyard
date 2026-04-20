@@ -495,110 +495,160 @@ defmodule BoomLooper.ChatAgent do
   defp init_resume(id, opts) do
     case :ets.lookup(@ets_table, id) do
       [{^id, saved}] ->
-        agent_type = saved[:agent_type] || BoomLooper.Agents.Registry.default_agent_name()
+        case validate_resume_summary(id, saved) do
+          :ok ->
+            resume_from_summary(id, opts, saved)
 
-        {session, session_opts, backend, new_prompt_hash} = start_session(id, opts,
-          working_dir: saved.working_dir,
-          bind_mount: saved.bind_mount,
-          workspace_id: saved.workspace_id,
-          service_name: saved[:service_name],
-          agent_type: agent_type,
-          claude_session_id: saved[:claude_session_id]
-        )
-
-        # Prompt-drift detection — agent-sanity #19. If the system prompt
-        # hash differs from the one captured last boot, the agent's
-        # behavior may change subtly from its earlier turns. Detect it
-        # here, surface it below after state is built.
-        saved_prompt_hash = saved[:prompt_hash]
-        prompt_changed? =
-          is_binary(saved_prompt_hash) and is_binary(new_prompt_hash) and
-            saved_prompt_hash != new_prompt_hash
-
-        # Summary stores messages oldest-first (display order); internal
-        # state stores them newest-first for O(1) prepend in append_message.
-        # Reverse back on load or the message list grows in the wrong
-        # direction across restart.
-        internal_messages = Enum.reverse(saved[:messages] || [])
-
-        state =
-          __MODULE__
-          |> struct(saved)
-          |> struct(
-            session: session,
-            session_opts: session_opts,
-            backend: backend,
-            last_activity_at: DateTime.utc_now(),
-            status: :idle,
-            stream_ref: nil,
-            active_tool: nil,
-            agent_type: agent_type,
-            messages: internal_messages,
-            # Drop any stale tracked pid from the saved summary — the old
-            # CLI OS pid is long dead from the previous BEAM. track_cli_os_pid
-            # below registers the new one with the Janitor.
-            tracked_cli_os_pid: nil,
-            prompt_hash: new_prompt_hash
-          )
-
-        state = track_cli_os_pid(state)
-        state = schedule_idle_check(state)
-
-        # Agent-sanity #19 — prompt drift marker. Announce the change in
-        # the conversation so the user isn't mystified if the agent
-        # behaves differently than it did pre-boot.
-        state =
-          if prompt_changed? do
-            :telemetry.execute(
-              [:boom_looper, :agent, :prompt_drift],
-              %{count: 1},
-              %{agent_id: id, old_hash: saved_prompt_hash, new_hash: new_prompt_hash}
+          {:error, missing_fields} ->
+            BoomLooper.EventLog.error(
+              "agent:#{id}",
+              "Refusing to resume: saved summary missing required fields #{inspect(missing_fields)}. " <>
+                "The ETS row is corrupt or the schema drifted. Remove this agent and recreate."
             )
 
-            drift_msg = %{
-              role: :system,
-              content:
-                "⚠ System prompt changed since this agent's last boot. Earlier turns in this " <>
-                  "conversation were generated under the prior instructions; new turns will " <>
-                  "follow the updated ones — behavior may differ.",
-              timestamp: DateTime.utc_now()
-            }
+            :telemetry.execute(
+              [:boom_looper, :agent, :resume_rejected],
+              %{count: 1},
+              %{agent_id: id, missing_fields: missing_fields}
+            )
 
-            {state, drift_msg} = append_message(state, drift_msg)
-            Persistence.persist_message(state, drift_msg)
-            Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: drift_msg})
-            state
-          else
-            state
-          end
-
-        :ets.insert(@ets_table, {id, summary(state)})
-        Events.ChatAgent.publish(%Events.ChatAgent.Resumed{summary: summary(state)})
-
-        # Emit resume visibility via EventLog only — do NOT inject a
-        # system message into the conversation here. An injected
-        # message would (a) pollute message-ordering and cap tests,
-        # (b) insert itself between persisted user turns on replay,
-        # and (c) be confusing for agents that resumed cleanly with
-        # a valid claude_session_id (no user-facing event worth
-        # surfacing in-chat).
-        context_status =
-          cond do
-            is_binary(state.claude_session_id) -> "conversation continued"
-            length(state.messages) > 0 -> "NO claude_session_id — CLI will start fresh"
-            true -> "no prior messages"
-          end
-
-        BoomLooper.EventLog.info(
-          "agent:#{state.name}",
-          "Resumed (#{id}) with #{length(state.messages)} messages, #{context_status}"
-        )
-
-        {:ok, state}
+            # Don't silently boot with nil fields; stop and let the
+            # supervisor report the error. This is preferable to
+            # starting with broken state that crashes on first use.
+            {:stop, {:corrupted_resume_state, missing_fields}}
+        end
 
       [] ->
         {:stop, :no_saved_state}
     end
+  end
+
+  # Minimum fields we need to safely resume. Missing `working_dir` ==
+  # can't start a CLI; missing `name` == unusable sidebar entry;
+  # missing `started_at` == sort ordering crashes. Other fields like
+  # tokens/cost/messages are optional-with-defaults and don't need
+  # validation.
+  defp validate_resume_summary(_id, saved) do
+    required = [:working_dir, :name, :started_at]
+
+    missing =
+      Enum.filter(required, fn field ->
+        case Map.get(saved, field) do
+          nil -> true
+          "" -> true
+          _ -> false
+        end
+      end)
+
+    case missing do
+      [] -> :ok
+      fields -> {:error, fields}
+    end
+  end
+
+  defp resume_from_summary(id, opts, saved) do
+    agent_type = saved[:agent_type] || BoomLooper.Agents.Registry.default_agent_name()
+
+    {session, session_opts, backend, new_prompt_hash} =
+      start_session(id, opts,
+        working_dir: saved.working_dir,
+        bind_mount: saved.bind_mount,
+        workspace_id: saved.workspace_id,
+        service_name: saved[:service_name],
+        agent_type: agent_type,
+        claude_session_id: saved[:claude_session_id]
+      )
+
+    # Prompt-drift detection — agent-sanity #19. If the system prompt
+    # hash differs from the one captured last boot, the agent's
+    # behavior may change subtly from its earlier turns. Detect it
+    # here, surface it below after state is built.
+    saved_prompt_hash = saved[:prompt_hash]
+
+    prompt_changed? =
+      is_binary(saved_prompt_hash) and is_binary(new_prompt_hash) and
+        saved_prompt_hash != new_prompt_hash
+
+    # Summary stores messages oldest-first (display order); internal
+    # state stores them newest-first for O(1) prepend in append_message.
+    # Reverse back on load or the message list grows in the wrong
+    # direction across restart.
+    internal_messages = Enum.reverse(saved[:messages] || [])
+
+    state =
+      __MODULE__
+      |> struct(saved)
+      |> struct(
+        session: session,
+        session_opts: session_opts,
+        backend: backend,
+        last_activity_at: DateTime.utc_now(),
+        status: :idle,
+        stream_ref: nil,
+        active_tool: nil,
+        agent_type: agent_type,
+        messages: internal_messages,
+        # Drop any stale tracked pid from the saved summary — the old
+        # CLI OS pid is long dead from the previous BEAM. track_cli_os_pid
+        # below registers the new one with the Janitor.
+        tracked_cli_os_pid: nil,
+        prompt_hash: new_prompt_hash
+      )
+
+    state = track_cli_os_pid(state)
+    state = schedule_idle_check(state)
+
+    # Agent-sanity #19 — prompt drift marker. Announce the change in
+    # the conversation so the user isn't mystified if the agent
+    # behaves differently than it did pre-boot.
+    state =
+      if prompt_changed? do
+        :telemetry.execute(
+          [:boom_looper, :agent, :prompt_drift],
+          %{count: 1},
+          %{agent_id: id, old_hash: saved_prompt_hash, new_hash: new_prompt_hash}
+        )
+
+        drift_msg = %{
+          role: :system,
+          content:
+            "⚠ System prompt changed since this agent's last boot. Earlier turns in this " <>
+              "conversation were generated under the prior instructions; new turns will " <>
+              "follow the updated ones — behavior may differ.",
+          timestamp: DateTime.utc_now()
+        }
+
+        {state, drift_msg} = append_message(state, drift_msg)
+        Persistence.persist_message(state, drift_msg)
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: drift_msg})
+        state
+      else
+        state
+      end
+
+    :ets.insert(@ets_table, {id, summary(state)})
+    Events.ChatAgent.publish(%Events.ChatAgent.Resumed{summary: summary(state)})
+
+    # Emit resume visibility via EventLog only — do NOT inject a
+    # system message into the conversation here. An injected
+    # message would (a) pollute message-ordering and cap tests,
+    # (b) insert itself between persisted user turns on replay,
+    # and (c) be confusing for agents that resumed cleanly with
+    # a valid claude_session_id (no user-facing event worth
+    # surfacing in-chat).
+    context_status =
+      cond do
+        is_binary(state.claude_session_id) -> "conversation continued"
+        length(state.messages) > 0 -> "NO claude_session_id — CLI will start fresh"
+        true -> "no prior messages"
+      end
+
+    BoomLooper.EventLog.info(
+      "agent:#{state.name}",
+      "Resumed (#{id}) with #{length(state.messages)} messages, #{context_status}"
+    )
+
+    {:ok, state}
   end
 
   # Start a fresh agent (normal path)
