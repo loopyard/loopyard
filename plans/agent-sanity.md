@@ -388,7 +388,20 @@ restart sees state that never happened).
   inline `{role: :system, kind: :turn_rolled_back}` marker with a
   clear explanation. Never silent.
 
-### 15. Concurrent `send_message` races
+### 15. Concurrent `send_message` races — **DONE**
+
+- [x] `state.pending_sends :: [String.t()]` queue.
+- [x] `handle_cast({:send_message, text}, %{status: :thinking}/:backoff)`
+  enqueues + appends an inline "Queued — agent is still working"
+  marker, records the user message normally (so it's visible + persisted).
+- [x] `drain_pending_sends/1` pops the head and calls
+  `send_message_normal` inline; wired into `:stream_done`,
+  `:stream_error`, `:stream_timeout`, `:rate_limit_retry` so turns
+  drain in strict FIFO.
+- [x] Regression: `test/boom_looper/chat_agent/concurrent_send_test.exs`
+  (3 tests).
+
+### 15-legacy. Design notes:
 
 **Gap**: two humans (or a human + a tool-triggered auto-send) cast
 `:send_message` nearly simultaneously to the same agent. The GenServer
@@ -522,7 +535,27 @@ is really "the agent is honoring two conflicting system prompts."
 - [ ] Failing test: stop an agent, edit the prompt, resume; assert
   the marker appears.
 
-### 20. Idle-agent CLI reap
+### 20. Idle-agent CLI reap — **DONE**
+
+- [x] Periodic `:idle_check` tick (`Process.send_after`) scheduled
+  from `init_fresh` / `init_resume` at interval
+  `:agent_idle_check_interval_ms` (default 10 min).
+- [x] Reap condition: `status == :idle` AND `is_pid(session)` AND
+  `is_binary(claude_session_id)` AND idle for
+  `:agent_idle_reap_hours * 3600` seconds (default 4h).
+- [x] On reap: graceful `backend.stop/1` (3s cap), release tracked
+  OS pid via `Resources.release/2`, null out `state.session` +
+  `state.tracked_cli_os_pid`. Agent state (messages, tokens,
+  session_id) is preserved; ONLY the CLI subprocess goes away.
+- [x] Next `:send_message` goes through `ensure_session_alive`,
+  which already spawns a fresh CLI with `resume: claude_session_id`
+  → conversation continues seamlessly from user POV.
+- [x] Telemetry: `[:boom_looper, :agent, :idle_reaped]` with idle
+  duration.
+- [x] Regression: `test/boom_looper/chat_agent/idle_reap_test.exs`
+  (4 tests).
+
+### 20-legacy. Design notes:
 
 **Gap**: a long-idle agent holds a CLI subprocess forever. `claude` is
 ~200MB RSS + whatever the prompt cache retains. With 20 agents across
