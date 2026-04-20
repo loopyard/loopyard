@@ -974,7 +974,19 @@ defmodule BoomLooper.ChatAgent do
         {:noreply, state}
 
       {:error, reason} ->
-        error_msg = %{role: :error, content: "Failed to restart session: #{inspect(reason)}", timestamp: DateTime.utc_now()}
+        error_msg = %{
+          role: :error,
+          content:
+            "Failed to restart the CLI session: #{inspect(reason)}. " <>
+              "WHY: the Claude Code CLI couldn't be spawned — usually auth, " <>
+              "missing `claude` binary, or a bad working directory. " <>
+              "CONSEQUENCE: this agent can't accept new messages. " <>
+              "ACTION: run `mix boom.rpc 'ClaudeCode.Test.smoke()'` to diagnose, " <>
+              "then click Restart in the sidebar. If restart keeps failing, " <>
+              "remove the agent and create a new one.",
+          timestamp: DateTime.utc_now()
+        }
+
         {state, error_msg} = append_message(state, error_msg)
         state = %{state | errors: state.errors + 1}
         Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: error_msg})
@@ -1232,7 +1244,17 @@ defmodule BoomLooper.ChatAgent do
     # so users don't lose it on browser refresh. See agent-sanity #3.
     state = finalize_partial_on_stream_interrupt(state, id, :timeout)
 
-    error_msg = %{role: :error, content: "Agent stopped responding. Send a message to retry.", timestamp: DateTime.utc_now()}
+    error_msg = %{
+      role: :error,
+      content:
+        "Agent stopped responding after 10 minutes. " <>
+          "WHY: the streaming task produced no events within the timeout window — usually a tool " <>
+          "call (exec, rebuild, compose up) hung, or the CLI deadlocked. " <>
+          "CONSEQUENCE: the turn was dropped; any partial assistant text was preserved. " <>
+          "ACTION: send another message to retry. If the same tool keeps wedging, check " <>
+          "/system/events for the tool name and diagnose it in isolation.",
+      timestamp: DateTime.utc_now()
+    }
     {state, error_msg} = append_message(state, error_msg)
     # Clear active_tool — if the stream timed out with a tool in flight
     # the tool call is orphaned and the UI spinner would stick forever.
@@ -1313,8 +1335,18 @@ defmodule BoomLooper.ChatAgent do
 
           drain_pending_sends(state)
 
-        {:error, _} ->
-          fail_msg = %{role: :error, content: "Agent session crashed and failed to restart", timestamp: DateTime.utc_now()}
+        {:error, reason} ->
+          fail_msg = %{
+            role: :error,
+            content:
+              "CLI session crashed and failed to restart: #{inspect(reason)}. " <>
+                "WHY: the CLI died mid-stream, and the second attempt to spawn a new one failed. " <>
+                "CONSEQUENCE: this agent can't respond until the CLI is restored. " <>
+                "ACTION: click Restart in the sidebar. If that also fails, the Claude CLI " <>
+                "may be misconfigured — verify `claude --version` and re-authenticate.",
+            timestamp: DateTime.utc_now()
+          }
+
           {state, fail_msg} = append_message(state, fail_msg)
           state = %{state | status: :idle, active_tool: nil}
           Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: fail_msg})
@@ -1322,7 +1354,18 @@ defmodule BoomLooper.ChatAgent do
           drain_pending_sends(state)
       end
     else
-      error_msg = %{role: :error, content: reason, timestamp: now}
+      error_msg = %{
+        role: :error,
+        content:
+          "Stream error: #{reason}. " <>
+            "WHY: the CLI reported an unrecoverable error mid-stream (common: MCP tool " <>
+            "crash, payload too big, malformed tool response). " <>
+            "CONSEQUENCE: the in-flight turn was dropped. Prior context is preserved. " <>
+            "ACTION: send another message — the agent will retry. If the same error " <>
+            "recurs, check /system/events for details.",
+        timestamp: now
+      }
+
       {state, error_msg} = append_message(state, error_msg)
       state = %{state | status: :idle, active_tool: nil, last_activity_at: now, errors: state.errors + 1}
       Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: error_msg})
@@ -1358,7 +1401,19 @@ defmodule BoomLooper.ChatAgent do
     consecutive = Map.get(state, :consecutive_crashes, 0) + 1
 
     if consecutive > @max_consecutive_crashes do
-      error_msg = %{role: :error, content: "Agent crashed #{consecutive} times in a row — giving up. Fix the underlying issue and restart manually.", timestamp: DateTime.utc_now()}
+      error_msg = %{
+        role: :error,
+        content:
+          "Agent crashed #{consecutive} times in a row — giving up to protect the Claude API from hot-loop retries. " <>
+            "WHY: the streaming task kept dying within the exponential-backoff window. Most common cause: " <>
+            "a repeatable bug in a tool the agent keeps calling. " <>
+            "CONSEQUENCE: this agent is now :crashed and won't auto-retry. Prior conversation is preserved. " <>
+            "ACTION: (1) check /system/quarantine + /system/events for the crash reason, " <>
+            "(2) fix the underlying issue (if it's a tool, run `mix test` on it), " <>
+            "(3) click Restart in the sidebar to resume the conversation.",
+        timestamp: DateTime.utc_now()
+      }
+
       {state, error_msg} = append_message(state, error_msg)
       state = %{state | status: :crashed, active_tool: nil, errors: state.errors + 1}
       state = Map.put(state, :consecutive_crashes, consecutive)
@@ -1584,10 +1639,17 @@ defmodule BoomLooper.ChatAgent do
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
         {:noreply, state}
 
-      {:error, _} ->
+      {:error, reason} ->
         error_msg = %{
           role: :error,
-          content: "Agent session crashed. Send a message to retry.",
+          content:
+            "Session retry ##{consecutive} failed: #{inspect(reason)}. " <>
+              "WHY: exponential backoff expired; the attempt to re-spawn the Claude CLI errored. " <>
+              "CONSEQUENCE: the agent is idle but the CLI isn't running. Your prior messages are preserved. " <>
+              "ACTION: send another message — this triggers ensure_session_alive which will " <>
+              "retry the spawn. If it keeps failing, check `claude --version` + auth, or " <>
+              "click Restart. After #{@max_consecutive_crashes} consecutive failures the " <>
+              "agent will auto-quarantine until you intervene.",
           timestamp: DateTime.utc_now()
         }
 
@@ -2216,7 +2278,19 @@ defmodule BoomLooper.ChatAgent do
 
         {:error, reason} ->
           BoomLooper.EventLog.error("agent:#{state.name}", "Failed to restart CLI: #{inspect(reason)}")
-          fail_msg = %{role: :error, content: "Failed to reconnect: #{inspect(reason)}", timestamp: DateTime.utc_now()}
+
+          fail_msg = %{
+            role: :error,
+            content:
+              "Failed to reconnect to Claude CLI: #{inspect(reason)}. " <>
+                "WHY: the CLI session died, and trying to spawn a new one failed. " <>
+                "CONSEQUENCE: your message was saved but won't be processed until the CLI is back. " <>
+                "ACTION: (1) check that `claude` is installed and authenticated " <>
+                "(`mix boom.rpc 'ClaudeCode.Test.smoke()'`), (2) click Restart in the sidebar, " <>
+                "(3) send your message again. Prior conversation context is preserved.",
+            timestamp: DateTime.utc_now()
+          }
+
           {state, fail_msg} = append_message(state, fail_msg)
           Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: fail_msg})
           state
