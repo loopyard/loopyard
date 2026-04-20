@@ -431,7 +431,23 @@ text appended, wrong tokens counted, wrong tool name recorded.
 - [ ] Failing test: start stream, replace session, send late stream
   events with the old ref; assert no state mutation.
 
-### 17. ETF log torn writes / disk failures
+### 17. ETF log torn writes / disk failures — **DONE (core)**
+
+- [x] `Persistence.safe_append/4` catches raises + throws from
+  `AgentLog.append/2`. On error: emits `[:boom_looper, :persistence,
+  :error]` telemetry with path + reason + event kind, logs a clear
+  warning telling the user their change won't survive a restart,
+  returns `:ok`. ChatAgent keeps serving from in-memory state.
+- [x] Torn-write recovery on replay was already handled by
+  `AgentLog.read_entries` pattern-matching on
+  `when byte_size(rest) >= size` — half-records fall through to the
+  base case and are skipped silently.
+- [x] Regression: `test/boom_looper/chat_agent/persistence_resilience_test.exs`
+  (3 tests — persist_message / persist_agent / persist_message_update
+  each with an unwritable path don't raise + telemetry fires).
+- [ ] Follow-up TODO: surface the degradation in the UI (inline system
+  message on first failure per agent, not just logs). Deferred to
+  UI work — for now observable via `/system/events` + logs.
 
 **Gap**: `Persistence.persist_*` calls `AgentLog.append` which raises
 on disk full / permission denied. Raises in the ChatAgent handle_info
