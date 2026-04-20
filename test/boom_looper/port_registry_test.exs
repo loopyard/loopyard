@@ -259,6 +259,71 @@ defmodule BoomLooper.PortRegistryTest do
     end
   end
 
+  describe "retry_exposure/3 (agent-sanity #7)" do
+    test "happy path — retries on a now-free port succeeds", %{range: range} do
+      port = free_port()
+      :ok = PortRegistry.seed("ws-retry", "dev", 3000, port)
+
+      # Seeded entry has exposed: false. Flip to true via set_exposure
+      # so we're in the state restore_entries would see.
+      :ok = PortRegistry.set_exposure("ws-retry", "dev", 3000, true)
+      :ok = PortRegistry.set_exposure("ws-retry", "dev", 3000, false)
+
+      # Directly calling retry_exposure on an entry with no active
+      # listener should succeed. Range is scoped so the free_port() is
+      # still legitimate.
+      _ = range
+      assert :ok = PortRegistry.retry_exposure("ws-retry", "dev", 3000)
+
+      :ok = PortRegistry.set_exposure("ws-retry", "dev", 3000, false)
+    end
+
+    test "conflicting host_port → reassigns to a fresh port + telemetry fires",
+         %{range: range} do
+      # Occupy a port OURSELVES so the registry's attempt to expose it
+      # fails with EADDRINUSE. Then seed an entry for that occupied
+      # port, call retry_exposure, and verify the entry was reassigned
+      # to a different port in the range.
+      {:ok, blocker} = :gen_tcp.listen(0, [:binary, ip: {0, 0, 0, 0}, active: false])
+      {:ok, blocked_port} = :inet.port(blocker)
+
+      on_exit(fn -> :gen_tcp.close(blocker) end)
+
+      :ok = PortRegistry.seed("ws-conflict", "dev", 3000, blocked_port)
+
+      parent = self()
+      handler_id = "reassigned-test-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:boom_looper, :port_registry, :reassigned],
+        fn _event, _measurements, meta, _cfg ->
+          send(parent, {:reassigned, meta})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      assert :ok = PortRegistry.retry_exposure("ws-conflict", "dev", 3000)
+
+      assert_receive {:reassigned, meta}, 1_000
+      assert meta.old_host_port == blocked_port
+      assert meta.new_host_port != blocked_port
+      assert meta.new_host_port in range
+
+      # Registry entry reflects the new port.
+      assert {:ok, %{host_port: new_port}} = PortRegistry.get("ws-conflict", "dev", 3000)
+      assert new_port != blocked_port
+
+      :ok = PortRegistry.set_exposure("ws-conflict", "dev", 3000, false)
+    end
+
+    test "not-found key returns :not_found" do
+      assert {:error, :not_found} = PortRegistry.retry_exposure("nope", "dev", 3000)
+    end
+  end
+
   describe "concurrent assigns" do
     test "two concurrent assigns for the same triple return the same port" do
       me = self()

@@ -143,6 +143,22 @@ defmodule BoomLooper.PortRegistry do
   end
 
   @doc """
+  Retry exposing a single entry. Operator / UI path for recovering
+  an entry that landed in `exposure_error` state (agent-sanity #7).
+
+  Runs the same auto-reassign logic `restore_entries` uses on boot:
+  tries the currently-recorded host_port; on EADDRINUSE, allocates a
+  fresh free port, persists the reassignment, retries. Returns
+  `:ok` on success or `{:error, reason}`.
+  """
+  def retry_exposure(workspace_id, service, container_port) do
+    GenServer.call(
+      __MODULE__,
+      {:retry_exposure, workspace_id, service, container_port}
+    )
+  end
+
+  @doc """
   Reconfigure the running registry (port range, persistence).
   Intended for tests that want a tight range or in-memory store
   without stopping and restarting the GenServer. Options accepted:
@@ -323,6 +339,24 @@ defmodule BoomLooper.PortRegistry do
     {:reply, :ok, state}
   end
 
+  def handle_call({:retry_exposure, ws, svc, cport}, _from, state) do
+    key = {ws, svc, cport}
+
+    case :ets.lookup(@table, key) do
+      [{^key, entry}] ->
+        # Clear any prior error marker before the retry so a repeat
+        # success cleanly resets the state.
+        cleaned = entry |> Map.delete(:exposure_error) |> Map.delete(:exposure_error_at)
+        :ets.insert(@table, {key, cleaned})
+
+        result = start_exposer_with_reassign(key, cleaned, state.port_range)
+        {:reply, result, state}
+
+      [] ->
+        {:reply, {:error, :not_found}, state}
+    end
+  end
+
   def handle_call(:restore, _from, state) do
     cond do
       File.exists?(PortStore.path()) ->
@@ -444,26 +478,139 @@ defmodule BoomLooper.PortRegistry do
       :ets.insert(@table, {key, entry})
 
       # Re-open exposure for entries that were exposed at shutdown.
-      # Failures are logged but non-fatal — the registry entry stays
-      # with exposed: true so the UI can surface the broken state
-      # and the operator can retry.
+      # On the happy path, start_exposer binds the same host_port we
+      # had before. If that host_port is no longer available
+      # (docker-proxy leak from a killed container, TIME_WAIT, another
+      # process grabbed it), fall back to reassigning a fresh port +
+      # persisting the update. Agent-sanity #7.
       if entry.exposed do
-        case start_exposer(key, entry) do
-          :ok ->
-            :ok
-
-          {:error, reason} ->
-            require Logger
-
-            Logger.warning(
-              "[PortRegistry] Could not re-open exposure for " <>
-                "#{inspect(key)}: #{inspect(reason)}"
-            )
-        end
+        start_exposer_with_reassign(key, entry, default_port_range())
       end
     end
 
     :ok
+  end
+
+  # Re-open exposure with auto-reassign on EADDRINUSE.
+  #
+  # 1. Try the originally-persisted host_port (preserves URLs across
+  #    restarts on the common path).
+  # 2. If it fails with :eaddrinuse / :listen_failed, allocate a fresh
+  #    free port, update the entry, persist, and retry.
+  # 3. If still failing, mark the entry with an `exposure_error` so
+  #    /system/* can render the degraded state.
+  #
+  # Telemetry fires for both successful reassignments and ultimate
+  # failures — ops needs to see port pressure trends.
+  defp start_exposer_with_reassign(key, entry, port_range) do
+    case start_exposer(key, entry) do
+      :ok ->
+        :ok
+
+      {:error, {:listen_failed, :eaddrinuse}} ->
+        reassign_and_retry(key, entry, port_range, :eaddrinuse)
+
+      {:error, {:listen_failed, reason}} ->
+        reassign_and_retry(key, entry, port_range, reason)
+
+      {:error, reason} ->
+        mark_exposure_failed(key, entry, reason)
+
+        require Logger
+
+        Logger.warning(
+          "[PortRegistry] Could not re-open exposure for #{inspect(key)}: " <>
+            "#{inspect(reason)}. Entry marked exposure_error; retry via UI or release_entry/3."
+        )
+
+        {:error, reason}
+    end
+  end
+
+  defp reassign_and_retry(key, entry, port_range, original_reason) do
+    case find_free_port(port_range) do
+      {:ok, new_host_port} ->
+        :telemetry.execute(
+          [:boom_looper, :port_registry, :reassigned],
+          %{count: 1},
+          %{
+            workspace_id: elem(key, 0),
+            service: elem(key, 1),
+            container_port: elem(key, 2),
+            old_host_port: entry.host_port,
+            new_host_port: new_host_port,
+            reason: original_reason
+          }
+        )
+
+        new_entry = %{entry | host_port: new_host_port}
+        :ets.insert(@table, {key, new_entry})
+        # Persist immediately so the next restart uses the new port
+        # instead of re-hitting the same conflict.
+        PortStore.save(
+          :ets.tab2list(@table) |> Enum.map(fn {_, e} -> e end),
+          port_range
+        )
+
+        require Logger
+
+        Logger.info(
+          "[PortRegistry] Reassigned #{inspect(key)} from host :#{entry.host_port} " <>
+            "to :#{new_host_port} (#{original_reason}). Re-attempting exposure."
+        )
+
+        case start_exposer(key, new_entry) do
+          :ok ->
+            :ok
+
+          {:error, reason2} ->
+            mark_exposure_failed(key, new_entry, reason2)
+
+            Logger.warning(
+              "[PortRegistry] Reassign succeeded but exposure still failed for " <>
+                "#{inspect(key)} at :#{new_host_port}: #{inspect(reason2)}"
+            )
+
+            {:error, reason2}
+        end
+
+      {:error, :port_pool_exhausted} ->
+        mark_exposure_failed(key, entry, {:port_pool_exhausted, original_reason})
+
+        require Logger
+
+        Logger.error(
+          "[PortRegistry] Could not reassign for #{inspect(key)}: port pool exhausted."
+        )
+
+        {:error, :port_pool_exhausted}
+    end
+  end
+
+  defp mark_exposure_failed(key, entry, reason) do
+    marked =
+      Map.merge(entry, %{
+        exposure_error: reason,
+        exposure_error_at: DateTime.utc_now()
+      })
+
+    :ets.insert(@table, {key, marked})
+
+    :telemetry.execute(
+      [:boom_looper, :port_registry, :reopen_failed],
+      %{count: 1},
+      %{
+        workspace_id: elem(key, 0),
+        service: elem(key, 1),
+        container_port: elem(key, 2),
+        host_port: entry.host_port,
+        reason: reason
+      }
+    )
+  end
+
+  defp default_port_range do
+    Application.get_env(:boom_looper, __MODULE__)[:port_range] || 4000..9999
   end
 
   # Start or stop the PortExposer for a given key, depending on the

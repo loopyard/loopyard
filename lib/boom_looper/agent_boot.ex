@@ -34,14 +34,6 @@ defmodule BoomLooper.AgentBoot do
   alias BoomLooper.{ChatAgent, Saga, Workspace}
 
   @doc """
-  Boot an agent: start services, start the Claude session, and send the initial message.
-  Call from a Task — this blocks until the session starts.
-
-  Options:
-    - :service_name — service to debug
-    - :initial_message — override the default first message
-  """
-  @doc """
   Fire-and-forget boot under a supervised Task, plus a monitor Task that
   surfaces boot-process death to the user within ~100ms instead of the
   5-min `@stuck_booting_seconds` UI backstop.
@@ -122,6 +114,14 @@ defmodule BoomLooper.AgentBoot do
     :ok
   end
 
+  @doc """
+  Boot an agent: start services, start the Claude session, and send the initial message.
+  Call from a Task — this blocks until the session starts.
+
+  Options:
+    - :service_name — service to debug
+    - :initial_message — override the default first message
+  """
   def boot(id, agent_opts, opts \\ []) do
     working_dir = Keyword.fetch!(agent_opts, :working_dir)
     service_name = Keyword.get(opts, :service_name)

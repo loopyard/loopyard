@@ -206,7 +206,30 @@ existing one?
   are already up. No duplicate `compose up`.
 - [ ] Fix: idempotency check at resume boundary.
 
-### 7. Port exposure registry across restart
+### 7. Port exposure registry across restart — **DONE (reassign on EADDRINUSE)**
+
+- [x] `start_exposer_with_reassign/3` wraps `start_exposer/2`. On
+  `{:listen_failed, :eaddrinuse}` (or any listen error), allocates a
+  fresh free port via `find_free_port(port_range)`, updates the ETS
+  entry, persists, and retries.
+- [x] Persistence happens BEFORE the retry so next boot uses the
+  new port instead of re-hitting the same conflict.
+- [x] New public API `PortRegistry.retry_exposure/3` — UI +
+  operators can trigger the same reassign logic on-demand.
+- [x] Failed-to-expose entries get `exposure_error` +
+  `exposure_error_at` fields so `/system/*` can render the
+  degraded state.
+- [x] Telemetry: `[:boom_looper, :port_registry, :reassigned]` +
+  `[:boom_looper, :port_registry, :reopen_failed]`.
+- [x] Regression: three new tests in
+  `test/boom_looper/port_registry_test.exs` under the
+  `retry_exposure/3` describe block (happy path, conflict →
+  reassign + telemetry, not-found).
+- [ ] Follow-up TODO: UI surfacing on sidebar + context panel
+  (exposure_error → red badge + retry button). Data is in the
+  summary; only needs UI wiring.
+
+### 7-legacy. Design notes:
 
 **Suspected gap**: `PortRegistry` + `PortExposer` manage host-side
 ports that forward into containers. On server restart, the exposers
