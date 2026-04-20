@@ -46,6 +46,12 @@ defmodule BoomLooper.ResourceCoverageTest do
   """
   use ExUnit.Case, async: true
 
+  # File-system sweeps under full-suite load can exceed the 2s default
+  # timeout even though they're <200ms in isolation. 30s gives enough
+  # headroom without masking real slowdowns. Applies to every test in
+  # this module because they all walk `lib/` the same way.
+  @moduletag timeout: 30_000
+
   @lib_root Path.expand("../../lib/boom_looper", __DIR__)
 
   @port_open_allowlist [
@@ -57,10 +63,6 @@ defmodule BoomLooper.ResourceCoverageTest do
     "lib/boom_looper/tools/container/exec_stream.ex"
   ]
 
-  # File-system sweep under full-suite load can exceed the 2s default
-  # timeout even though it's <200ms in isolation. 30s gives enough
-  # headroom without masking real slowdowns.
-  @tag timeout: 30_000
   test "every Port.open/2 site is either tracked or in the allowlist" do
     offenders =
       find_pattern_sites("Port.open(")

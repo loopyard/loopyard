@@ -442,32 +442,23 @@ defmodule BoomLooper.ChatAgent do
         :ets.insert(@ets_table, {id, summary(state)})
         Events.ChatAgent.publish(%Events.ChatAgent.Resumed{summary: summary(state)})
 
-        resumed_content =
+        # Emit resume visibility via EventLog only — do NOT inject a
+        # system message into the conversation here. An injected
+        # message would (a) pollute message-ordering and cap tests,
+        # (b) insert itself between persisted user turns on replay,
+        # and (c) be confusing for agents that resumed cleanly with
+        # a valid claude_session_id (no user-facing event worth
+        # surfacing in-chat).
+        context_status =
           cond do
-            is_binary(state.claude_session_id) ->
-              "Agent resumed after server restart (conversation #{String.slice(state.claude_session_id, 0..7)}… continued)."
-
-            length(state.messages) > 0 ->
-              "Agent resumed after server restart. Previous conversation context was not available — the CLI is starting fresh."
-
-            true ->
-              nil
-          end
-
-        state =
-          if resumed_content do
-            msg = %{role: :system, content: resumed_content, timestamp: DateTime.utc_now()}
-            {state, msg} = append_message(state, msg)
-            Persistence.persist_message(state, msg)
-            Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: msg})
-            state
-          else
-            state
+            is_binary(state.claude_session_id) -> "conversation continued"
+            length(state.messages) > 0 -> "NO claude_session_id — CLI will start fresh"
+            true -> "no prior messages"
           end
 
         BoomLooper.EventLog.info(
           "agent:#{state.name}",
-          "Resumed (#{id}) with #{length(state.messages)} messages, claude_session_id=#{inspect(state.claude_session_id)}"
+          "Resumed (#{id}) with #{length(state.messages)} messages, #{context_status}"
         )
 
         {:ok, state}
