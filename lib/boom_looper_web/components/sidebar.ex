@@ -192,14 +192,28 @@ defmodule BoomLooperWeb.Components.Sidebar do
         :error -> agent_alive?(id)
       end
 
+    quarantined? = Map.get(agent, :quarantined) == true
+
     cond do
       status == :destroying -> :hidden
+      # Quarantined is its own display state — operator must release
+      # before the agent can run. Surfaced distinctly so the UI can
+      # link to /system/quarantine instead of just offering Restart.
+      quarantined? -> :quarantined
       not alive? -> :sleeping
       status in [:idle, nil] -> :ready
       # :backoff renders the same as :thinking for now — the agent is
       # still in-flight from the user's POV (we'll auto-retry). A
       # dedicated "Reconnecting…" label is deferred; audit-2 LOW #7.
       status in [:thinking, :booting, :backoff] -> :thinking
+      # :rate_limited — auto-retry is armed; for UI purposes treat as
+      # "thinking" (pulsing violet) so the user knows progress will
+      # resume on its own.
+      status == :rate_limited -> :thinking
+      # :auth_expired — terminal without manual re-auth; render as
+      # crashed so the user sees a red signal + the inline error
+      # message explains what to do.
+      status == :auth_expired -> :crashed
       status == :stopped -> :sleeping
       status == :crashed -> :crashed
       true -> :ready
@@ -224,11 +238,20 @@ defmodule BoomLooperWeb.Components.Sidebar do
   def status_dot(:sleeping), do: "bg-zinc-400"
   def status_dot(:crashed), do: "bg-red-500"
   def status_dot(:hidden), do: "bg-zinc-400"
+  # Quarantined is distinct from :crashed in meaning (operator must
+  # manually release via /system/quarantine) but we use the same red
+  # dot so the UI visibly signals "not working." The label + tooltip
+  # are what carry the meaning.
+  def status_dot(:quarantined), do: "bg-red-500"
   # Internal-atom fallbacks
   def status_dot(:idle), do: "bg-green-500"
   def status_dot(:booting), do: "bg-violet-500 animate-pulse"
   # Audit-2 LOW #7 — :backoff shares the thinking look for now.
   def status_dot(:backoff), do: "bg-violet-500 animate-pulse"
+  # Surface #10 — rate-limited is auto-retrying; thinking look.
+  def status_dot(:rate_limited), do: "bg-violet-500 animate-pulse"
+  # Surface #10 — auth_expired is terminal without re-auth.
+  def status_dot(:auth_expired), do: "bg-red-500"
   def status_dot(:stopped), do: "bg-zinc-400"
   def status_dot(:destroying), do: "bg-zinc-400"
   def status_dot(_), do: "bg-zinc-400"
