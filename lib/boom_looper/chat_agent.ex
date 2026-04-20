@@ -844,6 +844,27 @@ defmodule BoomLooper.ChatAgent do
   # broadcasting to subscribers, and journaling to the ETF log all
   # happen here.
 
+  # Defensive: non-binary / nil payloads are callers with bugs (UI
+  # handler returning nil by accident, test harness passing the
+  # wrong shape). Reject with a clear error in the conversation
+  # instead of crashing the GenServer with a FunctionClauseError or
+  # byte_size(nil) ArgumentError.
+  def handle_cast({:send_message, text}, state) when not is_binary(text) do
+    :telemetry.execute(
+      [:boom_looper, :agent, :message_rejected],
+      %{count: 1},
+      %{agent_id: state.id, reason: :non_binary}
+    )
+
+    require Logger
+    Logger.warning(
+      "[ChatAgent] #{state.id} received non-binary send_message: #{inspect(text, limit: 100)}. " <>
+        "Rejected. The sender has a bug."
+    )
+
+    {:noreply, state}
+  end
+
   def handle_cast({:send_message, text}, state) when is_binary(text) and byte_size(text) > @max_message_bytes do
     # Reject oversized input before it hits any stream. A 50MB paste
     # would otherwise: blow up ETS term size, trigger huge PubSub
