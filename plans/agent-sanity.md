@@ -226,7 +226,33 @@ product-UX terms.
 - [ ] Audit: should boot register a `Process.monitor` on the task so
   we surface crashes immediately instead of on the 5-min timer?
 
-### 10. Claude API rate limits, auth failures, and backoff
+### 10. Claude API rate limits, auth failures, and backoff — **PARTIALLY DONE**
+
+- [x] New `%Event.RateLimitStatus{}` and `%Event.AuthStatus{}` events;
+  `Backend.ClaudeCode` translates the SDK's `RateLimitEvent` +
+  `AuthStatusMessage`.
+- [x] New ChatAgent statuses: `:rate_limited`, `:auth_expired` +
+  state fields (`rate_limit_status`, `rate_limit_resets_at_ms`,
+  `rate_limit_type`, `auth_error`) exposed in `summary/1`.
+- [x] `:rejected` → scheduled auto-retry at `resets_at_ms` (capped 1h
+  for clock skew).
+- [x] `:auth_expired` → no automated retry; user must re-authenticate.
+- [x] `send_message` short-circuits both states so the CLI isn't
+  hammered; user's message is logged with a visible explainer.
+- [x] Telemetry emitted: `[:boom_looper, :agent, :rate_limit]`,
+  `[:boom_looper, :agent, :auth_expired]`.
+- [x] Regression test: `test/boom_looper/chat_agent/rate_limit_test.exs`
+  (8 tests).
+- [ ] **UI**: render the new statuses on the sidebar + agent context
+  panel (badges, countdown for rate-limit, re-auth CTA for auth).
+- [ ] Classify `{:stream_error, _, reason}` strings by kind (5xx,
+  400, 413, network) and surface a corresponding status instead of
+  lumping everything into a generic crash + backoff.
+- [ ] Honor `Retry-After` header specifically if the SDK ever exposes
+  it distinct from `resets_at_ms`.
+
+#### Legacy rate-limits-via-CLI-crash (historical):
+
 
 **Known gap**: the current `handle_info({:EXIT, _pid, reason}, :thinking)`
 path catches streaming-task crashes and reschedules with exponential
