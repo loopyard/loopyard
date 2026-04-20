@@ -177,11 +177,29 @@ defmodule BoomLooperWeb.Components.Sidebar do
   def agent_display_status(%{id: id} = agent) do
     status = Map.get(agent, :status)
 
+    # Liveness is authoritatively produced at assign time (see
+    # `BoomLooperWeb.Live.WorkspaceLive.AgentLifecycle.annotate_liveness/1`)
+    # and broadcast events keep it coherent. Falling back to a live
+    # `Registry.lookup/2` here used to cause a "Sleeping" flash during
+    # re-renders triggered by patches — Registry is authoritative, but
+    # a compute-at-render-time call can race with a supervisor restart
+    # and return `[]` for a microsecond, flipping a Ready dot to gray
+    # and back. Prefer the cached `:alive?` flag; only fall back to
+    # the Registry lookup for callers that hand us unannotated maps.
+    alive? =
+      case Map.fetch(agent, :alive?) do
+        {:ok, flag} -> flag
+        :error -> agent_alive?(id)
+      end
+
     cond do
       status == :destroying -> :hidden
-      not agent_alive?(id) -> :sleeping
+      not alive? -> :sleeping
       status in [:idle, nil] -> :ready
-      status in [:thinking, :booting] -> :thinking
+      # :backoff renders the same as :thinking for now — the agent is
+      # still in-flight from the user's POV (we'll auto-retry). A
+      # dedicated "Reconnecting…" label is deferred; audit-2 LOW #7.
+      status in [:thinking, :booting, :backoff] -> :thinking
       status == :stopped -> :sleeping
       status == :crashed -> :crashed
       true -> :ready
@@ -209,6 +227,8 @@ defmodule BoomLooperWeb.Components.Sidebar do
   # Internal-atom fallbacks
   def status_dot(:idle), do: "bg-green-500"
   def status_dot(:booting), do: "bg-violet-500 animate-pulse"
+  # Audit-2 LOW #7 — :backoff shares the thinking look for now.
+  def status_dot(:backoff), do: "bg-violet-500 animate-pulse"
   def status_dot(:stopped), do: "bg-zinc-400"
   def status_dot(:destroying), do: "bg-zinc-400"
   def status_dot(_), do: "bg-zinc-400"

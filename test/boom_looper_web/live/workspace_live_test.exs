@@ -210,7 +210,11 @@ defmodule BoomLooperWeb.WorkspaceLiveTest do
       |> element("button[phx-click='spawn_agent_with_message'][phx-value-preset='setup']")
       |> render_click()
 
-      {path, _flash} = assert_redirect(view)
+      # Workspace sidebar navigation moved from push_navigate to push_patch
+      # (same LV module; see plans/livevew-flapping-audit.md). assert_patch
+      # mirrors the production transition — any redirect-style assertion
+      # would fail because the LV process stays up across the hop.
+      path = assert_patch(view)
       assert path =~ "/projects/#{ws.project_id}/workspaces/#{ws.id}/agents/"
     end
 
@@ -222,7 +226,7 @@ defmodule BoomLooperWeb.WorkspaceLiveTest do
       |> element("button[phx-click='spawn_agent_with_message'][phx-value-preset='setup']")
       |> render_click()
 
-      {path, _flash} = assert_redirect(view)
+      path = assert_patch(view)
       assert path =~ "/projects/#{ws.project_id}/workspaces/#{ws.id}/agents/"
 
       {:ok, view2, html} = live(conn, path)
@@ -376,7 +380,11 @@ defmodule BoomLooperWeb.WorkspaceLiveTest do
 
       BoomLooper.ChatAgent.boot_failed(id, "container exploded")
 
-      assert_redirect(view, ws_path(ws))
+      # Workspace navigation uses push_patch for intra-module routes now
+      # (see plans/livevew-flapping-audit.md). `assert_patch/2` mirrors the
+      # production transition; `assert_redirect` would fail because the LV
+      # process stays up across the hop.
+      assert_patch(view, ws_path(ws))
     end
   end
 

@@ -60,7 +60,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         <.section label="Agents">
           <.agent_list_item :for={agent <- @agents} agent={agent} selected={@selected_id == agent.id} />
           <.empty :if={@agents == []} text="No agents" />
-          <.row navigate={"#{@base_path}/new"} class="text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10">
+          <.row patch={"#{@base_path}/new"} class="text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3.5 h-3.5 flex-none" aria-hidden="true">
               <path d="M8.75 3.75a.75.75 0 0 0-1.5 0v3.5h-3.5a.75.75 0 0 0 0 1.5h3.5v3.5a.75.75 0 0 0 1.5 0v-3.5h3.5a.75.75 0 0 0 0-1.5h-3.5v-3.5Z" />
             </svg>
@@ -83,7 +83,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
           <.empty :if={@volumes_loaded && @volumes == []} text="No volumes" />
           <.row
             :if={@is_local_source? && sync_relevant?(@sync_status)}
-            navigate={"#{@base_path}/sync"}
+            patch={"#{@base_path}/sync"}
             aria_label="Open host file sync status"
           >
             <span class={"w-1.5 h-1.5 rounded-full flex-none #{sync_dot(@sync_status)}"} aria-hidden="true"></span>
@@ -216,7 +216,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         </div>
 
         <div class="mt-6">
-          <.link navigate={@base_path} class="text-sm text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors">Cancel</.link>
+          <.link patch={@base_path} class="text-sm text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors">Cancel</.link>
         </div>
       </div>
     </div>
@@ -234,9 +234,9 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
     assigns = assign(assigns, :first_port, host_port)
 
     ~H"""
-    <.row as={:div} selected={@selected} class="grid grid-cols-[1fr_auto]">
+    <.row id={"service-row-#{@svc.name}"} as={:div} selected={@selected} class="grid grid-cols-[1fr_auto]">
       <.link
-        navigate={"#{@base_path}/services/#{@svc.name}"}
+        patch={"#{@base_path}/services/#{@svc.name}"}
         class="focus-ring flex items-center gap-2 min-w-0 -mx-2 px-2 h-full rounded"
         aria-label={"Open #{@svc.name} service"}
       >
@@ -318,7 +318,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
     |> assign(:service, service)
 
     ~H"""
-    <.row navigate={"#{@base_path}/volumes/#{@vol.name}"} aria_label={"Open #{@description} volume"}>
+    <.row id={"volume-row-#{@vol.name}"} patch={"#{@base_path}/volumes/#{@vol.name}"} aria_label={"Open #{@description} volume"}>
       <span class="w-1.5 h-1.5 rounded-full flex-none bg-blue-400" aria-hidden="true"></span>
       <span class="truncate text-zinc-600 dark:text-zinc-400 flex-1">{@description}</span>
       <span :if={@service && @service != "workspace"} class="text-xs text-zinc-500 flex-none">{@service}</span>
@@ -332,7 +332,12 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
     assigns = assign(assigns, :display, display)
 
     ~H"""
-    <div :if={@display != :hidden} class="flex items-stretch gap-1">
+    <%!-- Stable DOM id per agent so LiveView patches the existing row
+         in place rather than shuffling adjacent nodes when `@agents`
+         is reassigned. Without it a rebuilt list would have LV swap
+         sibling nodes and replay their `transition-colors` CSS, which
+         made Ready dots briefly look gray during sidebar clicks. --%>
+    <div :if={@display != :hidden} id={"agent-row-#{@agent.id}"} class="flex items-stretch gap-1">
       <.row
         phx_click="select_agent"
         phx_value={%{id: @agent.id}}

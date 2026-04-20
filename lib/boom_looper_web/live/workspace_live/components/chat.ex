@@ -147,7 +147,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
             the link. Mirrors the "Menu" back-link on the left that
             returns to the sidebar — sidebar → chat → context.
           --%>
-          <.link navigate={"#{@base_path}/agents/#{@agent.id}/context"}
+          <.link patch={"#{@base_path}/agents/#{@agent.id}/context"}
             class="lg:hidden text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded-md px-2 py-1"
             aria-label="Agent context">
             Info
@@ -185,7 +185,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
           class={"px-3 py-1.5 text-xs font-medium border-b-2 transition-colors #{if @tab == :container, do: "border-violet-500 text-violet-600 dark:text-violet-400", else: "border-transparent text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"}"}>
           Container
         </button>
-        <.link navigate={"#{@base_path}/agents/#{@agent.id}/context"}
+        <.link patch={"#{@base_path}/agents/#{@agent.id}/context"}
           class={"lg:hidden px-3 py-1.5 text-xs font-medium border-b-2 transition-colors #{if @tab == :context_panel, do: "border-violet-500 text-violet-600 dark:text-violet-400", else: "border-transparent text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"}"}>
           Info
         </.link>

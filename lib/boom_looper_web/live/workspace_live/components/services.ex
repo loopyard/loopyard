@@ -41,7 +41,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Services do
             phx-click="stop_service" phx-value-service_name={@service_name}>
             Stop
           </.control_btn>
-          <.link :if={@running?} navigate={"#{@base_path}/services/#{@service_name}/console"}
+          <.link :if={@running?} patch={"#{@base_path}/services/#{@service_name}/console"}
             class="inline-block px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors">
             Console
           </.link>

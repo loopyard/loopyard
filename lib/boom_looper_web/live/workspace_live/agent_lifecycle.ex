@@ -11,7 +11,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.AgentLifecycle do
   """
 
   import Phoenix.Component, only: [assign: 3]
-  import Phoenix.LiveView, only: [push_navigate: 2]
+  import Phoenix.LiveView, only: [push_patch: 2]
 
   alias BoomLooper.ChatAgent
   alias BoomLooper.StreamBuffer
@@ -78,7 +78,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.AgentLifecycle do
     ChatAgent.register_booting(id, name, working_dir, register_opts)
     Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn -> BoomLooper.AgentBoot.boot(id, agent_opts, boot_opts) end)
 
-    {:noreply, push_navigate(socket, to: "#{socket.assigns.base_path}/agents/#{id}")}
+    {:noreply, push_patch(socket, to: "#{socket.assigns.base_path}/agents/#{id}")}
   end
 
   @doc """
@@ -152,13 +152,41 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.AgentLifecycle do
 
   @doc """
   List agents belonging to the given workspace path.
+
+  Each agent is annotated with an `:alive?` flag via a single
+  `Registry.lookup/2` at produce-time. The sidebar reads this cached
+  flag instead of querying the registry at render time, which used
+  to cause a transient "Sleeping" flash when the lookup raced with a
+  supervisor restart or momentarily returned `[]` under load.
   """
   def list_workspace_agents(workspace_path) do
     ChatAgent.list_agents()
     |> Enum.filter(fn a ->
       a[:bind_mount] == workspace_path || a[:working_dir] == workspace_path
     end)
+    |> Enum.map(&annotate_liveness/1)
   end
+
+  @doc """
+  Stamp an agent summary with a cached `:alive?` flag.
+
+  Callers that hand a single updated summary to the UI (PubSub event
+  handlers, refresh paths) should run the summary through this before
+  assigning, so the sidebar's display status stays stable across
+  renders. For the whole-list rebuild path, `list_workspace_agents/1`
+  already applies this.
+  """
+  def annotate_liveness(%{id: id} = agent) do
+    alive? =
+      case Registry.lookup(BoomLooper.ChatAgentRegistry, id) do
+        [{pid, _}] -> Process.alive?(pid)
+        _ -> false
+      end
+
+    Map.put(agent, :alive?, alive?)
+  end
+
+  def annotate_liveness(other), do: other
 
   # Wake a sleeping agent — agent exists in ETS but its GenServer is gone
   # (server restart without ServiceManager replay, user stopped it, crash).

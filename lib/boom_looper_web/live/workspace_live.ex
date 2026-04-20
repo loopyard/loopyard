@@ -141,7 +141,8 @@ defmodule BoomLooperWeb.WorkspaceLive do
      |> assign(:is_local_source?, is_local?)
      |> assign(:sync_status, initial_sync_status(workspace.id, is_local?))
      |> assign(:workspace_state, derive_workspace_state(workspace.id, service_statuses, nil))
-     |> assign(:workspace_state_since, DateTime.utc_now())}
+     |> assign(:workspace_state_since, DateTime.utc_now())
+     |> assign(:docker_connected?, docker_connected?())}
   end
 
   # The single source of truth for the workspace Start/Stop pill.
@@ -268,7 +269,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
           :not_found ->
             socket
             |> put_flash(:error, "Agent not found")
-            |> push_navigate(to: workspace_path(socket))
+            |> push_patch(to: workspace_path(socket))
         end
       else
         clear_flash(socket)
@@ -287,7 +288,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
 
     cond do
       existing_setup ->
-        {:noreply, push_navigate(socket, to: "#{workspace_path(socket)}/agents/#{existing_setup.id}")}
+        {:noreply, push_patch(socket, to: "#{workspace_path(socket)}/agents/#{existing_setup.id}")}
 
       true ->
         # Show the New Agent screen. Setup only runs when the user picks
@@ -782,7 +783,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
   def handle_event("delete_volume", %{"volume_name" => name}, socket) do
     BoomLooper.Docker.docker(["volume", "rm", name])
     BoomLooper.Docker.Observer.poll_now()
-    {:noreply, push_navigate(socket, to: workspace_path(socket))}
+    {:noreply, push_patch(socket, to: workspace_path(socket))}
   end
 
 
@@ -978,9 +979,11 @@ defmodule BoomLooperWeb.WorkspaceLive do
     # latch at whatever `:chat_agent_status_changed` last said — often
     # `:crashed` — even though the new GenServer is alive and idle.
     # That's the "it says Sleeping but the agent is actually up" bug.
+    annotated = AgentLifecycle.annotate_liveness(summary)
+
     agents =
       Enum.map(socket.assigns.agents, fn a ->
-        if a.id == summary.id, do: summary, else: a
+        if a.id == summary.id, do: annotated, else: a
       end)
 
     socket = assign(socket, :agents, agents)
@@ -1037,7 +1040,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
         socket
         |> assign(:booting_agent_id, nil)
         |> put_flash(:error, "Failed to start agent: #{inspect(reason)}")
-        |> push_navigate(to: workspace_path(socket))
+        |> push_patch(to: workspace_path(socket))
       else
         socket
       end
@@ -1095,7 +1098,9 @@ defmodule BoomLooperWeb.WorkspaceLive do
   def on_status_changed(%Events.ChatAgent.StatusChanged{id: id, status: status}, socket) do
     agents =
       Enum.map(socket.assigns.agents, fn a ->
-        if a.id == id, do: %{a | status: status}, else: a
+        if a.id == id,
+          do: AgentLifecycle.annotate_liveness(%{a | status: status}),
+          else: a
       end)
 
     socket = assign(socket, :agents, agents)
@@ -1224,7 +1229,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
   # during the disconnect window, so the Start/Stop button stays sane.
   @impl Events.DockerObserver.Subscriber
   def on_disconnected(%Events.DockerObserver.Disconnected{}, socket) do
-    {:noreply, assign(socket, :docker_connected, false)}
+    {:noreply, assign(socket, :docker_connected?, false)}
   end
 
   # Stream back. Flip the flag and let the next Changed event (which the
@@ -1232,7 +1237,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
   # sidebar.
   @impl Events.DockerObserver.Subscriber
   def on_reconnected(%Events.DockerObserver.Reconnected{}, socket) do
-    {:noreply, assign(socket, :docker_connected, true)}
+    {:noreply, assign(socket, :docker_connected?, true)}
   end
 
   # --- WorkspaceServices subscriber callbacks ---
@@ -1607,7 +1612,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
           is_local_source?={@is_local_source?} sync_status={@sync_status}
           workspace_state={@workspace_state}
           workspace_state_since={@workspace_state_since}
-          docker_connected?={docker_connected?()}
+          docker_connected?={@docker_connected?}
         />
         <%!-- Main content: hidden on mobile when sidebar is showing (index/new with no selection) --%>
         <main id="main-content" class={"flex-1 flex flex-col min-w-0 #{if @live_action == :index && !@selected_id && !@selected_service, do: "hidden md:flex", else: "flex"}"}>

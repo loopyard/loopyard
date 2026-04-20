@@ -58,6 +58,7 @@ defmodule BoomLooperWeb.Components.SideNav do
   #
   # Use one of: navigate, patch, phx_click. Non-link variant: just
   # render children inside <.row as={:div}>...
+  attr :id, :string, default: nil
   attr :navigate, :string, default: nil
   attr :patch, :string, default: nil
   attr :phx_click, :string, default: nil
@@ -84,7 +85,7 @@ defmodule BoomLooperWeb.Components.SideNav do
     cond do
       assigns.as == :div ->
         ~H"""
-        <div class={@base_class} aria-label={@aria_label}>
+        <div id={@id} class={@base_class} aria-label={@aria_label}>
           {render_slot(@inner_block)}
         </div>
         """
@@ -92,6 +93,7 @@ defmodule BoomLooperWeb.Components.SideNav do
       assigns.navigate || assigns.patch ->
         ~H"""
         <.link
+          id={@id}
           navigate={@navigate}
           patch={@patch}
           aria-label={@aria_label}
@@ -105,6 +107,7 @@ defmodule BoomLooperWeb.Components.SideNav do
       assigns.phx_click ->
         ~H"""
         <button
+          id={@id}
           type="button"
           phx-click={@phx_click}
           {build_phx_values(@phx_value)}
@@ -119,7 +122,7 @@ defmodule BoomLooperWeb.Components.SideNav do
 
       true ->
         ~H"""
-        <div class={@base_class} aria-label={@aria_label}>
+        <div id={@id} class={@base_class} aria-label={@aria_label}>
           {render_slot(@inner_block)}
         </div>
         """
