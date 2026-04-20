@@ -1060,6 +1060,27 @@ defmodule BoomLooper.ChatAgent do
     dispatch_retry_session(state, state.id, consecutive)
   end
 
+  # Normal-reason EXITs from linked streaming Tasks: happen on every
+  # successful turn when the stream Task's closure returns. trap_exit
+  # converts these to messages. Without this explicit clause they
+  # fell through to the unknown-message catch-all below, spamming
+  # warning logs + telemetry on every stream. See audit-2 HIGH #1.
+  def handle_info({:EXIT, _pid, :normal}, state), do: {:noreply, state}
+
+  def handle_info(msg, state) do
+    Logger.warning("[ChatAgent] #{state.id} unhandled message: #{inspect(msg, limit: 200)}")
+
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, agent_id: state.id, msg: inspect(msg, limit: 200)}
+    )
+
+    {:noreply, state}
+  end
+
+  # --- Private: session retry ---
+
   defp dispatch_retry_session(state, id, consecutive) do
     case state.backend.start_session(session_opts_with_resume(state)) do
       {:ok, new_session} ->
@@ -1103,31 +1124,6 @@ defmodule BoomLooper.ChatAgent do
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
         {:noreply, state}
     end
-  end
-
-  # Normal-reason EXITs from linked streaming Tasks: happen on every
-  # successful turn when the stream Task's closure returns. trap_exit
-  # converts these to messages. Without this explicit clause they
-  # fell through to the unknown-message catch-all below, spamming
-  # warning logs + telemetry on every stream. See audit-2 HIGH #1.
-  @impl true
-  def handle_info({:EXIT, _pid, :normal}, state), do: {:noreply, state}
-
-  def handle_info(msg, state) do
-    # Log + telemetry for unknown messages (framework-fighting fix
-    # from plans/post-migration-audit.md). Unknown mailbox traffic
-    # previously landed in a silent `{:noreply, state}` catch-all,
-    # which is exactly how "why isn't my handler firing?" debug
-    # sessions started.
-    Logger.warning("[ChatAgent] #{state.id} unhandled message: #{inspect(msg, limit: 200)}")
-
-    :telemetry.execute(
-      [:boom_looper, :actor, :unknown_message],
-      %{count: 1},
-      %{actor: __MODULE__, agent_id: state.id, msg: inspect(msg, limit: 200)}
-    )
-
-    {:noreply, state}
   end
 
   @impl true
