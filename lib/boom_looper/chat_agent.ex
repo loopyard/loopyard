@@ -257,12 +257,27 @@ defmodule BoomLooper.ChatAgent do
       [] ->
         case :ets.lookup(@ets_table, agent_id) do
           [{^agent_id, summary}] ->
-            messages = Enum.map(summary.messages, fn msg ->
-              if msg[:id] == msg_id, do: update_fn.(msg), else: msg
-            end)
-            :ets.insert(@ets_table, {agent_id, %{summary | messages: messages}})
-            :ok
-          [] -> :error
+            try do
+              messages =
+                Enum.map(summary.messages, fn msg ->
+                  if msg[:id] == msg_id, do: update_fn.(msg), else: msg
+                end)
+
+              :ets.insert(@ets_table, {agent_id, %{summary | messages: messages}})
+              :ok
+            rescue
+              e ->
+                :telemetry.execute(
+                  [:boom_looper, :agent, :update_message_failed],
+                  %{count: 1},
+                  %{agent_id: agent_id, msg_id: msg_id, reason: Exception.message(e)}
+                )
+
+                :error
+            end
+
+          [] ->
+            :error
         end
     end
   end
