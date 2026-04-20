@@ -140,6 +140,29 @@ defmodule BoomLooperWeb.Components.SidebarTest do
       html = render_comp(&agent_item/1, %{agent: agent, selected: false})
       assert html =~ "Building image..."
     end
+
+    test "quarantined flag → red dot (distinct from :ready/:crashed mapping)" do
+      register_live_agent("quar-1")
+      agent = %{id: "quar-1", name: "Quar", status: :idle, quarantined: true}
+      html = render_comp(&agent_item/1, %{agent: agent, selected: false})
+      assert html =~ "bg-red-500"
+      refute html =~ "bg-green-500"
+    end
+
+    test ":rate_limited status → violet pulse (thinking look — auto-retry armed)" do
+      register_live_agent("rl-1")
+      agent = %{id: "rl-1", name: "RL", status: :rate_limited}
+      html = render_comp(&agent_item/1, %{agent: agent, selected: false})
+      assert html =~ "bg-violet-500"
+      assert html =~ "animate-pulse"
+    end
+
+    test ":auth_expired status → red dot (terminal without manual re-auth)" do
+      register_live_agent("auth-1")
+      agent = %{id: "auth-1", name: "AuthExp", status: :auth_expired}
+      html = render_comp(&agent_item/1, %{agent: agent, selected: false})
+      assert html =~ "bg-red-500"
+    end
   end
 
   describe "console_item/1" do
