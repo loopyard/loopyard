@@ -989,8 +989,17 @@ defmodule BoomLooper.ChatAgent do
 
     if state.session do
       # Stop in a task with timeout — backend.stop can hang if mid-stream.
-      task = Task.async(fn -> state.backend.stop(state.session) end)
-      Task.yield(task, 3_000) || Task.shutdown(task, :brutal_kill)
+      # Wrap backend.stop in a Task + Task.yield with timeout so a
+      # hung CLI stop doesn't block the GenServer indefinitely. Also
+      # wrap in try/catch so a raise inside backend.stop (or a crashed
+      # Task) doesn't take down the caller — Task.yield EXITS the
+      # caller with the task's exit reason if the task crashes.
+      try do
+        task = Task.async(fn -> state.backend.stop(state.session) end)
+        Task.yield(task, 3_000) || Task.shutdown(task, :brutal_kill)
+      catch
+        :exit, _ -> :ok
+      end
     end
 
     # Null session so terminate/2's second backend.stop is a no-op —
@@ -1019,8 +1028,17 @@ defmodule BoomLooper.ChatAgent do
   def handle_cast(:restart_session, state) do
     # Stop the current session
     if state.session do
-      task = Task.async(fn -> state.backend.stop(state.session) end)
-      Task.yield(task, 3_000) || Task.shutdown(task, :brutal_kill)
+      # Wrap backend.stop in a Task + Task.yield with timeout so a
+      # hung CLI stop doesn't block the GenServer indefinitely. Also
+      # wrap in try/catch so a raise inside backend.stop (or a crashed
+      # Task) doesn't take down the caller — Task.yield EXITS the
+      # caller with the task's exit reason if the task crashes.
+      try do
+        task = Task.async(fn -> state.backend.stop(state.session) end)
+        Task.yield(task, 3_000) || Task.shutdown(task, :brutal_kill)
+      catch
+        :exit, _ -> :ok
+      end
     end
 
     # Start a fresh session with the same opts. When we have a Claude
