@@ -358,15 +358,39 @@ defmodule BoomLooper.ChatAgent do
         :ok
     end
 
-    # Persist removal to agent log so it's not replayed on restart
+    # Persist removal to agent log so it's not replayed on restart.
+    # Wrap the append — disk failure here shouldn't crash remove_agent
+    # (caller is typically a LiveView process the user is interacting
+    # with). ETS deletion below is authoritative for runtime state;
+    # the log record is belt-and-suspenders for replay.
     case :ets.lookup(@ets_table, id) do
       [{^id, summary}] ->
         ws_id = summary[:workspace_id]
+
         if ws_id do
           path = Persistence.log_path(ws_id)
-          AgentLog.append({:agent_removed, id}, log_path: path, version: 1)
+
+          try do
+            AgentLog.append({:agent_removed, id}, log_path: path, version: 1)
+          rescue
+            e ->
+              BoomLooper.EventLog.warning(
+                "agent:#{summary[:name] || id}",
+                "remove_agent: failed to persist :agent_removed record: #{Exception.message(e)}. " <>
+                  "The agent will be removed from ETS; if this BEAM restarts before the log is " <>
+                  "writable again, the agent will be replayed back into ETS on boot."
+              )
+          catch
+            kind, reason ->
+              BoomLooper.EventLog.warning(
+                "agent:#{summary[:name] || id}",
+                "remove_agent: log append #{kind}: #{inspect(reason)}"
+              )
+          end
         end
-      [] -> :ok
+
+      [] ->
+        :ok
     end
 
     # Remove from sidebar
