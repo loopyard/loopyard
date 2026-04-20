@@ -71,9 +71,12 @@ defmodule BoomLooper.ChatAgent.RateLimitTest do
       # transition and the auto-clear.
       resets_at = System.system_time(:millisecond) + 2_000
 
+      ref = make_ref()
+      :sys.replace_state(pid, fn s -> %{s | stream_ref: ref} end)
+
       send(
         pid,
-        {:stream_event, id,
+        {:stream_event, id, ref,
          %Event.RateLimitStatus{
            status: :rejected,
            resets_at_ms: resets_at,
@@ -110,10 +113,12 @@ defmodule BoomLooper.ChatAgent.RateLimitTest do
     test ":allowed_warning does not change main status but records warning",
          %{id: id} do
       pid = agent_pid(id)
+      ref = make_ref()
+      :sys.replace_state(pid, fn s -> %{s | stream_ref: ref} end)
 
       send(
         pid,
-        {:stream_event, id,
+        {:stream_event, id, ref,
          %Event.RateLimitStatus{
            status: :allowed_warning,
            resets_at_ms: nil,
@@ -139,18 +144,20 @@ defmodule BoomLooper.ChatAgent.RateLimitTest do
          %{id: id} do
       pid = agent_pid(id)
 
+      ref = make_ref()
       :sys.replace_state(pid, fn s ->
         %{s |
           status: :rate_limited,
           rate_limit_status: :rejected,
           rate_limit_resets_at_ms: System.system_time(:millisecond) + 10_000,
-          rate_limit_type: "five_hour"
+          rate_limit_type: "five_hour",
+          stream_ref: ref
         }
       end)
 
       send(
         pid,
-        {:stream_event, id,
+        {:stream_event, id, ref,
          %Event.RateLimitStatus{status: :allowed, resets_at_ms: nil, rate_limit_type: nil}}
       )
 
@@ -166,10 +173,12 @@ defmodule BoomLooper.ChatAgent.RateLimitTest do
   describe "AuthStatus handling" do
     test "error transitions to :auth_expired and stops retrying", %{id: id} do
       pid = agent_pid(id)
+      ref = make_ref()
+      :sys.replace_state(pid, fn s -> %{s | stream_ref: ref} end)
 
       send(
         pid,
-        {:stream_event, id,
+        {:stream_event, id, ref,
          %Event.AuthStatus{
            is_authenticating: false,
            error: "token expired",
@@ -188,11 +197,13 @@ defmodule BoomLooper.ChatAgent.RateLimitTest do
 
     test "is_authenticating=true with no error is a no-op", %{id: id} do
       pid = agent_pid(id)
+      ref = make_ref()
+      :sys.replace_state(pid, fn s -> %{s | stream_ref: ref} end)
       original = :sys.get_state(pid)
 
       send(
         pid,
-        {:stream_event, id,
+        {:stream_event, id, ref,
          %Event.AuthStatus{is_authenticating: true, error: nil, output: ["Authenticating..."]}}
       )
 

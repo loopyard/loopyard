@@ -127,7 +127,21 @@ blast radius.
   the behavior + guards against future regression. No code change
   needed beyond the test.
 
-### 3. In-flight message preservation when CLI dies mid-stream
+### 3. In-flight message preservation when CLI dies mid-stream — **DONE**
+
+- [x] New state field `in_flight_partial` accumulates TextDelta text
+  during a stream.
+- [x] Event.Text / stream_done / new stream reset it.
+- [x] `finalize_partial_on_stream_interrupt/3` finalizes non-empty
+  accumulator as `%{role: :assistant, partial: true, content: text <>
+  "⚠ Truncated — …"}` on stream_error / stream_timeout, persisted to
+  the log + broadcast.
+- [x] Telemetry: `[:boom_looper, :agent, :partial_finalized]` with
+  byte count + reason.
+- [x] Regression: `test/boom_looper/chat_agent/stream_integrity_test.exs`
+  surface #3 section (4 tests).
+
+### 3-legacy. Historical design notes (kept for reference):
 
 **Suspected gap**: the agent is streaming an assistant message (TextDelta
 events have fired; the full text hasn't persisted yet because the Text
@@ -373,6 +387,129 @@ restart sees state that never happened).
 - [ ] Tell-the-user path: a rolled-back turn surfaces as a distinct
   inline `{role: :system, kind: :turn_rolled_back}` marker with a
   clear explanation. Never silent.
+
+### 15. Concurrent `send_message` races
+
+**Gap**: two humans (or a human + a tool-triggered auto-send) cast
+`:send_message` nearly simultaneously to the same agent. The GenServer
+processes them serially, but each cast spawns a linked Task that
+calls `backend.stream(session, text)` — two parallel queries against
+one Claude session. The SDK's Session has a `query_queue`, but we've
+never tested the edge case. Likely failure mode: second message
+interleaves TextDelta events with the first, or the CLI rejects the
+second query with an error stream.
+
+- [ ] Explicit per-agent send queue: only one streaming Task at a time;
+  subsequent sends either queue (default) or reject with a "please
+  wait — still thinking" system message.
+- [ ] Failing test: two concurrent `:send_message` casts; assert
+  ordering of emitted messages is deterministic.
+
+### 16. Stale stream events after session replacement — **DONE**
+
+- [x] Every `{:stream_event, id, event}` shape changed to
+  `{:stream_event, id, ref, event}`. Same for `:stream_done` +
+  `:stream_error`.
+- [x] Ref-matched handlers land on state; mismatched events drop with
+  `[:boom_looper, :agent, :stale_stream_event]` telemetry.
+- [x] Regression: `test/boom_looper/chat_agent/stream_integrity_test.exs`
+  surface #16 section (3 tests — mismatch drops, stream_done-mismatch
+  keeps :thinking, match path mutates as control).
+
+### 16-legacy. Historical notes:
+
+**Gap**: the agent tracks `stream_ref` to discard stale
+`:stream_timeout` timers from a previous stream. The same guard is
+NOT applied to `{:stream_event, id, event}` messages. If the CLI
+crashes and we spawn a new session before the old Task drains, the
+old Task's remaining events land on the new state — wrong assistant
+text appended, wrong tokens counted, wrong tool name recorded.
+
+- [ ] Include the `stream_ref` in every `:stream_event` tuple:
+  `{:stream_event, id, stream_ref, event}`. Handler drops events with
+  a ref that doesn't match state.stream_ref.
+- [ ] Failing test: start stream, replace session, send late stream
+  events with the old ref; assert no state mutation.
+
+### 17. ETF log torn writes / disk failures
+
+**Gap**: `Persistence.persist_*` calls `AgentLog.append` which raises
+on disk full / permission denied. Raises in the ChatAgent handle_info
+path kill the agent. A single disk-full event = all agents in that
+workspace crash-loop. Separately, a crash mid-write can leave a
+half-written length-prefixed record — replay either crashes parsing
+or silently skips everything after the torn record.
+
+- [ ] AgentLog.replay: detect + truncate to last valid record. Emit
+  `[:boom_looper, :agent_log, :truncated]` telemetry with bytes
+  discarded.
+- [ ] Persistence.persist_* wraps `AgentLog.append` in a try/rescue.
+  On disk error: transition the agent to a new `:persistence_degraded`
+  status (not crashed), keep serving in-memory, surface clear inline
+  message: "Can't write to disk — nothing you send right now will
+  survive a restart. Fix the disk then Restart this agent."
+- [ ] Failing test: persist_message with a non-writable path; assert
+  agent survives + surfaces the degraded status.
+
+### 18. Context window utilization visibility + compaction trigger
+
+**Gap**: Claude has a finite context window (200K tokens on Sonnet,
+1M on Opus 4.7). When full, the CLI silently starts dropping earliest
+turns — the agent loses context without any signal to the user or
+to us. Today we surface `cache_read_tokens` + `input_tokens` but no
+"how much of the window are we using" percentage.
+
+- [ ] Read `usage.input_tokens` + the model's window size (from the
+  `model` string or a lookup table) on every `%Event.SessionResult{}`.
+  Compute utilization; store on state.
+- [ ] Surface on sidebar + context panel as a color-coded bar:
+  green <70%, yellow 70-85%, red >85%.
+- [ ] At 85%, automatically invoke context compaction (the CLI
+  supports `/compact`; we'd call it via `ClaudeCode.Session` or
+  via a tool). Surface "Compacted conversation to save context —
+  older turns are summarized" inline.
+- [ ] Failing test: simulate a SessionResult with utilization 0.9,
+  assert compaction triggered + user sees the explanation.
+
+### 19. System prompt drift on resume
+
+**Gap**: `build_system_prompt` is rebuilt from scratch on every
+`start_session`, pulling the latest CLAUDE.md + tool set. When we
+`resume: sid`, the CLI has the OLD prompt baked into the conversation
++ we append the NEW prompt. Agent sees a mixed world: "Your instructions
+are X" in old turns and "Your instructions are actually Y" appended.
+After a major refactor (tool renamed, rule added), this can produce
+confused behavior that looks like "the agent forgot everything" but
+is really "the agent is honoring two conflicting system prompts."
+
+- [ ] Hash the full system prompt. Persist hash alongside
+  `claude_session_id` in summary/1.
+- [ ] On resume, compare the new hash to the persisted one. If they
+  differ, log it + surface an inline `{role: :system, kind:
+  :prompt_changed}` marker: "The agent's instructions changed since
+  the last session — behavior may differ. The older turns in this
+  conversation were generated under the prior prompt."
+- [ ] Failing test: stop an agent, edit the prompt, resume; assert
+  the marker appears.
+
+### 20. Idle-agent CLI reap
+
+**Gap**: a long-idle agent holds a CLI subprocess forever. `claude` is
+~200MB RSS + whatever the prompt cache retains. With 20 agents across
+several workspaces, that's 4GB permanently held for sessions the user
+may never return to.
+
+- [ ] After N hours of idle (`state.last_activity_at` > threshold and
+  status == :idle), stop the CLI subprocess via `backend.stop(session)`
+  but keep state. Mark `state.session = nil`.
+- [ ] Next `:send_message` goes through `ensure_session_alive` which
+  already spawns a new CLI with `resume: claude_session_id` — context
+  preserved, RAM reclaimed. User sees "Reconnected (resumed
+  conversation …)" exactly the same as a CLI crash recovery.
+- [ ] Telemetry: `[:boom_looper, :agent, :idle_reaped]`. Config:
+  `Application.get_env(:boom_looper, :agent_idle_reap_hours, 4)`.
+- [ ] Failing test: set last_activity to 5h ago, tick the reaper,
+  assert session was stopped + context preserved.
 
 ---
 

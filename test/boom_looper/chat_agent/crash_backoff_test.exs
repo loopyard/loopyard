@@ -84,14 +84,16 @@ defmodule BoomLooper.ChatAgent.CrashBackoffTest do
     test "successful stream_done resets crash counter", %{id: id} do
       pid = agent_pid(id)
 
-      # Set some crash history
+      # Set some crash history + install a known stream_ref so the
+      # ref-tagged :stream_done matches.
+      ref = make_ref()
       :sys.replace_state(pid, fn state ->
-        %{state | status: :thinking}
+        %{state | status: :thinking, stream_ref: ref}
         |> Map.put(:consecutive_crashes, 3)
       end)
 
       # Simulate successful stream completion
-      send(pid, {:stream_done, id})
+      send(pid, {:stream_done, id, ref})
 
       assert_receive %BoomLooper.Events.ChatAgent.StatusChanged{id: ^id, status: :idle}, 1_000
 

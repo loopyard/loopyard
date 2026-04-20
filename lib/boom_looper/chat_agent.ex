@@ -61,7 +61,17 @@ defmodule BoomLooper.ChatAgent do
     # via BoomLooper.Resources.track/4 so the Janitor kills it on our
     # DOWN — covers the brutal_kill / node crash / :shutdown-timeout
     # cases where `terminate/2` never runs. See plans/agent-sanity.md #12.
-    tracked_cli_os_pid: nil
+    tracked_cli_os_pid: nil,
+    # Accumulates `%Event.TextDelta{}` chunks during a streaming turn.
+    # If the stream completes successfully, `%Event.Text{}` arrives and
+    # we reset this to "". If the stream is cut short (stream_error,
+    # stream_timeout, CLI crash mid-turn), the stream-interrupt handler
+    # finalizes whatever text we accumulated as a partial assistant
+    # message with a "(truncated — CLI crashed)" marker so users don't
+    # lose the partial response after a browser refresh. Transient;
+    # NOT included in summary/1 — lives only in the live GenServer.
+    # See plans/agent-sanity.md #3.
+    in_flight_partial: ""
   ]
 
   @ets_table :chat_agents
@@ -822,7 +832,12 @@ defmodule BoomLooper.ChatAgent do
   # to viewers via PubSub, and transition the agent's status when a
   # turn completes or fails.
 
-  def handle_info({:stream_event, id, event}, %{id: id} = state) do
+  # Ref-tagged stream event. The `stream_ref` identifies which stream
+  # produced this event — when the session is replaced mid-turn, the
+  # old Task may still have events queued; those must not mutate the
+  # new state. Events with a ref != state.stream_ref are dropped. See
+  # agent-sanity #16.
+  def handle_info({:stream_event, id, ref, event}, %{id: id, stream_ref: ref} = state) do
     now = DateTime.utc_now()
 
     state =
@@ -830,7 +845,9 @@ defmodule BoomLooper.ChatAgent do
         %Event.Text{text: content} ->
           assistant_msg = %{role: :assistant, content: content, timestamp: now}
           {state, assistant_msg} = append_message(state, assistant_msg)
-        state = %{state | last_activity_at: now}
+          # Full text arrived — clear any accumulated partial so a
+          # subsequent stream_error/timeout doesn't re-emit it.
+          state = %{state | last_activity_at: now, in_flight_partial: ""}
           Persistence.persist_message(state,assistant_msg)
           Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: assistant_msg})
           state
@@ -852,9 +869,12 @@ defmodule BoomLooper.ChatAgent do
           state
 
         %Event.TextDelta{text: text} ->
-          # Don't persist deltas - they're just streaming UI updates
+          # Accumulate deltas so stream-error / stream-timeout can
+          # finalize a partial-text message. The UI still renders the
+          # live stream via the broadcast — accumulator is ONLY for
+          # the truncation-recovery path. See agent-sanity #3.
           Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.TextDelta{agent_id: id, text: text})
-          state
+          %{state | in_flight_partial: state.in_flight_partial <> (text || "")}
 
         %Event.SessionResult{} = result ->
           # Accumulate token usage across turns. Persist after ETS
@@ -896,12 +916,28 @@ defmodule BoomLooper.ChatAgent do
     {:noreply, state}
   end
 
+  # Stale stream event — ref doesn't match the current stream. The Task
+  # that emitted this belongs to a previous session that was replaced
+  # (CLI crash, user restart, retry). Drop it; applying to current state
+  # would corrupt the next turn's messages/tokens.
+  def handle_info({:stream_event, _id, _ref, _event}, state) do
+    :telemetry.execute(
+      [:boom_looper, :agent, :stale_stream_event],
+      %{count: 1},
+      %{agent_id: state.id}
+    )
+    {:noreply, state}
+  end
+
   @impl true
-  def handle_info({:stream_done, id}, %{id: id} = state) do
+  def handle_info({:stream_done, id, ref}, %{id: id, stream_ref: ref} = state) do
     # Turn counter and transient tool/ref are part of summary — without
     # ETS sync + persist here, UI reads stale data and restart replay
     # loses the increment.
-    state = %{state | status: :idle, active_tool: nil, turns: state.turns + 1}
+    # Clear in_flight_partial on clean stream_done — by now either an
+    # Event.Text already finalized the assistant response, or the turn
+    # ended with only tool calls. Either way, there's no orphan partial.
+    state = %{state | status: :idle, active_tool: nil, turns: state.turns + 1, in_flight_partial: ""}
     state = Map.put(state, :consecutive_crashes, 0)
     :ets.insert(@ets_table, {id, summary(state)})
     Persistence.persist_agent(state, &summary/1)
@@ -909,10 +945,18 @@ defmodule BoomLooper.ChatAgent do
     {:noreply, state}
   end
 
+  # Stale stream_done — belongs to a replaced stream, ignore.
+  def handle_info({:stream_done, _id, _ref}, state), do: {:noreply, state}
+
   @impl true
   def handle_info({:stream_timeout, id, ref}, %{id: id, status: :thinking, stream_ref: ref} = state) do
     # Still thinking after timeout AND ref matches current stream — the streaming task is gone
     BoomLooper.EventLog.warning("agent:#{state.name}", "Stream timed out, resetting to idle")
+
+    # Finalize any partial text the stream produced before the timeout
+    # so users don't lose it on browser refresh. See agent-sanity #3.
+    state = finalize_partial_on_stream_interrupt(state, id, :timeout)
+
     error_msg = %{role: :error, content: "Agent stopped responding. Send a message to retry.", timestamp: DateTime.utc_now()}
     {state, error_msg} = append_message(state, error_msg)
     # Clear active_tool — if the stream timed out with a tool in flight
@@ -931,10 +975,26 @@ defmodule BoomLooper.ChatAgent do
   @impl true
   def handle_info({:stream_timeout, _id}, state), do: {:noreply, state}
 
+  # Ref-tagged stream_error. Old stream's error — stream was already
+  # superseded, no state action needed.
+  def handle_info({:stream_error, _id, ref, _reason}, %{stream_ref: current_ref} = state)
+      when ref != current_ref do
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:stream_error, id, _ref, reason}, %{id: id} = state) do
+    handle_info({:stream_error, id, reason}, state)
+  end
+
   @impl true
   def handle_info({:stream_error, id, reason}, %{id: id} = state) do
     BoomLooper.EventLog.error("agent:#{state.name}", "Stream error: #{reason}")
     now = DateTime.utc_now()
+
+    # Finalize any partial assistant text so the user doesn't lose it
+    # on browser refresh. See agent-sanity #3.
+    state = finalize_partial_on_stream_interrupt(state, id, :error)
 
     # Count recent crashes (within last 60 seconds)
     recent_crashes = state.messages
@@ -1293,6 +1353,13 @@ defmodule BoomLooper.ChatAgent do
       state = %{state | status: :thinking}
       Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :thinking})
 
+      # Generate stream_ref BEFORE spawning the Task so every event the
+      # Task emits is tagged with the ref that identifies THIS stream.
+      # When the session is replaced mid-stream (CLI crash retry, user
+      # restart), the handler on the other side uses the ref to drop
+      # stale events from the dead stream — otherwise they'd land on
+      # the new state and corrupt the next turn. See agent-sanity #16.
+      stream_ref = make_ref()
       me = self()
       agent_id = state.id
       session = state.session
@@ -1302,23 +1369,25 @@ defmodule BoomLooper.ChatAgent do
         try do
           backend.stream(session, text)
           |> Enum.each(fn event ->
-            send(me, {:stream_event, agent_id, event})
+            send(me, {:stream_event, agent_id, stream_ref, event})
           end)
 
-          send(me, {:stream_done, agent_id})
+          send(me, {:stream_done, agent_id, stream_ref})
         rescue
           e ->
-            send(me, {:stream_error, agent_id, Exception.message(e)})
+            send(me, {:stream_error, agent_id, stream_ref, Exception.message(e)})
         catch
           :exit, reason ->
-            send(me, {:stream_error, agent_id, "CLI session exited: #{inspect(reason)}"})
+            send(me, {:stream_error, agent_id, stream_ref, "CLI session exited: #{inspect(reason)}"})
         end
       end)
 
-      stream_ref = make_ref()
       Process.send_after(self(), {:stream_timeout, agent_id, stream_ref}, 600_000)
 
-      {:noreply, %{state | stream_ref: stream_ref}}
+      # Clear in_flight_partial — any prior partial was already
+      # finalized on the prior turn's stream_done/error. New stream,
+      # new accumulator.
+      {:noreply, %{state | stream_ref: stream_ref, in_flight_partial: ""}}
     end
   end
 
@@ -1479,6 +1548,48 @@ defmodule BoomLooper.ChatAgent do
   end
 
   defp handle_auth_status_event(state, _other), do: state
+
+  # If a stream is cut short (error / timeout / CLI exit) with partial
+  # text accumulated from TextDelta events, finalize it as an assistant
+  # message with a truncation marker so the user sees their half-answer
+  # preserved in the transcript. Without this, the UI shows the partial
+  # text live via PubSub, then it vanishes on refresh because nothing
+  # was persisted. See agent-sanity #3.
+  #
+  # `reason` is `:error | :timeout` — included in the marker so the
+  # user can distinguish "CLI crashed" from "took too long."
+  defp finalize_partial_on_stream_interrupt(%{in_flight_partial: ""} = state, _id, _reason), do: state
+
+  defp finalize_partial_on_stream_interrupt(%{in_flight_partial: partial} = state, id, reason)
+       when is_binary(partial) and partial != "" do
+    marker =
+      case reason do
+        :error -> "⚠ Truncated — CLI stream errored mid-response."
+        :timeout -> "⚠ Truncated — CLI stopped responding mid-stream."
+        other -> "⚠ Truncated — stream ended unexpectedly (#{inspect(other)})."
+      end
+
+    partial_msg = %{
+      role: :assistant,
+      content: partial <> "\n\n" <> marker,
+      partial: true,
+      timestamp: DateTime.utc_now()
+    }
+
+    {state, partial_msg} = append_message(state, partial_msg)
+    Persistence.persist_message(state, partial_msg)
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: partial_msg})
+
+    :telemetry.execute(
+      [:boom_looper, :agent, :partial_finalized],
+      %{bytes: byte_size(partial)},
+      %{agent_id: id, reason: reason}
+    )
+
+    %{state | in_flight_partial: ""}
+  end
+
+  defp finalize_partial_on_stream_interrupt(state, _id, _reason), do: state
 
   # Track the Claude CLI subprocess OS pid under this ChatAgent via
   # BoomLooper.Resources. On our DOWN (brutal_kill, node crash,

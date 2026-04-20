@@ -68,13 +68,15 @@ defmodule BoomLooper.ChatAgent.SessionResumeTest do
          %{id: id} do
       pid = agent_pid(id)
       RecordingBackend.set_session_id("sess-abc-123")
+      ref = make_ref()
+      :sys.replace_state(pid, fn s -> %{s | stream_ref: ref} end)
 
       # Simulate a SessionResult event — what the ClaudeCode backend
       # emits after every turn. The handler should mirror the backend's
       # session_id onto ChatAgent state and into the ETS summary.
       send(
         pid,
-        {:stream_event, id,
+        {:stream_event, id, ref,
          %Event.SessionResult{
            model: "claude-opus-4-7",
            input_tokens: 10,

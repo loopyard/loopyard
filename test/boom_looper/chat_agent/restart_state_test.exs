@@ -69,12 +69,17 @@ defmodule BoomLooper.ChatAgent.RestartStateTest do
     test "summary preserves accumulated tokens, cost, model across restart", %{id: id} do
       pid = agent_pid(id)
 
+      # Install a known stream_ref so ref-tagged events match the
+      # agent's current stream (agent-sanity #16).
+      ref = make_ref()
+      :sys.replace_state(pid, fn s -> %{s | stream_ref: ref} end)
+
       # Simulate several turns via SessionResult events. Each bumps the
       # accumulators.
       for {in_tok, out_tok, cache, cost} <- [{100, 50, 0, 0.01}, {200, 80, 500, 0.02}, {50, 20, 100, 0.005}] do
         send(
           pid,
-          {:stream_event, id,
+          {:stream_event, id, ref,
            %Event.SessionResult{
              model: "claude-opus-4-7",
              input_tokens: in_tok,
@@ -203,13 +208,14 @@ defmodule BoomLooper.ChatAgent.RestartStateTest do
     test "rate_limit :rejected clears active_tool", %{id: id} do
       pid = agent_pid(id)
 
+      ref = make_ref()
       :sys.replace_state(pid, fn s ->
-        %{s | status: :thinking, active_tool: "docker_compose"}
+        %{s | status: :thinking, active_tool: "docker_compose", stream_ref: ref}
       end)
 
       send(
         pid,
-        {:stream_event, id,
+        {:stream_event, id, ref,
          %Event.RateLimitStatus{
            status: :rejected,
            resets_at_ms: System.system_time(:millisecond) + 2_000,
@@ -227,13 +233,14 @@ defmodule BoomLooper.ChatAgent.RestartStateTest do
     test "auth error clears active_tool", %{id: id} do
       pid = agent_pid(id)
 
+      ref = make_ref()
       :sys.replace_state(pid, fn s ->
-        %{s | status: :thinking, active_tool: "docker_compose"}
+        %{s | status: :thinking, active_tool: "docker_compose", stream_ref: ref}
       end)
 
       send(
         pid,
-        {:stream_event, id,
+        {:stream_event, id, ref,
          %Event.AuthStatus{is_authenticating: false, error: "token expired"}}
       )
 
