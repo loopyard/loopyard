@@ -59,6 +59,98 @@ Move #1 (pure transition functions) and Move #5 (deadlines) are deferred for a f
 
 **ETS ownership:** `BoomLooper.StateKeeper` is the sole ETS table owner. Never call `:ets.new/2` elsewhere — add your table to `StateKeeper`'s `@tables` list.
 
+## Agent reliability invariants (`plans/agent-sanity.md`)
+
+The ChatAgent went through a second hardening sweep focused on
+"conversation survives restart" + "when it can't, the user knows why."
+Rules a contributor needs to know:
+
+**Conversation continuity across CLI / server restart:**
+- The Claude CLI subprocess has a `session_id` that the SDK tracks
+  per live `ClaudeCode.Session` pid. We mirror it onto
+  `state.claude_session_id` on every `%Event.SessionResult{}` and
+  persist it via `summary/1` → ETF log.
+- Every path that spawns a new CLI must go through
+  `session_opts_with_resume/1` so `resume: <claude_session_id>` is
+  passed to the SDK. That's what makes the new CLI continue the same
+  conversation instead of booting amnesic. The four sites:
+  `:restart_session` cast, `{:stream_error, "CLI session exited", _}`
+  recovery, `dispatch_retry_session` (backoff retry),
+  `ensure_session_alive` (pre-`send_message`).
+- `init_resume` threads the saved `claude_session_id` through too —
+  BoomLooper server restart doesn't drop the conversation.
+
+**Error messages follow WHY / CONSEQUENCE / ACTION.** Every
+`role: :error` message in the ChatAgent:
+1. Names what failed at the system level.
+2. States what won't work + what's still preserved.
+3. Tells the user exactly how to recover (which command, which UI
+   page, which order).
+Single-line terse errors are for developers, not operators. When
+adding a new error path, follow the existing pattern.
+
+**Every reset-to-idle path clears transient state:**
+- `active_tool: nil` (UI spinner doesn't stick)
+- `in_flight_partial: ""` (see below)
+- `tool_calls_this_turn: 0`, `tool_runaway_warned: false`,
+  `last_tool_call: nil` (loop detection resets per turn)
+- `context_warning_sent: false` (window warning re-fires if still at
+  threshold)
+
+**Stream events must carry `stream_ref`.** Shape is
+`{:stream_event, id, stream_ref, event}`. The handler drops events
+whose ref doesn't match `state.stream_ref` — otherwise late events
+from a replaced session corrupt the new state.
+
+**Partial-text preservation.** On `:stream_error` /
+`:stream_timeout` / `:stop` mid-turn, if `state.in_flight_partial`
+is non-empty, `finalize_partial_on_stream_interrupt/3` persists it
+as an assistant message tagged `partial: true` with a
+"⚠ Truncated — …" marker. Without it, partials shown live in the
+browser vanish on refresh.
+
+**Bulletproof `send_message` input:**
+- Non-binary payload → logged + rejected, no crash.
+- `byte_size(text) > @max_message_bytes` (1MB) → rejected with an
+  inline error.
+- While `:rate_limited` or `:auth_expired`: record the message but
+  don't hit the CLI; surface an explanation.
+- While `:thinking` or `:backoff`: enqueue on `state.pending_sends`.
+  FIFO drain via `drain_pending_sends/1` on turn completion.
+
+**Catchalls on every callback.** `handle_cast(msg, state)`,
+`handle_call(msg, _from, state)`, and `handle_info(msg, state)` all
+log + fire `[:boom_looper, :actor, :unknown_message]` telemetry and
+return normally. Unknown messages never crash the GenServer.
+
+**Resource tracking for the CLI OS pid.** After every
+`start_session` call the agent registers the Claude CLI subprocess
+with `Resources.track(self(), :claude_cli, os_pid, release_fn)`. On
+agent DOWN (any reason, including `:brutal_kill`) the Janitor
+SIGKILLs the OS pid. `terminate/2` does NOT kill directly.
+
+**Prompt-drift detection.** `start_session` returns a SHA-256 of the
+system prompt. `init_resume` compares to the saved hash; mismatch
+surfaces an inline "System prompt changed since last boot" marker
++ `[:boom_looper, :agent, :prompt_drift]` telemetry.
+
+**Idle-agent CLI reap.** After `:agent_idle_reap_hours` (default 4h)
+of `:idle` + captured `claude_session_id`, the reaper stops the CLI
+subprocess + clears `state.session`. Next `:send_message` spawns a
+fresh CLI with `resume:` — user sees "Reconnected (resumed
+conversation …)" just like any crash recovery.
+
+**Tool-call loop + runaway detection.**
+`@tool_loop_threshold = 5` same-tool-same-input repeats → warn once.
+`@turn_tool_limit = 50` tool calls in one turn (any shape) → warn
+once per turn. Both reset on `stream_done`.
+
+**Timeouts.** `get_state/1` and `list_agents/0` use 500ms call
+timeouts with ETS fallback — a wedged agent doesn't hang the UI.
+`terminate/2` caps `backend.stop` at 3s via `Task.yield` +
+`Task.shutdown`. Stream task has a 10-min safety timer via
+`:stream_timeout` ref-tagged.
+
 ## Docs
 
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — System design, supervisor tree, container model, data flow
