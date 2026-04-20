@@ -434,7 +434,10 @@ defmodule BoomLooper.ChatAgent do
       case Registry.lookup(BoomLooper.ChatAgentRegistry, summary.id) do
         [{pid, _}] ->
           try do
-            GenServer.call(pid, :get_state, 2000)
+            # 500ms timeout matches get_state/1 — a wedged agent
+            # shouldn't block the whole list_agents call while the UI
+            # waits. ETS summary is the fallback.
+            GenServer.call(pid, :get_state, 500)
           catch
             :exit, _ -> summary
           end
