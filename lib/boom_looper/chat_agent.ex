@@ -915,7 +915,9 @@ defmodule BoomLooper.ChatAgent do
     BoomLooper.EventLog.warning("agent:#{state.name}", "Stream timed out, resetting to idle")
     error_msg = %{role: :error, content: "Agent stopped responding. Send a message to retry.", timestamp: DateTime.utc_now()}
     {state, error_msg} = append_message(state, error_msg)
-        state = %{state | status: :idle, errors: state.errors + 1}
+    # Clear active_tool — if the stream timed out with a tool in flight
+    # the tool call is orphaned and the UI spinner would stick forever.
+    state = %{state | status: :idle, active_tool: nil, errors: state.errors + 1}
     Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: error_msg})
     Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
     {:noreply, state}
@@ -956,7 +958,10 @@ defmodule BoomLooper.ChatAgent do
             else
               %{role: :system, content: "Agent session restarted automatically.", timestamp: DateTime.utc_now()}
             end
-          {state, recovered_msg} = append_message(track_cli_os_pid(%{state | session: new_session, status: :idle}), recovered_msg)
+          # active_tool: nil — the old session died mid-tool-call; the new
+          # session has no idea that tool was in flight, and leaving the
+          # field set would pin a spinner to the UI forever.
+          {state, recovered_msg} = append_message(track_cli_os_pid(%{state | session: new_session, status: :idle, active_tool: nil}), recovered_msg)
           Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: recovered_msg})
           Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
 
@@ -976,7 +981,7 @@ defmodule BoomLooper.ChatAgent do
         {:error, _} ->
           fail_msg = %{role: :error, content: "Agent session crashed and failed to restart", timestamp: DateTime.utc_now()}
           {state, fail_msg} = append_message(state, fail_msg)
-        state = %{state | status: :idle}
+          state = %{state | status: :idle, active_tool: nil}
           Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: fail_msg})
           Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
           {:noreply, state}
@@ -984,7 +989,7 @@ defmodule BoomLooper.ChatAgent do
     else
       error_msg = %{role: :error, content: reason, timestamp: now}
       {state, error_msg} = append_message(state, error_msg)
-        state = %{state | status: :idle, last_activity_at: now, errors: state.errors + 1}
+      state = %{state | status: :idle, active_tool: nil, last_activity_at: now, errors: state.errors + 1}
       Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: error_msg})
       Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
       {:noreply, state}
@@ -1009,7 +1014,7 @@ defmodule BoomLooper.ChatAgent do
     if consecutive > @max_consecutive_crashes do
       error_msg = %{role: :error, content: "Agent crashed #{consecutive} times in a row — giving up. Fix the underlying issue and restart manually.", timestamp: DateTime.utc_now()}
       {state, error_msg} = append_message(state, error_msg)
-      state = %{state | status: :crashed, errors: state.errors + 1}
+      state = %{state | status: :crashed, active_tool: nil, errors: state.errors + 1}
       state = Map.put(state, :consecutive_crashes, consecutive)
       Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: error_msg})
       Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :crashed})
@@ -1031,7 +1036,7 @@ defmodule BoomLooper.ChatAgent do
       backoff_ms = BoomLooper.Retry.backoff_ms(consecutive, {:exponential, base})
       BoomLooper.EventLog.info("agent:#{state.name}", "Backing off #{backoff_ms}ms before restart (crash ##{consecutive})")
       Process.send_after(self(), {:retry_session, consecutive, state.session}, backoff_ms)
-      state = %{state | status: :backoff}
+      state = %{state | status: :backoff, active_tool: nil}
       state = Map.put(state, :consecutive_crashes, consecutive)
       state = Map.put(state, :retry_from_session, state.session)
       :ets.insert(@ets_table, {id, summary(state)})
@@ -1146,7 +1151,7 @@ defmodule BoomLooper.ChatAgent do
 
         {state, recovered_msg} =
           append_message(
-            track_cli_os_pid(%{state | session: new_session, status: :idle, errors: state.errors + 1}),
+            track_cli_os_pid(%{state | session: new_session, status: :idle, active_tool: nil, errors: state.errors + 1}),
             recovered_msg
           )
 
@@ -1164,7 +1169,7 @@ defmodule BoomLooper.ChatAgent do
         }
 
         {state, error_msg} = append_message(state, error_msg)
-        state = %{state | status: :idle, errors: state.errors + 1}
+        state = %{state | status: :idle, active_tool: nil, errors: state.errors + 1}
         state = Map.put(state, :consecutive_crashes, consecutive)
         state = Map.delete(state, :retry_from_session)
         Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: error_msg})
@@ -1372,6 +1377,7 @@ defmodule BoomLooper.ChatAgent do
           append_message(
             %{state |
               status: :rate_limited,
+              active_tool: nil,
               rate_limit_status: :rejected,
               rate_limit_resets_at_ms: rl.resets_at_ms,
               rate_limit_type: rl.rate_limit_type
@@ -1461,7 +1467,7 @@ defmodule BoomLooper.ChatAgent do
 
     {state, auth_msg} =
       append_message(
-        %{state | status: :auth_expired, auth_error: error, errors: state.errors + 1},
+        %{state | status: :auth_expired, active_tool: nil, auth_error: error, errors: state.errors + 1},
         auth_msg
       )
 

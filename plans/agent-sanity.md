@@ -117,18 +117,15 @@ blast radius.
 - [ ] **Telemetry**: emit `[:boom_looper, :agent, :context_gap]` on any
   forced amnesia event. Route to /system/events for ops visibility.
 
-### 2. Token/cost/model accounting across restart
+### 2. Token/cost/model accounting across restart — **DONE**
 
-**Suspected gap**: token counts, cost, model name accumulate in
-`state.total_input_tokens`, `state.total_cost_usd`, `state.model`. These
-are in `summary/1` so they should survive, but test coverage is thin.
-Verify that a restart mid-conversation does not zero the Claude panel.
-
-- [ ] Failing test: agent logs N turns, restart the GenServer via
-  `resume: true`, assert tokens/cost/model are preserved byte-for-byte.
-- [ ] Fix anything that drops them.
-- [ ] Also verify: cost accumulates CORRECTLY after resume (not doubled,
-  not reset, not NaN from a missing field).
+- [x] Regression test: `test/boom_looper/chat_agent/restart_state_test.exs`
+  "surface #2" section simulates 3 turns via `%Event.SessionResult{}`,
+  confirms all five accumulators (in/out/cache tokens, cost, model)
+  survive a stop + `resume: true` cycle byte-for-byte.
+- [x] The accumulators were already correctly plumbed — test locks in
+  the behavior + guards against future regression. No code change
+  needed beyond the test.
 
 ### 3. In-flight message preservation when CLI dies mid-stream
 
@@ -150,18 +147,17 @@ a tool error, or silently swallow it?
   system message. Current behavior is probably neither.
 - [ ] Fix: finalize-or-drop on stream_error; persist the decision.
 
-### 4. Active tool state surviving restart
+### 4. Active tool state surviving restart — **DONE**
 
-**Suspected gap**: `state.active_tool` is the name of the tool call
-currently executing. If the CLI dies while `docker_compose up` is mid-exec,
-the agent restart leaves `active_tool: "docker_compose"` stuck in ETS
-forever, or the UI shows a perpetual "Running docker_compose…" spinner.
-
-- [ ] Failing test: set active_tool, kill session, observe post-restart
-  state. Assert `active_tool` is cleared on restart OR re-verified
-  against a live tool process.
-- [ ] Fix: clear `active_tool` in `init_resume` (already partially done
-  per the code I saw) + in every restart path.
+- [x] Every reset-to-new-status path now explicitly clears
+  `active_tool`: `stream_timeout`, `stream_error` (both CLI-exit +
+  generic), `:EXIT` → `:crashed`, `:EXIT` → `:backoff`,
+  `dispatch_retry_session` (both success + failure), rate-limit
+  `:rejected`, auth error, `init_resume`. Prevents UI spinners from
+  pinning to "Running docker_compose…" forever after a mid-tool-call
+  crash.
+- [x] Regression test: `test/boom_looper/chat_agent/restart_state_test.exs`
+  "surface #4" section — 7 tests, one per reset path.
 
 ### 5. MCP tool server lifecycle tied to agent lifetime
 
