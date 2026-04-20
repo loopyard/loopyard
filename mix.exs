@@ -48,6 +48,14 @@ defmodule BoomLooper.MixProject do
 
   defp aliases do
     [
+      # Force a full `mix compile` BEFORE test file compilation kicks
+      # in. Elixir 1.19's parallel compiler can resolve a test file's
+      # `%Events.X.Y{}` struct reference before the lib module that
+      # defines it has finished compiling — flaky "is not loaded and
+      # could not be found" errors on clean builds. Serializing the
+      # lib compile first costs a second or two and makes the suite
+      # deterministic.
+      test: ["compile", "test"],
       setup: ["deps.get", "assets.setup", "assets.build"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": ["tailwind boom_looper", "esbuild boom_looper"],
