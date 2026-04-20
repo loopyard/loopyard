@@ -45,7 +45,18 @@ defmodule BoomLooper.ChatAgent do
     total_cache_read_tokens: 0,
     total_cost_usd: 0.0,
     active_tool: nil,
-    turns: 0
+    turns: 0,
+    # Rate-limit + auth surface. `rate_limit_status` tracks what the
+    # last %Event.RateLimitStatus said (:ok | :warning | :rejected).
+    # On :rejected we flip the main status to :rate_limited and stash
+    # `rate_limit_resets_at_ms` so the UI can render a countdown + we
+    # can auto-retry exactly at reset. On auth failure we flip to
+    # :auth_expired and stop retrying — there is no automated
+    # recovery from bad creds.
+    rate_limit_status: :ok,
+    rate_limit_resets_at_ms: nil,
+    rate_limit_type: nil,
+    auth_error: nil
   ]
 
   @ets_table :chat_agents
@@ -630,56 +641,54 @@ defmodule BoomLooper.ChatAgent do
   def handle_cast({:send_message, text}, state) do
     :telemetry.execute([:boom_looper, :agent, :message], %{}, %{agent_id: state.id, role: :user})
 
-    # Auto-restart session if dead
-    state = ensure_session_alive(state)
+    cond do
+      state.status == :rate_limited ->
+        # Don't hammer the API while we're rate-limited. The send was
+        # worth recording (so the user sees their message in the log)
+        # but we skip the CLI roundtrip — it would just emit another
+        # :rejected event and re-schedule. Auto-retry is already armed
+        # via Process.send_after by handle_rate_limit_event.
+        user_msg = %{role: :user, content: text, timestamp: DateTime.utc_now()}
+        {state, user_msg} = append_message(state, user_msg)
+        Persistence.persist_message(state, user_msg)
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: user_msg})
 
-    # Add user message
-    user_msg = %{role: :user, content: text, timestamp: DateTime.utc_now()}
-    {state, user_msg} = append_message(state, user_msg)
-    Persistence.persist_message(state,user_msg)
+        wait_s =
+          case compute_rate_limit_wait_ms(state.rate_limit_resets_at_ms) do
+            n when is_integer(n) -> div(n, 1000)
+            _ -> 60
+          end
 
-    # Broadcast with ID (last message has the ID assigned by append_message)
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: user_msg})
+        hold_msg = %{
+          role: :system,
+          content: "Holding your message — rate-limited, retrying in ~#{wait_s}s.",
+          timestamp: DateTime.utc_now()
+        }
+        {state, hold_msg} = append_message(state, hold_msg)
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: hold_msg})
+        {:noreply, state}
 
-    # Don't try to stream if session is still dead
-    if not state.backend.session_alive?(state.session) do
-      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :idle})
-      {:noreply, state}
-    else
-      state = %{state | status: :thinking}
-      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :thinking})
+      state.status == :auth_expired ->
+        # No recovery path — the CLI can't reach the API. Record the
+        # send attempt so the user sees their message, then surface
+        # the same auth-expired error again so they know nothing is
+        # going to happen until they re-authenticate.
+        user_msg = %{role: :user, content: text, timestamp: DateTime.utc_now()}
+        {state, user_msg} = append_message(state, user_msg)
+        Persistence.persist_message(state, user_msg)
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: user_msg})
 
-      # Stream the response in a linked Task so we detect crashes
-      me = self()
-      agent_id = state.id
-      session = state.session
-      backend = state.backend
+        auth_msg = %{
+          role: :error,
+          content: "Can't send — Claude CLI auth is expired (#{state.auth_error}). Re-auth and restart the agent.",
+          timestamp: DateTime.utc_now()
+        }
+        {state, auth_msg} = append_message(state, auth_msg)
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: auth_msg})
+        {:noreply, state}
 
-      Task.start_link(fn ->
-        try do
-          backend.stream(session, text)
-          |> Enum.each(fn event ->
-            send(me, {:stream_event, agent_id, event})
-          end)
-
-          send(me, {:stream_done, agent_id})
-        rescue
-          e ->
-            send(me, {:stream_error, agent_id, Exception.message(e)})
-        catch
-          :exit, reason ->
-            send(me, {:stream_error, agent_id, "CLI session exited: #{inspect(reason)}"})
-        end
-      end)
-
-      # Safety timeout — if no stream events arrive within 10 minutes, reset to idle.
-      # Long timeout needed because MCP tool calls (exec, rebuild) can block for minutes
-      # while installing deps, running migrations, or building Docker images.
-      # Use a unique ref so stale timeouts from previous streams are ignored.
-      stream_ref = make_ref()
-      Process.send_after(self(), {:stream_timeout, agent_id, stream_ref}, 600_000)
-
-      {:noreply, %{state | stream_ref: stream_ref}}
+      true ->
+        send_message_normal(state, text)
     end
   end
 
@@ -861,6 +870,12 @@ defmodule BoomLooper.ChatAgent do
           Persistence.persist_agent(state, &summary/1)
           Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: state.status})
           state
+
+        %Event.RateLimitStatus{} = rl ->
+          handle_rate_limit_event(state, rl)
+
+        %Event.AuthStatus{} = auth ->
+          handle_auth_status_event(state, auth)
 
         _ ->
           state
@@ -1051,6 +1066,35 @@ defmodule BoomLooper.ChatAgent do
     dispatch_retry_session(state, state.id, consecutive)
   end
 
+  # Fired by handle_rate_limit_event when a :rejected status was seen.
+  # We scheduled this for ~`resets_at_ms`. On fire, only flip back to
+  # idle if the agent is still in :rate_limited (another path may have
+  # moved it; don't stomp). Let the user's next send_message actually
+  # try the CLI again — if we're still rate-limited, the CLI will
+  # emit another :rejected and we'll re-schedule.
+  def handle_info({:rate_limit_retry, id}, %{id: id, status: :rate_limited} = state) do
+    state = %{state |
+      status: :idle,
+      rate_limit_status: :ok,
+      rate_limit_resets_at_ms: nil
+    }
+    :ets.insert(@ets_table, {id, summary(state)})
+    Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
+
+    resumed_msg = %{
+      role: :system,
+      content: "Rate-limit window cleared. Send a message to continue.",
+      timestamp: DateTime.utc_now()
+    }
+    {state, resumed_msg} = append_message(state, resumed_msg)
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: resumed_msg})
+
+    {:noreply, state}
+  end
+
+  # Late/stale retry timer after status already moved on. No-op.
+  def handle_info({:rate_limit_retry, _id}, state), do: {:noreply, state}
+
   # Normal-reason EXITs from linked streaming Tasks: happen on every
   # successful turn when the stream Task's closure returns. trap_exit
   # converts these to messages. Without this explicit clause they
@@ -1209,6 +1253,211 @@ defmodule BoomLooper.ChatAgent do
   # fresh. Called on every code path that restarts the session —
   # :restart_session cast, crash-recovery, retry-after-backoff,
   # ensure_session_alive.
+  # The normal (non-rate-limited, non-auth-expired) path of
+  # handle_cast({:send_message, text}). Kept as a defp so the cast
+  # clauses stay contiguous (Elixir warns on non-grouped clauses) and
+  # the cond in send_message stays readable.
+  defp send_message_normal(state, text) do
+    state = ensure_session_alive(state)
+
+    user_msg = %{role: :user, content: text, timestamp: DateTime.utc_now()}
+    {state, user_msg} = append_message(state, user_msg)
+    Persistence.persist_message(state, user_msg)
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: user_msg})
+
+    if not state.backend.session_alive?(state.session) do
+      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :idle})
+      {:noreply, state}
+    else
+      state = %{state | status: :thinking}
+      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :thinking})
+
+      me = self()
+      agent_id = state.id
+      session = state.session
+      backend = state.backend
+
+      Task.start_link(fn ->
+        try do
+          backend.stream(session, text)
+          |> Enum.each(fn event ->
+            send(me, {:stream_event, agent_id, event})
+          end)
+
+          send(me, {:stream_done, agent_id})
+        rescue
+          e ->
+            send(me, {:stream_error, agent_id, Exception.message(e)})
+        catch
+          :exit, reason ->
+            send(me, {:stream_error, agent_id, "CLI session exited: #{inspect(reason)}"})
+        end
+      end)
+
+      stream_ref = make_ref()
+      Process.send_after(self(), {:stream_timeout, agent_id, stream_ref}, 600_000)
+
+      {:noreply, %{state | stream_ref: stream_ref}}
+    end
+  end
+
+  # Handle a %Event.RateLimitStatus{} from the Claude CLI.
+  #
+  # `:allowed`         — normal traffic. Clear any lingering rate-limit
+  #                       state. If we were previously :rate_limited, flip
+  #                       back to :idle so the user can send again.
+  # `:allowed_warning` — we're approaching the cap. Don't change status
+  #                       (might be mid-turn), but record the warning so
+  #                       the UI can render a subtle "approaching limit"
+  #                       indicator.
+  # `:rejected`        — the next request WILL fail. Flip status to
+  #                       :rate_limited, stash resets_at_ms so the UI
+  #                       renders a live countdown, and schedule a
+  #                       Process.send_after auto-retry exactly at reset.
+  #                       We cap the wait so a poisoned/skewed clock
+  #                       doesn't lock the agent up forever.
+  #
+  # Telemetry: every transition emits
+  # `[:boom_looper, :agent, :rate_limit]` so ops can watch the rate of
+  # :rejected events. A sustained spike there = the whole account is
+  # hitting its plan cap.
+  defp handle_rate_limit_event(state, %Event.RateLimitStatus{} = rl) do
+    id = state.id
+
+    :telemetry.execute(
+      [:boom_looper, :agent, :rate_limit],
+      %{count: 1},
+      %{agent_id: id, status: rl.status, rate_limit_type: rl.rate_limit_type}
+    )
+
+    case rl.status do
+      :rejected ->
+        # Cap auto-retry wait at 1h — if resets_at is in the past or
+        # far-future (clock skew, misparsed epoch), retry in 60s instead
+        # of locking the agent forever.
+        wait_ms = compute_rate_limit_wait_ms(rl.resets_at_ms)
+
+        BoomLooper.EventLog.warning(
+          "agent:#{state.name}",
+          "Rate-limited (#{inspect(rl.rate_limit_type)}), retrying in #{div(wait_ms, 1000)}s"
+        )
+
+        Process.send_after(self(), {:rate_limit_retry, id}, wait_ms)
+
+        rl_msg = %{
+          role: :system,
+          content:
+            "Rate-limited by Claude API (#{rl.rate_limit_type || "limit"}). " <>
+              "Retrying automatically in ~#{div(wait_ms, 1000)}s.",
+          timestamp: DateTime.utc_now()
+        }
+
+        {state, rl_msg} =
+          append_message(
+            %{state |
+              status: :rate_limited,
+              rate_limit_status: :rejected,
+              rate_limit_resets_at_ms: rl.resets_at_ms,
+              rate_limit_type: rl.rate_limit_type
+            },
+            rl_msg
+          )
+
+        Persistence.persist_message(state, rl_msg)
+        :ets.insert(@ets_table, {id, summary(state)})
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: rl_msg})
+        Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :rate_limited})
+        state
+
+      :allowed_warning ->
+        state = %{state |
+          rate_limit_status: :warning,
+          rate_limit_resets_at_ms: rl.resets_at_ms,
+          rate_limit_type: rl.rate_limit_type
+        }
+        :ets.insert(@ets_table, {id, summary(state)})
+        # No status broadcast — main status stays :thinking mid-turn. The
+        # summary delta (rate_limit_status: :warning) flows to any viewer
+        # that's reading the agent record.
+        state
+
+      :allowed ->
+        # Transition out of rate-limited state, if we were in one.
+        was_rate_limited = state.rate_limit_status != :ok
+        new_main_status = if state.status == :rate_limited, do: :idle, else: state.status
+
+        state = %{state |
+          status: new_main_status,
+          rate_limit_status: :ok,
+          rate_limit_resets_at_ms: nil,
+          rate_limit_type: nil
+        }
+        :ets.insert(@ets_table, {id, summary(state)})
+        if was_rate_limited do
+          Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: new_main_status})
+        end
+        state
+
+      _other ->
+        state
+    end
+  end
+
+  defp compute_rate_limit_wait_ms(resets_at_ms) when is_integer(resets_at_ms) do
+    now_ms = System.system_time(:millisecond)
+    delta = resets_at_ms - now_ms
+    cond do
+      delta <= 0 -> 60_000
+      delta > 3_600_000 -> 60_000
+      true -> delta + 1_000
+    end
+  end
+  defp compute_rate_limit_wait_ms(_), do: 60_000
+
+  # Handle a %Event.AuthStatus{} from the Claude CLI.
+  #
+  # is_authenticating=true with error=nil is routine (OAuth flow running).
+  # Any non-nil error is terminal — the CLI can't talk to the API without
+  # working creds, and we don't know how to fix them automatically. Flip
+  # to :auth_expired, surface the error in the chat, and stop retrying.
+  # The user has to re-authenticate (outside BoomLooper today).
+  defp handle_auth_status_event(state, %Event.AuthStatus{error: nil, is_authenticating: true}) do
+    # Auth in progress — not an error. No state change.
+    state
+  end
+
+  defp handle_auth_status_event(state, %Event.AuthStatus{error: error}) when is_binary(error) do
+    id = state.id
+
+    :telemetry.execute(
+      [:boom_looper, :agent, :auth_expired],
+      %{count: 1},
+      %{agent_id: id, error: error}
+    )
+
+    BoomLooper.EventLog.error("agent:#{state.name}", "Claude auth failed: #{error}")
+
+    auth_msg = %{
+      role: :error,
+      content: "Claude authentication failed: #{error}. Re-authenticate the CLI and restart this agent.",
+      timestamp: DateTime.utc_now()
+    }
+
+    {state, auth_msg} =
+      append_message(
+        %{state | status: :auth_expired, auth_error: error, errors: state.errors + 1},
+        auth_msg
+      )
+
+    Persistence.persist_message(state, auth_msg)
+    :ets.insert(@ets_table, {id, summary(state)})
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: auth_msg})
+    Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :auth_expired})
+    state
+  end
+
+  defp handle_auth_status_event(state, _other), do: state
+
   defp session_opts_with_resume(state) do
     case state.claude_session_id do
       sid when is_binary(sid) and sid != "" ->
@@ -1307,7 +1556,11 @@ defmodule BoomLooper.ChatAgent do
       total_cost_usd: state.total_cost_usd,
       active_tool: state.active_tool,
       turns: state.turns,
-      claude_session_id: state.claude_session_id
+      claude_session_id: state.claude_session_id,
+      rate_limit_status: state.rate_limit_status,
+      rate_limit_resets_at_ms: state.rate_limit_resets_at_ms,
+      rate_limit_type: state.rate_limit_type,
+      auth_error: state.auth_error
     }
   end
 

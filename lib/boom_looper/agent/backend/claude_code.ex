@@ -107,6 +107,24 @@ defmodule BoomLooper.Agent.Backend.ClaudeCode do
     }]
   end
 
+  def translate(%ClaudeCode.Message.RateLimitEvent{rate_limit_info: info}) when is_map(info) do
+    [%Event.RateLimitStatus{
+      status: Map.get(info, :status),
+      resets_at_ms: Map.get(info, :resets_at),
+      utilization: Map.get(info, :utilization),
+      rate_limit_type: Map.get(info, :rate_limit_type),
+      is_using_overage: Map.get(info, :is_using_overage)
+    }]
+  end
+
+  def translate(%ClaudeCode.Message.AuthStatusMessage{} = msg) do
+    [%Event.AuthStatus{
+      is_authenticating: msg.is_authenticating,
+      error: msg.error,
+      output: msg.output || []
+    }]
+  end
+
   def translate(_), do: []
 
   # --- Helpers ---
