@@ -29,6 +29,25 @@ defmodule BoomLooper.Agent.Backend.ClaudeCode do
     is_pid(session) && Process.alive?(session)
   end
 
+  @impl true
+  def session_id(session) do
+    # The SDK Session GenServer captures the CLI's session_id from the
+    # first AssistantMessage/ResultMessage and then feeds it back on
+    # subsequent queries so the CLI continues the same conversation.
+    # We mirror it onto ChatAgent state so it outlives the Session pid:
+    # see `ChatAgent.init_resume` + `start_session` — every new Claude
+    # process we spawn is passed `resume: <session_id>`.
+    if is_pid(session) and Process.alive?(session) do
+      try do
+        ClaudeCode.Session.session_id(session)
+      catch
+        :exit, _ -> nil
+      end
+    else
+      nil
+    end
+  end
+
   # --- Translation: SDK messages → BoomLooper events ---
 
   @doc false

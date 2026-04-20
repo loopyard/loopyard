@@ -21,6 +21,10 @@ defmodule BoomLooper.PubSubBoundaryTest do
 
   @allowed_prefix "lib/boom_looper/events/"
 
+  # File-system sweep under full-suite load can exceed the 2s default
+  # timeout even though it's <200ms in isolation. 30s gives enough
+  # headroom without masking real slowdowns.
+  @tag timeout: 30_000
   test "no raw Phoenix.PubSub.broadcast calls outside publisher modules" do
     violations =
       lib_files()

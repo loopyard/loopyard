@@ -46,6 +46,9 @@ defmodule BoomLooper.Agent.Backend.Fake do
   @impl BoomLooper.Agent.Backend
   def session_alive?(session), do: is_pid(session) and Process.alive?(session)
 
+  @impl BoomLooper.Agent.Backend
+  def session_id(_session), do: nil
+
   @impl GenServer
   def init(:ok), do: {:ok, %{}}
 end

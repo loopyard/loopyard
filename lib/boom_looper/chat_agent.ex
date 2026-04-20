@@ -33,6 +33,7 @@ defmodule BoomLooper.ChatAgent do
     :last_activity_at,
     :service_name,
     :agent_type,
+    :claude_session_id,
     status: :idle,
     messages: [],
     tool_calls: 0,
@@ -413,7 +414,8 @@ defmodule BoomLooper.ChatAgent do
           bind_mount: saved.bind_mount,
           workspace_id: saved.workspace_id,
           service_name: saved[:service_name],
-          agent_type: agent_type
+          agent_type: agent_type,
+          claude_session_id: saved[:claude_session_id]
         )
 
         # Summary stores messages oldest-first (display order); internal
@@ -439,7 +441,34 @@ defmodule BoomLooper.ChatAgent do
 
         :ets.insert(@ets_table, {id, summary(state)})
         Events.ChatAgent.publish(%Events.ChatAgent.Resumed{summary: summary(state)})
-        BoomLooper.EventLog.info("agent:#{state.name}", "Resumed (#{id}) with #{length(state.messages)} messages")
+
+        resumed_content =
+          cond do
+            is_binary(state.claude_session_id) ->
+              "Agent resumed after server restart (conversation #{String.slice(state.claude_session_id, 0..7)}… continued)."
+
+            length(state.messages) > 0 ->
+              "Agent resumed after server restart. Previous conversation context was not available — the CLI is starting fresh."
+
+            true ->
+              nil
+          end
+
+        state =
+          if resumed_content do
+            msg = %{role: :system, content: resumed_content, timestamp: DateTime.utc_now()}
+            {state, msg} = append_message(state, msg)
+            Persistence.persist_message(state, msg)
+            Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: msg})
+            state
+          else
+            state
+          end
+
+        BoomLooper.EventLog.info(
+          "agent:#{state.name}",
+          "Resumed (#{id}) with #{length(state.messages)} messages, claude_session_id=#{inspect(state.claude_session_id)}"
+        )
 
         {:ok, state}
 
@@ -503,6 +532,14 @@ defmodule BoomLooper.ChatAgent do
     workspace_id = Keyword.get(params, :workspace_id)
     service_name = Keyword.get(params, :service_name)
     agent_type = Keyword.get(params, :agent_type) || BoomLooper.Agents.Registry.default_agent_name()
+    # When we've seen this agent before (server restart, CLI crash,
+    # auto-reconnect), `claude_session_id` is the Claude CLI's own
+    # conversation id captured from the last ResultMessage. Passing it
+    # as `resume:` tells the CLI to continue the same thread instead of
+    # starting amnesiac with a fresh system prompt. Without this, each
+    # respawn forgets everything the user + the 455 messages we
+    # preserved in the agent log.
+    resume_session_id = Keyword.get(params, :claude_session_id)
 
     tools = Keyword.get(opts, :tools, ToolConfig.default_tools())
 
@@ -579,6 +616,13 @@ defmodule BoomLooper.ChatAgent do
     session_opts = if max = Keyword.get(params, :max_turns),
       do: Keyword.put(session_opts, :max_turns, max),
       else: session_opts
+
+    session_opts =
+      if is_binary(resume_session_id) and resume_session_id != "" do
+        Keyword.put(session_opts, :resume, resume_session_id)
+      else
+        session_opts
+      end
 
     {:ok, session} = backend.start_session(session_opts)
     {session, session_opts, backend}
@@ -670,23 +714,33 @@ defmodule BoomLooper.ChatAgent do
       Task.yield(task, 3_000) || Task.shutdown(task, :brutal_kill)
     end
 
-    # Start a fresh session with the same opts
-    case state.backend.start_session(state.session_opts) do
+    # Start a fresh session with the same opts. When we have a Claude
+    # session_id captured from prior turns, pass it as `resume:` so the
+    # CLI picks up the same conversation.
+    case state.backend.start_session(session_opts_with_resume(state)) do
       {:ok, new_session} ->
         state = %{state | session: new_session, status: :idle}
         :ets.insert(@ets_table, {state.id, summary(state)})
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :idle})
 
-        restart_msg = %{role: :system, content: "CLI session restarted", timestamp: DateTime.utc_now()}
+        restart_msg =
+          if is_binary(state.claude_session_id) do
+            %{role: :system, content: "CLI session restarted (resumed conversation #{String.slice(state.claude_session_id, 0..7)}…)", timestamp: DateTime.utc_now()}
+          else
+            %{role: :system, content: "CLI session restarted", timestamp: DateTime.utc_now()}
+          end
         {state, restart_msg} = append_message(state, restart_msg)
         Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: restart_msg})
 
-        # Send context summary so the agent knows what it was working on.
-        # Without this, a restart wipes all context — the agent wakes up
-        # with amnesia and the user has to re-explain everything.
-        resume_msg = build_resume_message(state)
-        if resume_msg do
-          GenServer.cast(self(), {:send_message, resume_msg})
+        # Fallback when we don't have a CLI session_id yet (e.g. the
+        # agent was restarted before its first ResultMessage landed).
+        # With a session_id, `resume:` already restored the full
+        # conversation — no need to pollute it with a summary prompt.
+        if is_nil(state.claude_session_id) do
+          resume_msg = build_resume_message(state)
+          if resume_msg do
+            GenServer.cast(self(), {:send_message, resume_msg})
+          end
         end
 
         {:noreply, state}
@@ -795,12 +849,22 @@ defmodule BoomLooper.ChatAgent do
           # insert — without this, tokens live only in RAM, and a
           # server restart replays the original :agent record (frozen
           # at init_fresh) so the Claude panel zeroes out.
+          #
+          # Also harvest the Claude CLI's session_id here. The SDK
+          # Session GenServer captures it internally from each result
+          # message; we mirror it onto ChatAgent state so server
+          # restart / CLI crash / auto-reconnect can pass it back as
+          # `resume:` and continue the same conversation instead of
+          # waking up amnesiac.
+          claude_sid = state.backend.session_id(state.session) || state.claude_session_id
+
           state = %{state |
             model: result.model || state.model,
             total_input_tokens: state.total_input_tokens + result.input_tokens,
             total_output_tokens: state.total_output_tokens + result.output_tokens,
             total_cache_read_tokens: state.total_cache_read_tokens + result.cache_read_tokens,
-            total_cost_usd: state.total_cost_usd + result.cost_usd
+            total_cost_usd: state.total_cost_usd + result.cost_usd,
+            claude_session_id: claude_sid
           }
           :ets.insert(@ets_table, {id, summary(state)})
           Persistence.persist_agent(state, &summary/1)
@@ -859,20 +923,34 @@ defmodule BoomLooper.ChatAgent do
       |> length()
 
     if is_binary(reason) && String.contains?(reason, "CLI session exited") && recent_crashes < 2 do
-      # CLI died — restart session but don't replay (let user decide what to do)
+      # CLI died — restart session and resume the same conversation
+      # when we have a captured session_id. Without resume, this was
+      # an amnesia event: the new CLI had the system prompt only and
+      # acted like a brand-new agent even though the user could still
+      # see the full message history in the sidebar.
       state = %{state | last_activity_at: now, errors: state.errors + 1}
 
-      case state.backend.start_session(state.session_opts) do
+      case state.backend.start_session(session_opts_with_resume(state)) do
         {:ok, new_session} ->
-          recovered_msg = %{role: :system, content: "Agent session restarted automatically.", timestamp: DateTime.utc_now()}
+          recovered_msg =
+            if is_binary(state.claude_session_id) do
+              %{role: :system, content: "Agent session restarted automatically (resumed conversation #{String.slice(state.claude_session_id, 0..7)}…).", timestamp: DateTime.utc_now()}
+            else
+              %{role: :system, content: "Agent session restarted automatically.", timestamp: DateTime.utc_now()}
+            end
           {state, recovered_msg} = append_message(%{state | session: new_session, status: :idle}, recovered_msg)
           Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: recovered_msg})
           Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
 
-          # Auto-continue: send the agent a summary of what it was doing so it can resume
-          resume_msg = build_resume_message(state)
-          if resume_msg do
-            GenServer.cast(self(), {:send_message, resume_msg})
+          # Fallback: only send a synthetic resume prompt if we had no
+          # session_id to `resume:` with (e.g. CLI died before the very
+          # first ResultMessage). See restart_session cast for the same
+          # guard.
+          if is_nil(state.claude_session_id) do
+            resume_msg = build_resume_message(state)
+            if resume_msg do
+              GenServer.cast(self(), {:send_message, resume_msg})
+            end
           end
 
           {:noreply, state}
@@ -983,11 +1061,18 @@ defmodule BoomLooper.ChatAgent do
   end
 
   defp dispatch_retry_session(state, id, consecutive) do
-    case state.backend.start_session(state.session_opts) do
+    case state.backend.start_session(session_opts_with_resume(state)) do
       {:ok, new_session} ->
+        content =
+          if is_binary(state.claude_session_id) do
+            "Session crashed — restarted automatically (attempt #{consecutive}, resumed conversation #{String.slice(state.claude_session_id, 0..7)}…)."
+          else
+            "Session crashed — restarted automatically (attempt #{consecutive})."
+          end
+
         recovered_msg = %{
           role: :system,
-          content: "Session crashed — restarted automatically (attempt #{consecutive}).",
+          content: content,
           timestamp: DateTime.utc_now()
         }
 
@@ -1131,6 +1216,22 @@ defmodule BoomLooper.ChatAgent do
     end
   end
 
+  # Ensure whatever session_opts we hand to the backend carry the
+  # latest Claude CLI session_id as `resume:`. This is what makes a
+  # respawned CLI continue the same conversation instead of booting
+  # fresh. Called on every code path that restarts the session —
+  # :restart_session cast, crash-recovery, retry-after-backoff,
+  # ensure_session_alive.
+  defp session_opts_with_resume(state) do
+    case state.claude_session_id do
+      sid when is_binary(sid) and sid != "" ->
+        Keyword.put(state.session_opts, :resume, sid)
+
+      _ ->
+        Keyword.delete(state.session_opts, :resume)
+    end
+  end
+
   defp ensure_session_alive(state) do
     alive = try do
       state.backend.session_alive?(state.session)
@@ -1150,10 +1251,16 @@ defmodule BoomLooper.ChatAgent do
       {state, restart_msg} = append_message(state, restart_msg)
       Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: restart_msg})
 
-      case state.backend.start_session(state.session_opts) do
+      case state.backend.start_session(session_opts_with_resume(state)) do
         {:ok, new_session} ->
           BoomLooper.EventLog.info("agent:#{state.name}", "CLI session restarted")
-          ok_msg = %{role: :system, content: "Reconnected.", timestamp: DateTime.utc_now()}
+          ok_content =
+            if is_binary(state.claude_session_id) do
+              "Reconnected (resumed conversation #{String.slice(state.claude_session_id, 0..7)}…)."
+            else
+              "Reconnected."
+            end
+          ok_msg = %{role: :system, content: ok_content, timestamp: DateTime.utc_now()}
           {state, ok_msg} = append_message(%{state | session: new_session}, ok_msg)
           Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: ok_msg})
           state
@@ -1212,7 +1319,8 @@ defmodule BoomLooper.ChatAgent do
       total_cache_read_tokens: state.total_cache_read_tokens,
       total_cost_usd: state.total_cost_usd,
       active_tool: state.active_tool,
-      turns: state.turns
+      turns: state.turns,
+      claude_session_id: state.claude_session_id
     }
   end
 

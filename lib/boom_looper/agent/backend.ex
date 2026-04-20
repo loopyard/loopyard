@@ -15,4 +15,12 @@ defmodule BoomLooper.Agent.Backend do
   @callback stream(session, prompt :: String.t()) :: Enumerable.t()
   @callback stop(session) :: :ok
   @callback session_alive?(session) :: boolean()
+
+  @doc """
+  Return the backend-specific conversation id for this live session,
+  or `nil` if none is available yet. For `Backend.ClaudeCode` this is
+  the Claude CLI session_id, which can be passed back as `resume:` to
+  restore context when the session process is replaced.
+  """
+  @callback session_id(session) :: String.t() | nil
 end
