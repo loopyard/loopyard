@@ -1453,6 +1453,30 @@ defmodule BoomLooper.ChatAgent do
         state
       end
 
+    # Mailbox-pressure observability. Piggybacks on the idle tick so
+    # we don't add a second timer. Process.info(:message_queue_len) is
+    # cheap. Threshold at 100 — normal operation keeps the mailbox <
+    # 10 because handle_info drains as fast as events arrive; a
+    # sustained 100+ means subscribers are slow or handle_info is
+    # wedged. Telemetry-only (no status change); `/system/events`
+    # picks it up for ops visibility.
+    case Process.info(self(), :message_queue_len) do
+      {:message_queue_len, n} when n >= 100 ->
+        :telemetry.execute(
+          [:boom_looper, :agent, :mailbox_pressure],
+          %{message_queue_len: n},
+          %{agent_id: state.id}
+        )
+
+        BoomLooper.EventLog.warning(
+          "agent:#{state.name}",
+          "Mailbox pressure: #{n} queued messages"
+        )
+
+      _ ->
+        :ok
+    end
+
     # Always reschedule — an agent that was reaped might later
     # receive a message, which will re-schedule after activity. But
     # keeping the tick running means we catch the next idle window
