@@ -82,13 +82,22 @@ defmodule BoomLooper.AgentBoot do
       {:ok, _ctx} ->
         :ok
 
-      {:error, {:step_failed, step, reason}, _rollback_outcome} ->
+      {:error, {:step_failed, step, reason}, rollback_outcome} ->
         Logger.error("[AgentBoot] #{id} saga step #{step} failed: #{inspect(reason)}")
 
         BoomLooper.EventLog.error(
           "agent_boot:#{workspace_id}",
           "boot saga failed at #{step}: #{inspect(reason)} " <>
             "ws_id=#{workspace_id} type=#{agent_type}"
+        )
+
+        # Audit LOW #16: surface the rollback_failed path loudly at
+        # the call site (not just /system/sagas) so operators see
+        # it in logs + telemetry. :rolled_back is benign.
+        Saga.maybe_log_rollback_failed(
+          rollback_outcome,
+          :boot_agent,
+          %{agent_id: id, workspace_id: workspace_id, agent_type: agent_type}
         )
 
         ChatAgent.boot_failed(id, reason)
@@ -197,6 +206,20 @@ defmodule BoomLooper.AgentBoot do
         # Best-effort — agent may already be gone. stop_agent is
         # a cast-based call in ChatAgent; it's idempotent against
         # missing agents.
+        #
+        # Audit MEDIUM #11 — rollback UX ordering note:
+        # `ChatAgent.stop_agent/1` publishes %Events.ChatAgent.Stopped{}
+        # which transitions the sidebar :booting → :stopped (skipping
+        # :crashed). The state-machine treats :booting → :stopped as
+        # valid so no invariant fails, but the user observably asked
+        # to BOOT the agent and will see it transition to :stopped
+        # rather than :crashed. This is intentional for now — the
+        # rollback fully reverts the :start_agent effect, and
+        # `boot_failed/2` is called outside the saga to emit the
+        # transient `:chat_agent_boot_failed` event for operator
+        # visibility. A dedicated :boot_failed broadcast is a bigger
+        # UX scope change; keep current semantics and document so
+        # the next person touching this path isn't confused.
         try do
           ChatAgent.stop_agent(id)
         rescue

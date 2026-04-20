@@ -57,7 +57,21 @@ defmodule BoomLooper.SagaCoverageTest do
     # + broadcasts fire the same way on success and failure).
     "lib/boom_looper/workspace/service_manager.ex" =>
       "Single compose-up + broadcasts. Partial-success state not " <>
-        "observable (ETS cache + broadcasts are eventually consistent)."
+        "observable (ETS cache + broadcasts are eventually consistent).",
+
+    # ChatAgent.remove_agent/1 is best-effort destruction, same
+    # shape as Workspace.Destructor: the user explicitly asked to
+    # delete the agent. If the ETF-log append fails after we've
+    # broadcast :destroying, rolling back would mean un-destroying
+    # the agent (re-creating ETS summary, reviving sidebar entry)
+    # against the user's stated intent. The reconciler + explicit
+    # retry on next remove_agent call are the right backstops;
+    # saga rollback would create a worse UX than the current
+    # "pinned at :destroying until next reconcile" failure mode.
+    "lib/boom_looper/chat_agent.ex" =>
+      "Best-effort destruction of agent — user asked to delete. " <>
+        "Rollback would re-create state the user explicitly removed. " <>
+        "Reconciler cleans up any stuck :destroying rows."
   }
 
   describe "multi-step operations use Saga.run" do

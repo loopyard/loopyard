@@ -104,8 +104,20 @@ defmodule BoomLooper.WorkspaceSupervisor do
            # operator knows to retry.
            on_resume: :rollback
          ) do
-      {:ok, %{pid: pid}} -> {:ok, pid}
-      {:error, {:step_failed, _step, reason}, _} -> {:error, reason}
+      {:ok, %{pid: pid}} ->
+        {:ok, pid}
+
+      {:error, {:step_failed, _step, reason}, rollback_outcome} ->
+        # Audit LOW #16: surface `{:rollback_failed, _}` at the call
+        # site — `/system/sagas` catches it but callers shouldn't rely
+        # on operators watching that page. `:rolled_back` is benign.
+        Saga.maybe_log_rollback_failed(
+          rollback_outcome,
+          :rebuild_workspace,
+          %{workspace_id: workspace_id}
+        )
+
+        {:error, reason}
     end
   end
 

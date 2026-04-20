@@ -541,4 +541,48 @@ defmodule BoomLooper.Saga do
     seq = :erlang.unique_integer([:positive, :monotonic])
     "#{ts}-#{seq}"
   end
+
+  @doc """
+  Call-site helper for surfacing a `{:rollback_failed, list}` saga
+  result loudly. `Saga.run/2` returns either `:rolled_back` (benign —
+  all rollbacks ran clean) or `{:rollback_failed, [{step, reason}, ...]}`
+  (scary — at least one rollback itself errored and external state may
+  be inconsistent). `/system/sagas` flags the scary case, but the
+  direct caller of `Saga.run/2` also owns the incident — callers
+  should pipe the third element of the error tuple through this
+  helper so the signal reaches logs + telemetry at the call site.
+
+  Benign `:rolled_back` is a no-op. `{:rollback_failed, _}` emits:
+
+    * `Logger.error` with saga name, failed step names, and metadata.
+    * `[:boom_looper, :saga, :call_site_rollback_failed]` telemetry
+      with `%{count: length}` measurements and
+      `%{saga_name, failed_rollbacks, ...metadata}` meta.
+
+  See audit LOW #16 in `plans/post-migration-audit.md`.
+  """
+  @spec maybe_log_rollback_failed(
+          :rolled_back | {:rollback_failed, [{step_name(), term()}]},
+          atom(),
+          map()
+        ) :: :ok
+  def maybe_log_rollback_failed(:rolled_back, _saga_name, _metadata), do: :ok
+
+  def maybe_log_rollback_failed({:rollback_failed, failed_rollbacks}, saga_name, metadata)
+      when is_list(failed_rollbacks) and is_atom(saga_name) and is_map(metadata) do
+    Logger.error(
+      "[Saga] #{saga_name} rollback FAILED for steps: " <>
+        inspect(Enum.map(failed_rollbacks, &elem(&1, 0))) <>
+        " — external state may be inconsistent. " <>
+        "metadata=#{inspect(metadata)} details=#{inspect(failed_rollbacks)}"
+    )
+
+    :telemetry.execute(
+      [:boom_looper, :saga, :call_site_rollback_failed],
+      %{count: length(failed_rollbacks)},
+      Map.merge(metadata, %{saga_name: saga_name, failed_rollbacks: failed_rollbacks})
+    )
+
+    :ok
+  end
 end

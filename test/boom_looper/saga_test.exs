@@ -406,6 +406,89 @@ defmodule BoomLooper.SagaTest do
     end
   end
 
+  describe "maybe_log_rollback_failed/3 — call-site surfacing (audit LOW #16)" do
+    test ":rolled_back is a no-op — emits no telemetry" do
+      {_result, events} =
+        collect_telemetry(
+          [[:boom_looper, :saga, :call_site_rollback_failed]],
+          fn ->
+            Saga.maybe_log_rollback_failed(:rolled_back, :unit_test, %{foo: 1})
+          end
+        )
+
+      assert events == []
+    end
+
+    test "{:rollback_failed, list} logs error + emits telemetry with saga_name + metadata" do
+      failed = [{:step_a, :boom}, {:step_b, {:exception, "nope"}}]
+
+      logs =
+        ExUnit.CaptureLog.capture_log(fn ->
+          {_result, events} =
+            collect_telemetry(
+              [[:boom_looper, :saga, :call_site_rollback_failed]],
+              fn ->
+                Saga.maybe_log_rollback_failed(
+                  {:rollback_failed, failed},
+                  :my_saga,
+                  %{workspace_id: "ws-1"}
+                )
+              end
+            )
+
+          assert [{[:boom_looper, :saga, :call_site_rollback_failed], measurements, meta}] =
+                   events
+
+          assert measurements.count == 2
+          assert meta.saga_name == :my_saga
+          assert meta.workspace_id == "ws-1"
+          assert meta.failed_rollbacks == failed
+        end)
+
+      assert logs =~ "rollback FAILED"
+      assert logs =~ "my_saga"
+      assert logs =~ ":step_a"
+      assert logs =~ ":step_b"
+    end
+
+    test "call-site path fires when Saga.run/2 returns {:rollback_failed, _}" do
+      # End-to-end: exercise via Saga.run itself with a step that has
+      # a broken rollback + a later step that fails forward. Confirms
+      # the shape of the third tuple element is compatible with the
+      # helper and the helper fires call_site_rollback_failed telemetry.
+      steps = [
+        %{
+          name: :write,
+          run: fn _ -> {:ok, %{}} end,
+          rollback: fn _ -> {:error, :disk_full} end
+        },
+        %{name: :finalize, run: fn _ -> {:error, :boom} end}
+      ]
+
+      {:error, {:step_failed, :finalize, :boom}, rollback_outcome} =
+        Saga.run(steps, name: :integration_test, journal?: false)
+
+      assert {:rollback_failed, [{:write, :disk_full}]} = rollback_outcome
+
+      {_result, events} =
+        collect_telemetry(
+          [[:boom_looper, :saga, :call_site_rollback_failed]],
+          fn ->
+            Saga.maybe_log_rollback_failed(
+              rollback_outcome,
+              :integration_test,
+              %{caller: :unit}
+            )
+          end
+        )
+
+      assert [{[:boom_looper, :saga, :call_site_rollback_failed], %{count: 1}, meta}] = events
+      assert meta.saga_name == :integration_test
+      assert meta.caller == :unit
+      assert meta.failed_rollbacks == [{:write, :disk_full}]
+    end
+  end
+
   describe "validation" do
     test "step missing :name raises" do
       assert_raise ArgumentError, fn ->
