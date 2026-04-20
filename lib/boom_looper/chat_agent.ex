@@ -166,9 +166,14 @@ defmodule BoomLooper.ChatAgent do
 
 
   def get_state(id) do
-    # Try live GenServer first, fall back to ETS
+    # Try live GenServer first, fall back to ETS. Short timeout (500ms)
+    # because this is a read path from the UI: a wedged agent doesn't
+    # deserve a 5-second UI hang when the ETS summary is right there.
+    # The fall-through via `catch :exit, _` handles both "no such
+    # agent" (noproc) and "agent wedged / took >500ms" — both recover
+    # cleanly from ETS.
     try do
-      GenServer.call(via(id), :get_state)
+      GenServer.call(via(id), :get_state, 500)
     catch
       :exit, _ ->
         case :ets.lookup(@ets_table, id) do
