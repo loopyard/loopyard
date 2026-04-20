@@ -196,7 +196,11 @@ defmodule BoomLooper.Saga.Journal do
     |> read_records()
     |> build_sagas()
     |> Enum.filter(&(&1.status == :in_flight))
-    |> Enum.sort_by(& &1.saga_id)
+    # Audit-2 LOW #11/#12: sort oldest-first on the started_at_ms
+    # integer (+ saga_id tiebreaker) so the order doesn't rely on the
+    # string saga_id format staying chronological. Pre-commit 02d42f6
+    # journals could have integer ids — the tuple key handles both.
+    |> Enum.sort_by(&{&1.started_at_ms, &1.saga_id})
   end
 
   @doc """
@@ -227,7 +231,13 @@ defmodule BoomLooper.Saga.Journal do
     path()
     |> read_records()
     |> build_sagas()
-    |> Enum.sort_by(& &1.saga_id, :desc)
+    # Audit-2 LOW #11/#12: newest-first on the started_at_ms integer
+    # (+ saga_id tiebreaker). Previously a lex sort on the string
+    # saga_id, which worked only because the current id format
+    # happens to be chronological. Also handles pre-commit 02d42f6
+    # integer ids cleanly: integers and strings now share the
+    # `started_at_ms` key.
+    |> Enum.sort_by(&{&1.started_at_ms, &1.saga_id}, :desc)
   end
 
   @doc """
@@ -521,6 +531,10 @@ defmodule BoomLooper.Saga.Journal do
       on_resume: on_resume,
       step_names: step_names,
       started_at: started_at,
+      # Audit-2 LOW #11/#12: a plain integer (ms since epoch) for
+      # sort_by. `started_at` above stays in its original shape for
+      # backwards compat with /system/sagas + journal_test.exs.
+      started_at_ms: started_at_ms(started_at),
       completed_steps: [],
       started_step: nil,
       failed_step: nil,
@@ -623,7 +637,8 @@ defmodule BoomLooper.Saga.Journal do
       |> Enum.group_by(& &1.name)
       |> Enum.flat_map(fn {_name, sagas} ->
         sagas
-        |> Enum.sort_by(& &1.saga_id, :desc)
+        # Audit-2 LOW #11/#12: tuple sort on {started_at_ms, saga_id}.
+        |> Enum.sort_by(&{&1.started_at_ms, &1.saga_id}, :desc)
         |> Enum.take(n_per_name)
         |> Enum.map(& &1.saga_id)
       end)
@@ -631,6 +646,14 @@ defmodule BoomLooper.Saga.Journal do
 
     Enum.filter(records, fn rec -> saga_id_of(rec) in kept_ids end)
   end
+
+  # Normalize started_at to an integer ms timestamp for sorting.
+  # Saga.run/2 writes `System.system_time(:millisecond)` (integer)
+  # today, but older journals predating commit 02d42f6 could have
+  # carried a different shape — be defensive.
+  defp started_at_ms(ms) when is_integer(ms), do: ms
+  defp started_at_ms(%DateTime{} = dt), do: DateTime.to_unix(dt, :millisecond)
+  defp started_at_ms(_), do: 0
 
   defp saga_id_of({:saga_started, id, _, _, _, _, _}), do: id
   defp saga_id_of({:step_started, id, _, _}), do: id

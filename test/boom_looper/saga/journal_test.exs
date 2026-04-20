@@ -101,13 +101,30 @@ defmodule BoomLooper.Saga.JournalTest do
       assert Journal.incomplete() == []
     end
 
-    test "multiple in-flight sagas returned sorted by id" do
+    test "multiple in-flight sagas returned sorted chronologically (oldest first)" do
+      # Audit-2 LOW #11/#12: sort key is now {started_at_ms, saga_id}
+      # so ordering survives a future saga_id format change and handles
+      # the pre-commit 02d42f6 integer ids + post-commit string ids
+      # mixing cleanly. Started_at values are 1/2/3 → that's the sort
+      # order, regardless of the saga_ids.
       Journal.append({:saga_started, 10, :a, %{}, :rollback, [:x], 1})
       Journal.append({:saga_started, 5, :b, %{}, :rollback, [:y], 2})
       Journal.append({:saga_started, 7, :c, %{}, :rollback, [:z], 3})
 
       ids = Journal.incomplete() |> Enum.map(& &1.saga_id)
-      assert ids == [5, 7, 10]
+      assert ids == [10, 5, 7]
+    end
+
+    test "sort is stable for out-of-order started_at timestamps" do
+      # Audit-2 LOW #11 regression guard. Deliberately feed sagas in
+      # arbitrary id+timestamp order; the chronological result must
+      # come out oldest-first regardless of insertion order.
+      Journal.append({:saga_started, "zz-3", :c, %{}, :rollback, [:x], 300})
+      Journal.append({:saga_started, "aa-1", :a, %{}, :rollback, [:y], 100})
+      Journal.append({:saga_started, "mm-2", :b, %{}, :rollback, [:z], 200})
+
+      ids = Journal.incomplete() |> Enum.map(& &1.saga_id)
+      assert ids == ["aa-1", "mm-2", "zz-3"]
     end
   end
 

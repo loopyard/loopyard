@@ -75,4 +75,32 @@ defmodule BoomLooper.ChatAgent.StateMachineTest do
                StateMachine.transition(:booting, :thinking)
     end
   end
+
+  describe ":backoff state (audit-2 LOW #7)" do
+    test ":backoff is a declared state" do
+      assert :backoff in StateMachine.states()
+    end
+
+    test ":thinking → :backoff is allowed (enters the backoff window on a stream crash)" do
+      assert StateMachine.allowed_transition?(:thinking, :backoff)
+      assert {:ok, :backoff} = StateMachine.transition(:thinking, :backoff)
+    end
+
+    test ":backoff → :idle is allowed (successful retry)" do
+      assert StateMachine.allowed_transition?(:backoff, :idle)
+    end
+
+    test ":backoff → :crashed is allowed (retry exhaustion / give up)" do
+      assert StateMachine.allowed_transition?(:backoff, :crashed)
+    end
+
+    test ":backoff can be stopped or destroyed mid-window" do
+      assert StateMachine.allowed_transition?(:backoff, :stopped)
+      assert StateMachine.allowed_transition?(:backoff, :destroying)
+    end
+
+    test ":backoff → :thinking directly is NOT allowed (must go through :idle first)" do
+      refute StateMachine.allowed_transition?(:backoff, :thinking)
+    end
+  end
 end

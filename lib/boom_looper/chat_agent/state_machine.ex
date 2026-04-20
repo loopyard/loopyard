@@ -2,11 +2,13 @@ defmodule BoomLooper.ChatAgent.StateMachine do
   @moduledoc """
   Explicit state graph for a ChatAgent session.
 
-  An agent moves through six states over its lifetime:
+  An agent moves through seven states over its lifetime:
 
       :booting      → the CLI subprocess is starting; no session yet
       :idle         → session up, waiting for input
       :thinking     → a turn is in flight
+      :backoff      → a streaming task crashed; waiting on the
+                      exponential-backoff window before retrying
       :stopped      → explicitly stopped by user, session gone
       :crashed      → session died unexpectedly
       :destroying   → being removed; terminal state, no transitions out
@@ -40,7 +42,7 @@ defmodule BoomLooper.ChatAgent.StateMachine do
   # All possible states. Adding one without updating @transitions will
   # make the enumeration test fail — forcing the author to place the
   # new state in the graph.
-  @states [:booting, :idle, :thinking, :stopped, :crashed, :destroying]
+  @states [:booting, :idle, :thinking, :backoff, :stopped, :crashed, :destroying]
 
   # Directed graph of allowed transitions. Same-state "transitions"
   # (e.g. :idle → :idle) are excluded — they're no-ops, not state
@@ -53,8 +55,15 @@ defmodule BoomLooper.ChatAgent.StateMachine do
     idle: [:thinking, :stopped, :crashed, :destroying],
 
     # A thinking agent finishes the turn (→ :idle), times out / errors
-    # (→ :crashed), or gets stopped mid-turn.
-    thinking: [:idle, :stopped, :crashed, :destroying],
+    # (→ :crashed), enters :backoff on a mid-stream task crash, or
+    # gets stopped mid-turn. Audit-2 LOW #7.
+    thinking: [:idle, :backoff, :stopped, :crashed, :destroying],
+
+    # A backing-off agent is waiting for a scheduled :retry_session.
+    # Retry success → :idle; give-up (or retry exhaustion) → :crashed.
+    # Operator stop / destroy are still legal to bail out of the
+    # backoff window. Audit-2 LOW #7.
+    backoff: [:idle, :crashed, :stopped, :destroying],
 
     # Stopped agents can be restarted (→ :idle) or removed.
     stopped: [:idle, :destroying],

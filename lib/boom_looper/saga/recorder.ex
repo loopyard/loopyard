@@ -58,7 +58,9 @@ defmodule BoomLooper.Saga.Recorder do
         _ ->
           :ets.tab2list(@table)
           |> Enum.map(fn {_id, record} -> record end)
-          |> Enum.sort_by(& &1.saga_id, :desc)
+          # Audit-2 LOW #11: sort newest-first on {started_at, saga_id}
+          # rather than the string saga_id alone. See sort_asc/0.
+          |> Enum.sort(&desc_started_at?/2)
       end
 
     records =
@@ -280,6 +282,14 @@ defmodule BoomLooper.Saga.Recorder do
   # Every N inserts trim down to @max_records. Batched rather than
   # per-insert for the same reason as Events.Tap — the hot path is
   # the telemetry handler, it should not linearly walk the table.
+  #
+  # Audit-2 LOW #11: sort on `started_at` (a DateTime with microsecond
+  # precision set at `:saga_started`) rather than the string saga_id.
+  # Lex sort of "#{us}-#{seq}" is chronological today because
+  # `us` is a fixed 16 digits, but that's a property of the current
+  # saga_id format — switching to started_at makes trim resilient
+  # if the format ever changes. Saga ids fall back as a tiebreaker
+  # for records that somehow arrived with the same timestamp.
   defp maybe_trim do
     info = :ets.info(@table)
     size = Keyword.get(info, :size, 0)
@@ -288,11 +298,33 @@ defmodule BoomLooper.Saga.Recorder do
       to_delete = size - @max_records
 
       :ets.tab2list(@table)
-      |> Enum.sort_by(fn {id, _} -> id end)
+      |> Enum.sort(fn {a_id, a}, {b_id, b} -> asc_started_at?({a.started_at, a_id}, {b.started_at, b_id}) end)
       |> Enum.take(to_delete)
       |> Enum.each(fn {id, _} -> :ets.delete(@table, id) end)
     end
 
     :ok
+  end
+
+  # Oldest-first comparator for records tuple-keyed by {started_at,
+  # saga_id}. DateTime comparisons use DateTime.compare/2 (string lex
+  # sort would be wrong across microsecond rollovers in the far
+  # future), and saga_id is a tiebreaker for records written inside
+  # the same microsecond. Missing `started_at` (nil) sorts as oldest
+  # so malformed records trim first.
+  defp asc_started_at?({%DateTime{} = a, a_id}, {%DateTime{} = b, b_id}) do
+    case DateTime.compare(a, b) do
+      :lt -> true
+      :gt -> false
+      :eq -> a_id <= b_id
+    end
+  end
+
+  defp asc_started_at?({nil, _}, {_, _}), do: true
+  defp asc_started_at?({_, _}, {nil, _}), do: false
+
+  # Newest-first comparator for records. Used by `recent/0`.
+  defp desc_started_at?(a, b) do
+    asc_started_at?({b.started_at, b.saga_id}, {a.started_at, a.saga_id})
   end
 end

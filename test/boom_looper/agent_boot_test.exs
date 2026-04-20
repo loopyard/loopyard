@@ -14,6 +14,49 @@ defmodule BoomLooper.AgentBootTest do
     :ok
   end
 
+  describe "boot call-site rollback_failed telemetry (audit-2 coverage #4)" do
+    # Commit 2954717 added `Saga.maybe_log_rollback_failed/3` at
+    # agent_boot.ex:97 so rollback failures at the boot call site
+    # fire `[:boom_looper, :saga, :call_site_rollback_failed]`. We
+    # prove the wiring is still intact by driving the helper with
+    # the exact shape AgentBoot.boot/3 feeds it.
+
+    test "benign :rolled_back is a no-op at the agent_boot call site" do
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:boom_looper, :saga, :call_site_rollback_failed]
+        ])
+
+      BoomLooper.Saga.maybe_log_rollback_failed(:rolled_back, :boot_agent,
+        %{agent_id: "a1", workspace_id: "w1", agent_type: "coding"})
+
+      refute_receive {[:boom_looper, :saga, :call_site_rollback_failed], _, _, _}, 100
+
+      :telemetry.detach(ref)
+    end
+
+    test "rollback_failed outcome emits telemetry with agent_id + workspace_id" do
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:boom_looper, :saga, :call_site_rollback_failed]
+        ])
+
+      BoomLooper.Saga.maybe_log_rollback_failed(
+        {:rollback_failed, [{:start_agent, :stuck}]},
+        :boot_agent,
+        %{agent_id: "a1", workspace_id: "w1", agent_type: "coding"}
+      )
+
+      assert_receive {[:boom_looper, :saga, :call_site_rollback_failed], ^ref,
+                      %{count: 1},
+                      %{saga_name: :boot_agent, agent_id: "a1", workspace_id: "w1",
+                        agent_type: "coding", failed_rollbacks: [{:start_agent, :stuck}]}},
+                     500
+
+      :telemetry.detach(ref)
+    end
+  end
+
   describe "boot/3" do
     test "registers boot status updates before starting session" do
       id = "boot-test-#{:rand.uniform(100_000)}"

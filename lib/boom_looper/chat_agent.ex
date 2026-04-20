@@ -926,12 +926,20 @@ defmodule BoomLooper.ChatAgent do
       # a user's send_message) replaced state.session during the
       # backoff. Without that guard, both paths would spawn a new
       # session and orphan one CLI process per race.
+      #
+      # Audit-2 LOW #7: transition status to :backoff and broadcast
+      # so the UI stops claiming "thinking" during the (up to 32s)
+      # backoff window. :retry_session flips back to :idle on
+      # success or :crashed on failure.
       base = Application.get_env(:boom_looper, :crash_backoff_base_ms, @default_crash_backoff_base_ms)
       backoff_ms = BoomLooper.Retry.backoff_ms(consecutive, {:exponential, base})
       BoomLooper.EventLog.info("agent:#{state.name}", "Backing off #{backoff_ms}ms before restart (crash ##{consecutive})")
       Process.send_after(self(), {:retry_session, consecutive, state.session}, backoff_ms)
+      state = %{state | status: :backoff}
       state = Map.put(state, :consecutive_crashes, consecutive)
       state = Map.put(state, :retry_from_session, state.session)
+      :ets.insert(@ets_table, {id, summary(state)})
+      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :backoff})
       {:noreply, state}
     end
   end

@@ -57,6 +57,13 @@ defmodule BoomLooper.ChatAgent.RestartController do
   @telemetry_triggered [:boom_looper, :quarantine, :triggered]
   @telemetry_released [:boom_looper, :quarantine, :released]
 
+  # Crash history ETS table (see init/1). Declared up here so helper
+  # functions defined BEFORE init/1 (e.g. purge_history_for/2) can
+  # reference it. Module attributes are resolved at compile time in
+  # lexical order — defining this in init/1 meant earlier private
+  # fns saw @history_table as undefined.
+  @history_table :restart_controller_history
+
   # ── Public API ──
 
   def start_link(opts) do
@@ -116,10 +123,41 @@ defmodule BoomLooper.ChatAgent.RestartController do
     end
   end
 
-  # Public wrapper so release/1 can clear history without plumbing
-  # state through the GenServer.
+  # Audit-2 MEDIUM #5: serialize release-side ETS writes through the
+  # controller so they can't interleave with the controller's own
+  # read-modify-write in handle_agent_down. Without this hop, the
+  # race sequence was:
+  #
+  #   1. controller reads history stamps (to filter + append the
+  #      new crash stamp)
+  #   2. operator calls release/1 → :ets.delete wipes the row
+  #   3. controller writes [now | stamps] back → crash stamp
+  #      resurrects the just-released history
+  #
+  # The GenServer call funnels the delete through the same process
+  # that owns the handle_agent_down message, so step 2 lands in the
+  # mailbox after the DOWN is processed. If no controller is
+  # registered (tests without a full supervision tree, boot gap),
+  # fall back to the direct ETS delete — that path is genuinely
+  # race-free because nothing's running that would also touch the
+  # table.
   defp purge_history_for(workspace_id, agent_id) do
-    :ets.delete(:restart_controller_history, {workspace_id, agent_id})
+    case Registry.lookup(BoomLooper.ChatAgent.RestartControllerRegistry, workspace_id) do
+      [{pid, _}] ->
+        try do
+          GenServer.call(pid, {:purge_history, agent_id}, 5_000)
+        catch
+          :exit, _ ->
+            # Controller died or timed out — fall back to the direct
+            # delete so release still clears the history.
+            :ets.delete(@history_table, history_key(workspace_id, agent_id))
+            :ok
+        end
+
+      [] ->
+        :ets.delete(@history_table, history_key(workspace_id, agent_id))
+        :ok
+    end
   end
 
   @doc """
@@ -185,8 +223,6 @@ defmodule BoomLooper.ChatAgent.RestartController do
     {:ok, state}
   end
 
-  @history_table :restart_controller_history
-
   defp history_key(workspace_id, agent_id), do: {workspace_id, agent_id}
 
   defp read_history(workspace_id, agent_id) do
@@ -202,6 +238,14 @@ defmodule BoomLooper.ChatAgent.RestartController do
 
   defp clear_history(workspace_id, agent_id) do
     :ets.delete(@history_table, history_key(workspace_id, agent_id))
+  end
+
+  @impl true
+  def handle_call({:purge_history, agent_id}, _from, state) do
+    # Audit-2 MEDIUM #5: same process that owns handle_agent_down's
+    # read-modify-write owns the delete, so they serialize.
+    :ets.delete(@history_table, history_key(state.workspace_id, agent_id))
+    {:reply, :ok, state}
   end
 
   @impl true

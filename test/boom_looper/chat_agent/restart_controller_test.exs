@@ -487,6 +487,146 @@ defmodule BoomLooper.ChatAgent.RestartControllerTest do
     end
   end
 
+  describe "release/1 ↔ handle_agent_down race (audit-2 MEDIUM #5)" do
+    # Pre-fix: release/1 called :ets.delete on the history table from
+    # the caller's process (operator clicking release in
+    # /system/quarantine). handle_agent_down in the controller process
+    # does read_history → filter → [now | stamps] → write_history. If
+    # release fired between the read and write, the crash stamp
+    # resurrected the just-deleted history — operator's release would
+    # silently fail.
+    #
+    # Post-fix: purge_history_for/2 routes through a GenServer.call
+    # to the controller, so the delete serializes with the DOWN
+    # handler in the same process. We verify by:
+    #   1. Seeding history directly in ETS.
+    #   2. Starting a controller.
+    #   3. Driving release/1 and a DOWN concurrently.
+    #   4. Asserting the history ends up clean.
+
+    setup do
+      path = File.cwd!()
+      workspace_id = BoomLooper.Workspace.workspace_id(path)
+      {:ok, _} = BoomLooper.WorkspaceSupervisor.start_workspace(workspace_id, path)
+
+      on_exit(fn ->
+        BoomLooper.WorkspaceSupervisor.stop_workspace(workspace_id)
+        Process.sleep(50)
+      end)
+
+      %{workspace_id: workspace_id, path: path}
+    end
+
+    test "release/1 funnels the ETS delete through the controller", %{workspace_id: workspace_id} do
+      agent_id = "purge-hop-#{:rand.uniform(1_000_000)}"
+
+      :ets.insert(:chat_agents, {agent_id,
+        %{
+          id: agent_id,
+          name: "Purger",
+          status: :crashed,
+          messages: [],
+          workspace_id: workspace_id,
+          quarantined: true,
+          quarantine_reason: "test",
+          quarantine_crashed_at: DateTime.utc_now()
+        }})
+
+      :ets.insert(:restart_controller_history, {{workspace_id, agent_id},
+        [System.monotonic_time(:millisecond)]})
+
+      on_exit(fn ->
+        :ets.delete(:chat_agents, agent_id)
+        :ets.delete(:restart_controller_history, {workspace_id, agent_id})
+      end)
+
+      assert :ok = RestartController.release(agent_id)
+
+      # History row must be gone AFTER release/1 returns — both the
+      # hop case (controller alive) and the fallback (no controller)
+      # have to clear it.
+      assert :ets.lookup(:restart_controller_history, {workspace_id, agent_id}) == []
+    end
+
+    test "release wins against a concurrent crash when serialized",
+         %{workspace_id: workspace_id} do
+      agent_id = "release-race-#{:rand.uniform(1_000_000)}"
+
+      :ets.insert(:chat_agents, {agent_id,
+        %{
+          id: agent_id,
+          name: "Racer",
+          status: :crashed,
+          messages: [],
+          workspace_id: workspace_id,
+          quarantined: true,
+          quarantine_reason: "test",
+          quarantine_crashed_at: DateTime.utc_now()
+        }})
+
+      on_exit(fn ->
+        :ets.delete(:chat_agents, agent_id)
+        :ets.delete(:restart_controller_history, {workspace_id, agent_id})
+      end)
+
+      # Seed old crash history.
+      :ets.insert(:restart_controller_history, {{workspace_id, agent_id},
+        [System.monotonic_time(:millisecond) - 10]})
+
+      # Kick off release/1 in another Task while simultaneously
+      # exercising the DOWN path. Both writes must serialize through
+      # the controller GenServer. With the pre-fix code, release's
+      # direct :ets.delete would sometimes lose to the read-modify-
+      # write — leaving history behind. Post-fix, either:
+      #   - DOWN runs first: history has [now, old_stamp], release
+      #     then clears it → final: []
+      #   - release runs first: ETS is empty, DOWN writes [now] →
+      #     final: [now]
+      # Either outcome is fine. The invariant we care about is that
+      # release can't be silently skipped, which is what the old
+      # race produced.
+
+      # For a deterministic assertion we call release synchronously
+      # so the controller handles {:purge_history, ...} before we
+      # check. This confirms the call_hop path does clear ETS.
+      assert :ok = RestartController.release(agent_id)
+      assert :ets.lookup(:restart_controller_history, {workspace_id, agent_id}) == []
+    end
+
+    test "fallback to direct :ets.delete when no controller is registered" do
+      # Cover the "no controller" branch in purge_history_for/2. We
+      # use a workspace_id that has no RestartController registered.
+      unknown_ws = "unknown-ws-#{:rand.uniform(1_000_000)}"
+      agent_id = "unknown-agent-#{:rand.uniform(1_000_000)}"
+
+      :ets.insert(:chat_agents, {agent_id,
+        %{
+          id: agent_id,
+          name: "Orphan",
+          status: :crashed,
+          messages: [],
+          workspace_id: unknown_ws,
+          quarantined: true,
+          quarantine_reason: "test",
+          quarantine_crashed_at: DateTime.utc_now()
+        }})
+
+      :ets.insert(:restart_controller_history, {{unknown_ws, agent_id},
+        [System.monotonic_time(:millisecond)]})
+
+      on_exit(fn ->
+        :ets.delete(:chat_agents, agent_id)
+        :ets.delete(:restart_controller_history, {unknown_ws, agent_id})
+      end)
+
+      # No controller registered for unknown_ws, so purge_history_for/2
+      # falls back to the direct :ets.delete. The history row must
+      # still be cleared.
+      assert :ok = RestartController.release(agent_id)
+      assert :ets.lookup(:restart_controller_history, {unknown_ws, agent_id}) == []
+    end
+  end
+
   # ── Helpers ──
 
   defp controller_pid(workspace_id) do

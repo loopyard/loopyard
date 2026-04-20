@@ -100,6 +100,46 @@ defmodule BoomLooper.ChatAgent.CrashBackoffTest do
     end
   end
 
+  describe ":backoff state transition (audit-2 LOW #7)" do
+    # Pre-fix: state.status stayed :thinking during the exponential
+    # backoff window (up to 32s). UI showed "thinking" while the
+    # agent was actually dead in the water. Fix: transition to a
+    # new :backoff state, broadcast it, let the UI render accordingly.
+
+    test "EXIT during :thinking transitions to :backoff and broadcasts", %{id: id} do
+      # Use a longer backoff so we have time to observe the :backoff
+      # state BEFORE :retry_session fires and flips back to :idle.
+      Application.put_env(:boom_looper, :crash_backoff_base_ms, 500)
+      on_exit(fn -> Application.put_env(:boom_looper, :crash_backoff_base_ms, 0) end)
+
+      pid = agent_pid(id)
+      assert pid != nil
+
+      :sys.replace_state(pid, fn state ->
+        %{state | status: :thinking}
+        |> Map.put(:consecutive_crashes, 0)
+      end)
+
+      # Force EXIT; the controller should flip to :backoff and broadcast.
+      send(pid, {:EXIT, self(), {:error, "boom"}})
+
+      # Expect :backoff broadcast. This must arrive BEFORE :retry_session
+      # fires (500ms), which would then flip to :idle.
+      assert_receive %BoomLooper.Events.ChatAgent.StatusChanged{id: ^id, status: :backoff}, 200
+
+      state_during = :sys.get_state(pid)
+      assert state_during.status == :backoff
+
+      # ETS summary must reflect :backoff too so non-live viewers see
+      # the current status.
+      [{^id, summary}] = :ets.lookup(:chat_agents, id)
+      assert summary.status == :backoff
+
+      # After the backoff elapses, retry flips it to :idle.
+      assert_receive %BoomLooper.Events.ChatAgent.StatusChanged{id: ^id, status: :idle}, 2_000
+    end
+  end
+
   describe ":retry_session session-replacement guard" do
     # Audit-2 HIGH #2 (commit 35f07cc). The async-backoff fix kept
     # state.status = :thinking during the backoff window. A user's
