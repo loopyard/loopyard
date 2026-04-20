@@ -41,14 +41,28 @@ contract), offline Claude API caching, cross-project agent memory.
    offer to resume the most-recent on-disk session. "Best effort + visible
    status" beats "silent reset to zero."
 
-2. **If we drop state, the UI MUST say so.** Silent loss is the worst
-   failure mode — the user can't tell the agent is broken vs. just being
-   terse. Any gap between user expectations and reality surfaces via a
-   visible marker:
-     - Inline system message on the conversation (e.g. "⚠ Reconnected —
-       last 3 turns of context were not recovered")
-     - Sidebar status indicator (colored dot + hover explanation)
-     - Never just a log line the user won't see.
+2. **If we drop state, the UI MUST tell the user: WHY, CONSEQUENCE,
+   ACTION.** Silent loss is the worst failure mode — the user can't
+   tell the agent is broken vs. just being terse. Every unrecoverable
+   event surfaces THREE things:
+
+     - **Why**: what actually failed ("CLI auth token expired",
+       "rate-limit exhausted for 2h", "workspace volume unreachable").
+     - **Consequence**: what won't work ("Claude won't respond to new
+       messages", "your last 3 turns were not saved", "this agent is
+       quarantined until 5 min of silence").
+     - **Action**: what the user can do ("Re-run `mix boom.setup` and
+       restart this agent", "wait 24m — next retry at 14:32", "fix
+       the underlying volume then click Restart").
+
+   Channels in priority order:
+     - Inline system/error message in the conversation (always — this
+       is the channel the user is already looking at).
+     - Status badge on the agent sidebar row (for persistent states
+       like `:rate_limited`, `:auth_expired`, `:quarantined`).
+     - Agent context panel for the full why/consequence/action text.
+     - `/system/*` pages for ops visibility + telemetry.
+     - **Never just a log line the user won't see.**
 
 3. **Backoff and rate limits are first-class behavior, not an
    exception path.** Every retry loop must be exponential + jittered +
@@ -298,6 +312,71 @@ class as #3 but across agents.
 - [ ] Audit the existing inter-agent tool paths (`send_message` /
   `append_external_message`). Look for assumptions about B being alive.
 - [ ] Failing test + fix.
+
+### 12. Resources.track/4 for the Claude CLI OS subprocess — **DONE**
+
+- [x] `track_cli_os_pid/1` helper in ChatAgent: pulls OS pid via
+  `OSProcess.pid_of/1`, releases any prior tracked pid, registers
+  under `Resources.track(self(), :claude_cli, os_pid, release_fn)`.
+- [x] Called on every session-start site: `init_fresh`, `init_resume`,
+  `:restart_session` cast, `:stream_error` recovery,
+  `dispatch_retry_session`, `ensure_session_alive`.
+- [x] `terminate/2` stripped of manual `OSProcess.kill/1` — the
+  Janitor runs the release fn on DOWN for any exit reason (normal,
+  killed, shutdown-timeout, node crash).
+- [x] `state.tracked_cli_os_pid` exposed in `summary/1` so
+  `/system/orphans` + tests can observe it.
+- [x] Regression test: `test/boom_looper/chat_agent/cli_tracking_test.exs`
+  (5 tests covering the tracking discipline under the fake backend
+  + a terminate/2-source assertion that catches re-introduction of
+  the manual kill).
+- [x] Tell-the-user path: `:boom_looper, :resources, :released`
+  telemetry surfaces on `/system/orphans` + `/system/events`. Ops
+  concern, no user-chat-channel message needed.
+
+### 13. Session-id drift reconciler
+
+**Gap**: `state.claude_session_id` is captured from the last
+`%Event.SessionResult{}` and mirrored to the ETF log. It's possible
+for the SDK Session GenServer to be holding a DIFFERENT session_id
+(it captures from every assistant/result message, we only capture
+from result messages). Drift = we resume the wrong thread on the
+next restart. No alarm fires today.
+
+- [ ] Add a per-agent `:sync_claude_session_id` tick every 30s (same
+  cadence as Agent.Reconciler). Compare `state.claude_session_id` to
+  `backend.session_id(state.session)`. On mismatch, update state
+  + emit `[:boom_looper, :agent, :session_drift]` telemetry.
+- [ ] Failing test: mock the backend to report a different session_id
+  than state holds; advance the tick; assert state is corrected.
+- [ ] Tell-the-user path: silent correction is fine for drift (user
+  doesn't care about ids); `/system/events` carries the telemetry
+  for ops.
+
+### 14. Saga-wrapped turn execution
+
+**Gap**: a turn is six+ sequential side effects:
+  1. `ensure_session_alive` (may spawn new session),
+  2. append user message to state + ETS + log,
+  3. broadcast user message,
+  4. start streaming Task (spawns a linked process),
+  5. each `%Event.*{}` event: append message, persist, broadcast,
+  6. `:stream_done`: bump turn counter, persist, broadcast :idle.
+
+Any failure between (2) and (6) leaves a half-committed turn. The
+current code tries to bolt on compensation in each `handle_info`,
+but misses edge cases (e.g. ETS write succeeds, log append fails —
+restart sees state that never happened).
+
+- [ ] Model the turn as a `BoomLooper.Saga` with explicit
+  compensating actions: e.g. if "start streaming Task" fails,
+  rewind the appended user message and broadcast a compensating
+  `:user_message_rolled_back` event.
+- [ ] This is the biggest restructuring in the plan. Do it after
+  #1, #2, #3 are landed so we have a stable base.
+- [ ] Tell-the-user path: a rolled-back turn surfaces as a distinct
+  inline `{role: :system, kind: :turn_rolled_back}` marker with a
+  clear explanation. Never silent.
 
 ---
 

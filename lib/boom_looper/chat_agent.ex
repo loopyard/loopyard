@@ -56,7 +56,12 @@ defmodule BoomLooper.ChatAgent do
     rate_limit_status: :ok,
     rate_limit_resets_at_ms: nil,
     rate_limit_type: nil,
-    auth_error: nil
+    auth_error: nil,
+    # OS pid of the Claude CLI subprocess owned by state.session. Tracked
+    # via BoomLooper.Resources.track/4 so the Janitor kills it on our
+    # DOWN — covers the brutal_kill / node crash / :shutdown-timeout
+    # cases where `terminate/2` never runs. See plans/agent-sanity.md #12.
+    tracked_cli_os_pid: nil
   ]
 
   @ets_table :chat_agents
@@ -447,8 +452,14 @@ defmodule BoomLooper.ChatAgent do
             stream_ref: nil,
             active_tool: nil,
             agent_type: agent_type,
-            messages: internal_messages
+            messages: internal_messages,
+            # Drop any stale tracked pid from the saved summary — the old
+            # CLI OS pid is long dead from the previous BEAM. track_cli_os_pid
+            # below registers the new one with the Janitor.
+            tracked_cli_os_pid: nil
           )
+
+        state = track_cli_os_pid(state)
 
         :ets.insert(@ets_table, {id, summary(state)})
         Events.ChatAgent.publish(%Events.ChatAgent.Resumed{summary: summary(state)})
@@ -518,6 +529,7 @@ defmodule BoomLooper.ChatAgent do
       agent_type: agent_type
     }
 
+    state = track_cli_os_pid(state)
     summary = summary(state)
     :ets.insert(@ets_table, {id, summary})
     Persistence.persist_agent(state, &summary/1)
@@ -719,7 +731,7 @@ defmodule BoomLooper.ChatAgent do
     # CLI picks up the same conversation.
     case state.backend.start_session(session_opts_with_resume(state)) do
       {:ok, new_session} ->
-        state = %{state | session: new_session, status: :idle}
+        state = track_cli_os_pid(%{state | session: new_session, status: :idle})
         :ets.insert(@ets_table, {state.id, summary(state)})
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :idle})
 
@@ -944,7 +956,7 @@ defmodule BoomLooper.ChatAgent do
             else
               %{role: :system, content: "Agent session restarted automatically.", timestamp: DateTime.utc_now()}
             end
-          {state, recovered_msg} = append_message(%{state | session: new_session, status: :idle}, recovered_msg)
+          {state, recovered_msg} = append_message(track_cli_os_pid(%{state | session: new_session, status: :idle}), recovered_msg)
           Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: recovered_msg})
           Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
 
@@ -1134,7 +1146,7 @@ defmodule BoomLooper.ChatAgent do
 
         {state, recovered_msg} =
           append_message(
-            %{state | session: new_session, status: :idle, errors: state.errors + 1},
+            track_cli_os_pid(%{state | session: new_session, status: :idle, errors: state.errors + 1}),
             recovered_msg
           )
 
@@ -1163,12 +1175,10 @@ defmodule BoomLooper.ChatAgent do
 
   @impl true
   def terminate(_reason, state) do
-    # Always stop the Claude CLI session to prevent process leaks.
-    # Port.close alone doesn't kill the OS process — we must find and kill it.
+    # Always TRY a clean shutdown of the SDK session — a graceful
+    # protocol exit is preferable to a SIGKILL and lets the CLI flush
+    # any pending writes. Cap at 3s so we never block the supervisor.
     if state.session && state.backend do
-      # Grab the OS PID before stopping (the port will be gone after stop)
-      os_pid = BoomLooper.ChatAgent.OSProcess.pid_of(state.session)
-
       try do
         task = Task.async(fn -> state.backend.stop(state.session) end)
         Task.yield(task, 3_000) || Task.shutdown(task, :brutal_kill)
@@ -1177,10 +1187,16 @@ defmodule BoomLooper.ChatAgent do
       catch
         _, _ -> :ok
       end
-
-      # Force-kill the OS process if it's still around
-      if os_pid, do: BoomLooper.ChatAgent.OSProcess.kill(os_pid)
     end
+
+    # We do NOT manually SIGKILL the CLI OS process here. It's tracked
+    # via BoomLooper.Resources.track(:claude_cli, os_pid) so the Janitor
+    # receives our DOWN message (sent on any exit reason, including
+    # :normal) and runs the release fn — SIGKILL if still alive, no-op
+    # if the clean shutdown above already ended it. This also covers
+    # the paths where `terminate/2` never runs (brutal_kill, node
+    # crash, :shutdown-timeout exceeded) — the main reason surface #12
+    # exists.
 
     unless state.status in [:stopped, :destroying] do
       crashed = %{state | status: :crashed}
@@ -1458,6 +1474,44 @@ defmodule BoomLooper.ChatAgent do
 
   defp handle_auth_status_event(state, _other), do: state
 
+  # Track the Claude CLI subprocess OS pid under this ChatAgent via
+  # BoomLooper.Resources. On our DOWN (brutal_kill, node crash,
+  # :shutdown-timeout), the Janitor SIGKILLs the OS pid — covering the
+  # paths where `terminate/2` never runs. Releases any previously
+  # tracked pid before tracking the new one so state.tracked_cli_os_pid
+  # stays consistent with state.session.
+  #
+  # Returns {:ok, state} with state.tracked_cli_os_pid updated. If we
+  # can't find the OS pid (session dead, Port not yet up, dep internals
+  # changed), we skip tracking and clear any stale tracked pid — losing
+  # one OS-level safety net is not worth crashing the GenServer over.
+  defp track_cli_os_pid(state) do
+    # Release stale tracking — previous session's OS pid is no longer
+    # ours, and re-tracking by kind+id would fail under a new owner.
+    if state.tracked_cli_os_pid do
+      BoomLooper.Resources.release(:claude_cli, state.tracked_cli_os_pid)
+    end
+
+    case state.session && state.backend && BoomLooper.ChatAgent.OSProcess.pid_of(state.session) do
+      os_pid when is_integer(os_pid) ->
+        release_fn = fn -> BoomLooper.ChatAgent.OSProcess.kill(os_pid) end
+
+        case BoomLooper.Resources.track(self(), :claude_cli, os_pid, release_fn) do
+          :ok ->
+            %{state | tracked_cli_os_pid: os_pid}
+
+          {:error, :already_tracked} ->
+            # Some other owner already tracks this OS pid. Rare — usually
+            # means our previous release/3 raced with someone else picking
+            # it up. Keep state consistent but don't stomp.
+            %{state | tracked_cli_os_pid: nil}
+        end
+
+      _ ->
+        %{state | tracked_cli_os_pid: nil}
+    end
+  end
+
   defp session_opts_with_resume(state) do
     case state.claude_session_id do
       sid when is_binary(sid) and sid != "" ->
@@ -1497,7 +1551,7 @@ defmodule BoomLooper.ChatAgent do
               "Reconnected."
             end
           ok_msg = %{role: :system, content: ok_content, timestamp: DateTime.utc_now()}
-          {state, ok_msg} = append_message(%{state | session: new_session}, ok_msg)
+          {state, ok_msg} = append_message(track_cli_os_pid(%{state | session: new_session}), ok_msg)
           Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: ok_msg})
           state
 
