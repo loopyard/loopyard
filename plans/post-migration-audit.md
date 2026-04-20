@@ -180,16 +180,16 @@ Ordered by blast radius × reliability impact. Fix before running evals:
 
 7. **[MEDIUM]** Fix `RestartController.release/1` docstring (`lib/boom_looper/chat_agent/restart_controller.ex:40-46`) to match code behavior — it does NOT respawn. (Docstring already updated in commit `02d42f6`; this item now complete.)
 
-8. **[MEDIUM]** Fix the broken telemetry test in `test/boom_looper/agent/reconciler_test.exs:137-160` (use `:telemetry_test.attach_event_handlers` like the janitor tests).
+8. ✅ **[MEDIUM] LANDED in commit `8e165b1`** — `:agent_reconciler` telemetry test fixed (captures `test_pid` before `:telemetry.attach/4`).
 
-9. **[MEDIUM]** Surface `:resume_forward → :rollback` downgrade in telemetry (`lib/boom_looper/saga/journal.ex:252-265`).
+9. ✅ **[MEDIUM] LANDED in commit `8e165b1`** — `:resume_forward → :rollback` downgrade now emits `[:boom_looper, :saga, :resume_forward_downgraded]` telemetry.
 
-10. **[MEDIUM]** Move `:saga_recorder` ETS table into `StateKeeper` (`lib/boom_looper/state_keeper.ex:20-41`), remove `:ets.new` from `Saga.Recorder.init/1`.
+10. ✅ **[MEDIUM] LANDED in commit `8e165b1`** — `:saga_recorder` ETS table moved into `StateKeeper`; `Saga.Recorder.init/1` no longer calls `:ets.new`.
 
-11. **[LOW]** Speed up `restart_controller_test.exs` — unit-test `handle_agent_down/4` with synthetic refs instead of spawning real agents, killing them, and waiting.
+11. **[LOW] DEFERRED.** Speed up `restart_controller_test.exs` — unit-test `handle_agent_down/4` with synthetic refs instead of spawning real agents, killing them, and waiting. Out of scope for hardening sprint; track separately.
 
-12. **[LOW]** Tighten `Health.component(:agent_reconciler)` threshold so a single transient drift doesn't flip to degraded.
+12. ✅ **[LOW] LANDED in commit `503568b`** — `Health.component(:agent_reconciler)` threshold tightened so a single transient drift doesn't flip to degraded.
 
-13. **[LOW]** Agree a saga-or-justify answer for `ChatAgent.remove_agent/1` — either saga it or add a `@non_saga_reasons` entry.
+13. ✅ **[LOW] LANDED in commit `2954717`** — `ChatAgent.remove_agent/1` documented; stays outside the saga set with justification (see commit message).
 
-14. **[NOTE]** Full-suite test flakiness from `async: true` + compile-order races on recently-created modules — affects `publishers_test.exs` and `invariants_test.exs` under full-suite load. These pass reliably in isolation. Not a regression from the audit fixes; pre-existing behavior of parallel Elixir compilation under load. Consider `async: false` on these two files if they continue to flake.
+14. ✅ **[NOTE] LANDED in commit `bfe2cac`** — `publishers_test.exs` and `invariants_test.exs` switched to `async: false` to cure compile-order races under full-suite load.

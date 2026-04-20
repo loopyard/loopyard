@@ -22,6 +22,43 @@ BoomLooper is a **Docker control plane** with **AI agents** wired into it. Dev e
 
 **The key insight:** agents and humans use the same tools and views. Agents use MCP tools (`exec`, `read_file`, `docker_compose`). Humans see the same data in the UI (service logs, file browser, terminal). The MCP tools are structured wrappers around the same Docker operations the terminal console uses. This means anything an agent does is visible, reproducible, and debuggable by a human.
 
+## Coordination hardening (harden-resume-state)
+
+The coordination layer went through a sprint of hardening moves (see [plans/coordination-hardening.md](plans/coordination-hardening.md) and the two follow-up audits). Landed surfaces + rules a new contributor needs to know:
+
+**Observability surfaces (all at `/system`):**
+- `/system/events` — live event tap (ring buffer, per-topic rate)
+- `/system/sagas` — multi-step ops + rollback + journal state
+- `/system/quarantine` — crash-looping actors, release controls
+- `/system/orphans` — tracked resources without a live owner
+- `/system/recovery` — checkpointer snapshot size/age, last boot replay time
+- `/system/reconcilers` — drift detection runs
+- `/system` — aggregated health map (`:healthy | :degraded | :down` per component)
+
+**Adding a new broadcast event:**
+1. Add a struct to the relevant publisher module in `lib/boom_looper/events/` (e.g. `BoomLooper.Events.ChatAgent.SomeEvent`).
+2. Add a `publish/1` clause for the struct.
+3. NEVER call `Phoenix.PubSub.broadcast/3` outside `lib/boom_looper/events/`. The `test/boom_looper/pubsub_boundary_test.exs` CI test will fail if you do.
+4. Every subscriber behaviour gains a required `@callback on_<event>(struct, socket)`. Missing callback = compile warning (no `@optional_callbacks`).
+
+**Adding a new LV subscriber:**
+1. `@behaviour BoomLooper.Events.<Topic>.Subscriber`
+2. Implement every `on_*` callback explicitly (even if just `{:noreply, socket}`) — we do not use `@optional_callbacks`.
+3. Standard dispatch: one `handle_info/2` per event struct that delegates to the callback.
+
+**Adding a new state-machine actor (future):**
+Move #1 (pure transition functions) and Move #5 (deadlines) are deferred for a future session. When they ship, each actor will expose `step(state, event) :: {:ok, new_state, side_effects}` per the plan. Until then, follow the pattern of `BoomLooper.ChatAgent.StateMachine` (transition guards in a pure module, GenServer calls into it).
+
+**Retry patterns:**
+- Synchronous callers (tight retry loops, non-GenServer code) → `BoomLooper.Retry.run/2`.
+- Async / event-driven callers (GenServer crash recovery via `handle_info`) → `BoomLooper.Retry.backoff_ms/2` + `Process.send_after`. NEVER `Process.sleep` inside a `handle_info`.
+
+**Resource ownership:**
+- If "resource X dies when process Y dies" is the intended semantic, use `BoomLooper.Resources.track/4`. The Janitor runs the release fn on owner DOWN.
+- If the resource must outlive the owner's restart (e.g. Mutagen sessions in `SyncMonitor`), DO NOT use `Resources.track`. Use ad-hoc `terminate/2` cleanup and document it.
+
+**ETS ownership:** `BoomLooper.StateKeeper` is the sole ETS table owner. Never call `:ets.new/2` elsewhere — add your table to `StateKeeper`'s `@tables` list.
+
 ## Docs
 
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — System design, supervisor tree, container model, data flow
@@ -99,6 +136,15 @@ mix boom.rpc "BoomLooper.ChatAgent.list_agents()"
 | `RegistryHelper` | DRY wrappers for Registry.lookup |
 | `StreamBuffer` | Rolling-window streaming accumulator |
 | `EventLog` | System event log (ETS + Logger) |
+| `Events.*` | Per-topic publisher modules (sole PubSub broadcasters) |
+| `Retry` | Shared retry helper (`run/2` sync, `backoff_ms/2` async) |
+| `Resources` + `Resources.Janitor` | Owner-tracked resource cleanup on DOWN |
+| `Saga` + `Saga.Journal` + `Saga.Recorder` | Multi-step ops with rollback + durable journal |
+| `ChatAgent.RestartController` | Per-workspace quarantine of crash-looping agents |
+| `AgentLog.Checkpointer` | Periodic snapshot + log truncation (bounded boot replay) |
+| `Agent.Reconciler` | ETS-vs-registry drift detection every 30s |
+| `Health` | Aggregated subsystem health map for `/system` |
+| `Events.Tap` | Ring buffer of broadcasts for `/system/events` |
 | `Tools.Container` | MCP toolkit — lists 20 tool modules |
 | `Tools.Container.Helpers` | Shared tool helpers (resolve_container, validate_path) |
 | `BoomLooper.Tool` | Macro for defining tool modules |

@@ -166,7 +166,7 @@ events
 
 Grep for `assign(socket, :<key>` and `|> assign(:<key>` across `lib/boom_looper_web/`. For each hit, trace the source of the value being assigned. Look for the odd one out — the handler that assigns a raw version when every other handler assigns the enriched version (the one that calls helpers like `annotate_exposure`, `load_sidebar_from_observer`).
 
-Classic shape of this bug: `handle_info({:<msg>, _, raw_list, _}, socket)` that assigns `raw_list` directly. `git log --oneline` for `"flash"` for a worked example.
+Classic shape of this bug: a `handle_info(%Events.<Topic>.<Struct>{...}, socket)` clause that assigns raw payload fields directly, when another clause for a different event struct enriches the same assign first. `git log --oneline` for `"flash"` for a worked example. The event struct names live in `lib/boom_looper/events/` — grep the struct name to find every producer and consumer.
 
 ## Anti-patterns to flag
 
@@ -174,7 +174,17 @@ Same bug class the sidebar-flash incident hit. Watch for these during any audit:
 
 1. **Async task broadcasts raw cache data to a LiveView that expects enriched data.** Task should only ship what's *new* (logs, results), not re-ship cache contents. LiveView keeps its own fresh copy from other broadcasts.
 2. **Observer-style broadcast compares on volatile fields.** Uptime strings, byte sizes, timestamps → snapshot always compares unequal → spams `state_changed`. Compare a reduced functional signature; put volatile data in a separate ETS slot.
-3. **Broadcast carries a state payload the LiveView ignores.** LV re-reads from ETS anyway. Payload is wasted serialization AND a drift risk — future code might consume the payload and get a different view than the cache. Prefer notification-only broadcasts: `{:thing_changed}` not `{:thing_changed, thing}`.
+3. **Broadcast carries a state payload the LiveView ignores.** LV re-reads from ETS anyway. Payload is wasted serialization AND a drift risk — future code might consume the payload and get a different view than the cache. Prefer notification-only broadcasts on notification-only event structs.
+
+## `/system/events` — the tape
+
+If the user reports a flash AND wants to see the broadcast timeline, skip the telemetry attach (Recipe 3) and go to `/system/events` directly. It's a live ring buffer of every broadcast on every topic (shipped with coordination hardening Move #7). You can also read it via RPC:
+
+```bash
+mix boom.rpc 'BoomLooper.Events.Tap.recent("chat_agents", 30_000)'
+```
+
+Use this to correlate a reported flash with the exact broadcast sequence that caused it. All publishes go through `BoomLooper.Events.*` publisher modules (never raw `Phoenix.PubSub.broadcast`); the event type is the struct name (`%Events.ChatAgent.StatusChanged{}`, `%Events.DockerObserver.Changed{}`, etc.). Grep that struct name to find every site that produces or consumes the event.
 
 ## Choosing between recipes
 

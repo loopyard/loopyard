@@ -327,21 +327,27 @@ defmodule BoomLooper.Source.Local.SyncMonitor do
     if File.dir?(path), do: :ok, else: {:error, {:worktree_missing, path}}
   end
 
-  defp wait_for_container_ready(container, attempts \\ @ready_probe_attempts)
+  # Retry the container-ready probe until docker exec succeeds or we burn through
+  # the attempt budget. Uses `BoomLooper.Retry.run/2` so the backoff schedule
+  # and attempt cap live with every other retry site in the tree (see
+  # `plans/coordination-hardening.md` Move #7d).
+  defp wait_for_container_ready(container) do
+    result =
+      BoomLooper.Retry.run(
+        fn ->
+          case container_ready_check(container) do
+            {:ok, _} -> {:ok, :ready}
+            :ok -> {:ok, :ready}
+            {:error, _} = err -> err
+          end
+        end,
+        max_attempts: @ready_probe_attempts,
+        backoff: {:fixed, @ready_probe_delay}
+      )
 
-  defp wait_for_container_ready(_container, 0), do: {:error, :container_not_ready}
-
-  defp wait_for_container_ready(container, attempts) do
-    case container_ready_check(container) do
-      {:ok, _} ->
-        :ok
-
-      :ok ->
-        :ok
-
-      {:error, _} ->
-        Process.sleep(@ready_probe_delay)
-        wait_for_container_ready(container, attempts - 1)
+    case result do
+      {:ok, :ready} -> :ok
+      {:error, _} -> {:error, :container_not_ready}
     end
   end
 

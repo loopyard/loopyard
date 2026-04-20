@@ -46,9 +46,9 @@ Run the tests. Watch them pass.
 Wire the module into the LiveView, controller, or channel that needs it. The LiveView should be thin: handle events, delegate to the module, render.
 
 If this is multiplayer:
-- State changes go through GenServer, which broadcasts via PubSub
-- LiveView handle_info receives the broadcast and updates assigns
-- Verify: open two browser tabs, make a change in one, see it in the other
+- State changes go through GenServer, which broadcasts via a **publisher module** in `lib/boom_looper/events/` (not raw `Phoenix.PubSub.broadcast`). Add a struct + `publish/1` clause to the relevant `BoomLooper.Events.<Topic>` module.
+- LiveView declares `@behaviour BoomLooper.Events.<Topic>.Subscriber`, implements every `on_*` callback, and dispatches from `handle_info(%Events.Struct{} = e, socket)` to the callback.
+- Verify: open two browser tabs, make a change in one, see it in the other. Use `/system/events` to see the broadcast timeline if something isn't arriving.
 
 ## Step 5: Verify
 

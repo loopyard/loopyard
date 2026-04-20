@@ -26,6 +26,8 @@ Ordered so each stacks on the last. The first three harden communication; the ne
 
 ### 1. Pure transition function per actor
 
+**Status: DEFERRED.** Requires a dedicated session per actor (see `## Execution rule` below). Not shipped in the `harden-resume-state` sprint.
+
 Every state-machine actor (`ChatAgent`, `ServiceManager`, `WorkspaceGroup`, `SyncMonitor`, `Cluster`) gets a total transition function:
 
 ```elixir
@@ -40,6 +42,8 @@ GenServer handlers become thin dispatchers that apply side effects uniformly —
 **Kills:** silent drops at the producer. Opens move 4.
 
 ### 2. Publisher modules + banned raw broadcast
+
+**Status: SHIPPED in commit `0f15565` (bundled with Move #3).** Boundary test at `test/boom_looper/pubsub_boundary_test.exs`.
 
 One publisher module per topic:
 
@@ -63,6 +67,8 @@ Add a CI test that greps `lib/` for `Phoenix.PubSub.broadcast` outside approved 
 
 ### 3. Strict subscriber behaviour
 
+**Status: SHIPPED in commit `0f15565`.** `@optional_callbacks` removed across all subscriber behaviours in commit `02d42f6` (audit-1 MEDIUM #5).
+
 Each LV that subscribes declares:
 
 ```elixir
@@ -76,6 +82,8 @@ The current static coverage test stays as a belt-and-suspenders check, but `@beh
 **Kills:** silent drops at the consumer. Adding a new event forces every subscriber to implement it or explicitly opt out.
 
 ### 4. Single state owner — ETS and log as projections
+
+**Status: DEFERRED.** Depends on Move #1 (needs pure transition functions so projections derive from one side-effect list).
 
 Today GenServer state, ETS summary, and the log are three independent copies kept in sync by hand. Every sync miss is a bug.
 
@@ -91,6 +99,8 @@ One atomic call writes GenServer state, ETS, the log, and fires broadcasts from 
 
 ### 5. Every non-terminal state has a deadline
 
+**Status: DEFERRED.** Depends on Move #1 (the pure transition function must handle the forced-timeout events).
+
 State machines already carry `entered_at`. We just aren't enforcing bounds.
 
 Add `BoomLooper.Deadlines` GenServer. On app boot, reads each state machine's `@max_durations`. Every 10s scans ETS for `now - entered_at > max_duration` and emits a forced-transition event. E.g. `:booting` past 5 min → `%BootTimedOut{id: id}` event, which the pure transition function must handle (move 1 makes this a compile check).
@@ -98,6 +108,8 @@ Add `BoomLooper.Deadlines` GenServer. On app boot, reads each state machine's `@
 **Kills:** stuck-forever states. The scanner is the structural guarantee, not a retry we remember to add.
 
 ### 6. Reconciler per external dependency
+
+**Status: SHIPPED in commit `cb5cd49` (Agent.Reconciler).** Docker observer reconciler shipped earlier. Workspace reconciler intentionally deferred per "only where source of truth is unambiguous" narrowing.
 
 Docker has a 30s reconciler (shipped this sprint). Extend the pattern:
 
@@ -109,6 +121,8 @@ Drift emits `%Reconciled{kind, before, after, corrected}` to a reconciliation to
 **Kills:** reality-vs-cache divergence. The periodic diff is the structural assumption, not a fallback.
 
 ### 7a. Saga / rollback for multi-step operations
+
+**Status: SHIPPED in commit `41a8348`.** `Saga.run/2` + `WorkspaceSupervisor.rebuild_saga` + `AgentBoot.boot`. See `/system/sagas`.
 
 "Start a workspace" is ~5 steps: start supervisor → start ServiceManager → register → compose up → broadcast. Any step failing today leaves inconsistent partial state that the reconciler (#6) has to clean up. That's recovery, not prevention.
 
@@ -129,6 +143,8 @@ Saga.run([
 
 ### 7b. Explicit resource ownership
 
+**Status: SHIPPED in commit `2088192`.** `BoomLooper.Resources.track/4` + Janitor. See `/system/orphans`. Janitor rehydrate-on-restart shipped in `02d42f6` (audit-1 HIGH #4).
+
 Containers, port bindings, volumes, streaming tasks, CLI subprocesses — every one of these is a resource that belongs to some Elixir process and should die when the owner dies. Today it's scattered: `Process.link` here, `trap_exit` there, a `terminate/2` over there. Easy to forget one and leak.
 
 Design: `BoomLooper.ResourceOwner` behaviour. An owner declares `resources/1` returning `[{kind, id}]`. A supervised janitor monitors every owner and, on DOWN, releases the listed resources (kill container, unbind port, cancel stream). Orphans become structurally rare rather than "we hope `terminate/2` ran."
@@ -138,6 +154,8 @@ Design: `BoomLooper.ResourceOwner` behaviour. An owner declares `resources/1` re
 **Observable in `/system/orphans`:** resources in Docker/OS without a matching live owner. Even after cleanup is automatic, surfacing leaks is how we catch bugs in the ownership declarations.
 
 ### 7c. Property-based tests for every pure transition function
+
+**Status: DEFERRED.** Depends on Move #1.
 
 Once move #1 (pure transitions) lands, every state-machine actor has a total function `step(state, event) :: result`. This is the ideal target for StreamData generators.
 
@@ -153,6 +171,8 @@ Design: for each actor, generate all `{state, event}` pairs and assert invariant
 
 ### 7d. Circuit breakers for every external dependency
 
+**Status: SHIPPED in commit `69a9fdf`** (narrowed to a Retry helper — see the lesson in "Narrow the scope" below). Follow-up migrations landed in `harden-resume-state` sweep (`SyncMonitor.wait_for_container_ready` → `Retry.run/2`).
+
 Docker, Claude API, Mutagen sync, GitHub API — each has ad-hoc backoff scattered through its caller. A single crashing daemon can cause retry-storm across dozens of agents/workspaces.
 
 Design: `BoomLooper.CircuitBreaker` wrapping each external call. States: `:closed` (normal), `:open` (stop trying), `:half_open` (probe). Thresholds configurable per breaker. `mix boom.rpc 'CircuitBreaker.status()'` shows which are tripped.
@@ -162,6 +182,8 @@ Design: `BoomLooper.CircuitBreaker` wrapping each external call. States: `:close
 **Observable in `/system/breakers`:** state per breaker, trip count, last trip timestamp, current fail-rate. Also a telemetry event on every state transition.
 
 ### 7. Dev-mode event tap + telemetry on every publish
+
+**Status: SHIPPED in commit `bb63f4e`.** See `/system/events`. The narrowed scope change: tap runs in all envs (not just dev/test) — see module `@moduledoc` for the rationale.
 
 `BoomLooper.Events.Tap` — supervised GenServer subscribed to every topic, writes the last 1000 events to an ETS ring buffer with timestamps. `EventTap.recent("chat_agents", 30_seconds)` returns a timeline. Attached in `:dev` and `:test` only.
 
@@ -175,6 +197,8 @@ The moves above prevent bad states. These ensure the system heals when they happ
 
 ### 8. Checkpoint-based recovery
 
+**Status: SHIPPED in commit `9095144`.** `AgentLog.Checkpointer` per-workspace. See `/system/recovery`.
+
 Today log replay is O(history). A workspace running for months takes seconds to reload and will eventually exceed timeouts. Compaction exists but runs ad-hoc.
 
 Design: every N minutes (or M log records), the state owner writes a **snapshot** to disk and truncates the log. On boot: load snapshot, replay log-since-snapshot. Recovery time becomes bounded and predictable, independent of uptime.
@@ -187,6 +211,8 @@ Snapshot format: the current summary map, serialized. Log entries after the snap
 
 ### 9. Saga journal with resume-on-boot
 
+**Status: SHIPPED in commit `aca3a6f`.** `Saga.Journal` + `resume_all_on_boot/0`. `saga_id` collision fix landed in `02d42f6` (audit-1 HIGH #2). See `/system/sagas`.
+
 Sagas (#7a) solve partial-success during a run. They don't solve "BEAM crashed mid-saga." A saga that started `compose up`, wrote the ETS entry, then the node died — on reboot, is the saga done? Abandoned? Reversed?
 
 Design: each saga step commits its progress to a disk journal before execution. On boot, scan the journal for incomplete sagas. For each: either resume from the last completed step (if idempotent and external state confirms) or run rollback-from-here. No saga is ever abandoned.
@@ -196,6 +222,8 @@ Design: each saga step commits its progress to a disk journal before execution. 
 **Observable in `/system/sagas`:** in-flight saga count, last resumed saga on boot, any saga that failed rollback (red alert — needs manual).
 
 ### 10. Quarantine for crash-looping actors
+
+**Status: SHIPPED in commit `139c852`.** `ChatAgent.RestartController` + `/system/quarantine`. Crash-history ETS persistence landed in `02d42f6` (audit-1 HIGH #3).
 
 We already saw an agent restart 26 times in an hour with no surface signal. Supervisors happily honor `restart: :transient` until heat death.
 
@@ -208,6 +236,8 @@ For agents specifically: if the same event class keeps crashing the GenServer (p
 **Observable in `/system/quarantine`:** list of quarantined actors + reason, list of quarantined events + trigger. One-click un-quarantine for operators.
 
 ### 11. Graceful degradation markers
+
+**Status: SHIPPED in commit `e22339f`** (narrowed to flat health map, no dependency graph). See `/system`.
 
 Today when Docker dies, half the UI shows blank. Other half silently retries. No clear "this feature is degraded, this one still works."
 
