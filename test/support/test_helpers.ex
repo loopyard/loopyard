@@ -8,6 +8,14 @@ defmodule BoomLooper.TestHelpers do
     case BoomLooper.WorkspaceSupervisor.start_workspace(workspace_id, path) do
       {:ok, _} -> workspace_id
       {:error, {:already_started, _}} -> workspace_id
+
+      # Nested `:already_started` arrives when the dynamic supervisor
+      # itself is mid-start and a child (e.g. ServiceManager) claims
+      # it's already registered. In the full-suite test run this shape
+      # shows up when many test setups race on the same workspace_id.
+      # Treat as "workspace is up, use it."
+      {:error, {:shutdown, {:failed_to_start_child, _, {:already_started, _}}}} ->
+        workspace_id
     end
   end
 
