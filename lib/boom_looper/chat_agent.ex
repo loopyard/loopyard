@@ -80,6 +80,13 @@ defmodule BoomLooper.ChatAgent do
     # resumes the exact same conversation with no user-visible loss.
     # RAM freed: ~200MB per reaped CLI. See agent-sanity #20.
     idle_check_timer: nil,
+    # Loop detection. A tuple `{tool_hash, consecutive_count}` tracking
+    # the last tool call the agent made and how many times in a row
+    # it's been the exact same {tool_name, input}. At
+    # @tool_loop_threshold the handler appends an inline warning.
+    # Cleared on any different tool, user message, or stream_done.
+    # See agent-sanity follow-up (answer to "what else?").
+    last_tool_call: nil,
     # FIFO queue of `:send_message` casts that arrived while the agent
     # was busy (:thinking, :backoff, :rate_limited, :auth_expired —
     # any status where a new stream Task can't start). Drained on
@@ -122,6 +129,14 @@ defmodule BoomLooper.ChatAgent do
   # the Claude API bill. Configurable via Application env for tests
   # that want to exercise the reject path with smaller inputs.
   @max_message_bytes Application.compile_env(:boom_looper, :max_message_bytes, 1_048_576)
+
+  # Loop-detection threshold: if the agent calls the same tool with
+  # the same input N times in a row, it's almost certainly stuck in a
+  # retry loop (tool returning the same error, agent interpreting the
+  # error the same way, agent re-calling). 5 is generous enough to not
+  # trip on legitimate retry patterns but tight enough to surface
+  # before the user burns another $5 of tokens watching it grind.
+  @tool_loop_threshold 5
 
   # --- Public API ---
 
@@ -1030,6 +1045,14 @@ defmodule BoomLooper.ChatAgent do
           tool_msg = %{role: :tool, tool: tool_name, input: tool_input, timestamp: now}
           {state, tool_msg} = append_message(state, tool_msg)
           state = %{state | last_activity_at: now, tool_calls: state.tool_calls + 1, active_tool: tool_name}
+
+          # Loop detection: same tool + same input N times in a row
+          # almost always means the agent is stuck grinding. Fingerprint
+          # the call + count consecutive repeats. At threshold, append
+          # a visible warning so the user knows they can interrupt
+          # instead of watching the tokens burn.
+          state = maybe_detect_tool_loop(state, id, tool_name, tool_input)
+
           Persistence.persist_message(state, tool_msg)
           Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: tool_msg})
           state
@@ -1133,7 +1156,11 @@ defmodule BoomLooper.ChatAgent do
       active_tool: nil,
       turns: state.turns + 1,
       in_flight_partial: "",
-      context_warning_sent: false
+      context_warning_sent: false,
+      # Reset loop-detection counter at turn boundaries. A new turn is
+      # a natural reset point — if the agent is truly still looping in
+      # the next turn it'll hit the threshold again and re-warn.
+      last_tool_call: nil
     }
     state = Map.put(state, :consecutive_crashes, 0)
     state = schedule_idle_check(state)
@@ -1888,6 +1915,67 @@ defmodule BoomLooper.ChatAgent do
 
       _ ->
         %{state | tracked_cli_os_pid: nil}
+    end
+  end
+
+  # --- Tool-call loop detection ---
+
+  # Fingerprint a tool call so we can count consecutive repeats.
+  # Hash is short (16 hex chars) because we only need equality, not
+  # reversibility.
+  defp tool_call_hash(tool_name, tool_input) do
+    raw = :erlang.term_to_binary({tool_name, tool_input})
+    :crypto.hash(:sha256, raw) |> Base.encode16(case: :lower) |> binary_part(0, 16)
+  end
+
+  # Update state.last_tool_call based on the current call. If this is
+  # the same tool+input as the previous call, bump the counter and —
+  # once we cross @tool_loop_threshold — append a one-shot warning so
+  # the user can interrupt before more tokens burn. Different tool
+  # resets the counter to 1.
+  defp maybe_detect_tool_loop(state, id, tool_name, tool_input) do
+    hash = tool_call_hash(tool_name, tool_input)
+
+    {new_count, warn?} =
+      case state.last_tool_call do
+        {^hash, count} when count + 1 == @tool_loop_threshold ->
+          # Crossed the threshold THIS call — fire warning once.
+          {count + 1, true}
+
+        {^hash, count} ->
+          # Still looping but already warned (count > threshold) or not
+          # yet at threshold. No re-warn.
+          {count + 1, false}
+
+        _ ->
+          # Different tool/input OR first call. Reset.
+          {1, false}
+      end
+
+    state = %{state | last_tool_call: {hash, new_count}}
+
+    if warn? do
+      :telemetry.execute(
+        [:boom_looper, :agent, :tool_loop_detected],
+        %{consecutive: new_count},
+        %{agent_id: id, tool: tool_name}
+      )
+
+      warn_msg = %{
+        role: :system,
+        content:
+          "⚠ Agent called `#{tool_name}` #{new_count} times in a row with the same input — " <>
+            "it may be stuck in a retry loop. Consider stopping the agent and providing a " <>
+            "different hint, or check whether the tool is returning a consistent error.",
+        timestamp: DateTime.utc_now()
+      }
+
+      {state, warn_msg} = append_message(state, warn_msg)
+      Persistence.persist_message(state, warn_msg)
+      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: warn_msg})
+      state
+    else
+      state
     end
   end
 
