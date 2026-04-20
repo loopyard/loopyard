@@ -234,7 +234,26 @@ a restart? Blank screen? Replay? Message saying "terminal disconnected
   no explanation."
 - [ ] Failing test + fix.
 
-### 9. Agent boot state across crash during boot
+### 9. Agent boot state across crash during boot — **DONE**
+
+- [x] `AgentBoot.start_monitored/3` spawns the boot via
+  `Task.Supervisor.async_nolink` and a sibling watcher Task that
+  `Process.monitor/1`s the boot pid.
+- [x] On `:DOWN` non-normal with agent still `:booting`, watcher
+  calls `ChatAgent.boot_failed/2` with `{:boot_task_crashed,
+  reason}` — surfaces to UI within ~100ms instead of the 5-min
+  stuck-booting heuristic.
+- [x] 2-min hard deadline (overridable via `:boot_deadline_ms`)
+  for wedged boots that didn't crash but stalled. Watcher
+  force-kills the boot pid and surfaces
+  `:boot_deadline_exceeded`.
+- [x] Callers switched: `WorkspaceLive.AgentLifecycle` (user-driven
+  boot) + `EvalRunner` (eval setup boot).
+- [x] Regression: `test/boom_looper/agent_boot_watcher_test.exs`
+  (4 tests — crash-while-booting, crash-after-booting no-op,
+  clean-exit no-op, end-to-end via start_monitored).
+
+### 9-legacy. Design notes:
 
 **Known**: `@stuck_booting_seconds = 300` — if an agent is in `:booting`
 for more than 5 min, we mark it `:crashed` so the Start button appears

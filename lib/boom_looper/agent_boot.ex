@@ -41,6 +41,87 @@ defmodule BoomLooper.AgentBoot do
     - :service_name — service to debug
     - :initial_message — override the default first message
   """
+  @doc """
+  Fire-and-forget boot under a supervised Task, plus a monitor Task that
+  surfaces boot-process death to the user within ~100ms instead of the
+  5-min `@stuck_booting_seconds` UI backstop.
+
+  Motivation — agent-sanity #9. Callers currently do:
+
+      Task.Supervisor.start_child(TaskSupervisor, fn -> AgentBoot.boot(...) end)
+
+  `boot/3` handles saga errors via `ChatAgent.boot_failed/2`, but if
+  the Task PROCESS itself dies (OS kill, TaskSupervisor :shutdown
+  timeout, a raise in a tools/2 callback that no rescue catches), the
+  `boot_failed` path never runs and the user stares at a "Booting..."
+  spinner for 5 minutes before the stuck-booting heuristic kicks in.
+
+  `start_monitored/3` spawns the boot Task as `async_nolink` (so the
+  caller isn't linked) and spawns a sibling watcher Task under the
+  same supervisor that calls `Process.monitor/1` on the boot pid. On
+  `:DOWN` with a non-`:normal` reason, the watcher checks whether the
+  agent is still in `:booting` status and, if so, calls
+  `boot_failed/2` — surfacing the crash reason inline in the UI
+  immediately.
+
+  The watcher also carries a hard deadline (2 min, overridable via
+  `:boot_deadline_ms` opt) — if the boot hasn't finished by then,
+  the watcher force-fails the agent with `:boot_deadline_exceeded`
+  so we catch wedged boots that didn't actually crash but are stuck
+  (e.g. a docker compose up hanging on a network stall).
+  """
+  def start_monitored(id, agent_opts, opts \\ []) do
+    deadline_ms = Keyword.get(opts, :boot_deadline_ms, 120_000)
+
+    boot_task =
+      Task.Supervisor.async_nolink(BoomLooper.TaskSupervisor, fn ->
+        boot(id, agent_opts, opts)
+      end)
+
+    Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
+      ref = Process.monitor(boot_task.pid)
+
+      receive do
+        {:DOWN, ^ref, :process, _, :normal} ->
+          # Boot returned (cleanly or via boot_failed) — nothing to do.
+          :ok
+
+        {:DOWN, ^ref, :process, _, reason} ->
+          case :ets.lookup(:chat_agents, id) do
+            [{^id, %{status: :booting}}] ->
+              Logger.warning(
+                "[AgentBoot.Monitor] #{id} boot task crashed without running " <>
+                  "boot_failed: #{inspect(reason)}. Surfacing to UI."
+              )
+
+              ChatAgent.boot_failed(id, {:boot_task_crashed, reason})
+
+            _ ->
+              :ok
+          end
+      after
+        deadline_ms ->
+          # Boot wedged past deadline. Kill the boot task + fail.
+          Process.demonitor(ref, [:flush])
+
+          case :ets.lookup(:chat_agents, id) do
+            [{^id, %{status: :booting}}] ->
+              Logger.warning(
+                "[AgentBoot.Monitor] #{id} boot exceeded deadline #{deadline_ms}ms, force-failing."
+              )
+
+              Process.exit(boot_task.pid, :kill)
+              ChatAgent.boot_failed(id, :boot_deadline_exceeded)
+
+            _ ->
+              :ok
+          end
+      end
+    end)
+
+    :ok
+  end
+
   def boot(id, agent_opts, opts \\ []) do
     working_dir = Keyword.fetch!(agent_opts, :working_dir)
     service_name = Keyword.get(opts, :service_name)

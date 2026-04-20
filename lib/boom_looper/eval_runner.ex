@@ -210,7 +210,7 @@ defmodule BoomLooper.EvalRunner do
         wait_for_workspace_container(workspace.id, _timeout_ms = 120_000)
 
         ChatAgent.register_booting(id, "Setup", project_dir)
-        Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn -> BoomLooper.AgentBoot.boot(id, agent_opts) end)
+        BoomLooper.AgentBoot.start_monitored(id, agent_opts)
 
         # Poll until done or timeout, with auto-nudging
         BoomLooper.IExSession.working("eval: #{project.name} — running")
