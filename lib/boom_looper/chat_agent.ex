@@ -114,6 +114,15 @@ defmodule BoomLooper.ChatAgent do
 
   @ets_table :chat_agents
 
+  # Hard cap on a single :send_message cast payload. Claude's own
+  # limit is much higher (context-window-bound) but any single 1MB
+  # input is almost certainly a paste mistake, a runaway automation,
+  # or a tool feeding back its own output. Rejecting here protects:
+  # the agent mailbox, PubSub broadcast fanout to every viewer, and
+  # the Claude API bill. Configurable via Application env for tests
+  # that want to exercise the reject path with smaller inputs.
+  @max_message_bytes Application.compile_env(:boom_looper, :max_message_bytes, 1_048_576)
+
   # --- Public API ---
 
   def start_link(opts) do
@@ -740,6 +749,32 @@ defmodule BoomLooper.ChatAgent do
   # broadcasting to subscribers, and journaling to the ETF log all
   # happen here.
 
+  def handle_cast({:send_message, text}, state) when is_binary(text) and byte_size(text) > @max_message_bytes do
+    # Reject oversized input before it hits any stream. A 50MB paste
+    # would otherwise: blow up ETS term size, trigger huge PubSub
+    # broadcasts to every viewer, burn a turn at maximum Claude cost,
+    # and potentially crash the mailbox with message-too-big. Much
+    # better to refuse cleanly.
+    :telemetry.execute(
+      [:boom_looper, :agent, :message_rejected],
+      %{bytes: byte_size(text)},
+      %{agent_id: state.id, reason: :oversized}
+    )
+
+    reject_msg = %{
+      role: :error,
+      content:
+        "Message rejected — #{byte_size(text)} bytes exceeds the " <>
+          "#{@max_message_bytes}-byte limit. Paste to a file and reference it " <>
+          "instead, or break the content into smaller chunks.",
+      timestamp: DateTime.utc_now()
+    }
+
+    {state, reject_msg} = append_message(state, reject_msg)
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: reject_msg})
+    {:noreply, state}
+  end
+
   def handle_cast({:send_message, text}, state) do
     :telemetry.execute([:boom_looper, :agent, :message], %{}, %{agent_id: state.id, role: :user})
 
@@ -924,9 +959,42 @@ defmodule BoomLooper.ChatAgent do
     {:noreply, state}
   end
 
+  # Catchall for unknown casts. Without this, any bogus cast would
+  # crash the GenServer (FunctionClauseError propagates from a
+  # non-matching handle_cast/2). audit-2 already closed this gap for
+  # handle_info; this closes it for handle_cast. Emits the same
+  # `:unknown_message` telemetry so ops visibility is consistent.
+  def handle_cast(msg, state) do
+    Logger.warning("[ChatAgent] #{state.id} unhandled cast: #{inspect(msg, limit: 200)}")
+
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, agent_id: state.id, kind: :cast, msg: inspect(msg, limit: 200)}
+    )
+
+    {:noreply, state}
+  end
+
   @impl true
   def handle_call(:get_state, _from, state) do
     {:reply, summary(state), state}
+  end
+
+  # Catchall for unknown calls. Returns an error reply instead of
+  # crashing — callers get `{:error, :unknown_call}` they can handle,
+  # not a noproc/timeout. Same telemetry as handle_info / handle_cast
+  # catchalls.
+  def handle_call(msg, _from, state) do
+    Logger.warning("[ChatAgent] #{state.id} unhandled call: #{inspect(msg, limit: 200)}")
+
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, agent_id: state.id, kind: :call, msg: inspect(msg, limit: 200)}
+    )
+
+    {:reply, {:error, :unknown_call}, state}
   end
 
   @impl true
