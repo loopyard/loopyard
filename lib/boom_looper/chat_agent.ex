@@ -973,13 +973,35 @@ defmodule BoomLooper.ChatAgent do
 
   @impl true
   def handle_cast(:stop, state) do
+    # If the agent was mid-turn with streamed text accumulated but
+    # no Event.Text yet, finalize it as a truncated partial so the
+    # user doesn't lose their half-answer when they hit Stop. Same
+    # mechanism as stream_error / stream_timeout uses.
+    state = finalize_partial_on_stream_interrupt(state, state.id, :stopped_by_user)
+
     if state.session do
-      # Stop in a task with timeout — backend.stop can hang if mid-stream
+      # Stop in a task with timeout — backend.stop can hang if mid-stream.
       task = Task.async(fn -> state.backend.stop(state.session) end)
       Task.yield(task, 3_000) || Task.shutdown(task, :brutal_kill)
     end
 
-    stopped = %{state | status: :stopped}
+    # Null session so terminate/2's second backend.stop is a no-op —
+    # we've already spent our 3s budget here; no need to spend another
+    # during terminate.
+    stopped = %{state | status: :stopped, session: nil, active_tool: nil}
+
+    # Drop queued pending_sends — user chose to stop; they can
+    # resend what matters. Log the count so ops can see if stops
+    # are habitually discarding user input (would suggest a UX issue).
+    if state.pending_sends != [] do
+      BoomLooper.EventLog.info(
+        "agent:#{state.name}",
+        "Stop dropped #{length(state.pending_sends)} queued message(s)"
+      )
+    end
+
+    stopped = %{stopped | pending_sends: []}
+
     :ets.insert(@ets_table, {state.id, summary(stopped)})
     Events.ChatAgent.publish(%Events.ChatAgent.Stopped{summary: summary(stopped)})
     {:stop, :normal, stopped}
@@ -2054,6 +2076,7 @@ defmodule BoomLooper.ChatAgent do
       case reason do
         :error -> "⚠ Truncated — CLI stream errored mid-response."
         :timeout -> "⚠ Truncated — CLI stopped responding mid-stream."
+        :stopped_by_user -> "⚠ Truncated — user stopped the agent mid-response."
         other -> "⚠ Truncated — stream ended unexpectedly (#{inspect(other)})."
       end
 
