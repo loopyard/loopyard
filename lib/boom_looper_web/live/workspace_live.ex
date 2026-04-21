@@ -1537,15 +1537,6 @@ defmodule BoomLooperWeb.WorkspaceLive do
     end
   end
 
-  defp first_container_port(%{ports: ports}) when is_map(ports) and map_size(ports) > 0 do
-    ports |> Map.keys() |> Enum.sort() |> List.first() |> to_integer()
-  end
-
-  defp first_container_port(_), do: nil
-
-  defp to_integer(n) when is_integer(n), do: n
-  defp to_integer(n) when is_binary(n), do: String.to_integer(n)
-
   # Kicks off three Docker calls (container_running?, do_logs, do_inspect)
   # in a single Task. Mounted callers (handle_params for the container tab)
   # call this and return immediately; the assigns get filled in once the
