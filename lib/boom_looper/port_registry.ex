@@ -103,6 +103,10 @@ defmodule BoomLooper.PortRegistry do
 
     BoomLooper.StateKeeper.ensure_tables!()
 
+    # Subscribe to Docker state changes so we can start/stop proxies
+    # as containers come up and go down.
+    Phoenix.PubSub.subscribe(BoomLooper.PubSub, "docker_observer")
+
     {:ok, %{port_range: port_range, persist: persist, reserved: reserved_ports()}}
   end
 
@@ -256,7 +260,84 @@ defmodule BoomLooper.PortRegistry do
     {:reply, :ok, state}
   end
 
+  # --- Docker lifecycle: start/stop proxies as containers change ---
+
+  @impl true
+  def handle_info(%{__struct__: BoomLooper.Events.DockerObserver.Changed}, state) do
+    reconcile_proxies(state)
+    {:noreply, state}
+  end
+
+  def handle_info(%{__struct__: BoomLooper.Events.DockerObserver.Reset}, state) do
+    # Docker disconnected — stop all proxies since we can't reach upstream
+    stop_all_proxies()
+    {:noreply, state}
+  end
+
+  def handle_info(_msg, state), do: {:noreply, state}
+
   # --- Private ---
+
+  # Walk every registry entry and reconcile proxy state with Docker:
+  # - Container up + port changed → update docker_port + restart proxy
+  # - Container up + proxy not running → start proxy
+  # - Container down + proxy running → stop proxy
+  defp reconcile_proxies(state) do
+    entries = :ets.tab2list(@table) |> Enum.map(fn {_, e} -> e end)
+    # Group by workspace to minimize Observer lookups
+    by_ws = Enum.group_by(entries, & &1.workspace_id)
+
+    for {ws_id, ws_entries} <- by_ws do
+      project_name = BoomLooper.Compose.project_name(ws_id)
+      containers = BoomLooper.Docker.Observer.containers_for(ws_id)
+
+      for entry <- ws_entries do
+        key = {ws_id, entry.service, entry.container_port}
+        container_name = "#{project_name}-#{entry.service}-1"
+        container = Enum.find(containers, &(&1.name == container_name))
+        container_running? = container && container.running
+
+        docker_port =
+          if container && container[:host_ports] do
+            raw = container.host_ports[entry.container_port] ||
+                  container.host_ports[to_string(entry.container_port)]
+            if raw, do: (if is_binary(raw), do: String.to_integer(raw), else: raw)
+          end
+
+        proxy_running? = BoomLooper.PortExposer.whereis(key) != nil
+
+        cond do
+          # Container running, port known, proxy needs start or update
+          container_running? && docker_port && docker_port != entry[:docker_port] ->
+            stop_proxy(key)
+            updated = Map.put(entry, :docker_port, docker_port)
+            :ets.insert(@table, {key, updated})
+            bind_ip = if updated.exposed, do: {0, 0, 0, 0}, else: {127, 0, 0, 1}
+            start_proxy(key, updated, bind_ip)
+            persist(state)
+
+          container_running? && docker_port && !proxy_running? ->
+            bind_ip = if entry.exposed, do: {0, 0, 0, 0}, else: {127, 0, 0, 1}
+            start_proxy(key, entry, bind_ip)
+
+          # Container down, proxy still running → stop it
+          !container_running? && proxy_running? ->
+            stop_proxy(key)
+
+          true ->
+            :ok
+        end
+      end
+    end
+  rescue
+    _ -> :ok
+  end
+
+  defp stop_all_proxies do
+    for {key, _} <- :ets.tab2list(@table) do
+      stop_proxy(key)
+    end
+  end
 
   defp reserved_ports do
     endpoint_port =
