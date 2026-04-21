@@ -1,33 +1,3 @@
-# Elixir 1.19 parallel compiler can schedule a test module before the
-# lib modules that define its referenced structs. The tiny publisher
-# modules (`defmodule Changed, do: defstruct([])` inside
-# `BoomLooper.Events.DockerObserver` etc.) are especially prone — the
-# parent module compiles fine but the nested struct isn't visible to a
-# test file compiled in the same pass. Eagerly load the Events
-# hierarchy + a few hotspot modules so every struct referenced in
-# `%Events.X.Y{}` expansion already has an atom table entry when the
-# compiler expands it. Costs milliseconds at boot; saves us a clean
-# rebuild on every flaky CI run.
-for mod <- [
-      BoomLooper.Events.ChatAgent,
-      BoomLooper.Events.ChatAgentMessage,
-      BoomLooper.Events.DockerObserver,
-      BoomLooper.Events.IexSession,
-      BoomLooper.Events.SourceSync,
-      BoomLooper.Events.Terminal,
-      BoomLooper.Events.WorkspaceServices,
-      BoomLooper.Agent.Event,
-      BoomLooper.Agent.Event.RateLimitStatus,
-      BoomLooper.Agent.Event.AuthStatus,
-      BoomLooper.Agent.Event.SessionResult,
-      BoomLooper.Agent.Event.Text,
-      BoomLooper.Agent.Event.TextDelta,
-      BoomLooper.Agent.Event.ToolCall,
-      BoomLooper.Agent.Event.ToolResult
-    ] do
-  Code.ensure_loaded!(mod)
-end
-
 # Set BOOMLOOPER_HOME to a local dir so tests don't write to ~/.boomlooper
 boomlooper_home = Path.join(File.cwd!(), ".boomlooper_home")
 

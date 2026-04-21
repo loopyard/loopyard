@@ -129,6 +129,51 @@ defmodule BoomLooper.Saga.Recorder do
     :ok
   end
 
+  # Catchalls — Recorder is a GenServer with zero user-facing
+  # cast/call/info handlers (it's a passive telemetry consumer). Any
+  # stray OTP message (monitor DOWN, node up/down, test helper junk)
+  # would crash the GenServer with a FunctionClauseError and take
+  # its ETS history with it. These catchalls absorb stray messages
+  # via [:boom_looper, :actor, :unknown_message] telemetry.
+  @impl true
+  def handle_info(msg, state) do
+    Logger.warning("[Saga.Recorder] unhandled info: #{inspect(msg, limit: 200)}")
+
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, kind: :info, msg: inspect(msg, limit: 200)}
+    )
+
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_cast(msg, state) do
+    Logger.warning("[Saga.Recorder] unhandled cast: #{inspect(msg, limit: 200)}")
+
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, kind: :cast, msg: inspect(msg, limit: 200)}
+    )
+
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_call(msg, _from, state) do
+    Logger.warning("[Saga.Recorder] unhandled call: #{inspect(msg, limit: 200)}")
+
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, kind: :call, msg: inspect(msg, limit: 200)}
+    )
+
+    {:reply, {:error, :unknown_call}, state}
+  end
+
   # ── Telemetry handlers ──
 
   @handler_id {__MODULE__, :handler}
