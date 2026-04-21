@@ -272,19 +272,14 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
 
   def port_action(assigns) do
     exposed? = Map.get(assigns.svc, :exposed, false)
-    # When exposed, show the EXPOSE port (the 0.0.0.0 listener, reachable
-    # from LAN). When not exposed, show the Docker host_port (localhost only).
-    display_port =
-      if exposed?,
-        do: Map.get(assigns.svc, :expose_port, assigns.port),
-        else: assigns.port
-
-    url = "http://#{assigns.host}:#{display_port}"
+    # User-facing port is always host_port — same number whether
+    # private or exposed. The proxy changes its bind address, not
+    # its port.
+    url = "http://#{assigns.host}:#{assigns.port}"
 
     assigns =
       assigns
       |> assign(:exposed?, exposed?)
-      |> assign(:display_port, display_port)
       |> assign(:url, url)
       |> assign(:label,
         if(exposed?,
@@ -311,7 +306,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
           else: "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700")
       ]}
     >
-      {if @exposed?, do: ":#{@display_port}", else: "open port"}
+      {if @exposed?, do: ":#{@port}", else: "open port"}
     </a>
     """
   end

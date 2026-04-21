@@ -144,7 +144,6 @@ defmodule BoomLooperWeb.SystemPortsLive do
           Exposed (0.0.0.0)
         </span>
         <span :if={!@r.exposed} class="text-xs text-zinc-500">Loopback (127.0.0.1)</span>
-        <span :if={@r.legacy} class="ml-1 text-[10px] uppercase tracking-wider text-amber-500">legacy</span>
       </td>
       <td class="py-2 px-2 text-right font-mono text-xs">
         {if @r.live, do: @r.live.connection_count, else: "—"}
