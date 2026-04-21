@@ -243,14 +243,14 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         <span class={"w-1.5 h-1.5 rounded-full flex-none #{service_dot(@svc)}"} aria-hidden="true"></span>
         <span class="truncate text-zinc-600 dark:text-zinc-400">{@svc.name}</span>
       </.link>
-      <%!-- Trailing slot always reserves 92px so the port button
-           popping in can't push the service name. One slot holds one
-           of: port action, status text, detail, crash info. --%>
-      <div class="flex items-center justify-end min-w-[92px]">
-        <.port_action
-          :if={@first_port && Map.get(@svc, :container_port) && @svc.status == :running}
+      <div class="flex items-center justify-end gap-1.5">
+        <.port_link
+          :if={@first_port && @svc.status == :running}
           host={@host}
           port={@first_port}
+        />
+        <.share_button
+          :if={@first_port && Map.get(@svc, :container_port) && @svc.status == :running}
           svc={@svc}
         />
         <span :if={!@first_port && service_status_text(@svc)} class="text-xs text-blue-500 dark:text-blue-400">{service_status_text(@svc)}</span>
@@ -261,53 +261,50 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
     """
   end
 
-  # Single affordance per running service:
-  #   * closed (loopback-only) → gray "open port" — click exposes + opens URL
-  #   * open (0.0.0.0)         → green ":<port>"  — click just opens URL
-  #
-  # Closing an exposed port happens from /system/ports, not here.
+  # Port number link — opens the dev server in a new tab.
   attr :host, :string, required: true
   attr :port, :integer, required: true
-  attr :svc, :map, required: true
 
-  def port_action(assigns) do
-    exposed? = Map.get(assigns.svc, :exposed, false)
-    # User-facing port is always host_port — same number whether
-    # private or exposed. The proxy changes its bind address, not
-    # its port.
-    url = "http://#{assigns.host}:#{assigns.port}"
-
-    assigns =
-      assigns
-      |> assign(:exposed?, exposed?)
-      |> assign(:url, url)
-      |> assign(:label,
-        if(exposed?,
-          do: "Open #{url} — exposed to your network",
-          else: "Expose this port and open #{url}"
-        )
-      )
+  defp port_link(assigns) do
+    assigns = assign(assigns, :url, "http://#{assigns.host}:#{assigns.port}")
 
     ~H"""
     <a
       href={@url}
       target="_blank"
       rel="noopener noreferrer"
-      phx-click={unless @exposed?, do: "toggle_port_exposure"}
+      aria-label={"Open #{@url}"}
+      class="focus-ring text-xs font-mono text-violet-600 dark:text-violet-400 hover:text-violet-500 transition-colors"
+    >
+      :{@port}
+    </a>
+    """
+  end
+
+  # Local / Network toggle button — switches the proxy bind address.
+  attr :svc, :map, required: true
+
+  defp share_button(assigns) do
+    exposed? = Map.get(assigns.svc, :exposed, false)
+    assigns = assign(assigns, :exposed?, exposed?)
+
+    ~H"""
+    <button
+      type="button"
+      phx-click="toggle_port_exposure"
       phx-value-service={@svc.name}
       phx-value-container_port={Map.get(@svc, :container_port)}
-      phx-value-expose="true"
-      aria-label={@label}
-      title={@label}
+      phx-value-expose={to_string(!@exposed?)}
+      aria-label={if @exposed?, do: "Close port — restrict to this machine", else: "Open port — share on network"}
       class={[
-        "focus-ring flex-none inline-flex items-center justify-center min-h-8 md:min-h-6 min-w-11 text-xs font-mono font-medium px-2 rounded transition-colors ml-auto",
+        "focus-ring inline-flex items-center min-h-8 md:min-h-6 px-1.5 rounded text-[10px] font-medium transition-colors",
         if(@exposed?,
           do: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25",
           else: "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700")
       ]}
     >
-      {if @exposed?, do: ":#{@port}", else: "open port"}
-    </a>
+      {if @exposed?, do: "Close Port", else: "Open Port"}
+    </button>
     """
   end
 

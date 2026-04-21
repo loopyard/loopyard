@@ -96,7 +96,7 @@ defmodule BoomLooperWeb.SystemPortsLive do
       <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
         Every row is a host port BoomLooper has assigned to a workspace service.
         By default each one is bound to <code>127.0.0.1</code> — only this machine
-        can reach it. Click <strong>Expose</strong> to bind it to <code>0.0.0.0</code>
+        can reach it. Click <strong>Open Port</strong> to make it reachable on <code>0.0.0.0</code>
         so anything that can route to this host (LAN, tunnel, VPN, public IP) can reach it.
       </p>
 
@@ -141,9 +141,9 @@ defmodule BoomLooperWeb.SystemPortsLive do
       </td>
       <td class="py-2 px-2">
         <span :if={@r.exposed} class="text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 rounded-full px-2 py-0.5">
-          Exposed (0.0.0.0)
+          Open
         </span>
-        <span :if={!@r.exposed} class="text-xs text-zinc-500">Loopback (127.0.0.1)</span>
+        <span :if={!@r.exposed} class="text-xs text-zinc-500">Closed</span>
       </td>
       <td class="py-2 px-2 text-right font-mono text-xs">
         {if @r.live, do: @r.live.connection_count, else: "—"}
@@ -168,7 +168,7 @@ defmodule BoomLooperWeb.SystemPortsLive do
               else: "text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/10")
           ]}
         >
-          {if @r.exposed, do: "Unexpose", else: "Expose"}
+          {if @r.exposed, do: "Close Port", else: "Open Port"}
         </button>
       </td>
     </tr>
