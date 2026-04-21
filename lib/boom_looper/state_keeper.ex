@@ -83,6 +83,53 @@ defmodule BoomLooper.StateKeeper do
     {:ok, %{}}
   end
 
+  # Catchalls. StateKeeper owns every named ETS table in the system
+  # (see @tables). If this GenServer crashes, every table dies with
+  # it and every subsystem that reads/writes ETS gets :noexit on its
+  # next access. A stray message — a monitor DOWN, a node up/down, a
+  # stale cast from a renamed caller — must NEVER be able to take it
+  # down. All three callback catchalls absorb unknowns into telemetry.
+  require Logger
+
+  @impl true
+  def handle_info(msg, state) do
+    Logger.warning("[StateKeeper] unhandled info: #{inspect(msg, limit: 200)}")
+
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, kind: :info, msg: inspect(msg, limit: 200)}
+    )
+
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_cast(msg, state) do
+    Logger.warning("[StateKeeper] unhandled cast: #{inspect(msg, limit: 200)}")
+
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, kind: :cast, msg: inspect(msg, limit: 200)}
+    )
+
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_call(msg, _from, state) do
+    Logger.warning("[StateKeeper] unhandled call: #{inspect(msg, limit: 200)}")
+
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, kind: :call, msg: inspect(msg, limit: 200)}
+    )
+
+    {:reply, {:error, :unknown_call}, state}
+  end
+
   def put_eval(name, info), do: :ets.insert(:boom_looper_evals, {name, info})
 
   def get_eval(name) do

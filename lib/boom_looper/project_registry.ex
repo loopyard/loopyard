@@ -292,6 +292,16 @@ defmodule BoomLooper.ProjectRegistry do
   ServiceManager will detect running containers and reconnect.
   """
   def restore do
+    if :ets.whereis(@projects_table) == :undefined do
+      Logger.error("[ProjectRegistry] ETS table #{@projects_table} missing — " <>
+        "supervisor likely crashed. Skipping restore; restart the server.")
+      :ok
+    else
+      do_restore()
+    end
+  end
+
+  defp do_restore do
     for entry <- ProjectStore.load() do
       # Handle both old format (string path) and new format (map with path/name)
       {path, saved_name} = case entry do

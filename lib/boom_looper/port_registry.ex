@@ -371,6 +371,48 @@ defmodule BoomLooper.PortRegistry do
     {:reply, :ok, state}
   end
 
+  # Catchalls for unknown cast/call/info. PortRegistry is a
+  # supervision-tree-critical GenServer (every workspace's port
+  # allocation flows through it); a bogus message mustn't crash it.
+  def handle_cast(msg, state) do
+    require Logger
+    Logger.warning("[PortRegistry] unhandled cast: #{inspect(msg, limit: 200)}")
+
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, kind: :cast, msg: inspect(msg, limit: 200)}
+    )
+
+    {:noreply, state}
+  end
+
+  def handle_call(msg, _from, state) do
+    require Logger
+    Logger.warning("[PortRegistry] unhandled call: #{inspect(msg, limit: 200)}")
+
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, kind: :call, msg: inspect(msg, limit: 200)}
+    )
+
+    {:reply, {:error, :unknown_call}, state}
+  end
+
+  def handle_info(msg, state) do
+    require Logger
+    Logger.warning("[PortRegistry] unhandled info: #{inspect(msg, limit: 200)}")
+
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, kind: :info, msg: inspect(msg, limit: 200)}
+    )
+
+    {:noreply, state}
+  end
+
   # --- Private ---
 
   # Register the port binding under the workspace supervisor pid so

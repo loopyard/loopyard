@@ -189,6 +189,55 @@ defmodule BoomLooper.Workspace.ServiceManager do
     :ok
   end
 
+  # Catchalls. ServiceManager sits in the hot path (every
+  # /workspaces/:id mount reads from it); a stray message must never
+  # crash it.
+  @impl true
+  def handle_info(msg, state) do
+    require Logger
+    Logger.warning(
+      "[ServiceManager] ws=#{state.workspace_id} unhandled info: #{inspect(msg, limit: 200)}"
+    )
+
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, workspace_id: state.workspace_id, kind: :info, msg: inspect(msg, limit: 200)}
+    )
+
+    {:noreply, state}
+  end
+
+  def handle_cast(msg, state) do
+    require Logger
+    Logger.warning(
+      "[ServiceManager] ws=#{state.workspace_id} unhandled cast: #{inspect(msg, limit: 200)}"
+    )
+
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, workspace_id: state.workspace_id, kind: :cast, msg: inspect(msg, limit: 200)}
+    )
+
+    {:noreply, state}
+  end
+
+  def handle_call(msg, _from, state) do
+    require Logger
+    Logger.warning(
+      "[ServiceManager] ws=#{state.workspace_id} unhandled call: #{inspect(msg, limit: 200)}"
+    )
+
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, workspace_id: state.workspace_id, kind: :call, msg: inspect(msg, limit: 200)}
+    )
+
+    {:reply, {:error, :unknown_call}, state}
+  end
+
   # --- Private ---
 
   defp do_start(state) do
