@@ -145,6 +145,23 @@ defmodule BoomLooper.Source.Local.SyncMonitor do
     {:reply, status_map(state), state}
   end
 
+  # Catchall for unknown calls — return {:error, :unknown_call} so
+  # callers can distinguish "I don't handle that" from "the monitor
+  # is dead." Without this, bogus calls crash the GenServer.
+  def handle_call(msg, _from, state) do
+    Logger.warning(
+      "[SyncMonitor] ws=#{state.workspace_id} unhandled call: #{inspect(msg, limit: 200)}"
+    )
+
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, workspace_id: state.workspace_id, kind: :call, msg: inspect(msg, limit: 200)}
+    )
+
+    {:reply, {:error, :unknown_call}, state}
+  end
+
   @impl true
   def handle_cast(:restart, state) do
     # User-initiated restart: terminate old session, transition to
@@ -187,6 +204,24 @@ defmodule BoomLooper.Source.Local.SyncMonitor do
 
   def handle_cast(:prepare_for_removal, state) do
     {:noreply, %{state | removing: true}}
+  end
+
+  # Catchall for unknown casts — mirror of the ChatAgent pattern.
+  # Without this a bogus cast would crash the GenServer with a
+  # FunctionClauseError, which would tear down the supervisor and
+  # the user would lose the running mutagen session for nothing.
+  def handle_cast(msg, state) do
+    Logger.warning(
+      "[SyncMonitor] ws=#{state.workspace_id} unhandled cast: #{inspect(msg, limit: 200)}"
+    )
+
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, workspace_id: state.workspace_id, kind: :cast, msg: inspect(msg, limit: 200)}
+    )
+
+    {:noreply, state}
   end
 
   @impl true
@@ -446,9 +481,44 @@ defmodule BoomLooper.Source.Local.SyncMonitor do
 
     if state.status != new_status or state.last_error != error do
       broadcast(new_state)
+      log_transition(state, new_state)
+
+      :telemetry.execute(
+        [:boom_looper, :sync_monitor, :transition],
+        %{consecutive_errors: new_state.consecutive_errors},
+        %{
+          workspace_id: state.workspace_id,
+          from: state.status,
+          to: new_status,
+          error: error
+        }
+      )
     end
 
     new_state
+  end
+
+  # Log transitions to EventLog (visible at /system/events) so ops
+  # can spot sync failures without attaching telemetry handlers.
+  # Level based on destination: healthy → info, errored → warning.
+  defp log_transition(old_state, new_state) do
+    level =
+      case new_state.status do
+        :errored -> :warning
+        :stopped -> :warning
+        _ -> :info
+      end
+
+    msg =
+      case new_state.last_error do
+        nil -> "sync #{old_state.status} → #{new_state.status}"
+        e -> "sync #{old_state.status} → #{new_state.status} (#{to_string_reason(e)})"
+      end
+
+    case level do
+      :warning -> BoomLooper.EventLog.warning("sync:#{new_state.workspace_id}", msg)
+      :info -> BoomLooper.EventLog.info("sync:#{new_state.workspace_id}", msg)
+    end
   end
 
   defp broadcast(state) do
