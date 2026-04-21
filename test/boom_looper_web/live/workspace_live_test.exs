@@ -330,7 +330,8 @@ defmodule BoomLooperWeb.WorkspaceLiveTest do
       {:ok, view, html} = live(conn, ws_chat_path(ws, id))
       assert html =~ "Starting agent"
       assert html =~ "My Agent"
-      assert has_element?(view, "div.animate-pulse")
+      # Booting spinner is the animate-spin SVG in booting_screen/1.
+      assert has_element?(view, "svg.animate-spin")
     end
 
     test "boot_status updates are shown to all viewers", %{conn: conn, workspace: ws, setup_agent_id: _setup_agent_id} do
@@ -666,8 +667,14 @@ defmodule BoomLooperWeb.WorkspaceLiveTest do
     test "context panel always shows agent info", %{conn: conn, agent_id: id, workspace: ws} do
       {:ok, _view, html} = live(conn, ws_chat_path(ws, id))
 
-      assert html =~ "Agent Context"
+      # Section headers + the agent name prove the Agent Context
+      # sidebar panel rendered. "Agent Context" used to be an H2 in
+      # this panel; the current UI uses section-labeled rhythm
+      # (Info, Docker, Claude Usage, Tools) with the agent name at
+      # the top — so we pin those instead.
       assert html =~ "Context Test"
+      assert html =~ "Info"
+      assert html =~ "Tool calls"
     end
   end
 end

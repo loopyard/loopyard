@@ -216,6 +216,13 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.AgentLifecycle do
 
   defp do_wake(id) do
     case ChatAgent.get_state(id) do
+      # Agent is mid-boot (register_booting wrote the stub, AgentBoot
+      # hasn't started the GenServer yet). Don't double-start it —
+      # that would overwrite the booting ETS row and drop the
+      # :boot_status key the UI depends on.
+      %{status: :booting} ->
+        :ok
+
       %{workspace_id: workspace_id} when is_binary(workspace_id) ->
         BoomLooper.WorkspaceGroup.start_agent(workspace_id, id: id, resume: true)
 

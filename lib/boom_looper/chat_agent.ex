@@ -422,10 +422,20 @@ defmodule BoomLooper.ChatAgent do
     # that look real.
     now = DateTime.utc_now()
 
+    # Populate workspace_id so the booting entry is visible to the
+    # sidebar filter (which keys off workspace_id, not working_dir).
+    # Without this, booting agents silently disappear from the
+    # sidebar until their session comes up and overwrites the ETS row
+    # with a fully-populated summary.
+    workspace_id =
+      Keyword.get(opts, :workspace_id) ||
+        BoomLooper.Workspace.workspace_id(working_dir)
+
     stub = %__MODULE__{
       id: id,
       name: name,
       working_dir: working_dir,
+      workspace_id: workspace_id,
       service_name: Keyword.get(opts, :service_name),
       started_at: now,
       started_by: "browser",

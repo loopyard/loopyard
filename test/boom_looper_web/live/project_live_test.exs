@@ -96,9 +96,34 @@ defmodule BoomLooperWeb.ProjectLiveTest do
       view |> element("button", "Remove project") |> render_click()
       view |> element("button", "Remove project") |> render_click()
 
+      # remove_project starts an async Task (start_async) — wait until
+      # ProjectRegistry confirms the project is gone before asserting
+      # that the .boomlooper dir was deleted. Race window on a busy
+      # test box can be hundreds of ms because the on-disk cleanup
+      # traverses child dirs.
+      wait_until(fn -> ProjectRegistry.get_project(project.id) == nil end, 3_000)
+
       refute File.dir?(boomlooper_dir)
       assert File.dir?(tmp_dir)
       File.rm_rf!(tmp_dir)
+    end
+  end
+
+  defp wait_until(fun, timeout_ms) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    wait_until_loop(fun, deadline)
+  end
+
+  defp wait_until_loop(fun, deadline) do
+    if fun.() do
+      :ok
+    else
+      if System.monotonic_time(:millisecond) >= deadline do
+        flunk("wait_until timed out")
+      else
+        Process.sleep(25)
+        wait_until_loop(fun, deadline)
+      end
     end
   end
 end

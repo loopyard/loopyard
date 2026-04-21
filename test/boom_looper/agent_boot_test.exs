@@ -62,22 +62,37 @@ defmodule BoomLooper.AgentBootTest do
       id = "boot-test-#{:rand.uniform(100_000)}"
       working_dir = Path.join(System.tmp_dir!(), "agent-boot-status-test-#{:rand.uniform(100_000)}")
       File.mkdir_p!(working_dir)
-      on_exit(fn -> File.rm_rf!(working_dir) end)
+
+      workspace_id = BoomLooper.Workspace.workspace_id(working_dir)
+
+      on_exit(fn ->
+        ChatAgent.stop_agent(id)
+        BoomLooper.WorkspaceSupervisor.stop_workspace(workspace_id)
+        File.rm_rf!(working_dir)
+      end)
 
       ChatAgent.register_booting(id, "Test", working_dir)
 
-      # Boot will fail (no workspace supervisor running) but should update status first
-      AgentBoot.boot(id, [
+      # Agent starts in ETS with :booting status.
+      assert %{status: :booting} = ChatAgent.get_state(id)
+
+      # AgentBoot.start_agent_with_retry auto-rebuilds the workspace
+      # supervisor if missing, so this boot succeeds end-to-end.
+      AgentBoot.boot(id,
         id: id,
         name: "Test",
         working_dir: working_dir,
         started_by: "test",
         bind_mount: working_dir
-      ])
+      )
 
-      # Agent should have been cleaned up by boot_failed
-      # (workspace not running → start_agent fails → boot_failed removes from ETS)
-      assert ChatAgent.get_state(id) == nil
+      # Post-boot: agent is alive (status transitioned out of :booting)
+      # and its live GenServer is registered. The test's job is to pin
+      # the status-update-before-session-start wiring — the presence of
+      # a non-:booting status is the proof.
+      state = ChatAgent.get_state(id)
+      assert state != nil
+      assert state.status != :booting
     end
 
     test "sends initial setup message when no workspace config exists" do
