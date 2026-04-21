@@ -203,6 +203,9 @@ defmodule BoomLooper.PortRegistry do
             {:reply, :ok, state}
 
           {:error, reason} = err ->
+            # Clear transitioning so the reconciler can recover this entry
+            :ets.insert(@table, {key, Map.put(entry, :transitioning, false)})
+
             # Try to restart with the old binding so service isn't dead
             old_bind = if entry.exposed, do: {0, 0, 0, 0}, else: {127, 0, 0, 1}
             start_proxy(key, entry, old_bind)
@@ -270,17 +273,20 @@ defmodule BoomLooper.PortRegistry do
 
     if now - state.last_reconcile > 1_000 do
       reconcile_proxies(state)
-      {:noreply, %{state | last_reconcile: now}}
+      {:noreply, %{state | last_reconcile: now, reconcile_scheduled: false}}
     else
-      # Schedule a catch-up reconcile so we don't miss the final state
-      Process.send_after(self(), :deferred_reconcile, 1_100)
-      {:noreply, state}
+      # Schedule ONE catch-up so we don't miss the final state
+      unless state[:reconcile_scheduled] do
+        Process.send_after(self(), :deferred_reconcile, 1_100)
+      end
+
+      {:noreply, Map.put(state, :reconcile_scheduled, true)}
     end
   end
 
   def handle_info(:deferred_reconcile, state) do
     reconcile_proxies(state)
-    {:noreply, %{state | last_reconcile: System.monotonic_time(:millisecond)}}
+    {:noreply, %{state | last_reconcile: System.monotonic_time(:millisecond), reconcile_scheduled: false}}
   end
 
   def handle_info(%{__struct__: BoomLooper.Events.DockerObserver.Reset}, state) do
@@ -345,7 +351,9 @@ defmodule BoomLooper.PortRegistry do
       end
     end
   rescue
-    _ -> :ok
+    e ->
+      require Logger
+      Logger.warning("[PortRegistry] reconcile_proxies failed: #{Exception.message(e)}")
   end
 
   defp stop_all_proxies do

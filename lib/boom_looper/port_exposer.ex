@@ -121,6 +121,7 @@ defmodule BoomLooper.PortExposer do
       bytes_in: state.bytes_in,
       bytes_out: state.bytes_out,
       connection_count: map_size(state.clients),
+      upstream_failures: state.upstream_failures,
       peers:
         state.clients
         |> Map.values()
@@ -264,12 +265,17 @@ defmodule BoomLooper.PortExposer do
     cond do
       Map.has_key?(state.clients, sock) ->
         %{upstream: upstream} = Map.get(state.clients, sock)
-        :gen_tcp.send(upstream, data)
-        %{state | bytes_in: state.bytes_in + byte_size(data)}
+
+        case :gen_tcp.send(upstream, data) do
+          :ok -> %{state | bytes_in: state.bytes_in + byte_size(data)}
+          {:error, _} -> close_pair(state, sock)
+        end
 
       client = Map.get(state.upstream_to_client, sock) ->
-        :gen_tcp.send(client, data)
-        %{state | bytes_out: state.bytes_out + byte_size(data)}
+        case :gen_tcp.send(client, data) do
+          :ok -> %{state | bytes_out: state.bytes_out + byte_size(data)}
+          {:error, _} -> close_pair(state, sock)
+        end
 
       true ->
         state
