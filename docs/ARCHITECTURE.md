@@ -222,6 +222,30 @@ lib/boom_looper_web/live/
 - Service log fetching runs in TaskSupervisor — LiveView never blocks on `docker logs`.
 - All shared state flows through GenServer → PubSub → all LiveViews.
 
+## Port proxy system
+
+Docker containers bind ephemeral loopback ports (e.g., `127.0.0.1:32922:3000`). Users never see these. BoomLooper assigns a stable user-facing port from a global pool (4000..9999) and runs a TCP proxy between users and Docker.
+
+```
+User → PortExposer (127.0.0.1:4008 or 0.0.0.0:4008) → Docker (127.0.0.1:32922) → Container (:3000)
+```
+
+**Data flow:**
+1. Compose processing calls `PortRegistry.assign/3` → sticky user-facing port (4008)
+2. Compose emits `127.0.0.1::3000` — Docker picks ephemeral
+3. Docker Observer detects the ephemeral port via container events
+4. `PortRegistry.reconcile_proxies` starts a PortExposer: `127.0.0.1:4008 → 127.0.0.1:32922`
+5. `set_exposure(true)` restarts the proxy on `0.0.0.0:4008` — same port, network-reachable
+
+**Lifecycle is reactive.** PortRegistry subscribes to Docker Observer events. On every container state change it reconciles: starts proxies for new containers, stops proxies for dead ones, updates upstream port on container restart. No polling, no manual intervention.
+
+**Key modules:**
+- `PortRegistry` — GenServer. Assigns ports, manages proxy lifecycle, persists to `ports.json`, reconciles on Observer events
+- `PortExposer` — GenServer per proxied port. TCP forwarding with byte counters, peer tracking, `bind_ip` toggle. `restart: :transient`, self-terminates after 5 consecutive upstream failures
+- `PortStore` — JSON persistence at `~/.boomlooper/ports.json`
+
+**Security:** All Docker ports bind loopback-only. Network exposure is opt-in per port via `set_exposure/4`. The proxy is the only path from the network to the container — giving full connection visibility (bytes in/out, peer IPs, connection count) on `/system/ports`.
+
 ## ETS tables
 
 All owned by `StateKeeper`. Created once in `init/1`.

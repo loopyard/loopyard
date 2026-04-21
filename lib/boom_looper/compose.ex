@@ -462,26 +462,6 @@ defmodule BoomLooper.Compose do
     port_str |> String.split("/") |> hd() |> String.to_integer()
   end
 
-  @doc """
-  Capture the current port assignments for all services in a workspace.
-  Returns `%{"dev" => %{3000 => 33870}, "postgres" => %{5432 => 33871}}`.
-  Used to pin ports across restarts.
-  """
-  def capture_port_map(workspace_id) do
-    project_name = project_name(workspace_id)
-
-    BoomLooper.Docker.Observer.containers_for(workspace_id)
-    |> Enum.reject(&(&1.name =~ ~r/-workspace-/))
-    |> Map.new(fn container ->
-      # Extract service name: "bl-abcd-dev-1" → "dev"
-      service = container.name
-        |> String.replace_prefix("#{project_name}-", "")
-        |> String.replace_suffix("-1", "")
-
-      {service, container.host_ports}
-    end)
-  end
-
   @doc "Path to the compose file."
   def compose_path(project_dir), do: Path.join([project_dir, ".boomlooper", "workspace", "docker-compose.yml"])
 
