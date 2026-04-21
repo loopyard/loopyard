@@ -230,6 +230,7 @@ defmodule BoomLooper.PortExposer do
         %{
           state
           | clients: Map.put(state.clients, client_sock, %{peer: peer, upstream: upstream_sock}),
+            upstream_to_client: Map.put(state.upstream_to_client, upstream_sock, client_sock),
             upstream_failures: 0
         }
 
