@@ -71,7 +71,10 @@ defmodule BoomLooper.Application do
       BoomLooperWeb.Endpoint
     ]
 
-    opts = [strategy: :one_for_one, name: BoomLooper.Supervisor]
+    # Higher max_restarts: the child list includes modules from multiple
+    # development branches. A crashing child shouldn't kill the entire
+    # supervisor — let it restart more aggressively before giving up.
+    opts = [strategy: :one_for_one, name: BoomLooper.Supervisor, max_restarts: 20, max_seconds: 10]
     result = Supervisor.start_link(children, opts)
 
     # Attach the slow-mount logger so we get a loud warning if any

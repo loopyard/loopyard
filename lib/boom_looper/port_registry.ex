@@ -150,7 +150,7 @@ defmodule BoomLooper.PortRegistry do
         # Stop old proxy if running (docker_port changed on restart)
         stop_proxy(key)
 
-        updated = %{entry | docker_port: docker_port}
+        updated = Map.put(entry, :docker_port, docker_port)
         :ets.insert(@table, {key, updated})
         persist(state)
 
