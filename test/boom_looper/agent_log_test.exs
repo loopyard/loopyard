@@ -1025,6 +1025,11 @@ defmodule BoomLooper.AgentLogTest do
   end
 
   describe "keep-two-snapshots integration with corruption" do
+    # 50 records × two compactions × replay × file-corruption step —
+    # under suite I/O contention this legitimately takes several
+    # seconds. The production replay path has no such budget; this
+    # is test-only work.
+    @tag timeout: 15_000
     test "many records → compact_keep_previous → corrupt primary → replay_with_fallback recovers",
          %{log_path: log_path} do
       # Build a realistic log

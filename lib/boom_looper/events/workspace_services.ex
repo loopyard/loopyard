@@ -11,16 +11,7 @@ defmodule BoomLooper.Events.WorkspaceServices do
   @topic "workspace_services"
   @telemetry [:boom_looper, :events, :publish]
 
-  # Service statuses for a workspace have changed. Subscribers re-read
-  # the ETS cache or ServiceStatus module to pick up the new state.
-  # `path` is the workspace directory (canonical form).
-  defmodule ServicesUpdated, do: defstruct([:path])
-
-  # A compose up / down attempt completed. `result` is `:ok` or
-  # `{:error, reason}`. LVs in :starting / :stopping watch for this
-  # so they transition out even when no per-service status changes
-  # (e.g. compose failed before any container started).
-  defmodule ComposeResult, do: defstruct([:workspace_id, :result])
+  alias BoomLooper.Events.WorkspaceServices.{ServicesUpdated, ComposeResult}
 
   @events [ServicesUpdated, ComposeResult]
 

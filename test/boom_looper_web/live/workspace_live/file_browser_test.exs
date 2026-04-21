@@ -10,6 +10,10 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.FileBrowserTest do
   # break the file viewer. These tests lock the shape.
 
   describe "probe_path/2 return shape" do
+    # Shells out to docker via VolumeIO + VolumeManager.tree. Even
+    # the error path (non-existent volume) can take hundreds of ms
+    # for Docker to return an error.
+    @tag timeout: 10_000
     test "probe_path/2 exists and accepts (volume_name, path)" do
       # Smoke test: probe a volume that doesn't exist — VolumeIO will
       # error, VolumeManager.tree will error, we should get the

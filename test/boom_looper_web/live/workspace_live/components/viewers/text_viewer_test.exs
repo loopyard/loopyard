@@ -1,6 +1,12 @@
 defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.TextViewerTest do
   use ExUnit.Case, async: true
 
+  # render_component/2 first-call cold-loads the component (and
+  # Makeup's syntax-highlighter chain). Under full-suite parallel
+  # load the first mount can exceed the 2s default — bump the
+  # per-test budget.
+  @moduletag timeout: 10_000
+
   import Phoenix.LiveViewTest
   alias BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.TextViewer
 

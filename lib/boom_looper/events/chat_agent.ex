@@ -17,38 +17,19 @@ defmodule BoomLooper.Events.ChatAgent do
   @topic "chat_agents"
   @telemetry [:boom_looper, :events, :publish]
 
-  # Agent started fresh. Payload is the summary map that ETS stores.
-  defmodule Started, do: defstruct([:summary])
-
-  # Agent stopped normally OR crashed (callers differentiate via summary.status).
-  defmodule Stopped, do: defstruct([:summary])
-
-  # Agent booting — the stub entry put in ETS before the GenServer is up.
-  defmodule Booting, do: defstruct([:summary])
-
-  # Boot progress tick. `status` is a short human-readable string.
-  defmodule BootStatus, do: defstruct([:id, :status])
-
-  # Boot definitively failed; the stub has been removed from ETS.
-  defmodule BootFailed, do: defstruct([:id, :reason])
-
-  # Agent removed from the workspace.
-  defmodule Removed, do: defstruct([:id])
-
-  # Agent renamed.
-  defmodule Renamed, do: defstruct([:id, :name])
-
-  # Agent GenServer restored from the log — same ID, fresh Claude session.
-  defmodule Resumed, do: defstruct([:summary])
-
-  # Agent status changed (:idle | :thinking | :crashed | :destroying | …).
-  defmodule StatusChanged, do: defstruct([:id, :status])
-
-  # Agent quarantined due to crash-loop.
-  defmodule Quarantined, do: defstruct([:id, :summary])
-
-  # Agent released from quarantine.
-  defmodule Released, do: defstruct([:id])
+  alias BoomLooper.Events.ChatAgent.{
+    Started,
+    Stopped,
+    Booting,
+    BootStatus,
+    BootFailed,
+    Removed,
+    Renamed,
+    Resumed,
+    StatusChanged,
+    Quarantined,
+    Released
+  }
 
   @events [
     Started,

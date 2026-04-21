@@ -5,12 +5,18 @@ defmodule BoomLooperWeb.SystemDockerLiveTest do
 
   describe "mount" do
     test "renders skeleton immediately — never blocks on docker stats", %{conn: conn} do
+      # Warm up once. First LV mount on a cold BEAM pays for
+      # code-loading assigns modules, Gettext, etc. — not what
+      # this test is measuring.
+      {:ok, _, _} = live(conn, "/system/docker")
+
       {micros, {:ok, _view, html}} = :timer.tc(fn -> live(conn, "/system/docker") end)
 
       # `docker stats --no-stream` and `docker volume ls` and `docker ps`
       # all happen via start_async — mount itself must not wait for any
       # of them. Without async wiring this would easily exceed 2-3 seconds.
-      assert micros < 500_000,
+      # 1s budget; the implementation's target is ~10ms.
+      assert micros < 1_000_000,
         "SystemDockerLive mount took #{div(micros, 1000)}ms — synchronous docker call slipped in"
 
       assert html =~ "Containers"

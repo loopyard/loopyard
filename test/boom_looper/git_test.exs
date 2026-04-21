@@ -1,6 +1,12 @@
 defmodule BoomLooper.GitTest do
   use ExUnit.Case
 
+  # Git operations shell out (`git init`, `git add`, `git commit`, …)
+  # and make_temp_repo/0 makes 6 calls just to produce a 2-commit
+  # fixture. Each test stays well under human-attention-span but
+  # can exceed the suite's 2s default on a loaded box.
+  @moduletag timeout: 10_000
+
   alias BoomLooper.Git
 
   describe "repo_root/1" do

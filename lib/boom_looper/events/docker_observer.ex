@@ -9,17 +9,7 @@ defmodule BoomLooper.Events.DockerObserver do
   @topic "docker_observer"
   @telemetry [:boom_looper, :events, :publish]
 
-  # Container / volume state changed (add, remove, status transition).
-  defmodule Changed, do: defstruct([])
-
-  # Full ETS wipe and rebuild. Subscribers should force-refresh.
-  defmodule Reset, do: defstruct([])
-
-  # Docker daemon stopped responding. The cache is now stale.
-  defmodule Disconnected, do: defstruct([])
-
-  # Daemon came back. Event stream re-established; cache is fresh.
-  defmodule Reconnected, do: defstruct([])
+  alias BoomLooper.Events.DockerObserver.{Changed, Reset, Disconnected, Reconnected}
 
   @events [Changed, Reset, Disconnected, Reconnected]
 

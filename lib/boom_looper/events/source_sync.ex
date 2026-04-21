@@ -9,9 +9,7 @@ defmodule BoomLooper.Events.SourceSync do
 
   @telemetry [:boom_looper, :events, :publish]
 
-  # Sync status for this workspace changed (running / paused / errored /
-  # stopped). `status` is the full status map exposed by SyncMonitor.
-  defmodule Updated, do: defstruct([:workspace_id, :status])
+  alias BoomLooper.Events.SourceSync.Updated
 
   @events [Updated]
 

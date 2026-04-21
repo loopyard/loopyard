@@ -10,9 +10,7 @@ defmodule BoomLooper.Events.IexSession do
   @topic "iex_session"
   @telemetry [:boom_looper, :events, :publish]
 
-  # A new iex-session state snapshot. `state` is the full map minus the
-  # internal `:claimed` ref.
-  defmodule Changed, do: defstruct([:state])
+  alias BoomLooper.Events.IexSession.Changed
 
   @events [Changed]
 

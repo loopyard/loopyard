@@ -18,6 +18,9 @@ defmodule BoomLooper.HotReloadTest do
   end
 
   describe "reload/0" do
+    # IEx.Helpers.recompile/0 walks the whole Mix project. Under full
+    # suite load + a fresh compile it can take well over a second.
+    @tag timeout: 15_000
     test "returns a list (possibly empty) of reloaded modules" do
       # `reload/0` calls `IEx.Helpers.recompile/0`; in the test env
       # recompile returns :noop (nothing to compile), so the list of

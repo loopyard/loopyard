@@ -69,6 +69,7 @@ defmodule BoomLooper.ProjectRegistryTest do
 
   describe "add_workspace/2 (adapter dispatch)" do
     @tag :worktree
+    @tag timeout: 10_000
     test "delegates to Source.Local.create_workspace for a Local project" do
       # Mutagen is stubbed — create_workspace only touches git + volumes.
       # The volume creation call shells out to docker, so this test is
@@ -150,6 +151,7 @@ defmodule BoomLooper.ProjectRegistryTest do
       assert ProjectRegistry.list_workspaces(project.id) == []
     end
 
+    @tag timeout: 10_000
     test "wipes the host-side virtual workspace dir so agents.log is gone" do
       # Regression: agents.log lives at
       #   ~/.boomlooper/workspaces/<ws_id>/.boomlooper/workspace/agents.log

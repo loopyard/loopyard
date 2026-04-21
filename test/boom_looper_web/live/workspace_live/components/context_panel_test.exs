@@ -63,6 +63,10 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.ContextPanelTest do
   end
 
   describe "mcp_tool_names/0" do
+    # Walks every Tools.Container.* module and calls __tool_name__/0.
+    # Under parallel test load the first call can lazy-load modules
+    # that aren't hot in the code cache yet.
+    @tag timeout: 10_000
     test "returns sorted list of tool names" do
       tools = ContextPanel.mcp_tool_names()
 
@@ -76,6 +80,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.ContextPanelTest do
       assert tools == Enum.sort(tools)
     end
 
+    @tag timeout: 10_000
     test "includes tools from all servers" do
       tools = ContextPanel.mcp_tool_names()
 

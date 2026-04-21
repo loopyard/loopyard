@@ -125,18 +125,22 @@ defmodule BoomLooper.Events.TapTest do
     end
 
     test "newest events come first" do
-      # Emit one extra event whose position we can uniquely assert —
-      # other tests' broadcasts make "setup's stopped is newest"
-      # unreliable.
+      # Emit one event with a unique id. Under concurrent tests,
+      # another publisher may slip an event in between our broadcast
+      # and the Tap.recent() call — so instead of asserting position
+      # 0, find our event and assert that every event AFTER it in the
+      # recent list has a LOWER seq (strictly descending ordering).
       id = "newest-#{System.unique_integer([:positive])}"
       Phoenix.PubSub.broadcast(BoomLooper.PubSub, "chat_agents", {:chat_agent_renamed, id, "latest"})
       Process.sleep(50)
 
-      [newest | rest] = Tap.recent()
-      assert String.contains?(newest.payload, id)
-      # Ordering invariant: seq numbers are strictly descending.
-      seqs = [newest | rest] |> Enum.map(& &1.seq)
-      assert seqs == Enum.sort(seqs, :desc)
+      events = Tap.recent()
+      assert Enum.any?(events, &String.contains?(&1.payload, id)),
+             "published event not in Tap's recent buffer"
+
+      seqs = Enum.map(events, & &1.seq)
+      assert seqs == Enum.sort(seqs, :desc),
+             "recent/0 must return events in strictly descending seq order"
     end
   end
 

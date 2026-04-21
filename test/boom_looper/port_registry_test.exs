@@ -212,19 +212,24 @@ defmodule BoomLooper.PortRegistryTest do
     end
 
     test "false stops the running exposer" do
+      # Use a workspace id unique to this test so a stale Registry
+      # entry from the sibling "true starts…" test (which also keys
+      # off "ws-e" and doesn't wait for its cleanup exposer to die)
+      # can't be returned by whereis here.
+      ws = "ws-e-stop-#{:rand.uniform(100_000)}"
       port = free_port()
-      :ok = PortRegistry.seed("ws-e", "dev", 3000, port)
+      :ok = PortRegistry.seed(ws, "dev", 3000, port)
 
-      :ok = PortRegistry.set_exposure("ws-e", "dev", 3000, true)
-      pid = BoomLooper.PortExposer.whereis({"ws-e", "dev", 3000})
+      :ok = PortRegistry.set_exposure(ws, "dev", 3000, true)
+      pid = BoomLooper.PortExposer.whereis({ws, "dev", 3000})
 
-      :ok = PortRegistry.set_exposure("ws-e", "dev", 3000, false)
+      :ok = PortRegistry.set_exposure(ws, "dev", 3000, false)
 
       # Eventually consistent — DynamicSupervisor.terminate_child returns
       # before Registry unregistration completes.
       :ok = wait_until(fn -> not Process.alive?(pid) end)
-      assert nil == BoomLooper.PortExposer.whereis({"ws-e", "dev", 3000})
-      assert {:ok, %{exposed: false}} = PortRegistry.get("ws-e", "dev", 3000)
+      :ok = wait_until(fn -> BoomLooper.PortExposer.whereis({ws, "dev", 3000}) == nil end)
+      assert {:ok, %{exposed: false}} = PortRegistry.get(ws, "dev", 3000)
     end
 
     test "returns :not_registered for unknown keys" do
@@ -247,15 +252,16 @@ defmodule BoomLooper.PortRegistryTest do
     end
 
     test "release_workspace/1 stops any running exposer for the workspace" do
+      ws = "ws-rel-#{:rand.uniform(100_000)}"
       port = free_port()
-      :ok = PortRegistry.seed("ws-rel", "dev", 3000, port)
-      :ok = PortRegistry.set_exposure("ws-rel", "dev", 3000, true)
-      pid = BoomLooper.PortExposer.whereis({"ws-rel", "dev", 3000})
+      :ok = PortRegistry.seed(ws, "dev", 3000, port)
+      :ok = PortRegistry.set_exposure(ws, "dev", 3000, true)
+      pid = BoomLooper.PortExposer.whereis({ws, "dev", 3000})
 
-      :ok = PortRegistry.release_workspace("ws-rel")
+      :ok = PortRegistry.release_workspace(ws)
 
       :ok = wait_until(fn -> not Process.alive?(pid) end)
-      assert nil == BoomLooper.PortExposer.whereis({"ws-rel", "dev", 3000})
+      :ok = wait_until(fn -> BoomLooper.PortExposer.whereis({ws, "dev", 3000}) == nil end)
     end
   end
 

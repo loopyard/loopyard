@@ -1,6 +1,10 @@
 defmodule BoomLooper.Tools.Container.WriteFileTest do
   use ExUnit.Case, async: false
 
+  # WriteFile.execute/2 hits docker (volume probe, compose
+  # validation). Under load a single call can take 500–1500ms.
+  @moduletag timeout: 10_000
+
   alias BoomLooper.Tools.Container.WriteFile
 
   @agent_id "write-file-tool-test-agent"

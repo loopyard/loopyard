@@ -10,17 +10,7 @@ defmodule BoomLooper.Events.ChatAgentMessage do
 
   @telemetry [:boom_looper, :events, :publish]
 
-  # One completed chat message appended to the agent's log. `msg` is the
-  # message map with at least `:role`, `:content`, `:timestamp`, `:id`.
-  defmodule Message, do: defstruct([:agent_id, :msg])
-
-  # A streaming text chunk from Claude. Not persisted; UI uses it to
-  # render "typing" output between full `Message` events.
-  defmodule TextDelta, do: defstruct([:agent_id, :text])
-
-  # Streaming command output (docker compose build, exec_stream, etc.)
-  # attached to a streaming-message id. `title` is a short label.
-  defmodule StreamOutput, do: defstruct([:agent_id, :data, :title, :msg_id])
+  alias BoomLooper.Events.ChatAgentMessage.{Message, TextDelta, StreamOutput}
 
   @events [Message, TextDelta, StreamOutput]
 

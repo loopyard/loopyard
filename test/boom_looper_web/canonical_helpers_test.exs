@@ -40,6 +40,9 @@ defmodule BoomLooperWeb.CanonicalHelpersTest do
   # The single source-of-truth file. Definitions here are expected.
   @canonical_source "lib/boom_looper_web/format.ex"
 
+  # AST-walks every lib/**/*.ex file (200+ files). Fast in isolation
+  # but under full-suite I/O contention can exceed the 2s default.
+  @tag timeout: 10_000
   test "canonical helpers from BoomLooperWeb.Format are defined exactly once" do
     duplicates = find_duplicates()
 
