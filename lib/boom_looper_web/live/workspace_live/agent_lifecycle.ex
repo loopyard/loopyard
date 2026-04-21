@@ -160,10 +160,20 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.AgentLifecycle do
   supervisor restart or momentarily returned `[]` under load.
   """
   def list_workspace_agents(workspace_path) do
+    # Resolve the workspace_id from the path via ProjectRegistry —
+    # agents are associated with workspaces by ID, not path. Filtering
+    # by path breaks for every agent whose `working_dir` legitimately
+    # differs from the workspace root: container-scoped agents whose
+    # `working_dir` is the IN-CONTAINER path (e.g. "/workspace"),
+    # agents running from a subdirectory, volume-based workspaces,
+    # agents whose bind_mount was omitted. All of those got silently
+    # hidden from the sidebar.
+    #
+    # path → id is a pure ETS lookup; cheap.
+    workspace_id = BoomLooper.Workspace.workspace_id(workspace_path)
+
     ChatAgent.list_agents()
-    |> Enum.filter(fn a ->
-      a[:bind_mount] == workspace_path || a[:working_dir] == workspace_path
-    end)
+    |> Enum.filter(fn a -> a[:workspace_id] == workspace_id end)
     |> Enum.map(&annotate_liveness/1)
   end
 
