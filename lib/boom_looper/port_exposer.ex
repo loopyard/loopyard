@@ -89,6 +89,7 @@ defmodule BoomLooper.PortExposer do
           upstream_to_client: %{},
           bytes_in: 0,
           bytes_out: 0,
+          upstream_failures: 0,
           opened_at: DateTime.utc_now()
         }
 
@@ -162,6 +163,12 @@ defmodule BoomLooper.PortExposer do
   # we already cleared accept_task to nil. Nothing to do.
   def handle_info({:EXIT, _pid, :normal}, state), do: {:noreply, state}
 
+  # Upstream is dead — shut down cleanly so the registry can restart
+  # us when the container comes back via discover_docker_ports.
+  def handle_info(:upstream_dead, state) do
+    {:stop, :normal, state}
+  end
+
   def handle_info(_other, state), do: {:noreply, state}
 
   @impl true
@@ -215,7 +222,7 @@ defmodule BoomLooper.PortExposer do
            :binary,
            packet: :raw,
            active: :once
-         ], 2_000) do
+         ], 500) do
       {:ok, upstream_sock} ->
         :inet.setopts(client_sock, active: :once)
         :ok = :gen_tcp.controlling_process(upstream_sock, self())
@@ -223,16 +230,26 @@ defmodule BoomLooper.PortExposer do
         %{
           state
           | clients: Map.put(state.clients, client_sock, %{peer: peer, upstream: upstream_sock}),
-            upstream_to_client: Map.put(state.upstream_to_client, upstream_sock, client_sock)
+            upstream_failures: 0
         }
 
       {:error, reason} ->
-        Logger.warning(
-          "[PortExposer] upstream connect to #{inspect(state.upstream_host)}:#{state.upstream_port} failed: #{inspect(reason)}"
-        )
-
         :gen_tcp.close(client_sock)
-        state
+        failures = Map.get(state, :upstream_failures, 0) + 1
+
+        if failures >= 5 do
+          {_ws, svc, cport} = state.key
+          Logger.error("[PortExposer] upstream #{svc}/#{cport} dead after #{failures} failures — shutting down proxy")
+          # Self-terminate. Registry will restart us when
+          # discover_docker_ports runs on next container start.
+          Process.send(self(), :upstream_dead, [])
+        else
+          if failures == 1 do
+            Logger.warning("[PortExposer] upstream :#{state.upstream_port} unreachable: #{inspect(reason)}")
+          end
+        end
+
+        Map.put(state, :upstream_failures, failures)
     end
   end
 
