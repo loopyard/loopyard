@@ -50,7 +50,16 @@ defmodule BoomLooperWeb.SystemPortsLive do
         s -> s
       end
 
-    Map.put(entry, :live, status)
+    # Look up project_id for the workspace link
+    project_id =
+      case BoomLooper.ProjectRegistry.get_workspace(entry.workspace_id) do
+        %{project_id: pid} -> pid
+        _ -> entry.workspace_id
+      end
+
+    entry
+    |> Map.put(:live, status)
+    |> Map.put(:project_id, project_id)
   end
 
   @impl true
@@ -133,7 +142,7 @@ defmodule BoomLooperWeb.SystemPortsLive do
     ~H"""
     <tr>
       <td class="py-2 px-2 font-mono text-xs">
-        <.link navigate={"/projects/#{@r.workspace_id}/workspaces/#{@r.workspace_id}"} class="text-violet-600 dark:text-violet-400 hover:underline">
+        <.link navigate={"/projects/#{@r.project_id}/workspaces/#{@r.workspace_id}"} class="text-violet-600 dark:text-violet-400 hover:underline">
           {@r.workspace_id}
         </.link>
       </td>
