@@ -69,14 +69,14 @@ defmodule BoomLooper.Workspace.ServiceManager do
     File.mkdir_p!(effective_dir)
 
     # Capture port assignments BEFORE stopping containers so we can pin them
-    port_map = Compose.capture_port_map(workspace_id)
+    # Legacy port_map removed — registry owns port assignment now
 
     compose_path = Compose.compose_path(effective_dir)
     File.mkdir_p!(Path.dirname(compose_path))
 
     case BoomLooper.VolumeManager.read_file(volume_name, ".boomlooper/workspace/docker-compose.yml") do
       {:ok, content} when content != "" ->
-        case Compose.process_agent_compose(content, workspace_id, port_map: port_map) do
+        case Compose.process_agent_compose(content, workspace_id) do
           {:ok, processed} -> File.write!(compose_path, processed)
           {:error, reason} ->
             callback.("Error processing compose file: #{reason}\n")
@@ -129,7 +129,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
     File.mkdir_p!(effective_dir)
 
     # Capture ports BEFORE tearing down
-    port_map = Compose.capture_port_map(workspace_id)
+    # Legacy port_map removed — registry owns port assignment now
 
     Compose.down(effective_dir, workspace_id)
 
@@ -138,7 +138,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
     case BoomLooper.VolumeManager.read_file(volume_name, ".boomlooper/workspace/docker-compose.yml") do
       {:ok, content} when content != "" ->
-        case Compose.process_agent_compose(content, workspace_id, port_map: port_map) do
+        case Compose.process_agent_compose(content, workspace_id) do
           {:ok, processed} ->
             File.write!(compose_path, processed)
           {:error, reason} ->
@@ -164,7 +164,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
     project_dir = Workspace.compose_dir(workspace_id)
     File.mkdir_p!(project_dir)
 
-    port_map = Compose.capture_port_map(workspace_id)
+    # Legacy port_map removed — registry owns port assignment now
 
     Compose.down(project_dir, workspace_id)
 
@@ -173,7 +173,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
     case BoomLooper.VolumeManager.read_file(volume_name, ".boomlooper/workspace/docker-compose.yml") do
       {:ok, content} when content != "" ->
-        case Compose.process_agent_compose(content, workspace_id, port_map: port_map) do
+        case Compose.process_agent_compose(content, workspace_id) do
           {:ok, processed} -> File.write!(compose_path, processed)
           {:error, reason} -> callback.("Error processing compose file: #{reason}\n")
         end
@@ -289,6 +289,9 @@ defmodule BoomLooper.Workspace.ServiceManager do
   def handle_call(:reconnect, _from, state) do
     BoomLooper.EventLog.info("workspace:#{state.workspace_id}", "Reconnecting to existing compose containers")
 
+    # Discover Docker's ephemeral ports and start proxies
+    discover_docker_ports(state.workspace_id)
+
     # Replay agent log to restore agent state to ETS and start agents
     replay_agent_log(state.project_dir, state.workspace_id)
 
@@ -360,12 +363,9 @@ defmodule BoomLooper.Workspace.ServiceManager do
     compose_path = Compose.compose_path(state.project_dir)
     File.mkdir_p!(Path.dirname(compose_path))
 
-    # Capture any existing port assignments (e.g. containers still running after GenServer restart)
-    port_map = Compose.capture_port_map(state.workspace_id)
-
     has_compose = case BoomLooper.VolumeManager.read_file(volume_name, ".boomlooper/workspace/docker-compose.yml") do
       {:ok, content} when content != "" ->
-        case Compose.process_agent_compose(content, state.workspace_id, port_map: port_map) do
+        case Compose.process_agent_compose(content, state.workspace_id) do
           {:ok, processed} ->
             File.write!(compose_path, processed)
             true
@@ -381,6 +381,9 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
       case Compose.up(state.project_dir, state.workspace_id) do
         {:ok, _} ->
+          # Discover Docker's ephemeral ports and start proxies
+          discover_docker_ports(state.workspace_id)
+
           replay_agent_log(state.project_dir, state.workspace_id)
           new_state = %{state | running: true, volume_name: volume_name}
           notify_source_container_up(state.workspace_id)
@@ -407,6 +410,36 @@ defmodule BoomLooper.Workspace.ServiceManager do
         require Logger
         Logger.warning("[ServiceManager] compose down failed: #{reason}")
     end
+  end
+
+  # After compose up or reconnect, inspect running containers to find
+  # Docker's ephemeral port for each service with a registry entry.
+  # Calls PortRegistry.set_docker_port which starts the proxy.
+  defp discover_docker_ports(workspace_id) do
+    project_name = Compose.project_name(workspace_id)
+    containers = BoomLooper.Docker.Observer.containers_for(workspace_id)
+
+    for entry <- BoomLooper.PortRegistry.list_for_workspace(workspace_id) do
+      container_name = "#{project_name}-#{entry.service}-1"
+      container = Enum.find(containers, &(&1.name == container_name))
+
+      if container && container[:host_ports] do
+        # host_ports is %{container_port => host_port}
+        docker_port = container.host_ports[entry.container_port] ||
+                      container.host_ports[to_string(entry.container_port)]
+
+        if docker_port do
+          dp = if is_binary(docker_port), do: String.to_integer(docker_port), else: docker_port
+          BoomLooper.PortRegistry.set_docker_port(
+            workspace_id, entry.service, entry.container_port, dp
+          )
+        end
+      end
+    end
+  rescue
+    e ->
+      require Logger
+      Logger.warning("[ServiceManager] discover_docker_ports failed: #{Exception.message(e)}")
   end
 
   # Notify the Source adapter that this workspace's container is up/down.

@@ -125,19 +125,9 @@ defmodule BoomLooper.Compose do
     port_str |> String.split("/") |> hd() |> String.to_integer()
   end
 
-  # Strip to container-only (dynamic allocation)
-  defp container_port_str(port_spec) when is_binary(port_spec) do
-    case String.split(port_spec, ":") do
-      [_host, container] -> container
-      [container] -> container
-      [_ip, _host, container] -> container
-    end
-  end
-
   @doc """
   Capture the current port assignments for all services in a workspace.
   Returns `%{"dev" => %{3000 => 33870}, "postgres" => %{5432 => 33871}}`.
-  Used to pin ports across restarts.
   """
   def capture_port_map(workspace_id) do
     project_name = project_name(workspace_id)

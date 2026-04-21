@@ -1,7 +1,15 @@
 defmodule BoomLooper.ComposeTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: false
 
   alias BoomLooper.Compose
+
+  setup do
+    BoomLooper.StateKeeper.ensure_tables!()
+    :ets.delete_all_objects(:port_registry)
+
+    on_exit(fn -> :ets.delete_all_objects(:port_registry) end)
+    :ok
+  end
 
   describe "project_name/1" do
     test "uses bl- prefix" do
@@ -37,7 +45,7 @@ defmodule BoomLooper.ComposeTest do
       assert config["volumes"]["bl-abcd-code"]["external"] == true
     end
 
-    test "strips host ports when no port_map provided" do
+    test "all ports become loopback-ephemeral (Docker picks the host port)" do
       compose = %{
         "services" => %{
           "web" => %{
@@ -49,48 +57,34 @@ defmodule BoomLooper.ComposeTest do
       {:ok, result} = Compose.process_agent_compose(Jason.encode!(compose), "abcd")
       config = Jason.decode!(result)
 
-      assert config["services"]["web"]["ports"] == ["3000", "8080", "4000"]
+      # Every port becomes 127.0.0.1::<container_port> — Docker picks ephemeral,
+      # our proxy owns the user-facing port.
+      assert config["services"]["web"]["ports"] == [
+               "127.0.0.1::3000",
+               "127.0.0.1::8080",
+               "127.0.0.1::4000"
+             ]
     end
 
-    test "pins host ports from port_map (sticky ports across restarts)" do
-      compose = %{
-        "services" => %{
-          "dev" => %{
-            "ports" => ["3000"]
-          },
-          "postgres" => %{
-            "ports" => ["5432"]
-          }
-        }
-      }
-
-      port_map = %{
-        "dev" => %{3000 => 33870},
-        "postgres" => %{5432 => 33871}
-      }
-
-      {:ok, result} = Compose.process_agent_compose(Jason.encode!(compose), "abcd", port_map: port_map)
-      config = Jason.decode!(result)
-
-      assert config["services"]["dev"]["ports"] == ["33870:3000"]
-      assert config["services"]["postgres"]["ports"] == ["33871:5432"]
-    end
-
-    test "falls back to dynamic when port_map has no entry for a service" do
+    test "multiple services each get registry-assigned ports" do
       compose = %{
         "services" => %{
           "dev" => %{"ports" => ["3000"]},
-          "worker" => %{"ports" => ["4000"]}
+          "postgres" => %{"ports" => ["5432"]}
         }
       }
 
-      port_map = %{"dev" => %{3000 => 33870}}
-
-      {:ok, result} = Compose.process_agent_compose(Jason.encode!(compose), "abcd", port_map: port_map)
+      {:ok, result} = Compose.process_agent_compose(Jason.encode!(compose), "abcd")
       config = Jason.decode!(result)
 
-      assert config["services"]["dev"]["ports"] == ["33870:3000"]
-      assert config["services"]["worker"]["ports"] == ["4000"]
+      assert config["services"]["dev"]["ports"] == ["127.0.0.1::3000"]
+      assert config["services"]["postgres"]["ports"] == ["127.0.0.1::5432"]
+
+      # Registry has entries for both
+      entries = BoomLooper.PortRegistry.list_for_workspace("abcd")
+      assert length(entries) == 2
+      assert Enum.any?(entries, &(&1.service == "dev" && &1.container_port == 3000))
+      assert Enum.any?(entries, &(&1.service == "postgres" && &1.container_port == 5432))
     end
 
     test "handles YAML input" do
@@ -144,8 +138,8 @@ defmodule BoomLooper.ComposeTest do
       ws_volumes = config["services"]["workspace"]["volumes"]
       assert Enum.any?(ws_volumes, &String.starts_with?(&1, "bl-test1-code:"))
 
-      # Host ports are dynamic (no port_map provided)
-      assert config["services"]["workspace"]["ports"] == ["3000"]
+      # Ports become loopback-ephemeral for Docker; proxy owns user-facing port
+      assert config["services"]["workspace"]["ports"] == ["127.0.0.1::3000"]
     end
 
     test "handles agent-written literal volume names (not ${CODE_VOLUME})" do
