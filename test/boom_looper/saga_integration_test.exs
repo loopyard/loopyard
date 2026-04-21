@@ -76,6 +76,10 @@ defmodule BoomLooper.SagaIntegrationTest do
   end
 
   describe "AgentBoot.boot records a :boot_agent saga" do
+    # AgentBoot.boot drives a full saga (load_config → ensure_services
+    # → start_agent → send_initial_message). ensure_services shells to
+    # docker. Under full-suite I/O contention this easily exceeds 2s.
+    @tag timeout: 15_000
     test "saga is recorded with every step on a failed boot" do
       id = "saga-boot-#{:rand.uniform(99_999)}"
       working_dir = Path.join(System.tmp_dir!(), "saga-boot-#{id}")

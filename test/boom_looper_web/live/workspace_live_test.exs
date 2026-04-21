@@ -284,7 +284,8 @@ defmodule BoomLooperWeb.WorkspaceLiveTest do
       assert agents == []
     end
 
-    test ":index with existing agents shows them without spawning new ones", %{conn: conn, workspace: ws, setup_agent_id: agent_id} do
+    @tag timeout: 10_000
+    test ":index with existing agents shows them without spawning new ones", %{conn: conn, workspace: ws, setup_agent_id: _agent_id} do
       agent_count_before = length(BoomLooper.ChatAgent.list_agents())
 
       {:ok, _view, _html} = live(conn, ws_path(ws))

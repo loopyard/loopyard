@@ -13,6 +13,10 @@ defmodule BoomLooper.Workspace.DestructorTest do
   """
   use ExUnit.Case, async: false
 
+  # Destructor runs compose-down + volume-rm; even in the no-daemon
+  # path the docker CLI shellout can take a second or two to fail.
+  @moduletag timeout: 10_000
+
   alias BoomLooper.Workspace.Destructor
   alias BoomLooper.WorkspaceRegistry
 

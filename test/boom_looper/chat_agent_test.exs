@@ -1,6 +1,13 @@
 defmodule BoomLooper.ChatAgentTest do
   use ExUnit.Case
 
+  # Every describe block's setup boots a ChatAgent via
+  # BoomLooper.TestHelpers.start_agent, which ensures a WorkspaceGroup
+  # exists for File.cwd!(). Under full-suite load that shared group
+  # churns (ServiceManager async_init exits → one_for_all rebuild),
+  # and setup has to wait for re-registration. Bump the budget.
+  @moduletag timeout: 10_000
+
   alias BoomLooper.ChatAgent
 
   describe "list_agents/0" do

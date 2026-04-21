@@ -135,6 +135,9 @@ _ =
   BoomLooper.Events.WorkspaceServices.Subscriber,
   # Helpers reached across test files.
   BoomLooper.ChatAgent.OSProcess,
+  BoomLooper.Saga,
+  BoomLooper.Saga.Journal,
+  BoomLooper.Saga.Recorder,
   # Tool macros from ClaudeCode.MCP.Server generate submodules
   # (e.g. Tools.Secrets.GetSecret) that get walked by mcp_tool_names.
   BoomLooper.Tools.Secrets,

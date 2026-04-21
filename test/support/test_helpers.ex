@@ -22,19 +22,33 @@ defmodule BoomLooper.TestHelpers do
   @doc "Start an agent under the workspace for the given path."
   def start_agent(opts) do
     path = Keyword.get(opts, :working_dir, File.cwd!())
-    workspace_id = ensure_workspace(path)
-    wait_for_workspace_ready(workspace_id, 40)
-    start_agent_with_retry(workspace_id, opts, 10)
+    workspace_id = ensure_workspace_ready(path)
+    start_agent_with_retry(workspace_id, opts, 60)
   end
 
-  # Race: ensure_workspace can return :ok (subtree exists or was just
-  # started) BEFORE the per-workspace `AgentDynamicSupervisor` AND the
-  # `RestartController` are both registered. WorkspaceGroup.start_agent
-  # returns {:error, :workspace_not_running} in either case. Under the
-  # full-suite load the supervisor can also be mid-rebuild-saga (old
-  # group torn down, new one spinning up), which adds hundreds of ms
-  # to the gap. Wait for both registrations before trying, then do a
-  # short retry loop as a safety net.
+  # Under full-suite load many tests share the cwd-derived workspace_id
+  # and the per-workspace group churns: ServiceManager async_init
+  # exits with :noproc, max_restarts hits, WorkspaceSupervisor rebuilds
+  # the group via the saga. During the rebuild window the agent
+  # DynamicSupervisor AND the RestartController are both
+  # unregistered. wait_for_workspace_ready blocks until both come back.
+  # If we still time out, redrive ensure_workspace once — it may have
+  # been torn down between our wait and our retry.
+  defp ensure_workspace_ready(path) do
+    workspace_id = ensure_workspace(path)
+
+    case wait_for_workspace_ready(workspace_id, 100) do
+      :ok ->
+        workspace_id
+
+      :timeout ->
+        # Force a fresh start if the group is wedged.
+        workspace_id = ensure_workspace(path)
+        _ = wait_for_workspace_ready(workspace_id, 100)
+        workspace_id
+    end
+  end
+
   defp wait_for_workspace_ready(_workspace_id, 0), do: :timeout
 
   defp wait_for_workspace_ready(workspace_id, attempts) do

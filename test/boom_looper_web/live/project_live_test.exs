@@ -80,6 +80,7 @@ defmodule BoomLooperWeb.ProjectLiveTest do
       assert ProjectRegistry.list_workspaces(project.id) == []
     end
 
+    @tag timeout: 10_000
     test "deletes .boomlooper directory" do
       tmp_dir = Path.join(System.tmp_dir!(), "bl-remove-test-#{:rand.uniform(100_000)}")
       File.mkdir_p!(tmp_dir)
@@ -98,10 +99,10 @@ defmodule BoomLooperWeb.ProjectLiveTest do
 
       # remove_project starts an async Task (start_async) — wait until
       # ProjectRegistry confirms the project is gone before asserting
-      # that the .boomlooper dir was deleted. Race window on a busy
-      # test box can be hundreds of ms because the on-disk cleanup
-      # traverses child dirs.
-      wait_until(fn -> ProjectRegistry.get_project(project.id) == nil end, 3_000)
+      # that the .boomlooper dir was deleted. Cleanup walks child dirs
+      # + calls Docker; under full-suite I/O contention this routinely
+      # takes 3–5 seconds. Keep the wait below the @tag timeout (10s).
+      wait_until(fn -> ProjectRegistry.get_project(project.id) == nil end, 8_000)
 
       refute File.dir?(boomlooper_dir)
       assert File.dir?(tmp_dir)

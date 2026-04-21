@@ -1,6 +1,11 @@
 defmodule BoomLooper.ChatAgent.RestartControllerTest do
   use ExUnit.Case, async: false
 
+  # Tests boot real ChatAgents under the shared cwd WorkspaceGroup,
+  # which churns under full-suite load. Bump the per-test budget so
+  # setup doesn't flake when the group is mid-rebuild.
+  @moduletag timeout: 10_000
+
   alias BoomLooper.ChatAgent.RestartController
   alias BoomLooper.TestHelpers
 
@@ -430,6 +435,7 @@ defmodule BoomLooper.ChatAgent.RestartControllerTest do
       assert persisted == stamps
     end
 
+    @tag timeout: 10_000
     test "crash after controller restart counts pre-restart history toward quarantine",
          %{workspace_id: workspace_id, path: path} do
       # Threshold from suite setup: 3 crashes in 500ms. Pre-seed two

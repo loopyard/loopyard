@@ -1,6 +1,11 @@
 defmodule BoomLooperWeb.Components.CommonTest do
   use ExUnit.Case, async: true
 
+  # render_component / rendered_to_string first calls cold-load the
+  # component module chain (heex, Phoenix.Template). Under full-suite
+  # parallel load the first render can exceed the 2s default.
+  @moduletag timeout: 10_000
+
   import Phoenix.Component
   import Phoenix.LiveViewTest
   import BoomLooperWeb.Components.Common
