@@ -22,11 +22,12 @@ defmodule BoomLooper.Compose do
   """
   def process_agent_compose(compose_content, workspace_id, opts \\ []) do
     code_volume = Workspace.volume_name_for(workspace_id)
-    port_map = Keyword.get(opts, :port_map, %{})
+    # Legacy: port_map is ignored — the registry owns port assignment now.
+    _port_map = Keyword.get(opts, :port_map, %{})
 
     case parse_compose(compose_content) do
       {:ok, compose} ->
-        compose = process_services(compose, code_volume, port_map)
+        compose = process_services(compose, code_volume, workspace_id)
         compose = ensure_code_volume(compose, code_volume)
         {:ok, Jason.encode!(compose, pretty: true)}
 
@@ -46,12 +47,12 @@ defmodule BoomLooper.Compose do
     end
   end
 
-  defp process_services(compose, code_volume, port_map) do
+  defp process_services(compose, code_volume, workspace_id) do
     update_in(compose, ["services"], fn services ->
       services
       |> Enum.map(fn {name, svc} ->
         svc = update_volumes_placeholder(svc, code_volume)
-        svc = pin_or_strip_ports(svc, Map.get(port_map, name, %{}))
+        svc = assign_registry_ports(svc, workspace_id, name)
         {name, svc}
       end)
       |> Map.new()
@@ -78,30 +79,39 @@ defmodule BoomLooper.Compose do
   end
   defp update_volumes_placeholder(svc, _), do: svc
 
-  # Pin previously-assigned host ports so URLs survive restarts.
-  # Falls back to dynamic allocation if no previous mapping exists.
-  defp pin_or_strip_ports(svc, prev_ports) when is_map(svc) do
+  # Register each port with PortRegistry (sticky user-facing port)
+  # then emit loopback ephemeral for Docker — Docker picks a random
+  # port, our proxy takes the user-facing one.
+  defp assign_registry_ports(svc, workspace_id, service_name) when is_map(svc) do
     case svc["ports"] do
       ports when is_list(ports) ->
-        pinned = Enum.map(ports, &pin_port(&1, prev_ports))
-        Map.put(svc, "ports", pinned)
+        processed = Enum.map(ports, &emit_port(&1, workspace_id, service_name))
+        Map.put(svc, "ports", processed)
       _ -> svc
     end
   end
-  defp pin_or_strip_ports(svc, _), do: svc
+  defp assign_registry_ports(svc, _, _), do: svc
 
-  # If we have a previous host port for this container port, pin it.
-  # Otherwise strip to container-only for dynamic allocation.
-  defp pin_port(port_spec, prev_ports) when is_binary(port_spec) do
+  # Register the container port with the registry (gets a sticky
+  # user-facing host port back). Emit "127.0.0.1::<container_port>"
+  # so Docker picks an ephemeral loopback port. Our proxy will own
+  # the user-facing port.
+  defp emit_port(port_spec, workspace_id, service_name) when is_binary(port_spec) do
     container_port = extract_container_port(port_spec)
 
-    case Map.get(prev_ports, container_port) || Map.get(prev_ports, to_string(container_port)) do
-      nil -> container_port_str(port_spec)
-      host_port -> "#{host_port}:#{container_port}"
+    case BoomLooper.PortRegistry.assign(workspace_id, service_name, container_port) do
+      {:ok, _host_port} ->
+        # Docker gets ephemeral — we don't tell Docker what port to use.
+        # The proxy will listen on host_port and forward to Docker's pick.
+        "127.0.0.1::#{container_port}"
+
+      {:error, :port_pool_exhausted} ->
+        # Fail open: let Docker pick and log.
+        "127.0.0.1::#{container_port}"
     end
   end
-  defp pin_port(port_spec, prev_ports) when is_integer(port_spec) do
-    pin_port(to_string(port_spec), prev_ports)
+  defp emit_port(port_spec, workspace_id, service_name) when is_integer(port_spec) do
+    emit_port(to_string(port_spec), workspace_id, service_name)
   end
 
   # Extract the container port number from various formats
