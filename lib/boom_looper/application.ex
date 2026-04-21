@@ -100,22 +100,12 @@ defmodule BoomLooper.Application do
     # ServiceManager will reconnect to any running containers
     BoomLooper.ProjectRegistry.restore()
 
-    # Load persisted port assignments from ~/.boomlooper/ports.json.
-    # Must run AFTER ProjectRegistry.restore/0. Guarded: if the
-    # supervisor crashed (sibling child crash-loop), the GenServer
-    # is dead and this call would fail.
-    if Process.whereis(BoomLooper.PortRegistry) do
-      BoomLooper.PortRegistry.restore()
-    else
-      Logger.warning("[BoomLooper] PortRegistry not running — skipping restore")
-    end
-
-    # Restore host exposure setting from ~/.boomlooper/host_exposure.json.
-    if Process.whereis(BoomLooper.HostExposer) do
-      BoomLooper.HostExposer.restore()
-    else
-      Logger.warning("[BoomLooper] HostExposer not running — skipping restore")
-    end
+    # Post-startup restore calls. Each is wrapped in try/rescue because
+    # a sibling child crash-loop can kill the supervisor (and these
+    # GenServers with it) between Supervisor.start_link returning and
+    # these calls running. We'd rather boot degraded than not at all.
+    safe_restore("PortRegistry", fn -> BoomLooper.PortRegistry.restore() end)
+    safe_restore("HostExposer", fn -> BoomLooper.HostExposer.restore() end)
 
     # Scan the saga journal for incomplete sagas (BEAM crashed
     # mid-saga last run) and dispatch each per its declared
@@ -124,21 +114,29 @@ defmodule BoomLooper.Application do
     # tasks are spawned under BoomLooper.TaskSupervisor. Must run
     # AFTER TaskSupervisor starts (part of the child list above).
     # Move #9.
-    case BoomLooper.Saga.Journal.resume_all_on_boot() do
-      %{incomplete: 0} ->
-        :ok
-
-      %{incomplete: n} = summary ->
-        Logger.warning(
-          "[BoomLooper] found #{n} incomplete saga(s) on boot: #{inspect(summary)}"
-        )
-    end
+    safe_restore("Saga.Journal", fn ->
+      case BoomLooper.Saga.Journal.resume_all_on_boot() do
+        %{incomplete: 0} -> :ok
+        %{incomplete: n} = summary ->
+          Logger.warning("[BoomLooper] found #{n} incomplete saga(s) on boot: #{inspect(summary)}")
+      end
+    end)
 
     port = Application.get_env(:boom_looper, BoomLooperWeb.Endpoint)[:http][:port] || 4000
     IO.puts("\n  Launch from any project directory:")
     IO.puts("  open \"http://localhost:#{port}/launch/#{secret}?path=$(pwd)\"\n")
 
     result
+  end
+
+  defp safe_restore(name, fun) do
+    fun.()
+  rescue
+    e ->
+      Logger.warning("[BoomLooper] #{name} restore failed: #{Exception.message(e)} — app continuing degraded")
+  catch
+    :exit, reason ->
+      Logger.warning("[BoomLooper] #{name} restore failed (exit: #{inspect(reason)}) — app continuing degraded")
   end
 
   @impl true
