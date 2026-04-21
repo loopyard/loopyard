@@ -371,22 +371,10 @@ defmodule BoomLooper.PortRegistry do
     {:reply, :ok, state}
   end
 
-  # Catchalls for unknown cast/call/info. PortRegistry is a
-  # supervision-tree-critical GenServer (every workspace's port
-  # allocation flows through it); a bogus message mustn't crash it.
-  def handle_cast(msg, state) do
-    require Logger
-    Logger.warning("[PortRegistry] unhandled cast: #{inspect(msg, limit: 200)}")
-
-    :telemetry.execute(
-      [:boom_looper, :actor, :unknown_message],
-      %{count: 1},
-      %{actor: __MODULE__, kind: :cast, msg: inspect(msg, limit: 200)}
-    )
-
-    {:noreply, state}
-  end
-
+  # Catchall handle_call — must stay grouped with the other
+  # handle_call clauses above. PortRegistry is supervision-tree-
+  # critical; bogus calls must never crash it.
+  @impl true
   def handle_call(msg, _from, state) do
     require Logger
     Logger.warning("[PortRegistry] unhandled call: #{inspect(msg, limit: 200)}")
@@ -400,6 +388,21 @@ defmodule BoomLooper.PortRegistry do
     {:reply, {:error, :unknown_call}, state}
   end
 
+  @impl true
+  def handle_cast(msg, state) do
+    require Logger
+    Logger.warning("[PortRegistry] unhandled cast: #{inspect(msg, limit: 200)}")
+
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, kind: :cast, msg: inspect(msg, limit: 200)}
+    )
+
+    {:noreply, state}
+  end
+
+  @impl true
   def handle_info(msg, state) do
     require Logger
     Logger.warning("[PortRegistry] unhandled info: #{inspect(msg, limit: 200)}")

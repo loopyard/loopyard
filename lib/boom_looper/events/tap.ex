@@ -156,6 +156,30 @@ defmodule BoomLooper.Events.Tap do
     {:noreply, %{state | seq: seq}}
   end
 
+  # Catchalls — Tap is a passive PubSub observer. cast/call are never
+  # expected; absorb stray messages into telemetry instead of crashing.
+  @impl true
+  def handle_cast(msg, state) do
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, kind: :cast, msg: inspect(msg, limit: 200)}
+    )
+
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_call(msg, _from, state) do
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, kind: :call, msg: inspect(msg, limit: 200)}
+    )
+
+    {:reply, {:error, :unknown_call}, state}
+  end
+
   # ── Private ──
 
   # Structs from Move #2 publisher modules — classify by module prefix.

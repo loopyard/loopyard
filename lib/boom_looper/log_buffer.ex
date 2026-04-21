@@ -92,6 +92,15 @@ defmodule BoomLooper.LogBuffer do
     end
   end
 
+  # Catchalls — log_buffer is a Logger handler registered externally;
+  # its GenServer never expects user cast/call/info. Absorb strays.
+  @impl true
+  def handle_cast(_msg, state), do: {:noreply, state}
+  @impl true
+  def handle_call(_msg, _from, state), do: {:reply, {:error, :unknown_call}, state}
+  @impl true
+  def handle_info(_msg, state), do: {:noreply, state}
+
   defp format_msg({:string, msg}), do: IO.iodata_to_binary(msg)
   defp format_msg({:report, report}), do: inspect(report)
   defp format_msg({format, args}) when is_list(args), do: :io_lib.format(format, args) |> IO.iodata_to_binary()

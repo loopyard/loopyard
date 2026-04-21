@@ -80,6 +80,15 @@ defmodule BoomLooper.HostExposer do
     end
   end
 
+  # Catchalls — stray cast/call/info mustn't crash the endpoint-mode
+  # toggle. handle_call catchall stays grouped with the specific
+  # calls above.
+  def handle_call(_msg, _from, state), do: {:reply, {:error, :unknown_call}, state}
+  @impl true
+  def handle_cast(_msg, state), do: {:noreply, state}
+  @impl true
+  def handle_info(_msg, state), do: {:noreply, state}
+
   # --- Private ---
 
   defp set_endpoint_ip(ip) do

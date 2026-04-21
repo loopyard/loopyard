@@ -163,6 +163,22 @@ defmodule BoomLooper.Workspace.ServiceManager do
     {:reply, :ok, new_state}
   end
 
+  # Catchall handle_call — stays grouped with the specific ones above.
+  def handle_call(msg, _from, state) do
+    require Logger
+    Logger.warning(
+      "[ServiceManager] ws=#{state.workspace_id} unhandled call: #{inspect(msg, limit: 200)}"
+    )
+
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, workspace_id: state.workspace_id, kind: :call, msg: inspect(msg, limit: 200)}
+    )
+
+    {:reply, {:error, :unknown_call}, state}
+  end
+
   @impl true
   def handle_cast(:broadcast_status, state) do
     broadcast_service_update(state)
@@ -175,23 +191,26 @@ defmodule BoomLooper.Workspace.ServiceManager do
     {:noreply, state}
   end
 
-  @impl true
-  def terminate(_reason, state) do
-    # Containers persist across ServiceManager restarts. State lives in
-    # volumes + ETF logs, and init/1 reconnects via `Compose.ps` on the
-    # next start. Only the explicit `stop_services/1` path tears containers
-    # down — crash / shutdown / supervisor restart keeps them running so
-    # the user's work survives a BEAM restart.
-    BoomLooper.EventLog.info(
-      "workspace:#{state.workspace_id}",
-      "ServiceManager stopping — containers left running"
+  # Catchall handle_cast. Stays grouped with the other handle_casts
+  # above.
+  def handle_cast(msg, state) do
+    require Logger
+    Logger.warning(
+      "[ServiceManager] ws=#{state.workspace_id} unhandled cast: #{inspect(msg, limit: 200)}"
     )
-    :ok
+
+    :telemetry.execute(
+      [:boom_looper, :actor, :unknown_message],
+      %{count: 1},
+      %{actor: __MODULE__, workspace_id: state.workspace_id, kind: :cast, msg: inspect(msg, limit: 200)}
+    )
+
+    {:noreply, state}
   end
 
-  # Catchalls. ServiceManager sits in the hot path (every
-  # /workspaces/:id mount reads from it); a stray message must never
-  # crash it.
+  # Catchall handle_info. ServiceManager has no specific handle_info
+  # clauses today, but bogus OTP messages (DOWN, node up, etc.)
+  # mustn't crash a hot-path GenServer.
   @impl true
   def handle_info(msg, state) do
     require Logger
@@ -208,34 +227,18 @@ defmodule BoomLooper.Workspace.ServiceManager do
     {:noreply, state}
   end
 
-  def handle_cast(msg, state) do
-    require Logger
-    Logger.warning(
-      "[ServiceManager] ws=#{state.workspace_id} unhandled cast: #{inspect(msg, limit: 200)}"
+  @impl true
+  def terminate(_reason, state) do
+    # Containers persist across ServiceManager restarts. State lives in
+    # volumes + ETF logs, and init/1 reconnects via `Compose.ps` on the
+    # next start. Only the explicit `stop_services/1` path tears containers
+    # down — crash / shutdown / supervisor restart keeps them running so
+    # the user's work survives a BEAM restart.
+    BoomLooper.EventLog.info(
+      "workspace:#{state.workspace_id}",
+      "ServiceManager stopping — containers left running"
     )
-
-    :telemetry.execute(
-      [:boom_looper, :actor, :unknown_message],
-      %{count: 1},
-      %{actor: __MODULE__, workspace_id: state.workspace_id, kind: :cast, msg: inspect(msg, limit: 200)}
-    )
-
-    {:noreply, state}
-  end
-
-  def handle_call(msg, _from, state) do
-    require Logger
-    Logger.warning(
-      "[ServiceManager] ws=#{state.workspace_id} unhandled call: #{inspect(msg, limit: 200)}"
-    )
-
-    :telemetry.execute(
-      [:boom_looper, :actor, :unknown_message],
-      %{count: 1},
-      %{actor: __MODULE__, workspace_id: state.workspace_id, kind: :call, msg: inspect(msg, limit: 200)}
-    )
-
-    {:reply, {:error, :unknown_call}, state}
+    :ok
   end
 
   # --- Private ---

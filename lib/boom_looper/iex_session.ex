@@ -134,9 +134,16 @@ defmodule BoomLooper.IExSession do
     {:noreply, state}
   end
 
+  # Catchall handle_cast — stays grouped with the above.
+  def handle_cast(_msg, state), do: {:noreply, state}
+
   def handle_call(:current, _from, state) do
     {:reply, Map.drop(state, [:claimed]), state}
   end
+
+  # Catchall handle_call + handle_info.
+  def handle_call(_msg, _from, state), do: {:reply, {:error, :unknown_call}, state}
+  def handle_info(_msg, state), do: {:noreply, state}
 
   defp broadcast(state) do
     # Don't include claimed in broadcast - it's internal state

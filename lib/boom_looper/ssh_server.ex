@@ -68,6 +68,15 @@ defmodule BoomLooper.SSHServer do
     {:reply, state.port, state}
   end
 
+  # Catchalls — the SSH daemon itself handles ssh connections; this
+  # GenServer only holds the daemon ref + port. No user cast/call
+  # expected; absorb strays.
+  def handle_call(_msg, _from, state), do: {:reply, {:error, :unknown_call}, state}
+  @impl true
+  def handle_cast(_msg, state), do: {:noreply, state}
+  @impl true
+  def handle_info(_msg, state), do: {:noreply, state}
+
   @impl true
   def terminate(_reason, state) do
     if state[:daemon], do: :ssh.stop_daemon(state.daemon)
