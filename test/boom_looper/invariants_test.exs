@@ -261,12 +261,41 @@ defmodule BoomLooper.InvariantsTest do
             not String.contains?(line, "assigns.service_statuses")
         end)
 
+      # Walk backwards from the assignment line to find the enclosing
+      # `def`/`defp` header — that's the real "function name" we care
+      # about. The old 12-line-context heuristic missed mount_with_workspace
+      # when its body grew past 12 lines.
+      enclosing_function_name = fn assign_line_num ->
+        Enum.reduce_while(Enum.reverse(0..(assign_line_num - 1)), nil, fn i, _ ->
+          l = Enum.at(lines, i) || ""
+
+          case Regex.run(~r/^\s*(?:def|defp)\s+([a-z_][a-z0-9_?!]*)/i, l) do
+            [_, name] -> {:halt, name}
+            _ -> {:cont, nil}
+          end
+        end)
+      end
+
       unguarded =
-        Enum.filter(assignments, fn {_line, n} ->
-          # Check the surrounding context (10 lines before) for a guard
+        Enum.filter(assignments, fn {line, n} ->
+          # An assignment is "safe" if ANY of:
+          #   - it's on a line that calls `force_assign_service_statuses/2`
+          #     (explicit intentional-empty bypass, e.g. :workspace_stopped)
+          #   - it's INSIDE `force_assign_service_statuses` itself
+          #     (the helper body's one `assign/3` call)
+          #   - its 12-line-preceding context calls
+          #     `guard_service_statuses/2` (default protection)
+          #   - its enclosing function is `mount_with_workspace` (initial
+          #     mount, legitimate fresh value) or `force_assign_service_statuses`
           context = Enum.slice(lines, max(0, n - 11), 12) |> Enum.join("\n")
-          not String.contains?(context, "guard_service_statuses") and
-            not String.contains?(context, "mount_with_workspace")
+          enclosing = enclosing_function_name.(n)
+
+          cond do
+            String.contains?(line, "force_assign_service_statuses") -> false
+            enclosing in ["force_assign_service_statuses", "mount_with_workspace"] -> false
+            String.contains?(context, "guard_service_statuses") -> false
+            true -> true
+          end
         end)
         |> Enum.map(fn {line, n} -> "line #{n}: #{String.trim(line)}" end)
 

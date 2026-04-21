@@ -653,7 +653,10 @@ defmodule BoomLooperWeb.WorkspaceLive do
             if s.name == svc_name, do: Map.put(s, :exposed, exposed?), else: s
           end)
 
-        {:noreply, assign(socket, :service_statuses, updated)}
+        # Route through guard_service_statuses even though `updated`
+        # is a map over the existing list and can't go empty —
+        # keeps the invariant uniform.
+        {:noreply, assign(socket, :service_statuses, guard_service_statuses(socket, updated))}
 
       {:error, reason} ->
         require Logger
@@ -872,10 +875,14 @@ defmodule BoomLooperWeb.WorkspaceLive do
     ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
     {service_statuses, volumes} = load_sidebar_from_observer(nil, ws_id)
 
+    # Intentional empty replacement on :workspace_stopped — workspace
+    # stopped, no services. The guard_service_statuses guard exists to
+    # prevent ACCIDENTAL flapping from non-empty to empty. This is
+    # deliberate, so we bypass the guard with force_assign_service_statuses.
     {:noreply,
      socket
      |> transition_workspace_state(:stopped)
-     |> assign(:service_statuses, service_statuses)
+     |> force_assign_service_statuses(service_statuses)
      |> assign(:volumes, volumes)
      |> assign(:agents, [])}
   end
@@ -1339,6 +1346,14 @@ defmodule BoomLooperWeb.WorkspaceLive do
     else
       new_statuses
     end
+  end
+
+  # Explicit bypass for the guard when empty is legitimately the new
+  # truth (e.g. :workspace_stopped). Exists as a named function
+  # instead of a raw assign so the invariants test recognizes it as
+  # an intentional-empty site and doesn't flag it as unguarded drift.
+  defp force_assign_service_statuses(socket, new_statuses) do
+    assign(socket, :service_statuses, new_statuses)
   end
 
   # --- Private ---

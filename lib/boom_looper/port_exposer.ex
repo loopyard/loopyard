@@ -64,6 +64,8 @@ defmodule BoomLooper.PortExposer do
     upstream_host = opts |> Keyword.get(:upstream_host, {127, 0, 0, 1}) |> normalize_host()
     upstream_port = Keyword.get(opts, :upstream_port, host_port)
 
+    Process.flag(:trap_exit, true)
+
     case :gen_tcp.listen(host_port, [
            :binary,
            packet: :raw,
@@ -130,7 +132,9 @@ defmodule BoomLooper.PortExposer do
   @impl true
   def handle_info({:accepted, client_sock}, state) do
     state = handle_accepted(state, client_sock)
-    {:noreply, spawn_acceptor(state)}
+    # The accept task that sent us this message has exited. Clear its
+    # ref so spawn_acceptor sees nil and launches a new one.
+    {:noreply, spawn_acceptor(%{state | accept_task: nil})}
   end
 
   def handle_info({:tcp, sock, data}, state) do
@@ -148,9 +152,13 @@ defmodule BoomLooper.PortExposer do
   end
 
   def handle_info({:EXIT, pid, _reason}, %{accept_task: pid} = state) do
-    # Acceptor task crashed — respawn.
+    # Acceptor task crashed before sending {:accepted, ...} — respawn.
     {:noreply, spawn_acceptor(%{state | accept_task: nil})}
   end
+
+  # Normal EXIT from the accept task AFTER it sent us {:accepted, ...}
+  # and we already cleared accept_task to nil. Nothing to do.
+  def handle_info({:EXIT, _pid, :normal}, state), do: {:noreply, state}
 
   def handle_info(msg, state) do
     require Logger

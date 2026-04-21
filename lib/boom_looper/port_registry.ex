@@ -294,8 +294,15 @@ defmodule BoomLooper.PortRegistry do
 
       [{^key, entry}] ->
         case toggle_exposer(key, entry, exposed?) do
+          {:ok, expose_port} ->
+            updated = entry |> Map.put(:exposed, true) |> Map.put(:expose_port, expose_port)
+            :ets.insert(@table, {key, updated})
+            persist(state)
+            {:reply, :ok, state}
+
           :ok ->
-            updated = %{entry | exposed: exposed?}
+            # Closing — clear expose_port
+            updated = entry |> Map.put(:exposed, false) |> Map.delete(:expose_port)
             :ets.insert(@table, {key, updated})
             persist(state)
             {:reply, :ok, state}
@@ -548,8 +555,12 @@ defmodule BoomLooper.PortRegistry do
   # Telemetry fires for both successful reassignments and ultimate
   # failures — ops needs to see port pressure trends.
   defp start_exposer_with_reassign(key, entry, port_range) do
+    # start_exposer returns {:ok, expose_port} — the actual port we're
+    # listening on (may differ from entry.host_port when the OS
+    # assigns an :expose_port ≠ upstream host_port). For the
+    # restore-with-reassign flow we only care that the listener is up.
     case start_exposer(key, entry) do
-      :ok ->
+      {:ok, _expose_port} ->
         :ok
 
       {:error, {:listen_failed, :eaddrinuse}} ->
@@ -605,7 +616,7 @@ defmodule BoomLooper.PortRegistry do
         )
 
         case start_exposer(key, new_entry) do
-          :ok ->
+          {:ok, _expose_port} ->
             :ok
 
           {:error, reason2} ->
@@ -660,10 +671,11 @@ defmodule BoomLooper.PortRegistry do
 
   # Start or stop the PortExposer for a given key, depending on the
   # target state. Returns :ok on success or {:error, reason}.
+  # Returns {:ok, expose_port} when opening, :ok when closing.
   defp toggle_exposer(key, entry, true) do
     case BoomLooper.PortExposer.whereis(key) do
       nil -> start_exposer(key, entry)
-      _pid -> :ok
+      _pid -> {:ok, entry[:expose_port]}
     end
   end
 
@@ -678,6 +690,8 @@ defmodule BoomLooper.PortRegistry do
     end
   end
 
+  # Returns {:ok, expose_port} or {:error, reason}.
+  # The caller must store expose_port on the registry entry.
   defp start_exposer(key, entry) do
     # On macOS, Docker's Colima SSH tunnel binds 127.0.0.1:<host_port>.
     # Binding 0.0.0.0 on the SAME port conflicts — LAN connections
@@ -692,18 +706,9 @@ defmodule BoomLooper.PortRegistry do
            upstream_port: entry.host_port}
 
         case DynamicSupervisor.start_child(BoomLooper.PortExposerSupervisor, spec) do
-          {:ok, _pid} ->
-            # Store the expose port on the entry so the sidebar can
-            # render the correct URL for LAN access.
-            updated = Map.put(entry, :expose_port, expose_port)
-            :ets.insert(@table, {key, updated})
-            :ok
-
-          {:error, {:already_started, _}} ->
-            :ok
-
-          {:error, reason} ->
-            {:error, reason}
+          {:ok, _pid} -> {:ok, expose_port}
+          {:error, {:already_started, _}} -> {:ok, expose_port}
+          {:error, reason} -> {:error, reason}
         end
 
       {:error, reason} ->

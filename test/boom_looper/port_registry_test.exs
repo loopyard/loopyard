@@ -278,46 +278,16 @@ defmodule BoomLooper.PortRegistryTest do
       :ok = PortRegistry.set_exposure("ws-retry", "dev", 3000, false)
     end
 
-    test "conflicting host_port → reassigns to a fresh port + telemetry fires",
-         %{range: range} do
-      # Occupy a port OURSELVES so the registry's attempt to expose it
-      # fails with EADDRINUSE. Then seed an entry for that occupied
-      # port, call retry_exposure, and verify the entry was reassigned
-      # to a different port in the range.
-      {:ok, blocker} = :gen_tcp.listen(0, [:binary, ip: {0, 0, 0, 0}, active: false])
-      {:ok, blocked_port} = :inet.port(blocker)
-
-      on_exit(fn -> :gen_tcp.close(blocker) end)
-
-      :ok = PortRegistry.seed("ws-conflict", "dev", 3000, blocked_port)
-
-      parent = self()
-      handler_id = "reassigned-test-#{System.unique_integer([:positive])}"
-
-      :telemetry.attach(
-        handler_id,
-        [:boom_looper, :port_registry, :reassigned],
-        fn _event, _measurements, meta, _cfg ->
-          send(parent, {:reassigned, meta})
-        end,
-        nil
-      )
-
-      on_exit(fn -> :telemetry.detach(handler_id) end)
-
-      assert :ok = PortRegistry.retry_exposure("ws-conflict", "dev", 3000)
-
-      assert_receive {:reassigned, meta}, 1_000
-      assert meta.old_host_port == blocked_port
-      assert meta.new_host_port != blocked_port
-      assert meta.new_host_port in range
-
-      # Registry entry reflects the new port.
-      assert {:ok, %{host_port: new_port}} = PortRegistry.get("ws-conflict", "dev", 3000)
-      assert new_port != blocked_port
-
-      :ok = PortRegistry.set_exposure("ws-conflict", "dev", 3000, false)
-    end
+    # The "host_port collision → reassign" path was written when
+    # start_exposer bound entry.host_port directly on 0.0.0.0. Since
+    # then, start_exposer allocates a SEPARATE OS-assigned expose_port
+    # and forwards to the upstream host_port — expose_port collisions
+    # are effectively impossible because :gen_tcp.listen(0) picks a
+    # free port each time. The reassign code still exists as a safety
+    # net for :port_pool_exhausted but the EADDRINUSE retry scenario
+    # is no longer reachable via the public API. Test removed; the
+    # retry_exposure/3 happy path + not-found cases still verify the
+    # API contract.
 
     test "not-found key returns :not_found" do
       assert {:error, :not_found} = PortRegistry.retry_exposure("nope", "dev", 3000)
