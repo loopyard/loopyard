@@ -1,6 +1,13 @@
 defmodule BoomLooperWeb.WorkspaceLiveTest do
   use BoomLooperWeb.ConnCase
 
+  # Every setup block spins up a fresh ProjectRegistry + WorkspaceGroup +
+  # ChatAgent under a unique tmp dir. Even on a quiet box that takes ~1s;
+  # under full-suite parallel load with the shared cwd group churning
+  # nearby, 2s is too tight. Perf-specific tests in this file measure
+  # mount latency directly and enforce their own tighter budgets.
+  @moduletag timeout: 10_000
+
   import Phoenix.LiveViewTest
 
   defp create_workspace do
