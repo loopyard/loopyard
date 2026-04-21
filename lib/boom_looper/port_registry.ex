@@ -107,7 +107,12 @@ defmodule BoomLooper.PortRegistry do
     # as containers come up and go down.
     Phoenix.PubSub.subscribe(BoomLooper.PubSub, "docker_observer")
 
-    {:ok, %{port_range: port_range, persist: persist, reserved: reserved_ports()}}
+    {:ok, %{
+      port_range: port_range,
+      persist: persist,
+      reserved: reserved_ports(),
+      last_reconcile: 0  # monotonic ms — debounce reconciler
+    }}
   end
 
   @impl true
@@ -189,11 +194,11 @@ defmodule BoomLooper.PortRegistry do
 
         case start_proxy(key, entry, bind_ip) do
           :ok ->
-            updated = %{entry | exposed: exposed?}
+            updated = Map.merge(entry, %{exposed: exposed?, transitioning: false})
             :ets.insert(@table, {key, updated})
             persist(state)
 
-            action = if exposed?, do: "Exposed", else: "Restricted"
+            action = if exposed?, do: "Opened", else: "Closed"
             EventLog.info("ports", "#{action} #{ws}/#{svc}/#{cport} on #{format_ip(bind_ip)}:#{entry.host_port}")
             {:reply, :ok, state}
 
@@ -241,19 +246,12 @@ defmodule BoomLooper.PortRegistry do
     if File.exists?(PortStore.path()) do
       for entry <- PortStore.load() do
         key = {entry.workspace_id, entry.service, entry.container_port}
-        :ets.insert(@table, {key, entry})
-
-        # If docker_port is known, restart the proxy
-        if entry[:docker_port] do
-          bind_ip = if entry.exposed, do: {0, 0, 0, 0}, else: {127, 0, 0, 1}
-
-          case start_proxy(key, entry, bind_ip) do
-            :ok -> :ok
-            {:error, reason} ->
-              require Logger
-              Logger.warning("[PortRegistry] Could not start proxy for #{inspect(key)}: #{inspect(reason)}")
-          end
-        end
+        # Clear docker_port on restore — Docker may have assigned a
+        # different ephemeral port while we were down. The reconciler
+        # will rediscover the actual port from Observer on the next
+        # docker_state_changed event.
+        cleaned = Map.put(entry, :docker_port, nil)
+        :ets.insert(@table, {key, cleaned})
       end
     end
 
@@ -264,8 +262,25 @@ defmodule BoomLooper.PortRegistry do
 
   @impl true
   def handle_info(%{__struct__: BoomLooper.Events.DockerObserver.Changed}, state) do
+    # Debounce: skip if we reconciled within the last second. Docker
+    # events come in bursts (container start emits create + start +
+    # attach + ...). Without debounce, a container crash-loop would
+    # churn proxies on every event.
+    now = System.monotonic_time(:millisecond)
+
+    if now - state.last_reconcile > 1_000 do
+      reconcile_proxies(state)
+      {:noreply, %{state | last_reconcile: now}}
+    else
+      # Schedule a catch-up reconcile so we don't miss the final state
+      Process.send_after(self(), :deferred_reconcile, 1_100)
+      {:noreply, state}
+    end
+  end
+
+  def handle_info(:deferred_reconcile, state) do
     reconcile_proxies(state)
-    {:noreply, state}
+    {:noreply, %{state | last_reconcile: System.monotonic_time(:millisecond)}}
   end
 
   def handle_info(%{__struct__: BoomLooper.Events.DockerObserver.Reset}, state) do
@@ -291,7 +306,7 @@ defmodule BoomLooper.PortRegistry do
       project_name = BoomLooper.Compose.project_name(ws_id)
       containers = BoomLooper.Docker.Observer.containers_for(ws_id)
 
-      for entry <- ws_entries do
+      for entry <- ws_entries, !entry[:transitioning] do
         key = {ws_id, entry.service, entry.container_port}
         container_name = "#{project_name}-#{entry.service}-1"
         container = Enum.find(containers, &(&1.name == container_name))

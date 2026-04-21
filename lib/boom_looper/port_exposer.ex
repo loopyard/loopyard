@@ -221,10 +221,14 @@ defmodule BoomLooper.PortExposer do
     case :gen_tcp.connect(state.upstream_host, state.upstream_port, [
            :binary,
            packet: :raw,
-           active: :once
+           active: :once,
+           keepalive: true
          ], 500) do
       {:ok, upstream_sock} ->
-        :inet.setopts(client_sock, active: :once)
+        # Enable keepalive on both sides so dead connections (phone
+        # loses WiFi, laptop sleeps) are detected within minutes
+        # instead of hanging for 2 hours.
+        :inet.setopts(client_sock, active: :once, keepalive: true)
         :ok = :gen_tcp.controlling_process(upstream_sock, self())
 
         %{
