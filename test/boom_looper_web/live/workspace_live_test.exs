@@ -129,6 +129,12 @@ defmodule BoomLooperWeb.WorkspaceLiveTest do
         "WorkspaceLive :chat mount took #{div(micros, 1000)}ms — sync slow call leaked in"
     end
 
+    # Integration-ish: creates a fresh workspace supervisor + starts
+    # a ChatAgent under it. That takes ~2–5s of real setup on a cold
+    # BEAM — longer than the suite-wide 2s default. @tag timeout: 15s
+    # covers it without masking genuine slowness. Same treatment on
+    # the sibling WorkspaceLive tests below.
+    @tag timeout: 15_000
     test "volume-based workspace mounts correctly", %{conn: conn} do
       # Create a volume-based project/workspace directly in ETS
       project_id = "vol-proj-#{:rand.uniform(100_000)}"
@@ -203,6 +209,7 @@ defmodule BoomLooperWeb.WorkspaceLiveTest do
       assert html =~ "Presets"
     end
 
+    @tag timeout: 15_000
     test "launching an agent with preset redirects to chat", %{conn: conn, workspace: ws, setup_agent_id: _setup_agent_id} do
       {:ok, view, _html} = live(conn, ws_new_path(ws))
 
@@ -311,6 +318,7 @@ defmodule BoomLooperWeb.WorkspaceLiveTest do
       assert path == ws_path(ws)
     end
 
+    @tag timeout: 15_000
     test "booting agent shows booting screen", %{conn: conn, workspace: ws, setup_agent_id: _setup_agent_id} do
       id = "boot-test-#{:rand.uniform(100_000)}"
       BoomLooper.ChatAgent.register_booting(id, "My Agent", ws.path)
@@ -654,6 +662,7 @@ defmodule BoomLooperWeb.WorkspaceLiveTest do
       %{agent_id: id}
     end
 
+    @tag timeout: 15_000
     test "context panel always shows agent info", %{conn: conn, agent_id: id, workspace: ws} do
       {:ok, _view, html} = live(conn, ws_chat_path(ws, id))
 
