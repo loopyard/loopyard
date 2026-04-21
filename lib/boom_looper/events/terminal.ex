@@ -9,9 +9,7 @@ defmodule BoomLooper.Events.Terminal do
 
   @telemetry [:boom_looper, :events, :publish]
 
-  defmodule Output, do: defstruct([:container, :data])
-  defmodule Clear, do: defstruct([:container])
-  defmodule Exit, do: defstruct([:container, :code])
+  alias BoomLooper.Events.Terminal.{Output, Clear, Exit}
 
   @events [Output, Clear, Exit]
 
