@@ -255,7 +255,21 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
     # Check for agent-written compose file in the volume
     compose_path = Compose.compose_path(state.project_dir)
-    File.mkdir_p!(Path.dirname(compose_path))
+
+    # mkdir_p non-bang — disk-full / permission errors surface as
+    # {:error, reason} instead of raising inside the GenServer.
+    case File.mkdir_p(Path.dirname(compose_path)) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        BoomLooper.EventLog.error(
+          "workspace:#{state.workspace_id}",
+          "Could not create compose dir #{Path.dirname(compose_path)}: " <>
+            "#{:file.format_error(reason)}. Cluster won't start until the " <>
+            "disk/permission issue is fixed."
+        )
+    end
 
     # Port assignments now come from BoomLooper.PortRegistry inside
     # process_agent_compose/3 — no more port_map capture at this layer.
@@ -263,8 +277,24 @@ defmodule BoomLooper.Workspace.ServiceManager do
       {:ok, content} when content != "" ->
         case Compose.process_agent_compose(content, state.workspace_id) do
           {:ok, processed} ->
-            File.write!(compose_path, processed)
-            true
+            # Disk-full / permission denied here used to raise inside
+            # handle_call — supervisor would quarantine the GenServer
+            # after 5 retries. Now surfaces as a clean EventLog line
+            # + cluster just doesn't start this tick. Next retry (user
+            # click on Start) will try again.
+            case File.write(compose_path, processed) do
+              :ok ->
+                true
+
+              {:error, reason} ->
+                BoomLooper.EventLog.error(
+                  "workspace:#{state.workspace_id}",
+                  "Compose file write failed: #{:file.format_error(reason)}. " <>
+                    "Fix the disk/permissions on #{compose_path} and click Start again."
+                )
+
+                false
+            end
 
           {:error, reason} ->
             # Don't crash the cluster, but log an actionable error so the
