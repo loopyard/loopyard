@@ -37,7 +37,7 @@ defmodule BoomLooper.PortExposerTest do
           upstream_port: up
         )
 
-      on_exit(fn -> try do GenServer.stop(exposer) catch :exit, _ -> :ok end end)
+      on_exit(fn -> safe_stop(exposer) end)
 
       {:ok, client} =
         :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, packet: :raw, active: false], 1_000)
@@ -70,7 +70,7 @@ defmodule BoomLooper.PortExposerTest do
           upstream_port: up
         )
 
-      on_exit(fn -> try do GenServer.stop(exposer) catch :exit, _ -> :ok end end)
+      on_exit(fn -> safe_stop(exposer) end)
 
       {:ok, client} =
         :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, packet: :raw, active: false], 1_000)
@@ -120,52 +120,44 @@ defmodule BoomLooper.PortExposerTest do
     end
   end
 
-  describe "external binding" do
-    test "listens on 0.0.0.0 and is reachable from non-loopback", %{upstream_port: up, key: key} do
-      # Allocate a fresh port for the exposer — must NOT conflict with
-      # the echo server on loopback.
-      expose_port = free_port()
-
+  describe "bind_ip (exposure toggle)" do
+    test "default binds to 0.0.0.0", %{port: port, upstream_port: up, key: key} do
       {:ok, exposer} =
-        PortExposer.start_link(
-          key: key,
-          host_port: expose_port,
-          upstream_host: {127, 0, 0, 1},
-          upstream_port: up
-        )
+        PortExposer.start_link(key: key, host_port: port, upstream_host: {127, 0, 0, 1}, upstream_port: up)
 
-      on_exit(fn -> try do GenServer.stop(exposer) catch :exit, _ -> :ok end end)
+      on_exit(fn -> safe_stop(exposer) end)
 
-      # Verify it's bound to 0.0.0.0 (not 127.0.0.1)
       state = :sys.get_state(exposer)
-      assert {:ok, {{0, 0, 0, 0}, ^expose_port}} = :inet.sockname(state.listen_sock)
-
-      # Connect via loopback, send data, get echo back via upstream
-      {:ok, client} =
-        :gen_tcp.connect({127, 0, 0, 1}, expose_port, [:binary, packet: :raw, active: false], 1_000)
-
-      :ok = :gen_tcp.send(client, "ping")
-      assert {:ok, "ping"} = :gen_tcp.recv(client, 4, 2_000)
-      :gen_tcp.close(client)
+      assert {:ok, {{0, 0, 0, 0}, ^port}} = :inet.sockname(state.listen_sock)
     end
 
-    test "accepts multiple sequential connections", %{upstream_port: up, key: key} do
-      expose_port = free_port()
-
+    test "bind_ip: {127,0,0,1} restricts to loopback", %{port: port, upstream_port: up, key: key} do
       {:ok, exposer} =
-        PortExposer.start_link(
-          key: key,
-          host_port: expose_port,
-          upstream_host: {127, 0, 0, 1},
-          upstream_port: up
-        )
+        PortExposer.start_link(key: key, host_port: port, upstream_host: {127, 0, 0, 1}, upstream_port: up, bind_ip: {127, 0, 0, 1})
 
-      on_exit(fn -> try do GenServer.stop(exposer) catch :exit, _ -> :ok end end)
+      on_exit(fn -> safe_stop(exposer) end)
 
-      for i <- 1..3 do
-        {:ok, client} =
-          :gen_tcp.connect({127, 0, 0, 1}, expose_port, [:binary, packet: :raw, active: false], 1_000)
+      state = :sys.get_state(exposer)
+      assert {:ok, {{127, 0, 0, 1}, ^port}} = :inet.sockname(state.listen_sock)
 
+      # Still works from loopback
+      {:ok, client} = :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, packet: :raw, active: false], 1_000)
+      :ok = :gen_tcp.send(client, "test")
+      assert {:ok, "test"} = :gen_tcp.recv(client, 4, 2_000)
+      :gen_tcp.close(client)
+    end
+  end
+
+  describe "accept loop reliability" do
+    test "handles 5 sequential connections without stalling",
+         %{port: port, upstream_port: up, key: key} do
+      {:ok, exposer} =
+        PortExposer.start_link(key: key, host_port: port, upstream_host: {127, 0, 0, 1}, upstream_port: up)
+
+      on_exit(fn -> safe_stop(exposer) end)
+
+      for i <- 1..5 do
+        {:ok, client} = :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, packet: :raw, active: false], 1_000)
         msg = "msg-#{i}"
         :ok = :gen_tcp.send(client, msg)
         assert {:ok, ^msg} = :gen_tcp.recv(client, byte_size(msg), 2_000)
@@ -232,6 +224,14 @@ defmodule BoomLooper.PortExposerTest do
 
   defp stop_echo_server(pid) do
     if Process.alive?(pid), do: Process.exit(pid, :kill)
+  end
+
+  defp safe_stop(pid) do
+    try do
+      GenServer.stop(pid)
+    catch
+      :exit, _ -> :ok
+    end
   end
 
   defp free_port do

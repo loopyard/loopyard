@@ -46,7 +46,11 @@ System.put_env("BOOMLOOPER_HOME", boomlooper_home)
 # Walking the ebin dir keeps this list self-maintaining — we don't
 # have to curate a list of every Tool module / every event struct.
 _ =
-  for path <- Path.wildcard("_build/test/lib/boom_looper/ebin/Elixir.BoomLooper.*.beam") do
+  for pattern <- [
+        "_build/test/lib/boom_looper/ebin/Elixir.BoomLooper.*.beam",
+        "_build/test/lib/boom_looper/ebin/Elixir.BoomLooperWeb.*.beam"
+      ],
+      path <- Path.wildcard(pattern) do
     path
     |> Path.basename(".beam")
     |> String.replace_prefix("Elixir.", "")

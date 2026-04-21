@@ -1522,21 +1522,10 @@ defmodule BoomLooperWeb.WorkspaceLive do
         })
 
       :none ->
-        case first_container_port(svc) do
-          nil ->
-            Map.merge(svc, %{exposed: false, container_port: nil, host_port: nil})
-
-          cport ->
-            host_port = svc.ports |> Map.values() |> List.first()
-
-            if host_port do
-              hp = if(is_binary(host_port), do: String.to_integer(host_port), else: host_port)
-              BoomLooper.PortRegistry.seed(workspace_id, svc.name, cport, hp)
-              Map.merge(svc, %{exposed: false, container_port: cport, host_port: hp})
-            else
-              Map.merge(svc, %{exposed: false, container_port: nil, host_port: nil})
-            end
-        end
+        # No registry entry. Ports are only assigned via compose
+        # processing — if this service has a port but no registry
+        # entry, it'll get one next time compose runs.
+        Map.merge(svc, %{exposed: false, container_port: nil, host_port: nil})
     end
   end
 

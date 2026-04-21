@@ -436,15 +436,13 @@ defmodule BoomLooper.Compose do
   defp emit_port(port_spec, workspace_id, service_name) when is_binary(port_spec) do
     container_port = extract_container_port(port_spec)
 
+    # Register the user-facing port (sticky). Docker gets ephemeral —
+    # our proxy will own the user-facing port.
     case BoomLooper.PortRegistry.assign(workspace_id, service_name, container_port) do
-      {:ok, host_port} ->
-        "127.0.0.1:#{host_port}:#{container_port}"
+      {:ok, _host_port} ->
+        "127.0.0.1::#{container_port}"
 
       {:error, :port_pool_exhausted} ->
-        # Fail-open by letting Docker pick a random port. Logged in
-        # PortRegistry; the user will see the pool-exhausted warning
-        # in EventLog. Better to emit something compose-valid than to
-        # crash the whole compose processing pipeline.
         "127.0.0.1::#{container_port}"
     end
   end

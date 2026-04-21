@@ -23,7 +23,7 @@ defmodule BoomLooper.PortExposer do
   are a "what's happening right now" view and reset on restart.
   """
 
-  use GenServer, restart: :temporary
+  use GenServer, restart: :transient
 
   require Logger
 
@@ -59,24 +59,26 @@ defmodule BoomLooper.PortExposer do
 
   @impl true
   def init(opts) do
+    Process.flag(:trap_exit, true)
+
     key = Keyword.fetch!(opts, :key)
     host_port = Keyword.fetch!(opts, :host_port)
     upstream_host = opts |> Keyword.get(:upstream_host, {127, 0, 0, 1}) |> normalize_host()
     upstream_port = Keyword.get(opts, :upstream_port, host_port)
-
-    Process.flag(:trap_exit, true)
+    bind_ip = Keyword.get(opts, :bind_ip, {0, 0, 0, 0})
 
     case :gen_tcp.listen(host_port, [
            :binary,
            packet: :raw,
            active: false,
            reuseaddr: true,
-           ip: {0, 0, 0, 0}
+           ip: bind_ip
          ]) do
       {:ok, listen_sock} ->
         state = %{
           key: key,
           host_port: host_port,
+          bind_ip: bind_ip,
           upstream_host: upstream_host,
           upstream_port: upstream_port,
           listen_sock: listen_sock,
@@ -91,11 +93,11 @@ defmodule BoomLooper.PortExposer do
         }
 
         {ws, svc, cport} = key
+        bind_str = :inet.ntoa(bind_ip) |> to_string()
 
         EventLog.info(
           "ports:#{ws}",
-          "Exposed #{svc}/#{cport} on 0.0.0.0:#{host_port} " <>
-            "(forwarding to 127.0.0.1:#{host_port})"
+          "Proxy #{svc}/#{cport} on #{bind_str}:#{host_port} → 127.0.0.1:#{upstream_port}"
         )
 
         {:ok, state, {:continue, :start_accepting}}
@@ -132,8 +134,8 @@ defmodule BoomLooper.PortExposer do
   @impl true
   def handle_info({:accepted, client_sock}, state) do
     state = handle_accepted(state, client_sock)
-    # The accept task that sent us this message has exited. Clear its
-    # ref so spawn_acceptor sees nil and launches a new one.
+    # The accept task that sent this message is about to exit. Clear
+    # its ref so spawn_acceptor sees nil and launches a new one.
     {:noreply, spawn_acceptor(%{state | accept_task: nil})}
   end
 
@@ -152,26 +154,15 @@ defmodule BoomLooper.PortExposer do
   end
 
   def handle_info({:EXIT, pid, _reason}, %{accept_task: pid} = state) do
-    # Acceptor task crashed before sending {:accepted, ...} — respawn.
+    # Acceptor task crashed BEFORE sending {:accepted, ...} — respawn.
     {:noreply, spawn_acceptor(%{state | accept_task: nil})}
   end
 
-  # Normal EXIT from the accept task AFTER it sent us {:accepted, ...}
-  # and we already cleared accept_task to nil. Nothing to do.
+  # Normal EXIT from accept task AFTER it sent {:accepted, ...} and
+  # we already cleared accept_task to nil. Nothing to do.
   def handle_info({:EXIT, _pid, :normal}, state), do: {:noreply, state}
 
-  def handle_info(msg, state) do
-    require Logger
-    Logger.warning("[PortExposer] unhandled: #{inspect(msg, limit: 200)}")
-
-    :telemetry.execute(
-      [:boom_looper, :actor, :unknown_message],
-      %{count: 1},
-      %{actor: __MODULE__, msg: inspect(msg, limit: 200)}
-    )
-
-    {:noreply, state}
-  end
+  def handle_info(_other, state), do: {:noreply, state}
 
   @impl true
   def terminate(_reason, state) do

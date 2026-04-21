@@ -143,9 +143,10 @@ defmodule BoomLooper.Workspace.ServiceManager do
     BoomLooper.EventLog.info("workspace:#{state.workspace_id}", "Reconnecting to existing compose containers")
 
     # Reprocess compose to ensure port bindings go through the registry
-    # (loopback enforcement). Pre-registry workspaces have 0.0.0.0 ports;
-    # this rewrites them to 127.0.0.1 and re-ups to apply the change.
     ensure_compose_ports(state)
+
+    # Discover Docker's ephemeral ports and start proxies
+    discover_docker_ports(state.workspace_id)
 
     # Replay agent log to restore agent state to ETS and start agents
     replay_agent_log(state.project_dir, state.workspace_id)
@@ -318,6 +319,9 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
       case Compose.up(state.project_dir, state.workspace_id) do
         {:ok, _} ->
+          # Discover Docker's ephemeral ports and start proxies
+          discover_docker_ports(state.workspace_id)
+
           replay_agent_log(state.project_dir, state.workspace_id)
           new_state = %{state | running: true, volume_name: volume_name}
           notify_source_container_up(state.workspace_id)
@@ -398,6 +402,33 @@ defmodule BoomLooper.Workspace.ServiceManager do
   # Notify the Source adapter that this workspace's container is up/down.
   # Local workspaces use this to start/pause their mutagen sync session.
   # Safe to call for any source — no-ops on GitHub and unregistered workspaces.
+  # After compose up or reconnect, inspect running containers to find
+  # Docker's ephemeral port for each service with a registry entry.
+  # Calls PortRegistry.set_docker_port which starts the proxy.
+  defp discover_docker_ports(workspace_id) do
+    project_name = Compose.project_name(workspace_id)
+    containers = BoomLooper.Docker.Observer.containers_for(workspace_id)
+
+    for entry <- BoomLooper.PortRegistry.list_for_workspace(workspace_id) do
+      container_name = "#{project_name}-#{entry.service}-1"
+      container = Enum.find(containers, &(&1.name == container_name))
+
+      if container && container[:host_ports] do
+        docker_port = container.host_ports[entry.container_port] ||
+                      container.host_ports[to_string(entry.container_port)]
+
+        if docker_port do
+          dp = if is_binary(docker_port), do: String.to_integer(docker_port), else: docker_port
+          BoomLooper.PortRegistry.set_docker_port(workspace_id, entry.service, entry.container_port, dp)
+        end
+      end
+    end
+  rescue
+    e ->
+      require Logger
+      Logger.warning("[ServiceManager] discover_docker_ports failed: #{Exception.message(e)}")
+  end
+
   defp notify_source_container_up(workspace_id) do
     with %{project_id: project_id} = workspace <- BoomLooper.ProjectRegistry.get_workspace(workspace_id),
          project when is_map(project) <- BoomLooper.ProjectRegistry.get_project(project_id) do

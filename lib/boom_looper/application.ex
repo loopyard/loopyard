@@ -11,10 +11,10 @@ defmodule BoomLooper.Application do
 
     children = [
       # --- Infrastructure layer (survives web reloads) ---
+      # StateKeeper owns ALL ETS tables — must start first.
+      BoomLooper.StateKeeper,
       BoomLooper.LogBuffer,
       BoomLooper.IExSession,
-      # StateKeeper owns ETS tables — must start first, lives longest
-      BoomLooper.StateKeeper,
       # Resources janitor — monitors owner pids and releases tracked
       # OS/OTP resources when an owner goes DOWN. Must start AFTER
       # StateKeeper (needs :resource_registry ETS table) and BEFORE
@@ -100,16 +100,22 @@ defmodule BoomLooper.Application do
     # ServiceManager will reconnect to any running containers
     BoomLooper.ProjectRegistry.restore()
 
-    # Load persisted port assignments from ~/.boomlooper/ports.json,
-    # or seed from legacy sticky port maps on first boot. Must run
-    # AFTER ProjectRegistry.restore/0 so the migration path can see
-    # every known workspace.
-    BoomLooper.PortRegistry.restore()
+    # Load persisted port assignments from ~/.boomlooper/ports.json.
+    # Must run AFTER ProjectRegistry.restore/0. Guarded: if the
+    # supervisor crashed (sibling child crash-loop), the GenServer
+    # is dead and this call would fail.
+    if Process.whereis(BoomLooper.PortRegistry) do
+      BoomLooper.PortRegistry.restore()
+    else
+      Logger.warning("[BoomLooper] PortRegistry not running — skipping restore")
+    end
 
     # Restore host exposure setting from ~/.boomlooper/host_exposure.json.
-    # If the operator had exposed the endpoint last session, re-bind to
-    # 0.0.0.0 by restarting the endpoint. Must run AFTER Endpoint starts.
-    BoomLooper.HostExposer.restore()
+    if Process.whereis(BoomLooper.HostExposer) do
+      BoomLooper.HostExposer.restore()
+    else
+      Logger.warning("[BoomLooper] HostExposer not running — skipping restore")
+    end
 
     # Scan the saga journal for incomplete sagas (BEAM crashed
     # mid-saga last run) and dispatch each per its declared
