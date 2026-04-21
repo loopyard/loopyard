@@ -1045,18 +1045,7 @@ defmodule BoomLooper.ChatAgent do
     state = finalize_partial_on_stream_interrupt(state, state.id, :stopped_by_user)
 
     if state.session do
-      # Stop in a task with timeout — backend.stop can hang if mid-stream.
-      # Wrap backend.stop in a Task + Task.yield with timeout so a
-      # hung CLI stop doesn't block the GenServer indefinitely. Also
-      # wrap in try/catch so a raise inside backend.stop (or a crashed
-      # Task) doesn't take down the caller — Task.yield EXITS the
-      # caller with the task's exit reason if the task crashes.
-      try do
-        task = Task.async(fn -> state.backend.stop(state.session) end)
-        Task.yield(task, 3_000) || Task.shutdown(task, :brutal_kill)
-      catch
-        :exit, _ -> :ok
-      end
+      stop_backend_session(state.session, state.backend)
     end
 
     # Null session so terminate/2's second backend.stop is a no-op —
@@ -1090,12 +1079,7 @@ defmodule BoomLooper.ChatAgent do
       # wrap in try/catch so a raise inside backend.stop (or a crashed
       # Task) doesn't take down the caller — Task.yield EXITS the
       # caller with the task's exit reason if the task crashes.
-      try do
-        task = Task.async(fn -> state.backend.stop(state.session) end)
-        Task.yield(task, 3_000) || Task.shutdown(task, :brutal_kill)
-      catch
-        :exit, _ -> :ok
-      end
+      stop_backend_session(state.session, state.backend)
     end
 
     # Start a fresh session with the same opts. When we have a Claude
@@ -1731,10 +1715,7 @@ defmodule BoomLooper.ChatAgent do
 
         # Graceful CLI stop with a short cap — don't let a wedged CLI
         # block the reaper tick.
-        if state.session && state.backend do
-          task = Task.async(fn -> state.backend.stop(state.session) end)
-          Task.yield(task, 3_000) || Task.shutdown(task, :brutal_kill)
-        end
+        stop_backend_session(state.session, state.backend)
 
         # Release the tracked OS pid so the Janitor drops its
         # reference. A second safety-kill by Resources.release isn't
@@ -1861,16 +1842,7 @@ defmodule BoomLooper.ChatAgent do
     # Always TRY a clean shutdown of the SDK session — a graceful
     # protocol exit is preferable to a SIGKILL and lets the CLI flush
     # any pending writes. Cap at 3s so we never block the supervisor.
-    if state.session && state.backend do
-      try do
-        task = Task.async(fn -> state.backend.stop(state.session) end)
-        Task.yield(task, 3_000) || Task.shutdown(task, :brutal_kill)
-      rescue
-        _ -> :ok
-      catch
-        _, _ -> :ok
-      end
-    end
+    stop_backend_session(state.session, state.backend)
 
     # We do NOT manually SIGKILL the CLI OS process here. It's tracked
     # via BoomLooper.Resources.track(:claude_cli, os_pid) so the Janitor
@@ -2477,6 +2449,40 @@ defmodule BoomLooper.ChatAgent do
       state.claude_session_id != "" and
       state.last_activity_at != nil and
       DateTime.diff(DateTime.utc_now(), state.last_activity_at, :second) >= idle_reap_seconds()
+  end
+
+  # Stop a backend session with a 3s timeout. Uses async_nolink so a
+  # crash in backend.stop/1 never propagates back as an EXIT signal
+  # to the ChatAgent GenServer — an unsupervised Task.async would
+  # link and kill us. See plans/agent-sanity.md "unsupervised
+  # Task.async" audit finding.
+  #
+  # Returns :ok regardless of what happened to the task. The caller
+  # is stopping the session anyway; whether backend.stop cleanly
+  # completed, timed out, or crashed is academic — the Janitor-owned
+  # :claude_cli resource will SIGKILL the OS pid on our DOWN.
+  @backend_stop_timeout_ms 3_000
+
+  defp stop_backend_session(nil, _backend), do: :ok
+  defp stop_backend_session(_session, nil), do: :ok
+
+  defp stop_backend_session(session, backend) do
+    task =
+      Task.Supervisor.async_nolink(BoomLooper.TaskSupervisor, fn ->
+        backend.stop(session)
+      end)
+
+    # yield returns:
+    #   {:ok, result}    — stop completed cleanly
+    #   {:exit, reason}  — task died (raise, etc) — ok, we're already stopping
+    #   nil              — timeout — shutdown forcibly
+    case Task.yield(task, @backend_stop_timeout_ms) do
+      {:ok, _} -> :ok
+      {:exit, _} -> :ok
+      nil -> Task.shutdown(task, :brutal_kill)
+    end
+
+    :ok
   end
 
   defp session_opts_with_resume(state) do

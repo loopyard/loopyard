@@ -679,12 +679,48 @@ defmodule BoomLooper.PortRegistry do
   end
 
   defp start_exposer(key, entry) do
-    spec = {BoomLooper.PortExposer, key: key, host_port: entry.host_port}
+    # On macOS, Docker's Colima SSH tunnel binds 127.0.0.1:<host_port>.
+    # Binding 0.0.0.0 on the SAME port conflicts — LAN connections
+    # silently fail. The fix: expose on a SEPARATE port (OS-assigned)
+    # and forward to Docker's loopback port.
+    case allocate_expose_port() do
+      {:ok, expose_port} ->
+        spec =
+          {BoomLooper.PortExposer,
+           key: key,
+           host_port: expose_port,
+           upstream_port: entry.host_port}
 
-    case DynamicSupervisor.start_child(BoomLooper.PortExposerSupervisor, spec) do
-      {:ok, _pid} -> :ok
-      {:error, {:already_started, _}} -> :ok
-      {:error, reason} -> {:error, reason}
+        case DynamicSupervisor.start_child(BoomLooper.PortExposerSupervisor, spec) do
+          {:ok, _pid} ->
+            # Store the expose port on the entry so the sidebar can
+            # render the correct URL for LAN access.
+            updated = Map.put(entry, :expose_port, expose_port)
+            :ets.insert(@table, {key, updated})
+            :ok
+
+          {:error, {:already_started, _}} ->
+            :ok
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # Ask the OS for a port that's genuinely free on 0.0.0.0.
+  defp allocate_expose_port do
+    case :gen_tcp.listen(0, [:binary, ip: {0, 0, 0, 0}, active: false]) do
+      {:ok, sock} ->
+        {:ok, port} = :inet.port(sock)
+        :gen_tcp.close(sock)
+        {:ok, port}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 

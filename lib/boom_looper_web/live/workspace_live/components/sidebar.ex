@@ -272,18 +272,26 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
 
   def port_action(assigns) do
     exposed? = Map.get(assigns.svc, :exposed, false)
+    # When exposed, show the EXPOSE port (the 0.0.0.0 listener, reachable
+    # from LAN). When not exposed, show the Docker host_port (localhost only).
+    display_port =
+      if exposed?,
+        do: Map.get(assigns.svc, :expose_port, assigns.port),
+        else: assigns.port
+
+    url = "http://#{assigns.host}:#{display_port}"
 
     assigns =
       assigns
       |> assign(:exposed?, exposed?)
-      |> assign(:url, "http://#{assigns.host}:#{assigns.port}")
-
-    label =
-      if assigns.exposed?,
-        do: "Open #{assigns.url} in a new tab — port is public",
-        else: "Open #{assigns.url} in a new tab and expose it on 0.0.0.0"
-
-    assigns = assign(assigns, :label, label)
+      |> assign(:display_port, display_port)
+      |> assign(:url, url)
+      |> assign(:label,
+        if(exposed?,
+          do: "Open #{url} — exposed to your network",
+          else: "Expose this port and open #{url}"
+        )
+      )
 
     ~H"""
     <a
@@ -303,7 +311,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
           else: "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700")
       ]}
     >
-      {if @exposed?, do: ":#{@port}", else: "open port"}
+      {if @exposed?, do: ":#{@display_port}", else: "open port"}
     </a>
     """
   end

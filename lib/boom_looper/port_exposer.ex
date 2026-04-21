@@ -23,7 +23,7 @@ defmodule BoomLooper.PortExposer do
   are a "what's happening right now" view and reset on restart.
   """
 
-  use GenServer
+  use GenServer, restart: :temporary
 
   require Logger
 

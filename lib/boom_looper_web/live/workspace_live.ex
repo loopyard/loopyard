@@ -1502,7 +1502,8 @@ defmodule BoomLooperWeb.WorkspaceLive do
         Map.merge(svc, %{
           exposed: entry.exposed,
           container_port: entry.container_port,
-          host_port: entry.host_port
+          host_port: entry.host_port,
+          expose_port: entry[:expose_port]
         })
 
       :none ->
