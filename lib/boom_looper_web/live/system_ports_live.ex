@@ -128,15 +128,22 @@ defmodule BoomLooperWeb.SystemPortsLive do
   attr :r, :map, required: true
 
   defp port_row(assigns) do
+    assigns = assign(assigns, :url, "http://localhost:#{assigns.r.host_port}")
+
     ~H"""
     <tr>
-      <td class="py-2 px-2 font-mono text-xs text-zinc-500">{@r.workspace_id}</td>
+      <td class="py-2 px-2 font-mono text-xs">
+        <.link navigate={"/projects/#{@r.workspace_id}/workspaces/#{@r.workspace_id}"} class="text-violet-600 dark:text-violet-400 hover:underline">
+          {@r.workspace_id}
+        </.link>
+      </td>
       <td class="py-2 px-2">{@r.service}</td>
       <td class="py-2 px-2 text-right font-mono text-xs">
-        <span class={if @r.exposed, do: "text-emerald-600 dark:text-emerald-400", else: "text-zinc-500"}>
-          {@r.host_port}
-        </span>
-        <span class="text-zinc-400">→</span>
+        <a :if={@r.exposed} href={@url} target="_blank" rel="noopener noreferrer" class="text-emerald-600 dark:text-emerald-400 hover:underline">
+          :{@r.host_port}
+        </a>
+        <span :if={!@r.exposed} class="text-zinc-500">:{@r.host_port}</span>
+        <span class="text-zinc-400 mx-0.5">→</span>
         <span>{@r.container_port}</span>
       </td>
       <td class="py-2 px-2">
