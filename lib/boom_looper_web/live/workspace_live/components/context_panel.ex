@@ -177,17 +177,23 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.ContextPanel do
         files
       end
 
-    # Skills
+    # Skills — walk .claude/skills/**/ for any dir containing SKILL.md
     skills_dir = if working_dir, do: Path.join(working_dir, ".claude/skills")
 
     files =
       if skills_dir && File.dir?(skills_dir) do
-        skill_names =
-          File.ls!(skills_dir)
-          |> Enum.filter(&File.dir?(Path.join(skills_dir, &1)))
-          |> Enum.filter(&File.exists?(Path.join([skills_dir, &1, "SKILL.md"])))
+        skill_files =
+          Path.join(skills_dir, "**/SKILL.md")
+          |> Path.wildcard()
+          |> Enum.map(fn skill_path ->
+            # Extract the skill name from the path relative to .claude/skills/
+            skill_path
+            |> Path.relative_to(skills_dir)
+            |> Path.dirname()
+          end)
+          |> Enum.reject(&(&1 == "."))
 
-        files ++ Enum.map(skill_names, &%{name: &1, type: "skill", url: nil})
+        files ++ Enum.map(skill_files, &%{name: &1, type: "skill", url: nil})
       else
         files
       end
