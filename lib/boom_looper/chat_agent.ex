@@ -1414,28 +1414,92 @@ defmodule BoomLooper.ChatAgent do
     state = Map.put(state, :consecutive_crashes, 0)
     state = schedule_idle_check(state)
 
-    # Detect empty responses when context is full — the agent silently
-    # returned nothing useful. Surface a clear message so the user
-    # knows what happened instead of staring at "(no content)".
-    state =
-      if state.context_utilization >= 1.0 && empty_last_response?(state) do
-        err = %{
+    # Detect empty responses when context is full — auto-restart the
+    # session with a summary so the conversation continues instead of
+    # silently dying.
+    if state.context_utilization >= 1.0 && empty_last_response?(state) do
+      info = %{
+        role: :system,
+        content: "⚠ Context window full — restarting session with a summary of recent activity.",
+        timestamp: DateTime.utc_now()
+      }
+      {state, info} = append_message(state, info)
+      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: info})
+
+      # Find the user's last message so we can re-send it after restart
+      last_user_msg =
+        state.messages
+        |> Enum.filter(&(&1.role == :user))
+        |> List.last()
+
+      :ets.insert(@ets_table, {id, summary(state)})
+      Persistence.persist_agent(state, &summary/1)
+
+      # Restart the CLI session — build_resume_message gives the new
+      # session a compact summary of what happened. Then re-send the
+      # user's last message so the agent picks up where it left off.
+      GenServer.cast(self(), {:auto_restart_context, last_user_msg && last_user_msg.content})
+      {:noreply, state}
+    else
+      :ets.insert(@ets_table, {id, summary(state)})
+      Persistence.persist_agent(state, &summary/1)
+      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
+      drain_pending_sends(state)
+    end
+  end
+
+  # Auto-restart when context is exhausted. Restart the CLI session,
+  # send the resume summary, then re-send the user's last message.
+  def handle_cast({:auto_restart_context, last_user_text}, state) do
+    id = state.id
+
+    # Stop old session
+    if state.session do
+      task = Task.async(fn -> state.backend.stop(state.session) end)
+      Task.yield(task, 3_000) || Task.shutdown(task, :brutal_kill)
+    end
+
+    # Start fresh session
+    case state.backend.start_session(session_opts_with_resume(state)) do
+      {:ok, new_session} ->
+        state = %{state |
+          session: new_session,
+          status: :idle,
+          context_utilization: 0.0,
+          context_warning_sent: false
+        }
+
+        restart_msg = %{
           role: :system,
-          content: "⚠ Context window is full — the agent couldn't generate a response. " <>
-            "Start a new agent to continue. Your message history is preserved.",
+          content: "Session restarted with fresh context. Continuing where you left off.",
+          timestamp: DateTime.utc_now()
+        }
+        {state, restart_msg} = append_message(state, restart_msg)
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: restart_msg})
+
+        # Send the resume summary
+        resume = build_resume_message(state)
+        if resume, do: GenServer.cast(self(), {:send_message, resume})
+
+        # Re-send the user's last message so the agent acts on it
+        if last_user_text && last_user_text != "" do
+          GenServer.cast(self(), {:send_message, last_user_text})
+        end
+
+        :ets.insert(@ets_table, {id, summary(state)})
+        Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
+        {:noreply, state}
+
+      {:error, _} ->
+        err = %{
+          role: :error,
+          content: "Failed to restart session. Start a new agent to continue.",
           timestamp: DateTime.utc_now()
         }
         {state, err} = append_message(state, err)
         Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: err})
-        state
-      else
-        state
-      end
-
-    :ets.insert(@ets_table, {id, summary(state)})
-    Persistence.persist_agent(state, &summary/1)
-    Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
-    drain_pending_sends(state)
+        {:noreply, state}
+    end
   end
 
   defp empty_last_response?(state) do
