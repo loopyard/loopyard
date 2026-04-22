@@ -76,6 +76,7 @@ defmodule BoomLooper.ChatAgent.Prompt do
     - `grep` and `glob` instead of `exec grep/find` — structured results, no shell escaping
     - `tree` instead of `exec find` or `ls -R`
     These tools are context-efficient. `exec cat large_file.rb` wastes your context window on thousands of lines you don't need.
+    Tools with large result sets (grep, glob, git) are paginated — if the output says "use offset=N for next page", pass that offset to get more results, or refine your query.
 
     IMPORTANT: Container ports (e.g. 3000) are NOT accessible from the host. Docker maps them to random host ports. Use `probe_http` to find the real URL, or `service_containers` to see port mappings (e.g. 127.0.0.1:32794->3000/tcp means the app is at localhost:32794).
 

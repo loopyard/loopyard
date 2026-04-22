@@ -11,7 +11,7 @@ defmodule BoomLooper.Tools.Container.Glob do
     ]
 
   alias BoomLooper.Docker
-  alias BoomLooper.Tools.Container.Helpers
+  alias BoomLooper.Tools.Container.{Helpers, Pagination}
 
   def execute(%{agent_id: agent_id, pattern: pattern} = params, _assigns) do
     path = Map.get(params, :path, ".") |> Helpers.normalize_search_path()
@@ -48,22 +48,14 @@ defmodule BoomLooper.Tools.Container.Glob do
             {:ok, "No files matched #{inspect(pattern)}"}
 
           {:ok, output} ->
-            all =
+            files =
               output
               |> String.split("\n", trim: true)
               |> Enum.map(&Path.relative_to(&1, "/workspace"))
 
-            total = length(all)
-            page = Enum.slice(all, offset, limit)
-            has_more = total > offset + limit
-
-            footer = cond do
-              has_more -> "\n\n(#{length(page)} of #{total}+ files. Use offset=#{offset + limit} for more)"
-              offset > 0 -> "\n\n(files #{offset + 1}-#{offset + length(page)})"
-              true -> ""
-            end
-
-            {:ok, Enum.join(page, "\n") <> footer}
+            {page, footer} = Pagination.paginate(files, limit: limit, offset: offset)
+            result = Enum.join(page, "\n")
+            {:ok, if(footer, do: result <> "\n\n" <> footer, else: result)}
 
           {:error, reason} ->
             {:error, "find failed: #{inspect(reason)}"}

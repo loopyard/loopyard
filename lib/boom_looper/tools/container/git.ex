@@ -13,6 +13,8 @@ defmodule BoomLooper.Tools.Container.Git do
   Only works for Local workspaces — the host has the .git directory.
   GitHub workspaces don't have host-side git access.
   """
+  alias BoomLooper.Tools.Container.Pagination
+
   def execute(%{agent_id: agent_id, command: command}, _assigns) do
     case BoomLooper.ChatAgent.get_state(agent_id) do
       %{workspace_id: workspace_id} when is_binary(workspace_id) ->
@@ -30,21 +32,13 @@ defmodule BoomLooper.Tools.Container.Git do
         args = OptionParser.split(command)
 
         case System.cmd("git", args, cd: path, stderr_to_stdout: true, env: [{"GIT_TERMINAL_PROMPT", "0"}]) do
-          {output, 0} -> {:ok, cap_output(output)}
-          {output, code} -> {:error, "git #{command} failed (exit #{code}):\n#{cap_output(output)}"}
+          {output, 0} -> {:ok, Pagination.cap(output)}
+          {output, code} -> {:error, "git #{command} failed (exit #{code}):\n#{Pagination.cap(output)}"}
         end
 
       {:error, reason} ->
         {:error, reason}
     end
-  end
-
-  @max_output 8_000
-
-  defp cap_output(output) when byte_size(output) <= @max_output, do: output
-  defp cap_output(output) do
-    String.slice(output, 0, @max_output) <>
-      "\n\n... (#{byte_size(output)} bytes total, truncated to #{@max_output}. Use a more specific command to narrow results.)"
   end
 
   defp host_git_path(workspace_id) do

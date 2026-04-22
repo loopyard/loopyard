@@ -9,25 +9,20 @@ defmodule BoomLooper.Tools.Container.Grep do
       include: {:string, description: "File pattern to filter, e.g. '*.json' or '*.{ts,vue}'"},
       regex: {:boolean, description: "Treat pattern as extended regex (default: false)"},
       output_mode: {:string, description: "'lines' (default — file:line: content) or 'files' (just unique file paths)"},
-      limit: {:integer, description: "Max matches to return (default: 50, max: 200)"},
-      offset: {:integer, description: "Skip this many matches before returning (default: 0). Use for pagination."}
+      limit: {:integer, description: "Max matches to return (default: 50)"},
+      offset: {:integer, description: "Skip this many matches (default: 0). Use for pagination."}
     ]
 
   alias BoomLooper.Docker
-  alias BoomLooper.Tools.Container.Helpers
-
-  # Hard cap on output chars to prevent context blowout.
-  # 50 matches × ~150 chars avg = ~7500 chars. This cap catches
-  # the pathological case (minified files, long lines).
-  @max_output_chars 8_000
+  alias BoomLooper.Tools.Container.{Helpers, Pagination}
 
   def execute(%{agent_id: agent_id, pattern: pattern} = params, _assigns) do
     path = Map.get(params, :path, ".") |> Helpers.normalize_search_path()
     include = Map.get(params, :include)
     regex? = Map.get(params, :regex, false)
     output_mode = Map.get(params, :output_mode, "lines")
-    limit = Map.get(params, :limit, 50) |> min(200)
-    offset = Map.get(params, :offset, 0) |> max(0)
+    limit = Map.get(params, :limit, 50)
+    offset = Map.get(params, :offset, 0)
 
     with {:ok, _} <- Helpers.validate_workspace_path(path) do
       if pattern == "" do
@@ -54,10 +49,9 @@ defmodule BoomLooper.Tools.Container.Grep do
             )
 
         flags = if include, do: flags ++ ["--include=#{include}"], else: flags
-
         full_path = Path.join("/workspace", path)
 
-        # Fetch offset+limit+1 to know if there are more results
+        # Fetch enough for pagination
         fetch_count = offset + limit + 1
 
         cmd =
@@ -85,7 +79,7 @@ defmodule BoomLooper.Tools.Container.Grep do
       |> String.split("\n", trim: true)
       |> Enum.map(fn line ->
         case String.split(line, ":", parts: 3) do
-          [file, _line, _content] -> Path.relative_to(file, "/workspace")
+          [file, _, _] -> Path.relative_to(file, "/workspace")
           _ -> nil
         end
       end)
@@ -99,44 +93,18 @@ defmodule BoomLooper.Tools.Container.Grep do
   end
 
   defp format_output(output, _lines, limit, offset) do
-    all_lines =
+    lines =
       output
       |> String.split("\n", trim: true)
       |> Enum.map(fn line ->
         case String.split(line, ":", parts: 3) do
           [file, lno, content] ->
-            "#{Path.relative_to(file, "/workspace")}:#{lno}: #{String.slice(content, 0..200)}"
-
+            "#{Path.relative_to(file, "/workspace")}:#{lno}: #{content}"
           _ ->
-            String.slice(line, 0..200)
+            line
         end
       end)
 
-    total = length(all_lines)
-    page = Enum.slice(all_lines, offset, limit)
-    has_more = total > offset + limit
-
-    result = Enum.join(page, "\n")
-
-    # Hard cap on output size
-    result =
-      if String.length(result) > @max_output_chars do
-        String.slice(result, 0, @max_output_chars) <> "\n... (output truncated at #{@max_output_chars} chars)"
-      else
-        result
-      end
-
-    footer = cond do
-      has_more && offset > 0 ->
-        "\n\n(showing matches #{offset + 1}-#{offset + length(page)} of #{total}+. Use offset=#{offset + limit} for next page)"
-      has_more ->
-        "\n\n(showing first #{length(page)} matches of #{total}+. Use offset=#{limit} for next page)"
-      offset > 0 ->
-        "\n\n(showing matches #{offset + 1}-#{offset + length(page)})"
-      true ->
-        ""
-    end
-
-    {:ok, result <> footer}
+    {:ok, Pagination.format_lines(lines, limit: limit, offset: offset)}
   end
 end
