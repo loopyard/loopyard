@@ -92,7 +92,9 @@ Hooks.ChatForm = {
       ta.value = ""
       ta.style.height = "auto"
       if (text) this.pushEvent("send_message", { message: text })
-      ta.focus()
+      // Don't call ta.focus() here — textarea stays focused because
+      // we preventDefault on both Enter and form submit. No blur/focus
+      // cycle means no keyboard bounce on mobile.
     }
 
     ta.addEventListener("keydown", (e) => {
@@ -105,6 +107,12 @@ Hooks.ChatForm = {
         ta.style.height = Math.min(ta.scrollHeight, 200) + "px"
       })
     })
+
+    // Prevent the Send button from stealing focus from the textarea.
+    // mousedown fires before blur — preventing it keeps focus on ta.
+    const btn = this.el.querySelector("button[type=submit]")
+    if (btn) btn.addEventListener("mousedown", (e) => e.preventDefault())
+    if (btn) btn.addEventListener("touchstart", (e) => e.preventDefault(), {passive: false})
 
     this.el.addEventListener("submit", (e) => { e.preventDefault(); submit() })
     this.handleEvent("focus_input", () => ta.focus())
