@@ -181,7 +181,7 @@
 
 /* Safari iOS: use dvh for correct height with dynamic toolbar. */
 @supports (height: 100dvh) {
-  .h-screen:not(.chat-stable) { height: 100dvh !important; }
+  .h-screen { height: 100dvh !important; }
 }
 
 
