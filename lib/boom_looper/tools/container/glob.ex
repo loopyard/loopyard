@@ -6,7 +6,8 @@ defmodule BoomLooper.Tools.Container.Glob do
       agent_id: {:string, required: true},
       pattern: {:string, required: true, description: "Glob pattern. '*' matches one segment, '**' matches any depth. Examples: '*.json', '**/*.ts', 'app/**/*.vue'"},
       path: {:string, description: "Subdirectory under /workspace to search from (default: whole workspace)"},
-      head_limit: {:integer, description: "Max files to return (default: 200)"}
+      limit: {:integer, description: "Max files to return (default: 100)"},
+      offset: {:integer, description: "Skip this many files (for pagination, default: 0)"}
     ]
 
   alias BoomLooper.Docker
@@ -14,24 +15,24 @@ defmodule BoomLooper.Tools.Container.Glob do
 
   def execute(%{agent_id: agent_id, pattern: pattern} = params, _assigns) do
     path = Map.get(params, :path, ".") |> Helpers.normalize_search_path()
-    head_limit = Map.get(params, :head_limit, 200)
+    limit = Map.get(params, :limit, 100) |> min(500)
+    offset = Map.get(params, :offset, 0) |> max(0)
 
     with {:ok, _} <- Helpers.validate_workspace_path(path) do
-      cond do
-        pattern == "" ->
-          {:error, "pattern must not be empty"}
-
-        true ->
-          glob_in_container(agent_id, pattern, path, head_limit)
+      if pattern == "" do
+        {:error, "pattern must not be empty"}
+      else
+        glob_in_container(agent_id, pattern, path, limit, offset)
       end
     end
   end
 
-  defp glob_in_container(agent_id, pattern, path, head_limit) do
+  defp glob_in_container(agent_id, pattern, path, limit, offset) do
     case Helpers.resolve_container(agent_id) do
       {:ok, container} ->
         full_path = Path.join("/workspace", path)
         find_args = glob_to_find_args(pattern)
+        fetch_count = offset + limit + 1
 
         cmd =
           "find #{Helpers.shell_quote(full_path)} -type f " <>
@@ -40,24 +41,29 @@ defmodule BoomLooper.Tools.Container.Glob do
             "-not -path '*/deps/*' -not -path '*/.next/*' " <>
             "-not -path '*/dist/*' -not -path '*/target/*' " <>
             "-not -path '*/.venv/*' -not -path '*/__pycache__/*' " <>
-            "#{find_args} 2>/dev/null | head -n #{head_limit}"
+            "#{find_args} 2>/dev/null | sort | head -n #{fetch_count}"
 
         case Docker.exec_in(container, cmd, timeout: 30_000) do
           {:ok, ""} ->
             {:ok, "No files matched #{inspect(pattern)}"}
 
           {:ok, output} ->
-            relative =
+            all =
               output
               |> String.split("\n", trim: true)
               |> Enum.map(&Path.relative_to(&1, "/workspace"))
 
-            truncated =
-              if length(relative) >= head_limit,
-                do: "\n... (truncated to #{head_limit} files)",
-                else: ""
+            total = length(all)
+            page = Enum.slice(all, offset, limit)
+            has_more = total > offset + limit
 
-            {:ok, Enum.join(relative, "\n") <> truncated}
+            footer = cond do
+              has_more -> "\n\n(#{length(page)} of #{total}+ files. Use offset=#{offset + limit} for more)"
+              offset > 0 -> "\n\n(files #{offset + 1}-#{offset + length(page)})"
+              true -> ""
+            end
+
+            {:ok, Enum.join(page, "\n") <> footer}
 
           {:error, reason} ->
             {:error, "find failed: #{inspect(reason)}"}
