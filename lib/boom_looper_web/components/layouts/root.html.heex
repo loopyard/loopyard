@@ -2,12 +2,17 @@
 <html lang="en" class="h-full bg-white dark:bg-zinc-900 safe-area-x">
   <head>
     <meta charset="utf-8" />
-    <%!-- maximum-scale=1 prevents iOS Safari's auto-zoom on input focus.
-         On iOS 10+ this does NOT block user pinch-zoom (Apple ignores it
-         for user-initiated gestures). On Android it DOES block pinch-zoom,
-         but Android doesn't auto-zoom on inputs anyway, so it only matters
-         on iOS where we need it. viewport-fit=cover handles notches. --%>
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+    <%!-- Base viewport. JS below adds maximum-scale=1 on iOS only to
+         prevent auto-zoom on input focus. iOS ignores it for pinch-zoom
+         (safe). Android respects it (blocks pinch-zoom = bad), so we
+         only set it where it's needed. --%>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <script>
+      if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
+        document.querySelector('meta[name=viewport]').setAttribute('content',
+          'width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover');
+      }
+    </script>
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="csrf-token" content={get_csrf_token()} />
