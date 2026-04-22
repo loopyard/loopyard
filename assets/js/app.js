@@ -86,21 +86,22 @@ Hooks.TailScroll = {
 Hooks.ChatForm = {
   mounted() {
     const ta = this.el.querySelector("#chat-input")
+    const btn = this.el.querySelector("button[type=submit]")
 
-    const submit = () => {
+    const send = () => {
       const text = ta.value.trim()
+      if (!text) return
       ta.value = ""
       ta.style.height = "auto"
-      if (text) this.pushEvent("send_message", { message: text })
-      // Don't call ta.focus() here — textarea stays focused because
-      // we preventDefault on both Enter and form submit. No blur/focus
-      // cycle means no keyboard bounce on mobile.
+      this.pushEvent("send_message", { message: text })
     }
 
+    // Enter sends, Shift+Enter for newline
     ta.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit() }
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send() }
     })
 
+    // Auto-resize textarea
     ta.addEventListener("input", () => {
       requestAnimationFrame(() => {
         ta.style.height = "auto"
@@ -108,18 +109,15 @@ Hooks.ChatForm = {
       })
     })
 
-    // Prevent the Send button from stealing focus from the textarea.
-    // mousedown fires before blur — preventing default keeps focus on ta.
-    // touchend handles the actual submit on mobile (touchstart preventDefault
-    // blocks the click event on iOS, so we fire submit from touchend).
-    const btn = this.el.querySelector("button[type=submit]")
+    // Keep textarea focused when tapping Send — prevents keyboard
+    // dismiss/reappear bounce on iOS.
     if (btn) {
-      btn.addEventListener("mousedown", (e) => e.preventDefault())
-      btn.addEventListener("touchstart", (e) => e.preventDefault(), {passive: false})
-      btn.addEventListener("touchend", (e) => { e.preventDefault(); submit() })
+      btn.addEventListener("mousedown", (e) => { e.preventDefault(); send() })
+      btn.addEventListener("touchend", (e) => { e.preventDefault(); send() })
     }
 
-    this.el.addEventListener("submit", (e) => { e.preventDefault(); submit() })
+    // Catch form submit (phx-submit fallback)
+    this.el.addEventListener("submit", (e) => { e.preventDefault(); send() })
     this.handleEvent("focus_input", () => ta.focus())
 
   }
