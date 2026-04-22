@@ -91,7 +91,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
       </div>
       <div class="flex items-center gap-2 flex-none hidden md:flex">
         <.link
-          navigate={"/remote#{@base_path}"}
+          navigate={Path.join("/remote", @base_path)}
           class="focus-ring inline-flex items-center px-2 py-1 text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 transition-colors rounded"
         >
           Remote

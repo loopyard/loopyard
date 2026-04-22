@@ -32,7 +32,7 @@ defmodule BoomLooperWeb.Components.AppHeader do
       <div class="flex items-center gap-4">
         {render_slot(@inner_block)}
         <.link
-          navigate={"/remote#{@current_path}"}
+          navigate={Path.join("/remote", @current_path)}
           aria-label={if @host_exposed, do: "Remote access — exposed. Open connect page.", else: "Remote access — private. Open connect page."}
           class={[
             "focus-ring inline-flex items-center gap-1.5 px-2 min-h-11 md:min-h-0 md:py-1 text-sm font-medium transition-colors rounded",
