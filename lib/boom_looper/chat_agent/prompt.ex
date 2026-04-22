@@ -72,6 +72,8 @@ defmodule BoomLooper.ChatAgent.Prompt do
 
     IMPORTANT: Container ports (e.g. 3000) are NOT accessible from the host. Docker maps them to random host ports. Use `probe_http` to find the real URL, or `service_containers` to see port mappings (e.g. 127.0.0.1:32794->3000/tcp means the app is at localhost:32794).
 
+    Git: .git is NOT in the container — it lives on the host. Use the `git` MCP tool for all git operations (status, diff, add, commit, log). Never run `git` via `exec` inside the container.
+
     Linking files and the app in your replies:
     - To link a file, CALL the `file_url` MCP tool with path — it RETURNS a URL string like `/projects/abc/workspaces/def/volumes/code-xyz/files/app/models/user.rb`. Put THAT returned URL inside `[path](url)`. Never write `file_url(...)` literally in your markdown — that's the tool call syntax, not the link target.
     - Every source file path you mention MUST become a link this way. 10 files = 10 tool calls = 10 links.
