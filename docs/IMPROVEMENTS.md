@@ -29,6 +29,10 @@ A prioritized list of known, scoped improvements for BoomLooper. Ordered within 
 
 7. **Consider SQLite + Ecto for persistent state (later).** Today ETS + an append-only ETF log per workspace is the storage substrate. Works fine at current scale but cross-cuts: registry persistence (`project_store.ex` → JSON), agent messages (`agent_log.ex` → ETF), projects/workspaces (`workspace_registry.ex` → ETS), secrets (`secrets.ex` → JSON) each have bespoke persistence paths. SQLite via Ecto would give us a single queryable store, real transactions, trivial backups, and compaction-for-free. Not urgent — the current setup is fast and has no real bugs pointing at it. Revisit when (a) we want cross-workspace queries ("show every agent that used this secret"), (b) log compaction + migration machinery starts feeling more complex than a schema, or (c) we add multi-node features that need a shared store. Keeping `ProjectStore` / `AgentLog` / `WorkspaceRegistry` as narrow interfaces (not leaking ETS semantics to callers) now makes a later swap tractable — we're already doing that.
 
+## Performance
+
+8. **Paginate chat messages (load recent, fetch older on scroll-up).** Currently all messages are rendered into the DOM on mount (400+ for long-lived agents). At scale this will bog down both the server (serializing the full list) and the browser (laying out hundreds of nodes). Load the last ~50 messages on mount, prepend older batches when the user scrolls to the top. Hard parts: maintaining scroll position when prepending content, coordinating with LiveView's DOM diffing, and deciding the fetch boundary (ETS slice vs. cursor). The `ScrollBottom` hook already tracks scroll position — extend it to detect "at top" and `pushEvent` to request more.
+
 ## How to work this list
 
 - Pick the lowest-numbered open item in the category you're targeting. Ordering within a category encodes "simpler first."
