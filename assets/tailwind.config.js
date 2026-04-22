@@ -25,5 +25,15 @@ module.exports = {
     plugin(({addVariant}) => addVariant("phx-click-loading", [".phx-click-loading&", ".phx-click-loading &"])),
     plugin(({addVariant}) => addVariant("phx-submit-loading", [".phx-submit-loading&", ".phx-submit-loading &"])),
     plugin(({addVariant}) => addVariant("phx-change-loading", [".phx-change-loading&", ".phx-change-loading &"])),
+
+    // iOS keyboard stability: .chat-stable opts out of dvh so the
+    // viewport doesn't shrink when the keyboard opens.
+    plugin(({addUtilities}) => {
+      addUtilities({
+        '.chat-stable': {
+          height: '100vh !important',
+        },
+      })
+    }),
   ]
 }
