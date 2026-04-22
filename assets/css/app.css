@@ -49,6 +49,16 @@
   }
 }
 
+/* Prevent iOS Safari from zooming on input focus. The threshold is
+   16px — anything below triggers an automatic viewport zoom. We force
+   all inputs/textareas/selects to 16px on touch devices. Desktop
+   stays at whatever the component specifies. */
+@media screen and (max-width: 767px) {
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+}
+
 /* Respect reduced-motion preference — disable all non-essential motion. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
