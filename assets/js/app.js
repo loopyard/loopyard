@@ -144,13 +144,18 @@ Hooks.ChatForm = {
   mounted() {
     const ta = this.el.querySelector("#chat-input")
     const btn = this.el.querySelector("button[type=submit]")
+    let sending = false
 
     const send = () => {
+      if (sending) return
       const text = ta.value.trim()
       if (!text) return
+      sending = true
       ta.value = ""
       ta.style.height = "auto"
       this.pushEvent("send_message", { message: text })
+      // Reset guard after a tick so the next message can be sent
+      requestAnimationFrame(() => { sending = false })
     }
 
     // Enter sends, Shift+Enter for newline
