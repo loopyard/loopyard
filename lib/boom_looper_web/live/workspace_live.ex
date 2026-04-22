@@ -1592,7 +1592,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div id="chat-page" phx-hook="ScrollBottom" class="h-screen chat-stable flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
+    <div id="chat-page" phx-hook="ScrollBottom" class="fixed inset-0 flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
       <.chat_header workspace={@workspace} project={@project} workspace_entry={@workspace_entry} live_action={@live_action} base_path={@base_path} iex_session={@iex_session} />
       <.flash_banner flash={@flash} kind={:error} class="mx-4 mt-2" />
       <div class="flex-1 flex min-h-0">
