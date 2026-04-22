@@ -125,7 +125,14 @@ Hooks.Markdown = {
 
     const container = this.el.querySelector(".markdown-body")
     if (container) {
-      container.innerHTML = marked.parse(source, { breaks: true })
+      const renderer = new marked.Renderer()
+      const origLink = renderer.link.bind(renderer)
+      renderer.link = function(href, title, text) {
+        const html = origLink(href, title, text)
+        // Open all links in new tabs
+        return html.replace('<a ', '<a target="_blank" rel="noopener noreferrer" ')
+      }
+      container.innerHTML = marked.parse(source, { breaks: true, renderer })
     }
   }
 }
