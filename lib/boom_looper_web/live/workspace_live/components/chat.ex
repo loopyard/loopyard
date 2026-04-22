@@ -206,7 +206,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
         <.streaming_bubble :if={@streaming_text != ""} text={@streaming_text} />
         <.thinking_indicator :if={@agent.status == :thinking && @streaming_text == ""} messages={@messages} agent_id={@agent.id} active_tool={@agent[:active_tool]} />
       </div>
-      <div id="chat-form-wrapper" phx-update="ignore" class="flex-none border-t border-zinc-200 dark:border-zinc-700/80 p-3 md:p-4 safe-area-bottom">
+      <div id="chat-form-wrapper" phx-update="ignore" class="flex-none border-t border-zinc-200 dark:border-zinc-700/80 p-3 md:p-4">
         <form id="chat-form" phx-submit="send_message" phx-hook="ChatForm" class="flex gap-2">
           <textarea
             name="message" id="chat-input" rows="1"
