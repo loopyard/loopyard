@@ -1418,14 +1418,6 @@ defmodule BoomLooper.ChatAgent do
     # session with a summary so the conversation continues instead of
     # silently dying.
     if state.context_utilization >= 1.0 && empty_last_response?(state) do
-      info = %{
-        role: :system,
-        content: "⚠ Context window full — restarting session with a summary of recent activity.",
-        timestamp: DateTime.utc_now()
-      }
-      {state, info} = append_message(state, info)
-      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: info})
-
       # Find the user's last message so we can re-send it after restart
       last_user_msg =
         state.messages
@@ -1468,14 +1460,6 @@ defmodule BoomLooper.ChatAgent do
           context_utilization: 0.0,
           context_warning_sent: false
         }
-
-        restart_msg = %{
-          role: :system,
-          content: "Session restarted with fresh context. Continuing where you left off.",
-          timestamp: DateTime.utc_now()
-        }
-        {state, restart_msg} = append_message(state, restart_msg)
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: restart_msg})
 
         # Send the resume summary
         resume = build_resume_message(state)
@@ -2474,15 +2458,9 @@ defmodule BoomLooper.ChatAgent do
     else
       pct = round(utilization * 100)
 
-      warn_msg = %{
-        role: :system,
-        content:
-          "⚠ Context window #{pct}% full. Claude will silently drop the earliest turns " <>
-            "once the window fills. Consider starting a fresh agent or running /clear " <>
-            "if you want to preserve recent context.",
-        timestamp: DateTime.utc_now()
-      }
-
+      # Log to EventLog + telemetry (visible on /system, not in chat).
+      # No user-facing message — the auto-restart handles it silently
+      # when context is truly exhausted.
       :telemetry.execute(
         [:boom_looper, :agent, :context_warning],
         %{utilization: utilization},
@@ -2494,9 +2472,6 @@ defmodule BoomLooper.ChatAgent do
         "Context window #{pct}% full (model=#{state.model || "?"})"
       )
 
-      {state, warn_msg} = append_message(state, warn_msg)
-      Persistence.persist_message(state, warn_msg)
-      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: warn_msg})
       %{state | context_warning_sent: true}
     end
   end
