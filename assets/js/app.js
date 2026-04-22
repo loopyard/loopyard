@@ -52,8 +52,12 @@ Hooks.ScrollBottom = {
     this._observer.observe(el, { childList: true, subtree: true })
     this._observedEl = el
 
-    // Scroll now
-    requestAnimationFrame(() => this._scrollToBottom())
+    // Scroll now — double-rAF to ensure the browser has laid out content.
+    // A single rAF fires before layout is complete when LiveView pushes
+    // a large #messages list on mount.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => this._scrollToBottom())
+    })
   },
 
   _scrollToBottom() {
