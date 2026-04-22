@@ -2,6 +2,7 @@ defmodule BoomLooper.Tools.Container.Git do
   use BoomLooper.Tool,
     name: "git",
     description: "Run a git command on the project repo. For Local workspaces, git runs on the HOST (not inside the container) because .git is excluded from volume sync. Supports any git subcommand: status, diff, add, commit, log, branch, etc. Commits use the host's git user.name and user.email.",
+    busy_words: ["git-ing", "committing", "versioning"],
     params: [
       agent_id: {:string, required: true},
       command: {:string, required: true, description: "Git subcommand and args (e.g. 'status', 'diff', 'add -A', 'commit -m \"fix bug\"', 'log --oneline -10')"}

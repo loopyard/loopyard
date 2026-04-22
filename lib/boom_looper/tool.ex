@@ -38,6 +38,7 @@ defmodule BoomLooper.Tool do
     name = Keyword.fetch!(opts, :name)
     description = Keyword.fetch!(opts, :description)
     params = Keyword.get(opts, :params, [])
+    busy_words = Keyword.get(opts, :busy_words, [])
 
     schema = build_schema(params)
 
@@ -50,6 +51,9 @@ defmodule BoomLooper.Tool do
 
       @doc false
       def input_schema, do: unquote(Macro.escape(schema))
+
+      @doc "Words shown in the thinking indicator when this tool is active."
+      def __busy_words__, do: unquote(busy_words)
 
       @before_compile BoomLooper.Tool
     end

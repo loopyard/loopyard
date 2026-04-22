@@ -2,6 +2,7 @@ defmodule BoomLooper.Tools.Container.ExecStream do
   use BoomLooper.Tool,
     name: "exec_stream",
     description: "Run a long-running command with streaming output (e.g. ping, tail -f, watch). Output streams into the chat. The command runs in the background — you can keep working.",
+    busy_words: ["streaming output", "tailing", "watching"],
     params: [
       agent_id: {:string, required: true},
       command: {:string, required: true},

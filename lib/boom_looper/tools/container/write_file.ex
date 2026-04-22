@@ -2,6 +2,7 @@ defmodule BoomLooper.Tools.Container.WriteFile do
   use BoomLooper.Tool,
     name: "write_file",
     description: "Write a file to the workspace. Use for Dockerfile, docker-compose.yml, config files, etc. Path is relative to /workspace.",
+    busy_words: ["writing", "authoring", "crafting"],
     params: [
       agent_id: {:string, required: true},
       path: {:string, required: true, description: "File path relative to /workspace (e.g. '.boomlooper/workspace/Dockerfile' or '.boomlooper/workspace/docker-compose.yml')"},

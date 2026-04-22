@@ -632,8 +632,13 @@ defmodule BoomLooperWeb.WorkspaceLive do
 
   @impl true
   def handle_event("start_agent", %{"id" => id}, socket) do
-    ChatAgent.start_agent(id)
-    {:noreply, socket}
+    case ChatAgent.start_agent(id) do
+      :ok ->
+        {:noreply, socket}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Could not start agent: #{inspect(reason)}")}
+    end
   end
 
   @impl true

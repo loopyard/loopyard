@@ -2,6 +2,7 @@ defmodule BoomLooper.Tools.Container.AppUrl do
   use BoomLooper.Tool,
     name: "app_url",
     description: "Get a clickable URL to a page in the running dev server. Use this after building a feature, fixing a bug, or when the user asks to see/open/view something in their browser. The URL automatically adapts to each viewer's hostname (localhost, LAN, tunnel).",
+    busy_words: ["building a link", "URL crafting"],
     params: [
       agent_id: {:string, required: true},
       path: {:string, required: true, description: "Route path in the app (e.g. '/', '/users', '/admin/dashboard', '/code/my-article')"},

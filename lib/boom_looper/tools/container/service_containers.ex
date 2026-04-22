@@ -2,6 +2,7 @@ defmodule BoomLooper.Tools.Container.ServiceContainers do
   use BoomLooper.Tool,
     name: "service_containers",
     description: "List all containers for this workspace. Call ONCE after rebuild completes. Do NOT poll — if containers aren't up, read logs instead.",
+    busy_words: ["listing containers", "taking inventory"],
     params: [
       agent_id: {:string, required: true}
     ]

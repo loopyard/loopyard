@@ -2,6 +2,7 @@ defmodule BoomLooper.Tools.Container.DockerCompose do
   use BoomLooper.Tool,
     name: "docker_compose",
     description: "Run any docker compose command. Compose file is at .boomlooper/workspace/docker-compose.yml",
+    busy_words: ["composing", "orchestrating containers", "wrangling Docker"],
     params: [
       agent_id: {:string, required: true},
       command: {:string, required: true, description: "Compose command (e.g. 'up -d --build', 'down', 'ps', 'logs dev', 'restart dev')"},

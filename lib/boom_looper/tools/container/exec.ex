@@ -2,6 +2,7 @@ defmodule BoomLooper.Tools.Container.Exec do
   use BoomLooper.Tool,
     name: "exec",
     description: "Run a shell command inside the container. Use timeout for long-running commands (dependency installs, builds, etc.).",
+    busy_words: ["running a command", "executing", "shelling out"],
     params: [
       agent_id: {:string, required: true},
       command: {:string, required: true},

@@ -2,6 +2,7 @@ defmodule BoomLooper.Tools.Container.FileUrl do
   use BoomLooper.Tool,
     name: "file_url",
     description: "Get a clickable URL to view a workspace file with syntax highlighting in the browser.",
+    busy_words: ["linking a file", "URL crafting"],
     params: [
       agent_id: {:string, required: true},
       path: {:string, required: true, description: "File path relative to /workspace (e.g. 'Gemfile', 'app/models/user.rb')"}

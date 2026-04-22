@@ -116,29 +116,13 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.ThinkingIndicatorTest do
     end
   end
 
-  # Helper to get the tool phrases map for assertions
+  # Build the tool phrases map from the actual tool modules — single source of truth.
   defp tool_phrase_map do
-    %{
-      "read_file" => ["reading", "scanning", "peeking at", "eyeballing"],
-      "read_files" => ["speed-reading", "devouring files", "binge-reading"],
-      "edit" => ["editing", "surgically modifying", "tweaking", "patching"],
-      "multi_edit" => ["bulk editing", "refactoring", "rewriting"],
-      "write_file" => ["writing", "authoring", "crafting"],
-      "grep" => ["grepping", "hunting for matches", "searching"],
-      "glob" => ["finding files", "globbing", "scouting"],
-      "tree" => ["mapping the codebase", "surveying", "exploring"],
-      "exec" => ["running a command", "executing", "shelling out"],
-      "exec_stream" => ["streaming output", "tailing", "watching"],
-      "logs" => ["reading logs", "log diving", "checking output"],
-      "docker_compose" => ["composing", "orchestrating containers", "wrangling Docker"],
-      "probe_http" => ["probing", "pinging the server", "checking if it's alive"],
-      "git" => ["git-ing", "committing", "versioning"],
-      "inspect_service" => ["inspecting", "diagnosing", "checking vitals"],
-      "inspect_env" => ["checking the environment", "env snooping"],
-      "service_containers" => ["listing containers", "taking inventory"],
-      "app_url" => ["building a link", "URL crafting"],
-      "file_url" => ["linking a file", "URL crafting"],
-      "workspace_info" => ["checking workspace", "getting bearings"]
-    }
+    for mod <- BoomLooper.Tools.Container.__tool_server__().tools,
+        words = mod.__busy_words__(),
+        words != [],
+        into: %{} do
+      {mod.__tool_name__(), words}
+    end
   end
 end

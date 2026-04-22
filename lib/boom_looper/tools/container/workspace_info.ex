@@ -2,6 +2,7 @@ defmodule BoomLooper.Tools.Container.WorkspaceInfo do
   use BoomLooper.Tool,
     name: "workspace_info",
     description: "Get workspace metadata: ID, volume name, paths, container names",
+    busy_words: ["checking workspace", "getting bearings"],
     params: [
       agent_id: {:string, required: true}
     ]

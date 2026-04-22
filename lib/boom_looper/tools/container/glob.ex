@@ -2,6 +2,7 @@ defmodule BoomLooper.Tools.Container.Glob do
   use BoomLooper.Tool,
     name: "glob",
     description: "Find files in the workspace by glob pattern (e.g. '*.json', '**/*.ts', 'app/**/*.vue'). Returns paths relative to /workspace. PREFER THIS over `exec(\"find ...\")`. Excludes the same junk dirs as `grep`.",
+    busy_words: ["finding files", "globbing", "scouting"],
     params: [
       agent_id: {:string, required: true},
       pattern: {:string, required: true, description: "Glob pattern. '*' matches one segment, '**' matches any depth. Examples: '*.json', '**/*.ts', 'app/**/*.vue'"},

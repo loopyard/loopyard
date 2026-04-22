@@ -2,6 +2,7 @@ defmodule BoomLooper.Tools.Container.ProbeHttp do
   use BoomLooper.Tool,
     name: "probe_http",
     description: "Probe an HTTP endpoint from the HOST'S perspective — the same vantage point the eval runner uses. ALWAYS use this to verify the dev server is reachable. Without args, finds the workspace's published host port and probes /. Pass `port` to override which container port to look up, or `path` to hit /up, /health, etc. The response includes the exact URL probed, status code, body preview, and (on failure) a per-stack diagnosis of likely causes.",
+    busy_words: ["probing", "pinging the server", "checking if it's alive"],
     params: [
       agent_id: {:string, required: true},
       port: {:integer, description: "Container port to look up (e.g. 3000). Default: probe whatever's published on workspace or dev container."},

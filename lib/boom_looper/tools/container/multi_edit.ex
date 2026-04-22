@@ -2,6 +2,7 @@ defmodule BoomLooper.Tools.Container.MultiEdit do
   use BoomLooper.Tool,
     name: "multi_edit",
     description: "Apply many edits to one file as a single atomic read-modify-write. Cheaper than calling `edit` N times. Edits run in order against the running result, so a later edit can match text produced by an earlier one. If ANY edit fails, the file is not written.",
+    busy_words: ["bulk editing", "refactoring", "rewriting"],
     params: [
       agent_id: {:string, required: true},
       path: {:string, required: true, description: "File path relative to /workspace"},

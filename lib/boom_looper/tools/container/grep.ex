@@ -2,6 +2,7 @@ defmodule BoomLooper.Tools.Container.Grep do
   use BoomLooper.Tool,
     name: "grep",
     description: "Recursive content search inside the workspace. Returns structured matches. Excludes .git/node_modules/vendor etc. Results are paginated — use offset to page through large result sets.",
+    busy_words: ["grepping", "hunting for matches", "searching"],
     params: [
       agent_id: {:string, required: true},
       pattern: {:string, required: true, description: "Text to search for. Fixed string by default — pass regex=true for extended regex."},
