@@ -90,7 +90,8 @@ defmodule BoomLooperWeb.Components.LogViewer do
           open
         </a>
       </div>
-      <pre class={"px-3 py-2 text-xs font-mono text-zinc-800 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-950 whitespace-pre-wrap overflow-y-auto #{if @status == :building, do: "max-h-64", else: "max-h-32"}"}>{Ansi.to_html(@display)}</pre>
+      <pre id={"log-#{System.unique_integer([:positive])}"} phx-hook="TailScroll"
+        class={"px-3 py-2 text-xs font-mono text-zinc-800 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-950 whitespace-pre-wrap overflow-y-auto #{if @status == :building, do: "max-h-64", else: "max-h-32"}"}>{Ansi.to_html(@display)}</pre>
     </div>
     """
   end

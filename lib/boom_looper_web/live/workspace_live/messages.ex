@@ -206,17 +206,26 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
     """
   end
 
-  # Check if this tool_result follows an exec tool call — the output was
-  # already streamed to a build message in the chat, so showing it again
-  # as a tool_result is redundant.
+  # Check if this tool_result has a streamed build message above it —
+  # the output was already shown live, so rendering it again is redundant.
+  # Message order is: :tool (exec) → :build_done (streamed output) → :tool_result
   defp streamed_exec_result?(assigns) do
     idx = assigns[:idx]
     messages = assigns[:messages]
 
     if idx && messages && idx > 0 do
-      prev = Enum.at(messages, idx - 1)
-      prev && prev.role == :tool && is_binary(prev[:tool]) &&
-        String.ends_with?(prev.tool, "__exec")
+      # Walk backwards from this tool_result to find the matching :tool call,
+      # skipping any build/build_done/build_failed messages in between.
+      messages
+      |> Enum.slice(0, idx)
+      |> Enum.reverse()
+      |> Enum.find(fn m -> m.role not in [:build, :build_done, :build_failed] end)
+      |> case do
+        %{role: :tool, tool: tool} when is_binary(tool) ->
+          String.ends_with?(tool, "__exec")
+        _ ->
+          false
+      end
     else
       false
     end
