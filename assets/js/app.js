@@ -109,10 +109,15 @@ Hooks.ChatForm = {
     })
 
     // Prevent the Send button from stealing focus from the textarea.
-    // mousedown fires before blur — preventing it keeps focus on ta.
+    // mousedown fires before blur — preventing default keeps focus on ta.
+    // touchend handles the actual submit on mobile (touchstart preventDefault
+    // blocks the click event on iOS, so we fire submit from touchend).
     const btn = this.el.querySelector("button[type=submit]")
-    if (btn) btn.addEventListener("mousedown", (e) => e.preventDefault())
-    if (btn) btn.addEventListener("touchstart", (e) => e.preventDefault(), {passive: false})
+    if (btn) {
+      btn.addEventListener("mousedown", (e) => e.preventDefault())
+      btn.addEventListener("touchstart", (e) => e.preventDefault(), {passive: false})
+      btn.addEventListener("touchend", (e) => { e.preventDefault(); submit() })
+    }
 
     this.el.addEventListener("submit", (e) => { e.preventDefault(); submit() })
     this.handleEvent("focus_input", () => ta.focus())
