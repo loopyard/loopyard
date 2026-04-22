@@ -68,7 +68,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
         <.link
           :if={@back_kind == :patch}
           patch={@back_target}
-          class="md:hidden -ml-1 inline-flex items-center gap-1 px-2 py-1 rounded-md text-sm font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 active:bg-violet-100 dark:active:bg-violet-500/20 transition-colors flex-none min-w-0"
+          class="md:hidden -ml-1 inline-flex items-center gap-1 px-2 py-1 rounded-md text-base font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 active:bg-violet-100 dark:active:bg-violet-500/20 transition-colors flex-none min-w-0"
         >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 flex-none">
             <path fill-rule="evenodd" d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z" clip-rule="evenodd" />
@@ -78,7 +78,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
         <.link
           :if={@back_kind == :navigate}
           navigate={@back_target}
-          class="md:hidden -ml-1 inline-flex items-center gap-1 px-2 py-1 rounded-md text-sm font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 active:bg-violet-100 dark:active:bg-violet-500/20 transition-colors flex-none min-w-0"
+          class="md:hidden -ml-1 inline-flex items-center gap-1 px-2 py-1 rounded-md text-base font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 active:bg-violet-100 dark:active:bg-violet-500/20 transition-colors flex-none min-w-0"
         >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 flex-none">
             <path fill-rule="evenodd" d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z" clip-rule="evenodd" />
@@ -92,13 +92,13 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
       <div class="flex items-center gap-2 flex-none hidden md:flex">
         <.link
           navigate={Path.join("/remote", @base_path)}
-          class="focus-ring inline-flex items-center px-2 py-1 text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 transition-colors rounded"
+          class="focus-ring inline-flex items-center px-2 py-1 text-base font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 transition-colors rounded"
         >
           Remote
         </.link>
         <.link
           navigate="/system"
-          class="focus-ring inline-flex items-center px-2 py-1 text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 transition-colors rounded"
+          class="focus-ring inline-flex items-center px-2 py-1 text-base font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 transition-colors rounded"
         >
           System
         </.link>
@@ -135,7 +135,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
       <div class="flex items-center justify-between px-3 md:px-5 h-12 gap-2">
         <div class="flex items-center gap-2 md:gap-3 min-w-0">
           <.dot color={status_dot(@agent.status)} />
-          <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate">{@agent.name}</span>
+          <span class="text-base font-semibold text-zinc-900 dark:text-zinc-100 truncate">{@agent.name}</span>
           <span :if={@agent[:last_activity_at]} class="text-xs text-zinc-400 dark:text-zinc-500 hidden sm:block flex-none">
             {time_ago(@agent[:last_activity_at])}
           </span>
@@ -212,11 +212,11 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
             name="message" id="chat-input" rows="1"
             placeholder="Type a message..."
             autocomplete="off"
-            class="flex-1 rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-2.5 text-sm
+            class="flex-1 rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-2.5 text-base
                    text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 resize-none
                    focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"></textarea>
           <button type="submit"
-            class="rounded-xl bg-violet-600 hover:bg-violet-700 px-4 py-2.5 text-sm font-medium text-white transition-colors flex-none">
+            class="rounded-xl bg-violet-600 hover:bg-violet-700 px-4 py-2.5 text-base font-medium text-white transition-colors flex-none">
             Send
           </button>
         </form>
@@ -250,7 +250,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
             <div class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style="animation-delay: 150ms"></div>
             <div class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style="animation-delay: 300ms"></div>
           </div>
-          <span class="text-sm text-violet-500 dark:text-violet-400 flex-none">{@word}...</span>
+          <span class="text-base text-violet-500 dark:text-violet-400 flex-none">{@word}...</span>
         </div>
         <p :if={@last_action} class="text-xs text-zinc-500 dark:text-zinc-400 mt-1 truncate">{@last_action}</p>
       </div>
@@ -263,7 +263,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
   def container_panel(%{has_container: false} = assigns) do
     ~H"""
     <div class="flex-1 flex items-center justify-center">
-      <p class="text-sm text-zinc-400 dark:text-zinc-500">No container running</p>
+      <p class="text-base text-zinc-400 dark:text-zinc-500">No container running</p>
     </div>
     """
   end

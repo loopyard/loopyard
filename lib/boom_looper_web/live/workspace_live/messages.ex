@@ -44,7 +44,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
             <path d="M3.5 6.75c0-.69.56-1.25 1.25-1.25H7A.75.75 0 0 0 7 4H4.75A2.75 2.75 0 0 0 2 6.75v4.5A2.75 2.75 0 0 0 4.75 14h4.5A2.75 2.75 0 0 0 12 11.25V9a.75.75 0 0 0-1.5 0v2.25c0 .69-.56 1.25-1.25 1.25h-4.5c-.69 0-1.25-.56-1.25-1.25v-4.5Z" />
           </svg>
         </a>
-        <div class="markdown-body markdown-body-user text-sm"></div>
+        <div class="markdown-body markdown-body-user text-base"></div>
       </div>
     </div>
     """
@@ -75,7 +75,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
             <path d="M3.5 6.75c0-.69.56-1.25 1.25-1.25H7A.75.75 0 0 0 7 4H4.75A2.75 2.75 0 0 0 2 6.75v4.5A2.75 2.75 0 0 0 4.75 14h4.5A2.75 2.75 0 0 0 12 11.25V9a.75.75 0 0 0-1.5 0v2.25c0 .69-.56 1.25-1.25 1.25h-4.5c-.69 0-1.25-.56-1.25-1.25v-4.5Z" />
           </svg>
         </a>
-        <div class="markdown-body text-sm text-zinc-900 dark:text-zinc-100"></div>
+        <div class="markdown-body text-base text-zinc-900 dark:text-zinc-100"></div>
       </div>
     </div>
     """
@@ -91,7 +91,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
           <path fill-rule="evenodd" d="M6.955 1.45A.5.5 0 0 1 7.452 1h1.096a.5.5 0 0 1 .497.45l.17 1.699c.484.12.94.312 1.356.562l1.321-.916a.5.5 0 0 1 .67.033l.774.775a.5.5 0 0 1 .034.67l-.916 1.32c.25.417.443.873.563 1.357l1.699.17a.5.5 0 0 1 .45.497v1.096a.5.5 0 0 1-.45.497l-1.699.17c-.12.484-.312.94-.562 1.356l.916 1.321a.5.5 0 0 1-.034.67l-.774.774a.5.5 0 0 1-.67.033l-1.32-.916c-.417.25-.874.443-1.357.563l-.17 1.699a.5.5 0 0 1-.497.45H7.452a.5.5 0 0 1-.497-.45l-.17-1.699a4.973 4.973 0 0 1-1.356-.562l-1.321.916a.5.5 0 0 1-.67-.033l-.774-.775a.5.5 0 0 1-.034-.67l.916-1.32a4.971 4.971 0 0 1-.562-1.357l-1.699-.17A.5.5 0 0 1 1 8.548V7.452a.5.5 0 0 1 .45-.497l1.699-.17c.12-.484.312-.94.562-1.356l-.916-1.321a.5.5 0 0 1 .034-.67l.774-.774a.5.5 0 0 1 .67-.033l1.32.916c.417-.25.874-.443 1.357-.563l.17-1.699ZM8 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" clip-rule="evenodd" />
         </svg>
       </div>
-      <span class="text-sm text-blue-600 dark:text-blue-400">{@summary}</span>
+      <span class="text-base text-blue-600 dark:text-blue-400">{@summary}</span>
     </div>
     """
   end
@@ -176,7 +176,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
         <span class="text-xs font-bold text-violet-600 dark:text-violet-400">C</span>
       </div>
       <div class="max-w-[85%] rounded-2xl rounded-tl-sm bg-zinc-100 dark:bg-zinc-800 px-4 py-2.5" id="streaming-msg" phx-hook="Markdown" data-source={@text}>
-        <div class="markdown-body text-sm text-zinc-900 dark:text-zinc-100"></div>
+        <div class="markdown-body text-base text-zinc-900 dark:text-zinc-100"></div>
         <span class="inline-block w-1.5 h-4 bg-violet-500 animate-pulse ml-0.5 align-middle"></span>
       </div>
     </div>
