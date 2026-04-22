@@ -271,27 +271,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
     """
   end
 
-  # Port number link — opens the dev server in a new tab.
-  attr :host, :string, required: true
-  attr :port, :integer, required: true
-
-  defp port_link(assigns) do
-    assigns = assign(assigns, :url, "http://#{assigns.host}:#{assigns.port}")
-
-    ~H"""
-    <a
-      href={@url}
-      target="_blank"
-      rel="noopener noreferrer"
-      aria-label={"Open #{@url}"}
-      class="focus-ring text-xs font-mono text-violet-600 dark:text-violet-400 hover:text-violet-500 transition-colors"
-    >
-      :{@port}
-    </a>
-    """
-  end
-
-  # Local / Network toggle button — switches the proxy bind address.
+  # Open Port button — switches the proxy bind address.
   attr :svc, :map, required: true
 
   defp share_button(assigns) do

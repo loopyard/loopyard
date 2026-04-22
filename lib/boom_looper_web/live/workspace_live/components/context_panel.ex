@@ -25,6 +25,8 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.ContextPanel do
     ]}>
       <.agent_name agent={@agent} editing_name={@editing_name} />
 
+      <.context_files agent={@agent} />
+
       <.section label="Info">
         <.info_row
           label="Status"
@@ -124,6 +126,87 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.ContextPanel do
       </div>
     </.section>
     """
+  end
+
+  defp context_files(assigns) do
+    files = discover_context_files(assigns.agent)
+    assigns = assign(assigns, :files, files)
+
+    ~H"""
+    <.section :if={@files != []} label="Context">
+      <div class="space-y-0.5 px-2">
+        <div :for={file <- @files} class="flex items-center gap-2 min-h-6 text-xs">
+          <span class="text-zinc-500 flex-none">{file.type}</span>
+          <%= if file.url do %>
+            <a href={file.url} target="_blank" rel="noopener" class="font-mono text-violet-600 dark:text-violet-400 hover:underline truncate">
+              {file.name}
+            </a>
+          <% else %>
+            <span class="font-mono text-zinc-700 dark:text-zinc-300 truncate">{file.name}</span>
+          <% end %>
+        </div>
+      </div>
+    </.section>
+    """
+  end
+
+  # Discover what context files are loaded for this agent.
+  # Checks the agent's working_dir for CLAUDE.md, .claude/ configs,
+  # skills, and the system prompt.
+  defp discover_context_files(agent) do
+    working_dir = agent[:working_dir]
+    ws_id = agent[:workspace_id]
+
+    files = []
+
+    # CLAUDE.md
+    files =
+      if working_dir && File.exists?(Path.join(working_dir, "CLAUDE.md")) do
+        volume = if ws_id, do: BoomLooper.Workspace.volume_name_for(ws_id)
+        url = if volume, do: file_url_path(ws_id, volume, "CLAUDE.md")
+        files ++ [%{name: "CLAUDE.md", type: "memory", url: url}]
+      else
+        files
+      end
+
+    # .claude/CLAUDE.md
+    files =
+      if working_dir && File.exists?(Path.join(working_dir, ".claude/CLAUDE.md")) do
+        files ++ [%{name: ".claude/CLAUDE.md", type: "memory", url: nil}]
+      else
+        files
+      end
+
+    # Skills
+    skills_dir = if working_dir, do: Path.join(working_dir, ".claude/skills")
+
+    files =
+      if skills_dir && File.dir?(skills_dir) do
+        skill_names =
+          File.ls!(skills_dir)
+          |> Enum.filter(&File.dir?(Path.join(skills_dir, &1)))
+          |> Enum.filter(&File.exists?(Path.join([skills_dir, &1, "SKILL.md"])))
+
+        files ++ Enum.map(skill_names, &%{name: &1, type: "skill", url: nil})
+      else
+        files
+      end
+
+    # System prompt (always present)
+    files ++ [%{name: "system prompt", type: "prompt", url: nil}]
+  rescue
+    _ -> [%{name: "system prompt", type: "prompt", url: nil}]
+  end
+
+  defp file_url_path(ws_id, volume, path) do
+    # Find project_id for the URL
+    case BoomLooper.ProjectRegistry.get_workspace(ws_id) do
+      %{project_id: pid} ->
+        "/projects/#{pid}/workspaces/#{ws_id}/volumes/#{volume}/files/#{path}"
+      _ -> nil
+    end
+  rescue
+    _ -> nil
   end
 
   @doc "Shorten MCP tool name for display (strip server prefix)."
