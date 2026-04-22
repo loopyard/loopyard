@@ -244,15 +244,30 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         <span class="truncate text-zinc-600 dark:text-zinc-400">{@svc.name}</span>
       </.link>
       <div class="flex items-center justify-end gap-1.5">
-        <.port_link
-          :if={@first_port && @svc.status == :running}
-          host={@host}
-          port={@first_port}
-        />
-        <.share_button
-          :if={@first_port && Map.get(@svc, :container_port) && @svc.status == :running}
-          svc={@svc}
-        />
+        <%!-- Open port: green pill with port number (link opens URL).
+             Closed port: plain link + Open Port button.
+             Close Port lives on the service detail page, not here. --%>
+        <%= if @first_port && @svc.status == :running && Map.get(@svc, :exposed) do %>
+          <a
+            href={"http://#{@host}:#{@first_port}"}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={"Open http://#{@host}:#{@first_port}"}
+            class="focus-ring inline-flex items-center min-h-8 md:min-h-6 px-2 rounded text-xs font-mono font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
+          >
+            :{@first_port}
+          </a>
+        <% else %>
+          <.port_link
+            :if={@first_port && @svc.status == :running}
+            host={@host}
+            port={@first_port}
+          />
+          <.share_button
+            :if={@first_port && Map.get(@svc, :container_port) && @svc.status == :running && !Map.get(@svc, :exposed)}
+            svc={@svc}
+          />
+        <% end %>
         <span :if={!@first_port && service_status_text(@svc)} class="text-xs text-blue-500 dark:text-blue-400">{service_status_text(@svc)}</span>
         <span :if={!@first_port && !service_status_text(@svc) && @svc.status == :running} class="text-xs text-zinc-500 dark:text-zinc-400 font-mono truncate max-w-[88px]">{service_detail(@svc)}</span>
         <span :if={@svc.status == :crashed && @svc.exit_info} class="text-xs text-red-500 truncate max-w-[88px]">{exit_reason(@svc.exit_info)}</span>

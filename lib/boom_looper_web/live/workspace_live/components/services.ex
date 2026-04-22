@@ -8,9 +8,11 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Services do
 
   def service_log_view(assigns) do
     svc = Enum.find(assigns.service_statuses, &(&1.name == assigns.service_name))
-    first_port = if svc, do: first_host_port(svc.ports), else: nil
+    first_port = if svc, do: (Map.get(svc, :host_port) || first_host_port(svc.ports)), else: nil
     running? = svc && svc.status == :running
-    assigns = assign(assigns, svc: svc, first_port: first_port, running?: running?)
+    exposed? = svc && Map.get(svc, :exposed, false)
+    container_port = svc && Map.get(svc, :container_port)
+    assigns = assign(assigns, svc: svc, first_port: first_port, running?: running?, exposed?: exposed?, container_port: container_port)
 
     ~H"""
     <.detail_panel>
@@ -49,6 +51,20 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Services do
             class="px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors">
             Open
           </a>
+          <.control_btn :if={@exposed? && @container_port}
+            phx-click="toggle_port_exposure"
+            phx-value-service={@service_name}
+            phx-value-container_port={@container_port}
+            phx-value-expose="false">
+            Close Port
+          </.control_btn>
+          <.control_btn :if={!@exposed? && @container_port && @running?}
+            phx-click="toggle_port_exposure"
+            phx-value-service={@service_name}
+            phx-value-container_port={@container_port}
+            phx-value-expose="true">
+            Open Port
+          </.control_btn>
         </div>
       </:header>
       <%!-- Service is up → show logs. Service is stopped/missing →
