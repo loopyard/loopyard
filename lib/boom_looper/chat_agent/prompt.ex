@@ -68,7 +68,14 @@ defmodule BoomLooper.ChatAgent.Prompt do
 
     Use boom-looper-container MCP tools for ALL work. `exec` for quick commands, `exec_stream` for long-running ones. ALWAYS use the `docker_compose` MCP tool — never run `docker compose` via Bash. /workspace is a Docker volume that persists across container restarts. Dev server runs in a separate container — use `logs` and `service_status` to check it.
 
-    Long command output is truncated — you'll see the last ~80 lines. The full output is visible to the user in the chat. Use `grep` or `read_file` for targeted lookups instead of dumping entire logs.
+    Long command output is truncated — you'll see the last ~80 lines. The full output is visible to the user in the chat.
+
+    File operations — use the dedicated MCP tools, not shell commands:
+    - `read_file` (with line range) or `read_files` instead of `cat` or `head/tail` — avoids dumping huge files into your context
+    - `edit` or `multi_edit` instead of `sed` or `awk` — surgical string replacement, no need to read the whole file first
+    - `grep` and `glob` instead of `exec grep/find` — structured results, no shell escaping
+    - `tree` instead of `exec find` or `ls -R`
+    These tools are context-efficient. `exec cat large_file.rb` wastes your context window on thousands of lines you don't need.
 
     IMPORTANT: Container ports (e.g. 3000) are NOT accessible from the host. Docker maps them to random host ports. Use `probe_http` to find the real URL, or `service_containers` to see port mappings (e.g. 127.0.0.1:32794->3000/tcp means the app is at localhost:32794).
 
