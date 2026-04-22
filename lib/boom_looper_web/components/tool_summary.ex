@@ -23,7 +23,6 @@ defmodule BoomLooperWeb.Components.ToolSummary do
       {"send_message_to_agent", %{"agent_id" => id}} -> "Sent message to agent #{String.slice(id, 0..8)}"
       {"stop_agent", %{"agent_id" => id}} -> "Stopped agent #{String.slice(id, 0..8)}"
       {"exec", _} -> "Execute"
-      {"exec_stream", _} -> "Execute"
       {"read_files", %{"paths" => paths}} when is_list(paths) -> "Read #{length(paths)} files"
       {"read_files", _} -> "Read files"
       {"multi_edit", %{"file_path" => path}} -> "Multi-edit #{shorten_path(path)}"

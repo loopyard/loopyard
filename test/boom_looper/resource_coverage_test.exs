@@ -36,9 +36,9 @@ defmodule BoomLooper.ResourceCoverageTest do
     * `lib/boom_looper/tools/container/docker_compose.ex` — docker
       compose CLI, short-lived, linked to the caller.
 
-    * `lib/boom_looper/tools/container/exec_stream.ex` — docker
-      exec CLI wrapped in a supervised Task whose linked Port dies
-      with the Task. Task is the lifetime container.
+    * `lib/boom_looper/tools/container/exec.ex` — docker
+      exec CLI with streaming output via Port. Port dies when the
+      tool call completes (or times out).
 
   Mutagen sessions are NOT in scope — the SyncMonitor design
   explicitly preserves them across GenServer restarts (see
@@ -60,7 +60,7 @@ defmodule BoomLooper.ResourceCoverageTest do
     "lib/boom_looper/volume_cloner.ex",
     "lib/boom_looper/eval_runner.ex",
     "lib/boom_looper/tools/container/docker_compose.ex",
-    "lib/boom_looper/tools/container/exec_stream.ex"
+    "lib/boom_looper/tools/container/exec.ex"
   ]
 
   test "every Port.open/2 site is either tracked or in the allowlist" do

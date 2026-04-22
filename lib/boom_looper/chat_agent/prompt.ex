@@ -66,7 +66,7 @@ defmodule BoomLooper.ChatAgent.Prompt do
     """
     Workspace container: #{container}. YOUR AGENT ID: #{agent_id}. Pass agent_id to every tool call.
 
-    Use boom-looper-container MCP tools for ALL work. `exec` for quick commands, `exec_stream` for long-running ones. ALWAYS use the `docker_compose` MCP tool — never run `docker compose` via Bash. /workspace is a Docker volume that persists across container restarts. Dev server runs in a separate container — use `logs` and `service_status` to check it.
+    Use boom-looper-container MCP tools for ALL work. `exec` for shell commands (output streams live, use timeout for long-running ones). ALWAYS use the `docker_compose` MCP tool — never run `docker compose` via Bash. /workspace is a Docker volume that persists across container restarts. Dev server runs in a separate container — use `logs` and `service_status` to check it.
 
     Long command output is truncated — you'll see the last ~80 lines. The full output is visible to the user in the chat.
 

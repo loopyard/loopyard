@@ -149,7 +149,7 @@ defmodule BoomLooper.Tools.Container.Helpers do
   @doc """
   Stream output from a Port to a chat message, broadcasting chunks via PubSub.
 
-  Used by docker_compose and exec_stream tools to show real-time build/command output.
+  Used by docker_compose and exec tools to show real-time build/command output.
   """
   def stream_port_output(agent_id, port, command, msg_id, acc, timeout) do
     receive do

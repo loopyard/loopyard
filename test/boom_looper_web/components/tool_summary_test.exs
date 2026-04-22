@@ -44,39 +44,33 @@ defmodule BoomLooperWeb.Components.ToolSummaryTest do
 
     test "ToolSearch shows human-readable message" do
       assert ToolSummary.summarize("ToolSearch", %{"query" => "database migration"}) ==
-               "Claude is loading tools..."
+               "Loading tools"
     end
 
     test "WebSearch shows query" do
       assert ToolSummary.summarize("WebSearch", %{"query" => "watchman arm64 linux install"}) ==
-               "Web search: watchman arm64 linux install"
+               "Search: watchman arm64 linux install"
     end
 
     test "WebFetch shows URL" do
       assert ToolSummary.summarize("WebFetch", %{"url" => "https://example.com/docs"}) ==
-               "Fetching https://example.com/docs"
+               "Fetch https://example.com/docs"
     end
 
     # --- Container tools ---
 
-    test "exec shows command" do
+    test "exec shows Execute" do
       assert ToolSummary.summarize("mcp__boom-looper-container__exec", %{"command" => "ls -la"}) ==
-               "container $ ls -la"
-    end
-
-    test "exec_stream shows command" do
-      assert ToolSummary.summarize("mcp__boom-looper-container__exec_stream", %{"command" => "npm install"}) ==
-               "container $ npm install"
+               "Execute"
     end
 
     test "logs tool" do
-      assert ToolSummary.summarize("mcp__boom-looper-container__logs", %{}) ==
-               "Checked container logs"
+      assert ToolSummary.summarize("mcp__boom-looper-container__logs", %{}) == "Logs"
     end
 
     test "service_status tool" do
       assert ToolSummary.summarize("mcp__boom-looper-container__service_status", %{}) ==
-               "Checked service status"
+               "Service status"
     end
 
     test "service_containers tool" do
@@ -88,22 +82,21 @@ defmodule BoomLooperWeb.Components.ToolSummaryTest do
 
     test "set_dockerfile tool" do
       assert ToolSummary.summarize("mcp__boom-looper-workspace__set_dockerfile", %{"dockerfile" => "FROM ruby:3.4"}) ==
-               "Updated Dockerfile"
+               "Update Dockerfile"
     end
 
-    test "set_dev_command with command" do
+    test "set_dev_command" do
       assert ToolSummary.summarize("mcp__boom-looper-workspace__set_dev_command", %{"command" => "bin/dev"}) ==
-               "Dev command: bin/dev"
+               "Set dev command"
     end
 
     test "add_service shows name" do
       assert ToolSummary.summarize("mcp__boom-looper-workspace__add_service", %{"name" => "postgres"}) ==
-               "Added service: postgres"
+               "Add service postgres"
     end
 
     test "rebuild tool" do
-      assert ToolSummary.summarize("mcp__boom-looper-workspace__rebuild", %{}) ==
-               "Rebuilding..."
+      assert ToolSummary.summarize("mcp__boom-looper-workspace__rebuild", %{}) == "Rebuild"
     end
 
     # --- Agent tools ---
@@ -122,7 +115,7 @@ defmodule BoomLooperWeb.Components.ToolSummaryTest do
 
     test "strips mcp__ prefix from tool names" do
       assert ToolSummary.summarize("mcp__boom-looper-workspace__start_services", %{}) ==
-               "Started services"
+               "Start services"
     end
 
     # --- Fallbacks ---

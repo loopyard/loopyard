@@ -36,7 +36,6 @@ defmodule BoomLooper.Tools.Container do
   # Exec, Volumes, InspectService).
   @tools [
     Container.Exec,
-    Container.ExecStream,
     Container.Logs,
     Container.InspectEnv,
     Container.ServiceContainers,

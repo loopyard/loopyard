@@ -17,9 +17,9 @@ defmodule BoomLooper.Tools.ContainerTest do
       # `docker` (raw CLI) is intentionally excluded — it was a workspace
       # escape hatch. See BoomLooper.Tools.Container for the rationale.
       expected =
-        ~w(exec exec_stream logs inspect_env ports service_containers write_file read_file
+        ~w(exec logs inspect_env ports service_containers write_file read_file
            edit multi_edit grep glob probe_http tree inspect_service read_files
-           docker_compose workspace_info volumes file_url app_url)
+           docker_compose workspace_info volumes file_url app_url git file_info)
 
       assert MapSet.size(tool_names) == length(expected)
 

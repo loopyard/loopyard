@@ -109,7 +109,6 @@ _ =
   BoomLooper.Tools.Container.DockerCompose,
   BoomLooper.Tools.Container.Edit,
   BoomLooper.Tools.Container.Exec,
-  BoomLooper.Tools.Container.ExecStream,
   BoomLooper.Tools.Container.FileUrl,
   BoomLooper.Tools.Container.Glob,
   BoomLooper.Tools.Container.Grep,
