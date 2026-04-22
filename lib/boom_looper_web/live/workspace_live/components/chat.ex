@@ -3,7 +3,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
   use Phoenix.Component
 
   import BoomLooperWeb.Components.Common, only: [dot: 1, control_btn: 1]
-  import BoomLooperWeb.Components.Sidebar, only: [status_dot: 1, agent_display_status: 1]
+  import BoomLooperWeb.Components.Sidebar, only: [status_dot: 1, agent_display_status: 1, thinking_word: 1]
   import BoomLooperWeb.Components.Breadcrumbs, only: [breadcrumbs: 1]
   import BoomLooperWeb.Live.WorkspaceLive.Messages, only: [chat_msg: 1, streaming_bubble: 1]
   import BoomLooperWeb.Live.WorkspaceLive.Components.Formatters, only: [time_ago: 1]
@@ -204,7 +204,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
           <.chat_msg msg={msg} idx={idx} agent_id={@agent.id} workspace_id={@workspace_id} host={@host} />
         </div>
         <.streaming_bubble :if={@streaming_text != ""} text={@streaming_text} />
-        <.thinking_indicator :if={@agent.status == :thinking && @streaming_text == ""} messages={@messages} />
+        <.thinking_indicator :if={@agent.status == :thinking && @streaming_text == ""} messages={@messages} agent_id={@agent.id} />
       </div>
       <div id="chat-form-wrapper" phx-update="ignore" class="flex-none border-t border-zinc-200 dark:border-zinc-700/80 p-3 md:p-4 safe-area-bottom">
         <form id="chat-form" phx-submit="send_message" phx-hook="ChatForm" class="flex gap-2">
@@ -237,7 +237,12 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
       nil
     end
 
-    assigns = assign(assigns, :last_action, last_action)
+    word = thinking_word(assigns[:agent_id] || "default")
+
+    assigns =
+      assigns
+      |> assign(:last_action, last_action)
+      |> assign(:word, word)
 
     ~H"""
     <div class="flex gap-3 mt-3">
@@ -247,11 +252,12 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
       <div class="rounded-2xl rounded-tl-sm bg-zinc-100 dark:bg-zinc-800 px-4 py-3">
         <div class="flex items-center gap-3">
           <div class="flex gap-1">
-            <div class="w-2 h-2 rounded-full bg-zinc-400 animate-bounce" style="animation-delay: 0ms"></div>
-            <div class="w-2 h-2 rounded-full bg-zinc-400 animate-bounce" style="animation-delay: 150ms"></div>
-            <div class="w-2 h-2 rounded-full bg-zinc-400 animate-bounce" style="animation-delay: 300ms"></div>
+            <div class="w-2 h-2 rounded-full bg-violet-400 animate-bounce" style="animation-delay: 0ms"></div>
+            <div class="w-2 h-2 rounded-full bg-violet-400 animate-bounce" style="animation-delay: 150ms"></div>
+            <div class="w-2 h-2 rounded-full bg-violet-400 animate-bounce" style="animation-delay: 300ms"></div>
           </div>
-          <span :if={@last_action} class="text-sm text-zinc-500 dark:text-zinc-400">{@last_action}</span>
+          <span class="text-sm text-violet-500 dark:text-violet-400 capitalize">{@word}...</span>
+          <span :if={@last_action} class="text-xs text-zinc-500 dark:text-zinc-400">{@last_action}</span>
         </div>
       </div>
     </div>
