@@ -1418,6 +1418,15 @@ defmodule BoomLooper.ChatAgent do
     # session with a summary so the conversation continues instead of
     # silently dying.
     if state.context_utilization >= 1.0 && empty_last_response?(state) do
+      # Brief status so the user knows why there's a pause
+      status_msg = %{
+        role: :system,
+        content: "Refreshing context...",
+        timestamp: DateTime.utc_now()
+      }
+      {state, status_msg} = append_message(state, status_msg)
+      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: status_msg})
+
       # Find the user's last message so we can re-send it after restart
       last_user_msg =
         state.messages
