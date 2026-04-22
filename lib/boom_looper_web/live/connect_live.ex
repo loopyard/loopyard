@@ -94,7 +94,7 @@ defmodule BoomLooperWeb.ConnectLive do
                   class="text-xs text-violet-600 dark:text-violet-400 hover:text-violet-500 font-medium">Copy</button>
               </div>
               <p :if={@path != "/"} class="text-xs text-zinc-400 dark:text-zinc-500 mb-4 font-mono truncate">{@path}</p>
-              <button phx-click="unexpose" class="text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg px-4 py-2 transition-colors">
+              <button phx-click="unexpose" data-confirm="This will disconnect any remote sessions (including this one if you're connected remotely). Continue?" class="text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg px-4 py-2 transition-colors">
                 Stop exposing
               </button>
             <% else %>
