@@ -83,6 +83,63 @@ Hooks.TailScroll = {
   }
 }
 
+// Log output viewer: tails output while streaming, expand button to
+// remove height constraint and show full output inline.
+Hooks.LogExpand = {
+  mounted() {
+    this._userScrolledUp = false
+    this._expanded = false
+
+    const pre = this.el.querySelector("[data-log-pre]")
+    const btn = this.el.querySelector("[data-expand]")
+    if (!pre) return
+
+    // Tail: scroll to bottom on mount
+    pre.scrollTop = pre.scrollHeight
+
+    // Pause tail when user scrolls up, resume when back at bottom
+    pre.addEventListener("scroll", () => {
+      const atBottom = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 30
+      this._userScrolledUp = !atBottom
+    }, { passive: true })
+
+    // Show expand button when content overflows
+    if (pre.scrollHeight > pre.clientHeight + 10) {
+      btn.classList.remove("hidden")
+    }
+
+    // Expand/collapse toggle
+    if (btn) {
+      btn.addEventListener("click", () => {
+        this._expanded = !this._expanded
+        if (this._expanded) {
+          pre.style.maxHeight = "none"
+          btn.textContent = "collapse"
+        } else {
+          pre.style.maxHeight = ""
+          btn.textContent = "expand"
+          pre.scrollTop = pre.scrollHeight
+        }
+      })
+    }
+  },
+  updated() {
+    const pre = this.el.querySelector("[data-log-pre]")
+    const btn = this.el.querySelector("[data-expand]")
+    if (!pre) return
+
+    // Tail scroll on update
+    if (!this._userScrolledUp && !this._expanded) {
+      pre.scrollTop = pre.scrollHeight
+    }
+
+    // Show expand button once content overflows
+    if (btn && pre.scrollHeight > pre.clientHeight + 10) {
+      btn.classList.remove("hidden")
+    }
+  }
+}
+
 Hooks.ChatForm = {
   mounted() {
     const ta = this.el.querySelector("#chat-input")

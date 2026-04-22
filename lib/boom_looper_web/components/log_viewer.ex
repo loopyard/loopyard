@@ -80,18 +80,20 @@ defmodule BoomLooperWeb.Components.LogViewer do
     assigns = assign(assigns, label: label, dot_class: dot_class, display: display, truncated: truncated)
 
     ~H"""
-    <div class="mt-2 mb-1 ml-10 rounded-lg border border-zinc-200 dark:border-zinc-700/80 overflow-hidden">
+    <div id={"log-wrap-#{System.unique_integer([:positive])}"} phx-hook="LogExpand" class="mt-2 mb-1 ml-10 rounded-lg border border-zinc-200 dark:border-zinc-700/80 overflow-hidden">
       <div class="flex items-center gap-2 px-3 py-1.5 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
         <div class={"w-1.5 h-1.5 rounded-full flex-none #{@dot_class}"}></div>
         <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">{@label}</span>
         <span :if={@truncated} class="text-[10px] text-zinc-400">... truncated</span>
-        <a :if={@raw_url} href={@raw_url} target="_blank" rel="noopener"
-          class="ml-auto text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors">
-          open
-        </a>
+        <div class="ml-auto flex items-center gap-2">
+          <button type="button" data-expand class="text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors hidden">expand</button>
+          <a :if={@raw_url} href={@raw_url} target="_blank" rel="noopener"
+            class="text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors">
+            open
+          </a>
+        </div>
       </div>
-      <pre id={"log-#{System.unique_integer([:positive])}"} phx-hook="TailScroll"
-        class={"px-3 py-2 text-xs font-mono text-zinc-800 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-950 whitespace-pre-wrap overflow-y-auto #{if @status == :building, do: "max-h-64", else: "max-h-32"}"}>{Ansi.to_html(@display)}</pre>
+      <pre data-log-pre class={"px-3 py-2 text-xs font-mono text-zinc-800 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-950 whitespace-pre-wrap overflow-y-auto #{if @status == :building, do: "max-h-64", else: "max-h-32"}"}>{Ansi.to_html(@display)}</pre>
     </div>
     """
   end
