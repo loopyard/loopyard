@@ -99,10 +99,17 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
   def chat_msg(%{msg: %{role: :tool_result}} = assigns) do
     content = assigns.msg.content
 
-    if is_binary(content) && String.contains?(content, "completed with no output") do
-      ~H"<div></div>"
-    else
-      chat_msg_tool_result(assigns)
+    cond do
+      is_binary(content) && String.contains?(content, "completed with no output") ->
+        ~H"<div></div>"
+
+      # exec output is already shown in the streaming build message above —
+      # don't render it twice.
+      streamed_exec_result?(assigns) ->
+        ~H"<div></div>"
+
+      true ->
+        chat_msg_tool_result(assigns)
     end
   end
 
@@ -197,6 +204,22 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
       </div>
     </div>
     """
+  end
+
+  # Check if this tool_result follows an exec tool call — the output was
+  # already streamed to a build message in the chat, so showing it again
+  # as a tool_result is redundant.
+  defp streamed_exec_result?(assigns) do
+    idx = assigns[:idx]
+    messages = assigns[:messages]
+
+    if idx && messages && idx > 0 do
+      prev = Enum.at(messages, idx - 1)
+      prev && prev.role == :tool && is_binary(prev[:tool]) &&
+        String.ends_with?(prev.tool, "__exec")
+    else
+      false
+    end
   end
 
   defp msg_url(assigns) do
