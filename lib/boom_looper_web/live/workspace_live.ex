@@ -109,6 +109,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
      |> assign(:selected_agent, nil)
      |> assign(:messages, [])
      |> assign(:streaming_text, "")
+     |> assign(:thinking_word, nil)
      |> assign(:tab, :chat)
      |> assign(:container_logs, "")
      |> assign(:container_env, nil)
@@ -1103,22 +1104,32 @@ defmodule BoomLooperWeb.WorkspaceLive do
 
   @impl Events.ChatAgent.Subscriber
   def on_status_changed(%Events.ChatAgent.StatusChanged{id: id, status: status}, socket) do
+    # Compute thinking word ONCE per status change
+    active_tool =
+      case Enum.find(socket.assigns.agents, &(&1.id == id)) do
+        %{active_tool: t} -> t
+        _ -> nil
+      end
+
+    word =
+      if status in [:thinking, :booting, :backoff],
+        do: BoomLooperWeb.Components.Sidebar.thinking_word(id, active_tool),
+        else: nil
+
     agents =
       Enum.map(socket.assigns.agents, fn a ->
-        if a.id == id,
-          do: AgentLifecycle.annotate_liveness(%{a | status: status}),
-          else: a
+        if a.id == id do
+          a |> Map.put(:status, status) |> Map.put(:thinking_word, word) |> AgentLifecycle.annotate_liveness()
+        else
+          a
+        end
       end)
 
     socket = assign(socket, :agents, agents)
+    socket = assign(socket, :thinking_word, word)
 
     socket =
       if id == socket.assigns.selected_id do
-        # Pull the fresh summary from ETS. Using the stale sidebar
-        # list would reset the context panel's tokens/cost to whatever
-        # they were the last time the sidebar rebuilt — which was the
-        # original "awaiting first response" latched-low-water mark.
-        # Every :idle ↔ :thinking cycle used to nuke the Claude panel.
         refresh_selected_agent(socket, id)
       else
         socket
@@ -1164,11 +1175,24 @@ defmodule BoomLooperWeb.WorkspaceLive do
           socket
         end
 
-      {:noreply,
-       socket
-       |> assign(:messages, socket.assigns.messages ++ [msg])
-       |> refresh_selected_agent(id)
-       |> push_event("scroll_bottom", %{})}
+      socket =
+        socket
+        |> assign(:messages, socket.assigns.messages ++ [msg])
+        |> refresh_selected_agent(id)
+        |> push_event("scroll_bottom", %{})
+
+      # Update thinking word when a tool message arrives — shows the
+      # tool-specific phrase (e.g., "grepping" instead of "pondering")
+      socket =
+        if msg.role == :tool && socket.assigns.selected_agent && socket.assigns.selected_agent.status == :thinking do
+          tool = msg[:tool]
+          word = BoomLooperWeb.Components.Sidebar.thinking_word(id, tool)
+          assign(socket, :thinking_word, word)
+        else
+          socket
+        end
+
+      {:noreply, socket}
     end
   end
 

@@ -3,7 +3,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
   use Phoenix.Component
 
   import BoomLooperWeb.Components.Common, only: [dot: 1, control_btn: 1]
-  import BoomLooperWeb.Components.Sidebar, only: [status_dot: 1, agent_display_status: 1, thinking_word: 2]
+  import BoomLooperWeb.Components.Sidebar, only: [status_dot: 1, agent_display_status: 1]
   import BoomLooperWeb.Components.Breadcrumbs, only: [breadcrumbs: 1]
   import BoomLooperWeb.Live.WorkspaceLive.Messages, only: [chat_msg: 1, streaming_bubble: 1]
   import BoomLooperWeb.Live.WorkspaceLive.Components.Formatters, only: [time_ago: 1]
@@ -115,7 +115,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
       <%!-- Main content: hidden on mobile when viewing context panel --%>
       <div class={["flex-1 flex flex-col min-w-0 min-h-0", if(@tab == :context_panel, do: "hidden lg:flex", else: "flex")]}>
         <.agent_header agent={@selected_agent} tab={@tab} has_container={@has_container} base_path={@base_path} />
-        <.chat_panel :if={@tab in [:chat, :context_panel]} messages={@messages} streaming_text={@streaming_text} agent={@selected_agent} workspace_id={@workspace.id} host={@host} />
+        <.chat_panel :if={@tab in [:chat, :context_panel]} messages={@messages} streaming_text={@streaming_text} agent={@selected_agent} workspace_id={@workspace.id} host={@host} thinking_word={@thinking_word} />
         <.container_panel :if={@tab == :container} env={@container_env} logs={@container_logs} log_service={@container_log_service} has_container={@has_container} />
       </div>
       <%!-- Context panel: always visible on lg+, full-screen on mobile when :context_panel --%>
@@ -204,7 +204,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
           <.chat_msg msg={msg} idx={idx} agent_id={@agent.id} workspace_id={@workspace_id} host={@host} />
         </div>
         <.streaming_bubble :if={@streaming_text != ""} text={@streaming_text} />
-        <.thinking_indicator :if={@agent.status == :thinking && @streaming_text == ""} messages={@messages} agent_id={@agent.id} active_tool={@agent[:active_tool]} />
+        <.thinking_indicator :if={@agent.status == :thinking && @streaming_text == ""} messages={@messages} word={@thinking_word} />
       </div>
       <div id="chat-form-wrapper" phx-update="ignore" class="flex-none border-t border-zinc-200 dark:border-zinc-700/80 p-3 md:p-4">
         <form id="chat-form" phx-submit="send_message" phx-hook="ChatForm" class="flex gap-2">
@@ -226,7 +226,6 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
   end
 
   def thinking_indicator(assigns) do
-    # Find the last tool call to show what the agent is doing
     last_tool = assigns.messages
       |> Enum.reverse()
       |> Enum.find(&(&1.role == :tool))
@@ -237,12 +236,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
       nil
     end
 
-    word = thinking_word(assigns[:agent_id] || "default", assigns[:active_tool])
-
-    assigns =
-      assigns
-      |> assign(:last_action, last_action)
-      |> assign(:word, word)
+    assigns = assign(assigns, :last_action, last_action)
 
     ~H"""
     <div class="flex gap-3 mt-3">
