@@ -15,16 +15,6 @@
   --tap-min: 44px;
   --focus-ring-color: #7c3aed;
   --focus-ring-offset: 2px;
-  font-size: 16px;
-}
-
-/* Bump root font size on mobile so all rem-based Tailwind sizes
- * (text-sm, text-xs, etc.) scale up without per-element overrides.
- * text-sm goes from 14px → ~15px, text-xs from 12px → ~13px. */
-@media (max-width: 767px) {
-  :root {
-    font-size: 17px;
-  }
 }
 @media (prefers-color-scheme: dark) {
   :root {
