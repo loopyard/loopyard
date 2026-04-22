@@ -4,7 +4,12 @@ defmodule BoomLooperWeb.ConnectLive do
 
   @impl true
   def mount(params, _session, socket) do
-    path = Map.get(params, "path", "/")
+    # Path comes from the catch-all route: /remote/*path
+    path = case Map.get(params, "path") do
+      nil -> "/"
+      segments when is_list(segments) -> "/" <> Enum.join(segments, "/")
+      p -> p
+    end
     exposed = BoomLooper.HostExposer.exposed?()
 
     socket = if connected?(socket), do: subscribe_iex(socket), else: assign(socket, :iex_session, %{level: nil})

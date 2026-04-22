@@ -47,7 +47,7 @@ defmodule BoomLooperWeb.Router do
     live "/system/sagas", SystemSagasLive, :index
     live "/system/orphans", SystemOrphansLive, :index
     live "/system/recovery", SystemRecoveryLive, :index
-    live "/connect", ConnectLive, :index
+    live "/remote/*path", ConnectLive, :index
 
     live "/messages/:agent_id/:msg_id", MessageLive, :show
     get "/messages/:agent_id/:msg_id/raw", OutputController, :show
