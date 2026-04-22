@@ -1211,6 +1211,52 @@ defmodule BoomLooper.ChatAgent do
     {:noreply, state}
   end
 
+  # Auto-restart when context is exhausted. Restart the CLI session,
+  # send the resume summary, then re-send the user's last message.
+  def handle_cast({:auto_restart_context, last_user_text}, state) do
+    id = state.id
+
+    # Stop old session
+    if state.session do
+      task = Task.async(fn -> state.backend.stop(state.session) end)
+      Task.yield(task, 3_000) || Task.shutdown(task, :brutal_kill)
+    end
+
+    # Start fresh session
+    case state.backend.start_session(session_opts_with_resume(state)) do
+      {:ok, new_session} ->
+        state = %{state |
+          session: new_session,
+          status: :idle,
+          context_utilization: 0.0,
+          context_warning_sent: false
+        }
+
+        # Send the resume summary
+        resume = build_resume_message(state)
+        if resume, do: GenServer.cast(self(), {:send_message, resume})
+
+        # Re-send the user's last message so the agent acts on it
+        if last_user_text && last_user_text != "" do
+          GenServer.cast(self(), {:send_message, last_user_text})
+        end
+
+        :ets.insert(@ets_table, {id, summary(state)})
+        Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
+        {:noreply, state}
+
+      {:error, _} ->
+        err = %{
+          role: :error,
+          content: "Failed to restart session. Start a new agent to continue.",
+          timestamp: DateTime.utc_now()
+        }
+        {state, err} = append_message(state, err)
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: err})
+        {:noreply, state}
+    end
+  end
+
   # Catchall for unknown casts. Without this, any bogus cast would
   # crash the GenServer (FunctionClauseError propagates from a
   # non-matching handle_cast/2). audit-2 already closed this gap for
@@ -1446,62 +1492,6 @@ defmodule BoomLooper.ChatAgent do
       Persistence.persist_agent(state, &summary/1)
       Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
       drain_pending_sends(state)
-    end
-  end
-
-  # Auto-restart when context is exhausted. Restart the CLI session,
-  # send the resume summary, then re-send the user's last message.
-  def handle_cast({:auto_restart_context, last_user_text}, state) do
-    id = state.id
-
-    # Stop old session
-    if state.session do
-      task = Task.async(fn -> state.backend.stop(state.session) end)
-      Task.yield(task, 3_000) || Task.shutdown(task, :brutal_kill)
-    end
-
-    # Start fresh session
-    case state.backend.start_session(session_opts_with_resume(state)) do
-      {:ok, new_session} ->
-        state = %{state |
-          session: new_session,
-          status: :idle,
-          context_utilization: 0.0,
-          context_warning_sent: false
-        }
-
-        # Send the resume summary
-        resume = build_resume_message(state)
-        if resume, do: GenServer.cast(self(), {:send_message, resume})
-
-        # Re-send the user's last message so the agent acts on it
-        if last_user_text && last_user_text != "" do
-          GenServer.cast(self(), {:send_message, last_user_text})
-        end
-
-        :ets.insert(@ets_table, {id, summary(state)})
-        Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
-        {:noreply, state}
-
-      {:error, _} ->
-        err = %{
-          role: :error,
-          content: "Failed to restart session. Start a new agent to continue.",
-          timestamp: DateTime.utc_now()
-        }
-        {state, err} = append_message(state, err)
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: err})
-        {:noreply, state}
-    end
-  end
-
-  defp empty_last_response?(state) do
-    case List.last(state.messages) do
-      %{role: :assistant, content: c} when is_binary(c) ->
-        trimmed = String.trim(c)
-        trimmed == "" || trimmed == "(no content)"
-      _ ->
-        false
     end
   end
 
@@ -1877,6 +1867,18 @@ defmodule BoomLooper.ChatAgent do
     )
 
     {:noreply, state}
+  end
+
+  # --- Private helpers ---
+
+  defp empty_last_response?(state) do
+    case List.last(state.messages) do
+      %{role: :assistant, content: c} when is_binary(c) ->
+        trimmed = String.trim(c)
+        trimmed == "" || trimmed == "(no content)"
+      _ ->
+        false
+    end
   end
 
   # --- Private: session retry ---

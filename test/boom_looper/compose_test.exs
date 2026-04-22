@@ -45,11 +45,24 @@ defmodule BoomLooper.ComposeTest do
       assert config["volumes"]["bl-abcd-code"]["external"] == true
     end
 
-    test "all ports become loopback-ephemeral (Docker picks the host port)" do
+    test "rejects pinned host ports with a clear error" do
       compose = %{
         "services" => %{
           "web" => %{
-            "ports" => ["3001:3000", "8080", "0.0.0.0:4000:4000"]
+            "ports" => ["3001:3000", "8080"]
+          }
+        }
+      }
+
+      assert {:error, msg} = Compose.process_agent_compose(Jason.encode!(compose), "abcd")
+      assert msg =~ "host port pin is not allowed"
+    end
+
+    test "container-only ports become loopback-ephemeral (Docker picks the host port)" do
+      compose = %{
+        "services" => %{
+          "web" => %{
+            "ports" => ["8080", "3000"]
           }
         }
       }
@@ -60,9 +73,8 @@ defmodule BoomLooper.ComposeTest do
       # Every port becomes 127.0.0.1::<container_port> — Docker picks ephemeral,
       # our proxy owns the user-facing port.
       assert config["services"]["web"]["ports"] == [
-               "127.0.0.1::3000",
                "127.0.0.1::8080",
-               "127.0.0.1::4000"
+               "127.0.0.1::3000"
              ]
     end
 
@@ -187,54 +199,4 @@ defmodule BoomLooper.ComposeTest do
     end
   end
 
-  describe "collect_port_output/4" do
-    test "succeeds with callback on zero exit" do
-      me = self()
-
-      port = Port.open(
-        {:spawn_executable, System.find_executable("echo")},
-        [:binary, :exit_status, {:args, ["hello", "world"]}]
-      )
-
-      result = Compose.collect_port_output(port, fn chunk -> send(me, {:chunk, chunk}) end, "", 5_000)
-
-      assert {:ok, output} = result
-      assert output =~ "hello world"
-      assert_received {:chunk, _}
-    end
-
-    test "returns error on non-zero exit" do
-      port = Port.open(
-        {:spawn_executable, System.find_executable("sh")},
-        [:binary, :exit_status, {:args, ["-c", "echo fail && exit 1"]}]
-      )
-
-      result = Compose.collect_port_output(port, fn _ -> :ok end, "", 5_000)
-
-      assert {:error, output} = result
-      assert output =~ "fail"
-    end
-
-    test "returns error with accumulated output on timeout" do
-      port = Port.open(
-        {:spawn_executable, System.find_executable("sleep")},
-        [:binary, :exit_status, {:args, ["10"]}]
-      )
-
-      result = Compose.collect_port_output(port, fn _ -> :ok end, "partial", 100)
-      assert {:error, output} = result
-      assert output =~ "partial"
-      assert output =~ "timed out"
-    end
-
-    test "detects arm64_unsupported in output" do
-      port = Port.open(
-        {:spawn_executable, System.find_executable("echo")},
-        [:binary, :exit_status, {:args, ["no matching manifest for linux/arm64"]}]
-      )
-
-      result = Compose.collect_port_output(port, fn _ -> :ok end, "", 5_000)
-      assert {:error, :arm64_unsupported, _output} = result
-    end
-  end
 end

@@ -51,7 +51,7 @@ defmodule BoomLooper.InvariantsTest do
       tool_files =
         Path.wildcard("lib/boom_looper/tools/container/*.ex")
         |> Enum.map(&Path.basename(&1, ".ex"))
-        |> Enum.reject(&(&1 in ["helpers", "probe_formatter"]))
+        |> Enum.reject(&(&1 in ["helpers", "probe_formatter", "pagination"]))
         |> MapSet.new()
 
       for file <- tool_files do

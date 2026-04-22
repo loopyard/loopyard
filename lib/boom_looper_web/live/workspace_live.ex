@@ -1135,13 +1135,20 @@ defmodule BoomLooperWeb.WorkspaceLive do
 
     socket =
       if id == socket.assigns.selected_id do
-        # Use the already-updated agent from the assigns list — NOT ETS.
-        # ETS may not have the new status yet (GenServer writes ETS and
-        # broadcasts PubSub in sequence, but the LiveView can process
-        # the broadcast before the ETS write lands).
+        # Merge ETS data (token counts, cost, etc.) with event-driven
+        # fields (status, thinking_word). ETS has the latest counters
+        # from the GenServer; the event has the authoritative status.
+        ets_data =
+          case :ets.lookup(:chat_agents, id) do
+            [{^id, data}] -> data
+            _ -> %{}
+          end
+
         case Enum.find(agents, &(&1.id == id)) do
           nil -> socket
-          updated -> assign(socket, :selected_agent, updated)
+          from_assigns ->
+            merged = Map.merge(ets_data, Map.take(from_assigns, [:status, :thinking_word, :alive?]))
+            assign(socket, :selected_agent, merged)
         end
       else
         socket

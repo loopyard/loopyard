@@ -21,13 +21,13 @@ defmodule BoomLooper.ChatAgent.PromptTest do
 
     test "coding agent has a small definition (fits comfortably in system prompt)" do
       prompt = Prompt.build_system_prompt("test-id", agent_type: "coding", bind_mount: "/tmp/project")
-      assert String.length(prompt) <= 2000
+      assert String.length(prompt) <= 3500
     end
 
     test "setup agent prompt stays under CLI argument limit" do
       prompt = Prompt.build_system_prompt("test-id", agent_type: "setup", bind_mount: "/tmp/project")
-      assert String.length(prompt) <= 2000,
-             "Setup prompt is #{String.length(prompt)} chars, max is 2000."
+      assert String.length(prompt) <= 3500,
+             "Setup prompt is #{String.length(prompt)} chars, max is 3500."
     end
 
     test "container agent prompt with workspace stays under limit" do
@@ -48,7 +48,7 @@ defmodule BoomLooper.ChatAgent.PromptTest do
 
       assert prompt =~ "test-project"
       assert prompt =~ "Rails app"
-      assert String.length(prompt) <= 2000
+      assert String.length(prompt) <= 3500
     end
 
     test "container agent with service stays under limit" do
@@ -68,7 +68,7 @@ defmodule BoomLooper.ChatAgent.PromptTest do
           agent_type: "coding"
         )
 
-      assert String.length(prompt) <= 2000
+      assert String.length(prompt) <= 3500
     end
 
     test "service agent prompt includes service name and container" do

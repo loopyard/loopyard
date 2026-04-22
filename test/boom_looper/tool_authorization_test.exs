@@ -21,10 +21,10 @@ defmodule BoomLooper.ToolAuthorizationTest do
   setup do
     # Seed a workspace lookup so the underlying tool wouldn't bail on
     # "no workspace" before we can see the authorization decision.
-    :ets.insert(:chat_agents, {@my_id, %{id: @my_id, workspace_id: @workspace_id}})
+    :ets.insert(:chat_agents, {@my_id, %{id: @my_id, workspace_id: @workspace_id, messages: []}})
 
     :ets.insert(:chat_agents,
-                {@their_id, %{id: @their_id, workspace_id: "ws-other"}})
+                {@their_id, %{id: @their_id, workspace_id: "ws-other", messages: []}})
 
     on_exit(fn ->
       :ets.delete(:chat_agents, @my_id)

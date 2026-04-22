@@ -32,18 +32,15 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
 
   def chat_msg(%{msg: %{role: :user}} = assigns) do
     assigns = assign(assigns, :url, msg_url(assigns))
+    assigns = assign(assigns, :raw, raw_url(assigns))
 
     ~H"""
     <div class="flex justify-end mt-3 mb-1 group/msg">
       <div class="relative max-w-[85%] rounded-2xl rounded-tr-sm bg-violet-600 text-white px-4 py-2.5" id={"msg-user-#{hash_content(@msg.content)}"} phx-hook="Markdown" data-source={@msg.content}>
-        <a :if={@url} href={@url} target="_blank" rel="noopener"
-          class="absolute top-2 left-2 p-1 rounded-md text-violet-300 hover:text-white opacity-0 group-hover/msg:opacity-100 transition-opacity"
-          title="Open">
-          <svg class="w-3 h-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M6.22 8.72a.75.75 0 0 0 1.06 1.06l5.22-5.22v1.69a.75.75 0 0 0 1.5 0v-3.5a.75.75 0 0 0-.75-.75h-3.5a.75.75 0 0 0 0 1.5h1.69L6.22 8.72Z" />
-            <path d="M3.5 6.75c0-.69.56-1.25 1.25-1.25H7A.75.75 0 0 0 7 4H4.75A2.75 2.75 0 0 0 2 6.75v4.5A2.75 2.75 0 0 0 4.75 14h4.5A2.75 2.75 0 0 0 12 11.25V9a.75.75 0 0 0-1.5 0v2.25c0 .69-.56 1.25-1.25 1.25h-4.5c-.69 0-1.25-.56-1.25-1.25v-4.5Z" />
-          </svg>
-        </a>
+        <div class="absolute top-2 left-2 flex items-center gap-1 opacity-0 group-hover/msg:opacity-100 transition-opacity">
+          <.copy_btn :if={@raw} raw_url={@raw} light />
+          <.open_btn :if={@url} url={@url} light />
+        </div>
         <div class="markdown-body markdown-body-user text-base"></div>
       </div>
     </div>
@@ -59,6 +56,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
 
   def chat_msg(%{msg: %{role: :assistant}} = assigns) do
     assigns = assign(assigns, :url, msg_url(assigns))
+    assigns = assign(assigns, :raw, raw_url(assigns))
     assigns = assign(assigns, :rendered_content, rewrite_localhost_urls(assigns.msg.content, assigns[:host]))
 
     ~H"""
@@ -67,14 +65,10 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
         <span class="text-xs font-bold text-violet-600 dark:text-violet-400">C</span>
       </div>
       <div class="relative max-w-[85%] rounded-2xl rounded-tl-sm bg-zinc-100 dark:bg-zinc-800 px-4 py-2.5" id={"msg-#{hash_content(@msg.content)}"} phx-hook="Markdown" data-source={@rendered_content}>
-        <a :if={@url} href={@url} target="_blank" rel="noopener"
-          class="absolute top-2 right-2 p-1 rounded-md text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 opacity-0 group-hover/msg:opacity-100 transition-opacity"
-          title="Open">
-          <svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M6.22 8.72a.75.75 0 0 0 1.06 1.06l5.22-5.22v1.69a.75.75 0 0 0 1.5 0v-3.5a.75.75 0 0 0-.75-.75h-3.5a.75.75 0 0 0 0 1.5h1.69L6.22 8.72Z" />
-            <path d="M3.5 6.75c0-.69.56-1.25 1.25-1.25H7A.75.75 0 0 0 7 4H4.75A2.75 2.75 0 0 0 2 6.75v4.5A2.75 2.75 0 0 0 4.75 14h4.5A2.75 2.75 0 0 0 12 11.25V9a.75.75 0 0 0-1.5 0v2.25c0 .69-.56 1.25-1.25 1.25h-4.5c-.69 0-1.25-.56-1.25-1.25v-4.5Z" />
-          </svg>
-        </a>
+        <div class="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover/msg:opacity-100 transition-opacity">
+          <.copy_btn :if={@raw} raw_url={@raw} />
+          <.open_btn :if={@url} url={@url} />
+        </div>
         <div class="markdown-body text-base text-zinc-900 dark:text-zinc-100"></div>
       </div>
     </div>
@@ -192,15 +186,19 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
     truncated = length(lines) > 40
     display = if truncated, do: Enum.take(lines, 40) |> Enum.join("\n"), else: display
     url = msg_url(assigns)
-    assigns = assign(assigns, display: display, truncated: truncated, is_error: assigns.msg.is_error, line_count: length(lines), url: url)
+    raw = raw_url(assigns)
+    assigns = assign(assigns, display: display, truncated: truncated, is_error: assigns.msg.is_error, line_count: length(lines), url: url, raw: raw)
 
     ~H"""
-    <div class="pl-10 py-0.5">
+    <div class="pl-10 py-0.5 group/result">
       <pre class={"p-3 rounded-lg text-xs font-mono overflow-x-auto max-h-80 overflow-y-auto whitespace-pre-wrap
                    #{if @is_error, do: "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300", else: "bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-zinc-300"}"}>{Ansi.to_html(@display)}</pre>
       <div class="flex items-center gap-2 mt-1">
         <p :if={@truncated} class="text-[10px] text-zinc-400 dark:text-zinc-500">... truncated ({@line_count - 40} more lines)</p>
-        <a :if={@url} href={@url} target="_blank" rel="noopener" class="text-[10px] text-zinc-400 hover:text-zinc-300 transition-colors">open</a>
+        <div class="flex items-center gap-1 opacity-0 group-hover/result:opacity-100 transition-opacity">
+          <.copy_btn :if={@raw} raw_url={@raw} />
+          <.open_btn :if={@url} url={@url} />
+        </div>
       </div>
     </div>
     """
@@ -231,10 +229,63 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
     end
   end
 
+  # --- Icon buttons for message actions ---
+
+  defp copy_btn(assigns) do
+    light = assigns[:light] || false
+    assigns = assign(assigns, :light, light)
+
+    ~H"""
+    <button
+      id={"copy-#{System.unique_integer([:positive])}"}
+      phx-hook="CopySource"
+      data-source={@raw_url}
+      data-copy="fetch"
+      class={"p-1 rounded-md transition-opacity cursor-pointer #{if @light, do: "text-violet-300 hover:text-white", else: "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"}"}
+      title="Copy"
+    >
+      <svg class="w-3.5 h-3.5 copy-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M5.5 3.5A1.5 1.5 0 0 1 7 2h2.879a1.5 1.5 0 0 1 1.06.44l2.122 2.12a1.5 1.5 0 0 1 .439 1.061V9.5A1.5 1.5 0 0 1 12 11V8.621a3 3 0 0 0-.879-2.121L9 4.379A3 3 0 0 0 6.879 3.5H5.5Z" />
+        <path d="M4 5a1.5 1.5 0 0 0-1.5 1.5v6A1.5 1.5 0 0 0 4 14h5a1.5 1.5 0 0 0 1.5-1.5V8.621a1.5 1.5 0 0 0-.44-1.06L7.94 5.439A1.5 1.5 0 0 0 6.878 5H4Z" />
+      </svg>
+      <svg class="w-3.5 h-3.5 check-icon hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
+        <path fill-rule="evenodd" d="M12.416 3.376a.75.75 0 0 1 .208 1.04l-5 7.5a.75.75 0 0 1-1.154.114l-3-3a.75.75 0 0 1 1.06-1.06l2.353 2.353 4.493-6.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd" />
+      </svg>
+    </button>
+    """
+  end
+
+  defp open_btn(assigns) do
+    light = assigns[:light] || false
+    assigns = assign(assigns, :light, light)
+
+    ~H"""
+    <a
+      href={@url}
+      target="_blank"
+      rel="noopener"
+      class={"p-1 rounded-md transition-opacity #{if @light, do: "text-violet-300 hover:text-white", else: "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"}"}
+      title="Open"
+    >
+      <svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M6.22 8.72a.75.75 0 0 0 1.06 1.06l5.22-5.22v1.69a.75.75 0 0 0 1.5 0v-3.5a.75.75 0 0 0-.75-.75h-3.5a.75.75 0 0 0 0 1.5h1.69L6.22 8.72Z" />
+        <path d="M3.5 6.75c0-.69.56-1.25 1.25-1.25H7A.75.75 0 0 0 7 4H4.75A2.75 2.75 0 0 0 2 6.75v4.5A2.75 2.75 0 0 0 4.75 14h4.5A2.75 2.75 0 0 0 12 11.25V9a.75.75 0 0 0-1.5 0v2.25c0 .69-.56 1.25-1.25 1.25h-4.5c-.69 0-1.25-.56-1.25-1.25v-4.5Z" />
+      </svg>
+    </a>
+    """
+  end
+
   defp msg_url(assigns) do
     msg_id = assigns.msg[:id]
     if msg_id do
       BoomLooperWeb.OutputController.msg_url(assigns.agent_id, msg_id)
+    end
+  end
+
+  defp raw_url(assigns) do
+    msg_id = assigns.msg[:id]
+    if msg_id do
+      BoomLooperWeb.OutputController.raw_url(assigns.agent_id, msg_id)
     end
   end
 
