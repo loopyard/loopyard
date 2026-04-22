@@ -357,7 +357,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
       >
         <span class={"w-1.5 h-1.5 rounded-full flex-none #{status_dot(@display)}"} aria-hidden="true"></span>
         <span class="truncate text-zinc-600 dark:text-zinc-400">{@agent.name}</span>
-        <span :if={@display == :thinking} class="text-xs text-violet-500 dark:text-violet-400 flex-none">{thinking_word(@agent.id)}</span>
+        <span :if={@display == :thinking} class="text-xs text-violet-500 dark:text-violet-400 flex-none">{thinking_word(@agent.id, @agent[:active_tool])}</span>
         <%!-- Sleeping: gray dot is sufficient. No text label — it flashes
              during transient states (agent log primed before GenServer
              starts) and draws attention to a state that resolves in <1s. --%>

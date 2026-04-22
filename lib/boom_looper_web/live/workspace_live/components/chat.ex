@@ -204,7 +204,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
           <.chat_msg msg={msg} idx={idx} agent_id={@agent.id} workspace_id={@workspace_id} host={@host} />
         </div>
         <.streaming_bubble :if={@streaming_text != ""} text={@streaming_text} />
-        <.thinking_indicator :if={@agent.status == :thinking && @streaming_text == ""} messages={@messages} agent_id={@agent.id} />
+        <.thinking_indicator :if={@agent.status == :thinking && @streaming_text == ""} messages={@messages} agent_id={@agent.id} active_tool={@agent[:active_tool]} />
       </div>
       <div id="chat-form-wrapper" phx-update="ignore" class="flex-none border-t border-zinc-200 dark:border-zinc-700/80 p-3 md:p-4 safe-area-bottom">
         <form id="chat-form" phx-submit="send_message" phx-hook="ChatForm" class="flex gap-2">
@@ -237,7 +237,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
       nil
     end
 
-    word = thinking_word(assigns[:agent_id] || "default")
+    word = thinking_word(assigns[:agent_id] || "default", assigns[:active_tool])
 
     assigns =
       assigns

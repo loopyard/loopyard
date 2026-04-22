@@ -301,10 +301,59 @@ defmodule BoomLooperWeb.Components.Sidebar do
     "cruisin'", "chillaxing", "twirling", "whirling"
   ]
 
-  def thinking_word(agent_id) do
-    idx = :erlang.phash2({agent_id, div(System.system_time(:second), 3)}, length(@thinking_words))
-    Enum.at(@thinking_words, idx)
+  # Tool-specific phrases — used when the agent's active_tool is known.
+  # Each tool gets a list of fun alternatives. Pick one per 3s window.
+  @tool_phrases %{
+    "read_file" => ["reading", "scanning", "peeking at", "eyeballing"],
+    "read_files" => ["speed-reading", "devouring files", "binge-reading"],
+    "edit" => ["editing", "surgically modifying", "tweaking", "patching"],
+    "multi_edit" => ["bulk editing", "refactoring", "rewriting"],
+    "write_file" => ["writing", "authoring", "crafting"],
+    "grep" => ["grepping", "hunting for matches", "searching"],
+    "glob" => ["finding files", "globbing", "scouting"],
+    "tree" => ["mapping the codebase", "surveying", "exploring"],
+    "exec" => ["running a command", "executing", "shelling out"],
+    "exec_stream" => ["streaming output", "tailing", "watching"],
+    "logs" => ["reading logs", "log diving", "checking output"],
+    "docker_compose" => ["composing", "orchestrating containers", "wrangling Docker"],
+    "probe_http" => ["probing", "pinging the server", "checking if it's alive"],
+    "git" => ["git-ing", "committing", "versioning"],
+    "inspect_service" => ["inspecting", "diagnosing", "checking vitals"],
+    "inspect_env" => ["checking the environment", "env snooping"],
+    "service_containers" => ["listing containers", "taking inventory"],
+    "app_url" => ["building a link", "URL crafting"],
+    "file_url" => ["linking a file", "URL crafting"],
+    "workspace_info" => ["checking workspace", "getting bearings"]
+  }
+
+  @doc """
+  Status word for the sidebar and chat bubble. When the agent has an
+  active tool, returns a fun tool-specific phrase. Otherwise falls
+  back to the generic thinking word rotation.
+  """
+  def thinking_word(agent_id, active_tool \\ nil) do
+    tool_name = extract_tool_name(active_tool)
+
+    case @tool_phrases[tool_name] do
+      phrases when is_list(phrases) ->
+        idx = :erlang.phash2({agent_id, div(System.system_time(:second), 3)}, length(phrases))
+        Enum.at(phrases, idx)
+
+      nil ->
+        idx = :erlang.phash2({agent_id, div(System.system_time(:second), 3)}, length(@thinking_words))
+        Enum.at(@thinking_words, idx)
+    end
   end
+
+  # Strip the MCP server prefix: "mcp__boom-looper-container__exec" → "exec"
+  defp extract_tool_name(nil), do: nil
+  defp extract_tool_name("mcp__" <> rest) do
+    case String.split(rest, "__", parts: 2) do
+      [_server, name] -> name
+      _ -> rest
+    end
+  end
+  defp extract_tool_name(name), do: name
 
   defp service_status_text(%{status: :running}), do: nil
   defp service_status_text(%{status: :starting}), do: "starting"
