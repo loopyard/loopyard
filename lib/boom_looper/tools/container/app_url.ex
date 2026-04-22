@@ -24,14 +24,18 @@ defmodule BoomLooper.Tools.Container.AppUrl do
         container = "#{project_name}-#{service}-1"
 
         case find_host_port(workspace_id, service, container) do
-          {:ok, host_port} ->
+          {:ok, host_port, exposed?} ->
             clean_path = if String.starts_with?(route_path, "/"), do: route_path, else: "/#{route_path}"
 
             url =
               %URI{scheme: "http", host: "localhost", port: host_port, path: clean_path}
               |> URI.to_string()
 
-            {:ok, url}
+            if exposed? do
+              {:ok, url}
+            else
+              {:ok, "#{url}\n\n> **This port is local-only.** To access from another device, click \"Open Port\" next to #{service} in the sidebar."}
+            end
 
           :no_ports ->
             {:error, "#{container} has no mapped ports. Is it running? Try `service_containers` to check."}
@@ -48,11 +52,14 @@ defmodule BoomLooper.Tools.Container.AppUrl do
   # container-bound without a registry entry.
   defp find_host_port(workspace_id, service, container) do
     case registry_host_port(workspace_id, service) do
-      {:ok, _} = ok ->
+      {:ok, _, _} = ok ->
         ok
 
       :none ->
-        docker_host_port(workspace_id, container)
+        case docker_host_port(workspace_id, container) do
+          {:ok, port} -> {:ok, port, false}
+          :no_ports -> :no_ports
+        end
     end
   end
 
@@ -60,7 +67,8 @@ defmodule BoomLooper.Tools.Container.AppUrl do
     entries = BoomLooper.PortRegistry.list_for_workspace(workspace_id)
 
     case Enum.find(entries, &(&1.service == service)) do
-      %{host_port: host_port} -> {:ok, host_port}
+      %{host_port: host_port, exposed: exposed} -> {:ok, host_port, exposed}
+      %{host_port: host_port} -> {:ok, host_port, false}
       nil -> :none
     end
   end
