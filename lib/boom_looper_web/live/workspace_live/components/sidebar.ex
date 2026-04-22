@@ -258,13 +258,8 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
             :{@first_port}
           </a>
         <% else %>
-          <.port_link
-            :if={@first_port && @svc.status == :running}
-            host={@host}
-            port={@first_port}
-          />
           <.share_button
-            :if={@first_port && Map.get(@svc, :container_port) && @svc.status == :running && !Map.get(@svc, :exposed)}
+            :if={@first_port && Map.get(@svc, :container_port) && @svc.status == :running}
             svc={@svc}
           />
         <% end %>
