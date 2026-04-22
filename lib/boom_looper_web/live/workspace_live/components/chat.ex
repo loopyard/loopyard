@@ -250,15 +250,15 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
         <span class="text-xs font-bold text-violet-600 dark:text-violet-400">C</span>
       </div>
       <div class="rounded-2xl rounded-tl-sm bg-zinc-100 dark:bg-zinc-800 px-4 py-3">
-        <div class="flex items-center gap-3">
-          <div class="flex gap-1">
-            <div class="w-2 h-2 rounded-full bg-violet-400 animate-bounce" style="animation-delay: 0ms"></div>
-            <div class="w-2 h-2 rounded-full bg-violet-400 animate-bounce" style="animation-delay: 150ms"></div>
-            <div class="w-2 h-2 rounded-full bg-violet-400 animate-bounce" style="animation-delay: 300ms"></div>
+        <div class="flex items-center gap-2">
+          <div class="flex gap-1 flex-none">
+            <div class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style="animation-delay: 0ms"></div>
+            <div class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style="animation-delay: 150ms"></div>
+            <div class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style="animation-delay: 300ms"></div>
           </div>
-          <span class="text-sm text-violet-500 dark:text-violet-400 capitalize">{@word}...</span>
-          <span :if={@last_action} class="text-xs text-zinc-500 dark:text-zinc-400">{@last_action}</span>
+          <span class="text-sm text-violet-500 dark:text-violet-400 capitalize flex-none">{@word}...</span>
         </div>
+        <p :if={@last_action} class="text-xs text-zinc-500 dark:text-zinc-400 mt-1 truncate">{@last_action}</p>
       </div>
     </div>
     """
