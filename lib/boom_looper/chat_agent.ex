@@ -2037,6 +2037,7 @@ defmodule BoomLooper.ChatAgent do
       {:noreply, state}
     else
       state = %{state | status: :thinking}
+      :ets.insert(@ets_table, {state.id, summary(state)})
       Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :thinking})
 
       # Generate stream_ref BEFORE spawning the Task so every event the

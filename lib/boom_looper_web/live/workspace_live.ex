@@ -1135,7 +1135,14 @@ defmodule BoomLooperWeb.WorkspaceLive do
 
     socket =
       if id == socket.assigns.selected_id do
-        refresh_selected_agent(socket, id)
+        # Use the already-updated agent from the assigns list — NOT ETS.
+        # ETS may not have the new status yet (GenServer writes ETS and
+        # broadcasts PubSub in sequence, but the LiveView can process
+        # the broadcast before the ETS write lands).
+        case Enum.find(agents, &(&1.id == id)) do
+          nil -> socket
+          updated -> assign(socket, :selected_agent, updated)
+        end
       else
         socket
       end
