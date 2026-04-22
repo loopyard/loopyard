@@ -49,13 +49,6 @@
   }
 }
 
-/* iOS Safari zooms the viewport when focusing inputs below 16px.
-   This is a browser-level zoom, not a CSS layout issue. */
-#chat-input,
-#new-agent-input {
-  font-size: 16px;
-}
-
 /* Respect reduced-motion preference — disable all non-essential motion. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
