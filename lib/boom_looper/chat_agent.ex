@@ -1413,10 +1413,39 @@ defmodule BoomLooper.ChatAgent do
     }
     state = Map.put(state, :consecutive_crashes, 0)
     state = schedule_idle_check(state)
+
+    # Detect empty responses when context is full — the agent silently
+    # returned nothing useful. Surface a clear message so the user
+    # knows what happened instead of staring at "(no content)".
+    state =
+      if state.context_utilization >= 1.0 && empty_last_response?(state) do
+        err = %{
+          role: :system,
+          content: "⚠ Context window is full — the agent couldn't generate a response. " <>
+            "Start a new agent to continue. Your message history is preserved.",
+          timestamp: DateTime.utc_now()
+        }
+        {state, err} = append_message(state, err)
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: err})
+        state
+      else
+        state
+      end
+
     :ets.insert(@ets_table, {id, summary(state)})
     Persistence.persist_agent(state, &summary/1)
     Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
     drain_pending_sends(state)
+  end
+
+  defp empty_last_response?(state) do
+    case List.last(state.messages) do
+      %{role: :assistant, content: c} when is_binary(c) ->
+        trimmed = String.trim(c)
+        trimmed == "" || trimmed == "(no content)"
+      _ ->
+        false
+    end
   end
 
   # Stale stream_done — belongs to a replaced stream, ignore.
