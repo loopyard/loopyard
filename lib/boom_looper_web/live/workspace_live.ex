@@ -120,6 +120,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
      |> assign(:boot_status, "Initializing...")
      |> assign(:boot_log, [])
      |> assign(:editing_name, false)
+     |> assign(:editing_agent_id, nil)
      |> assign(:selected_service, nil)
      |> assign(:selected_volume, nil)
      |> assign(:volume_tab, :info)
@@ -681,13 +682,30 @@ defmodule BoomLooperWeb.WorkspaceLive do
     {:noreply, assign(socket, :editing_name, false)}
   end
 
+  # Sidebar inline rename — double-click on agent name
   @impl true
-  def handle_event("rename_agent", %{"name" => name}, socket) do
-    if socket.assigns.selected_id && String.trim(name) != "" do
-      ChatAgent.rename(socket.assigns.selected_id, String.trim(name))
+  def handle_event("start_rename_sidebar", %{"id" => id}, socket) do
+    {:noreply, assign(socket, :editing_agent_id, id)}
+  end
+
+  @impl true
+  def handle_event("cancel_rename_sidebar", _params, socket) do
+    {:noreply, assign(socket, :editing_agent_id, nil)}
+  end
+
+  @impl true
+  def handle_event("rename_agent", %{"name" => name} = params, socket) do
+    # Sidebar rename passes agent id explicitly; context panel uses selected_id
+    agent_id = params["id"] || socket.assigns.selected_id
+
+    if agent_id && String.trim(name) != "" do
+      ChatAgent.rename(agent_id, String.trim(name))
     end
 
-    {:noreply, assign(socket, :editing_name, false)}
+    {:noreply,
+     socket
+     |> assign(:editing_name, false)
+     |> assign(:editing_agent_id, nil)}
   end
 
   @impl true

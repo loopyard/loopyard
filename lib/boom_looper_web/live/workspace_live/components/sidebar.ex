@@ -58,7 +58,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
 
       <div class="flex-1 overflow-y-auto">
         <.section label="Agents">
-          <.agent_list_item :for={agent <- @agents} agent={agent} selected={@selected_id == agent.id} />
+          <.agent_list_item :for={agent <- @agents} agent={agent} selected={@selected_id == agent.id} editing={Map.get(assigns, :editing_agent_id) == agent.id} />
           <.empty :if={@agents == []} text="No agents" />
           <.row patch={"#{@base_path}/new"} class="text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3.5 h-3.5 flex-none" aria-hidden="true">
@@ -319,16 +319,23 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
 
   def agent_list_item(assigns) do
     display = agent_display_status(assigns.agent)
-    assigns = assign(assigns, :display, display)
+    editing = Map.get(assigns, :editing, false)
+    assigns = assign(assigns, display: display, editing: editing)
 
     ~H"""
-    <%!-- Stable DOM id per agent so LiveView patches the existing row
-         in place rather than shuffling adjacent nodes when `@agents`
-         is reassigned. Without it a rebuilt list would have LV swap
-         sibling nodes and replay their `transition-colors` CSS, which
-         made Ready dots briefly look gray during sidebar clicks. --%>
     <div :if={@display != :hidden} id={"agent-row-#{@agent.id}"} class="flex items-stretch gap-1">
+      <%!-- Inline rename form --%>
+      <form :if={@editing} phx-submit="rename_agent" phx-click-away="cancel_rename_sidebar" phx-value-id={@agent.id} class="flex-1 flex items-center gap-1 px-2 py-1">
+        <span class={"w-1.5 h-1.5 rounded-full flex-none #{status_dot(@display)}"} aria-hidden="true"></span>
+        <input
+          type="text" name="name" value={@agent.name} autofocus
+          class="flex-1 min-w-0 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-0.5 text-sm
+                 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-violet-500/30"
+        />
+      </form>
+      <%!-- Normal display --%>
       <.row
+        :if={!@editing}
         phx_click="select_agent"
         phx_value={%{id: @agent.id}}
         selected={@selected}
@@ -336,15 +343,12 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         class="flex-1"
       >
         <span class={"w-1.5 h-1.5 rounded-full flex-none #{status_dot(@display)}"} aria-hidden="true"></span>
-        <span class="truncate text-zinc-600 dark:text-zinc-400">{@agent.name}</span>
+        <span class="truncate text-zinc-600 dark:text-zinc-400" phx-dblclick="start_rename_sidebar" phx-value-id={@agent.id}>{@agent.name}</span>
         <span :if={@display == :thinking} class="text-xs text-violet-500 dark:text-violet-400 flex-none">{@agent[:thinking_word] || thinking_word(@agent.id, @agent[:active_tool])}</span>
-        <%!-- Sleeping: gray dot is sufficient. No text label — it flashes
-             during transient states (agent log primed before GenServer
-             starts) and draws attention to a state that resolves in <1s. --%>
         <span :if={@display == :crashed} class="text-xs text-red-500 dark:text-red-400 flex-none">Crashed</span>
       </.row>
       <button
-        :if={@display in [:sleeping, :crashed]}
+        :if={!@editing && @display in [:sleeping, :crashed]}
         phx-click="remove_agent"
         phx-value-id={@agent.id}
         aria-label={"Remove agent #{@agent.name}"}
