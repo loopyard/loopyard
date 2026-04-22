@@ -508,8 +508,8 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
   @log_version 1
 
-  defp replay_agent_log(project_dir, workspace_id) do
-    log_path = Path.join([project_dir, ".boomlooper", "workspace", "agents.log"])
+  defp replay_agent_log(_project_dir, workspace_id) do
+    log_path = BoomLooper.ChatAgent.Persistence.log_path(workspace_id)
 
     # Log is append-only. Compact it at boot if it's grown past the
     # threshold so replay stays fast on long-running workspaces.
@@ -564,7 +564,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
           :ok ->
             BoomLooper.EventLog.info("workspace", "Migrated agent log from v#{file_v} to v#{@log_version}")
             # Retry replay after successful migration
-            replay_agent_log(project_dir, workspace_id)
+            replay_agent_log(nil, workspace_id)
 
           {:error, :no_migration_path} ->
             BoomLooper.EventLog.warning("workspace",

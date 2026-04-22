@@ -103,6 +103,10 @@ defmodule BoomLooper.Application do
     # ServiceManager will reconnect to any running containers
     BoomLooper.ProjectRegistry.restore()
 
+    # Pre-populate agent ETS from all workspace agent logs so agents
+    # are visible immediately on boot — not lazily on first page visit.
+    restore_all_agents()
+
     # Post-startup restore calls. Each is wrapped in try/rescue because
     # a sibling child crash-loop can kill the supervisor (and these
     # GenServers with it) between Supervisor.start_link returning and
@@ -146,6 +150,38 @@ defmodule BoomLooper.Application do
   def config_change(changed, _new, removed) do
     BoomLooperWeb.Endpoint.config_change(changed, removed)
     :ok
+  end
+
+  # Replay every workspace's agent log into ETS at boot so agents are
+  # visible immediately. Without this, agents only appear after someone
+  # visits the workspace page (prime_agents_from_log in LiveView mount).
+  defp restore_all_agents do
+    workspaces = :ets.tab2list(:workspace_registry) |> Enum.map(fn {_id, w} -> w end)
+
+    count =
+      Enum.reduce(workspaces, 0, fn ws, acc ->
+        ws_id = ws[:id]
+        log_path = BoomLooper.ChatAgent.Persistence.log_path(ws_id)
+
+        if log_path && File.exists?(log_path) do
+          case BoomLooper.AgentLog.replay(log_path: log_path, version: 1, ets_table: :chat_agents) do
+            {:ok, agents} when map_size(agents) > 0 ->
+              acc + map_size(agents)
+
+            _ ->
+              acc
+          end
+        else
+          acc
+        end
+      end)
+
+    if count > 0 do
+      Logger.info("[BoomLooper] Restored #{count} agent(s) from logs on boot")
+    end
+  rescue
+    e ->
+      Logger.warning("[BoomLooper] restore_all_agents failed: #{Exception.message(e)}")
   end
 
   # Docker Desktop's credential helper hangs when Desktop isn't running.

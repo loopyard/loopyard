@@ -1486,14 +1486,6 @@ defmodule BoomLooperWeb.WorkspaceLive do
   # contents are just made visible to `list_agents/0` so the sidebar can
   # render agents as stopped (their status in the log is preserved,
   # typically :idle, which matches "available but not actively thinking").
-  # Agents persist to ~/.boomlooper/workspaces/<ws_id>/.boomlooper/workspace/
-  # agents.log — the SAME virtual dir Persistence writes to and ServiceManager
-  # reads from. Previously this used `workspace.path` (the user's project
-  # directory) which is the wrong location, so a server restart with the
-  # cluster stopped meant the sidebar showed "No agents" even with a valid
-  # log sitting on disk. Cluster-up path still worked because ServiceManager
-  # already replays from the correct path; this is specifically the LV's
-  # cluster-down fallback.
   defp prime_agents_from_log(workspace_id) do
     log_path = BoomLooper.ChatAgent.Persistence.log_path(workspace_id)
 
