@@ -250,7 +250,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
             <div class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style="animation-delay: 150ms"></div>
             <div class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style="animation-delay: 300ms"></div>
           </div>
-          <span class="text-sm text-violet-500 dark:text-violet-400 capitalize flex-none">{@word}...</span>
+          <span class="text-sm text-violet-500 dark:text-violet-400 flex-none">{@word}...</span>
         </div>
         <p :if={@last_action} class="text-xs text-zinc-500 dark:text-zinc-400 mt-1 truncate">{@last_action}</p>
       </div>

@@ -122,7 +122,10 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.ThinkingIndicatorTest do
         words = mod.__busy_words__(),
         words != [],
         into: %{} do
-      {mod.__tool_name__(), words}
+      {mod.__tool_name__(), Enum.map(words, &sentence_case/1)}
     end
   end
+
+  defp sentence_case(<<first::utf8, rest::binary>>), do: <<String.upcase(<<first::utf8>>)::binary, rest::binary>>
+  defp sentence_case(other), do: other
 end

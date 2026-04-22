@@ -320,8 +320,12 @@ defmodule BoomLooperWeb.Components.Sidebar do
 
     words = if phrases != [], do: phrases, else: @thinking_words
     idx = :erlang.phash2({agent_id, div(System.system_time(:second), 3)}, length(words))
-    Enum.at(words, idx)
+    word = Enum.at(words, idx)
+    sentence_case(word)
   end
+
+  defp sentence_case(<<first::utf8, rest::binary>>), do: <<String.upcase(<<first::utf8>>)::binary, rest::binary>>
+  defp sentence_case(other), do: other
 
   defp tool_busy_words(nil), do: []
   defp tool_busy_words(name) do
