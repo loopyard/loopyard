@@ -3,7 +3,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
   use Phoenix.Component
 
   import BoomLooperWeb.Components.Common, only: [dot: 1, control_btn: 1]
-  import BoomLooperWeb.Components.Sidebar, only: [status_dot: 1, agent_display_status: 1, thinking_word: 1]
+  import BoomLooperWeb.Components.Sidebar, only: [status_dot: 1, agent_display_status: 1, thinking_word: 2]
   import BoomLooperWeb.Components.Breadcrumbs, only: [breadcrumbs: 1]
   import BoomLooperWeb.Live.WorkspaceLive.Messages, only: [chat_msg: 1, streaming_bubble: 1]
   import BoomLooperWeb.Live.WorkspaceLive.Components.Formatters, only: [time_ago: 1]

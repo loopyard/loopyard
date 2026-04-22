@@ -4,7 +4,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
 
   import BoomLooperWeb.Components.Sidebar, only: [
     status_dot: 1, agent_display_status: 1, service_dot: 1, service_detail: 1,
-    first_host_port: 1, thinking_word: 1
+    first_host_port: 1, thinking_word: 2
   ]
   import BoomLooperWeb.Components.SideNav, only: [section: 1, row: 1, empty: 1]
   import BoomLooperWeb.Live.WorkspaceLive.Components.Formatters, only: [
