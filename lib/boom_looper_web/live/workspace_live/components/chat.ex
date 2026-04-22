@@ -212,7 +212,8 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
             name="message" id="chat-input" rows="1"
             placeholder="Type a message..."
             autocomplete="off"
-            class="flex-1 rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-2.5 text-base md:text-sm
+            style="font-size: 16px"
+            class="flex-1 rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-2.5
                    text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 resize-none
                    focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"></textarea>
           <button type="submit"
