@@ -52,17 +52,35 @@ Hooks.ScrollBottom = {
     this._observer.observe(el, { childList: true, subtree: true })
     this._observedEl = el
 
-    // Scroll now — double-rAF to ensure the browser has laid out content.
-    // A single rAF fires before layout is complete when LiveView pushes
-    // a large #messages list on mount.
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => this._scrollToBottom())
-    })
+    // Scroll to bottom after mount. With 400+ messages, layout can take
+    // multiple frames. Poll until scrollHeight stabilizes, then scroll.
+    this._scrollAfterLayout(el)
   },
 
   _scrollToBottom() {
     const el = document.getElementById("messages")
     if (el) el.scrollTop = el.scrollHeight
+  },
+
+  // Wait for layout to stabilize before scrolling. With large message
+  // lists, scrollHeight changes across multiple frames as the browser
+  // lays out content. Check every frame until it stops changing.
+  _scrollAfterLayout(el) {
+    let lastHeight = 0
+    let stableFrames = 0
+    const check = () => {
+      const h = el.scrollHeight
+      if (h === lastHeight) {
+        stableFrames++
+      } else {
+        stableFrames = 0
+        lastHeight = h
+      }
+      el.scrollTop = el.scrollHeight
+      // Wait for 3 stable frames before stopping
+      if (stableFrames < 3) requestAnimationFrame(check)
+    }
+    requestAnimationFrame(check)
   }
 }
 
