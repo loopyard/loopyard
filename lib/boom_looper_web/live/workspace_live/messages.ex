@@ -35,13 +35,13 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
     assigns = assign(assigns, :raw, raw_url(assigns))
 
     ~H"""
-    <div class="flex justify-end mt-3 mb-1 group/msg">
-      <div class="relative max-w-[85%] rounded-2xl rounded-tr-sm bg-violet-600 text-white px-4 py-2.5" id={"msg-user-#{hash_content(@msg.content)}"} phx-hook="Markdown" data-source={@msg.content}>
-        <div class="absolute top-2 left-2 flex items-center gap-1 opacity-0 group-hover/msg:opacity-100 transition-opacity">
-          <.copy_btn :if={@raw} raw_url={@raw} light />
-          <.open_btn :if={@url} url={@url} light />
-        </div>
+    <div class="flex flex-col items-end mt-3 mb-1 group/msg">
+      <div class="max-w-[85%] rounded-2xl rounded-tr-sm bg-violet-600 text-white px-4 py-2.5" id={"msg-user-#{hash_content(@msg.content)}"} phx-hook="Markdown" data-source={@msg.content}>
         <div class="markdown-body markdown-body-user text-base"></div>
+      </div>
+      <div class="flex items-center gap-1 mt-0.5 h-5 opacity-0 group-hover/msg:opacity-100 transition-opacity">
+        <.copy_btn :if={@raw} raw_url={@raw} />
+        <.open_btn :if={@url} url={@url} />
       </div>
     </div>
     """
@@ -60,16 +60,18 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
     assigns = assign(assigns, :rendered_content, rewrite_localhost_urls(assigns.msg.content, assigns[:host]))
 
     ~H"""
-    <div class="flex gap-3 mt-3 mb-1 group/msg">
-      <div class="flex-none w-7 h-7 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center mt-0.5">
-        <span class="text-xs font-bold text-violet-600 dark:text-violet-400">C</span>
-      </div>
-      <div class="relative max-w-[85%] rounded-2xl rounded-tl-sm bg-zinc-100 dark:bg-zinc-800 px-4 py-2.5" id={"msg-#{hash_content(@msg.content)}"} phx-hook="Markdown" data-source={@rendered_content}>
-        <div class="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover/msg:opacity-100 transition-opacity">
-          <.copy_btn :if={@raw} raw_url={@raw} />
-          <.open_btn :if={@url} url={@url} />
+    <div class="mt-3 mb-1 group/msg">
+      <div class="flex gap-3">
+        <div class="flex-none w-7 h-7 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center mt-0.5">
+          <span class="text-xs font-bold text-violet-600 dark:text-violet-400">C</span>
         </div>
-        <div class="markdown-body text-base text-zinc-900 dark:text-zinc-100"></div>
+        <div class="max-w-[85%] rounded-2xl rounded-tl-sm bg-zinc-100 dark:bg-zinc-800 px-4 py-2.5" id={"msg-#{hash_content(@msg.content)}"} phx-hook="Markdown" data-source={@rendered_content}>
+          <div class="markdown-body text-base text-zinc-900 dark:text-zinc-100"></div>
+        </div>
+      </div>
+      <div class="flex items-center gap-1 ml-10 mt-0.5 h-5 opacity-0 group-hover/msg:opacity-100 transition-opacity">
+        <.copy_btn :if={@raw} raw_url={@raw} />
+        <.open_btn :if={@url} url={@url} />
       </div>
     </div>
     """
@@ -193,12 +195,10 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
     <div class="pl-10 py-0.5 group/result">
       <pre class={"p-3 rounded-lg text-xs font-mono overflow-x-auto max-h-80 overflow-y-auto whitespace-pre-wrap
                    #{if @is_error, do: "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300", else: "bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-zinc-300"}"}>{Ansi.to_html(@display)}</pre>
-      <div class="flex items-center gap-2 mt-1">
+      <div class="flex items-center gap-2 mt-1 h-5">
         <p :if={@truncated} class="text-[10px] text-zinc-400 dark:text-zinc-500">... truncated ({@line_count - 40} more lines)</p>
-        <div class="flex items-center gap-1 opacity-0 group-hover/result:opacity-100 transition-opacity">
-          <.copy_btn :if={@raw} raw_url={@raw} />
-          <.open_btn :if={@url} url={@url} />
-        </div>
+        <.copy_btn :if={@raw} raw_url={@raw} class="opacity-0 group-hover/result:opacity-100 transition-opacity" />
+        <.open_btn :if={@url} url={@url} class="opacity-0 group-hover/result:opacity-100 transition-opacity" />
       </div>
     </div>
     """
@@ -232,8 +232,8 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
   # --- Icon buttons for message actions ---
 
   defp copy_btn(assigns) do
-    light = assigns[:light] || false
-    assigns = assign(assigns, :light, light)
+    extra_class = assigns[:class] || ""
+    assigns = assign(assigns, :extra_class, extra_class)
 
     ~H"""
     <button
@@ -241,7 +241,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
       phx-hook="CopySource"
       data-source={@raw_url}
       data-copy="fetch"
-      class={"p-1 rounded-md transition-opacity cursor-pointer #{if @light, do: "text-violet-300 hover:text-white", else: "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"}"}
+      class={"p-1 rounded-md cursor-pointer text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 #{@extra_class}"}
       title="Copy"
     >
       <svg class="w-3.5 h-3.5 copy-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
@@ -256,15 +256,15 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
   end
 
   defp open_btn(assigns) do
-    light = assigns[:light] || false
-    assigns = assign(assigns, :light, light)
+    extra_class = assigns[:class] || ""
+    assigns = assign(assigns, :extra_class, extra_class)
 
     ~H"""
     <a
       href={@url}
       target="_blank"
       rel="noopener"
-      class={"p-1 rounded-md transition-opacity #{if @light, do: "text-violet-300 hover:text-white", else: "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"}"}
+      class={"p-1 rounded-md text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 #{@extra_class}"}
       title="Open"
     >
       <svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor">
