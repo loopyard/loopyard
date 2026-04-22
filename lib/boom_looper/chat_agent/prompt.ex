@@ -71,12 +71,13 @@ defmodule BoomLooper.ChatAgent.Prompt do
     Long command output is truncated — you'll see the last ~80 lines. The full output is visible to the user in the chat.
 
     File operations — use the dedicated MCP tools, not shell commands:
-    - `read_file` (with line range) or `read_files` instead of `cat` or `head/tail` — avoids dumping huge files into your context
-    - `edit` or `multi_edit` instead of `sed` or `awk` — surgical string replacement, no need to read the whole file first
-    - `grep` and `glob` instead of `exec grep/find` — structured results, no shell escaping
-    - `tree` instead of `exec find` or `ls -R`
-    These tools are context-efficient. `exec cat large_file.rb` wastes your context window on thousands of lines you don't need.
-    Tools with large result sets (grep, glob, git) are paginated — if the output says "use offset=N for next page", pass that offset to get more results, or refine your query.
+    - `file_info` before reading unfamiliar files — tells you line count so you can decide: small (<100 lines) → read whole thing, large → use line range or grep first
+    - `read_file` (with start_line/end_line) or `read_files` instead of `cat` — avoids dumping huge files into context
+    - `edit` instead of `sed` — surgical find/replace, returns the changed region so you can verify without re-reading
+    - `grep` (with context_lines=5) instead of grep→read_file — one call shows matches with surrounding code
+    - `glob` and `tree` instead of `exec find` or `ls -R`
+    Efficient pattern: grep to find → edit to fix. Skip the read_file in between — edit uses old_string matching, not line numbers.
+    Tools with large result sets are paginated — if the output says "use offset=N for next page", pass that offset or refine your query.
 
     IMPORTANT: Container ports (e.g. 3000) are NOT accessible from the host. Docker maps them to random host ports. Use `probe_http` to find the real URL, or `service_containers` to see port mappings (e.g. 127.0.0.1:32794->3000/tcp means the app is at localhost:32794).
 

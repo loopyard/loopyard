@@ -9,6 +9,7 @@ defmodule BoomLooper.Tools.Container.Grep do
       include: {:string, description: "File pattern to filter, e.g. '*.json' or '*.{ts,vue}'"},
       regex: {:boolean, description: "Treat pattern as extended regex (default: false)"},
       output_mode: {:string, description: "'lines' (default — file:line: content) or 'files' (just unique file paths)"},
+      context_lines: {:integer, description: "Show N lines before and after each match (like grep -C). Useful to see surrounding code without a separate read_file call."},
       limit: {:integer, description: "Max matches to return (default: 50)"},
       offset: {:integer, description: "Skip this many matches (default: 0). Use for pagination."}
     ]
@@ -21,6 +22,7 @@ defmodule BoomLooper.Tools.Container.Grep do
     include = Map.get(params, :include)
     regex? = Map.get(params, :regex, false)
     output_mode = Map.get(params, :output_mode, "lines")
+    context_lines = Map.get(params, :context_lines)
     limit = Map.get(params, :limit, 50)
     offset = Map.get(params, :offset, 0)
 
@@ -28,12 +30,12 @@ defmodule BoomLooper.Tools.Container.Grep do
       if pattern == "" do
         {:error, "pattern must not be empty"}
       else
-        grep_in_container(agent_id, pattern, path, include, regex?, output_mode, limit, offset)
+        grep_in_container(agent_id, pattern, path, include, regex?, output_mode, context_lines, limit, offset)
       end
     end
   end
 
-  defp grep_in_container(agent_id, pattern, path, include, regex?, output_mode, limit, offset) do
+  defp grep_in_container(agent_id, pattern, path, include, regex?, output_mode, context_lines, limit, offset) do
     case Helpers.resolve_container(agent_id) do
       {:ok, container} ->
         flags = ["-rn", "--color=never"]
@@ -49,6 +51,7 @@ defmodule BoomLooper.Tools.Container.Grep do
             )
 
         flags = if include, do: flags ++ ["--include=#{include}"], else: flags
+        flags = if context_lines, do: flags ++ ["-C", to_string(min(context_lines, 10))], else: flags
         full_path = Path.join("/workspace", path)
 
         # Fetch enough for pagination

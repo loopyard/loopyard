@@ -75,11 +75,39 @@ defmodule BoomLooper.Tools.Container.Edit do
         case BoomLooper.VolumeManager.write_file(volume_name, path, new_content) do
           :ok ->
             replaced = if replace_all?, do: occurrences, else: 1
-            {:ok, "Replaced #{replaced} occurrence(s) in #{path} (#{byte_size(new_content)} bytes)"}
+
+            # Show the changed region so the agent can verify without
+            # a follow-up read_file call. Find where the replacement
+            # landed and show 3 lines of context around it.
+            snippet = changed_region(new_content, new, 3)
+
+            {:ok, "Replaced #{replaced} occurrence(s) in #{path}\n\n#{snippet}"}
 
           {:error, reason} ->
             {:error, "Failed to write #{path}: #{inspect(reason)}"}
         end
+    end
+  end
+
+  # Extract a few lines around where the replacement landed.
+  defp changed_region(content, new_string, context) do
+    lines = String.split(content, "\n")
+
+    # Find the first line containing the new text
+    match_idx =
+      Enum.find_index(lines, fn line -> String.contains?(line, String.split(new_string, "\n") |> hd()) end)
+
+    if match_idx do
+      start = max(match_idx - context, 0)
+      stop = min(match_idx + context, length(lines) - 1)
+
+      lines
+      |> Enum.slice(start..stop)
+      |> Enum.with_index(start + 1)
+      |> Enum.map(fn {line, num} -> "#{num}\t#{line}" end)
+      |> Enum.join("\n")
+    else
+      ""
     end
   end
 end

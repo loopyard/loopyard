@@ -56,7 +56,8 @@ defmodule BoomLooper.Tools.Container do
     Container.Volumes,
     Container.FileUrl,
     Container.AppUrl,
-    Container.Git
+    Container.Git,
+    Container.FileInfo
   ]
 
   def __tool_server__ do
