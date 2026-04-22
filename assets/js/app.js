@@ -86,7 +86,6 @@ Hooks.TailScroll = {
 Hooks.ChatForm = {
   mounted() {
     const ta = this.el.querySelector("#chat-input")
-    const page = document.getElementById("chat-page")
 
     const submit = () => {
       const text = ta.value.trim()
@@ -110,17 +109,6 @@ Hooks.ChatForm = {
     this.el.addEventListener("submit", (e) => { e.preventDefault(); submit() })
     this.handleEvent("focus_input", () => ta.focus())
 
-    // iOS keyboard: resize the chat page to fit above the keyboard.
-    // visualViewport.height shrinks when the keyboard opens. We set
-    // the page height to match so the flex layout adjusts and the
-    // input stays visible without Safari's janky scroll-zoom.
-    if (window.visualViewport) {
-      const adjust = () => {
-        if (page) page.style.height = window.visualViewport.height + "px"
-      }
-      window.visualViewport.addEventListener("resize", adjust)
-      window.visualViewport.addEventListener("scroll", adjust)
-    }
   }
 }
 
