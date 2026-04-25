@@ -124,7 +124,20 @@ defmodule BoomLooper.ChatAgent.ContextWindowTest do
       assert_in_delta state.context_utilization, 0.9, 0.01
     end
 
-    test "crossing 85% threshold appends an inline warning (one-shot per turn)", %{id: id} do
+    test "crossing 85% threshold sets the one-shot warning flag (telemetry only, no inline UI)", %{id: id} do
+      # The implementation deliberately doesn't append a user-facing
+      # message — the auto-restart handles real exhaustion silently.
+      # The contract here is the `context_warning_sent` flag (one-shot
+      # per turn) plus the telemetry event, which ops dashboards read.
+      :telemetry.attach(
+        "ctx-warn-test-#{:erlang.unique_integer([:positive])}",
+        [:boom_looper, :agent, :context_warning],
+        fn _event, measurements, meta, parent ->
+          send(parent, {:context_warning, measurements, meta})
+        end,
+        self()
+      )
+
       pid = agent_pid(id)
       ref = make_ref()
       :sys.replace_state(pid, fn s -> %{s | stream_ref: ref} end)
@@ -147,20 +160,12 @@ defmodule BoomLooper.ChatAgent.ContextWindowTest do
       _ = :sys.get_state(pid)
       state = :sys.get_state(pid)
 
-      warn_msg =
-        Enum.find(state.messages, fn m ->
-          m.role == :system and String.contains?(m.content || "", "Context window")
-        end)
-
-      assert warn_msg != nil,
-             "must append inline warning when utilization >= 0.85"
-
-      assert String.contains?(warn_msg.content, "90%")
       assert state.context_warning_sent == true
+      assert_received {:context_warning, %{utilization: util}, _meta}
+      assert util >= 0.85
 
       # Second high-utilization SessionResult on the same turn should
-      # NOT re-append the warning (one-shot until stream_done clears
-      # the flag).
+      # NOT re-fire telemetry (one-shot until stream_done clears the flag).
       send(
         pid,
         {:stream_event, id, ref,
@@ -176,15 +181,7 @@ defmodule BoomLooper.ChatAgent.ContextWindowTest do
       )
 
       _ = :sys.get_state(pid)
-      state2 = :sys.get_state(pid)
-
-      warn_count =
-        Enum.count(state2.messages, fn m ->
-          m.role == :system and String.contains?(m.content || "", "Context window")
-        end)
-
-      assert warn_count == 1,
-             "one-shot per turn — should not duplicate the warning before stream_done"
+      refute_received {:context_warning, _, _}
     end
 
     test "stream_done resets context_warning_sent so the warning can re-fire next turn",
