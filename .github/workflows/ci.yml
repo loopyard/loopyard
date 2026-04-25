@@ -46,6 +46,13 @@ jobs:
         # ubuntu-latest. The 5 min timeout is the tripwire — if the
         # suite goes over, hunt and eliminate slow tests rather than
         # raise this.
+        env:
+          # ubuntu-latest is ~5x slower than a local M-series Mac.
+          # The local 2s default catches Process.sleep regressions; on
+          # CI it nukes legitimate work (a 1s test becomes 5s under
+          # load and trips the timeout). Bump to 30s on CI — sleep
+          # regressions still get caught locally where it matters.
+          BOOMLOOPER_LONG_TIMEOUTS: "1"
         run: mix test --exclude docker --exclude macos --exclude ssh --exclude terminal --exclude recovery --exclude slow
         timeout-minutes: 5
 
