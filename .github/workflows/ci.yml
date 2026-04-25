@@ -82,8 +82,16 @@ jobs:
       - name: Compile
         run: mix compile
 
-      - name: Pull alpine image (avoid first-run pull in tests)
-        run: docker pull alpine:3.19
+      - name: Pre-pull test images in parallel
+        # Tests pull these on first use; doing it upfront in parallel
+        # keeps Docker test runtime bounded by the slowest pull
+        # (ubuntu:24.04 at ~80MB) instead of summing all pulls.
+        # docker pull is idempotent and fast when the image is cached.
+        run: |
+          for img in alpine:3.19 alpine:latest ubuntu:24.04 postgres:15 postgres:16 redis:7 redis:7-alpine; do
+            docker pull "$img" &
+          done
+          wait
 
       - name: Run docker E2E tests
         # Include only :docker; exclude others. The fast suite ran in
