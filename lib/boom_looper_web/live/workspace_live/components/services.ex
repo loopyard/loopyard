@@ -92,7 +92,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Services do
           {@service_name} is stopped
         </h3>
         <p :if={@workspace_state in [:stopped, :starting]} class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
-          The workspace cluster is {@workspace_state}. Start it from the sidebar to bring this service up.
+          The workspace is {@workspace_state}. Start it from the sidebar to bring services up.
         </p>
         <p :if={@workspace_state not in [:stopped, :starting]} class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
           Start it to see live logs.

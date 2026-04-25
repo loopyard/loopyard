@@ -805,6 +805,12 @@ defmodule BoomLooperWeb.WorkspaceLive do
   # --- Cluster events (Docker Compose + volumes) ---
 
   def handle_event("restart_service", %{"service_name" => name}, socket) do
+    service_statuses =
+      Enum.map(socket.assigns.service_statuses, fn svc ->
+        if svc.name == name, do: %{svc | status: :starting}, else: svc
+      end)
+
+    socket = assign(socket, :service_statuses, service_statuses)
     run_compose_async(socket, ["restart", name], 30_000)
   end
 
@@ -814,6 +820,20 @@ defmodule BoomLooperWeb.WorkspaceLive do
     # on a non-running container, which is why the single-button
     # "Restart" was the wrong call to show in the log view when the
     # service isn't running.
+    #
+    # Optimistically flip the service to :starting so the UI shows
+    # feedback immediately. Docker Observer will correct it to :running
+    # or :crashed once the container state changes.
+    service_statuses =
+      Enum.map(socket.assigns.service_statuses, fn svc ->
+        if svc.name == name and svc.status in [:stopped, :crashed] do
+          %{svc | status: :starting}
+        else
+          svc
+        end
+      end)
+
+    socket = assign(socket, :service_statuses, service_statuses)
     run_compose_async(socket, ["up", "-d", name], 60_000)
   end
 
