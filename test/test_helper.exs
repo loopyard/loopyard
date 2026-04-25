@@ -143,6 +143,7 @@ _ =
   BoomLooper.Events.WorkspaceSetup.RetryScheduled,
   BoomLooper.Workspace.Setup,
   BoomLooper.Workspace.Setup.Error,
+  BoomLooper.Workspace.Setup.ProgressParser,
   # Helpers reached across test files.
   BoomLooper.ChatAgent.OSProcess,
   BoomLooper.Saga,
