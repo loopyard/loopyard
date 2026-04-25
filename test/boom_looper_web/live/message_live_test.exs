@@ -1,10 +1,6 @@
 defmodule BoomLooperWeb.MessageLiveTest do
   use BoomLooperWeb.ConnCase
 
-  # These tests send_message which triggers Claude CLI (unavailable in CI).
-  # The stream errors out but the user message is saved. Give extra time.
-  @moduletag timeout: 15_000
-
   import Phoenix.LiveViewTest
 
   alias BoomLooper.ChatAgent
@@ -31,10 +27,17 @@ defmodule BoomLooperWeb.MessageLiveTest do
       started_by: "test"
     )
 
-    # Send a message so we have something to look up.
-    # On CI without Claude CLI, the stream errors out but the user message is saved.
-    ChatAgent.send_message(agent_id, "hello world")
-    Process.sleep(1_000)
+    # Insert a user message directly via append_message_ets so the test
+    # has something to look up — no Claude CLI dependency, no async wait.
+    # Going through send_message used to require Process.sleep(1_000)
+    # while the stream errored out; doing the ETS insert directly is
+    # synchronous and the GenServer cast lands before the next call
+    # because get_state is a synchronous GenServer.call (FIFO mailbox).
+    ChatAgent.append_message_ets(agent_id, %{
+      role: :user,
+      content: "hello world",
+      timestamp: DateTime.utc_now()
+    })
 
     on_exit(fn ->
       try do
@@ -42,7 +45,6 @@ defmodule BoomLooperWeb.MessageLiveTest do
       catch
         :exit, _ -> :ok
       end
-      Process.sleep(50)
       File.rm_rf!(tmp_dir)
     end)
 

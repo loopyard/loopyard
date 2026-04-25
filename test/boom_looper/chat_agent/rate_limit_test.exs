@@ -67,9 +67,11 @@ defmodule BoomLooper.ChatAgent.RateLimitTest do
     test ":rejected transitions to :rate_limited and schedules auto-retry", %{id: id} do
       pid = agent_pid(id)
 
-      # resets_at_ms 2s in the future — easy to observe both the
-      # transition and the auto-clear.
-      resets_at = System.system_time(:millisecond) + 2_000
+      # resets_at_ms a short window in the future — long enough to
+      # observe both the transition and the auto-clear, short enough
+      # to keep the suite fast. The behavior is the same at any window;
+      # we only need to assert that the scheduled retry fires.
+      resets_at = System.system_time(:millisecond) + 200
 
       ref = make_ref()
       :sys.replace_state(pid, fn s -> %{s | stream_ref: ref} end)
@@ -102,8 +104,9 @@ defmodule BoomLooper.ChatAgent.RateLimitTest do
              end)
 
       # After the resets_at window, the scheduled :rate_limit_retry should
-      # flip the agent back to :idle. We picked 2s — give it 3s headroom.
-      assert_receive %BoomLooper.Events.ChatAgent.StatusChanged{id: ^id, status: :idle}, 3_500
+      # flip the agent back to :idle. ~1s headroom on top of the 200ms
+      # window keeps the test deterministic without burning seconds.
+      assert_receive %BoomLooper.Events.ChatAgent.StatusChanged{id: ^id, status: :idle}, 1_500
       state_after = :sys.get_state(pid)
       assert state_after.status == :idle
       assert state_after.rate_limit_status == :ok

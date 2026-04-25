@@ -105,7 +105,7 @@ defmodule BoomLooper.DockerTest do
       for msg <- [
             "Cannot connect to the Docker daemon at unix:///var/run/docker.sock",
             "error during connect: Post http://docker/v1.41/containers/create",
-            "dial unix /var/run/docker.sock: connect: no such file or directory",
+            "dial unix /var/run/docker.sock: connect: connection refused",
             "connection refused",
             "net/http: request canceled while waiting for connection",
             "read unix @->/var/run/docker.sock: i/o timeout",
@@ -113,6 +113,19 @@ defmodule BoomLooper.DockerTest do
           ] do
         assert Docker.transient_error?(msg),
                "expected #{inspect(msg)} to be treated as transient"
+      end
+    end
+
+    test "treats a missing socket file as PERMANENT (fail-fast, not retry)" do
+      # Colima/Docker Desktop not running — the socket file genuinely
+      # doesn't exist on disk. Retrying 3x with backoff burns ~1.3s
+      # per call for nothing; the socket isn't going to materialize.
+      for msg <- [
+            "dial unix /var/run/docker.sock: connect: no such file or directory",
+            "dial unix /Users/me/.colima/default/docker.sock: connect: no such file or directory"
+          ] do
+        refute Docker.transient_error?(msg),
+               "expected #{inspect(msg)} to fail fast (socket file missing)"
       end
     end
 

@@ -37,21 +37,14 @@ defmodule BoomLooper.AgentBootWatcherTest do
   end
 
   describe "surface #9: boot-task watcher" do
-    test "boot task crashes with agent still :booting → boot_failed fires" do
-      id = fresh_id()
-      ChatAgent.register_booting(id, "watcher test", File.cwd!())
-
-      # Directly invoke the watcher path with a boot function that
-      # crashes. start_monitored returns :ok and runs async.
+    # Inline the watcher logic from AgentBoot.start_monitored so these
+    # tests don't depend on the full boot saga. Returns once the watcher
+    # task has finished its work (DOWN handled). Sends `:watcher_done`
+    # back to `parent` instead of `Process.sleep`-ing for an arbitrary
+    # window.
+    defp run_watcher(parent, id, boot_fn) do
       Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
-        boot_task =
-          Task.Supervisor.async_nolink(BoomLooper.TaskSupervisor, fn ->
-            raise "boot exploded"
-          end)
-
-        # Inline the watcher logic from AgentBoot.start_monitored so
-        # this test doesn't depend on the full boot saga (which needs
-        # workspace setup).
+        boot_task = Task.Supervisor.async_nolink(BoomLooper.TaskSupervisor, boot_fn)
         ref = Process.monitor(boot_task.pid)
 
         receive do
@@ -67,10 +60,21 @@ defmodule BoomLooper.AgentBootWatcherTest do
                 :ok
             end
         end
-      end)
 
-      # Give the monitor time to fire.
-      Process.sleep(200)
+        send(parent, :watcher_done)
+      end)
+    end
+
+    test "boot task crashes with agent still :booting → boot_failed fires" do
+      id = fresh_id()
+      ChatAgent.register_booting(id, "watcher test", File.cwd!())
+
+      run_watcher(self(), id, fn -> raise "boot exploded" end)
+
+      # Wait for the watcher's DOWN handler to finish, not an arbitrary
+      # 200ms. Tight 500ms cap catches a real hang without inflating the
+      # suite when the path is fast.
+      assert_receive :watcher_done, 500
 
       # boot_failed deletes the ETS row + broadcasts BootFailed.
       assert :ets.lookup(:chat_agents, id) == []
@@ -84,30 +88,9 @@ defmodule BoomLooper.AgentBootWatcherTest do
       summary = %{id: id, status: :idle, name: "already ready", working_dir: File.cwd!(), started_at: DateTime.utc_now(), last_activity_at: DateTime.utc_now()}
       :ets.insert(:chat_agents, {id, summary})
 
-      Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
-        boot_task =
-          Task.Supervisor.async_nolink(BoomLooper.TaskSupervisor, fn ->
-            raise "boot exploded"
-          end)
+      run_watcher(self(), id, fn -> raise "boot exploded" end)
 
-        ref = Process.monitor(boot_task.pid)
-
-        receive do
-          {:DOWN, ^ref, :process, _, :normal} ->
-            :ok
-
-          {:DOWN, ^ref, :process, _, reason} ->
-            case :ets.lookup(:chat_agents, id) do
-              [{^id, %{status: :booting}}] ->
-                ChatAgent.boot_failed(id, {:boot_task_crashed, reason})
-
-              _ ->
-                :ok
-            end
-        end
-      end)
-
-      Process.sleep(200)
+      assert_receive :watcher_done, 500
 
       # ETS row preserved — the watcher correctly no-opped.
       assert [{^id, row}] = :ets.lookup(:chat_agents, id)
@@ -120,30 +103,9 @@ defmodule BoomLooper.AgentBootWatcherTest do
       id = fresh_id()
       ChatAgent.register_booting(id, "clean exit", File.cwd!())
 
-      Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
-        boot_task =
-          Task.Supervisor.async_nolink(BoomLooper.TaskSupervisor, fn ->
-            :ok
-          end)
+      run_watcher(self(), id, fn -> :ok end)
 
-        ref = Process.monitor(boot_task.pid)
-
-        receive do
-          {:DOWN, ^ref, :process, _, :normal} ->
-            :ok
-
-          {:DOWN, ^ref, :process, _, reason} ->
-            case :ets.lookup(:chat_agents, id) do
-              [{^id, %{status: :booting}}] ->
-                ChatAgent.boot_failed(id, {:boot_task_crashed, reason})
-
-              _ ->
-                :ok
-            end
-        end
-      end)
-
-      Process.sleep(200)
+      assert_receive :watcher_done, 500
 
       # ETS row still :booting — the watcher doesn't clean up after
       # a clean boot. That's the real boot path's responsibility.
@@ -154,13 +116,10 @@ defmodule BoomLooper.AgentBootWatcherTest do
     end
 
     test "public AgentBoot.start_monitored/3 with a crashing boot path surfaces failure within ~100ms" do
-      # Exercise the real public function with agent_opts that will
-      # cause the saga to crash immediately. The saga's first step is
-      # load_config_step which reads from a volume — non-existent
-      # workspace_id yields nil config, which is valid; the crash
-      # needs to come from something else. Using bogus agent_type
-      # is the easiest repro: Agents.Registry.name_to_module/1 will
-      # raise.
+      # Subscribe to the ChatAgent topic so we can deterministically wait
+      # for the BootFailed event instead of polling ETS every 100ms.
+      BoomLooper.ChatAgent.subscribe()
+
       id = fresh_id()
       ChatAgent.register_booting(id, "start_monitored test", File.cwd!())
 
@@ -171,28 +130,13 @@ defmodule BoomLooper.AgentBootWatcherTest do
           workspace_id: "nonexistent-ws",
           agent_type: "definitely_not_a_real_agent_type_#{:rand.uniform(1_000_000)}"
         ],
-        # Short deadline so even if the saga hangs we don't wait long.
-        boot_deadline_ms: 2_000
+        # Tight deadline keeps the test fast — the saga raises on the
+        # bogus agent_type lookup well before this elapses, so the
+        # deadline is just the upper bound.
+        boot_deadline_ms: 500
       )
 
-      # The watcher should fire boot_failed within a couple seconds —
-      # either because the saga raised immediately, or because the
-      # deadline elapsed.
-      start = System.monotonic_time(:millisecond)
-
-      Enum.reduce_while(1..50, nil, fn _i, _acc ->
-        Process.sleep(100)
-        case :ets.lookup(:chat_agents, id) do
-          [] -> {:halt, :deleted}
-          [{^id, %{status: :crashed}}] -> {:halt, :crashed}
-          _ -> {:cont, nil}
-        end
-      end)
-
-      elapsed = System.monotonic_time(:millisecond) - start
-
-      assert elapsed < 3_000,
-             "boot failure should surface within 3s (surface #9). Took #{elapsed}ms."
+      assert_receive %BoomLooper.Events.ChatAgent.BootFailed{id: ^id}, 2_000
 
       assert :ets.lookup(:chat_agents, id) == [] or
                match?([{^id, %{status: :crashed}}], :ets.lookup(:chat_agents, id))

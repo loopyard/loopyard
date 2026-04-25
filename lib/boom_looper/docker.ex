@@ -211,18 +211,33 @@ defmodule BoomLooper.Docker do
   # Patterns that indicate the Docker daemon is briefly unreachable,
   # not that the command itself is wrong. Any of these is worth one or
   # two retries; none of them require operator intervention to resolve.
+  #
+  # Important exception: "dial unix … no such file or directory" means
+  # the daemon socket doesn't exist at all (Colima/Docker Desktop is
+  # not running). Retrying that 3x with backoff burns ~1.3s per call
+  # for nothing — the socket isn't going to materialize on its own.
+  # Treat as PERMANENT so the caller fails fast.
   @doc false
   def transient_error?(output) when is_binary(output) do
-    String.contains?(output, "Cannot connect to the Docker daemon") or
-      String.contains?(output, "error during connect") or
-      String.contains?(output, "dial unix") or
-      String.contains?(output, "connection refused") or
-      String.contains?(output, "i/o timeout") or
-      String.contains?(output, "EOF") or
-      String.contains?(output, "request canceled")
+    cond do
+      socket_missing?(output) -> false
+      String.contains?(output, "Cannot connect to the Docker daemon") -> true
+      String.contains?(output, "error during connect") -> true
+      String.contains?(output, "dial unix") -> true
+      String.contains?(output, "connection refused") -> true
+      String.contains?(output, "i/o timeout") -> true
+      String.contains?(output, "EOF") -> true
+      String.contains?(output, "request canceled") -> true
+      true -> false
+    end
   end
 
   def transient_error?(_), do: false
+
+  defp socket_missing?(output) do
+    String.contains?(output, "dial unix") and
+      String.contains?(output, "no such file or directory")
+  end
 
   @doc """
   Stream a docker command, invoking `callback` with each chunk of output.
