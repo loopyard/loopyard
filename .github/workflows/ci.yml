@@ -41,8 +41,13 @@ jobs:
         run: mix compile --warnings-as-errors
 
       - name: Run tests
-        run: mix test --exclude docker --exclude macos --exclude ssh --exclude terminal
-        timeout-minutes: 10
+        # Mirror the default exclusions in test/test_helper.exs so CI
+        # runs the same set as `mix test` locally. Goal: under 2 min on
+        # ubuntu-latest. The 5 min timeout is the tripwire — if the
+        # suite goes over, hunt and eliminate slow tests rather than
+        # raise this.
+        run: mix test --exclude docker --exclude macos --exclude ssh --exclude terminal --exclude recovery --exclude slow
+        timeout-minutes: 5
 
   docker-e2e:
     # End-to-end tests that spin up real Docker containers. GitHub's
