@@ -142,7 +142,13 @@ defmodule BoomLooper.ProjectRegistryTest do
   end
 
   describe "remove_project/1" do
-    @tag timeout: 10_000
+    # remove_project loops through each workspace and runs the full
+    # Destructor + volume-cleanup pipeline (compose down, several
+    # `docker volume rm`s, prune_temp_containers). Each Docker call
+    # burns 1.3s of Retry backoff when the daemon is unreachable, so
+    # a Docker-less environment exhausts the test budget. Tag :docker.
+    @tag :docker
+    @tag timeout: 30_000
     test "removes project and all workspaces" do
       path = File.cwd!()
       {:ok, project, _} = ProjectRegistry.add(path)
@@ -151,7 +157,8 @@ defmodule BoomLooper.ProjectRegistryTest do
       assert ProjectRegistry.list_workspaces(project.id) == []
     end
 
-    @tag timeout: 10_000
+    @tag :docker
+    @tag timeout: 30_000
     test "wipes the host-side virtual workspace dir so agents.log is gone" do
       # Regression: agents.log lives at
       #   ~/.boomlooper/workspaces/<ws_id>/.boomlooper/workspace/agents.log
