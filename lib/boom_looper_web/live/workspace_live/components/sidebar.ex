@@ -114,6 +114,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         :starting -> {"Starting", "bg-blue-400 animate-pulse", :none}
         :stopping -> {"Stopping", "bg-amber-400 animate-pulse", :none}
         :started -> {"Running", "bg-emerald-500", :stop}
+        :partial -> {"Partially running", "bg-amber-400", :stop}
         :stopped -> {"Stopped", "bg-zinc-400", :start}
       end
 

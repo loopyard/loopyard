@@ -182,10 +182,17 @@ defmodule BoomLooperWeb.WorkspaceLive do
     if not docker_connected?() do
       previous || :stopped
     else
-      any_running? = Enum.any?(service_statuses, &(&1.status == :running))
+      running_count = Enum.count(service_statuses, &(&1.status == :running))
+      total_count = length(service_statuses)
+      any_running? = running_count > 0
+      all_running? = running_count == total_count and total_count > 0
+
+      # :partial is a display-only state — normalize to :started for
+      # the state machine which only knows the four core states.
+      sm_previous = if previous == :partial, do: :started, else: previous
 
       target =
-        case previous do
+        case sm_previous do
           :starting -> if any_running?, do: :started, else: :starting
           :stopping -> if any_running?, do: :stopping, else: :stopped
           _ -> if any_running?, do: :started, else: :stopped
@@ -194,9 +201,17 @@ defmodule BoomLooperWeb.WorkspaceLive do
       # Gate transitions through the state machine. Same-state is a
       # no-op and always legal. Anything illegal falls back to the
       # observable truth (:started or :stopped from any_running?).
-      case BoomLooper.Cluster.StateMachine.transition(previous || target, target) do
-        {:ok, state} -> state
-        {:error, _} -> if any_running?, do: :started, else: :stopped
+      state =
+        case BoomLooper.Cluster.StateMachine.transition(sm_previous || target, target) do
+          {:ok, s} -> s
+          {:error, _} -> if any_running?, do: :started, else: :stopped
+        end
+
+      # Distinguish "all services up" from "some services stopped"
+      if state == :started and not all_running? do
+        :partial
+      else
+        state
       end
     end
   end
