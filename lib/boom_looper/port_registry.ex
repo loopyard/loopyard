@@ -121,6 +121,12 @@ defmodule BoomLooper.PortRegistry do
 
     case :ets.lookup(@table, key) do
       [{^key, entry}] ->
+        # Re-track on existing entries too — the workspace supervisor pid
+        # may have changed (restart) since the original assign. Resources
+        # is idempotent under the same {kind, id} + same owner; under a
+        # new owner it returns {:error, :already_tracked} which we ignore
+        # because the original owner's release would still fire.
+        track_binding(ws, svc, cport)
         {:reply, {:ok, entry.host_port}, state}
 
       [] ->
@@ -138,6 +144,7 @@ defmodule BoomLooper.PortRegistry do
 
             :ets.insert(@table, {key, entry})
             persist(state)
+            track_binding(ws, svc, cport)
             EventLog.info("ports", "Assigned #{ws}/#{svc}/#{cport} → host #{host_port}")
             {:reply, {:ok, host_port}, state}
 
@@ -146,6 +153,36 @@ defmodule BoomLooper.PortRegistry do
             {:reply, err, state}
         end
     end
+  end
+
+  # Track this binding under the workspace-supervisor pid so the
+  # Resources janitor releases it when the supervisor goes DOWN. No-op
+  # if no group is registered (typical during early-boot reconnect).
+  defp track_binding(ws, svc, cport) do
+    case Registry.lookup(BoomLooper.WorkspaceRegistry, ws) do
+      [{owner_pid, _}] ->
+        BoomLooper.Resources.track(
+          owner_pid,
+          :port_binding,
+          {ws, svc, cport},
+          fn -> release_binding(ws, svc, cport) end
+        )
+
+      _ ->
+        :ok
+    end
+  end
+
+  # Release a single binding. Used as the Resources release_fn — invoked
+  # either when the workspace supervisor goes DOWN or when an explicit
+  # release path (release_workspace/1) calls Resources.release for each
+  # entry. Side effects only; no Resources.release call here (we'd loop).
+  defp release_binding(ws, svc, cport) do
+    key = {ws, svc, cport}
+    stop_proxy(key)
+    :ets.delete(@table, key)
+    EventLog.info("ports", "Released binding #{ws}/#{svc}/#{cport}")
+    :ok
   end
 
   def handle_call({:set_docker_port, ws, svc, cport, docker_port}, _from, state) do
@@ -224,6 +261,11 @@ defmodule BoomLooper.PortRegistry do
     for {key, _entry} <- entries do
       stop_proxy(key)
       :ets.delete(@table, key)
+      # Untrack from Resources too, so a later supervisor DOWN doesn't
+      # invoke release_binding on an already-released entry. Safe to
+      # call whether or not the resource was tracked — Resources.release
+      # is a no-op for unknown {kind, id} pairs.
+      BoomLooper.Resources.release(:port_binding, key)
     end
 
     if entries != [] do
