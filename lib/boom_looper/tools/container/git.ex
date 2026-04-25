@@ -1,11 +1,11 @@
 defmodule BoomLooper.Tools.Container.Git do
   use BoomLooper.Tool,
     name: "git",
-    description: "Run a git command on the project repo. For Local workspaces, git runs on the HOST (not inside the container) because .git is excluded from volume sync. Supports any git subcommand: status, diff, add, commit, log, branch, etc. Commits use the host's git user.name and user.email.",
+    description: "Run a git command on the project repo. Each workspace is locked to its branch — checkout/switch are blocked (create a new workspace for a different branch). Reading other branches is fine: diff main, log origin/main..HEAD, show main:file, merge main, rebase main, cherry-pick, etc.",
     busy_words: ["git-ing", "committing", "versioning"],
     params: [
       agent_id: {:string, required: true},
-      command: {:string, required: true, description: "Git subcommand and args (e.g. 'status', 'diff', 'add -A', 'commit -m \"fix bug\"', 'log --oneline -10')"}
+      command: {:string, required: true, description: "Git subcommand and args (e.g. 'status', 'diff main', 'add -A', 'commit -m \"fix bug\"', 'log --oneline -10', 'merge main')"}
     ]
 
   @doc """
@@ -26,19 +26,31 @@ defmodule BoomLooper.Tools.Container.Git do
     end
   end
 
+  # Commands that change which branch the workspace is on.
+  # Each workspace IS a branch — switching breaks the invariant.
+  @branch_switch_commands ~w(checkout switch worktree)
+
   defp run_git(workspace_id, command) do
-    # Get the host-side path (where .git lives)
-    case host_git_path(workspace_id) do
-      {:ok, path} ->
-        args = OptionParser.split(command)
+    args = OptionParser.split(command)
 
-        case System.cmd("git", args, cd: path, stderr_to_stdout: true, env: [{"GIT_TERMINAL_PROMPT", "0"}]) do
-          {output, 0} -> {:ok, Pagination.cap(output)}
-          {output, code} -> {:error, "git #{command} failed (exit #{code}):\n#{Pagination.cap(output)}"}
+    case args do
+      [subcmd | _] when subcmd in @branch_switch_commands ->
+        {:error,
+         "Cannot #{subcmd} — each workspace is locked to its branch. " <>
+           "To work on a different branch, create a new workspace. " <>
+           "You can still read other branches: git diff main, git show main:file, git merge main, etc."}
+
+      _ ->
+        case host_git_path(workspace_id) do
+          {:ok, path} ->
+            case System.cmd("git", args, cd: path, stderr_to_stdout: true, env: [{"GIT_TERMINAL_PROMPT", "0"}]) do
+              {output, 0} -> {:ok, Pagination.cap(output)}
+              {output, code} -> {:error, "git #{command} failed (exit #{code}):\n#{Pagination.cap(output)}"}
+            end
+
+          {:error, reason} ->
+            {:error, reason}
         end
-
-      {:error, reason} ->
-        {:error, reason}
     end
   end
 
