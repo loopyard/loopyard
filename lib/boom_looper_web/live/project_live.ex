@@ -8,6 +8,7 @@ defmodule BoomLooperWeb.ProjectLive do
 
   @behaviour BoomLooper.Events.ChatAgent.Subscriber
   @behaviour BoomLooper.Events.WorkspaceServices.Subscriber
+  @behaviour BoomLooper.Events.WorkspaceSetup.Subscriber
 
   @impl true
   def mount(%{"project_id" => project_id}, _session, socket) do
@@ -19,6 +20,9 @@ defmodule BoomLooperWeb.ProjectLive do
       if connected?(socket) do
         ChatAgent.subscribe()
         BoomLooper.Workspace.ServiceManager.subscribe()
+        # Subscribe to setup events globally so workspace cards reflect
+        # in-flight Setup sagas without waiting for a card click.
+        BoomLooper.Events.WorkspaceSetup.subscribe_global()
         # Service/volume counts touch the filesystem and Docker — never
         # block mount on them. Render immediately with zeros, then fill
         # in via :fetch_service_counts.
@@ -64,12 +68,28 @@ defmodule BoomLooperWeb.ProjectLive do
   @impl true
   def handle_event("start_workspace", %{"id" => workspace_id}, socket) do
     workspace = ProjectRegistry.get_workspace(workspace_id)
-    if workspace do
-      # workspace.path is normalized by ProjectRegistry for all workspace types
-      BoomLooper.WorkspaceSupervisor.start_workspace(workspace_id, workspace.path)
-      ProjectRegistry.update_workspace_status(workspace_id, :running)
+
+    cond do
+      is_nil(workspace) ->
+        {:noreply, socket}
+
+      not BoomLooper.Workspace.ready?(workspace) ->
+        # Setup saga is still running. Mutagen + seed rsync would race
+        # if we let the cluster start now.
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Workspace is still being set up — wait for the volume seed to finish before starting the cluster."
+         )}
+
+      true ->
+        BoomLooper.WorkspaceSupervisor.start_workspace(workspace_id, workspace.path)
+        ProjectRegistry.update_workspace_status(workspace_id, :running)
+
+        {:noreply,
+         assign(socket, :workspaces, load_workspaces(socket.assigns.project, [:agents, :services, :volumes]))}
     end
-    {:noreply, assign(socket, :workspaces, load_workspaces(socket.assigns.project, [:agents, :services, :volumes]))}
   end
 
   @impl true
@@ -180,6 +200,14 @@ defmodule BoomLooperWeb.ProjectLive do
   def handle_info(%Events.WorkspaceServices.ServicesUpdated{} = e, socket), do: on_services_updated(e, socket)
   def handle_info(%Events.WorkspaceServices.ComposeResult{} = e, socket), do: on_compose_result(e, socket)
 
+  def handle_info(%Events.WorkspaceSetup.Started{} = e, socket), do: on_setup_started(e, socket)
+  def handle_info(%Events.WorkspaceSetup.PhaseStarted{} = e, socket), do: on_setup_phase_started(e, socket)
+  def handle_info(%Events.WorkspaceSetup.PhaseCompleted{} = e, socket), do: on_setup_phase_completed(e, socket)
+  def handle_info(%Events.WorkspaceSetup.PhaseProgress{} = e, socket), do: on_setup_phase_progress(e, socket)
+  def handle_info(%Events.WorkspaceSetup.Completed{} = e, socket), do: on_setup_completed(e, socket)
+  def handle_info(%Events.WorkspaceSetup.Failed{} = e, socket), do: on_setup_failed(e, socket)
+  def handle_info(%Events.WorkspaceSetup.RetryScheduled{} = e, socket), do: on_setup_retry_scheduled(e, socket)
+
   def handle_info(:fetch_service_counts, socket) do
     # Initial async fill after mount. Load all three sections off the LV
     # process via start_async so a slow Docker call can't block message
@@ -252,6 +280,55 @@ defmodule BoomLooperWeb.ProjectLive do
     # Compose result doesn't directly change what this page shows —
     # the service status broadcast follows and drives the refresh.
     {:noreply, socket}
+  end
+
+  # --- WorkspaceSetup subscriber callbacks ---
+  #
+  # All seven callbacks just patch the matching workspace's :setup field
+  # in our :workspaces assign. The card pattern-matches on setup.phase
+  # to decide which dot color and status text to render.
+
+  @impl Events.WorkspaceSetup.Subscriber
+  def on_setup_started(%Events.WorkspaceSetup.Started{workspace_id: id, attempt: attempt, started_at: at}, socket) do
+    {:noreply, patch_workspace_setup(socket, id, %{phase: :running, attempts: attempt, started_at: at, error: nil})}
+  end
+
+  @impl Events.WorkspaceSetup.Subscriber
+  def on_setup_phase_started(%Events.WorkspaceSetup.PhaseStarted{workspace_id: id, phase: phase}, socket) do
+    {:noreply, patch_workspace_setup(socket, id, %{phase: phase})}
+  end
+
+  @impl Events.WorkspaceSetup.Subscriber
+  def on_setup_phase_completed(%Events.WorkspaceSetup.PhaseCompleted{}, socket), do: {:noreply, socket}
+
+  @impl Events.WorkspaceSetup.Subscriber
+  def on_setup_phase_progress(%Events.WorkspaceSetup.PhaseProgress{}, socket), do: {:noreply, socket}
+
+  @impl Events.WorkspaceSetup.Subscriber
+  def on_setup_completed(%Events.WorkspaceSetup.Completed{workspace_id: id, finished_at: at}, socket) do
+    {:noreply, patch_workspace_setup(socket, id, %{phase: :ready, finished_at: at, error: nil})}
+  end
+
+  @impl Events.WorkspaceSetup.Subscriber
+  def on_setup_failed(%Events.WorkspaceSetup.Failed{workspace_id: id, error: error}, socket) do
+    {:noreply, patch_workspace_setup(socket, id, %{phase: :failed, error: error, finished_at: DateTime.utc_now()})}
+  end
+
+  @impl Events.WorkspaceSetup.Subscriber
+  def on_setup_retry_scheduled(%Events.WorkspaceSetup.RetryScheduled{}, socket), do: {:noreply, socket}
+
+  defp patch_workspace_setup(socket, workspace_id, changes) do
+    workspaces =
+      Enum.map(socket.assigns.workspaces, fn ws ->
+        if ws.id == workspace_id do
+          new_setup = Map.merge(Map.get(ws, :setup, %{}) || %{}, changes)
+          Map.put(ws, :setup, new_setup)
+        else
+          ws
+        end
+      end)
+
+    assign(socket, :workspaces, workspaces)
   end
 
   # Rebuild workspaces from ProjectRegistry + requested sections. The initial
@@ -419,16 +496,29 @@ defmodule BoomLooperWeb.ProjectLive do
                     else: "border-zinc-200 dark:border-zinc-700 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50")
                 ]}>
                 <div class="flex items-center gap-3">
-                  <div class={"w-2.5 h-2.5 rounded-full flex-none #{if workspace.status == :running, do: "bg-green-500", else: "bg-zinc-400"}"}></div>
+                  <div class={"w-2.5 h-2.5 rounded-full flex-none #{cond do
+                    Map.get(workspace, :setup, %{})[:phase] == :running -> "bg-blue-500 animate-pulse"
+                    Map.get(workspace, :setup, %{})[:phase] == :pending -> "bg-blue-300 animate-pulse"
+                    Map.get(workspace, :setup, %{})[:phase] == :failed -> "bg-red-500"
+                    workspace.status == :running -> "bg-green-500"
+                    true -> "bg-zinc-400"
+                  end}"}></div>
                   <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-2">
                       <span class="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate">{workspace.name}</span>
                       <span :if={workspace[:is_main]} class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 flex-none">default</span>
                     </div>
-                    <p :if={workspace.status == :running} class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                    <% setup_phase = Map.get(workspace, :setup, %{})[:phase] %>
+                    <p :if={setup_phase in [:pending, :running, :seeding]} class="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
+                      Setting up workspace…
+                    </p>
+                    <p :if={setup_phase == :failed} class="text-xs text-red-600 dark:text-red-400 mt-0.5">
+                      Setup failed — open to retry
+                    </p>
+                    <p :if={setup_phase in [:ready, nil] && workspace.status == :running} class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
                       {workspace.agent_count} agent{if workspace.agent_count != 1, do: "s"} · {workspace.services_running} service{if workspace.services_running != 1, do: "s"} running
                     </p>
-                    <p :if={workspace.status != :running} class="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">
+                    <p :if={setup_phase in [:ready, nil] && workspace.status != :running} class="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">
                       Stopped
                     </p>
                   </div>

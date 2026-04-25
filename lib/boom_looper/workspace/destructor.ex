@@ -39,6 +39,7 @@ defmodule BoomLooper.Workspace.Destructor do
     else
       EventLog.info("workspace:#{workspace_id}", "destroy: tearing down workspace")
 
+      cancel_setup(workspace_id)
       stop_agents(workspace_id, workspace)
       compose_down(workspace_id, workspace)
       stop_supervisor_subtree(workspace_id)
@@ -54,6 +55,16 @@ defmodule BoomLooper.Workspace.Destructor do
   end
 
   # --- Steps ---
+
+  # Cancel any in-flight setup task. The Setup coordinator is fire-and-
+  # forget; without explicit cancellation, the rsync ephemeral container
+  # would keep running against a volume we're about to delete.
+  defp cancel_setup(workspace_id) do
+    step(workspace_id, "cancel setup", fn ->
+      BoomLooper.Workspace.Setup.cancel(workspace_id)
+      :ok
+    end)
+  end
 
   # Stop every ChatAgent that was running inside this workspace. We stop
   # them explicitly (rather than relying on the supervisor teardown)

@@ -20,7 +20,7 @@ defmodule BoomLooper.Source.Local do
 
   require Logger
 
-  alias BoomLooper.{Git, VolumeManager, Workspace}
+  alias BoomLooper.{Git, VolumeIO, VolumeManager, Workspace}
   alias BoomLooper.Source.Local.{Mutagen, SyncMonitor, Worktree}
 
   # --- add_project ---
@@ -75,36 +75,142 @@ defmodule BoomLooper.Source.Local do
     }
   end
 
-  # --- create_workspace ---
+  # --- prepare_workspace (no I/O) ---
+  #
+  # Build the workspace map only — no git, no Docker, no filesystem
+  # writes. The setup saga (Workspace.Setup) calls do_create_worktree,
+  # do_create_volume, do_seed_volume in turn to actually materialize
+  # the workspace.
+  #
+  # Critical: this must NOT touch the filesystem. The saga is responsible
+  # for I/O so failures surface through the structured error system,
+  # not as inline crashes in the LV handler.
 
   @impl true
-  def create_workspace(project, branch, _opts \\ []) do
+  def prepare_workspace(project, branch, _opts \\ []) do
     workspace_id = Workspace.workspace_id_from_git(project.path, branch)
     volume_name = VolumeManager.code_volume_name(workspace_id)
+    worktree_path = Worktree.path_for(workspace_id)
 
-    with {:ok, worktree_path} <- Worktree.create(project.path, workspace_id, branch),
-         :ok <- VolumeManager.create_volume(volume_name) do
-      # Copy .boomlooper config from main repo to the new worktree so it
-      # inherits Dockerfile, docker-compose.yml, and workspace metadata.
-      # Skip agents.log (agent state is per-workspace).
-      copy_boomlooper_config(project.path, worktree_path)
+    workspace = %{
+      id: workspace_id,
+      project_id: project.id,
+      name: branch,
+      branch: branch,
+      base_branch: Map.get(project.source_config || %{}, :default_branch),
+      worktree_path: worktree_path,
+      volume: volume_name,
+      volume_based: true,
+      path: Workspace.compose_dir(workspace_id),
+      is_main: false,
+      status: :stopped,
+      added_at: DateTime.utc_now(),
+      # Stash the project root so the saga can read it without re-fetching
+      # the project from ETS (which would race with project rename / etc.).
+      source_root: project.path
+    }
 
-      workspace = %{
-        id: workspace_id,
-        project_id: project.id,
-        name: branch,
-        branch: branch,
-        base_branch: Map.get(project.source_config || %{}, :default_branch),
-        worktree_path: worktree_path,
-        volume: volume_name,
-        volume_based: true,
-        path: Workspace.compose_dir(workspace_id),
-        is_main: false,
-        status: :stopped,
-        added_at: DateTime.utc_now()
-      }
+    {:ok, workspace}
+  end
 
-      {:ok, workspace}
+  # --- create_workspace (legacy, synchronous) ---
+  #
+  # Kept for callers that haven't migrated to the saga. Inlines the work
+  # the saga would otherwise spread across :worktree, :volume, :seeding
+  # — minus the seed (a sync clone-via-rsync would block the LV handler
+  # for minutes on big repos, exactly the regression we just fixed).
+  # New code paths use `prepare_workspace/3` + `Workspace.Setup.start/1`.
+
+  @impl true
+  def create_workspace(project, branch, opts \\ []) do
+    with {:ok, ws} <- prepare_workspace(project, branch, opts),
+         :ok <- do_create_worktree(ws),
+         :ok <- do_create_volume(ws) do
+      {:ok, ws}
+    end
+  end
+
+  # --- Setup-saga steps ---
+
+  @impl true
+  def do_create_worktree(workspace) do
+    repo_path = workspace[:source_root] || resolve_source_root(workspace)
+    worktree_path = workspace.worktree_path
+
+    cond do
+      is_nil(repo_path) ->
+        {:error, :source_path_missing}
+
+      not File.dir?(repo_path) ->
+        {:error, {:source_path_missing, repo_path}}
+
+      true ->
+        # Idempotent: if the worktree already exists from a previous
+        # attempt (Retry, server restart mid-saga), remove it first so
+        # `git worktree add` doesn't fail with "already registered."
+        Worktree.remove(workspace.id)
+
+        case Worktree.create(repo_path, workspace.id, workspace.branch) do
+          {:ok, ^worktree_path} ->
+            finish_worktree(repo_path, worktree_path)
+
+          {:ok, other_path} when is_binary(other_path) ->
+            finish_worktree(repo_path, other_path)
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+    end
+  end
+
+  defp finish_worktree(repo_path, worktree_path) do
+    copy_boomlooper_config(repo_path, worktree_path)
+    :ok
+  end
+
+  defp resolve_source_root(workspace) do
+    case BoomLooper.ProjectRegistry.get_project(workspace[:project_id]) do
+      %{path: path} -> path
+      _ -> nil
+    end
+  end
+
+  @impl true
+  def do_create_volume(workspace) do
+    case VolumeManager.create_volume(workspace.volume) do
+      :ok -> :ok
+      {:error, _} = err -> err
+    end
+  end
+
+  # --- do_seed_volume ---
+  #
+  # Slow phase. Worktree already exists from :worktree; volume already
+  # exists from :volume. We rsync the worktree's files into the volume
+  # so the workspace is browsable and agents can read it BEFORE the
+  # cluster is up. Mutagen takes over for live sync later — its first
+  # scan against an already-matching tree is a no-op.
+
+  @impl true
+  def do_seed_volume(workspace, callback, _opts \\ []) do
+    src = workspace[:worktree_path]
+    vol = workspace[:volume]
+
+    cond do
+      not is_binary(src) ->
+        {:error, :source_path_missing}
+
+      not File.dir?(src) ->
+        {:error, {:source_path_missing, src}}
+
+      not is_binary(vol) ->
+        {:error, :no_volume}
+
+      true ->
+        case VolumeIO.seed_from_host(vol, src, callback: callback) do
+          {:ok, _output} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
     end
   end
 

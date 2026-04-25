@@ -62,6 +62,76 @@ defmodule BoomLooper.VolumeIO do
   end
 
   @doc """
+  Seed a volume from a host directory. Uses rsync WITHOUT `--delete` so
+  re-running on a partially-populated volume is safe (missing files are
+  added, existing files are updated by mtime, no extra files are removed).
+
+  After a successful seed, writes a `.boomlooper/.seeded` sentinel into
+  the volume. Callers can use `seeded?/1` to skip a re-seed when the
+  volume is already populated. The sentinel is necessary because
+  `volume_has_code?/1` checks for `.git/objects`, which is excluded from
+  the rsync, so it would always report "no code" for Local workspaces.
+
+  Used by `Workspace.Setup` for the `:seeding` saga step.
+  """
+  def seed_from_host(volume_name, source_path, opts \\ []) do
+    callback = Keyword.get(opts, :callback, fn _ -> :ok end)
+    seed_timeout = Keyword.get(opts, :timeout, 600_000)
+
+    rsync_args = [
+      "run", "--rm",
+      "-v", "#{source_path}:/source:ro",
+      "-v", "#{volume_name}:/workspace",
+      "alpine", "sh", "-c",
+      "apk add --no-cache rsync >/dev/null 2>&1 && " <>
+      "rsync -a --info=progress2,name1 " <>
+      "--exclude .git/objects " <>
+      "--exclude .git/lfs " <>
+      "--exclude node_modules " <>
+      "--exclude deps " <>
+      "--exclude _build " <>
+      "--exclude target " <>
+      "--exclude vendor/bundle " <>
+      "--exclude .next " <>
+      "--exclude .venv " <>
+      "--exclude __pycache__ " <>
+      "/source/ /workspace/ && " <>
+      "mkdir -p /workspace/.boomlooper && " <>
+      "date -u +%Y-%m-%dT%H:%M:%SZ > /workspace/.boomlooper/.seeded"
+    ]
+
+    require Logger
+    Logger.info("[VolumeIO] Seeding #{source_path} into volume #{volume_name}")
+
+    case Docker.stream(rsync_args, callback, timeout: seed_timeout) do
+      {:ok, output} ->
+        Logger.info("[VolumeIO] Seed completed successfully")
+        {:ok, output}
+
+      {:error, output} ->
+        Logger.error("[VolumeIO] Seed failed: #{inspect(output)}")
+        {:error, output}
+    end
+  end
+
+  @doc """
+  Returns true if the volume has been seeded (has the `.boomlooper/.seeded`
+  sentinel). Used by `Workspace.Setup` to skip a re-seed on retry / restart
+  recovery when the volume is already populated.
+  """
+  def seeded?(volume_name) do
+    case Docker.docker([
+      "run", "--rm",
+      "-v", "#{volume_name}:/workspace",
+      "alpine", "sh", "-c",
+      "test -f /workspace/.boomlooper/.seeded && echo yes || echo no"
+    ]) do
+      {:ok, output} -> String.trim(output) == "yes"
+      {:error, _} -> false
+    end
+  end
+
+  @doc """
   Copy a local directory into a volume.
   Used to migrate path-based workspaces to volume-based.
   The local directory becomes the initial content of the volume.

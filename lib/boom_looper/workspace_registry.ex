@@ -26,8 +26,28 @@ defmodule BoomLooper.WorkspaceRegistry do
   end
 
   @doc """
-  Add a new workspace to a project. Delegates to the project's Source adapter.
-  Returns {:ok, workspace} or {:error, reason}.
+  Add a new workspace to a project.
+
+  Two phases — synchronous prepare + async setup saga:
+
+    1. **Synchronous, instant**. Adapter's `prepare_workspace/3` builds
+       the workspace map (workspace_id, paths, volume name) — NO I/O,
+       NO Docker, NO filesystem. The result is inserted into ETS at
+       `setup.phase: :pending` and returned to the caller.
+
+    2. **Asynchronous**. `Workspace.Setup.start/1` spawns a saga task
+       that runs three phases in order — `:worktree`, `:volume`,
+       `:seeding`. Each phase is idempotent (safe to re-run via Retry).
+       PubSub events drive the SetupProgress LiveView UI.
+
+  By the time this function returns, the workspace is **visible** in
+  the UI but **not yet usable** for cluster start / agent boot — those
+  are gated on `Workspace.ready?/1`. The user sees a "Setting up
+  workspace…" step list until the saga finishes.
+
+  GitHub workspaces today are still populated by the legacy synchronous
+  clone in `ProjectRegistry.add_from_url`; PR2 routes them through this
+  saga.
   """
   def add_workspace(project_id, branch_name) do
     project = BoomLooper.ProjectRegistry.get_project(project_id)
@@ -35,22 +55,50 @@ defmodule BoomLooper.WorkspaceRegistry do
     unless project do
       {:error, "Project not found"}
     else
-      # Check if a workspace with this branch is already registered
       existing = list_workspaces(project_id) |> Enum.find(&(&1.name == branch_name))
+
       if existing do
         {:ok, existing}
       else
         adapter = BoomLooper.Source.for_project(project)
 
-        case adapter.create_workspace(project, branch_name, []) do
+        case adapter.prepare_workspace(project, branch_name, []) do
           {:ok, workspace} ->
+            workspace = ensure_setup_field(workspace)
             :ets.insert(@workspaces_table, {workspace.id, workspace})
+            BoomLooper.Workspace.Setup.start(workspace.id)
             {:ok, workspace}
 
           {:error, reason} ->
             {:error, reason}
         end
       end
+    end
+  end
+
+  @doc """
+  Merge `changes` into the workspace's `:setup` field. Used by
+  `BoomLooper.Workspace.Setup` as the saga progresses. No-op (returns
+  `{:error, :not_found}`) if the workspace isn't in ETS.
+  """
+  def update_setup(workspace_id, changes) when is_map(changes) do
+    case :ets.lookup(@workspaces_table, workspace_id) do
+      [{^workspace_id, workspace}] ->
+        current_setup = Map.get(workspace, :setup, BoomLooper.Workspace.Setup.initial_setup_field())
+        new_setup = Map.merge(current_setup, changes)
+        updated = Map.put(workspace, :setup, new_setup)
+        :ets.insert(@workspaces_table, {workspace_id, updated})
+        {:ok, updated}
+
+      [] ->
+        {:error, :not_found}
+    end
+  end
+
+  defp ensure_setup_field(workspace) do
+    case Map.get(workspace, :setup) do
+      nil -> Map.put(workspace, :setup, BoomLooper.Workspace.Setup.initial_setup_field())
+      _ -> workspace
     end
   end
 
@@ -143,6 +191,16 @@ defmodule BoomLooper.WorkspaceRegistry do
     |> maybe_add_is_main()
     |> maybe_add_worktree_path()
     |> maybe_add_compose_dir()
+    |> maybe_add_setup()
+  end
+
+  # Backfill the setup field for workspaces persisted before this feature
+  # shipped. They were always synchronous-success on the old code path,
+  # so they're definitionally :ready.
+  defp maybe_add_setup(%{setup: %{phase: _}} = ws), do: ws
+
+  defp maybe_add_setup(ws) do
+    Map.put(ws, :setup, BoomLooper.Workspace.Setup.ready_setup_field())
   end
 
   defp maybe_add_path(%{path: _} = ws), do: ws

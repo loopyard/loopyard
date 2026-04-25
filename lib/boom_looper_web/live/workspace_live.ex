@@ -18,6 +18,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
   @behaviour BoomLooper.Events.DockerObserver.Subscriber
   @behaviour BoomLooper.Events.WorkspaceServices.Subscriber
   @behaviour BoomLooper.Events.SourceSync.Subscriber
+  @behaviour BoomLooper.Events.WorkspaceSetup.Subscriber
 
   @impl true
   def mount(%{"project_id" => project_id, "workspace_id" => workspace_id}, _session, socket) do
@@ -41,6 +42,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
       ChatAgent.subscribe()
       BoomLooper.Workspace.ServiceManager.subscribe()
       BoomLooper.Docker.Observer.subscribe()
+      BoomLooper.Events.WorkspaceSetup.subscribe(workspace.id)
 
       # Local workspaces broadcast sync-session state changes on their own
       # PubSub topic; the sidebar shows them in a small "Sync" card.
@@ -568,6 +570,36 @@ defmodule BoomLooperWeb.WorkspaceLive do
   # --- Events ---
 
   @impl true
+  def handle_event("retry_setup", %{"workspace-id" => workspace_id}, socket) do
+    case BoomLooper.Workspace.Setup.retry(workspace_id) do
+      :ok ->
+        {:noreply, socket}
+
+      {:error, :already_running} ->
+        {:noreply, put_flash(socket, :info, "Setup is already in progress.")}
+
+      {:error, {:not_failed, phase}} ->
+        {:noreply, put_flash(socket, :info, "Setup is at #{phase}; nothing to retry.")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Couldn't retry setup: #{inspect(reason)}")}
+    end
+  end
+
+  @impl true
+  def handle_event("remove_workspace_setup_failed", %{"workspace-id" => workspace_id}, socket) do
+    case BoomLooper.WorkspaceRegistry.remove_workspace(workspace_id) do
+      :ok ->
+        project_id = socket.assigns.project && socket.assigns.project.id
+        path = if project_id, do: "/projects/#{project_id}", else: "/"
+        {:noreply, push_navigate(socket, to: path)}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Couldn't remove workspace: #{inspect(reason)}")}
+    end
+  end
+
+  @impl true
   def handle_event("select_agent", %{"id" => id}, socket) do
     tab = socket.assigns.tab
     bp = workspace_path(socket)
@@ -775,11 +807,22 @@ defmodule BoomLooperWeb.WorkspaceLive do
   end
 
   def handle_event("boot_workspace", _params, socket) do
-    # Flip to :starting immediately so the UI shows the transitional
-    # state. The actual start runs async — observer events will flip
-    # us to :started when containers come up.
-    send(self(), {:start_workspace, socket.assigns.workspace.path})
-    {:noreply, transition_workspace_state(socket, :starting)}
+    # Don't let the cluster start while setup is still seeding the volume.
+    # Mutagen and our seed rsync would race for writes on the same volume.
+    if BoomLooper.Workspace.ready?(socket.assigns.workspace_entry) do
+      # Flip to :starting immediately so the UI shows the transitional
+      # state. The actual start runs async — observer events will flip
+      # us to :started when containers come up.
+      send(self(), {:start_workspace, socket.assigns.workspace.path})
+      {:noreply, transition_workspace_state(socket, :starting)}
+    else
+      {:noreply,
+       put_flash(
+         socket,
+         :error,
+         "Workspace is still being set up — wait for the volume seed to finish before starting the cluster."
+       )}
+    end
   end
 
   @impl true
@@ -891,6 +934,14 @@ defmodule BoomLooperWeb.WorkspaceLive do
 
   def handle_info(%Events.SourceSync.Updated{} = e, socket), do: on_updated(e, socket)
 
+  def handle_info(%Events.WorkspaceSetup.Started{} = e, socket), do: on_setup_started(e, socket)
+  def handle_info(%Events.WorkspaceSetup.PhaseStarted{} = e, socket), do: on_setup_phase_started(e, socket)
+  def handle_info(%Events.WorkspaceSetup.PhaseCompleted{} = e, socket), do: on_setup_phase_completed(e, socket)
+  def handle_info(%Events.WorkspaceSetup.PhaseProgress{} = e, socket), do: on_setup_phase_progress(e, socket)
+  def handle_info(%Events.WorkspaceSetup.Completed{} = e, socket), do: on_setup_completed(e, socket)
+  def handle_info(%Events.WorkspaceSetup.Failed{} = e, socket), do: on_setup_failed(e, socket)
+  def handle_info(%Events.WorkspaceSetup.RetryScheduled{} = e, socket), do: on_setup_retry_scheduled(e, socket)
+
   # Non-PubSub internal messages (send/2 self-dispatches, async task
   # replies). These aren't subject to the publisher-module boundary
   # because they never leave this process.
@@ -913,15 +964,24 @@ defmodule BoomLooperWeb.WorkspaceLive do
 
   def handle_info({:start_workspace, path}, socket) do
     workspace_id = BoomLooper.ProjectRegistry.workspace_id(path)
+    workspace = BoomLooper.WorkspaceRegistry.get_workspace(workspace_id)
 
-    # Start workspace in a Task so it doesn't block the LiveView. The
-    # supervisor start triggers compose up inside ServiceManager.
-    # Subsequent DockerObserver.Changed events flip us from :starting → :running.
-    Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
-      BoomLooper.WorkspaceSupervisor.start_workspace(workspace_id, path)
-      BoomLooper.ProjectRegistry.update_workspace_status(workspace_id, :running)
-      BoomLooper.Docker.Observer.poll_now()
-    end)
+    # Same gate as boot_workspace handle_event — never start the cluster
+    # while setup is still seeding the volume. The handle_info path is
+    # reached both from the user-clicked button (already gated) and from
+    # the mount-time silent reconnect when supervisor / containers are
+    # alive. For reconnect: if containers are up and ready? returns true
+    # (which it will for any pre-feature workspace), we proceed normally.
+    if workspace && BoomLooper.Workspace.ready?(workspace) do
+      # Start workspace in a Task so it doesn't block the LiveView. The
+      # supervisor start triggers compose up inside ServiceManager.
+      # Subsequent DockerObserver.Changed events flip us from :starting → :running.
+      Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
+        BoomLooper.WorkspaceSupervisor.start_workspace(workspace_id, path)
+        BoomLooper.ProjectRegistry.update_workspace_status(workspace_id, :running)
+        BoomLooper.Docker.Observer.poll_now()
+      end)
+    end
 
     {:noreply, socket}
   end
@@ -1379,6 +1439,91 @@ defmodule BoomLooperWeb.WorkspaceLive do
     end
   end
 
+  # --- WorkspaceSetup subscriber callbacks ---
+  #
+  # Each callback patches the cached workspace_entry.setup map and re-renders.
+  # The SetupProgress component reads off this map; no other state changes.
+
+  @impl Events.WorkspaceSetup.Subscriber
+  def on_setup_started(%Events.WorkspaceSetup.Started{workspace_id: id, attempt: attempt, started_at: at}, socket) do
+    if id == socket.assigns.workspace.id do
+      {:noreply, patch_setup(socket, %{phase: :running, attempts: attempt, started_at: at, error: nil})}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl Events.WorkspaceSetup.Subscriber
+  def on_setup_phase_started(%Events.WorkspaceSetup.PhaseStarted{workspace_id: id, phase: phase}, socket) do
+    if id == socket.assigns.workspace.id do
+      {:noreply, patch_setup(socket, %{phase: phase})}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl Events.WorkspaceSetup.Subscriber
+  def on_setup_phase_completed(%Events.WorkspaceSetup.PhaseCompleted{workspace_id: id}, socket) do
+    if id == socket.assigns.workspace.id do
+      # Phase completion alone doesn't transition the saga's overall state;
+      # `Completed` does. We don't patch here — the next PhaseStarted (or
+      # the Completed event) will move us forward.
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl Events.WorkspaceSetup.Subscriber
+  def on_setup_phase_progress(%Events.WorkspaceSetup.PhaseProgress{workspace_id: id, payload: payload}, socket) do
+    if id == socket.assigns.workspace.id do
+      {:noreply, patch_setup(socket, %{progress: payload})}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl Events.WorkspaceSetup.Subscriber
+  def on_setup_completed(%Events.WorkspaceSetup.Completed{workspace_id: id, finished_at: at}, socket) do
+    if id == socket.assigns.workspace.id do
+      {:noreply, patch_setup(socket, %{phase: :ready, finished_at: at, error: nil})}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl Events.WorkspaceSetup.Subscriber
+  def on_setup_failed(%Events.WorkspaceSetup.Failed{workspace_id: id, error: error}, socket) do
+    if id == socket.assigns.workspace.id do
+      {:noreply, patch_setup(socket, %{phase: :failed, error: error, finished_at: DateTime.utc_now()})}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl Events.WorkspaceSetup.Subscriber
+  def on_setup_retry_scheduled(%Events.WorkspaceSetup.RetryScheduled{}, socket) do
+    # Surfacing per-attempt countdown is a PR2 nicety; for PR1 the spinner
+    # alone signals "still working."
+    {:noreply, socket}
+  end
+
+  # Merge `changes` into the workspace_entry.setup assign so SetupProgress
+  # sees the new state on the next render.
+  defp patch_setup(socket, changes) do
+    case socket.assigns[:workspace_entry] do
+      %{setup: setup} = entry ->
+        new_setup = Map.merge(setup || %{}, changes)
+        assign(socket, :workspace_entry, %{entry | setup: new_setup})
+
+      %{} = entry ->
+        assign(socket, :workspace_entry, Map.put(entry, :setup, changes))
+
+      _ ->
+        socket
+    end
+  end
+
   # Never replace a non-empty service list with []. During Observer cache
   # wipes, compose file syncs, or async task races, the new list can be
   # temporarily empty. Showing an empty sidebar and then refilling it a
@@ -1664,6 +1809,17 @@ defmodule BoomLooperWeb.WorkspaceLive do
         />
         <%!-- Main content: hidden on mobile when sidebar is showing (index/new with no selection) --%>
         <main id="main-content" class={"flex-1 flex flex-col min-w-0 #{if @live_action == :index && !@selected_id && !@selected_service, do: "hidden md:flex", else: "flex"}"}>
+          <%!-- When the workspace setup saga hasn't finished (volume not yet
+               populated) take over the main content area. The sidebar keeps
+               showing so the user has navigation; the workspace content is
+               replaced with the SetupProgress step list. --%>
+          <%= if !BoomLooper.Workspace.ready?(@workspace_entry) do %>
+            <.setup_progress
+              setup={Map.get(@workspace_entry, :setup, %{phase: :pending})}
+              workspace_id={@workspace.id}
+              workspace_name={@workspace_entry[:name] || ""}
+            />
+          <% else %>
           <%!-- Stopped-workspace screen only when the user isn't looking
                at a specific agent. Agent history stays readable regardless
                of service state — sending new messages is what the running
@@ -1717,6 +1873,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
           <.booting_screen :if={@live_action in [:index, :chat, :container] && @booting_agent_id && !@selected_agent} agent_id={@booting_agent_id} status={@boot_status} boot_log={@boot_log} />
           <.empty_state :if={@live_action in [:index, :chat, :container] && !@booting_agent_id && !@selected_agent} />
           <.agent_view :if={@live_action in [:index, :chat, :container, :context_panel] && @selected_agent} {assigns} />
+          <% end %>
         </main>
       </div>
     </div>

@@ -125,6 +125,18 @@ defmodule BoomLooper.Workspace do
   end
 
   @doc """
+  Returns true when the workspace's setup saga has finished (`phase: :ready`).
+  False during pending / running / failed states.
+
+  Pre-feature workspaces are normalized to `phase: :ready` by the registry,
+  so this returns true for legacy entries.
+  """
+  def ready?(%{setup: %{phase: :ready}}), do: true
+  def ready?(%{setup: _}), do: false
+  def ready?(_), do: true
+
+
+  @doc """
   Resolve workspace ID from a project directory path.
 
   For volume-based workspaces (paths like `.../workspaces/{id}`), extracts the ID directly.

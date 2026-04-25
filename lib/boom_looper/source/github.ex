@@ -21,9 +21,29 @@ defmodule BoomLooper.Source.GitHub do
   end
 
   @impl true
+  def prepare_workspace(_project, _branch, _opts) do
+    # GitHub workspace creation goes through `ProjectRegistry.add_from_url`
+    # today (synchronous clone). PR2 will route it through the saga.
+    {:error, :not_implemented}
+  end
+
+  @impl true
   def create_workspace(_project, _branch, _opts) do
     {:error, :not_implemented}
   end
+
+  # All saga callbacks are no-ops for GitHub today — `add_from_url`
+  # clones synchronously, so by the time Workspace.Setup runs against
+  # a GitHub workspace it's already :ready. PR2 will route the clone
+  # through the saga and replace these stubs.
+  @impl true
+  def do_create_worktree(_workspace), do: :ok
+
+  @impl true
+  def do_create_volume(_workspace), do: :ok
+
+  @impl true
+  def do_seed_volume(_workspace, _callback, _opts \\ []), do: :ok
 
   @impl true
   def remove_workspace(_project, _workspace), do: :ok

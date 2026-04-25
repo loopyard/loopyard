@@ -68,8 +68,10 @@ defmodule BoomLooper.ProjectRegistry do
         existing
     end
 
-    # Find or create workspace
-    workspace = case WorkspaceRegistry.get_workspace(workspace_id) do
+    # Find or create workspace. The result is not used directly on the
+    # success path (we re-fetch via update_setup below) — but the side
+    # effects (insert) DO matter, so we keep the case for them.
+    _workspace = case WorkspaceRegistry.get_workspace(workspace_id) do
       nil ->
         volume_name = BoomLooper.VolumeManager.code_volume_name(workspace_id)
         # Compute path so all workspaces have the same shape
@@ -89,6 +91,12 @@ defmodule BoomLooper.ProjectRegistry do
           path: computed_path,
           is_main: is_main,
           status: :stopped,
+          # GitHub workspaces clone synchronously below — by the time
+          # this row is observable through normal lookups the clone has
+          # either succeeded (mark :ready) or rolled back the row. We
+          # set :pending here so partially-populated state is visible if
+          # the clone is in flight from another caller.
+          setup: BoomLooper.Workspace.Setup.initial_setup_field(),
           added_at: DateTime.utc_now()
         }
         WorkspaceRegistry.insert(workspace_id, ws)
@@ -114,7 +122,19 @@ defmodule BoomLooper.ProjectRegistry do
       {:ok, _} ->
         # Persist to disk (store git_url instead of path)
         ProjectStore.add(git_url)
-        {:ok, project, workspace}
+
+        # The synchronous clone above is the GitHub-flavored equivalent
+        # of the `:seeding` saga step. Mark the workspace ready so the
+        # UI doesn't show a "Setting up…" banner for already-populated
+        # workspaces. PR2 will route GitHub through the saga proper.
+        {:ok, ready_ws} =
+          WorkspaceRegistry.update_setup(workspace_id, %{
+            phase: :ready,
+            finished_at: DateTime.utc_now(),
+            error: nil
+          })
+
+        {:ok, project, ready_ws}
 
       {:error, reason} ->
         # CRITICAL: Do NOT return {:ok, ...} with an empty volume. If we

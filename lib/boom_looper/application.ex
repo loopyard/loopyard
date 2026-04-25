@@ -35,6 +35,10 @@ defmodule BoomLooper.Application do
       {Registry, keys: :unique, name: BoomLooper.WorkspaceAgentRegistry},
       {Registry, keys: :unique, name: BoomLooper.SyncMonitorRegistry},
       {Registry, keys: :unique, name: BoomLooper.TerminalRegistry},
+      # Workspace.Setup uses this to track in-flight setup tasks per
+      # workspace_id — prevents duplicate concurrent setups, gives the
+      # destructor a pid to kill on workspace removal.
+      {Registry, keys: :unique, name: BoomLooper.Workspace.Setup.Registry},
       {DynamicSupervisor, name: BoomLooper.TerminalSupervisor, strategy: :one_for_one},
       {Task.Supervisor, name: BoomLooper.TaskSupervisor},
       BoomLooper.WorkspaceSupervisor,
@@ -102,6 +106,17 @@ defmodule BoomLooper.Application do
     # Restore persisted projects from ~/.boomlooper/projects.json
     # ServiceManager will reconnect to any running containers
     BoomLooper.ProjectRegistry.restore()
+
+    # Surface any workspaces whose setup saga was running when the BEAM
+    # last died. We mark them :failed with `:interrupted_by_restart` so
+    # the operator can click Retry — auto-resume is too risky (host
+    # paths can move, partial state can confuse retries).
+    safe_restore("Workspace.Setup", fn ->
+      case BoomLooper.Workspace.Setup.recover_on_boot() do
+        0 -> :ok
+        n -> Logger.warning("[BoomLooper] marked #{n} workspace(s) as setup-failed on boot (interrupted)")
+      end
+    end)
 
     # Pre-populate agent ETS from all workspace agent logs so agents
     # are visible immediately on boot — not lazily on first page visit.

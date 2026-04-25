@@ -16,6 +16,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components do
       import BoomLooperWeb.Live.WorkspaceLive.Components.ContextPanel
       import BoomLooperWeb.Live.WorkspaceLive.Components.States
       import BoomLooperWeb.Live.WorkspaceLive.Components.Formatters
+      import BoomLooperWeb.Live.WorkspaceLive.Components.SetupProgress
     end
   end
 end

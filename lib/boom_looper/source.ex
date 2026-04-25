@@ -21,8 +21,47 @@ defmodule BoomLooper.Source do
   @callback add_project(input :: any, opts :: keyword) ::
               {:ok, project} | {:error, term}
 
+  # Build a workspace MAP (no I/O, no ETS, no Docker). Just metadata —
+  # workspace_id, project_id, branch, paths, volume name. Called
+  # synchronously inside `WorkspaceRegistry.add_workspace`. The actual
+  # I/O is deferred to the setup saga via the `do_*` callbacks below.
+  #
+  # Adapters that don't yet support new-workspace creation
+  # (e.g. `Source.GitHub`) return `{:error, :not_implemented}`.
+  @callback prepare_workspace(project, branch :: String.t(), opts :: keyword) ::
+              {:ok, workspace} | {:error, term}
+
+  # Legacy entry point. Equivalent to `prepare_workspace/3` plus running
+  # every `do_*` callback inline. New code goes through the saga; this
+  # is retained so callers we haven't migrated still work.
   @callback create_workspace(project, branch :: String.t(), opts :: keyword) ::
               {:ok, workspace} | {:error, term}
+
+  # ── Setup-saga steps ──
+  #
+  # Each callback below corresponds to one phase of the workspace-setup
+  # saga (`BoomLooper.Workspace.Setup`). The saga runs them in order;
+  # each phase's broadcast/progress event drives the SetupProgress UI.
+
+  # `:worktree` phase. Local: create the host git worktree + copy the
+  # `.boomlooper` config into it. GitHub (PR2): host git clone into a
+  # temp dir. Idempotent — must tolerate re-runs (Retry button).
+  @callback do_create_worktree(workspace) :: :ok | {:error, term}
+
+  # `:volume` phase. `VolumeManager.create_volume/1` for any Docker-
+  # volume-backed adapter (which is everything today). Idempotent.
+  @callback do_create_volume(workspace) :: :ok | {:error, term}
+
+  # `:seeding` phase. Slow: rsync / clone code INTO the volume.
+  #
+  # `callback` receives stdout+stderr chunks from the underlying tool;
+  # adapters wire this to `BoomLooper.Workspace.Setup.ProgressParser`
+  # which broadcasts `Events.WorkspaceSetup.PhaseProgress` events.
+  #
+  # Idempotent: must be safe on a partially-seeded volume (retry).
+  # No `--delete` or destructive flags.
+  @callback do_seed_volume(workspace, callback :: (binary -> any), opts :: keyword) ::
+              :ok | {:error, term}
 
   @callback remove_workspace(project, workspace) :: :ok
   @callback remove_project(project) :: :ok

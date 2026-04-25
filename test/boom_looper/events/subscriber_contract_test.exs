@@ -20,7 +20,8 @@ defmodule BoomLooper.Events.SubscriberContractTest do
     BoomLooper.Events.ChatAgentMessage.Subscriber,
     BoomLooper.Events.DockerObserver.Subscriber,
     BoomLooper.Events.SourceSync.Subscriber,
-    BoomLooper.Events.WorkspaceServices.Subscriber
+    BoomLooper.Events.WorkspaceServices.Subscriber,
+    BoomLooper.Events.WorkspaceSetup.Subscriber
   ]
 
   describe "subscriber behaviours have NO @optional_callbacks" do
