@@ -114,7 +114,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         :starting -> {"Starting", "bg-blue-400 animate-pulse", :none}
         :stopping -> {"Stopping", "bg-amber-400 animate-pulse", :none}
         :started -> {"Running", "bg-emerald-500", :stop}
-        :partial -> {"Partially running", "bg-amber-400", :stop}
+        :partial -> {"Partially running", "bg-amber-400", :start_all}
         :stopped -> {"Stopped", "bg-zinc-400", :start}
       end
 
@@ -166,6 +166,18 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
           <path d="M4.5 3.5v9l7-4.5-7-4.5Z" />
         </svg>
         Start
+      </button>
+      <button
+        :if={@button == :start_all}
+        type="button"
+        phx-click="boot_workspace"
+        aria-label="Start all services"
+        class="focus-ring inline-flex items-center gap-1.5 rounded-md px-3 min-h-9 md:min-h-8 text-xs font-medium bg-violet-600 hover:bg-violet-700 active:bg-violet-800 text-white transition-colors"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3 h-3" aria-hidden="true">
+          <path d="M4.5 3.5v9l7-4.5-7-4.5Z" />
+        </svg>
+        Start all
       </button>
     </div>
     """
