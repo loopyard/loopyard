@@ -10,6 +10,8 @@ defmodule BoomLooper.Source.GitHub do
   GitHub API — all under `lib/boom_looper/source/github/`.
   """
 
+  require Logger
+
   @behaviour BoomLooper.Source
 
   @impl true
@@ -37,13 +39,22 @@ defmodule BoomLooper.Source.GitHub do
   # a GitHub workspace it's already :ready. PR2 will route the clone
   # through the saga and replace these stubs.
   @impl true
-  def do_create_worktree(_workspace), do: :ok
+  def do_create_worktree(_workspace) do
+    Logger.warning("[Source.GitHub] do_create_worktree called — GitHub workspaces use synchronous clone, not the setup saga")
+    :ok
+  end
 
   @impl true
-  def do_create_volume(_workspace), do: :ok
+  def do_create_volume(_workspace) do
+    Logger.warning("[Source.GitHub] do_create_volume called — GitHub workspaces use synchronous clone, not the setup saga")
+    :ok
+  end
 
   @impl true
-  def do_seed_volume(_workspace, _callback, _opts \\ []), do: :ok
+  def do_seed_volume(_workspace, _callback, _opts \\ []) do
+    Logger.warning("[Source.GitHub] do_seed_volume called — GitHub workspaces use synchronous clone, not the setup saga")
+    :ok
+  end
 
   @impl true
   def remove_workspace(_project, _workspace), do: :ok

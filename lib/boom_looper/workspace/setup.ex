@@ -94,14 +94,7 @@ defmodule BoomLooper.Workspace.Setup do
         {:error, :not_found}
 
       _ws ->
-        case Registry.lookup(@registry, workspace_id) do
-          [{_pid, _}] ->
-            {:error, :already_running}
-
-          [] ->
-            spawn_setup_task(workspace_id, attempt: 1)
-            :ok
-        end
+        spawn_setup_task(workspace_id, attempt: 1)
     end
   end
 
@@ -112,18 +105,22 @@ defmodule BoomLooper.Workspace.Setup do
   def retry(workspace_id) when is_binary(workspace_id) do
     case WorkspaceRegistry.get_workspace(workspace_id) do
       %{setup: %{phase: :failed, attempts: attempts}} ->
-        case Registry.lookup(@registry, workspace_id) do
-          [{_pid, _}] ->
-            {:error, :already_running}
+        WorkspaceRegistry.update_setup(workspace_id, %{
+          phase: :pending,
+          error: nil
+        })
 
-          [] ->
+        case spawn_setup_task(workspace_id, attempt: attempts + 1) do
+          :ok ->
+            :ok
+
+          {:error, :already_running} ->
+            # Another retry won the race; revert the phase change.
             WorkspaceRegistry.update_setup(workspace_id, %{
-              phase: :pending,
-              error: nil
+              phase: :failed
             })
 
-            spawn_setup_task(workspace_id, attempt: attempts + 1)
-            :ok
+            {:error, :already_running}
         end
 
       %{setup: %{phase: phase}} ->
@@ -201,19 +198,32 @@ defmodule BoomLooper.Workspace.Setup do
   # ── Saga runner ──
 
   defp spawn_setup_task(workspace_id, opts) do
+    caller = self()
+    ref = make_ref()
+
     Task.Supervisor.start_child(
       BoomLooper.TaskSupervisor,
       fn ->
         case Registry.register(@registry, workspace_id, %{}) do
           {:ok, _} ->
+            send(caller, {ref, :registered})
             run_saga(workspace_id, opts)
 
           {:error, {:already_registered, _}} ->
-            :ok
+            send(caller, {ref, :already_running})
         end
       end,
       restart: :temporary
     )
+
+    # Wait for the task to report whether it acquired the lock.
+    # Short timeout — registration is near-instant.
+    receive do
+      {^ref, :registered} -> :ok
+      {^ref, :already_running} -> {:error, :already_running}
+    after
+      5_000 -> {:error, :timeout}
+    end
   end
 
   defp run_saga(workspace_id, opts) do
@@ -231,29 +241,87 @@ defmodule BoomLooper.Workspace.Setup do
       started_at: started_at
     })
 
-    saga_steps = [
-      %{
-        name: :worktree,
-        run: fn ctx -> run_phase(:worktree, ctx) end
-      },
-      %{
-        name: :volume,
-        run: fn ctx -> run_phase(:volume, ctx) end
-      },
-      %{
-        name: :seeding,
-        run: fn ctx -> run_phase(:seeding, ctx) end
-      }
-    ]
+    try do
+      saga_steps = [
+        %{
+          name: :worktree,
+          run: fn ctx -> run_phase(:worktree, ctx) end
+        },
+        %{
+          name: :volume,
+          run: fn ctx -> run_phase(:volume, ctx) end,
+          rollback: fn ctx ->
+            volume_name = BoomLooper.Workspace.volume_name_for(ctx.workspace_id)
 
-    saga_result =
-      Saga.run(saga_steps,
-        name: :workspace_setup,
-        context: %{workspace_id: workspace_id},
-        metadata: %{workspace_id: workspace_id, attempt: attempt}
-      )
+            case BoomLooper.VolumeManager.delete_volume(volume_name) do
+              :ok ->
+                Logger.info("[Workspace.Setup] rolled back volume #{volume_name}")
+                :ok
 
-    finalize_saga(saga_result, workspace_id, started_mono)
+              {:error, reason} ->
+                Logger.warning(
+                  "[Workspace.Setup] best-effort volume rollback failed for #{volume_name}: #{inspect(reason)}"
+                )
+
+                :ok
+            end
+          end
+        },
+        %{
+          name: :seeding,
+          run: fn ctx -> run_phase(:seeding, ctx) end
+        }
+      ]
+
+      saga_result =
+        Saga.run(saga_steps,
+          name: :workspace_setup,
+          context: %{workspace_id: workspace_id},
+          metadata: %{workspace_id: workspace_id, attempt: attempt}
+        )
+
+      finalize_saga(saga_result, workspace_id, started_mono)
+    rescue
+      exception ->
+        error = Error.classify({:exception, Exception.message(exception)}, :unexpected_crash)
+
+        WorkspaceRegistry.update_setup(workspace_id, %{
+          phase: :failed,
+          finished_at: DateTime.utc_now(),
+          error: error,
+          progress: nil
+        })
+
+        WorkspaceSetup.publish(%Failed{
+          workspace_id: workspace_id,
+          phase: :unexpected_crash,
+          error: error
+        })
+
+        Logger.warning(
+          "[Workspace.Setup] run_saga crashed for #{workspace_id}: #{Exception.message(exception)}"
+        )
+    catch
+      kind, reason ->
+        error = Error.classify({kind, reason}, :unexpected_crash)
+
+        WorkspaceRegistry.update_setup(workspace_id, %{
+          phase: :failed,
+          finished_at: DateTime.utc_now(),
+          error: error,
+          progress: nil
+        })
+
+        WorkspaceSetup.publish(%Failed{
+          workspace_id: workspace_id,
+          phase: :unexpected_crash,
+          error: error
+        })
+
+        Logger.warning(
+          "[Workspace.Setup] run_saga crashed for #{workspace_id}: #{inspect({kind, reason})}"
+        )
+    end
   end
 
   # ── Per-phase runner ──

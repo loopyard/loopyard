@@ -302,7 +302,9 @@ defmodule BoomLooperWeb.ProjectLive do
   def on_setup_phase_completed(%Events.WorkspaceSetup.PhaseCompleted{}, socket), do: {:noreply, socket}
 
   @impl Events.WorkspaceSetup.Subscriber
-  def on_setup_phase_progress(%Events.WorkspaceSetup.PhaseProgress{}, socket), do: {:noreply, socket}
+  def on_setup_phase_progress(%Events.WorkspaceSetup.PhaseProgress{workspace_id: id, payload: payload}, socket) do
+    {:noreply, patch_workspace_setup(socket, id, %{progress: payload})}
+  end
 
   @impl Events.WorkspaceSetup.Subscriber
   def on_setup_completed(%Events.WorkspaceSetup.Completed{workspace_id: id, finished_at: at}, socket) do
@@ -508,12 +510,21 @@ defmodule BoomLooperWeb.ProjectLive do
                       <span class="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate">{workspace.name}</span>
                       <span :if={workspace[:is_main]} class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 flex-none">default</span>
                     </div>
-                    <% setup_phase = Map.get(workspace, :setup, %{})[:phase] %>
-                    <p :if={setup_phase in [:pending, :running, :seeding]} class="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
-                      Setting up workspace…
+                    <% setup = Map.get(workspace, :setup, %{}) %>
+                    <% setup_phase = setup[:phase] %>
+                    <p :if={setup_phase in [:pending, :running, :worktree, :volume, :seeding]} class="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
+                      <%= case setup_phase do %>
+                        <% :pending -> %>Setting up workspace…
+                        <% :running -> %>Setting up workspace…
+                        <% :worktree -> %>Creating worktree…
+                        <% :volume -> %>Creating volume…
+                        <% :seeding -> %>
+                          <% pct = get_in(setup, [:progress, :percent]) %>
+                          <%= if pct, do: "Seeding files… #{pct}%", else: "Seeding files…" %>
+                      <% end %>
                     </p>
                     <p :if={setup_phase == :failed} class="text-xs text-red-600 dark:text-red-400 mt-0.5">
-                      Setup failed — open to retry
+                      Failed — click to retry
                     </p>
                     <p :if={setup_phase in [:ready, nil] && workspace.status == :running} class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
                       {workspace.agent_count} agent{if workspace.agent_count != 1, do: "s"} · {workspace.services_running} service{if workspace.services_running != 1, do: "s"} running

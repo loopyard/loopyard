@@ -175,19 +175,16 @@ defmodule BoomLooper.Application do
 
     count =
       Enum.reduce(workspaces, 0, fn ws, acc ->
-        ws_id = ws[:id]
-        log_path = BoomLooper.ChatAgent.Persistence.log_path(ws_id)
+        # Skip workspaces still in setup — their containers aren't ready
+        # and replaying agent logs would start agents that can't exec.
+        # Legacy workspaces (no :setup key) predate the saga and are safe
+        # to restore.
+        setup_phase = get_in(ws, [:setup, :phase])
 
-        if log_path && File.exists?(log_path) do
-          case BoomLooper.AgentLog.replay(log_path: log_path, version: 1, ets_table: :chat_agents) do
-            {:ok, agents} when map_size(agents) > 0 ->
-              acc + map_size(agents)
-
-            _ ->
-              acc
-          end
-        else
+        if setup_phase != nil and setup_phase != :ready do
           acc
+        else
+          restore_workspace_agents(ws, acc)
         end
       end)
 
@@ -197,6 +194,23 @@ defmodule BoomLooper.Application do
   rescue
     e ->
       Logger.warning("[BoomLooper] restore_all_agents failed: #{Exception.message(e)}")
+  end
+
+  defp restore_workspace_agents(ws, acc) do
+    ws_id = ws[:id]
+    log_path = BoomLooper.ChatAgent.Persistence.log_path(ws_id)
+
+    if log_path && File.exists?(log_path) do
+      case BoomLooper.AgentLog.replay(log_path: log_path, version: 1, ets_table: :chat_agents) do
+        {:ok, agents} when map_size(agents) > 0 ->
+          acc + map_size(agents)
+
+        _ ->
+          acc
+      end
+    else
+      acc
+    end
   end
 
   # Docker Desktop's credential helper hangs when Desktop isn't running.
