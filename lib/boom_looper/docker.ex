@@ -166,7 +166,12 @@ defmodule BoomLooper.Docker do
 
     :telemetry.span([:boom_looper, :docker, :command], meta, fn ->
       result = run_with_retry(args, cmd_opts, timeout, retry)
-      {result, %{}}
+      # `:telemetry.span/3` does NOT merge start_metadata into the stop
+      # event — the stop fn is the only source of stop_metadata. Carry
+      # `args` and `timeout` forward so subscribers (e.g. /system/events,
+      # the docker_test telemetry assertion) get the same context on
+      # both span endpoints.
+      {result, meta}
     end)
   end
 

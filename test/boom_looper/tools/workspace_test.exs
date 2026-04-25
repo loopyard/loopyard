@@ -62,30 +62,41 @@ defmodule BoomLooper.Tools.WorkspaceTest do
       %{agent_id: id, tmp_dir: tmp_dir}
     end
 
-    test "set_workspace_name creates config", %{agent_id: id, tmp_dir: tmp_dir} do
-      assert {:ok, _} = WorkspaceTools.do_update_config(id, fn ws -> %{ws | name: "Test"} end, "ok")
-      assert File.exists?(BoomLooper.Workspace.config_path(tmp_dir))
+    # WorkspaceTools.do_update_config writes to the volume via
+    # `Workspace.save_to_volume`, not to the host tmp_dir. The legacy
+    # bind-mount fallback that mirrored config back to the host is
+    # gone. Read back from the volume to verify.
+    defp volume_for(agent_id) do
+      ws_id = BoomLooper.ChatAgent.get_state(agent_id).workspace_id
+      case BoomLooper.ProjectRegistry.get_workspace(ws_id) do
+        %{volume: vol} when is_binary(vol) -> vol
+        _ -> "code-#{ws_id}"
+      end
+    end
 
-      {:ok, ws} = BoomLooper.Workspace.load(tmp_dir)
+    test "set_workspace_name creates config", %{agent_id: id} do
+      assert {:ok, _} = WorkspaceTools.do_update_config(id, fn ws -> %{ws | name: "Test"} end, "ok")
+
+      {:ok, ws} = BoomLooper.Workspace.load_from_volume(volume_for(id))
       assert ws.name == "Test"
     end
 
-    test "set_system_prompt updates config", %{agent_id: id, tmp_dir: tmp_dir} do
+    test "set_system_prompt updates config", %{agent_id: id} do
       WorkspaceTools.do_update_config(id, fn ws -> %{ws | name: "Test"} end, "ok")
       WorkspaceTools.do_update_config(id, fn ws -> %{ws | system_prompt: "Rails project"} end, "ok")
 
-      {:ok, ws} = BoomLooper.Workspace.load(tmp_dir)
+      {:ok, ws} = BoomLooper.Workspace.load_from_volume(volume_for(id))
       assert ws.name == "Test"
       assert ws.system_prompt == "Rails project"
     end
 
-    test "git fields are preserved through updates", %{agent_id: id, tmp_dir: tmp_dir} do
+    test "git fields are preserved through updates", %{agent_id: id} do
       WorkspaceTools.do_update_config(id, fn ws ->
         %{ws | name: "Test", git_url: "git@github.com:owner/repo.git", branch: "main"}
       end, "ok")
       WorkspaceTools.do_update_config(id, fn ws -> %{ws | system_prompt: "Updated"} end, "ok")
 
-      {:ok, ws} = BoomLooper.Workspace.load(tmp_dir)
+      {:ok, ws} = BoomLooper.Workspace.load_from_volume(volume_for(id))
       assert ws.git_url == "git@github.com:owner/repo.git"
       assert ws.branch == "main"
       assert ws.system_prompt == "Updated"
