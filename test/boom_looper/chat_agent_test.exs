@@ -416,12 +416,14 @@ defmodule BoomLooper.ChatAgentTest do
       %{id: id}
     end
 
-    @tag timeout: 10_000
     test "messages are returned in chronological order", %{id: id} do
-      ChatAgent.send_message(id, "first")
-      Process.sleep(500)
-      ChatAgent.send_message(id, "second")
-      Process.sleep(500)
+      # Use append_message_ets to insert deterministically — send_message
+      # spawns a CLI stream task that errors out and saves the message
+      # eventually, requiring a sleep to wait for ETS to settle.
+      # append_message_ets goes through the GenServer cast which is FIFO
+      # with the subsequent get_state call.
+      ChatAgent.append_message_ets(id, %{role: :user, content: "first", timestamp: DateTime.utc_now()})
+      ChatAgent.append_message_ets(id, %{role: :user, content: "second", timestamp: DateTime.utc_now()})
 
       state = ChatAgent.get_state(id)
       user_msgs = Enum.filter(state.messages, &(&1.role == :user))
