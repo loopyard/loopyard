@@ -2,13 +2,20 @@ defmodule BoomLooper.ChatAgentTest do
   use ExUnit.Case
 
   # Every describe block's setup boots a ChatAgent via
-  # BoomLooper.TestHelpers.start_agent, which ensures a WorkspaceGroup
-  # exists for File.cwd!(). Under full-suite load that shared group
-  # churns (ServiceManager async_init exits → one_for_all rebuild),
-  # and setup has to wait for re-registration. Bump the budget.
+  # BoomLooper.TestHelpers.start_agent. Each setup gets a UNIQUE tmp_dir
+  # so the WorkspaceGroup is per-test, not shared with siblings. Sharing
+  # the cwd-derived workspace_id used to cause ServiceManager async_init
+  # exits → :one_for_all rebuilds → flaky setup waits.
   @moduletag timeout: 10_000
 
   alias BoomLooper.ChatAgent
+
+  # Unique scratch dir per setup. Caller must File.rm_rf! in on_exit.
+  defp scratch_dir(prefix) do
+    dir = Path.join(System.tmp_dir!(), "#{prefix}-#{:erlang.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    dir
+  end
 
   describe "list_agents/0" do
     test "returns a list" do
@@ -71,13 +78,14 @@ defmodule BoomLooper.ChatAgentTest do
 
   describe "restart_session/1" do
     setup do
+      tmp_dir = scratch_dir("restart-test")
       id = "restart-test-#{:rand.uniform(100_000)}"
 
       {:ok, _pid} =
         BoomLooper.TestHelpers.start_agent(
           id: id,
           name: "Restart Test",
-          working_dir: File.cwd!(),
+          working_dir: tmp_dir,
           started_by: "test"
         )
 
@@ -91,7 +99,8 @@ defmodule BoomLooper.ChatAgentTest do
         Process.sleep(50)
       end)
 
-      %{id: id}
+      on_exit(fn -> File.rm_rf!(tmp_dir) end)
+      %{id: id, tmp_dir: tmp_dir}
     end
 
     test "restart_session preserves agent state and adds system message", %{id: id} do
@@ -120,13 +129,14 @@ defmodule BoomLooper.ChatAgentTest do
 
   describe "get_state/1" do
     setup do
+      tmp_dir = scratch_dir("state-test")
       id = "state-test-#{:rand.uniform(100_000)}"
 
       {:ok, _pid} =
         BoomLooper.TestHelpers.start_agent(
           id: id,
           name: "State Test",
-          working_dir: File.cwd!(),
+          working_dir: tmp_dir,
           started_by: "test"
         )
 
@@ -140,15 +150,16 @@ defmodule BoomLooper.ChatAgentTest do
         Process.sleep(50)
       end)
 
-      %{id: id}
+      on_exit(fn -> File.rm_rf!(tmp_dir) end)
+      %{id: id, tmp_dir: tmp_dir}
     end
 
-    test "returns agent summary with all fields", %{id: id} do
+    test "returns agent summary with all fields", %{id: id, tmp_dir: tmp_dir} do
       state = ChatAgent.get_state(id)
 
       assert state.id == id
       assert state.name == "State Test"
-      assert state.working_dir == File.cwd!()
+      assert state.working_dir == tmp_dir
       assert state.started_by == "test"
       assert state.status == :idle
       assert state.messages == []
@@ -197,13 +208,14 @@ defmodule BoomLooper.ChatAgentTest do
 
   describe "stream_timeout with ref" do
     setup do
+      tmp_dir = scratch_dir("timeout-test")
       id = "timeout-test-#{:rand.uniform(100_000)}"
 
       {:ok, pid} =
         BoomLooper.TestHelpers.start_agent(
           id: id,
           name: "Timeout Test",
-          working_dir: File.cwd!(),
+          working_dir: tmp_dir,
           started_by: "test"
         )
 
@@ -217,7 +229,8 @@ defmodule BoomLooper.ChatAgentTest do
         Process.sleep(50)
       end)
 
-      %{id: id, pid: pid}
+      on_exit(fn -> File.rm_rf!(tmp_dir) end)
+      %{id: id, pid: pid, tmp_dir: tmp_dir}
     end
 
     test "stale stream_timeout is ignored when agent is thinking on a new stream", %{id: id, pid: pid} do
@@ -329,13 +342,14 @@ defmodule BoomLooper.ChatAgentTest do
     end
 
     setup do
+      tmp_dir = scratch_dir("leak-test")
       id = "leak-test-#{:rand.uniform(100_000)}"
 
       {:ok, _pid} =
         BoomLooper.TestHelpers.start_agent(
           id: id,
           name: "Leak Test",
-          working_dir: File.cwd!(),
+          working_dir: tmp_dir,
           started_by: "test",
           backend: PortBackend
         )
@@ -350,7 +364,8 @@ defmodule BoomLooper.ChatAgentTest do
         Process.sleep(50)
       end)
 
-      %{id: id}
+      on_exit(fn -> File.rm_rf!(tmp_dir) end)
+      %{id: id, tmp_dir: tmp_dir}
     end
 
     test "stopping agent kills the underlying OS process", %{id: id} do
@@ -393,13 +408,14 @@ defmodule BoomLooper.ChatAgentTest do
 
   describe "message ordering and cap" do
     setup do
+      tmp_dir = scratch_dir("msg-cap-test")
       id = "msg-cap-test-#{:rand.uniform(100_000)}"
 
       {:ok, _pid} =
         BoomLooper.TestHelpers.start_agent(
           id: id,
           name: "Cap Test",
-          working_dir: File.cwd!(),
+          working_dir: tmp_dir,
           started_by: "test"
         )
 
@@ -413,7 +429,8 @@ defmodule BoomLooper.ChatAgentTest do
         Process.sleep(50)
       end)
 
-      %{id: id}
+      on_exit(fn -> File.rm_rf!(tmp_dir) end)
+      %{id: id, tmp_dir: tmp_dir}
     end
 
     test "messages are returned in chronological order", %{id: id} do
@@ -602,11 +619,14 @@ defmodule BoomLooper.ChatAgentTest do
 
       :ets.insert(:chat_agents, {id, saved})
 
+      tmp_dir = scratch_dir("resume-rebuild")
+      on_exit(fn -> File.rm_rf!(tmp_dir) end)
+
       {:ok, _pid} =
         BoomLooper.TestHelpers.start_agent(
           id: id,
           resume: true,
-          working_dir: File.cwd!(),
+          working_dir: tmp_dir,
           started_by: "test",
           backend: BoomLooper.Agent.Backend.Fake
         )
@@ -665,11 +685,14 @@ defmodule BoomLooper.ChatAgentTest do
 
       :ets.insert(:chat_agents, {id, saved})
 
+      tmp_dir = scratch_dir("resume-order")
+      on_exit(fn -> File.rm_rf!(tmp_dir) end)
+
       {:ok, pid} =
         BoomLooper.TestHelpers.start_agent(
           id: id,
           resume: true,
-          working_dir: File.cwd!(),
+          working_dir: tmp_dir,
           started_by: "test",
           backend: BoomLooper.Agent.Backend.Fake
         )

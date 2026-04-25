@@ -29,11 +29,18 @@ defmodule BoomLooper.ChatAgent.PromptDriftTest do
     RecordingBackend.reset()
     id = "prompt-drift-test-#{:rand.uniform(100_000)}"
 
+    # Use a unique tmp_dir so each test gets its own workspace_id
+    # rather than sharing the cwd-derived one with every sibling
+    # test in the suite. Sharing causes WorkspaceGroup churn under
+    # parallel load and intermittent flakes.
+    tmp_dir = Path.join(System.tmp_dir!(), "prompt-drift-#{:rand.uniform(1_000_000)}")
+    File.mkdir_p!(tmp_dir)
+
     {:ok, _pid} =
       BoomLooper.TestHelpers.start_agent(
         id: id,
         name: "Prompt Drift Test",
-        working_dir: File.cwd!(),
+        working_dir: tmp_dir,
         started_by: "test",
         backend: RecordingBackend
       )
@@ -48,10 +55,10 @@ defmodule BoomLooper.ChatAgent.PromptDriftTest do
         :exit, _ -> :ok
       end
 
-      Process.sleep(20)
+      File.rm_rf!(tmp_dir)
     end)
 
-    %{id: id}
+    %{id: id, tmp_dir: tmp_dir}
   end
 
   defp agent_pid(id) do
@@ -62,19 +69,19 @@ defmodule BoomLooper.ChatAgent.PromptDriftTest do
   end
 
   describe "surface #19: prompt drift detection" do
-    test "prompt_hash is populated at init_fresh time", %{id: id} do
+    test "prompt_hash is populated at init_fresh time", %{id: id, tmp_dir: tmp_dir} do
       state = :sys.get_state(agent_pid(id))
       assert is_binary(state.prompt_hash)
       assert String.length(state.prompt_hash) == 64  # hex-encoded SHA-256
     end
 
-    test "prompt_hash flows to summary + ETS", %{id: id} do
+    test "prompt_hash flows to summary + ETS", %{id: id, tmp_dir: tmp_dir} do
       _state = :sys.get_state(agent_pid(id))
       [{^id, summary}] = :ets.lookup(:chat_agents, id)
       assert is_binary(summary.prompt_hash)
     end
 
-    test "init_resume with matching hash → no drift marker appended", %{id: id} do
+    test "init_resume with matching hash → no drift marker appended", %{id: id, tmp_dir: tmp_dir} do
       pid = agent_pid(id)
       original_hash = :sys.get_state(pid).prompt_hash
       original_msg_count = length(:sys.get_state(pid).messages)
@@ -86,7 +93,7 @@ defmodule BoomLooper.ChatAgent.PromptDriftTest do
         BoomLooper.TestHelpers.start_agent(
           id: id,
           name: "Prompt Drift Test",
-          working_dir: File.cwd!(),
+          working_dir: tmp_dir,
           started_by: "test",
           backend: RecordingBackend,
           resume: true
@@ -106,16 +113,7 @@ defmodule BoomLooper.ChatAgent.PromptDriftTest do
       assert length(new_state.messages) == original_msg_count
     end
 
-    test "init_resume with DIFFERENT saved hash → inline drift marker appended", %{id: id} do
-      pid = agent_pid(id)
-
-      # Tamper via :sys.replace_state so the fake hash survives the
-      # stop path: terminate/2 writes `summary(state)` back to ETS if
-      # status isn't already :stopped, which would otherwise clobber a
-      # direct `:ets.insert/2` of a tampered row with the real state.
-      fake_hash = "0000000000000000000000000000000000000000000000000000000000000000"
-      :sys.replace_state(pid, fn s -> %{s | prompt_hash: fake_hash} end)
-
+    test "init_resume with DIFFERENT saved hash → inline drift marker appended", %{id: id, tmp_dir: tmp_dir} do
       # Attach telemetry handler FIRST so we catch the emit during init_resume.
       parent = self()
       handler_id = "prompt-drift-test-#{System.unique_integer([:positive])}"
@@ -131,14 +129,23 @@ defmodule BoomLooper.ChatAgent.PromptDriftTest do
 
       on_exit(fn -> :telemetry.detach(handler_id) end)
 
+      # Stop the agent first, then inject a fake hash directly into
+      # ETS. Older versions of this test used :sys.replace_state +
+      # the terminate/2 ETS-overwrite path as an indirect way to
+      # smuggle a fake hash into ETS, but ChatAgent.terminate now
+      # respects ETS :stopped and won't overwrite. Direct insert
+      # gives us deterministic state without that side-channel.
+      fake_hash = "0000000000000000000000000000000000000000000000000000000000000000"
       ChatAgent.stop_agent(id)
       Process.sleep(50)
+      [{^id, summary}] = :ets.lookup(:chat_agents, id)
+      :ets.insert(:chat_agents, {id, %{summary | prompt_hash: fake_hash}})
 
       {:ok, _} =
         BoomLooper.TestHelpers.start_agent(
           id: id,
           name: "Prompt Drift Test",
-          working_dir: File.cwd!(),
+          working_dir: tmp_dir,
           started_by: "test",
           backend: RecordingBackend,
           resume: true
@@ -162,7 +169,7 @@ defmodule BoomLooper.ChatAgent.PromptDriftTest do
       assert String.contains?(drift_msg.content, "behavior may differ")
     end
 
-    test "init_resume with no saved hash (pre-fix agent) → no drift marker, no crash", %{id: id} do
+    test "init_resume with no saved hash (pre-fix agent) → no drift marker, no crash", %{id: id, tmp_dir: tmp_dir} do
       pid = agent_pid(id)
 
       [{^id, summary}] = :ets.lookup(:chat_agents, id)
@@ -176,7 +183,7 @@ defmodule BoomLooper.ChatAgent.PromptDriftTest do
         BoomLooper.TestHelpers.start_agent(
           id: id,
           name: "Prompt Drift Test",
-          working_dir: File.cwd!(),
+          working_dir: tmp_dir,
           started_by: "test",
           backend: RecordingBackend,
           resume: true
