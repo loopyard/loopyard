@@ -155,36 +155,6 @@ defmodule BoomLooper.PortRegistry do
     end
   end
 
-  # Track this binding under the workspace-supervisor pid so the
-  # Resources janitor releases it when the supervisor goes DOWN. No-op
-  # if no group is registered (typical during early-boot reconnect).
-  defp track_binding(ws, svc, cport) do
-    case Registry.lookup(BoomLooper.WorkspaceRegistry, ws) do
-      [{owner_pid, _}] ->
-        BoomLooper.Resources.track(
-          owner_pid,
-          :port_binding,
-          {ws, svc, cport},
-          fn -> release_binding(ws, svc, cport) end
-        )
-
-      _ ->
-        :ok
-    end
-  end
-
-  # Release a single binding. Used as the Resources release_fn — invoked
-  # either when the workspace supervisor goes DOWN or when an explicit
-  # release path (release_workspace/1) calls Resources.release for each
-  # entry. Side effects only; no Resources.release call here (we'd loop).
-  defp release_binding(ws, svc, cport) do
-    key = {ws, svc, cport}
-    stop_proxy(key)
-    :ets.delete(@table, key)
-    EventLog.info("ports", "Released binding #{ws}/#{svc}/#{cport}")
-    :ok
-  end
-
   def handle_call({:set_docker_port, ws, svc, cport, docker_port}, _from, state) do
     key = {ws, svc, cport}
 
@@ -340,6 +310,36 @@ defmodule BoomLooper.PortRegistry do
   def handle_info(_msg, state), do: {:noreply, state}
 
   # --- Private ---
+
+  # Track this binding under the workspace-supervisor pid so the
+  # Resources janitor releases it when the supervisor goes DOWN. No-op
+  # if no group is registered (typical during early-boot reconnect).
+  defp track_binding(ws, svc, cport) do
+    case Registry.lookup(BoomLooper.WorkspaceRegistry, ws) do
+      [{owner_pid, _}] ->
+        BoomLooper.Resources.track(
+          owner_pid,
+          :port_binding,
+          {ws, svc, cport},
+          fn -> release_binding(ws, svc, cport) end
+        )
+
+      _ ->
+        :ok
+    end
+  end
+
+  # Release a single binding. Used as the Resources release_fn — invoked
+  # either when the workspace supervisor goes DOWN or when an explicit
+  # release path (release_workspace/1) calls Resources.release for each
+  # entry. Side effects only; no Resources.release call here (we'd loop).
+  defp release_binding(ws, svc, cport) do
+    key = {ws, svc, cport}
+    stop_proxy(key)
+    :ets.delete(@table, key)
+    EventLog.info("ports", "Released binding #{ws}/#{svc}/#{cport}")
+    :ok
+  end
 
   # Walk every registry entry and reconcile proxy state with Docker:
   # - Container up + port changed → update docker_port + restart proxy
