@@ -72,8 +72,26 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Services do
            rather than the confusing "(could not fetch logs)" that
            used to render a blank log panel. --%>
       <.log_panel :if={@running?} id="service-logs" content={@logs} />
-      <.service_stopped_panel :if={!@running?} service_name={@service_name} svc={@svc} workspace_state={@workspace_state} />
+      <.service_starting_panel :if={!@running? && @svc && @svc.status == :starting} service_name={@service_name} />
+      <.service_stopped_panel :if={!@running? && (!@svc || @svc.status != :starting)} service_name={@service_name} svc={@svc} workspace_state={@workspace_state} />
     </.detail_panel>
+    """
+  end
+
+  defp service_starting_panel(assigns) do
+    ~H"""
+    <div class="flex-1 flex items-center justify-center">
+      <div class="text-center max-w-sm px-4">
+        <div class="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center mx-auto mb-4">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 text-blue-400 animate-pulse">
+            <path d="M6.3 2.84A1.5 1.5 0 0 0 4 4.11v11.78a1.5 1.5 0 0 0 2.3 1.27l9.344-5.891a1.5 1.5 0 0 0 0-2.538L6.3 2.841Z" />
+          </svg>
+        </div>
+        <h3 class="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-1">
+          Starting {@service_name}...
+        </h3>
+      </div>
+    </div>
     """
   end
 
