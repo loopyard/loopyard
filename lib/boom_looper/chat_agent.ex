@@ -1951,7 +1951,21 @@ defmodule BoomLooper.ChatAgent do
     # crash, :shutdown-timeout exceeded) — the main reason surface #12
     # exists.
 
-    unless state.status in [:stopped, :destroying] do
+    # Don't overwrite the ETS row with :crashed if the operator already
+    # marked us :stopped or :destroying. `stop_agent/1` updates ETS to
+    # :stopped, broadcasts, THEN calls GenServer.stop — but our
+    # in-process `state.status` was never updated (no message was
+    # processed in between), so checking only `state.status` flips a
+    # clean :stopped back to :crashed. ETS is the source of truth;
+    # respect it.
+    intentional_stop? =
+      state.status in [:stopped, :destroying] or
+        case :ets.lookup(@ets_table, state.id) do
+          [{_, %{status: s}}] when s in [:stopped, :destroying] -> true
+          _ -> false
+        end
+
+    unless intentional_stop? do
       crashed = %{state | status: :crashed}
       :ets.insert(@ets_table, {state.id, summary(crashed)})
       Events.ChatAgent.publish(%Events.ChatAgent.Stopped{summary: summary(crashed)})
