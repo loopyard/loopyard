@@ -176,27 +176,26 @@ defmodule BoomLooper.Tools.WorkspaceTest do
   end
 
   describe "without bind mount" do
+    # The error path under test fires when an agent's workspace_id is
+    # nil. Production agents always carry one (RestartController
+    # injects it from the WorkspaceGroup), but a malformed ETS row
+    # (missing workspace_id) or an agent that hasn't been registered
+    # is the realistic case to defend. We poke the summary directly so
+    # we don't need to spin up a workspace just to fake the failure.
     setup do
       id = "no-bind-test-#{:rand.uniform(100_000)}"
 
-      {:ok, _pid} =
-        BoomLooper.TestHelpers.start_agent(
-          id: id,
-          name: "No Bind Test",
-          working_dir: File.cwd!(),
-          started_by: "test"
-        )
+      :ets.insert(:chat_agents, {id, %{
+        id: id,
+        name: "No Bind Test",
+        workspace_id: nil,
+        bind_mount: nil,
+        working_dir: File.cwd!(),
+        started_at: DateTime.utc_now(),
+        last_activity_at: DateTime.utc_now()
+      }})
 
-      on_exit(fn ->
-        try do
-          BoomLooper.ChatAgent.stop_agent(id)
-        catch
-          :exit, _ -> :ok
-        end
-
-        Process.sleep(50)
-      end)
-
+      on_exit(fn -> :ets.delete(:chat_agents, id) end)
       %{agent_id: id}
     end
 

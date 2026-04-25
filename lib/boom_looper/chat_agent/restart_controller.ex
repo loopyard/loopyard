@@ -253,6 +253,15 @@ defmodule BoomLooper.ChatAgent.RestartController do
     workspace_id = state.workspace_id
     id = Keyword.fetch!(agent_opts, :id)
 
+    # Inject workspace_id into the agent's opts so ChatAgent.init/1
+    # can store it in state. Without this, agents started via
+    # WorkspaceGroup.start_agent(ws_id, opts) end up with
+    # state.workspace_id == nil and any tool that calls
+    # `Helpers.resolve_container(agent_id)` returns
+    # "Agent X has no workspace". Caller-supplied workspace_id wins
+    # if explicitly provided (rare, but matches production paths).
+    agent_opts = Keyword.put_new(agent_opts, :workspace_id, workspace_id)
+
     # The actual GenServer start goes through the DynamicSupervisor
     # so OTP owns child spec, shutdown, and link management. We just
     # monitor the pid that comes back.
