@@ -118,11 +118,6 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         :stopped -> {"Stopped", "bg-zinc-400", :start}
       end
 
-    elapsed =
-      if assigns.workspace_state in [:starting, :stopping] and assigns.workspace_state_since do
-        DateTime.diff(DateTime.utc_now(), assigns.workspace_state_since, :second)
-      end
-
     # Disconnect suppresses the action button — clicking Start while
     # Docker is unreachable would just fail and dump errors.
     button = if assigns.docker_connected?, do: button, else: :none
@@ -132,14 +127,13 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
       |> assign(:label, label)
       |> assign(:dot_class, dot_class)
       |> assign(:button, button)
-      |> assign(:elapsed, elapsed)
 
     ~H"""
     <div class="flex-none border-b border-zinc-200 dark:border-zinc-700/80 px-3 py-2.5 md:py-2 flex items-center gap-2">
       <div class="flex items-center gap-2 min-w-0 flex-1">
         <div class={"w-2 h-2 rounded-full flex-none #{if @docker_connected?, do: @dot_class, else: "bg-amber-400 animate-pulse"}"} aria-hidden="true"></div>
-        <span class="text-base font-medium text-zinc-700 dark:text-zinc-200 truncate">
-          <span :if={@docker_connected?}>Workspace {@label}<span :if={@elapsed} class="text-zinc-400 dark:text-zinc-500 font-normal">… {@elapsed}s</span></span>
+        <span class="text-sm font-medium text-zinc-700 dark:text-zinc-200 truncate">
+          <span :if={@docker_connected?}>Workspace {@label}</span>
           <span :if={!@docker_connected?} class="text-amber-600 dark:text-amber-400">Docker disconnected</span>
         </span>
       </div>
