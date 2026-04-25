@@ -87,6 +87,9 @@ jobs:
 
       - name: Run docker E2E tests
         # Include only :docker; exclude others. The fast suite ran in
-        # the job above.
+        # the job above. BOOMLOOPER_LONG_TIMEOUTS bumps the per-test
+        # default from 2s to 30s — Docker ops are inherently slow.
+        env:
+          BOOMLOOPER_LONG_TIMEOUTS: "1"
         run: mix test --only docker --exclude macos --exclude ssh --exclude terminal
         timeout-minutes: 15

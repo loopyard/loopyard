@@ -178,7 +178,9 @@ defmodule BoomLooper.Workspace.ServiceStatusTest do
       [pg] = services
       assert pg.name == "postgres"
       assert pg.type == :stock
-      assert pg.running == false
+      # Field was renamed: `running` (boolean) became `status`
+      # (one of :running, :stopped, :crashed, ...). Test was stale.
+      assert pg.status == :stopped
     end
   end
 

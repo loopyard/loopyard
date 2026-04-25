@@ -163,7 +163,19 @@ _ =
 ]
 |> Enum.each(&Code.ensure_loaded!/1)
 
+# Docker tests genuinely need more than 2s — `docker version` alone
+# can take 1-2s on a cold daemon, and most :docker tests do volume
+# create + rsync + container exec. CI's docker-e2e job sets
+# BOOMLOOPER_LONG_TIMEOUTS=1 to bump the suite-wide default for that
+# run. Local default stays tight (2s) so Process.sleep regressions
+# still fail loudly.
+default_timeout =
+  case System.get_env("BOOMLOOPER_LONG_TIMEOUTS") do
+    "1" -> 30_000
+    _ -> 2_000
+  end
+
 ExUnit.start(
   exclude: [:docker, :terminal, :ssh, :recovery, :slow, :macos],
-  timeout: 2_000
+  timeout: default_timeout
 )
