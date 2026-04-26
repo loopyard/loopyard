@@ -448,7 +448,7 @@ defmodule BoomLooper.ChatAgentTest do
       assert contents == ["first", "second"]
     end
 
-    @tag timeout: 10_000
+    @tag timeout: 15_000
     test "messages are capped at 1000", %{id: id} do
       # Directly inject messages via the GenServer to avoid CLI overhead.
       # Use role: :user — :system triggers the auto-continue side effect
@@ -463,8 +463,13 @@ defmodule BoomLooper.ChatAgentTest do
         GenServer.cast(pid, {:append_external_message, msg})
       end
 
-      Process.sleep(200)
-      state = ChatAgent.get_state(id)
+      # Drain all 1050 casts before checking state. GenServer.call is
+      # FIFO with prior casts, so this synchronization guarantees
+      # every cast was processed. ChatAgent.get_state has a 500ms call
+      # timeout that falls back to ETS — too tight when CI is busy
+      # processing 1050 mailbox messages. Use a direct call with a
+      # generous timeout instead.
+      state = GenServer.call(pid, :get_state, 10_000)
       assert length(state.messages) <= 1000
       # Newest messages should be preserved (oldest trimmed)
       last = List.last(state.messages)

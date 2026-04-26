@@ -810,7 +810,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
         if svc.name == name, do: %{svc | status: :starting}, else: svc
       end)
 
-    socket = assign(socket, :service_statuses, service_statuses)
+    socket = assign(socket, :service_statuses, guard_service_statuses(socket, service_statuses))
     run_compose_async(socket, ["restart", name], 30_000)
   end
 
@@ -833,7 +833,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
         end
       end)
 
-    socket = assign(socket, :service_statuses, service_statuses)
+    socket = assign(socket, :service_statuses, guard_service_statuses(socket, service_statuses))
     run_compose_async(socket, ["up", "-d", name], 60_000)
   end
 

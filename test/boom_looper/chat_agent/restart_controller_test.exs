@@ -488,7 +488,11 @@ defmodule BoomLooper.ChatAgent.RestartControllerTest do
       [{apid, _}] = Registry.lookup(BoomLooper.ChatAgentRegistry, agent_id)
       Process.exit(apid, :kill)
 
-      assert_receive %BoomLooper.Events.ChatAgent.Quarantined{id: ^agent_id}, 2_000
+      # 5s — under CI load the controller takes longer to process the
+      # DOWN + decide to quarantine. The pre-seeded stamps are inside
+      # the threshold window, so it WILL quarantine; just sometimes
+      # slow to do so.
+      assert_receive %BoomLooper.Events.ChatAgent.Quarantined{id: ^agent_id}, 5_000
       assert RestartController.quarantined?(agent_id)
     end
   end

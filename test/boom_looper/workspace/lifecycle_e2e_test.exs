@@ -116,7 +116,11 @@ defmodule BoomLooper.Workspace.LifecycleE2ETest do
     refute File.exists?(Workspace.compose_dir(ws_id)),
            "compose dir should be removed after destroy"
 
-    # Supervisor subtree is gone.
+    # Supervisor subtree is gone. Destructor.destroy walks the subtree
+    # asynchronously in places (Setup task cancellation, ServiceManager
+    # terminate, etc.) — give it a moment to settle before asserting.
+    wait_for(5_000, fn -> not WorkspaceSupervisor.workspace_running?(ws_id) end)
+
     refute WorkspaceSupervisor.workspace_running?(ws_id),
            "workspace supervisor subtree should be stopped after destroy"
 
