@@ -33,11 +33,16 @@ defmodule BoomLooper.ChatAgent.HardeningTest do
     RecordingBackend.reset()
     id = "hardening-test-#{:rand.uniform(100_000)}"
 
+    # Per-test tmp_dir so we don't share a cwd-derived workspace_id
+    # with other tests in the suite (causes setup churn under load).
+    tmp_dir = Path.join(System.tmp_dir!(), "hardening-#{:erlang.unique_integer([:positive])}")
+    File.mkdir_p!(tmp_dir)
+
     {:ok, _pid} =
       BoomLooper.TestHelpers.start_agent(
         id: id,
         name: "Hardening Test",
-        working_dir: File.cwd!(),
+        working_dir: tmp_dir,
         started_by: "test",
         backend: RecordingBackend
       )
@@ -52,7 +57,7 @@ defmodule BoomLooper.ChatAgent.HardeningTest do
         :exit, _ -> :ok
       end
 
-      Process.sleep(20)
+      File.rm_rf!(tmp_dir)
     end)
 
     %{id: id}

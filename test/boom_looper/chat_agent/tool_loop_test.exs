@@ -37,12 +37,14 @@ defmodule BoomLooper.ChatAgent.ToolLoopTest do
   setup do
     RecordingBackend.reset()
     id = "tool-loop-test-#{:rand.uniform(100_000)}"
+    tmp_dir = Path.join(System.tmp_dir!(), "tool-loop-#{:erlang.unique_integer([:positive])}")
+    File.mkdir_p!(tmp_dir)
 
     {:ok, _pid} =
       BoomLooper.TestHelpers.start_agent(
         id: id,
         name: "Tool Loop Test",
-        working_dir: File.cwd!(),
+        working_dir: tmp_dir,
         started_by: "test",
         backend: RecordingBackend
       )
@@ -56,8 +58,7 @@ defmodule BoomLooper.ChatAgent.ToolLoopTest do
       catch
         :exit, _ -> :ok
       end
-
-      Process.sleep(20)
+      File.rm_rf!(tmp_dir)
     end)
 
     %{id: id}

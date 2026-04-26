@@ -98,11 +98,13 @@ defmodule BoomLooper.ChatAgent.ResumeValidationTest do
     test "valid summary → resumes cleanly" do
       id = "valid-resume-#{:rand.uniform(100_000)}"
       now = DateTime.utc_now()
+      tmp_dir = Path.join(System.tmp_dir!(), "resume-valid-#{:erlang.unique_integer([:positive])}")
+      File.mkdir_p!(tmp_dir)
 
       summary = %{
         id: id,
         name: "valid",
-        working_dir: File.cwd!(),
+        working_dir: tmp_dir,
         bind_mount: nil,
         workspace_id: nil,
         started_at: now,
@@ -119,15 +121,15 @@ defmodule BoomLooper.ChatAgent.ResumeValidationTest do
         catch
           :exit, _ -> :ok
         end
-        Process.sleep(20)
         :ets.delete(:chat_agents, id)
+        File.rm_rf!(tmp_dir)
       end)
 
       {:ok, _pid} =
         BoomLooper.TestHelpers.start_agent(
           id: id,
           name: "valid",
-          working_dir: File.cwd!(),
+          working_dir: tmp_dir,
           backend: RecordingBackend,
           resume: true
         )
@@ -136,7 +138,7 @@ defmodule BoomLooper.ChatAgent.ResumeValidationTest do
         [{pid, _}] ->
           state = :sys.get_state(pid)
           assert state.name == "valid"
-          assert state.working_dir == File.cwd!()
+          assert state.working_dir == tmp_dir
 
         [] ->
           flunk("agent didn't resume")

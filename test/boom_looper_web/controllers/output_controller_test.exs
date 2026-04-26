@@ -5,18 +5,25 @@ defmodule BoomLooperWeb.OutputControllerTest do
   describe "show/2" do
     setup do
       id = "output-test-#{:rand.uniform(100_000)}"
+      tmp_dir = Path.join(System.tmp_dir!(), "output-#{:erlang.unique_integer([:positive])}")
+      File.mkdir_p!(tmp_dir)
 
       {:ok, _pid} =
         BoomLooper.TestHelpers.start_agent(
           id: id,
           name: "Output Test",
-          working_dir: File.cwd!(),
+          working_dir: tmp_dir,
           started_by: "test"
         )
 
-      # Send a message so the agent has messages in its state
-      BoomLooper.ChatAgent.send_message(id, "test message")
-      Process.sleep(100)
+      # Insert a message directly via append_message_ets — synchronous
+      # with the FIFO mailbox, so no Process.sleep needed and no flake
+      # waiting for the CLI stream task to settle.
+      BoomLooper.ChatAgent.append_message_ets(id, %{
+        role: :user,
+        content: "test message",
+        timestamp: DateTime.utc_now()
+      })
 
       on_exit(fn ->
         try do
@@ -24,6 +31,7 @@ defmodule BoomLooperWeb.OutputControllerTest do
         catch
           :exit, _ -> :ok
         end
+        File.rm_rf!(tmp_dir)
       end)
 
       %{agent_id: id}
