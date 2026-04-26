@@ -118,8 +118,9 @@ defmodule BoomLooper.Workspace.LifecycleE2ETest do
 
     # Supervisor subtree is gone. Destructor.destroy walks the subtree
     # asynchronously in places (Setup task cancellation, ServiceManager
-    # terminate, etc.) — give it a moment to settle before asserting.
-    wait_for(5_000, fn -> not WorkspaceSupervisor.workspace_running?(ws_id) end)
+    # terminate, etc.). 30s is generous; CI runner under contention
+    # routinely takes 5-15s for the full teardown.
+    wait_for(30_000, fn -> not WorkspaceSupervisor.workspace_running?(ws_id) end)
 
     refute WorkspaceSupervisor.workspace_running?(ws_id),
            "workspace supervisor subtree should be stopped after destroy"

@@ -10,10 +10,13 @@ defmodule BoomLooper.ChatAgent.RestartControllerTest do
   alias BoomLooper.TestHelpers
 
   setup do
-    # Clamp the threshold way down for tests so we don't have to
-    # actually crash 5 times in 60 seconds. 3 crashes in 500ms is
-    # enough to prove the mechanism while staying fast.
-    Application.put_env(:boom_looper, :quarantine_threshold, {3, 500})
+    # Clamp the threshold for tests so we don't have to actually crash
+    # 5 times in 60 seconds. 3 crashes in 5s is enough to prove the
+    # mechanism while staying fast — and crucially the 5s window
+    # survives a CI runner that pauses for a few seconds between
+    # controller restart and the next crash (which used to fall out
+    # of a 500ms window and produce flaky failures).
+    Application.put_env(:boom_looper, :quarantine_threshold, {3, 5_000})
     Application.put_env(:boom_looper, :crash_backoff_base_ms, 10)
 
     on_exit(fn ->

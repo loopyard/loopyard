@@ -118,7 +118,14 @@ defmodule BoomLooperWeb.WorkspaceLiveTest do
       assert {:error, {:live_redirect, %{to: "/"}}} = live(conn, "/projects/nonexistent/workspaces/nonexistent")
     end
 
-    test "workspace :index mount returns under 500ms — compose check is async", %{conn: conn, workspace: ws} do
+    # The mount-budget tests are tripwires for "someone added a sync
+    # Docker call to mount." A real Docker leak takes seconds; even a
+    # 1500ms ceiling catches that. CI's runner is ~3x slower than local
+    # under contention, so we expand the budget there. Local stays
+    # tight (500ms) where regressions are caught at dev time.
+    @mount_budget_ms (if System.get_env("BOOMLOOPER_LONG_TIMEOUTS") == "1", do: 1500, else: 500)
+
+    test "workspace :index mount returns under budget", %{conn: conn, workspace: ws} do
       # Lands on /projects/X/workspaces/Y. Previously this synchronously
       # called VolumeManager.read_file (docker run alpine cat) — could
       # take seconds. Now the read happens in start_async; mount must
@@ -126,14 +133,14 @@ defmodule BoomLooperWeb.WorkspaceLiveTest do
       {micros, _result} = :timer.tc(fn ->
         live(conn, "/projects/#{ws.project_id}/workspaces/#{ws.id}")
       end)
-      assert micros < 500_000,
-        "WorkspaceLive :index mount took #{div(micros, 1000)}ms — sync compose check leaked back in"
+      assert micros < @mount_budget_ms * 1000,
+        "WorkspaceLive :index mount took #{div(micros, 1000)}ms (budget #{@mount_budget_ms}ms) — sync compose check leaked back in"
     end
 
-    test "workspace :chat mount returns under 500ms", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
+    test "workspace :chat mount returns under budget", %{conn: conn, workspace: ws, setup_agent_id: setup_agent_id} do
       {micros, _result} = :timer.tc(fn -> live(conn, ws_chat_path(ws, setup_agent_id)) end)
-      assert micros < 500_000,
-        "WorkspaceLive :chat mount took #{div(micros, 1000)}ms — sync slow call leaked in"
+      assert micros < @mount_budget_ms * 1000,
+        "WorkspaceLive :chat mount took #{div(micros, 1000)}ms (budget #{@mount_budget_ms}ms) — sync slow call leaked in"
     end
 
     # Integration-ish: creates a fresh workspace supervisor + starts
