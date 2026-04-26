@@ -116,11 +116,14 @@ defmodule BoomLooper.Workspace.LifecycleE2ETest do
     refute File.exists?(Workspace.compose_dir(ws_id)),
            "compose dir should be removed after destroy"
 
-    # Supervisor subtree is gone. Destructor.destroy walks the subtree
-    # asynchronously in places (Setup task cancellation, ServiceManager
-    # terminate, etc.). 30s is generous; CI runner under contention
-    # routinely takes 5-15s for the full teardown.
-    wait_for(30_000, fn -> not WorkspaceSupervisor.workspace_running?(ws_id) end)
+    # Supervisor subtree is gone. Destructor.destroy synchronously
+    # calls compose down → terminate_child (which awaits the child
+    # to exit), but ServiceManager.terminate/2 internally spawns
+    # Docker calls that wait for the daemon to ack — under CI
+    # contention this can run a full minute. 90s timeout absorbs
+    # that; if the test hits 90s, there's a genuine bug worth
+    # investigating (probably a stuck Docker call).
+    wait_for(90_000, fn -> not WorkspaceSupervisor.workspace_running?(ws_id) end)
 
     refute WorkspaceSupervisor.workspace_running?(ws_id),
            "workspace supervisor subtree should be stopped after destroy"

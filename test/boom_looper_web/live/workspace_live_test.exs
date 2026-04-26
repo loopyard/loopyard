@@ -119,11 +119,12 @@ defmodule BoomLooperWeb.WorkspaceLiveTest do
     end
 
     # The mount-budget tests are tripwires for "someone added a sync
-    # Docker call to mount." A real Docker leak takes seconds; even a
-    # 1500ms ceiling catches that. CI's runner is ~3x slower than local
-    # under contention, so we expand the budget there. Local stays
-    # tight (500ms) where regressions are caught at dev time.
-    @mount_budget_ms (if System.get_env("BOOMLOOPER_LONG_TIMEOUTS") == "1", do: 1500, else: 500)
+    # Docker call to mount." A real Docker leak takes 5+ seconds; even
+    # a 3000ms ceiling catches that. CI's runner is highly variable
+    # (1.9s typical, 4s under contention), so we give it 3s headroom.
+    # Local stays tight (500ms) where regressions are caught at dev
+    # time before the test even reaches CI.
+    @mount_budget_ms (if System.get_env("BOOMLOOPER_LONG_TIMEOUTS") == "1", do: 3000, else: 500)
 
     test "workspace :index mount returns under budget", %{conn: conn, workspace: ws} do
       # Lands on /projects/X/workspaces/Y. Previously this synchronously
