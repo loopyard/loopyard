@@ -69,12 +69,16 @@ defmodule BoomLooperWeb.ProjectLiveTest do
     end
 
     @tag :docker
+    @tag timeout: 30_000
     test "confirming removes project and redirects home", %{conn: conn, project: project} do
       {:ok, view, _html} = live(conn, "/projects/#{project.id}")
       view |> element("button", "Remove project") |> render_click()
 
-      assert {:error, {:live_redirect, %{to: "/"}}} =
-               view |> element("button", "Remove project") |> render_click()
+      # `remove_project` now uses start_async, so render_click returns
+      # the intermediate "Removing…" state. The actual redirect lands
+      # later via handle_async; use assert_redirect to wait for it.
+      view |> element("button", "Remove project") |> render_click()
+      assert_redirect(view, "/", 25_000)
 
       assert ProjectRegistry.get_project(project.id) == nil
       assert ProjectRegistry.list_workspaces(project.id) == []

@@ -90,16 +90,27 @@ defmodule BoomLooper.Events.TapTest do
 
   describe "recent/1 filters" do
     setup do
-      Phoenix.PubSub.broadcast(BoomLooper.PubSub, "chat_agents", {:chat_agent_started, %{id: "1"}})
+      # Use unique markers so concurrent broadcasts from other tests
+      # don't pollute our assertions. The exact `length == 2` check
+      # broke under parallel load when sibling test broadcasts on
+      # chat_agents landed in our window.
+      m1 = "tap-test-started-#{System.unique_integer([:positive])}"
+      m2 = "tap-test-stopped-#{System.unique_integer([:positive])}"
+
+      Phoenix.PubSub.broadcast(BoomLooper.PubSub, "chat_agents", {:chat_agent_started, %{id: m1}})
       Phoenix.PubSub.broadcast(BoomLooper.PubSub, "docker_observer", {:docker_state_changed})
-      Phoenix.PubSub.broadcast(BoomLooper.PubSub, "chat_agents", {:chat_agent_stopped, %{id: "2"}})
+      Phoenix.PubSub.broadcast(BoomLooper.PubSub, "chat_agents", {:chat_agent_stopped, %{id: m2}})
       Process.sleep(50)
-      :ok
+      %{m1: m1, m2: m2}
     end
 
-    test "topic filter returns only events on that topic" do
+    test "topic filter returns only events on that topic", %{m1: m1, m2: m2} do
       events = Tap.recent(topic: "chat_agents")
-      assert length(events) == 2
+      # Both our markers must be present; everything returned must be
+      # on chat_agents topic. We don't assert the exact length because
+      # other tests may emit chat_agents events concurrently.
+      assert Enum.any?(events, &String.contains?(&1.payload, m1))
+      assert Enum.any?(events, &String.contains?(&1.payload, m2))
       assert Enum.all?(events, &(&1.topic == "chat_agents"))
     end
 

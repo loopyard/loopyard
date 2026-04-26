@@ -75,7 +75,16 @@ defmodule BoomLooper.Workspace.LifecycleE2ETest do
     end)
 
     # --- Seed an agent state so Exec can look up the workspace ---
-    :ets.insert(:chat_agents, {@agent_id, %{id: @agent_id, workspace_id: ws_id}})
+    # Include :messages — Exec / helper paths assume a fully-shaped
+    # summary; the minimal id+workspace_id form trips KeyError on
+    # downstream readers.
+    :ets.insert(:chat_agents, {@agent_id, %{
+      id: @agent_id,
+      workspace_id: ws_id,
+      messages: [],
+      status: :idle,
+      name: "lifecycle test"
+    }})
 
     # --- Run a real command through the Exec tool ---
     assert {:ok, output} =
