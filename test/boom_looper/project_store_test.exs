@@ -1,5 +1,8 @@
 defmodule BoomLooper.ProjectStoreTest do
-  use ExUnit.Case, async: true
+  # async: false — this test mutates the global BOOMLOOPER_HOME env var
+  # via System.put_env/2 in setup. Concurrent tests would clobber each
+  # other's value (it's process-global, not per-test). Lock to serial.
+  use ExUnit.Case, async: false
 
   alias BoomLooper.ProjectStore
 
@@ -19,7 +22,7 @@ defmodule BoomLooper.ProjectStoreTest do
       else
         System.delete_env("BOOMLOOPER_HOME")
       end
-      File.rm_rf!(tmp_dir)
+      File.rm_rf(tmp_dir)
     end)
 
     %{tmp_dir: tmp_dir}
