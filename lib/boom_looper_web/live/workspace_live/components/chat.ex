@@ -199,12 +199,13 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
   def chat_panel(assigns) do
     ~H"""
     <div class="flex-1 flex flex-col min-h-0">
-      <div id="messages" class="flex-1 overflow-y-auto px-4 md:px-6 py-4 space-y-1">
+      <div id="messages" phx-hook="ChatScroll" class="flex-1 overflow-y-auto px-4 md:px-6 py-4 space-y-1">
         <div :for={{msg, idx} <- Enum.with_index(@messages)}>
           <.chat_msg msg={msg} idx={idx} agent_id={@agent.id} workspace_id={@workspace_id} host={@host} />
         </div>
         <.streaming_bubble :if={@streaming_text != ""} text={@streaming_text} />
         <.thinking_indicator :if={@agent.status == :thinking && @streaming_text == ""} messages={@messages} word={@thinking_word} />
+        <div id="scroll-anchor" aria-hidden="true"></div>
       </div>
       <div id="chat-form-wrapper" phx-update="ignore" class="flex-none border-t border-zinc-200 dark:border-zinc-700/80 p-3 md:p-4">
         <form id="chat-form" phx-submit="send_message" phx-hook="ChatForm" class="flex gap-2">

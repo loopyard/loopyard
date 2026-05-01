@@ -6,62 +6,41 @@ import {createTerminalHook} from "./terminal"
 let Hooks = {}
 Hooks.Terminal = createTerminalHook()
 
-// Auto-scrolls #messages to bottom. Pauses when user scrolls up;
-// resumes when they scroll back to the bottom.
-//
-// Strategy: scroll on every LiveView `updated()` callback. No
-// MutationObserver, no polling — LiveView tells us when the DOM
-// changed, and we scroll. Simple, works on mobile.
-Hooks.ScrollBottom = {
+// ChatScroll: lives directly on #messages. Scrolls to bottom on mount
+// and every update. Pauses when user scrolls up; resumes when back at
+// bottom. Uses scrollIntoView on a zero-height anchor div at the end
+// of the message list — the most reliable cross-browser/mobile approach.
+Hooks.ChatScroll = {
   mounted() {
     this._userScrolledUp = false
-    this._scrollEl = null
-    this._bound = false
 
-    this.handleEvent("scroll_bottom", () => {
-      if (!this._userScrolledUp) this._scroll()
-    })
+    this.el.addEventListener("scroll", () => {
+      const el = this.el
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50
+      this._userScrolledUp = !atBottom
+    }, { passive: true })
 
-    this._attach()
+    this._scrollToBottom()
   },
 
   updated() {
-    this._attach()
-    if (!this._userScrolledUp) this._scroll()
+    if (!this._userScrolledUp) this._scrollToBottom()
   },
 
-  _attach() {
-    const el = document.getElementById("messages")
-    if (!el || el === this._scrollEl) {
-      // Same element, just scroll
-      if (el && !this._userScrolledUp) this._scroll()
-      return
+  _scrollToBottom() {
+    const anchor = document.getElementById("scroll-anchor")
+    if (anchor) {
+      anchor.scrollIntoView({ block: "end" })
+    } else {
+      this.el.scrollTop = this.el.scrollHeight
     }
-
-    // New #messages element (LiveView navigation)
-    this._userScrolledUp = false
-    this._scrollEl = el
-
-    if (!this._bound) {
-      // Single delegated scroll listener on the hook root — survives
-      // element replacement. Checks if the scroll target is #messages.
-      this.el.addEventListener("scroll", (e) => {
-        if (e.target.id === "messages") {
-          const t = e.target
-          const atBottom = t.scrollHeight - t.scrollTop - t.clientHeight < 50
-          this._userScrolledUp = !atBottom
-        }
-      }, { passive: true, capture: true })
-      this._bound = true
-    }
-
-    this._scroll()
-  },
-
-  _scroll() {
-    const el = this._scrollEl || document.getElementById("messages")
-    if (el) el.scrollTop = el.scrollHeight
   }
+}
+
+// Legacy: kept for any other page that still references ScrollBottom.
+Hooks.ScrollBottom = {
+  mounted() { this.handleEvent("scroll_bottom", () => {}) },
+  updated() {}
 }
 
 // Auto-scroll element to bottom on every update (tail mode).
