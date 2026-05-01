@@ -194,6 +194,88 @@ defmodule BoomLooper.PortRegistryTest do
     end
   end
 
+  describe "restore preserves exposure" do
+    test "restore then assign keeps exposed: true" do
+      # Simulate boot: restore loads an exposed port, then project
+      # restore calls assign for the same triple.
+      {:ok, port} = PortRegistry.assign("ws1", "dev", 3000)
+      echo = start_echo_on_free_port()
+      :ok = PortRegistry.set_docker_port("ws1", "dev", 3000, echo)
+      :ok = PortRegistry.set_exposure("ws1", "dev", 3000, true)
+
+      {:ok, entry_before} = PortRegistry.get("ws1", "dev", 3000)
+      assert entry_before.exposed == true
+
+      # Simulate server restart: clear ETS, restore from persistence,
+      # then assign again (what ProjectRegistry.restore does)
+      :ets.delete_all_objects(:port_registry)
+
+      # Manual restore — insert the entry as if PortStore loaded it
+      key = {"ws1", "dev", 3000}
+      :ets.insert(:port_registry, {key, %{entry_before | docker_port: nil}})
+
+      # Now assign again (what Compose.emit_port does during project restore)
+      {:ok, same_port} = PortRegistry.assign("ws1", "dev", 3000)
+      assert same_port == port
+
+      # Exposure MUST be preserved
+      {:ok, entry_after} = PortRegistry.get("ws1", "dev", 3000)
+      assert entry_after.exposed == true, "assign clobbered exposed flag"
+    end
+
+    test "assign on empty table creates exposed: false" do
+      {:ok, _} = PortRegistry.assign("ws1", "dev", 3000)
+      {:ok, entry} = PortRegistry.get("ws1", "dev", 3000)
+      assert entry.exposed == false
+    end
+
+    test "assign before restore loses exposure (the bug)" do
+      # This documents the bug that the restore-order fix prevents.
+      # If assign runs BEFORE restore, a fresh entry is created with
+      # exposed: false, and the old exposed: true entry is lost.
+      {:ok, port} = PortRegistry.assign("ws1", "dev", 3000)
+      echo = start_echo_on_free_port()
+      :ok = PortRegistry.set_docker_port("ws1", "dev", 3000, echo)
+      :ok = PortRegistry.set_exposure("ws1", "dev", 3000, true)
+
+      {:ok, entry_before} = PortRegistry.get("ws1", "dev", 3000)
+      assert entry_before.exposed == true
+
+      # Clear ETS (simulating BEAM restart)
+      :ets.delete_all_objects(:port_registry)
+
+      # Assign FIRST (the wrong order — this is what used to happen)
+      {:ok, _} = PortRegistry.assign("ws1", "dev", 3000)
+
+      # The new entry has exposed: false
+      {:ok, fresh_entry} = PortRegistry.get("ws1", "dev", 3000)
+      assert fresh_entry.exposed == false, "fresh entry should default to unexposed"
+    end
+
+    test "port number is sticky across assign calls" do
+      {:ok, port1} = PortRegistry.assign("ws1", "dev", 3000)
+      {:ok, port2} = PortRegistry.assign("ws1", "dev", 3000)
+      {:ok, port3} = PortRegistry.assign("ws1", "dev", 3000)
+      assert port1 == port2
+      assert port2 == port3
+    end
+
+    test "set_docker_port preserves exposed flag" do
+      {:ok, _} = PortRegistry.assign("ws1", "dev", 3000)
+      echo1 = start_echo_on_free_port()
+      :ok = PortRegistry.set_docker_port("ws1", "dev", 3000, echo1)
+      :ok = PortRegistry.set_exposure("ws1", "dev", 3000, true)
+
+      # Container restart → new docker port
+      echo2 = start_echo_on_free_port()
+      :ok = PortRegistry.set_docker_port("ws1", "dev", 3000, echo2)
+
+      {:ok, entry} = PortRegistry.get("ws1", "dev", 3000)
+      assert entry.exposed == true, "docker port change clobbered exposed"
+      assert entry.docker_port == echo2
+    end
+  end
+
   # --- Helpers ---
 
   defp free_port do
