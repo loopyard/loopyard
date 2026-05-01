@@ -1209,10 +1209,19 @@ defmodule BoomLooperWeb.WorkspaceLive do
 
     socket =
       if id == socket.assigns.selected_id do
-        # Pull the fresh summary from ETS — not the stale copy in
-        # the sidebar list. Otherwise we clobber the live token/cost
-        # counts every time an agent is renamed.
-        refresh_selected_agent(socket, id)
+        # Merge: ETS for fresh counters, assigns for the new name
+        ets_data =
+          case :ets.lookup(:chat_agents, id) do
+            [{^id, data}] -> data
+            _ -> %{}
+          end
+
+        case Enum.find(agents, &(&1.id == id)) do
+          nil -> socket
+          from_assigns ->
+            merged = Map.merge(ets_data, Map.take(from_assigns, [:name, :status, :thinking_word, :alive?]))
+            assign(socket, :selected_agent, merged)
+        end
       else
         socket
       end

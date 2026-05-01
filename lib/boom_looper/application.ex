@@ -103,6 +103,14 @@ defmodule BoomLooper.Application do
     # every docker pull/build hangs waiting for docker-credential-desktop.
     check_docker_creds_store()
 
+    # Restore port assignments BEFORE projects — ProjectRegistry.restore
+    # calls Compose.process_agent_compose which calls PortRegistry.assign.
+    # If ports aren't restored first, assign creates fresh entries with
+    # exposed: false, then persists them to disk, overwriting the saved
+    # exposed: true. User has to re-open every port on every restart.
+    safe_restore("PortRegistry", fn -> BoomLooper.PortRegistry.restore() end)
+    safe_restore("HostExposer", fn -> BoomLooper.HostExposer.restore() end)
+
     # Restore persisted projects from ~/.boomlooper/projects.json
     # ServiceManager will reconnect to any running containers
     BoomLooper.ProjectRegistry.restore()
@@ -121,13 +129,6 @@ defmodule BoomLooper.Application do
     # Pre-populate agent ETS from all workspace agent logs so agents
     # are visible immediately on boot — not lazily on first page visit.
     restore_all_agents()
-
-    # Post-startup restore calls. Each is wrapped in try/rescue because
-    # a sibling child crash-loop can kill the supervisor (and these
-    # GenServers with it) between Supervisor.start_link returning and
-    # these calls running. We'd rather boot degraded than not at all.
-    safe_restore("PortRegistry", fn -> BoomLooper.PortRegistry.restore() end)
-    safe_restore("HostExposer", fn -> BoomLooper.HostExposer.restore() end)
 
     # Scan the saga journal for incomplete sagas (BEAM crashed
     # mid-saga last run) and dispatch each per its declared

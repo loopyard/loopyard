@@ -6,81 +6,61 @@ import {createTerminalHook} from "./terminal"
 let Hooks = {}
 Hooks.Terminal = createTerminalHook()
 
-// Auto-scrolls messages to bottom — but only if the user hasn't scrolled up.
-// Once they scroll up to read, we leave them alone. Resumes when they
-// scroll back to the bottom.
+// Auto-scrolls #messages to bottom. Pauses when user scrolls up;
+// resumes when they scroll back to the bottom.
+//
+// Strategy: scroll on every LiveView `updated()` callback. No
+// MutationObserver, no polling — LiveView tells us when the DOM
+// changed, and we scroll. Simple, works on mobile.
 Hooks.ScrollBottom = {
   mounted() {
     this._userScrolledUp = false
-    this._observedEl = null
-    this._observer = null
+    this._scrollEl = null
+    this._bound = false
 
     this.handleEvent("scroll_bottom", () => {
-      if (!this._userScrolledUp) this._scrollToBottom()
+      if (!this._userScrolledUp) this._scroll()
     })
 
-    this._setup()
+    this._attach()
   },
 
   updated() {
-    // LiveView navigation replaces the #messages element — re-attach.
-    this._setup()
+    this._attach()
+    if (!this._userScrolledUp) this._scroll()
   },
 
-  _setup() {
+  _attach() {
     const el = document.getElementById("messages")
-    if (!el || el === this._observedEl) return
-
-    // Reset scroll state for new page
-    this._userScrolledUp = false
-
-    // Clean up old observer
-    if (this._observer) this._observer.disconnect()
-
-    // Track user scroll
-    el.addEventListener("scroll", () => {
-      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50
-      this._userScrolledUp = !atBottom
-    }, { passive: true })
-
-    // Watch for children added (messages loading)
-    this._observer = new MutationObserver(() => {
-      if (!this._userScrolledUp) {
-        requestAnimationFrame(() => this._scrollToBottom())
-      }
-    })
-    this._observer.observe(el, { childList: true, subtree: true })
-    this._observedEl = el
-
-    // Scroll to bottom after mount. With 400+ messages, layout can take
-    // multiple frames. Poll until scrollHeight stabilizes, then scroll.
-    this._scrollAfterLayout(el)
-  },
-
-  _scrollToBottom() {
-    const el = document.getElementById("messages")
-    if (el) el.scrollTop = el.scrollHeight
-  },
-
-  // Wait for layout to stabilize before scrolling. With large message
-  // lists, scrollHeight changes across multiple frames as the browser
-  // lays out content. Check every frame until it stops changing.
-  _scrollAfterLayout(el) {
-    let lastHeight = 0
-    let stableFrames = 0
-    const check = () => {
-      const h = el.scrollHeight
-      if (h === lastHeight) {
-        stableFrames++
-      } else {
-        stableFrames = 0
-        lastHeight = h
-      }
-      el.scrollTop = el.scrollHeight
-      // Wait for 3 stable frames before stopping
-      if (stableFrames < 3) requestAnimationFrame(check)
+    if (!el || el === this._scrollEl) {
+      // Same element, just scroll
+      if (el && !this._userScrolledUp) this._scroll()
+      return
     }
-    requestAnimationFrame(check)
+
+    // New #messages element (LiveView navigation)
+    this._userScrolledUp = false
+    this._scrollEl = el
+
+    if (!this._bound) {
+      // Single delegated scroll listener on the hook root — survives
+      // element replacement. Checks if the scroll target is #messages.
+      this.el.addEventListener("scroll", (e) => {
+        if (e.target.id === "messages") {
+          const t = e.target
+          const atBottom = t.scrollHeight - t.scrollTop - t.clientHeight < 50
+          this._userScrolledUp = !atBottom
+        }
+      }, { passive: true, capture: true })
+      this._bound = true
+    }
+
+    this._scroll()
+  },
+
+  _scroll() {
+    const el = this._scrollEl || document.getElementById("messages")
+    if (el) el.scrollTop = el.scrollHeight
   }
 }
 
