@@ -13,79 +13,47 @@ Hooks.Terminal = createTerminalHook()
 //
 // Scrolls on every `updated()` callback and on mount. Pauses when
 // user scrolls up; resumes when they scroll back to the bottom.
-// Scroll #messages to bottom on content changes. Uses ResizeObserver
-// to detect when the content size changes (messages added, images
-// loaded, etc.) — no setTimeout guessing. Pauses when user scrolls up.
-// Loads older messages when user scrolls near the top.
+// #messages uses flex-direction: column-reverse — the browser anchors
+// scroll to the bottom automatically. scrollTop=0 IS the bottom.
+// No JS needed for initial scroll or new message scroll.
+//
+// This hook only handles:
+// 1. Load-more: detect when user scrolls to the top (high scrollTop
+//    in column-reverse) and fetch older messages
+// 2. Scroll-to-bottom: when server pushes scroll_bottom event, reset
+//    scrollTop to 0 (which is the bottom in column-reverse)
 Hooks.ScrollBottom = {
   mounted() {
-    this._userScrolledUp = false
     this._loading = false
-    this._prevHeight = 0
-    this._prevTop = 0
-    this._setup()
-
-    this.handleEvent("scroll_bottom", () => {
-      if (!this._userScrolledUp) this._scroll()
-    })
+    this._bind()
   },
 
   updated() {
-    this._setup()
-    if (!this._userScrolledUp) this._scroll()
+    this._bind()
   },
 
-  _setup() {
+  _bind() {
     const el = document.getElementById("messages")
     if (!el || el === this._el) return
     this._el = el
-    this._userScrolledUp = false
 
-    // ResizeObserver fires when #messages content size changes —
-    // after layout, not before. No timing guesses needed.
-    if (this._ro) this._ro.disconnect()
-    this._ro = new ResizeObserver(() => {
-      if (this._loading && this._prevHeight && el.scrollHeight > this._prevHeight + 100) {
-        // Prepend: keep user's viewport on the same content
-        el.scrollTop = this._prevTop + (el.scrollHeight - this._prevHeight)
-        this._loading = false
-      } else if (!this._userScrolledUp) {
-        el.scrollTop = el.scrollHeight
-      }
-      this._prevHeight = el.scrollHeight
-      this._prevTop = el.scrollTop
-    })
-    // Observe the first child (the content wrapper) — ResizeObserver
-    // on a scrollable element fires on the content, not the viewport.
-    if (el.firstElementChild) {
-      this._ro.observe(el.firstElementChild)
-    } else {
-      this._ro.observe(el)
-    }
-
-    // Scroll listener: track user scroll + trigger load-more
     el.addEventListener("scroll", () => {
-      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50
-      this._userScrolledUp = !atBottom
-      this._prevHeight = el.scrollHeight
-      this._prevTop = el.scrollTop
+      // In column-reverse, scrollTop=0 is bottom. Large scrollTop = near top.
+      // scrollTop is NEGATIVE in column-reverse in some browsers, positive in others.
+      // The "top" (oldest messages) is at max scroll distance from 0.
+      const maxScroll = el.scrollHeight - el.clientHeight
+      const distFromTop = maxScroll - Math.abs(el.scrollTop)
 
-      if (el.scrollTop < 300 && !this._loading) {
+      if (distFromTop < 300 && maxScroll > 300 && !this._loading) {
         this._loading = true
         this.pushEvent("load_more", {})
         setTimeout(() => { this._loading = false }, 5000)
       }
     }, { passive: true })
 
-    // Initial scroll — immediate + delayed for mobile layout timing
-    el.scrollTop = el.scrollHeight
-    setTimeout(() => { el.scrollTop = el.scrollHeight }, 50)
-    setTimeout(() => { el.scrollTop = el.scrollHeight }, 150)
-  },
-
-  _scroll() {
-    const el = this._el || document.getElementById("messages")
-    if (el) el.scrollTop = el.scrollHeight
+    this.handleEvent("scroll_bottom", () => {
+      el.scrollTop = 0
+    })
   }
 }
 
