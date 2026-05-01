@@ -131,7 +131,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.AgentLifecycle do
           |> assign(:agents, agents)
           |> assign(:selected_id, id)
           |> assign(:selected_agent, agent)
-          |> assign(:messages, agent.messages)
+          |> assign_message_page(id)
           |> assign(:streaming_text, "")
           |> assign(:booting_agent_id, nil)
           |> assign(:stream_buffer, stream_buffer)
@@ -139,6 +139,17 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.AgentLifecycle do
 
         {:noreply, socket}
     end
+  end
+
+  @message_page_size 50
+
+  defp assign_message_page(socket, agent_id) do
+    {messages, total} = BoomLooper.ChatAgent.get_messages(agent_id, limit: @message_page_size)
+
+    socket
+    |> assign(:messages, messages)
+    |> assign(:messages_total, total)
+    |> assign(:has_more_messages, length(messages) < total)
   end
 
   @doc """

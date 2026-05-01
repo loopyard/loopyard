@@ -226,6 +226,40 @@ defmodule BoomLooper.ChatAgent do
     end
   end
 
+  @doc """
+  Get a page of messages for an agent. Returns `{messages_slice, total_count}`.
+
+  Options:
+    * `:limit` — max messages to return (default 50)
+    * `:before_id` — load messages before this message ID (for scroll-up pagination)
+
+  Reads directly from ETS (no GenServer call). Messages are in chronological order.
+  """
+  def get_messages(agent_id, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 50)
+    before_id = Keyword.get(opts, :before_id, nil)
+
+    case :ets.lookup(@ets_table, agent_id) do
+      [{^agent_id, summary}] ->
+        messages = summary.messages
+        total = length(messages)
+
+        slice =
+          if before_id do
+            idx = Enum.find_index(messages, &(&1[:id] == before_id)) || 0
+            start = max(0, idx - limit)
+            Enum.slice(messages, start, idx - start)
+          else
+            Enum.take(messages, -limit)
+          end
+
+        {slice, total}
+
+      _ ->
+        {[], 0}
+    end
+  end
+
   @doc "Append a message to an agent's message list (for stream messages created outside the GenServer).
   Goes through the GenServer if alive, falls back to direct ETS write."
   def append_message_ets(agent_id, msg) do

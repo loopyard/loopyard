@@ -110,6 +110,8 @@ defmodule BoomLooperWeb.WorkspaceLive do
      |> assign(:selected_id, nil)
      |> assign(:selected_agent, nil)
      |> assign(:messages, [])
+     |> assign(:messages_total, 0)
+     |> assign(:has_more_messages, false)
      |> assign(:streaming_text, "")
      |> assign(:thinking_word, nil)
      |> assign(:tab, :chat)
@@ -655,6 +657,35 @@ defmodule BoomLooperWeb.WorkspaceLive do
       # message via the same path.
       ChatAgent.send_message(socket.assigns.selected_id, message)
       {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("load_more", _params, socket) do
+    if socket.assigns.has_more_messages && socket.assigns.selected_id do
+      oldest = List.first(socket.assigns.messages)
+
+      {older, total} =
+        ChatAgent.get_messages(
+          socket.assigns.selected_id,
+          limit: 50,
+          before_id: oldest && oldest[:id]
+        )
+
+      if older != [] do
+        combined = older ++ socket.assigns.messages
+
+        {:noreply,
+         socket
+         |> assign(:messages, combined)
+         |> assign(:messages_total, total)
+         |> assign(:has_more_messages, length(combined) < total)
+         |> push_event("messages_prepended", %{})}
+      else
+        {:noreply, assign(socket, :has_more_messages, false)}
+      end
     else
       {:noreply, socket}
     end
@@ -1319,6 +1350,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
       socket =
         socket
         |> assign(:messages, socket.assigns.messages ++ [msg])
+        |> update(:messages_total, &(&1 + 1))
         |> refresh_selected_agent(id)
         |> push_event("scroll_bottom", %{})
 

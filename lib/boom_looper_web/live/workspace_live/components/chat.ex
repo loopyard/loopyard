@@ -115,7 +115,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
       <%!-- Main content: hidden on mobile when viewing context panel --%>
       <div class={["flex-1 flex flex-col min-w-0 min-h-0", if(@tab == :context_panel, do: "hidden lg:flex", else: "flex")]}>
         <.agent_header agent={@selected_agent} tab={@tab} has_container={@has_container} base_path={@base_path} />
-        <.chat_panel :if={@tab in [:chat, :context_panel]} messages={@messages} streaming_text={@streaming_text} agent={@selected_agent} workspace_id={@workspace.id} host={@host} thinking_word={@thinking_word} />
+        <.chat_panel :if={@tab in [:chat, :context_panel]} messages={@messages} streaming_text={@streaming_text} agent={@selected_agent} workspace_id={@workspace.id} host={@host} thinking_word={@thinking_word} has_more_messages={@has_more_messages} />
         <.container_panel :if={@tab == :container} env={@container_env} logs={@container_logs} log_service={@container_log_service} has_container={@has_container} />
       </div>
       <%!-- Context panel: always visible on lg+, full-screen on mobile when :context_panel --%>
@@ -200,6 +200,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
     ~H"""
     <div class="flex-1 flex flex-col min-h-0">
       <div id="messages" class="flex-1 overflow-y-auto px-4 md:px-6 py-4 space-y-1">
+        <p :if={assigns[:has_more_messages]} class="text-center py-2 text-xs text-zinc-400 dark:text-zinc-500">Loading older messages...</p>
         <div :for={{msg, idx} <- Enum.with_index(@messages)}>
           <.chat_msg msg={msg} idx={idx} agent_id={@agent.id} workspace_id={@workspace_id} host={@host} />
         </div>

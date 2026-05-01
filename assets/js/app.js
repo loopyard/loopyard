@@ -16,12 +16,36 @@ Hooks.Terminal = createTerminalHook()
 Hooks.ScrollBottom = {
   mounted() {
     this._userScrolledUp = false
+    this._pendingPrepend = false
+    this._loading = false
     this._bindScroll()
     this._scrollToBottom()
+
+    this.handleEvent("scroll_bottom", () => {
+      if (!this._userScrolledUp) this._scrollToBottom()
+    })
   },
 
   updated() {
     this._bindScroll()
+    const el = document.getElementById("messages")
+    if (!el) return
+
+    // Detect prepend: scrollHeight grew significantly while user was
+    // scrolled up AND we triggered a load_more. Correct scroll position
+    // so the same content stays in view.
+    if (this._loading && this._snapshotHeight && el.scrollHeight > this._snapshotHeight + 100) {
+      const added = el.scrollHeight - this._snapshotHeight
+      el.scrollTop = this._snapshotTop + added
+      this._loading = false
+      this._snapshotHeight = el.scrollHeight
+      this._snapshotTop = el.scrollTop
+      return
+    }
+
+    this._snapshotHeight = el.scrollHeight
+    this._snapshotTop = el.scrollTop
+
     if (!this._userScrolledUp) this._scrollToBottom()
   },
 
@@ -34,20 +58,26 @@ Hooks.ScrollBottom = {
     el.addEventListener("scroll", () => {
       const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50
       this._userScrolledUp = !atBottom
+
+      // Snapshot scroll state on every scroll so we have the pre-patch
+      // values when messages_prepended fires
+      this._captureScroll()
+
+      // Load more when near the top
+      if (el.scrollTop < 200 && !this._loading) {
+        this._loading = true
+        this.pushEvent("load_more", {})
+        setTimeout(() => { this._loading = false }, 3000)
+      }
     }, { passive: true })
   },
 
   _scrollToBottom() {
     const el = document.getElementById("messages")
     if (!el) return
-    // Immediate scroll for the common case
     el.scrollTop = el.scrollHeight
-    // Delayed scroll to catch layout that hasn't resolved yet.
-    // LiveView patches DOM synchronously but the browser doesn't
-    // lay out the new content until the next frame(s). Without
-    // this, large message lists end up 50-100px short of bottom.
-    setTimeout(() => { el.scrollTop = el.scrollHeight }, 50)
-    setTimeout(() => { el.scrollTop = el.scrollHeight }, 200)
+    // Single delayed scroll for layout that resolves after the patch
+    requestAnimationFrame(() => { if (el) el.scrollTop = el.scrollHeight })
   }
 }
 
