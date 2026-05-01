@@ -16,13 +16,24 @@ Hooks.Terminal = createTerminalHook()
 Hooks.ScrollBottom = {
   mounted() {
     this._userScrolledUp = false
-    this._pendingPrepend = false
     this._loading = false
+    this._prevHeight = 0
+    this._prevTop = 0
     this._bindScroll()
-    this._scrollToBottom()
+
+    // On mount, scroll to bottom with delays for mobile layout
+    const el = document.getElementById("messages")
+    if (el) {
+      el.scrollTop = el.scrollHeight
+      setTimeout(() => { el.scrollTop = el.scrollHeight }, 100)
+      setTimeout(() => { el.scrollTop = el.scrollHeight }, 300)
+    }
 
     this.handleEvent("scroll_bottom", () => {
-      if (!this._userScrolledUp) this._scrollToBottom()
+      if (!this._userScrolledUp) {
+        const m = document.getElementById("messages")
+        if (m) m.scrollTop = m.scrollHeight
+      }
     })
   },
 
@@ -31,22 +42,18 @@ Hooks.ScrollBottom = {
     const el = document.getElementById("messages")
     if (!el) return
 
-    // Detect prepend: scrollHeight grew significantly while user was
-    // scrolled up AND we triggered a load_more. Correct scroll position
-    // so the same content stays in view.
-    if (this._loading && this._snapshotHeight && el.scrollHeight > this._snapshotHeight + 100) {
-      const added = el.scrollHeight - this._snapshotHeight
-      el.scrollTop = this._snapshotTop + added
+    // Detect prepend: scrollHeight grew while we were loading older
+    // messages. Correct scroll so the same content stays in view.
+    if (this._loading && this._prevHeight && el.scrollHeight > this._prevHeight + 100) {
+      el.scrollTop = (this._prevTop || 0) + (el.scrollHeight - this._prevHeight)
       this._loading = false
-      this._snapshotHeight = el.scrollHeight
-      this._snapshotTop = el.scrollTop
-      return
     }
 
-    this._snapshotHeight = el.scrollHeight
-    this._snapshotTop = el.scrollTop
+    this._prevHeight = el.scrollHeight
+    this._prevTop = el.scrollTop
 
-    if (!this._userScrolledUp) this._scrollToBottom()
+    // Auto-scroll to bottom for new messages (not when user scrolled up)
+    if (!this._userScrolledUp) el.scrollTop = el.scrollHeight
   },
 
   _bindScroll() {
@@ -59,25 +66,17 @@ Hooks.ScrollBottom = {
       const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50
       this._userScrolledUp = !atBottom
 
-      // Snapshot scroll state on every scroll so we have the pre-patch
-      // values when messages_prepended fires
-      this._captureScroll()
+      // Snapshot for prepend correction
+      this._prevHeight = el.scrollHeight
+      this._prevTop = el.scrollTop
 
       // Load more when near the top
-      if (el.scrollTop < 200 && !this._loading) {
+      if (el.scrollTop < 300 && !this._loading) {
         this._loading = true
         this.pushEvent("load_more", {})
-        setTimeout(() => { this._loading = false }, 3000)
+        setTimeout(() => { this._loading = false }, 5000)
       }
     }, { passive: true })
-  },
-
-  _scrollToBottom() {
-    const el = document.getElementById("messages")
-    if (!el) return
-    el.scrollTop = el.scrollHeight
-    // Single delayed scroll for layout that resolves after the patch
-    requestAnimationFrame(() => { if (el) el.scrollTop = el.scrollHeight })
   }
 }
 
