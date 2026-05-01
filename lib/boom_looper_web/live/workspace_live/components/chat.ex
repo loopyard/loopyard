@@ -199,7 +199,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
   def chat_panel(assigns) do
     ~H"""
     <div class="flex-1 flex flex-col min-h-0">
-      <div id="messages" phx-hook="ChatScroll" class="flex-1 overflow-y-auto px-4 md:px-6 py-4 space-y-1">
+      <div id="messages" class="flex-1 overflow-y-auto px-4 md:px-6 py-4 space-y-1">
         <div :for={{msg, idx} <- Enum.with_index(@messages)}>
           <.chat_msg msg={msg} idx={idx} agent_id={@agent.id} workspace_id={@workspace_id} host={@host} />
         </div>

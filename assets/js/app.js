@@ -6,41 +6,49 @@ import {createTerminalHook} from "./terminal"
 let Hooks = {}
 Hooks.Terminal = createTerminalHook()
 
-// ChatScroll: lives directly on #messages. Scrolls to bottom on mount
-// and every update. Pauses when user scrolls up; resumes when back at
-// bottom. Uses scrollIntoView on a zero-height anchor div at the end
-// of the message list — the most reliable cross-browser/mobile approach.
-Hooks.ChatScroll = {
+// ScrollBottom: lives on #chat-page (ancestor), scrolls #messages
+// (descendant). Hooks on deeply nested elements (inside function
+// components with phx-id) don't mount in LiveView — so the hook
+// must live on the root-level element.
+//
+// Scrolls on every `updated()` callback and on mount. Pauses when
+// user scrolls up; resumes when they scroll back to the bottom.
+Hooks.ScrollBottom = {
   mounted() {
     this._userScrolledUp = false
-
-    this.el.addEventListener("scroll", () => {
-      const el = this.el
-      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50
-      this._userScrolledUp = !atBottom
-    }, { passive: true })
-
+    this._bindScroll()
     this._scrollToBottom()
   },
 
   updated() {
+    this._bindScroll()
     if (!this._userScrolledUp) this._scrollToBottom()
   },
 
-  _scrollToBottom() {
-    const anchor = document.getElementById("scroll-anchor")
-    if (anchor) {
-      anchor.scrollIntoView({ block: "end" })
-    } else {
-      this.el.scrollTop = this.el.scrollHeight
-    }
-  }
-}
+  _bindScroll() {
+    const el = document.getElementById("messages")
+    if (!el || el === this._boundEl) return
+    this._boundEl = el
+    this._userScrolledUp = false
 
-// Legacy: kept for any other page that still references ScrollBottom.
-Hooks.ScrollBottom = {
-  mounted() { this.handleEvent("scroll_bottom", () => {}) },
-  updated() {}
+    el.addEventListener("scroll", () => {
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50
+      this._userScrolledUp = !atBottom
+    }, { passive: true })
+  },
+
+  _scrollToBottom() {
+    const el = document.getElementById("messages")
+    if (!el) return
+    // Immediate scroll for the common case
+    el.scrollTop = el.scrollHeight
+    // Delayed scroll to catch layout that hasn't resolved yet.
+    // LiveView patches DOM synchronously but the browser doesn't
+    // lay out the new content until the next frame(s). Without
+    // this, large message lists end up 50-100px short of bottom.
+    setTimeout(() => { el.scrollTop = el.scrollHeight }, 50)
+    setTimeout(() => { el.scrollTop = el.scrollHeight }, 200)
+  }
 }
 
 // Auto-scroll element to bottom on every update (tail mode).
