@@ -13,70 +13,79 @@ Hooks.Terminal = createTerminalHook()
 //
 // Scrolls on every `updated()` callback and on mount. Pauses when
 // user scrolls up; resumes when they scroll back to the bottom.
+// Scroll #messages to bottom on content changes. Uses ResizeObserver
+// to detect when the content size changes (messages added, images
+// loaded, etc.) — no setTimeout guessing. Pauses when user scrolls up.
+// Loads older messages when user scrolls near the top.
 Hooks.ScrollBottom = {
   mounted() {
     this._userScrolledUp = false
     this._loading = false
     this._prevHeight = 0
     this._prevTop = 0
-    this._bindScroll()
-
-    // On mount, scroll to bottom with delays for mobile layout
-    const el = document.getElementById("messages")
-    if (el) {
-      el.scrollTop = el.scrollHeight
-      setTimeout(() => { el.scrollTop = el.scrollHeight }, 100)
-      setTimeout(() => { el.scrollTop = el.scrollHeight }, 300)
-    }
+    this._setup()
 
     this.handleEvent("scroll_bottom", () => {
-      if (!this._userScrolledUp) {
-        const m = document.getElementById("messages")
-        if (m) m.scrollTop = m.scrollHeight
-      }
+      if (!this._userScrolledUp) this._scroll()
     })
   },
 
   updated() {
-    this._bindScroll()
-    const el = document.getElementById("messages")
-    if (!el) return
-
-    // Detect prepend: scrollHeight grew while we were loading older
-    // messages. Correct scroll so the same content stays in view.
-    if (this._loading && this._prevHeight && el.scrollHeight > this._prevHeight + 100) {
-      el.scrollTop = (this._prevTop || 0) + (el.scrollHeight - this._prevHeight)
-      this._loading = false
-    }
-
-    this._prevHeight = el.scrollHeight
-    this._prevTop = el.scrollTop
-
-    // Auto-scroll to bottom for new messages (not when user scrolled up)
-    if (!this._userScrolledUp) el.scrollTop = el.scrollHeight
+    this._setup()
+    if (!this._userScrolledUp) this._scroll()
   },
 
-  _bindScroll() {
+  _setup() {
     const el = document.getElementById("messages")
-    if (!el || el === this._boundEl) return
-    this._boundEl = el
+    if (!el || el === this._el) return
+    this._el = el
     this._userScrolledUp = false
 
+    // ResizeObserver fires when #messages content size changes —
+    // after layout, not before. No timing guesses needed.
+    if (this._ro) this._ro.disconnect()
+    this._ro = new ResizeObserver(() => {
+      if (this._loading && this._prevHeight && el.scrollHeight > this._prevHeight + 100) {
+        // Prepend: keep user's viewport on the same content
+        el.scrollTop = this._prevTop + (el.scrollHeight - this._prevHeight)
+        this._loading = false
+      } else if (!this._userScrolledUp) {
+        el.scrollTop = el.scrollHeight
+      }
+      this._prevHeight = el.scrollHeight
+      this._prevTop = el.scrollTop
+    })
+    // Observe the first child (the content wrapper) — ResizeObserver
+    // on a scrollable element fires on the content, not the viewport.
+    if (el.firstElementChild) {
+      this._ro.observe(el.firstElementChild)
+    } else {
+      this._ro.observe(el)
+    }
+
+    // Scroll listener: track user scroll + trigger load-more
     el.addEventListener("scroll", () => {
       const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50
       this._userScrolledUp = !atBottom
-
-      // Snapshot for prepend correction
       this._prevHeight = el.scrollHeight
       this._prevTop = el.scrollTop
 
-      // Load more when near the top
       if (el.scrollTop < 300 && !this._loading) {
         this._loading = true
         this.pushEvent("load_more", {})
         setTimeout(() => { this._loading = false }, 5000)
       }
     }, { passive: true })
+
+    // Initial scroll — immediate + delayed for mobile layout timing
+    el.scrollTop = el.scrollHeight
+    setTimeout(() => { el.scrollTop = el.scrollHeight }, 50)
+    setTimeout(() => { el.scrollTop = el.scrollHeight }, 150)
+  },
+
+  _scroll() {
+    const el = this._el || document.getElementById("messages")
+    if (el) el.scrollTop = el.scrollHeight
   }
 }
 
