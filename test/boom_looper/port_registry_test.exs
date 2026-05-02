@@ -276,6 +276,153 @@ defmodule BoomLooper.PortRegistryTest do
     end
   end
 
+  describe "supervisor DOWN preserves binding (the page-refresh regression)" do
+    # The Resources.Janitor monitors the WorkspaceGroup supervisor pid.
+    # When that pid goes DOWN — supervisor restart, :one_for_all
+    # cascade, rebuild_saga teardown — the janitor invokes the
+    # release_fn registered for :port_binding.
+    #
+    # Bug history: release_binding/3 used to ALSO :ets.delete the
+    # registry row, conflating "stop the proxy" with "forget the user
+    # exposed this port". Page refresh would silently un-expose
+    # whenever ServiceManager had flapped, because mount sends
+    # :start_workspace and WorkspaceSupervisor.start_workspace
+    # rebuilds an unhealthy group. These tests pin the corrected
+    # behaviour: supervisor DOWN stops the proxy but the binding
+    # record (host_port + exposed flag) survives.
+    test "DOWN preserves exposed: true and host_port" do
+      ws = "ws-down-1"
+      sup = spawn_fake_supervisor(ws)
+
+      {:ok, host_port} = PortRegistry.assign(ws, "dev", 3000)
+      echo = start_echo_on_free_port()
+      :ok = PortRegistry.set_docker_port(ws, "dev", 3000, echo)
+      :ok = PortRegistry.set_exposure(ws, "dev", 3000, true)
+
+      kill_and_wait(sup)
+
+      {:ok, entry} = PortRegistry.get(ws, "dev", 3000)
+      assert entry.exposed == true, "exposure was lost on supervisor DOWN"
+      assert entry.host_port == host_port, "host_port changed across supervisor DOWN"
+    end
+
+    test "DOWN preserves exposed: false bindings too" do
+      # The bug only ever lost exposed: true ports (because exposed:
+      # false was the default for fresh entries), but the invariant
+      # is "binding records are durable across supervisor lifetime"
+      # — applies regardless of the exposed flag.
+      ws = "ws-down-2"
+      sup = spawn_fake_supervisor(ws)
+
+      {:ok, host_port} = PortRegistry.assign(ws, "dev", 3000)
+      echo = start_echo_on_free_port()
+      :ok = PortRegistry.set_docker_port(ws, "dev", 3000, echo)
+
+      kill_and_wait(sup)
+
+      {:ok, entry} = PortRegistry.get(ws, "dev", 3000)
+      assert entry.exposed == false
+      assert entry.host_port == host_port
+    end
+
+    test "DOWN stops the proxy" do
+      ws = "ws-down-3"
+      sup = spawn_fake_supervisor(ws)
+
+      {:ok, _} = PortRegistry.assign(ws, "dev", 3000)
+      echo = start_echo_on_free_port()
+      :ok = PortRegistry.set_docker_port(ws, "dev", 3000, echo)
+      :ok = PortRegistry.set_exposure(ws, "dev", 3000, true)
+
+      proxy_pid = BoomLooper.PortExposer.whereis({ws, "dev", 3000})
+      assert is_pid(proxy_pid) and Process.alive?(proxy_pid)
+
+      kill_and_wait(sup)
+
+      # The proxy must be torn down — the docker_port may be stale
+      # by the time the supervisor comes back.
+      refute BoomLooper.PortExposer.whereis({ws, "dev", 3000}),
+             "proxy lingered after supervisor DOWN"
+    end
+
+    test "host_port is sticky across DOWN + re-assign" do
+      ws = "ws-down-4"
+      sup = spawn_fake_supervisor(ws)
+
+      {:ok, original} = PortRegistry.assign(ws, "dev", 3000)
+      echo = start_echo_on_free_port()
+      :ok = PortRegistry.set_docker_port(ws, "dev", 3000, echo)
+      :ok = PortRegistry.set_exposure(ws, "dev", 3000, true)
+
+      kill_and_wait(sup)
+
+      # Simulate the new WorkspaceGroup booting and compose calling
+      # assign for the same triple.
+      _new_sup = spawn_fake_supervisor(ws)
+      {:ok, after_port} = PortRegistry.assign(ws, "dev", 3000)
+      assert after_port == original, "host_port was reallocated across DOWN"
+
+      {:ok, entry} = PortRegistry.get(ws, "dev", 3000)
+      assert entry.exposed == true, "exposure was lost across DOWN+reassign"
+    end
+
+    test "proxy comes back on 0.0.0.0 after DOWN + new docker_port (full round trip)" do
+      ws = "ws-down-5"
+      sup = spawn_fake_supervisor(ws)
+
+      {:ok, host_port} = PortRegistry.assign(ws, "dev", 3000)
+      echo1 = start_echo_on_free_port()
+      :ok = PortRegistry.set_docker_port(ws, "dev", 3000, echo1)
+      :ok = PortRegistry.set_exposure(ws, "dev", 3000, true)
+
+      kill_and_wait(sup)
+
+      # New supervisor + new ephemeral docker port (container restart
+      # during outage is the realistic scenario).
+      _new_sup = spawn_fake_supervisor(ws)
+      {:ok, ^host_port} = PortRegistry.assign(ws, "dev", 3000)
+      echo2 = start_echo_on_free_port()
+      :ok = PortRegistry.set_docker_port(ws, "dev", 3000, echo2)
+
+      proxy = BoomLooper.PortExposer.whereis({ws, "dev", 3000})
+      assert is_pid(proxy), "proxy did not come back after DOWN+reassign"
+
+      state = :sys.get_state(proxy)
+      assert state.bind_ip == {0, 0, 0, 0},
+             "proxy came back on private bind despite preserved exposed: true"
+
+      # Real data flow check — not just internal state.
+      {:ok, c} = :gen_tcp.connect({127, 0, 0, 1}, host_port, [:binary, active: false], 1_000)
+      :gen_tcp.send(c, "rt")
+      assert {:ok, "rt"} = :gen_tcp.recv(c, 2, 2_000)
+      :gen_tcp.close(c)
+    end
+
+    test "release_workspace/1 still wipes everything (destructive path unchanged)" do
+      # Regression guard: the fix narrows release_binding to "stop
+      # proxy only", but the explicit destructor in
+      # release_workspace/1 must continue to delete entries.
+      ws = "ws-down-6"
+      sup = spawn_fake_supervisor(ws)
+
+      {:ok, _} = PortRegistry.assign(ws, "dev", 3000)
+      echo = start_echo_on_free_port()
+      :ok = PortRegistry.set_docker_port(ws, "dev", 3000, echo)
+      :ok = PortRegistry.set_exposure(ws, "dev", 3000, true)
+
+      :ok = PortRegistry.release_workspace(ws)
+      Process.sleep(50)
+
+      assert :none = PortRegistry.get(ws, "dev", 3000)
+      assert [] = PortRegistry.list_for_workspace(ws)
+      refute BoomLooper.PortExposer.whereis({ws, "dev", 3000})
+
+      # Quiet the unused-binding warning; the supervisor reference
+      # is held only so the GC doesn't collect it mid-test.
+      _ = sup
+    end
+  end
+
   # --- Helpers ---
 
   defp free_port do
@@ -307,6 +454,63 @@ defmodule BoomLooper.PortRegistryTest do
       {:ok, sock} -> spawn(fn -> echo_loop(sock) end); accept_loop(listen)
       _ -> :ok
     end
+  end
+
+  # Stand-in for the WorkspaceGroup supervisor pid: a process that
+  # registers itself in `BoomLooper.WorkspaceRegistry` keyed by the
+  # workspace_id, so `track_binding/3` finds an owner. Returns the
+  # pid; the caller kills it via `kill_and_wait/1` to drive the
+  # janitor's DOWN handler synchronously enough for assertions.
+  defp spawn_fake_supervisor(ws_id) do
+    parent = self()
+
+    pid =
+      spawn(fn ->
+        case Registry.register(BoomLooper.WorkspaceRegistry, ws_id, nil) do
+          {:ok, _} -> :ok
+          {:error, {:already_registered, _}} -> :ok
+        end
+
+        send(parent, :registered)
+
+        receive do
+          :stop -> :ok
+        after
+          5_000 -> :ok
+        end
+      end)
+
+    receive do
+      :registered -> :ok
+    after
+      1_000 -> flunk("fake supervisor did not register within 1s")
+    end
+
+    pid
+  end
+
+  # Kill the fake supervisor and block until the janitor has
+  # processed the DOWN. Without the second wait the next assertion
+  # races the release_fn — which would intermittently pass even on
+  # broken code.
+  defp kill_and_wait(pid) do
+    ref = Process.monitor(pid)
+    Process.exit(pid, :kill)
+
+    receive do
+      {:DOWN, ^ref, :process, ^pid, _} -> :ok
+    after
+      1_000 -> flunk("fake supervisor refused to die")
+    end
+
+    # Drain the janitor's mailbox: :sys.get_state/1 is a synchronous
+    # call that gets queued AFTER the {:DOWN, ...} message we just
+    # produced. By the time it returns, the janitor has finished
+    # handling the DOWN — including running release_binding for
+    # every port owned by `pid`. Without this, the next assertion
+    # would race the release_fn.
+    _ = :sys.get_state(BoomLooper.Resources.Janitor)
+    :ok
   end
 
   defp echo_loop(sock) do

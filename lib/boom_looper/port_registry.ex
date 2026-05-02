@@ -329,15 +329,27 @@ defmodule BoomLooper.PortRegistry do
     end
   end
 
-  # Release a single binding. Used as the Resources release_fn — invoked
-  # either when the workspace supervisor goes DOWN or when an explicit
-  # release path (release_workspace/1) calls Resources.release for each
-  # entry. Side effects only; no Resources.release call here (we'd loop).
+  # Resources release_fn for `:port_binding`. Fires when the
+  # WorkspaceGroup supervisor pid goes DOWN — supervisor restarts,
+  # `:one_for_all` cascades, `rebuild_saga` teardowns, BEAM shutdown.
+  #
+  # **Stops the proxy only. Does NOT delete the ETS entry.** The
+  # binding record (host_port + exposed flag + docker_port) is
+  # durable user intent — it must outlive supervisor restarts so
+  # that exposing a port and refreshing the page (which can trigger
+  # a rebuild via `WorkspaceSupervisor.start_workspace` when
+  # `healthy_group?` returns false) doesn't silently revoke
+  # exposure. When the new supervisor comes up, `assign/3` finds
+  # the existing entry and `set_docker_port` (called by
+  # `discover_docker_ports`) restarts the proxy with the preserved
+  # `entry.exposed` bind address.
+  #
+  # Explicit deletion lives in `release_workspace/1` (workspace
+  # destructor) — that path runs `:ets.delete` directly.
   defp release_binding(ws, svc, cport) do
     key = {ws, svc, cport}
     stop_proxy(key)
-    :ets.delete(@table, key)
-    EventLog.info("ports", "Released binding #{ws}/#{svc}/#{cport}")
+    EventLog.info("ports", "Stopped proxy #{ws}/#{svc}/#{cport} (binding kept)")
     :ok
   end
 
