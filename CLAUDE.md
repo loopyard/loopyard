@@ -159,6 +159,7 @@ timeouts with ETS fallback — a wedged agent doesn't hang the UI.
 - **[docs/TESTING.md](docs/TESTING.md)** — Test strategy, contracts, helpers, when to write tests
 - **[docs/CODE_RULES.md](docs/CODE_RULES.md)** — Hard-won rules that prevent real bugs. **Read before editing code.**
 - **[docs/SOURCE_ADAPTERS.md](docs/SOURCE_ADAPTERS.md)** — Source adapter rules (Local, GitHub)
+- **[docs/GIT.md](docs/GIT.md)** — Git hygiene: atomic commits, sane messages, branch discipline
 - **[docs/EVALS.md](docs/EVALS.md)** — Eval runner, integrity rules, how to fix failures
 - **[docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md)** — Prioritized backlog of scoped improvements. Add entries when you find something worth doing but not shipping today.
 - **[plans/](plans/)** — Scoped design plans for features in flight. Read the relevant plan before implementing; update it when the plan evolves during implementation.
@@ -213,7 +214,11 @@ mix boom.rpc "BoomLooper.ChatAgent.list_agents()"
 | `Docker` | All Docker CLI calls — `docker/2`, `stream/3`, `open_port/1` |
 | `Docker.Observer` | Event-driven ETS cache of container/volume state |
 | `Compose` | Docker Compose operations (up, down, ps, logs) |
-| `ChatAgent` | GenServer per agent session — messages, streaming, persistence |
+| `ChatAgent` | GenServer reactor — message routing, public API |
+| `ChatAgent.StreamHandler` | Stream event processing, rate limits, tool loop detection |
+| `ChatAgent.Initializer` | Init/resume/fresh state building, session startup |
+| `ChatAgent.SessionManager` | CLI lifecycle: ensure_alive, stop, retry, OS pid tracking |
+| `ChatAgent.IdleReaper` | Auto-stop agents idle past threshold |
 | `ChatAgent.Prompt` | System prompt construction |
 | `ChatAgent.ToolConfig` | MCP server/tool wiring |
 | `ChatAgent.Persistence` | ETF log append for durability |
