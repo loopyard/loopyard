@@ -130,27 +130,39 @@ defmodule BoomLooper.PortRegistry do
         {:reply, {:ok, entry.host_port}, state}
 
       [] ->
-        case find_free_port(state.port_range) do
-          {:ok, host_port} ->
-            entry = %{
-              workspace_id: ws,
-              service: svc,
-              container_port: cport,
-              host_port: host_port,
-              docker_port: nil,
-              exposed: false,
-              allocated_at: DateTime.utc_now()
-            }
-
-            :ets.insert(@table, {key, entry})
-            persist(state)
+        # Check persisted file first — if the port was saved (e.g. with
+        # exposed: true), we must recover it rather than creating a fresh
+        # entry with exposed: false. This makes assign idempotent
+        # regardless of the order of restore() vs assign() at boot.
+        case recover_from_store(key) do
+          {:ok, recovered} ->
+            :ets.insert(@table, {key, recovered})
             track_binding(ws, svc, cport)
-            EventLog.info("ports", "Assigned #{ws}/#{svc}/#{cport} → host #{host_port}")
-            {:reply, {:ok, host_port}, state}
+            {:reply, {:ok, recovered.host_port}, state}
 
-          {:error, :port_pool_exhausted} = err ->
-            EventLog.error("ports", "Port pool exhausted for #{ws}/#{svc}/#{cport}")
-            {:reply, err, state}
+          :not_found ->
+            case find_free_port(state.port_range) do
+              {:ok, host_port} ->
+                entry = %{
+                  workspace_id: ws,
+                  service: svc,
+                  container_port: cport,
+                  host_port: host_port,
+                  docker_port: nil,
+                  exposed: false,
+                  allocated_at: DateTime.utc_now()
+                }
+
+                :ets.insert(@table, {key, entry})
+                persist(state)
+                track_binding(ws, svc, cport)
+                EventLog.info("ports", "Assigned #{ws}/#{svc}/#{cport} → host #{host_port}")
+                {:reply, {:ok, host_port}, state}
+
+              {:error, :port_pool_exhausted} = err ->
+                EventLog.error("ports", "Port pool exhausted for #{ws}/#{svc}/#{cport}")
+                {:reply, err, state}
+            end
         end
     end
   end
@@ -474,6 +486,24 @@ defmodule BoomLooper.PortRegistry do
       nil -> :ok
       pid -> DynamicSupervisor.terminate_child(BoomLooper.PortExposerSupervisor, pid); :ok
     end
+  end
+
+  # Look up a port entry from the persisted ports.json file.
+  # Used by assign/3 when ETS is empty — prevents losing exposure
+  # and port number when assign runs before restore on boot.
+  defp recover_from_store({ws, svc, cport}) do
+    if File.exists?(PortStore.path()) do
+      case Enum.find(PortStore.load(), fn e ->
+        e.workspace_id == ws && e.service == svc && e.container_port == cport
+      end) do
+        nil -> :not_found
+        entry -> {:ok, Map.put(entry, :docker_port, nil)}
+      end
+    else
+      :not_found
+    end
+  rescue
+    _ -> :not_found
   end
 
   defp persist(%{persist: false}), do: :ok
