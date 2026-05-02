@@ -70,19 +70,17 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
           <div class="markdown-body text-base text-zinc-900 dark:text-zinc-100"></div>
         </div>
       </div>
-      <div :if={@closed_port} class="mt-2 mb-1 ml-10 rounded-lg border border-zinc-200 dark:border-zinc-700/80 overflow-hidden">
-        <div class="flex items-center gap-2 px-3 py-1.5 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
-          <div class="w-1.5 h-1.5 rounded-full flex-none bg-amber-400"></div>
-          <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">{@closed_port.service} — port closed</span>
-          <button
-            phx-click="open_port_from_chat"
-            phx-value-service={@closed_port.service}
-            phx-value-container_port={@closed_port.container_port}
-            class="ml-auto text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white transition-colors"
-          >
-            Open Port
-          </button>
-        </div>
+      <div :if={@closed_port} class="ml-10 mt-1.5 flex items-center gap-2 py-1">
+        <div class="w-1.5 h-1.5 rounded-full flex-none bg-amber-400"></div>
+        <span class="text-xs text-zinc-500 dark:text-zinc-400">{@closed_port.service} port closed</span>
+        <button
+          phx-click="open_port_from_chat"
+          phx-value-service={@closed_port.service}
+          phx-value-container_port={@closed_port.container_port}
+          class="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
+        >
+          Open
+        </button>
       </div>
       <div class="flex items-center gap-1 ml-10 mt-0.5 h-5 opacity-0 group-hover/msg:opacity-100 transition-opacity">
         <.copy_btn :if={@raw} raw_url={@raw} />

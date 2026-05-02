@@ -206,7 +206,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
         <div class="space-y-1">
           <p :if={assigns[:has_more_messages]} class="text-center py-2 text-xs text-zinc-400 dark:text-zinc-500">Loading older messages...</p>
           <div :for={{msg, idx} <- Enum.with_index(@messages)}>
-            <.chat_msg msg={msg} idx={idx} agent_id={@agent.id} workspace_id={@workspace_id} host={@host} />
+            <.chat_msg msg={msg} idx={idx} messages={@messages} agent_id={@agent.id} workspace_id={@workspace_id} host={@host} />
           </div>
           <.streaming_bubble :if={@streaming_text != ""} text={@streaming_text} />
           <.thinking_indicator :if={@agent.status == :thinking && @streaming_text == ""} messages={@messages} word={@thinking_word} />
