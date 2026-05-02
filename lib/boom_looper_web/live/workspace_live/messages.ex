@@ -70,18 +70,14 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
           <div class="markdown-body text-base text-zinc-900 dark:text-zinc-100"></div>
         </div>
       </div>
-      <div :if={@closed_port} class="ml-10 mt-1 flex items-center gap-2">
+      <div :if={@closed_port} class="ml-10 mt-1.5">
         <button
           phx-click="open_port_from_chat"
           phx-value-service={@closed_port.service}
           phx-value-container_port={@closed_port.container_port}
-          class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-500/10 hover:bg-violet-100 dark:hover:bg-violet-500/20 transition-colors"
+          class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium bg-violet-600 hover:bg-violet-700 active:bg-violet-800 text-white transition-colors"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3 h-3">
-            <path d="M6.22 8.72a.75.75 0 0 0 1.06 1.06l5.22-5.22v1.69a.75.75 0 0 0 1.5 0v-3.5a.75.75 0 0 0-.75-.75h-3.5a.75.75 0 0 0 0 1.5h1.69L6.22 8.72Z" />
-            <path d="M3.5 6.75c0-.69.56-1.25 1.25-1.25H7A.75.75 0 0 0 7 4H4.75A2.75 2.75 0 0 0 2 6.75v4.5A2.75 2.75 0 0 0 4.75 14h4.5A2.75 2.75 0 0 0 12 11.25V9a.75.75 0 0 0-1.5 0v2.25c0 .69-.56 1.25-1.25 1.25h-4.5c-.69 0-1.25-.56-1.25-1.25v-4.5Z" />
-          </svg>
-          Open port to use this link
+          Open Port
         </button>
       </div>
       <div class="flex items-center gap-1 ml-10 mt-0.5 h-5 opacity-0 group-hover/msg:opacity-100 transition-opacity">
