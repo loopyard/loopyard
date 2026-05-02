@@ -13,9 +13,8 @@ defmodule BoomLooper.ChatAgent do
   use GenServer, restart: :temporary
   require Logger
 
-  alias BoomLooper.Agent.Event
   alias BoomLooper.AgentLog
-  alias BoomLooper.ChatAgent.{Persistence, Prompt, ToolConfig}
+  alias BoomLooper.ChatAgent.{IdleReaper, Persistence, Prompt, SessionManager, StreamHandler, ToolConfig}
   alias BoomLooper.Events
 
 
@@ -137,21 +136,6 @@ defmodule BoomLooper.ChatAgent do
   # the Claude API bill. Configurable via Application env for tests
   # that want to exercise the reject path with smaller inputs.
   @max_message_bytes Application.compile_env(:boom_looper, :max_message_bytes, 1_048_576)
-
-  # Loop-detection threshold: if the agent calls the same tool with
-  # the same input N times in a row, it's almost certainly stuck in a
-  # retry loop (tool returning the same error, agent interpreting the
-  # error the same way, agent re-calling). 5 is generous enough to not
-  # trip on legitimate retry patterns but tight enough to surface
-  # before the user burns another $5 of tokens watching it grind.
-  @tool_loop_threshold 5
-
-  # Runaway cap: total tool calls in a single turn before we warn
-  # the user. Most legitimate turns make 5-20 tool calls (context
-  # gathering, edits, runs). 50 is a generous ceiling — past that
-  # it's almost certainly a loop the agent is stuck in, even if
-  # each call is technically different.
-  @turn_tool_limit 50
 
   # --- Public API ---
 
@@ -713,8 +697,8 @@ defmodule BoomLooper.ChatAgent do
         auth_error: nil
       )
 
-    state = track_cli_os_pid(state)
-    state = schedule_idle_check(state)
+    state = SessionManager.track_os_pid(state)
+    state = IdleReaper.schedule(state)
 
     # Agent-sanity #19 — prompt drift marker. Announce the change in
     # the conversation so the user isn't mystified if the agent
@@ -815,8 +799,8 @@ defmodule BoomLooper.ChatAgent do
       prompt_hash: prompt_hash
     }
 
-    state = track_cli_os_pid(state)
-    state = schedule_idle_check(state)
+    state = SessionManager.track_os_pid(state)
+    state = IdleReaper.schedule(state)
     summary = summary(state)
     :ets.insert(@ets_table, {id, summary})
     Persistence.persist_agent(state, &summary/1)
@@ -1042,7 +1026,7 @@ defmodule BoomLooper.ChatAgent do
         Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: user_msg})
 
         wait_s =
-          case compute_rate_limit_wait_ms(state.rate_limit_resets_at_ms) do
+          case StreamHandler.compute_rate_limit_wait_ms(state.rate_limit_resets_at_ms) do
             n when is_integer(n) -> div(n, 1000)
             _ -> 60
           end
@@ -1086,10 +1070,10 @@ defmodule BoomLooper.ChatAgent do
     # no Event.Text yet, finalize it as a truncated partial so the
     # user doesn't lose their half-answer when they hit Stop. Same
     # mechanism as stream_error / stream_timeout uses.
-    state = finalize_partial_on_stream_interrupt(state, state.id, :stopped_by_user)
+    state = StreamHandler.finalize_partial_on_stream_interrupt(state, state.id, :stopped_by_user)
 
     if state.session do
-      stop_backend_session(state.session, state.backend)
+      SessionManager.stop_backend(state.session, state.backend)
     end
 
     # Null session so terminate/2's second backend.stop is a no-op —
@@ -1123,15 +1107,15 @@ defmodule BoomLooper.ChatAgent do
       # wrap in try/catch so a raise inside backend.stop (or a crashed
       # Task) doesn't take down the caller — Task.yield EXITS the
       # caller with the task's exit reason if the task crashes.
-      stop_backend_session(state.session, state.backend)
+      SessionManager.stop_backend(state.session, state.backend)
     end
 
     # Start a fresh session with the same opts. When we have a Claude
     # session_id captured from prior turns, pass it as `resume:` so the
     # CLI picks up the same conversation.
-    case state.backend.start_session(session_opts_with_resume(state)) do
+    case state.backend.start_session(SessionManager.build_resume_opts(state)) do
       {:ok, new_session} ->
-        state = track_cli_os_pid(%{state | session: new_session, status: :idle})
+        state = SessionManager.track_os_pid(%{state | session: new_session, status: :idle})
         :ets.insert(@ets_table, {state.id, summary(state)})
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :idle})
 
@@ -1257,7 +1241,7 @@ defmodule BoomLooper.ChatAgent do
     end
 
     # Start fresh session
-    case state.backend.start_session(session_opts_with_resume(state)) do
+    case state.backend.start_session(SessionManager.build_resume_opts(state)) do
       {:ok, new_session} ->
         state = %{state |
           session: new_session,
@@ -1344,117 +1328,7 @@ defmodule BoomLooper.ChatAgent do
   # new state. Events with a ref != state.stream_ref are dropped. See
   # agent-sanity #16.
   def handle_info({:stream_event, id, ref, event}, %{id: id, stream_ref: ref} = state) do
-    now = DateTime.utc_now()
-
-    state =
-      case event do
-        %Event.Text{text: content} ->
-          assistant_msg = %{role: :assistant, content: content, timestamp: now}
-          {state, assistant_msg} = append_message(state, assistant_msg)
-          # Full text arrived — clear any accumulated partial so a
-          # subsequent stream_error/timeout doesn't re-emit it.
-          state = %{state | last_activity_at: now, in_flight_partial: ""}
-          Persistence.persist_message(state,assistant_msg)
-          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: assistant_msg})
-          state
-
-        %Event.ToolCall{name: tool_name, input: tool_input} ->
-          tool_msg = %{role: :tool, tool: tool_name, input: tool_input, timestamp: now}
-          {state, tool_msg} = append_message(state, tool_msg)
-
-          state = %{state |
-            last_activity_at: now,
-            tool_calls: state.tool_calls + 1,
-            active_tool: tool_name,
-            tool_calls_this_turn: state.tool_calls_this_turn + 1
-          }
-
-          # Loop detection: same tool + same input N times in a row
-          # almost always means the agent is stuck grinding. Fingerprint
-          # the call + count consecutive repeats. At threshold, append
-          # a visible warning so the user knows they can interrupt
-          # instead of watching the tokens burn.
-          state = maybe_detect_tool_loop(state, id, tool_name, tool_input)
-
-          # Runaway cap: even if individual calls differ, a 50+ tool-call
-          # turn is almost always the agent flailing. Warn once.
-          state = maybe_detect_tool_runaway(state, id)
-
-          Persistence.persist_message(state, tool_msg)
-          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: tool_msg})
-          state
-
-        %Event.ToolResult{content: content, is_error: is_error} ->
-          result_msg = %{role: :tool_result, content: content, is_error: is_error, timestamp: now}
-          {state, result_msg} = append_message(state, result_msg)
-          state = %{state | last_activity_at: now, active_tool: nil}
-          Persistence.persist_message(state, result_msg)
-          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: result_msg})
-          state
-
-        %Event.TextDelta{text: text} ->
-          # Accumulate deltas so stream-error / stream-timeout can
-          # finalize a partial-text message. The UI still renders the
-          # live stream via the broadcast — accumulator is ONLY for
-          # the truncation-recovery path. See agent-sanity #3.
-          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.TextDelta{agent_id: id, text: text})
-          %{state | in_flight_partial: state.in_flight_partial <> (text || "")}
-
-        %Event.SessionResult{} = result ->
-          # Accumulate token usage across turns. Persist after ETS
-          # insert — without this, tokens live only in RAM, and a
-          # server restart replays the original :agent record (frozen
-          # at init_fresh) so the Claude panel zeroes out.
-          #
-          # Also harvest the Claude CLI's session_id here. The SDK
-          # Session GenServer captures it internally from each result
-          # message; we mirror it onto ChatAgent state so server
-          # restart / CLI crash / auto-reconnect can pass it back as
-          # `resume:` and continue the same conversation instead of
-          # waking up amnesiac.
-          claude_sid = state.backend.session_id(state.session) || state.claude_session_id
-
-          # Context-window utilization. `input_tokens` is what Claude
-          # was sent THIS turn (cumulative conversation context, since
-          # we don't prune). Dividing by the model's window size gives
-          # us a live % full — when it climbs toward 1.0 the CLI will
-          # silently start dropping earliest turns. See agent-sanity #18.
-          window = context_window_for(result.model || state.model)
-          utilization =
-            if window > 0 do
-              (result.input_tokens + result.cache_read_tokens) / window
-            else
-              state.context_utilization
-            end
-
-          state = %{state |
-            model: result.model || state.model,
-            total_input_tokens: state.total_input_tokens + result.input_tokens,
-            total_output_tokens: state.total_output_tokens + result.output_tokens,
-            total_cache_read_tokens: state.total_cache_read_tokens + result.cache_read_tokens,
-            total_cost_usd: state.total_cost_usd + result.cost_usd,
-            claude_session_id: claude_sid,
-            context_utilization: utilization
-          }
-
-          state = maybe_warn_context_full(state, id, utilization)
-
-          :ets.insert(@ets_table, {id, summary(state)})
-          Persistence.persist_agent(state, &summary/1)
-          Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: state.status})
-          state
-
-        %Event.RateLimitStatus{} = rl ->
-          handle_rate_limit_event(state, rl)
-
-        %Event.AuthStatus{} = auth ->
-          handle_auth_status_event(state, auth)
-
-        _ ->
-          state
-      end
-
-    {:noreply, state}
+    {:noreply, StreamHandler.process_event(event, state)}
   end
 
   # Stale stream event — ref doesn't match the current stream. The Task
@@ -1472,60 +1346,18 @@ defmodule BoomLooper.ChatAgent do
 
   @impl true
   def handle_info({:stream_done, id, ref}, %{id: id, stream_ref: ref} = state) do
-    # Turn counter and transient tool/ref are part of summary — without
-    # ETS sync + persist here, UI reads stale data and restart replay
-    # loses the increment.
-    # Clear in_flight_partial on clean stream_done — by now either an
-    # Event.Text already finalized the assistant response, or the turn
-    # ended with only tool calls. Either way, there's no orphan partial.
-    state = %{state |
-      status: :idle,
-      active_tool: nil,
-      turns: state.turns + 1,
-      in_flight_partial: "",
-      context_warning_sent: false,
-      # Reset loop-detection counter at turn boundaries. A new turn is
-      # a natural reset point — if the agent is truly still looping in
-      # the next turn it'll hit the threshold again and re-warn.
-      last_tool_call: nil,
-      tool_calls_this_turn: 0,
-      tool_runaway_warned: false
-    }
-    state = Map.put(state, :consecutive_crashes, 0)
-    state = schedule_idle_check(state)
+    state = IdleReaper.schedule(state)
 
-    # Detect empty responses when context is full — auto-restart the
-    # session with a summary so the conversation continues instead of
-    # silently dying.
-    if state.context_utilization >= 1.0 && empty_last_response?(state) do
-      # Brief status so the user knows why there's a pause
-      status_msg = %{
-        role: :system,
-        content: "Refreshing context...",
-        timestamp: DateTime.utc_now()
-      }
-      {state, status_msg} = append_message(state, status_msg)
-      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: status_msg})
+    case StreamHandler.on_stream_done(state) do
+      {:auto_restart_context, last_user_text, state} ->
+        GenServer.cast(self(), {:auto_restart_context, last_user_text})
+        {:noreply, state}
 
-      # Find the user's last message so we can re-send it after restart
-      last_user_msg =
-        state.messages
-        |> Enum.filter(&(&1.role == :user))
-        |> List.last()
+      {:drain, text, state} ->
+        send_message_normal(state, text)
 
-      :ets.insert(@ets_table, {id, summary(state)})
-      Persistence.persist_agent(state, &summary/1)
-
-      # Restart the CLI session — build_resume_message gives the new
-      # session a compact summary of what happened. Then re-send the
-      # user's last message so the agent picks up where it left off.
-      GenServer.cast(self(), {:auto_restart_context, last_user_msg && last_user_msg.content})
-      {:noreply, state}
-    else
-      :ets.insert(@ets_table, {id, summary(state)})
-      Persistence.persist_agent(state, &summary/1)
-      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
-      drain_pending_sends(state)
+      {:noreply, state} ->
+        {:noreply, state}
     end
   end
 
@@ -1534,31 +1366,10 @@ defmodule BoomLooper.ChatAgent do
 
   @impl true
   def handle_info({:stream_timeout, id, ref}, %{id: id, status: :thinking, stream_ref: ref} = state) do
-    # Still thinking after timeout AND ref matches current stream — the streaming task is gone
-    BoomLooper.EventLog.warning("agent:#{state.name}", "Stream timed out, resetting to idle")
-
-    # Finalize any partial text the stream produced before the timeout
-    # so users don't lose it on browser refresh. See agent-sanity #3.
-    state = finalize_partial_on_stream_interrupt(state, id, :timeout)
-
-    error_msg = %{
-      role: :error,
-      content:
-        "Agent stopped responding after 10 minutes. " <>
-          "WHY: the streaming task produced no events within the timeout window — usually a tool " <>
-          "call (exec, rebuild, compose up) hung, or the CLI deadlocked. " <>
-          "CONSEQUENCE: the turn was dropped; any partial assistant text was preserved. " <>
-          "ACTION: send another message to retry. If the same tool keeps wedging, check " <>
-          "/system/events for the tool name and diagnose it in isolation.",
-      timestamp: DateTime.utc_now()
-    }
-    {state, error_msg} = append_message(state, error_msg)
-    # Clear active_tool — if the stream timed out with a tool in flight
-    # the tool call is orphaned and the UI spinner would stick forever.
-    state = %{state | status: :idle, active_tool: nil, errors: state.errors + 1}
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: error_msg})
-    Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
-    drain_pending_sends(state)
+    case StreamHandler.on_stream_timeout(state) do
+      {:drain, text, state} -> send_message_normal(state, text)
+      {:noreply, state} -> {:noreply, state}
+    end
   end
 
   # Ignore timeout if ref doesn't match (stale timer from previous stream) or not thinking
@@ -1583,91 +1394,19 @@ defmodule BoomLooper.ChatAgent do
 
   @impl true
   def handle_info({:stream_error, id, reason}, %{id: id} = state) do
-    BoomLooper.EventLog.error("agent:#{state.name}", "Stream error: #{reason}")
-    now = DateTime.utc_now()
+    case StreamHandler.on_stream_error(state, reason) do
+      {:build_resume, state} ->
+        resume_msg = build_resume_message(state)
+        if resume_msg do
+          GenServer.cast(self(), {:send_message, resume_msg})
+        end
+        {:noreply, state}
 
-    # Finalize any partial assistant text so the user doesn't lose it
-    # on browser refresh. See agent-sanity #3.
-    state = finalize_partial_on_stream_interrupt(state, id, :error)
+      {:drain, text, state} ->
+        send_message_normal(state, text)
 
-    # Count recent crashes (within last 60 seconds)
-    recent_crashes = state.messages
-      |> Enum.filter(fn m -> m.role == :system && m.content == "Agent crashed — restarting..." &&
-         DateTime.diff(now, m.timestamp, :second) < 60 end)
-      |> length()
-
-    if is_binary(reason) && String.contains?(reason, "CLI session exited") && recent_crashes < 2 do
-      # CLI died — restart session and resume the same conversation
-      # when we have a captured session_id. Without resume, this was
-      # an amnesia event: the new CLI had the system prompt only and
-      # acted like a brand-new agent even though the user could still
-      # see the full message history in the sidebar.
-      state = %{state | last_activity_at: now, errors: state.errors + 1}
-
-      case state.backend.start_session(session_opts_with_resume(state)) do
-        {:ok, new_session} ->
-          recovered_msg =
-            if is_binary(state.claude_session_id) do
-              %{role: :system, content: "Agent session restarted automatically (resumed conversation #{String.slice(state.claude_session_id, 0..7)}…).", timestamp: DateTime.utc_now()}
-            else
-              %{role: :system, content: "Agent session restarted automatically.", timestamp: DateTime.utc_now()}
-            end
-          # active_tool: nil — the old session died mid-tool-call; the new
-          # session has no idea that tool was in flight, and leaving the
-          # field set would pin a spinner to the UI forever.
-          {state, recovered_msg} = append_message(track_cli_os_pid(%{state | session: new_session, status: :idle, active_tool: nil}), recovered_msg)
-          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: recovered_msg})
-          Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
-
-          # Fallback: only send a synthetic resume prompt if we had no
-          # session_id to `resume:` with (e.g. CLI died before the very
-          # first ResultMessage). See restart_session cast for the same
-          # guard.
-          if is_nil(state.claude_session_id) do
-            resume_msg = build_resume_message(state)
-            if resume_msg do
-              GenServer.cast(self(), {:send_message, resume_msg})
-            end
-          end
-
-          drain_pending_sends(state)
-
-        {:error, reason} ->
-          fail_msg = %{
-            role: :error,
-            content:
-              "CLI session crashed and failed to restart: #{inspect(reason)}. " <>
-                "WHY: the CLI died mid-stream, and the second attempt to spawn a new one failed. " <>
-                "CONSEQUENCE: this agent can't respond until the CLI is restored. " <>
-                "ACTION: click Restart in the sidebar. If that also fails, the Claude CLI " <>
-                "may be misconfigured — verify `claude --version` and re-authenticate.",
-            timestamp: DateTime.utc_now()
-          }
-
-          {state, fail_msg} = append_message(state, fail_msg)
-          state = %{state | status: :idle, active_tool: nil}
-          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: fail_msg})
-          Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
-          drain_pending_sends(state)
-      end
-    else
-      error_msg = %{
-        role: :error,
-        content:
-          "Stream error: #{reason}. " <>
-            "WHY: the CLI reported an unrecoverable error mid-stream (common: MCP tool " <>
-            "crash, payload too big, malformed tool response). " <>
-            "CONSEQUENCE: the in-flight turn was dropped. Prior context is preserved. " <>
-            "ACTION: send another message — the agent will retry. If the same error " <>
-            "recurs, check /system/events for details.",
-        timestamp: now
-      }
-
-      {state, error_msg} = append_message(state, error_msg)
-      state = %{state | status: :idle, active_tool: nil, last_activity_at: now, errors: state.errors + 1}
-      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: error_msg})
-      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
-      drain_pending_sends(state)
+      {:noreply, state} ->
+        {:noreply, state}
     end
   end
 
@@ -1675,17 +1414,6 @@ defmodule BoomLooper.ChatAgent do
   # Without backoff, a deterministic crash (e.g. tools/list serialization
   # bug) creates a hot restart loop that hammers the Claude API until
   # rate-limited.
-  # Idle-reap defaults. Overridable via app env:
-  #   :agent_idle_reap_hours (default 4) — how long an idle agent
-  #     holds its Claude CLI subprocess before we stop it.
-  #   :agent_idle_check_interval_ms (default 600_000 = 10 min) —
-  #     how often the agent runs the idle-check tick.
-  #
-  # Kept as a function (not a module attribute) so test suites can
-  # override per-test without restarting the compiler.
-  @default_agent_idle_reap_hours 4
-  @default_agent_idle_check_interval_ms 600_000
-
   @max_consecutive_crashes 5
   # Configurable via Application env for tests:
   #   Application.put_env(:boom_looper, :crash_backoff_base_ms, 0)
@@ -1755,8 +1483,6 @@ defmodule BoomLooper.ChatAgent do
   # process. Audit-2 HIGH #2.
   @impl true
   def handle_info({:retry_session, consecutive, dead_session}, state) do
-    id = state.id
-
     cond do
       state.session != dead_session and state.session != nil ->
         # Another path already replaced the session. No-op; the new
@@ -1770,7 +1496,7 @@ defmodule BoomLooper.ChatAgent do
         {:noreply, state}
 
       true ->
-        dispatch_retry_session(state, id, consecutive)
+        SessionManager.handle_retry(state, consecutive, @max_consecutive_crashes)
     end
   end
 
@@ -1778,7 +1504,7 @@ defmodule BoomLooper.ChatAgent do
   # dead_session guard landed). Treat as a forced retry.
   @impl true
   def handle_info({:retry_session, consecutive}, state) do
-    dispatch_retry_session(state, state.id, consecutive)
+    SessionManager.handle_retry(state, consecutive, @max_consecutive_crashes)
   end
 
   # Fired by handle_rate_limit_event when a :rejected status was seen.
@@ -1804,7 +1530,10 @@ defmodule BoomLooper.ChatAgent do
     {state, resumed_msg} = append_message(state, resumed_msg)
     Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: resumed_msg})
 
-    drain_pending_sends(state)
+    case state.pending_sends do
+      [] -> {:noreply, state}
+      [head | rest] -> send_message_normal(%{state | pending_sends: rest}, head)
+    end
   end
 
   # Late/stale retry timer after status already moved on. No-op.
@@ -1821,7 +1550,7 @@ defmodule BoomLooper.ChatAgent do
   # See agent-sanity #20.
   def handle_info(:idle_check, state) do
     state =
-      if reap_eligible?(state) do
+      if IdleReaper.eligible?(state) do
         BoomLooper.EventLog.info(
           "agent:#{state.name}",
           "Reaping idle CLI subprocess (idle #{DateTime.diff(DateTime.utc_now(), state.last_activity_at, :second)}s, claude_session_id=#{String.slice(state.claude_session_id, 0..7)}…)"
@@ -1835,7 +1564,7 @@ defmodule BoomLooper.ChatAgent do
 
         # Graceful CLI stop with a short cap — don't let a wedged CLI
         # block the reaper tick.
-        stop_backend_session(state.session, state.backend)
+        SessionManager.stop_backend(state.session, state.backend)
 
         # Release the tracked OS pid so the Janitor drops its
         # reference. A second safety-kill by Resources.release isn't
@@ -1880,7 +1609,7 @@ defmodule BoomLooper.ChatAgent do
     # receive a message, which will re-schedule after activity. But
     # keeping the tick running means we catch the next idle window
     # cleanly too (e.g. user opens then idles again).
-    state = schedule_idle_check(state)
+    state = IdleReaper.schedule(state)
     {:noreply, state}
   end
 
@@ -1903,78 +1632,14 @@ defmodule BoomLooper.ChatAgent do
     {:noreply, state}
   end
 
-  # --- Private helpers ---
-
-  defp empty_last_response?(state) do
-    case List.last(state.messages) do
-      %{role: :assistant, content: c} when is_binary(c) ->
-        trimmed = String.trim(c)
-        trimmed == "" || trimmed == "(no content)"
-      _ ->
-        false
-    end
-  end
-
-  # --- Private: session retry ---
-
-  defp dispatch_retry_session(state, id, consecutive) do
-    case state.backend.start_session(session_opts_with_resume(state)) do
-      {:ok, new_session} ->
-        content =
-          if is_binary(state.claude_session_id) do
-            "Session crashed — restarted automatically (attempt #{consecutive}, resumed conversation #{String.slice(state.claude_session_id, 0..7)}…)."
-          else
-            "Session crashed — restarted automatically (attempt #{consecutive})."
-          end
-
-        recovered_msg = %{
-          role: :system,
-          content: content,
-          timestamp: DateTime.utc_now()
-        }
-
-        {state, recovered_msg} =
-          append_message(
-            track_cli_os_pid(%{state | session: new_session, status: :idle, active_tool: nil, errors: state.errors + 1}),
-            recovered_msg
-          )
-
-        state = Map.put(state, :consecutive_crashes, consecutive)
-        state = Map.delete(state, :retry_from_session)
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: recovered_msg})
-        Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
-        {:noreply, state}
-
-      {:error, reason} ->
-        error_msg = %{
-          role: :error,
-          content:
-            "Session retry ##{consecutive} failed: #{inspect(reason)}. " <>
-              "WHY: exponential backoff expired; the attempt to re-spawn the Claude CLI errored. " <>
-              "CONSEQUENCE: the agent is idle but the CLI isn't running. Your prior messages are preserved. " <>
-              "ACTION: send another message — this triggers ensure_session_alive which will " <>
-              "retry the spawn. If it keeps failing, check `claude --version` + auth, or " <>
-              "click Restart. After #{@max_consecutive_crashes} consecutive failures the " <>
-              "agent will auto-quarantine until you intervene.",
-          timestamp: DateTime.utc_now()
-        }
-
-        {state, error_msg} = append_message(state, error_msg)
-        state = %{state | status: :idle, active_tool: nil, errors: state.errors + 1}
-        state = Map.put(state, :consecutive_crashes, consecutive)
-        state = Map.delete(state, :retry_from_session)
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: error_msg})
-        Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
-        {:noreply, state}
-    end
-  end
+  # dispatch_retry_session — extracted to SessionManager.handle_retry/3
 
   @impl true
   def terminate(_reason, state) do
     # Always TRY a clean shutdown of the SDK session — a graceful
     # protocol exit is preferable to a SIGKILL and lets the CLI flush
     # any pending writes. Cap at 3s so we never block the supervisor.
-    stop_backend_session(state.session, state.backend)
+    SessionManager.stop_backend(state.session, state.backend)
 
     # We do NOT manually SIGKILL the CLI OS process here. It's tracked
     # via BoomLooper.Resources.track(:claude_cli, os_pid) so the Janitor
@@ -2075,7 +1740,7 @@ defmodule BoomLooper.ChatAgent do
   # clauses stay contiguous (Elixir warns on non-grouped clauses) and
   # the cond in send_message stays readable.
   defp send_message_normal(state, text) do
-    state = ensure_session_alive(state)
+    state = SessionManager.ensure_alive(state)
 
     user_msg = %{role: :user, content: text, timestamp: DateTime.utc_now()}
     {state, user_msg} = append_message(state, user_msg)
@@ -2128,566 +1793,6 @@ defmodule BoomLooper.ChatAgent do
     end
   end
 
-  # Handle a %Event.RateLimitStatus{} from the Claude CLI.
-  #
-  # `:allowed`         — normal traffic. Clear any lingering rate-limit
-  #                       state. If we were previously :rate_limited, flip
-  #                       back to :idle so the user can send again.
-  # `:allowed_warning` — we're approaching the cap. Don't change status
-  #                       (might be mid-turn), but record the warning so
-  #                       the UI can render a subtle "approaching limit"
-  #                       indicator.
-  # `:rejected`        — the next request WILL fail. Flip status to
-  #                       :rate_limited, stash resets_at_ms so the UI
-  #                       renders a live countdown, and schedule a
-  #                       Process.send_after auto-retry exactly at reset.
-  #                       We cap the wait so a poisoned/skewed clock
-  #                       doesn't lock the agent up forever.
-  #
-  # Telemetry: every transition emits
-  # `[:boom_looper, :agent, :rate_limit]` so ops can watch the rate of
-  # :rejected events. A sustained spike there = the whole account is
-  # hitting its plan cap.
-  defp handle_rate_limit_event(state, %Event.RateLimitStatus{} = rl) do
-    id = state.id
-
-    :telemetry.execute(
-      [:boom_looper, :agent, :rate_limit],
-      %{count: 1},
-      %{agent_id: id, status: rl.status, rate_limit_type: rl.rate_limit_type}
-    )
-
-    case rl.status do
-      :rejected ->
-        # Cap auto-retry wait at 1h — if resets_at is in the past or
-        # far-future (clock skew, misparsed epoch), retry in 60s instead
-        # of locking the agent forever.
-        wait_ms = compute_rate_limit_wait_ms(rl.resets_at_ms)
-
-        BoomLooper.EventLog.warning(
-          "agent:#{state.name}",
-          "Rate-limited (#{inspect(rl.rate_limit_type)}), retrying in #{div(wait_ms, 1000)}s"
-        )
-
-        Process.send_after(self(), {:rate_limit_retry, id}, wait_ms)
-
-        rl_msg = %{
-          role: :system,
-          content:
-            "Rate-limited by Claude API (#{rl.rate_limit_type || "limit"}). " <>
-              "Retrying automatically in ~#{div(wait_ms, 1000)}s.",
-          timestamp: DateTime.utc_now()
-        }
-
-        {state, rl_msg} =
-          append_message(
-            %{state |
-              status: :rate_limited,
-              active_tool: nil,
-              rate_limit_status: :rejected,
-              rate_limit_resets_at_ms: rl.resets_at_ms,
-              rate_limit_type: rl.rate_limit_type
-            },
-            rl_msg
-          )
-
-        Persistence.persist_message(state, rl_msg)
-        :ets.insert(@ets_table, {id, summary(state)})
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: rl_msg})
-        Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :rate_limited})
-        state
-
-      :allowed_warning ->
-        state = %{state |
-          rate_limit_status: :warning,
-          rate_limit_resets_at_ms: rl.resets_at_ms,
-          rate_limit_type: rl.rate_limit_type
-        }
-        :ets.insert(@ets_table, {id, summary(state)})
-        # No status broadcast — main status stays :thinking mid-turn. The
-        # summary delta (rate_limit_status: :warning) flows to any viewer
-        # that's reading the agent record.
-        state
-
-      :allowed ->
-        # Transition out of rate-limited state, if we were in one.
-        was_rate_limited = state.rate_limit_status != :ok
-        new_main_status = if state.status == :rate_limited, do: :idle, else: state.status
-
-        state = %{state |
-          status: new_main_status,
-          rate_limit_status: :ok,
-          rate_limit_resets_at_ms: nil,
-          rate_limit_type: nil
-        }
-        :ets.insert(@ets_table, {id, summary(state)})
-        if was_rate_limited do
-          Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: new_main_status})
-        end
-        state
-
-      _other ->
-        state
-    end
-  end
-
-  defp compute_rate_limit_wait_ms(resets_at_ms) when is_integer(resets_at_ms) do
-    now_ms = System.system_time(:millisecond)
-    delta = resets_at_ms - now_ms
-    cond do
-      delta <= 0 -> 60_000
-      delta > 3_600_000 -> 60_000
-      true -> delta + 1_000
-    end
-  end
-  defp compute_rate_limit_wait_ms(_), do: 60_000
-
-  # Handle a %Event.AuthStatus{} from the Claude CLI.
-  #
-  # is_authenticating=true with error=nil is routine (OAuth flow running).
-  # Any non-nil error is terminal — the CLI can't talk to the API without
-  # working creds, and we don't know how to fix them automatically. Flip
-  # to :auth_expired, surface the error in the chat, and stop retrying.
-  # The user has to re-authenticate (outside BoomLooper today).
-  defp handle_auth_status_event(state, %Event.AuthStatus{error: nil, is_authenticating: true}) do
-    # Auth in progress — not an error. No state change.
-    state
-  end
-
-  defp handle_auth_status_event(state, %Event.AuthStatus{error: error}) when is_binary(error) do
-    id = state.id
-
-    :telemetry.execute(
-      [:boom_looper, :agent, :auth_expired],
-      %{count: 1},
-      %{agent_id: id, error: error}
-    )
-
-    BoomLooper.EventLog.error("agent:#{state.name}", "Claude auth failed: #{error}")
-
-    auth_msg = %{
-      role: :error,
-      content: "Claude authentication failed: #{error}. Re-authenticate the CLI and restart this agent.",
-      timestamp: DateTime.utc_now()
-    }
-
-    {state, auth_msg} =
-      append_message(
-        %{state | status: :auth_expired, active_tool: nil, auth_error: error, errors: state.errors + 1},
-        auth_msg
-      )
-
-    Persistence.persist_message(state, auth_msg)
-    :ets.insert(@ets_table, {id, summary(state)})
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: auth_msg})
-    Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :auth_expired})
-    state
-  end
-
-  defp handle_auth_status_event(state, _other), do: state
-
-  # If a stream is cut short (error / timeout / CLI exit) with partial
-  # text accumulated from TextDelta events, finalize it as an assistant
-  # message with a truncation marker so the user sees their half-answer
-  # preserved in the transcript. Without this, the UI shows the partial
-  # text live via PubSub, then it vanishes on refresh because nothing
-  # was persisted. See agent-sanity #3.
-  #
-  # `reason` is `:error | :timeout` — included in the marker so the
-  # user can distinguish "CLI crashed" from "took too long."
-  defp finalize_partial_on_stream_interrupt(%{in_flight_partial: ""} = state, _id, _reason), do: state
-
-  defp finalize_partial_on_stream_interrupt(%{in_flight_partial: partial} = state, id, reason)
-       when is_binary(partial) and partial != "" do
-    marker =
-      case reason do
-        :error -> "⚠ Truncated — CLI stream errored mid-response."
-        :timeout -> "⚠ Truncated — CLI stopped responding mid-stream."
-        :stopped_by_user -> "⚠ Truncated — user stopped the agent mid-response."
-        other -> "⚠ Truncated — stream ended unexpectedly (#{inspect(other)})."
-      end
-
-    partial_msg = %{
-      role: :assistant,
-      content: partial <> "\n\n" <> marker,
-      partial: true,
-      timestamp: DateTime.utc_now()
-    }
-
-    {state, partial_msg} = append_message(state, partial_msg)
-    Persistence.persist_message(state, partial_msg)
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: partial_msg})
-
-    :telemetry.execute(
-      [:boom_looper, :agent, :partial_finalized],
-      %{bytes: byte_size(partial)},
-      %{agent_id: id, reason: reason}
-    )
-
-    %{state | in_flight_partial: ""}
-  end
-
-  defp finalize_partial_on_stream_interrupt(state, _id, _reason), do: state
-
-  # Track the Claude CLI subprocess OS pid under this ChatAgent via
-  # BoomLooper.Resources. On our DOWN (brutal_kill, node crash,
-  # :shutdown-timeout), the Janitor SIGKILLs the OS pid — covering the
-  # paths where `terminate/2` never runs. Releases any previously
-  # tracked pid before tracking the new one so state.tracked_cli_os_pid
-  # stays consistent with state.session.
-  #
-  # Returns {:ok, state} with state.tracked_cli_os_pid updated. If we
-  # can't find the OS pid (session dead, Port not yet up, dep internals
-  # changed), we skip tracking and clear any stale tracked pid — losing
-  # one OS-level safety net is not worth crashing the GenServer over.
-  defp track_cli_os_pid(state) do
-    # Release stale tracking — previous session's OS pid is no longer
-    # ours, and re-tracking by kind+id would fail under a new owner.
-    if state.tracked_cli_os_pid do
-      BoomLooper.Resources.release(:claude_cli, state.tracked_cli_os_pid)
-    end
-
-    case state.session && state.backend && BoomLooper.ChatAgent.OSProcess.pid_of(state.session) do
-      os_pid when is_integer(os_pid) ->
-        release_fn = fn -> BoomLooper.ChatAgent.OSProcess.kill(os_pid) end
-
-        case BoomLooper.Resources.track(self(), :claude_cli, os_pid, release_fn) do
-          :ok ->
-            %{state | tracked_cli_os_pid: os_pid}
-
-          {:error, :already_tracked} ->
-            # Some other owner already tracks this OS pid. Rare — usually
-            # means our previous release/3 raced with someone else picking
-            # it up. Keep state consistent but don't stomp.
-            %{state | tracked_cli_os_pid: nil}
-        end
-
-      _ ->
-        %{state | tracked_cli_os_pid: nil}
-    end
-  end
-
-  # Runaway detection: count tool calls per turn (any tool, any
-  # input). One-shot warning at @turn_tool_limit so the user knows
-  # to stop the agent if it's thrashing. Different from
-  # maybe_detect_tool_loop which catches same-tool+same-input
-  # repeats — this catches agents that call 50 different things in
-  # a row without making progress.
-  defp maybe_detect_tool_runaway(%{tool_runaway_warned: true} = state, _id), do: state
-
-  defp maybe_detect_tool_runaway(%{tool_calls_this_turn: n} = state, id)
-       when n >= @turn_tool_limit do
-    :telemetry.execute(
-      [:boom_looper, :agent, :tool_runaway],
-      %{tool_calls_this_turn: n},
-      %{agent_id: id}
-    )
-
-    BoomLooper.EventLog.warning(
-      "agent:#{state.name}",
-      "Tool-call runaway — #{n} tool calls in a single turn"
-    )
-
-    warn_msg = %{
-      role: :system,
-      content:
-        "⚠ Agent has made #{n} tool calls in this single turn. " <>
-          "WHY: that's far past the usual 5–20 — either it's stuck exploring or it's " <>
-          "looping with slightly-different inputs each time. " <>
-          "CONSEQUENCE: every tool call costs tokens and time. If the agent isn't making " <>
-          "visible progress, it's wasting both. " <>
-          "ACTION: click Stop to interrupt. Give the agent a more specific hint " <>
-          "(e.g. 'the file is in lib/foo.ex') and restart.",
-      timestamp: DateTime.utc_now()
-    }
-
-    {state, warn_msg} = append_message(state, warn_msg)
-    Persistence.persist_message(state, warn_msg)
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: warn_msg})
-    %{state | tool_runaway_warned: true}
-  end
-
-  defp maybe_detect_tool_runaway(state, _id), do: state
-
-  # --- Tool-call loop detection ---
-
-  # Fingerprint a tool call so we can count consecutive repeats.
-  # Hash is short (16 hex chars) because we only need equality, not
-  # reversibility.
-  defp tool_call_hash(tool_name, tool_input) do
-    raw = :erlang.term_to_binary({tool_name, tool_input})
-    :crypto.hash(:sha256, raw) |> Base.encode16(case: :lower) |> binary_part(0, 16)
-  end
-
-  # Update state.last_tool_call based on the current call. If this is
-  # the same tool+input as the previous call, bump the counter and —
-  # once we cross @tool_loop_threshold — append a one-shot warning so
-  # the user can interrupt before more tokens burn. Different tool
-  # resets the counter to 1.
-  defp maybe_detect_tool_loop(state, id, tool_name, tool_input) do
-    hash = tool_call_hash(tool_name, tool_input)
-
-    {new_count, warn?} =
-      case state.last_tool_call do
-        {^hash, count} when count + 1 == @tool_loop_threshold ->
-          # Crossed the threshold THIS call — fire warning once.
-          {count + 1, true}
-
-        {^hash, count} ->
-          # Still looping but already warned (count > threshold) or not
-          # yet at threshold. No re-warn.
-          {count + 1, false}
-
-        _ ->
-          # Different tool/input OR first call. Reset.
-          {1, false}
-      end
-
-    state = %{state | last_tool_call: {hash, new_count}}
-
-    if warn? do
-      :telemetry.execute(
-        [:boom_looper, :agent, :tool_loop_detected],
-        %{consecutive: new_count},
-        %{agent_id: id, tool: tool_name}
-      )
-
-      BoomLooper.EventLog.warning(
-        "agent:#{state.name}",
-        "Tool-call loop — `#{tool_name}` called #{new_count}× with same input"
-      )
-
-      warn_msg = %{
-        role: :system,
-        content:
-          "⚠ Agent called `#{tool_name}` #{new_count} times in a row with the same input — " <>
-            "it may be stuck in a retry loop. Consider stopping the agent and providing a " <>
-            "different hint, or check whether the tool is returning a consistent error.",
-        timestamp: DateTime.utc_now()
-      }
-
-      {state, warn_msg} = append_message(state, warn_msg)
-      Persistence.persist_message(state, warn_msg)
-      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: warn_msg})
-      state
-    else
-      state
-    end
-  end
-
-  # --- Context window utilization (agent-sanity #18) ---
-
-  # Published Claude model window sizes. Approximate; a few models
-  # support extended context variants but we pick the mainline default
-  # so our % estimate is on the conservative side (i.e. if we say 90%
-  # full, we're not lying to the user). When we encounter an unknown
-  # model name we return 0 to mean "no estimate" — the warn gate
-  # short-circuits on 0 so we don't spam warnings against a
-  # never-computed ratio.
-  @context_windows %{
-    "claude-opus-4-7" => 1_000_000,
-    "claude-opus-4-7-20250929" => 1_000_000,
-    "claude-opus-4-6" => 1_000_000,
-    "claude-opus-4-5" => 1_000_000,
-    "claude-sonnet-4-6" => 200_000,
-    "claude-sonnet-4-5" => 200_000,
-    "claude-sonnet-4-5-20250929" => 200_000,
-    "claude-haiku-4-5" => 200_000,
-    "claude-haiku-4-5-20251001" => 200_000
-  }
-
-  defp context_window_for(nil), do: 200_000
-  defp context_window_for(model) when is_binary(model) do
-    Map.get(@context_windows, model) ||
-      Enum.find_value(@context_windows, 0, fn {prefix, size} ->
-        if String.starts_with?(model, prefix), do: size
-      end)
-  end
-  defp context_window_for(_), do: 200_000
-
-  @context_warn_threshold 0.85
-
-  # One-shot warning when utilization crosses the threshold. Gated on
-  # `context_warning_sent` so we don't spam per-turn. stream_done
-  # resets the flag so the warning re-fires if utilization stays high
-  # in a later turn.
-  defp maybe_warn_context_full(state, id, utilization)
-       when utilization >= @context_warn_threshold do
-    if state.context_warning_sent do
-      state
-    else
-      pct = round(utilization * 100)
-
-      # Log to EventLog + telemetry (visible on /system, not in chat).
-      # No user-facing message — the auto-restart handles it silently
-      # when context is truly exhausted.
-      :telemetry.execute(
-        [:boom_looper, :agent, :context_warning],
-        %{utilization: utilization},
-        %{agent_id: id, model: state.model}
-      )
-
-      BoomLooper.EventLog.warning(
-        "agent:#{state.name}",
-        "Context window #{pct}% full (model=#{state.model || "?"})"
-      )
-
-      %{state | context_warning_sent: true}
-    end
-  end
-
-  defp maybe_warn_context_full(state, _id, _utilization), do: state
-
-  # Drain the pending-sends queue if there's anything in it.
-  # Called from turn-completion handlers (:stream_done /
-  # :stream_error / :stream_timeout / :rate_limit_retry). Returns the
-  # same `{:noreply, state}` shape the callers already use so we can
-  # just return this.
-  #
-  # Pops ONE message at a time and synchronously calls
-  # send_message_normal — that sets status: :thinking and starts the
-  # next stream. Remaining pending messages wait for the next
-  # stream_done. This preserves strict FIFO ordering: N queued
-  # messages produce N sequential turns.
-  defp drain_pending_sends(%{pending_sends: []} = state), do: {:noreply, state}
-
-  defp drain_pending_sends(%{pending_sends: [head | rest]} = state) do
-    state = %{state | pending_sends: rest}
-    send_message_normal(state, head)
-  end
-
-  # --- Idle reaper (agent-sanity #20) ---
-
-  # Arms a single :idle_check timer. Cancels any existing timer first
-  # so repeated scheduling (e.g. after every activity) doesn't stack.
-  # Returns `state` with the new timer ref in :idle_check_timer so
-  # subsequent calls can cancel it.
-  defp schedule_idle_check(state) do
-    if ref = state.idle_check_timer, do: Process.cancel_timer(ref)
-    interval = Application.get_env(:boom_looper, :agent_idle_check_interval_ms, @default_agent_idle_check_interval_ms)
-    timer = Process.send_after(self(), :idle_check, interval)
-    %{state | idle_check_timer: timer}
-  end
-
-  # How many seconds of idleness before the CLI gets reaped.
-  defp idle_reap_seconds do
-    hours = Application.get_env(:boom_looper, :agent_idle_reap_hours, @default_agent_idle_reap_hours)
-    hours * 3600
-  end
-
-  # The critical invariant: we only reap when we have a captured
-  # claude_session_id. Without it, ensure_session_alive can't
-  # re-create the SAME conversation — it would spawn a fresh amnesic
-  # CLI. Better to hold the RAM than silently drop context.
-  defp reap_eligible?(state) do
-    state.status == :idle and
-      is_pid(state.session) and
-      Process.alive?(state.session) and
-      is_binary(state.claude_session_id) and
-      state.claude_session_id != "" and
-      state.last_activity_at != nil and
-      DateTime.diff(DateTime.utc_now(), state.last_activity_at, :second) >= idle_reap_seconds()
-  end
-
-  # Stop a backend session with a 3s timeout. Uses async_nolink so a
-  # crash in backend.stop/1 never propagates back as an EXIT signal
-  # to the ChatAgent GenServer — an unsupervised Task.async would
-  # link and kill us. See plans/agent-sanity.md "unsupervised
-  # Task.async" audit finding.
-  #
-  # Returns :ok regardless of what happened to the task. The caller
-  # is stopping the session anyway; whether backend.stop cleanly
-  # completed, timed out, or crashed is academic — the Janitor-owned
-  # :claude_cli resource will SIGKILL the OS pid on our DOWN.
-  @backend_stop_timeout_ms 3_000
-
-  defp stop_backend_session(nil, _backend), do: :ok
-  defp stop_backend_session(_session, nil), do: :ok
-
-  defp stop_backend_session(session, backend) do
-    task =
-      Task.Supervisor.async_nolink(BoomLooper.TaskSupervisor, fn ->
-        backend.stop(session)
-      end)
-
-    # yield returns:
-    #   {:ok, result}    — stop completed cleanly
-    #   {:exit, reason}  — task died (raise, etc) — ok, we're already stopping
-    #   nil              — timeout — shutdown forcibly
-    case Task.yield(task, @backend_stop_timeout_ms) do
-      {:ok, _} -> :ok
-      {:exit, _} -> :ok
-      nil -> Task.shutdown(task, :brutal_kill)
-    end
-
-    :ok
-  end
-
-  defp session_opts_with_resume(state) do
-    case state.claude_session_id do
-      sid when is_binary(sid) and sid != "" ->
-        Keyword.put(state.session_opts, :resume, sid)
-
-      _ ->
-        Keyword.delete(state.session_opts, :resume)
-    end
-  end
-
-  defp ensure_session_alive(state) do
-    alive = try do
-      state.backend.session_alive?(state.session)
-    rescue
-      _ -> false
-    catch
-      :exit, _ -> false
-    end
-
-    if alive do
-      state
-    else
-      require Logger
-      BoomLooper.EventLog.warning("agent:#{state.name}", "CLI session dead, auto-restarting")
-
-      restart_msg = %{role: :system, content: "Session lost — reconnecting...", timestamp: DateTime.utc_now()}
-      {state, restart_msg} = append_message(state, restart_msg)
-      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: restart_msg})
-
-      case state.backend.start_session(session_opts_with_resume(state)) do
-        {:ok, new_session} ->
-          BoomLooper.EventLog.info("agent:#{state.name}", "CLI session restarted")
-          ok_content =
-            if is_binary(state.claude_session_id) do
-              "Reconnected (resumed conversation #{String.slice(state.claude_session_id, 0..7)}…)."
-            else
-              "Reconnected."
-            end
-          ok_msg = %{role: :system, content: ok_content, timestamp: DateTime.utc_now()}
-          {state, ok_msg} = append_message(track_cli_os_pid(%{state | session: new_session}), ok_msg)
-          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: ok_msg})
-          state
-
-        {:error, reason} ->
-          BoomLooper.EventLog.error("agent:#{state.name}", "Failed to restart CLI: #{inspect(reason)}")
-
-          fail_msg = %{
-            role: :error,
-            content:
-              "Failed to reconnect to Claude CLI: #{inspect(reason)}. " <>
-                "WHY: the CLI session died, and trying to spawn a new one failed. " <>
-                "CONSEQUENCE: your message was saved but won't be processed until the CLI is back. " <>
-                "ACTION: (1) check that `claude` is installed and authenticated " <>
-                "(`mix boom.rpc 'ClaudeCode.Test.smoke()'`), (2) click Restart in the sidebar, " <>
-                "(3) send your message again. Prior conversation context is preserved.",
-            timestamp: DateTime.utc_now()
-          }
-
-          {state, fail_msg} = append_message(state, fail_msg)
-          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: fail_msg})
-          state
-      end
-    end
-  end
-
   @max_messages 1000
 
   defp append_message(state, msg) do
@@ -2710,7 +1815,8 @@ defmodule BoomLooper.ChatAgent do
 
   defp stuck_booting?(_), do: false
 
-  defp summary(state) do
+  @doc false
+  def summary(state) do
     %{
       id: state.id,
       name: state.name,
