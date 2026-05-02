@@ -339,6 +339,47 @@ defmodule BoomLooper.InvariantsTest do
   end
 
   # ---------------------------------------------------------------
+  # Module size ratchet
+  # ---------------------------------------------------------------
+  # Catches files that are growing out of control. The threshold is
+  # set to the current largest file + headroom. When a file exceeds
+  # the cap, the test tells you to split it — not raise the cap.
+  #
+  # Known large files get an explicit allowance. Everything else
+  # must stay under @default_max_lines.
+
+  @default_max_lines 800
+  @size_allowlist %{
+    # These are known-large and have active split plans.
+    # When you split one, lower its allowance or remove it.
+    "lib/boom_looper/chat_agent.ex" => 2800,
+    "lib/boom_looper_web/live/workspace_live.ex" => 2100,
+    "lib/boom_looper/eval_runner.ex" => 1000,
+    "lib/boom_looper_web/live/project_live.ex" => 700
+  }
+
+  describe "module size invariants" do
+    test "no source file exceeds its line cap" do
+      violations =
+        Path.wildcard("lib/**/*.ex")
+        |> Enum.flat_map(fn path ->
+          lines = path |> File.stream!() |> Enum.count()
+          cap = Map.get(@size_allowlist, path, @default_max_lines)
+
+          if lines > cap do
+            ["#{path} is #{lines} lines (cap: #{cap}) — split it"]
+          else
+            []
+          end
+        end)
+
+      assert violations == [],
+        "Files exceeding size cap:\n#{Enum.join(violations, "\n")}\n\n" <>
+        "Don't raise the cap. Extract a module instead."
+    end
+  end
+
+  # ---------------------------------------------------------------
   # Helpers
   # ---------------------------------------------------------------
 
