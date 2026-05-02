@@ -352,8 +352,8 @@ defmodule BoomLooper.InvariantsTest do
   @size_allowlist %{
     # These are known-large and have active split plans.
     # When you split one, lower its allowance or remove it.
-    "lib/boom_looper/chat_agent.ex" => 2800,
-    "lib/boom_looper_web/live/workspace_live.ex" => 1850,
+    "lib/boom_looper/chat_agent.ex" => 1600,
+    "lib/boom_looper_web/live/workspace_live.ex" => 1500,
     "lib/boom_looper/eval_runner.ex" => 1000,
     "lib/boom_looper_web/live/project_live.ex" => 700
   }
