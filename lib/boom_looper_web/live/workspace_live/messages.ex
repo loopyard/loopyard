@@ -83,8 +83,15 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
         </button>
       </div>
       <div :if={@port_info && @port_info.exposed} class="ml-10 mt-1.5 flex items-center gap-2 py-1">
-        <div class="w-1.5 h-1.5 rounded-full flex-none bg-emerald-500"></div>
-        <span class="text-xs text-zinc-500 dark:text-zinc-400">{@port_info.service} :{@port_info.host_port} open</span>
+        <span class="text-xs text-zinc-500 dark:text-zinc-400">{@port_info.service}</span>
+        <a
+          href={"http://#{assigns[:host] || "localhost"}:#{@port_info.host_port}"}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="inline-flex items-center px-2 rounded text-xs font-mono font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
+        >
+          :{@port_info.host_port}
+        </a>
       </div>
       <div class="flex items-center gap-1 ml-10 mt-0.5 h-5 opacity-0 group-hover/msg:opacity-100 transition-opacity">
         <.copy_btn :if={@raw} raw_url={@raw} />
