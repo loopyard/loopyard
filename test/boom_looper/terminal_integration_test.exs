@@ -14,17 +14,22 @@ defmodule BoomLooper.TerminalIntegrationTest do
 
   defp local_shell_cmd do
     script = System.find_executable("script")
+
     case :os.type() do
       {:unix, :darwin} ->
         {script, ["-q", "/dev/null", "/bin/sh"]}
+
       _ ->
         {script, ["-qc", "/bin/sh", "/dev/null"]}
     end
   end
 
   defp start_terminal_with_local_shell(container) do
-    {:ok, pid} = GenServer.start_link(Terminal, [container: container, cmd: local_shell_cmd()],
-      name: {:via, Registry, {BoomLooper.TerminalRegistry, container}})
+    {:ok, pid} =
+      GenServer.start_link(Terminal, [container: container, cmd: local_shell_cmd()],
+        name: {:via, Registry, {BoomLooper.TerminalRegistry, container}}
+      )
+
     Process.sleep(500)
     {:ok, pid}
   end
@@ -34,12 +39,15 @@ defmodule BoomLooper.TerminalIntegrationTest do
       [{pid, _}] ->
         GenServer.cast(pid, {:input, "exit\n"})
         ref = Process.monitor(pid)
+
         receive do
           {:DOWN, ^ref, _, _, _} -> :ok
         after
           2_000 -> GenServer.stop(pid, :normal)
         end
-      [] -> :ok
+
+      [] ->
+        :ok
     end
   end
 
@@ -49,12 +57,15 @@ defmodule BoomLooper.TerminalIntegrationTest do
   end
 
   defp collect_loop(acc, remaining) when remaining <= 0, do: acc
+
   defp collect_loop(acc, remaining) do
     start = System.monotonic_time(:millisecond)
+
     receive do
       %Phoenix.Socket.Message{event: "output", payload: %{"data" => data}} ->
         elapsed = System.monotonic_time(:millisecond) - start
         collect_loop(acc <> data, remaining - elapsed)
+
       # Also handle atom-key payloads
       %Phoenix.Socket.Message{event: "output", payload: %{data: data}} ->
         elapsed = System.monotonic_time(:millisecond) - start
@@ -81,8 +92,10 @@ defmodule BoomLooper.TerminalIntegrationTest do
   end
 
   defp viewer_loop(acc, remaining) when remaining <= 0, do: acc
+
   defp viewer_loop(acc, remaining) do
     start = System.monotonic_time(:millisecond)
+
     receive do
       %BoomLooper.Events.Terminal.Output{data: data} ->
         elapsed = System.monotonic_time(:millisecond) - start
@@ -125,13 +138,14 @@ defmodule BoomLooper.TerminalIntegrationTest do
       # Marker can appear at most twice: input echo + command output
       # If it appears 3+ times, something in the channel stack is doubling
       c = count(output, marker)
+
       assert c <= 2,
-        "Marker appeared #{c} times via channel (max 2 expected). " <>
-        "The channel/websocket stack is duplicating output.\n" <>
-        "Output: #{inspect(output)}"
+             "Marker appeared #{c} times via channel (max 2 expected). " <>
+               "The channel/websocket stack is duplicating output.\n" <>
+               "Output: #{inspect(output)}"
 
       assert c >= 1,
-        "Marker not found in channel output at all.\nOutput: #{inspect(output)}"
+             "Marker not found in channel output at all.\nOutput: #{inspect(output)}"
     end
 
     test "multiple viewers via PubSub each see output once", %{container: container} do
@@ -141,16 +155,17 @@ defmodule BoomLooper.TerminalIntegrationTest do
       # subscribes to the terminal_output topic independently.
       parent = self()
 
-      viewers = for i <- 1..3 do
-        spawn_link(fn ->
-          BoomLooper.Events.Terminal.subscribe(container)
-          send(parent, {:ready, i})
-          receive do: (:go -> :ok)
+      viewers =
+        for i <- 1..3 do
+          spawn_link(fn ->
+            BoomLooper.Events.Terminal.subscribe(container)
+            send(parent, {:ready, i})
+            receive do: (:go -> :ok)
 
-          output = viewer_collect(3_000)
-          send(parent, {:output, i, output})
-        end)
-      end
+            output = viewer_collect(3_000)
+            send(parent, {:output, i, output})
+          end)
+        end
 
       for i <- 1..3, do: assert_receive({:ready, ^i}, 1_000)
       for v <- viewers, do: send(v, :go)
@@ -163,18 +178,21 @@ defmodule BoomLooper.TerminalIntegrationTest do
       for i <- 1..3 do
         assert_receive {:output, ^i, output}, 5_000
         c = count(output, marker)
+
         assert c <= 2,
-          "Viewer #{i} saw marker #{c} times (max 2).\nOutput: #{inspect(output)}"
+               "Viewer #{i} saw marker #{c} times (max 2).\nOutput: #{inspect(output)}"
       end
     end
 
     test "buffer replay + live output does not duplicate", %{container: container} do
       # Send a command BEFORE any channel joins — goes into buffer
       early_marker = "EARLY-#{:rand.uniform(1_000_000)}"
+
       GenServer.cast(
         elem(hd(Registry.lookup(BoomLooper.TerminalRegistry, container)), 0),
         {:input, "echo #{early_marker}\n"}
       )
+
       Process.sleep(500)
 
       # Now join — should get buffer + start receiving live
@@ -186,9 +204,10 @@ defmodule BoomLooper.TerminalIntegrationTest do
       initial = collect_channel_output(1_000)
 
       early_count = count(initial, early_marker)
+
       assert early_count <= 2,
-        "Early marker appeared #{early_count} times in initial output (max 2). " <>
-        "Buffer replay is overlapping with live.\nOutput: #{inspect(initial)}"
+             "Early marker appeared #{early_count} times in initial output (max 2). " <>
+               "Buffer replay is overlapping with live.\nOutput: #{inspect(initial)}"
 
       # Now send a new command
       late_marker = "LATE-#{:rand.uniform(1_000_000)}"
@@ -197,9 +216,10 @@ defmodule BoomLooper.TerminalIntegrationTest do
       live = collect_channel_output(2_000)
 
       late_count = count(live, late_marker)
+
       assert late_count <= 2,
-        "Late marker appeared #{late_count} times (max 2). " <>
-        "Output: #{inspect(live)}"
+             "Late marker appeared #{late_count} times (max 2). " <>
+               "Output: #{inspect(live)}"
 
       leave(socket)
     end
@@ -248,8 +268,9 @@ defmodule BoomLooper.TerminalIntegrationTest do
         |> subscribe_and_join(TerminalChannel, "terminal:#{container}")
 
       initial = collect_channel_output(1_000)
+
       refute initial =~ "STALE_CONTENT",
-        "Late joiner saw stale content after clear.\nOutput: #{inspect(initial)}"
+             "Late joiner saw stale content after clear.\nOutput: #{inspect(initial)}"
     end
   end
 end

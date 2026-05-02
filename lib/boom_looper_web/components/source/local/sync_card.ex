@@ -13,12 +13,16 @@ defmodule BoomLooperWeb.Components.Source.Local.SyncCard do
   use Phoenix.Component
 
   attr :workspace_id, :string, required: true
+
   attr :sync, :map,
     required: true,
     doc:
       "Status map from SyncMonitor.status/1: %{status, last_error, last_checked_at}. Safe to pass nil."
-  attr :waiting, :boolean, default: false,
-    doc: "True when the sync error is just 'container not ready yet' — show neutral state, not error."
+
+  attr :waiting, :boolean,
+    default: false,
+    doc:
+      "True when the sync error is just 'container not ready yet' — show neutral state, not error."
 
   def sync_card(assigns) do
     ~H"""
@@ -59,7 +63,9 @@ defmodule BoomLooperWeb.Components.Source.Local.SyncCard do
           <% end %>
         </div>
       </div>
-      <div :if={!@waiting && error(@sync)} class="mt-1 text-red-500 truncate" title={error(@sync)}>{error(@sync)}</div>
+      <div :if={!@waiting && error(@sync)} class="mt-1 text-red-500 truncate" title={error(@sync)}>
+        {error(@sync)}
+      </div>
     </div>
     """
   end
@@ -71,6 +77,7 @@ defmodule BoomLooperWeb.Components.Source.Local.SyncCard do
   defp error(_), do: nil
 
   defp dot_class(_sync, true), do: "bg-zinc-400 animate-pulse"
+
   defp dot_class(sync, _waiting) do
     case status(sync) do
       :running -> "bg-emerald-500"
@@ -82,6 +89,7 @@ defmodule BoomLooperWeb.Components.Source.Local.SyncCard do
   end
 
   defp status_label(_sync, true), do: "waiting for container…"
+
   defp status_label(sync, _waiting) do
     case status(sync) do
       :running -> "running"

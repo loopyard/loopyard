@@ -221,7 +221,15 @@ defmodule BoomLooper.ChatAgent.ClaudeContext do
               case volume_reader().read_file(volume, import_rel) do
                 {:ok, imported} when is_binary(imported) and imported != "" ->
                   write_to_host(working_dir, import_rel, imported)
-                  crawl_imports(volume, working_dir, import_rel, seen, [import_rel | written], hop + 1)
+
+                  crawl_imports(
+                    volume,
+                    working_dir,
+                    import_rel,
+                    seen,
+                    [import_rel | written],
+                    hop + 1
+                  )
 
                 _ ->
                   {seen, written}

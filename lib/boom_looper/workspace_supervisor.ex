@@ -136,7 +136,9 @@ defmodule BoomLooper.WorkspaceSupervisor do
   """
   def stop_workspace(workspace_id) do
     case BoomLooper.WorkspaceGroup.whereis(workspace_id) do
-      nil -> {:error, :not_found}
+      nil ->
+        {:error, :not_found}
+
       pid ->
         DynamicSupervisor.terminate_child(__MODULE__, pid)
         :ok

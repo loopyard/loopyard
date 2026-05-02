@@ -26,7 +26,7 @@ defmodule BoomLooperWeb.ConnectLiveTest do
       # encoding via EQRCode has been clocked at 200-400ms on a
       # loaded suite. The real tripwire is "seconds" territory.
       assert micros < 1_000_000,
-        "ConnectLive mount took #{div(micros, 1000)}ms — slow call slipped in"
+             "ConnectLive mount took #{div(micros, 1000)}ms — slow call slipped in"
     end
   end
 end

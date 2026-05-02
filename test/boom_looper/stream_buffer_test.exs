@@ -21,7 +21,8 @@ defmodule BoomLooper.StreamBufferTest do
 
   describe "append/3" do
     test "accumulates data" do
-      buf = StreamBuffer.new()
+      buf =
+        StreamBuffer.new()
         |> StreamBuffer.append("hello ")
         |> StreamBuffer.append("world")
 
@@ -36,7 +37,8 @@ defmodule BoomLooper.StreamBufferTest do
     end
 
     test "preserves message ID across appends" do
-      buf = StreamBuffer.new()
+      buf =
+        StreamBuffer.new()
         |> StreamBuffer.append("first")
 
       id = buf.msg_id
@@ -46,21 +48,24 @@ defmodule BoomLooper.StreamBufferTest do
     end
 
     test "accepts explicit msg_id" do
-      buf = StreamBuffer.new()
+      buf =
+        StreamBuffer.new()
         |> StreamBuffer.append("data", msg_id: "my-custom-id")
 
       assert buf.msg_id == "my-custom-id"
     end
 
     test "accepts title" do
-      buf = StreamBuffer.new()
+      buf =
+        StreamBuffer.new()
         |> StreamBuffer.append("data", title: "Building...")
 
       assert buf.title == "Building..."
     end
 
     test "title persists across appends" do
-      buf = StreamBuffer.new()
+      buf =
+        StreamBuffer.new()
         |> StreamBuffer.append("data", title: "Building...")
         |> StreamBuffer.append("more data")
 
@@ -68,7 +73,8 @@ defmodule BoomLooper.StreamBufferTest do
     end
 
     test "title can be overridden" do
-      buf = StreamBuffer.new()
+      buf =
+        StreamBuffer.new()
         |> StreamBuffer.append("data", title: "Building...")
         |> StreamBuffer.append("more data", title: "Installing deps...")
 
@@ -78,7 +84,8 @@ defmodule BoomLooper.StreamBufferTest do
 
   describe "rolling window" do
     test "trims to max_bytes when exceeded" do
-      buf = StreamBuffer.new(max_bytes: 10)
+      buf =
+        StreamBuffer.new(max_bytes: 10)
         |> StreamBuffer.append("12345")
         |> StreamBuffer.append("67890")
         |> StreamBuffer.append("ABCDE")
@@ -89,7 +96,8 @@ defmodule BoomLooper.StreamBufferTest do
     end
 
     test "keeps exactly max_bytes of trailing content" do
-      buf = StreamBuffer.new(max_bytes: 5)
+      buf =
+        StreamBuffer.new(max_bytes: 5)
         |> StreamBuffer.append("hello world")
 
       assert buf.content == "world"
@@ -97,7 +105,8 @@ defmodule BoomLooper.StreamBufferTest do
     end
 
     test "does not trim when under limit" do
-      buf = StreamBuffer.new(max_bytes: 100)
+      buf =
+        StreamBuffer.new(max_bytes: 100)
         |> StreamBuffer.append("short")
 
       assert buf.content == "short"
@@ -109,7 +118,8 @@ defmodule BoomLooper.StreamBufferTest do
     end
 
     test "handles exact boundary" do
-      buf = StreamBuffer.new(max_bytes: 5)
+      buf =
+        StreamBuffer.new(max_bytes: 5)
         |> StreamBuffer.append("exact")
 
       assert buf.content == "exact"
@@ -119,7 +129,8 @@ defmodule BoomLooper.StreamBufferTest do
     test "handles multi-byte content safely" do
       # This may split a multi-byte char at the boundary — that's acceptable
       # for log output which is typically ASCII
-      buf = StreamBuffer.new(max_bytes: 10)
+      buf =
+        StreamBuffer.new(max_bytes: 10)
         |> StreamBuffer.append(String.duplicate("x", 20))
 
       assert StreamBuffer.size(buf) <= 10
@@ -128,7 +139,8 @@ defmodule BoomLooper.StreamBufferTest do
 
   describe "to_message/1" do
     test "builds a message map with all fields" do
-      buf = StreamBuffer.new()
+      buf =
+        StreamBuffer.new()
         |> StreamBuffer.append("output here", title: "Running tests", msg_id: "msg-123")
 
       msg = StreamBuffer.to_message(buf)
@@ -169,11 +181,18 @@ defmodule BoomLooper.StreamBufferTest do
     test "replaces existing build message in place" do
       existing = [
         %{role: :user, content: "run tests", id: "u1"},
-        %{role: :build, content: "old output", id: "b1", title: nil, timestamp: DateTime.utc_now()},
+        %{
+          role: :build,
+          content: "old output",
+          id: "b1",
+          title: nil,
+          timestamp: DateTime.utc_now()
+        },
         %{role: :assistant, content: "done", id: "a1"}
       ]
 
-      buf = StreamBuffer.new()
+      buf =
+        StreamBuffer.new()
         |> StreamBuffer.append("old output")
         |> StreamBuffer.append(" + new output")
 
@@ -214,7 +233,9 @@ defmodule BoomLooper.StreamBufferTest do
 
     test "subsequent appends extend restored content" do
       msg = %{id: "r1", content: "line 1\n", title: "build"}
-      buf = StreamBuffer.restore(msg)
+
+      buf =
+        StreamBuffer.restore(msg)
         |> StreamBuffer.append("line 2\n")
 
       assert buf.content == "line 1\nline 2\n"
@@ -257,9 +278,10 @@ defmodule BoomLooper.StreamBufferTest do
     test "simulates a build that streams 100 chunks" do
       buf = StreamBuffer.new(max_bytes: 500)
 
-      buf = Enum.reduce(1..100, buf, fn i, acc ->
-        StreamBuffer.append(acc, "chunk #{i}\n")
-      end)
+      buf =
+        Enum.reduce(1..100, buf, fn i, acc ->
+          StreamBuffer.append(acc, "chunk #{i}\n")
+        end)
 
       # Should have trimmed to ~500 bytes
       assert StreamBuffer.size(buf) <= 500
@@ -274,7 +296,8 @@ defmodule BoomLooper.StreamBufferTest do
 
     test "simulates page reload mid-stream" do
       # Build up some content
-      buf1 = StreamBuffer.new()
+      buf1 =
+        StreamBuffer.new()
         |> StreamBuffer.append("line 1\n", msg_id: "stream-42", title: "Building...")
         |> StreamBuffer.append("line 2\n")
         |> StreamBuffer.append("line 3\n")
@@ -284,7 +307,8 @@ defmodule BoomLooper.StreamBufferTest do
       buf2 = StreamBuffer.restore(msg)
 
       # Continue streaming
-      buf2 = buf2
+      buf2 =
+        buf2
         |> StreamBuffer.append("line 4\n")
         |> StreamBuffer.append("line 5\n")
 
@@ -294,7 +318,8 @@ defmodule BoomLooper.StreamBufferTest do
     end
 
     test "two viewers see the same content from the same buffer" do
-      buf = StreamBuffer.new()
+      buf =
+        StreamBuffer.new()
         |> StreamBuffer.append("shared output\n", msg_id: "shared-1")
 
       # Both viewers upsert into their own message lists

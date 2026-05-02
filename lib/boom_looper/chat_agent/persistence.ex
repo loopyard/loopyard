@@ -13,6 +13,7 @@ defmodule BoomLooper.ChatAgent.Persistence do
 
   @doc "Returns the agent log path for a workspace, or nil if no workspace_id."
   def log_path(nil), do: nil
+
   def log_path(workspace_id) do
     virtual_dir = BoomLooper.Workspace.compose_dir(workspace_id)
     Path.join([virtual_dir, ".boomlooper", "workspace", "agents.log"])
@@ -21,7 +22,9 @@ defmodule BoomLooper.ChatAgent.Persistence do
   @doc "Persist a new agent entry to the log."
   def persist_agent(state, summary_fn) do
     case log_path(state.workspace_id) do
-      nil -> :ok
+      nil ->
+        :ok
+
       path ->
         # Log the full summary so replay produces complete ETS entries
         agent_data = summary_fn.(state) |> Map.delete(:messages)
@@ -40,7 +43,9 @@ defmodule BoomLooper.ChatAgent.Persistence do
   @doc "Persist a message update (partial changes) to the log."
   def persist_message_update(state, msg_id, changes) do
     case log_path(state.workspace_id) do
-      nil -> :ok
+      nil ->
+        :ok
+
       path ->
         safe_append({:msg_update, state.id, msg_id, changes}, path, state.id, state.workspace_id)
     end

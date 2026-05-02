@@ -41,7 +41,10 @@ defmodule BoomLooperWeb.Components.CommonTest do
 
     test "custom class is applied alongside the kind class" do
       assigns = %{flash: %{"error" => "x"}}
-      html = rendered_to_string(~H[<.flash_banner flash={@flash} kind={:error} class="mx-4 mt-2" />])
+
+      html =
+        rendered_to_string(~H[<.flash_banner flash={@flash} kind={:error} class="mx-4 mt-2" />])
+
       assert html =~ "mx-4 mt-2"
       assert html =~ "bg-red-50"
     end

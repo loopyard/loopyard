@@ -87,6 +87,7 @@ defmodule BoomLooper.ChatAgent.CrashBackoffTest do
       # Set some crash history + install a known stream_ref so the
       # ref-tagged :stream_done matches.
       ref = make_ref()
+
       :sys.replace_state(pid, fn state ->
         %{state | status: :thinking, stream_ref: ref}
         |> Map.put(:consecutive_crashes, 3)

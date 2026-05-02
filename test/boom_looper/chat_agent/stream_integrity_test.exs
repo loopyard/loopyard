@@ -111,6 +111,7 @@ defmodule BoomLooper.ChatAgent.StreamIntegrityTest do
       pid = agent_pid(id)
 
       ref = make_ref()
+
       :sys.replace_state(pid, fn s ->
         %{s | stream_ref: ref, status: :thinking, in_flight_partial: "Partial response so far."}
       end)
@@ -213,6 +214,7 @@ defmodule BoomLooper.ChatAgent.StreamIntegrityTest do
 
       current_ref = make_ref()
       stale_ref = make_ref()
+
       :sys.replace_state(pid, fn s ->
         %{s | status: :thinking, stream_ref: current_ref}
       end)

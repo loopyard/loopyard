@@ -57,11 +57,14 @@ defmodule BoomLooper.PubSubBoundaryTest do
 
       cond do
         # Skip comments — the word can appear in docstrings / inline comments
-        String.starts_with?(trimmed, "#") -> []
+        String.starts_with?(trimmed, "#") ->
+          []
+
         # Only care about actual call sites. `Phoenix.PubSub.broadcast(` /
         # `Phoenix.PubSub.broadcast!(` / `Phoenix.PubSub.broadcast_from(`.
         Regex.match?(~r/Phoenix\.PubSub\.broadcast[!_]?[(_]/, line) ->
           [{relative(path), idx, String.trim(line)}]
+
         true ->
           []
       end

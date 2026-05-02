@@ -8,7 +8,7 @@ defmodule BoomLooperWeb.SystemWorkspacesLiveTest do
       {micros, {:ok, _view, html}} = :timer.tc(fn -> live(conn, "/system/workspaces") end)
 
       assert micros < 500_000,
-        "SystemWorkspacesLive mount took #{div(micros, 1000)}ms — synchronous slow call slipped in"
+             "SystemWorkspacesLive mount took #{div(micros, 1000)}ms — synchronous slow call slipped in"
 
       assert html =~ "Workspaces"
     end
@@ -26,6 +26,7 @@ defmodule BoomLooperWeb.SystemWorkspacesLiveTest do
       # Either we have workspaces (and they render with pills) or we
       # don't (and the empty-state copy renders).
       ws_count = length(BoomLooper.SystemStats.workspace_stats())
+
       if ws_count > 0 do
         assert html =~ "Group"
         assert html =~ "ServiceMgr"

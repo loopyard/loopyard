@@ -73,14 +73,17 @@ defmodule BoomLooper.Health do
           :healthy
 
         h.connected and h.snapshot_failures > 0 ->
-          {:degraded, "#{h.snapshot_failures} consecutive snapshot failures — reconciler retrying"}
+          {:degraded,
+           "#{h.snapshot_failures} consecutive snapshot failures — reconciler retrying"}
 
         h.connected == false and h.last_snapshot_at == nil ->
           {:down, "Docker daemon unreachable — no snapshot has ever succeeded"}
 
         h.connected == false ->
           secs_ago = DateTime.diff(DateTime.utc_now(), h.last_snapshot_at)
-          {:degraded, "Event stream disconnected — last snapshot #{secs_ago}s ago, cache retained"}
+
+          {:degraded,
+           "Event stream disconnected — last snapshot #{secs_ago}s ago, cache retained"}
 
         true ->
           :healthy
@@ -125,7 +128,8 @@ defmodule BoomLooper.Health do
             {:degraded, "Last scan #{secs_ago}s ago (reconciler should tick every 30s)"}
 
           drift_count > @drift_degraded_threshold ->
-            {:degraded, "Last scan corrected #{drift_count} drift(s) — agents are dying unexpectedly"}
+            {:degraded,
+             "Last scan corrected #{drift_count} drift(s) — agents are dying unexpectedly"}
 
           true ->
             :healthy

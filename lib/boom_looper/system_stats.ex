@@ -121,7 +121,8 @@ defmodule BoomLooper.SystemStats do
     # macOS: vm_stat for memory breakdown
     case System.cmd("vm_stat", [], stderr_to_stdout: true) do
       {output, 0} ->
-        page_size = 16384  # macOS default on Apple Silicon (16KB)
+        # macOS default on Apple Silicon (16KB)
+        page_size = 16384
 
         pages =
           Regex.scan(~r/^(.+?):\s+(\d+)/m, output)
@@ -141,7 +142,13 @@ defmodule BoomLooper.SystemStats do
 
         used = active + wired + compressed
 
-        %HostMemory{total: total, used: used, free: free, inactive: inactive, compressed: compressed}
+        %HostMemory{
+          total: total,
+          used: used,
+          free: free,
+          inactive: inactive,
+          compressed: compressed
+        }
 
       _ ->
         %HostMemory{total: 0, used: 0, free: 0, inactive: 0, compressed: 0}
@@ -213,16 +220,20 @@ defmodule BoomLooper.SystemStats do
         ws_id = BoomLooper.Workspace.workspace_id(ws.path)
         group_alive = BoomLooper.WorkspaceGroup.whereis(ws_id) != nil
 
-        sm_alive = case Registry.lookup(BoomLooper.ServiceManagerRegistry, ws.path) do
-          [{pid, _}] -> Process.alive?(pid)
-          _ ->
-            # Try virtual dir
-            virtual_dir = BoomLooper.Workspace.compose_dir(ws_id)
-            case Registry.lookup(BoomLooper.ServiceManagerRegistry, virtual_dir) do
-              [{pid, _}] -> Process.alive?(pid)
-              _ -> false
-            end
-        end
+        sm_alive =
+          case Registry.lookup(BoomLooper.ServiceManagerRegistry, ws.path) do
+            [{pid, _}] ->
+              Process.alive?(pid)
+
+            _ ->
+              # Try virtual dir
+              virtual_dir = BoomLooper.Workspace.compose_dir(ws_id)
+
+              case Registry.lookup(BoomLooper.ServiceManagerRegistry, virtual_dir) do
+                [{pid, _}] -> Process.alive?(pid)
+                _ -> false
+              end
+          end
 
         %{
           workspace_id: ws_id,
@@ -249,8 +260,14 @@ defmodule BoomLooper.SystemStats do
     Enum.map(ChatAgent.list_agents(), fn agent ->
       container =
         if agent[:workspace_id] do
-          container_stats[BoomLooper.Workspace.ServiceManager.service_container_name(agent.workspace_id, "workspace")]
+          container_stats[
+            BoomLooper.Workspace.ServiceManager.service_container_name(
+              agent.workspace_id,
+              "workspace"
+            )
+          ]
         end
+
       %{
         agent: agent,
         container: container,
@@ -282,8 +299,10 @@ defmodule BoomLooper.SystemStats do
   """
   def docker_container_stats do
     case BoomLooper.Docker.docker([
-           "stats", "--no-stream",
-           "--format", "{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.PIDs}}"
+           "stats",
+           "--no-stream",
+           "--format",
+           "{{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.PIDs}}"
          ]) do
       {:ok, output} ->
         output
@@ -293,6 +312,7 @@ defmodule BoomLooper.SystemStats do
           case String.split(line, "\t") do
             [name, cpu, mem_usage, mem_pct, pids] ->
               {name, %{cpu: cpu, mem_usage: mem_usage, mem_pct: mem_pct, pids: pids}}
+
             _ ->
               {line, nil}
           end

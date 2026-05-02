@@ -62,7 +62,9 @@ defmodule BoomLooper.Tools.Container.Pagination do
     else
       truncated = String.slice(text, 0, max_chars)
       total = byte_size(text)
-      truncated <> "\n\n... (#{total} bytes total, showing first #{max_chars}. Narrow your query for more targeted results.)"
+
+      truncated <>
+        "\n\n... (#{total} bytes total, showing first #{max_chars}. Narrow your query for more targeted results.)"
     end
   end
 
@@ -73,13 +75,14 @@ defmodule BoomLooper.Tools.Container.Pagination do
   def format_lines(lines, opts \\ []) do
     max_line = opts[:max_line_chars] || 200
 
-    capped_lines = Enum.map(lines, fn line ->
-      if String.length(line) > max_line do
-        String.slice(line, 0, max_line) <> "…"
-      else
-        line
-      end
-    end)
+    capped_lines =
+      Enum.map(lines, fn line ->
+        if String.length(line) > max_line do
+          String.slice(line, 0, max_line) <> "…"
+        else
+          line
+        end
+      end)
 
     {page, footer} = paginate(capped_lines, opts)
 

@@ -126,6 +126,7 @@ defmodule BoomLooper.AgentBoot do
     working_dir = Keyword.fetch!(agent_opts, :working_dir)
     service_name = Keyword.get(opts, :service_name)
     initial_message = Keyword.get(opts, :initial_message)
+
     agent_type =
       Keyword.get(agent_opts, :agent_type) || BoomLooper.Agents.Registry.default_agent_name()
 

@@ -31,10 +31,17 @@ defmodule BoomLooperWeb.MessageLive do
        |> assign(:raw_url, raw_url)
        |> assign(:streaming, streaming)
        |> assign(:streaming_text, "")
-       |> assign(:stream_content, msg.content || "")}  # Local accumulator for streaming
+       # Local accumulator for streaming
+       |> assign(:stream_content, msg.content || "")}
     else
-      {:ok, socket |> assign(:msg, nil) |> assign(:raw_url, nil) |> assign(:streaming, false)
-       |> assign(:agent_id, agent_id) |> assign(:msg_id, msg_id) |> assign(:streaming_text, "")
+      {:ok,
+       socket
+       |> assign(:msg, nil)
+       |> assign(:raw_url, nil)
+       |> assign(:streaming, false)
+       |> assign(:agent_id, agent_id)
+       |> assign(:msg_id, msg_id)
+       |> assign(:streaming_text, "")
        |> assign(:stream_content, "")}
     end
   end
@@ -44,7 +51,9 @@ defmodule BoomLooperWeb.MessageLive do
   @impl true
   def handle_info(%Events.ChatAgentMessage.Message{} = e, socket), do: on_message(e, socket)
   def handle_info(%Events.ChatAgentMessage.TextDelta{} = e, socket), do: on_text_delta(e, socket)
-  def handle_info(%Events.ChatAgentMessage.StreamOutput{} = e, socket), do: on_stream_output(e, socket)
+
+  def handle_info(%Events.ChatAgentMessage.StreamOutput{} = e, socket),
+    do: on_stream_output(e, socket)
 
   # Non-PubSub build-output events (sent as {:build_output, …} intra-
   # process — not a publisher-module topic).
@@ -60,7 +69,8 @@ defmodule BoomLooperWeb.MessageLive do
 
   # Streaming text deltas for assistant messages — accumulate for real-time display.
   @impl Events.ChatAgentMessage.Subscriber
-  def on_text_delta(%Events.ChatAgentMessage.TextDelta{agent_id: id, text: text}, socket) when id == socket.assigns.agent_id do
+  def on_text_delta(%Events.ChatAgentMessage.TextDelta{agent_id: id, text: text}, socket)
+      when id == socket.assigns.agent_id do
     {:noreply, assign(socket, :streaming_text, socket.assigns.streaming_text <> text)}
   end
 
@@ -68,7 +78,10 @@ defmodule BoomLooperWeb.MessageLive do
 
   # Stream output for build/exec_stream — accumulate locally for instant updates.
   @impl Events.ChatAgentMessage.Subscriber
-  def on_stream_output(%Events.ChatAgentMessage.StreamOutput{agent_id: id, msg_id: msg_id, data: data}, socket)
+  def on_stream_output(
+        %Events.ChatAgentMessage.StreamOutput{agent_id: id, msg_id: msg_id, data: data},
+        socket
+      )
       when id == socket.assigns.agent_id and msg_id == socket.assigns.msg_id do
     new_content = socket.assigns.stream_content <> data
     {:noreply, socket |> assign(:stream_content, new_content) |> assign(:streaming, true)}
@@ -100,8 +113,10 @@ defmodule BoomLooperWeb.MessageLive do
 
   defp refresh_message(socket) do
     msg = BoomLooper.ChatAgent.get_message(socket.assigns.agent_id, socket.assigns.msg_id)
+
     if msg do
-      {:noreply, socket
+      {:noreply,
+       socket
        |> assign(:msg, msg)
        |> assign(:streaming, msg.role in [:build, :stream])
        |> assign(:stream_content, msg.content || "")}
@@ -124,8 +139,11 @@ defmodule BoomLooperWeb.MessageLive do
             live
           </span>
         </div>
-        <a :if={@raw_url} href={@raw_url}
-          class="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">
+        <a
+          :if={@raw_url}
+          href={@raw_url}
+          class="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+        >
           raw text
         </a>
       </header>
@@ -138,27 +156,36 @@ defmodule BoomLooperWeb.MessageLive do
           class="text-sm rounded-lg p-4 max-h-[calc(100vh-6rem)]"
         />
 
-        <div :if={@msg.role == :assistant}
+        <div
+          :if={@msg.role == :assistant}
           id="msg-content"
           phx-hook="Markdown"
           data-source={if @streaming_text != "", do: @streaming_text, else: @msg.content}
-          class="prose dark:prose-invert max-w-none">
+          class="prose dark:prose-invert max-w-none"
+        >
           <div class="markdown-body"></div>
         </div>
 
         <%!-- Show streaming indicator when accumulating text --%>
-        <div :if={@streaming_text != "" && @msg.role == :assistant} class="mt-2 flex items-center gap-1.5 text-xs text-amber-500">
+        <div
+          :if={@streaming_text != "" && @msg.role == :assistant}
+          class="mt-2 flex items-center gap-1.5 text-xs text-amber-500"
+        >
           <div class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></div>
           streaming...
         </div>
 
-        <div :if={@msg.role == :user}
-          class="text-sm whitespace-pre-wrap">
+        <div
+          :if={@msg.role == :user}
+          class="text-sm whitespace-pre-wrap"
+        >
           {@msg.content}
         </div>
 
-        <div :if={@msg.role in [:system, :error]}
-          class={"text-sm #{if @msg.role == :error, do: "text-red-600 dark:text-red-400", else: "text-zinc-500 dark:text-zinc-400 italic"}"}>
+        <div
+          :if={@msg.role in [:system, :error]}
+          class={"text-sm #{if @msg.role == :error, do: "text-red-600 dark:text-red-400", else: "text-zinc-500 dark:text-zinc-400 italic"}"}
+        >
           {@msg.content}
         </div>
       </div>

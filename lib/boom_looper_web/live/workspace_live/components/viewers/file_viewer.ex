@@ -8,7 +8,12 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.FileViewer do
   """
   use Phoenix.Component
 
-  alias BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.{FileType, TextViewer, ImageViewer, BinaryViewer}
+  alias BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.{
+    FileType,
+    TextViewer,
+    ImageViewer,
+    BinaryViewer
+  }
 
   attr :path, :string, required: true
   attr :content, :string, required: true
@@ -29,7 +34,12 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.FileViewer do
     assigns = assign(assigns, :file_type, file_type)
 
     ~H"""
-    <TextViewer.text_viewer :if={@file_type == :text} path={@path} content={@content} volume_name={@volume_name} />
+    <TextViewer.text_viewer
+      :if={@file_type == :text}
+      path={@path}
+      content={@content}
+      volume_name={@volume_name}
+    />
     <ImageViewer.image_viewer :if={@file_type == :image} path={@path} content={@content} />
     <BinaryViewer.binary_viewer :if={@file_type in [:binary, :unknown]} path={@path} size={@size} />
     """

@@ -106,12 +106,9 @@ defmodule BoomLooper.ChatAgent.IdleReapTest do
       # Backdate activity past the 1h threshold + install a
       # captured session_id so reap is eligible.
       stale_time = DateTime.add(DateTime.utc_now(), -3700, :second)
+
       :sys.replace_state(pid, fn s ->
-        %{s |
-          status: :idle,
-          last_activity_at: stale_time,
-          claude_session_id: "sess-to-reap-xyz"
-        }
+        %{s | status: :idle, last_activity_at: stale_time, claude_session_id: "sess-to-reap-xyz"}
       end)
 
       # Fire :idle_check directly.
@@ -136,11 +133,7 @@ defmodule BoomLooper.ChatAgent.IdleReapTest do
       original_session = :sys.get_state(pid).session
 
       :sys.replace_state(pid, fn s ->
-        %{s |
-          status: :idle,
-          last_activity_at: stale_time,
-          claude_session_id: nil
-        }
+        %{s | status: :idle, last_activity_at: stale_time, claude_session_id: nil}
       end)
 
       send(pid, :idle_check)
@@ -161,11 +154,7 @@ defmodule BoomLooper.ChatAgent.IdleReapTest do
       original_session = :sys.get_state(pid).session
 
       :sys.replace_state(pid, fn s ->
-        %{s |
-          status: :thinking,
-          last_activity_at: stale_time,
-          claude_session_id: "sess-xyz"
-        }
+        %{s | status: :thinking, last_activity_at: stale_time, claude_session_id: "sess-xyz"}
       end)
 
       send(pid, :idle_check)
@@ -186,11 +175,7 @@ defmodule BoomLooper.ChatAgent.IdleReapTest do
       original_session = :sys.get_state(pid).session
 
       :sys.replace_state(pid, fn s ->
-        %{s |
-          status: :idle,
-          last_activity_at: recent,
-          claude_session_id: "sess-fresh"
-        }
+        %{s | status: :idle, last_activity_at: recent, claude_session_id: "sess-fresh"}
       end)
 
       send(pid, :idle_check)

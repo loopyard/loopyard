@@ -36,8 +36,14 @@ defmodule BoomLooperWeb.Components.SideNav do
   def section(assigns) do
     ~H"""
     <section class={["px-3 pt-4 pb-1 first:pt-3", @class]}>
-      <div :if={@label || @actions != []} class="flex items-center justify-between px-2 mb-1.5 md:mb-1 min-h-6">
-        <h3 :if={@label} class="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 font-semibold">
+      <div
+        :if={@label || @actions != []}
+        class="flex items-center justify-between px-2 mb-1.5 md:mb-1 min-h-6"
+      >
+        <h3
+          :if={@label}
+          class="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 font-semibold"
+        >
           {@label}
         </h3>
         <div :if={@actions != []} class="flex-none">{render_slot(@actions)}</div>
@@ -138,7 +144,8 @@ defmodule BoomLooperWeb.Components.SideNav do
   attr :size, :atom, default: :sm, values: [:sm, :md]
 
   def dot(assigns) do
-    assigns = assign(assigns, :size_class, if(assigns.size == :md, do: "w-2 h-2", else: "w-1.5 h-1.5"))
+    assigns =
+      assign(assigns, :size_class, if(assigns.size == :md, do: "w-2 h-2", else: "w-1.5 h-1.5"))
 
     ~H"""
     <span class={["rounded-full flex-none", @size_class, @class]} aria-hidden="true"></span>

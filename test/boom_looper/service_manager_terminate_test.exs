@@ -17,7 +17,9 @@ defmodule BoomLooper.ServiceManagerTerminateTest do
 
   describe "terminate is always called on stop" do
     setup do
-      tmp_dir = Path.join(System.tmp_dir!(), "boom-looper-term-call-test-#{:rand.uniform(100_000)}")
+      tmp_dir =
+        Path.join(System.tmp_dir!(), "boom-looper-term-call-test-#{:rand.uniform(100_000)}")
+
       File.mkdir_p!(tmp_dir)
       workspace_id = Workspace.workspace_id(tmp_dir)
 
@@ -31,7 +33,10 @@ defmodule BoomLooper.ServiceManagerTerminateTest do
     end
 
     @tag :slow
-    test "stop_workspace terminates ServiceManager process", %{tmp_dir: tmp_dir, workspace_id: ws_id} do
+    test "stop_workspace terminates ServiceManager process", %{
+      tmp_dir: tmp_dir,
+      workspace_id: ws_id
+    } do
       {:ok, _} = WorkspaceSupervisor.start_workspace(ws_id, tmp_dir)
       Process.sleep(500)
 
@@ -53,25 +58,32 @@ defmodule BoomLooper.ServiceManagerTerminateTest do
   describe "terminate does not call Compose.down" do
     @describetag :docker
     setup do
-      tmp_dir = Path.join(System.tmp_dir!(), "boom-looper-term-keep-test-#{:rand.uniform(100_000)}")
+      tmp_dir =
+        Path.join(System.tmp_dir!(), "boom-looper-term-keep-test-#{:rand.uniform(100_000)}")
+
       File.mkdir_p!(tmp_dir)
       workspace_id = Workspace.workspace_id(tmp_dir)
 
       config_dir = Path.join([tmp_dir, ".boomlooper", "repo"])
       File.mkdir_p!(config_dir)
-      File.write!(Path.join(config_dir, "workspace.json"), Jason.encode!(%{
-        "name" => "terminate-keep-test",
-        "dockerfile" => "FROM alpine:latest\nCMD sleep infinity",
-        "processes" => [],
-        "services" => [],
-        "env_vars" => %{}
-      }))
+
+      File.write!(
+        Path.join(config_dir, "workspace.json"),
+        Jason.encode!(%{
+          "name" => "terminate-keep-test",
+          "dockerfile" => "FROM alpine:latest\nCMD sleep infinity",
+          "processes" => [],
+          "services" => [],
+          "env_vars" => %{}
+        })
+      )
 
       on_exit(fn ->
         WorkspaceSupervisor.stop_workspace(workspace_id)
         Process.sleep(200)
 
         virtual_dir = Path.join([Workspace.home_dir(), "workspaces", workspace_id])
+
         try do
           BoomLooper.Compose.down_volumes(virtual_dir, workspace_id)
         rescue
@@ -86,7 +98,10 @@ defmodule BoomLooper.ServiceManagerTerminateTest do
       %{tmp_dir: tmp_dir, workspace_id: workspace_id}
     end
 
-    test "containers keep running after ServiceManager terminates", %{tmp_dir: tmp_dir, workspace_id: ws_id} do
+    test "containers keep running after ServiceManager terminates", %{
+      tmp_dir: tmp_dir,
+      workspace_id: ws_id
+    } do
       {:ok, _} = WorkspaceSupervisor.start_workspace(ws_id, tmp_dir)
       Process.sleep(2_000)
 

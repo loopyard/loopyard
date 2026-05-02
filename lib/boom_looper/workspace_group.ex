@@ -65,7 +65,8 @@ defmodule BoomLooper.WorkspaceGroup do
   # owns the mutagen session). Looked up via the ETS registry so adapters
   # stay decoupled from the supervisor tree.
   defp source_children(workspace_id) do
-    with %{project_id: project_id} = workspace <- BoomLooper.ProjectRegistry.get_workspace(workspace_id),
+    with %{project_id: project_id} = workspace <-
+           BoomLooper.ProjectRegistry.get_workspace(workspace_id),
          %{source_type: :local} <- BoomLooper.ProjectRegistry.get_project(project_id) do
       worktree_path =
         workspace[:worktree_path] ||

@@ -30,7 +30,9 @@ defmodule BoomLooperWeb.SystemQuarantineLive do
   end
 
   defp assign_iex(socket) do
-    if connected?(socket), do: subscribe_iex(socket), else: assign(socket, :iex_session, %{level: nil})
+    if connected?(socket),
+      do: subscribe_iex(socket),
+      else: assign(socket, :iex_session, %{level: nil})
   end
 
   # --- PubSub dispatch ---
@@ -143,14 +145,19 @@ defmodule BoomLooperWeb.SystemQuarantineLive do
                   </tr>
                 </thead>
                 <tbody>
-                  <tr :for={q <- @quarantined} class="border-t border-zinc-200 dark:border-zinc-700/50">
+                  <tr
+                    :for={q <- @quarantined}
+                    class="border-t border-zinc-200 dark:border-zinc-700/50"
+                  >
                     <td class="px-3 py-2 font-mono">
                       <div class="font-semibold">{q.name}</div>
                       <div class="text-zinc-400 text-[11px]">{q.id}</div>
                     </td>
                     <td class="px-3 py-2 font-mono text-zinc-500">{q.workspace_id || "—"}</td>
                     <td class="px-3 py-2 text-zinc-500">
-                      <%= if q.crashed_at, do: Calendar.strftime(q.crashed_at, "%Y-%m-%d %H:%M:%S"), else: "—" %>
+                      {if q.crashed_at,
+                        do: Calendar.strftime(q.crashed_at, "%Y-%m-%d %H:%M:%S"),
+                        else: "—"}
                     </td>
                     <td class="px-3 py-2 text-zinc-600 dark:text-zinc-400 max-w-[400px] truncate">
                       {q.reason || "—"}

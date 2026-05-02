@@ -50,6 +50,7 @@ defmodule BoomLooper.Test.FakeVolumeIO do
   end
 
   defp under?(_path, "."), do: true
+
   defp under?(path, prefix) do
     String.starts_with?(path, prefix <> "/") or path == prefix
   end

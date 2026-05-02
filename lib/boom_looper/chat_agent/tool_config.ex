@@ -96,16 +96,18 @@ defmodule BoomLooper.ChatAgent.ToolConfig do
 
   @doc "Builds the allowed tools list from tool modules and agent type."
   def build_allowed_tools(tool_modules, container_only?) do
-    mcp_tools = Enum.flat_map(tool_modules, fn mod ->
-      info = mod.__tool_server__()
-      server_name = info.name
+    mcp_tools =
+      Enum.flat_map(tool_modules, fn mod ->
+        info = mod.__tool_server__()
+        server_name = info.name
 
-      Enum.map(info.tools, fn tool_mod ->
-        "mcp__#{server_name}__#{tool_mod.__tool_name__()}"
+        Enum.map(info.tools, fn tool_mod ->
+          "mcp__#{server_name}__#{tool_mod.__tool_name__()}"
+        end)
       end)
-    end)
 
-    builtins = if container_only?, do: @builtin_tools_container_only, else: @builtin_tools_bind_mount
+    builtins =
+      if container_only?, do: @builtin_tools_container_only, else: @builtin_tools_bind_mount
 
     builtins ++ mcp_tools
   end

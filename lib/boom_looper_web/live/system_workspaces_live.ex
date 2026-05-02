@@ -42,7 +42,9 @@ defmodule BoomLooperWeb.SystemWorkspacesLive do
   end
 
   defp assign_iex(socket) do
-    if connected?(socket), do: subscribe_iex(socket), else: assign(socket, :iex_session, %{level: nil})
+    if connected?(socket),
+      do: subscribe_iex(socket),
+      else: assign(socket, :iex_session, %{level: nil})
   end
 
   # Bucket Observer's container list by workspace_id.
@@ -50,7 +52,9 @@ defmodule BoomLooperWeb.SystemWorkspacesLive do
     BoomLooper.Docker.Observer.containers()
     |> Enum.reduce(%{}, fn c, acc ->
       case c.workspace_id do
-        nil -> acc
+        nil ->
+          acc
+
         ws_id ->
           Map.update(acc, ws_id, %{total: 1, running: bool_to_int(c.running)}, fn cur ->
             %{total: cur.total + 1, running: cur.running + bool_to_int(c.running)}
@@ -67,7 +71,10 @@ defmodule BoomLooperWeb.SystemWorkspacesLive do
   @impl true
   def handle_info(%Events.DockerObserver.Changed{} = e, socket), do: on_changed(e, socket)
   def handle_info(%Events.DockerObserver.Reset{} = e, socket), do: on_reset(e, socket)
-  def handle_info(%Events.DockerObserver.Disconnected{} = e, socket), do: on_disconnected(e, socket)
+
+  def handle_info(%Events.DockerObserver.Disconnected{} = e, socket),
+    do: on_disconnected(e, socket)
+
   def handle_info(%Events.DockerObserver.Reconnected{} = e, socket), do: on_reconnected(e, socket)
 
   def handle_info(%Events.ChatAgent.Started{} = e, socket), do: on_started(e, socket)
@@ -82,8 +89,11 @@ defmodule BoomLooperWeb.SystemWorkspacesLive do
   def handle_info(%Events.ChatAgent.Quarantined{} = e, socket), do: on_quarantined(e, socket)
   def handle_info(%Events.ChatAgent.Released{} = e, socket), do: on_released(e, socket)
 
-  def handle_info(%Events.WorkspaceServices.ServicesUpdated{} = e, socket), do: on_services_updated(e, socket)
-  def handle_info(%Events.WorkspaceServices.ComposeResult{} = e, socket), do: on_compose_result(e, socket)
+  def handle_info(%Events.WorkspaceServices.ServicesUpdated{} = e, socket),
+    do: on_services_updated(e, socket)
+
+  def handle_info(%Events.WorkspaceServices.ComposeResult{} = e, socket),
+    do: on_compose_result(e, socket)
 
   # Non-PubSub internal messages from the restart task.
   def handle_info({:workspace_restarted, ws_id, :ok}, socket) do
@@ -152,8 +162,10 @@ defmodule BoomLooperWeb.SystemWorkspacesLive do
   @impl true
   def handle_event("restart_workspace", %{"id" => ws_id, "path" => path}, socket) do
     lv = self()
+
     Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
       BoomLooper.WorkspaceSupervisor.stop_workspace(ws_id)
+
       case BoomLooper.WorkspaceSupervisor.start_workspace(ws_id, path) do
         {:ok, _} -> send(lv, {:workspace_restarted, ws_id, :ok})
         {:error, reason} -> send(lv, {:workspace_restarted, ws_id, {:error, reason}})
@@ -166,16 +178,23 @@ defmodule BoomLooperWeb.SystemWorkspacesLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <.page_shell breadcrumbs={[{"Boom Looper", "/"}, {"System", "/system"}, {"Workspaces", nil}]} iex_session={@iex_session} max_width={:lg} flash={@flash}>
-        <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
-          Workspaces <span class="text-zinc-400 font-normal">({length(@workspaces)})</span>
-        </h2>
+    <.page_shell
+      breadcrumbs={[{"Boom Looper", "/"}, {"System", "/system"}, {"Workspaces", nil}]}
+      iex_session={@iex_session}
+      max_width={:lg}
+      flash={@flash}
+    >
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
+        Workspaces <span class="text-zinc-400 font-normal">({length(@workspaces)})</span>
+      </h2>
 
-        <div :if={@workspaces == []} class="text-sm text-zinc-400 dark:text-zinc-500">No workspaces registered</div>
+      <div :if={@workspaces == []} class="text-sm text-zinc-400 dark:text-zinc-500">
+        No workspaces registered
+      </div>
 
-        <div :if={@workspaces != []} class="space-y-2">
-          <.workspace_row :for={ws <- @workspaces} ws={ws} containers={@container_counts} />
-        </div>
+      <div :if={@workspaces != []} class="space-y-2">
+        <.workspace_row :for={ws <- @workspaces} ws={ws} containers={@container_counts} />
+      </div>
     </.page_shell>
     """
   end
@@ -188,7 +207,8 @@ defmodule BoomLooperWeb.SystemWorkspacesLive do
     <div class="rounded-lg border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 px-4 py-3">
       <div class="flex items-center justify-between gap-3">
         <div class="flex items-center gap-3 min-w-0">
-          <div class={"w-2 h-2 rounded-full flex-none #{if @ws.group_alive && @ws.service_manager_alive, do: "bg-green-500", else: "bg-red-500"}"}></div>
+          <div class={"w-2 h-2 rounded-full flex-none #{if @ws.group_alive && @ws.service_manager_alive, do: "bg-green-500", else: "bg-red-500"}"}>
+          </div>
           <div class="min-w-0">
             <div class="flex items-center gap-2">
               <span class="text-sm font-medium">{@ws.project_name}</span>
@@ -223,8 +243,10 @@ defmodule BoomLooperWeb.SystemWorkspacesLive do
     ~H"""
     <span class={[
       "text-xs font-medium rounded-full px-2 py-0.5",
-      if(@alive, do: "text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30",
-                  else: "text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/30")
+      if(@alive,
+        do: "text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30",
+        else: "text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/30"
+      )
     ]}>
       {@label}
     </span>

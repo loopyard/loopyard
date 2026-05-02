@@ -234,8 +234,7 @@ defmodule BoomLooper.SagaTest do
         }
       ]
 
-      assert {:error, {:step_failed, :c, :triggered},
-              {:rollback_failed, [{:b, :b_failed}]}} =
+      assert {:error, {:step_failed, :c, :triggered}, {:rollback_failed, [{:b, :b_failed}]}} =
                Saga.run(steps, name: :unit_test)
 
       # a's rollback still ran even though b's failed

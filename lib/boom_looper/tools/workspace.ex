@@ -12,9 +12,10 @@ defmodule BoomLooper.Tools.Workspace do
 
   # --- Tool definitions ---
 
-  tool :set_workspace_name, "Set the project name. Pick something a human will recognize and that doesn't collide with other projects (a numeric suffix is appended on collision). This is what shows up in the project list." do
-    field :agent_id, :string, required: true
-    field :name, :string, required: true
+  tool :set_workspace_name,
+       "Set the project name. Pick something a human will recognize and that doesn't collide with other projects (a numeric suffix is appended on collision). This is what shows up in the project list." do
+    field(:agent_id, :string, required: true)
+    field(:name, :string, required: true)
 
     def execute(%{agent_id: agent_id, name: name} = params, assigns) do
       with :ok <- BoomLooper.Tool.authorize_agent(params, assigns) do
@@ -23,15 +24,20 @@ defmodule BoomLooper.Tools.Workspace do
     end
   end
 
-  tool :set_system_prompt, "Set a system prompt fragment that future agents will see when working on this project." do
-    field :agent_id, :string, required: true
-    field :system_prompt, :string, required: true
+  tool :set_system_prompt,
+       "Set a system prompt fragment that future agents will see when working on this project." do
+    field(:agent_id, :string, required: true)
+    field(:system_prompt, :string, required: true)
 
     def execute(%{agent_id: agent_id, system_prompt: prompt} = params, assigns) do
       with :ok <- BoomLooper.Tool.authorize_agent(params, assigns) do
-        BoomLooper.Tools.Workspace.do_update_config(agent_id, fn ws ->
-          %{ws | system_prompt: prompt}
-        end, "Wrote system prompt to workspace config. Future agents will see this.")
+        BoomLooper.Tools.Workspace.do_update_config(
+          agent_id,
+          fn ws ->
+            %{ws | system_prompt: prompt}
+          end,
+          "Wrote system prompt to workspace config. Future agents will see this."
+        )
       end
     end
   end
@@ -45,8 +51,11 @@ defmodule BoomLooper.Tools.Workspace do
     case workspace_id && BoomLooper.ProjectRegistry.get_workspace(workspace_id) do
       %{project_id: project_id} ->
         with {:ok, project} <- BoomLooper.ProjectRegistry.rename_project(project_id, name) do
-          do_update_config(agent_id, fn ws -> %{ws | name: project.name} end,
-            "Set project name to \"#{project.name}\". This is now what appears in the project list.")
+          do_update_config(
+            agent_id,
+            fn ws -> %{ws | name: project.name} end,
+            "Set project name to \"#{project.name}\". This is now what appears in the project list."
+          )
         else
           {:error, :empty_name} -> {:error, "Project name can't be empty"}
           {:error, :not_found} -> {:error, "Project not found for agent #{agent_id}"}
@@ -54,8 +63,11 @@ defmodule BoomLooper.Tools.Workspace do
         end
 
       _ ->
-        do_update_config(agent_id, fn ws -> %{ws | name: name} end,
-          "Set workspace name to \"#{name}\" in config.")
+        do_update_config(
+          agent_id,
+          fn ws -> %{ws | name: name} end,
+          "Set workspace name to \"#{name}\" in config."
+        )
     end
   end
 
@@ -64,15 +76,17 @@ defmodule BoomLooper.Tools.Workspace do
     workspace_id = find_workspace_id(agent_id)
 
     if workspace_id do
-      volume_name = case BoomLooper.ProjectRegistry.get_workspace(workspace_id) do
-        %{volume: vol} when is_binary(vol) -> vol
-        _ -> "code-#{workspace_id}"
-      end
+      volume_name =
+        case BoomLooper.ProjectRegistry.get_workspace(workspace_id) do
+          %{volume: vol} when is_binary(vol) -> vol
+          _ -> "code-#{workspace_id}"
+        end
 
-      ws = case Workspace.load_from_volume(volume_name) do
-        {:ok, existing} -> existing
-        _ -> %Workspace{}
-      end
+      ws =
+        case Workspace.load_from_volume(volume_name) do
+          {:ok, existing} -> existing
+          _ -> %Workspace{}
+        end
 
       updated = update_fn.(ws)
 
@@ -86,7 +100,6 @@ defmodule BoomLooper.Tools.Workspace do
   end
 
   # --- Private ---
-
 
   defp find_workspace_id(agent_id) do
     case BoomLooper.ChatAgent.get_state(agent_id) do

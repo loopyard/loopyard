@@ -38,8 +38,8 @@ defmodule BoomLooper.InvariantsTest do
         }
 
         assert {:ok, _} = Jason.encode(tool_def),
-          "#{tool_mod} tool definition is not JSON-serializable — " <>
-          "check for unevaluated sigils or AST nodes in params"
+               "#{tool_mod} tool definition is not JSON-serializable — " <>
+                 "check for unevaluated sigils or AST nodes in params"
       end
     end
 
@@ -57,8 +57,11 @@ defmodule BoomLooper.InvariantsTest do
       for file <- tool_files do
         # Convert file name to expected tool name (they should match)
         assert file in registered_names or
-                 String.replace(file, "_", "") in Enum.map(MapSet.to_list(registered_names), &String.replace(&1, "_", "")),
-          "lib/boom_looper/tools/container/#{file}.ex exists but no tool named '#{file}' is registered in Container.__tool_server__/0"
+                 String.replace(file, "_", "") in Enum.map(
+                   MapSet.to_list(registered_names),
+                   &String.replace(&1, "_", "")
+                 ),
+               "lib/boom_looper/tools/container/#{file}.ex exists but no tool named '#{file}' is registered in Container.__tool_server__/0"
       end
     end
 
@@ -66,9 +69,16 @@ defmodule BoomLooper.InvariantsTest do
       for tool_mod <- tool_modules() do
         # Ensure the module is loaded — function_exported? doesn't autoload
         Code.ensure_loaded!(tool_mod)
-        assert function_exported?(tool_mod, :__tool_name__, 0), "#{tool_mod} missing __tool_name__/0"
-        assert function_exported?(tool_mod, :__description__, 0), "#{tool_mod} missing __description__/0"
-        assert function_exported?(tool_mod, :input_schema, 0), "#{tool_mod} missing input_schema/0"
+
+        assert function_exported?(tool_mod, :__tool_name__, 0),
+               "#{tool_mod} missing __tool_name__/0"
+
+        assert function_exported?(tool_mod, :__description__, 0),
+               "#{tool_mod} missing __description__/0"
+
+        assert function_exported?(tool_mod, :input_schema, 0),
+               "#{tool_mod} missing input_schema/0"
+
         assert function_exported?(tool_mod, :execute, 2), "#{tool_mod} missing execute/2"
       end
     end
@@ -104,8 +114,8 @@ defmodule BoomLooper.InvariantsTest do
         end)
 
       assert violations == [],
-        "System.cmd(\"docker\") found outside Docker module: #{inspect(violations)}. " <>
-        "Use BoomLooper.Docker.docker/2 or Docker.stream/3 instead."
+             "System.cmd(\"docker\") found outside Docker module: #{inspect(violations)}. " <>
+               "Use BoomLooper.Docker.docker/2 or Docker.stream/3 instead."
     end
   end
 
@@ -127,10 +137,10 @@ defmodule BoomLooper.InvariantsTest do
         # even with a fake workspace.
         assert is_binary(adapter.checkout_path(dummy_workspace)) or
                  is_nil(adapter.checkout_path(dummy_workspace)),
-          "#{adapter}.checkout_path crashed"
+               "#{adapter}.checkout_path crashed"
 
         assert adapter.dirty?(dummy_workspace) in [true, false],
-          "#{adapter}.dirty? crashed"
+               "#{adapter}.dirty? crashed"
 
         case adapter.current_revision(dummy_workspace) do
           {:ok, rev} -> assert is_binary(rev)
@@ -178,7 +188,7 @@ defmodule BoomLooper.InvariantsTest do
 
       for table <- table_names do
         assert String.contains?(app_source, ":#{table}"),
-          "ETS table :#{table} is defined in StateKeeper but never referenced elsewhere"
+               "ETS table :#{table} is defined in StateKeeper but never referenced elsewhere"
       end
     end
   end
@@ -210,8 +220,8 @@ defmodule BoomLooper.InvariantsTest do
       # Allow known static topics that use module-level constants
       # (these are matched via @topic attributes, not string literals)
       assert MapSet.size(orphaned) == 0,
-        "Broadcast topics with no subscriber: #{inspect(MapSet.to_list(orphaned))}. " <>
-        "If these use module constants (@topic), this is a false positive."
+             "Broadcast topics with no subscriber: #{inspect(MapSet.to_list(orphaned))}. " <>
+               "If these use module constants (@topic), this is a false positive."
     end
   end
 
@@ -225,6 +235,7 @@ defmodule BoomLooper.InvariantsTest do
         Path.wildcard("lib/boom_looper_web/**/*.ex")
         |> Enum.flat_map(fn path ->
           content = File.read!(path)
+
           if String.contains?(content, "ServiceStatus.for_workspace") do
             [path |> String.replace("lib/", "")]
           else
@@ -233,8 +244,8 @@ defmodule BoomLooper.InvariantsTest do
         end)
 
       assert violations == [],
-        "LiveViews must use Observer.services_for(workspace_id), not " <>
-        "ServiceStatus.for_workspace: #{inspect(violations)}"
+             "LiveViews must use Observer.services_for(workspace_id), not " <>
+               "ServiceStatus.for_workspace: #{inspect(violations)}"
     end
 
     test "every service_statuses assignment in workspace_live is guarded against empty replacement" do
@@ -302,9 +313,9 @@ defmodule BoomLooper.InvariantsTest do
       # Exactly 1 unguarded assignment is allowed: mount's initial value.
       # Everything else must use guard_service_statuses to prevent flapping.
       assert length(unguarded) <= 1,
-        "Unguarded service_statuses assignments will cause sidebar flapping. " <>
-          "Use guard_service_statuses(socket, new_statuses):\n" <>
-          Enum.join(unguarded, "\n")
+             "Unguarded service_statuses assignments will cause sidebar flapping. " <>
+               "Use guard_service_statuses(socket, new_statuses):\n" <>
+               Enum.join(unguarded, "\n")
     end
   end
 
@@ -332,9 +343,9 @@ defmodule BoomLooper.InvariantsTest do
       # 3 remaining: compose_dir/1 definition, normalize path backfill,
       # normalize compose_dir backfill. Everything else uses compose_dir/1.
       assert count <= 3,
-        "Ad-hoc virtual dir computations increased to #{count}. " <>
-        "Use workspace.compose_dir from the workspace record instead of " <>
-        "computing Path.join([home_dir(), \"workspaces\", id]) inline."
+             "Ad-hoc virtual dir computations increased to #{count}. " <>
+               "Use workspace.compose_dir from the workspace record instead of " <>
+               "computing Path.join([home_dir(), \"workspaces\", id]) inline."
     end
   end
 
@@ -374,8 +385,8 @@ defmodule BoomLooper.InvariantsTest do
         end)
 
       assert violations == [],
-        "Files exceeding size cap:\n#{Enum.join(violations, "\n")}\n\n" <>
-        "Don't raise the cap. Extract a module instead."
+             "Files exceeding size cap:\n#{Enum.join(violations, "\n")}\n\n" <>
+               "Don't raise the cap. Extract a module instead."
     end
   end
 

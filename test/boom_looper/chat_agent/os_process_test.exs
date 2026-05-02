@@ -10,6 +10,7 @@ defmodule BoomLooper.ChatAgent.OSProcessTest do
 
       # Let it die
       ref = Process.monitor(pid)
+
       receive do
         {:DOWN, ^ref, :process, ^pid, _} -> :ok
       after

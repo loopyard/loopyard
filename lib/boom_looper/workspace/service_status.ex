@@ -82,41 +82,55 @@ defmodule BoomLooper.Workspace.ServiceStatus do
     # Format: "services:" followed by indented service names
     lines = String.split(yaml_content, "\n")
 
-    {services, _} = Enum.reduce(lines, {[], false}, fn line, {acc, in_services} ->
-      cond do
-        String.starts_with?(line, "services:") ->
-          {acc, true}
-
-        String.starts_with?(line, "volumes:") or String.starts_with?(line, "networks:") ->
-          {acc, false}
-
-        in_services and Regex.match?(~r/^  [a-z]/, line) ->
-          # Service name at 2-space indent under services:
-          service_name = line |> String.trim() |> String.trim_trailing(":")
-          # Skip workspace container - it's internal
-          if service_name != "workspace" do
-            service = %Service{
-              name: service_name,
-              type: infer_service_type_from_name(service_name),
-              status: :stopped
-            }
-            {[service | acc], true}
-          else
+    {services, _} =
+      Enum.reduce(lines, {[], false}, fn line, {acc, in_services} ->
+        cond do
+          String.starts_with?(line, "services:") ->
             {acc, true}
-          end
 
-        true ->
-          {acc, in_services}
-      end
-    end)
+          String.starts_with?(line, "volumes:") or String.starts_with?(line, "networks:") ->
+            {acc, false}
+
+          in_services and Regex.match?(~r/^  [a-z]/, line) ->
+            # Service name at 2-space indent under services:
+            service_name = line |> String.trim() |> String.trim_trailing(":")
+            # Skip workspace container - it's internal
+            if service_name != "workspace" do
+              service = %Service{
+                name: service_name,
+                type: infer_service_type_from_name(service_name),
+                status: :stopped
+              }
+
+              {[service | acc], true}
+            else
+              {acc, true}
+            end
+
+          true ->
+            {acc, in_services}
+        end
+      end)
 
     Enum.reverse(services)
   end
 
   defp infer_service_type_from_name(name) do
     cond do
-      name in ["postgres", "redis", "mysql", "mongo", "minio", "rabbitmq", "memcached", "elasticsearch"] -> :stock
-      true -> :process
+      name in [
+        "postgres",
+        "redis",
+        "mysql",
+        "mongo",
+        "minio",
+        "rabbitmq",
+        "memcached",
+        "elasticsearch"
+      ] ->
+        :stock
+
+      true ->
+        :process
     end
   end
 
@@ -136,6 +150,7 @@ defmodule BoomLooper.Workspace.ServiceStatus do
     cond do
       Docker.container_running?(container_name) ->
         ports = get_container_ports(container_name)
+
         %{
           container: container_name,
           ports: ports,
@@ -147,6 +162,7 @@ defmodule BoomLooper.Workspace.ServiceStatus do
         # Container exists but not running - check if it crashed
         exit_info = Docker.container_state(container_name)
         status = if exit_info && exit_info.exit_code > 0, do: :crashed, else: :stopped
+
         %{
           container: container_name,
           ports: %{},
@@ -172,7 +188,14 @@ defmodule BoomLooper.Workspace.ServiceStatus do
   @spec merge_status([Service.t()], %{String.t() => map()}) :: [Service.t()]
   def merge_status(defined, running_states) do
     Enum.map(defined, fn %Service{} = service ->
-      state = Map.get(running_states, service.name, %{container: nil, ports: %{}, status: :stopped, exit_info: nil})
+      state =
+        Map.get(running_states, service.name, %{
+          container: nil,
+          ports: %{},
+          status: :stopped,
+          exit_info: nil
+        })
+
       struct!(service, state)
     end)
   end
@@ -195,15 +218,19 @@ defmodule BoomLooper.Workspace.ServiceStatus do
     project_name = BoomLooper.Compose.project_name(workspace_id)
 
     case Docker.docker([
-      "ps", "--filter", "name=#{project_name}",
-      "--format", "{{.Names}}\t{{.Image}}\t{{.Ports}}\t{{.Status}}"
-    ]) do
+           "ps",
+           "--filter",
+           "name=#{project_name}",
+           "--format",
+           "{{.Names}}\t{{.Image}}\t{{.Ports}}\t{{.Status}}"
+         ]) do
       {:ok, output} ->
         output
         |> String.split("\n", trim: true)
         |> Enum.map(&parse_docker_ps_line(&1, project_name))
         |> Enum.reject(&is_nil/1)
-        |> Enum.reject(&(&1.name == "workspace"))  # Exclude workspace container
+        # Exclude workspace container
+        |> Enum.reject(&(&1.name == "workspace"))
 
       _ ->
         []
@@ -214,7 +241,8 @@ defmodule BoomLooper.Workspace.ServiceStatus do
     case String.split(line, "\t") do
       [container_name, image, ports_str, docker_status] ->
         # Extract service name from container name (e.g., "bl-848d-postgres-1" -> "postgres")
-        service_name = container_name
+        service_name =
+          container_name
           |> String.replace_prefix("#{project_name}-", "")
           |> String.replace_suffix("-1", "")
 

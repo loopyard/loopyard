@@ -32,19 +32,34 @@ defmodule BoomLooper.Workspace.Setup.ErrorTest do
     end
 
     test "docker daemon unreachable is transient" do
-      err = Error.classify("Cannot connect to the Docker daemon at unix:///var/run/docker.sock", :volume)
+      err =
+        Error.classify(
+          "Cannot connect to the Docker daemon at unix:///var/run/docker.sock",
+          :volume
+        )
+
       assert err.code == :docker_daemon_unreachable
       assert err.transient? == true
     end
 
     test "image pull i/o timeout is transient" do
-      err = Error.classify("failed to resolve reference \"docker.io/library/alpine:latest\": i/o timeout", :seeding)
+      err =
+        Error.classify(
+          "failed to resolve reference \"docker.io/library/alpine:latest\": i/o timeout",
+          :seeding
+        )
+
       assert err.code == :image_pull_failure
       assert err.transient? == true
     end
 
     test "network failure during git clone is transient" do
-      err = Error.classify("fatal: unable to access 'https://github.com/x/y.git/': Could not resolve host", :worktree)
+      err =
+        Error.classify(
+          "fatal: unable to access 'https://github.com/x/y.git/': Could not resolve host",
+          :worktree
+        )
+
       assert err.code == :network_timeout
       assert err.transient? == true
     end

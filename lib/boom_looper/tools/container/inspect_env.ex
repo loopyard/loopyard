@@ -1,7 +1,8 @@
 defmodule BoomLooper.Tools.Container.InspectEnv do
   use BoomLooper.Tool,
     name: "inspect_env",
-    description: "Inspect the container environment: installed languages, databases, tools, running processes, listening ports",
+    description:
+      "Inspect the container environment: installed languages, databases, tools, running processes, listening ports",
     busy_words: ["checking the environment", "env snooping"],
     params: [
       agent_id: {:string, required: true}

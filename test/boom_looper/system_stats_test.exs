@@ -85,6 +85,7 @@ defmodule BoomLooper.SystemStatsTest do
       # investigate whether a shell call slipped in.
       assert micros < 200_000,
              "workspace_stats took #{micros}µs — should be Registry-only"
+
       assert is_list(result)
     end
   end

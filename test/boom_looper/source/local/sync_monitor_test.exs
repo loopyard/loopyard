@@ -81,7 +81,8 @@ defmodule BoomLooper.Source.Local.SyncMonitorTest do
         assert_receive %BoomLooper.Events.SourceSync.Updated{
                          workspace_id: ^ws_id,
                          status: %{status: :running}
-                       }, 500
+                       },
+                       500
       end)
     end
   end
@@ -109,7 +110,9 @@ defmodule BoomLooper.Source.Local.SyncMonitorTest do
       assert_receive %BoomLooper.Events.SourceSync.Updated{
                        workspace_id: ^ws_id,
                        status: %{status: :errored, last_error: err}
-                     }, 500
+                     },
+                     500
+
       assert is_binary(err)
       assert String.contains?(err, "worktree missing")
     end
@@ -149,7 +152,9 @@ defmodule BoomLooper.Source.Local.SyncMonitorTest do
         assert_receive %BoomLooper.Events.SourceSync.Updated{
                          workspace_id: ^ws_id,
                          status: %{status: :errored, last_error: err}
-                       }, 2_000
+                       },
+                       2_000
+
         assert err =~ "container is not ready"
       end)
     end
@@ -168,10 +173,12 @@ defmodule BoomLooper.Source.Local.SyncMonitorTest do
 
         # Wait for session creation to settle.
         BoomLooper.Events.SourceSync.subscribe(ws_id)
+
         assert_receive %BoomLooper.Events.SourceSync.Updated{
                          workspace_id: ^ws_id,
                          status: %{status: :running}
-                       }, 500
+                       },
+                       500
 
         # Record runner calls from this point on.
         test_pid = self()
@@ -202,10 +209,12 @@ defmodule BoomLooper.Source.Local.SyncMonitorTest do
         pid = start_monitor(ws_id, wt)
 
         BoomLooper.Events.SourceSync.subscribe(ws_id)
+
         assert_receive %BoomLooper.Events.SourceSync.Updated{
                          workspace_id: ^ws_id,
                          status: %{status: :running}
-                       }, 500
+                       },
+                       500
 
         SyncMonitor.prepare_for_removal(ws_id)
 

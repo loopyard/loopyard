@@ -172,20 +172,62 @@ defmodule BoomLooper.Saga.RecorderTest do
       oldest = DateTime.add(now, -30, :second)
 
       # id "a" newest (should come first), id "z" oldest (should come last)
-      :ets.insert(Recorder.table(), {"a", %{saga_id: "a", saga: :s, status: :succeeded,
-        started_at: now, finished_at: now, step_count: 0, completed_steps: [],
-        failed_step: nil, failure_reason: nil, rolled_back_steps: [],
-        failed_rollbacks: [], metadata: %{}}})
+      :ets.insert(
+        Recorder.table(),
+        {"a",
+         %{
+           saga_id: "a",
+           saga: :s,
+           status: :succeeded,
+           started_at: now,
+           finished_at: now,
+           step_count: 0,
+           completed_steps: [],
+           failed_step: nil,
+           failure_reason: nil,
+           rolled_back_steps: [],
+           failed_rollbacks: [],
+           metadata: %{}
+         }}
+      )
 
-      :ets.insert(Recorder.table(), {"m", %{saga_id: "m", saga: :s, status: :succeeded,
-        started_at: older, finished_at: older, step_count: 0, completed_steps: [],
-        failed_step: nil, failure_reason: nil, rolled_back_steps: [],
-        failed_rollbacks: [], metadata: %{}}})
+      :ets.insert(
+        Recorder.table(),
+        {"m",
+         %{
+           saga_id: "m",
+           saga: :s,
+           status: :succeeded,
+           started_at: older,
+           finished_at: older,
+           step_count: 0,
+           completed_steps: [],
+           failed_step: nil,
+           failure_reason: nil,
+           rolled_back_steps: [],
+           failed_rollbacks: [],
+           metadata: %{}
+         }}
+      )
 
-      :ets.insert(Recorder.table(), {"z", %{saga_id: "z", saga: :s, status: :succeeded,
-        started_at: oldest, finished_at: oldest, step_count: 0, completed_steps: [],
-        failed_step: nil, failure_reason: nil, rolled_back_steps: [],
-        failed_rollbacks: [], metadata: %{}}})
+      :ets.insert(
+        Recorder.table(),
+        {"z",
+         %{
+           saga_id: "z",
+           saga: :s,
+           status: :succeeded,
+           started_at: oldest,
+           finished_at: oldest,
+           step_count: 0,
+           completed_steps: [],
+           failed_step: nil,
+           failure_reason: nil,
+           rolled_back_steps: [],
+           failed_rollbacks: [],
+           metadata: %{}
+         }}
+      )
 
       ids = Recorder.recent(saga: :s) |> Enum.map(& &1.saga_id)
       assert ids == ["a", "m", "z"]
@@ -196,15 +238,43 @@ defmodule BoomLooper.Saga.RecorderTest do
       # blow up. Nil started_at sorts oldest.
       now = DateTime.utc_now()
 
-      :ets.insert(Recorder.table(), {"A", %{saga_id: "A", saga: :nil_test, status: :succeeded,
-        started_at: now, finished_at: now, step_count: 0, completed_steps: [],
-        failed_step: nil, failure_reason: nil, rolled_back_steps: [],
-        failed_rollbacks: [], metadata: %{}}})
+      :ets.insert(
+        Recorder.table(),
+        {"A",
+         %{
+           saga_id: "A",
+           saga: :nil_test,
+           status: :succeeded,
+           started_at: now,
+           finished_at: now,
+           step_count: 0,
+           completed_steps: [],
+           failed_step: nil,
+           failure_reason: nil,
+           rolled_back_steps: [],
+           failed_rollbacks: [],
+           metadata: %{}
+         }}
+      )
 
-      :ets.insert(Recorder.table(), {"B", %{saga_id: "B", saga: :nil_test, status: :succeeded,
-        started_at: nil, finished_at: nil, step_count: 0, completed_steps: [],
-        failed_step: nil, failure_reason: nil, rolled_back_steps: [],
-        failed_rollbacks: [], metadata: %{}}})
+      :ets.insert(
+        Recorder.table(),
+        {"B",
+         %{
+           saga_id: "B",
+           saga: :nil_test,
+           status: :succeeded,
+           started_at: nil,
+           finished_at: nil,
+           step_count: 0,
+           completed_steps: [],
+           failed_step: nil,
+           failure_reason: nil,
+           rolled_back_steps: [],
+           failed_rollbacks: [],
+           metadata: %{}
+         }}
+      )
 
       ids = Recorder.recent(saga: :nil_test) |> Enum.map(& &1.saga_id)
       # newest (A with a DateTime) before the nil-started_at entry.

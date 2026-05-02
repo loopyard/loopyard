@@ -97,12 +97,14 @@ defmodule BoomLooper.PortStore do
     end
   end
 
-  defp decode_entry(%{
-         "workspace_id" => ws,
-         "service" => svc,
-         "container_port" => cport,
-         "host_port" => hport
-       } = entry) do
+  defp decode_entry(
+         %{
+           "workspace_id" => ws,
+           "service" => svc,
+           "container_port" => cport,
+           "host_port" => hport
+         } = entry
+       ) do
     %{
       workspace_id: ws,
       service: svc,
@@ -114,12 +116,14 @@ defmodule BoomLooper.PortStore do
     }
   end
 
-  defp encode_entry(%{
-         workspace_id: ws,
-         service: svc,
-         container_port: cport,
-         host_port: hport
-       } = entry) do
+  defp encode_entry(
+         %{
+           workspace_id: ws,
+           service: svc,
+           container_port: cport,
+           host_port: hport
+         } = entry
+       ) do
     %{
       "workspace_id" => ws,
       "service" => svc,

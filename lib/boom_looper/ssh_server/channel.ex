@@ -58,6 +58,7 @@ defmodule BoomLooper.SSHServer.Channel do
       if clear_signal?(data), do: Terminal.clear_buffer(state.container)
       Terminal.send_input(state.container, data)
     end
+
     {:ok, state}
   end
 
@@ -97,9 +98,11 @@ defmodule BoomLooper.SSHServer.Channel do
 
   def handle_msg(%Events.Terminal.Exit{}, state) do
     send_data(state, "\r\nTerminal session ended.\r\n")
+
     if state.connection && state.channel_id do
       :ssh_connection.close(state.connection, state.channel_id)
     end
+
     {:stop, state.channel_id, state}
   end
 
@@ -135,5 +138,6 @@ defmodule BoomLooper.SSHServer.Channel do
   defp send_data(%{connection: conn, channel_id: chan}, data) when conn != nil and chan != nil do
     :ssh_connection.send(conn, chan, data)
   end
+
   defp send_data(_, _), do: :ok
 end

@@ -2,8 +2,19 @@ defmodule BoomLooper.Tools.ContainerTest do
   use ExUnit.Case
 
   alias BoomLooper.Tools.Container
-  alias BoomLooper.Tools.Container.{Exec, WriteFile, ReadFile, Logs, InspectEnv, Ports,
-    ServiceContainers, WorkspaceInfo, Volumes, Helpers}
+
+  alias BoomLooper.Tools.Container.{
+    Exec,
+    WriteFile,
+    ReadFile,
+    Logs,
+    InspectEnv,
+    Ports,
+    ServiceContainers,
+    WorkspaceInfo,
+    Volumes,
+    Helpers
+  }
 
   describe "toolkit" do
     test "has correct server name" do
@@ -12,7 +23,8 @@ defmodule BoomLooper.Tools.ContainerTest do
     end
 
     test "has all expected tools" do
-      tool_names = Container.__tool_server__().tools |> Enum.map(& &1.__tool_name__()) |> MapSet.new()
+      tool_names =
+        Container.__tool_server__().tools |> Enum.map(& &1.__tool_name__()) |> MapSet.new()
 
       # `docker` (raw CLI) is intentionally excluded — it was a workspace
       # escape hatch. See BoomLooper.Tools.Container for the rationale.
@@ -30,9 +42,15 @@ defmodule BoomLooper.Tools.ContainerTest do
 
     test "each tool module exports the required interface" do
       for tool_mod <- Container.__tool_server__().tools do
-        assert function_exported?(tool_mod, :__tool_name__, 0), "#{tool_mod} missing __tool_name__/0"
-        assert function_exported?(tool_mod, :__description__, 0), "#{tool_mod} missing __description__/0"
-        assert function_exported?(tool_mod, :input_schema, 0), "#{tool_mod} missing input_schema/0"
+        assert function_exported?(tool_mod, :__tool_name__, 0),
+               "#{tool_mod} missing __tool_name__/0"
+
+        assert function_exported?(tool_mod, :__description__, 0),
+               "#{tool_mod} missing __description__/0"
+
+        assert function_exported?(tool_mod, :input_schema, 0),
+               "#{tool_mod} missing input_schema/0"
+
         assert function_exported?(tool_mod, :execute, 2), "#{tool_mod} missing execute/2"
 
         schema = tool_mod.input_schema()
@@ -57,8 +75,8 @@ defmodule BoomLooper.Tools.ContainerTest do
         }
 
         assert {:ok, _json} = Jason.encode(tool_def),
-          "#{tool_mod} tool definition is not JSON-serializable — " <>
-          "check for unevaluated sigils or AST nodes in params"
+               "#{tool_mod} tool definition is not JSON-serializable — " <>
+                 "check for unevaluated sigils or AST nodes in params"
       end
     end
   end
@@ -76,7 +94,9 @@ defmodule BoomLooper.Tools.ContainerTest do
     end
 
     test "rejects invalid timeout" do
-      assert {:error, msg} = Exec.execute(%{agent_id: "any", command: "echo hi", timeout: 9999}, %{})
+      assert {:error, msg} =
+               Exec.execute(%{agent_id: "any", command: "echo hi", timeout: 9999}, %{})
+
       assert msg =~ "between 1 and 3600"
     end
 
@@ -88,29 +108,41 @@ defmodule BoomLooper.Tools.ContainerTest do
 
   describe "WriteFile validation" do
     test "rejects paths escaping workspace" do
-      assert {:error, msg} = WriteFile.execute(%{agent_id: "any", path: "../etc/passwd", content: "x"}, %{})
+      assert {:error, msg} =
+               WriteFile.execute(%{agent_id: "any", path: "../etc/passwd", content: "x"}, %{})
+
       assert msg =~ "must be within /workspace"
     end
 
     test "rejects absolute paths outside workspace" do
-      assert {:error, msg} = WriteFile.execute(%{agent_id: "any", path: "/etc/passwd", content: "x"}, %{})
+      assert {:error, msg} =
+               WriteFile.execute(%{agent_id: "any", path: "/etc/passwd", content: "x"}, %{})
+
       assert msg =~ "must be within /workspace"
     end
 
     test "rejects oversized content" do
       big = String.duplicate("x", 1_000_001)
-      assert {:error, msg} = WriteFile.execute(%{agent_id: "any", path: "test.txt", content: big}, %{})
+
+      assert {:error, msg} =
+               WriteFile.execute(%{agent_id: "any", path: "test.txt", content: big}, %{})
+
       assert msg =~ "1000000 byte limit"
     end
 
     test "rejects oversized paths" do
       long_path = String.duplicate("a/", 251)
-      assert {:error, msg} = WriteFile.execute(%{agent_id: "any", path: long_path, content: "x"}, %{})
+
+      assert {:error, msg} =
+               WriteFile.execute(%{agent_id: "any", path: long_path, content: "x"}, %{})
+
       assert msg =~ "500 byte limit"
     end
 
     test "returns error when agent has no workspace" do
-      assert {:error, msg} = WriteFile.execute(%{agent_id: "nonexistent", path: "test.txt", content: "x"}, %{})
+      assert {:error, msg} =
+               WriteFile.execute(%{agent_id: "nonexistent", path: "test.txt", content: "x"}, %{})
+
       assert msg =~ "no workspace"
     end
   end
@@ -138,7 +170,8 @@ defmodule BoomLooper.Tools.ContainerTest do
     end
 
     test "accepts absolute paths within /workspace" do
-      assert {:ok, "/workspace/src/main.rs"} = Helpers.validate_workspace_path("/workspace/src/main.rs")
+      assert {:ok, "/workspace/src/main.rs"} =
+               Helpers.validate_workspace_path("/workspace/src/main.rs")
     end
 
     test "accepts /workspace itself" do
@@ -210,7 +243,9 @@ defmodule BoomLooper.Tools.ContainerTest do
     @describetag :docker
 
     setup do
-      tmp_dir = Path.join(System.tmp_dir!(), "boom-looper-container-tool-test-#{:rand.uniform(100_000)}")
+      tmp_dir =
+        Path.join(System.tmp_dir!(), "boom-looper-container-tool-test-#{:rand.uniform(100_000)}")
+
       File.mkdir_p!(tmp_dir)
       workspace_id = BoomLooper.Workspace.workspace_id(tmp_dir)
 
@@ -220,6 +255,7 @@ defmodule BoomLooper.Tools.ContainerTest do
 
       workspace_dir = Path.join(tmp_dir, ".boomlooper/workspace")
       File.mkdir_p!(workspace_dir)
+
       compose_content = """
       {
         "services": {
@@ -231,10 +267,12 @@ defmodule BoomLooper.Tools.ContainerTest do
         }
       }
       """
+
       File.write!(Path.join(workspace_dir, "docker-compose.yml"), compose_content)
       BoomLooper.Compose.up(tmp_dir, workspace_id)
 
       agent_id = "container-tool-test-#{:rand.uniform(100_000)}"
+
       {:ok, _pid} =
         BoomLooper.TestHelpers.start_agent(
           id: agent_id,
@@ -250,6 +288,7 @@ defmodule BoomLooper.Tools.ContainerTest do
         catch
           :exit, _ -> :ok
         end
+
         BoomLooper.Compose.down(tmp_dir, workspace_id)
         File.rm_rf!(tmp_dir)
       end)
@@ -265,7 +304,12 @@ defmodule BoomLooper.Tools.ContainerTest do
     test "exec with workdir", %{agent_id: agent_id} do
       Exec.execute(%{agent_id: agent_id, command: "mkdir -p /workspace/myapp"}, %{})
 
-      assert {:ok, output} = Exec.execute(%{agent_id: agent_id, command: "pwd", workdir: "/workspace/myapp"}, %{})
+      assert {:ok, output} =
+               Exec.execute(
+                 %{agent_id: agent_id, command: "pwd", workdir: "/workspace/myapp"},
+                 %{}
+               )
+
       assert String.trim(output) == "/workspace/myapp"
     end
   end

@@ -15,7 +15,8 @@ defmodule BoomLooper.Workspace.ServiceManagerTest do
 
   describe "service_status/1" do
     test "returns empty list for unknown workspace" do
-      assert {:ok, []} = ServiceManager.service_status("/nonexistent/path/#{:rand.uniform(100_000)}")
+      assert {:ok, []} =
+               ServiceManager.service_status("/nonexistent/path/#{:rand.uniform(100_000)}")
     end
   end
 

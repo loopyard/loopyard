@@ -19,13 +19,15 @@ defmodule BoomLooperWeb.MessageLiveTest do
     {project, branch, tmp_dir} = create_workspace()
 
     agent_id = "msg-test-#{:rand.uniform(100_000)}"
-    {:ok, _pid} = BoomLooper.TestHelpers.start_agent(
-      id: agent_id,
-      name: "Msg Test Agent",
-      working_dir: tmp_dir,
-      bind_mount: tmp_dir,
-      started_by: "test"
-    )
+
+    {:ok, _pid} =
+      BoomLooper.TestHelpers.start_agent(
+        id: agent_id,
+        name: "Msg Test Agent",
+        working_dir: tmp_dir,
+        bind_mount: tmp_dir,
+        started_by: "test"
+      )
 
     # Insert a user message directly via append_message_ets so the test
     # has something to look up — no Claude CLI dependency, no async wait.
@@ -45,6 +47,7 @@ defmodule BoomLooperWeb.MessageLiveTest do
       catch
         :exit, _ -> :ok
       end
+
       File.rm_rf!(tmp_dir)
     end)
 
@@ -85,18 +88,25 @@ defmodule BoomLooperWeb.MessageLiveTest do
       assert url =~ msg.id
 
       {:ok, _view, html} = live(conn, url)
-      assert html =~ "hello world", "MessageLive shows 'not found' instead of message content. URL: #{url}"
+
+      assert html =~ "hello world",
+             "MessageLive shows 'not found' instead of message content. URL: #{url}"
+
       refute html =~ "Message not found or link expired"
     end
 
-    test "MessageLive mount returns under 500ms — single ETS read", %{agent_id: agent_id, conn: conn} do
+    test "MessageLive mount returns under 500ms — single ETS read", %{
+      agent_id: agent_id,
+      conn: conn
+    } do
       state = ChatAgent.get_state(agent_id)
       msg = Enum.find(state.messages, &(&1.role == :user))
       url = BoomLooperWeb.OutputController.msg_url(agent_id, msg.id)
 
       {micros, {:ok, _view, _html}} = :timer.tc(fn -> live(conn, url) end)
+
       assert micros < 500_000,
-        "MessageLive mount took #{div(micros, 1000)}ms — slow call slipped in"
+             "MessageLive mount took #{div(micros, 1000)}ms — slow call slipped in"
     end
 
     test "raw URL returns message content as plain text", %{agent_id: agent_id, conn: conn} do
@@ -113,7 +123,13 @@ defmodule BoomLooperWeb.MessageLiveTest do
 
   describe "append_message_ets" do
     test "messages appended via ETS are findable by get_message", %{agent_id: agent_id} do
-      stream_msg = %{role: :build, title: "test cmd", content: "output here", timestamp: DateTime.utc_now()}
+      stream_msg = %{
+        role: :build,
+        title: "test cmd",
+        content: "output here",
+        timestamp: DateTime.utc_now()
+      }
+
       result = ChatAgent.append_message_ets(agent_id, stream_msg)
 
       assert result != nil
@@ -143,15 +159,21 @@ defmodule BoomLooperWeb.MessageLiveTest do
   end
 
   describe "message link from chat page" do
-    test "chat page renders message links that load correctly", %{project: project, branch: branch, agent_id: agent_id, conn: conn} do
+    test "chat page renders message links that load correctly", %{
+      project: project,
+      branch: branch,
+      agent_id: agent_id,
+      conn: conn
+    } do
       chat_path = "/projects/#{project.id}/workspaces/#{branch.id}/agents/#{agent_id}"
       {:ok, _view, html} = live(conn, chat_path)
 
       case Regex.run(~r{href="(/messages/[^"]*?)"}, html) do
         [_, msg_link] ->
           {:ok, _view, msg_html} = live(conn, msg_link)
+
           refute msg_html =~ "Message not found or link expired",
-            "Message link from chat page leads to 'not found'. Link: #{msg_link}"
+                 "Message link from chat page leads to 'not found'. Link: #{msg_link}"
 
         nil ->
           :ok

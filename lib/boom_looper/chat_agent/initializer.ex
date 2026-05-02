@@ -47,13 +47,20 @@ defmodule BoomLooper.ChatAgent.Initializer do
     bind_mount = Keyword.get(params, :bind_mount)
     workspace_id = Keyword.get(params, :workspace_id)
     service_name = Keyword.get(params, :service_name)
-    agent_type = Keyword.get(params, :agent_type) || BoomLooper.Agents.Registry.default_agent_name()
+
+    agent_type =
+      Keyword.get(params, :agent_type) || BoomLooper.Agents.Registry.default_agent_name()
+
     resume_session_id = Keyword.get(params, :claude_session_id)
 
     tools = Keyword.get(opts, :tools, ToolConfig.default_tools())
 
     default_backend =
-      Application.get_env(:boom_looper, :default_agent_backend, BoomLooper.Agent.Backend.ClaudeCode)
+      Application.get_env(
+        :boom_looper,
+        :default_agent_backend,
+        BoomLooper.Agent.Backend.ClaudeCode
+      )
 
     backend = Keyword.get(opts, :backend, default_backend)
     workspace = if workspace_id, do: load_workspace_config(workspace_id), else: nil
@@ -88,14 +95,19 @@ defmodule BoomLooper.ChatAgent.Initializer do
 
     session_opts =
       if container_only? do
-        Keyword.put(base_opts, :disallowed_tools, ToolConfig.denied_native_tools_for_container_agents())
+        Keyword.put(
+          base_opts,
+          :disallowed_tools,
+          ToolConfig.denied_native_tools_for_container_agents()
+        )
       else
         base_opts
       end
 
-    session_opts = if max = Keyword.get(params, :max_turns),
-      do: Keyword.put(session_opts, :max_turns, max),
-      else: session_opts
+    session_opts =
+      if max = Keyword.get(params, :max_turns),
+        do: Keyword.put(session_opts, :max_turns, max),
+        else: session_opts
 
     session_opts =
       if is_binary(resume_session_id) and resume_session_id != "" do
@@ -217,7 +229,10 @@ defmodule BoomLooper.ChatAgent.Initializer do
     state = IdleReaper.schedule(state)
 
     :ets.insert(@ets_table, {id, BoomLooper.ChatAgent.summary(state)})
-    Events.ChatAgent.publish(%Events.ChatAgent.Resumed{summary: BoomLooper.ChatAgent.summary(state)})
+
+    Events.ChatAgent.publish(%Events.ChatAgent.Resumed{
+      summary: BoomLooper.ChatAgent.summary(state)
+    })
 
     context_status =
       cond do
@@ -260,14 +275,15 @@ defmodule BoomLooper.ChatAgent.Initializer do
     service_name = Keyword.get(opts, :service_name)
     agent_type = Keyword.get(opts, :agent_type) || BoomLooper.Agents.Registry.default_agent_name()
 
-    {session, session_opts, backend, prompt_hash} = start_session(id, opts,
-      working_dir: working_dir,
-      bind_mount: bind_mount,
-      workspace_id: workspace_id,
-      service_name: service_name,
-      agent_type: agent_type,
-      max_turns: 50
-    )
+    {session, session_opts, backend, prompt_hash} =
+      start_session(id, opts,
+        working_dir: working_dir,
+        bind_mount: bind_mount,
+        workspace_id: workspace_id,
+        service_name: service_name,
+        agent_type: agent_type,
+        max_turns: 50
+      )
 
     now = DateTime.utc_now()
 
@@ -303,6 +319,7 @@ defmodule BoomLooper.ChatAgent.Initializer do
 
   defp load_workspace_config(workspace_id) when is_binary(workspace_id) do
     volume_name = BoomLooper.Workspace.volume_name_for(workspace_id)
+
     case BoomLooper.Workspace.load_from_volume(volume_name) do
       {:ok, workspace} -> workspace
       _ -> nil

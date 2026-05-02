@@ -13,7 +13,11 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.ImageViewer do
 
     ~H"""
     <div class="flex flex-col items-center p-6 max-h-[60vh] overflow-auto">
-      <img src={@data_uri} alt={Path.basename(@path)} class="max-w-full max-h-[50vh] object-contain rounded border border-zinc-200 dark:border-zinc-700" />
+      <img
+        src={@data_uri}
+        alt={Path.basename(@path)}
+        class="max-w-full max-h-[50vh] object-contain rounded border border-zinc-200 dark:border-zinc-700"
+      />
       <span class="mt-2 text-xs text-zinc-400 dark:text-zinc-500">{Path.basename(@path)}</span>
     </div>
     """

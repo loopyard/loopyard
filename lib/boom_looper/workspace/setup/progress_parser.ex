@@ -177,9 +177,14 @@ defmodule BoomLooper.Workspace.Setup.ProgressParser do
     parts = String.split(s, ":") |> Enum.map(&parse_int/1)
 
     case parts do
-      [h, m, sec] when not is_nil(h) and not is_nil(m) and not is_nil(sec) -> h * 3600 + m * 60 + sec
-      [m, sec] when not is_nil(m) and not is_nil(sec) -> m * 60 + sec
-      _ -> nil
+      [h, m, sec] when not is_nil(h) and not is_nil(m) and not is_nil(sec) ->
+        h * 3600 + m * 60 + sec
+
+      [m, sec] when not is_nil(m) and not is_nil(sec) ->
+        m * 60 + sec
+
+      _ ->
+        nil
     end
   end
 

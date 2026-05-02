@@ -61,7 +61,10 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
       </div>
 
       <%!-- Clean state --%>
-      <div :if={@staged == [] && @unstaged == [] && is_map(@git_status)} class="px-4 py-3 text-sm text-zinc-400 dark:text-zinc-500">
+      <div
+        :if={@staged == [] && @unstaged == [] && is_map(@git_status)}
+        class="px-4 py-3 text-sm text-zinc-400 dark:text-zinc-500"
+      >
         Working tree clean
       </div>
 
@@ -75,16 +78,26 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
           patch={"#{@base_path}/volumes/#{@volume_name}/git/commits/#{commit.sha}"}
           class="block w-full px-4 py-2 flex items-start gap-3 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
         >
-          <span class="font-mono text-xs text-violet-500 dark:text-violet-400 shrink-0 pt-0.5">{String.slice(commit.sha, 0..6)}</span>
+          <span class="font-mono text-xs text-violet-500 dark:text-violet-400 shrink-0 pt-0.5">
+            {String.slice(commit.sha, 0..6)}
+          </span>
           <div class="min-w-0 flex-1">
             <div class="text-zinc-700 dark:text-zinc-300 truncate">{commit.message}</div>
-            <div class="text-xs text-zinc-400 dark:text-zinc-500">{commit.author} · {format_date(commit.date)}</div>
+            <div class="text-xs text-zinc-400 dark:text-zinc-500">
+              {commit.author} · {format_date(commit.date)}
+            </div>
           </div>
         </.link>
       </div>
 
       <%!-- Empty --%>
-      <div :if={is_list(@git_log) && @git_log == [] && is_map(@git_status) && @staged == [] && @unstaged == []} class="px-4 py-8 text-sm text-zinc-400 dark:text-zinc-500 text-center">
+      <div
+        :if={
+          is_list(@git_log) && @git_log == [] && is_map(@git_status) && @staged == [] &&
+            @unstaged == []
+        }
+        class="px-4 py-8 text-sm text-zinc-400 dark:text-zinc-500 text-center"
+      >
         No git history
       </div>
     </div>
@@ -105,10 +118,14 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
       <%!-- Commit header --%>
       <div class="px-4 py-4">
         <div class="flex items-start gap-3">
-          <span class="font-mono text-xs text-violet-500 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 rounded px-2 py-0.5 shrink-0">{String.slice(@commit.sha, 0..6)}</span>
+          <span class="font-mono text-xs text-violet-500 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 rounded px-2 py-0.5 shrink-0">
+            {String.slice(@commit.sha, 0..6)}
+          </span>
           <div class="min-w-0">
             <div class="text-sm font-medium text-zinc-800 dark:text-zinc-200">{@commit.message}</div>
-            <div class="text-xs text-zinc-400 dark:text-zinc-500 mt-1">{@commit.author} · {format_date(@commit.date)}</div>
+            <div class="text-xs text-zinc-400 dark:text-zinc-500 mt-1">
+              {@commit.author} · {format_date(@commit.date)}
+            </div>
           </div>
         </div>
       </div>
@@ -123,10 +140,16 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
           patch={"#{@base_path}/volumes/#{@volume_name}/git/commits/#{@commit.sha}/diff/#{file.path}"}
           class="block w-full px-4 py-2 flex items-center gap-3 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group"
         >
-          <span class="font-mono text-xs text-zinc-600 dark:text-zinc-400 truncate flex-1">{file.path}</span>
+          <span class="font-mono text-xs text-zinc-600 dark:text-zinc-400 truncate flex-1">
+            {file.path}
+          </span>
           <span class="text-xs shrink-0 flex gap-1.5">
-            <span :if={file.insertions > 0} class="text-green-600 dark:text-green-400">+{file.insertions}</span>
-            <span :if={file.deletions > 0} class="text-red-600 dark:text-red-400">-{file.deletions}</span>
+            <span :if={file.insertions > 0} class="text-green-600 dark:text-green-400">
+              +{file.insertions}
+            </span>
+            <span :if={file.deletions > 0} class="text-red-600 dark:text-red-400">
+              -{file.deletions}
+            </span>
           </span>
         </.link>
       </div>
@@ -143,7 +166,10 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
 
   def diff_viewer(assigns) do
     lines = String.split(assigns.diff, "\n")
-    language = if assigns.path, do: BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.FileType.language(assigns.path)
+
+    language =
+      if assigns.path,
+        do: BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.FileType.language(assigns.path)
 
     assigns =
       assigns
@@ -153,7 +179,10 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
 
     ~H"""
     <div class="flex flex-col overflow-hidden h-full">
-      <div :if={@path} class="flex-none px-4 py-1.5 bg-zinc-100 dark:bg-zinc-800 flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400">
+      <div
+        :if={@path}
+        class="flex-none px-4 py-1.5 bg-zinc-100 dark:bg-zinc-800 flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400"
+      >
         <span class="font-mono">{@path}</span>
         <span>{@line_count} lines</span>
       </div>
@@ -161,8 +190,12 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
         <table class="text-xs font-mono leading-relaxed w-full border-collapse">
           <tbody>
             <tr :for={{line, idx} <- Enum.with_index(@lines, 1)} class={diff_line_bg(line)}>
-              <td class="select-none text-right pr-2 pl-3 py-0 text-zinc-400 dark:text-zinc-600 align-top w-[1%] whitespace-nowrap opacity-50">{idx}</td>
-              <td class={"pr-4 pl-2 py-0 whitespace-pre-wrap break-all #{diff_line_text(line)}"}>{highlight_diff_line(line, @language)}</td>
+              <td class="select-none text-right pr-2 pl-3 py-0 text-zinc-400 dark:text-zinc-600 align-top w-[1%] whitespace-nowrap opacity-50">
+                {idx}
+              </td>
+              <td class={"pr-4 pl-2 py-0 whitespace-pre-wrap break-all #{diff_line_text(line)}"}>
+                {highlight_diff_line(line, @language)}
+              </td>
             </tr>
           </tbody>
         </table>
@@ -181,7 +214,9 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
       patch={@href}
       class="block w-full px-4 py-2 flex items-center gap-2 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
     >
-      <span class={"font-mono text-xs w-5 shrink-0 #{status_color(@change.status)}"}>{@change.status}</span>
+      <span class={"font-mono text-xs w-5 shrink-0 #{status_color(@change.status)}"}>
+        {@change.status}
+      </span>
       <span class="text-zinc-600 dark:text-zinc-400 font-mono text-xs truncate">{@change.path}</span>
     </.link>
     """
@@ -201,8 +236,10 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
     cond do
       String.starts_with?(line, "+") and not String.starts_with?(line, "+++") ->
         "bg-green-50/50 dark:bg-green-900/10"
+
       String.starts_with?(line, "-") and not String.starts_with?(line, "---") ->
         "bg-red-50/50 dark:bg-red-900/10"
+
       true ->
         ""
     end
@@ -212,12 +249,16 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
     cond do
       String.starts_with?(line, "+") and not String.starts_with?(line, "+++") ->
         "text-green-700 dark:text-green-300"
+
       String.starts_with?(line, "-") and not String.starts_with?(line, "---") ->
         "text-red-700 dark:text-red-300"
+
       String.starts_with?(line, "@@") ->
         "text-violet-600 dark:text-violet-400"
+
       String.starts_with?(line, "diff ") or String.starts_with?(line, "index ") ->
         "text-zinc-400 dark:text-zinc-600"
+
       true ->
         "text-zinc-700 dark:text-zinc-300"
     end
@@ -232,8 +273,10 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
       cond do
         String.starts_with?(line, "+") and not String.starts_with?(line, "+++") ->
           {"+", String.slice(line, 1..-1//1)}
+
         String.starts_with?(line, "-") and not String.starts_with?(line, "---") ->
           {"-", String.slice(line, 1..-1//1)}
+
         true ->
           {"", line}
       end
@@ -248,13 +291,15 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
     case DateTime.from_iso8601(date_str) do
       {:ok, dt, _} ->
         diff = DateTime.diff(DateTime.utc_now(), dt, :second)
+
         cond do
           diff < 60 -> "just now"
           diff < 3600 -> "#{div(diff, 60)}m ago"
           diff < 86400 -> "#{div(diff, 3600)}h ago"
-          diff < 604800 -> "#{div(diff, 86400)}d ago"
+          diff < 604_800 -> "#{div(diff, 86400)}d ago"
           true -> Calendar.strftime(dt, "%b %d")
         end
+
       _ ->
         date_str
     end

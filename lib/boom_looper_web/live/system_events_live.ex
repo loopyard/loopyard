@@ -35,7 +35,9 @@ defmodule BoomLooperWeb.SystemEventsLive do
   end
 
   defp assign_iex(socket) do
-    if connected?(socket), do: subscribe_iex(socket), else: assign(socket, :iex_session, %{level: nil})
+    if connected?(socket),
+      do: subscribe_iex(socket),
+      else: assign(socket, :iex_session, %{level: nil})
   end
 
   @impl true
@@ -80,15 +82,16 @@ defmodule BoomLooperWeb.SystemEventsLive do
           <div class="flex items-baseline justify-between mb-3">
             <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
               Events tap
-              <span class="text-zinc-400 font-normal">(last 500 broadcasts; refreshes every 500ms)</span>
+              <span class="text-zinc-400 font-normal">
+                (last 500 broadcasts; refreshes every 500ms)
+              </span>
             </h2>
           </div>
 
           <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
             Ring buffer of every BoomLooper-global PubSub broadcast with timestamp + topic
             + event tag + payload preview. Filter by topic below. Per-agent and per-workspace
-            topics (<code class="font-mono text-[11px]">chat_agent:{"{id}"}</code>,
-            <code class="font-mono text-[11px]">source_sync:{"{id}"}</code>) are not
+            topics (<code class="font-mono text-[11px]">chat_agent:{"{id}"}</code>, <code class="font-mono text-[11px]">source_sync:{"{id}"}</code>) are not
             captured here — they multiply with workload and belong on each agent's own page.
           </p>
 
@@ -149,13 +152,22 @@ defmodule BoomLooperWeb.SystemEventsLive do
             </tr>
           </thead>
           <tbody>
-            <tr :for={e <- @events} class="border-t border-zinc-200 dark:border-zinc-700/50 hover:bg-zinc-50 dark:hover:bg-zinc-800/40">
+            <tr
+              :for={e <- @events}
+              class="border-t border-zinc-200 dark:border-zinc-700/50 hover:bg-zinc-50 dark:hover:bg-zinc-800/40"
+            >
               <td class="px-3 py-2 font-mono text-zinc-500 whitespace-nowrap">
-                {Calendar.strftime(e.inserted_at_utc, "%H:%M:%S.") <> :io_lib.format("~3..0B", [elem(e.inserted_at_utc.microsecond, 0) |> div(1000)])}
+                {Calendar.strftime(e.inserted_at_utc, "%H:%M:%S.") <>
+                  :io_lib.format("~3..0B", [elem(e.inserted_at_utc.microsecond, 0) |> div(1000)])}
               </td>
               <td class="px-3 py-2 font-mono text-zinc-600 dark:text-zinc-400">{e.topic}</td>
-              <td class="px-3 py-2 font-mono text-violet-700 dark:text-violet-400 font-semibold">{inspect(e.tag)}</td>
-              <td class="px-3 py-2 font-mono text-zinc-500 text-[11px] truncate max-w-[600px]" title={e.payload}>
+              <td class="px-3 py-2 font-mono text-violet-700 dark:text-violet-400 font-semibold">
+                {inspect(e.tag)}
+              </td>
+              <td
+                class="px-3 py-2 font-mono text-zinc-500 text-[11px] truncate max-w-[600px]"
+                title={e.payload}
+              >
                 {e.payload}
               </td>
             </tr>

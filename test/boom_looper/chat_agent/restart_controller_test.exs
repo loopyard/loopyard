@@ -114,7 +114,10 @@ defmodule BoomLooper.ChatAgent.RestartControllerTest do
       q_id = "q-#{:rand.uniform(1_000_000)}"
       crashed_at = DateTime.utc_now()
 
-      :ets.insert(:chat_agents, {live_id, %{id: live_id, name: "alive", status: :idle, messages: []}})
+      :ets.insert(
+        :chat_agents,
+        {live_id, %{id: live_id, name: "alive", status: :idle, messages: []}}
+      )
 
       :ets.insert(
         :chat_agents,
@@ -533,20 +536,25 @@ defmodule BoomLooper.ChatAgent.RestartControllerTest do
     test "release/1 funnels the ETS delete through the controller", %{workspace_id: workspace_id} do
       agent_id = "purge-hop-#{:rand.uniform(1_000_000)}"
 
-      :ets.insert(:chat_agents, {agent_id,
-        %{
-          id: agent_id,
-          name: "Purger",
-          status: :crashed,
-          messages: [],
-          workspace_id: workspace_id,
-          quarantined: true,
-          quarantine_reason: "test",
-          quarantine_crashed_at: DateTime.utc_now()
-        }})
+      :ets.insert(
+        :chat_agents,
+        {agent_id,
+         %{
+           id: agent_id,
+           name: "Purger",
+           status: :crashed,
+           messages: [],
+           workspace_id: workspace_id,
+           quarantined: true,
+           quarantine_reason: "test",
+           quarantine_crashed_at: DateTime.utc_now()
+         }}
+      )
 
-      :ets.insert(:restart_controller_history, {{workspace_id, agent_id},
-        [System.monotonic_time(:millisecond)]})
+      :ets.insert(
+        :restart_controller_history,
+        {{workspace_id, agent_id}, [System.monotonic_time(:millisecond)]}
+      )
 
       on_exit(fn ->
         :ets.delete(:chat_agents, agent_id)
@@ -565,17 +573,20 @@ defmodule BoomLooper.ChatAgent.RestartControllerTest do
          %{workspace_id: workspace_id} do
       agent_id = "release-race-#{:rand.uniform(1_000_000)}"
 
-      :ets.insert(:chat_agents, {agent_id,
-        %{
-          id: agent_id,
-          name: "Racer",
-          status: :crashed,
-          messages: [],
-          workspace_id: workspace_id,
-          quarantined: true,
-          quarantine_reason: "test",
-          quarantine_crashed_at: DateTime.utc_now()
-        }})
+      :ets.insert(
+        :chat_agents,
+        {agent_id,
+         %{
+           id: agent_id,
+           name: "Racer",
+           status: :crashed,
+           messages: [],
+           workspace_id: workspace_id,
+           quarantined: true,
+           quarantine_reason: "test",
+           quarantine_crashed_at: DateTime.utc_now()
+         }}
+      )
 
       on_exit(fn ->
         :ets.delete(:chat_agents, agent_id)
@@ -583,8 +594,10 @@ defmodule BoomLooper.ChatAgent.RestartControllerTest do
       end)
 
       # Seed old crash history.
-      :ets.insert(:restart_controller_history, {{workspace_id, agent_id},
-        [System.monotonic_time(:millisecond) - 10]})
+      :ets.insert(
+        :restart_controller_history,
+        {{workspace_id, agent_id}, [System.monotonic_time(:millisecond) - 10]}
+      )
 
       # Kick off release/1 in another Task while simultaneously
       # exercising the DOWN path. Both writes must serialize through
@@ -612,20 +625,25 @@ defmodule BoomLooper.ChatAgent.RestartControllerTest do
       unknown_ws = "unknown-ws-#{:rand.uniform(1_000_000)}"
       agent_id = "unknown-agent-#{:rand.uniform(1_000_000)}"
 
-      :ets.insert(:chat_agents, {agent_id,
-        %{
-          id: agent_id,
-          name: "Orphan",
-          status: :crashed,
-          messages: [],
-          workspace_id: unknown_ws,
-          quarantined: true,
-          quarantine_reason: "test",
-          quarantine_crashed_at: DateTime.utc_now()
-        }})
+      :ets.insert(
+        :chat_agents,
+        {agent_id,
+         %{
+           id: agent_id,
+           name: "Orphan",
+           status: :crashed,
+           messages: [],
+           workspace_id: unknown_ws,
+           quarantined: true,
+           quarantine_reason: "test",
+           quarantine_crashed_at: DateTime.utc_now()
+         }}
+      )
 
-      :ets.insert(:restart_controller_history, {{unknown_ws, agent_id},
-        [System.monotonic_time(:millisecond)]})
+      :ets.insert(
+        :restart_controller_history,
+        {{unknown_ws, agent_id}, [System.monotonic_time(:millisecond)]}
+      )
 
       on_exit(fn ->
         :ets.delete(:chat_agents, agent_id)

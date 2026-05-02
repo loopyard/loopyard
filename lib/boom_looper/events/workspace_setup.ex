@@ -22,7 +22,15 @@ defmodule BoomLooper.Events.WorkspaceSetup do
     RetryScheduled
   }
 
-  @events [Started, PhaseStarted, PhaseCompleted, PhaseProgress, Completed, Failed, RetryScheduled]
+  @events [
+    Started,
+    PhaseStarted,
+    PhaseCompleted,
+    PhaseProgress,
+    Completed,
+    Failed,
+    RetryScheduled
+  ]
 
   def events, do: @events
 

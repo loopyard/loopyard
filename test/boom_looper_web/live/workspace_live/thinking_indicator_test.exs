@@ -34,15 +34,19 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.ThinkingIndicatorTest do
 
     test "strips MCP prefix from tool name" do
       # grep tool should get a grep-specific phrase, not a generic one
-      words = for _ <- 1..20 do
-        Sidebar.thinking_word("agent-#{System.unique_integer()}", "mcp__boom-looper-container__grep")
-      end
-      |> Enum.uniq()
+      words =
+        for _ <- 1..20 do
+          Sidebar.thinking_word(
+            "agent-#{System.unique_integer()}",
+            "mcp__boom-looper-container__grep"
+          )
+        end
+        |> Enum.uniq()
 
       grep_phrases = tool_phrase_map()["grep"]
       # At least one of the 20 samples should be a grep-specific phrase
       assert Enum.any?(words, &(&1 in grep_phrases)),
-        "Expected at least one grep-specific phrase in #{inspect(words)}"
+             "Expected at least one grep-specific phrase in #{inspect(words)}"
     end
 
     test "falls back to generic words for unknown tools" do
@@ -93,8 +97,9 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.ThinkingIndicatorTest do
       word = Sidebar.thinking_word(id, tool)
 
       edit_phrases = tool_phrase_map()["edit"]
+
       assert word in edit_phrases,
-        "Expected edit-specific phrase, got: #{inspect(word)}"
+             "Expected edit-specific phrase, got: #{inspect(word)}"
     end
   end
 
@@ -126,6 +131,8 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.ThinkingIndicatorTest do
     end
   end
 
-  defp sentence_case(<<first::utf8, rest::binary>>), do: <<String.upcase(<<first::utf8>>)::binary, rest::binary>>
+  defp sentence_case(<<first::utf8, rest::binary>>),
+    do: <<String.upcase(<<first::utf8>>)::binary, rest::binary>>
+
   defp sentence_case(other), do: other
 end

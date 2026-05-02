@@ -12,27 +12,41 @@ defmodule BoomLooper.Agent.Backend.ClaudeCodeTest do
 
   defp mcp_tool_use_block(name, server, input),
     do: %ClaudeCode.Content.MCPToolUseBlock{
-      type: :mcp_tool_use, id: "mtu_1", name: name, server_name: server, input: input
+      type: :mcp_tool_use,
+      id: "mtu_1",
+      name: name,
+      server_name: server,
+      input: input
     }
 
   defp tool_result_block(content, is_error \\ false),
     do: %ClaudeCode.Content.ToolResultBlock{
-      type: :tool_result, tool_use_id: "tu_1", content: content, is_error: is_error
+      type: :tool_result,
+      tool_use_id: "tu_1",
+      content: content,
+      is_error: is_error
     }
 
   defp mcp_tool_result_block(content, is_error \\ false),
     do: %ClaudeCode.Content.MCPToolResultBlock{
-      type: :mcp_tool_result, tool_use_id: "mtu_1", content: content, is_error: is_error
+      type: :mcp_tool_result,
+      tool_use_id: "mtu_1",
+      content: content,
+      is_error: is_error
     }
 
   defp assistant_msg(content_blocks),
     do: %ClaudeCode.Message.AssistantMessage{
-      type: :assistant, message: %{content: content_blocks}, session_id: "sess_test"
+      type: :assistant,
+      message: %{content: content_blocks},
+      session_id: "sess_test"
     }
 
   defp user_msg(content_blocks),
     do: %ClaudeCode.Message.UserMessage{
-      type: :user, message: %{content: content_blocks}, session_id: "sess_test"
+      type: :user,
+      message: %{content: content_blocks},
+      session_id: "sess_test"
     }
 
   describe "translate/1 — AssistantMessage" do
@@ -54,9 +68,15 @@ defmodule BoomLooper.Agent.Backend.ClaudeCodeTest do
     end
 
     test "translates MCPToolUseBlock with server name prefix" do
-      msg = assistant_msg([mcp_tool_use_block("exec", "boom-looper-container", %{"command" => "ls"})])
+      msg =
+        assistant_msg([mcp_tool_use_block("exec", "boom-looper-container", %{"command" => "ls"})])
 
-      assert [%Event.ToolCall{name: "mcp__boom-looper-container__exec", input: %{"command" => "ls"}}] =
+      assert [
+               %Event.ToolCall{
+                 name: "mcp__boom-looper-container__exec",
+                 input: %{"command" => "ls"}
+               }
+             ] =
                Backend.translate(msg)
     end
 
@@ -66,10 +86,11 @@ defmodule BoomLooper.Agent.Backend.ClaudeCodeTest do
     end
 
     test "translates multiple content blocks" do
-      msg = assistant_msg([
-        text_block("Let me check"),
-        tool_use_block("bash", %{"command" => "ls"})
-      ])
+      msg =
+        assistant_msg([
+          text_block("Let me check"),
+          tool_use_block("bash", %{"command" => "ls"})
+        ])
 
       assert [
                %Event.Text{text: "Let me check"},

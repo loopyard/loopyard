@@ -1,12 +1,19 @@
 defmodule BoomLooper.Tools.Container.ProbeHttp do
   use BoomLooper.Tool,
     name: "probe_http",
-    description: "Probe an HTTP endpoint from the HOST'S perspective — the same vantage point the eval runner uses. ALWAYS use this to verify the dev server is reachable. Without args, finds the workspace's published host port and probes /. Pass `port` to override which container port to look up, or `path` to hit /up, /health, etc. The response includes the exact URL probed, status code, body preview, and (on failure) a per-stack diagnosis of likely causes.",
+    description:
+      "Probe an HTTP endpoint from the HOST'S perspective — the same vantage point the eval runner uses. ALWAYS use this to verify the dev server is reachable. Without args, finds the workspace's published host port and probes /. Pass `port` to override which container port to look up, or `path` to hit /up, /health, etc. The response includes the exact URL probed, status code, body preview, and (on failure) a per-stack diagnosis of likely causes.",
     busy_words: ["probing", "pinging the server", "checking if it's alive"],
     params: [
       agent_id: {:string, required: true},
-      port: {:integer, description: "Container port to look up (e.g. 3000). Default: probe whatever's published on workspace or dev container."},
-      path: {:string, description: "Request path. Default: '/'. Common alternatives: '/up' (Rails), '/health', '/healthz'."}
+      port:
+        {:integer,
+         description:
+           "Container port to look up (e.g. 3000). Default: probe whatever's published on workspace or dev container."},
+      path:
+        {:string,
+         description:
+           "Request path. Default: '/'. Common alternatives: '/up' (Rails), '/health', '/healthz'."}
     ]
 
   alias BoomLooper.Docker
@@ -23,7 +30,8 @@ defmodule BoomLooper.Tools.Container.ProbeHttp do
 
       case try_probe_candidates(candidates, path, project_name) do
         {:ok, host_port, status, body, container_name} ->
-          {:ok, ProbeFormatter.format_probe_success(host_port, container_name, path, status, body)}
+          {:ok,
+           ProbeFormatter.format_probe_success(host_port, container_name, path, status, body)}
 
         {:error, :no_ports} ->
           {:ok, ProbeFormatter.format_probe_no_ports(project_name)}
@@ -63,7 +71,7 @@ defmodule BoomLooper.Tools.Container.ProbeHttp do
   defp try_probe_candidates(candidates, path, project_name) do
     {results, _} =
       Enum.reduce_while(candidates, {[], nil}, fn {container, container_port, host_port},
-                                                   {acc, _} ->
+                                                  {acc, _} ->
         url = "http://localhost:#{host_port}#{path}"
 
         case http_get(url) do
@@ -108,7 +116,9 @@ defmodule BoomLooper.Tools.Container.ProbeHttp do
     :inets.start()
     :ssl.start()
 
-    case :httpc.request(:get, {String.to_charlist(url), []},
+    case :httpc.request(
+           :get,
+           {String.to_charlist(url), []},
            [timeout: 30_000, connect_timeout: 5_000],
            body_format: :binary
          ) do
@@ -119,7 +129,8 @@ defmodule BoomLooper.Tools.Container.ProbeHttp do
         classify_failed_connect(details)
 
       {:error, reason} when reason in [:timeout, :etimedout] ->
-        {:timeout, "TCP connected but no HTTP response in 30s — likely a cold start (php-fpm first request, Rails asset precompile). Wait and retry."}
+        {:timeout,
+         "TCP connected but no HTTP response in 30s — likely a cold start (php-fpm first request, Rails asset precompile). Wait and retry."}
 
       {:error, reason} ->
         {:other, "HTTP probe errored: #{inspect(reason)}"}
@@ -138,13 +149,15 @@ defmodule BoomLooper.Tools.Container.ProbeHttp do
 
     case reason do
       :econnrefused ->
-        {:refused, "port not accepting TCP — unbound, wrong address, or bound to 127.0.0.1 inside the container"}
+        {:refused,
+         "port not accepting TCP — unbound, wrong address, or bound to 127.0.0.1 inside the container"}
 
       :ehostunreach ->
         {:refused, "host unreachable — Docker network likely misconfigured"}
 
       t when t in [:timeout, :etimedout] ->
-        {:timeout, "TCP connect timed out after 5s — port probably not bound; if the container just came up, try again in 10–30s"}
+        {:timeout,
+         "TCP connect timed out after 5s — port probably not bound; if the container just came up, try again in 10–30s"}
 
       other ->
         {:other, "connect failed: #{inspect(other)}"}

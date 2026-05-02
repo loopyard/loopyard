@@ -12,10 +12,13 @@ defmodule BoomLooperWeb.LaunchController do
           # If workspace config exists, go straight to workspace view
           # Otherwise redirect to new agent (will auto-spawn Setup)
           ws_id = BoomLooper.Workspace.workspace_id(workspace.path)
-          dest = case BoomLooper.Workspace.load_from_volume("code-#{ws_id}") do
-            {:ok, _} -> "/projects/#{project.id}/workspaces/#{workspace.id}"
-            _ -> "/projects/#{project.id}/workspaces/#{workspace.id}/new"
-          end
+
+          dest =
+            case BoomLooper.Workspace.load_from_volume("code-#{ws_id}") do
+              {:ok, _} -> "/projects/#{project.id}/workspaces/#{workspace.id}"
+              _ -> "/projects/#{project.id}/workspaces/#{workspace.id}/new"
+            end
+
           redirect(conn, to: dest)
 
         {:error, reason} ->
@@ -33,6 +36,9 @@ defmodule BoomLooperWeb.LaunchController do
   def launch(conn, %{"secret" => _secret}) do
     conn
     |> put_resp_content_type("text/plain")
-    |> send_resp(400, "Missing path parameter. Usage: open \"http://localhost:4000/launch/SECRET?path=$(pwd)\"")
+    |> send_resp(
+      400,
+      "Missing path parameter. Usage: open \"http://localhost:4000/launch/SECRET?path=$(pwd)\""
+    )
   end
 end

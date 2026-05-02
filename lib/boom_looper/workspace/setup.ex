@@ -530,7 +530,9 @@ defmodule BoomLooper.Workspace.Setup do
       error: error
     })
 
-    Logger.warning("[Workspace.Setup] #{workspace_id} marked failed on boot: interrupted by restart")
+    Logger.warning(
+      "[Workspace.Setup] #{workspace_id} marked failed on boot: interrupted by restart"
+    )
   end
 
   defp workspace_project_id(workspace_id) do

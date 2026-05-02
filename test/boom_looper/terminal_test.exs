@@ -54,7 +54,8 @@ defmodule BoomLooper.TerminalTest do
 
   describe "send_input/2 when not running" do
     test "returns error" do
-      assert {:error, :not_running} = Terminal.send_input("nonexistent-container-#{:rand.uniform(100_000)}", "hello")
+      assert {:error, :not_running} =
+               Terminal.send_input("nonexistent-container-#{:rand.uniform(100_000)}", "hello")
     end
   end
 
@@ -78,8 +79,10 @@ defmodule BoomLooper.TerminalTest do
       # Start a minimal container to test against
       container = "boom-looper-terminal-test-#{:rand.uniform(100_000)}"
 
-      {_, 0} = System.cmd("docker", ["run", "-d", "--name", container, "alpine:latest", "sleep", "300"],
-        stderr_to_stdout: true)
+      {_, 0} =
+        System.cmd("docker", ["run", "-d", "--name", container, "alpine:latest", "sleep", "300"],
+          stderr_to_stdout: true
+        )
 
       on_exit(fn ->
         System.cmd("docker", ["rm", "-f", container], stderr_to_stdout: true)

@@ -219,12 +219,17 @@ defmodule BoomLooper.PortExposer do
   defp handle_accepted(state, client_sock) do
     peer = peer_ip(client_sock)
 
-    case :gen_tcp.connect(state.upstream_host, state.upstream_port, [
-           :binary,
-           packet: :raw,
-           active: :once,
-           keepalive: true
-         ], 500) do
+    case :gen_tcp.connect(
+           state.upstream_host,
+           state.upstream_port,
+           [
+             :binary,
+             packet: :raw,
+             active: :once,
+             keepalive: true
+           ],
+           500
+         ) do
       {:ok, upstream_sock} ->
         # Enable keepalive on both sides so dead connections (phone
         # loses WiFi, laptop sleeps) are detected within minutes
@@ -245,13 +250,19 @@ defmodule BoomLooper.PortExposer do
 
         if failures >= 5 do
           {_ws, svc, cport} = state.key
-          Logger.error("[PortExposer] upstream #{svc}/#{cport} dead after #{failures} failures — shutting down proxy")
+
+          Logger.error(
+            "[PortExposer] upstream #{svc}/#{cport} dead after #{failures} failures — shutting down proxy"
+          )
+
           # Self-terminate. Registry will restart us when
           # discover_docker_ports runs on next container start.
           Process.send(self(), :upstream_dead, [])
         else
           if failures == 1 do
-            Logger.warning("[PortExposer] upstream :#{state.upstream_port} unreachable: #{inspect(reason)}")
+            Logger.warning(
+              "[PortExposer] upstream :#{state.upstream_port} unreachable: #{inspect(reason)}"
+            )
           end
         end
 

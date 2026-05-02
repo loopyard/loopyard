@@ -6,6 +6,7 @@ defmodule BoomLooper.Agent.Event.AuthStatus do
   is no automated recovery from bad creds).
   """
   defstruct [:is_authenticating, :error, output: []]
+
   @type t :: %__MODULE__{
           is_authenticating: boolean(),
           error: String.t() | nil,

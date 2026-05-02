@@ -18,7 +18,11 @@ defmodule BoomLooper.Events.TapTest do
 
     test "chat_agents events (struct form via publisher) are bucketed correctly" do
       id = "cls-chat-struct-#{System.unique_integer([:positive])}"
-      BoomLooper.Events.ChatAgent.publish(%BoomLooper.Events.ChatAgent.Started{summary: %{id: id}})
+
+      BoomLooper.Events.ChatAgent.publish(%BoomLooper.Events.ChatAgent.Started{
+        summary: %{id: id}
+      })
+
       Process.sleep(50)
 
       event = Enum.find(Tap.recent(), &String.contains?(&1.payload, id))
@@ -40,7 +44,13 @@ defmodule BoomLooper.Events.TapTest do
 
     test "chat_agent_status_changed is classified as chat_agents" do
       id = "cls-status-#{System.unique_integer([:positive])}"
-      Phoenix.PubSub.broadcast(BoomLooper.PubSub, "chat_agents", {:chat_agent_status_changed, id, :idle})
+
+      Phoenix.PubSub.broadcast(
+        BoomLooper.PubSub,
+        "chat_agents",
+        {:chat_agent_status_changed, id, :idle}
+      )
+
       Process.sleep(50)
 
       event = Enum.find(Tap.recent(), &String.contains?(&1.payload, id))
@@ -61,8 +71,15 @@ defmodule BoomLooper.Events.TapTest do
       new_events =
         Tap.recent() |> Enum.reject(&MapSet.member?(before_seqs, &1.seq))
 
-      assert Enum.any?(new_events, &(&1.topic == "docker_observer" and &1.tag == :docker_state_changed))
-      assert Enum.any?(new_events, &(&1.topic == "docker_observer" and &1.tag == :docker_state_disconnected))
+      assert Enum.any?(
+               new_events,
+               &(&1.topic == "docker_observer" and &1.tag == :docker_state_changed)
+             )
+
+      assert Enum.any?(
+               new_events,
+               &(&1.topic == "docker_observer" and &1.tag == :docker_state_disconnected)
+             )
     end
 
     test "workspace_services events are bucketed correctly" do
@@ -83,7 +100,12 @@ defmodule BoomLooper.Events.TapTest do
       Process.sleep(50)
 
       events = Enum.filter(Tap.recent(), &String.contains?(&1.payload, id))
-      assert Enum.any?(events, &(&1.topic == "workspace_services" and &1.tag == :services_updated))
+
+      assert Enum.any?(
+               events,
+               &(&1.topic == "workspace_services" and &1.tag == :services_updated)
+             )
+
       assert Enum.any?(events, &(&1.topic == "workspace_services" and &1.tag == :compose_result))
     end
   end
@@ -142,14 +164,22 @@ defmodule BoomLooper.Events.TapTest do
       # 0, find our event and assert that every event AFTER it in the
       # recent list has a LOWER seq (strictly descending ordering).
       id = "newest-#{System.unique_integer([:positive])}"
-      Phoenix.PubSub.broadcast(BoomLooper.PubSub, "chat_agents", {:chat_agent_renamed, id, "latest"})
+
+      Phoenix.PubSub.broadcast(
+        BoomLooper.PubSub,
+        "chat_agents",
+        {:chat_agent_renamed, id, "latest"}
+      )
+
       Process.sleep(50)
 
       events = Tap.recent()
+
       assert Enum.any?(events, &String.contains?(&1.payload, id)),
              "published event not in Tap's recent buffer"
 
       seqs = Enum.map(events, & &1.seq)
+
       assert seqs == Enum.sort(seqs, :desc),
              "recent/0 must return events in strictly descending seq order"
     end
@@ -168,7 +198,9 @@ defmodule BoomLooper.Events.TapTest do
 
       after_counts = Tap.topic_counts()
       assert Map.get(after_counts, "chat_agents", 0) - Map.get(before, "chat_agents", 0) >= 2
-      assert Map.get(after_counts, "docker_observer", 0) - Map.get(before, "docker_observer", 0) >= 1
+
+      assert Map.get(after_counts, "docker_observer", 0) - Map.get(before, "docker_observer", 0) >=
+               1
     end
   end
 
@@ -178,7 +210,13 @@ defmodule BoomLooper.Events.TapTest do
       # broadcasts that are also landing in the tap concurrently.
       id = "truncate-oversized-#{System.unique_integer([:positive])}"
       big = String.duplicate("x", 5_000)
-      Phoenix.PubSub.broadcast(BoomLooper.PubSub, "chat_agents", {:chat_agent_started, %{id: id, blob: big}})
+
+      Phoenix.PubSub.broadcast(
+        BoomLooper.PubSub,
+        "chat_agents",
+        {:chat_agent_started, %{id: id, blob: big}}
+      )
+
       Process.sleep(50)
 
       event = find_event_by_id(id)

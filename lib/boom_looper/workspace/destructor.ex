@@ -18,7 +18,16 @@ defmodule BoomLooper.Workspace.Destructor do
 
   require Logger
 
-  alias BoomLooper.{Compose, Docker, EventLog, ProjectRegistry, Workspace, WorkspaceRegistry, WorkspaceSupervisor}
+  alias BoomLooper.{
+    Compose,
+    Docker,
+    EventLog,
+    ProjectRegistry,
+    Workspace,
+    WorkspaceRegistry,
+    WorkspaceSupervisor
+  }
+
   alias BoomLooper.VolumeManager
 
   @doc """
@@ -178,7 +187,14 @@ defmodule BoomLooper.Workspace.Destructor do
   # interrupted teardown.
   defp sweep_orphans(workspace_id) do
     step(workspace_id, "sweep orphan containers", fn ->
-      case Docker.docker(["ps", "-a", "--filter", "name=bl-#{workspace_id}", "--format", "{{.ID}}"]) do
+      case Docker.docker([
+             "ps",
+             "-a",
+             "--filter",
+             "name=bl-#{workspace_id}",
+             "--format",
+             "{{.ID}}"
+           ]) do
         {:ok, output} ->
           for id <- String.split(output, "\n", trim: true) do
             try_silently(fn -> Docker.docker(["rm", "-f", id]) end)

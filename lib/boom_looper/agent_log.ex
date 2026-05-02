@@ -592,11 +592,12 @@ defmodule BoomLooper.AgentLog do
   # --- Private: Writing ---
 
   defp ensure_meta_header(path, version) do
-    needs_header = case File.stat(path) do
-      {:ok, %{size: 0}} -> true
-      {:error, :enoent} -> true
-      _ -> false
-    end
+    needs_header =
+      case File.stat(path) do
+        {:ok, %{size: 0}} -> true
+        {:error, :enoent} -> true
+        _ -> false
+      end
 
     if needs_header do
       meta = {:log_meta, %{version: version, created_at: DateTime.utc_now()}}
@@ -683,7 +684,8 @@ defmodule BoomLooper.AgentLog do
 
     acc =
       case safe_binary_to_term(data) do
-        {:ok, {:log_meta, _}} -> acc  # Skip meta record
+        # Skip meta record
+        {:ok, {:log_meta, _}} -> acc
         {:ok, event} -> [event | acc]
         :error -> acc
       end
@@ -755,6 +757,7 @@ defmodule BoomLooper.AgentLog do
         agent_data
         |> Map.put_new(:id, agent_id)
         |> Map.put(:alive?, false)
+
       :ets.insert(table, {agent_id, agent_data})
     end
 

@@ -212,7 +212,9 @@ defmodule BoomLooperWeb.LiveViewAsyncContractTest do
 
   # Walk top-level module body for `def mount(...)` and `def handle_params(...)`
   # clauses. Returns a list of `{callback_name, body_ast}`.
-  defp callback_bodies({:defmodule, _, [_, [do: {:__block__, _, top}]]}), do: extract_callbacks(top)
+  defp callback_bodies({:defmodule, _, [_, [do: {:__block__, _, top}]]}),
+    do: extract_callbacks(top)
+
   defp callback_bodies({:defmodule, _, [_, [do: single]]}), do: extract_callbacks([single])
   defp callback_bodies(_), do: []
 
@@ -222,12 +224,14 @@ defmodule BoomLooperWeb.LiveViewAsyncContractTest do
   end
 
   # `def mount(args, ...) do body end`
-  defp extract_from_node({:def, _, [{name, _, _args}, [do: body]]}) when name in @callback_names do
+  defp extract_from_node({:def, _, [{name, _, _args}, [do: body]]})
+       when name in @callback_names do
     [{name, body}]
   end
 
   # `def mount(args, ...), do: body` (one-liner)
-  defp extract_from_node({:def, _, [{name, _, _}, body]}) when name in @callback_names and is_list(body) do
+  defp extract_from_node({:def, _, [{name, _, _}, body]})
+       when name in @callback_names and is_list(body) do
     case body do
       [do: body_ast] -> [{name, body_ast}]
       _ -> []

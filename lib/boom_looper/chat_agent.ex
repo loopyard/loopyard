@@ -4,7 +4,9 @@ defmodule BoomLooper.ChatAgent do
   Streams structured messages to viewers via PubSub.
   Unlike the PTY-based Agent, this uses the JSON protocol
   for a proper multiplayer chat experience.
-  """ # Force recompile: 2026-03-26T14:55
+  """
+
+  # Force recompile: 2026-03-26T14:55
   # :temporary — the DynamicSupervisor never auto-restarts. The
   # BoomLooper.ChatAgent.RestartController GenServer owns every
   # respawn decision synchronously, which gives us exact quarantine
@@ -14,9 +16,17 @@ defmodule BoomLooper.ChatAgent do
   require Logger
 
   alias BoomLooper.AgentLog
-  alias BoomLooper.ChatAgent.{IdleReaper, Initializer, Persistence, Prompt, SessionManager, StreamHandler}
-  alias BoomLooper.Events
 
+  alias BoomLooper.ChatAgent.{
+    IdleReaper,
+    Initializer,
+    Persistence,
+    Prompt,
+    SessionManager,
+    StreamHandler
+  }
+
+  alias BoomLooper.Events
 
   defstruct [
     :id,
@@ -148,7 +158,6 @@ defmodule BoomLooper.ChatAgent do
     GenServer.cast(via(id), {:send_message, text})
   end
 
-
   def get_state(id) do
     # Try live GenServer first, fall back to ETS. Short timeout (500ms)
     # because this is a read path from the UI: a wedged agent doesn't
@@ -260,7 +269,9 @@ defmodule BoomLooper.ChatAgent do
           [{^agent_id, summary}] ->
             :ets.insert(@ets_table, {agent_id, %{summary | messages: summary.messages ++ [msg]}})
             msg
-          [] -> nil
+
+          [] ->
+            nil
         end
     end
   end
@@ -580,7 +591,11 @@ defmodule BoomLooper.ChatAgent do
 
         {state, drift_msg} = append_message(state, drift_msg)
         Persistence.persist_message(state, drift_msg)
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: drift_msg})
+
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+          agent_id: id,
+          msg: drift_msg
+        })
 
         # Re-persist summary after appending the drift message
         :ets.insert(@ets_table, {id, summary(state)})
@@ -615,6 +630,7 @@ defmodule BoomLooper.ChatAgent do
     )
 
     require Logger
+
     Logger.warning(
       "[ChatAgent] #{state.id} received non-binary send_message: #{inspect(text, limit: 100)}. " <>
         "Rejected. The sender has a bug."
@@ -623,7 +639,8 @@ defmodule BoomLooper.ChatAgent do
     {:noreply, state}
   end
 
-  def handle_cast({:send_message, text}, state) when is_binary(text) and byte_size(text) > @max_message_bytes do
+  def handle_cast({:send_message, text}, state)
+      when is_binary(text) and byte_size(text) > @max_message_bytes do
     # Reject oversized input before it hits any stream. A 50MB paste
     # would otherwise: blow up ETS term size, trigger huge PubSub
     # broadcasts to every viewer, burn a turn at maximum Claude cost,
@@ -645,7 +662,12 @@ defmodule BoomLooper.ChatAgent do
     }
 
     {state, reject_msg} = append_message(state, reject_msg)
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: reject_msg})
+
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+      agent_id: state.id,
+      msg: reject_msg
+    })
+
     {:noreply, state}
   end
 
@@ -665,7 +687,11 @@ defmodule BoomLooper.ChatAgent do
         user_msg = %{role: :user, content: text, timestamp: DateTime.utc_now()}
         {state, user_msg} = append_message(state, user_msg)
         Persistence.persist_message(state, user_msg)
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: user_msg})
+
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+          agent_id: state.id,
+          msg: user_msg
+        })
 
         state = %{state | pending_sends: state.pending_sends ++ [text]}
 
@@ -675,8 +701,14 @@ defmodule BoomLooper.ChatAgent do
             "Queued — agent is still working on the previous turn. Will process after it finishes.",
           timestamp: DateTime.utc_now()
         }
+
         {state, queued_msg} = append_message(state, queued_msg)
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: queued_msg})
+
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+          agent_id: state.id,
+          msg: queued_msg
+        })
+
         {:noreply, state}
 
       state.status == :rate_limited ->
@@ -688,7 +720,11 @@ defmodule BoomLooper.ChatAgent do
         user_msg = %{role: :user, content: text, timestamp: DateTime.utc_now()}
         {state, user_msg} = append_message(state, user_msg)
         Persistence.persist_message(state, user_msg)
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: user_msg})
+
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+          agent_id: state.id,
+          msg: user_msg
+        })
 
         wait_s =
           case StreamHandler.compute_rate_limit_wait_ms(state.rate_limit_resets_at_ms) do
@@ -701,8 +737,14 @@ defmodule BoomLooper.ChatAgent do
           content: "Holding your message — rate-limited, retrying in ~#{wait_s}s.",
           timestamp: DateTime.utc_now()
         }
+
         {state, hold_msg} = append_message(state, hold_msg)
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: hold_msg})
+
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+          agent_id: state.id,
+          msg: hold_msg
+        })
+
         {:noreply, state}
 
       state.status == :auth_expired ->
@@ -713,15 +755,26 @@ defmodule BoomLooper.ChatAgent do
         user_msg = %{role: :user, content: text, timestamp: DateTime.utc_now()}
         {state, user_msg} = append_message(state, user_msg)
         Persistence.persist_message(state, user_msg)
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: user_msg})
+
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+          agent_id: state.id,
+          msg: user_msg
+        })
 
         auth_msg = %{
           role: :error,
-          content: "Can't send — Claude CLI auth is expired (#{state.auth_error}). Re-auth and restart the agent.",
+          content:
+            "Can't send — Claude CLI auth is expired (#{state.auth_error}). Re-auth and restart the agent.",
           timestamp: DateTime.utc_now()
         }
+
         {state, auth_msg} = append_message(state, auth_msg)
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: auth_msg})
+
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+          agent_id: state.id,
+          msg: auth_msg
+        })
+
         {:noreply, state}
 
       true ->
@@ -786,12 +839,22 @@ defmodule BoomLooper.ChatAgent do
 
         restart_msg =
           if is_binary(state.claude_session_id) do
-            %{role: :system, content: "CLI session restarted (resumed conversation #{String.slice(state.claude_session_id, 0..7)}…)", timestamp: DateTime.utc_now()}
+            %{
+              role: :system,
+              content:
+                "CLI session restarted (resumed conversation #{String.slice(state.claude_session_id, 0..7)}…)",
+              timestamp: DateTime.utc_now()
+            }
           else
             %{role: :system, content: "CLI session restarted", timestamp: DateTime.utc_now()}
           end
+
         {state, restart_msg} = append_message(state, restart_msg)
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: restart_msg})
+
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+          agent_id: state.id,
+          msg: restart_msg
+        })
 
         # Fallback when we don't have a CLI session_id yet (e.g. the
         # agent was restarted before its first ResultMessage landed).
@@ -799,6 +862,7 @@ defmodule BoomLooper.ChatAgent do
         # conversation — no need to pollute it with a summary prompt.
         if is_nil(state.claude_session_id) do
           resume_msg = build_resume_message(state)
+
           if resume_msg do
             GenServer.cast(self(), {:send_message, resume_msg})
           end
@@ -822,7 +886,12 @@ defmodule BoomLooper.ChatAgent do
 
         {state, error_msg} = append_message(state, error_msg)
         state = %{state | errors: state.errors + 1}
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: error_msg})
+
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+          agent_id: state.id,
+          msg: error_msg
+        })
+
         {:noreply, state}
     end
   end
@@ -831,8 +900,12 @@ defmodule BoomLooper.ChatAgent do
   def handle_cast({:append_external_message, msg}, state) do
     {state, msg} = append_message(state, msg)
     :ets.insert(@ets_table, {state.id, summary(state)})
-    Persistence.persist_message(state,msg)
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: msg})
+    Persistence.persist_message(state, msg)
+
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+      agent_id: state.id,
+      msg: msg
+    })
 
     # Auto-continue: if agent is idle and receives an external system message,
     # prompt it to evaluate and continue. The agent decides if work is done.
@@ -879,9 +952,10 @@ defmodule BoomLooper.ChatAgent do
 
     # Persist the changes (diff between old and new)
     new_msg = Enum.find(state.messages, &(&1[:id] == msg_id))
+
     if old_msg && new_msg && new_msg != old_msg do
       changes = Map.drop(new_msg, [:id])
-      Persistence.persist_message_update(state,msg_id, changes)
+      Persistence.persist_message_update(state, msg_id, changes)
     end
 
     {:noreply, state}
@@ -910,11 +984,12 @@ defmodule BoomLooper.ChatAgent do
     # Start fresh session
     case state.backend.start_session(SessionManager.build_resume_opts(state)) do
       {:ok, new_session} ->
-        state = %{state |
-          session: new_session,
-          status: :idle,
-          context_utilization: 0.0,
-          context_warning_sent: false
+        state = %{
+          state
+          | session: new_session,
+            status: :idle,
+            context_utilization: 0.0,
+            context_warning_sent: false
         }
 
         # Send the resume summary
@@ -936,6 +1011,7 @@ defmodule BoomLooper.ChatAgent do
           content: "Failed to restart session. Start a new agent to continue.",
           timestamp: DateTime.utc_now()
         }
+
         {state, err} = append_message(state, err)
         Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: err})
         {:noreply, state}
@@ -1008,6 +1084,7 @@ defmodule BoomLooper.ChatAgent do
       %{count: 1},
       %{agent_id: state.id}
     )
+
     {:noreply, state}
   end
 
@@ -1032,7 +1109,10 @@ defmodule BoomLooper.ChatAgent do
   def handle_info({:stream_done, _id, _ref}, state), do: {:noreply, state}
 
   @impl true
-  def handle_info({:stream_timeout, id, ref}, %{id: id, status: :thinking, stream_ref: ref} = state) do
+  def handle_info(
+        {:stream_timeout, id, ref},
+        %{id: id, status: :thinking, stream_ref: ref} = state
+      ) do
     case StreamHandler.on_stream_timeout(state) do
       {:drain, text, state} -> send_message_normal(state, text)
       {:noreply, state} -> {:noreply, state}
@@ -1064,9 +1144,11 @@ defmodule BoomLooper.ChatAgent do
     case StreamHandler.on_stream_error(state, reason) do
       {:build_resume, state} ->
         resume_msg = build_resume_message(state)
+
         if resume_msg do
           GenServer.cast(self(), {:send_message, resume_msg})
         end
+
         {:noreply, state}
 
       {:drain, text, state} ->
@@ -1109,7 +1191,12 @@ defmodule BoomLooper.ChatAgent do
       {state, error_msg} = append_message(state, error_msg)
       state = %{state | status: :crashed, active_tool: nil, errors: state.errors + 1}
       state = Map.put(state, :consecutive_crashes, consecutive)
-      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: error_msg})
+
+      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+        agent_id: id,
+        msg: error_msg
+      })
+
       Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :crashed})
       {:noreply, state}
     else
@@ -1125,9 +1212,16 @@ defmodule BoomLooper.ChatAgent do
       # so the UI stops claiming "thinking" during the (up to 32s)
       # backoff window. :retry_session flips back to :idle on
       # success or :crashed on failure.
-      base = Application.get_env(:boom_looper, :crash_backoff_base_ms, @default_crash_backoff_base_ms)
+      base =
+        Application.get_env(:boom_looper, :crash_backoff_base_ms, @default_crash_backoff_base_ms)
+
       backoff_ms = BoomLooper.Retry.backoff_ms(consecutive, {:exponential, base})
-      BoomLooper.EventLog.info("agent:#{state.name}", "Backing off #{backoff_ms}ms before restart (crash ##{consecutive})")
+
+      BoomLooper.EventLog.info(
+        "agent:#{state.name}",
+        "Backing off #{backoff_ms}ms before restart (crash ##{consecutive})"
+      )
+
       Process.send_after(self(), {:retry_session, consecutive, state.session}, backoff_ms)
       state = %{state | status: :backoff, active_tool: nil}
       state = Map.put(state, :consecutive_crashes, consecutive)
@@ -1181,11 +1275,7 @@ defmodule BoomLooper.ChatAgent do
   # try the CLI again — if we're still rate-limited, the CLI will
   # emit another :rejected and we'll re-schedule.
   def handle_info({:rate_limit_retry, id}, %{id: id, status: :rate_limited} = state) do
-    state = %{state |
-      status: :idle,
-      rate_limit_status: :ok,
-      rate_limit_resets_at_ms: nil
-    }
+    state = %{state | status: :idle, rate_limit_status: :ok, rate_limit_resets_at_ms: nil}
     :ets.insert(@ets_table, {id, summary(state)})
     Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
 
@@ -1194,8 +1284,13 @@ defmodule BoomLooper.ChatAgent do
       content: "Rate-limit window cleared. Send a message to continue.",
       timestamp: DateTime.utc_now()
     }
+
     {state, resumed_msg} = append_message(state, resumed_msg)
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: resumed_msg})
+
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+      agent_id: id,
+      msg: resumed_msg
+    })
 
     case state.pending_sends do
       [] -> {:noreply, state}
@@ -1349,40 +1444,50 @@ defmodule BoomLooper.ChatAgent do
       nil
     else
       # Summarize what tools were used and what the last assistant message said
-      tool_names = recent
+      tool_names =
+        recent
         |> Enum.filter(&(&1.role == :tool))
-        |> Enum.map(&(&1[:tool]))
+        |> Enum.map(& &1[:tool])
         |> Enum.uniq()
 
-      last_assistant = recent
+      last_assistant =
+        recent
         |> Enum.filter(&(&1.role == :assistant))
         |> List.last()
 
-      last_system = recent
+      last_system =
+        recent
         |> Enum.filter(&(&1.role in [:system, :build_done]))
         |> List.last()
 
       parts = ["Your session crashed and was restarted. Here's what was happening:"]
 
-      parts = if tool_names != [] do
-        parts ++ ["Recent tools used: #{Enum.join(tool_names, ", ")}"]
-      else
-        parts
-      end
+      parts =
+        if tool_names != [] do
+          parts ++ ["Recent tools used: #{Enum.join(tool_names, ", ")}"]
+        else
+          parts
+        end
 
-      parts = if last_assistant do
-        parts ++ ["Your last message: #{String.slice(last_assistant.content, 0..500)}"]
-      else
-        parts
-      end
+      parts =
+        if last_assistant do
+          parts ++ ["Your last message: #{String.slice(last_assistant.content, 0..500)}"]
+        else
+          parts
+        end
 
-      parts = if last_system do
-        parts ++ ["Last system status: #{String.slice(last_system.content, 0..500)}"]
-      else
-        parts
-      end
+      parts =
+        if last_system do
+          parts ++ ["Last system status: #{String.slice(last_system.content, 0..500)}"]
+        else
+          parts
+        end
 
-      parts = parts ++ ["Continue where you left off. If you were setting up the dev environment, check service_status and follow the verification loop."]
+      parts =
+        parts ++
+          [
+            "Continue where you left off. If you were setting up the dev environment, check service_status and follow the verification loop."
+          ]
 
       Enum.join(parts, "\n\n")
     end
@@ -1404,7 +1509,11 @@ defmodule BoomLooper.ChatAgent do
     user_msg = %{role: :user, content: text, timestamp: DateTime.utc_now()}
     {state, user_msg} = append_message(state, user_msg)
     Persistence.persist_message(state, user_msg)
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: user_msg})
+
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+      agent_id: state.id,
+      msg: user_msg
+    })
 
     if not state.backend.session_alive?(state.session) do
       Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :idle})
@@ -1439,7 +1548,10 @@ defmodule BoomLooper.ChatAgent do
             send(me, {:stream_error, agent_id, stream_ref, Exception.message(e)})
         catch
           :exit, reason ->
-            send(me, {:stream_error, agent_id, stream_ref, "CLI session exited: #{inspect(reason)}"})
+            send(
+              me,
+              {:stream_error, agent_id, stream_ref, "CLI session exited: #{inspect(reason)}"}
+            )
         end
       end)
 
@@ -1458,7 +1570,10 @@ defmodule BoomLooper.ChatAgent do
     msg = Map.put_new_lazy(msg, :id, fn -> generate_msg_id() end)
     # Store as reverse list for O(1) prepend. Trim to cap.
     reversed = [msg | state.messages]
-    reversed = if length(reversed) > @max_messages, do: Enum.take(reversed, @max_messages), else: reversed
+
+    reversed =
+      if length(reversed) > @max_messages, do: Enum.take(reversed, @max_messages), else: reversed
+
     {%{state | messages: reversed}, msg}
   end
 

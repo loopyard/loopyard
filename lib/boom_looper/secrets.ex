@@ -92,6 +92,7 @@ defmodule BoomLooper.Secrets do
         case Map.get(store, key) do
           %{"value" => value} = entry ->
             scope = entry["scope"] || []
+
             if visible_to?(scope, workspace_id, project_id),
               do: {:ok, value},
               else: :not_found
@@ -112,10 +113,11 @@ defmodule BoomLooper.Secrets do
   the secret is global.
   """
   def put(key, name, value, scope \\ []) when is_list(scope) do
-    store = case read_store() do
-      {:ok, s} -> s
-      _ -> %{}
-    end
+    store =
+      case read_store() do
+        {:ok, s} -> s
+        _ -> %{}
+      end
 
     entry = %{"name" => name, "value" => value, "scope" => scope}
     store = Map.put(store, key, entry)

@@ -126,6 +126,7 @@ defmodule BoomLooper.ProjectStore do
   defp decode_source_type(_), do: nil
 
   defp decode_config(nil), do: nil
+
   defp decode_config(map) when is_map(map) do
     Map.new(map, fn {k, v} -> {String.to_atom(k), v} end)
   end
@@ -148,11 +149,13 @@ defmodule BoomLooper.ProjectStore do
   end
 
   defp encode_config(nil), do: nil
+
   defp encode_config(map) when is_map(map) do
     Map.new(map, fn {k, v} -> {Atom.to_string(k), v} end)
   end
 
   defp infer_source_type(nil), do: nil
+
   defp infer_source_type(path) when is_binary(path) do
     cond do
       String.starts_with?(path, "git@") -> :github

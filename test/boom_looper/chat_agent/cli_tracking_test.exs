@@ -119,7 +119,12 @@ defmodule BoomLooper.ChatAgent.CliTrackingTest do
       # can assert the codepath succeeds without the kill call by
       # checking the module source. A literal grep would be fragile;
       # instead we check `terminate/2` does NOT mention `OSProcess.kill`.
-      source = File.read!(__ENV__.file |> Path.dirname() |> Path.join("../../../lib/boom_looper/chat_agent.ex"))
+      source =
+        File.read!(
+          __ENV__.file
+          |> Path.dirname()
+          |> Path.join("../../../lib/boom_looper/chat_agent.ex")
+        )
 
       # Extract the terminate/2 function body — bounded by `def terminate`
       # and the next top-level `def `/`defp `.

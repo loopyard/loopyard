@@ -6,14 +6,17 @@ defmodule BoomLooper.Docker do
 
   @doc "Check if a TCP port has a process listening (not just Docker proxy)."
   def port_open?(port) when is_binary(port), do: port_open?(String.to_integer(port))
+
   def port_open?(port) when is_integer(port) do
     case :gen_tcp.connect(~c"localhost", port, [:binary, active: false], 1_000) do
       {:ok, socket} ->
-        result = case :gen_tcp.recv(socket, 0, 500) do
-          {:ok, _data} -> true
-          {:error, :timeout} -> true
-          {:error, :closed} -> false
-        end
+        result =
+          case :gen_tcp.recv(socket, 0, 500) do
+            {:ok, _data} -> true
+            {:error, :timeout} -> true
+            {:error, :closed} -> false
+          end
+
         :gen_tcp.close(socket)
         result
 
@@ -40,7 +43,12 @@ defmodule BoomLooper.Docker do
 
   @doc "Get container state details — running, exit code, error, OOM status."
   def container_state(container_name) do
-    case docker(["inspect", "-f", "{{.State.Status}}|{{.State.ExitCode}}|{{.State.OOMKilled}}|{{.State.Error}}", container_name]) do
+    case docker([
+           "inspect",
+           "-f",
+           "{{.State.Status}}|{{.State.ExitCode}}|{{.State.OOMKilled}}|{{.State.Error}}",
+           container_name
+         ]) do
       {:ok, output} ->
         case output |> String.trim() |> String.split("|") do
           [status, exit_code, oom, error] ->
@@ -50,9 +58,13 @@ defmodule BoomLooper.Docker do
               oom_killed: oom == "true",
               error: if(error == "", do: nil, else: error)
             }
-          _ -> nil
+
+          _ ->
+            nil
         end
-      _ -> nil
+
+      _ ->
+        nil
     end
   end
 
@@ -100,8 +112,14 @@ defmodule BoomLooper.Docker do
   def list_containers(opts \\ []) do
     filter_prefix = Keyword.get(opts, :prefix, "bl-")
 
-    case docker(["ps", "-a", "--filter", "name=#{filter_prefix}",
-                  "--format", "{{.Names}}\t{{.Status}}"]) do
+    case docker([
+           "ps",
+           "-a",
+           "--filter",
+           "name=#{filter_prefix}",
+           "--format",
+           "{{.Names}}\t{{.Status}}"
+         ]) do
       {:ok, ""} ->
         []
 
@@ -114,6 +132,7 @@ defmodule BoomLooper.Docker do
             [name, status] ->
               running = String.starts_with?(status, "Up")
               %{name: name, status: status, running: running}
+
             _ ->
               nil
           end
@@ -133,14 +152,28 @@ defmodule BoomLooper.Docker do
   """
   def prune_temp_containers do
     for ancestor <- ["alpine", "alpine/git"] do
-      case docker(["ps", "-a", "--filter", "ancestor=#{ancestor}",
-                    "--filter", "status=created", "--filter", "status=exited",
-                    "--format", "{{.ID}}"], timeout: 10_000) do
+      case docker(
+             [
+               "ps",
+               "-a",
+               "--filter",
+               "ancestor=#{ancestor}",
+               "--filter",
+               "status=created",
+               "--filter",
+               "status=exited",
+               "--format",
+               "{{.ID}}"
+             ],
+             timeout: 10_000
+           ) do
         {:ok, output} ->
           ids = output |> String.trim() |> String.split("\n", trim: true)
+
           Enum.each(ids, fn id ->
             docker(["rm", "-f", id], timeout: 5_000)
           end)
+
           length(ids)
 
         _ ->
@@ -283,8 +316,12 @@ defmodule BoomLooper.Docker do
 
         port_opts =
           case Keyword.get(opts, :env, []) do
-            [] -> port_opts
-            env -> port_opts ++ [{:env, Enum.map(env, fn {k, v} -> {to_charlist(k), to_charlist(v)} end)}]
+            [] ->
+              port_opts
+
+            env ->
+              port_opts ++
+                [{:env, Enum.map(env, fn {k, v} -> {to_charlist(k), to_charlist(v)} end)}]
           end
 
         Port.open({:spawn_executable, docker_path}, port_opts)

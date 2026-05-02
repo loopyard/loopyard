@@ -66,6 +66,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.AgentLifecycleTest do
       seed_agent(id, workspace_id, %{working_dir: "/workspace", bind_mount: nil})
 
       result = AgentLifecycle.list_workspace_agents(workspace_path)
+
       assert Enum.any?(result, &(&1.id == id)),
              "agent with container-scoped working_dir must show up in workspace sidebar"
     end
@@ -82,6 +83,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.AgentLifecycleTest do
     test "agent with working_dir == a subdirectory still shows up",
          %{workspace_path: workspace_path, workspace_id: workspace_id} do
       id = "subdir-agent-#{:rand.uniform(100_000)}"
+
       seed_agent(id, workspace_id, %{
         working_dir: Path.join(workspace_path, "apps/web"),
         bind_mount: nil

@@ -138,9 +138,18 @@ defmodule BoomLooper.ChatAgent.SessionManager do
     else
       BoomLooper.EventLog.warning("agent:#{state.name}", "CLI session dead, auto-restarting")
 
-      restart_msg = %{role: :system, content: "Session lost — reconnecting...", timestamp: DateTime.utc_now()}
+      restart_msg = %{
+        role: :system,
+        content: "Session lost — reconnecting...",
+        timestamp: DateTime.utc_now()
+      }
+
       {state, restart_msg} = append_message(state, restart_msg)
-      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: restart_msg})
+
+      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+        agent_id: state.id,
+        msg: restart_msg
+      })
 
       case state.backend.start_session(build_resume_opts(state)) do
         {:ok, new_session} ->
@@ -155,11 +164,19 @@ defmodule BoomLooper.ChatAgent.SessionManager do
 
           ok_msg = %{role: :system, content: ok_content, timestamp: DateTime.utc_now()}
           {state, ok_msg} = append_message(track_os_pid(%{state | session: new_session}), ok_msg)
-          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: ok_msg})
+
+          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+            agent_id: state.id,
+            msg: ok_msg
+          })
+
           state
 
         {:error, reason} ->
-          BoomLooper.EventLog.error("agent:#{state.name}", "Failed to restart CLI: #{inspect(reason)}")
+          BoomLooper.EventLog.error(
+            "agent:#{state.name}",
+            "Failed to restart CLI: #{inspect(reason)}"
+          )
 
           fail_msg = %{
             role: :error,
@@ -174,7 +191,12 @@ defmodule BoomLooper.ChatAgent.SessionManager do
           }
 
           {state, fail_msg} = append_message(state, fail_msg)
-          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: fail_msg})
+
+          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+            agent_id: state.id,
+            msg: fail_msg
+          })
+
           state
       end
     end
@@ -209,13 +231,24 @@ defmodule BoomLooper.ChatAgent.SessionManager do
 
         {state, recovered_msg} =
           append_message(
-            track_os_pid(%{state | session: new_session, status: :idle, active_tool: nil, errors: state.errors + 1}),
+            track_os_pid(%{
+              state
+              | session: new_session,
+                status: :idle,
+                active_tool: nil,
+                errors: state.errors + 1
+            }),
             recovered_msg
           )
 
         state = Map.put(state, :consecutive_crashes, consecutive)
         state = Map.delete(state, :retry_from_session)
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: recovered_msg})
+
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+          agent_id: id,
+          msg: recovered_msg
+        })
+
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
         {:noreply, state}
 
@@ -237,7 +270,12 @@ defmodule BoomLooper.ChatAgent.SessionManager do
         state = %{state | status: :idle, active_tool: nil, errors: state.errors + 1}
         state = Map.put(state, :consecutive_crashes, consecutive)
         state = Map.delete(state, :retry_from_session)
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: error_msg})
+
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+          agent_id: id,
+          msg: error_msg
+        })
+
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
         {:noreply, state}
     end
@@ -253,7 +291,10 @@ defmodule BoomLooper.ChatAgent.SessionManager do
   defp append_message(state, msg) do
     msg = Map.put_new_lazy(msg, :id, fn -> generate_msg_id() end)
     reversed = [msg | state.messages]
-    reversed = if length(reversed) > @max_messages, do: Enum.take(reversed, @max_messages), else: reversed
+
+    reversed =
+      if length(reversed) > @max_messages, do: Enum.take(reversed, @max_messages), else: reversed
+
     {%{state | messages: reversed}, msg}
   end
 

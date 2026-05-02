@@ -17,7 +17,9 @@ defmodule BoomLooper.AgentRecoveryTest do
 
   setup do
     # Create temp directory for log files
-    tmp_dir = Path.join(System.tmp_dir!(), "agent_recovery_test_#{:erlang.unique_integer([:positive])}")
+    tmp_dir =
+      Path.join(System.tmp_dir!(), "agent_recovery_test_#{:erlang.unique_integer([:positive])}")
+
     File.mkdir_p!(tmp_dir)
     log_path = Path.join(tmp_dir, ".boomlooper/workspace/agents.log")
 
@@ -37,30 +39,46 @@ defmodule BoomLooper.AgentRecoveryTest do
       agent_id = "agent-#{:erlang.unique_integer([:positive])}"
 
       # Simulate previous session - write history to log
-      AgentLog.append({:agent, agent_id, %{
-        name: "Test Agent",
-        workspace_id: "ws-123",
-        started_at: DateTime.utc_now(),
-        started_by: "test",
-        status: :idle
-      }}, log_path: log_path, version: @version)
+      AgentLog.append(
+        {:agent, agent_id,
+         %{
+           name: "Test Agent",
+           workspace_id: "ws-123",
+           started_at: DateTime.utc_now(),
+           started_by: "test",
+           status: :idle
+         }},
+        log_path: log_path,
+        version: @version
+      )
 
-      AgentLog.append({:msg, agent_id, %{
-        id: "msg-1",
-        role: :user,
-        content: "Hello from the past",
-        timestamp: DateTime.utc_now()
-      }}, log_path: log_path, version: @version)
+      AgentLog.append(
+        {:msg, agent_id,
+         %{
+           id: "msg-1",
+           role: :user,
+           content: "Hello from the past",
+           timestamp: DateTime.utc_now()
+         }},
+        log_path: log_path,
+        version: @version
+      )
 
-      AgentLog.append({:msg, agent_id, %{
-        id: "msg-2",
-        role: :assistant,
-        content: "I remember this conversation",
-        timestamp: DateTime.utc_now()
-      }}, log_path: log_path, version: @version)
+      AgentLog.append(
+        {:msg, agent_id,
+         %{
+           id: "msg-2",
+           role: :assistant,
+           content: "I remember this conversation",
+           timestamp: DateTime.utc_now()
+         }},
+        log_path: log_path,
+        version: @version
+      )
 
       # Replay log into ETS (simulates what ServiceManager does)
-      {:ok, agents} = AgentLog.replay(log_path: log_path, version: @version, ets_table: :chat_agents)
+      {:ok, agents} =
+        AgentLog.replay(log_path: log_path, version: @version, ets_table: :chat_agents)
 
       # Verify history was restored to ETS
       assert Map.has_key?(agents, agent_id)
@@ -89,15 +107,23 @@ defmodule BoomLooper.AgentRecoveryTest do
       agent_id = "agent-preserved-#{:erlang.unique_integer([:positive])}"
 
       # Write substantial history
-      AgentLog.append({:agent, agent_id, %{name: "History Agent", workspace_id: "ws-1"}}, log_path: log_path, version: @version)
+      AgentLog.append({:agent, agent_id, %{name: "History Agent", workspace_id: "ws-1"}},
+        log_path: log_path,
+        version: @version
+      )
 
       for i <- 1..10 do
-        AgentLog.append({:msg, agent_id, %{
-          id: "msg-#{i}",
-          role: if(rem(i, 2) == 0, do: :assistant, else: :user),
-          content: "Message #{i}",
-          timestamp: DateTime.utc_now()
-        }}, log_path: log_path, version: @version)
+        AgentLog.append(
+          {:msg, agent_id,
+           %{
+             id: "msg-#{i}",
+             role: if(rem(i, 2) == 0, do: :assistant, else: :user),
+             content: "Message #{i}",
+             timestamp: DateTime.utc_now()
+           }},
+          log_path: log_path,
+          version: @version
+        )
       end
 
       # Replay into ETS
@@ -130,7 +156,8 @@ defmodule BoomLooper.AgentRecoveryTest do
       File.write!(log_path, "")
 
       # Empty file has no meta header, so version check fails
-      {:error, {:version_mismatch, _}} = AgentLog.replay(log_path: log_path, version: @version, ets_table: :chat_agents)
+      {:error, {:version_mismatch, _}} =
+        AgentLog.replay(log_path: log_path, version: @version, ets_table: :chat_agents)
     end
   end
 
@@ -153,21 +180,40 @@ defmodule BoomLooper.AgentRecoveryTest do
       agent_id = "agent-happy-#{:erlang.unique_integer([:positive])}"
 
       # Write history
-      AgentLog.append({:agent, agent_id, %{
-        name: "Happy Agent",
-        workspace_id: "ws-happy",
-        started_at: ~U[2024-01-15 10:00:00Z],
-        started_by: "user",
-        status: :idle,
-        service_name: nil
-      }}, log_path: log_path, version: @version)
+      AgentLog.append(
+        {:agent, agent_id,
+         %{
+           name: "Happy Agent",
+           workspace_id: "ws-happy",
+           started_at: ~U[2024-01-15 10:00:00Z],
+           started_by: "user",
+           status: :idle,
+           service_name: nil
+         }},
+        log_path: log_path,
+        version: @version
+      )
 
-      AgentLog.append({:msg, agent_id, %{id: "m1", role: :user, content: "Setup the project"}}, log_path: log_path, version: @version)
-      AgentLog.append({:msg, agent_id, %{id: "m2", role: :assistant, content: "I'll help you set up..."}}, log_path: log_path, version: @version)
-      AgentLog.append({:msg, agent_id, %{id: "m3", role: :tool, tool: "exec", input: %{command: "ls"}}}, log_path: log_path, version: @version)
+      AgentLog.append({:msg, agent_id, %{id: "m1", role: :user, content: "Setup the project"}},
+        log_path: log_path,
+        version: @version
+      )
+
+      AgentLog.append(
+        {:msg, agent_id, %{id: "m2", role: :assistant, content: "I'll help you set up..."}},
+        log_path: log_path,
+        version: @version
+      )
+
+      AgentLog.append(
+        {:msg, agent_id, %{id: "m3", role: :tool, tool: "exec", input: %{command: "ls"}}},
+        log_path: log_path,
+        version: @version
+      )
 
       # Replay
-      {:ok, agents} = AgentLog.replay(log_path: log_path, version: @version, ets_table: :chat_agents)
+      {:ok, agents} =
+        AgentLog.replay(log_path: log_path, version: @version, ets_table: :chat_agents)
 
       assert Map.has_key?(agents, agent_id)
       agent = agents[agent_id]
@@ -192,12 +238,20 @@ defmodule BoomLooper.AgentRecoveryTest do
       agent_id = "agent-cli-fail-#{:erlang.unique_integer([:positive])}"
 
       # Write agent to log
-      AgentLog.append({:agent, agent_id, %{
-        name: "CLI Fail Agent",
-        workspace_id: "ws-fail"
-      }}, log_path: log_path, version: @version)
+      AgentLog.append(
+        {:agent, agent_id,
+         %{
+           name: "CLI Fail Agent",
+           workspace_id: "ws-fail"
+         }},
+        log_path: log_path,
+        version: @version
+      )
 
-      AgentLog.append({:msg, agent_id, %{id: "m1", role: :user, content: "Important message"}}, log_path: log_path, version: @version)
+      AgentLog.append({:msg, agent_id, %{id: "m1", role: :user, content: "Important message"}},
+        log_path: log_path,
+        version: @version
+      )
 
       # Replay into ETS
       {:ok, _} = AgentLog.replay(log_path: log_path, version: @version, ets_table: :chat_agents)
@@ -236,11 +290,35 @@ defmodule BoomLooper.AgentRecoveryTest do
       agent_id = "degraded-#{:erlang.unique_integer([:positive])}"
 
       # Agent had a productive session
-      AgentLog.append({:agent, agent_id, %{name: "Degraded Agent", workspace_id: "ws-gone"}}, log_path: log_path, version: @version)
-      AgentLog.append({:msg, agent_id, %{id: "m1", role: :user, content: "Setup the project"}}, log_path: log_path, version: @version)
-      AgentLog.append({:msg, agent_id, %{id: "m2", role: :assistant, content: "Done! Everything is configured."}}, log_path: log_path, version: @version)
-      AgentLog.append({:msg, agent_id, %{id: "m3", role: :tool, tool: "exec", input: %{command: "mix deps.get"}}}, log_path: log_path, version: @version)
-      AgentLog.append({:msg, agent_id, %{id: "m4", role: :tool_result, content: "Dependencies fetched"}}, log_path: log_path, version: @version)
+      AgentLog.append({:agent, agent_id, %{name: "Degraded Agent", workspace_id: "ws-gone"}},
+        log_path: log_path,
+        version: @version
+      )
+
+      AgentLog.append({:msg, agent_id, %{id: "m1", role: :user, content: "Setup the project"}},
+        log_path: log_path,
+        version: @version
+      )
+
+      AgentLog.append(
+        {:msg, agent_id,
+         %{id: "m2", role: :assistant, content: "Done! Everything is configured."}},
+        log_path: log_path,
+        version: @version
+      )
+
+      AgentLog.append(
+        {:msg, agent_id,
+         %{id: "m3", role: :tool, tool: "exec", input: %{command: "mix deps.get"}}},
+        log_path: log_path,
+        version: @version
+      )
+
+      AgentLog.append(
+        {:msg, agent_id, %{id: "m4", role: :tool_result, content: "Dependencies fetched"}},
+        log_path: log_path,
+        version: @version
+      )
 
       # Server restarts, containers are gone, but log exists
       {:ok, _} = AgentLog.replay(log_path: log_path, version: @version, ets_table: :chat_agents)
@@ -267,14 +345,22 @@ defmodule BoomLooper.AgentRecoveryTest do
       agent_id = "agent-corrupt-#{:erlang.unique_integer([:positive])}"
 
       # Write valid records
-      AgentLog.append({:agent, agent_id, %{name: "Recoverable"}}, log_path: log_path, version: @version)
-      AgentLog.append({:msg, agent_id, %{id: "m1", content: "Safe message"}}, log_path: log_path, version: @version)
+      AgentLog.append({:agent, agent_id, %{name: "Recoverable"}},
+        log_path: log_path,
+        version: @version
+      )
+
+      AgentLog.append({:msg, agent_id, %{id: "m1", content: "Safe message"}},
+        log_path: log_path,
+        version: @version
+      )
 
       # Append corruption
       File.write!(log_path, "garbage that breaks things", [:append])
 
       # Should still recover the valid records
-      {:ok, agents} = AgentLog.replay(log_path: log_path, version: @version, ets_table: :chat_agents)
+      {:ok, agents} =
+        AgentLog.replay(log_path: log_path, version: @version, ets_table: :chat_agents)
 
       assert Map.has_key?(agents, agent_id)
       assert agents[agent_id].name == "Recoverable"
@@ -289,14 +375,22 @@ defmodule BoomLooper.AgentRecoveryTest do
       agent_id = "agent-truncate-#{:erlang.unique_integer([:positive])}"
 
       # Write complete records
-      AgentLog.append({:agent, agent_id, %{name: "Truncate Test"}}, log_path: log_path, version: @version)
-      AgentLog.append({:msg, agent_id, %{id: "m1", content: "Complete"}}, log_path: log_path, version: @version)
+      AgentLog.append({:agent, agent_id, %{name: "Truncate Test"}},
+        log_path: log_path,
+        version: @version
+      )
+
+      AgentLog.append({:msg, agent_id, %{id: "m1", content: "Complete"}},
+        log_path: log_path,
+        version: @version
+      )
 
       # Simulate crash mid-write: size header says 100 bytes but only 20 written
       File.write!(log_path, <<100::32, "incomplete record....">>, [:append, :raw])
 
       # Recovery should get the complete records
-      {:ok, agents} = AgentLog.replay(log_path: log_path, version: @version, ets_table: :chat_agents)
+      {:ok, agents} =
+        AgentLog.replay(log_path: log_path, version: @version, ets_table: :chat_agents)
 
       assert agents[agent_id].name == "Truncate Test"
       assert length(agents[agent_id].messages) == 1
@@ -312,11 +406,20 @@ defmodule BoomLooper.AgentRecoveryTest do
       # Three agents in the same workspace
       for i <- 1..3 do
         agent_id = "multi-agent-#{i}"
-        AgentLog.append({:agent, agent_id, %{name: "Agent #{i}"}}, log_path: log_path, version: @version)
-        AgentLog.append({:msg, agent_id, %{id: "m-#{i}", content: "From agent #{i}"}}, log_path: log_path, version: @version)
+
+        AgentLog.append({:agent, agent_id, %{name: "Agent #{i}"}},
+          log_path: log_path,
+          version: @version
+        )
+
+        AgentLog.append({:msg, agent_id, %{id: "m-#{i}", content: "From agent #{i}"}},
+          log_path: log_path,
+          version: @version
+        )
       end
 
-      {:ok, agents} = AgentLog.replay(log_path: log_path, version: @version, ets_table: :chat_agents)
+      {:ok, agents} =
+        AgentLog.replay(log_path: log_path, version: @version, ets_table: :chat_agents)
 
       assert map_size(agents) == 3
       assert Enum.all?(1..3, fn i -> Map.has_key?(agents, "multi-agent-#{i}") end)

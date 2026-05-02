@@ -387,9 +387,12 @@ defmodule BoomLooper.Docker.Observer do
   defp start_event_stream(state) do
     case BoomLooper.Docker.open_port([
            "events",
-           "--filter", "type=container",
-           "--filter", "type=volume",
-           "--format", "{{json .}}"
+           "--filter",
+           "type=container",
+           "--filter",
+           "type=volume",
+           "--format",
+           "{{json .}}"
          ]) do
       {:error, reason} ->
         delay = backoff_delay(state.retry_attempt)
@@ -431,10 +434,12 @@ defmodule BoomLooper.Docker.Observer do
   defp commit_snapshot(state, containers, volumes) do
     # Volume sizes are pulled separately — they're a nice-to-have and
     # a failure here only drops size rendering, never container truth.
-    volume_sizes = fetch_volume_sizes() |> case do
-      {:ok, sizes} -> sizes
-      :error -> %{}
-    end
+    volume_sizes =
+      fetch_volume_sizes()
+      |> case do
+        {:ok, sizes} -> sizes
+        :error -> %{}
+      end
 
     now = DateTime.utc_now()
 
@@ -500,9 +505,12 @@ defmodule BoomLooper.Docker.Observer do
   defp fetch_containers do
     case BoomLooper.Docker.docker(
            [
-             "ps", "-a",
-             "--filter", "name=bl-",
-             "--format", "{{.Names}}\t{{.Status}}\t{{.Ports}}"
+             "ps",
+             "-a",
+             "--filter",
+             "name=bl-",
+             "--format",
+             "{{.Names}}\t{{.Status}}\t{{.Ports}}"
            ],
            env: [{"LC_ALL", "C"}]
          ) do
@@ -546,9 +554,12 @@ defmodule BoomLooper.Docker.Observer do
 
   defp fetch_volumes do
     case BoomLooper.Docker.docker([
-           "volume", "ls",
-           "--filter", "name=bl-",
-           "--format", "{{.Name}}"
+           "volume",
+           "ls",
+           "--filter",
+           "name=bl-",
+           "--format",
+           "{{.Name}}"
          ]) do
       {:ok, output} ->
         # Volume sizes used to be attached here, but they grow over time
@@ -675,8 +686,13 @@ defmodule BoomLooper.Docker.Observer do
     parts = String.split(buffer, "\n")
 
     case parts do
-      [] -> {[], ""}
-      [single] -> {[], single}  # no newline yet, keep buffering
+      [] ->
+        {[], ""}
+
+      # no newline yet, keep buffering
+      [single] ->
+        {[], single}
+
       _ ->
         {complete, [remainder]} = Enum.split(parts, -1)
         {Enum.reject(complete, &(&1 == "")), remainder}

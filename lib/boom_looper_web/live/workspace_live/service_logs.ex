@@ -26,9 +26,15 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.ServiceLogs do
       %{container: container} = svc when is_binary(container) ->
         case BoomLooper.Docker.docker(["logs", "--tail", "200", container], timeout: 5_000) do
           {:ok, ""} ->
-            if svc.status == :running, do: "(no output yet)", else: "(container exited with no output)"
-          {:ok, output} -> output
-          {:error, _} -> "(could not fetch logs)"
+            if svc.status == :running,
+              do: "(no output yet)",
+              else: "(container exited with no output)"
+
+          {:ok, output} ->
+            output
+
+          {:error, _} ->
+            "(could not fetch logs)"
         end
     end
   catch

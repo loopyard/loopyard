@@ -1,7 +1,8 @@
 defmodule BoomLooper.Tools.Container.Exec do
   use BoomLooper.Tool,
     name: "exec",
-    description: "Run a shell command inside the container. Use timeout for long-running commands (dependency installs, builds, etc.).",
+    description:
+      "Run a shell command inside the container. Use timeout for long-running commands (dependency installs, builds, etc.).",
     busy_words: ["running a command", "executing", "shelling out"],
     params: [
       agent_id: {:string, required: true},
@@ -58,12 +59,14 @@ defmodule BoomLooper.Tools.Container.Exec do
           %{msg | content: acc}
         end)
 
-        BoomLooper.Events.ChatAgentMessage.publish(%BoomLooper.Events.ChatAgentMessage.StreamOutput{
-          agent_id: agent_id,
-          data: data,
-          title: command,
-          msg_id: msg_id
-        })
+        BoomLooper.Events.ChatAgentMessage.publish(
+          %BoomLooper.Events.ChatAgentMessage.StreamOutput{
+            agent_id: agent_id,
+            data: data,
+            title: command,
+            msg_id: msg_id
+          }
+        )
 
         collect_output(agent_id, port, command, msg_id, acc, timeout)
 

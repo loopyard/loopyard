@@ -20,10 +20,14 @@ defmodule BoomLooper.VolumeIO do
       :none ->
         # No running container, use temporary alpine
         case Docker.docker([
-          "run", "--rm",
-          "-v", "#{volume_name}:/workspace",
-          "alpine", "cat", "/workspace/#{path}"
-        ]) do
+               "run",
+               "--rm",
+               "-v",
+               "#{volume_name}:/workspace",
+               "alpine",
+               "cat",
+               "/workspace/#{path}"
+             ]) do
           {:ok, content} -> {:ok, content}
           {:error, _} -> {:error, :not_found}
         end
@@ -39,7 +43,9 @@ defmodule BoomLooper.VolumeIO do
 
     case find_container_for_volume(volume_name) do
       {:ok, container} ->
-        script = "mkdir -p /workspace/#{dir} && echo '#{encoded}' | base64 -d > /workspace/#{path}"
+        script =
+          "mkdir -p /workspace/#{dir} && echo '#{encoded}' | base64 -d > /workspace/#{path}"
+
         case BoomLooper.Docker.exec_in(container, script) do
           {:ok, _} -> :ok
           {:error, reason} -> {:error, reason}
@@ -47,14 +53,21 @@ defmodule BoomLooper.VolumeIO do
 
       :none ->
         # No running container, use temporary alpine
-        script = "mkdir -p /workspace/#{dir} && echo \"$FILE_CONTENT\" | base64 -d > /workspace/#{path}"
+        script =
+          "mkdir -p /workspace/#{dir} && echo \"$FILE_CONTENT\" | base64 -d > /workspace/#{path}"
 
         case Docker.docker([
-          "run", "--rm",
-          "-e", "FILE_CONTENT=#{encoded}",
-          "-v", "#{volume_name}:/workspace",
-          "alpine", "sh", "-c", script
-        ]) do
+               "run",
+               "--rm",
+               "-e",
+               "FILE_CONTENT=#{encoded}",
+               "-v",
+               "#{volume_name}:/workspace",
+               "alpine",
+               "sh",
+               "-c",
+               script
+             ]) do
           {:ok, _} -> :ok
           {:error, reason} -> {:error, reason}
         end
@@ -79,25 +92,30 @@ defmodule BoomLooper.VolumeIO do
     seed_timeout = Keyword.get(opts, :timeout, 600_000)
 
     rsync_args = [
-      "run", "--rm",
-      "-v", "#{source_path}:/source:ro",
-      "-v", "#{volume_name}:/workspace",
-      "alpine", "sh", "-c",
+      "run",
+      "--rm",
+      "-v",
+      "#{source_path}:/source:ro",
+      "-v",
+      "#{volume_name}:/workspace",
+      "alpine",
+      "sh",
+      "-c",
       "apk add --no-cache rsync >/dev/null 2>&1 && " <>
-      "rsync -a --info=progress2,name1 " <>
-      "--exclude .git/objects " <>
-      "--exclude .git/lfs " <>
-      "--exclude node_modules " <>
-      "--exclude deps " <>
-      "--exclude _build " <>
-      "--exclude target " <>
-      "--exclude vendor/bundle " <>
-      "--exclude .next " <>
-      "--exclude .venv " <>
-      "--exclude __pycache__ " <>
-      "/source/ /workspace/ && " <>
-      "mkdir -p /workspace/.boomlooper && " <>
-      "date -u +%Y-%m-%dT%H:%M:%SZ > /workspace/.boomlooper/.seeded"
+        "rsync -a --info=progress2,name1 " <>
+        "--exclude .git/objects " <>
+        "--exclude .git/lfs " <>
+        "--exclude node_modules " <>
+        "--exclude deps " <>
+        "--exclude _build " <>
+        "--exclude target " <>
+        "--exclude vendor/bundle " <>
+        "--exclude .next " <>
+        "--exclude .venv " <>
+        "--exclude __pycache__ " <>
+        "/source/ /workspace/ && " <>
+        "mkdir -p /workspace/.boomlooper && " <>
+        "date -u +%Y-%m-%dT%H:%M:%SZ > /workspace/.boomlooper/.seeded"
     ]
 
     require Logger
@@ -121,11 +139,15 @@ defmodule BoomLooper.VolumeIO do
   """
   def seeded?(volume_name) do
     case Docker.docker([
-      "run", "--rm",
-      "-v", "#{volume_name}:/workspace",
-      "alpine", "sh", "-c",
-      "test -f /workspace/.boomlooper/.seeded && echo yes || echo no"
-    ]) do
+           "run",
+           "--rm",
+           "-v",
+           "#{volume_name}:/workspace",
+           "alpine",
+           "sh",
+           "-c",
+           "test -f /workspace/.boomlooper/.seeded && echo yes || echo no"
+         ]) do
       {:ok, output} -> String.trim(output) == "yes"
       {:error, _} -> false
     end
@@ -144,19 +166,24 @@ defmodule BoomLooper.VolumeIO do
       :ok ->
         # Use rsync in a container that mounts both source and target
         rsync_args = [
-          "run", "--rm",
-          "-v", "#{source_path}:/source:ro",
-          "-v", "#{volume_name}:/workspace",
-          "alpine", "sh", "-c",
+          "run",
+          "--rm",
+          "-v",
+          "#{source_path}:/source:ro",
+          "-v",
+          "#{volume_name}:/workspace",
+          "alpine",
+          "sh",
+          "-c",
           "apk add --no-cache rsync >/dev/null 2>&1 && " <>
-          "rsync -a --delete " <>
-          "--exclude node_modules " <>
-          "--exclude .git/objects " <>
-          "--exclude deps " <>
-          "--exclude _build " <>
-          "--exclude target " <>
-          "--exclude vendor/bundle " <>
-          "/source/ /workspace/"
+            "rsync -a --delete " <>
+            "--exclude node_modules " <>
+            "--exclude .git/objects " <>
+            "--exclude deps " <>
+            "--exclude _build " <>
+            "--exclude target " <>
+            "--exclude vendor/bundle " <>
+            "/source/ /workspace/"
         ]
 
         require Logger
@@ -210,6 +237,7 @@ defmodule BoomLooper.VolumeIO do
     case Regex.run(~r/^bl-([a-f0-9]+)-code$/, volume_name) do
       [_, workspace_id] ->
         container = "bl-#{workspace_id}-workspace-1"
+
         if BoomLooper.Docker.container_running?(container) do
           {:ok, container}
         else

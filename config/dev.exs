@@ -7,7 +7,8 @@ config :boom_looper, BoomLooperWeb.Endpoint,
   check_origin: false,
   code_reloader: true,
   debug_errors: true,
-  secret_key_base: "dev_secret_key_base_that_is_at_least_64_bytes_long_for_hive_application_dev_mode",
+  secret_key_base:
+    "dev_secret_key_base_that_is_at_least_64_bytes_long_for_hive_application_dev_mode",
   watchers: [
     esbuild: {Esbuild, :install_and_run, [:boom_looper, ~w(--sourcemap=inline --watch)]},
     tailwind: {Tailwind, :install_and_run, [:boom_looper, ~w(--watch)]}

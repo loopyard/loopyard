@@ -50,7 +50,10 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.SetupProgress do
           <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
             Setting up workspace
           </h2>
-          <p :if={@workspace_name != ""} class="text-sm text-zinc-500 dark:text-zinc-400 mt-1 font-mono">
+          <p
+            :if={@workspace_name != ""}
+            class="text-sm text-zinc-500 dark:text-zinc-400 mt-1 font-mono"
+          >
             {@workspace_name}
           </p>
         </div>
@@ -96,19 +99,33 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.SetupProgress do
       <span class="mt-0.5 flex-none">
         <%= case @status do %>
           <% :pending -> %>
-            <span class="block w-4 h-4 rounded-full border border-zinc-300 dark:border-zinc-600"></span>
+            <span class="block w-4 h-4 rounded-full border border-zinc-300 dark:border-zinc-600">
+            </span>
           <% :running -> %>
-            <span class="block w-4 h-4 rounded-full border-2 border-blue-500 border-t-transparent animate-spin"></span>
+            <span class="block w-4 h-4 rounded-full border-2 border-blue-500 border-t-transparent animate-spin">
+            </span>
           <% :complete -> %>
             <span class="block w-4 h-4 rounded-full bg-green-500 flex items-center justify-center">
               <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="3"
+                  d="M5 13l4 4L19 7"
+                >
+                </path>
               </svg>
             </span>
           <% :failed -> %>
             <span class="block w-4 h-4 rounded-full bg-red-500 flex items-center justify-center">
               <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"></path>
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="3"
+                  d="M6 18L18 6M6 6l12 12"
+                >
+                </path>
               </svg>
             </span>
         <% end %>
@@ -136,19 +153,28 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.SetupProgress do
   defp progress_block(assigns) do
     ~H"""
     <div class="mt-2 space-y-1.5">
-      <div :if={Map.get(@progress, :percent)} class="w-full bg-zinc-200 dark:bg-zinc-800 rounded-full h-1.5">
+      <div
+        :if={Map.get(@progress, :percent)}
+        class="w-full bg-zinc-200 dark:bg-zinc-800 rounded-full h-1.5"
+      >
         <div
           class="bg-blue-500 h-1.5 rounded-full transition-all"
           style={"width: #{Map.get(@progress, :percent, 0)}%"}
-        ></div>
+        >
+        </div>
       </div>
       <div class="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-zinc-500 dark:text-zinc-400 font-mono">
         <span :if={files_label(@progress)}>{files_label(@progress)}</span>
         <span :if={Map.get(@progress, :bytes)}>{format_bytes(@progress.bytes)}</span>
         <span :if={Map.get(@progress, :rate_bps)}>{format_rate(@progress.rate_bps)}</span>
-        <span :if={Map.get(@progress, :eta_seconds)}>~{format_duration(@progress.eta_seconds)} left</span>
+        <span :if={Map.get(@progress, :eta_seconds)}>
+          ~{format_duration(@progress.eta_seconds)} left
+        </span>
       </div>
-      <p :if={Map.get(@progress, :current_file)} class="text-xs text-zinc-400 dark:text-zinc-500 font-mono truncate">
+      <p
+        :if={Map.get(@progress, :current_file)}
+        class="text-xs text-zinc-400 dark:text-zinc-500 font-mono truncate"
+      >
         {@progress.current_file}
       </p>
     </div>

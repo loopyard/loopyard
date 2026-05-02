@@ -104,7 +104,11 @@ defmodule BoomLooper.AgentLog.CheckpointerTest do
     test "takes a snapshot when the scheduled tick fires", %{log_path: log_path} do
       workspace_id = "ws-int-#{:erlang.unique_integer([:positive])}"
       AgentLog.append({:agent, "a1", %{name: "A1"}}, log_path: log_path, version: @version)
-      AgentLog.append({:msg, "a1", %{id: "m1", content: "hi"}}, log_path: log_path, version: @version)
+
+      AgentLog.append({:msg, "a1", %{id: "m1", content: "hi"}},
+        log_path: log_path,
+        version: @version
+      )
 
       # Small interval so the timer fires inside the test
       {:ok, pid} =

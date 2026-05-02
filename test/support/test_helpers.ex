@@ -6,8 +6,11 @@ defmodule BoomLooper.TestHelpers do
     workspace_id = BoomLooper.Workspace.workspace_id(path)
 
     case BoomLooper.WorkspaceSupervisor.start_workspace(workspace_id, path) do
-      {:ok, _} -> workspace_id
-      {:error, {:already_started, _}} -> workspace_id
+      {:ok, _} ->
+        workspace_id
+
+      {:error, {:already_started, _}} ->
+        workspace_id
 
       # Nested `:already_started` arrives when the dynamic supervisor
       # itself is mid-start and a child (e.g. ServiceManager) claims

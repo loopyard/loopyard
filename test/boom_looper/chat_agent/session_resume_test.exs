@@ -196,6 +196,7 @@ defmodule BoomLooper.ChatAgent.SessionResumeTest do
       # ServiceManager does after a BoomLooper server restart.
       :sys.replace_state(pid, fn s -> Map.put(s, :claude_session_id, "sess-server-restart") end)
       live_state = :sys.get_state(pid)
+
       summary = %{
         id: live_state.id,
         name: live_state.name,

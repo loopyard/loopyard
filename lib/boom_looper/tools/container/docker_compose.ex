@@ -1,11 +1,16 @@
 defmodule BoomLooper.Tools.Container.DockerCompose do
   use BoomLooper.Tool,
     name: "docker_compose",
-    description: "Run any docker compose command. Compose file is at .boomlooper/workspace/docker-compose.yml",
+    description:
+      "Run any docker compose command. Compose file is at .boomlooper/workspace/docker-compose.yml",
     busy_words: ["composing", "orchestrating containers", "wrangling Docker"],
     params: [
       agent_id: {:string, required: true},
-      command: {:string, required: true, description: "Compose command (e.g. 'up -d --build', 'down', 'ps', 'logs dev', 'restart dev')"},
+      command:
+        {:string,
+         required: true,
+         description:
+           "Compose command (e.g. 'up -d --build', 'down', 'ps', 'logs dev', 'restart dev')"},
       timeout: {:integer, description: "Max seconds to run (default: 300 for builds)"}
     ]
 
@@ -99,12 +104,14 @@ defmodule BoomLooper.Tools.Container.DockerCompose do
           %{msg | content: acc}
         end)
 
-        BoomLooper.Events.ChatAgentMessage.publish(%BoomLooper.Events.ChatAgentMessage.StreamOutput{
-          agent_id: agent_id,
-          data: data,
-          title: "docker compose #{command}",
-          msg_id: msg_id
-        })
+        BoomLooper.Events.ChatAgentMessage.publish(
+          %BoomLooper.Events.ChatAgentMessage.StreamOutput{
+            agent_id: agent_id,
+            data: data,
+            title: "docker compose #{command}",
+            msg_id: msg_id
+          }
+        )
 
         collect_and_stream(agent_id, port, command, msg_id, acc, timeout)
 

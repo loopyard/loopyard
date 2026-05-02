@@ -33,15 +33,25 @@ defmodule BoomLooperWeb.Components.AppHeader do
         {render_slot(@inner_block)}
         <.link
           navigate={Path.join("/remote", @current_path)}
-          aria-label={if @host_exposed, do: "Remote access — exposed. Open connect page.", else: "Remote access — private. Open connect page."}
+          aria-label={
+            if @host_exposed,
+              do: "Remote access — exposed. Open connect page.",
+              else: "Remote access — private. Open connect page."
+          }
           class={[
             "focus-ring inline-flex items-center gap-1.5 px-2 min-h-11 md:min-h-0 md:py-1 text-sm font-medium transition-colors rounded",
             if(@host_exposed,
               do: "text-emerald-600 dark:text-emerald-400 hover:text-emerald-500",
-              else: "text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100")
+              else: "text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100"
+            )
           ]}
         >
-          <span :if={@host_exposed} class="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-none" aria-hidden="true"></span>
+          <span
+            :if={@host_exposed}
+            class="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-none"
+            aria-hidden="true"
+          >
+          </span>
           Remote
         </.link>
         <.link
@@ -56,14 +66,23 @@ defmodule BoomLooperWeb.Components.AppHeader do
   end
 
   def iex_indicator(assigns) do
-    {dot_color, bg_color} = case assigns.session.level do
-      :green -> {"bg-green-400", "bg-green-500/20 text-green-600 dark:text-green-400"}
-      :yellow -> {"bg-yellow-400 animate-pulse", "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400"}
-      :red -> {"bg-red-500 animate-pulse", "bg-red-500/20 text-red-600 dark:text-red-400"}
-      _ -> {"bg-zinc-400", "bg-zinc-500/20 text-zinc-600 dark:text-zinc-400"}
-    end
+    {dot_color, bg_color} =
+      case assigns.session.level do
+        :green ->
+          {"bg-green-400", "bg-green-500/20 text-green-600 dark:text-green-400"}
 
-    assigns = assigns
+        :yellow ->
+          {"bg-yellow-400 animate-pulse", "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400"}
+
+        :red ->
+          {"bg-red-500 animate-pulse", "bg-red-500/20 text-red-600 dark:text-red-400"}
+
+        _ ->
+          {"bg-zinc-400", "bg-zinc-500/20 text-zinc-600 dark:text-zinc-400"}
+      end
+
+    assigns =
+      assigns
       |> assign(:dot_color, dot_color)
       |> assign(:bg_color, bg_color)
       |> assign(:time_ago, relative_time(assigns.session.at))
@@ -79,8 +98,10 @@ defmodule BoomLooperWeb.Components.AppHeader do
   end
 
   defp relative_time(nil), do: ""
+
   defp relative_time(datetime) do
     diff = DateTime.diff(DateTime.utc_now(), datetime, :second)
+
     cond do
       diff < 5 -> "now"
       diff < 60 -> "#{diff}s"

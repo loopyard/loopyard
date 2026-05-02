@@ -38,12 +38,23 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.AgentEvents do
         end
 
       case Enum.find(agents, &(&1.id == id)) do
-        nil -> socket
+        nil ->
+          socket
+
         from_assigns ->
-          merged = Map.merge(ets_data, Map.take(from_assigns, [
-            :status, :name, :thinking_word, :alive?,
-            :boot_status, :quarantined
-          ]))
+          merged =
+            Map.merge(
+              ets_data,
+              Map.take(from_assigns, [
+                :status,
+                :name,
+                :thinking_word,
+                :alive?,
+                :boot_status,
+                :quarantined
+              ])
+            )
+
           assign(socket, :selected_agent, merged)
       end
     else
@@ -54,7 +65,8 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.AgentEvents do
   # --- Agent lifecycle events ---
 
   def handle_started(%{summary: agent_summary}, socket) do
-    socket = assign(socket, :agents, AgentLifecycle.list_workspace_agents(socket.assigns.workspace.path))
+    socket =
+      assign(socket, :agents, AgentLifecycle.list_workspace_agents(socket.assigns.workspace.path))
 
     if socket.assigns.booting_agent_id && agent_summary.id == socket.assigns.booting_agent_id do
       socket = assign(socket, :booting_agent_id, nil)
@@ -86,7 +98,8 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.AgentEvents do
   end
 
   def handle_booting(%{summary: summary}, socket) do
-    socket = assign(socket, :agents, AgentLifecycle.list_workspace_agents(socket.assigns.workspace.path))
+    socket =
+      assign(socket, :agents, AgentLifecycle.list_workspace_agents(socket.assigns.workspace.path))
 
     socket =
       if socket.assigns.selected_id == summary.id do
@@ -124,7 +137,8 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.AgentEvents do
   end
 
   def handle_boot_failed(%{id: id, reason: reason}, socket, workspace_path_fn) do
-    socket = assign(socket, :agents, AgentLifecycle.list_workspace_agents(socket.assigns.workspace.path))
+    socket =
+      assign(socket, :agents, AgentLifecycle.list_workspace_agents(socket.assigns.workspace.path))
 
     socket =
       if socket.assigns.booting_agent_id == id || socket.assigns.selected_id == id do
@@ -147,7 +161,8 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.AgentEvents do
   end
 
   def handle_removed(%{id: id}, socket) do
-    socket = assign(socket, :agents, AgentLifecycle.list_workspace_agents(socket.assigns.workspace.path))
+    socket =
+      assign(socket, :agents, AgentLifecycle.list_workspace_agents(socket.assigns.workspace.path))
 
     socket =
       if socket.assigns.selected_id == id do
@@ -185,7 +200,10 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.AgentEvents do
     agents =
       Enum.map(socket.assigns.agents, fn a ->
         if a.id == id do
-          a |> Map.put(:status, status) |> Map.put(:thinking_word, word) |> AgentLifecycle.annotate_liveness()
+          a
+          |> Map.put(:status, status)
+          |> Map.put(:thinking_word, word)
+          |> AgentLifecycle.annotate_liveness()
         else
           a
         end
@@ -203,10 +221,11 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.AgentEvents do
     if msg[:id] && Enum.any?(socket.assigns.messages, &(&1[:id] == msg[:id])) do
       {:noreply, socket}
     else
-      tool_word = if msg.role == :tool do
-        tool = msg[:tool]
-        if tool, do: Sidebar.thinking_word(id, tool)
-      end
+      tool_word =
+        if msg.role == :tool do
+          tool = msg[:tool]
+          if tool, do: Sidebar.thinking_word(id, tool)
+        end
 
       socket =
         socket
@@ -215,14 +234,17 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.AgentEvents do
         |> refresh_selected_from_agents(id, socket.assigns.agents)
         |> push_event("scroll_bottom", %{})
 
-      socket = if tool_word do
-        agents = Enum.map(socket.assigns.agents, fn a ->
-          if a.id == id, do: Map.put(a, :thinking_word, tool_word), else: a
-        end)
-        socket |> assign(:agents, agents) |> assign(:thinking_word, tool_word)
-      else
-        socket
-      end
+      socket =
+        if tool_word do
+          agents =
+            Enum.map(socket.assigns.agents, fn a ->
+              if a.id == id, do: Map.put(a, :thinking_word, tool_word), else: a
+            end)
+
+          socket |> assign(:agents, agents) |> assign(:thinking_word, tool_word)
+        else
+          socket
+        end
 
       {:noreply, socket}
     end
@@ -230,7 +252,8 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.AgentEvents do
 
   def handle_message(_event, socket), do: {:noreply, socket}
 
-  def handle_text_delta(%{agent_id: id, text: text}, socket) when id == socket.assigns.selected_id do
+  def handle_text_delta(%{agent_id: id, text: text}, socket)
+      when id == socket.assigns.selected_id do
     {:noreply,
      socket
      |> assign(:streaming_text, text)

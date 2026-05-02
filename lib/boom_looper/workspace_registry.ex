@@ -84,7 +84,9 @@ defmodule BoomLooper.WorkspaceRegistry do
   def update_setup(workspace_id, changes) when is_map(changes) do
     case :ets.lookup(@workspaces_table, workspace_id) do
       [{^workspace_id, workspace}] ->
-        current_setup = Map.get(workspace, :setup, BoomLooper.Workspace.Setup.initial_setup_field())
+        current_setup =
+          Map.get(workspace, :setup, BoomLooper.Workspace.Setup.initial_setup_field())
+
         new_setup = Map.merge(current_setup, changes)
         updated = Map.put(workspace, :setup, new_setup)
         :ets.insert(@workspaces_table, {workspace_id, updated})
@@ -131,6 +133,7 @@ defmodule BoomLooper.WorkspaceRegistry do
         updated = %{workspace | status: status}
         :ets.insert(@workspaces_table, {workspace_id, updated})
         {:ok, updated}
+
       [] ->
         {:error, "Workspace not found"}
     end
@@ -144,6 +147,7 @@ defmodule BoomLooper.WorkspaceRegistry do
   @doc "Find or create a workspace for a project."
   def find_or_create_workspace(project_id, workspace_name, path) do
     id = workspace_id(path)
+
     case get_workspace(id) do
       nil -> create_workspace(project_id, workspace_name, path)
       existing -> existing
@@ -204,9 +208,11 @@ defmodule BoomLooper.WorkspaceRegistry do
   end
 
   defp maybe_add_path(%{path: _} = ws), do: ws
+
   defp maybe_add_path(%{volume_based: true, id: id} = ws) do
     Map.put(ws, :path, Path.join([Workspace.home_dir(), "workspaces", id]))
   end
+
   defp maybe_add_path(ws), do: ws
 
   defp maybe_add_is_main(%{is_main: _} = ws), do: ws
@@ -218,6 +224,7 @@ defmodule BoomLooper.WorkspaceRegistry do
   # the path IS the worktree — set it. This is the single source of
   # truth for "where should Mutagen sync to."
   defp maybe_add_worktree_path(%{worktree_path: path} = ws) when is_binary(path), do: ws
+
   defp maybe_add_worktree_path(%{path: path} = ws) when is_binary(path) do
     virtual_prefix = Path.join(Workspace.home_dir(), "workspaces")
 
@@ -227,6 +234,7 @@ defmodule BoomLooper.WorkspaceRegistry do
       Map.put(ws, :worktree_path, path)
     end
   end
+
   defp maybe_add_worktree_path(ws), do: ws
 
   # The compose file always lives in the virtual workspace dir, never in
@@ -235,8 +243,10 @@ defmodule BoomLooper.WorkspaceRegistry do
   # sidebar, service status, tools — reads from workspace.compose_dir
   # instead of computing the path ad-hoc.
   defp maybe_add_compose_dir(%{compose_dir: dir} = ws) when is_binary(dir), do: ws
+
   defp maybe_add_compose_dir(%{id: id} = ws) do
     Map.put(ws, :compose_dir, Path.join([Workspace.home_dir(), "workspaces", id]))
   end
+
   defp maybe_add_compose_dir(ws), do: ws
 end

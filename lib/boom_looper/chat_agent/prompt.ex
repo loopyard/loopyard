@@ -99,7 +99,10 @@ defmodule BoomLooper.ChatAgent.Prompt do
         [body, catalog_str] |> Enum.reject(&(&1 == "")) |> Enum.join("\n\n")
 
       {:error, _} ->
-        Logger.warning("[ChatAgent] Unknown agent_type #{inspect(agent_type)}; using empty definition")
+        Logger.warning(
+          "[ChatAgent] Unknown agent_type #{inspect(agent_type)}; using empty definition"
+        )
+
         ""
     end
   end

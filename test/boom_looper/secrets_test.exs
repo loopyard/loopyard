@@ -3,7 +3,10 @@ defmodule BoomLooper.SecretsTest do
 
   alias BoomLooper.Secrets
 
-  @test_storage_dir Path.join(System.tmp_dir!(), "boom-looper-secrets-test-#{:rand.uniform(100_000)}")
+  @test_storage_dir Path.join(
+                      System.tmp_dir!(),
+                      "boom-looper-secrets-test-#{:rand.uniform(100_000)}"
+                    )
 
   setup do
     # Override storage path for tests by writing directly to a temp file

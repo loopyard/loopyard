@@ -25,8 +25,15 @@ defmodule BoomLooper.PortRegistryTest do
       # Stop any leftover proxies
       for {key, _} <- :ets.tab2list(:port_registry) do
         case BoomLooper.PortExposer.whereis(key) do
-          nil -> :ok
-          pid -> try do DynamicSupervisor.terminate_child(BoomLooper.PortExposerSupervisor, pid) catch _, _ -> :ok end
+          nil ->
+            :ok
+
+          pid ->
+            try do
+              DynamicSupervisor.terminate_child(BoomLooper.PortExposerSupervisor, pid)
+            catch
+              _, _ -> :ok
+            end
         end
       end
 
@@ -388,6 +395,7 @@ defmodule BoomLooper.PortRegistryTest do
       assert is_pid(proxy), "proxy did not come back after DOWN+reassign"
 
       state = :sys.get_state(proxy)
+
       assert state.bind_ip == {0, 0, 0, 0},
              "proxy came back on private bind despite preserved exposed: true"
 
@@ -437,7 +445,15 @@ defmodule BoomLooper.PortRegistryTest do
     parent = self()
 
     spawn(fn ->
-      {:ok, listen} = :gen_tcp.listen(port, [:binary, packet: :raw, active: false, reuseaddr: true, ip: {127, 0, 0, 1}])
+      {:ok, listen} =
+        :gen_tcp.listen(port, [
+          :binary,
+          packet: :raw,
+          active: false,
+          reuseaddr: true,
+          ip: {127, 0, 0, 1}
+        ])
+
       send(parent, {:echo_up, port})
       accept_loop(listen)
     end)
@@ -451,8 +467,12 @@ defmodule BoomLooper.PortRegistryTest do
 
   defp accept_loop(listen) do
     case :gen_tcp.accept(listen) do
-      {:ok, sock} -> spawn(fn -> echo_loop(sock) end); accept_loop(listen)
-      _ -> :ok
+      {:ok, sock} ->
+        spawn(fn -> echo_loop(sock) end)
+        accept_loop(listen)
+
+      _ ->
+        :ok
     end
   end
 
@@ -515,8 +535,12 @@ defmodule BoomLooper.PortRegistryTest do
 
   defp echo_loop(sock) do
     case :gen_tcp.recv(sock, 0, 10_000) do
-      {:ok, data} -> :gen_tcp.send(sock, data); echo_loop(sock)
-      _ -> :gen_tcp.close(sock)
+      {:ok, data} ->
+        :gen_tcp.send(sock, data)
+        echo_loop(sock)
+
+      _ ->
+        :gen_tcp.close(sock)
     end
   end
 end

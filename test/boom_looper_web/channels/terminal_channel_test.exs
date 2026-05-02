@@ -6,8 +6,11 @@ defmodule BoomLooperWeb.TerminalChannelTest do
   describe "join" do
     test "returns error for non-running container" do
       assert {:error, %{reason: _}} =
-        socket(BoomLooperWeb.UserSocket, "user", %{})
-        |> subscribe_and_join(TerminalChannel, "terminal:nonexistent-#{:rand.uniform(100_000)}")
+               socket(BoomLooperWeb.UserSocket, "user", %{})
+               |> subscribe_and_join(
+                 TerminalChannel,
+                 "terminal:nonexistent-#{:rand.uniform(100_000)}"
+               )
     end
   end
 
@@ -17,14 +20,17 @@ defmodule BoomLooperWeb.TerminalChannelTest do
     setup do
       container = "boom-looper-channel-test-#{:rand.uniform(100_000)}"
 
-      {_, 0} = System.cmd("docker", ["run", "-d", "--name", container, "alpine:latest", "sleep", "300"],
-        stderr_to_stdout: true)
+      {_, 0} =
+        System.cmd("docker", ["run", "-d", "--name", container, "alpine:latest", "sleep", "300"],
+          stderr_to_stdout: true
+        )
 
       on_exit(fn ->
         case Registry.lookup(BoomLooper.TerminalRegistry, container) do
           [{pid, _}] -> GenServer.stop(pid, :normal)
           [] -> :ok
         end
+
         Process.sleep(50)
         System.cmd("docker", ["rm", "-f", container], stderr_to_stdout: true)
       end)

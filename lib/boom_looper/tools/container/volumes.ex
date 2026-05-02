@@ -1,10 +1,12 @@
 defmodule BoomLooper.Tools.Container.Volumes do
   use BoomLooper.Tool,
     name: "volumes",
-    description: "List and inspect Docker volumes for this workspace. Foreign volumes are rejected — you can only see volumes belonging to your own workspace.",
+    description:
+      "List and inspect Docker volumes for this workspace. Foreign volumes are rejected — you can only see volumes belonging to your own workspace.",
     params: [
       agent_id: {:string, required: true},
-      action: {:string, description: "Action: 'list' (default), 'ls <volume> [path]', 'info <volume>'"}
+      action:
+        {:string, description: "Action: 'list' (default), 'ls <volume> [path]', 'info <volume>'"}
     ]
 
   def execute(%{agent_id: agent_id} = params, _assigns) do

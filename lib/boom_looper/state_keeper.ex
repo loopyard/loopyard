@@ -73,6 +73,7 @@ defmodule BoomLooper.StateKeeper do
         :ets.new(name, opts)
       end
     end)
+
     :ok
   end
 

@@ -59,7 +59,9 @@ defmodule BoomLooper.Source.Local do
       end
 
     id = Workspace.workspace_id(repo_root)
-    name = BoomLooper.ProjectRegistry.default_name_from_path(repo_root) || Path.basename(repo_root)
+
+    name =
+      BoomLooper.ProjectRegistry.default_name_from_path(repo_root) || Path.basename(repo_root)
 
     %{
       id: id,
@@ -275,7 +277,9 @@ defmodule BoomLooper.Source.Local do
     end
   rescue
     e ->
-      Logger.warning("[Source.Local] Failed to copy .boomlooper config to worktree: #{Exception.message(e)}")
+      Logger.warning(
+        "[Source.Local] Failed to copy .boomlooper config to worktree: #{Exception.message(e)}"
+      )
   end
 
   # --- Queries ---

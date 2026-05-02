@@ -12,7 +12,9 @@ defmodule BoomLooper.ChatAgent.PromptTest do
     end
 
     test "setup agent includes setup-specific body and catalog" do
-      prompt = Prompt.build_system_prompt("test-id", agent_type: "setup", bind_mount: "/tmp/project")
+      prompt =
+        Prompt.build_system_prompt("test-id", agent_type: "setup", bind_mount: "/tmp/project")
+
       assert prompt =~ "Setup agent"
       assert prompt =~ "setup_guide.md"
       # Catalog enumerates real files in the folder
@@ -20,12 +22,16 @@ defmodule BoomLooper.ChatAgent.PromptTest do
     end
 
     test "coding agent has a small definition (fits comfortably in system prompt)" do
-      prompt = Prompt.build_system_prompt("test-id", agent_type: "coding", bind_mount: "/tmp/project")
+      prompt =
+        Prompt.build_system_prompt("test-id", agent_type: "coding", bind_mount: "/tmp/project")
+
       assert String.length(prompt) <= 3500
     end
 
     test "setup agent prompt stays under CLI argument limit" do
-      prompt = Prompt.build_system_prompt("test-id", agent_type: "setup", bind_mount: "/tmp/project")
+      prompt =
+        Prompt.build_system_prompt("test-id", agent_type: "setup", bind_mount: "/tmp/project")
+
       assert String.length(prompt) <= 3500,
              "Setup prompt is #{String.length(prompt)} chars, max is 3500."
     end
@@ -92,7 +98,9 @@ defmodule BoomLooper.ChatAgent.PromptTest do
     end
 
     test "unknown agent_type falls back to base prompt without crashing" do
-      prompt = Prompt.build_system_prompt("test-id", agent_type: "nonexistent", bind_mount: "/tmp")
+      prompt =
+        Prompt.build_system_prompt("test-id", agent_type: "nonexistent", bind_mount: "/tmp")
+
       # Still includes the base prompt with the agent id
       assert prompt =~ "test-id"
       assert prompt =~ "boom-looper-container"
@@ -110,13 +118,25 @@ defmodule BoomLooper.ChatAgent.PromptTest do
 
   describe "workspace_prompt/1" do
     test "includes workspace name" do
-      workspace = %BoomLooper.Workspace{name: "my-project", system_prompt: nil, git_url: nil, branch: nil}
+      workspace = %BoomLooper.Workspace{
+        name: "my-project",
+        system_prompt: nil,
+        git_url: nil,
+        branch: nil
+      }
+
       prompt = Prompt.workspace_prompt(workspace)
       assert prompt =~ "my-project"
     end
 
     test "includes custom system prompt when set" do
-      workspace = %BoomLooper.Workspace{name: "my-project", system_prompt: "Use Ruby 3.3", git_url: nil, branch: nil}
+      workspace = %BoomLooper.Workspace{
+        name: "my-project",
+        system_prompt: "Use Ruby 3.3",
+        git_url: nil,
+        branch: nil
+      }
+
       prompt = Prompt.workspace_prompt(workspace)
       assert prompt =~ "Use Ruby 3.3"
     end

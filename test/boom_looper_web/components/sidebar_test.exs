@@ -99,7 +99,13 @@ defmodule BoomLooperWeb.Components.SidebarTest do
     # these rendering tests to assert the live states, register a
     # dummy pid under the agent id so the liveness check passes.
     defp register_live_agent(id) do
-      {:ok, pid} = Task.start_link(fn -> receive do _ -> :ok end end)
+      {:ok, pid} =
+        Task.start_link(fn ->
+          receive do
+            _ -> :ok
+          end
+        end)
+
       {:ok, _} = Registry.register(BoomLooper.ChatAgentRegistry, id, nil)
       on_exit_stop(pid)
       pid
@@ -136,7 +142,14 @@ defmodule BoomLooperWeb.Components.SidebarTest do
 
     test "shows boot status subtitle when booting" do
       register_live_agent("a1-booting")
-      agent = %{id: "a1-booting", name: "Agent", status: :booting, boot_status: "Building image..."}
+
+      agent = %{
+        id: "a1-booting",
+        name: "Agent",
+        status: :booting,
+        boot_status: "Building image..."
+      }
+
       html = render_comp(&agent_item/1, %{agent: agent, selected: false})
       assert html =~ "Building image..."
     end
@@ -168,14 +181,28 @@ defmodule BoomLooperWeb.Components.SidebarTest do
   describe "console_item/1" do
     test "renders console name with green dot" do
       console = %{id: "c1", name: "workspace"}
-      html = render_comp(&console_item/1, %{console: console, base_path: "/projects/p1/workspaces/w1", selected: false})
+
+      html =
+        render_comp(&console_item/1, %{
+          console: console,
+          base_path: "/projects/p1/workspaces/w1",
+          selected: false
+        })
+
       assert html =~ "workspace"
       assert html =~ "bg-green-500"
     end
 
     test "does not render remove/close button" do
       console = %{id: "c1", name: "workspace"}
-      html = render_comp(&console_item/1, %{console: console, base_path: "/projects/p1/workspaces/w1", selected: false})
+
+      html =
+        render_comp(&console_item/1, %{
+          console: console,
+          base_path: "/projects/p1/workspaces/w1",
+          selected: false
+        })
+
       refute html =~ "close_console"
       refute html =~ "remove"
       refute html =~ "&times;"
@@ -183,7 +210,14 @@ defmodule BoomLooperWeb.Components.SidebarTest do
 
     test "links to console path" do
       console = %{id: "c1", name: "workspace"}
-      html = render_comp(&console_item/1, %{console: console, base_path: "/projects/p1/workspaces/w1", selected: false})
+
+      html =
+        render_comp(&console_item/1, %{
+          console: console,
+          base_path: "/projects/p1/workspaces/w1",
+          selected: false
+        })
+
       assert html =~ "/projects/p1/workspaces/w1/consoles/c1"
     end
   end
@@ -191,7 +225,14 @@ defmodule BoomLooperWeb.Components.SidebarTest do
   describe "service_item/1" do
     test "renders service name with status dot" do
       svc = %{name: "postgres", status: :running, ports: %{"5432" => 32885}}
-      html = render_comp(&service_item/1, %{svc: svc, base_path: "/projects/p1/workspaces/w1", selected: false})
+
+      html =
+        render_comp(&service_item/1, %{
+          svc: svc,
+          base_path: "/projects/p1/workspaces/w1",
+          selected: false
+        })
+
       assert html =~ "postgres"
       assert html =~ "bg-green-500"
     end

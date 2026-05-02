@@ -42,13 +42,18 @@ defmodule BoomLooperWeb.SystemDockerLive do
   end
 
   defp assign_iex(socket) do
-    if connected?(socket), do: subscribe_iex(socket), else: assign(socket, :iex_session, %{level: nil})
+    if connected?(socket),
+      do: subscribe_iex(socket),
+      else: assign(socket, :iex_session, %{level: nil})
   end
 
   @impl true
   def handle_info(%Events.DockerObserver.Changed{} = e, socket), do: on_changed(e, socket)
   def handle_info(%Events.DockerObserver.Reset{} = e, socket), do: on_reset(e, socket)
-  def handle_info(%Events.DockerObserver.Disconnected{} = e, socket), do: on_disconnected(e, socket)
+
+  def handle_info(%Events.DockerObserver.Disconnected{} = e, socket),
+    do: on_disconnected(e, socket)
+
   def handle_info(%Events.DockerObserver.Reconnected{} = e, socket), do: on_reconnected(e, socket)
 
   def handle_info(_msg, socket), do: {:noreply, socket}
@@ -96,11 +101,13 @@ defmodule BoomLooperWeb.SystemDockerLive do
 
   @impl true
   def handle_async(key, {:ok, value}, socket) do
-    {:noreply, assign(socket, key, AsyncResult.ok(socket.assigns[key] || AsyncResult.loading(), value))}
+    {:noreply,
+     assign(socket, key, AsyncResult.ok(socket.assigns[key] || AsyncResult.loading(), value))}
   end
 
   def handle_async(key, {:exit, reason}, socket) do
-    {:noreply, assign(socket, key, AsyncResult.failed(socket.assigns[key] || AsyncResult.loading(), reason))}
+    {:noreply,
+     assign(socket, key, AsyncResult.failed(socket.assigns[key] || AsyncResult.loading(), reason))}
   end
 
   @impl true
@@ -116,7 +123,12 @@ defmodule BoomLooperWeb.SystemDockerLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <.page_shell breadcrumbs={[{"Boom Looper", "/"}, {"System", "/system"}, {"Docker", nil}]} iex_session={@iex_session} max_width={:xl} flash={@flash}>
+    <.page_shell
+      breadcrumbs={[{"Boom Looper", "/"}, {"System", "/system"}, {"Docker", nil}]}
+      iex_session={@iex_session}
+      max_width={:xl}
+      flash={@flash}
+    >
       <div class="space-y-8">
         <.containers_section containers={@containers} stats={@container_stats} />
         <.volumes_section volumes={@volumes} />
@@ -130,7 +142,9 @@ defmodule BoomLooperWeb.SystemDockerLive do
     <section>
       <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
         Containers
-        <span :if={is_list(@containers)} class="text-zinc-400 font-normal">({length(@containers)})</span>
+        <span :if={is_list(@containers)} class="text-zinc-400 font-normal">
+          ({length(@containers)})
+        </span>
       </h2>
 
       <%= cond do %>
@@ -155,18 +169,24 @@ defmodule BoomLooperWeb.SystemDockerLive do
               <tbody>
                 <tr :for={c <- @containers} class="border-t border-zinc-200 dark:border-zinc-700/50">
                   <td class="px-3 py-2">
-                    <div class={"w-2 h-2 rounded-full #{if c.running, do: "bg-green-500", else: "bg-zinc-400"}"}></div>
+                    <div class={"w-2 h-2 rounded-full #{if c.running, do: "bg-green-500", else: "bg-zinc-400"}"}>
+                    </div>
                   </td>
                   <td class="px-3 py-2 font-mono">{c.name}</td>
                   <% stat = container_stat(@stats, c.name) %>
                   <td class="px-3 py-2 font-mono">{stat_field(stat, :cpu)}</td>
                   <td class="px-3 py-2 font-mono">{stat_field(stat, :mem_usage)}</td>
                   <td class="px-3 py-2 font-mono">{stat_field(stat, :pids)}</td>
-                  <td class="px-3 py-2 font-mono text-zinc-500 truncate max-w-[200px]">{if c.running, do: "running", else: "stopped"}</td>
+                  <td class="px-3 py-2 font-mono text-zinc-500 truncate max-w-[200px]">
+                    {if c.running, do: "running", else: "stopped"}
+                  </td>
                   <td class="px-3 py-2">
-                    <button phx-click="kill_container" phx-value-name={c.name}
+                    <button
+                      phx-click="kill_container"
+                      phx-value-name={c.name}
                       data-confirm={"Force-remove container #{c.name}?"}
-                      class="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded px-1.5 py-0.5 font-medium transition-colors">
+                      class="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded px-1.5 py-0.5 font-medium transition-colors"
+                    >
                       rm -f
                     </button>
                   </td>

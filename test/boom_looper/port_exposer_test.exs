@@ -28,7 +28,11 @@ defmodule BoomLooper.PortExposerTest do
   end
 
   describe "forwarding + counters" do
-    test "proxies data both directions and counts bytes", %{port: port, upstream_port: up, key: key} do
+    test "proxies data both directions and counts bytes", %{
+      port: port,
+      upstream_port: up,
+      key: key
+    } do
       {:ok, exposer} =
         PortExposer.start_link(
           key: key,
@@ -123,7 +127,12 @@ defmodule BoomLooper.PortExposerTest do
   describe "bind_ip (exposure toggle)" do
     test "default binds to 0.0.0.0", %{port: port, upstream_port: up, key: key} do
       {:ok, exposer} =
-        PortExposer.start_link(key: key, host_port: port, upstream_host: {127, 0, 0, 1}, upstream_port: up)
+        PortExposer.start_link(
+          key: key,
+          host_port: port,
+          upstream_host: {127, 0, 0, 1},
+          upstream_port: up
+        )
 
       on_exit(fn -> safe_stop(exposer) end)
 
@@ -133,7 +142,13 @@ defmodule BoomLooper.PortExposerTest do
 
     test "bind_ip: {127,0,0,1} restricts to loopback", %{port: port, upstream_port: up, key: key} do
       {:ok, exposer} =
-        PortExposer.start_link(key: key, host_port: port, upstream_host: {127, 0, 0, 1}, upstream_port: up, bind_ip: {127, 0, 0, 1})
+        PortExposer.start_link(
+          key: key,
+          host_port: port,
+          upstream_host: {127, 0, 0, 1},
+          upstream_port: up,
+          bind_ip: {127, 0, 0, 1}
+        )
 
       on_exit(fn -> safe_stop(exposer) end)
 
@@ -141,7 +156,9 @@ defmodule BoomLooper.PortExposerTest do
       assert {:ok, {{127, 0, 0, 1}, ^port}} = :inet.sockname(state.listen_sock)
 
       # Still works from loopback
-      {:ok, client} = :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, packet: :raw, active: false], 1_000)
+      {:ok, client} =
+        :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, packet: :raw, active: false], 1_000)
+
       :ok = :gen_tcp.send(client, "test")
       assert {:ok, "test"} = :gen_tcp.recv(client, 4, 2_000)
       :gen_tcp.close(client)
@@ -152,12 +169,19 @@ defmodule BoomLooper.PortExposerTest do
     test "handles 5 sequential connections without stalling",
          %{port: port, upstream_port: up, key: key} do
       {:ok, exposer} =
-        PortExposer.start_link(key: key, host_port: port, upstream_host: {127, 0, 0, 1}, upstream_port: up)
+        PortExposer.start_link(
+          key: key,
+          host_port: port,
+          upstream_host: {127, 0, 0, 1},
+          upstream_port: up
+        )
 
       on_exit(fn -> safe_stop(exposer) end)
 
       for i <- 1..5 do
-        {:ok, client} = :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, packet: :raw, active: false], 1_000)
+        {:ok, client} =
+          :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, packet: :raw, active: false], 1_000)
+
         msg = "msg-#{i}"
         :ok = :gen_tcp.send(client, msg)
         assert {:ok, ^msg} = :gen_tcp.recv(client, byte_size(msg), 2_000)

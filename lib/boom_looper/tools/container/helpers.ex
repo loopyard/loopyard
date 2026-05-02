@@ -61,7 +61,9 @@ defmodule BoomLooper.Tools.Container.Helpers do
     end
   end
 
-  def validate_timeout(seconds) when is_number(seconds) and seconds >= 1 and seconds <= 3600, do: :ok
+  def validate_timeout(seconds) when is_number(seconds) and seconds >= 1 and seconds <= 3600,
+    do: :ok
+
   def validate_timeout(_), do: {:error, "timeout must be between 1 and 3600 seconds"}
 
   @doc """
@@ -111,6 +113,7 @@ defmodule BoomLooper.Tools.Container.Helpers do
 
   def normalize_search_path("."), do: "."
   def normalize_search_path(""), do: "."
+
   def normalize_search_path(path) when is_binary(path) do
     path
     |> String.trim_leading("/")
@@ -160,12 +163,14 @@ defmodule BoomLooper.Tools.Container.Helpers do
           %{msg | content: acc}
         end)
 
-        BoomLooper.Events.ChatAgentMessage.publish(%BoomLooper.Events.ChatAgentMessage.StreamOutput{
-          agent_id: agent_id,
-          data: data,
-          title: command,
-          msg_id: msg_id
-        })
+        BoomLooper.Events.ChatAgentMessage.publish(
+          %BoomLooper.Events.ChatAgentMessage.StreamOutput{
+            agent_id: agent_id,
+            data: data,
+            title: command,
+            msg_id: msg_id
+          }
+        )
 
         stream_port_output(agent_id, port, command, msg_id, acc, timeout)
 
@@ -218,13 +223,17 @@ defmodule BoomLooper.Tools.Container.Helpers do
         File.write!(Path.join(host_dir, "Dockerfile"), content)
 
       {:error, :not_found} ->
-        BoomLooper.EventLog.warning("workspace:#{ws_id}",
+        BoomLooper.EventLog.warning(
+          "workspace:#{ws_id}",
           "No Dockerfile at .boomlooper/workspace/Dockerfile in the volume. " <>
-            "Write one via `write_file` before `docker_compose build`.")
+            "Write one via `write_file` before `docker_compose build`."
+        )
 
       {:error, reason} ->
-        BoomLooper.EventLog.error("workspace:#{ws_id}",
-          "Failed to read Dockerfile from volume: #{inspect(reason)}")
+        BoomLooper.EventLog.error(
+          "workspace:#{ws_id}",
+          "Failed to read Dockerfile from volume: #{inspect(reason)}"
+        )
     end
 
     # Sync docker-compose.yml with full processing + sticky ports.
@@ -262,13 +271,17 @@ defmodule BoomLooper.Tools.Container.Helpers do
         end
 
       {:error, :not_found} ->
-        BoomLooper.EventLog.warning("workspace:#{ws_id}",
+        BoomLooper.EventLog.warning(
+          "workspace:#{ws_id}",
           "No docker-compose.yml at .boomlooper/workspace/docker-compose.yml " <>
-            "in the volume. Write one via `write_file` before `docker_compose up`.")
+            "in the volume. Write one via `write_file` before `docker_compose up`."
+        )
 
       {:error, reason} ->
-        BoomLooper.EventLog.error("workspace:#{ws_id}",
-          "Failed to read docker-compose.yml from volume: #{inspect(reason)}")
+        BoomLooper.EventLog.error(
+          "workspace:#{ws_id}",
+          "Failed to read docker-compose.yml from volume: #{inspect(reason)}"
+        )
     end
 
     :ok

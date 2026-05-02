@@ -21,22 +21,27 @@ defmodule BoomLooper.Tools.Secrets do
   @doc false
   def do_get_secret(key, workspace_id, project_id) do
     case Secrets.get(key, workspace_id, project_id) do
-      {:ok, value} -> {:ok, %{key: key, value: value}}
-      :not_found -> {:error, "Secret '#{key}' not found. Use list_secrets to see available secrets."}
+      {:ok, value} ->
+        {:ok, %{key: key, value: value}}
+
+      :not_found ->
+        {:error, "Secret '#{key}' not found. Use list_secrets to see available secrets."}
     end
   end
 
   # --- Tool definitions ---
 
-  tool :list_secrets, "List available secret names and keys (not values). Only secrets scoped to your workspace/project (or global secrets) are visible — the user may have project-specific credentials that won't appear here." do
+  tool :list_secrets,
+       "List available secret names and keys (not values). Only secrets scoped to your workspace/project (or global secrets) are visible — the user may have project-specific credentials that won't appear here." do
     def execute(_params, assigns) do
       {ws_id, proj_id} = BoomLooper.Tools.Secrets.resolve_scope(assigns)
       {:ok, BoomLooper.Tools.Secrets.do_list_secrets(ws_id, proj_id)}
     end
   end
 
-  tool :get_secret, "Get a secret value by key. Only returns secrets scoped to your workspace/project (or global ones). Scoped secrets belonging to other projects are indistinguishable from a missing key." do
-    field :key, :string, required: true, description: "The secret key (e.g. 'github_token')"
+  tool :get_secret,
+       "Get a secret value by key. Only returns secrets scoped to your workspace/project (or global ones). Scoped secrets belonging to other projects are indistinguishable from a missing key." do
+    field(:key, :string, required: true, description: "The secret key (e.g. 'github_token')")
 
     def execute(%{key: key}, assigns) do
       {ws_id, proj_id} = BoomLooper.Tools.Secrets.resolve_scope(assigns)

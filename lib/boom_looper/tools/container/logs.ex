@@ -1,11 +1,13 @@
 defmodule BoomLooper.Tools.Container.Logs do
   use BoomLooper.Tool,
     name: "logs",
-    description: "View container logs (works on running AND stopped/crashed containers). Pass 'service' to see a specific service's logs (e.g. 'dev', 'postgres'). Use service_containers first to see what's available.",
+    description:
+      "View container logs (works on running AND stopped/crashed containers). Pass 'service' to see a specific service's logs (e.g. 'dev', 'postgres'). Use service_containers first to see what's available.",
     busy_words: ["reading logs", "log diving", "checking output"],
     params: [
       agent_id: {:string, required: true},
-      service: {:string, description: "Service name to get logs for (e.g. 'dev', 'postgres', 'redis')"},
+      service:
+        {:string, description: "Service name to get logs for (e.g. 'dev', 'postgres', 'redis')"},
       lines: :integer
     ]
 

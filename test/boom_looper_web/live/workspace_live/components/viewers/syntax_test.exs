@@ -46,6 +46,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.SyntaxTest do
 
     test "escapes HTML in highlighted output (XSS)" do
       result = Syntax.highlight("<script>alert(1)</script>", "html")
+
       case result do
         {:safe, html} -> refute html =~ "<script>alert"
         plain when is_binary(plain) -> :ok

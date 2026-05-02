@@ -75,6 +75,7 @@ defmodule BoomLooper.Events.PublishersTest do
 
     test "publish/1 of another agent's event does not leak to this subscription", %{agent_id: id} do
       other_id = "other-#{System.unique_integer([:positive])}"
+
       Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
         agent_id: other_id,
         msg: %{role: :user, content: "not for me"}
@@ -91,7 +92,13 @@ defmodule BoomLooper.Events.PublishersTest do
     end
 
     test "publish/1 broadcasts StreamOutput", %{agent_id: id} do
-      e = %Events.ChatAgentMessage.StreamOutput{agent_id: id, data: "out", title: "cmd", msg_id: "m1"}
+      e = %Events.ChatAgentMessage.StreamOutput{
+        agent_id: id,
+        data: "out",
+        title: "cmd",
+        msg_id: "m1"
+      }
+
       Events.ChatAgentMessage.publish(e)
       assert_receive ^e
     end
@@ -219,7 +226,9 @@ defmodule BoomLooper.Events.PublishersTest do
 
       try do
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: "a1", status: :idle})
-        assert_receive {^ref, %{count: 1}, %{topic: "chat_agents", event: Events.ChatAgent.StatusChanged}}
+
+        assert_receive {^ref, %{count: 1},
+                        %{topic: "chat_agents", event: Events.ChatAgent.StatusChanged}}
       after
         :telemetry.detach(handler_id)
       end

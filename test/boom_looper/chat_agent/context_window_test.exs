@@ -124,7 +124,8 @@ defmodule BoomLooper.ChatAgent.ContextWindowTest do
       assert_in_delta state.context_utilization, 0.9, 0.01
     end
 
-    test "crossing 85% threshold sets the one-shot warning flag (telemetry only, no inline UI)", %{id: id} do
+    test "crossing 85% threshold sets the one-shot warning flag (telemetry only, no inline UI)",
+         %{id: id} do
       # The implementation deliberately doesn't append a user-facing
       # message — the auto-restart handles real exhaustion silently.
       # The contract here is the `context_warning_sent` flag (one-shot
@@ -188,6 +189,7 @@ defmodule BoomLooper.ChatAgent.ContextWindowTest do
          %{id: id} do
       pid = agent_pid(id)
       ref = make_ref()
+
       :sys.replace_state(pid, fn s ->
         %{s | stream_ref: ref, context_warning_sent: true, status: :thinking}
       end)

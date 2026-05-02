@@ -1,12 +1,18 @@
 defmodule BoomLooper.Tools.Container.AppUrl do
   use BoomLooper.Tool,
     name: "app_url",
-    description: "Get a clickable URL to a page in the running dev server. Use this after building a feature, fixing a bug, or when the user asks to see/open/view something in their browser. The URL automatically adapts to each viewer's hostname (localhost, LAN, tunnel).",
+    description:
+      "Get a clickable URL to a page in the running dev server. Use this after building a feature, fixing a bug, or when the user asks to see/open/view something in their browser. The URL automatically adapts to each viewer's hostname (localhost, LAN, tunnel).",
     busy_words: ["building a link", "URL crafting"],
     params: [
       agent_id: {:string, required: true},
-      path: {:string, required: true, description: "Route path in the app (e.g. '/', '/users', '/admin/dashboard', '/code/my-article')"},
-      service: {:string, description: "Compose service name to get the port from (default: 'dev')"}
+      path:
+        {:string,
+         required: true,
+         description:
+           "Route path in the app (e.g. '/', '/users', '/admin/dashboard', '/code/my-article')"},
+      service:
+        {:string, description: "Compose service name to get the port from (default: 'dev')"}
     ]
 
   @doc """
@@ -26,7 +32,8 @@ defmodule BoomLooper.Tools.Container.AppUrl do
 
         case find_host_port(workspace_id, service, container) do
           {:ok, host_port, exposed?, cport} ->
-            clean_path = if String.starts_with?(route_path, "/"), do: route_path, else: "/#{route_path}"
+            clean_path =
+              if String.starts_with?(route_path, "/"), do: route_path, else: "/#{route_path}"
 
             url =
               %URI{scheme: "http", host: "localhost", port: host_port, path: clean_path}
@@ -35,11 +42,13 @@ defmodule BoomLooper.Tools.Container.AppUrl do
             if exposed? do
               {:ok, url}
             else
-              {:ok, "#{url}\n\n> **This port is local-only.** To access from another device, open port #{service}/#{cport}."}
+              {:ok,
+               "#{url}\n\n> **This port is local-only.** To access from another device, open port #{service}/#{cport}."}
             end
 
           :no_ports ->
-            {:error, "#{container} has no mapped ports. Is it running? Try `service_containers` to check."}
+            {:error,
+             "#{container} has no mapped ports. Is it running? Try `service_containers` to check."}
         end
 
       _ ->

@@ -13,10 +13,13 @@ defmodule BoomLooper.Workspace.ServiceManager do
   @status_table :service_status_cache
 
   defstruct [
-    :project_dir,       # virtual dir (~/.boomlooper/workspaces/<id>) where compose file lives
-    :canonical_dir,     # original project dir (used for registry and broadcasts)
+    # virtual dir (~/.boomlooper/workspaces/<id>) where compose file lives
+    :project_dir,
+    # original project dir (used for registry and broadcasts)
+    :canonical_dir,
     :workspace_id,
-    :volume_name,       # code volume name (code-<workspace_id>)
+    # code volume name (code-<workspace_id>)
+    :volume_name,
     running: false
   ]
 
@@ -28,14 +31,24 @@ defmodule BoomLooper.Workspace.ServiceManager do
   end
 
   def start_services(project_dir) do
-    case RegistryHelper.call(BoomLooper.ServiceManagerRegistry, project_dir, :start_services, 600_000) do
+    case RegistryHelper.call(
+           BoomLooper.ServiceManagerRegistry,
+           project_dir,
+           :start_services,
+           600_000
+         ) do
       {:ok, result} -> result
       {:error, :not_found} -> {:error, :service_manager_not_running}
     end
   end
 
   def stop_services(project_dir) do
-    case RegistryHelper.call(BoomLooper.ServiceManagerRegistry, project_dir, :stop_services, 30_000) do
+    case RegistryHelper.call(
+           BoomLooper.ServiceManagerRegistry,
+           project_dir,
+           :stop_services,
+           30_000
+         ) do
       {:ok, result} -> result
       {:error, :not_found} -> :ok
     end
@@ -100,6 +113,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
     # If this fails, the ServiceManager stays alive in an idle state and
     # can be retried via start_services/1 or rebuild.
     self_pid = self()
+
     Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
       try do
         case Compose.ps(effective_project_dir, workspace_id) do
@@ -113,12 +127,16 @@ defmodule BoomLooper.Workspace.ServiceManager do
         end
       rescue
         e ->
-          BoomLooper.EventLog.error("workspace:#{workspace_id}",
-            "Async init failed: #{Exception.message(e)}")
+          BoomLooper.EventLog.error(
+            "workspace:#{workspace_id}",
+            "Async init failed: #{Exception.message(e)}"
+          )
       catch
         :exit, reason ->
-          BoomLooper.EventLog.error("workspace:#{workspace_id}",
-            "Async init exited: #{inspect(reason)}")
+          BoomLooper.EventLog.error(
+            "workspace:#{workspace_id}",
+            "Async init exited: #{inspect(reason)}"
+          )
       end
     end)
 
@@ -140,7 +158,10 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
   @impl true
   def handle_call(:reconnect, _from, state) do
-    BoomLooper.EventLog.info("workspace:#{state.workspace_id}", "Reconnecting to existing compose containers")
+    BoomLooper.EventLog.info(
+      "workspace:#{state.workspace_id}",
+      "Reconnecting to existing compose containers"
+    )
 
     # Reprocess compose to ensure port bindings go through the registry
     ensure_compose_ports(state)
@@ -167,6 +188,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
   # Catchall handle_call — stays grouped with the specific ones above.
   def handle_call(msg, _from, state) do
     require Logger
+
     Logger.warning(
       "[ServiceManager] ws=#{state.workspace_id} unhandled call: #{inspect(msg, limit: 200)}"
     )
@@ -174,7 +196,12 @@ defmodule BoomLooper.Workspace.ServiceManager do
     :telemetry.execute(
       [:boom_looper, :actor, :unknown_message],
       %{count: 1},
-      %{actor: __MODULE__, workspace_id: state.workspace_id, kind: :call, msg: inspect(msg, limit: 200)}
+      %{
+        actor: __MODULE__,
+        workspace_id: state.workspace_id,
+        kind: :call,
+        msg: inspect(msg, limit: 200)
+      }
     )
 
     {:reply, {:error, :unknown_call}, state}
@@ -196,6 +223,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
   # above.
   def handle_cast(msg, state) do
     require Logger
+
     Logger.warning(
       "[ServiceManager] ws=#{state.workspace_id} unhandled cast: #{inspect(msg, limit: 200)}"
     )
@@ -203,7 +231,12 @@ defmodule BoomLooper.Workspace.ServiceManager do
     :telemetry.execute(
       [:boom_looper, :actor, :unknown_message],
       %{count: 1},
-      %{actor: __MODULE__, workspace_id: state.workspace_id, kind: :cast, msg: inspect(msg, limit: 200)}
+      %{
+        actor: __MODULE__,
+        workspace_id: state.workspace_id,
+        kind: :cast,
+        msg: inspect(msg, limit: 200)
+      }
     )
 
     {:noreply, state}
@@ -215,6 +248,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
   @impl true
   def handle_info(msg, state) do
     require Logger
+
     Logger.warning(
       "[ServiceManager] ws=#{state.workspace_id} unhandled info: #{inspect(msg, limit: 200)}"
     )
@@ -222,7 +256,12 @@ defmodule BoomLooper.Workspace.ServiceManager do
     :telemetry.execute(
       [:boom_looper, :actor, :unknown_message],
       %{count: 1},
-      %{actor: __MODULE__, workspace_id: state.workspace_id, kind: :info, msg: inspect(msg, limit: 200)}
+      %{
+        actor: __MODULE__,
+        workspace_id: state.workspace_id,
+        kind: :info,
+        msg: inspect(msg, limit: 200)
+      }
     )
 
     {:noreply, state}
@@ -239,6 +278,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
       "workspace:#{state.workspace_id}",
       "ServiceManager stopping — containers left running"
     )
+
     :ok
   end
 
@@ -274,45 +314,50 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
     # Port assignments now come from BoomLooper.PortRegistry inside
     # process_agent_compose/3 — no more port_map capture at this layer.
-    has_compose = case BoomLooper.VolumeManager.read_file(volume_name, ".boomlooper/workspace/docker-compose.yml") do
-      {:ok, content} when content != "" ->
-        case Compose.process_agent_compose(content, state.workspace_id) do
-          {:ok, processed} ->
-            # Disk-full / permission denied here used to raise inside
-            # handle_call — supervisor would quarantine the GenServer
-            # after 5 retries. Now surfaces as a clean EventLog line
-            # + cluster just doesn't start this tick. Next retry (user
-            # click on Start) will try again.
-            case File.write(compose_path, processed) do
-              :ok ->
-                true
+    has_compose =
+      case BoomLooper.VolumeManager.read_file(
+             volume_name,
+             ".boomlooper/workspace/docker-compose.yml"
+           ) do
+        {:ok, content} when content != "" ->
+          case Compose.process_agent_compose(content, state.workspace_id) do
+            {:ok, processed} ->
+              # Disk-full / permission denied here used to raise inside
+              # handle_call — supervisor would quarantine the GenServer
+              # after 5 retries. Now surfaces as a clean EventLog line
+              # + cluster just doesn't start this tick. Next retry (user
+              # click on Start) will try again.
+              case File.write(compose_path, processed) do
+                :ok ->
+                  true
 
-              {:error, reason} ->
-                BoomLooper.EventLog.error(
-                  "workspace:#{state.workspace_id}",
-                  "Compose file write failed: #{:file.format_error(reason)}. " <>
-                    "Fix the disk/permissions on #{compose_path} and click Start again."
-                )
+                {:error, reason} ->
+                  BoomLooper.EventLog.error(
+                    "workspace:#{state.workspace_id}",
+                    "Compose file write failed: #{:file.format_error(reason)}. " <>
+                      "Fix the disk/permissions on #{compose_path} and click Start again."
+                  )
 
-                false
-            end
+                  false
+              end
 
-          {:error, reason} ->
-            # Don't crash the cluster, but log an actionable error so the
-            # sidebar / agent `logs` tool surface it. The message from
-            # `validate_no_host_mounts` already tells the reader what to
-            # change and why.
-            BoomLooper.EventLog.error(
-              "workspace:#{state.workspace_id}",
-              "Agent compose file rejected — cluster will not start until " <>
-                "it's fixed.\n\n#{reason}"
-            )
+            {:error, reason} ->
+              # Don't crash the cluster, but log an actionable error so the
+              # sidebar / agent `logs` tool surface it. The message from
+              # `validate_no_host_mounts` already tells the reader what to
+              # change and why.
+              BoomLooper.EventLog.error(
+                "workspace:#{state.workspace_id}",
+                "Agent compose file rejected — cluster will not start until " <>
+                  "it's fixed.\n\n#{reason}"
+              )
 
-            false
-        end
-      _ ->
-        false
-    end
+              false
+          end
+
+        _ ->
+          false
+      end
 
     if has_compose do
       BoomLooper.EventLog.info("workspace:#{state.workspace_id}", "Starting compose services")
@@ -330,12 +375,20 @@ defmodule BoomLooper.Workspace.ServiceManager do
           {:ok, new_state}
 
         {:error, reason} ->
-          BoomLooper.EventLog.error("workspace:#{state.workspace_id}", "Compose up failed: #{reason}")
+          BoomLooper.EventLog.error(
+            "workspace:#{state.workspace_id}",
+            "Compose up failed: #{reason}"
+          )
+
           broadcast_compose_result(state.workspace_id, {:error, reason})
           {:error, reason}
       end
     else
-      BoomLooper.EventLog.info("workspace:#{state.workspace_id}", "No docker-compose.yml yet, waiting for agent to write it")
+      BoomLooper.EventLog.info(
+        "workspace:#{state.workspace_id}",
+        "No docker-compose.yml yet, waiting for agent to write it"
+      )
+
       replay_agent_log(state.project_dir, state.workspace_id)
       # No compose file → nothing actually starting. Unblock the LV's
       # :starting pill so it can settle back to :stopped instead of
@@ -345,6 +398,7 @@ defmodule BoomLooper.Workspace.ServiceManager do
         state.workspace_id,
         {:error, "No docker-compose.yml — agent needs to write one"}
       )
+
       {:ok, %{state | volume_name: volume_name}}
     end
   end
@@ -358,7 +412,10 @@ defmodule BoomLooper.Workspace.ServiceManager do
     compose_path = Compose.compose_path(state.project_dir)
 
     with {:ok, content} when content != "" <-
-           BoomLooper.VolumeManager.read_file(volume_name, ".boomlooper/workspace/docker-compose.yml"),
+           BoomLooper.VolumeManager.read_file(
+             volume_name,
+             ".boomlooper/workspace/docker-compose.yml"
+           ),
          {:ok, processed} <- Compose.process_agent_compose(content, state.workspace_id) do
       # Only re-up if the processed file differs from what's on disk.
       current = File.read(compose_path)
@@ -414,12 +471,19 @@ defmodule BoomLooper.Workspace.ServiceManager do
       container = Enum.find(containers, &(&1.name == container_name))
 
       if container && container[:host_ports] do
-        docker_port = container.host_ports[entry.container_port] ||
-                      container.host_ports[to_string(entry.container_port)]
+        docker_port =
+          container.host_ports[entry.container_port] ||
+            container.host_ports[to_string(entry.container_port)]
 
         if docker_port do
           dp = if is_binary(docker_port), do: String.to_integer(docker_port), else: docker_port
-          BoomLooper.PortRegistry.set_docker_port(workspace_id, entry.service, entry.container_port, dp)
+
+          BoomLooper.PortRegistry.set_docker_port(
+            workspace_id,
+            entry.service,
+            entry.container_port,
+            dp
+          )
         end
       end
     end
@@ -430,7 +494,8 @@ defmodule BoomLooper.Workspace.ServiceManager do
   end
 
   defp notify_source_container_up(workspace_id) do
-    with %{project_id: project_id} = workspace <- BoomLooper.ProjectRegistry.get_workspace(workspace_id),
+    with %{project_id: project_id} = workspace <-
+           BoomLooper.ProjectRegistry.get_workspace(workspace_id),
          project when is_map(project) <- BoomLooper.ProjectRegistry.get_project(project_id) do
       BoomLooper.Source.for_project(project).on_container_up(workspace)
     else
@@ -441,7 +506,8 @@ defmodule BoomLooper.Workspace.ServiceManager do
   end
 
   defp notify_source_container_down(workspace_id) do
-    with %{project_id: project_id} = workspace <- BoomLooper.ProjectRegistry.get_workspace(workspace_id),
+    with %{project_id: project_id} = workspace <-
+           BoomLooper.ProjectRegistry.get_workspace(workspace_id),
          project when is_map(project) <- BoomLooper.ProjectRegistry.get_project(project_id) do
       BoomLooper.Source.for_project(project).on_container_down(workspace)
     else
@@ -456,10 +522,12 @@ defmodule BoomLooper.Workspace.ServiceManager do
   # pick this up to transition out of the transitional state so they're
   # not stuck waiting for a broadcast that will never come.
   defp broadcast_compose_result(workspace_id, result) do
-    BoomLooper.Events.WorkspaceServices.publish(%BoomLooper.Events.WorkspaceServices.ComposeResult{
-      workspace_id: workspace_id,
-      result: result
-    })
+    BoomLooper.Events.WorkspaceServices.publish(
+      %BoomLooper.Events.WorkspaceServices.ComposeResult{
+        workspace_id: workspace_id,
+        result: result
+      }
+    )
   end
 
   defp broadcast_service_update(state) do
@@ -476,9 +544,11 @@ defmodule BoomLooper.Workspace.ServiceManager do
     # Observer. Shipping the statuses blob in the broadcast was wasted
     # serialization across every connected LiveView — none of them
     # actually used the payload.
-    BoomLooper.Events.WorkspaceServices.publish(%BoomLooper.Events.WorkspaceServices.ServicesUpdated{
-      path: broadcast_dir
-    })
+    BoomLooper.Events.WorkspaceServices.publish(
+      %BoomLooper.Events.WorkspaceServices.ServicesUpdated{
+        path: broadcast_dir
+      }
+    )
   end
 
   defp via(project_dir) do
@@ -562,18 +632,26 @@ defmodule BoomLooper.Workspace.ServiceManager do
         # Attempt migration before giving up
         case migrate_log(log_path, file_v) do
           :ok ->
-            BoomLooper.EventLog.info("workspace", "Migrated agent log from v#{file_v} to v#{@log_version}")
+            BoomLooper.EventLog.info(
+              "workspace",
+              "Migrated agent log from v#{file_v} to v#{@log_version}"
+            )
+
             # Retry replay after successful migration
             replay_agent_log(nil, workspace_id)
 
           {:error, :no_migration_path} ->
-            BoomLooper.EventLog.warning("workspace",
+            BoomLooper.EventLog.warning(
+              "workspace",
               "Agent log version mismatch: file is v#{file_v}, expected v#{@log_version}. " <>
-              "No migration path available. Agents not restored.")
+                "No migration path available. Agents not restored."
+            )
 
           {:error, reason} ->
-            BoomLooper.EventLog.warning("workspace",
-              "Failed to migrate agent log from v#{file_v}: #{inspect(reason)}. Agents not restored.")
+            BoomLooper.EventLog.warning(
+              "workspace",
+              "Failed to migrate agent log from v#{file_v}: #{inspect(reason)}. Agents not restored."
+            )
         end
 
       {:error, reason} ->
@@ -593,11 +671,11 @@ defmodule BoomLooper.Workspace.ServiceManager do
 
       transformer ->
         case BoomLooper.AgentLog.migrate(
-          log_path: log_path,
-          from: from_version,
-          to: next_version,
-          transformer: transformer
-        ) do
+               log_path: log_path,
+               from: from_version,
+               to: next_version,
+               transformer: transformer
+             ) do
           :ok when next_version == @log_version ->
             :ok
 
@@ -653,7 +731,10 @@ defmodule BoomLooper.Workspace.ServiceManager do
                 :ok
 
               {:error, reason} ->
-                BoomLooper.EventLog.warning("workspace", "Failed to resume agent #{agent_id}: #{inspect(reason)}")
+                BoomLooper.EventLog.warning(
+                  "workspace",
+                  "Failed to resume agent #{agent_id}: #{inspect(reason)}"
+                )
             end
         end
     end

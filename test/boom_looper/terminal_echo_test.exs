@@ -20,14 +20,18 @@ defmodule BoomLooper.TerminalEchoTest do
     case :os.type() do
       {:unix, :darwin} ->
         {script, ["-q", "/dev/null", "/bin/sh"]}
+
       _ ->
         {script, ["-qc", "/bin/sh", "/dev/null"]}
     end
   end
 
   defp start_terminal(container) do
-    {:ok, pid} = GenServer.start_link(Terminal, [container: container, cmd: local_shell_cmd()],
-      name: {:via, Registry, {BoomLooper.TerminalRegistry, container}})
+    {:ok, pid} =
+      GenServer.start_link(Terminal, [container: container, cmd: local_shell_cmd()],
+        name: {:via, Registry, {BoomLooper.TerminalRegistry, container}}
+      )
+
     # Wait for shell to be ready
     Process.sleep(400)
     {:ok, pid}
@@ -37,6 +41,7 @@ defmodule BoomLooper.TerminalEchoTest do
     if Process.alive?(pid) do
       GenServer.cast(pid, {:input, "exit\n"})
       ref = Process.monitor(pid)
+
       receive do
         {:DOWN, ^ref, :process, ^pid, _} -> :ok
       after
@@ -68,7 +73,7 @@ defmodule BoomLooper.TerminalEchoTest do
       count = count_occurrences(output, marker)
 
       assert count == 2,
-        "Expected marker twice (input echo + output), got #{count}.\nOutput: #{inspect(output)}"
+             "Expected marker twice (input echo + output), got #{count}.\nOutput: #{inspect(output)}"
 
       stop_terminal(pid)
     end
@@ -84,7 +89,7 @@ defmodule BoomLooper.TerminalEchoTest do
       output = collect(1_000)
 
       assert output =~ "$" || output =~ "#" || output =~ ">",
-        "No shell prompt visible. User can't see what they're typing.\nOutput: #{inspect(output)}"
+             "No shell prompt visible. User can't see what they're typing.\nOutput: #{inspect(output)}"
 
       stop_terminal(pid)
     end
@@ -100,20 +105,21 @@ defmodule BoomLooper.TerminalEchoTest do
       # 3 subscribers, each in their own process to simulate 3 browser tabs
       parent = self()
 
-      subscribers = for i <- 1..3 do
-        spawn_link(fn ->
-          BoomLooper.Events.Terminal.subscribe(container)
-          send(parent, {:subscribed, i})
+      subscribers =
+        for i <- 1..3 do
+          spawn_link(fn ->
+            BoomLooper.Events.Terminal.subscribe(container)
+            send(parent, {:subscribed, i})
 
-          # Wait for the "go" signal
-          receive do
-            :go -> :ok
-          end
+            # Wait for the "go" signal
+            receive do
+              :go -> :ok
+            end
 
-          output = collect(3_000)
-          send(parent, {:result, i, output})
-        end)
-      end
+            output = collect(3_000)
+            send(parent, {:result, i, output})
+          end)
+        end
 
       # Wait for all subscribers to be ready
       for i <- 1..3, do: assert_receive({:subscribed, ^i}, 1_000)
@@ -133,8 +139,9 @@ defmodule BoomLooper.TerminalEchoTest do
         assert_receive {:result, ^i, output}, 5_000
 
         count = count_occurrences(output, marker)
+
         assert count == 2,
-          "Subscriber #{i} saw marker #{count} times (expected 2: input echo + output).\nOutput: #{inspect(output)}"
+               "Subscriber #{i} saw marker #{count} times (expected 2: input echo + output).\nOutput: #{inspect(output)}"
       end
 
       stop_terminal(pid)
@@ -150,19 +157,21 @@ defmodule BoomLooper.TerminalEchoTest do
       BoomLooper.Events.Terminal.subscribe(container)
       drain()
 
-      markers = for i <- 1..3 do
-        m = "CMD#{i}-#{:rand.uniform(1_000_000)}"
-        GenServer.cast(pid, {:input, "echo #{m}\n"})
-        Process.sleep(300)
-        m
-      end
+      markers =
+        for i <- 1..3 do
+          m = "CMD#{i}-#{:rand.uniform(1_000_000)}"
+          GenServer.cast(pid, {:input, "echo #{m}\n"})
+          Process.sleep(300)
+          m
+        end
 
       output = collect(3_000)
 
       for {marker, i} <- Enum.with_index(markers, 1) do
         count = count_occurrences(output, marker)
+
         assert count == 2,
-          "Command #{i} marker appeared #{count} times (expected 2: input echo + output).\nOutput: #{inspect(output)}"
+               "Command #{i} marker appeared #{count} times (expected 2: input echo + output).\nOutput: #{inspect(output)}"
       end
 
       stop_terminal(pid)
@@ -187,15 +196,18 @@ defmodule BoomLooper.TerminalEchoTest do
       BoomLooper.Events.Terminal.subscribe(container)
 
       parent = self()
-      viewer2 = spawn_link(fn ->
-        BoomLooper.Events.Terminal.subscribe(container)
-        send(parent, :viewer2_ready)
-        receive do
-          %BoomLooper.Events.Terminal.Clear{} -> send(parent, :viewer2_cleared)
-        after
-          3_000 -> send(parent, :viewer2_timeout)
-        end
-      end)
+
+      viewer2 =
+        spawn_link(fn ->
+          BoomLooper.Events.Terminal.subscribe(container)
+          send(parent, :viewer2_ready)
+
+          receive do
+            %BoomLooper.Events.Terminal.Clear{} -> send(parent, :viewer2_cleared)
+          after
+            3_000 -> send(parent, :viewer2_timeout)
+          end
+        end)
 
       assert_receive :viewer2_ready, 1_000
 
@@ -245,12 +257,12 @@ defmodule BoomLooper.TerminalEchoTest do
 
       # Live output should have marker2 twice (input echo + output), not more
       assert count_occurrences(output, marker2) == 2,
-        "Late command marker appeared #{count_occurrences(output, marker2)} times (expected 2).\nOutput: #{inspect(output)}"
+             "Late command marker appeared #{count_occurrences(output, marker2)} times (expected 2).\nOutput: #{inspect(output)}"
 
       # The early marker should NOT appear in live PubSub output
       # (PubSub only delivers new messages after subscribe)
       assert count_occurrences(output, marker) == 0,
-        "Buffer was re-delivered via PubSub — would cause doubling for late joiners"
+             "Buffer was re-delivered via PubSub — would cause doubling for late joiners"
 
       stop_terminal(pid)
     end

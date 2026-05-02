@@ -22,7 +22,9 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.Syntax do
 
   def highlight(line, language) do
     case syntect_name(language) do
-      nil -> line
+      nil ->
+        line
+
       syntect_lang ->
         try do
           tokens = MakeupSyntect.tokenize(line, language: syntect_lang)

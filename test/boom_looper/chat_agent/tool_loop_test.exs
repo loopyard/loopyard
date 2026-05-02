@@ -58,6 +58,7 @@ defmodule BoomLooper.ChatAgent.ToolLoopTest do
       catch
         :exit, _ -> :ok
       end
+
       File.rm_rf!(tmp_dir)
     end)
 

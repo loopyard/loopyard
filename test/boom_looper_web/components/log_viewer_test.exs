@@ -29,38 +29,44 @@ defmodule BoomLooperWeb.Components.LogViewerTest do
 
   describe "log_inline/1" do
     test "renders building status with animated dot" do
-      html = render_comp(&log_inline/1, %{
-        content: "Building...",
-        status: :building,
-        title: nil,
-        raw_url: nil,
-        max_lines: 50
-      })
+      html =
+        render_comp(&log_inline/1, %{
+          content: "Building...",
+          status: :building,
+          title: nil,
+          raw_url: nil,
+          max_lines: 50
+        })
+
       assert html =~ "animate-pulse"
       assert html =~ "Running..."
       assert html =~ "Building..."
     end
 
     test "renders done status with green dot" do
-      html = render_comp(&log_inline/1, %{
-        content: "Done!",
-        status: :done,
-        title: "npm install",
-        raw_url: nil,
-        max_lines: 50
-      })
+      html =
+        render_comp(&log_inline/1, %{
+          content: "Done!",
+          status: :done,
+          title: "npm install",
+          raw_url: nil,
+          max_lines: 50
+        })
+
       assert html =~ "bg-green-500"
       assert html =~ "npm install — done"
     end
 
     test "renders failed status with red dot" do
-      html = render_comp(&log_inline/1, %{
-        content: "Error!",
-        status: :failed,
-        title: nil,
-        raw_url: nil,
-        max_lines: 50
-      })
+      html =
+        render_comp(&log_inline/1, %{
+          content: "Error!",
+          status: :failed,
+          title: nil,
+          raw_url: nil,
+          max_lines: 50
+        })
+
       assert html =~ "bg-red-500"
       assert html =~ "Command — failed"
     end
@@ -68,37 +74,43 @@ defmodule BoomLooperWeb.Components.LogViewerTest do
     test "truncates long output and shows indicator" do
       long_content = Enum.map(1..100, fn i -> "Line #{i}" end) |> Enum.join("\n")
 
-      html = render_comp(&log_inline/1, %{
-        content: long_content,
-        status: :done,
-        title: nil,
-        raw_url: nil,
-        max_lines: 50
-      })
+      html =
+        render_comp(&log_inline/1, %{
+          content: long_content,
+          status: :done,
+          title: nil,
+          raw_url: nil,
+          max_lines: 50
+        })
+
       assert html =~ "truncated"
       assert html =~ "Line 100"
     end
 
     test "shows raw_url link when provided" do
-      html = render_comp(&log_inline/1, %{
-        content: "output",
-        status: :done,
-        title: nil,
-        raw_url: "/messages/agent123/msg456/raw",
-        max_lines: 50
-      })
+      html =
+        render_comp(&log_inline/1, %{
+          content: "output",
+          status: :done,
+          title: nil,
+          raw_url: "/messages/agent123/msg456/raw",
+          max_lines: 50
+        })
+
       assert html =~ "open"
       assert html =~ "/messages/agent123/msg456/raw"
     end
 
     test "does not show raw_url link when nil" do
-      html = render_comp(&log_inline/1, %{
-        content: "output",
-        status: :done,
-        title: nil,
-        raw_url: nil,
-        max_lines: 50
-      })
+      html =
+        render_comp(&log_inline/1, %{
+          content: "output",
+          status: :done,
+          title: nil,
+          raw_url: nil,
+          max_lines: 50
+        })
+
       refute html =~ ">open<"
     end
   end

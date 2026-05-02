@@ -80,9 +80,12 @@ defmodule BoomLooper.Tools.Container.TruncationTest do
       # The agent should get a summary, not the full output
       result = Helpers.truncate_for_agent(large, max: 4_000, tail: 50)
 
-      assert byte_size(result) < 6_000  # summary + 50 lines
-      assert result =~ "Step 1000/1000"  # has the end
-      refute String.starts_with?(result, "Step 1/")  # doesn't start with the beginning
+      # summary + 50 lines
+      assert byte_size(result) < 6_000
+      # has the end
+      assert result =~ "Step 1000/1000"
+      # doesn't start with the beginning
+      refute String.starts_with?(result, "Step 1/")
     end
 
     test "exec output from large file listing is truncated" do

@@ -86,8 +86,7 @@ defmodule BoomLooperWeb.SystemRecoveryLive do
         <section>
           <div class="flex items-baseline justify-between mb-3">
             <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-              Checkpoint health
-              <span class="text-zinc-400 font-normal">({@total} workspaces)</span>
+              Checkpoint health <span class="text-zinc-400 font-normal">({@total} workspaces)</span>
             </h2>
             <div
               :if={@failed_count > 0}
@@ -206,5 +205,4 @@ defmodule BoomLooperWeb.SystemRecoveryLive do
   defp format_ago(s) when s < 60, do: "#{s}s ago"
   defp format_ago(s) when s < 3600, do: "#{div(s, 60)}m ago"
   defp format_ago(s), do: "#{div(s, 3600)}h ago"
-
 end

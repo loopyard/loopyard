@@ -6,15 +6,17 @@ defmodule BoomLooper.Tools.AgentFiles.ReadAgentFileTest do
   setup do
     id = "read-agent-file-test-#{System.unique_integer([:positive])}"
 
-    :ets.insert(:chat_agents, {id,
-      %{
-        id: id,
-        name: "Setup",
-        agent_type: "setup",
-        working_dir: "/tmp",
-        workspace_id: "ws-test"
-      }
-    })
+    :ets.insert(
+      :chat_agents,
+      {id,
+       %{
+         id: id,
+         name: "Setup",
+         agent_type: "setup",
+         working_dir: "/tmp",
+         workspace_id: "ws-test"
+       }}
+    )
 
     on_exit(fn -> :ets.delete(:chat_agents, id) end)
     {:ok, agent_id: id}

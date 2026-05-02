@@ -15,7 +15,9 @@ defmodule BoomLooper.Tools.Container.UrlToolsTest do
 
     test "tool emits localhost URL with Docker port" do
       # The tool output is always localhost — the renderer handles the rest
-      url = %URI{scheme: "http", host: "localhost", port: 32794, path: "/users/1"} |> URI.to_string()
+      url =
+        %URI{scheme: "http", host: "localhost", port: 32794, path: "/users/1"} |> URI.to_string()
+
       assert url == "http://localhost:32794/users/1"
     end
 
@@ -36,23 +38,40 @@ defmodule BoomLooper.Tools.Container.UrlToolsTest do
       # Set up a fake agent in ETS with a workspace
       agent_id = "test-url-agent-#{System.unique_integer([:positive])}"
       ws_id = "test-url-ws-#{System.unique_integer([:positive])}"
-      :ets.insert(:chat_agents, {agent_id, %{
-        id: agent_id, workspace_id: ws_id, name: "Test",
-        status: :idle, messages: [], tool_calls: 0, errors: 0
-      }})
+
+      :ets.insert(
+        :chat_agents,
+        {agent_id,
+         %{
+           id: agent_id,
+           workspace_id: ws_id,
+           name: "Test",
+           status: :idle,
+           messages: [],
+           tool_calls: 0,
+           errors: 0
+         }}
+      )
 
       # Register a port — this is the user-facing port
       :ets.insert(:port_registry, {
         {ws_id, "dev", 3000},
-        %{workspace_id: ws_id, service: "dev", container_port: 3000,
-          host_port: 4444, docker_port: 32999, exposed: true,
-          allocated_at: DateTime.utc_now()}
+        %{
+          workspace_id: ws_id,
+          service: "dev",
+          container_port: 3000,
+          host_port: 4444,
+          docker_port: 32999,
+          exposed: true,
+          allocated_at: DateTime.utc_now()
+        }
       })
 
-      result = BoomLooper.Tools.Container.AppUrl.execute(
-        %{agent_id: agent_id, path: "/"},
-        %{agent_id: agent_id}
-      )
+      result =
+        BoomLooper.Tools.Container.AppUrl.execute(
+          %{agent_id: agent_id, path: "/"},
+          %{agent_id: agent_id}
+        )
 
       assert {:ok, url} = result
       # Must use host_port (4444), NOT docker_port (32999)
@@ -67,22 +86,39 @@ defmodule BoomLooper.Tools.Container.UrlToolsTest do
     test "shows local-only message when port is not exposed" do
       agent_id = "test-url-priv-#{System.unique_integer([:positive])}"
       ws_id = "test-url-priv-ws-#{System.unique_integer([:positive])}"
-      :ets.insert(:chat_agents, {agent_id, %{
-        id: agent_id, workspace_id: ws_id, name: "Test",
-        status: :idle, messages: [], tool_calls: 0, errors: 0
-      }})
+
+      :ets.insert(
+        :chat_agents,
+        {agent_id,
+         %{
+           id: agent_id,
+           workspace_id: ws_id,
+           name: "Test",
+           status: :idle,
+           messages: [],
+           tool_calls: 0,
+           errors: 0
+         }}
+      )
 
       :ets.insert(:port_registry, {
         {ws_id, "dev", 3000},
-        %{workspace_id: ws_id, service: "dev", container_port: 3000,
-          host_port: 4555, docker_port: 33000, exposed: false,
-          allocated_at: DateTime.utc_now()}
+        %{
+          workspace_id: ws_id,
+          service: "dev",
+          container_port: 3000,
+          host_port: 4555,
+          docker_port: 33000,
+          exposed: false,
+          allocated_at: DateTime.utc_now()
+        }
       })
 
-      {:ok, result} = BoomLooper.Tools.Container.AppUrl.execute(
-        %{agent_id: agent_id, path: "/"},
-        %{agent_id: agent_id}
-      )
+      {:ok, result} =
+        BoomLooper.Tools.Container.AppUrl.execute(
+          %{agent_id: agent_id, path: "/"},
+          %{agent_id: agent_id}
+        )
 
       assert result =~ "localhost:4555"
       assert result =~ "open port dev/3000"
@@ -94,7 +130,10 @@ defmodule BoomLooper.Tools.Container.UrlToolsTest do
 
   describe "URI construction" do
     test "app_url builds localhost URL with Docker port + path" do
-      url = %URI{scheme: "http", host: "localhost", port: 32794, path: "/code/my-article"} |> URI.to_string()
+      url =
+        %URI{scheme: "http", host: "localhost", port: 32794, path: "/code/my-article"}
+        |> URI.to_string()
+
       assert url == "http://localhost:32794/code/my-article"
     end
 

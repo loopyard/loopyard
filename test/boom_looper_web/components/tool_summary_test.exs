@@ -81,17 +81,23 @@ defmodule BoomLooperWeb.Components.ToolSummaryTest do
     # --- Workspace tools ---
 
     test "set_dockerfile tool" do
-      assert ToolSummary.summarize("mcp__boom-looper-workspace__set_dockerfile", %{"dockerfile" => "FROM ruby:3.4"}) ==
+      assert ToolSummary.summarize("mcp__boom-looper-workspace__set_dockerfile", %{
+               "dockerfile" => "FROM ruby:3.4"
+             }) ==
                "Update Dockerfile"
     end
 
     test "set_dev_command" do
-      assert ToolSummary.summarize("mcp__boom-looper-workspace__set_dev_command", %{"command" => "bin/dev"}) ==
+      assert ToolSummary.summarize("mcp__boom-looper-workspace__set_dev_command", %{
+               "command" => "bin/dev"
+             }) ==
                "Set dev command"
     end
 
     test "add_service shows name" do
-      assert ToolSummary.summarize("mcp__boom-looper-workspace__add_service", %{"name" => "postgres"}) ==
+      assert ToolSummary.summarize("mcp__boom-looper-workspace__add_service", %{
+               "name" => "postgres"
+             }) ==
                "Add service postgres"
     end
 
@@ -107,7 +113,9 @@ defmodule BoomLooperWeb.Components.ToolSummaryTest do
     end
 
     test "stop_agent shows truncated id" do
-      assert ToolSummary.summarize("mcp__boom-looper-agents__stop_agent", %{"agent_id" => "abc123def456"}) ==
+      assert ToolSummary.summarize("mcp__boom-looper-agents__stop_agent", %{
+               "agent_id" => "abc123def456"
+             }) ==
                "Stopped agent abc123def"
     end
 

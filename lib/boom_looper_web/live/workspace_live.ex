@@ -7,7 +7,14 @@ defmodule BoomLooperWeb.WorkspaceLive do
   alias BoomLooper.StreamBuffer
 
   use BoomLooperWeb.Live.WorkspaceLive.Components
-  alias BoomLooperWeb.Live.WorkspaceLive.{AgentLifecycle, DiffLoader, DockerEvents, FileBrowser, ServiceLogs}
+
+  alias BoomLooperWeb.Live.WorkspaceLive.{
+    AgentLifecycle,
+    DiffLoader,
+    DockerEvents,
+    FileBrowser,
+    ServiceLogs
+  }
 
   # Move #3 strict subscriber behaviours — compile-time enforcement that
   # every event published on these topics has a matching callback here.
@@ -30,10 +37,13 @@ defmodule BoomLooperWeb.WorkspaceLive do
     else
       # workspace_entry is normalized by ProjectRegistry - always has :path
       workspace = %{id: workspace_entry.id, path: workspace_entry.path, name: project.name}
-      mount_with_workspace(socket, workspace, %{project: project, workspace_entry: workspace_entry})
+
+      mount_with_workspace(socket, workspace, %{
+        project: project,
+        workspace_entry: workspace_entry
+      })
     end
   end
-
 
   defp mount_with_workspace(socket, workspace, extra_assigns) do
     is_local? = extra_assigns[:project] && extra_assigns[:project][:source_type] == :local
@@ -69,14 +79,19 @@ defmodule BoomLooperWeb.WorkspaceLive do
       end
     end
 
-    socket = if connected?(socket), do: subscribe_iex(socket), else: assign(socket, :iex_session, %{level: nil})
+    socket =
+      if connected?(socket),
+        do: subscribe_iex(socket),
+        else: assign(socket, :iex_session, %{level: nil})
 
     # Agents survive server restarts via an append-only ETF log. On a
     # fresh boot the :chat_agents ETS table is empty and list_agents
     # returns []. Pre-populate from the log so the sidebar shows the
     # agent list even before the workspace is started. ChatAgent
     # processes start later (when ServiceManager runs).
-    ws_id = extra_assigns[:workspace_entry] && extra_assigns[:workspace_entry].id || workspace.id
+    ws_id =
+      (extra_assigns[:workspace_entry] && extra_assigns[:workspace_entry].id) || workspace.id
+
     prime_agents_from_log(ws_id)
 
     # Services + volumes come from Docker.Observer's ETS cache (instant,
@@ -84,16 +99,18 @@ defmodule BoomLooperWeb.WorkspaceLive do
     agents = AgentLifecycle.list_workspace_agents(workspace.path)
     {service_statuses, volumes} = DockerEvents.load_sidebar_from_observer(workspace.path, ws_id)
 
-    base_path = if extra_assigns[:project] do
-      "/projects/#{extra_assigns[:project].id}/workspaces/#{extra_assigns[:workspace_entry].id}"
-    else
-      "/projects/#{workspace.id}/workspaces/#{workspace.id}"
-    end
+    base_path =
+      if extra_assigns[:project] do
+        "/projects/#{extra_assigns[:project].id}/workspaces/#{extra_assigns[:workspace_entry].id}"
+      else
+        "/projects/#{workspace.id}/workspaces/#{workspace.id}"
+      end
 
-    host = case socket.host_uri do
-      %URI{host: h} when is_binary(h) and h != "" -> h
-      _ -> "localhost"
-    end
+    host =
+      case socket.host_uri do
+        %URI{host: h} when is_binary(h) and h != "" -> h
+        _ -> "localhost"
+      end
 
     {:ok,
      socket
@@ -146,11 +163,13 @@ defmodule BoomLooperWeb.WorkspaceLive do
      |> assign(:console_container, nil)
      |> assign(:is_local_source?, is_local?)
      |> assign(:sync_status, initial_sync_status(workspace.id, is_local?))
-     |> assign(:workspace_state, DockerEvents.derive_workspace_state(workspace.id, service_statuses, nil))
+     |> assign(
+       :workspace_state,
+       DockerEvents.derive_workspace_state(workspace.id, service_statuses, nil)
+     )
      |> assign(:workspace_state_since, DateTime.utc_now())
      |> assign(:docker_connected?, DockerEvents.docker_connected?())}
   end
-
 
   # Refresh the :selected_agent assign with the agent's latest summary
   # (model, token counts, cost, turns). The context-panel template reads
@@ -164,7 +183,6 @@ defmodule BoomLooperWeb.WorkspaceLive do
     _ -> false
   end
 
-
   defp initial_sync_status(_workspace_id, false), do: nil
 
   defp initial_sync_status(workspace_id, true) do
@@ -174,11 +192,12 @@ defmodule BoomLooperWeb.WorkspaceLive do
   @impl true
   def handle_params(%{"id" => id}, _uri, %{assigns: %{live_action: action}} = socket)
       when action in [:chat, :container, :context_panel] do
-    tab = case action do
-      :container -> :container
-      :context_panel -> :context_panel
-      _ -> :chat
-    end
+    tab =
+      case action do
+        :container -> :container
+        :context_panel -> :context_panel
+        _ -> :chat
+      end
 
     # Clear service selection when viewing an agent
     socket = assign(socket, :selected_service, nil)
@@ -206,12 +225,14 @@ defmodule BoomLooperWeb.WorkspaceLive do
   def handle_params(_params, _uri, %{assigns: %{live_action: :new}} = socket) do
     # If a Setup agent is already running we just hop to it — this branch
     # is fast (in-memory list scan).
-    existing_setup = socket.assigns.agents
+    existing_setup =
+      socket.assigns.agents
       |> Enum.find(fn a -> a[:name] == "Setup" && a[:status] not in [:stopped, :crashed] end)
 
     cond do
       existing_setup ->
-        {:noreply, push_patch(socket, to: "#{workspace_path(socket)}/agents/#{existing_setup.id}")}
+        {:noreply,
+         push_patch(socket, to: "#{workspace_path(socket)}/agents/#{existing_setup.id}")}
 
       true ->
         # Show the New Agent screen. Setup only runs when the user picks
@@ -220,7 +241,11 @@ defmodule BoomLooperWeb.WorkspaceLive do
     end
   end
 
-  def handle_params(%{"service_name" => service_name}, _uri, %{assigns: %{live_action: :service}} = socket) do
+  def handle_params(
+        %{"service_name" => service_name},
+        _uri,
+        %{assigns: %{live_action: :service}} = socket
+      ) do
     # Fetch logs async so the page loads immediately
     send(self(), {:fetch_service_logs, service_name})
     ServiceLogs.schedule_log_refresh()
@@ -234,20 +259,28 @@ defmodule BoomLooperWeb.WorkspaceLive do
      |> assign(:all_service_logs, [])}
   end
 
-  def handle_params(%{"service_name" => service_name}, _uri, %{assigns: %{live_action: :console}} = socket) do
+  def handle_params(
+        %{"service_name" => service_name},
+        _uri,
+        %{assigns: %{live_action: :console}} = socket
+      ) do
     svc = Enum.find(socket.assigns.service_statuses, &(&1.name == service_name))
 
     # Process containers exec into workspace service (has shell + tools)
     # Stock services exec into their own container
     workspace_id = BoomLooper.ProjectRegistry.workspace_id(socket.assigns.workspace.path)
-    container = cond do
-      svc && svc.type == :process ->
-        BoomLooper.Workspace.ServiceManager.service_container_name(workspace_id, "workspace")
-      svc ->
-        svc.container
-      true ->
-        nil
-    end
+
+    container =
+      cond do
+        svc && svc.type == :process ->
+          BoomLooper.Workspace.ServiceManager.service_container_name(workspace_id, "workspace")
+
+        svc ->
+          svc.container
+
+        true ->
+          nil
+      end
 
     {:noreply,
      socket
@@ -291,7 +324,11 @@ defmodule BoomLooperWeb.WorkspaceLive do
   end
 
   # File browser root: /volumes/:name/files
-  def handle_params(%{"volume_name" => name}, _uri, %{assigns: %{live_action: :volume_files_root}} = socket) do
+  def handle_params(
+        %{"volume_name" => name},
+        _uri,
+        %{assigns: %{live_action: :volume_files_root}} = socket
+      ) do
     socket = setup_volume(socket, name, :files)
     {:noreply, FileBrowser.enter_root(socket, name)}
   end
@@ -299,14 +336,22 @@ defmodule BoomLooperWeb.WorkspaceLive do
   # File browser: /volumes/:name/files/path/to/thing
   # Could be a file or a directory — FileBrowser probes both and the
   # :file_content handle_async dispatches on the returned shape.
-  def handle_params(%{"volume_name" => name, "path" => path_parts}, _uri, %{assigns: %{live_action: :volume_file}} = socket) do
+  def handle_params(
+        %{"volume_name" => name, "path" => path_parts},
+        _uri,
+        %{assigns: %{live_action: :volume_file}} = socket
+      ) do
     file_path = Path.join(path_parts)
     socket = setup_volume(socket, name, :files)
     {:noreply, FileBrowser.enter_path(socket, name, file_path)}
   end
 
   # Git view
-  def handle_params(%{"volume_name" => name}, _uri, %{assigns: %{live_action: :volume_git}} = socket) do
+  def handle_params(
+        %{"volume_name" => name},
+        _uri,
+        %{assigns: %{live_action: :volume_git}} = socket
+      ) do
     socket = setup_volume(socket, name, :git)
 
     socket =
@@ -321,7 +366,11 @@ defmodule BoomLooperWeb.WorkspaceLive do
   end
 
   # Git diff for unstaged file
-  def handle_params(%{"volume_name" => name, "path" => path_parts}, _uri, %{assigns: %{live_action: :git_diff}} = socket) do
+  def handle_params(
+        %{"volume_name" => name, "path" => path_parts},
+        _uri,
+        %{assigns: %{live_action: :git_diff}} = socket
+      ) do
     file_path = Path.join(path_parts)
     socket = setup_volume(socket, name, :git)
     %{project: project, workspace_entry: workspace_entry} = socket.assigns
@@ -336,7 +385,11 @@ defmodule BoomLooperWeb.WorkspaceLive do
   end
 
   # Git diff for staged file
-  def handle_params(%{"volume_name" => name, "path" => path_parts}, _uri, %{assigns: %{live_action: :git_staged_diff}} = socket) do
+  def handle_params(
+        %{"volume_name" => name, "path" => path_parts},
+        _uri,
+        %{assigns: %{live_action: :git_staged_diff}} = socket
+      ) do
     file_path = Path.join(path_parts)
     socket = setup_volume(socket, name, :git)
     %{project: project, workspace_entry: workspace_entry} = socket.assigns
@@ -351,7 +404,11 @@ defmodule BoomLooperWeb.WorkspaceLive do
   end
 
   # Git commit detail
-  def handle_params(%{"volume_name" => name, "sha" => sha}, _uri, %{assigns: %{live_action: :git_commit}} = socket) do
+  def handle_params(
+        %{"volume_name" => name, "sha" => sha},
+        _uri,
+        %{assigns: %{live_action: :git_commit}} = socket
+      ) do
     socket = setup_volume(socket, name, :git)
     %{project: project, workspace_entry: workspace_entry} = socket.assigns
 
@@ -365,7 +422,11 @@ defmodule BoomLooperWeb.WorkspaceLive do
   end
 
   # Git commit file diff
-  def handle_params(%{"volume_name" => name, "sha" => sha, "path" => path_parts}, _uri, %{assigns: %{live_action: :git_commit_file}} = socket) do
+  def handle_params(
+        %{"volume_name" => name, "sha" => sha, "path" => path_parts},
+        _uri,
+        %{assigns: %{live_action: :git_commit_file}} = socket
+      ) do
     file_path = Path.join(path_parts)
     socket = setup_volume(socket, name, :git)
     %{project: project, workspace_entry: workspace_entry} = socket.assigns
@@ -421,7 +482,8 @@ defmodule BoomLooperWeb.WorkspaceLive do
   end
 
   # File read succeeded — show the file
-  def handle_async(:file_content, {:ok, %{content: content, path: path}}, socket) when is_binary(content) do
+  def handle_async(:file_content, {:ok, %{content: content, path: path}}, socket)
+      when is_binary(content) do
     {:noreply, socket |> assign(:file_content, content) |> assign(:file_path, path)}
   end
 
@@ -437,7 +499,8 @@ defmodule BoomLooperWeb.WorkspaceLive do
 
   # File not found
   def handle_async(:file_content, {:ok, %{not_found: true, path: path}}, socket) do
-    {:noreply, socket |> assign(:file_content, "File not found: #{path}") |> assign(:file_path, path)}
+    {:noreply,
+     socket |> assign(:file_content, "File not found: #{path}") |> assign(:file_path, path)}
   end
 
   def handle_async(:file_content, {:exit, _reason}, socket) do
@@ -445,15 +508,17 @@ defmodule BoomLooperWeb.WorkspaceLive do
   end
 
   def handle_async(:git_data, {:ok, {log_result, status_result}}, socket) do
-    git_log = case log_result do
-      {:ok, entries} -> entries
-      _ -> []
-    end
+    git_log =
+      case log_result do
+        {:ok, entries} -> entries
+        _ -> []
+      end
 
-    git_status = case status_result do
-      {:ok, entries} -> entries
-      _ -> []
-    end
+    git_status =
+      case status_result do
+        {:ok, entries} -> entries
+        _ -> []
+      end
 
     {:noreply, socket |> assign(:git_log, git_log) |> assign(:git_status, git_status)}
   end
@@ -645,7 +710,11 @@ defmodule BoomLooperWeb.WorkspaceLive do
   end
 
   @impl true
-  def handle_event("toggle_port_exposure", %{"service" => svc_name, "container_port" => cport, "expose" => expose}, socket) do
+  def handle_event(
+        "toggle_port_exposure",
+        %{"service" => svc_name, "container_port" => cport, "expose" => expose},
+        socket
+      ) do
     workspace_id = socket.assigns.workspace.id
     cport = String.to_integer(cport)
     exposed? = expose == "true"
@@ -665,7 +734,8 @@ defmodule BoomLooperWeb.WorkspaceLive do
         # Route through guard_service_statuses even though `updated`
         # is a map over the existing list and can't go empty —
         # keeps the invariant uniform.
-        {:noreply, assign(socket, :service_statuses, DockerEvents.guard_service_statuses(socket, updated))}
+        {:noreply,
+         assign(socket, :service_statuses, DockerEvents.guard_service_statuses(socket, updated))}
 
       {:error, reason} ->
         require Logger
@@ -714,11 +784,13 @@ defmodule BoomLooperWeb.WorkspaceLive do
   # --- UI state events ---
 
   def handle_event("switch_tab", %{"tab" => tab}, socket) do
-    tab = case tab do
-      "chat" -> :chat
-      "container" -> :container
-      _ -> :chat
-    end
+    tab =
+      case tab do
+        "chat" -> :chat
+        "container" -> :container
+        _ -> :chat
+      end
+
     bp = workspace_path(socket)
 
     path =
@@ -738,12 +810,22 @@ defmodule BoomLooperWeb.WorkspaceLive do
     case BoomLooper.Source.Local.SyncMonitor.whereis(ws_id) do
       nil ->
         # No SyncMonitor running — update the card to show the real state
-        {:noreply, assign(socket, :sync_status, %{status: :stopped, last_error: "No sync process — workspace container may not be running", last_checked_at: DateTime.utc_now()})}
+        {:noreply,
+         assign(socket, :sync_status, %{
+           status: :stopped,
+           last_error: "No sync process — workspace container may not be running",
+           last_checked_at: DateTime.utc_now()
+         })}
 
       _pid ->
         BoomLooper.Source.Local.SyncMonitor.restart(ws_id)
         # Immediately show "starting" so the button feels responsive
-        {:noreply, assign(socket, :sync_status, %{status: :starting, last_error: nil, last_checked_at: DateTime.utc_now()})}
+        {:noreply,
+         assign(socket, :sync_status, %{
+           status: :starting,
+           last_error: nil,
+           last_checked_at: DateTime.utc_now()
+         })}
     end
   end
 
@@ -765,7 +847,13 @@ defmodule BoomLooperWeb.WorkspaceLive do
         if svc.name == name, do: %{svc | status: :starting}, else: svc
       end)
 
-    socket = assign(socket, :service_statuses, DockerEvents.guard_service_statuses(socket, service_statuses))
+    socket =
+      assign(
+        socket,
+        :service_statuses,
+        DockerEvents.guard_service_statuses(socket, service_statuses)
+      )
+
     run_compose_async(socket, ["restart", name], 30_000)
   end
 
@@ -788,7 +876,13 @@ defmodule BoomLooperWeb.WorkspaceLive do
         end
       end)
 
-    socket = assign(socket, :service_statuses, DockerEvents.guard_service_statuses(socket, service_statuses))
+    socket =
+      assign(
+        socket,
+        :service_statuses,
+        DockerEvents.guard_service_statuses(socket, service_statuses)
+      )
+
     run_compose_async(socket, ["up", "-d", name], 60_000)
   end
 
@@ -839,13 +933,11 @@ defmodule BoomLooperWeb.WorkspaceLive do
 
   @impl true
 
-
   def handle_event("delete_volume", %{"volume_name" => name}, socket) do
     BoomLooper.Docker.docker(["volume", "rm", name])
     BoomLooper.Docker.Observer.poll_now()
     {:noreply, push_patch(socket, to: workspace_path(socket))}
   end
-
 
   # --- Git diff viewer events ---
 
@@ -912,32 +1004,54 @@ defmodule BoomLooperWeb.WorkspaceLive do
 
   def handle_info(%Events.ChatAgentMessage.Message{} = e, socket), do: on_message(e, socket)
   def handle_info(%Events.ChatAgentMessage.TextDelta{} = e, socket), do: on_text_delta(e, socket)
-  def handle_info(%Events.ChatAgentMessage.StreamOutput{} = e, socket), do: on_stream_output(e, socket)
+
+  def handle_info(%Events.ChatAgentMessage.StreamOutput{} = e, socket),
+    do: on_stream_output(e, socket)
 
   def handle_info(%Events.DockerObserver.Changed{} = e, socket), do: on_changed(e, socket)
   def handle_info(%Events.DockerObserver.Reset{} = e, socket), do: on_reset(e, socket)
-  def handle_info(%Events.DockerObserver.Disconnected{} = e, socket), do: on_disconnected(e, socket)
+
+  def handle_info(%Events.DockerObserver.Disconnected{} = e, socket),
+    do: on_disconnected(e, socket)
+
   def handle_info(%Events.DockerObserver.Reconnected{} = e, socket), do: on_reconnected(e, socket)
 
-  def handle_info(%Events.WorkspaceServices.ServicesUpdated{} = e, socket), do: on_services_updated(e, socket)
-  def handle_info(%Events.WorkspaceServices.ComposeResult{} = e, socket), do: on_compose_result(e, socket)
+  def handle_info(%Events.WorkspaceServices.ServicesUpdated{} = e, socket),
+    do: on_services_updated(e, socket)
+
+  def handle_info(%Events.WorkspaceServices.ComposeResult{} = e, socket),
+    do: on_compose_result(e, socket)
 
   def handle_info(%Events.SourceSync.Updated{} = e, socket), do: on_updated(e, socket)
 
   def handle_info(%Events.WorkspaceSetup.Started{} = e, socket), do: on_setup_started(e, socket)
-  def handle_info(%Events.WorkspaceSetup.PhaseStarted{} = e, socket), do: on_setup_phase_started(e, socket)
-  def handle_info(%Events.WorkspaceSetup.PhaseCompleted{} = e, socket), do: on_setup_phase_completed(e, socket)
-  def handle_info(%Events.WorkspaceSetup.PhaseProgress{} = e, socket), do: on_setup_phase_progress(e, socket)
-  def handle_info(%Events.WorkspaceSetup.Completed{} = e, socket), do: on_setup_completed(e, socket)
+
+  def handle_info(%Events.WorkspaceSetup.PhaseStarted{} = e, socket),
+    do: on_setup_phase_started(e, socket)
+
+  def handle_info(%Events.WorkspaceSetup.PhaseCompleted{} = e, socket),
+    do: on_setup_phase_completed(e, socket)
+
+  def handle_info(%Events.WorkspaceSetup.PhaseProgress{} = e, socket),
+    do: on_setup_phase_progress(e, socket)
+
+  def handle_info(%Events.WorkspaceSetup.Completed{} = e, socket),
+    do: on_setup_completed(e, socket)
+
   def handle_info(%Events.WorkspaceSetup.Failed{} = e, socket), do: on_setup_failed(e, socket)
-  def handle_info(%Events.WorkspaceSetup.RetryScheduled{} = e, socket), do: on_setup_retry_scheduled(e, socket)
+
+  def handle_info(%Events.WorkspaceSetup.RetryScheduled{} = e, socket),
+    do: on_setup_retry_scheduled(e, socket)
 
   # Non-PubSub internal messages (send/2 self-dispatches, async task
   # replies). These aren't subject to the publisher-module boundary
   # because they never leave this process.
 
   def handle_info(:workspace_stopped, socket) do
-    ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
+    ws_id =
+      (socket.assigns.workspace_entry && socket.assigns.workspace_entry.id) ||
+        socket.assigns.workspace.id
+
     {service_statuses, volumes} = DockerEvents.load_sidebar_from_observer(nil, ws_id)
 
     # Intentional empty replacement on :workspace_stopped — workspace
@@ -981,22 +1095,32 @@ defmodule BoomLooperWeb.WorkspaceLive do
   end
 
   def handle_info({:fetch_service_logs, service_name}, socket) do
-    ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
+    ws_id =
+      (socket.assigns.workspace_entry && socket.assigns.workspace_entry.id) ||
+        socket.assigns.workspace.id
+
     {:noreply, ServiceLogs.start_service_logs_fetch(socket, ws_id, service_name)}
   end
 
   def handle_info(:fetch_all_service_logs, socket) do
-    ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
+    ws_id =
+      (socket.assigns.workspace_entry && socket.assigns.workspace_entry.id) ||
+        socket.assigns.workspace.id
+
     {:noreply, ServiceLogs.start_all_service_logs_fetch(socket, ws_id)}
   end
 
   def handle_info(:refresh_service_logs, socket) do
-    ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
+    ws_id =
+      (socket.assigns.workspace_entry && socket.assigns.workspace_entry.id) ||
+        socket.assigns.workspace.id
 
     case socket.assigns.live_action do
       :service ->
         ServiceLogs.schedule_log_refresh()
-        {:noreply, ServiceLogs.start_service_logs_fetch(socket, ws_id, socket.assigns.selected_service)}
+
+        {:noreply,
+         ServiceLogs.start_service_logs_fetch(socket, ws_id, socket.assigns.selected_service)}
 
       :services ->
         ServiceLogs.schedule_log_refresh()
@@ -1049,7 +1173,8 @@ defmodule BoomLooperWeb.WorkspaceLive do
   def on_boot_status(event, socket), do: AgentEvents.handle_boot_status(event, socket)
 
   @impl Events.ChatAgent.Subscriber
-  def on_boot_failed(event, socket), do: AgentEvents.handle_boot_failed(event, socket, &workspace_path/1)
+  def on_boot_failed(event, socket),
+    do: AgentEvents.handle_boot_failed(event, socket, &workspace_path/1)
 
   @impl Events.ChatAgent.Subscriber
   def on_stopped(_event, socket), do: AgentEvents.handle_stopped(socket)
@@ -1072,7 +1197,8 @@ defmodule BoomLooperWeb.WorkspaceLive do
   # --- ChatAgentMessage subscriber callbacks ---
 
   @impl Events.ChatAgentMessage.Subscriber
-  def on_message(%Events.ChatAgentMessage.Message{agent_id: id, msg: msg}, socket) when id == socket.assigns.selected_id do
+  def on_message(%Events.ChatAgentMessage.Message{agent_id: id, msg: msg}, socket)
+      when id == socket.assigns.selected_id do
     # Guard against duplicate messages (mobile reconnect can cause double PubSub subscriptions)
     if msg[:id] && Enum.any?(socket.assigns.messages, &(&1[:id] == msg[:id])) do
       {:noreply, socket}
@@ -1082,10 +1208,12 @@ defmodule BoomLooperWeb.WorkspaceLive do
       # If build was running and we get a post-build message, mark build as done
       socket =
         if socket.assigns.building && msg.role in [:system, :error] do
-          messages = Enum.map(socket.assigns.messages, fn
-            %{role: :build} = m -> %{m | role: :build_done}
-            other -> other
-          end)
+          messages =
+            Enum.map(socket.assigns.messages, fn
+              %{role: :build} = m -> %{m | role: :build_done}
+              other -> other
+            end)
+
           socket |> assign(:messages, messages) |> assign(:building, false)
         else
           socket
@@ -1101,7 +1229,8 @@ defmodule BoomLooperWeb.WorkspaceLive do
       # Update thinking word when a tool message arrives — shows the
       # tool-specific phrase (e.g., "grepping" instead of "pondering")
       socket =
-        if msg.role == :tool && socket.assigns.selected_agent && socket.assigns.selected_agent.status == :thinking do
+        if msg.role == :tool && socket.assigns.selected_agent &&
+             socket.assigns.selected_agent.status == :thinking do
           tool = msg[:tool]
           word = BoomLooperWeb.Components.Sidebar.thinking_word(id, tool)
           assign(socket, :thinking_word, word)
@@ -1116,7 +1245,8 @@ defmodule BoomLooperWeb.WorkspaceLive do
   def on_message(%Events.ChatAgentMessage.Message{}, socket), do: {:noreply, socket}
 
   @impl Events.ChatAgentMessage.Subscriber
-  def on_text_delta(%Events.ChatAgentMessage.TextDelta{agent_id: id, text: text}, socket) when id == socket.assigns.selected_id do
+  def on_text_delta(%Events.ChatAgentMessage.TextDelta{agent_id: id, text: text}, socket)
+      when id == socket.assigns.selected_id do
     {:noreply,
      socket
      |> AgentEvents.refresh_selected_from_agents(id, socket.assigns.agents)
@@ -1127,7 +1257,16 @@ defmodule BoomLooperWeb.WorkspaceLive do
   def on_text_delta(%Events.ChatAgentMessage.TextDelta{}, socket), do: {:noreply, socket}
 
   @impl Events.ChatAgentMessage.Subscriber
-  def on_stream_output(%Events.ChatAgentMessage.StreamOutput{agent_id: id, data: data, title: title, msg_id: msg_id}, socket) when id == socket.assigns.selected_id do
+  def on_stream_output(
+        %Events.ChatAgentMessage.StreamOutput{
+          agent_id: id,
+          data: data,
+          title: title,
+          msg_id: msg_id
+        },
+        socket
+      )
+      when id == socket.assigns.selected_id do
     upsert_stream_message(socket, data, title, msg_id)
   end
 
@@ -1170,13 +1309,16 @@ defmodule BoomLooperWeb.WorkspaceLive do
   def on_setup_started(event, socket), do: DockerEvents.handle_setup_started(event, socket)
 
   @impl Events.WorkspaceSetup.Subscriber
-  def on_setup_phase_started(event, socket), do: DockerEvents.handle_setup_phase_started(event, socket)
+  def on_setup_phase_started(event, socket),
+    do: DockerEvents.handle_setup_phase_started(event, socket)
 
   @impl Events.WorkspaceSetup.Subscriber
-  def on_setup_phase_completed(event, socket), do: DockerEvents.handle_setup_phase_completed(event, socket)
+  def on_setup_phase_completed(event, socket),
+    do: DockerEvents.handle_setup_phase_completed(event, socket)
 
   @impl Events.WorkspaceSetup.Subscriber
-  def on_setup_phase_progress(event, socket), do: DockerEvents.handle_setup_phase_progress(event, socket)
+  def on_setup_phase_progress(event, socket),
+    do: DockerEvents.handle_setup_phase_progress(event, socket)
 
   @impl Events.WorkspaceSetup.Subscriber
   def on_setup_completed(event, socket), do: DockerEvents.handle_setup_completed(event, socket)
@@ -1185,7 +1327,8 @@ defmodule BoomLooperWeb.WorkspaceLive do
   def on_setup_failed(event, socket), do: DockerEvents.handle_setup_failed(event, socket)
 
   @impl Events.WorkspaceSetup.Subscriber
-  def on_setup_retry_scheduled(event, socket), do: DockerEvents.handle_setup_retry_scheduled(event, socket)
+  def on_setup_retry_scheduled(event, socket),
+    do: DockerEvents.handle_setup_retry_scheduled(event, socket)
 
   # Compose commands can take tens of seconds (restart/stop) to minutes
   # (start with image build). Running them inline in handle_event used
@@ -1208,19 +1351,27 @@ defmodule BoomLooperWeb.WorkspaceLive do
   # --- Private ---
 
   defp upsert_stream_message(socket, data, title, msg_id) do
-    stream_buffer = socket.assigns.stream_buffer
+    stream_buffer =
+      socket.assigns.stream_buffer
       |> StreamBuffer.append(data, title: title, msg_id: msg_id)
 
     messages = StreamBuffer.upsert_message(stream_buffer, socket.assigns.messages)
 
-    {:noreply, socket |> assign(:messages, messages) |> assign(:stream_buffer, stream_buffer) |> assign(:building, true)}
+    {:noreply,
+     socket
+     |> assign(:messages, messages)
+     |> assign(:stream_buffer, stream_buffer)
+     |> assign(:building, true)}
   end
 
   defp workspace_path(socket), do: socket.assigns.base_path
 
   defp setup_volume(socket, name, tab) do
     is_code = String.contains?(name, "code")
-    adapter = if socket.assigns[:project], do: BoomLooper.Source.for_project(socket.assigns.project)
+
+    adapter =
+      if socket.assigns[:project], do: BoomLooper.Source.for_project(socket.assigns.project)
+
     supports_git = is_code && adapter && BoomLooper.Source.supports_git?(adapter)
 
     socket =
@@ -1241,8 +1392,6 @@ defmodule BoomLooperWeb.WorkspaceLive do
 
     assign(socket, :volume_tab, tab)
   end
-
-
 
   defp preset_message("setup") do
     "Look at the project in /workspace and set up a development environment. Start by reading `setup_guide.md` with `read_agent_file` — it has the full playbook."
@@ -1338,16 +1487,26 @@ defmodule BoomLooperWeb.WorkspaceLive do
         |> start_async({:container_data, id}, fn ->
           ws_container =
             if workspace_id,
-              do: BoomLooper.Workspace.ServiceManager.service_container_name(workspace_id, "workspace")
+              do:
+                BoomLooper.Workspace.ServiceManager.service_container_name(
+                  workspace_id,
+                  "workspace"
+                )
 
-          has_container = ws_container != nil && BoomLooper.Docker.container_running?(ws_container)
+          has_container =
+            ws_container != nil && BoomLooper.Docker.container_running?(ws_container)
 
           if has_container do
             log_opts = %{lines: 100}
-            log_opts = if log_service, do: Map.put(log_opts, :service, log_service), else: log_opts
+
+            log_opts =
+              if log_service, do: Map.put(log_opts, :service, log_service), else: log_opts
 
             logs =
-              case BoomLooper.Tools.Container.Logs.execute(%{agent_id: id, lines: log_opts[:lines], service: log_opts[:service]}, %{}) do
+              case BoomLooper.Tools.Container.Logs.execute(
+                     %{agent_id: id, lines: log_opts[:lines], service: log_opts[:service]},
+                     %{}
+                   ) do
                 {:ok, output} -> output
                 {:error, err} -> "Error: #{err}"
               end
@@ -1371,25 +1530,47 @@ defmodule BoomLooperWeb.WorkspaceLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div id="chat-page" phx-hook="ScrollBottom" class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
-      <.chat_header workspace={@workspace} project={@project} workspace_entry={@workspace_entry} live_action={@live_action} base_path={@base_path} iex_session={@iex_session} />
+    <div
+      id="chat-page"
+      phx-hook="ScrollBottom"
+      class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100"
+    >
+      <.chat_header
+        workspace={@workspace}
+        project={@project}
+        workspace_entry={@workspace_entry}
+        live_action={@live_action}
+        base_path={@base_path}
+        iex_session={@iex_session}
+      />
       <.flash_banner flash={@flash} kind={:error} class="mx-4 mt-2" />
       <div class="flex-1 flex min-h-0">
         <%!-- Sidebar: always visible on md+, full-screen on mobile when no agent/service selected --%>
         <.sidebar
-          agents={@agents} selected_id={@selected_id} workspace_id={@workspace.id}
-          project={@project} workspace_entry={@workspace_entry}
-          service_statuses={@service_statuses} selected_service={@selected_service}
-          services_loaded={@services_loaded} volumes_loaded={@volumes_loaded}
-          live_action={@live_action} volumes={@volumes} base_path={@base_path}
+          agents={@agents}
+          selected_id={@selected_id}
+          workspace_id={@workspace.id}
+          project={@project}
+          workspace_entry={@workspace_entry}
+          service_statuses={@service_statuses}
+          selected_service={@selected_service}
+          services_loaded={@services_loaded}
+          volumes_loaded={@volumes_loaded}
+          live_action={@live_action}
+          volumes={@volumes}
+          base_path={@base_path}
           host={@host}
-          is_local_source?={@is_local_source?} sync_status={@sync_status}
+          is_local_source?={@is_local_source?}
+          sync_status={@sync_status}
           workspace_state={@workspace_state}
           workspace_state_since={@workspace_state_since}
           docker_connected?={@docker_connected?}
         />
         <%!-- Main content: hidden on mobile when sidebar is showing (index/new with no selection) --%>
-        <main id="main-content" class={"flex-1 flex flex-col min-w-0 #{if @live_action == :index && !@selected_id && !@selected_service, do: "hidden md:flex", else: "flex"}"}>
+        <main
+          id="main-content"
+          class={"flex-1 flex flex-col min-w-0 #{if @live_action == :index && !@selected_id && !@selected_service, do: "hidden md:flex", else: "flex"}"}
+        >
           <%!-- When the workspace setup saga hasn't finished (volume not yet
                populated) take over the main content area. The sidebar keeps
                showing so the user has navigation; the workspace content is
@@ -1401,59 +1582,140 @@ defmodule BoomLooperWeb.WorkspaceLive do
               workspace_name={@workspace_entry[:name] || ""}
             />
           <% else %>
-          <%!-- Stopped-workspace screen only when the user isn't looking
+            <%!-- Stopped-workspace screen only when the user isn't looking
                at a specific agent. Agent history stays readable regardless
                of service state — sending new messages is what the running
                workspace gates. --%>
-          <%!-- Cluster is down → show the big "Start workspace" empty
+            <%!-- Cluster is down → show the big "Start workspace" empty
                state, except on views that carry their own empty state
                (service / console / new-agent). Those views render
                their own "this is stopped" screen inside themselves so
                the sidebar context stays consistent while the user is
                exploring. --%>
-          <.workspace_not_running
-            :if={@workspace_state in [:stopped, :starting] && !@selected_agent && @live_action not in [:new, :service, :console]}
-            workspace={@workspace}
-            workspace_state={@workspace_state}
-          />
-          <.new_agent_screen :if={@live_action == :new} workspace={@workspace} base_path={@base_path} />
-          <.service_log_view :if={@live_action == :service} service_name={@selected_service} service_statuses={@service_statuses} logs={@service_logs} base_path={@base_path} host={@host} workspace_state={@workspace_state} />
-          <.console_view :if={@live_action == :console} service_name={@selected_service} container={@console_container} />
-          <.all_services_view :if={@live_action == :services} all_service_logs={@all_service_logs} />
-          <.volume_detail :if={@live_action in [:volume, :volume_files_root, :volume_file, :volume_git]} volume_name={@selected_volume} volumes={@volumes} workspace_id={@workspace.id} base_path={@base_path} volume_tab={@volume_tab} file_tree={@file_tree} file_content={@file_content} file_path={@file_path} browse_path={@browse_path} git_log={@git_log} git_status={@git_status} diff_content={@diff_content} supports_git={@supports_git} />
-          <%= if @live_action in [:git_diff, :git_staged_diff] && @diff_content && @diff_content != :loading do %>
-            <div class="flex flex-col h-full">
-              <div class="flex-none px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center gap-2 text-xs">
-                <.link patch={"#{@base_path}/volumes/#{@selected_volume}/git"} class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300">← Git</.link>
-                <span class="text-zinc-300 dark:text-zinc-600">·</span>
-                <span class="font-mono text-zinc-600 dark:text-zinc-400">{@diff_path}</span>
-                <span :if={@live_action == :git_staged_diff} class="text-green-600 dark:text-green-400 text-[10px] font-semibold uppercase">staged</span>
+            <.workspace_not_running
+              :if={
+                @workspace_state in [:stopped, :starting] && !@selected_agent &&
+                  @live_action not in [:new, :service, :console]
+              }
+              workspace={@workspace}
+              workspace_state={@workspace_state}
+            />
+            <.new_agent_screen
+              :if={@live_action == :new}
+              workspace={@workspace}
+              base_path={@base_path}
+            />
+            <.service_log_view
+              :if={@live_action == :service}
+              service_name={@selected_service}
+              service_statuses={@service_statuses}
+              logs={@service_logs}
+              base_path={@base_path}
+              host={@host}
+              workspace_state={@workspace_state}
+            />
+            <.console_view
+              :if={@live_action == :console}
+              service_name={@selected_service}
+              container={@console_container}
+            />
+            <.all_services_view :if={@live_action == :services} all_service_logs={@all_service_logs} />
+            <.volume_detail
+              :if={@live_action in [:volume, :volume_files_root, :volume_file, :volume_git]}
+              volume_name={@selected_volume}
+              volumes={@volumes}
+              workspace_id={@workspace.id}
+              base_path={@base_path}
+              volume_tab={@volume_tab}
+              file_tree={@file_tree}
+              file_content={@file_content}
+              file_path={@file_path}
+              browse_path={@browse_path}
+              git_log={@git_log}
+              git_status={@git_status}
+              diff_content={@diff_content}
+              supports_git={@supports_git}
+            />
+            <%= if @live_action in [:git_diff, :git_staged_diff] && @diff_content && @diff_content != :loading do %>
+              <div class="flex flex-col h-full">
+                <div class="flex-none px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center gap-2 text-xs">
+                  <.link
+                    patch={"#{@base_path}/volumes/#{@selected_volume}/git"}
+                    class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                  >
+                    ← Git
+                  </.link>
+                  <span class="text-zinc-300 dark:text-zinc-600">·</span>
+                  <span class="font-mono text-zinc-600 dark:text-zinc-400">{@diff_path}</span>
+                  <span
+                    :if={@live_action == :git_staged_diff}
+                    class="text-green-600 dark:text-green-400 text-[10px] font-semibold uppercase"
+                  >
+                    staged
+                  </span>
+                </div>
+                <BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.GitViewer.diff_viewer
+                  diff={@diff_content}
+                  path={@diff_path}
+                />
               </div>
-              <BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.GitViewer.diff_viewer diff={@diff_content} path={@diff_path} />
-            </div>
-          <% end %>
-          <%= if @live_action == :git_commit && is_map(@commit_detail) do %>
-            <div class="flex flex-col h-full">
-              <div class="flex-none px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80 text-xs">
-                <.link patch={"#{@base_path}/volumes/#{@selected_volume}/git"} class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300">← Git</.link>
+            <% end %>
+            <%= if @live_action == :git_commit && is_map(@commit_detail) do %>
+              <div class="flex flex-col h-full">
+                <div class="flex-none px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80 text-xs">
+                  <.link
+                    patch={"#{@base_path}/volumes/#{@selected_volume}/git"}
+                    class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                  >
+                    ← Git
+                  </.link>
+                </div>
+                <BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.GitViewer.commit_detail
+                  commit={@commit_detail}
+                  base_path={@base_path}
+                  volume_name={@selected_volume}
+                />
               </div>
-              <BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.GitViewer.commit_detail commit={@commit_detail} base_path={@base_path} volume_name={@selected_volume} />
-            </div>
-          <% end %>
-          <%= if @live_action == :git_commit_file && @diff_content && @diff_content != :loading do %>
-            <div class="flex flex-col h-full">
-              <div class="flex-none px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center gap-2 text-xs">
-                <.link patch={"#{@base_path}/volumes/#{@selected_volume}/git/commits/#{@commit_sha}"} class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300">← {String.slice(@commit_sha || "", 0..6)}</.link>
-                <span class="text-zinc-300 dark:text-zinc-600">·</span>
-                <span class="font-mono text-zinc-600 dark:text-zinc-400">{@diff_path}</span>
+            <% end %>
+            <%= if @live_action == :git_commit_file && @diff_content && @diff_content != :loading do %>
+              <div class="flex flex-col h-full">
+                <div class="flex-none px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center gap-2 text-xs">
+                  <.link
+                    patch={"#{@base_path}/volumes/#{@selected_volume}/git/commits/#{@commit_sha}"}
+                    class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                  >
+                    ← {String.slice(@commit_sha || "", 0..6)}
+                  </.link>
+                  <span class="text-zinc-300 dark:text-zinc-600">·</span>
+                  <span class="font-mono text-zinc-600 dark:text-zinc-400">{@diff_path}</span>
+                </div>
+                <BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.GitViewer.diff_viewer
+                  diff={@diff_content}
+                  path={@diff_path}
+                />
               </div>
-              <BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.GitViewer.diff_viewer diff={@diff_content} path={@diff_path} />
-            </div>
-          <% end %>
-          <.sync_detail :if={@live_action == :sync} sync_status={@sync_status} workspace_id={@workspace.id} workspace={@workspace} />
-          <.booting_screen :if={@live_action in [:index, :chat, :container] && @booting_agent_id && !@selected_agent} agent_id={@booting_agent_id} status={@boot_status} boot_log={@boot_log} />
-          <.empty_state :if={@live_action in [:index, :chat, :container] && !@booting_agent_id && !@selected_agent} />
-          <.agent_view :if={@live_action in [:index, :chat, :container, :context_panel] && @selected_agent} {assigns} />
+            <% end %>
+            <.sync_detail
+              :if={@live_action == :sync}
+              sync_status={@sync_status}
+              workspace_id={@workspace.id}
+              workspace={@workspace}
+            />
+            <.booting_screen
+              :if={
+                @live_action in [:index, :chat, :container] && @booting_agent_id && !@selected_agent
+              }
+              agent_id={@booting_agent_id}
+              status={@boot_status}
+              boot_log={@boot_log}
+            />
+            <.empty_state :if={
+              @live_action in [:index, :chat, :container] && !@booting_agent_id && !@selected_agent
+            } />
+            <.agent_view
+              :if={@live_action in [:index, :chat, :container, :context_panel] && @selected_agent}
+              {assigns}
+            />
           <% end %>
         </main>
       </div>

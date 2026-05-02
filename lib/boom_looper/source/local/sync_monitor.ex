@@ -156,7 +156,12 @@ defmodule BoomLooper.Source.Local.SyncMonitor do
     :telemetry.execute(
       [:boom_looper, :actor, :unknown_message],
       %{count: 1},
-      %{actor: __MODULE__, workspace_id: state.workspace_id, kind: :call, msg: inspect(msg, limit: 200)}
+      %{
+        actor: __MODULE__,
+        workspace_id: state.workspace_id,
+        kind: :call,
+        msg: inspect(msg, limit: 200)
+      }
     )
 
     {:reply, {:error, :unknown_call}, state}
@@ -218,7 +223,12 @@ defmodule BoomLooper.Source.Local.SyncMonitor do
     :telemetry.execute(
       [:boom_looper, :actor, :unknown_message],
       %{count: 1},
-      %{actor: __MODULE__, workspace_id: state.workspace_id, kind: :cast, msg: inspect(msg, limit: 200)}
+      %{
+        actor: __MODULE__,
+        workspace_id: state.workspace_id,
+        kind: :cast,
+        msg: inspect(msg, limit: 200)
+      }
     )
 
     {:noreply, state}
@@ -265,6 +275,7 @@ defmodule BoomLooper.Source.Local.SyncMonitor do
 
   def handle_info(msg, state) do
     require Logger
+
     Logger.warning(
       "[SyncMonitor] ws=#{state.workspace_id} unhandled: #{inspect(msg, limit: 200)}"
     )
@@ -552,7 +563,7 @@ defmodule BoomLooper.Source.Local.SyncMonitor do
   defp poll_interval(0), do: @base_poll_interval
 
   defp poll_interval(n) when n > 0 do
-    backoff = @base_poll_interval * :math.pow(2, min(n, 4)) |> trunc()
+    backoff = (@base_poll_interval * :math.pow(2, min(n, 4))) |> trunc()
     min(backoff, @max_poll_interval)
   end
 

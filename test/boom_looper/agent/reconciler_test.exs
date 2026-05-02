@@ -119,10 +119,11 @@ defmodule BoomLooper.Agent.ReconcilerTest do
 
       result = Reconciler.reconcile_now()
 
-      drifts_for_us = Enum.filter(result.drifts, fn
-        {:zombie, ^id, _, _} -> true
-        _ -> false
-      end)
+      drifts_for_us =
+        Enum.filter(result.drifts, fn
+          {:zombie, ^id, _, _} -> true
+          _ -> false
+        end)
 
       assert length(drifts_for_us) == 1
 

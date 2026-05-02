@@ -41,7 +41,8 @@ defmodule BoomLooper.WorkspaceSupervisorTest do
     end
 
     test "returns error for non-existent workspace" do
-      assert {:error, :not_found} = WorkspaceSupervisor.stop_workspace("nonexistent-#{:rand.uniform(100_000)}")
+      assert {:error, :not_found} =
+               WorkspaceSupervisor.stop_workspace("nonexistent-#{:rand.uniform(100_000)}")
     end
   end
 
@@ -114,7 +115,9 @@ defmodule BoomLooper.WorkspaceSupervisorTest do
           [:boom_looper, :saga, :call_site_rollback_failed]
         ])
 
-      BoomLooper.Saga.maybe_log_rollback_failed(:rolled_back, :rebuild_workspace, %{workspace_id: "ws-ok"})
+      BoomLooper.Saga.maybe_log_rollback_failed(:rolled_back, :rebuild_workspace, %{
+        workspace_id: "ws-ok"
+      })
 
       refute_receive {[:boom_looper, :saga, :call_site_rollback_failed], _, _, _}, 100
 
@@ -133,10 +136,12 @@ defmodule BoomLooper.WorkspaceSupervisorTest do
         %{workspace_id: "ws-crashed"}
       )
 
-      assert_receive {[:boom_looper, :saga, :call_site_rollback_failed], ^ref,
-                      %{count: 1},
-                      %{saga_name: :rebuild_workspace, workspace_id: "ws-crashed",
-                        failed_rollbacks: [{:stop_unhealthy_group, :cant_stop}]}},
+      assert_receive {[:boom_looper, :saga, :call_site_rollback_failed], ^ref, %{count: 1},
+                      %{
+                        saga_name: :rebuild_workspace,
+                        workspace_id: "ws-crashed",
+                        failed_rollbacks: [{:stop_unhealthy_group, :cant_stop}]
+                      }},
                      500
 
       :telemetry.detach(ref)

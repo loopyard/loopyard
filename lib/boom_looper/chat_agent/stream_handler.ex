@@ -62,7 +62,12 @@ defmodule BoomLooper.ChatAgent.StreamHandler do
     # subsequent stream_error/timeout doesn't re-emit it.
     state = %{state | last_activity_at: now, in_flight_partial: ""}
     Persistence.persist_message(state, assistant_msg)
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: assistant_msg})
+
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+      agent_id: id,
+      msg: assistant_msg
+    })
+
     state
   end
 
@@ -72,11 +77,12 @@ defmodule BoomLooper.ChatAgent.StreamHandler do
     tool_msg = %{role: :tool, tool: tool_name, input: tool_input, timestamp: now}
     {state, tool_msg} = append_message(state, tool_msg)
 
-    state = %{state |
-      last_activity_at: now,
-      tool_calls: state.tool_calls + 1,
-      active_tool: tool_name,
-      tool_calls_this_turn: state.tool_calls_this_turn + 1
+    state = %{
+      state
+      | last_activity_at: now,
+        tool_calls: state.tool_calls + 1,
+        active_tool: tool_name,
+        tool_calls_this_turn: state.tool_calls_this_turn + 1
     }
 
     # Loop detection: same tool + same input N times in a row
@@ -98,7 +104,12 @@ defmodule BoomLooper.ChatAgent.StreamHandler do
     {state, result_msg} = append_message(state, result_msg)
     state = %{state | last_activity_at: now, active_tool: nil}
     Persistence.persist_message(state, result_msg)
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: result_msg})
+
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+      agent_id: id,
+      msg: result_msg
+    })
+
     state
   end
 
@@ -114,6 +125,7 @@ defmodule BoomLooper.ChatAgent.StreamHandler do
     claude_sid = state.backend.session_id(state.session) || state.claude_session_id
 
     window = context_window_for(result.model || state.model)
+
     utilization =
       if window > 0 do
         (result.input_tokens + result.cache_read_tokens) / window
@@ -121,14 +133,15 @@ defmodule BoomLooper.ChatAgent.StreamHandler do
         state.context_utilization
       end
 
-    state = %{state |
-      model: result.model || state.model,
-      total_input_tokens: state.total_input_tokens + result.input_tokens,
-      total_output_tokens: state.total_output_tokens + result.output_tokens,
-      total_cache_read_tokens: state.total_cache_read_tokens + result.cache_read_tokens,
-      total_cost_usd: state.total_cost_usd + result.cost_usd,
-      claude_session_id: claude_sid,
-      context_utilization: utilization
+    state = %{
+      state
+      | model: result.model || state.model,
+        total_input_tokens: state.total_input_tokens + result.input_tokens,
+        total_output_tokens: state.total_output_tokens + result.output_tokens,
+        total_cache_read_tokens: state.total_cache_read_tokens + result.cache_read_tokens,
+        total_cost_usd: state.total_cost_usd + result.cost_usd,
+        claude_session_id: claude_sid,
+        context_utilization: utilization
     }
 
     state = maybe_warn_context_full(state, id, utilization)
@@ -156,16 +169,18 @@ defmodule BoomLooper.ChatAgent.StreamHandler do
   def on_stream_done(state) do
     id = state.id
 
-    state = %{state |
-      status: :idle,
-      active_tool: nil,
-      turns: state.turns + 1,
-      in_flight_partial: "",
-      context_warning_sent: false,
-      last_tool_call: nil,
-      tool_calls_this_turn: 0,
-      tool_runaway_warned: false
+    state = %{
+      state
+      | status: :idle,
+        active_tool: nil,
+        turns: state.turns + 1,
+        in_flight_partial: "",
+        context_warning_sent: false,
+        last_tool_call: nil,
+        tool_calls_this_turn: 0,
+        tool_runaway_warned: false
     }
+
     state = Map.put(state, :consecutive_crashes, 0)
 
     # Detect empty responses when context is full — auto-restart the
@@ -178,8 +193,13 @@ defmodule BoomLooper.ChatAgent.StreamHandler do
         content: "Refreshing context...",
         timestamp: DateTime.utc_now()
       }
+
       {state, status_msg} = append_message(state, status_msg)
-      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: status_msg})
+
+      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+        agent_id: id,
+        msg: status_msg
+      })
 
       # Find the user's last message so we can re-send it after restart
       last_user_msg =
@@ -213,9 +233,12 @@ defmodule BoomLooper.ChatAgent.StreamHandler do
     state = finalize_partial_on_stream_interrupt(state, id, :error)
 
     # Count recent crashes (within last 60 seconds)
-    recent_crashes = state.messages
-      |> Enum.filter(fn m -> m.role == :system && m.content == "Agent crashed — restarting..." &&
-         DateTime.diff(now, m.timestamp, :second) < 60 end)
+    recent_crashes =
+      state.messages
+      |> Enum.filter(fn m ->
+        m.role == :system && m.content == "Agent crashed — restarting..." &&
+          DateTime.diff(now, m.timestamp, :second) < 60
+      end)
       |> length()
 
     if is_binary(reason) && String.contains?(reason, "CLI session exited") && recent_crashes < 2 do
@@ -226,15 +249,36 @@ defmodule BoomLooper.ChatAgent.StreamHandler do
         {:ok, new_session} ->
           recovered_msg =
             if is_binary(state.claude_session_id) do
-              %{role: :system, content: "Agent session restarted automatically (resumed conversation #{String.slice(state.claude_session_id, 0..7)}…).", timestamp: DateTime.utc_now()}
+              %{
+                role: :system,
+                content:
+                  "Agent session restarted automatically (resumed conversation #{String.slice(state.claude_session_id, 0..7)}…).",
+                timestamp: DateTime.utc_now()
+              }
             else
-              %{role: :system, content: "Agent session restarted automatically.", timestamp: DateTime.utc_now()}
+              %{
+                role: :system,
+                content: "Agent session restarted automatically.",
+                timestamp: DateTime.utc_now()
+              }
             end
-          {state, recovered_msg} = append_message(
-            SessionManager.track_os_pid(%{state | session: new_session, status: :idle, active_tool: nil}),
-            recovered_msg
-          )
-          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: recovered_msg})
+
+          {state, recovered_msg} =
+            append_message(
+              SessionManager.track_os_pid(%{
+                state
+                | session: new_session,
+                  status: :idle,
+                  active_tool: nil
+              }),
+              recovered_msg
+            )
+
+          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+            agent_id: id,
+            msg: recovered_msg
+          })
+
           Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
 
           if is_nil(state.claude_session_id) do
@@ -257,7 +301,12 @@ defmodule BoomLooper.ChatAgent.StreamHandler do
 
           {state, fail_msg} = append_message(state, fail_msg)
           state = %{state | status: :idle, active_tool: nil}
-          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: fail_msg})
+
+          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+            agent_id: id,
+            msg: fail_msg
+          })
+
           Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
           drain_pending_sends(state)
       end
@@ -275,8 +324,20 @@ defmodule BoomLooper.ChatAgent.StreamHandler do
       }
 
       {state, error_msg} = append_message(state, error_msg)
-      state = %{state | status: :idle, active_tool: nil, last_activity_at: now, errors: state.errors + 1}
-      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: error_msg})
+
+      state = %{
+        state
+        | status: :idle,
+          active_tool: nil,
+          last_activity_at: now,
+          errors: state.errors + 1
+      }
+
+      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+        agent_id: id,
+        msg: error_msg
+      })
+
       Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
       drain_pending_sends(state)
     end
@@ -304,9 +365,15 @@ defmodule BoomLooper.ChatAgent.StreamHandler do
           "/system/events for the tool name and diagnose it in isolation.",
       timestamp: DateTime.utc_now()
     }
+
     {state, error_msg} = append_message(state, error_msg)
     state = %{state | status: :idle, active_tool: nil, errors: state.errors + 1}
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: error_msg})
+
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+      agent_id: id,
+      msg: error_msg
+    })
+
     Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
     drain_pending_sends(state)
   end
@@ -318,12 +385,14 @@ defmodule BoomLooper.ChatAgent.StreamHandler do
   def compute_rate_limit_wait_ms(resets_at_ms) when is_integer(resets_at_ms) do
     now_ms = System.system_time(:millisecond)
     delta = resets_at_ms - now_ms
+
     cond do
       delta <= 0 -> 60_000
       delta > 3_600_000 -> 60_000
       true -> delta + 1_000
     end
   end
+
   def compute_rate_limit_wait_ms(_), do: 60_000
 
   @doc """
@@ -331,10 +400,11 @@ defmodule BoomLooper.ChatAgent.StreamHandler do
   stream is interrupted (error, timeout, user stop). Persists the
   partial as a truncated assistant message.
   """
-  def finalize_partial_on_stream_interrupt(%{in_flight_partial: ""} = state, _id, _reason), do: state
+  def finalize_partial_on_stream_interrupt(%{in_flight_partial: ""} = state, _id, _reason),
+    do: state
 
   def finalize_partial_on_stream_interrupt(%{in_flight_partial: partial} = state, id, reason)
-       when is_binary(partial) and partial != "" do
+      when is_binary(partial) and partial != "" do
     marker =
       case reason do
         :error -> "⚠ Truncated — CLI stream errored mid-response."
@@ -352,7 +422,11 @@ defmodule BoomLooper.ChatAgent.StreamHandler do
 
     {state, partial_msg} = append_message(state, partial_msg)
     Persistence.persist_message(state, partial_msg)
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: partial_msg})
+
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+      agent_id: id,
+      msg: partial_msg
+    })
 
     :telemetry.execute(
       [:boom_looper, :agent, :partial_finalized],
@@ -398,28 +472,36 @@ defmodule BoomLooper.ChatAgent.StreamHandler do
 
         {state, rl_msg} =
           append_message(
-            %{state |
-              status: :rate_limited,
-              active_tool: nil,
-              rate_limit_status: :rejected,
-              rate_limit_resets_at_ms: rl.resets_at_ms,
-              rate_limit_type: rl.rate_limit_type
+            %{
+              state
+              | status: :rate_limited,
+                active_tool: nil,
+                rate_limit_status: :rejected,
+                rate_limit_resets_at_ms: rl.resets_at_ms,
+                rate_limit_type: rl.rate_limit_type
             },
             rl_msg
           )
 
         Persistence.persist_message(state, rl_msg)
         :ets.insert(@ets_table, {id, BoomLooper.ChatAgent.summary(state)})
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: rl_msg})
+
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+          agent_id: id,
+          msg: rl_msg
+        })
+
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :rate_limited})
         state
 
       :allowed_warning ->
-        state = %{state |
-          rate_limit_status: :warning,
-          rate_limit_resets_at_ms: rl.resets_at_ms,
-          rate_limit_type: rl.rate_limit_type
+        state = %{
+          state
+          | rate_limit_status: :warning,
+            rate_limit_resets_at_ms: rl.resets_at_ms,
+            rate_limit_type: rl.rate_limit_type
         }
+
         :ets.insert(@ets_table, {id, BoomLooper.ChatAgent.summary(state)})
         state
 
@@ -427,16 +509,23 @@ defmodule BoomLooper.ChatAgent.StreamHandler do
         was_rate_limited = state.rate_limit_status != :ok
         new_main_status = if state.status == :rate_limited, do: :idle, else: state.status
 
-        state = %{state |
-          status: new_main_status,
-          rate_limit_status: :ok,
-          rate_limit_resets_at_ms: nil,
-          rate_limit_type: nil
+        state = %{
+          state
+          | status: new_main_status,
+            rate_limit_status: :ok,
+            rate_limit_resets_at_ms: nil,
+            rate_limit_type: nil
         }
+
         :ets.insert(@ets_table, {id, BoomLooper.ChatAgent.summary(state)})
+
         if was_rate_limited do
-          Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: new_main_status})
+          Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{
+            id: id,
+            status: new_main_status
+          })
         end
+
         state
 
       _other ->
@@ -462,13 +551,20 @@ defmodule BoomLooper.ChatAgent.StreamHandler do
 
     auth_msg = %{
       role: :error,
-      content: "Claude authentication failed: #{error}. Re-authenticate the CLI and restart this agent.",
+      content:
+        "Claude authentication failed: #{error}. Re-authenticate the CLI and restart this agent.",
       timestamp: DateTime.utc_now()
     }
 
     {state, auth_msg} =
       append_message(
-        %{state | status: :auth_expired, active_tool: nil, auth_error: error, errors: state.errors + 1},
+        %{
+          state
+          | status: :auth_expired,
+            active_tool: nil,
+            auth_error: error,
+            errors: state.errors + 1
+        },
         auth_msg
       )
 
@@ -528,7 +624,12 @@ defmodule BoomLooper.ChatAgent.StreamHandler do
 
       {state, warn_msg} = append_message(state, warn_msg)
       Persistence.persist_message(state, warn_msg)
-      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: warn_msg})
+
+      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+        agent_id: id,
+        msg: warn_msg
+      })
+
       state
     else
       state
@@ -574,12 +675,14 @@ defmodule BoomLooper.ChatAgent.StreamHandler do
 
   # Context window sizes for known models.
   defp context_window_for(nil), do: 200_000
+
   defp context_window_for(model) when is_binary(model) do
     Map.get(@context_windows, model) ||
       Enum.find_value(@context_windows, 0, fn {prefix, size} ->
         if String.starts_with?(model, prefix), do: size
       end)
   end
+
   defp context_window_for(_), do: 200_000
 
   # One-shot warning when context utilization crosses the threshold.
@@ -621,6 +724,7 @@ defmodule BoomLooper.ChatAgent.StreamHandler do
       %{role: :assistant, content: c} when is_binary(c) ->
         trimmed = String.trim(c)
         trimmed == "" || trimmed == "(no content)"
+
       _ ->
         false
     end
@@ -629,12 +733,16 @@ defmodule BoomLooper.ChatAgent.StreamHandler do
   # Inline append_message — same logic as ChatAgent's private version.
   # Prepends to reversed list for O(1) append, assigns ID if missing.
   defp append_message(state, msg) do
-    msg = Map.put_new_lazy(msg, :id, fn ->
-      :crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false)
-    end)
+    msg =
+      Map.put_new_lazy(msg, :id, fn ->
+        :crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false)
+      end)
+
     reversed = [msg | state.messages]
-    reversed = if length(reversed) > @max_messages, do: Enum.take(reversed, @max_messages), else: reversed
+
+    reversed =
+      if length(reversed) > @max_messages, do: Enum.take(reversed, @max_messages), else: reversed
+
     {%{state | messages: reversed}, msg}
   end
-
 end

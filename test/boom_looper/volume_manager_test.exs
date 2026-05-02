@@ -156,7 +156,11 @@ defmodule BoomLooper.VolumeManagerTest do
 
       me = self()
       VolumeManager.create_volume(volume_name)
-      assert {:ok, _} = VolumeManager.copy_to_volume(volume_name, tmp_dir, callback: fn _chunk -> send(me, :got_chunk) end)
+
+      assert {:ok, _} =
+               VolumeManager.copy_to_volume(volume_name, tmp_dir,
+                 callback: fn _chunk -> send(me, :got_chunk) end
+               )
     end
   end
 
@@ -206,9 +210,14 @@ defmodule BoomLooper.VolumeManagerTest do
 
       # Create a .git directory to simulate cloned repo
       System.cmd("docker", [
-        "run", "--rm",
-        "-v", "#{volume_name}:/workspace",
-        "alpine", "sh", "-c", "mkdir -p /workspace/.git"
+        "run",
+        "--rm",
+        "-v",
+        "#{volume_name}:/workspace",
+        "alpine",
+        "sh",
+        "-c",
+        "mkdir -p /workspace/.git"
       ])
 
       assert VolumeManager.volume_has_code?(volume_name) == true
@@ -299,11 +308,14 @@ defmodule BoomLooper.VolumeManagerTest do
     test "root tree returns workspace-relative paths" do
       # Use a live workspace if available (garryslist 0a6a)
       vol = "bl-0a6a-code"
+
       case VolumeManager.tree(vol, ".") do
         {:ok, entries} ->
           # Root entries should NOT have a prefix
           for entry <- Enum.take(entries, 5) do
-            refute String.starts_with?(entry.path, "/"), "path #{entry.path} should not start with /"
+            refute String.starts_with?(entry.path, "/"),
+                   "path #{entry.path} should not start with /"
+
             assert entry.name == Path.basename(entry.path), "name should be basename of path"
           end
 
@@ -315,11 +327,12 @@ defmodule BoomLooper.VolumeManagerTest do
 
     test "subdirectory tree returns full workspace-relative paths" do
       vol = "bl-0a6a-code"
+
       case VolumeManager.tree(vol, "app") do
         {:ok, entries} ->
           for entry <- Enum.take(entries, 5) do
             assert String.starts_with?(entry.path, "app/"),
-              "entry path #{entry.path} should start with app/"
+                   "entry path #{entry.path} should start with app/"
           end
 
         {:error, :no_container} ->
@@ -329,11 +342,12 @@ defmodule BoomLooper.VolumeManagerTest do
 
     test "deeply nested tree returns full paths" do
       vol = "bl-0a6a-code"
+
       case VolumeManager.tree(vol, "app/models") do
         {:ok, entries} when entries != [] ->
           for entry <- Enum.take(entries, 5) do
             assert String.starts_with?(entry.path, "app/models/"),
-              "entry path #{entry.path} should start with app/models/"
+                   "entry path #{entry.path} should start with app/models/"
           end
 
         _ ->

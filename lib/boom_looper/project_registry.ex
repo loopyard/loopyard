@@ -48,63 +48,68 @@ defmodule BoomLooper.ProjectRegistry do
     workspace_id = Workspace.workspace_id_from_git(git_url, branch)
 
     # Find or create project
-    project = case get_project(project_id) do
-      nil ->
-        name = unique_name(extract_repo_name(git_url), project_id)
-        proj = %{
-          id: project_id,
-          name: name,
-          git_url: git_url,
-          is_git: true,
-          volume_based: true,
-          source_type: :github,
-          source_config: %{git_url: git_url, branch: branch},
-          added_at: DateTime.utc_now()
-        }
-        :ets.insert(@projects_table, {project_id, proj})
-        proj
+    project =
+      case get_project(project_id) do
+        nil ->
+          name = unique_name(extract_repo_name(git_url), project_id)
 
-      existing ->
-        existing
-    end
+          proj = %{
+            id: project_id,
+            name: name,
+            git_url: git_url,
+            is_git: true,
+            volume_based: true,
+            source_type: :github,
+            source_config: %{git_url: git_url, branch: branch},
+            added_at: DateTime.utc_now()
+          }
+
+          :ets.insert(@projects_table, {project_id, proj})
+          proj
+
+        existing ->
+          existing
+      end
 
     # Find or create workspace. The result is not used directly on the
     # success path (we re-fetch via update_setup below) — but the side
     # effects (insert) DO matter, so we keep the case for them.
-    _workspace = case WorkspaceRegistry.get_workspace(workspace_id) do
-      nil ->
-        volume_name = BoomLooper.VolumeManager.code_volume_name(workspace_id)
-        # Compute path so all workspaces have the same shape
-        computed_path = Workspace.compose_dir(workspace_id)
-        # First branch added is considered main (typically "main" or "master")
-        existing_workspaces = WorkspaceRegistry.list_workspaces(project_id)
-        is_main = existing_workspaces == []
+    _workspace =
+      case WorkspaceRegistry.get_workspace(workspace_id) do
+        nil ->
+          volume_name = BoomLooper.VolumeManager.code_volume_name(workspace_id)
+          # Compute path so all workspaces have the same shape
+          computed_path = Workspace.compose_dir(workspace_id)
+          # First branch added is considered main (typically "main" or "master")
+          existing_workspaces = WorkspaceRegistry.list_workspaces(project_id)
+          is_main = existing_workspaces == []
 
-        ws = %{
-          id: workspace_id,
-          project_id: project_id,
-          name: branch,
-          branch: branch,
-          git_url: git_url,
-          volume: volume_name,
-          volume_based: true,
-          path: computed_path,
-          is_main: is_main,
-          status: :stopped,
-          # GitHub workspaces clone synchronously below — by the time
-          # this row is observable through normal lookups the clone has
-          # either succeeded (mark :ready) or rolled back the row. We
-          # set :pending here so partially-populated state is visible if
-          # the clone is in flight from another caller.
-          setup: BoomLooper.Workspace.Setup.initial_setup_field(),
-          added_at: DateTime.utc_now()
-        }
-        WorkspaceRegistry.insert(workspace_id, ws)
-        ws
+          ws = %{
+            id: workspace_id,
+            project_id: project_id,
+            name: branch,
+            branch: branch,
+            git_url: git_url,
+            volume: volume_name,
+            volume_based: true,
+            path: computed_path,
+            is_main: is_main,
+            status: :stopped,
+            # GitHub workspaces clone synchronously below — by the time
+            # this row is observable through normal lookups the clone has
+            # either succeeded (mark :ready) or rolled back the row. We
+            # set :pending here so partially-populated state is visible if
+            # the clone is in flight from another caller.
+            setup: BoomLooper.Workspace.Setup.initial_setup_field(),
+            added_at: DateTime.utc_now()
+          }
 
-      existing ->
-        existing
-    end
+          WorkspaceRegistry.insert(workspace_id, ws)
+          ws
+
+        existing ->
+          existing
+      end
 
     # Clone code into volume if not already done
     # clone_mode: :sync (default), :disabled (tests)
@@ -113,7 +118,10 @@ defmodule BoomLooper.ProjectRegistry do
 
     clone_result =
       if clone_mode != :disabled and not BoomLooper.VolumeManager.volume_has_code?(volume_name) do
-        BoomLooper.VolumeManager.clone_into_volume(volume_name, git_url, branch: branch, token: token)
+        BoomLooper.VolumeManager.clone_into_volume(volume_name, git_url,
+          branch: branch,
+          token: token
+        )
       else
         {:ok, :skipped}
       end
@@ -184,7 +192,8 @@ defmodule BoomLooper.ProjectRegistry do
             _ -> "main"
           end
 
-        workspace = WorkspaceRegistry.find_or_create_workspace(project.id, workspace_name, project.path)
+        workspace =
+          WorkspaceRegistry.find_or_create_workspace(project.id, workspace_name, project.path)
 
         if project[:is_git] do
           discover_worktrees(project)
@@ -265,6 +274,7 @@ defmodule BoomLooper.ProjectRegistry do
       segment not in @generic_basenames and segment != "."
     end)
   end
+
   def default_name_from_path(_), do: nil
 
   # Returns a name unique across all projects, except for the project we're
@@ -313,8 +323,11 @@ defmodule BoomLooper.ProjectRegistry do
   """
   def restore do
     if :ets.whereis(@projects_table) == :undefined do
-      Logger.error("[ProjectRegistry] ETS table #{@projects_table} missing — " <>
-        "supervisor likely crashed. Skipping restore; restart the server.")
+      Logger.error(
+        "[ProjectRegistry] ETS table #{@projects_table} missing — " <>
+          "supervisor likely crashed. Skipping restore; restart the server."
+      )
+
       :ok
     else
       do_restore()
@@ -324,39 +337,47 @@ defmodule BoomLooper.ProjectRegistry do
   defp do_restore do
     for entry <- ProjectStore.load() do
       # Handle both old format (string path) and new format (map with path/name)
-      {path, saved_name} = case entry do
-        %{path: p, name: n} -> {p, n}
-        %{path: p} -> {p, nil}
-        p when is_binary(p) -> {p, nil}
-      end
+      {path, saved_name} =
+        case entry do
+          %{path: p, name: n} -> {p, n}
+          %{path: p} -> {p, nil}
+          p when is_binary(p) -> {p, nil}
+        end
 
-      result = cond do
-        # Git URL (volume-based)
-        String.starts_with?(path, "git@") or String.starts_with?(path, "https://") ->
-          add_from_url(path)
+      result =
+        cond do
+          # Git URL (volume-based)
+          String.starts_with?(path, "git@") or String.starts_with?(path, "https://") ->
+            add_from_url(path)
 
-        # Local path (bind-mount based)
-        true ->
-          add(path)
-      end
+          # Local path (bind-mount based)
+          true ->
+            add(path)
+        end
 
       case result do
         {:ok, project, _workspace} ->
           # Apply saved name if present and not generic; otherwise upgrade
           # generic/missing names using the directory layout.
-          desired = cond do
-            is_binary(saved_name) and String.trim(saved_name) != "" and saved_name not in @generic_basenames ->
-              saved_name
-            is_binary(project[:path]) ->
-              default_name_from_path(project[:path]) || project.name
-            true ->
-              project.name
-          end
+          desired =
+            cond do
+              is_binary(saved_name) and String.trim(saved_name) != "" and
+                  saved_name not in @generic_basenames ->
+                saved_name
+
+              is_binary(project[:path]) ->
+                default_name_from_path(project[:path]) || project.name
+
+              true ->
+                project.name
+            end
 
           unique = unique_name(desired, project.id)
+
           if unique != project.name do
             :ets.insert(:project_registry, {project.id, Map.put(project, :name, unique)})
           end
+
           :ok
 
         {:error, reason} ->
@@ -436,16 +457,23 @@ defmodule BoomLooper.ProjectRegistry do
 
           # Delete code + cache volumes (always, not just volume_based)
           BoomLooper.VolumeManager.delete_volume(BoomLooper.VolumeManager.code_volume_name(ws_id))
-          BoomLooper.VolumeManager.delete_volume(BoomLooper.VolumeManager.cache_volume_name(ws_id))
+
+          BoomLooper.VolumeManager.delete_volume(
+            BoomLooper.VolumeManager.cache_volume_name(ws_id)
+          )
 
           # Also try the old naming convention in case any legacy volumes exist
           BoomLooper.VolumeManager.delete_volume("code-#{ws_id}")
         rescue
           e ->
-            Logger.warning("[ProjectRegistry] Cleanup failed for workspace #{ws.id}: #{Exception.message(e)}")
+            Logger.warning(
+              "[ProjectRegistry] Cleanup failed for workspace #{ws.id}: #{Exception.message(e)}"
+            )
         catch
           kind, reason ->
-            Logger.warning("[ProjectRegistry] Cleanup caught #{kind} for workspace #{ws.id}: #{inspect(reason)}")
+            Logger.warning(
+              "[ProjectRegistry] Cleanup caught #{kind} for workspace #{ws.id}: #{inspect(reason)}"
+            )
         end
       end)
     end

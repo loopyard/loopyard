@@ -76,7 +76,11 @@ defmodule BoomLooper.ChatAgent.RestartStateTest do
 
       # Simulate several turns via SessionResult events. Each bumps the
       # accumulators.
-      for {in_tok, out_tok, cache, cost} <- [{100, 50, 0, 0.01}, {200, 80, 500, 0.02}, {50, 20, 100, 0.005}] do
+      for {in_tok, out_tok, cache, cost} <- [
+            {100, 50, 0, 0.01},
+            {200, 80, 500, 0.02},
+            {50, 20, 100, 0.005}
+          ] do
         send(
           pid,
           {:stream_event, id, ref,
@@ -140,7 +144,12 @@ defmodule BoomLooper.ChatAgent.RestartStateTest do
       stream_ref = :sys.get_state(pid).stream_ref
 
       :sys.replace_state(pid, fn s ->
-        %{s | status: :thinking, active_tool: "docker_compose", stream_ref: stream_ref || make_ref()}
+        %{
+          s
+          | status: :thinking,
+            active_tool: "docker_compose",
+            stream_ref: stream_ref || make_ref()
+        }
       end)
 
       ref = :sys.get_state(pid).stream_ref
@@ -167,7 +176,9 @@ defmodule BoomLooper.ChatAgent.RestartStateTest do
       assert state.active_tool == nil
     end
 
-    test "EXIT over @max_consecutive_crashes transitions to :crashed + clears active_tool", %{id: id} do
+    test "EXIT over @max_consecutive_crashes transitions to :crashed + clears active_tool", %{
+      id: id
+    } do
       pid = agent_pid(id)
 
       :sys.replace_state(pid, fn s ->
@@ -185,7 +196,9 @@ defmodule BoomLooper.ChatAgent.RestartStateTest do
       assert state.active_tool == nil
     end
 
-    test "EXIT under @max_consecutive_crashes transitions to :backoff + clears active_tool", %{id: id} do
+    test "EXIT under @max_consecutive_crashes transitions to :backoff + clears active_tool", %{
+      id: id
+    } do
       pid = agent_pid(id)
 
       :sys.replace_state(pid, fn s ->
@@ -209,6 +222,7 @@ defmodule BoomLooper.ChatAgent.RestartStateTest do
       pid = agent_pid(id)
 
       ref = make_ref()
+
       :sys.replace_state(pid, fn s ->
         %{s | status: :thinking, active_tool: "docker_compose", stream_ref: ref}
       end)
@@ -223,7 +237,8 @@ defmodule BoomLooper.ChatAgent.RestartStateTest do
          }}
       )
 
-      assert_receive %BoomLooper.Events.ChatAgent.StatusChanged{id: ^id, status: :rate_limited}, 500
+      assert_receive %BoomLooper.Events.ChatAgent.StatusChanged{id: ^id, status: :rate_limited},
+                     500
 
       state = :sys.get_state(pid)
       assert state.status == :rate_limited
@@ -234,6 +249,7 @@ defmodule BoomLooper.ChatAgent.RestartStateTest do
       pid = agent_pid(id)
 
       ref = make_ref()
+
       :sys.replace_state(pid, fn s ->
         %{s | status: :thinking, active_tool: "docker_compose", stream_ref: ref}
       end)
@@ -244,7 +260,8 @@ defmodule BoomLooper.ChatAgent.RestartStateTest do
          %Event.AuthStatus{is_authenticating: false, error: "token expired"}}
       )
 
-      assert_receive %BoomLooper.Events.ChatAgent.StatusChanged{id: ^id, status: :auth_expired}, 500
+      assert_receive %BoomLooper.Events.ChatAgent.StatusChanged{id: ^id, status: :auth_expired},
+                     500
 
       state = :sys.get_state(pid)
       assert state.status == :auth_expired
@@ -257,6 +274,7 @@ defmodule BoomLooper.ChatAgent.RestartStateTest do
       # Directly write a summary with a stale active_tool (mimic the
       # row ServiceManager would replay on BoomLooper restart).
       orig = :sys.get_state(pid)
+
       summary = %{
         id: orig.id,
         name: orig.name,

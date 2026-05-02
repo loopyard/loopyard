@@ -53,11 +53,18 @@ defmodule BoomLooper.AgentPersistenceRestoreTest do
       %{ws_id: ws_id, log_path: log_path}
     end
 
-    test "agents written via Persistence.log_path are found by replay using same path", %{ws_id: ws_id, log_path: log_path} do
+    test "agents written via Persistence.log_path are found by replay using same path", %{
+      ws_id: ws_id,
+      log_path: log_path
+    } do
       # Simulate what ChatAgent.Persistence does on write
       agent_data = %{name: "Test Agent", status: :idle, workspace_id: ws_id}
       AgentLog.append({:agent, "agent-1", agent_data}, log_path: log_path, version: @version)
-      AgentLog.append({:msg, "agent-1", %{id: "m1", role: :user, content: "hello"}}, log_path: log_path, version: @version)
+
+      AgentLog.append({:msg, "agent-1", %{id: "m1", role: :user, content: "hello"}},
+        log_path: log_path,
+        version: @version
+      )
 
       # Simulate what boot-time restore does: read from Persistence.log_path
       read_path = Persistence.log_path(ws_id)
@@ -72,10 +79,22 @@ defmodule BoomLooper.AgentPersistenceRestoreTest do
     test "replay populates ETS table", %{ws_id: ws_id, log_path: log_path} do
       table = :ets.new(:"test_agents_#{:erlang.unique_integer()}", [:set, :public])
 
-      AgentLog.append({:agent, "agent-2", %{name: "ETS Agent"}}, log_path: log_path, version: @version)
-      AgentLog.append({:msg, "agent-2", %{id: "m1", role: :user, content: "test"}}, log_path: log_path, version: @version)
+      AgentLog.append({:agent, "agent-2", %{name: "ETS Agent"}},
+        log_path: log_path,
+        version: @version
+      )
 
-      {:ok, _} = AgentLog.replay(log_path: Persistence.log_path(ws_id), version: @version, ets_table: table)
+      AgentLog.append({:msg, "agent-2", %{id: "m1", role: :user, content: "test"}},
+        log_path: log_path,
+        version: @version
+      )
+
+      {:ok, _} =
+        AgentLog.replay(
+          log_path: Persistence.log_path(ws_id),
+          version: @version,
+          ets_table: table
+        )
 
       [{_, agent}] = :ets.lookup(table, "agent-2")
       assert agent.name == "ETS Agent"
@@ -102,14 +121,25 @@ defmodule BoomLooper.AgentPersistenceRestoreTest do
       File.mkdir_p!(Path.dirname(log1))
       File.mkdir_p!(Path.dirname(log2))
 
-      AgentLog.append({:agent, "ws1-agent", %{name: "Agent One"}}, log_path: log1, version: @version)
-      AgentLog.append({:msg, "ws1-agent", %{id: "m1", role: :user, content: "hello"}}, log_path: log1, version: @version)
+      AgentLog.append({:agent, "ws1-agent", %{name: "Agent One"}},
+        log_path: log1,
+        version: @version
+      )
 
-      AgentLog.append({:agent, "ws2-agent", %{name: "Agent Two"}}, log_path: log2, version: @version)
+      AgentLog.append({:msg, "ws1-agent", %{id: "m1", role: :user, content: "hello"}},
+        log_path: log1,
+        version: @version
+      )
+
+      AgentLog.append({:agent, "ws2-agent", %{name: "Agent Two"}},
+        log_path: log2,
+        version: @version
+      )
 
       # Simulate what restore_all_agents does
       for {ws_id, _} <- [{ws1_id, log1}, {ws2_id, log2}] do
         path = Persistence.log_path(ws_id)
+
         if path && File.exists?(path) do
           AgentLog.replay(log_path: path, version: @version, ets_table: agents_table)
         end
@@ -137,8 +167,10 @@ defmodule BoomLooper.AgentPersistenceRestoreTest do
       # not construct the path from project_dir. We verify by checking that
       # Persistence.log_path returns the compose_dir-based path.
       ws_id = "consistency-check"
-      expected = BoomLooper.Workspace.compose_dir(ws_id)
-                 |> Path.join(".boomlooper/workspace/agents.log")
+
+      expected =
+        BoomLooper.Workspace.compose_dir(ws_id)
+        |> Path.join(".boomlooper/workspace/agents.log")
 
       assert Persistence.log_path(ws_id) == expected
     end

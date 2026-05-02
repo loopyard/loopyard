@@ -72,7 +72,8 @@ defmodule BoomLooper.ChatAgent.PromptDriftTest do
     test "prompt_hash is populated at init_fresh time", %{id: id, tmp_dir: tmp_dir} do
       state = :sys.get_state(agent_pid(id))
       assert is_binary(state.prompt_hash)
-      assert String.length(state.prompt_hash) == 64  # hex-encoded SHA-256
+      # hex-encoded SHA-256
+      assert String.length(state.prompt_hash) == 64
     end
 
     test "prompt_hash flows to summary + ETS", %{id: id, tmp_dir: tmp_dir} do
@@ -113,7 +114,10 @@ defmodule BoomLooper.ChatAgent.PromptDriftTest do
       assert length(new_state.messages) == original_msg_count
     end
 
-    test "init_resume with DIFFERENT saved hash → inline drift marker appended", %{id: id, tmp_dir: tmp_dir} do
+    test "init_resume with DIFFERENT saved hash → inline drift marker appended", %{
+      id: id,
+      tmp_dir: tmp_dir
+    } do
       # Attach telemetry handler FIRST so we catch the emit during init_resume.
       parent = self()
       handler_id = "prompt-drift-test-#{System.unique_integer([:positive])}"
@@ -169,7 +173,10 @@ defmodule BoomLooper.ChatAgent.PromptDriftTest do
       assert String.contains?(drift_msg.content, "behavior may differ")
     end
 
-    test "init_resume with no saved hash (pre-fix agent) → no drift marker, no crash", %{id: id, tmp_dir: tmp_dir} do
+    test "init_resume with no saved hash (pre-fix agent) → no drift marker, no crash", %{
+      id: id,
+      tmp_dir: tmp_dir
+    } do
       pid = agent_pid(id)
 
       [{^id, summary}] = :ets.lookup(:chat_agents, id)

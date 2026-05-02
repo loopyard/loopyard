@@ -19,7 +19,8 @@ defmodule BoomLooper.ComposeTest do
 
   describe "compose_path/1" do
     test "is in .boomlooper/workspace directory" do
-      assert Compose.compose_path("/tmp/test") == "/tmp/test/.boomlooper/workspace/docker-compose.yml"
+      assert Compose.compose_path("/tmp/test") ==
+               "/tmp/test/.boomlooper/workspace/docker-compose.yml"
     end
   end
 
@@ -198,5 +199,4 @@ defmodule BoomLooper.ComposeTest do
       assert "pgdata:/var/lib/postgresql/data" in config["services"]["postgres"]["volumes"]
     end
   end
-
 end

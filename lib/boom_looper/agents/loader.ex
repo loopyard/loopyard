@@ -68,7 +68,8 @@ defmodule BoomLooper.Agents.Loader do
         {:ok, model}
 
       other ->
-        {:error, "invalid model alias: #{inspect(other)} — expected one of #{inspect(@valid_models)}"}
+        {:error,
+         "invalid model alias: #{inspect(other)} — expected one of #{inspect(@valid_models)}"}
     end
   end
 

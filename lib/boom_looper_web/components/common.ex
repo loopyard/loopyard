@@ -62,7 +62,10 @@ defmodule BoomLooperWeb.Components.Common do
 
   def skeleton(assigns) do
     ~H"""
-    <div class={["rounded-lg border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 p-4 space-y-2", @class]}>
+    <div class={[
+      "rounded-lg border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 p-4 space-y-2",
+      @class
+    ]}>
       <div :for={_ <- 1..@rows} class="h-4 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
     </div>
     """
@@ -97,12 +100,19 @@ defmodule BoomLooperWeb.Components.Common do
       <.control_btn variant={:primary}>+ Debug Agent</.control_btn>
   """
   attr :variant, :atom, default: :default, values: [:default, :primary]
-  attr :rest, :global, include: ~w(phx-click phx-value-id phx-value-service_name phx-value-workspace-id phx-value-volume_name data-confirm)
+
+  attr :rest, :global,
+    include:
+      ~w(phx-click phx-value-id phx-value-service_name phx-value-workspace-id phx-value-volume_name data-confirm)
+
   slot :inner_block, required: true
 
   def control_btn(%{variant: :primary} = assigns) do
     ~H"""
-    <button class="px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-violet-600 dark:text-violet-400 transition-colors" {@rest}>
+    <button
+      class="px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-violet-600 dark:text-violet-400 transition-colors"
+      {@rest}
+    >
       {render_slot(@inner_block)}
     </button>
     """
@@ -110,7 +120,10 @@ defmodule BoomLooperWeb.Components.Common do
 
   def control_btn(assigns) do
     ~H"""
-    <button class="px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors" {@rest}>
+    <button
+      class="px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors"
+      {@rest}
+    >
       {render_slot(@inner_block)}
     </button>
     """
@@ -149,18 +162,23 @@ defmodule BoomLooperWeb.Components.Common do
   slot :inner_block, required: true
 
   def page_shell(assigns) do
-    width_class = case assigns.max_width do
-      :sm -> "max-w-xl"
-      :md -> "max-w-2xl"
-      :lg -> "max-w-5xl"
-      :xl -> "max-w-6xl"
-    end
+    width_class =
+      case assigns.max_width do
+        :sm -> "max-w-xl"
+        :md -> "max-w-2xl"
+        :lg -> "max-w-5xl"
+        :xl -> "max-w-6xl"
+      end
 
     assigns = assign(assigns, :width_class, width_class)
 
     ~H"""
     <div class="min-h-screen bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
-      <.header breadcrumbs={@breadcrumbs} iex_session={@iex_session} host_exposed={BoomLooper.HostExposer.exposed?()}>
+      <.header
+        breadcrumbs={@breadcrumbs}
+        iex_session={@iex_session}
+        host_exposed={BoomLooper.HostExposer.exposed?()}
+      >
         {render_slot(@header_actions)}
       </.header>
       <.flash_banner flash={@flash} kind={:error} class="mx-4 mt-2" />

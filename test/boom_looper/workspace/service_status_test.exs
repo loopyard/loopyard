@@ -11,7 +11,9 @@ defmodule BoomLooper.Workspace.ServiceStatusTest do
 
   describe "list_defined_services/1" do
     setup do
-      tmp_dir = Path.join(System.tmp_dir!(), "boom-looper-svc-status-test-#{:rand.uniform(100_000)}")
+      tmp_dir =
+        Path.join(System.tmp_dir!(), "boom-looper-svc-status-test-#{:rand.uniform(100_000)}")
+
       File.mkdir_p!(tmp_dir)
       on_exit(fn -> File.rm_rf!(tmp_dir) end)
       %{tmp_dir: tmp_dir}
@@ -88,8 +90,8 @@ defmodule BoomLooper.Workspace.ServiceStatusTest do
 
       services = ServiceStatus.list_defined_services(tmp_dir)
 
-      pg = Enum.find(services, & &1.name == "postgres")
-      app = Enum.find(services, & &1.name == "myapp")
+      pg = Enum.find(services, &(&1.name == "postgres"))
+      app = Enum.find(services, &(&1.name == "myapp"))
       assert pg.type == :stock
       assert app.type == :process
     end
@@ -115,7 +117,12 @@ defmodule BoomLooper.Workspace.ServiceStatusTest do
       ]
 
       running = %{
-        "postgres" => %{status: :running, container: "bl-abc-postgres-1", ports: %{}, exit_info: nil},
+        "postgres" => %{
+          status: :running,
+          container: "bl-abc-postgres-1",
+          ports: %{},
+          exit_info: nil
+        },
         "dev" => %{status: :stopped, container: nil, ports: %{}, exit_info: nil}
       }
 
@@ -134,7 +141,15 @@ defmodule BoomLooper.Workspace.ServiceStatusTest do
 
     test "preserves service metadata from definition" do
       defined = [%Service{name: "postgres", type: :stock, status: :stopped}]
-      running = %{"postgres" => %{status: :running, container: "pg-1", ports: %{"5432" => "5433"}, exit_info: nil}}
+
+      running = %{
+        "postgres" => %{
+          status: :running,
+          container: "pg-1",
+          ports: %{"5432" => "5433"},
+          exit_info: nil
+        }
+      }
 
       [merged] = ServiceStatus.merge_status(defined, running)
 
@@ -158,7 +173,9 @@ defmodule BoomLooper.Workspace.ServiceStatusTest do
     @describetag :docker
 
     setup do
-      tmp_dir = Path.join(System.tmp_dir!(), "boom-looper-svc-full-test-#{:rand.uniform(100_000)}")
+      tmp_dir =
+        Path.join(System.tmp_dir!(), "boom-looper-svc-full-test-#{:rand.uniform(100_000)}")
+
       File.mkdir_p!(tmp_dir)
       on_exit(fn -> File.rm_rf!(tmp_dir) end)
       %{tmp_dir: tmp_dir}

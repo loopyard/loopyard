@@ -148,13 +148,15 @@ defmodule BoomLooper.ChatAgent.RateLimitTest do
       pid = agent_pid(id)
 
       ref = make_ref()
+
       :sys.replace_state(pid, fn s ->
-        %{s |
-          status: :rate_limited,
-          rate_limit_status: :rejected,
-          rate_limit_resets_at_ms: System.system_time(:millisecond) + 10_000,
-          rate_limit_type: "five_hour",
-          stream_ref: ref
+        %{
+          s
+          | status: :rate_limited,
+            rate_limit_status: :rejected,
+            rate_limit_resets_at_ms: System.system_time(:millisecond) + 10_000,
+            rate_limit_type: "five_hour",
+            stream_ref: ref
         }
       end)
 
@@ -225,11 +227,12 @@ defmodule BoomLooper.ChatAgent.RateLimitTest do
       pid = agent_pid(id)
 
       :sys.replace_state(pid, fn s ->
-        %{s |
-          status: :rate_limited,
-          rate_limit_status: :rejected,
-          rate_limit_resets_at_ms: System.system_time(:millisecond) + 60_000,
-          rate_limit_type: "five_hour"
+        %{
+          s
+          | status: :rate_limited,
+            rate_limit_status: :rejected,
+            rate_limit_resets_at_ms: System.system_time(:millisecond) + 60_000,
+            rate_limit_type: "five_hour"
         }
       end)
 
@@ -278,13 +281,15 @@ defmodule BoomLooper.ChatAgent.RateLimitTest do
       pid = agent_pid(id)
 
       resets_at = System.system_time(:millisecond) + 60_000
+
       :sys.replace_state(pid, fn s ->
-        %{s |
-          status: :rate_limited,
-          rate_limit_status: :rejected,
-          rate_limit_resets_at_ms: resets_at,
-          rate_limit_type: "five_hour",
-          auth_error: nil
+        %{
+          s
+          | status: :rate_limited,
+            rate_limit_status: :rejected,
+            rate_limit_resets_at_ms: resets_at,
+            rate_limit_type: "five_hour",
+            auth_error: nil
         }
       end)
 
@@ -297,7 +302,12 @@ defmodule BoomLooper.ChatAgent.RateLimitTest do
       # Or read the current ETS row — the most recent SessionResult or
       # StatusChanged would have inserted. Instead, use append_external
       # which guarantees a summary write.
-      ChatAgent.append_message_ets(id, %{role: :system, content: "probe", timestamp: DateTime.utc_now()})
+      ChatAgent.append_message_ets(id, %{
+        role: :system,
+        content: "probe",
+        timestamp: DateTime.utc_now()
+      })
+
       Process.sleep(50)
 
       [{^id, summary}] = :ets.lookup(:chat_agents, id)

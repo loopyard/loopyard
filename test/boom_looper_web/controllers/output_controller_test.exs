@@ -31,6 +31,7 @@ defmodule BoomLooperWeb.OutputControllerTest do
         catch
           :exit, _ -> :ok
         end
+
         File.rm_rf!(tmp_dir)
       end)
 

@@ -17,7 +17,7 @@ defmodule BoomLooperWeb.SystemDockerLiveTest do
       # of them. Without async wiring this would easily exceed 2-3 seconds.
       # 1s budget; the implementation's target is ~10ms.
       assert micros < 1_000_000,
-        "SystemDockerLive mount took #{div(micros, 1000)}ms — synchronous docker call slipped in"
+             "SystemDockerLive mount took #{div(micros, 1000)}ms — synchronous docker call slipped in"
 
       assert html =~ "Containers"
       assert html =~ "Volumes"
@@ -28,7 +28,9 @@ defmodule BoomLooperWeb.SystemDockerLiveTest do
       assert has_element?(view, "a[href='/system']")
     end
 
-    test "containers and volumes render immediately from Observer cache — no skeletons", %{conn: conn} do
+    test "containers and volumes render immediately from Observer cache — no skeletons", %{
+      conn: conn
+    } do
       {:ok, _view, html} = live(conn, "/system/docker")
       # Docker.Observer seeds ETS before any LiveView mounts, so the
       # containers and volumes sections are fully populated in the
@@ -40,7 +42,7 @@ defmodule BoomLooperWeb.SystemDockerLiveTest do
       # Even if no bl- containers exist, we get the "No bl-* containers"
       # message instead of a skeleton.
       refute html =~ "animate-pulse" and not (html =~ "container_stats"),
-        "Containers/volumes are still showing skeletons — Observer cache not seeded?"
+             "Containers/volumes are still showing skeletons — Observer cache not seeded?"
     end
   end
 

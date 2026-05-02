@@ -48,7 +48,10 @@ defmodule BoomLooper.PortRegistry do
   def set_docker_port(workspace_id, service, container_port, docker_port)
       when is_binary(workspace_id) and is_binary(service) and
              is_integer(container_port) and is_integer(docker_port) do
-    GenServer.call(__MODULE__, {:set_docker_port, workspace_id, service, container_port, docker_port})
+    GenServer.call(
+      __MODULE__,
+      {:set_docker_port, workspace_id, service, container_port, docker_port}
+    )
   end
 
   @doc """
@@ -107,12 +110,14 @@ defmodule BoomLooper.PortRegistry do
     # as containers come up and go down.
     Phoenix.PubSub.subscribe(BoomLooper.PubSub, "docker_observer")
 
-    {:ok, %{
-      port_range: port_range,
-      persist: persist,
-      reserved: reserved_ports(),
-      last_reconcile: 0  # monotonic ms — debounce reconciler
-    }}
+    {:ok,
+     %{
+       port_range: port_range,
+       persist: persist,
+       reserved: reserved_ports(),
+       # monotonic ms — debounce reconciler
+       last_reconcile: 0
+     }}
   end
 
   @impl true
@@ -186,8 +191,11 @@ defmodule BoomLooper.PortRegistry do
         bind_ip = if updated.exposed, do: {0, 0, 0, 0}, else: {127, 0, 0, 1}
         start_proxy(key, updated, bind_ip)
 
-        EventLog.info("ports", "Proxy #{ws}/#{svc}/#{cport}: " <>
-          "#{format_ip(bind_ip)}:#{updated.host_port} → 127.0.0.1:#{docker_port}")
+        EventLog.info(
+          "ports",
+          "Proxy #{ws}/#{svc}/#{cport}: " <>
+            "#{format_ip(bind_ip)}:#{updated.host_port} → 127.0.0.1:#{docker_port}"
+        )
 
         {:reply, :ok, state}
     end
@@ -218,7 +226,12 @@ defmodule BoomLooper.PortRegistry do
             persist(state)
 
             action = if exposed?, do: "Opened", else: "Closed"
-            EventLog.info("ports", "#{action} #{ws}/#{svc}/#{cport} on #{format_ip(bind_ip)}:#{entry.host_port}")
+
+            EventLog.info(
+              "ports",
+              "#{action} #{ws}/#{svc}/#{cport} on #{format_ip(bind_ip)}:#{entry.host_port}"
+            )
+
             {:reply, :ok, state}
 
           {:error, reason} = err ->
@@ -229,7 +242,11 @@ defmodule BoomLooper.PortRegistry do
             old_bind = if entry.exposed, do: {0, 0, 0, 0}, else: {127, 0, 0, 1}
             start_proxy(key, entry, old_bind)
 
-            EventLog.error("ports", "Failed to toggle exposure for #{ws}/#{svc}/#{cport}: #{inspect(reason)}")
+            EventLog.error(
+              "ports",
+              "Failed to toggle exposure for #{ws}/#{svc}/#{cport}: #{inspect(reason)}"
+            )
+
             {:reply, err, state}
         end
     end
@@ -310,7 +327,9 @@ defmodule BoomLooper.PortRegistry do
 
   def handle_info(:deferred_reconcile, state) do
     reconcile_proxies(state)
-    {:noreply, %{state | last_reconcile: System.monotonic_time(:millisecond), reconcile_scheduled: false}}
+
+    {:noreply,
+     %{state | last_reconcile: System.monotonic_time(:millisecond), reconcile_scheduled: false}}
   end
 
   def handle_info(%{__struct__: BoomLooper.Events.DockerObserver.Reset}, state) do
@@ -386,9 +405,11 @@ defmodule BoomLooper.PortRegistry do
 
         docker_port =
           if container && container[:host_ports] do
-            raw = container.host_ports[entry.container_port] ||
-                  container.host_ports[to_string(entry.container_port)]
-            if raw, do: (if is_binary(raw), do: String.to_integer(raw), else: raw)
+            raw =
+              container.host_ports[entry.container_port] ||
+                container.host_ports[to_string(entry.container_port)]
+
+            if raw, do: if(is_binary(raw), do: String.to_integer(raw), else: raw)
           end
 
         proxy_running? = BoomLooper.PortExposer.whereis(key) != nil
@@ -483,8 +504,12 @@ defmodule BoomLooper.PortRegistry do
 
   defp stop_proxy(key) do
     case BoomLooper.PortExposer.whereis(key) do
-      nil -> :ok
-      pid -> DynamicSupervisor.terminate_child(BoomLooper.PortExposerSupervisor, pid); :ok
+      nil ->
+        :ok
+
+      pid ->
+        DynamicSupervisor.terminate_child(BoomLooper.PortExposerSupervisor, pid)
+        :ok
     end
   end
 
@@ -494,8 +519,8 @@ defmodule BoomLooper.PortRegistry do
   defp recover_from_store({ws, svc, cport}) do
     if File.exists?(PortStore.path()) do
       case Enum.find(PortStore.load(), fn e ->
-        e.workspace_id == ws && e.service == svc && e.container_port == cport
-      end) do
+             e.workspace_id == ws && e.service == svc && e.container_port == cport
+           end) do
         nil -> :not_found
         entry -> {:ok, Map.put(entry, :docker_port, nil)}
       end

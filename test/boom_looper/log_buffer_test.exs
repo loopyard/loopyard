@@ -11,8 +11,9 @@ defmodule BoomLooper.LogBufferTest do
     Process.sleep(100)
 
     entries = LogBuffer.recent(50)
+
     assert Enum.any?(entries, fn e -> String.contains?(e.message, marker) end),
-      "Expected to find '#{marker}' in #{length(entries)} log entries"
+           "Expected to find '#{marker}' in #{length(entries)} log entries"
   end
 
   test "grep filters by pattern" do

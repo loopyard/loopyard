@@ -24,7 +24,14 @@ defmodule BoomLooper.ChatAgent.IdleReaper do
   """
   def schedule(state) do
     if ref = state.idle_check_timer, do: Process.cancel_timer(ref)
-    interval = Application.get_env(:boom_looper, :agent_idle_check_interval_ms, @default_agent_idle_check_interval_ms)
+
+    interval =
+      Application.get_env(
+        :boom_looper,
+        :agent_idle_check_interval_ms,
+        @default_agent_idle_check_interval_ms
+      )
+
     timer = Process.send_after(self(), :idle_check, interval)
     %{state | idle_check_timer: timer}
   end
@@ -44,14 +51,17 @@ defmodule BoomLooper.ChatAgent.IdleReaper do
       is_binary(state.claude_session_id) and
       state.claude_session_id != "" and
       state.last_activity_at != nil and
-      DateTime.diff(DateTime.utc_now(), state.last_activity_at, :second) >= reap_threshold_seconds()
+      DateTime.diff(DateTime.utc_now(), state.last_activity_at, :second) >=
+        reap_threshold_seconds()
   end
 
   @doc """
   How many seconds of idleness before the CLI gets reaped.
   """
   def reap_threshold_seconds do
-    hours = Application.get_env(:boom_looper, :agent_idle_reap_hours, @default_agent_idle_reap_hours)
+    hours =
+      Application.get_env(:boom_looper, :agent_idle_reap_hours, @default_agent_idle_reap_hours)
+
     hours * 3600
   end
 end

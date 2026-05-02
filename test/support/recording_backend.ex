@@ -37,9 +37,14 @@ defmodule BoomLooper.TestSupport.RecordingBackend do
             # Process.whereis might still return the dead pid briefly —
             # wait a tick and try start_link.
             Process.sleep(10)
+
             case Process.whereis(__MODULE__) do
-              nil -> {:ok, _} = start_link([]); :ok
-              _pid -> :ok
+              nil ->
+                {:ok, _} = start_link([])
+                :ok
+
+              _pid ->
+                :ok
             end
         end
     end

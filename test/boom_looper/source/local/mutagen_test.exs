@@ -48,7 +48,9 @@ defmodule BoomLooper.Source.Local.MutagenTest do
 
     test "returns {:error, reason} on other failures" do
       stub_runner(fn _args -> {"daemon not running", 1} end)
-      assert {:error, "daemon not running"} = Mutagen.start_sync("x", "/tmp/wt", "bl-x-workspace-1")
+
+      assert {:error, "daemon not running"} =
+               Mutagen.start_sync("x", "/tmp/wt", "bl-x-workspace-1")
     end
   end
 

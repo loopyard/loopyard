@@ -96,33 +96,39 @@ defmodule BoomLooper.Agent.Backend.ClaudeCode do
     usage = msg.usage || %{}
     model = msg.model_usage |> Map.keys() |> List.first()
 
-    [%Event.SessionResult{
-      model: model,
-      input_tokens: usage[:input_tokens] || 0,
-      output_tokens: usage[:output_tokens] || 0,
-      cache_read_tokens: usage[:cache_read_input_tokens] || 0,
-      cost_usd: msg.total_cost_usd || 0.0,
-      duration_ms: msg.duration_ms || 0.0,
-      num_turns: msg.num_turns || 0
-    }]
+    [
+      %Event.SessionResult{
+        model: model,
+        input_tokens: usage[:input_tokens] || 0,
+        output_tokens: usage[:output_tokens] || 0,
+        cache_read_tokens: usage[:cache_read_input_tokens] || 0,
+        cost_usd: msg.total_cost_usd || 0.0,
+        duration_ms: msg.duration_ms || 0.0,
+        num_turns: msg.num_turns || 0
+      }
+    ]
   end
 
   def translate(%ClaudeCode.Message.RateLimitEvent{rate_limit_info: info}) when is_map(info) do
-    [%Event.RateLimitStatus{
-      status: Map.get(info, :status),
-      resets_at_ms: Map.get(info, :resets_at),
-      utilization: Map.get(info, :utilization),
-      rate_limit_type: Map.get(info, :rate_limit_type),
-      is_using_overage: Map.get(info, :is_using_overage)
-    }]
+    [
+      %Event.RateLimitStatus{
+        status: Map.get(info, :status),
+        resets_at_ms: Map.get(info, :resets_at),
+        utilization: Map.get(info, :utilization),
+        rate_limit_type: Map.get(info, :rate_limit_type),
+        is_using_overage: Map.get(info, :is_using_overage)
+      }
+    ]
   end
 
   def translate(%ClaudeCode.Message.AuthStatusMessage{} = msg) do
-    [%Event.AuthStatus{
-      is_authenticating: msg.is_authenticating,
-      error: msg.error,
-      output: msg.output || []
-    }]
+    [
+      %Event.AuthStatus{
+        is_authenticating: msg.is_authenticating,
+        error: msg.error,
+        output: msg.output || []
+      }
+    ]
   end
 
   def translate(_), do: []

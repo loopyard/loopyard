@@ -44,7 +44,9 @@ defmodule BoomLooperWeb.SystemLive do
   end
 
   defp assign_iex(socket) do
-    if connected?(socket), do: subscribe_iex(socket), else: assign(socket, :iex_session, %{level: nil})
+    if connected?(socket),
+      do: subscribe_iex(socket),
+      else: assign(socket, :iex_session, %{level: nil})
   end
 
   defp schedule_refresh(:fast), do: Process.send_after(self(), :refresh_fast, @fast_refresh)
@@ -119,11 +121,13 @@ defmodule BoomLooperWeb.SystemLive do
 
   @impl true
   def handle_async(key, {:ok, value}, socket) do
-    {:noreply, assign(socket, key, AsyncResult.ok(socket.assigns[key] || AsyncResult.loading(), value))}
+    {:noreply,
+     assign(socket, key, AsyncResult.ok(socket.assigns[key] || AsyncResult.loading(), value))}
   end
 
   def handle_async(key, {:exit, reason}, socket) do
-    {:noreply, assign(socket, key, AsyncResult.failed(socket.assigns[key] || AsyncResult.loading(), reason))}
+    {:noreply,
+     assign(socket, key, AsyncResult.failed(socket.assigns[key] || AsyncResult.loading(), reason))}
   end
 
   # --- Events ---
@@ -151,16 +155,29 @@ defmodule BoomLooperWeb.SystemLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <.page_shell breadcrumbs={[{"Boom Looper", "/"}, {"System", nil}]} iex_session={@iex_session} max_width={:lg} flash={@flash}>
+    <.page_shell
+      breadcrumbs={[{"Boom Looper", "/"}, {"System", nil}]}
+      iex_session={@iex_session}
+      max_width={:lg}
+      flash={@flash}
+    >
       <:header_actions>
-        <button phx-click="reboot" data-confirm="This will stop all agents and restart the app. Continue?"
-          class="text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded px-2 py-1 transition-colors">
+        <button
+          phx-click="reboot"
+          data-confirm="This will stop all agents and restart the app. Continue?"
+          class="text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded px-2 py-1 transition-colors"
+        >
           Reboot
         </button>
       </:header_actions>
       <div class="space-y-8">
         <.health_section health={@health} />
-        <.host_section host_cpu={@host_cpu} host_memory={@host_memory} host_disk={@host_disk} host_uptime={@host_uptime} />
+        <.host_section
+          host_cpu={@host_cpu}
+          host_memory={@host_memory}
+          host_disk={@host_disk}
+          host_uptime={@host_uptime}
+        />
         <.beam_section beam={@beam} />
         <.drilldown_section counts={@counts} />
         <.log_section logs={@logs} />
@@ -176,7 +193,9 @@ defmodule BoomLooperWeb.SystemLive do
   defp health_section(assigns) do
     ~H"""
     <section>
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">Component Health</h2>
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
+        Component Health
+      </h2>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
         <.health_card :for={{component, status} <- @health} component={component} status={status} />
       </div>
@@ -223,13 +242,20 @@ defmodule BoomLooperWeb.SystemLive do
   defp host_section(assigns) do
     ~H"""
     <section>
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">Host System</h2>
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
+        Host System
+      </h2>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <.host_card :let={cpu} label="CPU" async={@host_cpu}>
-          <div class="text-2xl font-semibold font-mono">{cpu.cores} <span class="text-sm text-zinc-400">cores</span></div>
+          <div class="text-2xl font-semibold font-mono">
+            {cpu.cores} <span class="text-sm text-zinc-400">cores</span>
+          </div>
           <div class="mt-2 text-xs font-mono text-zinc-500">
             Load avg:
-            <span :for={{load, i} <- Enum.with_index(cpu.load_avg)} class={load_color(load, cpu.cores)}>
+            <span
+              :for={{load, i} <- Enum.with_index(cpu.load_avg)}
+              class={load_color(load, cpu.cores)}
+            >
               {Float.round(load, 2)}<span :if={i < 2} class="text-zinc-400">,</span>
             </span>
           </div>
@@ -237,25 +263,42 @@ defmodule BoomLooperWeb.SystemLive do
 
         <.host_card :let={mem} label="Memory" async={@host_memory}>
           <% pct = mem_bar_pct(mem) %>
-          <div class="text-2xl font-semibold font-mono">{format_bytes(mem.used)} <span class="text-sm text-zinc-400">/ {format_bytes(mem.total)}</span></div>
+          <div class="text-2xl font-semibold font-mono">
+            {format_bytes(mem.used)}
+            <span class="text-sm text-zinc-400">/ {format_bytes(mem.total)}</span>
+          </div>
           <div class="mt-2 h-2 bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
-            <div class={"h-full rounded-full #{if pct > 80, do: "bg-red-500", else: "bg-violet-500"}"} style={"width: #{pct}%"}></div>
+            <div
+              class={"h-full rounded-full #{if pct > 80, do: "bg-red-500", else: "bg-violet-500"}"}
+              style={"width: #{pct}%"}
+            >
+            </div>
           </div>
           <div class="mt-1 text-xs font-mono text-zinc-400">{pct}% used</div>
         </.host_card>
 
         <.host_card :let={disk} label="Disk (/)" async={@host_disk}>
-          <div class="text-2xl font-semibold font-mono">{disk.used} <span class="text-sm text-zinc-400">/ {disk.total}</span></div>
-          <div class="mt-2 h-2 bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
-            <div class={"h-full rounded-full #{if String.contains?(disk.use_pct || "", "9"), do: "bg-red-500", else: "bg-violet-500"}"} style={"width: #{disk.use_pct}"}></div>
+          <div class="text-2xl font-semibold font-mono">
+            {disk.used} <span class="text-sm text-zinc-400">/ {disk.total}</span>
           </div>
-          <div class="mt-1 text-xs font-mono text-zinc-400">{disk.use_pct} used &middot; {disk.available} free</div>
+          <div class="mt-2 h-2 bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
+            <div
+              class={"h-full rounded-full #{if String.contains?(disk.use_pct || "", "9"), do: "bg-red-500", else: "bg-violet-500"}"}
+              style={"width: #{disk.use_pct}"}
+            >
+            </div>
+          </div>
+          <div class="mt-1 text-xs font-mono text-zinc-400">
+            {disk.use_pct} used &middot; {disk.available} free
+          </div>
         </.host_card>
       </div>
       <div class="mt-2 text-xs text-zinc-400 dark:text-zinc-500 font-mono min-h-[1em]">
         <%= case @host_uptime do %>
-          <% %{ok?: true, result: uptime} -> %>{uptime}
-          <% _ -> %><span class="text-zinc-300 dark:text-zinc-600">loading uptime…</span>
+          <% %{ok?: true, result: uptime} -> %>
+            {uptime}
+          <% _ -> %>
+            <span class="text-zinc-300 dark:text-zinc-600">loading uptime…</span>
         <% end %>
       </div>
     </section>
@@ -272,7 +315,9 @@ defmodule BoomLooperWeb.SystemLive do
   defp host_card(assigns) do
     ~H"""
     <div class="rounded-lg border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 p-4 min-h-[6rem]">
-      <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-2">{@label}</div>
+      <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-2">
+        {@label}
+      </div>
       <%= case @async do %>
         <% %{ok?: true, result: result} -> %>
           {render_slot(@inner_block, result)}
@@ -290,7 +335,9 @@ defmodule BoomLooperWeb.SystemLive do
   defp beam_section(assigns) do
     ~H"""
     <section>
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">BEAM VM</h2>
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
+        BEAM VM
+      </h2>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
         <.stat_card label="Memory" value={format_bytes(@beam.total)} />
         <.stat_card label="Processes" value={format_number(@beam.process_count)} />
@@ -307,7 +354,9 @@ defmodule BoomLooperWeb.SystemLive do
   defp stat_card(assigns) do
     ~H"""
     <div class="rounded-lg border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 px-3 py-2">
-      <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500">{@label}</div>
+      <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+        {@label}
+      </div>
       <div class="text-sm font-semibold font-mono mt-0.5">{@value}</div>
     </div>
     """
@@ -318,21 +367,37 @@ defmodule BoomLooperWeb.SystemLive do
   defp drilldown_section(assigns) do
     ~H"""
     <section>
-      <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">Cluster</h2>
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
+        Cluster
+      </h2>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-        <.drilldown_card href="/system/ports" title="Ports" subtitle="Host port assignments + exposure">
+        <.drilldown_card
+          href="/system/ports"
+          title="Ports"
+          subtitle="Host port assignments + exposure"
+        >
           <span class="text-zinc-400">audit + expose</span>
         </.drilldown_card>
-        <.drilldown_card href="/system/workspaces" title="Workspaces" subtitle="Per-workspace health & restart controls">
+        <.drilldown_card
+          href="/system/workspaces"
+          title="Workspaces"
+          subtitle="Per-workspace health & restart controls"
+        >
           <%= case @counts do %>
             <% %{ok?: true, result: %{workspaces: w, agents: a}} -> %>
-              <span class="font-mono">{w}</span> workspaces · <span class="font-mono">{a}</span> agents
+              <span class="font-mono">{w}</span>
+              workspaces · <span class="font-mono">{a}</span>
+              agents
             <% _ -> %>
               <span class="text-zinc-400">loading…</span>
           <% end %>
         </.drilldown_card>
 
-        <.drilldown_card href="/system/docker" title="Docker Cluster" subtitle="All containers, volumes, resource stats">
+        <.drilldown_card
+          href="/system/docker"
+          title="Docker Cluster"
+          subtitle="All containers, volumes, resource stats"
+        >
           <%= case @counts do %>
             <% %{ok?: true, result: %{cli: cli}} -> %>
               <span class="font-mono">{cli}</span> claude CLI processes
@@ -341,25 +406,39 @@ defmodule BoomLooperWeb.SystemLive do
           <% end %>
         </.drilldown_card>
 
-        <.drilldown_card href="/system/quarantine" title="Quarantine" subtitle="Agents blocked from restart after crash loops">
+        <.drilldown_card
+          href="/system/quarantine"
+          title="Quarantine"
+          subtitle="Agents blocked from restart after crash loops"
+        >
           <%= case @counts do %>
             <% %{ok?: true, result: %{quarantined: 0}} -> %>
               <span class="text-emerald-600 dark:text-emerald-400">0 quarantined</span>
             <% %{ok?: true, result: %{quarantined: n}} -> %>
-              <span class="text-red-600 dark:text-red-400 font-mono">{n}</span> <span class="text-red-600 dark:text-red-400">quarantined — investigate</span>
+              <span class="text-red-600 dark:text-red-400 font-mono">{n}</span>
+              <span class="text-red-600 dark:text-red-400">quarantined — investigate</span>
             <% _ -> %>
               <span class="text-zinc-400">loading…</span>
           <% end %>
         </.drilldown_card>
 
-        <.drilldown_card href="/system/events" title="Events" subtitle="Live PubSub timeline — paste into any bug report">
+        <.drilldown_card
+          href="/system/events"
+          title="Events"
+          subtitle="Live PubSub timeline — paste into any bug report"
+        >
           <span class="text-zinc-400">tap + filter</span>
         </.drilldown_card>
 
-        <.drilldown_card href="/system/sagas" title="Sagas" subtitle="Multi-step ops — succeeded / rolled back / failed">
+        <.drilldown_card
+          href="/system/sagas"
+          title="Sagas"
+          subtitle="Multi-step ops — succeeded / rolled back / failed"
+        >
           <%= case @counts do %>
             <% %{ok?: true, result: %{sagas: %{rollback_failed: n}}} when n > 0 -> %>
-              <span class="text-red-600 dark:text-red-400 font-mono">{n}</span> <span class="text-red-600 dark:text-red-400">rollbacks failed — investigate</span>
+              <span class="text-red-600 dark:text-red-400 font-mono">{n}</span>
+              <span class="text-red-600 dark:text-red-400">rollbacks failed — investigate</span>
             <% %{ok?: true, result: %{sagas: %{total: 0}}} -> %>
               <span class="text-zinc-400">none recorded</span>
             <% %{ok?: true, result: %{sagas: %{total: t, succeeded: s}}} -> %>
@@ -369,10 +448,15 @@ defmodule BoomLooperWeb.SystemLive do
           <% end %>
         </.drilldown_card>
 
-        <.drilldown_card href="/system/orphans" title="Orphans" subtitle="Tracked OS/OTP resources with live owner pid">
+        <.drilldown_card
+          href="/system/orphans"
+          title="Orphans"
+          subtitle="Tracked OS/OTP resources with live owner pid"
+        >
           <%= case @counts do %>
             <% %{ok?: true, result: %{resources: %{stale: stale}}} when stale > 0 -> %>
-              <span class="text-red-600 dark:text-red-400 font-mono">{stale}</span> <span class="text-red-600 dark:text-red-400">stale — cleanup leak</span>
+              <span class="text-red-600 dark:text-red-400 font-mono">{stale}</span>
+              <span class="text-red-600 dark:text-red-400">stale — cleanup leak</span>
             <% %{ok?: true, result: %{resources: %{total: 0}}} -> %>
               <span class="text-zinc-400">none tracked</span>
             <% %{ok?: true, result: %{resources: %{total: t}}} -> %>
@@ -382,10 +466,15 @@ defmodule BoomLooperWeb.SystemLive do
           <% end %>
         </.drilldown_card>
 
-        <.drilldown_card href="/system/recovery" title="Recovery" subtitle="Per-workspace snapshot health; bounded boot time">
+        <.drilldown_card
+          href="/system/recovery"
+          title="Recovery"
+          subtitle="Per-workspace snapshot health; bounded boot time"
+        >
           <%= case @counts do %>
             <% %{ok?: true, result: %{recovery: %{failed: n}}} when n > 0 -> %>
-              <span class="text-red-600 dark:text-red-400 font-mono">{n}</span> <span class="text-red-600 dark:text-red-400">failed — investigate</span>
+              <span class="text-red-600 dark:text-red-400 font-mono">{n}</span>
+              <span class="text-red-600 dark:text-red-400">failed — investigate</span>
             <% %{ok?: true, result: %{recovery: %{total: 0}}} -> %>
               <span class="text-zinc-400">none running</span>
             <% %{ok?: true, result: %{recovery: %{total: t}}} -> %>
@@ -406,16 +495,29 @@ defmodule BoomLooperWeb.SystemLive do
 
   defp drilldown_card(assigns) do
     ~H"""
-    <.link navigate={@href}
-      class="block rounded-lg border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 p-4 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
+    <.link
+      navigate={@href}
+      class="block rounded-lg border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 p-4 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+    >
       <div class="flex items-center justify-between">
         <div>
           <div class="text-sm font-semibold">{@title}</div>
           <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">{@subtitle}</div>
-          <div class="text-xs text-zinc-600 dark:text-zinc-400 font-mono mt-2">{render_slot(@inner_block)}</div>
+          <div class="text-xs text-zinc-600 dark:text-zinc-400 font-mono mt-2">
+            {render_slot(@inner_block)}
+          </div>
         </div>
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4 text-zinc-400">
-          <path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.168 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02Z" clip-rule="evenodd" />
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          class="w-4 h-4 text-zinc-400"
+        >
+          <path
+            fill-rule="evenodd"
+            d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.168 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02Z"
+            clip-rule="evenodd"
+          />
         </svg>
       </div>
     </.link>
@@ -442,5 +544,4 @@ defmodule BoomLooperWeb.SystemLive do
     </section>
     """
   end
-
 end

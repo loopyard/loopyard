@@ -283,5 +283,7 @@ defmodule BoomLooper.Events.Tap do
   defp maybe_filter_topic(events, topic), do: Enum.filter(events, &(&1.topic == topic))
 
   defp maybe_filter_since(events, nil), do: events
-  defp maybe_filter_since(events, since_ms), do: Enum.filter(events, &(&1.inserted_at_ms > since_ms))
+
+  defp maybe_filter_since(events, since_ms),
+    do: Enum.filter(events, &(&1.inserted_at_ms > since_ms))
 end

@@ -54,10 +54,14 @@ defmodule BoomLooper.DockerTest do
       ref = make_ref()
       handler_id = "test-telemetry-#{inspect(ref)}"
 
-      :telemetry.attach(handler_id, [:boom_looper, :docker, :command, :stop],
+      :telemetry.attach(
+        handler_id,
+        [:boom_looper, :docker, :command, :stop],
         fn _name, measurements, metadata, {pid, test_ref} ->
           send(pid, {:telemetry_stop, test_ref, measurements, metadata})
-        end, {self(), ref})
+        end,
+        {self(), ref}
+      )
 
       # This may fail if docker isn't installed, but the telemetry fires either way
       Docker.docker(["version"])
@@ -92,7 +96,9 @@ defmodule BoomLooper.DockerTest do
         send(parent, {ref, :chunk, data})
       end
 
-      assert {:ok, output} = Docker.stream(["version", "--format", "{{.Client.Version}}"], callback)
+      assert {:ok, output} =
+               Docker.stream(["version", "--format", "{{.Client.Version}}"], callback)
+
       assert output != ""
 
       # At least one chunk should have arrived

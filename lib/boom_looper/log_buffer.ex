@@ -72,7 +72,11 @@ defmodule BoomLooper.LogBuffer do
   def log(%{level: level, msg: msg, meta: meta}, _config) do
     message = format_msg(msg)
     timestamp = Map.get(meta, :time)
-    time = if timestamp, do: :calendar.system_time_to_universal_time(timestamp, :microsecond), else: nil
+
+    time =
+      if timestamp,
+        do: :calendar.system_time_to_universal_time(timestamp, :microsecond),
+        else: nil
 
     entry = %{
       level: level,
@@ -103,6 +107,9 @@ defmodule BoomLooper.LogBuffer do
 
   defp format_msg({:string, msg}), do: IO.iodata_to_binary(msg)
   defp format_msg({:report, report}), do: inspect(report)
-  defp format_msg({format, args}) when is_list(args), do: :io_lib.format(format, args) |> IO.iodata_to_binary()
+
+  defp format_msg({format, args}) when is_list(args),
+    do: :io_lib.format(format, args) |> IO.iodata_to_binary()
+
   defp format_msg(other), do: inspect(other)
 end

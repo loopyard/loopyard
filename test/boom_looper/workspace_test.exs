@@ -44,7 +44,8 @@ defmodule BoomLooper.WorkspaceTest do
 
   describe "config_path/1" do
     test "returns path to .boomlooper/repo/workspace.json" do
-      assert Workspace.config_path("/home/user/project") == "/home/user/project/.boomlooper/repo/workspace.json"
+      assert Workspace.config_path("/home/user/project") ==
+               "/home/user/project/.boomlooper/repo/workspace.json"
     end
   end
 
@@ -97,17 +98,23 @@ defmodule BoomLooper.WorkspaceTest do
 
   describe "normalize_git_url/1" do
     test "normalizes HTTPS URLs" do
-      assert Workspace.normalize_git_url("https://github.com/owner/repo.git") == "github.com/owner/repo"
-      assert Workspace.normalize_git_url("https://github.com/owner/repo") == "github.com/owner/repo"
+      assert Workspace.normalize_git_url("https://github.com/owner/repo.git") ==
+               "github.com/owner/repo"
+
+      assert Workspace.normalize_git_url("https://github.com/owner/repo") ==
+               "github.com/owner/repo"
     end
 
     test "normalizes SSH URLs" do
-      assert Workspace.normalize_git_url("git@github.com:owner/repo.git") == "github.com/owner/repo"
+      assert Workspace.normalize_git_url("git@github.com:owner/repo.git") ==
+               "github.com/owner/repo"
+
       assert Workspace.normalize_git_url("git@github.com:owner/repo") == "github.com/owner/repo"
     end
 
     test "lowercases URLs" do
-      assert Workspace.normalize_git_url("https://GitHub.com/Owner/Repo.git") == "github.com/owner/repo"
+      assert Workspace.normalize_git_url("https://GitHub.com/Owner/Repo.git") ==
+               "github.com/owner/repo"
     end
   end
 

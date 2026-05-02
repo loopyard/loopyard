@@ -1,11 +1,16 @@
 defmodule BoomLooper.Tools.Container.Git do
   use BoomLooper.Tool,
     name: "git",
-    description: "Run a git command on the project repo. Each workspace is locked to its branch — checkout/switch are blocked (create a new workspace for a different branch). Reading other branches is fine: diff main, log origin/main..HEAD, show main:file, merge main, rebase main, cherry-pick, etc.",
+    description:
+      "Run a git command on the project repo. Each workspace is locked to its branch — checkout/switch are blocked (create a new workspace for a different branch). Reading other branches is fine: diff main, log origin/main..HEAD, show main:file, merge main, rebase main, cherry-pick, etc.",
     busy_words: ["git-ing", "committing", "versioning"],
     params: [
       agent_id: {:string, required: true},
-      command: {:string, required: true, description: "Git subcommand and args (e.g. 'status', 'diff main', 'add -A', 'commit -m \"fix bug\"', 'log --oneline -10', 'merge main')"}
+      command:
+        {:string,
+         required: true,
+         description:
+           "Git subcommand and args (e.g. 'status', 'diff main', 'add -A', 'commit -m \"fix bug\"', 'log --oneline -10', 'merge main')"}
     ]
 
   @doc """
@@ -43,9 +48,16 @@ defmodule BoomLooper.Tools.Container.Git do
       _ ->
         case host_git_path(workspace_id) do
           {:ok, path} ->
-            case System.cmd("git", args, cd: path, stderr_to_stdout: true, env: [{"GIT_TERMINAL_PROMPT", "0"}]) do
-              {output, 0} -> {:ok, Pagination.cap(output)}
-              {output, code} -> {:error, "git #{command} failed (exit #{code}):\n#{Pagination.cap(output)}"}
+            case System.cmd("git", args,
+                   cd: path,
+                   stderr_to_stdout: true,
+                   env: [{"GIT_TERMINAL_PROMPT", "0"}]
+                 ) do
+              {output, 0} ->
+                {:ok, Pagination.cap(output)}
+
+              {output, code} ->
+                {:error, "git #{command} failed (exit #{code}):\n#{Pagination.cap(output)}"}
             end
 
           {:error, reason} ->
@@ -55,7 +67,8 @@ defmodule BoomLooper.Tools.Container.Git do
   end
 
   defp host_git_path(workspace_id) do
-    with %{project_id: project_id} = workspace <- BoomLooper.ProjectRegistry.get_workspace(workspace_id),
+    with %{project_id: project_id} = workspace <-
+           BoomLooper.ProjectRegistry.get_workspace(workspace_id),
          %{source_type: :local} <- BoomLooper.ProjectRegistry.get_project(project_id) do
       # For Local workspaces, the worktree path IS the host git dir
       case BoomLooper.Source.Local.checkout_path(workspace) do
@@ -68,7 +81,8 @@ defmodule BoomLooper.Tools.Container.Git do
       end
     else
       %{source_type: other} ->
-        {:error, "Git tool only works for Local workspaces (this is #{other}). Git state lives on the host."}
+        {:error,
+         "Git tool only works for Local workspaces (this is #{other}). Git state lives on the host."}
 
       nil ->
         {:error, "Workspace #{workspace_id} not found"}

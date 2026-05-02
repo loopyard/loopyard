@@ -29,12 +29,14 @@ defmodule BoomLooper.EventLog do
 
   defp write(level, source, message) do
     key = System.monotonic_time(:nanosecond)
+
     event = %{
       timestamp: DateTime.utc_now(),
       level: level,
       source: source,
       message: message
     }
+
     :ets.insert(@ets_table, {key, event})
     trim()
   end
@@ -60,11 +62,14 @@ defmodule BoomLooper.EventLog do
 
   defp trim do
     size = :ets.info(@ets_table, :size)
+
     if size > @max_events do
-      keys = :ets.tab2list(@ets_table)
-             |> Enum.map(fn {k, _} -> k end)
-             |> Enum.sort()
-             |> Enum.take(size - @max_events)
+      keys =
+        :ets.tab2list(@ets_table)
+        |> Enum.map(fn {k, _} -> k end)
+        |> Enum.sort()
+        |> Enum.take(size - @max_events)
+
       Enum.each(keys, &:ets.delete(@ets_table, &1))
     end
   end

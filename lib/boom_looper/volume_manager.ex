@@ -14,7 +14,6 @@ defmodule BoomLooper.VolumeManager do
 
   alias BoomLooper.Docker
 
-
   # Delegate file I/O to VolumeIO for backwards compatibility
   defdelegate read_file(volume_name, path), to: BoomLooper.VolumeIO
   defdelegate write_file(volume_name, path, content), to: BoomLooper.VolumeIO
@@ -65,14 +64,15 @@ defmodule BoomLooper.VolumeManager do
   def list_workspace_volumes(workspace_id) do
     case Docker.docker(["volume", "ls", "--format", "{{.Name}}"]) do
       {:ok, output} ->
-        volumes = output
-        |> String.trim()
-        |> String.split("\n", trim: true)
-        |> Enum.filter(fn name ->
-          String.starts_with?(name, "bl-#{workspace_id}")
-        end)
-        |> Enum.map(fn name -> volume_info(name) end)
-        |> Enum.reject(&is_nil/1)
+        volumes =
+          output
+          |> String.trim()
+          |> String.split("\n", trim: true)
+          |> Enum.filter(fn name ->
+            String.starts_with?(name, "bl-#{workspace_id}")
+          end)
+          |> Enum.map(fn name -> volume_info(name) end)
+          |> Enum.reject(&is_nil/1)
 
         {:ok, volumes}
 
@@ -131,9 +131,13 @@ defmodule BoomLooper.VolumeManager do
               service: service,
               description: description
             }
-          _ -> nil
+
+          _ ->
+            nil
         end
-      _ -> nil
+
+      _ ->
+        nil
     end
   end
 
@@ -151,14 +155,17 @@ defmodule BoomLooper.VolumeManager do
 
       Regex.match?(~r/^(.+)-data-[a-f0-9]+$/, name) ->
         [_, service] = Regex.run(~r/^(.+)-data-[a-f0-9]+$/, name)
-        description = case service do
-          "postgres" -> "PostgreSQL database"
-          "redis" -> "Redis data"
-          "minio" -> "MinIO object storage"
-          "mysql" -> "MySQL database"
-          "mongo" -> "MongoDB data"
-          _ -> "#{service} data"
-        end
+
+        description =
+          case service do
+            "postgres" -> "PostgreSQL database"
+            "redis" -> "Redis data"
+            "minio" -> "MinIO object storage"
+            "mysql" -> "MySQL database"
+            "mongo" -> "MongoDB data"
+            _ -> "#{service} data"
+          end
+
         {:data, service, description}
 
       true ->
@@ -167,17 +174,27 @@ defmodule BoomLooper.VolumeManager do
   end
 
   defp get_volume_size(volume_name) do
-    case Docker.docker([
-      "run", "--rm",
-      "-v", "#{volume_name}:/vol",
-      "alpine", "du", "-sh", "/vol"
-    ], timeout: 10_000) do
+    case Docker.docker(
+           [
+             "run",
+             "--rm",
+             "-v",
+             "#{volume_name}:/vol",
+             "alpine",
+             "du",
+             "-sh",
+             "/vol"
+           ],
+           timeout: 10_000
+         ) do
       {:ok, output} ->
         case String.split(String.trim(output), ~r/\s+/, parts: 2) do
           [size | _] -> size
           _ -> "unknown"
         end
-      _ -> "unknown"
+
+      _ ->
+        "unknown"
     end
   end
 
@@ -186,10 +203,15 @@ defmodule BoomLooper.VolumeManager do
   """
   def volume_ls(volume_name, path \\ "/") do
     case Docker.docker([
-      "run", "--rm",
-      "-v", "#{volume_name}:/vol",
-      "alpine", "ls", "-la", "/vol#{path}"
-    ]) do
+           "run",
+           "--rm",
+           "-v",
+           "#{volume_name}:/vol",
+           "alpine",
+           "ls",
+           "-la",
+           "/vol#{path}"
+         ]) do
       {:ok, output} -> {:ok, output}
       {:error, reason} -> {:error, reason}
     end
@@ -200,29 +222,34 @@ defmodule BoomLooper.VolumeManager do
   Returns {:ok, deleted_count} or {:error, reason}.
   """
   def prune_orphaned_volumes do
-    active_ids = BoomLooper.ProjectRegistry.list_projects()
-    |> Enum.flat_map(fn p -> BoomLooper.ProjectRegistry.list_workspaces(p.id) end)
-    |> Enum.map(fn ws -> BoomLooper.Workspace.workspace_id(ws.path) end)
-    |> MapSet.new()
+    active_ids =
+      BoomLooper.ProjectRegistry.list_projects()
+      |> Enum.flat_map(fn p -> BoomLooper.ProjectRegistry.list_workspaces(p.id) end)
+      |> Enum.map(fn ws -> BoomLooper.Workspace.workspace_id(ws.path) end)
+      |> MapSet.new()
 
     case Docker.docker(["volume", "ls", "--format", "{{.Name}}"]) do
       {:ok, output} ->
         volumes = output |> String.trim() |> String.split("\n", trim: true)
 
-        orphans = Enum.filter(volumes, fn name ->
-          case Regex.run(~r/^(?:code|cache|deps|bl-.*_cache)-([a-f0-9]{4})$/, name) do
-            [_, ws_id] -> ws_id not in active_ids
-            nil ->
-              case Regex.run(~r/^bl-([a-f0-9]{4})_/, name) do
-                [_, ws_id] -> ws_id not in active_ids
-                nil -> false
-              end
-          end
-        end)
+        orphans =
+          Enum.filter(volumes, fn name ->
+            case Regex.run(~r/^(?:code|cache|deps|bl-.*_cache)-([a-f0-9]{4})$/, name) do
+              [_, ws_id] ->
+                ws_id not in active_ids
 
-        deleted = Enum.count(orphans, fn name ->
-          match?({:ok, _}, Docker.docker(["volume", "rm", "-f", name]))
-        end)
+              nil ->
+                case Regex.run(~r/^bl-([a-f0-9]{4})_/, name) do
+                  [_, ws_id] -> ws_id not in active_ids
+                  nil -> false
+                end
+            end
+          end)
+
+        deleted =
+          Enum.count(orphans, fn name ->
+            match?({:ok, _}, Docker.docker(["volume", "rm", "-f", name]))
+          end)
 
         Logger.info("[VolumeManager] Pruned #{deleted}/#{length(orphans)} orphaned volumes")
         {:ok, deleted}
@@ -236,15 +263,20 @@ defmodule BoomLooper.VolumeManager do
   Clone a git repository into a running workspace container.
   Faster than clone_into_volume because it uses the already-running container.
 
-  @doc """
+  @doc \"""
   Check if a volume has code (not empty).
   """
   def volume_has_code?(volume_name) do
     case Docker.docker([
-      "run", "--rm",
-      "-v", "#{volume_name}:/workspace",
-      "alpine", "sh", "-c", "test -d /workspace/.git && echo yes || echo no"
-    ]) do
+           "run",
+           "--rm",
+           "-v",
+           "#{volume_name}:/workspace",
+           "alpine",
+           "sh",
+           "-c",
+           "test -d /workspace/.git && echo yes || echo no"
+         ]) do
       {:ok, output} -> String.trim(output) == "yes"
       {:error, _} -> false
     end
@@ -255,15 +287,22 @@ defmodule BoomLooper.VolumeManager do
   """
   def glob(volume_name, pattern) do
     case Docker.docker([
-      "run", "--rm",
-      "-v", "#{volume_name}:/workspace",
-      "alpine", "sh", "-c", "find /workspace -name '#{pattern}' -type f 2>/dev/null | head -100"
-    ]) do
+           "run",
+           "--rm",
+           "-v",
+           "#{volume_name}:/workspace",
+           "alpine",
+           "sh",
+           "-c",
+           "find /workspace -name '#{pattern}' -type f 2>/dev/null | head -100"
+         ]) do
       {:ok, output} ->
-        files = output
-        |> String.trim()
-        |> String.split("\n", trim: true)
-        |> Enum.map(&String.replace(&1, "/workspace/", ""))
+        files =
+          output
+          |> String.trim()
+          |> String.split("\n", trim: true)
+          |> Enum.map(&String.replace(&1, "/workspace/", ""))
+
         {:ok, files}
 
       {:error, reason} ->

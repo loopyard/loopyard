@@ -318,6 +318,7 @@ defmodule BoomLooper.Compose do
   end
 
   defp check_service_volume(_svc_name, entry) when is_map(entry), do: :ok
+
   defp check_service_volume(svc_name, entry),
     do: {:error, "service #{svc_name}: invalid volume entry #{inspect(entry)}"}
 
@@ -368,7 +369,9 @@ defmodule BoomLooper.Compose do
 
   defp parse_compose(content) do
     case Jason.decode(content) do
-      {:ok, compose} -> {:ok, compose}
+      {:ok, compose} ->
+        {:ok, compose}
+
       {:error, _} ->
         case YamlElixir.read_from_string(content) do
           {:ok, compose} -> {:ok, compose}
@@ -398,15 +401,22 @@ defmodule BoomLooper.Compose do
   defp update_volumes_placeholder(svc, code_volume) when is_map(svc) do
     case svc["volumes"] do
       volumes when is_list(volumes) ->
-        updated = Enum.map(volumes, fn
-          vol when is_binary(vol) ->
-            String.replace(vol, "${CODE_VOLUME}", code_volume)
-          vol -> vol
-        end)
+        updated =
+          Enum.map(volumes, fn
+            vol when is_binary(vol) ->
+              String.replace(vol, "${CODE_VOLUME}", code_volume)
+
+            vol ->
+              vol
+          end)
+
         Map.put(svc, "volumes", updated)
-      _ -> svc
+
+      _ ->
+        svc
     end
   end
+
   defp update_volumes_placeholder(svc, _), do: svc
 
   # Replace each service's `ports:` list with
@@ -453,17 +463,20 @@ defmodule BoomLooper.Compose do
 
   # Extract the container port number from various formats
   defp extract_container_port(port_spec) do
-    port_str = case String.split(port_spec, ":") do
-      [_host, container] -> container
-      [container] -> container
-      [_ip, _host, container] -> container
-    end
+    port_str =
+      case String.split(port_spec, ":") do
+        [_host, container] -> container
+        [container] -> container
+        [_ip, _host, container] -> container
+      end
+
     # Strip protocol suffix like /tcp
     port_str |> String.split("/") |> hd() |> String.to_integer()
   end
 
   @doc "Path to the compose file."
-  def compose_path(project_dir), do: Path.join([project_dir, ".boomlooper", "workspace", "docker-compose.yml"])
+  def compose_path(project_dir),
+    do: Path.join([project_dir, ".boomlooper", "workspace", "docker-compose.yml"])
 
   @doc "Project name for compose (used for container naming)."
   def project_name(workspace_id), do: "bl-#{workspace_id}"
@@ -493,9 +506,10 @@ defmodule BoomLooper.Compose do
   end
 
   defp docker_compose(args, timeout) do
-    task = Task.async(fn ->
-      System.cmd("docker-compose", args, stderr_to_stdout: true)
-    end)
+    task =
+      Task.async(fn ->
+        System.cmd("docker-compose", args, stderr_to_stdout: true)
+      end)
 
     case Task.yield(task, timeout) || Task.shutdown(task) do
       {:ok, {output, 0}} -> {:ok, output}
@@ -521,6 +535,7 @@ defmodule BoomLooper.Compose do
             {:ok, output} -> String.contains?(output, "Docker Compose")
             _ -> false
           end
+
         :persistent_term.put(:docker_compose_v2, result)
         result
 
@@ -546,20 +561,27 @@ defmodule BoomLooper.Compose do
 
   @doc "Get running service names."
   def ps(project_dir, workspace_id) do
-    case compose(project_dir, workspace_id, ["ps", "--format", "{{.Service}}\t{{.State}}\t{{.Ports}}"]) do
+    case compose(project_dir, workspace_id, [
+           "ps",
+           "--format",
+           "{{.Service}}\t{{.State}}\t{{.Ports}}"
+         ]) do
       {:ok, output} ->
-        services = output
-        |> String.trim()
-        |> String.split("\n", trim: true)
-        |> Enum.map(fn line ->
-          case String.split(line, "\t") do
-            [name, state | rest] ->
-              ports = Enum.at(rest, 0, "")
-              %{name: name, state: state, ports: parse_compose_ports(ports)}
-            _ -> nil
-          end
-        end)
-        |> Enum.reject(&is_nil/1)
+        services =
+          output
+          |> String.trim()
+          |> String.split("\n", trim: true)
+          |> Enum.map(fn line ->
+            case String.split(line, "\t") do
+              [name, state | rest] ->
+                ports = Enum.at(rest, 0, "")
+                %{name: name, state: state, ports: parse_compose_ports(ports)}
+
+              _ ->
+                nil
+            end
+          end)
+          |> Enum.reject(&is_nil/1)
 
         {:ok, services}
 
@@ -571,7 +593,10 @@ defmodule BoomLooper.Compose do
   @doc "Exec a command in a compose service."
   def exec(project_dir, workspace_id, service, command, opts \\ []) do
     timeout = Keyword.get(opts, :timeout, 120_000)
-    compose(project_dir, workspace_id, ["exec", "-T", service, "sh", "-c", command], timeout: timeout)
+
+    compose(project_dir, workspace_id, ["exec", "-T", service, "sh", "-c", command],
+      timeout: timeout
+    )
   end
 
   @doc "Get logs for a compose service."
@@ -585,6 +610,7 @@ defmodule BoomLooper.Compose do
     case compose(project_dir, workspace_id, ["ps", "-q", service]) do
       {:ok, output} ->
         id = String.trim(output)
+
         if id != "" do
           case BoomLooper.Docker.docker(["inspect", "--format", "{{.Name}}", id]) do
             {:ok, name} -> String.trim(name) |> String.trim_leading("/")
@@ -593,13 +619,16 @@ defmodule BoomLooper.Compose do
         else
           nil
         end
-      _ -> nil
+
+      _ ->
+        nil
     end
   end
 
   # --- Private ---
 
   defp parse_compose_ports(""), do: %{}
+
   defp parse_compose_ports(ports_str) do
     # Format: "0.0.0.0:32871->3000/tcp, :::32871->3000/tcp"
     Regex.scan(~r/(?:\d+\.){3}\d+:(\d+)->(\d+)/, ports_str)

@@ -17,10 +17,14 @@ defmodule BoomLooper.Terminal do
   @doc "Get or start a terminal session for a container."
   def get_or_start(container) do
     case RegistryHelper.whereis(@registry, container) do
-      {:ok, pid} -> {:ok, pid}
+      {:ok, pid} ->
+        {:ok, pid}
+
       :error ->
-        DynamicSupervisor.start_child(BoomLooper.TerminalSupervisor,
-          {__MODULE__, container: container})
+        DynamicSupervisor.start_child(
+          BoomLooper.TerminalSupervisor,
+          {__MODULE__, container: container}
+        )
     end
   end
 
@@ -75,6 +79,7 @@ defmodule BoomLooper.Terminal do
       case :os.type() do
         {:unix, :darwin} ->
           {script, ["-q", "/dev/null", docker, "exec", "-it", container, "sh"]}
+
         _ ->
           {script, ["-qc", "#{docker} exec -it #{container} sh", "/dev/null"]}
       end
@@ -103,20 +108,23 @@ defmodule BoomLooper.Terminal do
     # Allow tests to inject a custom command
     cmd = Keyword.get(opts, :cmd)
 
-    cmd = cmd || if BoomLooper.Docker.container_running?(container) do
-      build_cmd(container)
-    end
+    cmd =
+      cmd ||
+        if BoomLooper.Docker.container_running?(container) do
+          build_cmd(container)
+        end
 
     unless cmd do
       {:stop, :container_not_running}
     else
       port = open_port(cmd)
 
-      {:ok, %{
-        container: container,
-        port: port,
-        buffer: ""
-      }}
+      {:ok,
+       %{
+         container: container,
+         port: port,
+         buffer: ""
+       }}
     end
   end
 
@@ -128,7 +136,10 @@ defmodule BoomLooper.Terminal do
 
   @impl true
   def handle_cast(:clear, state) do
-    BoomLooper.Events.Terminal.publish(%BoomLooper.Events.Terminal.Clear{container: state.container})
+    BoomLooper.Events.Terminal.publish(%BoomLooper.Events.Terminal.Clear{
+      container: state.container
+    })
+
     {:noreply, %{state | buffer: ""}}
   end
 
@@ -145,7 +156,10 @@ defmodule BoomLooper.Terminal do
 
   @impl true
   def handle_info({port, {:data, data}}, %{port: port} = state) do
-    BoomLooper.Events.Terminal.publish(%BoomLooper.Events.Terminal.Output{container: state.container, data: data})
+    BoomLooper.Events.Terminal.publish(%BoomLooper.Events.Terminal.Output{
+      container: state.container,
+      data: data
+    })
 
     buffer = state.buffer <> data
     buffer = if byte_size(buffer) > 50_000, do: String.slice(buffer, -50_000..-1//1), else: buffer
@@ -155,7 +169,12 @@ defmodule BoomLooper.Terminal do
 
   def handle_info({port, {:exit_status, code}}, %{port: port} = state) do
     Logger.info("[Terminal] #{state.container} exited with code #{code}")
-    BoomLooper.Events.Terminal.publish(%BoomLooper.Events.Terminal.Exit{container: state.container, code: code})
+
+    BoomLooper.Events.Terminal.publish(%BoomLooper.Events.Terminal.Exit{
+      container: state.container,
+      code: code
+    })
+
     {:stop, :normal, state}
   end
 

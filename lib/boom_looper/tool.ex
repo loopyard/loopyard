@@ -102,9 +102,14 @@ defmodule BoomLooper.Tool do
     supplied = params[:agent_id] || params["agent_id"]
 
     cond do
-      is_nil(bound) -> :ok
-      is_nil(supplied) -> :ok
-      bound == supplied -> :ok
+      is_nil(bound) ->
+        :ok
+
+      is_nil(supplied) ->
+        :ok
+
+      bound == supplied ->
+        :ok
 
       true ->
         {:error,
@@ -125,7 +130,11 @@ defmodule BoomLooper.Tool do
         name_str = Atom.to_string(name)
 
         prop = %{"type" => type_string(type)}
-        prop = if desc = Keyword.get(opts, :description), do: Map.put(prop, "description", desc), else: prop
+
+        prop =
+          if desc = Keyword.get(opts, :description),
+            do: Map.put(prop, "description", desc),
+            else: prop
 
         props = Map.put(props, name_str, prop)
         req = if Keyword.get(opts, :required, false), do: [name_str | req], else: req

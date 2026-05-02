@@ -76,9 +76,10 @@ defmodule BoomLooper.EventLogTest do
     test "warning and error events also appear in Logger output" do
       import ExUnit.CaptureLog
 
-      log = capture_log(fn ->
-        EventLog.warning("test-logger", "visible warning")
-      end)
+      log =
+        capture_log(fn ->
+          EventLog.warning("test-logger", "visible warning")
+        end)
 
       assert log =~ "visible warning"
     end

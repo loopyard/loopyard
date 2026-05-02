@@ -84,8 +84,7 @@ defmodule BoomLooperWeb.SystemOrphansLive do
         <section>
           <div class="flex items-baseline justify-between mb-3">
             <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-              Tracked resources
-              <span class="text-zinc-400 font-normal">({@total})</span>
+              Tracked resources <span class="text-zinc-400 font-normal">({@total})</span>
             </h2>
             <div :if={@stale_count > 0} class="text-xs font-medium text-red-600 dark:text-red-400">
               {@stale_count} stale — owner DOWN cleanup leak?
@@ -120,17 +119,23 @@ defmodule BoomLooperWeb.SystemOrphansLive do
             In-scope resources migrated to the janitor:
           </p>
           <ul class="text-xs text-zinc-600 dark:text-zinc-300 list-disc list-inside space-y-1">
-            <li><code class="font-mono">:port_binding</code> — PortRegistry, owned by WorkspaceGroup supervisor</li>
+            <li>
+              <code class="font-mono">:port_binding</code>
+              — PortRegistry, owned by WorkspaceGroup supervisor
+            </li>
           </ul>
           <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-3">
             Non-migrated owner-resource pairs (by design — see
-            <code class="font-mono">BoomLooper.Resources</code> @moduledoc):
+            <code class="font-mono">BoomLooper.Resources</code>
+            @moduledoc):
           </p>
           <ul class="text-xs text-zinc-600 dark:text-zinc-300 list-disc list-inside space-y-1">
             <li>Docker containers — lifecycle tied to compose up/down</li>
             <li>Claude CLI port — linked to ChatAgent GenServer via BEAM Port semantics</li>
             <li>Mutagen sync sessions — session OUTLIVES GenServer restart by design</li>
-            <li>Short-lived <code class="font-mono">Port.open</code> CLI calls — die with owning process</li>
+            <li>
+              Short-lived <code class="font-mono">Port.open</code> CLI calls — die with owning process
+            </li>
           </ul>
         </section>
       </div>
@@ -145,14 +150,20 @@ defmodule BoomLooperWeb.SystemOrphansLive do
     <div class={owner_group_class(@group.owner_alive?)}>
       <div class="flex items-center justify-between px-3 py-2 border-b border-zinc-200 dark:border-zinc-700/50 bg-zinc-100/50 dark:bg-zinc-800/30">
         <div class="flex items-center gap-2">
-          <div class={"w-2 h-2 rounded-full " <> if(@group.owner_alive?, do: "bg-emerald-500", else: "bg-red-500 animate-pulse")}></div>
+          <div class={"w-2 h-2 rounded-full " <> if(@group.owner_alive?, do: "bg-emerald-500", else: "bg-red-500 animate-pulse")}>
+          </div>
           <div class="text-xs font-mono">{inspect(@group.owner)}</div>
-          <div :if={not @group.owner_alive?} class="text-[10px] uppercase font-semibold text-red-600 dark:text-red-400 tracking-wider">
+          <div
+            :if={not @group.owner_alive?}
+            class="text-[10px] uppercase font-semibold text-red-600 dark:text-red-400 tracking-wider"
+          >
             stale — owner DOWN
           </div>
         </div>
         <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
-          {length(@group.resources)} {if length(@group.resources) == 1, do: "resource", else: "resources"}
+          {length(@group.resources)} {if length(@group.resources) == 1,
+            do: "resource",
+            else: "resources"}
         </div>
       </div>
       <table class="w-full text-xs">
@@ -181,7 +192,8 @@ defmodule BoomLooperWeb.SystemOrphansLive do
     do: "rounded-lg border border-zinc-200 dark:border-zinc-700/80 overflow-hidden"
 
   defp owner_group_class(false),
-    do: "rounded-lg border-2 border-red-300 dark:border-red-800 overflow-hidden bg-red-50/30 dark:bg-red-900/10"
+    do:
+      "rounded-lg border-2 border-red-300 dark:border-red-800 overflow-hidden bg-red-50/30 dark:bg-red-900/10"
 
   # Monotonic microseconds → human-readable relative string.
   # Monotonic time has no epoch anchor; compare to current monotonic.

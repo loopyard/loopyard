@@ -43,5 +43,4 @@ defmodule BoomLooper.Agent.EventTest do
       refute result.is_error
     end
   end
-
 end

@@ -92,6 +92,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.AgentLifecycle do
     if prev = socket.assigns.selected_id do
       ChatAgent.unsubscribe(prev)
     end
+
     ChatAgent.unsubscribe(id)
 
     # Sleeping → wake. If the agent exists in ETS but no GenServer is

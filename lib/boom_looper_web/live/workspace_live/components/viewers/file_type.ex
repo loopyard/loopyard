@@ -27,13 +27,26 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Viewers.FileType do
     name = Path.basename(path) |> String.downcase()
 
     cond do
-      ext in @image_extensions -> :image
-      ext in @binary_extensions -> :binary
-      ext in @text_extensions -> :text
-      name in ~w(gemfile rakefile makefile dockerfile procfile guardfile vagrantfile brewfile) -> :text
-      ext == "" and name_suggests_text?(name) -> :text
-      ext == "" -> :unknown
-      true -> :text
+      ext in @image_extensions ->
+        :image
+
+      ext in @binary_extensions ->
+        :binary
+
+      ext in @text_extensions ->
+        :text
+
+      name in ~w(gemfile rakefile makefile dockerfile procfile guardfile vagrantfile brewfile) ->
+        :text
+
+      ext == "" and name_suggests_text?(name) ->
+        :text
+
+      ext == "" ->
+        :unknown
+
+      true ->
+        :text
     end
   end
 

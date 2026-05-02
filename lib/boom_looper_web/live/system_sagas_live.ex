@@ -33,7 +33,9 @@ defmodule BoomLooperWeb.SystemSagasLive do
   end
 
   defp assign_iex(socket) do
-    if connected?(socket), do: subscribe_iex(socket), else: assign(socket, :iex_session, %{level: nil})
+    if connected?(socket),
+      do: subscribe_iex(socket),
+      else: assign(socket, :iex_session, %{level: nil})
   end
 
   @impl true
@@ -95,14 +97,17 @@ defmodule BoomLooperWeb.SystemSagasLive do
           <div class="flex items-baseline justify-between mb-3">
             <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
               Sagas
-              <span class="text-zinc-400 font-normal">(last 100 multi-step operations; refreshes every 1s)</span>
+              <span class="text-zinc-400 font-normal">
+                (last 100 multi-step operations; refreshes every 1s)
+              </span>
             </h2>
           </div>
 
           <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
             Every `BoomLooper.Saga.run/2` call is recorded here. Each saga is a multi-step
             operation (start workspace, boot agent, etc.) that either fully succeeded or
-            fully rolled back. A saga in <span class="text-red-600 dark:text-red-400 font-semibold">rollback_failed</span>
+            fully rolled back. A saga in
+            <span class="text-red-600 dark:text-red-400 font-semibold">rollback_failed</span>
             state could not fully revert — external state may be inconsistent and the
             operator should investigate.
           </p>
@@ -131,7 +136,8 @@ defmodule BoomLooperWeb.SystemSagasLive do
           <p class="text-xs text-red-700 dark:text-red-300 mt-1">
             These sagas were recorded in the on-disk journal but never completed or rolled back.
             On the next boot (or right now, via the automatic resume path) each is handled per its
-            declared <code class="font-mono">on_resume</code> strategy: rollback, resume-forward, or manual.
+            declared <code class="font-mono">on_resume</code>
+            strategy: rollback, resume-forward, or manual.
           </p>
           <div class="mt-3 space-y-1.5">
             <.incomplete_row :for={s <- @incomplete} saga={s} />
@@ -184,7 +190,9 @@ defmodule BoomLooperWeb.SystemSagasLive do
   defp summary_card(assigns) do
     ~H"""
     <div class={summary_card_class(@tone)}>
-      <div class="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">{@label}</div>
+      <div class="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+        {@label}
+      </div>
       <div class="text-lg font-mono font-semibold mt-0.5">{@value}</div>
     </div>
     """
@@ -272,9 +280,16 @@ defmodule BoomLooperWeb.SystemSagasLive do
       </summary>
 
       <div class="px-3 py-2 bg-zinc-50 dark:bg-zinc-900/50 border-t border-zinc-200 dark:border-zinc-700/50">
-        <.step_list steps={@saga.completed_steps} rolled_back={@saga.rolled_back_steps} failed_rollbacks={@saga.failed_rollbacks} />
+        <.step_list
+          steps={@saga.completed_steps}
+          rolled_back={@saga.rolled_back_steps}
+          failed_rollbacks={@saga.failed_rollbacks}
+        />
 
-        <div :if={@saga.failure_reason} class="mt-2 text-[11px] font-mono text-red-600 dark:text-red-400">
+        <div
+          :if={@saga.failure_reason}
+          class="mt-2 text-[11px] font-mono text-red-600 dark:text-red-400"
+        >
           reason: {@saga.failure_reason}
         </div>
 
@@ -313,7 +328,10 @@ defmodule BoomLooperWeb.SystemSagasLive do
         <span :if={step.name in @rolled_back} class="text-amber-600 dark:text-amber-400 text-[10px]">
           — rolled back
         </span>
-        <span :if={rollback_failed?(step.name, @failed_rollbacks)} class="text-red-600 dark:text-red-400 text-[10px] font-semibold">
+        <span
+          :if={rollback_failed?(step.name, @failed_rollbacks)}
+          class="text-red-600 dark:text-red-400 text-[10px] font-semibold"
+        >
           — rollback failed
         </span>
       </li>

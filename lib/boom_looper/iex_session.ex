@@ -77,6 +77,7 @@ defmodule BoomLooper.IExSession do
   @doc "Wrap a function with yellow status, returns to green after."
   def run(label, fun) do
     working(label)
+
     try do
       fun.()
     after
@@ -87,6 +88,7 @@ defmodule BoomLooper.IExSession do
   @doc "Wrap a destructive function with red status, returns to green after."
   def run!(label, fun) do
     destructive(label)
+
     try do
       fun.()
     after

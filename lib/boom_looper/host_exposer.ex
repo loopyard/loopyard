@@ -127,7 +127,9 @@ defmodule BoomLooper.HostExposer do
   end
 
   defp persist_path do
-    home = Application.get_env(:boom_looper, :home) || Path.join(System.user_home!(), ".boomlooper")
+    home =
+      Application.get_env(:boom_looper, :home) || Path.join(System.user_home!(), ".boomlooper")
+
     Path.join(home, @persist_file)
   end
 end

@@ -18,6 +18,7 @@ defmodule BoomLooperWeb.Format do
     home = System.user_home!()
     String.replace_prefix(path, home, "~")
   end
+
   def shorten_path(_), do: ""
 
   @doc """
@@ -34,9 +35,16 @@ defmodule BoomLooperWeb.Format do
 
   @doc "Format a byte count as B/KB/MB/GB."
   def format_bytes(bytes) when is_integer(bytes) and bytes < 1024, do: "#{bytes} B"
-  def format_bytes(bytes) when is_integer(bytes) and bytes < 1_048_576, do: "#{Float.round(bytes / 1024, 1)} KB"
-  def format_bytes(bytes) when is_integer(bytes) and bytes < 1_073_741_824, do: "#{Float.round(bytes / 1_048_576, 1)} MB"
-  def format_bytes(bytes) when is_integer(bytes), do: "#{Float.round(bytes / 1_073_741_824, 1)} GB"
+
+  def format_bytes(bytes) when is_integer(bytes) and bytes < 1_048_576,
+    do: "#{Float.round(bytes / 1024, 1)} KB"
+
+  def format_bytes(bytes) when is_integer(bytes) and bytes < 1_073_741_824,
+    do: "#{Float.round(bytes / 1_048_576, 1)} MB"
+
+  def format_bytes(bytes) when is_integer(bytes),
+    do: "#{Float.round(bytes / 1_073_741_824, 1)} GB"
+
   def format_bytes(bytes) when is_float(bytes), do: format_bytes(round(bytes))
   def format_bytes(_), do: "?"
 
@@ -48,6 +56,7 @@ defmodule BoomLooperWeb.Format do
     |> String.replace(~r/(\d{3})(?=\d)/, "\\1,")
     |> String.reverse()
   end
+
   def format_number(n), do: to_string(n)
 
   @doc "Format a KB count from `ps aux` as KB or MB."
@@ -59,6 +68,7 @@ defmodule BoomLooperWeb.Format do
   def mem_bar_pct(%{total: total, used: used}) when total > 0 do
     Float.round(used / total * 100, 1)
   end
+
   def mem_bar_pct(_), do: 0
 
   @doc "Color class for a load average given the number of cores."

@@ -40,19 +40,28 @@ defmodule BoomLooper.Source.GitHub do
   # through the saga and replace these stubs.
   @impl true
   def do_create_worktree(_workspace) do
-    Logger.warning("[Source.GitHub] do_create_worktree called — GitHub workspaces use synchronous clone, not the setup saga")
+    Logger.warning(
+      "[Source.GitHub] do_create_worktree called — GitHub workspaces use synchronous clone, not the setup saga"
+    )
+
     :ok
   end
 
   @impl true
   def do_create_volume(_workspace) do
-    Logger.warning("[Source.GitHub] do_create_volume called — GitHub workspaces use synchronous clone, not the setup saga")
+    Logger.warning(
+      "[Source.GitHub] do_create_volume called — GitHub workspaces use synchronous clone, not the setup saga"
+    )
+
     :ok
   end
 
   @impl true
   def do_seed_volume(_workspace, _callback, _opts \\ []) do
-    Logger.warning("[Source.GitHub] do_seed_volume called — GitHub workspaces use synchronous clone, not the setup saga")
+    Logger.warning(
+      "[Source.GitHub] do_seed_volume called — GitHub workspaces use synchronous clone, not the setup saga"
+    )
+
     :ok
   end
 

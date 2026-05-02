@@ -29,16 +29,18 @@ defmodule BoomLooper.EvalRunner do
   alias BoomLooper.ChatAgent
   alias BoomLooper.ProjectRegistry
 
-
   # Heavy Rails apps (chatwoot, discourse) need more than 30 minutes
   # for clone + image build + bundle install + asset precompile. The
   # discourse round-1 eval was still actively iterating at the 30-min
   # mark and hit :timeout with the dev container healthy. 45 gives
   # enough headroom for big Ruby/Node apps; small projects still
   # finish in 5-10 min so there's no cost.
-  @default_timeout 2_700_000  # 45 minutes
-  @poll_interval 5_000       # 5 seconds
-  @max_nudges 10             # allow several crash-fix-rebuild cycles
+  # 45 minutes
+  @default_timeout 2_700_000
+  # 5 seconds
+  @poll_interval 5_000
+  # allow several crash-fix-rebuild cycles
+  @max_nudges 10
 
   @doc """
   List available evals from priv/evals.json.
@@ -55,8 +57,11 @@ defmodule BoomLooper.EvalRunner do
   """
   def eval(name, opts \\ []) do
     config = load_eval_config()
+
     case config[name] do
-      nil -> {:error, "Unknown eval: #{name}. Available: #{config |> Map.keys() |> Enum.join(", ")}"}
+      nil ->
+        {:error, "Unknown eval: #{name}. Available: #{config |> Map.keys() |> Enum.join(", ")}"}
+
       entry ->
         # Pass branch from config if present
         opts = if entry["branch"], do: Keyword.put(opts, :branch, entry["branch"]), else: opts
@@ -84,24 +89,47 @@ defmodule BoomLooper.EvalRunner do
     BoomLooper.IExSession.working("eval: #{eval_name} — starting")
     BoomLooper.IExSession.claim()
 
-    {:ok, pid} = Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
-      BoomLooper.StateKeeper.put_eval(eval_name, %{pid: self(), source: source, started_at: DateTime.utc_now(), status: :running, result: nil})
+    {:ok, pid} =
+      Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn ->
+        BoomLooper.StateKeeper.put_eval(eval_name, %{
+          pid: self(),
+          source: source,
+          started_at: DateTime.utc_now(),
+          status: :running,
+          result: nil
+        })
 
-      try do
-        do_run(source, opts)
-      rescue
-        e ->
-          Logger.error("[EvalRunner] Eval crashed for #{eval_name}: #{Exception.message(e)}\n#{Exception.format_stacktrace(__STACKTRACE__)}")
-          BoomLooper.StateKeeper.put_eval(eval_name, %{pid: self(), source: source, started_at: DateTime.utc_now(), status: :crashed, result: %{outcome: :crashed, error: Exception.message(e)}})
-      catch
-        kind, reason ->
-          Logger.error("[EvalRunner] Eval crashed for #{eval_name}: #{inspect({kind, reason})}")
-          BoomLooper.StateKeeper.put_eval(eval_name, %{pid: self(), source: source, started_at: DateTime.utc_now(), status: :crashed, result: %{outcome: :crashed, error: inspect({kind, reason})}})
-      after
-        # Clear IExSession when eval is done (success, failure, or crash)
-        BoomLooper.IExSession.disconnect()
-      end
-    end)
+        try do
+          do_run(source, opts)
+        rescue
+          e ->
+            Logger.error(
+              "[EvalRunner] Eval crashed for #{eval_name}: #{Exception.message(e)}\n#{Exception.format_stacktrace(__STACKTRACE__)}"
+            )
+
+            BoomLooper.StateKeeper.put_eval(eval_name, %{
+              pid: self(),
+              source: source,
+              started_at: DateTime.utc_now(),
+              status: :crashed,
+              result: %{outcome: :crashed, error: Exception.message(e)}
+            })
+        catch
+          kind, reason ->
+            Logger.error("[EvalRunner] Eval crashed for #{eval_name}: #{inspect({kind, reason})}")
+
+            BoomLooper.StateKeeper.put_eval(eval_name, %{
+              pid: self(),
+              source: source,
+              started_at: DateTime.utc_now(),
+              status: :crashed,
+              result: %{outcome: :crashed, error: inspect({kind, reason})}
+            })
+        after
+          # Clear IExSession when eval is done (success, failure, or crash)
+          BoomLooper.IExSession.disconnect()
+        end
+      end)
 
     {:ok, pid}
   end
@@ -113,7 +141,13 @@ defmodule BoomLooper.EvalRunner do
     BoomLooper.StateKeeper.list_evals()
     |> Enum.map(fn {name, info} ->
       running = is_pid(info.pid) and Process.alive?(info.pid)
-      %{name: name, status: if(running, do: :running, else: info.status), started_at: info.started_at, result: info[:result]}
+
+      %{
+        name: name,
+        status: if(running, do: :running, else: info.status),
+        started_at: info.started_at,
+        result: info[:result]
+      }
     end)
   end
 
@@ -144,7 +178,9 @@ defmodule BoomLooper.EvalRunner do
       File.mkdir_p!(Path.dirname(project_path))
 
       case host_git_clone(source, branch, project_path) do
-        {:ok, _} -> :ok
+        {:ok, _} ->
+          :ok
+
         {:error, reason} ->
           record_eval_failure(eval_name, source, started_at, "Clone failed: #{reason}")
           raise "Clone failed: #{reason}"
@@ -155,6 +191,7 @@ defmodule BoomLooper.EvalRunner do
     # local-path evals — the Local adapter just needs a directory with code)
     BoomLooper.IExSession.working("eval: #{eval_name} — adding project")
     effective_source = if is_git_url, do: project_path, else: Path.expand(source)
+
     case ProjectRegistry.add(effective_source) do
       {:ok, project, workspace} ->
         project_dir = workspace.path
@@ -167,7 +204,7 @@ defmodule BoomLooper.EvalRunner do
 
         # Kill existing eval agents, then spawn a new one
         for agent <- ChatAgent.list_agents(),
-            (agent[:workspace_id] == workspace.id || agent[:working_dir] == project_dir),
+            agent[:workspace_id] == workspace.id || agent[:working_dir] == project_dir,
             agent[:started_by] == "eval_runner" do
           ChatAgent.stop_agent(agent.id)
           ChatAgent.remove_agent(agent.id)
@@ -219,23 +256,29 @@ defmodule BoomLooper.EvalRunner do
 
         # Record
         duration_ms = System.monotonic_time(:millisecond) - started_at
-        result = Map.merge(result, %{
-          source: source,
-          project_name: project.name,
-          project_path: project_dir,
-          agent_id: id,
-          duration_ms: duration_ms,
-          timestamp: DateTime.utc_now()
-        })
+
+        result =
+          Map.merge(result, %{
+            source: source,
+            project_name: project.name,
+            project_path: project_dir,
+            agent_id: id,
+            duration_ms: duration_ms,
+            timestamp: DateTime.utc_now()
+          })
 
         record_run(project.name, result)
         Logger.info("[EvalRunner] Eval complete for #{project.name}: #{result.outcome}")
 
         # Update ETS tracking
         eval_name = source |> extract_name() |> sanitize_name()
+
         case BoomLooper.StateKeeper.get_eval(eval_name) do
-          nil -> :ok
-          info -> BoomLooper.StateKeeper.put_eval(eval_name, %{info | status: :done, result: result})
+          nil ->
+            :ok
+
+          info ->
+            BoomLooper.StateKeeper.put_eval(eval_name, %{info | status: :done, result: result})
         end
 
         {:ok, result}
@@ -275,8 +318,11 @@ defmodule BoomLooper.EvalRunner do
         Logger.error("[EvalRunner] Eval failed for #{project_name}: #{reason}")
 
         case BoomLooper.StateKeeper.get_eval(eval_name) do
-          nil -> :ok
-          info -> BoomLooper.StateKeeper.put_eval(eval_name, %{info | status: :done, result: result})
+          nil ->
+            :ok
+
+          info ->
+            BoomLooper.StateKeeper.put_eval(eval_name, %{info | status: :done, result: result})
         end
 
         {:error, "Failed to add project: #{reason}"}
@@ -287,8 +333,8 @@ defmodule BoomLooper.EvalRunner do
 
   defp git_url?(source) do
     String.starts_with?(source, "https://") or
-    String.starts_with?(source, "http://") or
-    String.starts_with?(source, "git@")
+      String.starts_with?(source, "http://") or
+      String.starts_with?(source, "git@")
   end
 
   # Path where eval project clones live: evals/<name>/project/
@@ -307,11 +353,16 @@ defmodule BoomLooper.EvalRunner do
     unless git_path do
       {:error, "git not found on host PATH"}
     else
-      port = Port.open(
-        {:spawn_executable, git_path},
-        [:binary, :exit_status, :stderr_to_stdout,
-         {:args, ["clone", "--branch", branch, "--depth", "1", git_url, dest]}]
-      )
+      port =
+        Port.open(
+          {:spawn_executable, git_path},
+          [
+            :binary,
+            :exit_status,
+            :stderr_to_stdout,
+            {:args, ["clone", "--branch", branch, "--depth", "1", git_url, dest]}
+          ]
+        )
 
       collect_port_output(port, "", @clone_timeout)
     end
@@ -336,8 +387,22 @@ defmodule BoomLooper.EvalRunner do
 
   defp record_eval_failure(eval_name, source, started_at, error) do
     duration_ms = System.monotonic_time(:millisecond) - started_at
-    result = %{outcome: :failed, error: error, source: source, project_name: eval_name, duration_ms: duration_ms}
-    BoomLooper.StateKeeper.put_eval(eval_name, %{pid: self(), source: source, started_at: DateTime.utc_now(), status: :done, result: result})
+
+    result = %{
+      outcome: :failed,
+      error: error,
+      source: source,
+      project_name: eval_name,
+      duration_ms: duration_ms
+    }
+
+    BoomLooper.StateKeeper.put_eval(eval_name, %{
+      pid: self(),
+      source: source,
+      started_at: DateTime.utc_now(),
+      status: :done,
+      result: result
+    })
   end
 
   defp clean_eval_project(project_path) do
@@ -477,7 +542,12 @@ defmodule BoomLooper.EvalRunner do
     :inets.start()
     :ssl.start()
 
-    case :httpc.request(:get, {String.to_charlist(url), []}, [timeout: 5_000, connect_timeout: 3_000], body_format: :binary) do
+    case :httpc.request(
+           :get,
+           {String.to_charlist(url), []},
+           [timeout: 5_000, connect_timeout: 3_000],
+           body_format: :binary
+         ) do
       {:ok, {{_, status, _}, _headers, body}} ->
         {:ok, status, String.slice(to_string(body), 0..500)}
 
@@ -499,18 +569,36 @@ defmodule BoomLooper.EvalRunner do
   # single crash with any follow-up messages (tool calls the agent
   # made after auto-session-restart) would cause the detector to miss
   # the crash and the next :idle would burn a real nudge.
-  defp poll_agent(agent_id, deadline, interval, workspace_key, nudges, max_nudges, crashes_handled) do
+  defp poll_agent(
+         agent_id,
+         deadline,
+         interval,
+         workspace_key,
+         nudges,
+         max_nudges,
+         crashes_handled
+       ) do
     now = System.monotonic_time(:millisecond)
 
     if now >= deadline do
       state = ChatAgent.get_state(agent_id)
+
       case probe_web_service(workspace_key) do
         {:ok, status, body} when status in 200..399 ->
           # Accept 2xx success, 3xx redirects as "working"
           Logger.info("[EvalRunner] Timed out but web service is healthy (HTTP #{status})")
-          build_result(:success, state, workspace_key, nudges, %{http_status: status, http_body_preview: body})
+
+          build_result(:success, state, workspace_key, nudges, %{
+            http_status: status,
+            http_body_preview: body
+          })
+
         {:ok, status, body} ->
-          build_result(:web_error, state, workspace_key, nudges, %{http_status: status, http_body_preview: body})
+          build_result(:web_error, state, workspace_key, nudges, %{
+            http_status: status,
+            http_body_preview: body
+          })
+
         :no_response ->
           build_result(:timeout, state, workspace_key, nudges)
       end
@@ -518,11 +606,29 @@ defmodule BoomLooper.EvalRunner do
       case ChatAgent.get_state(agent_id) do
         nil ->
           Process.sleep(interval)
-          poll_agent(agent_id, deadline, interval, workspace_key, nudges, max_nudges, crashes_handled)
+
+          poll_agent(
+            agent_id,
+            deadline,
+            interval,
+            workspace_key,
+            nudges,
+            max_nudges,
+            crashes_handled
+          )
 
         %{status: status} when status in [:booting, :thinking] ->
           Process.sleep(interval)
-          poll_agent(agent_id, deadline, interval, workspace_key, nudges, max_nudges, crashes_handled)
+
+          poll_agent(
+            agent_id,
+            deadline,
+            interval,
+            workspace_key,
+            nudges,
+            max_nudges,
+            crashes_handled
+          )
 
         %{status: :idle} = state ->
           crashes_now = count_session_crashes(state)
@@ -530,7 +636,16 @@ defmodule BoomLooper.EvalRunner do
           cond do
             length(state.messages) < 2 ->
               Process.sleep(interval)
-              poll_agent(agent_id, deadline, interval, workspace_key, nudges, max_nudges, crashes_handled)
+
+              poll_agent(
+                agent_id,
+                deadline,
+                interval,
+                workspace_key,
+                nudges,
+                max_nudges,
+                crashes_handled
+              )
 
             # A new SDK crash has appeared since we last handled one.
             # Send a goal-reminding recovery message WITHOUT counting
@@ -542,17 +657,37 @@ defmodule BoomLooper.EvalRunner do
                 "[EvalRunner] Session crash ##{crashes_now} detected, retrying (not counted as nudge)"
               )
 
-              ChatAgent.send_message(agent_id,
+              ChatAgent.send_message(
+                agent_id,
                 "Your session died mid-task. Resume where you left off: the goal is a " <>
                   "web service reachable from the HOST at http://localhost:<published_port>. " <>
                   "Keep iterating — run `docker_compose up -d`, check `inspect_service dev`, " <>
-                  "and `probe_http` until it returns HTTP 2xx/3xx. Don't go idle until that's true.")
+                  "and `probe_http` until it returns HTTP 2xx/3xx. Don't go idle until that's true."
+              )
 
               Process.sleep(interval)
-              poll_agent(agent_id, deadline, interval, workspace_key, nudges, max_nudges, crashes_now)
+
+              poll_agent(
+                agent_id,
+                deadline,
+                interval,
+                workspace_key,
+                nudges,
+                max_nudges,
+                crashes_now
+              )
 
             true ->
-              handle_idle_probe(agent_id, state, deadline, interval, workspace_key, nudges, max_nudges, crashes_handled)
+              handle_idle_probe(
+                agent_id,
+                state,
+                deadline,
+                interval,
+                workspace_key,
+                nudges,
+                max_nudges,
+                crashes_handled
+              )
           end
 
         %{status: status} = state when status in [:stopped, :crashed] ->
@@ -560,7 +695,16 @@ defmodule BoomLooper.EvalRunner do
 
         _other ->
           Process.sleep(interval)
-          poll_agent(agent_id, deadline, interval, workspace_key, nudges, max_nudges, crashes_handled)
+
+          poll_agent(
+            agent_id,
+            deadline,
+            interval,
+            workspace_key,
+            nudges,
+            max_nudges,
+            crashes_handled
+          )
       end
     end
   end
@@ -669,7 +813,10 @@ defmodule BoomLooper.EvalRunner do
   """
   def wait_for_workspace_container(workspace_id, timeout_ms) do
     deadline = System.monotonic_time(:millisecond) + timeout_ms
-    container = BoomLooper.Workspace.ServiceManager.service_container_name(workspace_id, "workspace")
+
+    container =
+      BoomLooper.Workspace.ServiceManager.service_container_name(workspace_id, "workspace")
+
     wait_for_workspace_container_loop(container, deadline, workspace_id)
   end
 
@@ -717,10 +864,20 @@ defmodule BoomLooper.EvalRunner do
     end)
   end
 
-  defp handle_idle_probe(agent_id, state, deadline, interval, workspace_key, nudges, max_nudges, crashes_handled) do
+  defp handle_idle_probe(
+         agent_id,
+         state,
+         deadline,
+         interval,
+         workspace_key,
+         nudges,
+         max_nudges,
+         crashes_handled
+       ) do
     case probe_web_service(workspace_key) do
       {:ok, status, body} when status in 200..399 ->
         Logger.info("[EvalRunner] Web service healthy (HTTP #{status}), declaring success")
+
         build_result(:success, state, workspace_key, nudges, %{
           http_status: status,
           http_body_preview: body
@@ -728,16 +885,28 @@ defmodule BoomLooper.EvalRunner do
 
       {:ok, status, body} ->
         Logger.info("[EvalRunner] Web service error (HTTP #{status}), nudging with error body")
+
         if nudges >= max_nudges do
           build_result(:web_error, state, workspace_key, nudges, %{
             http_status: status,
             http_body_preview: body
           })
         else
-          nudge_msg = "The web service is returning HTTP #{status}. Here's the response body — fix the issue:\n\n```\n#{body}\n```"
+          nudge_msg =
+            "The web service is returning HTTP #{status}. Here's the response body — fix the issue:\n\n```\n#{body}\n```"
+
           ChatAgent.send_message(agent_id, nudge_msg)
           Process.sleep(interval)
-          poll_agent(agent_id, deadline, interval, workspace_key, nudges + 1, max_nudges, crashes_handled)
+
+          poll_agent(
+            agent_id,
+            deadline,
+            interval,
+            workspace_key,
+            nudges + 1,
+            max_nudges,
+            crashes_handled
+          )
         end
 
       :no_response ->
@@ -745,11 +914,23 @@ defmodule BoomLooper.EvalRunner do
           Logger.warning("[EvalRunner] Agent #{agent_id} idle after #{nudges} nudges, giving up")
           build_result(:stalled, state, workspace_key, nudges)
         else
-          Logger.info("[EvalRunner] Agent #{agent_id} idle, no web response, nudging (#{nudges + 1}/#{max_nudges})")
+          Logger.info(
+            "[EvalRunner] Agent #{agent_id} idle, no web response, nudging (#{nudges + 1}/#{max_nudges})"
+          )
+
           nudge_msg = build_stall_nudge(workspace_key, nudges + 1, max_nudges)
           ChatAgent.send_message(agent_id, nudge_msg)
           Process.sleep(interval)
-          poll_agent(agent_id, deadline, interval, workspace_key, nudges + 1, max_nudges, crashes_handled)
+
+          poll_agent(
+            agent_id,
+            deadline,
+            interval,
+            workspace_key,
+            nudges + 1,
+            max_nudges,
+            crashes_handled
+          )
         end
     end
   end
@@ -876,6 +1057,7 @@ defmodule BoomLooper.EvalRunner do
     if Path.basename(project_path) == "project" do
       parent = Path.dirname(project_path)
       grandparent = Path.dirname(parent)
+
       if Path.basename(grandparent) == "evals" do
         # Write to sibling runs/ directory
         Path.join(parent, "runs")
@@ -895,8 +1077,11 @@ defmodule BoomLooper.EvalRunner do
 
     errors_section =
       case result.error_messages do
-        [] -> "None"
-        errors -> Enum.map_join(errors, "\n", fn e -> "- #{String.slice(to_string(e), 0..200)}" end)
+        [] ->
+          "None"
+
+        errors ->
+          Enum.map_join(errors, "\n", fn e -> "- #{String.slice(to_string(e), 0..200)}" end)
       end
 
     tools_section =
@@ -930,14 +1115,14 @@ defmodule BoomLooper.EvalRunner do
 
     #{errors_section}
     #{if result[:http_body_preview] do
-    """
+      """
 
-    ## HTTP Response
+      ## HTTP Response
 
-    ```
-    #{result.http_body_preview}
-    ```
-    """
+      ```
+      #{result.http_body_preview}
+      ```
+      """
     else
       ""
     end}

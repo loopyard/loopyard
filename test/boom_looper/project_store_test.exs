@@ -8,7 +8,9 @@ defmodule BoomLooper.ProjectStoreTest do
 
   setup do
     # Use a temp directory for BOOMLOOPER_HOME
-    tmp_dir = Path.join(System.tmp_dir!(), "project_store_test_#{:erlang.unique_integer([:positive])}")
+    tmp_dir =
+      Path.join(System.tmp_dir!(), "project_store_test_#{:erlang.unique_integer([:positive])}")
+
     File.mkdir_p!(tmp_dir)
 
     # Set env var for this test
@@ -22,6 +24,7 @@ defmodule BoomLooper.ProjectStoreTest do
       else
         System.delete_env("BOOMLOOPER_HOME")
       end
+
       File.rm_rf(tmp_dir)
     end)
 
@@ -51,6 +54,7 @@ defmodule BoomLooper.ProjectStoreTest do
           %{"path" => "/path/to/project2"}
         ]
       }
+
       File.mkdir_p!(Path.dirname(ProjectStore.path()))
       File.write!(ProjectStore.path(), Jason.encode!(data))
 
@@ -70,6 +74,7 @@ defmodule BoomLooper.ProjectStoreTest do
           %{"path" => "/another/valid"}
         ]
       }
+
       File.mkdir_p!(Path.dirname(ProjectStore.path()))
       File.write!(ProjectStore.path(), Jason.encode!(data))
 
@@ -85,6 +90,7 @@ defmodule BoomLooper.ProjectStoreTest do
           %{"path" => "https://github.com/owner/repo.git"}
         ]
       }
+
       File.mkdir_p!(Path.dirname(ProjectStore.path()))
       File.write!(ProjectStore.path(), Jason.encode!(data))
 
@@ -99,6 +105,7 @@ defmodule BoomLooper.ProjectStoreTest do
           %{"path" => "/any/path", "source_type" => "github"}
         ]
       }
+
       File.mkdir_p!(Path.dirname(ProjectStore.path()))
       File.write!(ProjectStore.path(), Jason.encode!(data))
 

@@ -48,8 +48,11 @@ defmodule Mix.Tasks.Boom.Setup do
 
   defp brew_bundle do
     if System.find_executable("brew") do
-      {output, code} = System.cmd("brew", ["bundle", "install", "--no-lock"],
-        cd: File.cwd!(), stderr_to_stdout: true)
+      {output, code} =
+        System.cmd("brew", ["bundle", "install", "--no-lock"],
+          cd: File.cwd!(),
+          stderr_to_stdout: true
+        )
 
       if code == 0, do: :ok, else: {:error, output}
     else

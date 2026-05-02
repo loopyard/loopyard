@@ -8,7 +8,8 @@ defmodule BoomLooper.VolumeCloner do
 
   require Logger
 
-  @clone_timeout 300_000  # 5 minutes
+  # 5 minutes
+  @clone_timeout 300_000
 
   @doc """
   Clone a git repository into a volume.
@@ -26,7 +27,9 @@ defmodule BoomLooper.VolumeCloner do
 
     case BoomLooper.VolumeManager.create_volume(volume_name) do
       :ok ->
-        Logger.info("[VolumeCloner] Cloning #{git_url} (branch: #{branch}) into volume #{volume_name}")
+        Logger.info(
+          "[VolumeCloner] Cloning #{git_url} (branch: #{branch}) into volume #{volume_name}"
+        )
 
         # Clone on the HOST using the host's git binary. Picks up SSH keys,
         # credential helpers, .gitconfig — whatever the user has configured.
@@ -89,11 +92,16 @@ defmodule BoomLooper.VolumeCloner do
     unless git_path do
       {:error, "git not found on host PATH"}
     else
-      port = Port.open(
-        {:spawn_executable, git_path},
-        [:binary, :exit_status, :stderr_to_stdout,
-         {:args, ["clone", "--branch", branch, "--depth", "1", git_url, dest]}]
-      )
+      port =
+        Port.open(
+          {:spawn_executable, git_path},
+          [
+            :binary,
+            :exit_status,
+            :stderr_to_stdout,
+            {:args, ["clone", "--branch", branch, "--depth", "1", git_url, dest]}
+          ]
+        )
 
       collect_clone_output(port, callback, "", @clone_timeout)
     end

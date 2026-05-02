@@ -9,8 +9,7 @@ defmodule BoomLooper.Tools.Container.VolumesTest do
   setup do
     # Seed the chat_agents ETS table with a fake agent scoped to
     # @workspace_id. The Volumes tool looks up workspace_id from here.
-    :ets.insert(:chat_agents, {@agent_id,
-                               %{id: @agent_id, workspace_id: @workspace_id}})
+    :ets.insert(:chat_agents, {@agent_id, %{id: @agent_id, workspace_id: @workspace_id}})
     on_exit(fn -> :ets.delete(:chat_agents, @agent_id) end)
     :ok
   end
@@ -54,7 +53,9 @@ defmodule BoomLooper.Tools.Container.VolumesTest do
       own = "bl-#{@workspace_id}-code"
 
       case Volumes.execute(%{agent_id: @agent_id, action: "info #{own}"}, %{}) do
-        {:ok, _} -> :ok
+        {:ok, _} ->
+          :ok
+
         # "Volume not found" is the expected error from volume_info when
         # the volume doesn't exist — that means authorization passed.
         {:error, msg} ->

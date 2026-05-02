@@ -1,7 +1,8 @@
 defmodule BoomLooper.Tools.Container.Tree do
   use BoomLooper.Tool,
     name: "tree",
-    description: "Print a directory tree from inside the workspace. ONE call gives spatial awareness of the whole project — file types, sizes, hierarchy. PREFER THIS over `exec(\"ls -la\")` or `exec(\"find ...\")` for discovery. Auto-excludes .git, node_modules, vendor/bundle, _build, deps, .next, dist, target, .venv, __pycache__.",
+    description:
+      "Print a directory tree from inside the workspace. ONE call gives spatial awareness of the whole project — file types, sizes, hierarchy. PREFER THIS over `exec(\"ls -la\")` or `exec(\"find ...\")` for discovery. Auto-excludes .git, node_modules, vendor/bundle, _build, deps, .next, dist, target, .venv, __pycache__.",
     busy_words: ["mapping the codebase", "surveying", "exploring"],
     params: [
       agent_id: {:string, required: true},

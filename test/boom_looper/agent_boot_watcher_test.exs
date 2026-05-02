@@ -85,7 +85,15 @@ defmodule BoomLooper.AgentBootWatcherTest do
 
       # Pre-populate ETS with a non-:booting status, as if the agent
       # had already finished booting and transitioned.
-      summary = %{id: id, status: :idle, name: "already ready", working_dir: File.cwd!(), started_at: DateTime.utc_now(), last_activity_at: DateTime.utc_now()}
+      summary = %{
+        id: id,
+        status: :idle,
+        name: "already ready",
+        working_dir: File.cwd!(),
+        started_at: DateTime.utc_now(),
+        last_activity_at: DateTime.utc_now()
+      }
+
       :ets.insert(:chat_agents, {id, summary})
 
       run_watcher(self(), id, fn -> raise "boot exploded" end)

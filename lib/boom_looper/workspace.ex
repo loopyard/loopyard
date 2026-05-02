@@ -13,10 +13,14 @@ defmodule BoomLooper.Workspace do
   @config_file "workspace.json"
 
   defstruct [
-    :name,          # Display name in the UI
-    :system_prompt, # System prompt fragment for future agents
-    :git_url,       # Git repository URL (e.g., "git@github.com:owner/repo.git")
-    :branch         # Branch name (e.g., "main")
+    # Display name in the UI
+    :name,
+    # System prompt fragment for future agents
+    :system_prompt,
+    # Git repository URL (e.g., "git@github.com:owner/repo.git")
+    :git_url,
+    # Branch name (e.g., "main")
+    :branch
   ]
 
   @doc "Path to the workspace config file for a given project directory"
@@ -120,7 +124,9 @@ defmodule BoomLooper.Workspace do
   use container tools (exec, read_file) — not host-side file access.
   """
   def container_running?(workspace_id) do
-    container = BoomLooper.Workspace.ServiceManager.service_container_name(workspace_id, "workspace")
+    container =
+      BoomLooper.Workspace.ServiceManager.service_container_name(workspace_id, "workspace")
+
     BoomLooper.Docker.container_running?(container)
   end
 
@@ -134,7 +140,6 @@ defmodule BoomLooper.Workspace do
   def ready?(%{setup: %{phase: :ready}}), do: true
   def ready?(%{setup: _}), do: false
   def ready?(_), do: true
-
 
   @doc """
   Resolve workspace ID from a project directory path.

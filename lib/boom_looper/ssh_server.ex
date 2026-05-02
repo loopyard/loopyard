@@ -30,12 +30,13 @@ defmodule BoomLooper.SSHServer do
 
   @impl true
   def init(opts) do
-    port = Keyword.get_lazy(opts, :port, fn ->
-      case System.get_env("SSH_PORT") do
-        nil -> @default_port
-        val -> String.to_integer(val)
-      end
-    end)
+    port =
+      Keyword.get_lazy(opts, :port, fn ->
+        case System.get_env("SSH_PORT") do
+          nil -> @default_port
+          val -> String.to_integer(val)
+        end
+      end)
 
     system_dir = ensure_host_keys()
     :ssh.start()
@@ -87,6 +88,7 @@ defmodule BoomLooper.SSHServer do
     case :ssh.daemon_info(daemon) do
       {:ok, info} ->
         Keyword.get(info, :port, 0)
+
       _ ->
         0
     end

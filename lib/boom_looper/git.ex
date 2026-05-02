@@ -73,11 +73,13 @@ defmodule BoomLooper.Git do
   def remote_branches(repo_path) do
     case git(["branch", "-r", "--format", "%(refname:short)"], cd: repo_path) do
       {:ok, output} ->
-        branches = output
+        branches =
+          output
           |> String.split("\n", trim: true)
           |> Enum.map(&String.trim/1)
           |> Enum.reject(&String.starts_with?(&1, "origin/HEAD"))
           |> Enum.map(&String.replace_prefix(&1, "origin/", ""))
+
         {:ok, branches}
 
       {:error, reason} ->
@@ -154,8 +156,10 @@ defmodule BoomLooper.Git do
               cond do
                 index == "?" and worktree == "?" ->
                   [%{status: "??", path: file_path} | unstaged_acc]
+
                 worktree not in [" ", nil] ->
                   [%{status: worktree, path: file_path} | unstaged_acc]
+
                 true ->
                   unstaged_acc
               end
@@ -194,13 +198,14 @@ defmodule BoomLooper.Git do
               [sha, message, author, date] ->
                 files = parse_numstat(rest)
 
-                {:ok, %{
-                  sha: sha,
-                  message: message,
-                  author: author,
-                  date: date,
-                  files: files
-                }}
+                {:ok,
+                 %{
+                   sha: sha,
+                   message: message,
+                   author: author,
+                   date: date,
+                   files: files
+                 }}
 
               _ ->
                 {:error, "Could not parse commit header"}
@@ -234,6 +239,7 @@ defmodule BoomLooper.Git do
           insertions = if ins == "-", do: 0, else: String.to_integer(ins)
           deletions = if del == "-", do: 0, else: String.to_integer(del)
           [%{path: path, insertions: insertions, deletions: deletions}]
+
         _ ->
           []
       end
@@ -285,14 +291,26 @@ defmodule BoomLooper.Git do
     |> String.split("\n\n", trim: true)
     |> Enum.map(fn block ->
       lines = String.split(block, "\n", trim: true)
+
       Enum.reduce(lines, %{}, fn line, acc ->
         cond do
-          String.starts_with?(line, "worktree ") -> Map.put(acc, :path, String.trim_leading(line, "worktree "))
-          String.starts_with?(line, "HEAD ") -> Map.put(acc, :head, String.trim_leading(line, "HEAD "))
-          String.starts_with?(line, "branch ") -> Map.put(acc, :branch, String.trim_leading(line, "branch refs/heads/"))
-          line == "bare" -> Map.put(acc, :bare, true)
-          line == "detached" -> Map.put(acc, :detached, true)
-          true -> acc
+          String.starts_with?(line, "worktree ") ->
+            Map.put(acc, :path, String.trim_leading(line, "worktree "))
+
+          String.starts_with?(line, "HEAD ") ->
+            Map.put(acc, :head, String.trim_leading(line, "HEAD "))
+
+          String.starts_with?(line, "branch ") ->
+            Map.put(acc, :branch, String.trim_leading(line, "branch refs/heads/"))
+
+          line == "bare" ->
+            Map.put(acc, :bare, true)
+
+          line == "detached" ->
+            Map.put(acc, :detached, true)
+
+          true ->
+            acc
         end
       end)
     end)

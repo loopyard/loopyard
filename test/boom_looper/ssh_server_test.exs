@@ -26,12 +26,17 @@ defmodule BoomLooper.SSHServerTest do
   # --- Helpers ---
 
   defp connect(user, user_dir, ssh_port) do
-    :ssh.connect(~c"localhost", ssh_port, [
-      user: String.to_charlist(user),
-      user_dir: String.to_charlist(user_dir),
-      silently_accept_hosts: true,
-      user_interaction: false
-    ], 5_000)
+    :ssh.connect(
+      ~c"localhost",
+      ssh_port,
+      [
+        user: String.to_charlist(user),
+        user_dir: String.to_charlist(user_dir),
+        silently_accept_hosts: true,
+        user_interaction: false
+      ],
+      5_000
+    )
   end
 
   defp open_shell(conn) do
@@ -45,6 +50,7 @@ defmodule BoomLooper.SSHServerTest do
 
   defp local_shell_cmd do
     script = System.find_executable("script")
+
     case :os.type() do
       {:unix, :darwin} -> {script, ["-q", "/dev/null", "/bin/sh"]}
       _ -> {script, ["-qc", "/bin/sh", "/dev/null"]}
@@ -52,8 +58,11 @@ defmodule BoomLooper.SSHServerTest do
   end
 
   defp start_terminal(container) do
-    {:ok, pid} = GenServer.start_link(Terminal, [container: container, cmd: local_shell_cmd()],
-      name: {:via, Registry, {BoomLooper.TerminalRegistry, container}})
+    {:ok, pid} =
+      GenServer.start_link(Terminal, [container: container, cmd: local_shell_cmd()],
+        name: {:via, Registry, {BoomLooper.TerminalRegistry, container}}
+      )
+
     Process.sleep(400)
     {:ok, pid}
   end
@@ -62,6 +71,7 @@ defmodule BoomLooper.SSHServerTest do
     if Process.alive?(pid) do
       GenServer.cast(pid, {:input, "exit\n"})
       ref = Process.monitor(pid)
+
       receive do
         {:DOWN, ^ref, _, _, _} -> :ok
       after
@@ -82,8 +92,10 @@ defmodule BoomLooper.SSHServerTest do
   defp collect_pubsub(timeout), do: pubsub_loop("", timeout)
 
   defp pubsub_loop(acc, remaining) when remaining <= 0, do: acc
+
   defp pubsub_loop(acc, remaining) do
     start = System.monotonic_time(:millisecond)
+
     receive do
       %BoomLooper.Events.Terminal.Output{data: data} ->
         pubsub_loop(acc <> data, remaining - (System.monotonic_time(:millisecond) - start))
@@ -103,11 +115,18 @@ defmodule BoomLooper.SSHServerTest do
   defp collect_ssh(conn, chan, timeout), do: ssh_loop(conn, chan, "", timeout)
 
   defp ssh_loop(_conn, _chan, acc, remaining) when remaining <= 0, do: acc
+
   defp ssh_loop(conn, chan, acc, remaining) do
     start = System.monotonic_time(:millisecond)
+
     receive do
       {:ssh_cm, ^conn, {:data, ^chan, _, data}} ->
-        ssh_loop(conn, chan, acc <> to_string(data), remaining - (System.monotonic_time(:millisecond) - start))
+        ssh_loop(
+          conn,
+          chan,
+          acc <> to_string(data),
+          remaining - (System.monotonic_time(:millisecond) - start)
+        )
     after
       remaining -> acc
     end
@@ -147,7 +166,10 @@ defmodule BoomLooper.SSHServerTest do
 
   describe "raw byte I/O" do
     @tag timeout: 10_000
-    test "SSH sends individual characters immediately (no line buffering)", %{user_dir: user_dir, ssh_port: ssh_port} do
+    test "SSH sends individual characters immediately (no line buffering)", %{
+      user_dir: user_dir,
+      ssh_port: ssh_port
+    } do
       container = "ssh-raw-#{:rand.uniform(100_000)}"
       {:ok, terminal_pid} = start_terminal(container)
 

@@ -41,7 +41,9 @@ defmodule Mix.Tasks.Boom.Rpc do
           Mix.raise("RPC failed: #{inspect(reason)}")
 
         {value, _bindings} ->
-          Mix.shell().info(inspect(value, pretty: true, limit: :infinity, printable_limit: :infinity))
+          Mix.shell().info(
+            inspect(value, pretty: true, limit: :infinity, printable_limit: :infinity)
+          )
       end
     after
       # Only disconnect if the command didn't claim the session.
@@ -57,15 +59,21 @@ defmodule Mix.Tasks.Boom.Rpc do
     cookie = read_cookie()
 
     sname = :"rpc_#{System.pid()}_#{System.monotonic_time()}"
+
     case Node.start(sname, :shortnames) do
-      {:ok, _} -> Node.set_cookie(cookie)
+      {:ok, _} ->
+        Node.set_cookie(cookie)
+
       {:error, reason} ->
         Mix.raise("Could not start distributed node: #{inspect(reason)}. Is epmd running?")
     end
 
     case :net_adm.ping(node) do
-      :pong -> :ok
-      :pang -> Mix.raise("BoomLooper node (#{node}) is not reachable. Start with: mix boom.server")
+      :pong ->
+        :ok
+
+      :pang ->
+        Mix.raise("BoomLooper node (#{node}) is not reachable. Start with: mix boom.server")
     end
 
     {node, cookie}

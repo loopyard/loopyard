@@ -287,8 +287,7 @@ defmodule BoomLooper.Saga do
               })
             )
 
-            {:error, {:step_failed, failed_step, reason},
-             {:rollback_failed, failed_rollbacks}}
+            {:error, {:step_failed, failed_step, reason}, {:rollback_failed, failed_rollbacks}}
         end
     end
   end
@@ -456,14 +455,10 @@ defmodule BoomLooper.Saga do
 
       {:error, reason} = err ->
         if journal? do
-          BoomLooper.Saga.Journal.append(
-            {:rollback_failed, saga_id, step.name, inspect(reason)}
-          )
+          BoomLooper.Saga.Journal.append({:rollback_failed, saga_id, step.name, inspect(reason)})
         end
 
-        Logger.warning(
-          "[Saga] #{name} rollback step #{step.name} failed: #{inspect(reason)}"
-        )
+        Logger.warning("[Saga] #{name} rollback step #{step.name} failed: #{inspect(reason)}")
 
         :telemetry.execute(
           [:boom_looper, :saga, :rollback_failed],
@@ -482,9 +477,7 @@ defmodule BoomLooper.Saga do
         reason = {:bad_return, other}
 
         if journal? do
-          BoomLooper.Saga.Journal.append(
-            {:rollback_failed, saga_id, step.name, inspect(reason)}
-          )
+          BoomLooper.Saga.Journal.append({:rollback_failed, saga_id, step.name, inspect(reason)})
         end
 
         Logger.warning(
@@ -512,7 +505,8 @@ defmodule BoomLooper.Saga do
 
   # ── Helpers ──
 
-  defp validate_step!(%{name: name, run: run} = step) when is_atom(name) and is_function(run, 1) do
+  defp validate_step!(%{name: name, run: run} = step)
+       when is_atom(name) and is_function(run, 1) do
     step
   end
 

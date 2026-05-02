@@ -17,7 +17,7 @@ defmodule BoomLooperWeb.SystemLiveTest do
       # (`docker stats --no-stream` alone takes 1-2s). 500ms is generous;
       # the actual goal is <100ms but tests have setup overhead.
       assert micros < 500_000,
-        "SystemLive mount took #{div(micros, 1000)}ms — synchronous slow call slipped in"
+             "SystemLive mount took #{div(micros, 1000)}ms — synchronous slow call slipped in"
 
       assert html =~ "Host System"
       assert html =~ "BEAM VM"

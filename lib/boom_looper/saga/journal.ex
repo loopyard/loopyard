@@ -360,8 +360,12 @@ defmodule BoomLooper.Saga.Journal do
               end
 
             {:ok,
-             %{before: before_size, after: after_size, kept: length(kept),
-               dropped: length(records) - length(kept)}}
+             %{
+               before: before_size,
+               after: after_size,
+               kept: length(kept),
+               dropped: length(records) - length(kept)
+             }}
 
           {:error, reason} ->
             File.rm(temp)
@@ -552,20 +556,24 @@ defmodule BoomLooper.Saga.Journal do
 
   defp apply_record({:step_succeeded, id, step_name, _ctx_after} = rec, acc) do
     update_in_acc(acc, id, fn s ->
-      %{s |
-        completed_steps: s.completed_steps ++ [step_name],
-        started_step: nil,
-        trace: s.trace ++ [rec]}
+      %{
+        s
+        | completed_steps: s.completed_steps ++ [step_name],
+          started_step: nil,
+          trace: s.trace ++ [rec]
+      }
     end)
   end
 
   defp apply_record({:step_failed, id, step_name, reason} = rec, acc) do
     update_in_acc(acc, id, fn s ->
-      %{s |
-        failed_step: step_name,
-        failure_reason: reason,
-        started_step: nil,
-        trace: s.trace ++ [rec]}
+      %{
+        s
+        | failed_step: step_name,
+          failure_reason: reason,
+          started_step: nil,
+          trace: s.trace ++ [rec]
+      }
     end)
   end
 

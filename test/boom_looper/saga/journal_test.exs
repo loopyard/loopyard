@@ -78,9 +78,7 @@ defmodule BoomLooper.Saga.JournalTest do
     end
 
     test "sagas with :saga_completed are excluded" do
-      Journal.append(
-        {:saga_started, 2, :done_saga, %{}, :rollback, [:s1], 100}
-      )
+      Journal.append({:saga_started, 2, :done_saga, %{}, :rollback, [:s1], 100})
 
       Journal.append({:step_started, 2, :s1, %{}})
       Journal.append({:step_succeeded, 2, :s1, %{}})
@@ -90,9 +88,7 @@ defmodule BoomLooper.Saga.JournalTest do
     end
 
     test "sagas with :saga_rolled_back are excluded" do
-      Journal.append(
-        {:saga_started, 3, :rb_saga, %{}, :rollback, [:s1], 100}
-      )
+      Journal.append({:saga_started, 3, :rb_saga, %{}, :rollback, [:s1], 100})
 
       Journal.append({:step_started, 3, :s1, %{}})
       Journal.append({:step_failed, 3, :s1, "boom"})
@@ -168,9 +164,7 @@ defmodule BoomLooper.Saga.JournalTest do
       # is exactly the shape "kill -9 mid-step" leaves on disk.
       saga_id = :erlang.unique_integer([:positive, :monotonic])
 
-      Journal.append(
-        {:saga_started, saga_id, :crashy, %{ws: "w1"}, :rollback, [:a, :b], 0}
-      )
+      Journal.append({:saga_started, saga_id, :crashy, %{ws: "w1"}, :rollback, [:a, :b], 0})
 
       Journal.append({:step_started, saga_id, :a, %{}})
 
@@ -204,15 +198,11 @@ defmodule BoomLooper.Saga.JournalTest do
       sid1 = :erlang.unique_integer([:positive, :monotonic])
       sid2 = :erlang.unique_integer([:positive, :monotonic])
 
-      Journal.append(
-        {:saga_started, sid1, :crashy1, %{}, :rollback, [:a], 0}
-      )
+      Journal.append({:saga_started, sid1, :crashy1, %{}, :rollback, [:a], 0})
 
       Journal.append({:step_started, sid1, :a, %{}})
 
-      Journal.append(
-        {:saga_started, sid2, :crashy2, %{}, :manual, [:a], 0}
-      )
+      Journal.append({:saga_started, sid2, :crashy2, %{}, :manual, [:a], 0})
 
       Journal.append({:step_started, sid2, :a, %{}})
 
@@ -272,9 +262,7 @@ defmodule BoomLooper.Saga.JournalTest do
 
   describe "corruption handling" do
     test "truncated trailing bytes are silently ignored (no crash)" do
-      Journal.append(
-        {:saga_started, 1, :ok_saga, %{}, :rollback, [:a], 0}
-      )
+      Journal.append({:saga_started, 1, :ok_saga, %{}, :rollback, [:a], 0})
 
       Journal.append({:step_started, 1, :a, %{}})
       Journal.append({:step_succeeded, 1, :a, %{}})

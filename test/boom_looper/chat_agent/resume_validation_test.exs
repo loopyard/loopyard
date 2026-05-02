@@ -60,7 +60,7 @@ defmodule BoomLooper.ChatAgent.ResumeValidationTest do
 
       # Call GenServer.start_link directly (bypassing TestHelpers so
       # we can capture the stop reason).
-      result = GenServer.start_link(ChatAgent, [id: id, resume: true, backend: RecordingBackend])
+      result = GenServer.start_link(ChatAgent, id: id, resume: true, backend: RecordingBackend)
 
       assert {:error, {:corrupted_resume_state, missing}} = result
       assert :working_dir in missing
@@ -88,7 +88,7 @@ defmodule BoomLooper.ChatAgent.ResumeValidationTest do
 
       Process.flag(:trap_exit, true)
 
-      result = GenServer.start_link(ChatAgent, [id: id, resume: true, backend: RecordingBackend])
+      result = GenServer.start_link(ChatAgent, id: id, resume: true, backend: RecordingBackend)
 
       assert {:error, {:corrupted_resume_state, missing}} = result
       assert :name in missing
@@ -98,7 +98,10 @@ defmodule BoomLooper.ChatAgent.ResumeValidationTest do
     test "valid summary → resumes cleanly" do
       id = "valid-resume-#{:rand.uniform(100_000)}"
       now = DateTime.utc_now()
-      tmp_dir = Path.join(System.tmp_dir!(), "resume-valid-#{:erlang.unique_integer([:positive])}")
+
+      tmp_dir =
+        Path.join(System.tmp_dir!(), "resume-valid-#{:erlang.unique_integer([:positive])}")
+
       File.mkdir_p!(tmp_dir)
 
       summary = %{
@@ -121,6 +124,7 @@ defmodule BoomLooper.ChatAgent.ResumeValidationTest do
         catch
           :exit, _ -> :ok
         end
+
         :ets.delete(:chat_agents, id)
         File.rm_rf!(tmp_dir)
       end)

@@ -7,7 +7,9 @@ defmodule BoomLooper.AgentLogTest do
 
   setup do
     # Create a unique temp directory for each test
-    tmp_dir = Path.join(System.tmp_dir!(), "agent_log_test_#{:erlang.unique_integer([:positive])}")
+    tmp_dir =
+      Path.join(System.tmp_dir!(), "agent_log_test_#{:erlang.unique_integer([:positive])}")
+
     File.mkdir_p!(tmp_dir)
     log_path = Path.join(tmp_dir, "agents.log")
 
@@ -165,9 +167,21 @@ defmodule BoomLooper.AgentLogTest do
 
     test "replays multiple messages in order", %{log_path: log_path} do
       AgentLog.append({:agent, "agent-1", %{name: "Test"}}, log_path: log_path, version: @version)
-      AgentLog.append({:msg, "agent-1", %{id: "m1", role: :user, content: "First"}}, log_path: log_path, version: @version)
-      AgentLog.append({:msg, "agent-1", %{id: "m2", role: :assistant, content: "Second"}}, log_path: log_path, version: @version)
-      AgentLog.append({:msg, "agent-1", %{id: "m3", role: :user, content: "Third"}}, log_path: log_path, version: @version)
+
+      AgentLog.append({:msg, "agent-1", %{id: "m1", role: :user, content: "First"}},
+        log_path: log_path,
+        version: @version
+      )
+
+      AgentLog.append({:msg, "agent-1", %{id: "m2", role: :assistant, content: "Second"}},
+        log_path: log_path,
+        version: @version
+      )
+
+      AgentLog.append({:msg, "agent-1", %{id: "m3", role: :user, content: "Third"}},
+        log_path: log_path,
+        version: @version
+      )
 
       {:ok, state} = AgentLog.replay(log_path: log_path, version: @version)
 
@@ -178,10 +192,27 @@ defmodule BoomLooper.AgentLogTest do
 
     test "replays message update", %{log_path: log_path} do
       AgentLog.append({:agent, "agent-1", %{name: "Test"}}, log_path: log_path, version: @version)
-      AgentLog.append({:msg, "agent-1", %{id: "m1", role: :build, content: ""}}, log_path: log_path, version: @version)
-      AgentLog.append({:msg_update, "agent-1", "m1", %{content: "line 1\n"}}, log_path: log_path, version: @version)
-      AgentLog.append({:msg_update, "agent-1", "m1", %{content: "line 1\nline 2\n"}}, log_path: log_path, version: @version)
-      AgentLog.append({:msg_update, "agent-1", "m1", %{role: :build_done, content: "final output"}}, log_path: log_path, version: @version)
+
+      AgentLog.append({:msg, "agent-1", %{id: "m1", role: :build, content: ""}},
+        log_path: log_path,
+        version: @version
+      )
+
+      AgentLog.append({:msg_update, "agent-1", "m1", %{content: "line 1\n"}},
+        log_path: log_path,
+        version: @version
+      )
+
+      AgentLog.append({:msg_update, "agent-1", "m1", %{content: "line 1\nline 2\n"}},
+        log_path: log_path,
+        version: @version
+      )
+
+      AgentLog.append(
+        {:msg_update, "agent-1", "m1", %{role: :build_done, content: "final output"}},
+        log_path: log_path,
+        version: @version
+      )
 
       {:ok, state} = AgentLog.replay(log_path: log_path, version: @version)
 
@@ -191,10 +222,25 @@ defmodule BoomLooper.AgentLogTest do
     end
 
     test "handles multiple agents", %{log_path: log_path} do
-      AgentLog.append({:agent, "agent-1", %{name: "Agent 1"}}, log_path: log_path, version: @version)
-      AgentLog.append({:agent, "agent-2", %{name: "Agent 2"}}, log_path: log_path, version: @version)
-      AgentLog.append({:msg, "agent-1", %{id: "m1", content: "From 1"}}, log_path: log_path, version: @version)
-      AgentLog.append({:msg, "agent-2", %{id: "m2", content: "From 2"}}, log_path: log_path, version: @version)
+      AgentLog.append({:agent, "agent-1", %{name: "Agent 1"}},
+        log_path: log_path,
+        version: @version
+      )
+
+      AgentLog.append({:agent, "agent-2", %{name: "Agent 2"}},
+        log_path: log_path,
+        version: @version
+      )
+
+      AgentLog.append({:msg, "agent-1", %{id: "m1", content: "From 1"}},
+        log_path: log_path,
+        version: @version
+      )
+
+      AgentLog.append({:msg, "agent-2", %{id: "m2", content: "From 2"}},
+        log_path: log_path,
+        version: @version
+      )
 
       {:ok, state} = AgentLog.replay(log_path: log_path, version: @version)
 
@@ -204,9 +250,20 @@ defmodule BoomLooper.AgentLogTest do
     end
 
     test "agent update preserves existing messages", %{log_path: log_path} do
-      AgentLog.append({:agent, "agent-1", %{name: "Original", status: :idle}}, log_path: log_path, version: @version)
-      AgentLog.append({:msg, "agent-1", %{id: "m1", content: "Message"}}, log_path: log_path, version: @version)
-      AgentLog.append({:agent, "agent-1", %{name: "Updated", status: :thinking}}, log_path: log_path, version: @version)
+      AgentLog.append({:agent, "agent-1", %{name: "Original", status: :idle}},
+        log_path: log_path,
+        version: @version
+      )
+
+      AgentLog.append({:msg, "agent-1", %{id: "m1", content: "Message"}},
+        log_path: log_path,
+        version: @version
+      )
+
+      AgentLog.append({:agent, "agent-1", %{name: "Updated", status: :thinking}},
+        log_path: log_path,
+        version: @version
+      )
 
       {:ok, state} = AgentLog.replay(log_path: log_path, version: @version)
 
@@ -217,7 +274,10 @@ defmodule BoomLooper.AgentLogTest do
 
     test "message to non-existent agent creates agent entry", %{log_path: log_path} do
       # No :agent event, just a message
-      AgentLog.append({:msg, "agent-1", %{id: "m1", content: "Orphan message"}}, log_path: log_path, version: @version)
+      AgentLog.append({:msg, "agent-1", %{id: "m1", content: "Orphan message"}},
+        log_path: log_path,
+        version: @version
+      )
 
       {:ok, state} = AgentLog.replay(log_path: log_path, version: @version)
 
@@ -226,7 +286,10 @@ defmodule BoomLooper.AgentLogTest do
     end
 
     test "msg_update to non-existent agent is ignored", %{log_path: log_path} do
-      AgentLog.append({:msg_update, "agent-1", "m1", %{content: "Updated"}}, log_path: log_path, version: @version)
+      AgentLog.append({:msg_update, "agent-1", "m1", %{content: "Updated"}},
+        log_path: log_path,
+        version: @version
+      )
 
       {:ok, state} = AgentLog.replay(log_path: log_path, version: @version)
 
@@ -235,8 +298,16 @@ defmodule BoomLooper.AgentLogTest do
 
     test "msg_update to non-existent message is no-op", %{log_path: log_path} do
       AgentLog.append({:agent, "agent-1", %{name: "Test"}}, log_path: log_path, version: @version)
-      AgentLog.append({:msg, "agent-1", %{id: "m1", content: "Original"}}, log_path: log_path, version: @version)
-      AgentLog.append({:msg_update, "agent-1", "wrong-id", %{content: "Updated"}}, log_path: log_path, version: @version)
+
+      AgentLog.append({:msg, "agent-1", %{id: "m1", content: "Original"}},
+        log_path: log_path,
+        version: @version
+      )
+
+      AgentLog.append({:msg_update, "agent-1", "wrong-id", %{content: "Updated"}},
+        log_path: log_path,
+        version: @version
+      )
 
       {:ok, state} = AgentLog.replay(log_path: log_path, version: @version)
 
@@ -260,8 +331,15 @@ defmodule BoomLooper.AgentLogTest do
     end
 
     test "populates ETS table on replay", %{log_path: log_path, ets_table: table} do
-      AgentLog.append({:agent, "agent-1", %{name: "Test Agent"}}, log_path: log_path, version: @version)
-      AgentLog.append({:msg, "agent-1", %{id: "m1", content: "Hello"}}, log_path: log_path, version: @version)
+      AgentLog.append({:agent, "agent-1", %{name: "Test Agent"}},
+        log_path: log_path,
+        version: @version
+      )
+
+      AgentLog.append({:msg, "agent-1", %{id: "m1", content: "Hello"}},
+        log_path: log_path,
+        version: @version
+      )
 
       {:ok, _state} = AgentLog.replay(log_path: log_path, version: @version, ets_table: table)
 
@@ -271,8 +349,15 @@ defmodule BoomLooper.AgentLogTest do
     end
 
     test "populates multiple agents in ETS", %{log_path: log_path, ets_table: table} do
-      AgentLog.append({:agent, "agent-1", %{name: "Agent 1"}}, log_path: log_path, version: @version)
-      AgentLog.append({:agent, "agent-2", %{name: "Agent 2"}}, log_path: log_path, version: @version)
+      AgentLog.append({:agent, "agent-1", %{name: "Agent 1"}},
+        log_path: log_path,
+        version: @version
+      )
+
+      AgentLog.append({:agent, "agent-2", %{name: "Agent 2"}},
+        log_path: log_path,
+        version: @version
+      )
 
       {:ok, _state} = AgentLog.replay(log_path: log_path, version: @version, ets_table: table)
 
@@ -282,7 +367,8 @@ defmodule BoomLooper.AgentLogTest do
     test "version mismatch doesn't populate ETS", %{log_path: log_path, ets_table: table} do
       AgentLog.append({:agent, "agent-1", %{name: "Test"}}, log_path: log_path, version: 1)
 
-      {:error, {:version_mismatch, _}} = AgentLog.replay(log_path: log_path, version: 2, ets_table: table)
+      {:error, {:version_mismatch, _}} =
+        AgentLog.replay(log_path: log_path, version: 2, ets_table: table)
 
       assert :ets.info(table, :size) == 0
     end
@@ -291,7 +377,10 @@ defmodule BoomLooper.AgentLogTest do
   describe "partial/corrupted records" do
     test "handles truncated size header", %{log_path: log_path} do
       # Write a valid record first
-      AgentLog.append({:agent, "agent-1", %{name: "Valid"}}, log_path: log_path, version: @version)
+      AgentLog.append({:agent, "agent-1", %{name: "Valid"}},
+        log_path: log_path,
+        version: @version
+      )
 
       # Append partial size header (only 2 bytes instead of 4)
       File.write!(log_path, <<0, 1>>, [:append, :raw])
@@ -304,7 +393,10 @@ defmodule BoomLooper.AgentLogTest do
 
     test "handles truncated data", %{log_path: log_path} do
       # Write a valid record first
-      AgentLog.append({:agent, "agent-1", %{name: "Valid"}}, log_path: log_path, version: @version)
+      AgentLog.append({:agent, "agent-1", %{name: "Valid"}},
+        log_path: log_path,
+        version: @version
+      )
 
       # Append size header claiming 100 bytes, but only 10 bytes of data
       File.write!(log_path, <<100::32, "short data">>, [:append, :raw])
@@ -317,7 +409,10 @@ defmodule BoomLooper.AgentLogTest do
 
     test "handles corrupted ETF data", %{log_path: log_path} do
       # Write a valid record first
-      AgentLog.append({:agent, "agent-1", %{name: "Valid"}}, log_path: log_path, version: @version)
+      AgentLog.append({:agent, "agent-1", %{name: "Valid"}},
+        log_path: log_path,
+        version: @version
+      )
 
       # Append valid-looking record with garbage ETF data
       garbage = "this is not valid ETF"
@@ -331,9 +426,20 @@ defmodule BoomLooper.AgentLogTest do
     end
 
     test "recovers all valid records before corruption", %{log_path: log_path} do
-      AgentLog.append({:agent, "agent-1", %{name: "First"}}, log_path: log_path, version: @version)
-      AgentLog.append({:agent, "agent-2", %{name: "Second"}}, log_path: log_path, version: @version)
-      AgentLog.append({:agent, "agent-3", %{name: "Third"}}, log_path: log_path, version: @version)
+      AgentLog.append({:agent, "agent-1", %{name: "First"}},
+        log_path: log_path,
+        version: @version
+      )
+
+      AgentLog.append({:agent, "agent-2", %{name: "Second"}},
+        log_path: log_path,
+        version: @version
+      )
+
+      AgentLog.append({:agent, "agent-3", %{name: "Third"}},
+        log_path: log_path,
+        version: @version
+      )
 
       # Corrupt the file by truncating mid-record
       content = File.read!(log_path)
@@ -396,7 +502,10 @@ defmodule BoomLooper.AgentLogTest do
     test "concurrent writes followed by replay produces correct state", %{log_path: log_path} do
       # Create agents first
       for i <- 1..5 do
-        AgentLog.append({:agent, "agent-#{i}", %{name: "Agent #{i}"}}, log_path: log_path, version: @version)
+        AgentLog.append({:agent, "agent-#{i}", %{name: "Agent #{i}"}},
+          log_path: log_path,
+          version: @version
+        )
       end
 
       # Concurrent message writes
@@ -442,12 +551,13 @@ defmodule BoomLooper.AgentLogTest do
         other -> other
       end
 
-      assert :ok = AgentLog.migrate(
-        log_path: log_path,
-        from: 1,
-        to: 2,
-        transformer: transformer
-      )
+      assert :ok =
+               AgentLog.migrate(
+                 log_path: log_path,
+                 from: 1,
+                 to: 2,
+                 transformer: transformer
+               )
 
       # File is now v2
       {:ok, info} = AgentLog.peek(log_path: log_path)
@@ -455,24 +565,25 @@ defmodule BoomLooper.AgentLogTest do
 
       # Events were transformed
       assert Enum.any?(info.events, fn
-        {:message, "a1", _} -> true
-        _ -> false
-      end)
+               {:message, "a1", _} -> true
+               _ -> false
+             end)
 
       # Old :msg format is gone
       refute Enum.any?(info.events, fn
-        {:msg, _, _} -> true
-        _ -> false
-      end)
+               {:msg, _, _} -> true
+               _ -> false
+             end)
     end
 
     test "returns error when file doesn't exist", %{log_path: log_path} do
-      result = AgentLog.migrate(
-        log_path: log_path,
-        from: 1,
-        to: 2,
-        transformer: &Function.identity/1
-      )
+      result =
+        AgentLog.migrate(
+          log_path: log_path,
+          from: 1,
+          to: 2,
+          transformer: &Function.identity/1
+        )
 
       assert {:error, :file_not_found} = result
     end
@@ -482,12 +593,13 @@ defmodule BoomLooper.AgentLogTest do
       AgentLog.append({:agent, "a1", %{name: "Test"}}, log_path: log_path, version: 1)
 
       # Try to migrate from v2 (but file is v1)
-      result = AgentLog.migrate(
-        log_path: log_path,
-        from: 2,
-        to: 3,
-        transformer: &Function.identity/1
-      )
+      result =
+        AgentLog.migrate(
+          log_path: log_path,
+          from: 2,
+          to: 3,
+          transformer: &Function.identity/1
+        )
 
       assert {:error, {:unexpected_version, got: 1, expected: 2}} = result
 
@@ -503,12 +615,13 @@ defmodule BoomLooper.AgentLogTest do
       AgentLog.append({:msg, "a1", %{id: "m1", content: "Hello"}}, log_path: log_path, version: 1)
 
       # Migrate with identity (no transformation, just version bump)
-      assert :ok = AgentLog.migrate(
-        log_path: log_path,
-        from: 1,
-        to: 2,
-        transformer: &Function.identity/1
-      )
+      assert :ok =
+               AgentLog.migrate(
+                 log_path: log_path,
+                 from: 1,
+                 to: 2,
+                 transformer: &Function.identity/1
+               )
 
       # Version bumped
       {:ok, info} = AgentLog.peek(log_path: log_path)
@@ -521,12 +634,13 @@ defmodule BoomLooper.AgentLogTest do
     test "cleans up temp file on success", %{log_path: log_path} do
       AgentLog.append({:agent, "a1", %{name: "Test"}}, log_path: log_path, version: 1)
 
-      assert :ok = AgentLog.migrate(
-        log_path: log_path,
-        from: 1,
-        to: 2,
-        transformer: &Function.identity/1
-      )
+      assert :ok =
+               AgentLog.migrate(
+                 log_path: log_path,
+                 from: 1,
+                 to: 2,
+                 transformer: &Function.identity/1
+               )
 
       # No .migrating file left behind
       refute File.exists?(log_path <> ".migrating")
@@ -538,12 +652,13 @@ defmodule BoomLooper.AgentLogTest do
       # Create stale temp file (simulates previous crash)
       File.write!(log_path <> ".migrating", "stale data from crashed migration")
 
-      assert :ok = AgentLog.migrate(
-        log_path: log_path,
-        from: 1,
-        to: 2,
-        transformer: &Function.identity/1
-      )
+      assert :ok =
+               AgentLog.migrate(
+                 log_path: log_path,
+                 from: 1,
+                 to: 2,
+                 transformer: &Function.identity/1
+               )
 
       # Migration succeeded, original file is v2
       {:ok, info} = AgentLog.peek(log_path: log_path)
@@ -558,18 +673,26 @@ defmodule BoomLooper.AgentLogTest do
 
       # Transformer increments count in all events
       transformer = fn
-        {:agent, id, data} -> {:agent, id, Map.update!(data, :count, &(&1 + 1))}
-        {:msg, id, data} -> {:msg, id, Map.update!(data, :count, &(&1 + 1))}
-        {:msg_update, id, msg_id, data} -> {:msg_update, id, msg_id, Map.update!(data, :count, &(&1 + 1))}
-        other -> other
+        {:agent, id, data} ->
+          {:agent, id, Map.update!(data, :count, &(&1 + 1))}
+
+        {:msg, id, data} ->
+          {:msg, id, Map.update!(data, :count, &(&1 + 1))}
+
+        {:msg_update, id, msg_id, data} ->
+          {:msg_update, id, msg_id, Map.update!(data, :count, &(&1 + 1))}
+
+        other ->
+          other
       end
 
-      assert :ok = AgentLog.migrate(
-        log_path: log_path,
-        from: 1,
-        to: 2,
-        transformer: transformer
-      )
+      assert :ok =
+               AgentLog.migrate(
+                 log_path: log_path,
+                 from: 1,
+                 to: 2,
+                 transformer: transformer
+               )
 
       {:ok, info} = AgentLog.peek(log_path: log_path)
 
@@ -585,21 +708,34 @@ defmodule BoomLooper.AgentLogTest do
 
     test "replayed state identical after identity migration", %{log_path: log_path} do
       # Build up realistic state
-      AgentLog.append({:agent, "a1", %{name: "Agent 1", status: :idle}}, log_path: log_path, version: 1)
-      AgentLog.append({:msg, "a1", %{id: "m1", role: :user, content: "Hello"}}, log_path: log_path, version: 1)
-      AgentLog.append({:msg, "a1", %{id: "m2", role: :assistant, content: "Hi there"}}, log_path: log_path, version: 1)
+      AgentLog.append({:agent, "a1", %{name: "Agent 1", status: :idle}},
+        log_path: log_path,
+        version: 1
+      )
+
+      AgentLog.append({:msg, "a1", %{id: "m1", role: :user, content: "Hello"}},
+        log_path: log_path,
+        version: 1
+      )
+
+      AgentLog.append({:msg, "a1", %{id: "m2", role: :assistant, content: "Hi there"}},
+        log_path: log_path,
+        version: 1
+      )
+
       AgentLog.append({:agent, "a2", %{name: "Agent 2"}}, log_path: log_path, version: 1)
 
       # Capture state before migration
       {:ok, state_before} = AgentLog.replay(log_path: log_path, version: 1)
 
       # Migrate with identity
-      assert :ok = AgentLog.migrate(
-        log_path: log_path,
-        from: 1,
-        to: 2,
-        transformer: &Function.identity/1
-      )
+      assert :ok =
+               AgentLog.migrate(
+                 log_path: log_path,
+                 from: 1,
+                 to: 2,
+                 transformer: &Function.identity/1
+               )
 
       # State after should be identical
       {:ok, state_after} = AgentLog.replay(log_path: log_path, version: 2)
@@ -615,12 +751,13 @@ defmodule BoomLooper.AgentLogTest do
       # Small delay to ensure timestamps would differ
       Process.sleep(10)
 
-      assert :ok = AgentLog.migrate(
-        log_path: log_path,
-        from: 1,
-        to: 2,
-        transformer: &Function.identity/1
-      )
+      assert :ok =
+               AgentLog.migrate(
+                 log_path: log_path,
+                 from: 1,
+                 to: 2,
+                 transformer: &Function.identity/1
+               )
 
       {:ok, info_after} = AgentLog.peek(log_path: log_path)
 
@@ -633,7 +770,11 @@ defmodule BoomLooper.AgentLogTest do
 
     test "multi-step migration chain v1→v2→v3", %{log_path: log_path} do
       # Start with v1 data
-      AgentLog.append({:agent, "a1", %{name: "Test", v1_field: true}}, log_path: log_path, version: 1)
+      AgentLog.append({:agent, "a1", %{name: "Test", v1_field: true}},
+        log_path: log_path,
+        version: 1
+      )
+
       AgentLog.append({:msg, "a1", %{id: "m1", content: "Hello"}}, log_path: log_path, version: 1)
 
       # v1→v2: add migrated_at field
@@ -642,12 +783,13 @@ defmodule BoomLooper.AgentLogTest do
         other -> other
       end
 
-      assert :ok = AgentLog.migrate(
-        log_path: log_path,
-        from: 1,
-        to: 2,
-        transformer: v1_to_v2
-      )
+      assert :ok =
+               AgentLog.migrate(
+                 log_path: log_path,
+                 from: 1,
+                 to: 2,
+                 transformer: v1_to_v2
+               )
 
       {:ok, info_v2} = AgentLog.peek(log_path: log_path)
       assert info_v2.version == 2
@@ -658,32 +800,33 @@ defmodule BoomLooper.AgentLogTest do
         other -> other
       end
 
-      assert :ok = AgentLog.migrate(
-        log_path: log_path,
-        from: 2,
-        to: 3,
-        transformer: v2_to_v3
-      )
+      assert :ok =
+               AgentLog.migrate(
+                 log_path: log_path,
+                 from: 2,
+                 to: 3,
+                 transformer: v2_to_v3
+               )
 
       {:ok, info_v3} = AgentLog.peek(log_path: log_path)
       assert info_v3.version == 3
 
       # Both transformations applied
       assert Enum.any?(info_v3.events, fn
-        {:agent, _, %{migrated_v2: true}} -> true
-        _ -> false
-      end)
+               {:agent, _, %{migrated_v2: true}} -> true
+               _ -> false
+             end)
 
       assert Enum.any?(info_v3.events, fn
-        {:message, _, _} -> true
-        _ -> false
-      end)
+               {:message, _, _} -> true
+               _ -> false
+             end)
 
       # Old formats gone
       refute Enum.any?(info_v3.events, fn
-        {:msg, _, _} -> true
-        _ -> false
-      end)
+               {:msg, _, _} -> true
+               _ -> false
+             end)
     end
   end
 

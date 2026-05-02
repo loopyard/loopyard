@@ -25,7 +25,9 @@ defmodule Mix.Tasks.Boom.Server do
         Node.set_cookie(cookie)
 
       {:error, reason} ->
-        Mix.shell().info("Warning: could not start distributed node (#{inspect(reason)}). Remote shell access disabled.")
+        Mix.shell().info(
+          "Warning: could not start distributed node (#{inspect(reason)}). Remote shell access disabled."
+        )
     end
 
     # Start the Phoenix endpoint
@@ -40,14 +42,15 @@ defmodule Mix.Tasks.Boom.Server do
     home = Path.join(System.user_home!(), ".boomlooper")
     path = Path.join(home, "cookie")
 
-    cookie = if File.exists?(path) do
-      path |> File.read!() |> String.trim()
-    else
-      File.mkdir_p!(home)
-      c = :crypto.strong_rand_bytes(16) |> Base.encode64(padding: false)
-      File.write!(path, c)
-      c
-    end
+    cookie =
+      if File.exists?(path) do
+        path |> File.read!() |> String.trim()
+      else
+        File.mkdir_p!(home)
+        c = :crypto.strong_rand_bytes(16) |> Base.encode64(padding: false)
+        File.write!(path, c)
+        c
+      end
 
     String.to_atom(cookie)
   end

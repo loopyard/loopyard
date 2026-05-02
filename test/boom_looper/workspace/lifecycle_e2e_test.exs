@@ -54,7 +54,12 @@ defmodule BoomLooper.Workspace.LifecycleE2ETest do
     # Seed the compose file into the volume — that's where ServiceManager
     # reads it from at boot. Use VolumeIO so the write path is exercised
     # end-to-end.
-    :ok = BoomLooper.VolumeIO.write_file(volume_name, ".boomlooper/workspace/docker-compose.yml", compose)
+    :ok =
+      BoomLooper.VolumeIO.write_file(
+        volume_name,
+        ".boomlooper/workspace/docker-compose.yml",
+        compose
+      )
 
     on_exit(fn ->
       BoomLooper.Workspace.Destructor.destroy(ws_id)
@@ -85,13 +90,17 @@ defmodule BoomLooper.Workspace.LifecycleE2ETest do
     # Include :messages — Exec / helper paths assume a fully-shaped
     # summary; the minimal id+workspace_id form trips KeyError on
     # downstream readers.
-    :ets.insert(:chat_agents, {@agent_id, %{
-      id: @agent_id,
-      workspace_id: ws_id,
-      messages: [],
-      status: :idle,
-      name: "lifecycle test"
-    }})
+    :ets.insert(
+      :chat_agents,
+      {@agent_id,
+       %{
+         id: @agent_id,
+         workspace_id: ws_id,
+         messages: [],
+         status: :idle,
+         name: "lifecycle test"
+       }}
+    )
 
     # --- Run a real command through the Exec tool ---
     assert {:ok, output} =

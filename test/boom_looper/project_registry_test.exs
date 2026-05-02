@@ -45,8 +45,9 @@ defmodule BoomLooper.ProjectRegistryTest do
       {:ok, project, _} = ProjectRegistry.add(path)
       workspaces = ProjectRegistry.list_workspaces(project.id)
       names = Enum.map(workspaces, & &1.name)
+
       assert names == Enum.uniq(names),
-        "Found duplicate workspace names: #{inspect(names -- Enum.uniq(names))}"
+             "Found duplicate workspace names: #{inspect(names -- Enum.uniq(names))}"
     end
   end
 
@@ -168,7 +169,8 @@ defmodule BoomLooper.ProjectRegistryTest do
       # ghost agents from the previous run. We hit this in a real eval.
       tmp = Path.join(System.tmp_dir!(), "bl-virtual-cleanup-#{:rand.uniform(100_000)}")
       File.mkdir_p!(tmp)
-      File.write!(Path.join(tmp, ".git"), "")  # marker so it's "git-like"
+      # marker so it's "git-like"
+      File.write!(Path.join(tmp, ".git"), "")
       {:ok, project, workspace} = ProjectRegistry.add(tmp)
 
       virtual_dir =
@@ -184,9 +186,10 @@ defmodule BoomLooper.ProjectRegistryTest do
       assert :ok = ProjectRegistry.remove_project(project.id)
 
       refute File.exists?(log_path),
-        "agents.log survived remove_project — ghost agents will resurrect on next eval"
+             "agents.log survived remove_project — ghost agents will resurrect on next eval"
+
       refute File.exists?(virtual_dir),
-        "virtual workspace dir survived remove_project"
+             "virtual workspace dir survived remove_project"
     end
   end
 

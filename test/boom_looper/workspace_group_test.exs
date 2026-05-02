@@ -55,12 +55,14 @@ defmodule BoomLooper.WorkspaceGroupTest do
       {:ok, _} = WorkspaceSupervisor.start_workspace(workspace_id, path)
 
       agent_id = "workspace-test-#{:rand.uniform(100_000)}"
-      assert {:ok, _pid} = WorkspaceGroup.start_agent(workspace_id,
-        id: agent_id,
-        name: "Test Agent",
-        working_dir: path,
-        started_by: "test"
-      )
+
+      assert {:ok, _pid} =
+               WorkspaceGroup.start_agent(workspace_id,
+                 id: agent_id,
+                 name: "Test Agent",
+                 working_dir: path,
+                 started_by: "test"
+               )
 
       # Agent should be running
       state = BoomLooper.ChatAgent.get_state(agent_id)
@@ -72,13 +74,15 @@ defmodule BoomLooper.WorkspaceGroupTest do
       Process.sleep(100)
 
       # Agent should be gone (GenServer stopped)
-      assert BoomLooper.ChatAgent.get_state(agent_id) != nil  # ETS still has it
+      # ETS still has it
+      assert BoomLooper.ChatAgent.get_state(agent_id) != nil
       # But the process should be dead
       refute match?([{_, _}], Registry.lookup(BoomLooper.ChatAgentRegistry, agent_id))
     end
 
     test "start_agent returns error when workspace not running" do
-      assert {:error, :workspace_not_running} = WorkspaceGroup.start_agent("nonexistent", id: "x", name: "x")
+      assert {:error, :workspace_not_running} =
+               WorkspaceGroup.start_agent("nonexistent", id: "x", name: "x")
     end
   end
 end

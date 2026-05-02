@@ -1,12 +1,14 @@
 defmodule BoomLooper.Tools.Container.ReadFile do
   use BoomLooper.Tool,
     name: "read_file",
-    description: "Read a file from the workspace. Supports optional line range to avoid reading huge files into context. Path is relative to /workspace.",
+    description:
+      "Read a file from the workspace. Supports optional line range to avoid reading huge files into context. Path is relative to /workspace.",
     busy_words: ["reading", "scanning", "peeking at", "eyeballing"],
     params: [
       agent_id: {:string, required: true},
       path: {:string, required: true, description: "File path relative to /workspace"},
-      start_line: {:integer, description: "First line to read (1-based). Omit to start from beginning."},
+      start_line:
+        {:integer, description: "First line to read (1-based). Omit to start from beginning."},
       end_line: {:integer, description: "Last line to read (inclusive). Omit to read to end."}
     ]
 

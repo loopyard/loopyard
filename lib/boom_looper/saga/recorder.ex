@@ -252,10 +252,12 @@ defmodule BoomLooper.Saga.Recorder do
         reason: Map.get(meta, :reason)
       }
 
-      %{record |
-        completed_steps: record.completed_steps ++ [step_record],
-        failed_step: meta.step,
-        failure_reason: Map.get(meta, :reason)}
+      %{
+        record
+        | completed_steps: record.completed_steps ++ [step_record],
+          failed_step: meta.step,
+          failure_reason: Map.get(meta, :reason)
+      }
     end)
   end
 
@@ -267,7 +269,10 @@ defmodule BoomLooper.Saga.Recorder do
 
   defp do_handle([:boom_looper, :saga, :rollback_failed], _measurements, meta) do
     update(meta, fn record ->
-      %{record | failed_rollbacks: record.failed_rollbacks ++ [{meta.step, Map.get(meta, :reason)}]}
+      %{
+        record
+        | failed_rollbacks: record.failed_rollbacks ++ [{meta.step, Map.get(meta, :reason)}]
+      }
     end)
   end
 
@@ -343,7 +348,9 @@ defmodule BoomLooper.Saga.Recorder do
       to_delete = size - @max_records
 
       :ets.tab2list(@table)
-      |> Enum.sort(fn {a_id, a}, {b_id, b} -> asc_started_at?({a.started_at, a_id}, {b.started_at, b_id}) end)
+      |> Enum.sort(fn {a_id, a}, {b_id, b} ->
+        asc_started_at?({a.started_at, a_id}, {b.started_at, b_id})
+      end)
       |> Enum.take(to_delete)
       |> Enum.each(fn {id, _} -> :ets.delete(@table, id) end)
     end

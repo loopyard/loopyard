@@ -58,7 +58,9 @@ defmodule BoomLooper.ToolTest do
 
     test "execute/2 works" do
       assert {:ok, "hello x3"} = SampleTool.execute(%{name: "hello", count: 3}, %{})
-      assert {:ok, "hello x3 (verbose)"} = SampleTool.execute(%{name: "hello", count: 3, verbose: true}, %{})
+
+      assert {:ok, "hello x3 (verbose)"} =
+               SampleTool.execute(%{name: "hello", count: 3, verbose: true}, %{})
     end
   end
 

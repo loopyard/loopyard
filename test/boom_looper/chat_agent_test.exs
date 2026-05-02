@@ -117,7 +117,8 @@ defmodule BoomLooper.ChatAgentTest do
       assert_receive %BoomLooper.Events.ChatAgentMessage.Message{
                        agent_id: ^id,
                        msg: %{role: :system, content: "CLI session restarted"}
-                     }, 5000
+                     },
+                     5000
 
       # Agent should still be idle after restart
       state_after = ChatAgent.get_state(id)
@@ -180,7 +181,8 @@ defmodule BoomLooper.ChatAgentTest do
 
       # Every message must have an :id
       for msg <- state.messages do
-        assert msg[:id] != nil, "Message missing :id — role: #{msg.role}, content: #{inspect(String.slice(msg.content || "", 0..30))}"
+        assert msg[:id] != nil,
+               "Message missing :id — role: #{msg.role}, content: #{inspect(String.slice(msg.content || "", 0..30))}"
       end
 
       # IDs must be unique
@@ -233,7 +235,10 @@ defmodule BoomLooper.ChatAgentTest do
       %{id: id, pid: pid, tmp_dir: tmp_dir}
     end
 
-    test "stale stream_timeout is ignored when agent is thinking on a new stream", %{id: id, pid: pid} do
+    test "stale stream_timeout is ignored when agent is thinking on a new stream", %{
+      id: id,
+      pid: pid
+    } do
       ChatAgent.subscribe(id)
 
       # Simulate: a stale timeout from a previous stream fires while agent is thinking
@@ -248,10 +253,12 @@ defmodule BoomLooper.ChatAgentTest do
       state = ChatAgent.get_state(id)
       # Agent should still be idle (not errored), because the stale timeout was ignored
       assert state.status == :idle
+
       refute_receive %BoomLooper.Events.ChatAgentMessage.Message{
                        agent_id: ^id,
                        msg: %{role: :error}
-                     }, 100
+                     },
+                     100
     end
 
     test "legacy stream_timeout without ref is ignored", %{id: id, pid: pid} do
@@ -317,6 +324,7 @@ defmodule BoomLooper.ChatAgentTest do
         if is_pid(session) and Process.alive?(session) do
           GenServer.stop(session, :normal, 1_000)
         end
+
         :ok
       end
 
@@ -439,8 +447,17 @@ defmodule BoomLooper.ChatAgentTest do
       # eventually, requiring a sleep to wait for ETS to settle.
       # append_message_ets goes through the GenServer cast which is FIFO
       # with the subsequent get_state call.
-      ChatAgent.append_message_ets(id, %{role: :user, content: "first", timestamp: DateTime.utc_now()})
-      ChatAgent.append_message_ets(id, %{role: :user, content: "second", timestamp: DateTime.utc_now()})
+      ChatAgent.append_message_ets(id, %{
+        role: :user,
+        content: "first",
+        timestamp: DateTime.utc_now()
+      })
+
+      ChatAgent.append_message_ets(id, %{
+        role: :user,
+        content: "second",
+        timestamp: DateTime.utc_now()
+      })
 
       state = ChatAgent.get_state(id)
       user_msgs = Enum.filter(state.messages, &(&1.role == :user))
@@ -479,9 +496,11 @@ defmodule BoomLooper.ChatAgentTest do
 
   describe "build_system_prompt/2" do
     test "setup agent prompt stays under CLI argument limit" do
-      prompt = ChatAgent.build_system_prompt("test-id", agent_type: "setup", bind_mount: "/tmp/project")
+      prompt =
+        ChatAgent.build_system_prompt("test-id", agent_type: "setup", bind_mount: "/tmp/project")
+
       assert String.length(prompt) <= 3500,
-        "Setup prompt is #{String.length(prompt)} chars, max is 3500."
+             "Setup prompt is #{String.length(prompt)} chars, max is 3500."
     end
 
     test "container agent prompt stays under limit" do
@@ -501,7 +520,7 @@ defmodule BoomLooper.ChatAgentTest do
         )
 
       assert String.length(prompt) <= 3500,
-        "Container prompt is #{String.length(prompt)} chars, max is 3500."
+             "Container prompt is #{String.length(prompt)} chars, max is 3500."
     end
 
     test "container agent with service stays under limit" do
@@ -522,7 +541,7 @@ defmodule BoomLooper.ChatAgentTest do
         )
 
       assert String.length(prompt) <= 3500,
-        "Full prompt is #{String.length(prompt)} chars, max is 3500."
+             "Full prompt is #{String.length(prompt)} chars, max is 3500."
     end
   end
 
@@ -537,8 +556,7 @@ defmodule BoomLooper.ChatAgentTest do
 
       :ets.insert(
         :chat_agents,
-        {id,
-         %{id: id, name: "test", status: :idle, messages: [], workspace_id: nil}}
+        {id, %{id: id, name: "test", status: :idle, messages: [], workspace_id: nil}}
       )
 
       on_exit(fn -> :ets.delete(:chat_agents, id) end)
@@ -561,8 +579,7 @@ defmodule BoomLooper.ChatAgentTest do
       # StateMachine guard must detect this and skip re-broadcasting.
       :ets.insert(
         :chat_agents,
-        {id,
-         %{id: id, name: "test", status: :destroying, messages: [], workspace_id: nil}}
+        {id, %{id: id, name: "test", status: :destroying, messages: [], workspace_id: nil}}
       )
 
       ChatAgent.remove_agent(id)
@@ -584,6 +601,7 @@ defmodule BoomLooper.ChatAgentTest do
 
     setup do
       id = "resume-preserve-#{:rand.uniform(1_000_000)}"
+
       on_exit(fn ->
         try do
           ChatAgent.stop_agent(id)

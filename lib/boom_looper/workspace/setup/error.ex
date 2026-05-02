@@ -58,15 +58,42 @@ defmodule BoomLooper.Workspace.Setup.Error do
   # Order matters: more specific patterns first.
   defp categorize(raw) when is_binary(raw) do
     cond do
-      contains_any?(raw, ["No space left on device", "ENOSPC"]) -> {:disk_full, false}
-      contains_any?(raw, ["Permission denied", "read-only file system"]) -> {:permissions, false}
-      contains_any?(raw, ["Repository not found", "could not read from remote", "Authentication failed"]) -> {:invalid_git_url, false}
-      contains_any?(raw, ["Remote branch", "not found in upstream"]) -> {:branch_not_found, false}
-      contains_any?(raw, ["Cannot connect to the Docker daemon", "error during connect"]) -> {:docker_daemon_unreachable, true}
-      contains_any?(raw, ["pull access denied", "failed to resolve reference", "i/o timeout"]) -> {:image_pull_failure, true}
-      contains_any?(raw, ["Failed to connect", "network is unreachable", "Connection timed out", "RPC failed", "Could not resolve host"]) -> {:network_timeout, true}
-      contains_any?(raw, ["timed out"]) -> {:network_timeout, true}
-      true -> {:unknown, false}
+      contains_any?(raw, ["No space left on device", "ENOSPC"]) ->
+        {:disk_full, false}
+
+      contains_any?(raw, ["Permission denied", "read-only file system"]) ->
+        {:permissions, false}
+
+      contains_any?(raw, [
+        "Repository not found",
+        "could not read from remote",
+        "Authentication failed"
+      ]) ->
+        {:invalid_git_url, false}
+
+      contains_any?(raw, ["Remote branch", "not found in upstream"]) ->
+        {:branch_not_found, false}
+
+      contains_any?(raw, ["Cannot connect to the Docker daemon", "error during connect"]) ->
+        {:docker_daemon_unreachable, true}
+
+      contains_any?(raw, ["pull access denied", "failed to resolve reference", "i/o timeout"]) ->
+        {:image_pull_failure, true}
+
+      contains_any?(raw, [
+        "Failed to connect",
+        "network is unreachable",
+        "Connection timed out",
+        "RPC failed",
+        "Could not resolve host"
+      ]) ->
+        {:network_timeout, true}
+
+      contains_any?(raw, ["timed out"]) ->
+        {:network_timeout, true}
+
+      true ->
+        {:unknown, false}
     end
   end
 
@@ -94,9 +121,12 @@ defmodule BoomLooper.Workspace.Setup.Error do
     %{
       code: :disk_full,
       phase: phase,
-      why: "Could not write project files into the workspace volume — the Docker host's disk is full.",
-      consequence: "The workspace can't be set up until disk space is freed. Agents won't start; chat is disabled.",
-      action: "Free disk on the Docker host (try `docker system prune` or remove unused images / volumes), then click Retry.",
+      why:
+        "Could not write project files into the workspace volume — the Docker host's disk is full.",
+      consequence:
+        "The workspace can't be set up until disk space is freed. Agents won't start; chat is disabled.",
+      action:
+        "Free disk on the Docker host (try `docker system prune` or remove unused images / volumes), then click Retry.",
       transient?: false,
       raw: raw
     }
@@ -106,9 +136,11 @@ defmodule BoomLooper.Workspace.Setup.Error do
     %{
       code: :permissions,
       phase: phase,
-      why: "Could not read or write files during workspace setup — a path was rejected for permissions.",
+      why:
+        "Could not read or write files during workspace setup — a path was rejected for permissions.",
       consequence: "The workspace can't be set up until the path is readable/writable.",
-      action: "Check the source path's permissions (and the Docker host's filesystem), then click Retry.",
+      action:
+        "Check the source path's permissions (and the Docker host's filesystem), then click Retry.",
       transient?: false,
       raw: raw
     }
@@ -120,7 +152,8 @@ defmodule BoomLooper.Workspace.Setup.Error do
       phase: phase,
       why: "The source directory for this workspace no longer exists on disk.",
       consequence: "There's nothing to copy into the volume. The workspace can't be set up.",
-      action: "Restore the source directory at its original path, or remove this workspace and add it again from the correct location.",
+      action:
+        "Restore the source directory at its original path, or remove this workspace and add it again from the correct location.",
       transient?: false,
       raw: raw
     }
@@ -130,7 +163,8 @@ defmodule BoomLooper.Workspace.Setup.Error do
     %{
       code: :invalid_git_url,
       phase: phase,
-      why: "Git could not access the repository — it doesn't exist, is private, or your credentials were rejected.",
+      why:
+        "Git could not access the repository — it doesn't exist, is private, or your credentials were rejected.",
       consequence: "The clone can't proceed. The workspace can't be set up.",
       action: "Verify the repository URL and your auth (SSH key or token), then click Retry.",
       transient?: false,
@@ -144,7 +178,8 @@ defmodule BoomLooper.Workspace.Setup.Error do
       phase: phase,
       why: "The branch you asked to clone doesn't exist on the remote.",
       consequence: "The clone can't proceed.",
-      action: "Pick an existing branch (or push the branch upstream first), then add the workspace again.",
+      action:
+        "Pick an existing branch (or push the branch upstream first), then add the workspace again.",
       transient?: false,
       raw: raw
     }
@@ -154,7 +189,8 @@ defmodule BoomLooper.Workspace.Setup.Error do
     %{
       code: :docker_daemon_unreachable,
       phase: phase,
-      why: "Boom Looper can't reach the Docker daemon — it may be stopped, restarting, or misconfigured.",
+      why:
+        "Boom Looper can't reach the Docker daemon — it may be stopped, restarting, or misconfigured.",
       consequence: "Volumes can't be created or written to. The workspace can't be set up.",
       action: "Make sure Docker (or Colima / OrbStack) is running, then click Retry.",
       transient?: true,
@@ -180,7 +216,8 @@ defmodule BoomLooper.Workspace.Setup.Error do
       phase: phase,
       why: "A network operation timed out during workspace setup.",
       consequence: "The current attempt couldn't finish.",
-      action: "We auto-retry transient errors; if this fails repeatedly, check your network and click Retry.",
+      action:
+        "We auto-retry transient errors; if this fails repeatedly, check your network and click Retry.",
       transient?: true,
       raw: raw
     }
@@ -191,7 +228,8 @@ defmodule BoomLooper.Workspace.Setup.Error do
       code: :interrupted_by_restart,
       phase: phase,
       why: "Boom Looper restarted while this workspace was still being set up.",
-      consequence: "The volume may be partially populated. No data has been lost — the safe option is to retry from the failed phase.",
+      consequence:
+        "The volume may be partially populated. No data has been lost — the safe option is to retry from the failed phase.",
       action: "Click Retry to resume setup.",
       transient?: false,
       raw: raw
@@ -216,7 +254,8 @@ defmodule BoomLooper.Workspace.Setup.Error do
       phase: phase,
       why: "Workspace setup failed with an unrecognized error: #{summarize(raw)}",
       consequence: "We don't auto-retry unrecognized errors.",
-      action: "Check /system/events for details, then click Retry. If this keeps happening, please report it.",
+      action:
+        "Check /system/events for details, then click Retry. If this keeps happening, please report it.",
       transient?: false,
       raw: raw
     }

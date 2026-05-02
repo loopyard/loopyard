@@ -113,8 +113,12 @@ defmodule BoomLooper.Retry do
 
       {:error, reason} = err ->
         cond do
-          attempt >= max_attempts -> err
-          not transient?.(reason) -> err
+          attempt >= max_attempts ->
+            err
+
+          not transient?.(reason) ->
+            err
+
           true ->
             sleep.(backoff_ms(attempt, backoff))
             do_run(fun, attempt + 1, max_attempts, backoff, transient?, sleep)

@@ -23,8 +23,10 @@ defmodule BoomLooper.ToolAuthorizationTest do
     # "no workspace" before we can see the authorization decision.
     :ets.insert(:chat_agents, {@my_id, %{id: @my_id, workspace_id: @workspace_id, messages: []}})
 
-    :ets.insert(:chat_agents,
-                {@their_id, %{id: @their_id, workspace_id: "ws-other", messages: []}})
+    :ets.insert(
+      :chat_agents,
+      {@their_id, %{id: @their_id, workspace_id: "ws-other", messages: []}}
+    )
 
     on_exit(fn ->
       :ets.delete(:chat_agents, @my_id)
@@ -108,7 +110,9 @@ defmodule BoomLooper.ToolAuthorizationTest do
       # This is the backwards-compat path: existing unit tests pass
       # %{} for assigns and expect the tool to behave normally.
       case Exec.execute(%{agent_id: @my_id, command: "echo hi"}, %{}) do
-        {:ok, _} -> :ok
+        {:ok, _} ->
+          :ok
+
         {:error, reason} ->
           refute reason =~ "agent_id mismatch"
       end

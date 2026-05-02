@@ -11,8 +11,7 @@ defmodule BoomLooper.Tools.Container.WriteFileTest do
   @workspace_id "ws-write-file-test"
 
   setup do
-    :ets.insert(:chat_agents, {@agent_id,
-                               %{id: @agent_id, workspace_id: @workspace_id}})
+    :ets.insert(:chat_agents, {@agent_id, %{id: @agent_id, workspace_id: @workspace_id}})
     on_exit(fn -> :ets.delete(:chat_agents, @agent_id) end)
     :ok
   end

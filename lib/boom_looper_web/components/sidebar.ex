@@ -45,7 +45,11 @@ defmodule BoomLooperWeb.Components.Sidebar do
           <% end %>
         </.link>
       <% else %>
-        <button phx-click={@click} phx-value-id={@click_value} class="flex items-center gap-2 min-w-0 flex-1 text-left w-full">
+        <button
+          phx-click={@click}
+          phx-value-id={@click_value}
+          class="flex items-center gap-2 min-w-0 flex-1 text-left w-full"
+        >
           <div class={"w-1.5 h-1.5 rounded-full flex-none #{@dot_class}"}></div>
           <span class="truncate text-zinc-600 dark:text-zinc-400">{@name}</span>
           <%= for label <- @status_label do %>
@@ -86,14 +90,26 @@ defmodule BoomLooperWeb.Components.Sidebar do
       click_value={@agent.id}
     >
       <:status_label>
-        <span :if={@display == :thinking} class="text-xs text-violet-500 flex-none">{thinking_word(@agent.id)}</span>
+        <span :if={@display == :thinking} class="text-xs text-violet-500 flex-none">
+          {thinking_word(@agent.id)}
+        </span>
         <span :if={@display == :sleeping} class="text-xs text-zinc-400 flex-none">Sleeping</span>
         <span :if={@display == :crashed} class="text-xs text-red-500 flex-none">Crashed</span>
       </:status_label>
       <:actions></:actions>
       <:subtitle>
-        <div :if={@display == :sleeping && @agent[:last_activity_at]} class="mt-1 ml-[18px] px-2 text-xs text-zinc-400 dark:text-zinc-500 truncate">last reply {time_ago_short(@agent.last_activity_at)}</div>
-        <div :if={@agent[:status] == :booting} class="mt-1 ml-[18px] px-2 text-xs text-zinc-400 dark:text-zinc-500 truncate">{@agent[:boot_status] || "Initializing..."}</div>
+        <div
+          :if={@display == :sleeping && @agent[:last_activity_at]}
+          class="mt-1 ml-[18px] px-2 text-xs text-zinc-400 dark:text-zinc-500 truncate"
+        >
+          last reply {time_ago_short(@agent.last_activity_at)}
+        </div>
+        <div
+          :if={@agent[:status] == :booting}
+          class="mt-1 ml-[18px] px-2 text-xs text-zinc-400 dark:text-zinc-500 truncate"
+        >
+          {@agent[:boot_status] || "Initializing..."}
+        </div>
       </:subtitle>
     </.sidebar_item>
     """
@@ -148,13 +164,29 @@ defmodule BoomLooperWeb.Components.Sidebar do
       navigate={"#{@base_path}/services/#{@svc.name}"}
     >
       <:actions>
-        <a :if={@first_port && @svc.status == :running} href={"http://localhost:#{@first_port}"} target="_blank"
-          class="text-[10px] text-violet-500 hover:text-violet-400 font-mono ml-auto flex-none transition-colors">
+        <a
+          :if={@first_port && @svc.status == :running}
+          href={"http://localhost:#{@first_port}"}
+          target="_blank"
+          class="text-[10px] text-violet-500 hover:text-violet-400 font-mono ml-auto flex-none transition-colors"
+        >
           :{@first_port}
         </a>
-        <span :if={service_status_text(@svc)} class="text-[10px] text-blue-400 ml-auto flex-none">{service_status_text(@svc)}</span>
-        <span :if={!service_status_text(@svc) && !@first_port && @svc.status == :running} class="text-[10px] text-zinc-400 dark:text-zinc-500 ml-auto font-mono truncate max-w-[100px]">{service_detail(@svc)}</span>
-        <span :if={@svc.status == :crashed && @svc.exit_info} class="text-[10px] text-red-500 ml-auto truncate max-w-[140px]">{exit_reason(@svc.exit_info)}</span>
+        <span :if={service_status_text(@svc)} class="text-[10px] text-blue-400 ml-auto flex-none">
+          {service_status_text(@svc)}
+        </span>
+        <span
+          :if={!service_status_text(@svc) && !@first_port && @svc.status == :running}
+          class="text-[10px] text-zinc-400 dark:text-zinc-500 ml-auto font-mono truncate max-w-[100px]"
+        >
+          {service_detail(@svc)}
+        </span>
+        <span
+          :if={@svc.status == :crashed && @svc.exit_info}
+          class="text-[10px] text-red-500 ml-auto truncate max-w-[140px]"
+        >
+          {exit_reason(@svc.exit_info)}
+        </span>
       </:actions>
     </.sidebar_item>
     """
@@ -286,28 +318,66 @@ defmodule BoomLooperWeb.Components.Sidebar do
       _ -> nil
     end
   end
+
   def first_host_port(_), do: nil
 
   @thinking_words [
-    "thinking", "pondering", "working", "contemplating", "ruminating", "computing",
-    "analyzing", "reasoning", "deliberating", "investigating", "galavanting",
-    "pontificating", "abstracting", "noodling", "scheming", "conjuring",
-    "percolating", "marinating", "vibing", "manifesting", "doin' my thang",
-    "cookin'", "brewing", "churning", "crunching", "simmering", "riffing",
-    "jamming", "wrangling", "spelunking", "deciphering", "musing",
-    "rerouting encryption", "mainframing", "burning tokens", "foxtrotting",
-    "beep boop beep boop", "reverse engineering gravity", "consulting the oracle",
-    "asking the magic 8-ball", "stacking tokens", "defragmenting thoughts",
-    "compiling vibes", "reticulating splines", "makin' bacon", "fishing",
-    "cruisin'", "chillaxing", "twirling", "whirling"
+    "thinking",
+    "pondering",
+    "working",
+    "contemplating",
+    "ruminating",
+    "computing",
+    "analyzing",
+    "reasoning",
+    "deliberating",
+    "investigating",
+    "galavanting",
+    "pontificating",
+    "abstracting",
+    "noodling",
+    "scheming",
+    "conjuring",
+    "percolating",
+    "marinating",
+    "vibing",
+    "manifesting",
+    "doin' my thang",
+    "cookin'",
+    "brewing",
+    "churning",
+    "crunching",
+    "simmering",
+    "riffing",
+    "jamming",
+    "wrangling",
+    "spelunking",
+    "deciphering",
+    "musing",
+    "rerouting encryption",
+    "mainframing",
+    "burning tokens",
+    "foxtrotting",
+    "beep boop beep boop",
+    "reverse engineering gravity",
+    "consulting the oracle",
+    "asking the magic 8-ball",
+    "stacking tokens",
+    "defragmenting thoughts",
+    "compiling vibes",
+    "reticulating splines",
+    "makin' bacon",
+    "fishing",
+    "cruisin'",
+    "chillaxing",
+    "twirling",
+    "whirling"
   ]
 
   # Tool name → module index, built at compile time from the toolkit.
   # Each tool module defines __busy_words__/0 via the Tool macro.
-  @tool_modules (
-    BoomLooper.Tools.Container.__tool_server__().tools
-    |> Enum.into(%{}, fn mod -> {mod.__tool_name__(), mod} end)
-  )
+  @tool_modules BoomLooper.Tools.Container.__tool_server__().tools
+                |> Enum.into(%{}, fn mod -> {mod.__tool_name__(), mod} end)
 
   @doc """
   Status word for the sidebar and chat bubble. When the agent has an
@@ -324,10 +394,13 @@ defmodule BoomLooperWeb.Components.Sidebar do
     sentence_case(word)
   end
 
-  defp sentence_case(<<first::utf8, rest::binary>>), do: <<String.upcase(<<first::utf8>>)::binary, rest::binary>>
+  defp sentence_case(<<first::utf8, rest::binary>>),
+    do: <<String.upcase(<<first::utf8>>)::binary, rest::binary>>
+
   defp sentence_case(other), do: other
 
   defp tool_busy_words(nil), do: []
+
   defp tool_busy_words(name) do
     case @tool_modules[name] do
       nil -> []
@@ -337,12 +410,14 @@ defmodule BoomLooperWeb.Components.Sidebar do
 
   # Strip the MCP server prefix: "mcp__boom-looper-container__exec" → "exec"
   defp extract_tool_name(nil), do: nil
+
   defp extract_tool_name("mcp__" <> rest) do
     case String.split(rest, "__", parts: 2) do
       [_server, name] -> name
       _ -> rest
     end
   end
+
   defp extract_tool_name(name), do: name
 
   defp service_status_text(%{status: :running}), do: nil

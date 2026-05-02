@@ -25,8 +25,10 @@ defmodule BoomLooper.ChatAgent.ToolConfigTest do
 
     test "does NOT include the Agents toolkit (workspace boundary)" do
       tools = ToolConfig.default_tools()
+
       refute Code.ensure_loaded?(BoomLooper.Tools.Agents),
              "Tools.Agents should be deleted, not just unlinked"
+
       refute Enum.any?(tools, &(&1 == BoomLooper.Tools.Agents))
     end
 
@@ -34,6 +36,7 @@ defmodule BoomLooper.ChatAgent.ToolConfigTest do
       info = BoomLooper.Tools.Container.__tool_server__()
       tool_names = Enum.map(info.tools, & &1.__tool_name__())
       refute "docker" in tool_names
+
       refute Code.ensure_loaded?(BoomLooper.Tools.Container.Docker),
              "Tools.Container.Docker should be deleted, not just unlinked"
     end
@@ -82,6 +85,7 @@ defmodule BoomLooper.ChatAgent.ToolConfigTest do
 
     test "both agent types get WebSearch and WebFetch" do
       tools = ToolConfig.default_tools()
+
       for container_only? <- [true, false] do
         allowed = ToolConfig.build_allowed_tools(tools, container_only?)
         assert "WebSearch" in allowed

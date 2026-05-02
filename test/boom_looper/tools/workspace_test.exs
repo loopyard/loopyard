@@ -15,9 +15,12 @@ defmodule BoomLooper.Tools.WorkspaceTest do
     end
 
     test "has all expected tools" do
-      tool_names = WorkspaceTools.__tool_server__().tools |> Enum.map(& &1.__tool_name__()) |> MapSet.new()
+      tool_names =
+        WorkspaceTools.__tool_server__().tools |> Enum.map(& &1.__tool_name__()) |> MapSet.new()
+
       # Only metadata tools remain - infrastructure is written directly via boom-looper-container
       expected = ~w(set_workspace_name set_system_prompt)
+
       for name <- expected do
         assert name in tool_names, "missing tool: #{name}"
       end
@@ -68,6 +71,7 @@ defmodule BoomLooper.Tools.WorkspaceTest do
     # gone. Read back from the volume to verify.
     defp volume_for(agent_id) do
       ws_id = BoomLooper.ChatAgent.get_state(agent_id).workspace_id
+
       case BoomLooper.ProjectRegistry.get_workspace(ws_id) do
         %{volume: vol} when is_binary(vol) -> vol
         _ -> "code-#{ws_id}"
@@ -75,7 +79,8 @@ defmodule BoomLooper.Tools.WorkspaceTest do
     end
 
     test "set_workspace_name creates config", %{agent_id: id} do
-      assert {:ok, _} = WorkspaceTools.do_update_config(id, fn ws -> %{ws | name: "Test"} end, "ok")
+      assert {:ok, _} =
+               WorkspaceTools.do_update_config(id, fn ws -> %{ws | name: "Test"} end, "ok")
 
       {:ok, ws} = BoomLooper.Workspace.load_from_volume(volume_for(id))
       assert ws.name == "Test"
@@ -83,7 +88,12 @@ defmodule BoomLooper.Tools.WorkspaceTest do
 
     test "set_system_prompt updates config", %{agent_id: id} do
       WorkspaceTools.do_update_config(id, fn ws -> %{ws | name: "Test"} end, "ok")
-      WorkspaceTools.do_update_config(id, fn ws -> %{ws | system_prompt: "Rails project"} end, "ok")
+
+      WorkspaceTools.do_update_config(
+        id,
+        fn ws -> %{ws | system_prompt: "Rails project"} end,
+        "ok"
+      )
 
       {:ok, ws} = BoomLooper.Workspace.load_from_volume(volume_for(id))
       assert ws.name == "Test"
@@ -91,9 +101,14 @@ defmodule BoomLooper.Tools.WorkspaceTest do
     end
 
     test "git fields are preserved through updates", %{agent_id: id} do
-      WorkspaceTools.do_update_config(id, fn ws ->
-        %{ws | name: "Test", git_url: "git@github.com:owner/repo.git", branch: "main"}
-      end, "ok")
+      WorkspaceTools.do_update_config(
+        id,
+        fn ws ->
+          %{ws | name: "Test", git_url: "git@github.com:owner/repo.git", branch: "main"}
+        end,
+        "ok"
+      )
+
       WorkspaceTools.do_update_config(id, fn ws -> %{ws | system_prompt: "Updated"} end, "ok")
 
       {:ok, ws} = BoomLooper.Workspace.load_from_volume(volume_for(id))
@@ -159,7 +174,8 @@ defmodule BoomLooper.Tools.WorkspaceTest do
       assert_receive %BoomLooper.Events.ChatAgentMessage.Message{
                        agent_id: ^id,
                        msg: %{role: :system, content: "Container failed."}
-                     }, 1_000
+                     },
+                     1_000
     end
 
     test "system messages are visible to both agent and subscribers", %{agent_id: id} do
@@ -175,7 +191,9 @@ defmodule BoomLooper.Tools.WorkspaceTest do
       assert_receive %BoomLooper.Events.ChatAgentMessage.Message{
                        agent_id: ^id,
                        msg: %{role: :system, content: content}
-                     }, 1_000
+                     },
+                     1_000
+
       assert content =~ "ARM64"
 
       # Agent state has it
@@ -196,15 +214,19 @@ defmodule BoomLooper.Tools.WorkspaceTest do
     setup do
       id = "no-bind-test-#{:rand.uniform(100_000)}"
 
-      :ets.insert(:chat_agents, {id, %{
-        id: id,
-        name: "No Bind Test",
-        workspace_id: nil,
-        bind_mount: nil,
-        working_dir: File.cwd!(),
-        started_at: DateTime.utc_now(),
-        last_activity_at: DateTime.utc_now()
-      }})
+      :ets.insert(
+        :chat_agents,
+        {id,
+         %{
+           id: id,
+           name: "No Bind Test",
+           workspace_id: nil,
+           bind_mount: nil,
+           working_dir: File.cwd!(),
+           started_at: DateTime.utc_now(),
+           last_activity_at: DateTime.utc_now()
+         }}
+      )
 
       on_exit(fn -> :ets.delete(:chat_agents, id) end)
       %{agent_id: id}

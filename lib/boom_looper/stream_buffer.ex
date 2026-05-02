@@ -38,6 +38,7 @@ defmodule BoomLooper.StreamBuffer do
   """
   def restore(message, opts \\ [])
   def restore(nil, _opts), do: new()
+
   def restore(message, opts) do
     %__MODULE__{
       content: message[:content] || "",
@@ -104,6 +105,7 @@ defmodule BoomLooper.StreamBuffer do
   defp trim(content, max_bytes) when byte_size(content) > max_bytes do
     String.slice(content, -max_bytes..-1//1)
   end
+
   defp trim(content, _), do: content
 
   defp generate_id do

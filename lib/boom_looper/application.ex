@@ -78,7 +78,13 @@ defmodule BoomLooper.Application do
     # Higher max_restarts: the child list includes modules from multiple
     # development branches. A crashing child shouldn't kill the entire
     # supervisor — let it restart more aggressively before giving up.
-    opts = [strategy: :one_for_one, name: BoomLooper.Supervisor, max_restarts: 20, max_seconds: 10]
+    opts = [
+      strategy: :one_for_one,
+      name: BoomLooper.Supervisor,
+      max_restarts: 20,
+      max_seconds: 10
+    ]
+
     result = Supervisor.start_link(children, opts)
 
     # Attach the slow-mount logger so we get a loud warning if any
@@ -121,8 +127,13 @@ defmodule BoomLooper.Application do
     # paths can move, partial state can confuse retries).
     safe_restore("Workspace.Setup", fn ->
       case BoomLooper.Workspace.Setup.recover_on_boot() do
-        0 -> :ok
-        n -> Logger.warning("[BoomLooper] marked #{n} workspace(s) as setup-failed on boot (interrupted)")
+        0 ->
+          :ok
+
+        n ->
+          Logger.warning(
+            "[BoomLooper] marked #{n} workspace(s) as setup-failed on boot (interrupted)"
+          )
       end
     end)
 
@@ -139,9 +150,13 @@ defmodule BoomLooper.Application do
     # Move #9.
     safe_restore("Saga.Journal", fn ->
       case BoomLooper.Saga.Journal.resume_all_on_boot() do
-        %{incomplete: 0} -> :ok
+        %{incomplete: 0} ->
+          :ok
+
         %{incomplete: n} = summary ->
-          Logger.warning("[BoomLooper] found #{n} incomplete saga(s) on boot: #{inspect(summary)}")
+          Logger.warning(
+            "[BoomLooper] found #{n} incomplete saga(s) on boot: #{inspect(summary)}"
+          )
       end
     end)
 
@@ -156,10 +171,14 @@ defmodule BoomLooper.Application do
     fun.()
   rescue
     e ->
-      Logger.warning("[BoomLooper] #{name} restore failed: #{Exception.message(e)} — app continuing degraded")
+      Logger.warning(
+        "[BoomLooper] #{name} restore failed: #{Exception.message(e)} — app continuing degraded"
+      )
   catch
     :exit, reason ->
-      Logger.warning("[BoomLooper] #{name} restore failed (exit: #{inspect(reason)}) — app continuing degraded")
+      Logger.warning(
+        "[BoomLooper] #{name} restore failed (exit: #{inspect(reason)}) — app continuing degraded"
+      )
   end
 
   @impl true

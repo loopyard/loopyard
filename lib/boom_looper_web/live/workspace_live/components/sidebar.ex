@@ -2,27 +2,40 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
   @moduledoc "Sidebar components for workspace_live: sidebar, service_item, volume_item, agent_list_item, new_agent_screen."
   use Phoenix.Component
 
-  import BoomLooperWeb.Components.Sidebar, only: [
-    status_dot: 1, agent_display_status: 1, service_dot: 1, service_detail: 1,
-    first_host_port: 1, thinking_word: 2
-  ]
+  import BoomLooperWeb.Components.Sidebar,
+    only: [
+      status_dot: 1,
+      agent_display_status: 1,
+      service_dot: 1,
+      service_detail: 1,
+      first_host_port: 1,
+      thinking_word: 2
+    ]
+
   import BoomLooperWeb.Components.SideNav, only: [section: 1, row: 1, empty: 1]
-  import BoomLooperWeb.Live.WorkspaceLive.Components.Formatters, only: [
-    service_status_text: 1, exit_reason: 1, derive_volume_description: 1
-  ]
+
+  import BoomLooperWeb.Live.WorkspaceLive.Components.Formatters,
+    only: [
+      service_status_text: 1,
+      exit_reason: 1,
+      derive_volume_description: 1
+    ]
 
   # Always show sync for Local workspaces — even nil means "initializing"
   defp sync_relevant?(_), do: true
 
   # Container-related sync errors are "waiting" states, not real errors
   defp sync_waiting?(nil), do: true
+
   defp sync_waiting?(%{status: :errored, last_error: err}) when is_binary(err) do
     String.contains?(err, "container") or String.contains?(err, "No sync process")
   end
+
   defp sync_waiting?(%{status: s}) when s in [:starting, :unknown], do: true
   defp sync_waiting?(_), do: false
 
   defp sync_dot(nil), do: "bg-zinc-400 animate-pulse"
+
   defp sync_dot(sync) do
     cond do
       sync_waiting?(sync) -> "bg-zinc-400 animate-pulse"
@@ -37,11 +50,13 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
   # --- Sidebar ---
 
   def sidebar(assigns) do
-    base_path = if assigns.project do
-      "/projects/#{assigns.project.id}/workspaces/#{assigns.workspace_entry.id}"
-    else
-      "/projects/#{assigns.workspace_id}/workspaces/#{assigns.workspace_id}"
-    end
+    base_path =
+      if assigns.project do
+        "/projects/#{assigns.project.id}/workspaces/#{assigns.workspace_entry.id}"
+      else
+        "/projects/#{assigns.workspace_id}/workspaces/#{assigns.workspace_id}"
+      end
+
     assigns = assign(assigns, :base_path, base_path)
 
     ~H"""
@@ -50,18 +65,51 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
     <aside class={[
       "flex-none border-r border-zinc-200 dark:border-zinc-700/80 flex flex-col bg-zinc-50 dark:bg-zinc-900/50",
       "w-full md:w-80",
-      if(@live_action in [:new, :chat, :container, :context_panel, :service, :console, :services, :volume, :volume_files_root, :volume_file, :volume_git, :sync] || @selected_id || @selected_service,
+      if(
+        @live_action in [
+          :new,
+          :chat,
+          :container,
+          :context_panel,
+          :service,
+          :console,
+          :services,
+          :volume,
+          :volume_files_root,
+          :volume_file,
+          :volume_git,
+          :sync
+        ] || @selected_id || @selected_service,
         do: "hidden md:flex",
-        else: "flex")
+        else: "flex"
+      )
     ]}>
-      <.workspace_header workspace_state={@workspace_state} workspace_state_since={@workspace_state_since} docker_connected?={Map.get(assigns, :docker_connected?, true)} />
+      <.workspace_header
+        workspace_state={@workspace_state}
+        workspace_state_since={@workspace_state_since}
+        docker_connected?={Map.get(assigns, :docker_connected?, true)}
+      />
 
       <div class="flex-1 overflow-y-auto">
         <.section label="Agents">
-          <.agent_list_item :for={agent <- @agents} agent={agent} selected={@selected_id == agent.id} editing={Map.get(assigns, :editing_agent_id) == agent.id} />
+          <.agent_list_item
+            :for={agent <- @agents}
+            agent={agent}
+            selected={@selected_id == agent.id}
+            editing={Map.get(assigns, :editing_agent_id) == agent.id}
+          />
           <.empty :if={@agents == []} text="No agents" />
-          <.row patch={"#{@base_path}/new"} class="text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3.5 h-3.5 flex-none" aria-hidden="true">
+          <.row
+            patch={"#{@base_path}/new"}
+            class="text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 16 16"
+              fill="currentColor"
+              class="w-3.5 h-3.5 flex-none"
+              aria-hidden="true"
+            >
               <path d="M8.75 3.75a.75.75 0 0 0-1.5 0v3.5h-3.5a.75.75 0 0 0 0 1.5h3.5v3.5a.75.75 0 0 0 1.5 0v-3.5h3.5a.75.75 0 0 0 0-1.5h-3.5v-3.5Z" />
             </svg>
             <span>New agent</span>
@@ -69,7 +117,14 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         </.section>
 
         <.section :if={@service_statuses != [] || !@services_loaded} label="Services">
-          <.service_item :for={svc <- @service_statuses} svc={svc} base_path={@base_path} selected={@selected_service == svc.name} host={@host} workspace_id={@workspace_id} />
+          <.service_item
+            :for={svc <- @service_statuses}
+            svc={svc}
+            base_path={@base_path}
+            selected={@selected_service == svc.name}
+            host={@host}
+            workspace_id={@workspace_id}
+          />
           <.empty :if={!@services_loaded} text="Loading..." />
         </.section>
 
@@ -86,7 +141,11 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
             patch={"#{@base_path}/sync"}
             aria_label="Open host file sync status"
           >
-            <span class={"w-1.5 h-1.5 rounded-full flex-none #{sync_dot(@sync_status)}"} aria-hidden="true"></span>
+            <span
+              class={"w-1.5 h-1.5 rounded-full flex-none #{sync_dot(@sync_status)}"}
+              aria-hidden="true"
+            >
+            </span>
             <span class="truncate text-zinc-600 dark:text-zinc-400">Host file sync</span>
           </.row>
         </.section>
@@ -131,10 +190,16 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
     ~H"""
     <div class="flex-none border-b border-zinc-200 dark:border-zinc-700/80 px-3 py-2.5 md:py-2 flex items-center gap-2">
       <div class="flex items-center gap-2 min-w-0 flex-1">
-        <div class={"w-2 h-2 rounded-full flex-none #{if @docker_connected?, do: @dot_class, else: "bg-amber-400 animate-pulse"}"} aria-hidden="true"></div>
+        <div
+          class={"w-2 h-2 rounded-full flex-none #{if @docker_connected?, do: @dot_class, else: "bg-amber-400 animate-pulse"}"}
+          aria-hidden="true"
+        >
+        </div>
         <span class="text-sm font-medium text-zinc-700 dark:text-zinc-200 truncate">
           <span :if={@docker_connected?}>Workspace {@label}</span>
-          <span :if={!@docker_connected?} class="text-amber-600 dark:text-amber-400">Docker disconnected</span>
+          <span :if={!@docker_connected?} class="text-amber-600 dark:text-amber-400">
+            Docker disconnected
+          </span>
         </span>
       </div>
       <button
@@ -144,7 +209,13 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         aria-label="Stop workspace"
         class="focus-ring inline-flex items-center gap-1.5 rounded-md px-3 min-h-9 md:min-h-8 text-xs font-medium border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 hover:bg-white dark:hover:bg-zinc-800 transition-colors"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3 h-3" aria-hidden="true">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 16 16"
+          fill="currentColor"
+          class="w-3 h-3"
+          aria-hidden="true"
+        >
           <rect x="3" y="3" width="10" height="10" rx="1.5" />
         </svg>
         Stop
@@ -156,7 +227,13 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         aria-label="Start workspace"
         class="focus-ring inline-flex items-center gap-1.5 rounded-md px-3 min-h-9 md:min-h-8 text-xs font-medium bg-violet-600 hover:bg-violet-700 active:bg-violet-800 text-white transition-colors"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3 h-3" aria-hidden="true">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 16 16"
+          fill="currentColor"
+          class="w-3 h-3"
+          aria-hidden="true"
+        >
           <path d="M4.5 3.5v9l7-4.5-7-4.5Z" />
         </svg>
         Start
@@ -168,7 +245,13 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         aria-label="Start all services"
         class="focus-ring inline-flex items-center gap-1.5 rounded-md px-3 min-h-9 md:min-h-8 text-xs font-medium bg-violet-600 hover:bg-violet-700 active:bg-violet-800 text-white transition-colors"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3 h-3" aria-hidden="true">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 16 16"
+          fill="currentColor"
+          class="w-3 h-3"
+          aria-hidden="true"
+        >
           <path d="M4.5 3.5v9l7-4.5-7-4.5Z" />
         </svg>
         Start all
@@ -184,46 +267,80 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
     <div class="flex-1 overflow-y-auto p-6 md:p-8">
       <div class="max-w-2xl mx-auto">
         <h2 class="text-xl font-semibold text-zinc-900 dark:text-zinc-100 mb-1">New Agent</h2>
-        <p class="text-base text-zinc-500 dark:text-zinc-400 mb-4">Start an agent with a task, or pick a preset below.</p>
+        <p class="text-base text-zinc-500 dark:text-zinc-400 mb-4">
+          Start an agent with a task, or pick a preset below.
+        </p>
 
         <form id="new-agent-form" phx-submit="spawn_agent_with_message" class="space-y-4">
           <textarea
-            name="message" id="new-agent-input" rows="3"
+            name="message"
+            id="new-agent-input"
+            rows="3"
             placeholder="What should this agent work on? (leave blank to start empty)"
             class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-3 text-base
                    text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 resize-none
                    focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
           ></textarea>
-          <button type="submit"
+          <button
+            type="submit"
             class="rounded-lg bg-zinc-900 dark:bg-zinc-100 px-5 py-2.5 text-base font-medium text-white dark:text-zinc-900
-                   hover:bg-zinc-700 dark:hover:bg-zinc-300 transition-colors">
+                   hover:bg-zinc-700 dark:hover:bg-zinc-300 transition-colors"
+          >
             Launch Agent
           </button>
         </form>
 
         <div class="mt-6 pt-6 border-t border-zinc-200 dark:border-zinc-700/80">
-          <div class="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 font-semibold mb-3">Presets</div>
+          <div class="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 font-semibold mb-3">
+            Presets
+          </div>
           <div class="space-y-2">
-            <button phx-click="spawn_agent_with_message" phx-value-preset="setup"
-              class="w-full text-left rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
-              <div class="text-base font-medium text-zinc-900 dark:text-zinc-100">Set up dev environment</div>
-              <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Write Dockerfile + docker-compose.yml, start services, install deps.</div>
+            <button
+              phx-click="spawn_agent_with_message"
+              phx-value-preset="setup"
+              class="w-full text-left rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+            >
+              <div class="text-base font-medium text-zinc-900 dark:text-zinc-100">
+                Set up dev environment
+              </div>
+              <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                Write Dockerfile + docker-compose.yml, start services, install deps.
+              </div>
             </button>
-            <button phx-click="spawn_agent_with_message" phx-value-preset="debug"
-              class="w-full text-left rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
-              <div class="text-base font-medium text-zinc-900 dark:text-zinc-100">Debug failing services</div>
-              <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Check service logs, diagnose errors, fix configuration.</div>
+            <button
+              phx-click="spawn_agent_with_message"
+              phx-value-preset="debug"
+              class="w-full text-left rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+            >
+              <div class="text-base font-medium text-zinc-900 dark:text-zinc-100">
+                Debug failing services
+              </div>
+              <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                Check service logs, diagnose errors, fix configuration.
+              </div>
             </button>
-            <button phx-click="spawn_agent_with_message" phx-value-preset="explore"
-              class="w-full text-left rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
-              <div class="text-base font-medium text-zinc-900 dark:text-zinc-100">Explore the codebase</div>
-              <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Read files, search code, understand the project structure.</div>
+            <button
+              phx-click="spawn_agent_with_message"
+              phx-value-preset="explore"
+              class="w-full text-left rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+            >
+              <div class="text-base font-medium text-zinc-900 dark:text-zinc-100">
+                Explore the codebase
+              </div>
+              <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                Read files, search code, understand the project structure.
+              </div>
             </button>
           </div>
         </div>
 
         <div class="mt-6">
-          <.link patch={@base_path} class="text-base text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors">Cancel</.link>
+          <.link
+            patch={@base_path}
+            class="text-base text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
+          >
+            Cancel
+          </.link>
         </div>
       </div>
     </div>
@@ -241,13 +358,19 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
     assigns = assign(assigns, :first_port, host_port)
 
     ~H"""
-    <.row id={"service-row-#{@svc.name}"} as={:div} selected={@selected} class="grid grid-cols-[1fr_auto]">
+    <.row
+      id={"service-row-#{@svc.name}"}
+      as={:div}
+      selected={@selected}
+      class="grid grid-cols-[1fr_auto]"
+    >
       <.link
         patch={"#{@base_path}/services/#{@svc.name}"}
         class="focus-ring flex items-center gap-2 min-w-0 -mx-2 px-2 h-full rounded"
         aria-label={"Open #{@svc.name} service"}
       >
-        <span class={"w-1.5 h-1.5 rounded-full flex-none #{service_dot(@svc)}"} aria-hidden="true"></span>
+        <span class={"w-1.5 h-1.5 rounded-full flex-none #{service_dot(@svc)}"} aria-hidden="true">
+        </span>
         <span class="truncate text-zinc-600 dark:text-zinc-400">{@svc.name}</span>
       </.link>
       <div class="flex items-center justify-end gap-1.5">
@@ -270,9 +393,24 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
             svc={@svc}
           />
         <% end %>
-        <span :if={!@first_port && service_status_text(@svc)} class="text-xs text-blue-500 dark:text-blue-400">{service_status_text(@svc)}</span>
-        <span :if={!@first_port && !service_status_text(@svc) && @svc.status == :running} class="text-xs text-zinc-500 dark:text-zinc-400 font-mono truncate max-w-[88px]">{service_detail(@svc)}</span>
-        <span :if={@svc.status == :crashed && @svc.exit_info} class="text-xs text-red-500 truncate max-w-[88px]">{exit_reason(@svc.exit_info)}</span>
+        <span
+          :if={!@first_port && service_status_text(@svc)}
+          class="text-xs text-blue-500 dark:text-blue-400"
+        >
+          {service_status_text(@svc)}
+        </span>
+        <span
+          :if={!@first_port && !service_status_text(@svc) && @svc.status == :running}
+          class="text-xs text-zinc-500 dark:text-zinc-400 font-mono truncate max-w-[88px]"
+        >
+          {service_detail(@svc)}
+        </span>
+        <span
+          :if={@svc.status == :crashed && @svc.exit_info}
+          class="text-xs text-red-500 truncate max-w-[88px]"
+        >
+          {exit_reason(@svc.exit_info)}
+        </span>
       </div>
     </.row>
     """
@@ -292,12 +430,17 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
       phx-value-service={@svc.name}
       phx-value-container_port={Map.get(@svc, :container_port)}
       phx-value-expose={to_string(!@exposed?)}
-      aria-label={if @exposed?, do: "Close port — restrict to this machine", else: "Open port — share on network"}
+      aria-label={
+        if @exposed?,
+          do: "Close port — restrict to this machine",
+          else: "Open port — share on network"
+      }
       class={[
         "focus-ring inline-flex items-center min-h-8 md:min-h-6 px-1.5 rounded text-[10px] font-medium transition-colors",
         if(@exposed?,
           do: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25",
-          else: "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700")
+          else: "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+        )
       ]}
     >
       {if @exposed?, do: "Close Port", else: "Open Port"}
@@ -310,16 +453,25 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
     description = assigns.vol[:description] || derive_volume_description(assigns.vol.name)
     service = assigns.vol[:service]
 
-    assigns = assigns
-    |> assign(:description, description)
-    |> assign(:service, service)
+    assigns =
+      assigns
+      |> assign(:description, description)
+      |> assign(:service, service)
 
     ~H"""
-    <.row id={"volume-row-#{@vol.name}"} patch={"#{@base_path}/volumes/#{@vol.name}"} aria_label={"Open #{@description} volume"}>
+    <.row
+      id={"volume-row-#{@vol.name}"}
+      patch={"#{@base_path}/volumes/#{@vol.name}"}
+      aria_label={"Open #{@description} volume"}
+    >
       <span class="w-1.5 h-1.5 rounded-full flex-none bg-blue-400" aria-hidden="true"></span>
       <span class="truncate text-zinc-600 dark:text-zinc-400 flex-1">{@description}</span>
-      <span :if={@service && @service != "workspace"} class="text-xs text-zinc-500 flex-none">{@service}</span>
-      <span :if={@vol[:size]} class="text-xs text-zinc-500 dark:text-zinc-400 font-mono flex-none">{@vol.size}</span>
+      <span :if={@service && @service != "workspace"} class="text-xs text-zinc-500 flex-none">
+        {@service}
+      </span>
+      <span :if={@vol[:size]} class="text-xs text-zinc-500 dark:text-zinc-400 font-mono flex-none">
+        {@vol.size}
+      </span>
     </.row>
     """
   end
@@ -332,10 +484,20 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
     ~H"""
     <div :if={@display != :hidden} id={"agent-row-#{@agent.id}"} class="flex items-stretch gap-1">
       <%!-- Inline rename form --%>
-      <form :if={@editing} phx-submit="rename_agent" phx-click-away="cancel_rename_sidebar" phx-value-id={@agent.id} class="flex-1 flex items-center gap-1 px-2 py-1">
-        <span class={"w-1.5 h-1.5 rounded-full flex-none #{status_dot(@display)}"} aria-hidden="true"></span>
+      <form
+        :if={@editing}
+        phx-submit="rename_agent"
+        phx-click-away="cancel_rename_sidebar"
+        phx-value-id={@agent.id}
+        class="flex-1 flex items-center gap-1 px-2 py-1"
+      >
+        <span class={"w-1.5 h-1.5 rounded-full flex-none #{status_dot(@display)}"} aria-hidden="true">
+        </span>
         <input
-          type="text" name="name" value={@agent.name} autofocus
+          type="text"
+          name="name"
+          value={@agent.name}
+          autofocus
           class="flex-1 min-w-0 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-0.5 text-sm
                  text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-violet-500/30"
         />
@@ -349,10 +511,24 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         aria_label={"Open agent #{@agent.name} (#{@display})"}
         class="flex-1"
       >
-        <span class={"w-1.5 h-1.5 rounded-full flex-none #{status_dot(@display)}"} aria-hidden="true"></span>
-        <span class="truncate text-zinc-600 dark:text-zinc-400" phx-dblclick="start_rename_sidebar" phx-value-id={@agent.id}>{@agent.name}</span>
-        <span :if={@display == :thinking} class="text-xs text-violet-500 dark:text-violet-400 flex-none">{@agent[:thinking_word] || thinking_word(@agent.id, @agent[:active_tool])}</span>
-        <span :if={@display == :crashed} class="text-xs text-red-500 dark:text-red-400 flex-none">Crashed</span>
+        <span class={"w-1.5 h-1.5 rounded-full flex-none #{status_dot(@display)}"} aria-hidden="true">
+        </span>
+        <span
+          class="truncate text-zinc-600 dark:text-zinc-400"
+          phx-dblclick="start_rename_sidebar"
+          phx-value-id={@agent.id}
+        >
+          {@agent.name}
+        </span>
+        <span
+          :if={@display == :thinking}
+          class="text-xs text-violet-500 dark:text-violet-400 flex-none"
+        >
+          {@agent[:thinking_word] || thinking_word(@agent.id, @agent[:active_tool])}
+        </span>
+        <span :if={@display == :crashed} class="text-xs text-red-500 dark:text-red-400 flex-none">
+          Crashed
+        </span>
       </.row>
       <button
         :if={!@editing && @display in [:sleeping, :crashed]}

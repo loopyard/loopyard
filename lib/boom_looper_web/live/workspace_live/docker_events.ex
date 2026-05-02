@@ -57,7 +57,10 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.DockerEvents do
   # WorkspaceServices subscriber handlers
   # ---------------------------------------------------------------------------
 
-  def handle_compose_result(%Events.WorkspaceServices.ComposeResult{workspace_id: workspace_id, result: result}, socket) do
+  def handle_compose_result(
+        %Events.WorkspaceServices.ComposeResult{workspace_id: workspace_id, result: result},
+        socket
+      ) do
     ws = socket.assigns.workspace
     ws_entry = socket.assigns[:workspace_entry]
     our_id = (ws_entry && ws_entry.id) || ws.id
@@ -91,15 +94,17 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.DockerEvents do
     ws = socket.assigns.workspace
     ws_entry = socket.assigns[:workspace_entry]
 
-    matches = path == ws.path or
-      (ws_entry && path == ws_entry[:path]) or
-      (ws_entry && path == ws_entry[:compose_dir])
+    matches =
+      path == ws.path or
+        (ws_entry && path == ws_entry[:path]) or
+        (ws_entry && path == ws_entry[:compose_dir])
 
     if matches do
-      ws_id = ws_entry && ws_entry.id || ws.id
+      ws_id = (ws_entry && ws_entry.id) || ws.id
       {service_statuses, _volumes} = load_sidebar_from_observer(path, ws_id)
 
-      {:noreply, assign(socket, :service_statuses, guard_service_statuses(socket, service_statuses))}
+      {:noreply,
+       assign(socket, :service_statuses, guard_service_statuses(socket, service_statuses))}
     else
       {:noreply, socket}
     end
@@ -121,15 +126,22 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.DockerEvents do
   # WorkspaceSetup subscriber handlers
   # ---------------------------------------------------------------------------
 
-  def handle_setup_started(%Events.WorkspaceSetup.Started{workspace_id: id, attempt: attempt, started_at: at}, socket) do
+  def handle_setup_started(
+        %Events.WorkspaceSetup.Started{workspace_id: id, attempt: attempt, started_at: at},
+        socket
+      ) do
     if id == socket.assigns.workspace.id do
-      {:noreply, patch_setup(socket, %{phase: :running, attempts: attempt, started_at: at, error: nil})}
+      {:noreply,
+       patch_setup(socket, %{phase: :running, attempts: attempt, started_at: at, error: nil})}
     else
       {:noreply, socket}
     end
   end
 
-  def handle_setup_phase_started(%Events.WorkspaceSetup.PhaseStarted{workspace_id: id, phase: phase}, socket) do
+  def handle_setup_phase_started(
+        %Events.WorkspaceSetup.PhaseStarted{workspace_id: id, phase: phase},
+        socket
+      ) do
     if id == socket.assigns.workspace.id do
       {:noreply, patch_setup(socket, %{phase: phase})}
     else
@@ -137,7 +149,10 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.DockerEvents do
     end
   end
 
-  def handle_setup_phase_completed(%Events.WorkspaceSetup.PhaseCompleted{workspace_id: id}, socket) do
+  def handle_setup_phase_completed(
+        %Events.WorkspaceSetup.PhaseCompleted{workspace_id: id},
+        socket
+      ) do
     if id == socket.assigns.workspace.id do
       {:noreply, socket}
     else
@@ -145,7 +160,10 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.DockerEvents do
     end
   end
 
-  def handle_setup_phase_progress(%Events.WorkspaceSetup.PhaseProgress{workspace_id: id, payload: payload}, socket) do
+  def handle_setup_phase_progress(
+        %Events.WorkspaceSetup.PhaseProgress{workspace_id: id, payload: payload},
+        socket
+      ) do
     if id == socket.assigns.workspace.id do
       {:noreply, patch_setup(socket, %{progress: payload})}
     else
@@ -153,7 +171,10 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.DockerEvents do
     end
   end
 
-  def handle_setup_completed(%Events.WorkspaceSetup.Completed{workspace_id: id, finished_at: at}, socket) do
+  def handle_setup_completed(
+        %Events.WorkspaceSetup.Completed{workspace_id: id, finished_at: at},
+        socket
+      ) do
     if id == socket.assigns.workspace.id do
       {:noreply, patch_setup(socket, %{phase: :ready, finished_at: at, error: nil})}
     else
@@ -163,7 +184,8 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.DockerEvents do
 
   def handle_setup_failed(%Events.WorkspaceSetup.Failed{workspace_id: id, error: error}, socket) do
     if id == socket.assigns.workspace.id do
-      {:noreply, patch_setup(socket, %{phase: :failed, error: error, finished_at: DateTime.utc_now()})}
+      {:noreply,
+       patch_setup(socket, %{phase: :failed, error: error, finished_at: DateTime.utc_now()})}
     else
       {:noreply, socket}
     end
@@ -269,7 +291,8 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.DockerEvents do
   # ---------------------------------------------------------------------------
 
   defp workspace_id(socket) do
-    socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
+    (socket.assigns.workspace_entry && socket.assigns.workspace_entry.id) ||
+      socket.assigns.workspace.id
   end
 
   def docker_connected? do
