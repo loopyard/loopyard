@@ -77,9 +77,9 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
           phx-click="open_port_from_chat"
           phx-value-service={@port_info.service}
           phx-value-container_port={@port_info.container_port}
-          class="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
+          class="inline-flex items-center px-1.5 rounded text-[10px] font-medium text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
         >
-          Open
+          Open Port
         </button>
       </div>
       <div :if={@port_info && @port_info.exposed} class="ml-10 mt-1.5 flex items-center gap-2 py-1">
