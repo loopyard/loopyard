@@ -1130,222 +1130,42 @@ defmodule BoomLooperWeb.WorkspaceLive do
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   # --- ChatAgent subscriber callbacks ---
+  # Logic extracted to AgentEvents — callbacks delegate there.
+
+  alias BoomLooperWeb.Live.WorkspaceLive.AgentEvents
 
   @impl Events.ChatAgent.Subscriber
-  def on_started(%Events.ChatAgent.Started{summary: agent_summary}, socket) do
-    socket = assign(socket, :agents, AgentLifecycle.list_workspace_agents(socket.assigns.workspace.path))
-
-    if socket.assigns.booting_agent_id && agent_summary.id == socket.assigns.booting_agent_id do
-      socket = assign(socket, :booting_agent_id, nil)
-
-      if socket.assigns.selected_id == agent_summary.id do
-        case AgentLifecycle.select_agent(socket, agent_summary.id) do
-          {:noreply, s} -> {:noreply, s}
-          :not_found -> {:noreply, socket}
-        end
-      else
-        {:noreply, socket}
-      end
-    else
-      {:noreply, socket}
-    end
-  end
+  def on_started(event, socket), do: AgentEvents.handle_started(event, socket)
 
   @impl Events.ChatAgent.Subscriber
-  def on_resumed(%Events.ChatAgent.Resumed{summary: summary}, socket) do
-    # Resume = an agent supervisor (re)started the GenServer after a
-    # crash or log replay. Without this handler the sidebar would
-    # latch at whatever `:chat_agent_status_changed` last said — often
-    # `:crashed` — even though the new GenServer is alive and idle.
-    # That's the "it says Sleeping but the agent is actually up" bug.
-    annotated = AgentLifecycle.annotate_liveness(summary)
-
-    agents =
-      Enum.map(socket.assigns.agents, fn a ->
-        if a.id == summary.id, do: annotated, else: a
-      end)
-
-    socket = assign(socket, :agents, agents)
-
-    socket =
-      if summary.id == socket.assigns.selected_id do
-        refresh_selected_agent(socket, summary.id)
-      else
-        socket
-      end
-
-    {:noreply, socket}
-  end
+  def on_resumed(event, socket), do: AgentEvents.handle_resumed(event, socket)
 
   @impl Events.ChatAgent.Subscriber
-  def on_booting(%Events.ChatAgent.Booting{summary: summary}, socket) do
-    {:noreply, assign(socket, :agents, AgentLifecycle.list_workspace_agents(socket.assigns.workspace.path))
-     |> then(fn s ->
-       if s.assigns.selected_id == summary.id do
-         assign(s, booting_agent_id: summary.id, booting_agent_name: summary.name, boot_status: summary[:boot_status] || "Initializing...", boot_log: [])
-       else
-         s
-       end
-     end)}
-  end
+  def on_booting(event, socket), do: AgentEvents.handle_booting(event, socket)
 
   @impl Events.ChatAgent.Subscriber
-  def on_boot_status(%Events.ChatAgent.BootStatus{id: id, status: status_text}, socket) do
-    agents =
-      Enum.map(socket.assigns.agents, fn a ->
-        if a.id == id, do: Map.put(a, :boot_status, status_text), else: a
-      end)
-
-    socket = assign(socket, :agents, agents)
-
-    socket =
-      if socket.assigns.booting_agent_id == id do
-        socket
-        |> assign(:boot_status, status_text)
-        |> update(:boot_log, &(&1 ++ [status_text]))
-      else
-        socket
-      end
-
-    {:noreply, socket}
-  end
+  def on_boot_status(event, socket), do: AgentEvents.handle_boot_status(event, socket)
 
   @impl Events.ChatAgent.Subscriber
-  def on_boot_failed(%Events.ChatAgent.BootFailed{id: id, reason: reason}, socket) do
-    socket = assign(socket, :agents, AgentLifecycle.list_workspace_agents(socket.assigns.workspace.path))
-
-    socket =
-      if socket.assigns.booting_agent_id == id || socket.assigns.selected_id == id do
-        socket
-        |> assign(:booting_agent_id, nil)
-        |> put_flash(:error, "Failed to start agent: #{inspect(reason)}")
-        |> push_patch(to: workspace_path(socket))
-      else
-        socket
-      end
-
-    {:noreply, socket}
-  end
+  def on_boot_failed(event, socket), do: AgentEvents.handle_boot_failed(event, socket, &workspace_path/1)
 
   @impl Events.ChatAgent.Subscriber
-  def on_stopped(%Events.ChatAgent.Stopped{}, socket) do
-    agents = AgentLifecycle.list_workspace_agents(socket.assigns.workspace.path)
-
-    {:noreply,
-     socket
-     |> assign(:agents, agents)
-     |> refresh_selected_agent(socket.assigns.selected_id)}
-  end
+  def on_stopped(_event, socket), do: AgentEvents.handle_stopped(socket)
 
   @impl Events.ChatAgent.Subscriber
-  def on_removed(%Events.ChatAgent.Removed{id: id}, socket) do
-    socket = assign(socket, :agents, AgentLifecycle.list_workspace_agents(socket.assigns.workspace.path))
-
-    socket =
-      if socket.assigns.selected_id == id do
-        assign(socket, selected_id: nil, selected_agent: nil, messages: [])
-      else
-        socket
-      end
-
-    {:noreply, socket}
-  end
+  def on_removed(event, socket), do: AgentEvents.handle_removed(event, socket)
 
   @impl Events.ChatAgent.Subscriber
-  def on_renamed(%Events.ChatAgent.Renamed{id: id, name: new_name}, socket) do
-    agents =
-      Enum.map(socket.assigns.agents, fn a ->
-        if a.id == id, do: %{a | name: new_name}, else: a
-      end)
-
-    socket = assign(socket, :agents, agents)
-
-    socket =
-      if id == socket.assigns.selected_id do
-        # Merge: ETS for fresh counters, assigns for the new name
-        ets_data =
-          case :ets.lookup(:chat_agents, id) do
-            [{^id, data}] -> data
-            _ -> %{}
-          end
-
-        case Enum.find(agents, &(&1.id == id)) do
-          nil -> socket
-          from_assigns ->
-            merged = Map.merge(ets_data, Map.take(from_assigns, [:name, :status, :thinking_word, :alive?]))
-            assign(socket, :selected_agent, merged)
-        end
-      else
-        socket
-      end
-
-    {:noreply, socket}
-  end
+  def on_renamed(event, socket), do: AgentEvents.handle_renamed(event, socket)
 
   @impl Events.ChatAgent.Subscriber
-  def on_status_changed(%Events.ChatAgent.StatusChanged{id: id, status: status}, socket) do
-    # Compute thinking word ONCE per status change
-    active_tool =
-      case Enum.find(socket.assigns.agents, &(&1.id == id)) do
-        %{active_tool: t} -> t
-        _ -> nil
-      end
-
-    word =
-      if status in [:thinking, :booting, :backoff],
-        do: BoomLooperWeb.Components.Sidebar.thinking_word(id, active_tool),
-        else: nil
-
-    agents =
-      Enum.map(socket.assigns.agents, fn a ->
-        if a.id == id do
-          a |> Map.put(:status, status) |> Map.put(:thinking_word, word) |> AgentLifecycle.annotate_liveness()
-        else
-          a
-        end
-      end)
-
-    socket = assign(socket, :agents, agents)
-    socket = assign(socket, :thinking_word, word)
-
-    socket =
-      if id == socket.assigns.selected_id do
-        # Merge ETS data (token counts, cost, etc.) with event-driven
-        # fields (status, thinking_word). ETS has the latest counters
-        # from the GenServer; the event has the authoritative status.
-        ets_data =
-          case :ets.lookup(:chat_agents, id) do
-            [{^id, data}] -> data
-            _ -> %{}
-          end
-
-        case Enum.find(agents, &(&1.id == id)) do
-          nil -> socket
-          from_assigns ->
-            merged = Map.merge(ets_data, Map.take(from_assigns, [:status, :thinking_word, :alive?]))
-            assign(socket, :selected_agent, merged)
-        end
-      else
-        socket
-      end
-
-    {:noreply, socket}
-  end
+  def on_status_changed(event, socket), do: AgentEvents.handle_status_changed(event, socket)
 
   @impl Events.ChatAgent.Subscriber
-  def on_quarantined(%Events.ChatAgent.Quarantined{}, socket) do
-    # Quarantine UI lives on /system/quarantine. The workspace sidebar
-    # already reflects the :crashed status that accompanies it via the
-    # separate StatusChanged event, so nothing to do here.
-    {:noreply, socket}
-  end
+  def on_quarantined(_event, socket), do: {:noreply, socket}
 
   @impl Events.ChatAgent.Subscriber
-  def on_released(%Events.ChatAgent.Released{}, socket) do
-    # Release clears the quarantine flag; the subsequent Resumed or
-    # StatusChanged event is what updates the sidebar.
-    {:noreply, socket}
-  end
+  def on_released(_event, socket), do: {:noreply, socket}
 
   # --- ChatAgentMessage subscriber callbacks ---
 
@@ -1373,7 +1193,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
         socket
         |> assign(:messages, socket.assigns.messages ++ [msg])
         |> update(:messages_total, &(&1 + 1))
-        |> refresh_selected_agent(id)
+        |> AgentEvents.refresh_selected_from_agents(id, socket.assigns.agents)
         |> push_event("scroll_bottom", %{})
 
       # Update thinking word when a tool message arrives — shows the
@@ -1395,13 +1215,9 @@ defmodule BoomLooperWeb.WorkspaceLive do
 
   @impl Events.ChatAgentMessage.Subscriber
   def on_text_delta(%Events.ChatAgentMessage.TextDelta{agent_id: id, text: text}, socket) when id == socket.assigns.selected_id do
-    # Piggyback on delta events to keep :selected_agent fresh even when
-    # status transitions don't emit their own broadcast. Costs an ETS
-    # lookup per streamed chunk — cheap, and LiveView's assign diffing
-    # elides the render when the summary hasn't actually changed.
     {:noreply,
      socket
-     |> refresh_selected_agent(id)
+     |> AgentEvents.refresh_selected_from_agents(id, socket.assigns.agents)
      |> assign(:streaming_text, socket.assigns.streaming_text <> text)
      |> push_event("scroll_bottom", %{})}
   end
