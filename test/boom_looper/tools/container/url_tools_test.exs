@@ -85,7 +85,7 @@ defmodule BoomLooper.Tools.Container.UrlToolsTest do
       )
 
       assert result =~ "localhost:4555"
-      assert result =~ "Open Port"
+      assert result =~ "open port dev/3000"
 
       :ets.delete(:chat_agents, agent_id)
       :ets.delete(:port_registry, {ws_id, "dev", 3000})

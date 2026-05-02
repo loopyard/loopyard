@@ -692,6 +692,28 @@ defmodule BoomLooperWeb.WorkspaceLive do
   end
 
   @impl true
+  def handle_event("open_port_from_chat", %{"service" => svc, "container_port" => cport}, socket) do
+    ws_id = socket.assigns.workspace.id
+    cport = String.to_integer(cport)
+
+    case BoomLooper.PortRegistry.set_exposure(ws_id, svc, cport, true) do
+      :ok ->
+        service_statuses =
+          Enum.map(socket.assigns.service_statuses, fn s ->
+            if s.name == svc, do: Map.put(s, :exposed, true), else: s
+          end)
+
+        {:noreply,
+         socket
+         |> assign(:service_statuses, service_statuses)
+         |> put_flash(:info, "Port opened — link is now accessible")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Could not open port: #{inspect(reason)}")}
+    end
+  end
+
+  @impl true
   def handle_event("restart_session", %{"id" => id}, socket) do
     ChatAgent.restart_session(id)
     {:noreply, socket}
