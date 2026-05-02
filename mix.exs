@@ -42,7 +42,13 @@ defmodule BoomLooper.MixProject do
       {:eqrcode, "~> 0.1.10"},
       {:yaml_elixir, "~> 2.9"},
       {:makeup, "~> 1.2"},
-      {:makeup_syntect, "~> 0.1"}
+      {:makeup_syntect, "~> 0.1"},
+
+      # Quality tools
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: :dev, runtime: false},
+      {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
+      {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false}
     ]
   end
 
