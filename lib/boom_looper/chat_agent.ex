@@ -890,6 +890,8 @@ defmodule BoomLooper.ChatAgent do
   @impl true
   def handle_cast({:rename, new_name}, state) do
     state = %{state | name: new_name}
+    :ets.insert(@ets_table, {state.id, summary(state)})
+    Persistence.persist_agent(state, &summary/1)
     Events.ChatAgent.publish(%Events.ChatAgent.Renamed{id: state.id, name: new_name})
     {:noreply, state}
   end

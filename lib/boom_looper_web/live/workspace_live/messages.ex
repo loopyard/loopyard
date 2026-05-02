@@ -83,6 +83,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
         </button>
       </div>
       <div :if={@port_info && @port_info.exposed} class="ml-10 mt-1.5 flex items-center gap-2 py-1">
+        <div class="w-1.5 h-1.5 rounded-full flex-none bg-emerald-500"></div>
         <span class="text-xs text-zinc-500 dark:text-zinc-400">{@port_info.service}</span>
         <a
           href={"http://#{assigns[:host] || "localhost"}:#{@port_info.host_port}"}

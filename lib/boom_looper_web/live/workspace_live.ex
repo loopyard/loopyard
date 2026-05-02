@@ -180,6 +180,9 @@ defmodule BoomLooperWeb.WorkspaceLive do
       _ -> :chat
     end
 
+    # Clear service selection when viewing an agent
+    socket = assign(socket, :selected_service, nil)
+
     socket =
       if socket.assigns.selected_id != id do
         case AgentLifecycle.select_agent(socket, id) do
