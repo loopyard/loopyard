@@ -7,7 +7,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
   alias BoomLooper.StreamBuffer
 
   use BoomLooperWeb.Live.WorkspaceLive.Components
-  alias BoomLooperWeb.Live.WorkspaceLive.{AgentLifecycle, DiffLoader, FileBrowser, ServiceLogs}
+  alias BoomLooperWeb.Live.WorkspaceLive.{AgentLifecycle, DiffLoader, DockerEvents, FileBrowser, ServiceLogs}
 
   # Move #3 strict subscriber behaviours — compile-time enforcement that
   # every event published on these topics has a matching callback here.
@@ -82,7 +82,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
     # Services + volumes come from Docker.Observer's ETS cache (instant,
     # zero docker calls). The sidebar renders immediately with real data.
     agents = AgentLifecycle.list_workspace_agents(workspace.path)
-    {service_statuses, volumes} = load_sidebar_from_observer(workspace.path, ws_id)
+    {service_statuses, volumes} = DockerEvents.load_sidebar_from_observer(workspace.path, ws_id)
 
     base_path = if extra_assigns[:project] do
       "/projects/#{extra_assigns[:project].id}/workspaces/#{extra_assigns[:workspace_entry].id}"
@@ -146,89 +146,11 @@ defmodule BoomLooperWeb.WorkspaceLive do
      |> assign(:console_container, nil)
      |> assign(:is_local_source?, is_local?)
      |> assign(:sync_status, initial_sync_status(workspace.id, is_local?))
-     |> assign(:workspace_state, derive_workspace_state(workspace.id, service_statuses, nil))
+     |> assign(:workspace_state, DockerEvents.derive_workspace_state(workspace.id, service_statuses, nil))
      |> assign(:workspace_state_since, DateTime.utc_now())
-     |> assign(:docker_connected?, docker_connected?())}
+     |> assign(:docker_connected?, DockerEvents.docker_connected?())}
   end
 
-  # The single source of truth for the workspace Start/Stop pill.
-  # Returns one of :stopped | :starting | :started | :stopping.
-  # Validated against BoomLooper.Cluster.StateMachine so illegal moves
-  # (e.g. :stopped → :started without going through :starting) never
-  # land in the assigns.
-  #
-  # `previous` is the assign's current value (or nil on mount). User
-  # intent drives transitional states; observer data drives confirmed
-  # states:
-  #
-  #   :starting  + any container up       → :started   (user-start confirmed)
-  #   :stopping  + no containers up       → :stopped   (user-stop confirmed)
-  #   :starting  + no containers up yet   → :starting  (waiting)
-  #   :stopping  + containers still up    → :stopping  (waiting)
-  #
-  # Without a user-initiated transition in flight, state is derived
-  # purely from container reality — any container up means :started,
-  # none up means :stopped. The old code had a `supervisor_up? →
-  # :running` fallback that lied when compose up failed mid-build:
-  # WorkspaceGroup stayed alive (doesn't crash on compose failure)
-  # so the UI reported "Running" despite zero containers. Supervisor
-  # presence is not equal to "services are up."
-  defp derive_workspace_state(_workspace_id, service_statuses, previous) do
-    # If the Docker event stream is down, Observer returns an empty
-    # container list — not because nothing is running, but because we
-    # can't see. Collapsing that into :stopped is the "lying UI" bug
-    # from the other direction: it tells the user their services are
-    # gone when really they're invisible. Hold the previous state
-    # until Docker comes back; the Observer reconnects and fires a
-    # fresh :docker_state_changed which re-derives on real data.
-    if not docker_connected?() do
-      previous || :stopped
-    else
-      running_count = Enum.count(service_statuses, &(&1.status == :running))
-      total_count = length(service_statuses)
-      any_running? = running_count > 0
-      all_running? = running_count == total_count and total_count > 0
-
-      # :partial is a display-only state — normalize to :started for
-      # the state machine which only knows the four core states.
-      sm_previous = if previous == :partial, do: :started, else: previous
-
-      target =
-        case sm_previous do
-          :starting -> if any_running?, do: :started, else: :starting
-          :stopping -> if any_running?, do: :stopping, else: :stopped
-          _ -> if any_running?, do: :started, else: :stopped
-        end
-
-      # Gate transitions through the state machine. Same-state is a
-      # no-op and always legal. Anything illegal falls back to the
-      # observable truth (:started or :stopped from any_running?).
-      state =
-        case BoomLooper.Cluster.StateMachine.transition(sm_previous || target, target) do
-          {:ok, s} -> s
-          {:error, _} -> if any_running?, do: :started, else: :stopped
-        end
-
-      # Distinguish "all services up" from "some services stopped"
-      if state == :started and not all_running? do
-        :partial
-      else
-        state
-      end
-    end
-  end
-
-  defp docker_connected? do
-    BoomLooper.Docker.Observer.connected?()
-  rescue
-    _ -> false
-  end
-
-  defp truncate(bin, max) when is_binary(bin) do
-    if byte_size(bin) > max, do: binary_part(bin, 0, max) <> "…", else: bin
-  end
-
-  defp truncate(other, max), do: other |> inspect() |> truncate(max)
 
   # Refresh the :selected_agent assign with the agent's latest summary
   # (model, token counts, cost, turns). The context-panel template reads
@@ -242,20 +164,6 @@ defmodule BoomLooperWeb.WorkspaceLive do
     _ -> false
   end
 
-  # Commit a new workspace_state and stamp the entered_at timestamp iff
-  # the state actually changed. The sidebar pill reads
-  # `:workspace_state_since` to show elapsed time during :starting /
-  # :stopping transitions; pinning the timestamp on every same-state
-  # broadcast would make "Starting… Ns" counter reset to 0 repeatedly.
-  defp transition_workspace_state(socket, new_state) do
-    if socket.assigns.workspace_state == new_state do
-      socket
-    else
-      socket
-      |> assign(:workspace_state, new_state)
-      |> assign(:workspace_state_since, DateTime.utc_now())
-    end
-  end
 
   defp initial_sync_status(_workspace_id, false), do: nil
 
@@ -754,7 +662,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
         # Route through guard_service_statuses even though `updated`
         # is a map over the existing list and can't go empty —
         # keeps the invariant uniform.
-        {:noreply, assign(socket, :service_statuses, guard_service_statuses(socket, updated))}
+        {:noreply, assign(socket, :service_statuses, DockerEvents.guard_service_statuses(socket, updated))}
 
       {:error, reason} ->
         require Logger
@@ -854,7 +762,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
         if svc.name == name, do: %{svc | status: :starting}, else: svc
       end)
 
-    socket = assign(socket, :service_statuses, guard_service_statuses(socket, service_statuses))
+    socket = assign(socket, :service_statuses, DockerEvents.guard_service_statuses(socket, service_statuses))
     run_compose_async(socket, ["restart", name], 30_000)
   end
 
@@ -877,7 +785,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
         end
       end)
 
-    socket = assign(socket, :service_statuses, guard_service_statuses(socket, service_statuses))
+    socket = assign(socket, :service_statuses, DockerEvents.guard_service_statuses(socket, service_statuses))
     run_compose_async(socket, ["up", "-d", name], 60_000)
   end
 
@@ -893,7 +801,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
       # state. The actual start runs async — observer events will flip
       # us to :started when containers come up.
       send(self(), {:start_workspace, socket.assigns.workspace.path})
-      {:noreply, transition_workspace_state(socket, :starting)}
+      {:noreply, DockerEvents.transition_workspace_state(socket, :starting)}
     else
       {:noreply,
        put_flash(
@@ -923,7 +831,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
       send(parent, :workspace_stopped)
     end)
 
-    {:noreply, transition_workspace_state(socket, :stopping)}
+    {:noreply, DockerEvents.transition_workspace_state(socket, :stopping)}
   end
 
   @impl true
@@ -1027,7 +935,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
 
   def handle_info(:workspace_stopped, socket) do
     ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
-    {service_statuses, volumes} = load_sidebar_from_observer(nil, ws_id)
+    {service_statuses, volumes} = DockerEvents.load_sidebar_from_observer(nil, ws_id)
 
     # Intentional empty replacement on :workspace_stopped — workspace
     # stopped, no services. The guard_service_statuses guard exists to
@@ -1035,8 +943,8 @@ defmodule BoomLooperWeb.WorkspaceLive do
     # deliberate, so we bypass the guard with force_assign_service_statuses.
     {:noreply,
      socket
-     |> transition_workspace_state(:stopped)
-     |> force_assign_service_statuses(service_statuses)
+     |> DockerEvents.transition_workspace_state(:stopped)
+     |> DockerEvents.force_assign_service_statuses(service_statuses)
      |> assign(:volumes, volumes)
      |> assign(:agents, [])}
   end
@@ -1223,216 +1131,59 @@ defmodule BoomLooperWeb.WorkspaceLive do
   def on_stream_output(%Events.ChatAgentMessage.StreamOutput{}, socket), do: {:noreply, socket}
 
   # --- DockerObserver subscriber callbacks ---
+  # Logic extracted to DockerEvents — callbacks delegate there.
 
-  # Docker.Observer broadcasts when container/volume state changes.
-  # Re-derive sidebar state from the cache — zero docker calls.
   @impl Events.DockerObserver.Subscriber
-  def on_changed(%Events.DockerObserver.Changed{}, socket) do
-    ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
-    {service_statuses, volumes} = load_sidebar_from_observer(nil, ws_id)
-    guarded = guard_service_statuses(socket, service_statuses)
-    new_state = derive_workspace_state(ws_id, guarded, socket.assigns.workspace_state)
+  def on_changed(event, socket), do: DockerEvents.handle_docker_changed(event, socket)
 
-    {:noreply,
-     socket
-     |> assign(:service_statuses, guarded)
-     |> assign(:volumes, volumes)
-     |> transition_workspace_state(new_state)}
-  end
-
-  # Observer cache wiped (≥ stale_cache_threshold consecutive fetch
-  # failures) or initial bootstrap failure. Re-read from ETS so the
-  # sidebar reflects the empty cache; otherwise it'd keep showing
-  # services/volumes that are no longer authoritative.
   @impl Events.DockerObserver.Subscriber
-  def on_reset(%Events.DockerObserver.Reset{}, socket) do
-    ws_id = socket.assigns.workspace_entry && socket.assigns.workspace_entry.id || socket.assigns.workspace.id
-    {service_statuses, volumes} = load_sidebar_from_observer(nil, ws_id)
-    guarded = guard_service_statuses(socket, service_statuses)
+  def on_reset(event, socket), do: DockerEvents.handle_docker_reset(event, socket)
 
-    {:noreply,
-     socket
-     |> assign(:service_statuses, guarded)
-     |> assign(:volumes, volumes)}
-  end
-
-  # Event stream to Docker died — cache is retained but now stale.
-  # Flip the connectivity flag so the sidebar's "Docker disconnected"
-  # badge renders. `derive_workspace_state` holds the previous state
-  # during the disconnect window, so the Start/Stop button stays sane.
   @impl Events.DockerObserver.Subscriber
-  def on_disconnected(%Events.DockerObserver.Disconnected{}, socket) do
-    {:noreply, assign(socket, :docker_connected?, false)}
-  end
+  def on_disconnected(event, socket), do: DockerEvents.handle_docker_disconnected(event, socket)
 
-  # Stream back. Flip the flag and let the next Changed event (which the
-  # reconnect bootstrap always emits after its snapshot) refresh the
-  # sidebar.
   @impl Events.DockerObserver.Subscriber
-  def on_reconnected(%Events.DockerObserver.Reconnected{}, socket) do
-    {:noreply, assign(socket, :docker_connected?, true)}
-  end
+  def on_reconnected(event, socket), do: DockerEvents.handle_docker_reconnected(event, socket)
 
   # --- WorkspaceServices subscriber callbacks ---
-
-  # ServiceManager fires this when a compose up/down attempt has
-  # completed — success OR definitive failure. Without this, a compose
-  # up that bombed out during build (missing Dockerfile, etc.) would
-  # leave the LV pinned at :starting forever: the Changed pathway never
-  # flips us to :started (no containers come up) and there's no other
-  # signal saying "give up." This is the signal.
-  @impl Events.WorkspaceServices.Subscriber
-  def on_compose_result(%Events.WorkspaceServices.ComposeResult{workspace_id: workspace_id, result: result}, socket) do
-    ws = socket.assigns.workspace
-    ws_entry = socket.assigns[:workspace_entry]
-    our_id = (ws_entry && ws_entry.id) || ws.id
-
-    if workspace_id == our_id do
-      target =
-        case {socket.assigns.workspace_state, result} do
-          {:starting, :ok} -> :started
-          {:starting, {:error, _}} -> :stopped
-          {:stopping, :ok} -> :stopped
-          {:stopping, {:error, _}} -> :started
-          _ -> socket.assigns.workspace_state
-        end
-
-      socket =
-        case result do
-          {:error, reason} ->
-            put_flash(socket, :error, "Cluster didn't start: #{truncate(reason, 200)}")
-
-          :ok ->
-            socket
-        end
-
-      {:noreply, transition_workspace_state(socket, target)}
-    else
-      {:noreply, socket}
-    end
-  end
+  # Logic extracted to DockerEvents — callbacks delegate there.
 
   @impl Events.WorkspaceServices.Subscriber
-  def on_services_updated(%Events.WorkspaceServices.ServicesUpdated{path: path}, socket) do
-    # ServiceManager broadcasts on canonical_dir (host path) or project_dir
-    # (virtual dir). Match either against our workspace's known paths.
-    ws = socket.assigns.workspace
-    ws_entry = socket.assigns[:workspace_entry]
+  def on_compose_result(event, socket), do: DockerEvents.handle_compose_result(event, socket)
 
-    matches = path == ws.path or
-      (ws_entry && path == ws_entry[:path]) or
-      (ws_entry && path == ws_entry[:compose_dir])
-
-    if matches do
-      ws_id = ws_entry && ws_entry.id || ws.id
-      {service_statuses, _volumes} = load_sidebar_from_observer(path, ws_id)
-
-      {:noreply, assign(socket, :service_statuses, guard_service_statuses(socket, service_statuses))}
-    else
-      {:noreply, socket}
-    end
-  end
+  @impl Events.WorkspaceServices.Subscriber
+  def on_services_updated(event, socket), do: DockerEvents.handle_services_updated(event, socket)
 
   # --- SourceSync subscriber callbacks ---
+  # Logic extracted to DockerEvents — callbacks delegate there.
 
   @impl Events.SourceSync.Subscriber
-  def on_updated(%Events.SourceSync.Updated{workspace_id: ws_id, status: status}, socket) do
-    if ws_id == socket.assigns.workspace.id do
-      {:noreply, assign(socket, :sync_status, status)}
-    else
-      {:noreply, socket}
-    end
-  end
+  def on_updated(event, socket), do: DockerEvents.handle_source_sync(event, socket)
 
   # --- WorkspaceSetup subscriber callbacks ---
-  #
-  # Each callback patches the cached workspace_entry.setup map and re-renders.
-  # The SetupProgress component reads off this map; no other state changes.
+  # Logic extracted to DockerEvents ��� callbacks delegate there.
 
   @impl Events.WorkspaceSetup.Subscriber
-  def on_setup_started(%Events.WorkspaceSetup.Started{workspace_id: id, attempt: attempt, started_at: at}, socket) do
-    if id == socket.assigns.workspace.id do
-      {:noreply, patch_setup(socket, %{phase: :running, attempts: attempt, started_at: at, error: nil})}
-    else
-      {:noreply, socket}
-    end
-  end
+  def on_setup_started(event, socket), do: DockerEvents.handle_setup_started(event, socket)
 
   @impl Events.WorkspaceSetup.Subscriber
-  def on_setup_phase_started(%Events.WorkspaceSetup.PhaseStarted{workspace_id: id, phase: phase}, socket) do
-    if id == socket.assigns.workspace.id do
-      {:noreply, patch_setup(socket, %{phase: phase})}
-    else
-      {:noreply, socket}
-    end
-  end
+  def on_setup_phase_started(event, socket), do: DockerEvents.handle_setup_phase_started(event, socket)
 
   @impl Events.WorkspaceSetup.Subscriber
-  def on_setup_phase_completed(%Events.WorkspaceSetup.PhaseCompleted{workspace_id: id}, socket) do
-    if id == socket.assigns.workspace.id do
-      # Phase completion alone doesn't transition the saga's overall state;
-      # `Completed` does. We don't patch here — the next PhaseStarted (or
-      # the Completed event) will move us forward.
-      {:noreply, socket}
-    else
-      {:noreply, socket}
-    end
-  end
+  def on_setup_phase_completed(event, socket), do: DockerEvents.handle_setup_phase_completed(event, socket)
 
   @impl Events.WorkspaceSetup.Subscriber
-  def on_setup_phase_progress(%Events.WorkspaceSetup.PhaseProgress{workspace_id: id, payload: payload}, socket) do
-    if id == socket.assigns.workspace.id do
-      {:noreply, patch_setup(socket, %{progress: payload})}
-    else
-      {:noreply, socket}
-    end
-  end
+  def on_setup_phase_progress(event, socket), do: DockerEvents.handle_setup_phase_progress(event, socket)
 
   @impl Events.WorkspaceSetup.Subscriber
-  def on_setup_completed(%Events.WorkspaceSetup.Completed{workspace_id: id, finished_at: at}, socket) do
-    if id == socket.assigns.workspace.id do
-      {:noreply, patch_setup(socket, %{phase: :ready, finished_at: at, error: nil})}
-    else
-      {:noreply, socket}
-    end
-  end
+  def on_setup_completed(event, socket), do: DockerEvents.handle_setup_completed(event, socket)
 
   @impl Events.WorkspaceSetup.Subscriber
-  def on_setup_failed(%Events.WorkspaceSetup.Failed{workspace_id: id, error: error}, socket) do
-    if id == socket.assigns.workspace.id do
-      {:noreply, patch_setup(socket, %{phase: :failed, error: error, finished_at: DateTime.utc_now()})}
-    else
-      {:noreply, socket}
-    end
-  end
+  def on_setup_failed(event, socket), do: DockerEvents.handle_setup_failed(event, socket)
 
   @impl Events.WorkspaceSetup.Subscriber
-  def on_setup_retry_scheduled(%Events.WorkspaceSetup.RetryScheduled{}, socket) do
-    # Surfacing per-attempt countdown is a PR2 nicety; for PR1 the spinner
-    # alone signals "still working."
-    {:noreply, socket}
-  end
+  def on_setup_retry_scheduled(event, socket), do: DockerEvents.handle_setup_retry_scheduled(event, socket)
 
-  # Merge `changes` into the workspace_entry.setup assign so SetupProgress
-  # sees the new state on the next render.
-  defp patch_setup(socket, changes) do
-    case socket.assigns[:workspace_entry] do
-      %{setup: setup} = entry ->
-        new_setup = Map.merge(setup || %{}, changes)
-        assign(socket, :workspace_entry, %{entry | setup: new_setup})
-
-      %{} = entry ->
-        assign(socket, :workspace_entry, Map.put(entry, :setup, changes))
-
-      _ ->
-        socket
-    end
-  end
-
-  # Never replace a non-empty service list with []. During Observer cache
-  # wipes, compose file syncs, or async task races, the new list can be
-  # temporarily empty. Showing an empty sidebar and then refilling it a
-  # moment later is the "flapping" bug. Keep the last known good state.
   # Compose commands can take tens of seconds (restart/stop) to minutes
   # (start with image build). Running them inline in handle_event used
   # to block this LV — pending PubSub messages, other user events, all
@@ -1449,22 +1200,6 @@ defmodule BoomLooperWeb.WorkspaceLive do
     end)
 
     {:noreply, socket}
-  end
-
-  defp guard_service_statuses(socket, new_statuses) do
-    if new_statuses == [] and socket.assigns.service_statuses != [] do
-      socket.assigns.service_statuses
-    else
-      new_statuses
-    end
-  end
-
-  # Explicit bypass for the guard when empty is legitimately the new
-  # truth (e.g. :workspace_stopped). Exists as a named function
-  # instead of a raw assign so the invariants test recognizes it as
-  # an intentional-empty site and doesn't flag it as unguarded drift.
-  defp force_assign_service_statuses(socket, new_statuses) do
-    assign(socket, :service_statuses, new_statuses)
   end
 
   # --- Private ---
@@ -1542,31 +1277,6 @@ defmodule BoomLooperWeb.WorkspaceLive do
     end
   end
 
-
-  # Derive sidebar service + volume state from Docker.Observer's ETS
-  # cache. Zero docker calls — microsecond reads. The Observer
-  # maintains the cache via the `docker events` stream.
-  #
-  # Services: read docker-compose.yml (fast local file) for DEFINED
-  # services, then merge running state from Observer's container list.
-  # Volumes: directly from Observer's volume list for this workspace.
-  defp load_sidebar_from_observer(_workspace_path, workspace_id) do
-    # Single source of truth: Observer.services_for reads the compose file
-    # from Workspace.compose_dir (always correct) and merges with cached
-    # container state. No ad-hoc path computation, no direct Docker calls.
-    service_statuses =
-      BoomLooper.Docker.Observer.services_for(workspace_id)
-      |> Enum.map(&annotate_exposure(&1, workspace_id))
-
-    volumes =
-      BoomLooper.Docker.Observer.volumes_for(workspace_id)
-      |> Enum.map(fn v ->
-        %{name: v.name, type: v.type, service: v.service, description: v.description}
-      end)
-
-    {service_statuses, volumes}
-  end
-
   # Populate :chat_agents ETS from the workspace's persisted agent log.
   # Idempotent — safe to call multiple times or when ServiceManager has
   # already run replay. Does NOT start ChatAgent GenServers; the log
@@ -1600,43 +1310,6 @@ defmodule BoomLooperWeb.WorkspaceLive do
 
   defp workspace_already_in_ets?(workspace_id) do
     Enum.any?(BoomLooper.ChatAgent.list_agents(), &(&1[:workspace_id] == workspace_id))
-  end
-
-  # Decorate a service entry with port + exposure info for the sidebar.
-  #
-  # Registry is the source of truth — it's stable across container
-  # restarts and observer poll blips. Observer's svc.ports map is
-  # transiently empty while a container is transitioning states, which
-  # used to cause the "open port" button to flap in and out of the UI.
-  #
-  # Algorithm:
-  #   1. If PortRegistry has an entry for this service, use it. Done.
-  #   2. Otherwise bootstrap from observer (pre-registry workspace) —
-  #      seed the registry so subsequent renders take path 1.
-  #   3. If neither has anything, no button to show.
-  defp annotate_exposure(svc, workspace_id) do
-    case registry_entry_for_service(workspace_id, svc.name) do
-      {:ok, entry} ->
-        Map.merge(svc, %{
-          exposed: entry.exposed,
-          container_port: entry.container_port,
-          host_port: entry.host_port
-        })
-
-      :none ->
-        # No registry entry. Ports are only assigned via compose
-        # processing — if this service has a port but no registry
-        # entry, it'll get one next time compose runs.
-        Map.merge(svc, %{exposed: false, container_port: nil, host_port: nil})
-    end
-  end
-
-  defp registry_entry_for_service(workspace_id, service_name) do
-    case BoomLooper.PortRegistry.list_for_workspace(workspace_id)
-         |> Enum.find(&(&1.service == service_name)) do
-      nil -> :none
-      entry -> {:ok, entry}
-    end
   end
 
   # Kicks off three Docker calls (container_running?, do_logs, do_inspect)

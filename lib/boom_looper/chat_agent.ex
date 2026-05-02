@@ -14,7 +14,7 @@ defmodule BoomLooper.ChatAgent do
   require Logger
 
   alias BoomLooper.AgentLog
-  alias BoomLooper.ChatAgent.{IdleReaper, Persistence, Prompt, SessionManager, StreamHandler, ToolConfig}
+  alias BoomLooper.ChatAgent.{IdleReaper, Initializer, Persistence, Prompt, SessionManager, StreamHandler}
   alias BoomLooper.Events
 
 
@@ -563,160 +563,12 @@ defmodule BoomLooper.ChatAgent do
   def init(opts) do
     Process.flag(:trap_exit, true)
     id = Keyword.fetch!(opts, :id)
-    resume = Keyword.get(opts, :resume, false)
 
-    if resume do
-      init_resume(id, opts)
-    else
-      init_fresh(id, opts)
-    end
-  end
-
-  # Resume an agent from persisted state (after server restart).
-  #
-  # Rebuild the struct from the saved summary verbatim, then overlay
-  # the runtime fields that don't persist (session, backend, etc).
-  # Past bug: hand-listing fields dropped `total_input_tokens`,
-  # `total_cost_usd`, `model`, `turns` — every resume silently zeroed
-  # the Claude panel. The general rule: summary is the contract.
-  # `struct(__MODULE__, saved)` ignores summary-only keys and fills
-  # missing defstruct fields with defaults, so adding a field to
-  # `summary/1` and the struct is enough — no resume update needed.
-  defp init_resume(id, opts) do
-    case :ets.lookup(@ets_table, id) do
-      [{^id, saved}] ->
-        case validate_resume_summary(id, saved) do
-          :ok ->
-            resume_from_summary(id, opts, saved)
-
-          {:error, missing_fields} ->
-            BoomLooper.EventLog.error(
-              "agent:#{id}",
-              "Refusing to resume: saved summary missing required fields #{inspect(missing_fields)}. " <>
-                "The ETS row is corrupt or the schema drifted. Remove this agent and recreate."
-            )
-
-            :telemetry.execute(
-              [:boom_looper, :agent, :resume_rejected],
-              %{count: 1},
-              %{agent_id: id, missing_fields: missing_fields}
-            )
-
-            # Don't silently boot with nil fields; stop and let the
-            # supervisor report the error. This is preferable to
-            # starting with broken state that crashes on first use.
-            {:stop, {:corrupted_resume_state, missing_fields}}
-        end
-
-      [] ->
-        {:stop, :no_saved_state}
-    end
-  end
-
-  # Minimum fields we need to safely resume. Missing `working_dir` ==
-  # can't start a CLI; missing `name` == unusable sidebar entry;
-  # missing `started_at` == sort ordering crashes. Other fields like
-  # tokens/cost/messages are optional-with-defaults and don't need
-  # validation.
-  defp validate_resume_summary(_id, saved) do
-    required = [:working_dir, :name, :started_at]
-
-    missing =
-      Enum.filter(required, fn field ->
-        case Map.get(saved, field) do
-          nil -> true
-          "" -> true
-          _ -> false
-        end
-      end)
-
-    case missing do
-      [] -> :ok
-      fields -> {:error, fields}
-    end
-  end
-
-  defp resume_from_summary(id, opts, saved) do
-    agent_type = saved[:agent_type] || BoomLooper.Agents.Registry.default_agent_name()
-
-    {session, session_opts, backend, new_prompt_hash} =
-      start_session(id, opts,
-        working_dir: saved.working_dir,
-        bind_mount: saved.bind_mount,
-        workspace_id: saved.workspace_id,
-        service_name: saved[:service_name],
-        agent_type: agent_type,
-        claude_session_id: saved[:claude_session_id]
-      )
-
-    # Prompt-drift detection — agent-sanity #19. If the system prompt
-    # hash differs from the one captured last boot, the agent's
-    # behavior may change subtly from its earlier turns. Detect it
-    # here, surface it below after state is built.
-    saved_prompt_hash = saved[:prompt_hash]
-
-    prompt_changed? =
-      is_binary(saved_prompt_hash) and is_binary(new_prompt_hash) and
-        saved_prompt_hash != new_prompt_hash
-
-    # Summary stores messages oldest-first (display order); internal
-    # state stores them newest-first for O(1) prepend in append_message.
-    # Reverse back on load or the message list grows in the wrong
-    # direction across restart.
-    internal_messages = Enum.reverse(saved[:messages] || [])
-
-    state =
-      __MODULE__
-      |> struct(saved)
-      |> struct(
-        session: session,
-        session_opts: session_opts,
-        backend: backend,
-        last_activity_at: DateTime.utc_now(),
-        status: :idle,
-        stream_ref: nil,
-        active_tool: nil,
-        agent_type: agent_type,
-        messages: internal_messages,
-        # Drop any stale tracked pid from the saved summary — the old
-        # CLI OS pid is long dead from the previous BEAM. track_cli_os_pid
-        # below registers the new one with the Janitor.
-        tracked_cli_os_pid: nil,
-        prompt_hash: new_prompt_hash,
-        # Clear rate-limit + auth state on resume. By the time we're
-        # back online, the rate-limit window has probably reset and
-        # the user may have re-authenticated. Starting :idle with a
-        # clean slate is more useful than restoring :rate_limited +
-        # an old resets_at_ms timestamp. If the first turn hits the
-        # same limit / auth error, the SDK will emit it again and
-        # we'll flip back. Avoids "it's rate-limited but the window
-        # passed 3 days ago" dangling state.
-        rate_limit_status: :ok,
-        rate_limit_resets_at_ms: nil,
-        rate_limit_type: nil,
-        auth_error: nil
-      )
-
-    state = SessionManager.track_os_pid(state)
-    state = IdleReaper.schedule(state)
-
-    # Agent-sanity #19 — prompt drift marker. Announce the change in
-    # the conversation so the user isn't mystified if the agent
-    # behaves differently than it did pre-boot.
-    state =
-      if prompt_changed? do
-        :telemetry.execute(
-          [:boom_looper, :agent, :prompt_drift],
-          %{count: 1},
-          %{agent_id: id, old_hash: saved_prompt_hash, new_hash: new_prompt_hash}
-        )
-
-        BoomLooper.EventLog.info(
-          "agent:#{id}",
-          "Prompt drift detected (old=#{String.slice(saved_prompt_hash, 0..7)} " <>
-            "new=#{String.slice(new_prompt_hash, 0..7)})"
-        )
-
+    case Initializer.build_state(id, opts) do
+      {:ok, state, :prompt_drift} ->
+        # Agent-sanity #19 — prompt drift marker. Announce the change in
+        # the conversation so the user isn't mystified if the agent
+        # behaves differently than it did pre-boot.
         drift_msg = %{
           role: :system,
           content:
@@ -729,203 +581,16 @@ defmodule BoomLooper.ChatAgent do
         {state, drift_msg} = append_message(state, drift_msg)
         Persistence.persist_message(state, drift_msg)
         Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: drift_msg})
-        state
-      else
-        state
-      end
 
-    :ets.insert(@ets_table, {id, summary(state)})
-    Events.ChatAgent.publish(%Events.ChatAgent.Resumed{summary: summary(state)})
+        # Re-persist summary after appending the drift message
+        :ets.insert(@ets_table, {id, summary(state)})
+        {:ok, state}
 
-    # Emit resume visibility via EventLog only — do NOT inject a
-    # system message into the conversation here. An injected
-    # message would (a) pollute message-ordering and cap tests,
-    # (b) insert itself between persisted user turns on replay,
-    # and (c) be confusing for agents that resumed cleanly with
-    # a valid claude_session_id (no user-facing event worth
-    # surfacing in-chat).
-    context_status =
-      cond do
-        is_binary(state.claude_session_id) -> "conversation continued"
-        length(state.messages) > 0 -> "NO claude_session_id — CLI will start fresh"
-        true -> "no prior messages"
-      end
+      {:ok, state} ->
+        {:ok, state}
 
-    BoomLooper.EventLog.info(
-      "agent:#{state.name}",
-      "Resumed (#{id}) with #{length(state.messages)} messages, #{context_status}"
-    )
-
-    {:ok, state}
-  end
-
-  # Start a fresh agent (normal path)
-  defp init_fresh(id, opts) do
-    name = Keyword.get(opts, :name, "Chat #{id |> String.slice(0..7)}")
-    working_dir = Keyword.get(opts, :working_dir, File.cwd!())
-    started_by = Keyword.get(opts, :started_by, "anonymous")
-    bind_mount = Keyword.get(opts, :bind_mount)
-    workspace_id = Keyword.get(opts, :workspace_id)
-    service_name = Keyword.get(opts, :service_name)
-    agent_type = Keyword.get(opts, :agent_type) || BoomLooper.Agents.Registry.default_agent_name()
-
-    {session, session_opts, backend, prompt_hash} = start_session(id, opts,
-      working_dir: working_dir,
-      bind_mount: bind_mount,
-      workspace_id: workspace_id,
-      service_name: service_name,
-      agent_type: agent_type,
-      max_turns: 50
-    )
-
-    now = DateTime.utc_now()
-
-    state = %__MODULE__{
-      id: id,
-      name: name,
-      session: session,
-      session_opts: session_opts,
-      backend: backend,
-      working_dir: working_dir,
-      bind_mount: bind_mount,
-      workspace_id: workspace_id,
-      started_at: now,
-      started_by: started_by,
-      last_activity_at: now,
-      status: :idle,
-      messages: [],
-      service_name: service_name,
-      agent_type: agent_type,
-      prompt_hash: prompt_hash
-    }
-
-    state = SessionManager.track_os_pid(state)
-    state = IdleReaper.schedule(state)
-    summary = summary(state)
-    :ets.insert(@ets_table, {id, summary})
-    Persistence.persist_agent(state, &summary/1)
-    Events.ChatAgent.publish(%Events.ChatAgent.Started{summary: summary})
-    BoomLooper.EventLog.info("agent:#{name}", "Started (#{id})")
-
-    {:ok, state}
-  end
-
-  # Shared session creation for both fresh and resumed agents
-  defp start_session(id, opts, params) do
-    working_dir = Keyword.fetch!(params, :working_dir)
-    bind_mount = Keyword.get(params, :bind_mount)
-    workspace_id = Keyword.get(params, :workspace_id)
-    service_name = Keyword.get(params, :service_name)
-    agent_type = Keyword.get(params, :agent_type) || BoomLooper.Agents.Registry.default_agent_name()
-    # When we've seen this agent before (server restart, CLI crash,
-    # auto-reconnect), `claude_session_id` is the Claude CLI's own
-    # conversation id captured from the last ResultMessage. Passing it
-    # as `resume:` tells the CLI to continue the same thread instead of
-    # starting amnesiac with a fresh system prompt. Without this, each
-    # respawn forgets everything the user + the 455 messages we
-    # preserved in the agent log.
-    resume_session_id = Keyword.get(params, :claude_session_id)
-
-    tools = Keyword.get(opts, :tools, ToolConfig.default_tools())
-
-    # Backend defaults: opts override > app config > ClaudeCode.
-    # Tests set `:default_agent_backend` to `BoomLooper.Agent.Backend.Fake`
-    # in config/test.exs so any test that boots a ChatAgent without an
-    # explicit override gets a no-op backend instead of timing out on
-    # the real CLI.
-    default_backend =
-      Application.get_env(:boom_looper, :default_agent_backend, BoomLooper.Agent.Backend.ClaudeCode)
-
-    backend = Keyword.get(opts, :backend, default_backend)
-    workspace = if workspace_id, do: load_workspace_config(workspace_id), else: nil
-
-    system_prompt =
-      Prompt.build_system_prompt(id,
-        bind_mount: bind_mount,
-        workspace_id: workspace_id,
-        workspace: workspace,
-        service_name: service_name,
-        agent_type: agent_type
-      )
-
-    # Mirror CLAUDE.md + .claude/ from the workspace volume into working_dir
-    # (a no-op for Local workspaces where Mutagen already puts them on the
-    # host). The Claude Code CLI does its own discovery from cwd, so after
-    # this runs the agent sees the same project memory a human would get
-    # from running `claude` in that repo.
-    if workspace_id do
-      BoomLooper.ChatAgent.ClaudeContext.mirror(workspace_id, working_dir)
-    end
-
-    # Containerized agents (volume-based, no bind_mount) MUST NOT use
-    # host-side filesystem tools. Their workspace lives inside a Docker
-    # volume; the host's view of `working_dir` is empty. If a container
-    # agent has Bash/Read/Edit/Write/Glob/Grep, it falls back to the
-    # BEAM process cwd (the BoomLooper repo) and merrily edits files
-    # there — which never reaches the running dev container.
-    #
-    # We saw this twice:
-    # - chatwoot eval cross-contamination (set up BoomLooper instead of chatwoot)
-    # - "change a UI string" reproducer (edited a stale host clone, not the
-    #   docker volume the container reads)
-    #
-    # `allowed_tools` alone isn't enough: with --dangerously-skip-permissions,
-    # the SDK still allows native tools by default. We need an EXPLICIT
-    # disallowed_tools list to block them.
-    #
-    # Bind-mount agents keep the native tools because they legitimately
-    # work on the host dir.
-    container_only? = is_nil(bind_mount)
-
-    # `append_system_prompt` preserves the CLI's default system prompt
-    # (which handles CLAUDE.md auto-discovery, slash command docs, native
-    # tool descriptions, etc.) and appends our BoomLooper-specific rules
-    # on top. Using `system_prompt` would REPLACE the default and the
-    # agent would stop seeing CLAUDE.md and other native context.
-    base_opts = [
-      cwd: working_dir,
-      permission_mode: :accept_edits,
-      dangerously_skip_permissions: true,
-      mcp_servers: ToolConfig.build_mcp_servers(tools, id),
-      allowed_tools: ToolConfig.build_allowed_tools(tools, container_only?),
-      append_system_prompt: system_prompt
-    ]
-
-    session_opts =
-      if container_only? do
-        Keyword.put(base_opts, :disallowed_tools, ToolConfig.denied_native_tools_for_container_agents())
-      else
-        base_opts
-      end
-
-    session_opts = if max = Keyword.get(params, :max_turns),
-      do: Keyword.put(session_opts, :max_turns, max),
-      else: session_opts
-
-    session_opts =
-      if is_binary(resume_session_id) and resume_session_id != "" do
-        Keyword.put(session_opts, :resume, resume_session_id)
-      else
-        session_opts
-      end
-
-    # backend.start_session/1 can fail with {:error, reason} — the CLI
-    # binary missing, auth failing before the first byte, an OS-level
-    # resource limit. Raising with a clear message here is better than
-    # the MatchError on {:error, _} this previously emitted: the
-    # supervisor log names the reason instead of the line number.
-    case backend.start_session(session_opts) do
-      {:ok, session} ->
-        prompt_hash = :crypto.hash(:sha256, system_prompt || "") |> Base.encode16(case: :lower)
-        {session, session_opts, backend, prompt_hash}
-
-      {:error, reason} ->
-        raise RuntimeError,
-          message:
-            "Failed to start CLI session for agent #{id}: #{inspect(reason)}. " <>
-              "Usually this means: the `claude` binary isn't on PATH, the workspace volume " <>
-              "is unreachable, or auth isn't configured. Run " <>
-              "`mix boom.rpc 'ClaudeCode.Test.smoke()'` to diagnose."
+      {:stop, reason} ->
+        {:stop, reason}
     end
   end
 
@@ -1718,14 +1383,6 @@ defmodule BoomLooper.ChatAgent do
       parts = parts ++ ["Continue where you left off. If you were setting up the dev environment, check service_status and follow the verification loop."]
 
       Enum.join(parts, "\n\n")
-    end
-  end
-
-  defp load_workspace_config(workspace_id) when is_binary(workspace_id) do
-    volume_name = BoomLooper.Workspace.volume_name_for(workspace_id)
-    case BoomLooper.Workspace.load_from_volume(volume_name) do
-      {:ok, workspace} -> workspace
-      _ -> nil
     end
   end
 
