@@ -41,26 +41,71 @@ jobs:
         run: mix compile --warnings-as-errors
 
       - name: Run tests
-        # Mirror the default exclusions in test/test_helper.exs so CI
-        # runs the same set as `mix test` locally. Goal: under 2 min on
-        # ubuntu-latest. The 5 min timeout is the tripwire — if the
-        # suite goes over, hunt and eliminate slow tests rather than
-        # raise this.
         env:
-          # ubuntu-latest is ~5x slower than a local M-series Mac.
-          # The local 2s default catches Process.sleep regressions; on
-          # CI it nukes legitimate work (a 1s test becomes 5s under
-          # load and trips the timeout). Bump to 30s on CI — sleep
-          # regressions still get caught locally where it matters.
           BOOMLOOPER_LONG_TIMEOUTS: "1"
         run: mix test --exclude docker --exclude macos --exclude ssh --exclude terminal --exclude recovery --exclude slow
         timeout-minutes: 5
 
+  quality:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.18"
+          otp-version: "27"
+
+      - name: Cache deps + PLT
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+            priv/plts
+          key: ${{ runner.os }}-quality-${{ hashFiles('mix.lock') }}
+          restore-keys: ${{ runner.os }}-quality-
+
+      - name: Install dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+          mix compile
+
+      # --- Hard gates (block merge) ---
+
+      - name: Secret scan
+        run: .github/scripts/secret-scan.sh tree
+
+      - name: Check formatting
+        run: mix format --check-formatted
+
+      - name: Module cycle check
+        run: mix xref graph --format cycles --fail-above 8
+
+      - name: Dependency audit
+        run: mix deps.audit
+
+      # --- Soft gates (report only, don't block) ---
+
+      - name: Credo
+        run: mix credo --strict
+        continue-on-error: true
+
+      - name: Sobelow (security)
+        run: mix sobelow --config
+        continue-on-error: true
+
+      - name: Dialyzer
+        run: |
+          mkdir -p priv/plts
+          mix dialyzer --plt
+          mix dialyzer
+        continue-on-error: true
+
   docker-e2e:
-    # End-to-end tests that spin up real Docker containers. GitHub's
-    # ubuntu-latest runners have Docker pre-installed, so there's no
-    # docker-in-docker dance — just include the `:docker` tag. Runs in
-    # a separate job so a flaky E2E doesn't block the fast unit suite.
     runs-on: ubuntu-latest
 
     steps:
@@ -90,10 +135,6 @@ jobs:
         run: mix compile
 
       - name: Pre-pull test images in parallel
-        # Tests pull these on first use; doing it upfront in parallel
-        # keeps Docker test runtime bounded by the slowest pull
-        # (ubuntu:24.04 at ~80MB) instead of summing all pulls.
-        # docker pull is idempotent and fast when the image is cached.
         run: |
           for img in alpine:3.19 alpine:latest ubuntu:24.04 postgres:15 postgres:16 redis:7 redis:7-alpine; do
             docker pull "$img" &
@@ -101,9 +142,6 @@ jobs:
           wait
 
       - name: Run docker E2E tests
-        # Include only :docker; exclude others. The fast suite ran in
-        # the job above. BOOMLOOPER_LONG_TIMEOUTS bumps the per-test
-        # default from 2s to 30s — Docker ops are inherently slow.
         env:
           BOOMLOOPER_LONG_TIMEOUTS: "1"
         run: mix test --only docker --exclude macos --exclude ssh --exclude terminal
