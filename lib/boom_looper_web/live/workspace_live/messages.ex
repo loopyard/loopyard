@@ -58,7 +58,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
     assigns = assign(assigns, :url, msg_url(assigns))
     assigns = assign(assigns, :raw, raw_url(assigns))
     assigns = assign(assigns, :rendered_content, rewrite_localhost_urls(assigns.msg.content, assigns[:host]))
-    assigns = assign(assigns, :closed_port, detect_closed_port(assigns.msg.content, assigns[:workspace_id]))
+    assigns = assign(assigns, :port_info, detect_port_info(assigns.msg.content, assigns[:workspace_id]))
 
     ~H"""
     <div class="mt-3 mb-1 group/msg">
@@ -70,17 +70,21 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
           <div class="markdown-body text-base text-zinc-900 dark:text-zinc-100"></div>
         </div>
       </div>
-      <div :if={@closed_port} class="ml-10 mt-1.5 flex items-center gap-2 py-1">
+      <div :if={@port_info && !@port_info.exposed} class="ml-10 mt-1.5 flex items-center gap-2 py-1">
         <div class="w-1.5 h-1.5 rounded-full flex-none bg-amber-400"></div>
-        <span class="text-xs text-zinc-500 dark:text-zinc-400">{@closed_port.service} port closed</span>
+        <span class="text-xs text-zinc-500 dark:text-zinc-400">{@port_info.service} port closed</span>
         <button
           phx-click="open_port_from_chat"
-          phx-value-service={@closed_port.service}
-          phx-value-container_port={@closed_port.container_port}
+          phx-value-service={@port_info.service}
+          phx-value-container_port={@port_info.container_port}
           class="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
         >
           Open
         </button>
+      </div>
+      <div :if={@port_info && @port_info.exposed} class="ml-10 mt-1.5 flex items-center gap-2 py-1">
+        <div class="w-1.5 h-1.5 rounded-full flex-none bg-emerald-500"></div>
+        <span class="text-xs text-zinc-500 dark:text-zinc-400">{@port_info.service} :{@port_info.host_port} open</span>
       </div>
       <div class="flex items-center gap-1 ml-10 mt-0.5 h-5 opacity-0 group-hover/msg:opacity-100 transition-opacity">
         <.copy_btn :if={@raw} raw_url={@raw} />
@@ -334,18 +338,18 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
     """
   end
 
-  # Detect if an assistant message contains a localhost URL whose port
-  # is closed in the PortRegistry. Returns %{service, container_port}
-  # or nil. Used to show an inline "Open Port" button.
-  defp detect_closed_port(content, workspace_id) when is_binary(content) and is_binary(workspace_id) do
+  # Detect if an assistant message contains a localhost URL with a
+  # registered port. Returns %{service, container_port, host_port, exposed}
+  # or nil. Used to show port status inline in the chat.
+  defp detect_port_info(content, workspace_id) when is_binary(content) and is_binary(workspace_id) do
     case Regex.run(~r{localhost:(\d+)}, content) do
       [_, port_str] ->
         host_port = String.to_integer(port_str)
         entries = BoomLooper.PortRegistry.list_for_workspace(workspace_id)
 
         case Enum.find(entries, &(&1.host_port == host_port)) do
-          %{exposed: false, service: svc, container_port: cp} ->
-            %{service: svc, container_port: cp}
+          %{service: svc, container_port: cp, exposed: exposed} ->
+            %{service: svc, container_port: cp, host_port: host_port, exposed: exposed}
           _ ->
             nil
         end
@@ -357,7 +361,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
     _ -> nil
   end
 
-  defp detect_closed_port(_, _), do: nil
+  defp detect_port_info(_, _), do: nil
 
   defp msg_url(assigns) do
     msg_id = assigns.msg[:id]
