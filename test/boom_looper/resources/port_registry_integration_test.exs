@@ -60,12 +60,12 @@ defmodule BoomLooper.Resources.PortRegistryIntegrationTest do
       stop_workspace_group(owner)
       assert_receive {:DOWN, ^ref, :process, ^owner, _}, 500
 
-      # Release happens via Task.Supervisor.start_child → release_entry.
-      # Give the release pipeline a moment to flush. Poll up to 1s.
-      assert eventually(fn -> PortRegistry.list_for_workspace(ws) == [] end, 1_000)
+      # Release stops proxies but preserves ETS entries (host_port +
+      # exposed flag survive supervisor restarts). Resources are cleared.
+      assert eventually(fn -> Resources.list_for_owner(owner) == [] end, 1_000)
 
-      # Resources table also empty for that owner.
-      assert Resources.list_for_owner(owner) == []
+      # Entries still exist (port assignment is durable)
+      assert length(PortRegistry.list_for_workspace(ws)) == 3
     end
 
     test "explicit release_workspace/1 untracks — no double-release on later DOWN" do

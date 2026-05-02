@@ -58,6 +58,8 @@ defmodule BoomLooper.AgentBootTest do
   end
 
   describe "boot/3" do
+    # boot/3 starts a real Claude CLI session — needs more than 2s
+    @tag timeout: 15_000
     test "registers boot status updates before starting session" do
       id = "boot-test-#{:rand.uniform(100_000)}"
       working_dir = Path.join(System.tmp_dir!(), "agent-boot-status-test-#{:rand.uniform(100_000)}")
@@ -95,6 +97,7 @@ defmodule BoomLooper.AgentBootTest do
       assert state.status != :booting
     end
 
+    @tag timeout: 15_000
     test "sends initial setup message when no workspace config exists" do
       # This tests the default_message logic — when ws_config is nil,
       # the setup guide should be sent as the initial message
