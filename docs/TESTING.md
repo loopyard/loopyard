@@ -155,6 +155,13 @@ Test file: `test/boom_looper/service_manager_terminate_test.exs`
 | `lib/boom_looper_web/live/message_live.ex` | `test/boom_looper_web/live/message_live_test.exs` |
 | `lib/boom_looper_web/channels/terminal_channel.ex` | `test/boom_looper_web/channels/terminal_channel_test.exs` |
 
+## Rules
+
+- **Failing test first.** New feature: red before green. Bug fix: write a test that reproduces the bug, watch it fail, then fix.
+- **Test the real path, not a mock of it.** If production goes through GenServer → ETS → PubSub, the test does too. Stub at the boundary (Docker, Claude CLI), not in the middle.
+- **No mocks of our own code.** If you're tempted to mock a context module, refactor to pass data instead.
+- **Inject dependencies at the boundary.** `Docker.exec_in`, `VolumeIO`, and `ChatAgent.Backend` are the boundaries; tests configure or stub these, not the callers.
+
 ## When to write tests
 
 - **New feature**: Write tests BEFORE implementation. Red/green cycle.
