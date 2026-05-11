@@ -1,16 +1,9 @@
-## What changed
+## Summary
 
-<!-- Brief description. What does this PR do? -->
+What this PR does and why.
 
-## How to test
+## Test plan
 
-<!-- Steps to verify, or "see tests" if covered -->
-
-## Checklist
-
-- [ ] Tests added/updated (every feature needs tests, every bug fix starts with a failing test)
-- [ ] Logic is in modules, not LiveView private functions
-- [ ] Shared state goes through GenServer → PubSub (not direct assign)
-- [ ] Works with multiple viewers (multiplayer)
-- [ ] `mix compile --warnings-as-errors` passes
-- [ ] `mix test --exclude docker` passes
+- [ ] `mix test` passes
+- [ ] Tested manually in browser
+- [ ] Tested on mobile (if UI change)
