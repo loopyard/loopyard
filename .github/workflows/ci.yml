@@ -40,10 +40,11 @@ jobs:
       - name: Compile (warnings as errors)
         run: mix compile --warnings-as-errors
 
-      - name: Run tests
+      - name: Run tests with coverage
         env:
           BOOMLOOPER_LONG_TIMEOUTS: "1"
-        run: mix test --exclude docker --exclude macos --exclude ssh --exclude terminal --exclude recovery --exclude slow
+          MIX_ENV: test
+        run: mix coveralls --exclude docker --exclude macos --exclude ssh --exclude terminal --exclude recovery --exclude slow
         timeout-minutes: 5
 
   quality:

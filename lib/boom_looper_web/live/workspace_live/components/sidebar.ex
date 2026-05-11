@@ -84,12 +84,6 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
         else: "flex"
       )
     ]}>
-      <.workspace_header
-        workspace_state={@workspace_state}
-        workspace_state_since={@workspace_state_since}
-        docker_connected?={Map.get(assigns, :docker_connected?, true)}
-      />
-
       <div class="flex-1 overflow-y-auto">
         <.section label="Agents">
           <.agent_list_item
@@ -159,107 +153,6 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Sidebar do
   # | :stopping), validated through BoomLooper.Cluster.StateMachine.
   # :workspace_state_since carries the transition timestamp so the
   # header can show "Starting… 12s" during in-flight transitions.
-  # :docker_connected? — when false, pill carries a "(Docker
-  # disconnected)" suffix and hides the Start/Stop button since the
-  # action would fail anyway. The stored state is held across the
-  # disconnect window so reconnection snaps back to truth.
-  attr :workspace_state, :atom, required: true
-  attr :workspace_state_since, :any, default: nil
-  attr :docker_connected?, :boolean, default: true
-
-  defp workspace_header(assigns) do
-    {label, dot_class, button} =
-      case assigns.workspace_state do
-        :starting -> {"Starting", "bg-blue-400 animate-pulse", :none}
-        :stopping -> {"Stopping", "bg-amber-400 animate-pulse", :none}
-        :started -> {"Running", "bg-emerald-500", :stop}
-        :partial -> {"Partially running", "bg-amber-400", :start_all}
-        :stopped -> {"Stopped", "bg-zinc-400", :start}
-      end
-
-    # Disconnect suppresses the action button — clicking Start while
-    # Docker is unreachable would just fail and dump errors.
-    button = if assigns.docker_connected?, do: button, else: :none
-
-    assigns =
-      assigns
-      |> assign(:label, label)
-      |> assign(:dot_class, dot_class)
-      |> assign(:button, button)
-
-    ~H"""
-    <div class="flex-none border-b border-zinc-200 dark:border-zinc-700/80 px-3 py-2.5 md:py-2 flex items-center gap-2">
-      <div class="flex items-center gap-2 min-w-0 flex-1">
-        <div
-          class={"w-2 h-2 rounded-full flex-none #{if @docker_connected?, do: @dot_class, else: "bg-amber-400 animate-pulse"}"}
-          aria-hidden="true"
-        >
-        </div>
-        <span class="text-sm font-medium text-zinc-700 dark:text-zinc-200 truncate">
-          <span :if={@docker_connected?}>Workspace {@label}</span>
-          <span :if={!@docker_connected?} class="text-amber-600 dark:text-amber-400">
-            Docker disconnected
-          </span>
-        </span>
-      </div>
-      <button
-        :if={@button == :stop}
-        type="button"
-        phx-click="shutdown_workspace"
-        aria-label="Stop workspace"
-        class="focus-ring inline-flex items-center gap-1.5 rounded-md px-3 min-h-9 md:min-h-8 text-xs font-medium border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 hover:bg-white dark:hover:bg-zinc-800 transition-colors"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 16 16"
-          fill="currentColor"
-          class="w-3 h-3"
-          aria-hidden="true"
-        >
-          <rect x="3" y="3" width="10" height="10" rx="1.5" />
-        </svg>
-        Stop
-      </button>
-      <button
-        :if={@button == :start}
-        type="button"
-        phx-click="boot_workspace"
-        aria-label="Start workspace"
-        class="focus-ring inline-flex items-center gap-1.5 rounded-md px-3 min-h-9 md:min-h-8 text-xs font-medium bg-violet-600 hover:bg-violet-700 active:bg-violet-800 text-white transition-colors"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 16 16"
-          fill="currentColor"
-          class="w-3 h-3"
-          aria-hidden="true"
-        >
-          <path d="M4.5 3.5v9l7-4.5-7-4.5Z" />
-        </svg>
-        Start
-      </button>
-      <button
-        :if={@button == :start_all}
-        type="button"
-        phx-click="boot_workspace"
-        aria-label="Start all services"
-        class="focus-ring inline-flex items-center gap-1.5 rounded-md px-3 min-h-9 md:min-h-8 text-xs font-medium bg-violet-600 hover:bg-violet-700 active:bg-violet-800 text-white transition-colors"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 16 16"
-          fill="currentColor"
-          class="w-3 h-3"
-          aria-hidden="true"
-        >
-          <path d="M4.5 3.5v9l7-4.5-7-4.5Z" />
-        </svg>
-        Start all
-      </button>
-    </div>
-    """
-  end
-
   # --- New Agent Screen ---
 
   def new_agent_screen(assigns) do
