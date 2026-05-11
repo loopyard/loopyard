@@ -242,7 +242,10 @@ mix boom.rpc "BoomLooper.ChatAgent.list_agents()"
 | `Agent.Reconciler` | ETS-vs-registry drift detection every 30s |
 | `Health` | Aggregated subsystem health map for `/system` |
 | `Events.Tap` | Ring buffer of broadcasts for `/system/events` |
-| `Tools.Container` | MCP toolkit — lists 20 tool modules |
+| `PortRegistry` | Global port pool, proxy lifecycle, Observer reconciliation |
+| `PortExposer` | Per-port TCP proxy GenServer (loopback ↔ network toggle) |
+| `PortStore` | JSON persistence for port assignments (`ports.json`) |
+| `Tools.Container` | MCP toolkit — lists 22 tool modules |
 | `Tools.Container.Helpers` | Shared tool helpers (resolve_container, validate_path) |
 | `BoomLooper.Tool` | Macro for defining tool modules |
 

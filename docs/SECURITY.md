@@ -88,7 +88,7 @@ Every emitted port spec binds `127.0.0.1`:
 - Other workspaces' containers cannot reach `<docker-host-ip>:<port>` because loopback is host-local.
 - LAN machines cannot reach dev containers by default.
 
-**Explicit exposure (v2, not yet implemented):** a padlock toggle per service spawns a BoomLooper-owned TCP proxy that listens on `0.0.0.0:<registry_port>` and forwards to `127.0.0.1:<registry_port>`. Compose stays loopback-bound forever; the proxy is the public listener, revocable instantly, per `(workspace, service, port)` only, operator-only. Disabling exposure closes the proxy — no container restart, no stale public binding.
+**Explicit exposure (shipped):** a padlock toggle per service spawns a `PortExposer` TCP proxy that listens on `0.0.0.0:<registry_port>` and forwards to `127.0.0.1:<registry_port>`. Compose stays loopback-bound forever; the proxy is the public listener, revocable instantly, per `(workspace, service, port)` only, operator-only. Disabling exposure closes the proxy — no container restart, no stale public binding.
 
 ### 5. Filesystem sandbox
 
@@ -119,7 +119,7 @@ If a new BEAM-side Docker call is added, it should follow the same pattern: work
 
 ## Residual risks (accepted)
 
-- **Resource exhaustion.** Per-container CPU/memory limits aren't enforced, no cap on concurrent `exec_stream` tasks, no hard volume size quota (size badges in the sidebar make usage visible but don't bound it). Agent log compaction IS implemented (see `AgentLog.maybe_compact/2`). A runaway agent can still starve the host; adding resource limits is tracked in `docs/IMPROVEMENTS.md`.
+- **Resource exhaustion.** Per-container CPU/memory limits aren't enforced, no cap on concurrent `exec` tasks, no hard volume size quota (size badges in the sidebar make usage visible but don't bound it). Agent log compaction IS implemented (see `AgentLog.maybe_compact/2`). A runaway agent can still starve the host; adding resource limits is tracked in `docs/IMPROVEMENTS.md`.
 - **In-workspace prompt injection.** Content from `read_file`, `grep`, `WebFetch`, `logs` flows into the agent's context. A malicious file can still instruct the agent to pollute its own workspace — rewrite its Dockerfile, add a backdoor to its code, etc. Our boundaries prevent this from reaching other workspaces; containing it within a workspace is the user's review problem.
 - **Eval sinks in the BEAM.** We rely on the fact that agent input never reaches `Code.eval_string`, `String.to_atom/1`, `:erlang.binary_to_term/1` without `:safe`, or unguarded dynamic `apply/3`. Enforced by not doing that, not by runtime greps (which agents can encode around). Any new code that parses agent-supplied input must be reviewed with this in mind.
 - **`mix boom.rpc` has full BEAM access.** By design — it's the operator tool. Do not expose `rpc`-style endpoints to agents.

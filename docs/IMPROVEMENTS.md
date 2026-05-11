@@ -2,10 +2,6 @@
 
 A prioritized list of known, scoped improvements for BoomLooper. Ordered within each section by blast-radius-per-effort. When you pick one up, move it to "In progress" at the top of the file (or delete when done and link the commit).
 
-## In flight
-
-1. **Port registry — v2 (controlled exposure).** v1 shipped (`BoomLooper.PortRegistry` + `PortStore` + `ports.json` persistence + Compose wiring + Destructor release + AppUrl lookup). Plan: [`plans/port-registry.md`](../plans/port-registry.md) § "v2 (next session)". Build `PortExposer` under a DynamicSupervisor — an Elixir `:gen_tcp` proxy listening on `0.0.0.0:<host_port>` forwarding to `127.0.0.1:<host_port>`. Sidebar padlock toggle per service (operator-only, confirmation dialog). `/system/ports` route showing every registry entry with live activity (bytes in/out, connection count, remote IPs) and per-row Open/Close/Remove buttons. Persist `exposed: bool` in `ports.json` so exposures survive BEAM restarts. EventLog entries on expose/revoke.
-
 ## Simplicity (less to read, less to misunderstand)
 
 2. **Continue splitting workspace_live handler clusters (if they grow).** Git diff and file browser are out (`DiffLoader`, `FileBrowser`). Sync and cluster-control clusters were reviewed and judged too thin to earn modules — section comments are enough. Revisit if either grows meaningfully.

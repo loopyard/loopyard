@@ -150,9 +150,9 @@ Test file: `test/boom_looper/service_manager_terminate_test.exs`
 | `lib/boom_looper/project_registry.ex` | `test/boom_looper/project_registry_test.exs` |
 | `lib/boom_looper/terminal.ex` | `test/boom_looper/terminal_test.exs` |
 | `lib/boom_looper/workspace/service_manager.ex` | `test/boom_looper/service_manager_terminate_test.exs` |
-| `lib/boom_looper_web/live/chat_live.ex` | `test/boom_looper_web/live/chat_live_test.exs` |
-| `lib/boom_looper_web/live/chat_live/components/formatters.ex` | `test/boom_looper_web/live/chat_live/components/formatters_test.exs` |
 | `lib/boom_looper_web/live/message_live.ex` | `test/boom_looper_web/live/message_live_test.exs` |
+| `lib/boom_looper_web/live/workspace_live/agent_events.ex` | `test/boom_looper_web/live/workspace_live/agent_events_test.exs` |
+| `lib/boom_looper_web/live/workspace_live/docker_events.ex` | `test/boom_looper_web/live/workspace_live/docker_events_test.exs` |
 | `lib/boom_looper_web/channels/terminal_channel.ex` | `test/boom_looper_web/channels/terminal_channel_test.exs` |
 
 ## Rules

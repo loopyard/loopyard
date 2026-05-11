@@ -103,11 +103,10 @@ Each agent tool is a standalone module. No monolithic tool files.
 
 ```
 lib/boom_looper/tools/
-├── container.ex              ← toolkit (lists 20 tool modules in __tool_server__/0)
+├── container.ex              ← toolkit (lists 22 tool modules in __tool_server__/0)
 ├── container/
 │   ├── helpers.ex            ← shared: resolve_container, validate_path, etc.
 │   ├── exec.ex               ← one tool
-│   ├── exec_stream.ex
 │   ├── write_file.ex
 │   ├── read_file.ex
 │   ├── edit.ex
@@ -126,7 +125,11 @@ lib/boom_looper/tools/
 │   ├── probe_formatter.ex
 │   ├── read_files.ex
 │   ├── workspace_info.ex
-│   └── volumes.ex
+│   ├── volumes.ex
+│   ├── file_url.ex
+│   ├── app_url.ex
+│   ├── git.ex
+│   └── file_info.ex
 ├── agents.ex                 ← agent-to-agent tools
 ├── secrets.ex                ← secret management tools
 └── workspace.ex              ← workspace metadata tools
@@ -210,6 +213,8 @@ lib/boom_looper_web/live/
 │   │   ├── viewers/          ← file + git + image + binary + syntax viewers
 │   │   └── formatters.ex     ← time_ago, exit_reason, service_status_text (pure functions)
 │   ├── agent_lifecycle.ex    ← spawn, select, list agents
+│   ├── agent_events.ex       ← handle_info for agent PubSub (status, messages, streaming)
+│   ├── docker_events.ex      ← handle_info for Docker Observer (container state changes)
 │   ├── diff_loader.ex        ← git diff / commit fetches (adapter-scoped pure fns)
 │   ├── file_browser.ex       ← volume file browser (tree + probe_path)
 │   ├── service_logs.ex       ← fetch, refresh service logs (async via TaskSupervisor)
