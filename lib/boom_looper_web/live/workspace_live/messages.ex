@@ -123,14 +123,21 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
   end
 
   def chat_msg(%{msg: %{role: :tool}} = assigns) do
-    assigns =
-      assign(assigns, :summary, ToolSummary.summarize(assigns.msg.tool, assigns.msg.input))
-
     tool_name = assigns.msg[:tool] || ""
+    input = assigns.msg.input || %{}
     is_edit = String.ends_with?(tool_name, "__edit") || String.ends_with?(tool_name, "__multi_edit")
-    old_str = if is_edit, do: assigns.msg.input["old_string"]
-    new_str = if is_edit, do: assigns.msg.input["new_string"]
-    assigns = assign(assigns, is_edit: is_edit, old_str: old_str, new_str: new_str)
+    old_str = if is_edit, do: input["old_string"]
+    new_str = if is_edit, do: input["new_string"]
+
+    # Build file link for tools that operate on files
+    file_path = input["path"] || input["file_path"]
+    file_link = build_file_link(file_path, assigns[:workspace_id])
+
+    assigns =
+      assigns
+      |> assign(:summary, ToolSummary.summarize(assigns.msg.tool, input))
+      |> assign(is_edit: is_edit, old_str: old_str, new_str: new_str)
+      |> assign(:file_link, file_link)
 
     ~H"""
     <div class="py-1 pl-10">
@@ -140,13 +147,15 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
             <path fill-rule="evenodd" d="M6.955 1.45A.5.5 0 0 1 7.452 1h1.096a.5.5 0 0 1 .497.45l.17 1.699c.484.12.94.312 1.356.562l1.321-.916a.5.5 0 0 1 .67.033l.774.775a.5.5 0 0 1 .034.67l-.916 1.32c.25.417.443.873.563 1.357l1.699.17a.5.5 0 0 1 .45.497v1.096a.5.5 0 0 1-.45.497l-1.699.17c-.12.484-.312.94-.562 1.356l.916 1.321a.5.5 0 0 1-.034.67l-.774.774a.5.5 0 0 1-.67.033l-1.32-.916c-.417.25-.874.443-1.357.563l-.17 1.699a.5.5 0 0 1-.497.45H7.452a.5.5 0 0 1-.497-.45l-.17-1.699a4.973 4.973 0 0 1-1.356-.562l-1.321.916a.5.5 0 0 1-.67-.033l-.774-.775a.5.5 0 0 1-.034-.67l.916-1.32a4.971 4.971 0 0 1-.562-1.357l-1.699-.17A.5.5 0 0 1 1 8.548V7.452a.5.5 0 0 1 .45-.497l1.699-.17c.12-.484.312-.94.562-1.356l-.916-1.321a.5.5 0 0 1 .034-.67l.774-.774a.5.5 0 0 1 .67-.033l1.32.916c.417-.25.874-.443 1.357-.563l.17-1.699ZM8 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" clip-rule="evenodd" />
           </svg>
         </div>
-        <span class="text-base text-blue-600 dark:text-blue-400">{@summary}</span>
+        <a :if={@file_link} href={@file_link} class="text-base text-blue-600 dark:text-blue-400 hover:underline">{@summary}</a>
+        <span :if={!@file_link} class="text-base text-blue-600 dark:text-blue-400">{@summary}</span>
       </div>
       <.diff
         :if={@is_edit && @old_str && @new_str}
         old={@old_str}
         new={@new_str}
         path={@msg.input["path"]}
+        link={@file_link}
       />
     </div>
     """
@@ -503,6 +512,25 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
   end
 
   defp detect_port_info(_, _), do: nil
+
+  defp build_file_link(nil, _workspace_id), do: nil
+  defp build_file_link(_path, nil), do: nil
+
+  defp build_file_link(path, workspace_id) do
+    clean = path |> String.trim_leading("/workspace/") |> String.trim_leading("/")
+    volume = "code-#{workspace_id}"
+
+    # Look up project_id from workspace registry
+    case :ets.lookup(:workspace_registry, workspace_id) do
+      [{_, %{project_id: project_id}}] ->
+        "/projects/#{project_id}/workspaces/#{workspace_id}/volumes/#{volume}/files/#{clean}"
+
+      _ ->
+        nil
+    end
+  rescue
+    _ -> nil
+  end
 
   defp preceded_by_edit?(assigns) do
     idx = assigns[:idx]
