@@ -128,11 +128,16 @@ defmodule BoomLooper.ChatAgent.StreamHandler do
     state
   end
 
-  def process_event(%Event.ThinkingDelta{}, state) do
-    # Thinking deltas arrive before the full ThinkingBlock. We don't
-    # stream them to the chat (they'd mix with the response bubble).
-    # The full thinking content arrives as a Thinking event and gets
-    # rendered as a collapsible block.
+  def process_event(%Event.ThinkingDelta{thinking: thinking}, state) do
+    # Broadcast on a separate channel so the LV can stream thinking
+    # into its own assign without mixing with the response text.
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.StreamOutput{
+      agent_id: state.id,
+      data: thinking || "",
+      title: "__thinking__",
+      msg_id: "__thinking__"
+    })
+
     state
   end
 

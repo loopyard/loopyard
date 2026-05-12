@@ -263,6 +263,21 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
     """
   end
 
+  def streaming_thinking(assigns) do
+    ~H"""
+    <div class="flex gap-3 mt-3">
+      <div class="flex-none w-7 h-7 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center mt-0.5">
+        <span class="text-xs font-bold text-zinc-400 dark:text-zinc-500">?</span>
+      </div>
+      <div class="max-w-[85%] rounded-2xl rounded-tl-sm bg-zinc-50 dark:bg-zinc-900 px-4 py-2.5 border border-zinc-200 dark:border-zinc-700/50">
+        <p class="text-[10px] text-zinc-400 dark:text-zinc-500 mb-1 font-medium uppercase tracking-wide">Thinking</p>
+        <pre class="text-xs text-zinc-500 dark:text-zinc-400 whitespace-pre-wrap max-h-40 overflow-y-auto">{@text}</pre>
+        <span class="inline-block w-1.5 h-3 bg-zinc-400 animate-pulse ml-0.5 align-middle"></span>
+      </div>
+    </div>
+    """
+  end
+
   # --- Internal helpers ---
 
   defp chat_msg_tool_result(assigns) do

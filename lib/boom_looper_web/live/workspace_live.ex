@@ -130,6 +130,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
      |> assign(:messages_total, 0)
      |> assign(:has_more_messages, false)
      |> assign(:streaming_text, "")
+     |> assign(:streaming_thinking, "")
      |> assign(:thinking_word, nil)
      |> assign(:tab, :chat)
      |> assign(:container_logs, "")
@@ -1203,7 +1204,7 @@ defmodule BoomLooperWeb.WorkspaceLive do
     if msg[:id] && Enum.any?(socket.assigns.messages, &(&1[:id] == msg[:id])) do
       {:noreply, socket}
     else
-      socket = if msg.role == :assistant, do: assign(socket, :streaming_text, ""), else: socket
+      socket = if msg.role == :assistant, do: socket |> assign(:streaming_text, "") |> assign(:streaming_thinking, ""), else: socket
 
       # If build was running and we get a post-build message, mark build as done
       socket =
@@ -1251,12 +1252,28 @@ defmodule BoomLooperWeb.WorkspaceLive do
      socket
      |> AgentEvents.refresh_selected_from_agents(id, socket.assigns.agents)
      |> assign(:streaming_text, socket.assigns.streaming_text <> text)
+     |> assign(:streaming_thinking, "")
      |> push_event("scroll_bottom", %{})}
   end
 
   def on_text_delta(%Events.ChatAgentMessage.TextDelta{}, socket), do: {:noreply, socket}
 
   @impl Events.ChatAgentMessage.Subscriber
+  def on_stream_output(
+        %Events.ChatAgentMessage.StreamOutput{
+          agent_id: id,
+          data: data,
+          title: "__thinking__"
+        },
+        socket
+      )
+      when id == socket.assigns.selected_id do
+    {:noreply,
+     socket
+     |> assign(:streaming_thinking, (socket.assigns[:streaming_thinking] || "") <> data)
+     |> push_event("scroll_bottom", %{})}
+  end
+
   def on_stream_output(
         %Events.ChatAgentMessage.StreamOutput{
           agent_id: id,

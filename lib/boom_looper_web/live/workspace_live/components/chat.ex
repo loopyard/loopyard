@@ -5,33 +5,38 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
   import BoomLooperWeb.Components.Common, only: [dot: 1, control_btn: 1]
   import BoomLooperWeb.Components.Sidebar, only: [status_dot: 1, agent_display_status: 1]
   import BoomLooperWeb.Components.Breadcrumbs, only: [breadcrumbs: 1]
-  import BoomLooperWeb.Live.WorkspaceLive.Messages, only: [chat_msg: 1, streaming_bubble: 1]
+  import BoomLooperWeb.Live.WorkspaceLive.Messages, only: [chat_msg: 1, streaming_bubble: 1, streaming_thinking: 1]
   import BoomLooperWeb.Live.WorkspaceLive.Components.Formatters, only: [time_ago: 1]
   import BoomLooperWeb.Live.WorkspaceLive.Components.ContextPanel, only: [context_panel: 1]
 
   # Build the breadcrumb trail for this workspace view.
-  #   Boom Looper / {project.name or workspace.name} / {branch if not main}
-  # Last crumb has `nil` path so the Breadcrumbs component renders it
-  # as the current page (no link, aria-current="page").
+  #   Boom Looper / {project.name} / {workspace label}
+  #
+  # The trailing crumb is whatever the workspace's Source adapter
+  # decides — branch name for Local, eventually `owner/repo#branch`
+  # for GitHub. The label is owned by the adapter so the UI never
+  # invents one. It links to the workspace overview (`base_path`) on
+  # every sub-route so users can jump back from agents / services /
+  # volumes. On the overview itself (`live_action == :index`) the
+  # path is `nil`, which the Breadcrumbs component renders as the
+  # current page (no link, aria-current="page").
   defp workspace_crumbs(assigns) do
-    entry = assigns.workspace_entry
-    branch_crumb? = entry && !entry[:is_main]
+    label = BoomLooper.Source.display_name(assigns.workspace_entry)
+    label = if label == "", do: assigns.workspace.name, else: label
+
+    on_overview? = assigns[:live_action] == :index
+    last_path = if on_overview?, do: nil, else: assigns.base_path
 
     crumbs = [{"Boom Looper", "/"}]
 
     crumbs =
       if assigns.project do
-        crumbs ++ [{assigns.workspace.name, "/projects/#{assigns.project.id}"}]
+        crumbs ++ [{assigns.project.name, "/projects/#{assigns.project.id}"}]
       else
-        crumbs ++ [{assigns.workspace.name, nil}]
+        crumbs
       end
 
-    if branch_crumb? do
-      crumbs ++ [{entry.name, nil}]
-    else
-      # Re-mark last crumb as current page (path = nil)
-      List.update_at(crumbs, -1, fn {label, _} -> {label, nil} end)
-    end
+    crumbs ++ [{label, last_path}]
   end
 
   def chat_header(assigns) do
@@ -147,6 +152,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
           :if={@tab in [:chat, :context_panel]}
           messages={@messages}
           streaming_text={@streaming_text}
+          streaming_thinking={@streaming_thinking}
           agent={@selected_agent}
           workspace_id={@workspace.id}
           host={@host}
@@ -298,9 +304,10 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Components.Chat do
               host={@host}
             />
           </div>
+          <.streaming_thinking :if={assigns[:streaming_thinking] != "" && assigns[:streaming_thinking] != nil} text={@streaming_thinking} />
           <.streaming_bubble :if={@streaming_text != ""} text={@streaming_text} />
           <.thinking_indicator
-            :if={@agent.status == :thinking && @streaming_text == ""}
+            :if={@agent.status == :thinking && @streaming_text == "" && (assigns[:streaming_thinking] || "") == ""}
             messages={@messages}
             word={@thinking_word}
           />
