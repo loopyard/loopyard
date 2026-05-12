@@ -27,13 +27,13 @@
 /.cache
 
 # BoomLooper workspace (generated per-workspace files)
-.boomlooper/
+.loopyard/
 
 # BoomLooper home dir for test env
-.boomlooper_home/
+.loopyard_home/
 
 # BoomLooper local dev server state
-.boomlooper_dev/
+.loopyard_dev/
 
 # Erlang crash dumps
 erl_crash.dump

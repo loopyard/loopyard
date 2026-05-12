@@ -1,0 +1,4 @@
+services:
+  dev:
+    build: .
+    command: bin/rails server

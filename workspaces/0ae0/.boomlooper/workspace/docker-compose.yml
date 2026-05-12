@@ -1,0 +1,77 @@
+{
+  "services": {
+    "dev": {
+      "build": ".",
+      "command": "sh -c \"npm run translate:compile && npx turbo run dev --filter=@documenso/remix -- --host 0.0.0.0 --port 3000\"",
+      "depends_on": [
+        "postgres"
+      ],
+      "environment": [
+        "NODE_ENV=development",
+        "PORT=3000",
+        "HOST=0.0.0.0",
+        "NEXT_PRIVATE_DATABASE_URL=postgres://documenso:password@postgres:5432/documenso",
+        "NEXT_PRIVATE_DIRECT_DATABASE_URL=postgres://documenso:password@postgres:5432/documenso",
+        "NEXTAUTH_SECRET=secret",
+        "NEXT_PRIVATE_ENCRYPTION_KEY=CAFEBABE1234567890ABCDEF1234567890",
+        "NEXT_PRIVATE_ENCRYPTION_SECONDARY_KEY=DEADBEEF1234567890ABCDEF1234567890",
+        "NEXT_PUBLIC_WEBAPP_URL=http://localhost:3000",
+        "NEXT_PRIVATE_INTERNAL_WEBAPP_URL=http://localhost:3000",
+        "NEXT_PRIVATE_JOBS_PROVIDER=local",
+        "DOCUMENSO_DISABLE_TELEMETRY=true"
+      ],
+      "ports": [
+        "127.0.0.1:4004:3000"
+      ],
+      "volumes": [
+        "code:/workspace"
+      ],
+      "working_dir": "/workspace"
+    },
+    "postgres": {
+      "environment": [
+        "POSTGRES_USER=documenso",
+        "POSTGRES_PASSWORD=password",
+        "POSTGRES_DB=documenso"
+      ],
+      "image": "postgres:15",
+      "volumes": [
+        "postgres-data:/var/lib/postgresql/data"
+      ]
+    },
+    "workspace": {
+      "build": ".",
+      "command": "sleep infinity",
+      "depends_on": [
+        "postgres"
+      ],
+      "environment": [
+        "NODE_ENV=development",
+        "PORT=3000",
+        "HOST=0.0.0.0",
+        "NEXT_PRIVATE_DATABASE_URL=postgres://documenso:password@postgres:5432/documenso",
+        "NEXT_PRIVATE_DIRECT_DATABASE_URL=postgres://documenso:password@postgres:5432/documenso",
+        "NEXTAUTH_SECRET=secret",
+        "NEXT_PRIVATE_ENCRYPTION_KEY=CAFEBABE1234567890ABCDEF1234567890",
+        "NEXT_PRIVATE_ENCRYPTION_SECONDARY_KEY=DEADBEEF1234567890ABCDEF1234567890",
+        "NEXT_PUBLIC_WEBAPP_URL=http://localhost:3000",
+        "NEXT_PRIVATE_INTERNAL_WEBAPP_URL=http://localhost:3000",
+        "NEXT_PRIVATE_JOBS_PROVIDER=local"
+      ],
+      "volumes": [
+        "code:/workspace"
+      ],
+      "working_dir": "/workspace"
+    }
+  },
+  "volumes": {
+    "bl-0ae0-code": {
+      "external": true
+    },
+    "code": {
+      "external": true,
+      "name": "bl-0ae0-code"
+    },
+    "postgres-data": null
+  }
+}

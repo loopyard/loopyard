@@ -6,7 +6,7 @@ user_invocable: true
 
 # Eval: Test Project Setup End-to-End
 
-Run an automated eval that launches a project in BoomLooper and monitors the setup agent until services are healthy.
+Run an automated eval that launches a project in Loopyard and monitors the setup agent until services are healthy.
 
 **Critical principle: zero nudges.** An eval only truly passes if the agent completes setup with NO human intervention. If nudges are needed, that's a system failure to fix — not a successful eval.
 
@@ -14,8 +14,8 @@ Evals test the full Docker-based setup flow: source adapter seeds the volume, ag
 
 ## Prerequisites
 
-- BoomLooper must be running (`mix boom.server`)
-- You must be in the BoomLooper repo root
+- Loopyard must be running (`mix loopyard.server`)
+- You must be in the Loopyard repo root
 
 ## Eval Projects
 
@@ -35,7 +35,7 @@ evals/
 Jack into the running server and call EvalRunner directly:
 
 ```bash
-mix boom.rpc 'BoomLooper.EvalRunner.run("evals/rails-app/project")'
+mix loopyard.rpc 'Loopyard.EvalRunner.run("evals/rails-app/project")'
 ```
 
 Evals run asynchronously — `run/2` returns immediately with `{:ok, pid}`.
@@ -44,13 +44,13 @@ Evals run asynchronously — `run/2` returns immediately with `{:ok, pid}`.
 
 ```bash
 # Check all running/completed evals
-mix boom.rpc 'BoomLooper.EvalRunner.status()'
+mix loopyard.rpc 'Loopyard.EvalRunner.status()'
 
 # Deeper inspection
-mix boom.rpc 'BoomLooper.ChatAgent.list_agents()'
-mix boom.rpc 'BoomLooper.Workspace.ServiceManager.service_status("evals/rails-app/project")'
-mix boom.rpc 'BoomLooper.Docker.docker(["ps", "--format", "table {{.Names}}\t{{.Status}}"])'
-mix boom.rpc 'BoomLooper.ChatAgent.stop_agent("agent_id")'
+mix loopyard.rpc 'Loopyard.ChatAgent.list_agents()'
+mix loopyard.rpc 'Loopyard.Workspace.ServiceManager.service_status("evals/rails-app/project")'
+mix loopyard.rpc 'Loopyard.Docker.docker(["ps", "--format", "table {{.Names}}\t{{.Status}}"])'
+mix loopyard.rpc 'Loopyard.ChatAgent.stop_agent("agent_id")'
 ```
 
 Any Elixir expression works. The UI shows a yellow indicator while you're jacked in.
@@ -78,11 +78,11 @@ Results are written to `evals/<name>/runs/<timestamp>.md` (sibling to `project/`
 
 1. Run eval
 2. Read results in `evals/<name>/runs/`
-3. Diagnose — jack in with `mix boom.rpc` to inspect live state
+3. Diagnose — jack in with `mix loopyard.rpc` to inspect live state
 4. Fix prompt or code
-5. Hot-reload: `mix boom.rpc 'BoomLooper.HotReload.reload()'`
+5. Hot-reload: `mix loopyard.rpc 'Loopyard.HotReload.reload()'`
 
-   **Don't use `IEx.Helpers.recompile()` alone.** If `mix compile` already ran in a separate shell (VS Code, editor save, CI), `recompile()` returns `:noop` and the BEAM keeps serving the OLD bytecode — your fix won't take effect and you'll chase a ghost. `BoomLooper.HotReload.reload/0` re-purges and re-loads every `BoomLooper.*` / `BoomLooperWeb.*` module whose `.beam` file was written in the last minute, which covers the common mix-compile-then-reload case. Verify the reload worked by calling the fixed function and inspecting its output before re-running an eval.
+   **Don't use `IEx.Helpers.recompile()` alone.** If `mix compile` already ran in a separate shell (VS Code, editor save, CI), `recompile()` returns `:noop` and the BEAM keeps serving the OLD bytecode — your fix won't take effect and you'll chase a ghost. `Loopyard.HotReload.reload/0` re-purges and re-loads every `Loopyard.*` / `LoopyardWeb.*` module whose `.beam` file was written in the last minute, which covers the common mix-compile-then-reload case. Verify the reload worked by calling the fixed function and inspecting its output before re-running an eval.
 
 6. Run again, compare
 

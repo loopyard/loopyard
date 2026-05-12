@@ -20,11 +20,11 @@ If the bug is in the UI/websocket/channel stack, write an integration test that 
 
 If you can't reproduce it in a test, you don't understand the bug yet. Keep investigating.
 
-**Debug tip:** Use `mix boom.rpc` to inspect live state on the running node:
+**Debug tip:** Use `mix loopyard.rpc` to inspect live state on the running node:
 ```bash
-mix boom.rpc "BoomLooper.ChatAgent.list_agents()"
-mix boom.rpc ":ets.tab2list(:project_registry)"
-mix boom.rpc "BoomLooper.Workspace.ServiceManager.service_status(\"/path\")"
+mix loopyard.rpc "Loopyard.ChatAgent.list_agents()"
+mix loopyard.rpc ":ets.tab2list(:project_registry)"
+mix loopyard.rpc "Loopyard.Workspace.ServiceManager.service_status(\"/path\")"
 ```
 Any valid Elixir expression works.
 

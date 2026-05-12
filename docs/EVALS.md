@@ -10,9 +10,9 @@ evals/<name>/
 ```
 
 ```bash
-mix boom.rpc 'BoomLooper.EvalRunner.eval("maybe-finance")'  # by name
-mix boom.rpc 'BoomLooper.EvalRunner.list_evals()'           # list all
-mix boom.rpc 'BoomLooper.EvalRunner.status()'               # check progress
+mix loopyard.rpc 'BoomLooper.EvalRunner.eval("maybe-finance")'  # by name
+mix loopyard.rpc 'BoomLooper.EvalRunner.list_evals()'           # list all
+mix loopyard.rpc 'BoomLooper.EvalRunner.status()'               # check progress
 ```
 
 Every eval starts fresh (tears down existing project first via `remove_project` — the same path real users hit). Configs and run results are tracked in git; project clones are gitignored. When an eval fails, fix the **prompts** or **tools**, not the eval target. See `/eval` skill for details.

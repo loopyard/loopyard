@@ -44,16 +44,16 @@ If there are no tests, the PR is not ready.
 
 Coordination hardening (Moves #2 + #3) wired a compile-time contract around broadcasts. New broadcast code must follow it.
 
-- Does any `.ex` file outside `lib/boom_looper/events/` call `Phoenix.PubSub.broadcast`? That's a boundary violation; `test/boom_looper/pubsub_boundary_test.exs` would fail. Route through a publisher module.
-- If the PR adds a new event shape, it should be a struct in `BoomLooper.Events.<Topic>` with a `publish/1` clause. Tuple-shaped broadcasts are forbidden.
-- If a LV subscribes to a topic, does it declare `@behaviour BoomLooper.Events.<Topic>.Subscriber` AND implement every `on_*` callback? There are no `@optional_callbacks`; missing callbacks emit compile warnings.
+- Does any `.ex` file outside `lib/loopyard/events/` call `Phoenix.PubSub.broadcast`? That's a boundary violation; `test/loopyard/pubsub_boundary_test.exs` would fail. Route through a publisher module.
+- If the PR adds a new event shape, it should be a struct in `Loopyard.Events.<Topic>` with a `publish/1` clause. Tuple-shaped broadcasts are forbidden.
+- If a LV subscribes to a topic, does it declare `@behaviour Loopyard.Events.<Topic>.Subscriber` AND implement every `on_*` callback? There are no `@optional_callbacks`; missing callbacks emit compile warnings.
 
 ## Check: Retry + resources + ETS
 
-- Any new `Process.sleep` inside a `handle_info`? That's a mailbox-blocking regression. Use `Process.send_after` + a separate handle_info clause. For async backoff math use `BoomLooper.Retry.backoff_ms/2`.
-- Any new `Process.sleep` elsewhere inside a retry loop? Use `BoomLooper.Retry.run/2`.
+- Any new `Process.sleep` inside a `handle_info`? That's a mailbox-blocking regression. Use `Process.send_after` + a separate handle_info clause. For async backoff math use `Loopyard.Retry.backoff_ms/2`.
+- Any new `Process.sleep` elsewhere inside a retry loop? Use `Loopyard.Retry.run/2`.
 - Any new `:ets.new`? StateKeeper is the sole owner; add your table to its `@tables` list instead.
-- Any new `Process.link` / ad-hoc cleanup for a resource that should die with its owner? Use `BoomLooper.Resources.track/4` so the Janitor releases it on DOWN (and it shows up in `/system/orphans` if it ever leaks).
+- Any new `Process.link` / ad-hoc cleanup for a resource that should die with its owner? Use `Loopyard.Resources.track/4` so the Janitor releases it on DOWN (and it shows up in `/system/orphans` if it ever leaks).
 
 ## Check: Multiplayer
 
@@ -71,7 +71,7 @@ Coordination hardening (Moves #2 + #3) wired a compile-time contract around broa
 ## Check: Complexity
 
 - Does the feature require the user to install something, run sudo, or configure anything?
-- If yes, can it be simpler? The app should work with `mix boom.setup && mix boom.server`.
+- If yes, can it be simpler? The app should work with `mix loopyard.setup && mix loopyard.server`.
 - Are there toggles or config that should just be on by default?
 
 ## Check: Compilation

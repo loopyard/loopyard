@@ -65,7 +65,7 @@ Lives at `${BOOMLOOPER_HOME}/workspaces/<workspace_id>/` (the "compose dir") and
 | `${BOOMLOOPER_HOME}/projects.json` | `ProjectStore` persistence — one row per project (git URL, path, volume flag). |
 | `${BOOMLOOPER_HOME}/ports.json` | `PortStore` persistence — every `PortRegistry` entry (workspace / service / container_port → host_port). See [SECURITY.md § 4](SECURITY.md). |
 | `${BOOMLOOPER_HOME}/secrets.json` | Secret store with optional per-secret `scope: [workspace_id | project_id]`. See [SECURITY.md](SECURITY.md). |
-| `${BOOMLOOPER_HOME}/cookie` | Erlang distribution cookie for `mix boom.rpc`. |
+| `${BOOMLOOPER_HOME}/cookie` | Erlang distribution cookie for `mix loopyard.rpc`. |
 | `${BOOMLOOPER_HOME}/ssh/ssh_host_*_key` | SSH host keys for the built-in server. |
 | `<project>/.boomlooper/repo/workspace.json` | Human-facing metadata: project name, system prompt. Can be committed to git. |
 

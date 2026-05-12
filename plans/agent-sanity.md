@@ -51,7 +51,7 @@ contract), offline Claude API caching, cross-project agent memory.
      - **Consequence**: what won't work ("Claude won't respond to new
        messages", "your last 3 turns were not saved", "this agent is
        quarantined until 5 min of silence").
-     - **Action**: what the user can do ("Re-run `mix boom.setup` and
+     - **Action**: what the user can do ("Re-run `mix loopyard.setup` and
        restart this agent", "wait 24m — next retry at 14:32", "fix
        the underlying volume then click Restart").
 
@@ -702,7 +702,7 @@ Pause points:
 - After surface #3 (in-flight messages): sanity-check the three
   conversation-integrity surfaces together to make sure they compose.
 - After surface #6 (Docker persistence): run a full integration scenario
-  — start workspace, run a turn, `mix boom.server` kill -9, restart,
+  — start workspace, run a turn, `mix loopyard.server` kill -9, restart,
   verify conversation + containers + ports all came back clean.
 
 Exit criteria for the plan:

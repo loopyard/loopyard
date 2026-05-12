@@ -1,0 +1,42 @@
+{
+  "services": {
+    "dev": {
+      "build": ".",
+      "command": "sh -c \"cd examples/getstarted && HOST=0.0.0.0 PORT=1337 yarn develop\"",
+      "environment": [
+        "NODE_ENV=development",
+        "HOST=0.0.0.0",
+        "PORT=1337"
+      ],
+      "ports": [
+        "127.0.0.1:4003:1337"
+      ],
+      "volumes": [
+        "code:/workspace"
+      ],
+      "working_dir": "/workspace"
+    },
+    "workspace": {
+      "build": ".",
+      "command": "sleep infinity",
+      "environment": [
+        "NODE_ENV=development",
+        "HOST=0.0.0.0",
+        "PORT=1337"
+      ],
+      "volumes": [
+        "code:/workspace"
+      ],
+      "working_dir": "/workspace"
+    }
+  },
+  "volumes": {
+    "bl-f6eb-code": {
+      "external": true
+    },
+    "code": {
+      "external": true,
+      "name": "bl-f6eb-code"
+    }
+  }
+}

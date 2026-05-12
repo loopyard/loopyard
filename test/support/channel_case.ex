@@ -1,4 +1,4 @@
-defmodule BoomLooperWeb.ChannelCase do
+defmodule LoopyardWeb.ChannelCase do
   @moduledoc """
   Test case for channel tests.
   """
@@ -7,7 +7,7 @@ defmodule BoomLooperWeb.ChannelCase do
   using do
     quote do
       import Phoenix.ChannelTest
-      @endpoint BoomLooperWeb.Endpoint
+      @endpoint LoopyardWeb.Endpoint
     end
   end
 end

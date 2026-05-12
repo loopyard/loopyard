@@ -1,9 +1,9 @@
-defmodule BoomLooper.MixProject do
+defmodule Loopyard.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :boom_looper,
+      app: :loopyard,
       version: "0.1.0",
       elixir: "~> 1.17",
       elixirc_paths: elixirc_paths(Mix.env()),
@@ -16,7 +16,7 @@ defmodule BoomLooper.MixProject do
 
   def application do
     [
-      mod: {BoomLooper.Application, []},
+      mod: {Loopyard.Application, []},
       extra_applications: [:logger, :runtime_tools, :ssh, :crypto, :public_key]
     ]
   end
@@ -69,10 +69,10 @@ defmodule BoomLooper.MixProject do
       test: ["compile", "test"],
       setup: ["deps.get", "assets.setup", "assets.build"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
-      "assets.build": ["tailwind boom_looper", "esbuild boom_looper"],
+      "assets.build": ["tailwind loopyard", "esbuild loopyard"],
       "assets.deploy": [
-        "tailwind boom_looper --minify",
-        "esbuild boom_looper --minify",
+        "tailwind loopyard --minify",
+        "esbuild loopyard --minify",
         "phx.digest"
       ]
     ]

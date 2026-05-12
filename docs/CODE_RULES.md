@@ -221,7 +221,7 @@ Same rule for tiny render primitives that show up in 2+ LiveViews:
 |---|---|---|
 | Flash strip (`@flash["error"]` / `@flash["info"]`) | `BoomLooperWeb.Components.Common` | `<.flash_banner flash={@flash} kind={:error} />` |
 | Loading skeleton (`animate-pulse`) | `BoomLooperWeb.Components.Common` | `<.skeleton />` or `<.skeleton variant={:card} />` or `<.skeleton rows={4} />` |
-| Page header / breadcrumbs | `BoomLooperWeb.Components.AppHeader` | `<.header breadcrumbs={[{"Boom Looper", "/"}, ...]} iex_session={@iex_session} />` |
+| Page header / breadcrumbs | `BoomLooperWeb.Components.AppHeader` | `<.header breadcrumbs={[{"Loopyard", "/"}, ...]} iex_session={@iex_session} />` |
 | Sidebar bits (status/service dots, agent items) | `BoomLooperWeb.Components.Sidebar` | imported on demand |
 | Log content panels | `BoomLooperWeb.Components.LogViewer` | imported on demand |
 | Path → "~/foo", byte/number formatting | `BoomLooperWeb.Format` | auto-imported |
@@ -354,7 +354,7 @@ Don't add telemetry subscribers — that's for the operator to configure. Just e
 
 ## Keep it simple
 
-Don't add infrastructure users have to install, configure, or manage. If a feature requires `sudo`, system packages, or manual setup steps, it's too complex. The app should work out of the box with `mix boom.setup && mix boom.server`.
+Don't add infrastructure users have to install, configure, or manage. If a feature requires `sudo`, system packages, or manual setup steps, it's too complex. The app should work out of the box with `mix loopyard.setup && mix loopyard.server`.
 
 Don't add toggles for things that should just be on. Don't add config files for things that have sensible defaults. Don't add "advanced" sections that hide complexity — either the feature is simple enough to be always-on, or it's not ready.
 

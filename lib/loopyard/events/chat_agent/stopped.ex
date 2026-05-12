@@ -1,0 +1,4 @@
+defmodule Loopyard.Events.ChatAgent.Stopped do
+  @moduledoc "Agent stopped normally OR crashed (callers differentiate via summary.status)."
+  defstruct [:summary]
+end

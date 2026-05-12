@@ -1,0 +1,60 @@
+services:
+  workspace:
+    build: .
+    command: sleep infinity
+    volumes:
+      - code:/workspace
+      - bundle-cache:/usr/local/bundle
+    working_dir: /workspace
+    environment:
+      - PGHOST=postgres
+      - PGUSER=postgres
+      - DISCOURSE_REDIS_HOST=redis
+      - DISCOURSE_DEV_DB=discourse_development
+      - RAILS_ENV=development
+      - NODE_OPTIONS=--max-old-space-size=1536
+    depends_on:
+      - postgres
+      - redis
+
+  dev:
+    build: .
+    command: bin/pitchfork
+    ports:
+      - "3000"
+    volumes:
+      - code:/workspace
+      - bundle-cache:/usr/local/bundle
+    working_dir: /workspace
+    environment:
+      - PGHOST=postgres
+      - PGUSER=postgres
+      - DISCOURSE_REDIS_HOST=redis
+      - DISCOURSE_DEV_DB=discourse_development
+      - RAILS_ENV=development
+      - UNICORN_PORT=3000
+      - UNICORN_BIND_ALL=1
+      - UNICORN_WORKERS=2
+      - UNICORN_SIDEKIQS=1
+      - DISCOURSE_SERVE_STATIC_ASSETS=true
+      - NODE_OPTIONS=--max-old-space-size=1536
+    depends_on:
+      - postgres
+      - redis
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      - POSTGRES_HOST_AUTH_METHOD=trust
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+
+volumes:
+  code:
+    external: true
+    name: bl-16f3-code
+  bundle-cache:
+  postgres-data:

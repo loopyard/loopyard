@@ -27,7 +27,7 @@ We do **not** defend against:
 
 - A compromised host (root on the machine running BoomLooper).
 - A compromised BoomLooper BEAM (any RCE in the Elixir app is game over — the BEAM has full Docker and host access).
-- The user themselves (they can do whatever they want via the web UI or `mix boom.rpc`).
+- The user themselves (they can do whatever they want via the web UI or `mix loopyard.rpc`).
 - An agent misusing its *own* workspace (trashing its own code, filling its own volume — that's the user's problem, not a boundary violation).
 
 ## Boundaries and how they're enforced
@@ -122,7 +122,7 @@ If a new BEAM-side Docker call is added, it should follow the same pattern: work
 - **Resource exhaustion.** Per-container CPU/memory limits aren't enforced, no cap on concurrent `exec` tasks, no hard volume size quota (size badges in the sidebar make usage visible but don't bound it). Agent log compaction IS implemented (see `AgentLog.maybe_compact/2`). A runaway agent can still starve the host; adding resource limits is tracked in `docs/IMPROVEMENTS.md`.
 - **In-workspace prompt injection.** Content from `read_file`, `grep`, `WebFetch`, `logs` flows into the agent's context. A malicious file can still instruct the agent to pollute its own workspace — rewrite its Dockerfile, add a backdoor to its code, etc. Our boundaries prevent this from reaching other workspaces; containing it within a workspace is the user's review problem.
 - **Eval sinks in the BEAM.** We rely on the fact that agent input never reaches `Code.eval_string`, `String.to_atom/1`, `:erlang.binary_to_term/1` without `:safe`, or unguarded dynamic `apply/3`. Enforced by not doing that, not by runtime greps (which agents can encode around). Any new code that parses agent-supplied input must be reviewed with this in mind.
-- **`mix boom.rpc` has full BEAM access.** By design — it's the operator tool. Do not expose `rpc`-style endpoints to agents.
+- **`mix loopyard.rpc` has full BEAM access.** By design — it's the operator tool. Do not expose `rpc`-style endpoints to agents.
 
 ## When adding or changing code
 

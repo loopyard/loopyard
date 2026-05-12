@@ -10,7 +10,7 @@ end
 
 # Auth — set BOOM_LOOPER_AUTH_PASSWORD to enable HTTP Basic Auth
 # BOOM_LOOPER_AUTH_USERNAME is optional (defaults to accepting any username)
-config :boom_looper,
+config :loopyard,
   auth_password: System.get_env("BOOM_LOOPER_AUTH_PASSWORD"),
   auth_username: System.get_env("BOOM_LOOPER_AUTH_USERNAME")
 
@@ -26,7 +26,7 @@ if config_env() == :prod do
   port = String.to_integer(System.get_env("PORT") || "4000")
 
   # IPv4 wildcard — see comment in config/dev.exs for why we don't use IPv6.
-  config :boom_looper, BoomLooperWeb.Endpoint,
+  config :loopyard, LoopyardWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
     http: [ip: {0, 0, 0, 0}, port: port],
     secret_key_base: secret_key_base

@@ -1,4 +1,4 @@
-defmodule BoomLooperWeb.ConnCase do
+defmodule LoopyardWeb.ConnCase do
   @moduledoc """
   This module defines the test case to be used by
   tests that require setting up a connection.
@@ -7,9 +7,9 @@ defmodule BoomLooperWeb.ConnCase do
 
   using do
     quote do
-      @endpoint BoomLooperWeb.Endpoint
+      @endpoint LoopyardWeb.Endpoint
 
-      use BoomLooperWeb, :verified_routes
+      use LoopyardWeb, :verified_routes
 
       import Plug.Conn
       import Phoenix.ConnTest

@@ -1,12 +1,12 @@
-# Contributing to Boom Looper
+# Contributing to Loopyard
 
 ## Getting started
 
 ```bash
-git clone https://github.com/boomlooper/boomlooper.git
-cd boomlooper
-mix boom.setup    # installs deps, fixes Docker config, builds assets
-mix boom.server   # starts the server
+git clone https://github.com/loopyard/loopyard.git
+cd loopyard
+mix loopyard.setup    # installs deps, fixes Docker config, builds assets
+mix loopyard.server   # starts the server
 ```
 
 Requires macOS, Homebrew, Docker (OrbStack or Colima — not Docker Desktop), and a Claude API key.
@@ -57,7 +57,7 @@ If you use Claude Code, these skills are available:
 
 ## Architecture
 
-Boom Looper is a Phoenix LiveView app with no database. State lives in ETS (runtime) and append-only ETF logs (persistence). Docker Compose manages dev environments. Claude Code agents run as GenServer processes.
+Loopyard is a Phoenix LiveView app with no database. State lives in ETS (runtime) and append-only ETF logs (persistence). Docker Compose manages dev environments. Claude Code agents run as GenServer processes.
 
 The two biggest files are the GenServer reactor (`chat_agent.ex`) and the LiveView reactor (`workspace_live.ex`). Both follow the same pattern: thin message routing at the top, stateless logic extracted into focused modules.
 

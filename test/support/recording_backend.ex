@@ -1,4 +1,4 @@
-defmodule BoomLooper.TestSupport.RecordingBackend do
+defmodule Loopyard.TestSupport.RecordingBackend do
   @moduledoc """
   Test backend that records the opts passed to `start_session/1` and
   lets the test decide what `session_id/1` should return.
@@ -11,7 +11,7 @@ defmodule BoomLooper.TestSupport.RecordingBackend do
   the captured conversation.
   """
 
-  @behaviour BoomLooper.Agent.Backend
+  @behaviour Loopyard.Agent.Backend
 
   use Agent
 

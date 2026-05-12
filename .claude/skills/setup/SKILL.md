@@ -1,12 +1,12 @@
 ---
 name: setup
-description: Set up Boom Looper on a new machine
+description: Set up Loopyard on a new machine
 user_invocable: true
 ---
 
 # Setup
 
-Get Boom Looper running on a new machine.
+Get Loopyard running on a new machine.
 
 ## Quick start
 
@@ -23,20 +23,20 @@ Verify with `docker info`.
 ### 2. Setup + run
 
 ```bash
-git clone https://github.com/boomlooper/boomlooper.git
-cd boomlooper
-mix boom.setup    # installs everything, fixes Docker config
-mix boom.server   # starts the server
+git clone https://github.com/loopyard/loopyard.git
+cd loopyard
+mix loopyard.setup    # installs everything, fixes Docker config
+mix loopyard.server   # starts the server
 ```
 
-`mix boom.setup` handles Brewfile deps, Docker credential store fixes, Hex/Rebar, Mix deps, and assets. Safe to re-run.
+`mix loopyard.setup` handles Brewfile deps, Docker credential store fixes, Hex/Rebar, Mix deps, and assets. Safe to re-run.
 
 ### 3. Remote access
 
 Once the server is running, jack in from another terminal:
 
 ```bash
-mix boom.rpc "BoomLooper.ProjectRegistry.list_projects()"
+mix loopyard.rpc "Loopyard.ProjectRegistry.list_projects()"
 ```
 
 Any valid Elixir expression works.
@@ -46,23 +46,23 @@ Any valid Elixir expression works.
 Install Erlang, Elixir, Docker, and Node.js via your package manager, then:
 
 ```bash
-git clone https://github.com/boomlooper/boomlooper.git
-cd boomlooper
-mix boom.setup
-mix boom.server
+git clone https://github.com/loopyard/loopyard.git
+cd loopyard
+mix loopyard.setup
+mix loopyard.server
 ```
 
-`mix boom.setup` skips Brewfile on Linux (no brew) but handles everything else.
+`mix loopyard.setup` skips Brewfile on Linux (no brew) but handles everything else.
 
 ## Troubleshooting
 
-**Compilation errors after update**: Run `mix boom.setup` to re-fetch deps and rebuild assets.
+**Compilation errors after update**: Run `mix loopyard.setup` to re-fetch deps and rebuild assets.
 
 **Docker not found**: Make sure your Docker runtime is installed and running. Verify with `docker info`.
 
-**Docker pulls hang**: Run `mix boom.setup` — it detects and fixes the Docker Desktop credential store issue automatically.
+**Docker pulls hang**: Run `mix loopyard.setup` — it detects and fixes the Docker Desktop credential store issue automatically.
 
-**Port 4000 in use**: `PORT=4001 mix boom.server`.
+**Port 4000 in use**: `PORT=4001 mix loopyard.server`.
 
 ## ARM64 / Apple Silicon Service Images
 

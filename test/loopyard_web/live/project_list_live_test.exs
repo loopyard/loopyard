@@ -1,0 +1,47 @@
+defmodule LoopyardWeb.ProjectListLiveTest do
+  use LoopyardWeb.ConnCase
+
+  import Phoenix.LiveViewTest
+
+  setup do
+    Loopyard.StateKeeper.ensure_tables!()
+    :ets.delete_all_objects(:project_registry)
+    :ets.delete_all_objects(:workspace_registry)
+    :ok
+  end
+
+  describe "mount" do
+    test "renders the home page with project input and launch command", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/")
+      assert html =~ "Boom Looper"
+      assert html =~ "From terminal"
+      assert html =~ "Paste a path"
+    end
+
+    test "shows Remote and System links in header", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/")
+      assert html =~ "Remote"
+      assert html =~ "System"
+    end
+
+    test "mount returns under 500ms — pure ETS reads, no shell-outs", %{conn: conn} do
+      {micros, {:ok, _view, _html}} = :timer.tc(fn -> live(conn, "/") end)
+
+      assert micros < 500_000,
+             "ProjectListLive mount took #{div(micros, 1000)}ms — slow call slipped in"
+    end
+  end
+
+  describe "add project" do
+    test "adding invalid path shows error", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/")
+
+      view
+      |> element("form[phx-submit='add_project']")
+      |> render_submit(%{"path" => "/no/such/path/xyz"})
+
+      html = render(view)
+      assert html =~ "does not exist"
+    end
+  end
+end

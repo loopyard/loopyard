@@ -1,12 +1,12 @@
-# Set BOOMLOOPER_HOME to a local dir so tests don't write to ~/.boomlooper
-boomlooper_home = Path.join(File.cwd!(), ".boomlooper_home")
+# Set LOOPYARD_HOME to a local dir so tests don't write to ~/.loopyard
+loopyard_home = Path.join(File.cwd!(), ".loopyard_home")
 
 # Clean up stale projects.json from previous test runs
-projects_json = Path.join(boomlooper_home, "projects.json")
+projects_json = Path.join(loopyard_home, "projects.json")
 File.rm(projects_json)
 
-File.mkdir_p!(boomlooper_home)
-System.put_env("BOOMLOOPER_HOME", boomlooper_home)
+File.mkdir_p!(loopyard_home)
+System.put_env("LOOPYARD_HOME", loopyard_home)
 
 #
 # Tags excluded from the default `mix test` run to keep it under 30s.
@@ -41,14 +41,14 @@ System.put_env("BOOMLOOPER_HOME", boomlooper_home)
 # but `Module.function/arity` resolution fails because the tracker
 # hasn't indexed it yet.
 #
-# Workaround: preload every compiled BoomLooper.* module so it's
+# Workaround: preload every compiled Loopyard.* module so it's
 # guaranteed to be in the loader's index before any test starts.
 # Walking the ebin dir keeps this list self-maintaining — we don't
 # have to curate a list of every Tool module / every event struct.
 _ =
   for pattern <- [
-        "_build/test/lib/boom_looper/ebin/Elixir.BoomLooper.*.beam",
-        "_build/test/lib/boom_looper/ebin/Elixir.BoomLooperWeb.*.beam"
+        "_build/test/lib/loopyard/ebin/Elixir.Loopyard.*.beam",
+        "_build/test/lib/loopyard/ebin/Elixir.LoopyardWeb.*.beam"
       ],
       path <- Path.wildcard(pattern) do
     path
@@ -64,118 +64,118 @@ _ =
 [
   # Event structs reached across module boundaries (tests
   # pattern-match on them via `assert_receive`).
-  BoomLooper.Events.ChatAgent.Started,
-  BoomLooper.Events.ChatAgent.Stopped,
-  BoomLooper.Events.ChatAgent.Booting,
-  BoomLooper.Events.ChatAgent.BootStatus,
-  BoomLooper.Events.ChatAgent.BootFailed,
-  BoomLooper.Events.ChatAgent.Removed,
-  BoomLooper.Events.ChatAgent.Renamed,
-  BoomLooper.Events.ChatAgent.Resumed,
-  BoomLooper.Events.ChatAgent.StatusChanged,
-  BoomLooper.Events.ChatAgent.Quarantined,
-  BoomLooper.Events.ChatAgent.Released,
-  BoomLooper.Events.ChatAgentMessage.Message,
-  BoomLooper.Events.ChatAgentMessage.TextDelta,
-  BoomLooper.Events.ChatAgentMessage.StreamOutput,
-  BoomLooper.Events.Terminal.Output,
-  BoomLooper.Events.Terminal.Clear,
-  BoomLooper.Events.Terminal.Exit,
-  BoomLooper.Events.DockerObserver.Changed,
-  BoomLooper.Events.DockerObserver.Reset,
-  BoomLooper.Events.DockerObserver.Disconnected,
-  BoomLooper.Events.DockerObserver.Reconnected,
-  BoomLooper.Events.IexSession.Changed,
-  BoomLooper.Events.SourceSync.Updated,
-  BoomLooper.Events.WorkspaceServices.ServicesUpdated,
-  BoomLooper.Events.WorkspaceServices.ComposeResult,
+  Loopyard.Events.ChatAgent.Started,
+  Loopyard.Events.ChatAgent.Stopped,
+  Loopyard.Events.ChatAgent.Booting,
+  Loopyard.Events.ChatAgent.BootStatus,
+  Loopyard.Events.ChatAgent.BootFailed,
+  Loopyard.Events.ChatAgent.Removed,
+  Loopyard.Events.ChatAgent.Renamed,
+  Loopyard.Events.ChatAgent.Resumed,
+  Loopyard.Events.ChatAgent.StatusChanged,
+  Loopyard.Events.ChatAgent.Quarantined,
+  Loopyard.Events.ChatAgent.Released,
+  Loopyard.Events.ChatAgentMessage.Message,
+  Loopyard.Events.ChatAgentMessage.TextDelta,
+  Loopyard.Events.ChatAgentMessage.StreamOutput,
+  Loopyard.Events.Terminal.Output,
+  Loopyard.Events.Terminal.Clear,
+  Loopyard.Events.Terminal.Exit,
+  Loopyard.Events.DockerObserver.Changed,
+  Loopyard.Events.DockerObserver.Reset,
+  Loopyard.Events.DockerObserver.Disconnected,
+  Loopyard.Events.DockerObserver.Reconnected,
+  Loopyard.Events.IexSession.Changed,
+  Loopyard.Events.SourceSync.Updated,
+  Loopyard.Events.WorkspaceServices.ServicesUpdated,
+  Loopyard.Events.WorkspaceServices.ComposeResult,
   # Agent event structs — referenced from chat-agent tests.
-  BoomLooper.Agent.Event.TextDelta,
-  BoomLooper.Agent.Event.Text,
-  BoomLooper.Agent.Event.ToolCall,
-  BoomLooper.Agent.Event.ToolResult,
-  BoomLooper.Agent.Event.SessionResult,
-  BoomLooper.Agent.Event.RateLimitStatus,
-  BoomLooper.Agent.Event.AuthStatus,
-  BoomLooper.Agent.Event.Thinking,
-  BoomLooper.Agent.Event.ThinkingDelta,
-  BoomLooper.Agent.Event.ServerTool,
-  BoomLooper.Agent.Event.SystemEvent,
+  Loopyard.Agent.Event.TextDelta,
+  Loopyard.Agent.Event.Text,
+  Loopyard.Agent.Event.ToolCall,
+  Loopyard.Agent.Event.ToolResult,
+  Loopyard.Agent.Event.SessionResult,
+  Loopyard.Agent.Event.RateLimitStatus,
+  Loopyard.Agent.Event.AuthStatus,
+  Loopyard.Agent.Event.Thinking,
+  Loopyard.Agent.Event.ThinkingDelta,
+  Loopyard.Agent.Event.ServerTool,
+  Loopyard.Agent.Event.SystemEvent,
   # Domain structs reached across files.
-  BoomLooper.Workspace.ServiceStatus.Service,
-  # Tool modules use the BoomLooper.Tool macro which injects
+  Loopyard.Workspace.ServiceStatus.Service,
+  # Tool modules use the Loopyard.Tool macro which injects
   # `__tool_name__/0`. Under full-suite load, the Toolkit's walk
   # across Tools.Container.* occasionally hits a not-yet-loaded
   # module and raises UndefinedFunctionError. Same race class.
-  BoomLooper.Tool,
-  BoomLooper.Tools.Container,
-  BoomLooper.Tools.Container.AppUrl,
-  BoomLooper.Tools.Container.DockerCompose,
-  BoomLooper.Tools.Container.Edit,
-  BoomLooper.Tools.Container.Exec,
-  BoomLooper.Tools.Container.FileUrl,
-  BoomLooper.Tools.Container.Glob,
-  BoomLooper.Tools.Container.Grep,
-  BoomLooper.Tools.Container.InspectEnv,
-  BoomLooper.Tools.Container.InspectService,
-  BoomLooper.Tools.Container.Logs,
-  BoomLooper.Tools.Container.MultiEdit,
-  BoomLooper.Tools.Container.Ports,
-  BoomLooper.Tools.Container.ProbeHttp,
-  BoomLooper.Tools.Container.ReadFile,
-  BoomLooper.Tools.Container.ReadFiles,
-  BoomLooper.Tools.Container.ServiceContainers,
-  BoomLooper.Tools.Container.Tree,
-  BoomLooper.Tools.Container.Volumes,
-  BoomLooper.Tools.Container.WorkspaceInfo,
-  BoomLooper.Tools.Container.WriteFile,
+  Loopyard.Tool,
+  Loopyard.Tools.Container,
+  Loopyard.Tools.Container.AppUrl,
+  Loopyard.Tools.Container.DockerCompose,
+  Loopyard.Tools.Container.Edit,
+  Loopyard.Tools.Container.Exec,
+  Loopyard.Tools.Container.FileUrl,
+  Loopyard.Tools.Container.Glob,
+  Loopyard.Tools.Container.Grep,
+  Loopyard.Tools.Container.InspectEnv,
+  Loopyard.Tools.Container.InspectService,
+  Loopyard.Tools.Container.Logs,
+  Loopyard.Tools.Container.MultiEdit,
+  Loopyard.Tools.Container.Ports,
+  Loopyard.Tools.Container.ProbeHttp,
+  Loopyard.Tools.Container.ReadFile,
+  Loopyard.Tools.Container.ReadFiles,
+  Loopyard.Tools.Container.ServiceContainers,
+  Loopyard.Tools.Container.Tree,
+  Loopyard.Tools.Container.Volumes,
+  Loopyard.Tools.Container.WorkspaceInfo,
+  Loopyard.Tools.Container.WriteFile,
   # Subscriber behaviour modules — tests call `mod.module_info(:attributes)`
   # and hit the same parallel-compile load race.
-  BoomLooper.Events.ChatAgent.Subscriber,
-  BoomLooper.Events.ChatAgentMessage.Subscriber,
-  BoomLooper.Events.DockerObserver.Subscriber,
-  BoomLooper.Events.SourceSync.Subscriber,
-  BoomLooper.Events.WorkspaceServices.Subscriber,
-  BoomLooper.Events.WorkspaceSetup,
-  BoomLooper.Events.WorkspaceSetup.Subscriber,
-  BoomLooper.Events.WorkspaceSetup.Started,
-  BoomLooper.Events.WorkspaceSetup.PhaseStarted,
-  BoomLooper.Events.WorkspaceSetup.PhaseCompleted,
-  BoomLooper.Events.WorkspaceSetup.PhaseProgress,
-  BoomLooper.Events.WorkspaceSetup.Completed,
-  BoomLooper.Events.WorkspaceSetup.Failed,
-  BoomLooper.Events.WorkspaceSetup.RetryScheduled,
-  BoomLooper.Workspace.Setup,
-  BoomLooper.Workspace.Setup.Error,
-  BoomLooper.Workspace.Setup.ProgressParser,
+  Loopyard.Events.ChatAgent.Subscriber,
+  Loopyard.Events.ChatAgentMessage.Subscriber,
+  Loopyard.Events.DockerObserver.Subscriber,
+  Loopyard.Events.SourceSync.Subscriber,
+  Loopyard.Events.WorkspaceServices.Subscriber,
+  Loopyard.Events.WorkspaceSetup,
+  Loopyard.Events.WorkspaceSetup.Subscriber,
+  Loopyard.Events.WorkspaceSetup.Started,
+  Loopyard.Events.WorkspaceSetup.PhaseStarted,
+  Loopyard.Events.WorkspaceSetup.PhaseCompleted,
+  Loopyard.Events.WorkspaceSetup.PhaseProgress,
+  Loopyard.Events.WorkspaceSetup.Completed,
+  Loopyard.Events.WorkspaceSetup.Failed,
+  Loopyard.Events.WorkspaceSetup.RetryScheduled,
+  Loopyard.Workspace.Setup,
+  Loopyard.Workspace.Setup.Error,
+  Loopyard.Workspace.Setup.ProgressParser,
   # Helpers reached across test files.
-  BoomLooper.ChatAgent.OSProcess,
-  BoomLooper.Saga,
-  BoomLooper.Saga.Journal,
-  BoomLooper.Saga.Recorder,
+  Loopyard.ChatAgent.OSProcess,
+  Loopyard.Saga,
+  Loopyard.Saga.Journal,
+  Loopyard.Saga.Recorder,
   # Tool macros from ClaudeCode.MCP.Server generate submodules
   # (e.g. Tools.Secrets.GetSecret) that get walked by mcp_tool_names.
-  BoomLooper.Tools.Secrets,
-  BoomLooper.Tools.Secrets.GetSecret,
-  BoomLooper.Tools.Secrets.ListSecrets,
-  BoomLooper.Tools.Workspace,
-  BoomLooper.Tools.Workspace.SetSystemPrompt,
-  BoomLooper.Tools.Workspace.SetWorkspaceName,
-  BoomLooper.Tools.AgentFiles,
-  BoomLooper.Tools.AgentFiles.ReadAgentFile,
-  BoomLooper.Tools.Container.Helpers,
-  BoomLooper.Tools.Container.ProbeFormatter
+  Loopyard.Tools.Secrets,
+  Loopyard.Tools.Secrets.GetSecret,
+  Loopyard.Tools.Secrets.ListSecrets,
+  Loopyard.Tools.Workspace,
+  Loopyard.Tools.Workspace.SetSystemPrompt,
+  Loopyard.Tools.Workspace.SetWorkspaceName,
+  Loopyard.Tools.AgentFiles,
+  Loopyard.Tools.AgentFiles.ReadAgentFile,
+  Loopyard.Tools.Container.Helpers,
+  Loopyard.Tools.Container.ProbeFormatter
 ]
 |> Enum.each(&Code.ensure_loaded!/1)
 
 # Docker tests genuinely need more than 2s — `docker version` alone
 # can take 1-2s on a cold daemon, and most :docker tests do volume
 # create + rsync + container exec. CI's docker-e2e job sets
-# BOOMLOOPER_LONG_TIMEOUTS=1 to bump the suite-wide default for that
+# LOOPYARD_LONG_TIMEOUTS=1 to bump the suite-wide default for that
 # run. Local default stays tight (2s) so Process.sleep regressions
 # still fail loudly.
 default_timeout =
-  case System.get_env("BOOMLOOPER_LONG_TIMEOUTS") do
+  case System.get_env("LOOPYARD_LONG_TIMEOUTS") do
     "1" -> 30_000
     _ -> 2_000
   end

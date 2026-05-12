@@ -161,6 +161,7 @@ timeouts with ETS fallback — a wedged agent doesn't hang the UI.
 - **[docs/SOURCE_ADAPTERS.md](docs/SOURCE_ADAPTERS.md)** — Source adapter rules (Local, GitHub)
 - **[docs/GIT.md](docs/GIT.md)** — Git hygiene: atomic commits, sane messages, branch discipline
 - **[docs/EVALS.md](docs/EVALS.md)** — Eval runner, integrity rules, how to fix failures
+- **[docs/HOSTING.md](docs/HOSTING.md)** — Running BoomLooper as an always-on local server: macOS power management, keeping it reachable over LAN
 - **[docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md)** — Prioritized backlog of scoped improvements. Add entries when you find something worth doing but not shipping today.
 - **[plans/](plans/)** — Scoped design plans for features in flight. Read the relevant plan before implementing; update it when the plan evolves during implementation.
 

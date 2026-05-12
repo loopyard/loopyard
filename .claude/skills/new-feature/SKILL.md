@@ -34,7 +34,7 @@ Run the tests. Watch them fail. This proves the tests actually test something.
 ## Step 3: Build the isolated module
 
 Write the module. It should:
-- Live in `lib/boom_looper/` (infrastructure) or `lib/boom_looper_web/components/` (UI components)
+- Live in `lib/loopyard/` (infrastructure) or `lib/loopyard_web/components/` (UI components)
 - Have a clear public API with `@doc` strings
 - Accept injected dependencies where needed for testing (e.g. Terminal accepts a `cmd` option so tests use a local shell instead of Docker)
 - Have zero coupling to LiveView assigns or socket
@@ -46,8 +46,8 @@ Run the tests. Watch them pass.
 Wire the module into the LiveView, controller, or channel that needs it. The LiveView should be thin: handle events, delegate to the module, render.
 
 If this is multiplayer:
-- State changes go through GenServer, which broadcasts via a **publisher module** in `lib/boom_looper/events/` (not raw `Phoenix.PubSub.broadcast`). Add a struct + `publish/1` clause to the relevant `BoomLooper.Events.<Topic>` module.
-- LiveView declares `@behaviour BoomLooper.Events.<Topic>.Subscriber`, implements every `on_*` callback, and dispatches from `handle_info(%Events.Struct{} = e, socket)` to the callback.
+- State changes go through GenServer, which broadcasts via a **publisher module** in `lib/loopyard/events/` (not raw `Phoenix.PubSub.broadcast`). Add a struct + `publish/1` clause to the relevant `Loopyard.Events.<Topic>` module.
+- LiveView declares `@behaviour Loopyard.Events.<Topic>.Subscriber`, implements every `on_*` callback, and dispatches from `handle_info(%Events.Struct{} = e, socket)` to the callback.
 - Verify: open two browser tabs, make a change in one, see it in the other. Use `/system/events` to see the broadcast timeline if something isn't arriving.
 
 ## Step 5: Verify

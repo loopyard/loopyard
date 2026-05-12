@@ -1,4 +1,4 @@
-defmodule BoomLooperWeb do
+defmodule LoopyardWeb do
   @moduledoc false
 
   def static_paths, do: ~w(assets favicon.ico robots.txt)
@@ -23,7 +23,7 @@ defmodule BoomLooperWeb do
     quote do
       use Phoenix.Controller,
         formats: [:html, :json],
-        layouts: [html: BoomLooperWeb.Layouts]
+        layouts: [html: LoopyardWeb.Layouts]
 
       import Plug.Conn
 
@@ -34,7 +34,7 @@ defmodule BoomLooperWeb do
   def live_view do
     quote do
       use Phoenix.LiveView,
-        layout: {BoomLooperWeb.Layouts, :app}
+        layout: {LoopyardWeb.Layouts, :app}
 
       unquote(html_helpers())
     end
@@ -67,12 +67,12 @@ defmodule BoomLooperWeb do
       # Display formatters used everywhere — never re-define these inline
       # in a LiveView. If you find yourself writing `defp shorten_path` or
       # `defp format_bytes`, delete it and let this import do its job.
-      import BoomLooperWeb.Format
+      import LoopyardWeb.Format
 
       # Tiny shared components: <.flash_banner>, <.skeleton>. The big
       # page-specific components (sidebar, log_viewer, app_header) are
       # imported on demand by the LiveViews that use them.
-      import BoomLooperWeb.Components.Common
+      import LoopyardWeb.Components.Common
 
       alias Phoenix.LiveView.JS
 
@@ -83,9 +83,9 @@ defmodule BoomLooperWeb do
   def verified_routes do
     quote do
       use Phoenix.VerifiedRoutes,
-        endpoint: BoomLooperWeb.Endpoint,
-        router: BoomLooperWeb.Router,
-        statics: BoomLooperWeb.static_paths()
+        endpoint: LoopyardWeb.Endpoint,
+        router: LoopyardWeb.Router,
+        statics: LoopyardWeb.static_paths()
     end
   end
 

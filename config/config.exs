@@ -1,21 +1,21 @@
 import Config
 
-config :boom_looper,
+config :loopyard,
   generators: [timestamp_type: :utc_datetime]
 
-config :boom_looper, BoomLooperWeb.Endpoint,
+config :loopyard, LoopyardWeb.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
   render_errors: [
-    formats: [html: BoomLooperWeb.ErrorHTML],
+    formats: [html: LoopyardWeb.ErrorHTML],
     layout: false
   ],
-  pubsub_server: BoomLooper.PubSub,
+  pubsub_server: Loopyard.PubSub,
   live_view: [signing_salt: "hive_salt_1234"]
 
 config :esbuild,
   version: "0.17.11",
-  boom_looper: [
+  loopyard: [
     args:
       ~w(js/app.js --bundle --target=es2017 --outdir=../priv/static/assets --external:/fonts/* --external:/images/* --loader:.css=css),
     cd: Path.expand("../assets", __DIR__),
@@ -24,7 +24,7 @@ config :esbuild,
 
 config :tailwind,
   version: "3.4.3",
-  boom_looper: [
+  loopyard: [
     args: ~w(
       --config=tailwind.config.js
       --input=css/app.css

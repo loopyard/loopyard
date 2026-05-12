@@ -8,7 +8,7 @@ on:
 
 env:
   MIX_ENV: test
-  BOOMLOOPER_HOME: ${{ github.workspace }}/.boomlooper_home
+  LOOPYARD_HOME: ${{ github.workspace }}/.loopyard_home
 
 jobs:
   test:
@@ -42,7 +42,7 @@ jobs:
 
       - name: Run tests with coverage
         env:
-          BOOMLOOPER_LONG_TIMEOUTS: "1"
+          LOOPYARD_LONG_TIMEOUTS: "1"
           MIX_ENV: test
         run: mix coveralls --exclude docker --exclude macos --exclude ssh --exclude terminal --exclude recovery --exclude slow
         timeout-minutes: 5
@@ -144,6 +144,6 @@ jobs:
 
       - name: Run docker E2E tests
         env:
-          BOOMLOOPER_LONG_TIMEOUTS: "1"
+          LOOPYARD_LONG_TIMEOUTS: "1"
         run: mix test --only docker --exclude macos --exclude ssh --exclude terminal
         timeout-minutes: 15

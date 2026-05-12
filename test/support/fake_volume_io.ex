@@ -1,13 +1,13 @@
-defmodule BoomLooper.Test.FakeVolumeIO do
+defmodule Loopyard.Test.FakeVolumeIO do
   @moduledoc """
-  In-process stand-in for `BoomLooper.VolumeIO` used by ClaudeContext
+  In-process stand-in for `Loopyard.VolumeIO` used by ClaudeContext
   tests. Read calls hit the process dictionary so tests can seed an
   arbitrary "volume" without touching Docker.
 
   Tests swap the real module in via:
 
-      Application.put_env(:boom_looper, :volume_reader,
-        BoomLooper.Test.FakeVolumeIO)
+      Application.put_env(:loopyard, :volume_reader,
+        Loopyard.Test.FakeVolumeIO)
   """
 
   def read_file(volume, path) do

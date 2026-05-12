@@ -1,12 +1,12 @@
 ---
 name: debug-ui
-description: Diagnose LiveView UI flashes, re-render loops, and state/view mismatches by introspecting the running app via mix boom.rpc. Use when the user reports anything that "flashes", "flickers", "keeps changing", "blinks", "keeps updating", or when an assign is suspected of being overwritten. RPC-based — no browser needed.
+description: Diagnose LiveView UI flashes, re-render loops, and state/view mismatches by introspecting the running app via mix loopyard.rpc. Use when the user reports anything that "flashes", "flickers", "keeps changing", "blinks", "keeps updating", or when an assign is suspected of being overwritten. RPC-based — no browser needed.
 user_invocable: true
 ---
 
 # Debug UI: LiveView flash & re-render diagnosis
 
-Diagnose why the running app's UI is re-rendering unexpectedly. **Go to the running data first.** Don't grep the code, don't ask the user to click things, don't take screenshots. `mix boom.rpc` gives you the truth in under 5 seconds.
+Diagnose why the running app's UI is re-rendering unexpectedly. **Go to the running data first.** Don't grep the code, don't ask the user to click things, don't take screenshots. `mix loopyard.rpc` gives you the truth in under 5 seconds.
 
 The three flavors of this bug:
 
@@ -18,25 +18,25 @@ Each recipe below tells you which flavor you're looking at.
 
 ## Prerequisites
 
-- BoomLooper running on `localhost:4000` (`mix boom.server`)
-- You're in the BoomLooper repo root
+- Loopyard running on `localhost:4000` (`mix loopyard.server`)
+- You're in the Loopyard repo root
 
 Check liveness first:
 
 ```bash
-mix boom.rpc 'Node.self()'
+mix loopyard.rpc 'Node.self()'
 ```
 
-If that errors, the server is dead — tell the user to `mix boom.server` before proceeding.
+If that errors, the server is dead — tell the user to `mix loopyard.server` before proceeding.
 
 ## Recipe 1 — "Is the data actually changing?" (assign diff)
 
 **When:** user reports "X keeps flashing." First question: is the assign actually flipping?
 
 ```bash
-mix boom.rpc '
+mix loopyard.rpc '
 pid = Phoenix.LiveView.Debug.list_liveviews()
-      |> Enum.find(&(&1.view == BoomLooperWeb.WorkspaceLive))
+      |> Enum.find(&(&1.view == LoopyardWeb.WorkspaceLive))
       |> Map.get(:pid)
 
 snaps = for _ <- 1..25 do
@@ -60,7 +60,7 @@ diffs
 '
 ```
 
-Substitute the LiveView module name for whichever page the user is on. If the user gives you a URL, the module is in `lib/boom_looper_web/router.ex`.
+Substitute the LiveView module name for whichever page the user is on. If the user gives you a URL, the module is in `lib/loopyard_web/router.ex`.
 
 **Read the result:**
 
@@ -72,9 +72,9 @@ Substitute the LiveView module name for whichever page the user is on. If the us
 **When:** Recipe 1 showed a key flipping. Find which field inside the value differs.
 
 ```bash
-mix boom.rpc '
+mix loopyard.rpc '
 pid = Phoenix.LiveView.Debug.list_liveviews()
-      |> Enum.find(&(&1.view == BoomLooperWeb.WorkspaceLive))
+      |> Enum.find(&(&1.view == LoopyardWeb.WorkspaceLive))
       |> Map.get(:pid)
 
 key = :service_statuses   # replace with the key from Recipe 1
@@ -115,10 +115,10 @@ end
 **When:** Recipe 1 said no assigns changed, but the user still sees flash. Attach a telemetry handler to count renders + broadcast receives.
 
 ```bash
-mix boom.rpc '
+mix loopyard.rpc '
 # One-shot telemetry attach: count render events on a specific LV pid for 5s.
 pid = Phoenix.LiveView.Debug.list_liveviews()
-      |> Enum.find(&(&1.view == BoomLooperWeb.WorkspaceLive))
+      |> Enum.find(&(&1.view == LoopyardWeb.WorkspaceLive))
       |> Map.get(:pid)
 
 parent = self()
@@ -164,9 +164,9 @@ events
 
 **When:** Recipe 2 nailed the flipped field and you need to find the code path that strips it.
 
-Grep for `assign(socket, :<key>` and `|> assign(:<key>` across `lib/boom_looper_web/`. For each hit, trace the source of the value being assigned. Look for the odd one out — the handler that assigns a raw version when every other handler assigns the enriched version (the one that calls helpers like `annotate_exposure`, `load_sidebar_from_observer`).
+Grep for `assign(socket, :<key>` and `|> assign(:<key>` across `lib/loopyard_web/`. For each hit, trace the source of the value being assigned. Look for the odd one out — the handler that assigns a raw version when every other handler assigns the enriched version (the one that calls helpers like `annotate_exposure`, `load_sidebar_from_observer`).
 
-Classic shape of this bug: a `handle_info(%Events.<Topic>.<Struct>{...}, socket)` clause that assigns raw payload fields directly, when another clause for a different event struct enriches the same assign first. `git log --oneline` for `"flash"` for a worked example. The event struct names live in `lib/boom_looper/events/` — grep the struct name to find every producer and consumer.
+Classic shape of this bug: a `handle_info(%Events.<Topic>.<Struct>{...}, socket)` clause that assigns raw payload fields directly, when another clause for a different event struct enriches the same assign first. `git log --oneline` for `"flash"` for a worked example. The event struct names live in `lib/loopyard/events/` — grep the struct name to find every producer and consumer.
 
 ## Anti-patterns to flag
 
@@ -181,10 +181,10 @@ Same bug class the sidebar-flash incident hit. Watch for these during any audit:
 If the user reports a flash AND wants to see the broadcast timeline, skip the telemetry attach (Recipe 3) and go to `/system/events` directly. It's a live ring buffer of every broadcast on every topic (shipped with coordination hardening Move #7). You can also read it via RPC:
 
 ```bash
-mix boom.rpc 'BoomLooper.Events.Tap.recent("chat_agents", 30_000)'
+mix loopyard.rpc 'Loopyard.Events.Tap.recent("chat_agents", 30_000)'
 ```
 
-Use this to correlate a reported flash with the exact broadcast sequence that caused it. All publishes go through `BoomLooper.Events.*` publisher modules (never raw `Phoenix.PubSub.broadcast`); the event type is the struct name (`%Events.ChatAgent.StatusChanged{}`, `%Events.DockerObserver.Changed{}`, etc.). Grep that struct name to find every site that produces or consumes the event.
+Use this to correlate a reported flash with the exact broadcast sequence that caused it. All publishes go through `Loopyard.Events.*` publisher modules (never raw `Phoenix.PubSub.broadcast`); the event type is the struct name (`%Events.ChatAgent.StatusChanged{}`, `%Events.DockerObserver.Changed{}`, etc.). Grep that struct name to find every site that produces or consumes the event.
 
 ## Choosing between recipes
 

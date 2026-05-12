@@ -175,7 +175,7 @@ Design: for each actor, generate all `{state, event}` pairs and assert invariant
 
 Docker, Claude API, Mutagen sync, GitHub API — each has ad-hoc backoff scattered through its caller. A single crashing daemon can cause retry-storm across dozens of agents/workspaces.
 
-Design: `BoomLooper.CircuitBreaker` wrapping each external call. States: `:closed` (normal), `:open` (stop trying), `:half_open` (probe). Thresholds configurable per breaker. `mix boom.rpc 'CircuitBreaker.status()'` shows which are tripped.
+Design: `BoomLooper.CircuitBreaker` wrapping each external call. States: `:closed` (normal), `:open` (stop trying), `:half_open` (probe). Thresholds configurable per breaker. `mix loopyard.rpc 'CircuitBreaker.status()'` shows which are tripped.
 
 **Kills:** retry-storm amplification. One Docker daemon outage no longer burns CPU on 10 workspaces × exponential-backoff × infinite retry.
 
@@ -227,7 +227,7 @@ Design: each saga step commits its progress to a disk journal before execution. 
 
 We already saw an agent restart 26 times in an hour with no surface signal. Supervisors happily honor `restart: :transient` until heat death.
 
-Design: the supervisor (or a sibling monitor) tracks restart frequency per child. After N crashes in T seconds (say 5 in 60), the child moves to `:quarantined` — stopped, marked unhealthy, broadcast to operators. The trigger message (if identifiable) is captured for forensics. Manual restart via UI or `mix boom.rpc`.
+Design: the supervisor (or a sibling monitor) tracks restart frequency per child. After N crashes in T seconds (say 5 in 60), the child moves to `:quarantined` — stopped, marked unhealthy, broadcast to operators. The trigger message (if identifiable) is captured for forensics. Manual restart via UI or `mix loopyard.rpc`.
 
 For agents specifically: if the same event class keeps crashing the GenServer (poisoned-message shape), the pure transition function (move #1) can hash the event and refuse to apply it if the same hash crashed us in the last T seconds. Event goes to a `:quarantined_events` ETS slot for inspection. Actor survives.
 

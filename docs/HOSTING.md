@@ -34,7 +34,7 @@ You want:
 ## Starting the server
 
 ```bash
-mix boom.server
+mix loopyard.server
 ```
 
 The server binds to `127.0.0.1:4000` by default (local only). Use the Remote page (`/remote`) to expose on `0.0.0.0` for LAN/tunnel access.
@@ -44,7 +44,7 @@ The server binds to `127.0.0.1:4000` by default (local only). Use the Remote pag
 For a persistent server that survives terminal closure:
 
 ```bash
-nohup mix boom.server > /tmp/boomlooper.log 2>&1 &
+nohup mix loopyard.server > /tmp/boomlooper.log 2>&1 &
 ```
 
 Or use `tmux`/`screen` to keep the session alive.
