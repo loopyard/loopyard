@@ -56,3 +56,5 @@ worktrees/
 .claude/scheduled_tasks.lock
 *.log
 sagas.log
+.boomlooper_home/
+.loopyard_home/
