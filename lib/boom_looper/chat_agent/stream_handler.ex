@@ -128,14 +128,12 @@ defmodule BoomLooper.ChatAgent.StreamHandler do
     state
   end
 
-  def process_event(%Event.ThinkingDelta{thinking: thinking}, state) do
-    # Stream thinking deltas to the UI for live display
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.TextDelta{
-      agent_id: state.id,
-      text: ""
-    })
-
-    %{state | in_flight_partial: state.in_flight_partial <> (thinking || "")}
+  def process_event(%Event.ThinkingDelta{}, state) do
+    # Thinking deltas arrive before the full ThinkingBlock. We don't
+    # stream them to the chat (they'd mix with the response bubble).
+    # The full thinking content arrives as a Thinking event and gets
+    # rendered as a collapsible block.
+    state
   end
 
   def process_event(%Event.ServerTool{name: name, input: input}, state) do
@@ -246,6 +244,28 @@ defmodule BoomLooper.ChatAgent.StreamHandler do
 
       {:auto_restart_context, last_user_msg && last_user_msg.content, state}
     else
+      # If the agent finished a turn without producing any visible
+      # response, tell the user instead of silently going idle.
+      state =
+        if empty_last_response?(state) do
+          no_response_msg = %{
+            role: :system,
+            content: "Agent completed without a visible response. Try rephrasing or sending your message again.",
+            timestamp: DateTime.utc_now()
+          }
+
+          {state, no_response_msg} = append_message(state, no_response_msg)
+
+          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+            agent_id: id,
+            msg: no_response_msg
+          })
+
+          state
+        else
+          state
+        end
+
       :ets.insert(@ets_table, {id, BoomLooper.ChatAgent.summary(state)})
       Persistence.persist_agent(state, &BoomLooper.ChatAgent.summary/1)
       Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
@@ -754,7 +774,20 @@ defmodule BoomLooper.ChatAgent.StreamHandler do
   end
 
   defp empty_last_response?(state) do
-    case List.last(state.messages) do
+    # Check if the agent produced any visible response this turn.
+    # Thinking blocks don't count — the user can't see them unless
+    # they expand the collapsed section. If the only output was
+    # thinking, the turn looks empty from the user's perspective.
+    last_visible =
+      state.messages
+      |> Enum.reverse()
+      |> Enum.find(fn m -> m.role not in [:thinking, :system] end)
+
+    case last_visible do
+      %{role: :user} ->
+        # Last visible message is the user's — agent didn't respond at all
+        true
+
       %{role: :assistant, content: c} when is_binary(c) ->
         trimmed = String.trim(c)
         trimmed == "" || trimmed == "(no content)"
