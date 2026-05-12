@@ -47,6 +47,9 @@ defmodule BoomLooperWeb.Components.ToolSummary do
       {"stop_agent", %{"agent_id" => id}} ->
         "Stopped agent #{String.slice(id, 0..8)}"
 
+      {"exec", %{"command" => cmd}} ->
+        "$ #{String.slice(cmd, 0..80)}"
+
       {"exec", _} ->
         "Execute"
 
@@ -84,10 +87,10 @@ defmodule BoomLooperWeb.Components.ToolSummary do
         "Probe HTTP"
 
       {"git", %{"command" => cmd}} ->
-        "Git #{String.slice(cmd, 0..40)}"
+        "$ git #{String.slice(cmd, 0..70)}"
 
       {"git", _} ->
-        "Git"
+        "$ git"
 
       {"inspect_service", %{"name" => n}} ->
         "Inspect #{n}"
