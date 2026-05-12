@@ -147,11 +147,9 @@ defmodule BoomLooper.ChatAgent.StreamHandler do
     %{state | last_activity_at: now, active_tool: "server__#{name}"}
   end
 
-  def process_event(%Event.SystemEvent{subtype: subtype, content: content}, state) do
-    now = DateTime.utc_now()
-    msg = %{role: :system, content: "[#{subtype}] #{content}", timestamp: now}
-    {state, msg} = append_message(state, msg)
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: msg})
+  def process_event(%Event.SystemEvent{}, state) do
+    # System events (init, compaction, hooks) carry useful metadata but
+    # are not human-readable. Don't dump them into the chat.
     state
   end
 
