@@ -8,7 +8,10 @@ defmodule BoomLooperWeb.Components.ToolSummary do
 
   @doc "Summarize a tool call into a short human-readable string."
   def summarize(tool_name, input) when is_map(input) do
-    clean_name = tool_name |> String.replace(~r/^mcp__[\w-]+__/, "")
+    clean_name =
+      tool_name
+      |> String.replace(~r/^mcp__[\w-]+__/, "")
+      |> String.replace(~r/^server__/, "")
 
     case {clean_name, input} do
       {"Read", %{"file_path" => path}} ->

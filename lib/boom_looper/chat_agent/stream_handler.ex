@@ -119,6 +119,42 @@ defmodule BoomLooper.ChatAgent.StreamHandler do
     %{state | in_flight_partial: state.in_flight_partial <> (text || "")}
   end
 
+  def process_event(%Event.Thinking{thinking: thinking}, state) do
+    now = DateTime.utc_now()
+    msg = %{role: :thinking, content: thinking, timestamp: now}
+    {state, msg} = append_message(state, msg)
+    Persistence.persist_message(state, msg)
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: msg})
+    state
+  end
+
+  def process_event(%Event.ThinkingDelta{thinking: thinking}, state) do
+    # Stream thinking deltas to the UI for live display
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.TextDelta{
+      agent_id: state.id,
+      text: ""
+    })
+
+    %{state | in_flight_partial: state.in_flight_partial <> (thinking || "")}
+  end
+
+  def process_event(%Event.ServerTool{name: name, input: input}, state) do
+    now = DateTime.utc_now()
+    msg = %{role: :tool, tool: "server__#{name}", input: input, timestamp: now}
+    {state, msg} = append_message(state, msg)
+    Persistence.persist_message(state, msg)
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: msg})
+    %{state | last_activity_at: now, active_tool: "server__#{name}"}
+  end
+
+  def process_event(%Event.SystemEvent{subtype: subtype, content: content}, state) do
+    now = DateTime.utc_now()
+    msg = %{role: :system, content: "[#{subtype}] #{content}", timestamp: now}
+    {state, msg} = append_message(state, msg)
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: msg})
+    state
+  end
+
   def process_event(%Event.SessionResult{} = result, state) do
     id = state.id
 

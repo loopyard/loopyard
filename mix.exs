@@ -10,12 +10,7 @@ defmodule BoomLooper.MixProject do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
-      test_coverage: [tool: ExCoveralls],
-      preferred_cli_env: [
-        coveralls: :test,
-        "coveralls.detail": :test,
-        "coveralls.html": :test
-      ]
+      test_coverage: [tool: ExCoveralls]
     ]
   end
 
@@ -24,6 +19,10 @@ defmodule BoomLooper.MixProject do
       mod: {BoomLooper.Application, []},
       extra_applications: [:logger, :runtime_tools, :ssh, :crypto, :public_key]
     ]
+  end
+
+  def cli do
+    [preferred_envs: [coveralls: :test, "coveralls.detail": :test, "coveralls.html": :test]]
   end
 
   defp elixirc_paths(:test), do: ["lib", "test/support"]

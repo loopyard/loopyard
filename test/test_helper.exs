@@ -97,6 +97,10 @@ _ =
   BoomLooper.Agent.Event.SessionResult,
   BoomLooper.Agent.Event.RateLimitStatus,
   BoomLooper.Agent.Event.AuthStatus,
+  BoomLooper.Agent.Event.Thinking,
+  BoomLooper.Agent.Event.ThinkingDelta,
+  BoomLooper.Agent.Event.ServerTool,
+  BoomLooper.Agent.Event.SystemEvent,
   # Domain structs reached across files.
   BoomLooper.Workspace.ServiceStatus.Service,
   # Tool modules use the BoomLooper.Tool macro which injects

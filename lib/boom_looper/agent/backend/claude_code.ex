@@ -58,11 +58,17 @@ defmodule BoomLooper.Agent.Backend.ClaudeCode do
       %ClaudeCode.Content.TextBlock{text: text} when text != "" ->
         [%Event.Text{text: text}]
 
+      %ClaudeCode.Content.ThinkingBlock{thinking: thinking} when thinking != "" ->
+        [%Event.Thinking{thinking: thinking}]
+
       %ClaudeCode.Content.ToolUseBlock{name: name, input: input} ->
         [%Event.ToolCall{name: name, input: input}]
 
       %ClaudeCode.Content.MCPToolUseBlock{name: name, server_name: server, input: input} ->
         [%Event.ToolCall{name: "mcp__#{server}__#{name}", input: input}]
+
+      %ClaudeCode.Content.ServerToolUseBlock{name: name, input: input} ->
+        [%Event.ServerTool{name: name, input: input}]
 
       _ ->
         []
@@ -70,10 +76,19 @@ defmodule BoomLooper.Agent.Backend.ClaudeCode do
   end
 
   def translate(%ClaudeCode.Message.PartialAssistantMessage{} = msg) do
-    case ClaudeCode.Message.PartialAssistantMessage.extract_text(msg) do
-      {:ok, text} -> [%Event.TextDelta{text: text}]
-      :error -> []
-    end
+    text_events =
+      case ClaudeCode.Message.PartialAssistantMessage.extract_text(msg) do
+        {:ok, text} -> [%Event.TextDelta{text: text}]
+        :error -> []
+      end
+
+    thinking_events =
+      case ClaudeCode.Message.PartialAssistantMessage.extract_thinking(msg) do
+        {:ok, thinking} -> [%Event.ThinkingDelta{thinking: thinking}]
+        :error -> []
+      end
+
+    text_events ++ thinking_events
   end
 
   def translate(%ClaudeCode.Message.UserMessage{message: %{content: content}})
@@ -131,7 +146,21 @@ defmodule BoomLooper.Agent.Backend.ClaudeCode do
     ]
   end
 
-  def translate(_), do: []
+  def translate(msg) do
+    cond do
+      ClaudeCode.Message.SystemMessage.type?(msg) ->
+        subtype = Map.get(msg, :subtype, :unknown)
+        content = try do to_string(msg) rescue _ -> inspect(msg) end
+        if content != "" do
+          [%Event.SystemEvent{subtype: subtype, content: content}]
+        else
+          []
+        end
+
+      true ->
+        []
+    end
+  end
 
   # --- Helpers ---
 

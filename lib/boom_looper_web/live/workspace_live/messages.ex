@@ -146,6 +146,17 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
     """
   end
 
+  def chat_msg(%{msg: %{role: :thinking}} = assigns) do
+    ~H"""
+    <details class="ml-10 my-1 group">
+      <summary class="text-xs text-zinc-400 dark:text-zinc-500 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none">
+        Thinking...
+      </summary>
+      <pre class="mt-1 p-3 rounded-lg text-xs font-mono bg-zinc-50 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 whitespace-pre-wrap max-h-60 overflow-y-auto">{@msg.content}</pre>
+    </details>
+    """
+  end
+
   def chat_msg(%{msg: %{role: :tool_result}} = assigns) do
     content = assigns.msg.content
 
