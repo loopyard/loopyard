@@ -783,9 +783,11 @@ defmodule BoomLooper.ChatAgent.StreamHandler do
     # Thinking blocks don't count — the user can't see them unless
     # they expand the collapsed section. If the only output was
     # thinking, the turn looks empty from the user's perspective.
+    #
+    # state.messages is stored reversed (newest first) for O(1) prepend.
+    # Search it directly — Enum.find hits the newest message first.
     last_visible =
       state.messages
-      |> Enum.reverse()
       |> Enum.find(fn m -> m.role not in [:thinking, :system] end)
 
     case last_visible do
