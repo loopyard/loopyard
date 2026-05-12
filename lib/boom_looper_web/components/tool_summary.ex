@@ -26,11 +26,14 @@ defmodule BoomLooperWeb.Components.ToolSummary do
       {"Bash", %{"command" => cmd}} ->
         "$ #{String.slice(cmd, 0..80)}"
 
+      {"Grep", %{"pattern" => pat, "path" => path}} ->
+        "grep \"#{pat}\" #{shorten_path(path)}"
+
       {"Grep", %{"pattern" => pat}} ->
-        "Searched for \"#{pat}\""
+        "grep \"#{pat}\""
 
       {"Glob", %{"pattern" => pat}} ->
-        "Found files matching #{pat}"
+        "glob #{pat}"
 
       {"Agent", %{"prompt" => p}} ->
         "Spawned agent: #{String.slice(p, 0..60)}"
@@ -53,38 +56,74 @@ defmodule BoomLooperWeb.Components.ToolSummary do
       {"exec", _} ->
         "Execute"
 
+      {"read_file", %{"path" => path}} ->
+        "Read #{shorten_path(path)}"
+
+      {"read_file", _} ->
+        "Read file"
+
       {"read_files", %{"paths" => paths}} when is_list(paths) ->
         "Read #{length(paths)} files"
 
       {"read_files", _} ->
         "Read files"
 
+      {"write_file", %{"path" => path}} ->
+        "Write #{shorten_path(path)}"
+
+      {"write_file", _} ->
+        "Write file"
+
+      {"edit", %{"file_path" => path}} ->
+        "Edit #{shorten_path(path)}"
+
+      {"edit", %{"path" => path}} ->
+        "Edit #{shorten_path(path)}"
+
+      {"edit", _} ->
+        "Edit"
+
       {"multi_edit", %{"file_path" => path}} ->
+        "Multi-edit #{shorten_path(path)}"
+
+      {"multi_edit", %{"path" => path}} ->
         "Multi-edit #{shorten_path(path)}"
 
       {"multi_edit", _} ->
         "Multi-edit"
 
+      {"grep", %{"pattern" => pat, "path" => path}} when is_binary(path) ->
+        "grep \"#{String.slice(pat, 0..30)}\" #{shorten_path(path)}"
+
+      {"grep", %{"pattern" => pat}} ->
+        "grep \"#{String.slice(pat, 0..40)}\""
+
+      {"glob", %{"pattern" => pat}} ->
+        "glob #{pat}"
+
       {"file_info", %{"path" => path}} ->
-        "File info #{shorten_path(path)}"
+        "stat #{shorten_path(path)}"
 
       {"file_info", _} ->
-        "File info"
+        "stat"
+
+      {"tree", %{"path" => path}} ->
+        "tree #{shorten_path(path)}"
 
       {"tree", _} ->
-        "Tree"
+        "tree /workspace"
 
       {"docker_compose", %{"action" => action}} ->
-        "Docker compose #{action}"
+        "$ docker compose #{action}"
 
       {"docker_compose", _} ->
-        "Docker compose"
+        "$ docker compose"
 
       {"probe_http", %{"url" => url}} ->
-        "Probe #{String.slice(url, 0..40)}"
+        "curl #{String.slice(url, 0..50)}"
 
       {"probe_http", _} ->
-        "Probe HTTP"
+        "curl (HTTP probe)"
 
       {"git", %{"command" => cmd}} ->
         "$ git #{String.slice(cmd, 0..70)}"
@@ -107,11 +146,14 @@ defmodule BoomLooperWeb.Components.ToolSummary do
       {"workspace_info", _} ->
         "Workspace info"
 
+      {"logs", %{"service" => svc}} ->
+        "logs #{svc}"
+
       {"logs", _} ->
-        "Logs"
+        "logs"
 
       {"inspect_env", _} ->
-        "Inspect environment"
+        "env"
 
       {"start_service", %{"name" => n}} ->
         "Start service #{n}"
