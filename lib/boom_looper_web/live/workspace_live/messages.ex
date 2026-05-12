@@ -125,23 +125,29 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
     assigns =
       assign(assigns, :summary, ToolSummary.summarize(assigns.msg.tool, assigns.msg.input))
 
+    tool_name = assigns.msg[:tool] || ""
+    is_edit = String.ends_with?(tool_name, "__edit") || String.ends_with?(tool_name, "__multi_edit")
+    old_str = if is_edit, do: assigns.msg.input["old_string"]
+    new_str = if is_edit, do: assigns.msg.input["new_string"]
+    assigns = assign(assigns, is_edit: is_edit, old_str: old_str, new_str: new_str)
+
     ~H"""
-    <div class="flex items-center gap-2 py-1 pl-10">
-      <div class="w-4 h-4 rounded bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center flex-none">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 16 16"
-          fill="currentColor"
-          class="w-2.5 h-2.5 text-blue-500 dark:text-blue-400"
-        >
-          <path
-            fill-rule="evenodd"
-            d="M6.955 1.45A.5.5 0 0 1 7.452 1h1.096a.5.5 0 0 1 .497.45l.17 1.699c.484.12.94.312 1.356.562l1.321-.916a.5.5 0 0 1 .67.033l.774.775a.5.5 0 0 1 .034.67l-.916 1.32c.25.417.443.873.563 1.357l1.699.17a.5.5 0 0 1 .45.497v1.096a.5.5 0 0 1-.45.497l-1.699.17c-.12.484-.312.94-.562 1.356l.916 1.321a.5.5 0 0 1-.034.67l-.774.774a.5.5 0 0 1-.67.033l-1.32-.916c-.417.25-.874.443-1.357.563l-.17 1.699a.5.5 0 0 1-.497.45H7.452a.5.5 0 0 1-.497-.45l-.17-1.699a4.973 4.973 0 0 1-1.356-.562l-1.321.916a.5.5 0 0 1-.67-.033l-.774-.775a.5.5 0 0 1-.034-.67l.916-1.32a4.971 4.971 0 0 1-.562-1.357l-1.699-.17A.5.5 0 0 1 1 8.548V7.452a.5.5 0 0 1 .45-.497l1.699-.17c.12-.484.312-.94.562-1.356l-.916-1.321a.5.5 0 0 1 .034-.67l.774-.774a.5.5 0 0 1 .67-.033l1.32.916c.417-.25.874-.443 1.357-.563l.17-1.699ZM8 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"
-            clip-rule="evenodd"
-          />
-        </svg>
+    <div class="py-1 pl-10">
+      <div class="flex items-center gap-2">
+        <div class="w-4 h-4 rounded bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center flex-none">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-2.5 h-2.5 text-blue-500 dark:text-blue-400">
+            <path fill-rule="evenodd" d="M6.955 1.45A.5.5 0 0 1 7.452 1h1.096a.5.5 0 0 1 .497.45l.17 1.699c.484.12.94.312 1.356.562l1.321-.916a.5.5 0 0 1 .67.033l.774.775a.5.5 0 0 1 .034.67l-.916 1.32c.25.417.443.873.563 1.357l1.699.17a.5.5 0 0 1 .45.497v1.096a.5.5 0 0 1-.45.497l-1.699.17c-.12.484-.312.94-.562 1.356l.916 1.321a.5.5 0 0 1-.034.67l-.774.774a.5.5 0 0 1-.67.033l-1.32-.916c-.417.25-.874.443-1.357.563l-.17 1.699a.5.5 0 0 1-.497.45H7.452a.5.5 0 0 1-.497-.45l-.17-1.699a4.973 4.973 0 0 1-1.356-.562l-1.321.916a.5.5 0 0 1-.67-.033l-.774-.775a.5.5 0 0 1-.034-.67l.916-1.32a4.971 4.971 0 0 1-.562-1.357l-1.699-.17A.5.5 0 0 1 1 8.548V7.452a.5.5 0 0 1 .45-.497l1.699-.17c.12-.484.312-.94.562-1.356l-.916-1.321a.5.5 0 0 1 .034-.67l.774-.774a.5.5 0 0 1 .67-.033l1.32.916c.417-.25.874-.443 1.357-.563l.17-1.699ZM8 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" clip-rule="evenodd" />
+          </svg>
+        </div>
+        <span class="text-base text-blue-600 dark:text-blue-400">{@summary}</span>
       </div>
-      <span class="text-base text-blue-600 dark:text-blue-400">{@summary}</span>
+      <div
+        :if={@is_edit && @old_str && @new_str}
+        class="mt-1 ml-6 rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-700/80 text-xs font-mono"
+      >
+        <pre class="px-3 py-2 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300 whitespace-pre-wrap">{diff_lines(@old_str, "-")}</pre>
+        <pre class="px-3 py-2 bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-300 whitespace-pre-wrap border-t border-zinc-200 dark:border-zinc-700/80">{diff_lines(@new_str, "+")}</pre>
+      </div>
     </div>
     """
   end
@@ -493,6 +499,12 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
   end
 
   defp detect_port_info(_, _), do: nil
+
+  defp diff_lines(text, prefix) do
+    text
+    |> String.split("\n")
+    |> Enum.map_join("\n", &"#{prefix} #{&1}")
+  end
 
   defp msg_url(assigns) do
     msg_id = assigns.msg[:id]
