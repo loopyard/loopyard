@@ -21,7 +21,7 @@ defmodule BoomLooperWeb.Components.ToolSummary do
         "Wrote #{shorten_path(path)}"
 
       {"Edit", %{"file_path" => path}} ->
-        "Edited #{shorten_path(path)}"
+        "Update #{shorten_path(path)}"
 
       {"Bash", %{"command" => cmd}} ->
         "$ #{String.slice(cmd, 0..80)}"
@@ -75,13 +75,13 @@ defmodule BoomLooperWeb.Components.ToolSummary do
         "Write file"
 
       {"edit", %{"file_path" => path}} ->
-        "Edit #{shorten_path(path)}"
+        "Update #{shorten_path(path)}"
 
       {"edit", %{"path" => path}} ->
-        "Edit #{shorten_path(path)}"
+        "Update #{shorten_path(path)}"
 
       {"edit", _} ->
-        "Edit"
+        "Update"
 
       {"multi_edit", %{"file_path" => path}} ->
         "Multi-edit #{shorten_path(path)}"

@@ -19,6 +19,7 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
   use Phoenix.Component
 
   import BoomLooperWeb.Components.LogViewer, only: [log_inline: 1]
+  import BoomLooperWeb.Components.DiffView, only: [diff: 1]
 
   alias BoomLooperWeb.Components.Ansi
 
@@ -141,13 +142,12 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
         </div>
         <span class="text-base text-blue-600 dark:text-blue-400">{@summary}</span>
       </div>
-      <div
+      <.diff
         :if={@is_edit && @old_str && @new_str}
-        class="mt-1 ml-6 rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-700/80 text-xs font-mono"
-      >
-        <pre class="px-3 py-2 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300 whitespace-pre-wrap">{diff_lines(@old_str, "-")}</pre>
-        <pre class="px-3 py-2 bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-300 whitespace-pre-wrap border-t border-zinc-200 dark:border-zinc-700/80">{diff_lines(@new_str, "+")}</pre>
-      </div>
+        old={@old_str}
+        new={@new_str}
+        path={@msg.input["path"]}
+      />
     </div>
     """
   end
@@ -173,6 +173,10 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
       # exec output is already shown in the streaming build message above —
       # don't render it twice.
       streamed_exec_result?(assigns) ->
+        ~H"<div></div>"
+
+      # edit diff is shown inline on the tool call — don't repeat
+      preceded_by_edit?(assigns) ->
         ~H"<div></div>"
 
       # URL with closed port — show the link + an Open Port button
@@ -500,10 +504,25 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
 
   defp detect_port_info(_, _), do: nil
 
-  defp diff_lines(text, prefix) do
-    text
-    |> String.split("\n")
-    |> Enum.map_join("\n", &"#{prefix} #{&1}")
+  defp preceded_by_edit?(assigns) do
+    idx = assigns[:idx]
+    messages = assigns[:messages]
+
+    if idx && messages && idx > 0 do
+      messages
+      |> Enum.slice(0, idx)
+      |> Enum.reverse()
+      |> Enum.find(fn m -> m.role not in [:build, :build_done, :build_failed] end)
+      |> case do
+        %{role: :tool, tool: tool} when is_binary(tool) ->
+          String.ends_with?(tool, "__edit") || String.ends_with?(tool, "__multi_edit")
+
+        _ ->
+          false
+      end
+    else
+      false
+    end
   end
 
   defp msg_url(assigns) do
