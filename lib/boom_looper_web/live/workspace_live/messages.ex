@@ -216,19 +216,24 @@ defmodule BoomLooperWeb.Live.WorkspaceLive.Messages do
     """
   end
 
-  def chat_msg(%{msg: %{role: :system}} = assigns) do
-    ~H"""
-    <div class="py-1 pl-10">
-      <div
-        class="text-xs text-zinc-400 dark:text-zinc-500 italic"
-        id={"system-msg-#{@msg[:id] || hash_content(@msg.content)}"}
-        phx-hook="Markdown"
-        data-source={@msg.content}
-      >
-        <div class="markdown-body"></div>
+  def chat_msg(%{msg: %{role: :system, content: content}} = assigns) do
+    # Hide raw struct dumps and SDK noise — not human-readable
+    if is_binary(content) && (String.starts_with?(content, "[init]") || String.starts_with?(content, "%Claude") || String.contains?(content, "SystemMessage")) do
+      ~H"<div></div>"
+    else
+      ~H"""
+      <div class="py-1 pl-10">
+        <div
+          class="text-xs text-zinc-400 dark:text-zinc-500 italic"
+          id={"system-msg-#{@msg[:id] || hash_content(@msg.content)}"}
+          phx-hook="Markdown"
+          data-source={@msg.content}
+        >
+          <div class="markdown-body"></div>
+        </div>
       </div>
-    </div>
-    """
+      """
+    end
   end
 
   def chat_msg(assigns) do
