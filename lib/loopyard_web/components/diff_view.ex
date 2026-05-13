@@ -19,20 +19,63 @@ defmodule LoopyardWeb.Components.DiffView do
   attr :path, :string, default: nil
   attr :link, :string, default: nil
 
+  # Cap on agent-supplied diff input. Past this size, myers_difference cost
+  # (O(N·M) memory) and the LiveView push payload aren't worth the rich
+  # render — show a stub that links to the file viewer instead.
+  @max_diff_bytes 64 * 1024
+  @max_diff_lines 500
+
   def diff(assigns) do
-    old_lines = String.split(assigns.old, "\n")
-    new_lines = String.split(assigns.new, "\n")
+    old_size = byte_size(assigns.old)
+    new_size = byte_size(assigns.new)
 
-    diff_ops = List.myers_difference(old_lines, new_lines)
-    language = if assigns.path, do: FileType.language(assigns.path)
+    if old_size + new_size > @max_diff_bytes do
+      render_too_large(assigns, old_size + new_size)
+    else
+      old_lines = String.split(assigns.old, "\n")
+      new_lines = String.split(assigns.new, "\n")
 
-    {rows, _, _} = build_rows(diff_ops, language)
+      if length(old_lines) + length(new_lines) > @max_diff_lines * 2 do
+        render_too_large(assigns, old_size + new_size)
+      else
+        diff_ops = List.myers_difference(old_lines, new_lines)
+        language = if assigns.path, do: FileType.language(assigns.path)
 
-    assigns =
-      assigns
-      |> assign(:rows, rows)
-      |> assign(:language, language)
+        {rows, _, _} = build_rows(diff_ops, language)
 
+        assigns =
+          assigns
+          |> assign(:rows, rows)
+          |> assign(:language, language)
+
+        render_diff(assigns)
+      end
+    end
+  end
+
+  defp render_too_large(assigns, total_bytes) do
+    assigns = assign(assigns, :total_bytes, total_bytes)
+
+    ~H"""
+    <div class="mt-1 ml-6 rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-700/80 text-xs font-mono">
+      <div
+        :if={@path}
+        class="px-3 py-1 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center gap-2"
+      >
+        <a :if={@link} href={@link} class="text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors">
+          {@path}
+        </a>
+        <span :if={!@link} class="text-zinc-500 dark:text-zinc-400">{@path}</span>
+      </div>
+      <div class="px-3 py-2 text-zinc-500 dark:text-zinc-400">
+        Diff too large to render inline ({div(@total_bytes, 1024)} KB).
+        <a :if={@link} href={@link} class="text-violet-600 dark:text-violet-400 hover:underline">Open file</a>
+      </div>
+    </div>
+    """
+  end
+
+  defp render_diff(assigns) do
     ~H"""
     <div class="mt-1 ml-6 rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-700/80 text-xs font-mono">
       <div
