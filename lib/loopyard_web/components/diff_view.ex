@@ -94,15 +94,9 @@ defmodule LoopyardWeb.Components.DiffView do
       <table class="w-full border-collapse highlight">
         <tbody>
           <tr :for={row <- @rows} class={row.bg}>
-            <td class="select-none text-right pr-1 pl-2 py-0 text-zinc-400 dark:text-zinc-600 align-top w-[1%] whitespace-nowrap opacity-50">
-              {row.old_num}
-            </td>
-            <td class="select-none text-right pr-2 py-0 text-zinc-400 dark:text-zinc-600 align-top w-[1%] whitespace-nowrap opacity-50">
-              {row.new_num}
-            </td>
-            <td class={"pr-3 py-0 whitespace-pre-wrap break-all #{row.text_class}"}>
-              <span class="select-none text-zinc-400 dark:text-zinc-600">{row.prefix}</span>{row.content}
-            </td>
+            <td class="select-none text-right pr-1 pl-2 py-0 text-zinc-400 dark:text-zinc-600 align-top w-[1%] whitespace-nowrap opacity-50">{row.old_num}</td>
+            <td class="select-none text-right pr-2 py-0 text-zinc-400 dark:text-zinc-600 align-top w-[1%] whitespace-nowrap opacity-50">{row.new_num}</td>
+            <td class={"pr-3 py-0 whitespace-pre-wrap break-all #{row.text_class}"}><span class="select-none text-zinc-400 dark:text-zinc-600">{row.prefix}</span>{row.content}</td>
           </tr>
         </tbody>
       </table>
