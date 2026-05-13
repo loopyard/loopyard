@@ -10,7 +10,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   import LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel, only: [context_panel: 1]
 
   # Build the breadcrumb trail for this workspace view.
-  #   Boom Looper / {project.name} / {workspace label}
+  #   Loopyard / {project.name} / {workspace label}
   #
   # The trailing crumb is whatever the workspace's Source adapter
   # decides — branch name for Local, eventually `owner/repo#branch`
@@ -27,7 +27,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     on_overview? = assigns[:live_action] == :index
     last_path = if on_overview?, do: nil, else: assigns.base_path
 
-    crumbs = [{"Boom Looper", "/"}]
+    crumbs = [{"Loopyard", "/"}]
 
     crumbs =
       if assigns.project do
@@ -65,6 +65,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       |> assign(:back_label, back_label)
       |> assign(:crumbs, crumbs)
       |> assign(:mobile_crumbs, mobile_crumbs)
+      |> assign(:host_exposed, Loopyard.HostExposer.exposed?())
 
     ~H"""
     <header class="flex-none h-14 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center justify-between px-4 md:px-5">
@@ -117,8 +118,25 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       <div class="flex items-center gap-2 flex-none hidden md:flex">
         <.link
           navigate={Path.join("/remote", @base_path)}
-          class="focus-ring inline-flex items-center px-2 py-1 text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 transition-colors rounded"
+          aria-label={
+            if @host_exposed,
+              do: "Remote access — exposed. Open connect page.",
+              else: "Remote access — private. Open connect page."
+          }
+          class={[
+            "focus-ring inline-flex items-center gap-1.5 px-2 py-1 text-sm font-medium transition-colors rounded",
+            if(@host_exposed,
+              do: "text-emerald-600 dark:text-emerald-400 hover:text-emerald-500",
+              else: "text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100"
+            )
+          ]}
         >
+          <span
+            :if={@host_exposed}
+            class="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-none"
+            aria-hidden="true"
+          >
+          </span>
           Remote
         </.link>
         <.link
