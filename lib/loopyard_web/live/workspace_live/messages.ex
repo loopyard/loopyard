@@ -516,21 +516,43 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   defp build_file_link(nil, _workspace_id), do: nil
   defp build_file_link(_path, nil), do: nil
 
-  defp build_file_link(path, workspace_id) do
-    clean = path |> String.trim_leading("/workspace/") |> String.trim_leading("/")
-    volume = "code-#{workspace_id}"
+  defp build_file_link(path, workspace_id) when is_binary(path) do
+    # Path comes from agent tool input — strip the workspace prefix, reject
+    # traversal segments, and URL-encode each remaining segment so `?`, `#`,
+    # `&`, spaces etc. can't smuggle a query string into the link.
+    segments =
+      path
+      |> String.trim_leading("/workspace/")
+      |> String.trim_leading("/")
+      |> String.split("/", trim: true)
 
-    # Look up project_id from workspace registry
-    case :ets.lookup(:workspace_registry, workspace_id) do
-      [{_, %{project_id: project_id}}] ->
-        "/projects/#{project_id}/workspaces/#{workspace_id}/volumes/#{volume}/files/#{clean}"
-
-      _ ->
+    cond do
+      segments == [] ->
         nil
+
+      Enum.any?(segments, &(&1 == ".." or &1 == ".")) ->
+        nil
+
+      true ->
+        case :ets.lookup(:workspace_registry, workspace_id) do
+          [{_, %{project_id: project_id}}] ->
+            volume = Loopyard.Workspace.volume_name_for(workspace_id)
+            encoded = Enum.map_join(segments, "/", fn seg -> URI.encode(seg, &URI.char_unreserved?/1) end)
+
+            "/projects/#{URI.encode(project_id, &URI.char_unreserved?/1)}" <>
+              "/workspaces/#{URI.encode(workspace_id, &URI.char_unreserved?/1)}" <>
+              "/volumes/#{URI.encode(volume, &URI.char_unreserved?/1)}" <>
+              "/files/#{encoded}"
+
+          _ ->
+            nil
+        end
     end
   rescue
     _ -> nil
   end
+
+  defp build_file_link(_, _), do: nil
 
   defp preceded_by_edit?(assigns) do
     idx = assigns[:idx]
