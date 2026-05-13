@@ -1604,15 +1604,15 @@ defmodule LoopyardWeb.WorkspaceLive do
                of service state — sending new messages is what the running
                workspace gates. --%>
             <%!-- Cluster is down → show the big "Start workspace" empty
-               state, except on views that carry their own empty state
-               (service / console / new-agent). Those views render
-               their own "this is stopped" screen inside themselves so
-               the sidebar context stays consistent while the user is
-               exploring. --%>
+               state ONLY on the workspace root and the agent-less
+               chat/container routes. Volume, git, sync, service, and
+               new-agent views all carry their own content that should
+               render regardless of cluster state — overlaying the
+               start screen on top of them is the bug we're avoiding. --%>
             <.workspace_not_running
               :if={
                 @workspace_state in [:stopped, :starting] && !@selected_agent &&
-                  @live_action not in [:new, :service, :console]
+                  @live_action in [:index, :chat, :container]
               }
               workspace={@workspace}
               workspace_state={@workspace_state}
