@@ -18,7 +18,7 @@ defmodule Loopyard.GitTest do
     end
 
     test "returns error for non-git directory" do
-      tmp = Path.join(System.tmp_dir!(), "boom-looper-git-test-#{:rand.uniform(100_000)}")
+      tmp = Path.join(System.tmp_dir!(), "loopyard-git-test-#{:rand.uniform(100_000)}")
       File.mkdir_p!(tmp)
 
       assert {:error, _} = Git.repo_root(tmp)
@@ -41,7 +41,7 @@ defmodule Loopyard.GitTest do
     end
 
     test "returns false for non-git dirs" do
-      tmp = Path.join(System.tmp_dir!(), "boom-looper-git-test-#{:rand.uniform(100_000)}")
+      tmp = Path.join(System.tmp_dir!(), "loopyard-git-test-#{:rand.uniform(100_000)}")
       File.mkdir_p!(tmp)
       refute Git.is_repo?(tmp)
       File.rm_rf!(tmp)
@@ -84,7 +84,7 @@ defmodule Loopyard.GitTest do
     end
 
     test "returns error for non-git directory" do
-      tmp = Path.join(System.tmp_dir!(), "boom-looper-git-log-#{:rand.uniform(100_000)}")
+      tmp = Path.join(System.tmp_dir!(), "loopyard-git-log-#{:rand.uniform(100_000)}")
       File.mkdir_p!(tmp)
       assert {:error, _} = Git.log(tmp)
       File.rm_rf!(tmp)
@@ -218,7 +218,7 @@ defmodule Loopyard.GitTest do
 
   # Creates a temp git repo with 2 commits for testing
   defp make_temp_repo do
-    tmp = Path.join(System.tmp_dir!(), "boom-looper-git-test-#{:rand.uniform(100_000)}")
+    tmp = Path.join(System.tmp_dir!(), "loopyard-git-test-#{:rand.uniform(100_000)}")
     File.mkdir_p!(tmp)
     System.cmd("git", ["init"], cd: tmp, stderr_to_stdout: true)
     System.cmd("git", ["config", "user.email", "test@test.com"], cd: tmp)

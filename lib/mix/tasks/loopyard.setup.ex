@@ -4,7 +4,7 @@ defmodule Mix.Tasks.Loopyard.Setup do
 
   ## Usage
 
-      mix boom.setup
+      mix loopyard.setup
 
   This will:
   1. Install Brewfile dependencies (elixir, node, fswatch, mutagen)
@@ -32,7 +32,7 @@ defmodule Mix.Tasks.Loopyard.Setup do
     step("Mix dependencies", fn -> mix_deps() end)
     step("Assets", fn -> assets() end)
 
-    info("\n✓ Setup complete. Run: mix boom.server\n")
+    info("\n✓ Setup complete. Run: mix loopyard.server\n")
   end
 
   defp step(name, fun) do

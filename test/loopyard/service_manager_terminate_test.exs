@@ -18,7 +18,7 @@ defmodule Loopyard.ServiceManagerTerminateTest do
   describe "terminate is always called on stop" do
     setup do
       tmp_dir =
-        Path.join(System.tmp_dir!(), "boom-looper-term-call-test-#{:rand.uniform(100_000)}")
+        Path.join(System.tmp_dir!(), "loopyard-term-call-test-#{:rand.uniform(100_000)}")
 
       File.mkdir_p!(tmp_dir)
       workspace_id = Workspace.workspace_id(tmp_dir)
@@ -59,7 +59,7 @@ defmodule Loopyard.ServiceManagerTerminateTest do
     @describetag :docker
     setup do
       tmp_dir =
-        Path.join(System.tmp_dir!(), "boom-looper-term-keep-test-#{:rand.uniform(100_000)}")
+        Path.join(System.tmp_dir!(), "loopyard-term-keep-test-#{:rand.uniform(100_000)}")
 
       File.mkdir_p!(tmp_dir)
       workspace_id = Workspace.workspace_id(tmp_dir)

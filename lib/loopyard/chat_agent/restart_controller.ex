@@ -38,9 +38,9 @@ defmodule Loopyard.ChatAgent.RestartController do
   ## Release
 
   Operators release a quarantined agent from `/system/quarantine`
-  (one click per agent) or via `mix boom.rpc`:
+  (one click per agent) or via `mix loopyard.rpc`:
 
-      mix boom.rpc 'Loopyard.ChatAgent.RestartController.release("agent-id")'
+      mix loopyard.rpc 'Loopyard.ChatAgent.RestartController.release("agent-id")'
 
   Release clears the flag and respawns the agent via the normal
   start_agent path.

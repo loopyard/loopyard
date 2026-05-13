@@ -139,8 +139,8 @@ grep pattern="Login to Chatwoot" include="*.json"
    - `priv/prompts/stacks/generic.md` (anything else — fallback)
 
    Read it for framework-specific patterns. Do NOT read more than one — pick the closest match.
-3. **Write the Dockerfile** via `write_file` path=`.boomlooper/workspace/Dockerfile`
-4. **Write docker-compose.yml** via `write_file` path=`.boomlooper/workspace/docker-compose.yml`
+3. **Write the Dockerfile** via `write_file` path=`.loopyard/workspace/Dockerfile`
+4. **Write docker-compose.yml** via `write_file` path=`.loopyard/workspace/docker-compose.yml`
 5. **Build and start** via `docker_compose("up -d --build")` — builds the image and starts everything
 6. **Install deps** via `exec` — `bundle install`, `npm install`, etc.
 7. **Run migrations** via `exec` — `rails db:create db:migrate`, `prisma migrate dev`, etc.
@@ -196,17 +196,17 @@ volumes:
 - Service names become hostnames in the network (postgres, redis, etc.)
 
 ### Forbidden (the compose file will be rejected)
-Workspaces are sandboxed. The following keys punch through that sandbox and are rejected by BoomLooper when it processes your compose file:
+Workspaces are sandboxed. The following keys punch through that sandbox and are rejected by Loopyard when it processes your compose file:
 
 - **Host bind mounts** — e.g. `- /etc:/host/etc`, `- ./src:/app`, or any `type: bind`. There is no host filesystem to reach from inside a workspace container. If the existing project you're adapting has bind mounts, convert them: put the files into a named volume (write them via `write_file` under `/workspace/...` before `docker_compose up`) and mount that volume instead.
 - `privileged: true`
 - `network_mode: host`, `pid: host`, `ipc: host`, `userns_mode: host`
 - `devices: [...]` — direct host device access
 - Top-level volumes whose `driver_opts.device` is a host path (that's a bind mount in disguise)
-- **Host port pins** — `"8080:3000"` or `"127.0.0.1:8080:3000"`. List only the container port (`"3000"`); BoomLooper assigns the host port and keeps it sticky across restarts. Pinning invites collisions between workspaces.
+- **Host port pins** — `"8080:3000"` or `"127.0.0.1:8080:3000"`. List only the container port (`"3000"`); Loopyard assigns the host port and keeps it sticky across restarts. Pinning invites collisions between workspaces.
 - **External networks** — `networks: { foo: { external: true } }`. The default compose network (`<project>_default`) is already isolated per workspace; joining an external network would let this service reach other workspaces' containers.
 
-Named volumes (including `${CODE_VOLUME}`) are fine. Published ports are bound to `127.0.0.1` on the host automatically — BoomLooper's UI routes browser traffic to them. If you hit one of these errors, the message tells you what to change and why — follow it literally.
+Named volumes (including `${CODE_VOLUME}`) are fine. Published ports are bound to `127.0.0.1` on the host automatically — Loopyard's UI routes browser traffic to them. If you hit one of these errors, the message tells you what to change and why — follow it literally.
 
 ## Dockerfile template
 
@@ -228,7 +228,7 @@ WORKDIR /workspace
 
 ## Multiple Dockerfiles (you can have as many as you need)
 
-**You are NOT limited to one Dockerfile.** `.boomlooper/workspace/` can hold any number of Dockerfiles — one per service image if that's what the project needs. The docker-compose.yml wires each service to its Dockerfile via `build.dockerfile`. Use this when services need different base images, toolchains, or build steps (e.g. Node worker vs Python API vs Rails web — each gets its own Dockerfile).
+**You are NOT limited to one Dockerfile.** `.loopyard/workspace/` can hold any number of Dockerfiles — one per service image if that's what the project needs. The docker-compose.yml wires each service to its Dockerfile via `build.dockerfile`. Use this when services need different base images, toolchains, or build steps (e.g. Node worker vs Python API vs Rails web — each gets its own Dockerfile).
 
 ```yaml
 services:
@@ -246,7 +246,7 @@ services:
       dockerfile: Dockerfile.frontend  # Node + Vite
 ```
 
-Write each Dockerfile separately via `write_file` to `.boomlooper/workspace/Dockerfile.<name>`. The `context: .` resolves to `.boomlooper/workspace/` — so `COPY` lines inside each Dockerfile reference paths relative to that directory.
+Write each Dockerfile separately via `write_file` to `.loopyard/workspace/Dockerfile.<name>`. The `context: .` resolves to `.loopyard/workspace/` — so `COPY` lines inside each Dockerfile reference paths relative to that directory.
 
 A single `Dockerfile` works for the common case where every service shares the same runtime. Only split when services genuinely need different images.
 
@@ -313,7 +313,7 @@ Some projects ship a dev container that runs **nginx or Apache** in front of PHP
 
 Rule of thumb: whatever process is bound to the container port you published needs to accept traffic on `0.0.0.0`, not `127.0.0.1`. That might be the app itself, or a webserver in front of it. Grep the project's webserver configs before trusting defaults.
 
-**The `dev` service is mandatory and must publish a port** — Your docker-compose.yml MUST have a service literally named `dev` with an explicit `ports:` mapping. Never collapse the dev server into the `workspace` container. Never rename or remove the `dev` service. The eval runner looks for `bl-<ws>-dev-1` with a published host port.
+**The `dev` service is mandatory and must publish a port** — Your docker-compose.yml MUST have a service literally named `dev` with an explicit `ports:` mapping. Never collapse the dev server into the `workspace` container. Never rename or remove the `dev` service. The eval runner looks for `loopyard-<ws>-dev-1` with a published host port.
 
 **Once HTTP 200, STOP** — The instant the host-side probe returns HTTP 200/301/302, you are done. Do not rewrite the Dockerfile to "clean things up". Do not add warmup scripts. Do not install additional tools "to make debugging easier". Every `docker_compose up -d --build` after success changes the published host port and gives the eval runner a moment where it can't reach the dev server — that counts as a failure. The working state is the final state.
 

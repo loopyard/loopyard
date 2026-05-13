@@ -16,7 +16,7 @@ defmodule Loopyard.Source.Local.MutagenTest do
   end
 
   describe "session_name/1" do
-    test "builds bl-<workspace_id>" do
+    test "builds loopyard-<workspace_id>" do
       assert Mutagen.session_name("abcd") == "loopyard-abcd"
     end
   end

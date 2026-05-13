@@ -1,14 +1,14 @@
 # Security model
 
-BoomLooper runs untrusted AI agents against a user's project. This doc describes what isolation we promise, how we enforce it, and what's deliberately out of scope. **Read this before adding any tool, MCP server, or compose-processing change** — the boundaries here have been breached in real incidents and rewritten to close them.
+Loopyard runs untrusted AI agents against a user's project. This doc describes what isolation we promise, how we enforce it, and what's deliberately out of scope. **Read this before adding any tool, MCP server, or compose-processing change** — the boundaries here have been breached in real incidents and rewritten to close them.
 
 ## Core promise
 
 **An agent can only act inside its own workspace.**
 
 "Workspace" means:
-- One Docker Compose project (`-p bl-<workspace_id>`) with its own containers, network, and named volumes.
-- One code volume (`bl-<workspace_id>-code`) mounted at `/workspace` in every container.
+- One Docker Compose project (`-p loopyard-<workspace_id>`) with its own containers, network, and named volumes.
+- One code volume (`loopyard-<workspace_id>-code`) mounted at `/workspace` in every container.
 - One ChatAgent session with a bound `agent_id`.
 - Zero reach into other workspaces: no tools, no volumes, no containers, no networks, no files, no secrets.
 
@@ -25,8 +25,8 @@ We defend against:
 
 We do **not** defend against:
 
-- A compromised host (root on the machine running BoomLooper).
-- A compromised BoomLooper BEAM (any RCE in the Elixir app is game over — the BEAM has full Docker and host access).
+- A compromised host (root on the machine running Loopyard).
+- A compromised Loopyard BEAM (any RCE in the Elixir app is game over — the BEAM has full Docker and host access).
 - The user themselves (they can do whatever they want via the web UI or `mix loopyard.rpc`).
 - An agent misusing its *own* workspace (trashing its own code, filling its own volume — that's the user's problem, not a boundary violation).
 
@@ -36,7 +36,7 @@ Every boundary below is a **runtime check**, not a rule the model is asked to fo
 
 ### 1. Tool surface is minimal and workspace-scoped
 
-Agents see exactly two MCP servers: `boom-looper-container` (file/exec/docker_compose/inspect tools) and `boom-looper-secrets`. Every tool that touches infrastructure derives the target container, volume, and compose project from the agent's own session state via `Helpers.resolve_container/1`, `resolve_service_container/2`, or `agent_workspace_id/1`. Tools do not accept a `workspace_id` parameter.
+Agents see exactly two MCP servers: `loopyard-container` (file/exec/docker_compose/inspect tools) and `loopyard-secrets`. Every tool that touches infrastructure derives the target container, volume, and compose project from the agent's own session state via `Helpers.resolve_container/1`, `resolve_service_container/2`, or `agent_workspace_id/1`. Tools do not accept a `workspace_id` parameter.
 
 **Explicitly removed toolkits** (do not reintroduce without running the changes past this doc):
 
@@ -47,11 +47,11 @@ Agents see exactly two MCP servers: `boom-looper-container` (file/exec/docker_co
 
 ### 2. Session-bound `agent_id`
 
-The `agent_id` JSON parameter every tool accepts is **advisory**. Each ChatAgent spawns its own MCP server configured with `assigns = %{agent_id: <its own id>}`. `BoomLooper.Tool.authorize_agent/2` runs before every tool and rejects any call where `params.agent_id` differs from `assigns.agent_id`.
+The `agent_id` JSON parameter every tool accepts is **advisory**. Each ChatAgent spawns its own MCP server configured with `assigns = %{agent_id: <its own id>}`. `Loopyard.Tool.authorize_agent/2` runs before every tool and rejects any call where `params.agent_id` differs from `assigns.agent_id`.
 
 This means: if agent B's id leaks into agent A's context (paste, log, injection), A's attempt to pass it is rejected with a clear "agent_id mismatch" error. The id is just a label; the authority to use it is bound to the MCP process we spawned.
 
-Mechanism: `BoomLooper.Tool.__using__` injects a `before_compile` hook that wraps each tool's `execute/2`. Tools built directly on `ClaudeCode.MCP.Server` (the SDK macro) — e.g. `Tools.Secrets` and `Tools.Workspace` — can't use that injection, so they call `BoomLooper.Tool.authorize_agent/2` explicitly at the top of each `execute/2`. The matrix test in `test/boom_looper/tool_authorization_test.exs` iterates every tool in the wired toolkit and proves each one rejects a foreign `agent_id`, so a new tool that skips both paths breaks CI.
+Mechanism: `Loopyard.Tool.__using__` injects a `before_compile` hook that wraps each tool's `execute/2`. Tools built directly on `ClaudeCode.MCP.Server` (the SDK macro) — e.g. `Tools.Secrets` and `Tools.Workspace` — can't use that injection, so they call `Loopyard.Tool.authorize_agent/2` explicitly at the top of each `execute/2`. The matrix test in `test/loopyard/tool_authorization_test.exs` iterates every tool in the wired toolkit and proves each one rejects a foreign `agent_id`, so a new tool that skips both paths breaks CI.
 
 ### 3. Compose validation — no sandbox escapes
 
@@ -65,8 +65,8 @@ Mechanism: `BoomLooper.Tool.__using__` injects a `before_compile` hook that wrap
 | `network_mode: host` | Shares host network; reaches host services and other workspaces' published ports. |
 | `pid: host`, `ipc: host`, `userns_mode: host` | Shares host namespaces. |
 | `devices: [...]` | Direct host device access. |
-| Host port pins (`"8080:3000"`, `"127.0.0.1:8080:3000"`, long-form `published:`) | Collision and port-squatting risk. BoomLooper allocates host ports dynamically and keeps them sticky. |
-| `networks: { foo: { external: true } }` | Joining a network BoomLooper doesn't own lets this service reach other workspaces' containers. |
+| Host port pins (`"8080:3000"`, `"127.0.0.1:8080:3000"`, long-form `published:`) | Collision and port-squatting risk. Loopyard allocates host ports dynamically and keeps them sticky. |
+| `networks: { foo: { external: true } }` | Joining a network Loopyard doesn't own lets this service reach other workspaces' containers. |
 
 Error messages tell the reader *what* changed, *why*, and *how* to fix it — intended for both humans (via `EventLog` and the sidebar) and AI agents (via the `logs` tool). When validation fails, the cluster does **not** crash; it logs the error and waits for the agent/user to fix the compose file.
 
@@ -76,9 +76,9 @@ Validation runs in two places:
 
 ### 4. Network isolation and port allocation
 
-Each workspace gets its own default Compose network (`bl-<workspace_id>_default`). Docker's `DOCKER-ISOLATION-*` iptables rules prevent cross-bridge traffic between Compose projects.
+Each workspace gets its own default Compose network (`loopyard-<workspace_id>_default`). Docker's `DOCKER-ISOLATION-*` iptables rules prevent cross-bridge traffic between Compose projects.
 
-Host port allocation is owned by `BoomLooper.PortRegistry` — one global pool (default `4000..9999`, configurable). Workspaces request ports via `assign/3`; the registry returns the lowest free port and pins it to `{workspace_id, service, container_port}`. Sticky for the life of the workspace; released by `Workspace.Destructor.destroy/1`. Persisted to `~/.boomlooper/ports.json` so assignments survive BEAM restarts.
+Host port allocation is owned by `Loopyard.PortRegistry` — one global pool (default `4000..9999`, configurable). Workspaces request ports via `assign/3`; the registry returns the lowest free port and pins it to `{workspace_id, service, container_port}`. Sticky for the life of the workspace; released by `Workspace.Destructor.destroy/1`. Persisted to `~/.loopyard/ports.json` so assignments survive BEAM restarts.
 
 Agents still can't pin host ports — `validate_service_ports` rejects any port spec with a host side. They write container-side only (e.g. `ports: ["3000"]`); the registry fills in the host side during `Compose.process_agent_compose/3`.
 
@@ -101,19 +101,19 @@ All file I/O goes through `VolumeIO` against the agent's own volume (`volume_nam
 
 ### 6. Scoped volume access
 
-`Tools.Container.Volumes` rejects any volume name whose prefix isn't `bl-<agent_workspace_id>`. An agent in workspace A cannot `volumes info bl-other-ws-code` or `volumes ls`.
+`Tools.Container.Volumes` rejects any volume name whose prefix isn't `loopyard-<agent_workspace_id>`. An agent in workspace A cannot `volumes info loopyard-other-ws-code` or `volumes ls`.
 
 ### 7. Scoped secrets
 
-`BoomLooper.Secrets` entries carry an optional `scope: [workspace_id | project_id]`. Empty scope = global; non-empty = only matching workspaces/projects. `Tools.Secrets` derives the requesting agent's workspace and project from the session and filters. Out-of-scope `get_secret` returns "not found" — indistinguishable from a missing key, so one agent can't probe for another project's secret names.
+`Loopyard.Secrets` entries carry an optional `scope: [workspace_id | project_id]`. Empty scope = global; non-empty = only matching workspaces/projects. `Tools.Secrets` derives the requesting agent's workspace and project from the session and filters. Out-of-scope `get_secret` returns "not found" — indistinguishable from a missing key, so one agent can't probe for another project's secret names.
 
 ## Notes on the BEAM-side Docker plane
 
-The BoomLooper BEAM makes Docker CLI calls of its own (not through agent tools). These calls are the control plane and are intentionally trusted:
+The Loopyard BEAM makes Docker CLI calls of its own (not through agent tools). These calls are the control plane and are intentionally trusted:
 
 - `Docker.docker/2` is the single wrapper. Every call originates from an operator- or system-initiated path (ServiceManager lifecycle, Observer polling, Destructor teardown), never from a tool invocation.
 - `Docker.Observer` periodically runs `docker ps`, `docker volume ls`, and `docker system df -v` (the last one added for sidebar volume size badges). All are **read-only** — no state mutation. Observer does not issue `docker run`, `docker rm`, or `docker exec`.
-- Agent-initiated Docker operations go through the scoped tools (`docker_compose` with `-p bl-<workspace_id>`, `exec_in` with the workspace's own container). The agent can never invoke `Docker.docker/2` directly — the raw CLI tool was removed (see Boundaries § 1).
+- Agent-initiated Docker operations go through the scoped tools (`docker_compose` with `-p loopyard-<workspace_id>`, `exec_in` with the workspace's own container). The agent can never invoke `Docker.docker/2` directly — the raw CLI tool was removed (see Boundaries § 1).
 
 If a new BEAM-side Docker call is added, it should follow the same pattern: workspace-scoped if it targets containers/volumes, and only reachable from operator/system paths (not from MCP tool handlers).
 
@@ -130,8 +130,8 @@ Before merging anything that touches tools, MCP servers, compose processing, or 
 
 1. **Tools:** does the new tool resolve workspace/container/volume from the agent's own session state? Does it reject calls where `params.agent_id` != `assigns.agent_id`? If it exposes volume/container names as parameters, are they prefix-validated against the agent's workspace?
 2. **Compose:** does `validate_no_host_mounts/1` need a new rejection case? If you added a compose key that can affect the host, the answer is yes.
-3. **Ports:** any new path that publishes a host port must call `BoomLooper.PortRegistry.assign/3`. No `docker run -p <host>:<container>` with a hardcoded host port. No compose `ports:` line with a host-side value. Every emitted port binds `127.0.0.1` — exposure is a separate proxy layer, not a compose rewrite.
+3. **Ports:** any new path that publishes a host port must call `Loopyard.PortRegistry.assign/3`. No `docker run -p <host>:<container>` with a hardcoded host port. No compose `ports:` line with a host-side value. Every emitted port binds `127.0.0.1` — exposure is a separate proxy layer, not a compose rewrite.
 4. **Secrets:** any new secret surface must respect `Secrets.list/2` and `Secrets.get/3` — not the unscoped `list/0` / `get/1`, which are admin-only.
-5. **Tests:** every boundary has a test that proves it rejects the attack (see `test/boom_looper/compose_test.exs`, `test/boom_looper/secrets_test.exs`, `test/boom_looper/tool_authorization_test.exs`, `test/boom_looper/tools/container/volumes_test.exs`, `test/boom_looper/tools/container/write_file_test.exs`). Keep them green. New boundaries get new tests.
+5. **Tests:** every boundary has a test that proves it rejects the attack (see `test/loopyard/compose_test.exs`, `test/loopyard/secrets_test.exs`, `test/loopyard/tool_authorization_test.exs`, `test/loopyard/tools/container/volumes_test.exs`, `test/loopyard/tools/container/write_file_test.exs`). Keep them green. New boundaries get new tests.
 
 If you're unsure whether a change weakens the model, ask before merging. The rule is: every boundary is a runtime check, not a rule the model follows.

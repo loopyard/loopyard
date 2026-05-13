@@ -65,7 +65,7 @@ defmodule Loopyard.Agent.Reconciler do
 
   @doc """
   Force an immediate reconciliation pass. Useful for tests and for
-  `mix boom.rpc` debugging ("something looks off, run the reconciler
+  `mix loopyard.rpc` debugging ("something looks off, run the reconciler
   now"). Returns the scan result synchronously.
   """
   def reconcile_now do

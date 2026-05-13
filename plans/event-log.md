@@ -30,7 +30,7 @@ Simple ETS table per branch. Each event is a map:
 }
 ```
 
-A `BoomLooper.EventLog` module with `append(branch_id, event)` and `list(branch_id)`.
+A `Loopyard.EventLog` module with `append(branch_id, event)` and `list(branch_id)`.
 
 ### UI
 

@@ -34,7 +34,7 @@ All excluded by default in `test_helper.exs`.
 
 ```elixir
 # Start an agent under the correct workspace supervisor
-{:ok, _pid} = BoomLooper.TestHelpers.start_agent(
+{:ok, _pid} = Loopyard.TestHelpers.start_agent(
   id: "test-#{:rand.uniform(100_000)}",
   name: "Test Agent",
   working_dir: tmp_dir,
@@ -48,7 +48,7 @@ Always use random IDs to avoid test interference. Always clean up in `on_exit`:
 ```elixir
 on_exit(fn ->
   try do
-    BoomLooper.ChatAgent.stop_agent(id)
+    Loopyard.ChatAgent.stop_agent(id)
   catch
     :exit, _ -> :ok
   end
@@ -83,7 +83,7 @@ assert {:error, msg} = Exec.execute(%{agent_id: "nonexistent", command: "echo hi
 assert msg =~ "no workspace"
 ```
 
-Test file: `test/boom_looper/tools/container_test.exs`
+Test file: `test/loopyard/tools/container_test.exs`
 
 ### Message IDs
 
@@ -98,7 +98,7 @@ ids = Enum.map(state.messages, & &1[:id])
 assert ids == Enum.uniq(ids)
 ```
 
-Test file: `test/boom_looper/chat_agent_test.exs`
+Test file: `test/loopyard/chat_agent_test.exs`
 
 ### Input validation
 
@@ -115,7 +115,7 @@ assert {:error, msg} = Exec.execute(%{agent_id: "x", command: big}, %{})
 assert msg =~ "byte limit"
 ```
 
-Test files: `test/boom_looper/tools/container_test.exs`
+Test files: `test/loopyard/tools/container_test.exs`
 
 ### Container persistence
 
@@ -127,33 +127,33 @@ refute Process.alive?(pid)
 # Containers still running
 ```
 
-Test file: `test/boom_looper/service_manager_terminate_test.exs`
+Test file: `test/loopyard/service_manager_terminate_test.exs`
 
 ## Test file mapping
 
 | Source | Test |
 |--------|------|
-| `lib/boom_looper/chat_agent.ex` | `test/boom_looper/chat_agent_test.exs` |
-| `lib/boom_looper/chat_agent/prompt.ex` | `test/boom_looper/chat_agent/prompt_test.exs` |
-| `lib/boom_looper/chat_agent/tool_config.ex` | `test/boom_looper/chat_agent/tool_config_test.exs` |
-| `lib/boom_looper/chat_agent/persistence.ex` | `test/boom_looper/chat_agent/persistence_test.exs` |
-| `lib/boom_looper/tools/container.ex` | `test/boom_looper/tools/container_test.exs` |
-| `lib/boom_looper/tool.ex` | `test/boom_looper/tool_test.exs` |
-| `lib/boom_looper/registry_helper.ex` | `test/boom_looper/registry_helper_test.exs` |
-| `lib/boom_looper/workspace_registry.ex` | `test/boom_looper/workspace_registry_test.exs` |
-| `lib/boom_looper/volume_io.ex` | `test/boom_looper/volume_io_test.exs` (`:docker`) |
-| `lib/boom_looper/volume_cloner.ex` | `test/boom_looper/volume_cloner_test.exs` |
-| `lib/boom_looper/stream_buffer.ex` | `test/boom_looper/stream_buffer_test.exs` |
-| `lib/boom_looper/compose.ex` | `test/boom_looper/compose_test.exs` |
-| `lib/boom_looper/docker.ex` | `test/boom_looper/docker_test.exs` |
-| `lib/boom_looper/event_log.ex` | `test/boom_looper/event_log_test.exs` |
-| `lib/boom_looper/project_registry.ex` | `test/boom_looper/project_registry_test.exs` |
-| `lib/boom_looper/terminal.ex` | `test/boom_looper/terminal_test.exs` |
-| `lib/boom_looper/workspace/service_manager.ex` | `test/boom_looper/service_manager_terminate_test.exs` |
-| `lib/boom_looper_web/live/message_live.ex` | `test/boom_looper_web/live/message_live_test.exs` |
-| `lib/boom_looper_web/live/workspace_live/agent_events.ex` | `test/boom_looper_web/live/workspace_live/agent_events_test.exs` |
-| `lib/boom_looper_web/live/workspace_live/docker_events.ex` | `test/boom_looper_web/live/workspace_live/docker_events_test.exs` |
-| `lib/boom_looper_web/channels/terminal_channel.ex` | `test/boom_looper_web/channels/terminal_channel_test.exs` |
+| `lib/loopyard/chat_agent.ex` | `test/loopyard/chat_agent_test.exs` |
+| `lib/loopyard/chat_agent/prompt.ex` | `test/loopyard/chat_agent/prompt_test.exs` |
+| `lib/loopyard/chat_agent/tool_config.ex` | `test/loopyard/chat_agent/tool_config_test.exs` |
+| `lib/loopyard/chat_agent/persistence.ex` | `test/loopyard/chat_agent/persistence_test.exs` |
+| `lib/loopyard/tools/container.ex` | `test/loopyard/tools/container_test.exs` |
+| `lib/loopyard/tool.ex` | `test/loopyard/tool_test.exs` |
+| `lib/loopyard/registry_helper.ex` | `test/loopyard/registry_helper_test.exs` |
+| `lib/loopyard/workspace_registry.ex` | `test/loopyard/workspace_registry_test.exs` |
+| `lib/loopyard/volume_io.ex` | `test/loopyard/volume_io_test.exs` (`:docker`) |
+| `lib/loopyard/volume_cloner.ex` | `test/loopyard/volume_cloner_test.exs` |
+| `lib/loopyard/stream_buffer.ex` | `test/loopyard/stream_buffer_test.exs` |
+| `lib/loopyard/compose.ex` | `test/loopyard/compose_test.exs` |
+| `lib/loopyard/docker.ex` | `test/loopyard/docker_test.exs` |
+| `lib/loopyard/event_log.ex` | `test/loopyard/event_log_test.exs` |
+| `lib/loopyard/project_registry.ex` | `test/loopyard/project_registry_test.exs` |
+| `lib/loopyard/terminal.ex` | `test/loopyard/terminal_test.exs` |
+| `lib/loopyard/workspace/service_manager.ex` | `test/loopyard/service_manager_terminate_test.exs` |
+| `lib/loopyard_web/live/message_live.ex` | `test/loopyard_web/live/message_live_test.exs` |
+| `lib/loopyard_web/live/workspace_live/agent_events.ex` | `test/loopyard_web/live/workspace_live/agent_events_test.exs` |
+| `lib/loopyard_web/live/workspace_live/docker_events.ex` | `test/loopyard_web/live/workspace_live/docker_events_test.exs` |
+| `lib/loopyard_web/channels/terminal_channel.ex` | `test/loopyard_web/channels/terminal_channel_test.exs` |
 
 ## Rules
 

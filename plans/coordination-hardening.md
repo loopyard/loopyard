@@ -17,7 +17,7 @@ Each of these is a real bug shipped this sprint:
 9. **Unbounded recovery time** — every boot replays the full log from day one. Grows linearly with uptime. At some point replay times out and agents silently don't restore.
 10. **Mid-operation crashes leave unrecoverable state** — saga running, BEAM dies, reboot. No record of how far we got, so we either restart from scratch (possibly creating duplicates) or manually diagnose.
 11. **Silent crash loops** — actor crashes and restarts dozens of times per hour with no surface signal. Logs are noisy but no alarm. _(Seen: 26 resumes/hour on one agent.)_
-12. **Upstream outage looks like our bug** — Docker daemon down → half the UI blank → users report "BoomLooper broken" when actually it's Colima. No degradation markers.
+12. **Upstream outage looks like our bug** — Docker daemon down → half the UI blank → users report "Loopyard broken" when actually it's Colima. No degradation markers.
 13. **Unclean shutdown compounds silently** — power loss or `kill -9` leaves half-written log / orphan containers / uncommitted saga. Next boot acts normal, corruption compounds.
 
 ## The seven design moves
@@ -43,12 +43,12 @@ GenServer handlers become thin dispatchers that apply side effects uniformly —
 
 ### 2. Publisher modules + banned raw broadcast
 
-**Status: SHIPPED in commit `0f15565` (bundled with Move #3).** Boundary test at `test/boom_looper/pubsub_boundary_test.exs`.
+**Status: SHIPPED in commit `0f15565` (bundled with Move #3).** Boundary test at `test/loopyard/pubsub_boundary_test.exs`.
 
 One publisher module per topic:
 
 ```elixir
-defmodule BoomLooper.Events.ChatAgent do
+defmodule Loopyard.Events.ChatAgent do
   defmodule Resumed       do defstruct [:id, :summary] end
   defmodule Crashed       do defstruct [:id, :reason]  end
   defmodule StatusChanged do defstruct [:id, :status]  end
@@ -57,7 +57,7 @@ defmodule BoomLooper.Events.ChatAgent do
   def publish(%Crashed{} = e),       do: bcast(e)
   def publish(%StatusChanged{} = e), do: bcast(e)
 
-  defp bcast(e), do: Phoenix.PubSub.broadcast(BoomLooper.PubSub, "chat_agents", e)
+  defp bcast(e), do: Phoenix.PubSub.broadcast(Loopyard.PubSub, "chat_agents", e)
 end
 ```
 
@@ -72,7 +72,7 @@ Add a CI test that greps `lib/` for `Phoenix.PubSub.broadcast` outside approved 
 Each LV that subscribes declares:
 
 ```elixir
-@behaviour BoomLooper.Events.ChatAgent.Subscriber
+@behaviour Loopyard.Events.ChatAgent.Subscriber
 ```
 
 The behaviour has `@callback on_resumed(Resumed.t(), socket)`, one per event. Missing callback → compile warning via `@impl`. A generated `handle_info(%Struct{} = e, socket)` dispatcher routes to the right callback.
@@ -87,7 +87,7 @@ The current static coverage test stays as a belt-and-suspenders check, but `@beh
 
 Today GenServer state, ETS summary, and the log are three independent copies kept in sync by hand. Every sync miss is a bug.
 
-Introduce `BoomLooper.OwnedState`:
+Introduce `Loopyard.OwnedState`:
 
 ```elixir
 OwnedState.put(owner_pid, new_state, projections: [:ets, :log, :broadcast])
@@ -103,7 +103,7 @@ One atomic call writes GenServer state, ETS, the log, and fires broadcasts from 
 
 State machines already carry `entered_at`. We just aren't enforcing bounds.
 
-Add `BoomLooper.Deadlines` GenServer. On app boot, reads each state machine's `@max_durations`. Every 10s scans ETS for `now - entered_at > max_duration` and emits a forced-transition event. E.g. `:booting` past 5 min → `%BootTimedOut{id: id}` event, which the pure transition function must handle (move 1 makes this a compile check).
+Add `Loopyard.Deadlines` GenServer. On app boot, reads each state machine's `@max_durations`. Every 10s scans ETS for `now - entered_at > max_duration` and emits a forced-transition event. E.g. `:booting` past 5 min → `%BootTimedOut{id: id}` event, which the pure transition function must handle (move 1 makes this a compile check).
 
 **Kills:** stuck-forever states. The scanner is the structural guarantee, not a retry we remember to add.
 
@@ -126,7 +126,7 @@ Drift emits `%Reconciled{kind, before, after, corrected}` to a reconciliation to
 
 "Start a workspace" is ~5 steps: start supervisor → start ServiceManager → register → compose up → broadcast. Any step failing today leaves inconsistent partial state that the reconciler (#6) has to clean up. That's recovery, not prevention.
 
-Design: a `BoomLooper.Saga` module where each step declares its own rollback. On any failure, rollback chain runs in reverse. No half-started workspace ever exists.
+Design: a `Loopyard.Saga` module where each step declares its own rollback. On any failure, rollback chain runs in reverse. No half-started workspace ever exists.
 
 ```elixir
 Saga.run([
@@ -143,11 +143,11 @@ Saga.run([
 
 ### 7b. Explicit resource ownership
 
-**Status: SHIPPED in commit `2088192`.** `BoomLooper.Resources.track/4` + Janitor. See `/system/orphans`. Janitor rehydrate-on-restart shipped in `02d42f6` (audit-1 HIGH #4).
+**Status: SHIPPED in commit `2088192`.** `Loopyard.Resources.track/4` + Janitor. See `/system/orphans`. Janitor rehydrate-on-restart shipped in `02d42f6` (audit-1 HIGH #4).
 
 Containers, port bindings, volumes, streaming tasks, CLI subprocesses — every one of these is a resource that belongs to some Elixir process and should die when the owner dies. Today it's scattered: `Process.link` here, `trap_exit` there, a `terminate/2` over there. Easy to forget one and leak.
 
-Design: `BoomLooper.ResourceOwner` behaviour. An owner declares `resources/1` returning `[{kind, id}]`. A supervised janitor monitors every owner and, on DOWN, releases the listed resources (kill container, unbind port, cancel stream). Orphans become structurally rare rather than "we hope `terminate/2` ran."
+Design: `Loopyard.ResourceOwner` behaviour. An owner declares `resources/1` returning `[{kind, id}]`. A supervised janitor monitors every owner and, on DOWN, releases the listed resources (kill container, unbind port, cancel stream). Orphans become structurally rare rather than "we hope `terminate/2` ran."
 
 **Kills:** orphan resources class. Workspace destroyed → containers gone, ports freed, no guessing whether cleanup fired.
 
@@ -175,7 +175,7 @@ Design: for each actor, generate all `{state, event}` pairs and assert invariant
 
 Docker, Claude API, Mutagen sync, GitHub API — each has ad-hoc backoff scattered through its caller. A single crashing daemon can cause retry-storm across dozens of agents/workspaces.
 
-Design: `BoomLooper.CircuitBreaker` wrapping each external call. States: `:closed` (normal), `:open` (stop trying), `:half_open` (probe). Thresholds configurable per breaker. `mix loopyard.rpc 'CircuitBreaker.status()'` shows which are tripped.
+Design: `Loopyard.CircuitBreaker` wrapping each external call. States: `:closed` (normal), `:open` (stop trying), `:half_open` (probe). Thresholds configurable per breaker. `mix loopyard.rpc 'CircuitBreaker.status()'` shows which are tripped.
 
 **Kills:** retry-storm amplification. One Docker daemon outage no longer burns CPU on 10 workspaces × exponential-backoff × infinite retry.
 
@@ -185,9 +185,9 @@ Design: `BoomLooper.CircuitBreaker` wrapping each external call. States: `:close
 
 **Status: SHIPPED in commit `bb63f4e`.** See `/system/events`. The narrowed scope change: tap runs in all envs (not just dev/test) — see module `@moduledoc` for the rationale.
 
-`BoomLooper.Events.Tap` — supervised GenServer subscribed to every topic, writes the last 1000 events to an ETS ring buffer with timestamps. `EventTap.recent("chat_agents", 30_seconds)` returns a timeline. Attached in `:dev` and `:test` only.
+`Loopyard.Events.Tap` — supervised GenServer subscribed to every topic, writes the last 1000 events to an ETS ring buffer with timestamps. `EventTap.recent("chat_agents", 30_seconds)` returns a timeline. Attached in `:dev` and `:test` only.
 
-Publisher modules emit `:telemetry.execute([:boom_looper, :events, :publish], %{size: byte_size(bin)}, %{topic: t, event: mod})`. Free LiveDashboard, free metrics, assertable-in-tests (`assert_receive_telemetry/1`).
+Publisher modules emit `:telemetry.execute([:loopyard, :events, :publish], %{size: byte_size(bin)}, %{topic: t, event: mod})`. Free LiveDashboard, free metrics, assertable-in-tests (`assert_receive_telemetry/1`).
 
 **Kills:** "we couldn't reproduce the race." Next sleepy-agent report, you read the tape.
 
@@ -281,11 +281,11 @@ Every move ships with a surface on `/system` so the guarantee is visible, not ju
 
 **Telemetry catalog:**
 
-- `[:boom_looper, :events, :publish]` — every broadcast. Measurements: `%{size, count: 1}`. Meta: `%{topic, event}`.
-- `[:boom_looper, :transitions, :applied]` — every state-machine transition. Measurements: `%{duration_us}`. Meta: `%{actor, from, to, event}`.
-- `[:boom_looper, :reconcile, :run]` — every reconciler scan. Measurements: `%{drift_count, duration_ms}`. Meta: `%{reconciler}`.
-- `[:boom_looper, :reconcile, :drift]` — one per drift event. Meta: `%{kind, before, after, corrected}`.
-- `[:boom_looper, :deadlines, :expired]` — when the scanner forces a transition. Meta: `%{actor, state, age_ms}`.
+- `[:loopyard, :events, :publish]` — every broadcast. Measurements: `%{size, count: 1}`. Meta: `%{topic, event}`.
+- `[:loopyard, :transitions, :applied]` — every state-machine transition. Measurements: `%{duration_us}`. Meta: `%{actor, from, to, event}`.
+- `[:loopyard, :reconcile, :run]` — every reconciler scan. Measurements: `%{drift_count, duration_ms}`. Meta: `%{reconciler}`.
+- `[:loopyard, :reconcile, :drift]` — one per drift event. Meta: `%{kind, before, after, corrected}`.
+- `[:loopyard, :deadlines, :expired]` — when the scanner forces a transition. Meta: `%{actor, state, age_ms}`.
 
 These are the prod signals. LiveDashboard consumes them for free; a downstream OTLP/Prom pipeline can subscribe too.
 
@@ -321,12 +321,12 @@ Bundles E through H are optional if A–D close the bug classes we're hitting. R
 
 ## Success criteria
 
-- No silent `handle_info(_msg, _)` catch-alls in any actor under `lib/boom_looper/`. Unknown messages raise in dev and log a telemetry event in prod.
+- No silent `handle_info(_msg, _)` catch-alls in any actor under `lib/loopyard/`. Unknown messages raise in dev and log a telemetry event in prod.
 - Every state-machine actor has a pure transition function, a deadline, and a reconciler.
-- Zero raw `Phoenix.PubSub.broadcast` calls outside `lib/boom_looper/events/`. Enforced by CI.
+- Zero raw `Phoenix.PubSub.broadcast` calls outside `lib/loopyard/events/`. Enforced by CI.
 - `EventTap.recent(topic, 30_000)` reproduces any reported race within 30s.
-- `[:boom_looper, :events, :publish]` and `[:boom_looper, :reconcile, :drift]` telemetry feed a dashboard showing event rates and drift events.
-- Existing broadcast coverage test (`test/boom_looper_web/broadcast_coverage_test.exs`) stays green as a safety net, but the primary contract is compile-time (behaviour + Dialyzer).
+- `[:loopyard, :events, :publish]` and `[:loopyard, :reconcile, :drift]` telemetry feed a dashboard showing event rates and drift events.
+- Existing broadcast coverage test (`test/loopyard_web/broadcast_coverage_test.exs`) stays green as a safety net, but the primary contract is compile-time (behaviour + Dialyzer).
 - Every multi-step operation goes through `Saga.run/1`; no direct sequence of mutations. Partial-success state unreachable.
 - Every owner process implements `ResourceOwner` or has a documented reason not to. `/system/orphans` is empty in steady state.
 - Property tests (via `StreamData`) cover every state-machine actor's transition function. CI green.
@@ -353,7 +353,7 @@ Every abstraction is a liability. Before building any of these, check whether it
 
 ### Narrow the scope (4 moves)
 
-- **#3 Subscriber behaviours → skip the macro dispatcher.** The `@behaviour` + `@callback` part is fine. The macro that auto-generates `handle_info(%Struct{} = e, socket)` routing to the right callback is where bugs hide. Let each LV write its own two-line dispatch. Less DRY, less magic, same compile-time safety. **(Shipped alongside Move #2 as one bundle. Lessons: bundling #2 + #3 was load-bearing — publishers can't change payload shape without subscribers being updated in the same commit or subscribers break invisibly. Doing them together meant every affected LV compiled against the new struct contract in one step. Per-topic rollout inside the single commit is still the safe cadence: migrate ChatAgent, run tests, migrate DockerObserver, run tests, etc. The boundary test `test/boom_looper/pubsub_boundary_test.exs` is what keeps new call sites from regressing.)**
+- **#3 Subscriber behaviours → skip the macro dispatcher.** The `@behaviour` + `@callback` part is fine. The macro that auto-generates `handle_info(%Struct{} = e, socket)` routing to the right callback is where bugs hide. Let each LV write its own two-line dispatch. Less DRY, less magic, same compile-time safety. **(Shipped alongside Move #2 as one bundle. Lessons: bundling #2 + #3 was load-bearing — publishers can't change payload shape without subscribers being updated in the same commit or subscribers break invisibly. Doing them together meant every affected LV compiled against the new struct contract in one step. Per-topic rollout inside the single commit is still the safe cadence: migrate ChatAgent, run tests, migrate DockerObserver, run tests, etc. The boundary test `test/loopyard/pubsub_boundary_test.exs` is what keeps new call sites from regressing.)**
 - **#4 OwnedState → start as a 30-line helper, not a framework.** Make `ChatAgent.put_state/2` do the atomic ETS+log+broadcast write. If WorkspaceGroup needs the same pattern later, extract a shared helper. Don't design a generic abstraction for a population of 1.
 - **#6 Reconcilers → only where source of truth is unambiguous.** Docker reconciler works because Docker is external truth. Agent reconciler (ETS vs Registry) is fine — Registry wins. **Workspace reconciler is risky** — if registry and supervisor tree disagree, which wins? A reconciler that "corrects" the wrong direction is a drift amplifier. Build the agent reconciler; defer the workspace one until we have a clear invariant.
 - **#11 Graceful degradation → flat health map, no dependency graph.** Start with `%{docker: :healthy, claude: :degraded, mutagen: :down}`. UI reads it and renders banners. The component dependency tree is framework-thinking for a population of 3 components. Add it later if we ever have 20.

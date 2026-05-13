@@ -1,6 +1,6 @@
-# Hosting BoomLooper
+# Hosting Loopyard
 
-BoomLooper is designed to run on a local Mac as an always-on dev server. This doc covers keeping it reachable.
+Loopyard is designed to run on a local Mac as an always-on dev server. This doc covers keeping it reachable.
 
 ## macOS power management
 
@@ -44,7 +44,7 @@ The server binds to `127.0.0.1:4000` by default (local only). Use the Remote pag
 For a persistent server that survives terminal closure:
 
 ```bash
-nohup mix loopyard.server > /tmp/boomlooper.log 2>&1 &
+nohup mix loopyard.server > /tmp/loopyard.log 2>&1 &
 ```
 
 Or use `tmux`/`screen` to keep the session alive.

@@ -67,7 +67,7 @@ Click a commit → see:
 
 ```
 commit abc1234
-Author: Agent "Setup" <agent@boomlooper>
+Author: Agent "Setup" <agent@loopyard>
 Date: 2 minutes ago
 
   Add user authentication with Devise

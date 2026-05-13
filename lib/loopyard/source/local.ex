@@ -6,7 +6,7 @@ defmodule Loopyard.Source.Local do
 
       host repo  →  host worktree (~/.loopyard/worktrees/<ws_id>)
                          ↕ Mutagen (two-way-safe)
-                    volume bl-<ws_id>-code   →  workspace container /workspace
+                    volume loopyard-<ws_id>-code   →  workspace container /workspace
 
   The host worktree owns git state (`.git` is excluded from the sync). The
   volume holds only files the agent edits. Mutagen keeps them coherent.

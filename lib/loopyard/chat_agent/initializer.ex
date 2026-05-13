@@ -127,7 +127,7 @@ defmodule Loopyard.ChatAgent.Initializer do
             "Failed to start CLI session for agent #{id}: #{inspect(reason)}. " <>
               "Usually this means: the `claude` binary isn't on PATH, the workspace volume " <>
               "is unreachable, or auth isn't configured. Run " <>
-              "`mix boom.rpc 'ClaudeCode.Test.smoke()'` to diagnose."
+              "`mix loopyard.rpc 'ClaudeCode.Test.smoke()'` to diagnose."
     end
   end
 

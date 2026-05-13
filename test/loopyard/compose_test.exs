@@ -12,7 +12,7 @@ defmodule Loopyard.ComposeTest do
   end
 
   describe "project_name/1" do
-    test "uses bl- prefix" do
+    test "uses loopyard- prefix" do
       assert Compose.project_name("abcd") == "loopyard-abcd"
     end
   end

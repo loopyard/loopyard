@@ -11,7 +11,7 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
   import Phoenix.LiveViewTest
 
   defp create_workspace do
-    tmp_dir = Path.join(System.tmp_dir!(), "boom-looper-chat-test-#{:rand.uniform(100_000)}")
+    tmp_dir = Path.join(System.tmp_dir!(), "loopyard-chat-test-#{:rand.uniform(100_000)}")
     File.mkdir_p!(tmp_dir)
     # Create a compose file so auto-spawn Setup doesn't trigger on /new.
     # The compose file IS the proof that setup already ran.

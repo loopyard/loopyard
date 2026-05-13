@@ -23,7 +23,7 @@ The app is split into two independent layers that can restart without affecting 
 ## Supervisor tree
 
 ```
-BoomLooper.Supervisor (:one_for_one)
+Loopyard.Supervisor (:one_for_one)
   ├── LogBuffer
   ├── IExSession
   ├── StateKeeper (sole ETS table owner — starts first, lives longest)
@@ -39,7 +39,7 @@ BoomLooper.Supervisor (:one_for_one)
   │       └── ContainerMonitor (polls Docker health every 5s)
   ├── SSHServer
   ├── Docker.Observer (event-driven container/volume cache)
-  └── BoomLooperWeb.Endpoint
+  └── LoopyardWeb.Endpoint
 ```
 
 **Key properties:**
@@ -50,17 +50,17 @@ BoomLooper.Supervisor (:one_for_one)
 
 ## Container model (Docker Compose)
 
-Each workspace's containers are orchestrated via Docker Compose. Agents write `Dockerfile` and `docker-compose.yml` directly to `.boomlooper/workspace/`. ServiceManager runs compose up/down. The code volume is the source of truth for project files — all containers mount it at `/workspace`, and all file operations (agent tools, terminal, VolumeIO) go through Docker.
+Each workspace's containers are orchestrated via Docker Compose. Agents write `Dockerfile` and `docker-compose.yml` directly to `.loopyard/workspace/`. ServiceManager runs compose up/down. The code volume is the source of truth for project files — all containers mount it at `/workspace`, and all file operations (agent tools, terminal, VolumeIO) go through Docker.
 
 ```
-Compose project: bl-{workspace_id}
+Compose project: loopyard-{workspace_id}
   ├── workspace (built from Dockerfile, agents exec here, sleep infinity)
   ├── dev (built from Dockerfile, runs dev command)
   ├── postgres (stock service)
   └── redis (stock service)
 ```
 
-All containers share a Docker network and the code volume. Container naming: `bl-{workspace_id}-{service}-1`.
+All containers share a Docker network and the code volume. Container naming: `loopyard-{workspace_id}-{service}-1`.
 
 ### Volume-based architecture
 
@@ -87,7 +87,7 @@ Containers survive server reboots:
 
 ## Docker interface
 
-**Every Docker CLI call goes through `BoomLooper.Docker`.** No `System.cmd("docker", ...)` anywhere else.
+**Every Docker CLI call goes through `Loopyard.Docker`.** No `System.cmd("docker", ...)` anywhere else.
 
 | Function | Use case |
 |----------|----------|
@@ -95,14 +95,14 @@ Containers survive server reboots:
 | `Docker.stream(args, callback, opts)` | Long-running commands with streaming output. Calls `callback` per chunk. |
 | `Docker.open_port(args, opts)` | Raw Port for custom stream handling (Observer events, terminal). |
 
-`Docker.Observer` maintains an ETS cache of all `bl-*` containers and volumes, updated by `docker events` stream. LiveViews read from ETS (microseconds) instead of shelling out to docker (100ms+).
+`Docker.Observer` maintains an ETS cache of all `loopyard-*` containers and volumes, updated by `docker events` stream. LiveViews read from ETS (microseconds) instead of shelling out to docker (100ms+).
 
 ## MCP tool architecture
 
 Each agent tool is a standalone module. No monolithic tool files.
 
 ```
-lib/boom_looper/tools/
+lib/loopyard/tools/
 ├── container.ex              ← toolkit (lists 22 tool modules in __tool_server__/0)
 ├── container/
 │   ├── helpers.ex            ← shared: resolve_container, validate_path, etc.
@@ -135,11 +135,11 @@ lib/boom_looper/tools/
 └── workspace.ex              ← workspace metadata tools
 ```
 
-**Tool module structure** (using `BoomLooper.Tool` macro):
+**Tool module structure** (using `Loopyard.Tool` macro):
 
 ```elixir
-defmodule BoomLooper.Tools.Container.Exec do
-  use BoomLooper.Tool,
+defmodule Loopyard.Tools.Container.Exec do
+  use Loopyard.Tool,
     name: "exec",
     description: "Run a shell command inside the container.",
     params: [
@@ -178,7 +178,7 @@ Each `ChatAgent` is a GenServer owning a Claude Code SDK session (CLI subprocess
 - `ChatAgent.ToolConfig` — MCP server/tool wiring
 - `ChatAgent.Persistence` — ETF log append
 
-**System prompt composition:** We pass `append_system_prompt` (NOT `system_prompt`) to the Claude Code SDK so the CLI's default system prompt — which handles `CLAUDE.md` discovery, slash command docs, and native tool descriptions — stays active. Our BoomLooper-specific rules are appended on top. Using `system_prompt` would replace the default and silently turn off `CLAUDE.md` loading.
+**System prompt composition:** We pass `append_system_prompt` (NOT `system_prompt`) to the Claude Code SDK so the CLI's default system prompt — which handles `CLAUDE.md` discovery, slash command docs, and native tool descriptions — stays active. Our Loopyard-specific rules are appended on top. Using `system_prompt` would replace the default and silently turn off `CLAUDE.md` loading.
 
 **CLAUDE.md for container-only workspaces:** GitHub workspaces store code exclusively in a volume; `working_dir` is an empty bookkeeping dir and the CLI has nothing to discover. `ClaudeContext.mirror/2` pulls `CLAUDE.md`, `CLAUDE.local.md`, `.claude/` (settings + skills + commands + agents + hooks), and any `@`-imported files from the volume into `working_dir` before the session starts. Local workspaces skip the mirror (host is already the source of truth via Mutagen).
 
@@ -198,7 +198,7 @@ LiveViews (render updates)
 LiveViews are thin — they handle events, delegate to modules, and render.
 
 ```
-lib/boom_looper_web/live/
+lib/loopyard_web/live/
 ├── workspace_live.ex         ← mount, handle_*, render (the workspace view: chat + file browser + git viewer + …)
 ├── workspace_live/
 │   ├── components.ex         ← imports all component submodules
@@ -229,7 +229,7 @@ lib/boom_looper_web/live/
 
 ## Port proxy system
 
-Docker containers bind ephemeral loopback ports (e.g., `127.0.0.1:32922:3000`). Users never see these. BoomLooper assigns a stable user-facing port from a global pool (4000..9999) and runs a TCP proxy between users and Docker.
+Docker containers bind ephemeral loopback ports (e.g., `127.0.0.1:32922:3000`). Users never see these. Loopyard assigns a stable user-facing port from a global pool (4000..9999) and runs a TCP proxy between users and Docker.
 
 ```
 User → PortExposer (127.0.0.1:4008 or 0.0.0.0:4008) → Docker (127.0.0.1:32922) → Container (:3000)
@@ -247,7 +247,7 @@ User → PortExposer (127.0.0.1:4008 or 0.0.0.0:4008) → Docker (127.0.0.1:3292
 **Key modules:**
 - `PortRegistry` — GenServer. Assigns ports, manages proxy lifecycle, persists to `ports.json`, reconciles on Observer events
 - `PortExposer` — GenServer per proxied port. TCP forwarding with byte counters, peer tracking, `bind_ip` toggle. `restart: :transient`, self-terminates after 5 consecutive upstream failures
-- `PortStore` — JSON persistence at `~/.boomlooper/ports.json`
+- `PortStore` — JSON persistence at `~/.loopyard/ports.json`
 
 **Security:** All Docker ports bind loopback-only. Network exposure is opt-in per port via `set_exposure/4`. The proxy is the only path from the network to the container — giving full connection visibility (bytes in/out, peer IPs, connection count) on `/system/ports`.
 
@@ -263,11 +263,11 @@ All owned by `StateKeeper`. Created once in `init/1`.
 | `:event_log` | ordered_set | System events (newest-first, capped at 200) |
 | `:service_status_cache` | set | Service status per workspace |
 | `:docker_observer` | set | Container/volume snapshot from Docker.Observer |
-| `:boom_looper_evals` | set | Eval run state |
+| `:loopyard_evals` | set | Eval run state |
 
 ## Agent persistence
 
-Agents and messages are persisted to an append-only ETF log at `~/.boomlooper/workspaces/{id}/.boomlooper/workspace/agents.log`.
+Agents and messages are persisted to an append-only ETF log at `~/.loopyard/workspaces/{id}/.loopyard/workspace/agents.log`.
 
 On server restart:
 1. ServiceManager detects running containers via `Compose.ps`
@@ -283,10 +283,10 @@ Key operations emit telemetry spans:
 
 | Event | Module | Metadata |
 |-------|--------|----------|
-| `[:boom_looper, :docker, :command]` | `Docker.docker/2` | `%{args: args, timeout: timeout}` |
-| `[:boom_looper, :compose, :up]` | `Compose.up/2` | `%{workspace_id: id}` |
-| `[:boom_looper, :compose, :down]` | `Compose.down/2` | `%{workspace_id: id}` |
-| `[:boom_looper, :agent, :message]` | `ChatAgent` | `%{agent_id: id, role: :user}` |
+| `[:loopyard, :docker, :command]` | `Docker.docker/2` | `%{args: args, timeout: timeout}` |
+| `[:loopyard, :compose, :up]` | `Compose.up/2` | `%{workspace_id: id}` |
+| `[:loopyard, :compose, :down]` | `Compose.down/2` | `%{workspace_id: id}` |
+| `[:loopyard, :agent, :message]` | `ChatAgent` | `%{agent_id: id, role: :user}` |
 
 No subscribers configured by default — attach your own handlers for logging/metrics.
 
@@ -295,18 +295,18 @@ No subscribers configured by default — attach your own handlers for logging/me
 ```
 # Code volume (Docker named volume code-{workspace_id})
 /workspace/                     ← project root inside containers
-└── .boomlooper/
+└── .loopyard/
     ├── repo/
     │   └── workspace.json      ← metadata (name, system prompt)
     └── workspace/
         ├── Dockerfile          ← agent-written
         └── docker-compose.yml  ← agent-written
 
-# BoomLooper home directory
-~/.boomlooper/
+# Loopyard home directory
+~/.loopyard/
 ├── workspaces/
 │   └── {workspace_id}/
-│       └── .boomlooper/workspace/
+│       └── .loopyard/workspace/
 │           ├── docker-compose.yml  ← processed by Compose (host copy)
 │           └── agents.log          ← append-only agent state log
 ├── projects.json               ← persisted project list

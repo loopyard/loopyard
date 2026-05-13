@@ -51,7 +51,7 @@ threw it away.
 
 ### Bug #2 — `agent_display_status/1` called `Registry.lookup` at render time
 
-`BoomLooperWeb.Components.Sidebar.agent_display_status/1` computed
+`LoopyardWeb.Components.Sidebar.agent_display_status/1` computed
 liveness on every render:
 
 ```elixir
@@ -79,15 +79,15 @@ a data flash.
 
 Changed every same-module link from `navigate` to `patch`:
 
-- `lib/boom_looper_web/live/workspace_live/components/sidebar.ex` —
+- `lib/loopyard_web/live/workspace_live/components/sidebar.ex` —
   services, volumes, sync, "New agent," Cancel
-- `lib/boom_looper_web/live/workspace_live/components/chat.ex` —
+- `lib/loopyard_web/live/workspace_live/components/chat.ex` —
   Info tab link
-- `lib/boom_looper_web/live/workspace_live/components/services.ex` —
+- `lib/loopyard_web/live/workspace_live/components/services.ex` —
   Console link
-- `lib/boom_looper_web/live/workspace_live/agent_lifecycle.ex` —
+- `lib/loopyard_web/live/workspace_live/agent_lifecycle.ex` —
   `do_spawn_agent` now `push_patch`
-- `lib/boom_looper_web/live/workspace_live.ex` — all intra-LV
+- `lib/loopyard_web/live/workspace_live.ex` — all intra-LV
   `push_navigate` calls are now `push_patch` (agent-not-found,
   delete-volume, boot-failed, setup-agent-hop)
 
@@ -99,7 +99,7 @@ cross-LV routes (`/`, `/system`, `/connect`) is left alone — that
 Also hardened the `docker_connected?` plumbing:
 
 - Mount seeds `:docker_connected?` (note the trailing `?`) from
-  `BoomLooper.Docker.Observer.connected?/0`.
+  `Loopyard.Docker.Observer.connected?/0`.
 - `on_disconnected` / `on_reconnected` write the same assign.
 - The sidebar now reads `@docker_connected?` from the socket rather
   than calling the `docker_connected?/0` helper at render time.
@@ -138,7 +138,7 @@ the list is rebuilt — no more CSS transition replays mid-click.
 
 ## Sweep findings
 
-Audited every `lib/boom_looper_web/live/**/*.ex`. Other live views
+Audited every `lib/loopyard_web/live/**/*.ex`. Other live views
 (`ProjectLive`, `ProjectListLive`, `SystemWorkspacesLive`,
 `SystemQuarantineLive`, `SystemDockerLive`, `SystemPortsLive`,
 `ConnectLive`, `SystemLive`) were clean:
@@ -179,7 +179,7 @@ Audited every `lib/boom_looper_web/live/**/*.ex`. Other live views
 
 If someone adds a new sidebar link that stays inside `WorkspaceLive`,
 they must use `<.link patch>`, not `<.link navigate>`. The `row/1`
-component in `BoomLooperWeb.Components.SideNav` exposes both
+component in `LoopyardWeb.Components.SideNav` exposes both
 parameters; `navigate` is still the right tool when linking to a
 different LV module.
 

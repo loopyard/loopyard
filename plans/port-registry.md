@@ -1,6 +1,6 @@
 # Port Registry — v1 plan
 
-The point of this work is **controlled exposure** — a user clicks a button, BoomLooper punches a hole to the outside world for one workspace's service. Port bookkeeping is the plumbing that makes that safe and traceable; it isn't the feature. The design follows from that.
+The point of this work is **controlled exposure** — a user clicks a button, Loopyard punches a hole to the outside world for one workspace's service. Port bookkeeping is the plumbing that makes that safe and traceable; it isn't the feature. The design follows from that.
 
 ## Model
 
@@ -30,7 +30,7 @@ One ETS table owned by `StateKeeper`:
 }
 ```
 
-Persisted as JSON to `~/.boomlooper/ports.json` via a new `BoomLooper.PortStore`. Write-through on every `assign` / `release`.
+Persisted as JSON to `~/.loopyard/ports.json` via a new `Loopyard.PortStore`. Write-through on every `assign` / `release`.
 
 ```json
 {
@@ -44,7 +44,7 @@ Persisted as JSON to `~/.boomlooper/ports.json` via a new `BoomLooper.PortStore`
 
 ## API
 
-`BoomLooper.PortRegistry` — GenServer for writes to serialize the "lowest unused port" search; ETS for reads.
+`Loopyard.PortRegistry` — GenServer for writes to serialize the "lowest unused port" search; ETS for reads.
 
 ```elixir
 @spec assign(workspace_id, service, container_port) :: {:ok, host_port} | {:error, :port_pool_exhausted}
@@ -67,7 +67,7 @@ Under a GenServer for writes so two concurrent `assign` calls can't race and dou
 
 ## Compose integration
 
-`BoomLooper.Compose.process_agent_compose/3`:
+`Loopyard.Compose.process_agent_compose/3`:
 
 - Drop the `:port_map` option.
 - In `process_services`, for each service `svc` with a `ports:` entry:
@@ -104,11 +104,11 @@ Legacy entries: if a legacy host port lives outside the configured `port_range` 
 `config/config.exs`:
 
 ```elixir
-config :boom_looper, BoomLooper.PortRegistry,
+config :loopyard, Loopyard.PortRegistry,
   port_range: 4000..9999
 ```
 
-Env overrides: `BOOMLOOPER_PORT_RANGE_MIN`, `BOOMLOOPER_PORT_RANGE_MAX`.
+Env overrides: `LOOPYARD_PORT_RANGE_MIN`, `LOOPYARD_PORT_RANGE_MAX`.
 
 Document in `docs/CONFIG.md`.
 
@@ -123,7 +123,7 @@ Add to "When adding or changing code":
 
 ## Tests
 
-New `test/boom_looper/port_registry_test.exs`:
+New `test/loopyard/port_registry_test.exs`:
 - `assign/3` returns existing entry on repeat (sticky)
 - `assign/3` across different `{ws, svc, cport}` triples returns distinct host ports
 - `assign/3` picks the lowest unused port in the range
@@ -131,17 +131,17 @@ New `test/boom_looper/port_registry_test.exs`:
 - Pool exhaustion returns `{:error, :port_pool_exhausted}`
 - `seed/4` inserts a legacy entry that counts as in-use for future `assign` but doesn't double-count if called twice with the same key
 
-New `test/boom_looper/port_store_test.exs`:
+New `test/loopyard/port_store_test.exs`:
 - Round-trip load/save preserves `legacy: true` / `exposed: false` fields
 - Missing file returns empty state
 - Invalid JSON returns empty state + logs warning
 
-Modify `test/boom_looper/compose_test.exs`:
+Modify `test/loopyard/compose_test.exs`:
 - `process_agent_compose/3` emits `127.0.0.1:<registry_port>:3000` using a test-seeded registry
 - Repeat call yields the same host port (sticky via registry)
 - Host port pin rejection still works (existing test)
 
-New integration `test/boom_looper/workspace_port_flow_test.exs`:
+New integration `test/loopyard/workspace_port_flow_test.exs`:
 - Full path: compose with `ports: ["3000"]` → processed YAML has the registry-assigned port → `Destructor.destroy` releases the entry
 
 ## v1 scope

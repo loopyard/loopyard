@@ -3,7 +3,7 @@ defmodule Loopyard.Source.Local.Mutagen do
   Thin wrapper over the `mutagen` CLI for managing sync sessions on behalf of
   Local workspaces.
 
-  Each workspace has exactly one mutagen session, named `bl-<workspace_id>`,
+  Each workspace has exactly one mutagen session, named `loopyard-<workspace_id>`,
   that syncs the host worktree at `~/.loopyard/worktrees/<ws_id>` with
   `/workspace` inside the workspace container.
 
@@ -145,7 +145,7 @@ defmodule Loopyard.Source.Local.Mutagen do
         out
         |> String.split("\n", trim: true)
         |> Enum.flat_map(fn line ->
-          case Regex.run(~r/Name:\s*(bl-[a-zA-Z0-9-]+)/, line) do
+          case Regex.run(~r/Name:\s*(loopyard-[a-zA-Z0-9-]+)/, line) do
             [_, name] -> [name]
             _ -> []
           end

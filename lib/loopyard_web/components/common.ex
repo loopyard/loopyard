@@ -147,7 +147,7 @@ defmodule LoopyardWeb.Components.Common do
   Standard page shell for all non-chat pages. Provides consistent
   layout: full-height dark/light bg, header, and centered content area.
 
-      <.page_shell breadcrumbs={[{"Boom Looper", "/"}]} iex_session={@iex_session}>
+      <.page_shell breadcrumbs={[{"Loopyard", "/"}]} iex_session={@iex_session}>
         Page content here
       </.page_shell>
 

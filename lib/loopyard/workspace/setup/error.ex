@@ -190,7 +190,7 @@ defmodule Loopyard.Workspace.Setup.Error do
       code: :docker_daemon_unreachable,
       phase: phase,
       why:
-        "Boom Looper can't reach the Docker daemon — it may be stopped, restarting, or misconfigured.",
+        "Loopyard can't reach the Docker daemon — it may be stopped, restarting, or misconfigured.",
       consequence: "Volumes can't be created or written to. The workspace can't be set up.",
       action: "Make sure Docker (or Colima / OrbStack) is running, then click Retry.",
       transient?: true,
@@ -227,7 +227,7 @@ defmodule Loopyard.Workspace.Setup.Error do
     %{
       code: :interrupted_by_restart,
       phase: phase,
-      why: "Boom Looper restarted while this workspace was still being set up.",
+      why: "Loopyard restarted while this workspace was still being set up.",
       consequence:
         "The volume may be partially populated. No data has been lost — the safe option is to retry from the failed phase.",
       action: "Click Retry to resume setup.",

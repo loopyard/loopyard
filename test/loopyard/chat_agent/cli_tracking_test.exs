@@ -27,7 +27,7 @@ defmodule Loopyard.ChatAgent.CliTrackingTest do
   Under RecordingBackend, `OSProcess.pid_of(session)` returns `nil`
   (the session is a plain Agent with no Port), so this test can't
   exercise the actual OS-pid-tracking path end-to-end. That
-  integration-style assertion lives in the manual `mix boom.rpc`
+  integration-style assertion lives in the manual `mix loopyard.rpc`
   smoke test; here we focus on the tracking-discipline invariants:
   `state.tracked_cli_os_pid` follows session replacement, and the
   helper is called on every restart path.

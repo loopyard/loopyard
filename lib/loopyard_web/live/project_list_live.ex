@@ -63,7 +63,7 @@ defmodule LoopyardWeb.ProjectListLive do
 
     ~H"""
     <.page_shell
-      breadcrumbs={[{"Boom Looper", nil}]}
+      breadcrumbs={[{"Loopyard", nil}]}
       iex_session={@iex_session}
       max_width={:sm}
       flash={@flash}
@@ -72,7 +72,7 @@ defmodule LoopyardWeb.ProjectListLive do
       <div :if={!@has_projects} class="mb-8">
         <h2 class="text-xl font-semibold mb-2">Add a project to get started</h2>
         <p class="text-sm text-zinc-500 dark:text-zinc-400 leading-relaxed">
-          Point Boom Looper at a project directory. It'll spin up a Docker environment
+          Point Loopyard at a project directory. It'll spin up a Docker environment
           and launch an AI agent to set everything up. Paste a path below or use the terminal command.
         </p>
       </div>

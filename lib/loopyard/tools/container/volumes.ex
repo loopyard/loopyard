@@ -49,7 +49,7 @@ defmodule Loopyard.Tools.Container.Volumes do
     else
       {:error,
        "Volume #{volume_name} does not belong to this workspace. You can only access " <>
-         "volumes prefixed with bl-#{workspace_id}. Use `volumes list` to see yours."}
+         "volumes prefixed with loopyard-#{workspace_id}. Use `volumes list` to see yours."}
     end
   end
 

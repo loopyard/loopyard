@@ -8,15 +8,15 @@ The `app_url` tool helps (gives a clickable link) but you still leave the chat t
 
 ## Design
 
-A dedicated Docker container running Playwright + an MCP server. The agent talks to it like any other tool server (`boom-looper-browser`), separate from `boom-looper-container`.
+A dedicated Docker container running Playwright + an MCP server. The agent talks to it like any other tool server (`loopyard-browser`), separate from `loopyard-container`.
 
 ### Architecture
 
 ```
 Agent
-  ├── boom-looper-container (exec, write_file, docker_compose, ...)
-  ├── boom-looper-browser   (screenshot, navigate, ...)
-  └── boom-looper-agents    (spawn, send_message, ...)
+  ├── loopyard-container (exec, write_file, docker_compose, ...)
+  ├── loopyard-browser   (screenshot, navigate, ...)
+  └── loopyard-agents    (spawn, send_message, ...)
 ```
 
 The browser container lives in the workspace's compose stack:
@@ -24,7 +24,7 @@ The browser container lives in the workspace's compose stack:
 ```yaml
 services:
   browser:
-    image: bl-browser:latest  # Playwright + MCP server
+    image: loopyard-browser:latest  # Playwright + MCP server
     depends_on: [dev]
     # No ports exposed — only agents talk to it via MCP
 ```
@@ -95,7 +95,7 @@ they see it differently:
 
 **Human sees: live video feed in the chat.**
 Chrome's `Page.startScreencast` (CDP) sends JPEG frames at 2-5 fps.
-The MCP server streams them to BoomLooper via PubSub (same pattern as
+The MCP server streams them to Loopyard via PubSub (same pattern as
 docker compose build output). The chat LiveView renders each frame as
 an `<img>` that updates in place — poor man's video, no WebRTC, no
 ffmpeg, just rapid-fire JPEGs over the existing LiveView socket.
@@ -198,10 +198,10 @@ on your phone, but you CAN watch the agent work in the chat — live video
 of every page it navigates. Screenshots are stills you review after the
 fact; the stream is watching it happen.
 
-### Future: BoomLooper as proxy
+### Future: Loopyard as proxy
 
-An even better mobile story: BoomLooper proxies the dev server. You browse
-`boomlooper.local:4000/proxy/dev/users/1` and BoomLooper forwards to
+An even better mobile story: Loopyard proxies the dev server. You browse
+`loopyard.local:4000/proxy/dev/users/1` and Loopyard forwards to
 `dev:3000/users/1` inside Docker. Same host, same port, works from any
 device. The proxy can inject cookies, capture HAR files, and the agent can
 observe your browsing session to understand what you're looking at.

@@ -1,6 +1,6 @@
 defmodule LoopyardWeb.SystemDockerLive do
   @moduledoc """
-  Cluster-wide Docker view: every `bl-*` container, every `bl-*` volume,
+  Cluster-wide Docker view: every `loopyard-*` container, every `loopyard-*` volume,
   resource stats, and global controls (kill containers, prune). This is
   for cluster oversight and remote fixing — explicitly NOT a duplicate
   of `/projects/:id` (project-scoped) or `/system/workspaces/:id`
@@ -124,7 +124,7 @@ defmodule LoopyardWeb.SystemDockerLive do
   def render(assigns) do
     ~H"""
     <.page_shell
-      breadcrumbs={[{"Boom Looper", "/"}, {"System", "/system"}, {"Docker", nil}]}
+      breadcrumbs={[{"Loopyard", "/"}, {"System", "/system"}, {"Docker", nil}]}
       iex_session={@iex_session}
       max_width={:xl}
       flash={@flash}
@@ -151,7 +151,7 @@ defmodule LoopyardWeb.SystemDockerLive do
         <% !is_list(@containers) -> %>
           <.skeleton rows={4} />
         <% @containers == [] -> %>
-          <div class="text-sm text-zinc-400 dark:text-zinc-500">No bl-* containers running</div>
+          <div class="text-sm text-zinc-400 dark:text-zinc-500">No loopyard-* containers running</div>
         <% true -> %>
           <div class="rounded-lg border border-zinc-200 dark:border-zinc-700/80 overflow-hidden">
             <table class="w-full text-xs">
@@ -211,7 +211,7 @@ defmodule LoopyardWeb.SystemDockerLive do
         <% !is_list(@volumes) -> %>
           <.skeleton rows={4} />
         <% @volumes == [] -> %>
-          <div class="text-sm text-zinc-400 dark:text-zinc-500">No bl-* volumes</div>
+          <div class="text-sm text-zinc-400 dark:text-zinc-500">No loopyard-* volumes</div>
         <% true -> %>
           <div class="rounded-lg border border-zinc-200 dark:border-zinc-700/80 overflow-hidden">
             <table class="w-full text-xs">

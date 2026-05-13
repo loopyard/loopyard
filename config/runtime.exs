@@ -8,11 +8,11 @@ end
 # --- 12-Factor Configuration ---
 # All runtime config comes from environment variables.
 
-# Auth — set BOOM_LOOPER_AUTH_PASSWORD to enable HTTP Basic Auth
-# BOOM_LOOPER_AUTH_USERNAME is optional (defaults to accepting any username)
+# Auth — set LOOPYARD_AUTH_PASSWORD to enable HTTP Basic Auth
+# LOOPYARD_AUTH_USERNAME is optional (defaults to accepting any username)
 config :loopyard,
-  auth_password: System.get_env("BOOM_LOOPER_AUTH_PASSWORD"),
-  auth_username: System.get_env("BOOM_LOOPER_AUTH_USERNAME")
+  auth_password: System.get_env("LOOPYARD_AUTH_PASSWORD"),
+  auth_username: System.get_env("LOOPYARD_AUTH_USERNAME")
 
 if config_env() == :prod do
   secret_key_base =

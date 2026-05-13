@@ -102,7 +102,7 @@ defmodule Loopyard.Resources.Janitor do
   DOWN had fired — runs release_fns and deletes rows synchronously.
   Used by tests that can't easily kill a real process (e.g. they
   want to exercise the release path with a self-spawned pid) and by
-  `mix boom.rpc` for operator triage.
+  `mix loopyard.rpc` for operator triage.
   """
   def force_release_for_owner(owner_pid) do
     GenServer.call(__MODULE__, {:force_release_for_owner, owner_pid})

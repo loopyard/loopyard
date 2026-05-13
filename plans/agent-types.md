@@ -22,11 +22,11 @@ An agent is defined by:
 
 ### File format: agents are folders
 
-An agent is a **folder** on disk. BoomLooper reads exactly one file from that folder to bootstrap the agent — `agent.md`. Everything else in the folder is opaque content the agent itself fetches via a tool.
+An agent is a **folder** on disk. Loopyard reads exactly one file from that folder to bootstrap the agent — `agent.md`. Everything else in the folder is opaque content the agent itself fetches via a tool.
 
 ```
 priv/agents/setup/
-  agent.md              # frontmatter + prompt body (the ONLY file BoomLooper parses)
+  agent.md              # frontmatter + prompt body (the ONLY file Loopyard parses)
   Dockerfile            # the computer (optional — falls back to shared workspace image)
   setup_guide.md        # playbook, loaded on demand by the agent
   stacks/
@@ -43,7 +43,7 @@ name: Setup
 description: Bootstrap a project's Docker dev environment
 model: opus                    # alias resolved at load time
 tools:                         # ADDITIONAL servers beyond the base set
-  - boom-looper-browser
+  - loopyard-browser
 gates:
   exec: approve
 ---
@@ -55,23 +55,23 @@ stack template from `stacks/`.
 
 **Rules:**
 
-- `agent.md` is the only file BoomLooper parses. Other `.md` files have no frontmatter and no special syntax — just content.
+- `agent.md` is the only file Loopyard parses. Other `.md` files have no frontmatter and no special syntax — just content.
 - Frontmatter fields are all optional except `name`. Missing fields get sensible defaults (model: `sonnet`, no extra tools, no gates).
 - `tools:` lists *additional* tool servers beyond the always-on base set (see "Base tools"). A read-only "Code Review" agent uses `disallowed_tools:` to *remove* tools from the base.
 - `model:` uses aliases (`opus`, `sonnet`, `haiku`) resolved to the current model at load time. Pinning specific versions means templates go stale.
 - The body is markdown. It gets appended to the universal base prompt — not used as a replacement.
 
 **Resolution order** (first match wins):
-1. Per-project: `.boomlooper/repo/agents/<name>/` — tracked in git
-2. User-global: `~/.boomlooper/agents/<name>/`
-3. Built-in: `priv/agents/<name>/` (shipped with BoomLooper)
+1. Per-project: `.loopyard/repo/agents/<name>/` — tracked in git
+2. User-global: `~/.loopyard/agents/<name>/`
+3. Built-in: `priv/agents/<name>/` (shipped with Loopyard)
 
-A project can override `setup` by shipping its own `.boomlooper/repo/agents/setup/` — useful when a project has stack-specific bootstrap steps.
+A project can override `setup` by shipping its own `.loopyard/repo/agents/setup/` — useful when a project has stack-specific bootstrap steps.
 
 ### Base tools (always on, not in frontmatter)
 
 Every agent unconditionally gets:
-- **`boom-looper-container`** — exec, write_file, read_file, docker_compose, logs, etc. Without this an agent can't do anything useful.
+- **`loopyard-container`** — exec, write_file, read_file, docker_compose, logs, etc. Without this an agent can't do anything useful.
 - **`read_agent_file`** — reads a file from the agent's own folder (sandboxed, no `..` traversal, no access to other agents' folders).
 
 The system prompt also auto-appends a **catalog** of the agent folder — just a `ls`-style list of filenames. Cheap (under 100 tokens). Filenames carry the meaning (`setup_guide.md`, `stacks/ruby.md`) — no H1 parsing, no descriptions duplicated elsewhere. If a filename isn't self-explanatory, rename the file.
@@ -87,7 +87,7 @@ First cut ships two agents in `priv/agents/`:
 | `setup` | opus | "Read setup_guide.md first" | Bootstrap Dockerfile + docker-compose.yml for a new project |
 | `coding` | sonnet | Near-empty — just a role line | Default "just an agent" for general work on a workspace with config already in place |
 
-QA / Code Review / Data / Debug from the preset table below are documented examples, not shipped folders. Add them once the mechanism is proven. Users can create their own in `~/.boomlooper/agents/` or `.boomlooper/repo/agents/` any time.
+QA / Code Review / Data / Debug from the preset table below are documented examples, not shipped folders. Add them once the mechanism is proven. Users can create their own in `~/.loopyard/agents/` or `.loopyard/repo/agents/` any time.
 
 ### Killing the implicit Setup fallback
 
@@ -103,9 +103,9 @@ Today `ChatAgent.Prompt.build_system_prompt/5` infers "Setup agent" when `worksp
 Each toolkit module already has `__tool_server__/0` returning a name and tool list. Extend it with human-readable metadata:
 
 ```elixir
-defmodule BoomLooper.Tools.Container do
+defmodule Loopyard.Tools.Container do
   @tool_server %{
-    id: "boom-looper-container",
+    id: "loopyard-container",
     title: "Workspace Tools",
     description: "Read/write files, run commands, manage Docker services",
     icon: :terminal,
@@ -113,9 +113,9 @@ defmodule BoomLooper.Tools.Container do
   }
 end
 
-defmodule BoomLooper.Tools.Browser do
+defmodule Loopyard.Tools.Browser do
   @tool_server %{
-    id: "boom-looper-browser",
+    id: "loopyard-browser",
     title: "Browser",
     description: "Take screenshots, navigate pages, test UI",
     icon: :globe,
@@ -124,7 +124,7 @@ defmodule BoomLooper.Tools.Browser do
 end
 ```
 
-Each tool module already has `__tool_name__/0` and `__description__/0` from the `BoomLooper.Tool` macro — those become the per-tool detail view.
+Each tool module already has `__tool_name__/0` and `__description__/0` from the `Loopyard.Tool` macro — those become the per-tool detail view.
 
 ### "New Agent" Flow
 
@@ -173,7 +173,7 @@ Common agent configurations saved as presets:
 | Code Review | Workspace (read-only subset) | Review PRs without modifying |
 | Debug | Workspace, Browser, Agents | Investigate and fix issues |
 
-Presets are just saved name + tool selection. Users can create custom presets. Presets can be per-project (stored in `.boomlooper/repo/`) or global (stored in `~/.boomlooper/presets/`).
+Presets are just saved name + tool selection. Users can create custom presets. Presets can be per-project (stored in `.loopyard/repo/`) or global (stored in `~/.loopyard/presets/`).
 
 ### How it wires into ChatAgent
 
@@ -181,9 +181,9 @@ Today, `ChatAgent.ToolConfig` hardcodes the MCP servers:
 
 ```elixir
 mcp_servers: %{
-  "boom-looper-container" => BoomLooper.Tools.Container,
-  "boom-looper-agents" => BoomLooper.Tools.Agents,
-  "boom-looper-secrets" => BoomLooper.Tools.Secrets
+  "loopyard-container" => Loopyard.Tools.Container,
+  "loopyard-agents" => Loopyard.Tools.Agents,
+  "loopyard-secrets" => Loopyard.Tools.Secrets
 }
 ```
 
@@ -194,13 +194,13 @@ With agent types, this becomes dynamic:
 agent_opts = [
   id: id,
   name: "QA Agent",
-  tool_servers: ["boom-looper-container", "boom-looper-browser"],
+  tool_servers: ["loopyard-container", "loopyard-browser"],
   ...
 ]
 
 # ToolConfig resolves to modules
 mcp_servers = ToolConfig.resolve_servers(agent_opts[:tool_servers])
-# => %{"boom-looper-container" => Container, "boom-looper-browser" => Browser}
+# => %{"loopyard-container" => Container, "loopyard-browser" => Browser}
 ```
 
 ### Tool Registry
@@ -208,13 +208,13 @@ mcp_servers = ToolConfig.resolve_servers(agent_opts[:tool_servers])
 A central registry of all available tool servers:
 
 ```elixir
-defmodule BoomLooper.Tools.Registry do
+defmodule Loopyard.Tools.Registry do
   def available_servers do
     [
-      BoomLooper.Tools.Container.__tool_server__(),
-      BoomLooper.Tools.Agents.__tool_server__(),
-      BoomLooper.Tools.Secrets.__tool_server__(),
-      BoomLooper.Tools.Browser.__tool_server__()  # future
+      Loopyard.Tools.Container.__tool_server__(),
+      Loopyard.Tools.Agents.__tool_server__(),
+      Loopyard.Tools.Secrets.__tool_server__(),
+      Loopyard.Tools.Browser.__tool_server__()  # future
     ]
   end
 
@@ -232,7 +232,7 @@ The "New Agent" screen reads from this registry. Adding a new tool server means 
 Phase 1: toggle entire tool servers (Workspace, Browser, Agents).
 Phase 2: toggle individual tools within a server. The "Code Review" agent gets Workspace Tools but with `write_file`, `edit`, `multi_edit`, `docker_compose` disabled — read-only access.
 
-The `BoomLooper.Tool` macro already has the metadata. The `allowed_tools` list in Claude Code session opts already supports per-tool filtering. Just need the UI to expose it.
+The `Loopyard.Tool` macro already has the metadata. The `allowed_tools` list in Claude Code session opts already supports per-tool filtering. Just need the UI to expose it.
 
 ### System prompt per agent type
 
@@ -263,11 +263,11 @@ Each agent type has a Dockerfile (or references a base image):
 ```elixir
 %AgentType{
   name: "QA",
-  tools: ["boom-looper-container", "boom-looper-browser"],
+  tools: ["loopyard-container", "loopyard-browser"],
   computer: %{
     dockerfile: "FROM mcr.microsoft.com/playwright:v1.40.0-focal\nRUN npm i -g playwright",
     # OR reference a pre-built image:
-    image: "bl-qa-agent:latest",
+    image: "loopyard-qa-agent:latest",
     # The code volume is always mounted at /workspace
     volumes: ["${CODE_VOLUME}:/workspace"],
     # Internal network access to other services
@@ -311,9 +311,9 @@ screenshot tool (MCP). One without the other is useless.
 
 **Phase 1 — folder format + kill the fallback (this PR):**
 
-1. `BoomLooper.Agents.Loader` — parses `agent.md` (YAML frontmatter + body) using `YamlElixir`
-2. `BoomLooper.Agents.Registry` — lists agents via resolution order (project > user > built-in)
-3. `BoomLooper.Tools.AgentFiles` — new always-on tool server with `read_agent_file`
+1. `Loopyard.Agents.Loader` — parses `agent.md` (YAML frontmatter + body) using `YamlElixir`
+2. `Loopyard.Agents.Registry` — lists agents via resolution order (project > user > built-in)
+3. `Loopyard.Tools.AgentFiles` — new always-on tool server with `read_agent_file`
 4. Auto-generate catalog from the agent folder, appended to the system prompt
 5. Create `priv/agents/setup/` (moving `priv/prompts/setup_guide.md` + `stacks/`) and `priv/agents/coding/`
 6. Refactor `ChatAgent.Prompt.build_system_prompt` to take an `agent_type` and append the body
@@ -324,7 +324,7 @@ screenshot tool (MCP). One without the other is useless.
 **Phase 2 — tool selection UI and per-type containers:**
 
 1. Add `title` and `description` to `__tool_server__/0` in each toolkit module
-2. Create `BoomLooper.Tools.Registry` — lists all available servers
+2. Create `Loopyard.Tools.Registry` — lists all available servers
 3. Update "New Agent" UI to show tool selection
 4. **Agent containers** — each agent type gets its own container from a Dockerfile/image
 5. Agent exec routes to the agent's own container (not the shared workspace container)

@@ -39,7 +39,7 @@ defmodule LoopyardWeb.SystemDockerLiveTest do
       assert html =~ "Containers"
       assert html =~ "Volumes"
       # The container table should be present (not a skeleton)
-      # Even if no bl- containers exist, we get the "No bl-* containers"
+      # Even if no loopyard- containers exist, we get the "No loopyard-* containers"
       # message instead of a skeleton.
       refute html =~ "animate-pulse" and not (html =~ "container_stats"),
              "Containers/volumes are still showing skeletons — Observer cache not seeded?"

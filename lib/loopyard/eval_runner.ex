@@ -10,19 +10,19 @@ defmodule Loopyard.EvalRunner do
   Usage:
 
     # Run by eval name (looks up git URL from priv/evals.json):
-    mix boom.rpc 'Loopyard.EvalRunner.eval("maybe-finance")'
+    mix loopyard.rpc 'Loopyard.EvalRunner.eval("maybe-finance")'
 
     # Run by git URL:
-    mix boom.rpc 'Loopyard.EvalRunner.run("https://github.com/maybe-finance/maybe.git")'
+    mix loopyard.rpc 'Loopyard.EvalRunner.run("https://github.com/maybe-finance/maybe.git")'
 
     # Run by local path (legacy):
-    mix boom.rpc 'Loopyard.EvalRunner.run("/path/to/project")'
+    mix loopyard.rpc 'Loopyard.EvalRunner.run("/path/to/project")'
 
     # Check status:
-    mix boom.rpc 'Loopyard.EvalRunner.status()'
+    mix loopyard.rpc 'Loopyard.EvalRunner.status()'
 
     # List available evals:
-    mix boom.rpc 'Loopyard.EvalRunner.list_evals()'
+    mix loopyard.rpc 'Loopyard.EvalRunner.list_evals()'
   """
   require Logger
 
@@ -232,7 +232,7 @@ defmodule Loopyard.EvalRunner do
         #    app to satisfy the HTTP probe — a false success.
         # 2. The workspace container is actually running. Without
         #    this, every `tree` / `exec` / `grep` fails with
-        #    "No such container: bl-<ws>-workspace-1" and the agent's
+        #    "No such container: loopyard-<ws>-workspace-1" and the agent's
         #    only recovery path is to write its own minimal compose
         #    (observed on discourse run: 266s duration, 15 tool calls,
         #    bogus hello-world server).
@@ -461,12 +461,12 @@ defmodule Loopyard.EvalRunner do
 
   ## What we probe, in priority order
 
-  1. The **workspace** container (`bl-<ws_id>-workspace-1`). Many
+  1. The **workspace** container (`loopyard-<ws_id>-workspace-1`). Many
      agents run the dev server directly inside workspace — common on
      pnpm monorepos, Go single-binaries, and anything where a second
      container is awkward. If workspace has a published port and it
      answers HTTP, that's the dev server.
-  2. The **dev** container (`bl-<ws_id>-dev-1`). This is what the
+  2. The **dev** container (`loopyard-<ws_id>-dev-1`). This is what the
      prompt template recommends; agents that follow the template use
      it and it's a clean home for the dev server.
   3. Any other container in the workspace (last-resort fallback).
@@ -801,7 +801,7 @@ defmodule Loopyard.EvalRunner do
   end
 
   @doc """
-  Busy-wait until the workspace container (`bl-<ws>-workspace-1`) is
+  Busy-wait until the workspace container (`loopyard-<ws>-workspace-1`) is
   running. Without this, the agent's first `tree` / `exec` / `grep`
   fails with "No such container" and the agent's only recovery path
   is to write its own minimal compose — a bogus setup path that

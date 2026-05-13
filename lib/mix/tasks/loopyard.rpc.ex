@@ -4,11 +4,11 @@ defmodule Mix.Tasks.Loopyard.Rpc do
 
   ## Usage
 
-      mix boom.rpc "Loopyard.ChatAgent.list_agents()"
-      mix boom.rpc "Loopyard.ProjectRegistry.list_projects()"
-      mix boom.rpc ":ets.tab2list(:project_registry)"
-      mix boom.rpc "GenServer.call(pid, :state)"
-      mix boom.rpc "Loopyard.EvalRunner.run(path, clean: true)"
+      mix loopyard.rpc "Loopyard.ChatAgent.list_agents()"
+      mix loopyard.rpc "Loopyard.ProjectRegistry.list_projects()"
+      mix loopyard.rpc ":ets.tab2list(:project_registry)"
+      mix loopyard.rpc "GenServer.call(pid, :state)"
+      mix loopyard.rpc "Loopyard.EvalRunner.run(path, clean: true)"
 
   Any valid Elixir expression. Result is inspected and printed.
   Reads the cookie from ~/.loopyard/cookie automatically.
@@ -35,7 +35,7 @@ defmodule Mix.Tasks.Loopyard.Rpc do
     try do
       case :rpc.call(node, Code, :eval_string, [expr], 600_000) do
         {:badrpc, :nodedown} ->
-          Mix.raise("Loopyard node is down. Start with: mix boom.server")
+          Mix.raise("Loopyard node is down. Start with: mix loopyard.server")
 
         {:badrpc, reason} ->
           Mix.raise("RPC failed: #{inspect(reason)}")
@@ -73,7 +73,7 @@ defmodule Mix.Tasks.Loopyard.Rpc do
         :ok
 
       :pang ->
-        Mix.raise("Loopyard node (#{node}) is not reachable. Start with: mix boom.server")
+        Mix.raise("Loopyard node (#{node}) is not reachable. Start with: mix loopyard.server")
     end
 
     {node, cookie}
@@ -85,7 +85,7 @@ defmodule Mix.Tasks.Loopyard.Rpc do
   end
 
   defp read_cookie do
-    # Always use ~/.loopyard/cookie — matches boom.server
+    # Always use ~/.loopyard/cookie — matches loopyard.server
     path = Path.join([System.user_home!(), ".loopyard", "cookie"])
 
     unless File.exists?(path) do

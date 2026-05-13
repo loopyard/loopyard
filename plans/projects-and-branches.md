@@ -66,12 +66,12 @@ The branch `path` is what gets bind-mounted into containers. For `main`, it's th
 ## What Changes
 
 ### Rename: Workspace → Branch
-- `BoomLooper.Workspace` module stays (it manages the config file) but the UI says "branch"
-- `BoomLooper.WorkspaceRegistry` → `BoomLooper.ProjectRegistry`
+- `Loopyard.Workspace` module stays (it manages the config file) but the UI says "branch"
+- `Loopyard.WorkspaceRegistry` → `Loopyard.ProjectRegistry`
 - The registry stores projects, each with a list of active branches
 - `workspace_id` concept maps to `branch_id` (hash of the worktree path)
 
-### New Module: `BoomLooper.Git`
+### New Module: `Loopyard.Git`
 Thin wrapper around git CLI:
 ```elixir
 Git.repo_root(path)              # git rev-parse --show-toplevel
@@ -94,9 +94,9 @@ ProjectRegistry.remove_branch(project_id, branch_id) # kill containers, git work
 ### Container Naming
 Containers already use a workspace_id hash. This becomes the branch hash:
 ```
-boom-looper-ws-{branch_id}           # workspace container (sleep infinity)
-boom-looper-ws-{branch_id}-dev       # dev server container
-boom-looper-svc-{branch_id}-postgres # stock service
+loopyard-ws-{branch_id}           # workspace container (sleep infinity)
+loopyard-ws-{branch_id}-dev       # dev server container
+loopyard-svc-{branch_id}-postgres # stock service
 ```
 
 Each branch gets fully independent containers. No port conflicts because ports are allocated per-branch (or dynamic).
@@ -180,8 +180,8 @@ open "http://localhost:4000/launch/SECRET?path=$(pwd)"
 
 ## Implementation Order
 
-1. **`BoomLooper.Git` module** — git CLI wrapper with tests
-2. **`BoomLooper.ProjectRegistry`** — replaces WorkspaceRegistry, stores projects + branches
+1. **`Loopyard.Git` module** — git CLI wrapper with tests
+2. **`Loopyard.ProjectRegistry`** — replaces WorkspaceRegistry, stores projects + branches
 3. **Update launch flow** — detect repo root, register project + branch
 4. **Update routes** — `/p/:project_id/b/:branch_id/...`
 5. **Project list page** — shows projects with branch counts
@@ -196,7 +196,7 @@ open "http://localhost:4000/launch/SECRET?path=$(pwd)"
 Each branch is a supervision subtree that can be started/stopped as a unit:
 
 ```
-BoomLooper.Supervisor
+Loopyard.Supervisor
   ├── ProjectRegistry (ETS, always running)
   ├── BranchSupervisor (DynamicSupervisor — starts/stops branch subtrees)
   │   ├── Branch "main" (Supervisor, :one_for_all)
@@ -214,7 +214,7 @@ BoomLooper.Supervisor
   │       │   └── ChatAgent "feature-agent"
   │       └── ContainerMonitor
   │
-  └── BoomLooperWeb.Endpoint
+  └── LoopyardWeb.Endpoint
 ```
 
 ### Start a branch

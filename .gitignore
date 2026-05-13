@@ -26,14 +26,17 @@
 # Build cache
 /.cache
 
-# BoomLooper workspace (generated per-workspace files)
+# Loopyard workspace (generated per-workspace files)
 .loopyard/
 
-# BoomLooper home dir for test env
+# Loopyard home dir for test env
 .loopyard_home/
 
-# BoomLooper local dev server state
+# Loopyard local dev server state
 .loopyard_dev/
+
+# Loopyard per-workspace state when developing in-tree (never tracked)
+/workspaces/
 
 # Erlang crash dumps
 erl_crash.dump
@@ -56,5 +59,7 @@ worktrees/
 .claude/scheduled_tasks.lock
 *.log
 sagas.log
+
+# Legacy paths from the BoomLooper→Loopyard rename — kept so leftover dirs
+# on old workstations don't accidentally get committed.
 .boomlooper_home/
-.loopyard_home/

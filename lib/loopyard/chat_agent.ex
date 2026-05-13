@@ -878,7 +878,7 @@ defmodule Loopyard.ChatAgent do
               "WHY: the Claude Code CLI couldn't be spawned — usually auth, " <>
               "missing `claude` binary, or a bad working directory. " <>
               "CONSEQUENCE: this agent can't accept new messages. " <>
-              "ACTION: run `mix boom.rpc 'ClaudeCode.Test.smoke()'` to diagnose, " <>
+              "ACTION: run `mix loopyard.rpc 'ClaudeCode.Test.smoke()'` to diagnose, " <>
               "then click Restart in the sidebar. If restart keeps failing, " <>
               "remove the agent and create a new one.",
           timestamp: DateTime.utc_now()

@@ -1,7 +1,7 @@
 # Port Proxy Architecture
 
-Docker ports are internal. BoomLooper ports are what users see. All traffic
-flows through BoomLooper's proxy, giving full observability (connections,
+Docker ports are internal. Loopyard ports are what users see. All traffic
+flows through Loopyard's proxy, giving full observability (connections,
 bytes, peer IPs) in both private and exposed modes.
 
 ## Data flow
@@ -80,10 +80,10 @@ Docker container
 
 ## Files to change
 
-- `lib/boom_looper/port_registry.ex` — add `set_docker_port/4`, proxy lifecycle
-- `lib/boom_looper/port_exposer.ex` — always-on proxy, bind toggle, trap_exit
-- `lib/boom_looper/compose.ex` — `emit_port` emits ephemeral instead of pinned
-- `lib/boom_looper/workspace/service_manager.ex` — discover docker_port after up
-- `lib/boom_looper/application.ex` — supervisor children
-- `test/boom_looper/port_exposer_test.exs` — comprehensive proxy tests
-- `test/boom_looper/port_registry_test.exs` — docker_port lifecycle tests
+- `lib/loopyard/port_registry.ex` — add `set_docker_port/4`, proxy lifecycle
+- `lib/loopyard/port_exposer.ex` — always-on proxy, bind toggle, trap_exit
+- `lib/loopyard/compose.ex` — `emit_port` emits ephemeral instead of pinned
+- `lib/loopyard/workspace/service_manager.ex` — discover docker_port after up
+- `lib/loopyard/application.ex` — supervisor children
+- `test/loopyard/port_exposer_test.exs` — comprehensive proxy tests
+- `test/loopyard/port_registry_test.exs` — docker_port lifecycle tests

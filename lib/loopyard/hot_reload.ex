@@ -7,10 +7,10 @@ defmodule Loopyard.HotReload do
   timestamps against its in-memory compile log, sees they agree, and
   returns `:noop` — leaving the BEAM with the OLD module bytecode.
 
-  This helper covers both paths. Call from `mix boom.rpc`:
+  This helper covers both paths. Call from `mix loopyard.rpc`:
 
-      mix boom.rpc 'Loopyard.HotReload.reload()'
-      mix boom.rpc 'Loopyard.HotReload.reload(Loopyard.ChatAgent)'
+      mix loopyard.rpc 'Loopyard.HotReload.reload()'
+      mix loopyard.rpc 'Loopyard.HotReload.reload(Loopyard.ChatAgent)'
 
   Symptom that tells you the fix you hot-reloaded didn't take effect:
   a tool output or log line still matches the pre-fix text even after

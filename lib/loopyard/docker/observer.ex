@@ -2,7 +2,7 @@ defmodule Loopyard.Docker.Observer do
   @moduledoc """
   Event-driven Docker state cache.
 
-  Maintains an ETS snapshot of all `bl-*` containers and volumes.
+  Maintains an ETS snapshot of all `loopyard-*` containers and volumes.
   LiveViews read from ETS directly (microseconds, zero docker calls).
 
   ## Bootstrap sequence
@@ -65,7 +65,7 @@ defmodule Loopyard.Docker.Observer do
 
   # ── Public API (all ETS reads, zero GenServer hops) ──
 
-  @doc "All `bl-*` containers. Returns `[%{name, status, running, workspace_id}, ...]`."
+  @doc "All `loopyard-*` containers. Returns `[%{name, status, running, workspace_id}, ...]`."
   def containers do
     case :ets.lookup(@table, :containers) do
       [{_, list}] -> list
@@ -79,7 +79,7 @@ defmodule Loopyard.Docker.Observer do
   end
 
   @doc """
-  All `bl-*` volumes. Returns `[%{name, workspace_id, size, ...}, ...]`.
+  All `loopyard-*` volumes. Returns `[%{name, workspace_id, size, ...}, ...]`.
 
   Merges the stable volume list with the separately-stored size map.
   Sizes update on every snapshot but don't contribute to the snapshot
@@ -508,7 +508,7 @@ defmodule Loopyard.Docker.Observer do
              "ps",
              "-a",
              "--filter",
-             "name=bl-",
+             "name=loopyard-",
              "--format",
              "{{.Names}}\t{{.Status}}\t{{.Ports}}"
            ],
@@ -557,7 +557,7 @@ defmodule Loopyard.Docker.Observer do
            "volume",
            "ls",
            "--filter",
-           "name=bl-",
+           "name=loopyard-",
            "--format",
            "{{.Name}}"
          ]) do
@@ -619,7 +619,7 @@ defmodule Loopyard.Docker.Observer do
 
   # Extract workspace_id from container/volume names like "loopyard-dd73-dev-1" → "dd73"
   defp extract_workspace_id(name) do
-    case Regex.run(~r/^bl-([a-f0-9]+)-/, name) do
+    case Regex.run(~r/^loopyard-([a-f0-9]+)-/, name) do
       [_, ws_id] -> ws_id
       _ -> nil
     end

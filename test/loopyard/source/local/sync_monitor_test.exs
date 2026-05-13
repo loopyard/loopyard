@@ -69,7 +69,7 @@ defmodule Loopyard.Source.Local.SyncMonitorTest do
         # First runner call is session_status (:missing → try_start path).
         # Second runner call is start_sync.
         queue(agent, [
-          {"session bl-runcase does not exist", 1},
+          {"session loopyard-runcase does not exist", 1},
           {"", 0}
         ])
 

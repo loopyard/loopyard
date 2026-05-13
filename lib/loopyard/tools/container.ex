@@ -19,7 +19,7 @@ defmodule Loopyard.Tools.Container do
      `Helpers.validate_workspace_path/1` before use.
   4. If your tool accepts a volume/container name as a param (e.g.
      the `Volumes` tool's action string), reject any value that isn't
-     prefixed with the agent's own `bl-<workspace_id>`.
+     prefixed with the agent's own `loopyard-<workspace_id>`.
   5. Add a test that proves your tool rejects a foreign `agent_id` —
      `test/loopyard/tool_authorization_test.exs` has a matrix test
      that will catch a missing check automatically, but a targeted

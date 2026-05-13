@@ -203,7 +203,7 @@ When a domain has both a global "cluster oversight" view and a per-thing "this o
 | `/projects/:id` | Project-scoped: workspaces, agents, services FOR THIS PROJECT. Where the user goes to *use* the project. |
 | `/system/workspaces` | Cluster-wide: every workspace's supervisor health. Where the user goes when something is broken and they want to restart. |
 | `/system/workspaces/:id` (if added) | One workspace's deep diagnostic view (containers, agents, processes, recent errors). |
-| `/system/docker` | Cluster-wide Docker state (every `bl-*` container, every volume). Where the user goes for cluster-wide cleanup. |
+| `/system/docker` | Cluster-wide Docker state (every `loopyard-*` container, every volume). Where the user goes for cluster-wide cleanup. |
 
 **Rules:**
 1. If a behavior already exists on the scoped page, the system page links to it. Don't reimplement "click an agent to chat with it" on `/system/workspaces` — that's what `/projects/:id/workspaces/:id/agents/:id` is for.
@@ -213,18 +213,18 @@ When a domain has both a global "cluster oversight" view and a per-thing "this o
 
 ## Display formatters and tiny UI primitives live in shared modules — never `defp`'d in a LiveView
 
-If a function would be `defp shorten_path/1` or `defp format_bytes/1` or `defp project_location/1` in a LiveView, **stop**. Put it in `BoomLooperWeb.Format` instead. The `html_helpers/0` macro auto-imports `BoomLooperWeb.Format` into every LiveView, component, and HTML module — these helpers are available everywhere by default.
+If a function would be `defp shorten_path/1` or `defp format_bytes/1` or `defp project_location/1` in a LiveView, **stop**. Put it in `LoopyardWeb.Format` instead. The `html_helpers/0` macro auto-imports `LoopyardWeb.Format` into every LiveView, component, and HTML module — these helpers are available everywhere by default.
 
 Same rule for tiny render primitives that show up in 2+ LiveViews:
 
 | Pattern | Lives in | Use |
 |---|---|---|
-| Flash strip (`@flash["error"]` / `@flash["info"]`) | `BoomLooperWeb.Components.Common` | `<.flash_banner flash={@flash} kind={:error} />` |
-| Loading skeleton (`animate-pulse`) | `BoomLooperWeb.Components.Common` | `<.skeleton />` or `<.skeleton variant={:card} />` or `<.skeleton rows={4} />` |
-| Page header / breadcrumbs | `BoomLooperWeb.Components.AppHeader` | `<.header breadcrumbs={[{"Loopyard", "/"}, ...]} iex_session={@iex_session} />` |
-| Sidebar bits (status/service dots, agent items) | `BoomLooperWeb.Components.Sidebar` | imported on demand |
-| Log content panels | `BoomLooperWeb.Components.LogViewer` | imported on demand |
-| Path → "~/foo", byte/number formatting | `BoomLooperWeb.Format` | auto-imported |
+| Flash strip (`@flash["error"]` / `@flash["info"]`) | `LoopyardWeb.Components.Common` | `<.flash_banner flash={@flash} kind={:error} />` |
+| Loading skeleton (`animate-pulse`) | `LoopyardWeb.Components.Common` | `<.skeleton />` or `<.skeleton variant={:card} />` or `<.skeleton rows={4} />` |
+| Page header / breadcrumbs | `LoopyardWeb.Components.AppHeader` | `<.header breadcrumbs={[{"Loopyard", "/"}, ...]} iex_session={@iex_session} />` |
+| Sidebar bits (status/service dots, agent items) | `LoopyardWeb.Components.Sidebar` | imported on demand |
+| Log content panels | `LoopyardWeb.Components.LogViewer` | imported on demand |
+| Path → "~/foo", byte/number formatting | `LoopyardWeb.Format` | auto-imported |
 
 `Format` and `Components.Common` are the only two things that get **auto-imported** via `html_helpers/0` — they're the absolute basics every page needs. Bigger components (sidebar, log_viewer) are imported on demand by the LiveViews that use them, so we don't pollute every render with stuff most pages don't need.
 
@@ -272,7 +272,7 @@ When tearing down a project (eval cleanup, user deletion, system reset), always 
 
 ## Docker volume naming must be canonical
 
-Volume names are **always** `bl-<workspace_id>-code`. Never create volumes with other naming conventions (the old `code-<workspace_id>` pattern created ghost volumes that never got cleaned up). `VolumeManager.code_volume_name/1` is the single source of truth. `Workspace.volume_name_for/1` looks up the workspace's registered volume, falling back to `code_volume_name` — never to an ad-hoc format.
+Volume names are **always** `loopyard-<workspace_id>-code`. Never create volumes with other naming conventions (the old `code-<workspace_id>` pattern created ghost volumes that never got cleaned up). `VolumeManager.code_volume_name/1` is the single source of truth. `Workspace.volume_name_for/1` looks up the workspace's registered volume, falling back to `code_volume_name` — never to an ad-hoc format.
 
 ## Never silently swallow errors in cleanup
 
@@ -286,7 +286,7 @@ rescue e -> Logger.warning("[Module] cleanup failed: #{Exception.message(e)}")
 
 ## Every Task must be supervised
 
-Never `Task.start(fn -> ... end)`. Always `Task.Supervisor.start_child(BoomLooper.TaskSupervisor, fn -> ... end)`. Unsupervised tasks crash silently — nobody notices, nothing retries, the work just disappears. `Task.start_link` is acceptable only when the parent GenServer needs to detect the crash (e.g., ChatAgent's streaming task).
+Never `Task.start(fn -> ... end)`. Always `Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn -> ... end)`. Unsupervised tasks crash silently — nobody notices, nothing retries, the work just disappears. `Task.start_link` is acceptable only when the parent GenServer needs to detect the crash (e.g., ChatAgent's streaming task).
 
 ## New fields go in normalize, not in fallback chains
 
@@ -306,12 +306,12 @@ For container/volume state that LiveViews need on every render, use `Docker.Obse
 
 ## MCP tools are one module per tool
 
-Each tool lives in its own file under `lib/boom_looper/tools/container/`. No monolithic tool files with 20 tools crammed together.
+Each tool lives in its own file under `lib/loopyard/tools/container/`. No monolithic tool files with 20 tools crammed together.
 
 **Tool module structure:**
 ```elixir
-defmodule BoomLooper.Tools.Container.Exec do
-  use BoomLooper.Tool,
+defmodule Loopyard.Tools.Container.Exec do
+  use Loopyard.Tool,
     name: "exec",
     description: "Run a shell command inside the container.",
     params: [
@@ -326,13 +326,13 @@ defmodule BoomLooper.Tools.Container.Exec do
 end
 ```
 
-The `BoomLooper.Tool` macro generates `__tool_name__/0`, `__description__/0`, and `input_schema/0`. You just write `execute/2`. Params arrive with atom keys (SDK atomizes them).
+The `Loopyard.Tool` macro generates `__tool_name__/0`, `__description__/0`, and `input_schema/0`. You just write `execute/2`. Params arrive with atom keys (SDK atomizes them).
 
-The toolkit module (`BoomLooper.Tools.Container`) lists all tool modules in `__tool_server__/0`. Server name `"boom-looper-container"` must not change (agent prompts reference it).
+The toolkit module (`Loopyard.Tools.Container`) lists all tool modules in `__tool_server__/0`. Server name `"loopyard-container"` must not change (agent prompts reference it).
 
 **No `do_` prefix.** The main function is `execute/2`. If a tool needs private helpers, name them descriptively — `apply_edit`, `format_probe_result`, etc.
 
-Shared helpers live in `BoomLooper.Tools.Container.Helpers` — resolve_container, validate_workspace_path, etc.
+Shared helpers live in `Loopyard.Tools.Container.Helpers` — resolve_container, validate_workspace_path, etc.
 
 ## Validate inputs at tool boundaries
 
@@ -346,9 +346,9 @@ Use `with` chains at the top of `execute/2` to bail early on bad input.
 ## Emit telemetry on key operations
 
 Wrap slow or important operations in `:telemetry.span/3`:
-- `Docker.docker/2` emits `[:boom_looper, :docker, :command]`
-- `Compose.up/2` and `down/2` emit `[:boom_looper, :compose, :up/:down]`
-- `ChatAgent` emits `[:boom_looper, :agent, :message]` on user messages
+- `Docker.docker/2` emits `[:loopyard, :docker, :command]`
+- `Compose.up/2` and `down/2` emit `[:loopyard, :compose, :up/:down]`
+- `ChatAgent` emits `[:loopyard, :agent, :message]` on user messages
 
 Don't add telemetry subscribers — that's for the operator to configure. Just emit the events.
 
@@ -365,7 +365,7 @@ Each piece of data should have exactly ONE authoritative source. If you find you
 **Sources of truth:**
 - **What services SHOULD exist** → `docker-compose.yml` via `ServiceStatus.list_defined_services/1`
 - **What services ARE running** → Docker via `Docker.container_running?/1`
-- **Compose file path** → `Compose.compose_path/1` (never hardcode `.boomlooper/workspace/docker-compose.yml`)
+- **Compose file path** → `Compose.compose_path/1` (never hardcode `.loopyard/workspace/docker-compose.yml`)
 - **Workspace ID** → `Workspace.workspace_id/1`
 - **Project name prefix** → `Compose.project_name/1`
 
@@ -378,7 +378,7 @@ If you need service information, use `ServiceStatus.for_workspace/1`. It reads f
 
 ## Agents write infrastructure directly — no intermediate config
 
-Agents write `Dockerfile` and `docker-compose.yml` directly to `.boomlooper/workspace/`. They do NOT use intermediate config files like `workspace.json`. The compose file IS the config.
+Agents write `Dockerfile` and `docker-compose.yml` directly to `.loopyard/workspace/`. They do NOT use intermediate config files like `workspace.json`. The compose file IS the config.
 
 **Correct flow:**
 1. Agent reads codebase to understand the stack
@@ -401,17 +401,17 @@ When a pattern exists, use it. Don't write your own version.
 
 | Need | Use | Don't |
 |------|-----|-------|
-| Compose file path | `Compose.compose_path(project_dir)` | `Path.join([dir, ".boomlooper", "workspace", "docker-compose.yml"])` |
+| Compose file path | `Compose.compose_path(project_dir)` | `Path.join([dir, ".loopyard", "workspace", "docker-compose.yml"])` |
 | Any docker command | `Docker.docker(args)` | `System.cmd("docker", args)` |
 | Streaming docker | `Docker.stream(args, callback)` | `Port.open + System.find_executable("docker")` |
 | Container running? | `Docker.container_running?(name)` | `System.cmd("docker", ["inspect", ...])` |
 | Container ports | `Docker.container_ports(name)` | `System.cmd("docker", ["port", ...])` |
 | Service list | `ServiceStatus.for_workspace(path)` | `System.cmd("docker", ["ps", ...])` + parsing |
 | Container/volume state | `Docker.Observer.containers()` / `.volumes()` | `docker ps` from LiveViews |
-| Project name | `Compose.project_name(workspace_id)` | `"bl-#{workspace_id}"` hardcoded |
+| Project name | `Compose.project_name(workspace_id)` | `"loopyard-#{workspace_id}"` hardcoded |
 | Registry lookup | `RegistryHelper.whereis/call/cast` | `case Registry.lookup(...) do [{pid, _}] -> ...` |
 | Read file from volume | `VolumeIO.read_file(vol, path)` | `Docker.exec_in(container, "cat ...")` |
 | Write file to volume | `VolumeIO.write_file(vol, path, content)` | Rolling your own base64 + docker exec |
 | Clone repo into volume | `VolumeCloner.clone_into_volume(vol, url)` | Inline git clone + docker run |
 
-**Every Docker CLI call goes through `BoomLooper.Docker`.** No `System.cmd("docker", ...)` anywhere else. Docker.docker/2 handles timeouts, telemetry, and error formatting. Docker.stream/3 handles long-running commands with callbacks. Docker.open_port/1 handles raw port needs (Observer events, terminal).
+**Every Docker CLI call goes through `Loopyard.Docker`.** No `System.cmd("docker", ...)` anywhere else. Docker.docker/2 handles timeouts, telemetry, and error formatting. Docker.stream/3 handles long-running commands with callbacks. Docker.open_port/1 handles raw port needs (Observer events, terminal).

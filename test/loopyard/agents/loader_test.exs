@@ -18,7 +18,7 @@ defmodule Loopyard.Agents.LoaderTest do
       description: Bootstrap a project
       model: opus
       tools:
-        - boom-looper-browser
+        - loopyard-browser
       ---
 
       You are a Setup agent.
@@ -28,7 +28,7 @@ defmodule Loopyard.Agents.LoaderTest do
       assert agent.name == "Setup"
       assert agent.description == "Bootstrap a project"
       assert agent.model == "opus"
-      assert agent.tools == ["boom-looper-browser"]
+      assert agent.tools == ["loopyard-browser"]
       assert agent.body =~ "You are a Setup agent"
       assert agent.folder == dir
     end

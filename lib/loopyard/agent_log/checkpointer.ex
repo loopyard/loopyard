@@ -111,7 +111,7 @@ defmodule Loopyard.AgentLog.Checkpointer do
 
   @doc """
   Run a snapshot immediately (blocks until the compaction finishes or
-  errors). Primarily for tests and `mix boom.rpc` debugging.
+  errors). Primarily for tests and `mix loopyard.rpc` debugging.
   """
   def force_checkpoint(pid) do
     GenServer.call(pid, :force_checkpoint, 60_000)

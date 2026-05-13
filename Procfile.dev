@@ -1,1 +1,1 @@
-web: mix boom.server
+web: mix loopyard.server

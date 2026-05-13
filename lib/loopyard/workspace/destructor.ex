@@ -7,7 +7,7 @@ defmodule Loopyard.Workspace.Destructor do
   and stopped there. Containers, compose networks, named volumes,
   running agents, agent log files, the compose directory on the host,
   and ETS entries for chat agents were all left behind. Users
-  accumulated gigabytes of ghost volumes and stale `bl-*` containers
+  accumulated gigabytes of ghost volumes and stale `loopyard-*` containers
   after a few weeks of normal use.
 
   `destroy/1` runs every teardown step in the right order, continues
@@ -140,7 +140,7 @@ defmodule Loopyard.Workspace.Destructor do
     end)
   end
 
-  # Remove every `bl-<workspace_id>*` volume Docker knows about. Covers
+  # Remove every `loopyard-<workspace_id>*` volume Docker knows about. Covers
   # the code volume plus any auxiliary volumes the compose file declared
   # (cache, deps, etc.) that `down -v` might have missed because they
   # were `external: true`.
@@ -182,7 +182,7 @@ defmodule Loopyard.Workspace.Destructor do
   end
 
   # Sweep path for an already-deleted workspace: try to find any
-  # remaining bl-<workspace_id>* containers/volumes and remove them.
+  # remaining loopyard-<workspace_id>* containers/volumes and remove them.
   # Runs when the ETS entry is already gone — typically after an
   # interrupted teardown.
   defp sweep_orphans(workspace_id) do
@@ -191,7 +191,7 @@ defmodule Loopyard.Workspace.Destructor do
              "ps",
              "-a",
              "--filter",
-             "name=bl-#{workspace_id}",
+             "name=loopyard-#{workspace_id}",
              "--format",
              "{{.ID}}"
            ]) do

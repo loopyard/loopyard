@@ -185,7 +185,7 @@ defmodule Loopyard.ChatAgent.SessionManager do
                 "WHY: the CLI session died, and trying to spawn a new one failed. " <>
                 "CONSEQUENCE: your message was saved but won't be processed until the CLI is back. " <>
                 "ACTION: (1) check that `claude` is installed and authenticated " <>
-                "(`mix boom.rpc 'ClaudeCode.Test.smoke()'`), (2) click Restart in the sidebar, " <>
+                "(`mix loopyard.rpc 'ClaudeCode.Test.smoke()'`), (2) click Restart in the sidebar, " <>
                 "(3) send your message again. Prior conversation context is preserved.",
             timestamp: DateTime.utc_now()
           }

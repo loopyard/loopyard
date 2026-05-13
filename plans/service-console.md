@@ -12,14 +12,14 @@ Browser (xterm.js) ← WebSocket → Phoenix Channel → Port (docker exec -it) 
 
 ### Key Modules
 
-- `BoomLooper.Terminal` — GenServer wrapping a Port to `docker exec -it`. One per active console session. Broadcasts output via PubSub.
-- `BoomLooperWeb.TerminalChannel` — Phoenix Channel for bidirectional byte streaming between browser and Terminal GenServer.
+- `Loopyard.Terminal` — GenServer wrapping a Port to `docker exec -it`. One per active console session. Broadcasts output via PubSub.
+- `LoopyardWeb.TerminalChannel` — Phoenix Channel for bidirectional byte streaming between browser and Terminal GenServer.
 - `assets/js/terminal.js` — xterm.js integration, connects to the channel.
 
 ### Terminal GenServer
 
 ```elixir
-defmodule BoomLooper.Terminal do
+defmodule Loopyard.Terminal do
   use GenServer
 
   # State: port, container_name, subscribers
@@ -36,7 +36,7 @@ Shared session: one Terminal GenServer per container. Multiple Channel subscribe
 ### Channel
 
 ```elixir
-defmodule BoomLooperWeb.TerminalChannel do
+defmodule LoopyardWeb.TerminalChannel do
   use Phoenix.Channel
 
   # join "terminal:<container_name>" — subscribe to Terminal output
@@ -87,8 +87,8 @@ The terminal fills the main panel. Service logs and console are tabs.
 ## Implementation Order
 
 1. Add xterm.js to assets (`npm install xterm @xterm/addon-fit`)
-2. Create `BoomLooper.Terminal` GenServer
-3. Create `BoomLooperWeb.TerminalChannel`
+2. Create `Loopyard.Terminal` GenServer
+3. Create `LoopyardWeb.TerminalChannel`
 4. Create `assets/js/terminal.js` hook
 5. Add console route and UI
 6. Add multiplayer replay (serialize xterm buffer for late joiners)

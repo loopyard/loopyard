@@ -72,7 +72,7 @@ contract), offline Claude API caching, cross-project agent memory.
 
 4. **Predictable means idempotent.** A restart mid-operation must either
    complete the operation or roll it back cleanly — never "partially
-   applied and forgotten." `BoomLooper.Saga` already does this for
+   applied and forgotten." `Loopyard.Saga` already does this for
    multi-step ops; extend the discipline anywhere we're doing N
    sequential side effects without a rollback contract.
 
@@ -100,7 +100,7 @@ blast radius.
   `:retry_session`, `ensure_session_alive`).
 - [x] `init_resume` passes saved `claude_session_id` through to
   `start_session` so server restart continues the same Claude thread.
-- [x] Regression test: `test/boom_looper/chat_agent/session_resume_test.exs`
+- [x] Regression test: `test/loopyard/chat_agent/session_resume_test.exs`
   (6 tests — capture, all four restart paths, init_resume).
 - [ ] **Best-effort recovery for pre-fix agents with no saved
   `claude_session_id`.** Call `ClaudeCode.History.list_sessions(
@@ -114,12 +114,12 @@ blast radius.
   — so the user knows the CLI is starting fresh despite the visible
   history. Do NOT append this on clean resumes (the regression fixed
   in commit ba99392).
-- [ ] **Telemetry**: emit `[:boom_looper, :agent, :context_gap]` on any
+- [ ] **Telemetry**: emit `[:loopyard, :agent, :context_gap]` on any
   forced amnesia event. Route to /system/events for ops visibility.
 
 ### 2. Token/cost/model accounting across restart — **DONE**
 
-- [x] Regression test: `test/boom_looper/chat_agent/restart_state_test.exs`
+- [x] Regression test: `test/loopyard/chat_agent/restart_state_test.exs`
   "surface #2" section simulates 3 turns via `%Event.SessionResult{}`,
   confirms all five accumulators (in/out/cache tokens, cost, model)
   survive a stop + `resume: true` cycle byte-for-byte.
@@ -136,9 +136,9 @@ blast radius.
   accumulator as `%{role: :assistant, partial: true, content: text <>
   "⚠ Truncated — …"}` on stream_error / stream_timeout, persisted to
   the log + broadcast.
-- [x] Telemetry: `[:boom_looper, :agent, :partial_finalized]` with
+- [x] Telemetry: `[:loopyard, :agent, :partial_finalized]` with
   byte count + reason.
-- [x] Regression: `test/boom_looper/chat_agent/stream_integrity_test.exs`
+- [x] Regression: `test/loopyard/chat_agent/stream_integrity_test.exs`
   surface #3 section (4 tests).
 
 ### 3-legacy. Historical design notes (kept for reference):
@@ -170,7 +170,7 @@ a tool error, or silently swallow it?
   `:rejected`, auth error, `init_resume`. Prevents UI spinners from
   pinning to "Running docker_compose…" forever after a mid-tool-call
   crash.
-- [x] Regression test: `test/boom_looper/chat_agent/restart_state_test.exs`
+- [x] Regression test: `test/loopyard/chat_agent/restart_state_test.exs`
   "surface #4" section — 7 tests, one per reset path.
 
 ### 5. MCP tool server lifecycle tied to agent lifetime
@@ -187,20 +187,20 @@ tools carry ANY in-memory state that matters across restart?
   the new CLI re-establishes it before the user's next turn, with
   no visible failure.
 
-### 6. Docker container persistence across BoomLooper restart
+### 6. Docker container persistence across Loopyard restart
 
 **Known good**: `ServiceManager.resume` reconnects to running
 containers via `Compose.ps` after server restart. `Docker.Observer`
-ETS cache is rebuilt from live docker state, not from BoomLooper's
+ETS cache is rebuilt from live docker state, not from Loopyard's
 memory of it.
 
-**Suspected gap**: what if the BoomLooper server dies while a container
+**Suspected gap**: what if the Loopyard server dies while a container
 is mid-start (pulling image, running migrations, warming up)? On
 restart, does the ServiceManager correctly pick up the in-progress
 boot, or does it kick off a duplicate `compose up` that fights the
 existing one?
 
-- [ ] Failing test: start a workspace, crash the BoomLooper process
+- [ ] Failing test: start a workspace, crash the Loopyard process
   mid-`docker compose up`, restart, assert the resumed ServiceManager
   either waits for the in-flight compose or no-ops because containers
   are already up. No duplicate `compose up`.
@@ -219,10 +219,10 @@ existing one?
 - [x] Failed-to-expose entries get `exposure_error` +
   `exposure_error_at` fields so `/system/*` can render the
   degraded state.
-- [x] Telemetry: `[:boom_looper, :port_registry, :reassigned]` +
-  `[:boom_looper, :port_registry, :reopen_failed]`.
+- [x] Telemetry: `[:loopyard, :port_registry, :reassigned]` +
+  `[:loopyard, :port_registry, :reopen_failed]`.
 - [x] Regression: three new tests in
-  `test/boom_looper/port_registry_test.exs` under the
+  `test/loopyard/port_registry_test.exs` under the
   `retry_exposure/3` describe block (happy path, conflict →
   reassign + telemetry, not-found).
 - [ ] Follow-up TODO: UI surfacing on sidebar + context panel
@@ -239,7 +239,7 @@ already show up in the test logs ("Listen on 32866 failed:
 a docker-proxy from the previous run.
 
 - [ ] Failing test: start a workspace, note the exposed port, restart
-  BoomLooper, assert the port still forwards to the container OR is
+  Loopyard, assert the port still forwards to the container OR is
   cleanly re-exposed with no EADDRINUSE.
 - [ ] Audit: does the exposer verify the port is actually listening
   after "re-open", or does it just log the failure and move on?
@@ -247,7 +247,7 @@ a docker-proxy from the previous run.
 ### 8. Terminal buffer persistence across viewer reconnects
 
 **Known**: terminal_echo_test.exs covers the "late joiner gets the
-buffer" case. But does the buffer survive a BoomLooper server restart?
+buffer" case. But does the buffer survive a Loopyard server restart?
 The terminal is a PTY subprocess — it dies with the server or with the
 container. What should happen when the user refreshes the browser after
 a restart? Blank screen? Replay? Message saying "terminal disconnected
@@ -272,7 +272,7 @@ a restart? Blank screen? Replay? Message saying "terminal disconnected
   `:boot_deadline_exceeded`.
 - [x] Callers switched: `WorkspaceLive.AgentLifecycle` (user-driven
   boot) + `EvalRunner` (eval setup boot).
-- [x] Regression: `test/boom_looper/agent_boot_watcher_test.exs`
+- [x] Regression: `test/loopyard/agent_boot_watcher_test.exs`
   (4 tests — crash-while-booting, crash-after-booting no-op,
   clean-exit no-op, end-to-end via start_monitored).
 
@@ -305,9 +305,9 @@ product-UX terms.
 - [x] `:auth_expired` → no automated retry; user must re-authenticate.
 - [x] `send_message` short-circuits both states so the CLI isn't
   hammered; user's message is logged with a visible explainer.
-- [x] Telemetry emitted: `[:boom_looper, :agent, :rate_limit]`,
-  `[:boom_looper, :agent, :auth_expired]`.
-- [x] Regression test: `test/boom_looper/chat_agent/rate_limit_test.exs`
+- [x] Telemetry emitted: `[:loopyard, :agent, :rate_limit]`,
+  `[:loopyard, :agent, :auth_expired]`.
+- [x] Regression test: `test/loopyard/chat_agent/rate_limit_test.exs`
   (8 tests).
 - [ ] **UI**: render the new statuses on the sidebar + agent context
   panel (badges, countdown for rate-limit, re-auth CTA for auth).
@@ -322,7 +322,7 @@ product-UX terms.
 
 **Known gap**: the current `handle_info({:EXIT, _pid, reason}, :thinking)`
 path catches streaming-task crashes and reschedules with exponential
-backoff (`BoomLooper.Retry.backoff_ms/2`, capped at `@max_consecutive_crashes`).
+backoff (`Loopyard.Retry.backoff_ms/2`, capped at `@max_consecutive_crashes`).
 But "session crashed" is the only failure mode it covers. The Claude API
 can return 429 (rate-limited), 529 (overloaded), 401 (auth expired), 400
 (bad request), 5xx (transient). Today those land as a `%Event.ToolResult{
@@ -378,11 +378,11 @@ class as #3 but across agents.
   killed, shutdown-timeout, node crash).
 - [x] `state.tracked_cli_os_pid` exposed in `summary/1` so
   `/system/orphans` + tests can observe it.
-- [x] Regression test: `test/boom_looper/chat_agent/cli_tracking_test.exs`
+- [x] Regression test: `test/loopyard/chat_agent/cli_tracking_test.exs`
   (5 tests covering the tracking discipline under the fake backend
   + a terminate/2-source assertion that catches re-introduction of
   the manual kill).
-- [x] Tell-the-user path: `:boom_looper, :resources, :released`
+- [x] Tell-the-user path: `:loopyard, :resources, :released`
   telemetry surfaces on `/system/orphans` + `/system/events`. Ops
   concern, no user-chat-channel message needed.
 
@@ -398,7 +398,7 @@ next restart. No alarm fires today.
 - [ ] Add a per-agent `:sync_claude_session_id` tick every 30s (same
   cadence as Agent.Reconciler). Compare `state.claude_session_id` to
   `backend.session_id(state.session)`. On mismatch, update state
-  + emit `[:boom_looper, :agent, :session_drift]` telemetry.
+  + emit `[:loopyard, :agent, :session_drift]` telemetry.
 - [ ] Failing test: mock the backend to report a different session_id
   than state holds; advance the tick; assert state is corrected.
 - [ ] Tell-the-user path: silent correction is fine for drift (user
@@ -420,7 +420,7 @@ current code tries to bolt on compensation in each `handle_info`,
 but misses edge cases (e.g. ETS write succeeds, log append fails —
 restart sees state that never happened).
 
-- [ ] Model the turn as a `BoomLooper.Saga` with explicit
+- [ ] Model the turn as a `Loopyard.Saga` with explicit
   compensating actions: e.g. if "start streaming Task" fails,
   rewind the appended user message and broadcast a compensating
   `:user_message_rolled_back` event.
@@ -440,7 +440,7 @@ restart sees state that never happened).
   `send_message_normal` inline; wired into `:stream_done`,
   `:stream_error`, `:stream_timeout`, `:rate_limit_retry` so turns
   drain in strict FIFO.
-- [x] Regression: `test/boom_looper/chat_agent/concurrent_send_test.exs`
+- [x] Regression: `test/loopyard/chat_agent/concurrent_send_test.exs`
   (3 tests).
 
 ### 15-legacy. Design notes:
@@ -466,8 +466,8 @@ second query with an error stream.
   `{:stream_event, id, ref, event}`. Same for `:stream_done` +
   `:stream_error`.
 - [x] Ref-matched handlers land on state; mismatched events drop with
-  `[:boom_looper, :agent, :stale_stream_event]` telemetry.
-- [x] Regression: `test/boom_looper/chat_agent/stream_integrity_test.exs`
+  `[:loopyard, :agent, :stale_stream_event]` telemetry.
+- [x] Regression: `test/loopyard/chat_agent/stream_integrity_test.exs`
   surface #16 section (3 tests — mismatch drops, stream_done-mismatch
   keeps :thinking, match path mutates as control).
 
@@ -489,7 +489,7 @@ text appended, wrong tokens counted, wrong tool name recorded.
 ### 17. ETF log torn writes / disk failures — **DONE (core)**
 
 - [x] `Persistence.safe_append/4` catches raises + throws from
-  `AgentLog.append/2`. On error: emits `[:boom_looper, :persistence,
+  `AgentLog.append/2`. On error: emits `[:loopyard, :persistence,
   :error]` telemetry with path + reason + event kind, logs a clear
   warning telling the user their change won't survive a restart,
   returns `:ok`. ChatAgent keeps serving from in-memory state.
@@ -497,7 +497,7 @@ text appended, wrong tokens counted, wrong tool name recorded.
   `AgentLog.read_entries` pattern-matching on
   `when byte_size(rest) >= size` — half-records fall through to the
   base case and are skipped silently.
-- [x] Regression: `test/boom_looper/chat_agent/persistence_resilience_test.exs`
+- [x] Regression: `test/loopyard/chat_agent/persistence_resilience_test.exs`
   (3 tests — persist_message / persist_agent / persist_message_update
   each with an unwritable path don't raise + telemetry fires).
 - [ ] Follow-up TODO: surface the degradation in the UI (inline system
@@ -512,7 +512,7 @@ half-written length-prefixed record — replay either crashes parsing
 or silently skips everything after the torn record.
 
 - [ ] AgentLog.replay: detect + truncate to last valid record. Emit
-  `[:boom_looper, :agent_log, :truncated]` telemetry with bytes
+  `[:loopyard, :agent_log, :truncated]` telemetry with bytes
   discarded.
 - [ ] Persistence.persist_* wraps `AgentLog.append` in a try/rescue.
   On disk error: transition the agent to a new `:persistence_degraded`
@@ -533,8 +533,8 @@ or silently skips everything after the torn record.
   window N% full. Claude will silently drop the earliest turns…"
   Clear the warn flag on stream_done so the warning re-fires on
   later turns if utilization stays high.
-- [x] Telemetry: `[:boom_looper, :agent, :context_warning]`.
-- [x] Regression: `test/boom_looper/chat_agent/context_window_test.exs`
+- [x] Telemetry: `[:loopyard, :agent, :context_warning]`.
+- [x] Regression: `test/loopyard/chat_agent/context_window_test.exs`
   (5 tests).
 - [ ] Follow-up TODO: auto-compaction when utilization crosses some
   threshold. The SDK doesn't expose a programmatic `/compact` API
@@ -572,11 +572,11 @@ to us. Today we surface `cache_read_tokens` + `input_tokens` but no
   can compare.
 - [x] On mismatch, init_resume appends an inline `⚠ System prompt
   changed since this agent's last boot…` message + emits
-  `[:boom_looper, :agent, :prompt_drift]` telemetry with old/new
+  `[:loopyard, :agent, :prompt_drift]` telemetry with old/new
   hashes.
 - [x] No-op for agents resumed without a saved hash (pre-fix
   rows) — no marker, just populate the new hash for next time.
-- [x] Regression: `test/boom_looper/chat_agent/prompt_drift_test.exs`
+- [x] Regression: `test/loopyard/chat_agent/prompt_drift_test.exs`
   (5 tests).
 
 ### 19-legacy. Design notes:
@@ -615,9 +615,9 @@ is really "the agent is honoring two conflicting system prompts."
 - [x] Next `:send_message` goes through `ensure_session_alive`,
   which already spawns a fresh CLI with `resume: claude_session_id`
   → conversation continues seamlessly from user POV.
-- [x] Telemetry: `[:boom_looper, :agent, :idle_reaped]` with idle
+- [x] Telemetry: `[:loopyard, :agent, :idle_reaped]` with idle
   duration.
-- [x] Regression: `test/boom_looper/chat_agent/idle_reap_test.exs`
+- [x] Regression: `test/loopyard/chat_agent/idle_reap_test.exs`
   (4 tests).
 
 ### 20-legacy. Design notes:
@@ -634,8 +634,8 @@ may never return to.
   already spawns a new CLI with `resume: claude_session_id` — context
   preserved, RAM reclaimed. User sees "Reconnected (resumed
   conversation …)" exactly the same as a CLI crash recovery.
-- [ ] Telemetry: `[:boom_looper, :agent, :idle_reaped]`. Config:
-  `Application.get_env(:boom_looper, :agent_idle_reap_hours, 4)`.
+- [ ] Telemetry: `[:loopyard, :agent, :idle_reaped]`. Config:
+  `Application.get_env(:loopyard, :agent_idle_reap_hours, 4)`.
 - [ ] Failing test: set last_activity to 5h ago, tick the reaper,
   assert session was stopped + context preserved.
 
@@ -649,7 +649,7 @@ nested modules (`defmodule Changed, do: defstruct([])` inside a parent
 `Events.*` module). Target per user preference is **<30s**.
 
 - [ ] Diagnose: reproduce the parallel-compile error outside the test
-  suite. Confirm whether it's an Elixir 1.19.5 regression, a BoomLooper
+  suite. Confirm whether it's an Elixir 1.19.5 regression, a Loopyard
   pattern issue, or both.
 - [ ] Fix: either move struct defs out of their parent module into
   top-level files, or add explicit `Code.ensure_compiled/1` preambles
@@ -675,7 +675,7 @@ Full serial `mix test` shows 14 failures. 13 are pre-existing
 | 2 | `ConnectLive mount returns under 500ms`                                                    | dev-box speed variance                        |
 | 3 | `every service_statuses assignment guarded against empty replacement`                      | invariant-test pattern mismatch               |
 | 4 | `StateKeeper tables are referenced in application code`                                    | invariant-test reference drift                |
-| 5 | `remove project deletes .boomlooper directory`                                             | cleanup timing race                           |
+| 5 | `remove project deletes .loopyard directory`                                             | cleanup timing race                           |
 | 6 | `messages are capped at 1000`                                                              | "auto-continue" side-effect appends "Continue." — pre-existing, outside scope |
 | 8 | `PortRegistry set_exposure/4 false stops the running exposer`                              | port-exposer race                             |
 | 9–12 | `WorkspaceLive` various                                                                | likely same workspace-supervisor test fixture|
@@ -711,11 +711,11 @@ Exit criteria for the plan:
   the fix and passes with it.
 - `mix test` runs in <30s with zero compile errors under parallel
   execution.
-- A fresh BoomLooper restart against a 500-msg agent resumes to an
+- A fresh Loopyard restart against a 500-msg agent resumes to an
   unbroken conversation (user can say "keep going" and the agent
   remembers prior context).
 - No silent catchalls on the agent process's mailbox: every unknown
-  message surfaces via the existing `:boom_looper, :actor, :unknown_message`
+  message surfaces via the existing `:loopyard, :actor, :unknown_message`
   telemetry (already enforced in audit-2).
 - Every 429 / 5xx / auth failure from the Claude API is visible in
   the UI with an actionable message. No indefinite spinners. No
@@ -734,7 +734,7 @@ Beyond the per-surface regression tests, land these once:
   coherent — no stuck `:thinking`, no orphan `active_tool`, no ghost
   partial messages, resume works cleanly.
 - [ ] **Integration test: full restart cycle.** Boot workspace, run
-  3 turns across 2 services, `GenServer.stop(BoomLooper.Application, …)`,
+  3 turns across 2 services, `GenServer.stop(Loopyard.Application, …)`,
   restart, verify: services still running, agent resumes with
   `resume: sid`, token/cost accounting preserved, no duplicate
   containers.

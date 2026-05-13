@@ -19,7 +19,7 @@ What should have happened instead.
 - OS: macOS __
 - Docker: OrbStack / Colima / Docker Desktop
 - Browser: Safari / Chrome / Firefox
-- Boom Looper version: (commit SHA or branch)
+- Loopyard version: (commit SHA or branch)
 
 **Screenshots**
 If applicable.

@@ -12,7 +12,7 @@ defmodule Loopyard.Workspace.ServiceStatusTest do
   describe "list_defined_services/1" do
     setup do
       tmp_dir =
-        Path.join(System.tmp_dir!(), "boom-looper-svc-status-test-#{:rand.uniform(100_000)}")
+        Path.join(System.tmp_dir!(), "loopyard-svc-status-test-#{:rand.uniform(100_000)}")
 
       File.mkdir_p!(tmp_dir)
       on_exit(fn -> File.rm_rf!(tmp_dir) end)
@@ -174,7 +174,7 @@ defmodule Loopyard.Workspace.ServiceStatusTest do
 
     setup do
       tmp_dir =
-        Path.join(System.tmp_dir!(), "boom-looper-svc-full-test-#{:rand.uniform(100_000)}")
+        Path.join(System.tmp_dir!(), "loopyard-svc-full-test-#{:rand.uniform(100_000)}")
 
       File.mkdir_p!(tmp_dir)
       on_exit(fn -> File.rm_rf!(tmp_dir) end)

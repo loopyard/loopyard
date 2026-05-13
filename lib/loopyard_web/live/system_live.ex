@@ -156,7 +156,7 @@ defmodule LoopyardWeb.SystemLive do
   def render(assigns) do
     ~H"""
     <.page_shell
-      breadcrumbs={[{"Boom Looper", "/"}, {"System", nil}]}
+      breadcrumbs={[{"Loopyard", "/"}, {"System", nil}]}
       iex_session={@iex_session}
       max_width={:lg}
       flash={@flash}

@@ -10,9 +10,9 @@ evals/<name>/
 ```
 
 ```bash
-mix loopyard.rpc 'BoomLooper.EvalRunner.eval("maybe-finance")'  # by name
-mix loopyard.rpc 'BoomLooper.EvalRunner.list_evals()'           # list all
-mix loopyard.rpc 'BoomLooper.EvalRunner.status()'               # check progress
+mix loopyard.rpc 'Loopyard.EvalRunner.eval("maybe-finance")'  # by name
+mix loopyard.rpc 'Loopyard.EvalRunner.list_evals()'           # list all
+mix loopyard.rpc 'Loopyard.EvalRunner.status()'               # check progress
 ```
 
 Every eval starts fresh (tears down existing project first via `remove_project` — the same path real users hit). Configs and run results are tracked in git; project clones are gitignored. When an eval fails, fix the **prompts** or **tools**, not the eval target. See `/eval` skill for details.
@@ -32,7 +32,7 @@ Evals clone a git URL using the **host's git binary** into `evals/<name>/project
 
 **An eval only passes with zero human intervention.** If you have to manually send a message to kick the agent ("run bundle install", "continue"), that's a failure. The system must be autonomous enough to complete setup without nudges.
 
-**No technology-specific code in the system.** The core BoomLooper code (GenServers, tools, compose generation) must be language-agnostic. Don't hard-code Rails commands, Python paths, or Node conventions. Examples in prompts are fine (they teach patterns), but system logic must work for any stack.
+**No technology-specific code in the system.** The core Loopyard code (GenServers, tools, compose generation) must be language-agnostic. Don't hard-code Rails commands, Python paths, or Node conventions. Examples in prompts are fine (they teach patterns), but system logic must work for any stack.
 
 **Signs of overfitting:**
 - All evals use the same language/framework (currently all Ruby/Rails — need Python, Node, Go, etc.)

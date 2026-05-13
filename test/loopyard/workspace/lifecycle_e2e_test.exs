@@ -26,7 +26,7 @@ defmodule Loopyard.Workspace.LifecycleE2ETest do
 
   setup do
     ws_id = "e2etest#{System.unique_integer([:positive]) |> rem(9999)}"
-    project_dir = Path.join(System.tmp_dir!(), "boom-looper-e2e-#{ws_id}")
+    project_dir = Path.join(System.tmp_dir!(), "loopyard-e2e-#{ws_id}")
     File.mkdir_p!(project_dir)
 
     # Minimal compose: one workspace container running `sleep infinity`.

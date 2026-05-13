@@ -14,7 +14,7 @@ defmodule Loopyard.SSHServerTest do
       raise "SSHServer not running — cannot run SSH tests"
     end
 
-    user_dir = Path.join(System.tmp_dir!(), "boom-looper-ssh-client-#{:rand.uniform(100_000)}")
+    user_dir = Path.join(System.tmp_dir!(), "loopyard-ssh-client-#{:rand.uniform(100_000)}")
     File.mkdir_p!(user_dir)
     File.chmod!(user_dir, 0o700)
 

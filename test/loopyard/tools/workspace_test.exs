@@ -30,7 +30,7 @@ defmodule Loopyard.Tools.WorkspaceTest do
   describe "workspace metadata tools" do
     @describetag :docker
     setup do
-      tmp_dir = Path.join(System.tmp_dir!(), "boom-looper-ws-tool-test-#{:rand.uniform(100_000)}")
+      tmp_dir = Path.join(System.tmp_dir!(), "loopyard-ws-tool-test-#{:rand.uniform(100_000)}")
       File.mkdir_p!(tmp_dir)
 
       id = "ws-tool-test-#{:rand.uniform(100_000)}"
@@ -120,7 +120,7 @@ defmodule Loopyard.Tools.WorkspaceTest do
 
   describe "system messages" do
     setup do
-      tmp_dir = Path.join(System.tmp_dir!(), "boom-looper-rebuild-test-#{:rand.uniform(100_000)}")
+      tmp_dir = Path.join(System.tmp_dir!(), "loopyard-rebuild-test-#{:rand.uniform(100_000)}")
       File.mkdir_p!(tmp_dir)
 
       id = "rebuild-msg-test-#{:rand.uniform(100_000)}"

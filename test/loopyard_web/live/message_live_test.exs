@@ -6,7 +6,7 @@ defmodule LoopyardWeb.MessageLiveTest do
   alias Loopyard.ChatAgent
 
   defp create_workspace do
-    tmp_dir = Path.join(System.tmp_dir!(), "boom-looper-msg-test-#{:rand.uniform(100_000)}")
+    tmp_dir = Path.join(System.tmp_dir!(), "loopyard-msg-test-#{:rand.uniform(100_000)}")
     File.mkdir_p!(tmp_dir)
     repo_dir = Path.join(tmp_dir, ".loopyard/repo")
     File.mkdir_p!(repo_dir)

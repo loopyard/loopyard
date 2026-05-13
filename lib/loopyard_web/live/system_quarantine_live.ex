@@ -107,7 +107,7 @@ defmodule LoopyardWeb.SystemQuarantineLive do
   def render(assigns) do
     ~H"""
     <.page_shell
-      breadcrumbs={[{"Boom Looper", "/"}, {"System", "/system"}, {"Quarantine", nil}]}
+      breadcrumbs={[{"Loopyard", "/"}, {"System", "/system"}, {"Quarantine", nil}]}
       iex_session={@iex_session}
       max_width={:xl}
       flash={@flash}

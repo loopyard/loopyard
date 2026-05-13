@@ -59,7 +59,7 @@ defmodule Loopyard.VolumeManager do
 
   @doc """
   List all volumes for a workspace.
-  Returns volumes matching bl-{workspace_id}* pattern.
+  Returns volumes matching loopyard-{workspace_id}* pattern.
   """
   def list_workspace_volumes(workspace_id) do
     case Docker.docker(["volume", "ls", "--format", "{{.Name}}"]) do
@@ -82,14 +82,14 @@ defmodule Loopyard.VolumeManager do
   end
 
   @doc """
-  List ALL bl-* volumes — name + parsed purpose only, no `du` shell-out.
+  List ALL loopyard-* volumes — name + parsed purpose only, no `du` shell-out.
 
   Use this for cluster overviews where you'd otherwise spawn one Alpine
   container per volume just to measure size. If you need sizes, fetch
   them separately for the volumes the user actually opens.
   """
   def list_all_volumes do
-    case Docker.docker(["volume", "ls", "--filter", "name=bl-", "--format", "{{.Name}}"]) do
+    case Docker.docker(["volume", "ls", "--filter", "name=loopyard-", "--format", "{{.Name}}"]) do
       {:ok, output} ->
         output
         |> String.trim()
@@ -144,7 +144,7 @@ defmodule Loopyard.VolumeManager do
   # Parse volume name to determine its purpose and related service
   defp parse_volume_purpose(name) do
     cond do
-      Regex.match?(~r/^bl-[a-f0-9]+-code$/, name) ->
+      Regex.match?(~r/^loopyard-[a-f0-9]+-code$/, name) ->
         {:code, "workspace", "Project source code"}
 
       String.contains?(name, "cache") ->
@@ -234,15 +234,9 @@ defmodule Loopyard.VolumeManager do
 
         orphans =
           Enum.filter(volumes, fn name ->
-            case Regex.run(~r/^(?:code|cache|deps|bl-.*_cache)-([a-f0-9]{4})$/, name) do
-              [_, ws_id] ->
-                ws_id not in active_ids
-
-              nil ->
-                case Regex.run(~r/^bl-([a-f0-9]{4})_/, name) do
-                  [_, ws_id] -> ws_id not in active_ids
-                  nil -> false
-                end
+            case Regex.run(~r/^loopyard-([a-f0-9]+)-/, name) do
+              [_, ws_id] -> ws_id not in active_ids
+              nil -> false
             end
           end)
 
@@ -348,7 +342,7 @@ defmodule Loopyard.VolumeManager do
   end
 
   defp find_container_for_volume(volume_name) do
-    case Regex.run(~r/^bl-([a-f0-9]+)-code$/, volume_name) do
+    case Regex.run(~r/^loopyard-([a-f0-9]+)-code$/, volume_name) do
       [_, workspace_id] ->
         container = "loopyard-#{workspace_id}-workspace-1"
 

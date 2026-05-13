@@ -87,7 +87,7 @@ defmodule LoopyardWeb.ConnectLive do
     ~H"""
     <div class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
       <.header
-        breadcrumbs={[{"Boom Looper", "/"}, {"Remote", nil}]}
+        breadcrumbs={[{"Loopyard", "/"}, {"Remote", nil}]}
         iex_session={@iex_session}
         host_exposed={@exposed}
       />

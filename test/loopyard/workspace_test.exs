@@ -67,7 +67,7 @@ defmodule Loopyard.WorkspaceTest do
 
   describe "save/2 and load/1" do
     setup do
-      tmp_dir = Path.join(System.tmp_dir!(), "boom-looper-ws-test-#{:rand.uniform(100_000)}")
+      tmp_dir = Path.join(System.tmp_dir!(), "loopyard-ws-test-#{:rand.uniform(100_000)}")
       File.mkdir_p!(tmp_dir)
       on_exit(fn -> File.rm_rf!(tmp_dir) end)
       %{tmp_dir: tmp_dir}

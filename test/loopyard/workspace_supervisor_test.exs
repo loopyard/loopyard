@@ -4,7 +4,7 @@ defmodule Loopyard.WorkspaceSupervisorTest do
   alias Loopyard.WorkspaceSupervisor
 
   setup do
-    tmp_dir = Path.join(System.tmp_dir!(), "boom-looper-ws-sup-test-#{:rand.uniform(100_000)}")
+    tmp_dir = Path.join(System.tmp_dir!(), "loopyard-ws-sup-test-#{:rand.uniform(100_000)}")
     File.mkdir_p!(tmp_dir)
     workspace_id = Loopyard.Workspace.workspace_id(tmp_dir)
 

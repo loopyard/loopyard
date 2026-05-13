@@ -50,11 +50,11 @@ Agent: "I need to install this npm package"
 
 ### Gate declaration
 
-Tools declare gates via the `BoomLooper.Tool` macro:
+Tools declare gates via the `Loopyard.Tool` macro:
 
 ```elixir
-defmodule BoomLooper.Tools.Secrets.GetSecret do
-  use BoomLooper.Tool,
+defmodule Loopyard.Tools.Secrets.GetSecret do
+  use Loopyard.Tool,
     name: "get_secret",
     description: "Retrieve a secret value",
     gate: :approve,  # :approve, :notify, or nil (no gate)
@@ -116,7 +116,7 @@ Different agent types have different gate policies:
 ```elixir
 %AgentType{
   name: "Setup",
-  tool_servers: ["boom-looper-container", "boom-looper-secrets"],
+  tool_servers: ["loopyard-container", "loopyard-secrets"],
   gates: %{
     "get_secret" => :approve,     # must approve each secret access
     "set_secret" => :approve,     # must approve secret creation

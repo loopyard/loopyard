@@ -233,8 +233,8 @@ defmodule Loopyard.VolumeIO do
 
   # Find a running workspace container that has this volume mounted
   defp find_container_for_volume(volume_name) do
-    # Volume names are like bl-{workspace_id}-code
-    case Regex.run(~r/^bl-([a-f0-9]+)-code$/, volume_name) do
+    # Volume names are like loopyard-{workspace_id}-code
+    case Regex.run(~r/^loopyard-([a-f0-9]+)-code$/, volume_name) do
       [_, workspace_id] ->
         container = "loopyard-#{workspace_id}-workspace-1"
 

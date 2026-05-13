@@ -31,7 +31,7 @@ defmodule LoopyardWeb.SlowMountLogger do
 
   def attach do
     :telemetry.attach_many(
-      "boom-looper-slow-mount",
+      "loopyard-slow-mount",
       @events,
       &__MODULE__.handle_event/4,
       nil
@@ -39,7 +39,7 @@ defmodule LoopyardWeb.SlowMountLogger do
   end
 
   def detach do
-    :telemetry.detach("boom-looper-slow-mount")
+    :telemetry.detach("loopyard-slow-mount")
   end
 
   @doc """

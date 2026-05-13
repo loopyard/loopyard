@@ -18,7 +18,7 @@ defmodule LoopyardWeb.TerminalChannelTest do
     @describetag :docker
 
     setup do
-      container = "boom-looper-channel-test-#{:rand.uniform(100_000)}"
+      container = "loopyard-channel-test-#{:rand.uniform(100_000)}"
 
       {_, 0} =
         System.cmd("docker", ["run", "-d", "--name", container, "alpine:latest", "sleep", "300"],

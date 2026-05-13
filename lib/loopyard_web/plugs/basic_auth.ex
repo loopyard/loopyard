@@ -1,7 +1,7 @@
 defmodule LoopyardWeb.Plugs.BasicAuth do
   @moduledoc """
-  Simple HTTP Basic Auth plug. Enabled when BOOM_LOOPER_AUTH_PASSWORD is set.
-  Username can be anything (or set BOOM_LOOPER_AUTH_USERNAME for a specific one).
+  Simple HTTP Basic Auth plug. Enabled when LOOPYARD_AUTH_PASSWORD is set.
+  Username can be anything (or set LOOPYARD_AUTH_USERNAME for a specific one).
   """
   import Plug.Conn
 

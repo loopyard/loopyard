@@ -4,7 +4,7 @@ defmodule Mix.Tasks.Loopyard.Server do
 
   ## Usage
 
-      mix boom.server
+      mix loopyard.server
 
   Then connect remotely:
 
@@ -17,7 +17,7 @@ defmodule Mix.Tasks.Loopyard.Server do
 
   @impl Mix.Task
   def run(_args) do
-    # Cookie always lives at ~/.loopyard/cookie so boom.rpc can find it
+    # Cookie always lives at ~/.loopyard/cookie so loopyard.rpc can find it
     cookie = ensure_cookie()
 
     case Node.start(:loopyard, :shortnames) do

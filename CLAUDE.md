@@ -1,4 +1,4 @@
-# Boom Looper — Multi-Player Claude Code Runner
+# Loopyard — Multi-Player Claude Code Runner
 
 A Phoenix LiveView app that lets a team share and interact with Claude Code agents in real-time through a chat interface. Agents run code inside Docker containers.
 
@@ -10,13 +10,13 @@ All UI state is server-driven (assigns, PubSub). Never rely on client-side state
 
 ## How it works
 
-BoomLooper is a **Docker control plane** with **AI agents** wired into it. Dev environments are Docker all the way down — compose clusters, named volumes, container images. Code lives in Docker volumes. Agents and humans interact with it exclusively through Docker.
+Loopyard is a **Docker control plane** with **AI agents** wired into it. Dev environments are Docker all the way down — compose clusters, named volumes, container images. Code lives in Docker volumes. Agents and humans interact with it exclusively through Docker.
 
-**The control plane:** Each project gets a Docker Compose cluster — a workspace container (where agents exec commands), dev server containers (running the app), and stock services (postgres, redis, etc.). Code lives in a named Docker volume (`bl-<workspace_id>-code`) mounted at `/workspace` in every container. Agents write `Dockerfile` and `docker-compose.yml` directly to `.boomlooper/workspace/`. BoomLooper manages the container lifecycle, monitors health, and reconnects to running containers across server restarts.
+**The control plane:** Each project gets a Docker Compose cluster — a workspace container (where agents exec commands), dev server containers (running the app), and stock services (postgres, redis, etc.). Code lives in a named Docker volume (`loopyard-<workspace_id>-code`) mounted at `/workspace` in every container. Agents write `Dockerfile` and `docker-compose.yml` directly to `.loopyard/workspace/`. Loopyard manages the container lifecycle, monitors health, and reconnects to running containers across server restarts.
 
 **Source adapters — the ingress layer:** Source adapters (`Source.Local`, `Source.GitHub`) are how code gets INTO the volume, but they don't participate in the dev environment. Local uses Mutagen to sync host filesystem to the Docker volume. GitHub clones via API into the volume. Once code is in the volume, everything is Docker — agents have NO host filesystem access when containers are running. See [docs/SOURCE_ADAPTERS.md](docs/SOURCE_ADAPTERS.md).
 
-**The agents:** Claude Code sessions run as GenServer processes. Each agent exec's into the workspace container to read/write code and run commands. Agents use MCP tools from `boom-looper-container`: `exec` for commands, `write_file` for Dockerfile/docker-compose.yml, `docker_compose` for container lifecycle, `logs` for debugging. All tool operations go through Docker — `Docker.exec_in` for commands, `VolumeIO` for file I/O. Tool output is truncated for agents (via `Helpers.truncate_for_agent`, ~80 lines) to save context tokens, but streamed in full to the UI for humans. The setup agent bootstraps a project from scratch by examining the codebase and writing infrastructure files directly.
+**The agents:** Claude Code sessions run as GenServer processes. Each agent exec's into the workspace container to read/write code and run commands. Agents use MCP tools from `loopyard-container`: `exec` for commands, `write_file` for Dockerfile/docker-compose.yml, `docker_compose` for container lifecycle, `logs` for debugging. All tool operations go through Docker — `Docker.exec_in` for commands, `VolumeIO` for file I/O. Tool output is truncated for agents (via `Helpers.truncate_for_agent`, ~80 lines) to save context tokens, but streamed in full to the UI for humans. The setup agent bootstraps a project from scratch by examining the codebase and writing infrastructure files directly.
 
 **The multiplayer layer:** Everything is wired through PubSub. Chat messages, terminal I/O, service status changes, build output — all broadcast to every connected viewer. LiveViews subscribe and render. The terminal system supports both browser (xterm.js via Phoenix Channel) and SSH access to the same shared session. Multiple people can watch an agent work, type in the same terminal, or monitor services simultaneously.
 
@@ -36,28 +36,28 @@ The coordination layer went through a sprint of hardening moves (see [plans/coor
 - `/system` — aggregated health map (`:healthy | :degraded | :down` per component)
 
 **Adding a new broadcast event:**
-1. Add a struct to the relevant publisher module in `lib/boom_looper/events/` (e.g. `BoomLooper.Events.ChatAgent.SomeEvent`).
+1. Add a struct to the relevant publisher module in `lib/loopyard/events/` (e.g. `Loopyard.Events.ChatAgent.SomeEvent`).
 2. Add a `publish/1` clause for the struct.
-3. NEVER call `Phoenix.PubSub.broadcast/3` outside `lib/boom_looper/events/`. The `test/boom_looper/pubsub_boundary_test.exs` CI test will fail if you do.
+3. NEVER call `Phoenix.PubSub.broadcast/3` outside `lib/loopyard/events/`. The `test/loopyard/pubsub_boundary_test.exs` CI test will fail if you do.
 4. Every subscriber behaviour gains a required `@callback on_<event>(struct, socket)`. Missing callback = compile warning (no `@optional_callbacks`).
 
 **Adding a new LV subscriber:**
-1. `@behaviour BoomLooper.Events.<Topic>.Subscriber`
+1. `@behaviour Loopyard.Events.<Topic>.Subscriber`
 2. Implement every `on_*` callback explicitly (even if just `{:noreply, socket}`) — we do not use `@optional_callbacks`.
 3. Standard dispatch: one `handle_info/2` per event struct that delegates to the callback.
 
 **Adding a new state-machine actor (future):**
-Move #1 (pure transition functions) and Move #5 (deadlines) are deferred for a future session. When they ship, each actor will expose `step(state, event) :: {:ok, new_state, side_effects}` per the plan. Until then, follow the pattern of `BoomLooper.ChatAgent.StateMachine` (transition guards in a pure module, GenServer calls into it).
+Move #1 (pure transition functions) and Move #5 (deadlines) are deferred for a future session. When they ship, each actor will expose `step(state, event) :: {:ok, new_state, side_effects}` per the plan. Until then, follow the pattern of `Loopyard.ChatAgent.StateMachine` (transition guards in a pure module, GenServer calls into it).
 
 **Retry patterns:**
-- Synchronous callers (tight retry loops, non-GenServer code) → `BoomLooper.Retry.run/2`.
-- Async / event-driven callers (GenServer crash recovery via `handle_info`) → `BoomLooper.Retry.backoff_ms/2` + `Process.send_after`. NEVER `Process.sleep` inside a `handle_info`.
+- Synchronous callers (tight retry loops, non-GenServer code) → `Loopyard.Retry.run/2`.
+- Async / event-driven callers (GenServer crash recovery via `handle_info`) → `Loopyard.Retry.backoff_ms/2` + `Process.send_after`. NEVER `Process.sleep` inside a `handle_info`.
 
 **Resource ownership:**
-- If "resource X dies when process Y dies" is the intended semantic, use `BoomLooper.Resources.track/4`. The Janitor runs the release fn on owner DOWN.
+- If "resource X dies when process Y dies" is the intended semantic, use `Loopyard.Resources.track/4`. The Janitor runs the release fn on owner DOWN.
 - If the resource must outlive the owner's restart (e.g. Mutagen sessions in `SyncMonitor`), DO NOT use `Resources.track`. Use ad-hoc `terminate/2` cleanup and document it.
 
-**ETS ownership:** `BoomLooper.StateKeeper` is the sole ETS table owner. Never call `:ets.new/2` elsewhere — add your table to `StateKeeper`'s `@tables` list.
+**ETS ownership:** `Loopyard.StateKeeper` is the sole ETS table owner. Never call `:ets.new/2` elsewhere — add your table to `StateKeeper`'s `@tables` list.
 
 ## Agent reliability invariants (`plans/agent-sanity.md`)
 
@@ -78,7 +78,7 @@ Rules a contributor needs to know:
   recovery, `dispatch_retry_session` (backoff retry),
   `ensure_session_alive` (pre-`send_message`).
 - `init_resume` threads the saved `claude_session_id` through too —
-  BoomLooper server restart doesn't drop the conversation.
+  Loopyard server restart doesn't drop the conversation.
 
 **Error messages follow WHY / CONSEQUENCE / ACTION.** Every
 `role: :error` message in the ChatAgent:
@@ -120,7 +120,7 @@ browser vanish on refresh.
 
 **Catchalls on every callback.** `handle_cast(msg, state)`,
 `handle_call(msg, _from, state)`, and `handle_info(msg, state)` all
-log + fire `[:boom_looper, :actor, :unknown_message]` telemetry and
+log + fire `[:loopyard, :actor, :unknown_message]` telemetry and
 return normally. Unknown messages never crash the GenServer.
 
 **Resource tracking for the CLI OS pid.** After every
@@ -132,7 +132,7 @@ SIGKILLs the OS pid. `terminate/2` does NOT kill directly.
 **Prompt-drift detection.** `start_session` returns a SHA-256 of the
 system prompt. `init_resume` compares to the saved hash; mismatch
 surfaces an inline "System prompt changed since last boot" marker
-+ `[:boom_looper, :agent, :prompt_drift]` telemetry.
++ `[:loopyard, :agent, :prompt_drift]` telemetry.
 
 **Idle-agent CLI reap.** After `:agent_idle_reap_hours` (default 4h)
 of `:idle` + captured `claude_session_id`, the reaper stops the CLI
@@ -161,7 +161,7 @@ timeouts with ETS fallback — a wedged agent doesn't hang the UI.
 - **[docs/SOURCE_ADAPTERS.md](docs/SOURCE_ADAPTERS.md)** — Source adapter rules (Local, GitHub)
 - **[docs/GIT.md](docs/GIT.md)** — Git hygiene: atomic commits, sane messages, branch discipline
 - **[docs/EVALS.md](docs/EVALS.md)** — Eval runner, integrity rules, how to fix failures
-- **[docs/HOSTING.md](docs/HOSTING.md)** — Running BoomLooper as an always-on local server: macOS power management, keeping it reachable over LAN
+- **[docs/HOSTING.md](docs/HOSTING.md)** — Running Loopyard as an always-on local server: macOS power management, keeping it reachable over LAN
 - **[docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md)** — Prioritized backlog of scoped improvements. Add entries when you find something worth doing but not shipping today.
 - **[plans/](plans/)** — Scoped design plans for features in flight. Read the relevant plan before implementing; update it when the plan evolves during implementation.
 
@@ -177,24 +177,24 @@ Docs that silently drift are worse than no docs. The commit that ships the behav
 ## Quick start
 
 ```bash
-mix boom.setup     # installs deps, fixes Docker config, builds assets
-mix boom.server    # starts the server with distributed node for remote access
+mix loopyard.setup     # installs deps, fixes Docker config, builds assets
+mix loopyard.server    # starts the server with distributed node for remote access
 ```
 
 Launch from any project directory: `open "http://localhost:4000/launch/SECRET?path=$(pwd)"`
 
 ## Remote access
 
-When BoomLooper is running (`mix boom.server`), you can jack into it and run any Elixir:
+When Loopyard is running (`mix loopyard.server`), you can jack into it and run any Elixir:
 
 ```bash
 # One-shot: evaluate a single expression
-mix boom.rpc "BoomLooper.ChatAgent.list_agents()"
+mix loopyard.rpc "Loopyard.ChatAgent.list_agents()"
 ```
 
-`mix boom.rpc` reads the cookie from `~/.boomlooper/cookie` automatically. Any valid Elixir expression works — ETS, GenServers, Registry, Docker, anything. Use this to inspect state, run evals, kill agents, check services, hot-reload code.
+`mix loopyard.rpc` reads the cookie from `~/.loopyard/cookie` automatically. Any valid Elixir expression works — ETS, GenServers, Registry, Docker, anything. Use this to inspect state, run evals, kill agents, check services, hot-reload code.
 
-**Always use `mix boom.rpc` to verify your changes work on the live system.** Don't just compile and hope — jack in and check.
+**Always use `mix loopyard.rpc` to verify your changes work on the live system.** Don't just compile and hope — jack in and check.
 
 ## Terminology
 
@@ -202,10 +202,10 @@ mix boom.rpc "BoomLooper.ChatAgent.list_agents()"
 - **Workspace** = a working directory (git worktree) within a project. Each gets its own containers, volumes, agents. Managed by `WorkspaceRegistry`.
 - **WorkspaceSupervisor** = top-level DynamicSupervisor for all workspace subtrees.
 - **WorkspaceGroup** = per-workspace Supervisor (ServiceManager + AgentSupervisor + ContainerMonitor).
-- **Tool** = an MCP tool module under `Tools.Container.*`. One file per tool. Uses `BoomLooper.Tool` macro.
+- **Tool** = an MCP tool module under `Tools.Container.*`. One file per tool. Uses `Loopyard.Tool` macro.
 - **Toolkit** = `Tools.Container` — lists all tool modules in `__tool_server__/0`.
-- Infrastructure files (`Dockerfile`, `docker-compose.yml`) live in `.boomlooper/workspace/` (gitignored). Metadata (`workspace.json` with project name, system prompt) lives in `.boomlooper/repo/` (can be tracked in git).
-- User-level data in `~/.boomlooper/` (overridable with `BOOMLOOPER_HOME` env var).
+- Infrastructure files (`Dockerfile`, `docker-compose.yml`) live in `.loopyard/workspace/` (gitignored). Metadata (`workspace.json` with project name, system prompt) lives in `.loopyard/repo/` (can be tracked in git).
+- User-level data in `~/.loopyard/` (overridable with `LOOPYARD_HOME` env var).
 - URLs: `/projects/:project_id/workspaces/:workspace_id/agents/:id`, `/messages/:agent_id/:msg_id`
 
 ## Key modules
@@ -248,7 +248,7 @@ mix boom.rpc "BoomLooper.ChatAgent.list_agents()"
 | `PortStore` | JSON persistence for port assignments (`ports.json`) |
 | `Tools.Container` | MCP toolkit — lists 22 tool modules |
 | `Tools.Container.Helpers` | Shared tool helpers (resolve_container, validate_path) |
-| `BoomLooper.Tool` | Macro for defining tool modules |
+| `Loopyard.Tool` | Macro for defining tool modules |
 
 ## Stack
 
@@ -258,7 +258,7 @@ Elixir 1.19 / OTP 28, Phoenix 1.7 / LiveView 1.1, Claude Code SDK (`claude_code`
 
 **Workspace affinity model:** One workspace runs entirely on one node. Projects can span multiple nodes (different workspaces on different nodes), but a single workspace is always local to its node. This enables local storage without shared databases.
 
-**Agent persistence:** Agents and messages are persisted to an append-only ETF log at `.boomlooper/workspace/agents.log`. On server restart:
+**Agent persistence:** Agents and messages are persisted to an append-only ETF log at `.loopyard/workspace/agents.log`. On server restart:
 1. ServiceManager detects running containers via `Compose.ps`
 2. Calls `replay_agent_log` to restore agent state to ETS
 3. Starts ChatAgent GenServers with `resume: true` for each restored agent
