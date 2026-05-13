@@ -20,6 +20,7 @@ defmodule LoopyardWeb.Router do
 
     live "/", ProjectListLive, :index
     live "/projects/:project_id", ProjectLive, :index
+    live "/projects/:project_id/settings", ProjectLive, :settings
     live "/projects/:project_id/workspaces/:workspace_id", WorkspaceLive, :index
     live "/projects/:project_id/workspaces/:workspace_id/new", WorkspaceLive, :new
     live "/projects/:project_id/workspaces/:workspace_id/agents/:id", WorkspaceLive, :chat

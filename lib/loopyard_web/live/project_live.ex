@@ -524,7 +524,7 @@ defmodule LoopyardWeb.ProjectLive do
   def render(assigns) do
     ~H"""
     <.page_shell
-      breadcrumbs={[{"Boom Looper", "/"}, {@project.name, nil}]}
+      breadcrumbs={breadcrumbs_for(assigns)}
       iex_session={@iex_session}
       max_width={:md}
       flash={@flash}
@@ -541,6 +541,13 @@ defmodule LoopyardWeb.ProjectLive do
           </p>
         </div>
       <% else %>
+        <%= if @live_action == :settings do %>
+          <%= if @confirming_remove do %>
+            <.remove_confirmation project={@project} details={removal_details(@project)} />
+          <% else %>
+            <.settings_view project={@project} />
+          <% end %>
+        <% else %>
         <%= if @confirming_remove do %>
           <.remove_confirmation project={@project} details={removal_details(@project)} />
         <% else %>
@@ -739,8 +746,76 @@ defmodule LoopyardWeb.ProjectLive do
             </button>
           </form>
         <% end %>
+        <% end %>
       <% end %>
     </.page_shell>
+    """
+  end
+
+  defp breadcrumbs_for(%{live_action: :settings, project: project}) do
+    [{"Loopyard", "/"}, {project.name, "/projects/#{project.id}"}, {"Settings", nil}]
+  end
+
+  defp breadcrumbs_for(%{project: project}) do
+    [{"Loopyard", "/"}, {project.name, nil}]
+  end
+
+  defp settings_view(assigns) do
+    ~H"""
+    <div class="space-y-8">
+      <div>
+        <h2 class="text-xl font-semibold text-zinc-900 dark:text-zinc-100">Project settings</h2>
+        <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
+          {@project.name}
+        </p>
+      </div>
+
+      <form phx-submit="rename_project" class="space-y-2">
+        <label for="project-name" class="block text-xs font-medium text-zinc-500 dark:text-zinc-400">
+          Name
+        </label>
+        <input
+          id="project-name"
+          type="text"
+          name="name"
+          value={@project.name}
+          autocomplete="off"
+          class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2.5 text-base
+                 text-zinc-900 dark:text-zinc-100
+                 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+        />
+        <div class="pt-1">
+          <button
+            type="submit"
+            class="rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium px-4 py-2 transition-colors"
+          >
+            Save name
+          </button>
+        </div>
+      </form>
+
+      <div class="space-y-2">
+        <div class="text-xs font-medium text-zinc-500 dark:text-zinc-400">Location</div>
+        <p class="text-sm font-mono text-zinc-600 dark:text-zinc-300 break-all">
+          {project_location(@project)}
+        </p>
+      </div>
+
+      <div class="pt-6 border-t border-zinc-200 dark:border-zinc-700/80 space-y-2">
+        <div class="text-xs font-semibold uppercase tracking-wider text-red-500 dark:text-red-400">
+          Danger zone
+        </div>
+        <p class="text-sm text-zinc-500 dark:text-zinc-400">
+          Remove this project from Loopyard. Your source code on disk is not affected.
+        </p>
+        <button
+          phx-click="confirm_remove"
+          class="rounded-lg border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 text-sm font-medium px-4 py-2 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+        >
+          Remove project
+        </button>
+      </div>
+    </div>
     """
   end
 
@@ -750,7 +825,7 @@ defmodule LoopyardWeb.ProjectLive do
       <div>
         <h2 class="text-xl font-semibold text-red-600 dark:text-red-400">Remove {@project.name}</h2>
         <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
-          This will permanently remove the project from Boom Looper. Your source code is not affected.
+          This will permanently remove the project from Loopyard. Your source code is not affected.
         </p>
       </div>
 
