@@ -695,11 +695,18 @@ defmodule Loopyard.AgentLog do
 
   defp read_entries(_, acc), do: Enum.reverse(acc)
 
+  # `:safe` blocks creation of new atoms, fun references, PIDs, and
+  # external function references during decode. The log file lives
+  # inside the workspace volume, which an agent (or compromised
+  # container) can write to — without `:safe`, planted ETF can crash
+  # the BEAM via atom exhaustion or allocate massive binaries on
+  # replay. Every atom we legitimately persist is module-defined and
+  # exists in the atom table before replay runs.
   defp safe_binary_to_term(compressed) do
     binary = :zlib.uncompress(compressed)
-    {:ok, :erlang.binary_to_term(binary)}
+    {:ok, :erlang.binary_to_term(binary, [:safe])}
   rescue
-    # zlib errors or ETF decode errors
+    # zlib errors or ETF decode errors (including unknown-atom rejection)
     _ -> :error
   end
 

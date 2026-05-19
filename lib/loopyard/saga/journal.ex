@@ -505,9 +505,15 @@ defmodule Loopyard.Saga.Journal do
 
   defp read_entries(_truncated_tail, acc), do: Enum.reverse(acc)
 
+  # `:safe` blocks creation of new atoms, fun references, PIDs, and
+  # external function references during decode — see the matching
+  # comment in `Loopyard.AgentLog.safe_binary_to_term/1`. The journal
+  # file is host-side under `LOOPYARD_HOME`, so the direct attack
+  # surface is narrower than `agents.log`, but the rule is uniform:
+  # never decode untrusted ETF without `:safe`.
   defp safe_decode(compressed) do
     binary = :zlib.uncompress(compressed)
-    {:ok, :erlang.binary_to_term(binary)}
+    {:ok, :erlang.binary_to_term(binary, [:safe])}
   rescue
     _ -> :error
   catch

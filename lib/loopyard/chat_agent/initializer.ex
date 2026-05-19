@@ -237,7 +237,7 @@ defmodule Loopyard.ChatAgent.Initializer do
     context_status =
       cond do
         is_binary(state.claude_session_id) -> "conversation continued"
-        length(state.messages) > 0 -> "NO claude_session_id — CLI will start fresh"
+        state.messages != [] -> "NO claude_session_id — CLI will start fresh"
         true -> "no prior messages"
       end
 

@@ -152,7 +152,7 @@ defmodule Loopyard.Agent.Reconciler do
       %{reconciler: :agents}
     )
 
-    if length(drifts) > 0 do
+    if drifts != [] do
       Loopyard.EventLog.warning(
         "reconciler:agents",
         "drift=#{length(drifts)}/#{checked} ids=#{drift_ids(drifts)}"
