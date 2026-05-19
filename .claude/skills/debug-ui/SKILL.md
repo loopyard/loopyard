@@ -29,6 +29,8 @@ mix loopyard.rpc 'Node.self()'
 
 If that errors, the server is dead — tell the user to `mix loopyard.server` before proceeding.
 
+**Tidewave alternative:** if this session has the `tidewave` MCP server connected, call its `eval` tool with the same expression instead of shelling out. All recipes below work identically — replace `mix loopyard.rpc 'EXPR'` with `tidewave.eval(code: "EXPR")`. Useful when you want to keep iterating without leaving the session.
+
 ## Recipe 1 — "Is the data actually changing?" (assign diff)
 
 **When:** user reports "X keeps flashing." First question: is the assign actually flipping?

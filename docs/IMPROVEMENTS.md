@@ -8,6 +8,14 @@ A prioritized list of known, scoped improvements for Loopyard. Ordered within ea
 
 ## Robustness (handles edge cases gracefully)
 
+1. **Declare `Boundary` boundaries for `Loopyard` / `LoopyardWeb` / `Loopyard.Events`.** The `:boundary` dep is installed but no `use Boundary` declarations exist yet, so it currently does nothing. Wiring it up is a real architectural pass:
+   - Top-level `Loopyard` boundary (create `lib/loopyard.ex`) with `deps: []` and explicit exports for the modules `LoopyardWeb` is allowed to call.
+   - `LoopyardWeb` boundary with `deps: [Loopyard]` — catches "web depends on domain, never reverse" at compile time.
+   - Sub-boundary on `Loopyard.Events` that's the *only* module allowed to depend on `Phoenix.PubSub` — replaces `test/loopyard/pubsub_boundary_test.exs` with a compile-time check.
+   - Sub-boundary on `Loopyard.Tools.Container` if the tool isolation rule is worth enforcing structurally.
+
+   First compile will surface every cross-namespace edge in the codebase — expect a triage pass. Delete `test/loopyard/pubsub_boundary_test.exs` only once the Events boundary is enforcing.
+
 3. **Migrate ChatAgent transition sites to `StateMachine.transition/2`.** The state graph and validator exist (`Loopyard.ChatAgent.StateMachine`). `remove_agent` already routes through it (closes the "remove → restart → remove again" race). The remaining ~20 direct `%{state | status: ...}` mutations in `chat_agent.ex` don't validate yet. **Highest-priority sites** — the ones most likely to race or drift from the graph:
 
    - `handle_cast(:restart_session, state)` — session restart path. Transitions through multiple states as the CLI reboots.

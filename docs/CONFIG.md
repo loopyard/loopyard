@@ -44,6 +44,14 @@ Constants baked into modules at compile time. Change means recompile.
 | `Loopyard.EvalRunner` | `@default_timeout` | `2_700_000` | Eval run timeout in ms (45 min). |
 | `Loopyard.SSHServer` | `@default_port` | `0` | SSH server port (overridden by `SSH_PORT`). |
 
+## Dev-only tooling
+
+| Tool | Where it's wired | Purpose |
+|---|---|---|
+| Tidewave MCP | `LoopyardWeb.Endpoint` — `plug Tidewave` inside the `code_reloading?` block | Exposes `/tidewave/mcp` for in-Claude-session Elixir eval, log fetch, process introspection. Localhost-only by default. Connect via `claude mcp add --transport http tidewave http://localhost:4000/tidewave/mcp`. |
+| Boundary | `:boundary` dep installed; no `use Boundary` declarations yet | When declared, will enforce cross-namespace dependency rules at compile time. See [IMPROVEMENTS.md](IMPROVEMENTS.md) for the scoped wire-up task. |
+| StreamData | `:stream_data` dep (`:dev`/`:test`) | Property-based testing for state machines, replay, and streaming buffers. See [TESTING.md](TESTING.md#property-based-tests). |
+
 ## Per-workspace config in volumes
 
 Lives in the code volume under `.loopyard/workspace/`. Agents write these; Loopyard reads them.

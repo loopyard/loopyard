@@ -28,6 +28,8 @@ mix loopyard.rpc "Loopyard.Workspace.ServiceManager.service_status(\"/path\")"
 ```
 Any valid Elixir expression works.
 
+If you're connected to the Tidewave MCP server in this session, you can also call its `eval` / `process_info` / `logs` tools directly instead of shelling out to `mix loopyard.rpc` — same access to the live node, fewer round-trips.
+
 ## Step 2: Run the test, watch it fail
 
 ```bash

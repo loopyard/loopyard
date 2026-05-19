@@ -194,7 +194,15 @@ mix loopyard.rpc "Loopyard.ChatAgent.list_agents()"
 
 `mix loopyard.rpc` reads the cookie from `~/.loopyard/cookie` automatically. Any valid Elixir expression works — ETS, GenServers, Registry, Docker, anything. Use this to inspect state, run evals, kill agents, check services, hot-reload code.
 
-**Always use `mix loopyard.rpc` to verify your changes work on the live system.** Don't just compile and hope — jack in and check.
+**Always verify your changes work on the live system.** Don't just compile and hope.
+
+Two ways in:
+- **Shell-based:** `mix loopyard.rpc "..."` — works from any terminal, scriptable, no Claude session required. The primary tool when iterating in a terminal or writing one-off diagnostics.
+- **In-session (Tidewave MCP):** when Claude Code is connected to the local Tidewave MCP server, it can `eval` Elixir, fetch logs, and introspect processes directly without shelling out. Setup once:
+  ```bash
+  claude mcp add --transport http tidewave http://localhost:4000/tidewave/mcp
+  ```
+  The endpoint is registered in `LoopyardWeb.Endpoint` inside the `code_reloading?` block — dev only, never enabled in prod.
 
 ## Terminology
 

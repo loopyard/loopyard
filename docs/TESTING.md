@@ -172,6 +172,31 @@ Test file: `test/loopyard/service_manager_terminate_test.exs`
 - **Extracted module**: Gets its own test file immediately. Don't defer.
 - **Pure functions**: Always test — they're the cheapest tests to write.
 
+## Property-based tests
+
+Use `StreamData` (in `:dev`/`:test` deps) for invariants that must hold across all valid inputs — example-based tests can't enumerate them. Natural targets in Loopyard:
+
+- **`StreamBuffer`** — windowing/append invariants: byte cap is respected, message order is preserved, page-reload reconstruction matches live state.
+- **`AgentLog` replay** — any crash point in any sequence of valid log records reconstructs to a structurally-valid agent state.
+- **`ChatAgent.StateMachine`** — any sequence of legal transitions stays inside the declared graph; illegal transitions are always rejected.
+- **Tool input validators** (`Helpers.validate_workspace_path/1` et al.) — generated paths/strings either pass validation OR get rejected with a meaningful reason; never crash.
+
+Pattern:
+
+```elixir
+use ExUnit.Case, async: true
+use ExUnitProperties
+
+property "StreamBuffer never exceeds byte cap" do
+  check all chunks <- list_of(binary(min_length: 1, max_length: 500), max_length: 100) do
+    buf = Enum.reduce(chunks, StreamBuffer.new(cap: 4096), &StreamBuffer.append(&2, &1))
+    assert StreamBuffer.byte_size(buf) <= 4096
+  end
+end
+```
+
+Run as part of the normal `mix test` suite — no special tag needed unless a property is slow.
+
 ## Docker boundary
 
 Agent tools must go through Docker, never the host filesystem. Tests should verify this boundary:

@@ -343,6 +343,30 @@ Every MCP tool validates its inputs before doing work:
 
 Use `with` chains at the top of `execute/2` to bail early on bad input.
 
+## Never `String.to_atom` on values you don't fully control
+
+Atoms are not garbage-collected. Calling `String.to_atom` on input from JSON, HTTP bodies, agent output, or anything an attacker (or a misbehaving agent) can influence is an atom-table DoS waiting to happen — the BEAM caps at ~1M atoms, then crashes.
+
+Use `String.to_existing_atom/1` when you're mapping a string to a known set of atoms, or keep the value as a string and dispatch on it.
+
+The two current internal uses (`mix loopyard.rpc` cookie file, `mix loopyard.server` cookie, `project_store.ex` config keys) are bounded — the input space is fixed and operator-controlled. If you extend the project store, source config, or any other deserializer to accept new keys, switch the conversion to `String.to_existing_atom/1` or keep keys as strings.
+
+## `Phoenix.HTML.raw/1` only with proven-safe HTML
+
+`raw/1` skips Phoenix's auto-escaping. The bytes it receives land verbatim in the browser. Every call must satisfy one of:
+
+1. **Escape-then-mutate.** Input is run through `Phoenix.HTML.html_escape/1` first, then a transformation that only inserts known-safe markup (e.g. `Components.Ansi.to_html/1` escapes the text and only adds `<span class="...">` tags around it).
+2. **Trusted producer.** The HTML came from a library whose contract is "I emit safe HTML" (Makeup syntax highlighting, server-controlled SVGs like the QR code in `connect_live.ex`).
+3. **Static literal.** A fixed string in the call site (`Phoenix.HTML.raw("&nbsp;")`).
+
+Never pass agent output, chat messages, filenames, log lines, terminal output, or anything a remote source produced directly into `raw/1`. If you need to render formatted agent content, escape first and add markup on top.
+
+## Don't `assign_new` for values that must refresh
+
+`assign_new/3` only sets the assign if it's missing — but on LiveView reconnect after a network blip, the parent assigns from the disconnected mount can still be present, and `assign_new` silently skips. The page renders with stale data and looks "fine" until the user clicks something.
+
+Use `assign_new` only for values that genuinely never change for the lifetime of the LiveView (current user, route param echo). For anything that could be stale across a reconnect — service status, agent state, file contents, anything observed from a GenServer or ETS — use `assign/3` so the reconnected mount overwrites the stale value.
+
 ## Emit telemetry on key operations
 
 Wrap slow or important operations in `:telemetry.span/3`:

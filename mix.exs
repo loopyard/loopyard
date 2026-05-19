@@ -53,7 +53,12 @@ defmodule Loopyard.MixProject do
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: :dev, runtime: false},
       {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
-      {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false}
+      {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false},
+      {:boundary, "~> 0.10", runtime: false},
+      {:stream_data, "~> 1.3", only: [:dev, :test]},
+
+      # Runtime MCP introspection (dev only)
+      {:tidewave, "~> 0.5", only: :dev}
     ]
   end
 
