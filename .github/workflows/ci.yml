@@ -19,8 +19,8 @@ jobs:
 
       - uses: erlef/setup-beam@v1
         with:
-          elixir-version: "1.18"
-          otp-version: "27"
+          elixir-version: "1.19"
+          otp-version: "28"
 
       - name: Cache deps
         uses: actions/cache@v4
@@ -45,7 +45,7 @@ jobs:
           LOOPYARD_LONG_TIMEOUTS: "1"
           MIX_ENV: test
         run: mix coveralls --exclude docker --exclude macos --exclude ssh --exclude terminal --exclude recovery --exclude slow
-        timeout-minutes: 5
+        timeout-minutes: 10
 
   quality:
     runs-on: ubuntu-latest
@@ -55,8 +55,8 @@ jobs:
 
       - uses: erlef/setup-beam@v1
         with:
-          elixir-version: "1.18"
-          otp-version: "27"
+          elixir-version: "1.19"
+          otp-version: "28"
 
       - name: Cache deps + PLT
         uses: actions/cache@v4
@@ -114,8 +114,8 @@ jobs:
 
       - uses: erlef/setup-beam@v1
         with:
-          elixir-version: "1.18"
-          otp-version: "27"
+          elixir-version: "1.19"
+          otp-version: "28"
 
       - name: Cache deps
         uses: actions/cache@v4
