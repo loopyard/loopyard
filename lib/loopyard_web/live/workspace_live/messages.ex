@@ -125,7 +125,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   def chat_msg(%{msg: %{role: :tool}} = assigns) do
     tool_name = assigns.msg[:tool] || ""
     input = assigns.msg.input || %{}
-    is_edit = String.ends_with?(tool_name, "__edit") || String.ends_with?(tool_name, "__multi_edit")
+
+    is_edit =
+      String.ends_with?(tool_name, "__edit") || String.ends_with?(tool_name, "__multi_edit")
+
     old_str = if is_edit, do: input["old_string"]
     new_str = if is_edit, do: input["new_string"]
 
@@ -143,11 +146,26 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     <div class="py-1 pl-10">
       <div class="flex items-center gap-2">
         <div class="w-4 h-4 rounded bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center flex-none">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-2.5 h-2.5 text-blue-500 dark:text-blue-400">
-            <path fill-rule="evenodd" d="M6.955 1.45A.5.5 0 0 1 7.452 1h1.096a.5.5 0 0 1 .497.45l.17 1.699c.484.12.94.312 1.356.562l1.321-.916a.5.5 0 0 1 .67.033l.774.775a.5.5 0 0 1 .034.67l-.916 1.32c.25.417.443.873.563 1.357l1.699.17a.5.5 0 0 1 .45.497v1.096a.5.5 0 0 1-.45.497l-1.699.17c-.12.484-.312.94-.562 1.356l.916 1.321a.5.5 0 0 1-.034.67l-.774.774a.5.5 0 0 1-.67.033l-1.32-.916c-.417.25-.874.443-1.357.563l-.17 1.699a.5.5 0 0 1-.497.45H7.452a.5.5 0 0 1-.497-.45l-.17-1.699a4.973 4.973 0 0 1-1.356-.562l-1.321.916a.5.5 0 0 1-.67-.033l-.774-.775a.5.5 0 0 1-.034-.67l.916-1.32a4.971 4.971 0 0 1-.562-1.357l-1.699-.17A.5.5 0 0 1 1 8.548V7.452a.5.5 0 0 1 .45-.497l1.699-.17c.12-.484.312-.94.562-1.356l-.916-1.321a.5.5 0 0 1 .034-.67l.774-.774a.5.5 0 0 1 .67-.033l1.32.916c.417-.25.874-.443 1.357-.563l.17-1.699ZM8 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" clip-rule="evenodd" />
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 16 16"
+            fill="currentColor"
+            class="w-2.5 h-2.5 text-blue-500 dark:text-blue-400"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M6.955 1.45A.5.5 0 0 1 7.452 1h1.096a.5.5 0 0 1 .497.45l.17 1.699c.484.12.94.312 1.356.562l1.321-.916a.5.5 0 0 1 .67.033l.774.775a.5.5 0 0 1 .034.67l-.916 1.32c.25.417.443.873.563 1.357l1.699.17a.5.5 0 0 1 .45.497v1.096a.5.5 0 0 1-.45.497l-1.699.17c-.12.484-.312.94-.562 1.356l.916 1.321a.5.5 0 0 1-.034.67l-.774.774a.5.5 0 0 1-.67.033l-1.32-.916c-.417.25-.874.443-1.357.563l-.17 1.699a.5.5 0 0 1-.497.45H7.452a.5.5 0 0 1-.497-.45l-.17-1.699a4.973 4.973 0 0 1-1.356-.562l-1.321.916a.5.5 0 0 1-.67-.033l-.774-.775a.5.5 0 0 1-.034-.67l.916-1.32a4.971 4.971 0 0 1-.562-1.357l-1.699-.17A.5.5 0 0 1 1 8.548V7.452a.5.5 0 0 1 .45-.497l1.699-.17c.12-.484.312-.94.562-1.356l-.916-1.321a.5.5 0 0 1 .034-.67l.774-.774a.5.5 0 0 1 .67-.033l1.32.916c.417-.25.874-.443 1.357-.563l.17-1.699ZM8 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"
+              clip-rule="evenodd"
+            />
           </svg>
         </div>
-        <a :if={@file_link} href={@file_link} class="text-base text-blue-600 dark:text-blue-400 hover:underline">{@summary}</a>
+        <a
+          :if={@file_link}
+          href={@file_link}
+          class="text-base text-blue-600 dark:text-blue-400 hover:underline"
+        >
+          {@summary}
+        </a>
         <span :if={!@file_link} class="text-base text-blue-600 dark:text-blue-400">{@summary}</span>
       </div>
       <.diff
@@ -237,7 +255,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
 
   def chat_msg(%{msg: %{role: :system, content: content}} = assigns) do
     # Hide raw struct dumps and SDK noise — not human-readable
-    if is_binary(content) && (String.starts_with?(content, "[init]") || String.starts_with?(content, "%Claude") || String.contains?(content, "SystemMessage")) do
+    if is_binary(content) &&
+         (String.starts_with?(content, "[init]") || String.starts_with?(content, "%Claude") ||
+            String.contains?(content, "SystemMessage")) do
       ~H"<div></div>"
     else
       ~H"""
@@ -289,7 +309,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         <span class="text-xs font-bold text-zinc-400 dark:text-zinc-500">?</span>
       </div>
       <div class="max-w-[85%] rounded-2xl rounded-tl-sm bg-zinc-50 dark:bg-zinc-900 px-4 py-2.5 border border-zinc-200 dark:border-zinc-700/50">
-        <p class="text-[10px] text-zinc-400 dark:text-zinc-500 mb-1 font-medium uppercase tracking-wide">Thinking</p>
+        <p class="text-[10px] text-zinc-400 dark:text-zinc-500 mb-1 font-medium uppercase tracking-wide">
+          Thinking
+        </p>
         <pre class="text-xs text-zinc-500 dark:text-zinc-400 whitespace-pre-wrap max-h-40 overflow-y-auto">{@text}</pre>
         <span class="inline-block w-1.5 h-3 bg-zinc-400 animate-pulse ml-0.5 align-middle"></span>
       </div>
@@ -537,7 +559,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         case :ets.lookup(:workspace_registry, workspace_id) do
           [{_, %{project_id: project_id}}] ->
             volume = Loopyard.Workspace.volume_name_for(workspace_id)
-            encoded = Enum.map_join(segments, "/", fn seg -> URI.encode(seg, &URI.char_unreserved?/1) end)
+
+            encoded =
+              Enum.map_join(segments, "/", fn seg -> URI.encode(seg, &URI.char_unreserved?/1) end)
 
             "/projects/#{URI.encode(project_id, &URI.char_unreserved?/1)}" <>
               "/workspaces/#{URI.encode(workspace_id, &URI.char_unreserved?/1)}" <>

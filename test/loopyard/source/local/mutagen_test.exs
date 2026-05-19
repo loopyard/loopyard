@@ -28,7 +28,9 @@ defmodule Loopyard.Source.Local.MutagenTest do
         {"", 0}
       end)
 
-      assert :ok = Mutagen.start_sync("deadbeef", "/tmp/worktree", "loopyard-deadbeef-workspace-1")
+      assert :ok =
+               Mutagen.start_sync("deadbeef", "/tmp/worktree", "loopyard-deadbeef-workspace-1")
+
       assert_received {:args, args}
 
       assert "sync" in args

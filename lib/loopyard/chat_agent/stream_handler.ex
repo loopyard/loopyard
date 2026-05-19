@@ -124,7 +124,12 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     msg = %{role: :thinking, content: thinking, timestamp: now}
     {state, msg} = append_message(state, msg)
     Persistence.persist_message(state, msg)
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: msg})
+
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+      agent_id: state.id,
+      msg: msg
+    })
+
     state
   end
 
@@ -146,7 +151,12 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     msg = %{role: :tool, tool: "server__#{name}", input: input, timestamp: now}
     {state, msg} = append_message(state, msg)
     Persistence.persist_message(state, msg)
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: msg})
+
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+      agent_id: state.id,
+      msg: msg
+    })
+
     %{state | last_activity_at: now, active_tool: "server__#{name}"}
   end
 
@@ -255,7 +265,8 @@ defmodule Loopyard.ChatAgent.StreamHandler do
         if empty_last_response?(state) do
           no_response_msg = %{
             role: :system,
-            content: "Agent completed without a visible response. Try rephrasing or sending your message again.",
+            content:
+              "Agent completed without a visible response. Try rephrasing or sending your message again.",
             timestamp: DateTime.utc_now()
           }
 

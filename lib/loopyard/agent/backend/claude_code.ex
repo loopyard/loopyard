@@ -150,7 +150,14 @@ defmodule Loopyard.Agent.Backend.ClaudeCode do
     cond do
       ClaudeCode.Message.SystemMessage.type?(msg) ->
         subtype = Map.get(msg, :subtype, :unknown)
-        content = try do to_string(msg) rescue _ -> inspect(msg) end
+
+        content =
+          try do
+            to_string(msg)
+          rescue
+            _ -> inspect(msg)
+          end
+
         if content != "" do
           [%Event.SystemEvent{subtype: subtype, content: content}]
         else

@@ -5,7 +5,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   import LoopyardWeb.Components.Common, only: [dot: 1, control_btn: 1]
   import LoopyardWeb.Components.Sidebar, only: [status_dot: 1, agent_display_status: 1]
   import LoopyardWeb.Components.Breadcrumbs, only: [breadcrumbs: 1]
-  import LoopyardWeb.Live.WorkspaceLive.Messages, only: [chat_msg: 1, streaming_bubble: 1, streaming_thinking: 1]
+
+  import LoopyardWeb.Live.WorkspaceLive.Messages,
+    only: [chat_msg: 1, streaming_bubble: 1, streaming_thinking: 1]
+
   import LoopyardWeb.Live.WorkspaceLive.Components.Formatters, only: [time_ago: 1]
   import LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel, only: [context_panel: 1]
 
@@ -322,10 +325,16 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               host={@host}
             />
           </div>
-          <.streaming_thinking :if={assigns[:streaming_thinking] != "" && assigns[:streaming_thinking] != nil} text={@streaming_thinking} />
+          <.streaming_thinking
+            :if={assigns[:streaming_thinking] != "" && assigns[:streaming_thinking] != nil}
+            text={@streaming_thinking}
+          />
           <.streaming_bubble :if={@streaming_text != ""} text={@streaming_text} />
           <.thinking_indicator
-            :if={@agent.status == :thinking && @streaming_text == "" && (assigns[:streaming_thinking] || "") == ""}
+            :if={
+              @agent.status == :thinking && @streaming_text == "" &&
+                (assigns[:streaming_thinking] || "") == ""
+            }
             messages={@messages}
             word={@thinking_word}
           />

@@ -1204,7 +1204,10 @@ defmodule LoopyardWeb.WorkspaceLive do
     if msg[:id] && Enum.any?(socket.assigns.messages, &(&1[:id] == msg[:id])) do
       {:noreply, socket}
     else
-      socket = if msg.role == :assistant, do: socket |> assign(:streaming_text, "") |> assign(:streaming_thinking, ""), else: socket
+      socket =
+        if msg.role == :assistant,
+          do: socket |> assign(:streaming_text, "") |> assign(:streaming_thinking, ""),
+          else: socket
 
       # If build was running and we get a post-build message, mark build as done
       socket =

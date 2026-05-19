@@ -458,9 +458,7 @@ defmodule Loopyard.ProjectRegistry do
           # Delete code + cache volumes (always, not just volume_based)
           Loopyard.VolumeManager.delete_volume(Loopyard.VolumeManager.code_volume_name(ws_id))
 
-          Loopyard.VolumeManager.delete_volume(
-            Loopyard.VolumeManager.cache_volume_name(ws_id)
-          )
+          Loopyard.VolumeManager.delete_volume(Loopyard.VolumeManager.cache_volume_name(ws_id))
 
           # Also try the old naming convention in case any legacy volumes exist
           Loopyard.VolumeManager.delete_volume("code-#{ws_id}")

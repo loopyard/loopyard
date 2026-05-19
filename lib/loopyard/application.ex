@@ -154,9 +154,7 @@ defmodule Loopyard.Application do
           :ok
 
         %{incomplete: n} = summary ->
-          Logger.warning(
-            "[Loopyard] found #{n} incomplete saga(s) on boot: #{inspect(summary)}"
-          )
+          Logger.warning("[Loopyard] found #{n} incomplete saga(s) on boot: #{inspect(summary)}")
       end
     end)
 

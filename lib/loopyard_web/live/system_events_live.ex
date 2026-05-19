@@ -158,7 +158,9 @@ defmodule LoopyardWeb.SystemEventsLive do
             >
               <td class="px-3 py-2 font-mono text-zinc-500 whitespace-nowrap">
                 {Calendar.strftime(e.inserted_at_utc, "%H:%M:%S.") <>
-                  to_string(:io_lib.format("~3..0B", [elem(e.inserted_at_utc.microsecond, 0) |> div(1000)]))}
+                  to_string(
+                    :io_lib.format("~3..0B", [elem(e.inserted_at_utc.microsecond, 0) |> div(1000)])
+                  )}
               </td>
               <td class="px-3 py-2 font-mono text-zinc-600 dark:text-zinc-400">{e.topic}</td>
               <td class="px-3 py-2 font-mono text-violet-700 dark:text-violet-400 font-semibold">

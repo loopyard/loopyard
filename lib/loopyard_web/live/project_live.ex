@@ -4,6 +4,7 @@ defmodule LoopyardWeb.ProjectLive do
   alias Loopyard.ProjectRegistry
   alias Loopyard.ChatAgent
   alias Loopyard.Events
+  alias LoopyardWeb.ProjectLive.SectionLoader
   use LoopyardWeb.IExAware
 
   @behaviour Loopyard.Events.ChatAgent.Subscriber
@@ -38,7 +39,8 @@ defmodule LoopyardWeb.ProjectLive do
       # The :agents section is cheap (ETS), load it synchronously. The
       # :fetch_service_counts message (sent above when connected) fills in
       # :services and :volumes via start_async — never blocks the LV.
-      seeded = load_workspaces(project, [:agents], seed_defaults(project))
+      seeded =
+        SectionLoader.load_workspaces(project, [:agents], SectionLoader.seed_defaults(project))
 
       {:ok,
        socket
@@ -94,7 +96,7 @@ defmodule LoopyardWeb.ProjectLive do
          assign(
            socket,
            :workspaces,
-           load_workspaces(socket.assigns.project, [:agents, :services, :volumes])
+           SectionLoader.load_workspaces(socket.assigns.project, [:agents, :services, :volumes])
          )}
     end
   end
@@ -108,7 +110,7 @@ defmodule LoopyardWeb.ProjectLive do
      assign(
        socket,
        :workspaces,
-       load_workspaces(socket.assigns.project, [:agents, :services, :volumes])
+       SectionLoader.load_workspaces(socket.assigns.project, [:agents, :services, :volumes])
      )}
   end
 
@@ -198,7 +200,7 @@ defmodule LoopyardWeb.ProjectLive do
          assign(
            socket,
            :workspaces,
-           load_workspaces(socket.assigns.project, [:agents, :services, :volumes])
+           SectionLoader.load_workspaces(socket.assigns.project, [:agents, :services, :volumes])
          )}
 
       {:error, reason} ->
@@ -255,7 +257,7 @@ defmodule LoopyardWeb.ProjectLive do
 
     {:noreply,
      start_async(socket, :fill_sections, fn ->
-       load_workspaces(project, [:agents, :services, :volumes], existing)
+       SectionLoader.load_workspaces(project, [:agents, :services, :volumes], existing)
      end)}
   end
 
@@ -302,7 +304,7 @@ defmodule LoopyardWeb.ProjectLive do
   def on_released(_e, socket), do: {:noreply, socket}
 
   defp refresh_agents(socket) do
-    {:noreply, assign(socket, :workspaces, merge_sections(socket, [:agents]))}
+    {:noreply, assign(socket, :workspaces, SectionLoader.merge_sections(socket, [:agents]))}
   end
 
   # --- WorkspaceServices subscriber callbacks ---
@@ -310,7 +312,7 @@ defmodule LoopyardWeb.ProjectLive do
   @impl Events.WorkspaceServices.Subscriber
   def on_services_updated(_e, socket) do
     # Services changed — agent_count and volume_count don't move because of this.
-    {:noreply, assign(socket, :workspaces, merge_sections(socket, [:services]))}
+    {:noreply, assign(socket, :workspaces, SectionLoader.merge_sections(socket, [:services]))}
   end
 
   @impl Events.WorkspaceServices.Subscriber
@@ -396,87 +398,6 @@ defmodule LoopyardWeb.ProjectLive do
     assign(socket, :workspaces, workspaces)
   end
 
-  # Rebuild workspaces from ProjectRegistry + requested sections. The initial
-  # mount asks only for :agents; :fetch_service_counts fills the rest via
-  # start_async. Sections not listed are returned as empty maps so callers
-  # can merge over existing assigns without wiping counts.
-  defp load_workspaces(project, sections, existing \\ []) do
-    ctx = %{agents: if(:agents in sections, do: ChatAgent.list_agents(), else: [])}
-
-    ProjectRegistry.list_workspaces(project.id)
-    |> Enum.map(fn workspace ->
-      prior = Enum.find(existing, &(&1.id == workspace.id)) || %{}
-      base = Map.merge(prior, workspace)
-
-      Enum.reduce([:agents, :services, :volumes], base, fn section, ws ->
-        Map.merge(ws, load_section(section, sections, workspace, ctx))
-      end)
-    end)
-  end
-
-  # Merge fresh data for the requested sections into the existing assigns
-  # without re-fetching the rest. Used by handle_info callbacks that only
-  # need to refresh what they know changed.
-  defp merge_sections(socket, sections) do
-    load_workspaces(socket.assigns.project, sections, socket.assigns.workspaces)
-  end
-
-  # Starting point for every workspace's count fields. Ensures the template
-  # always has these keys, even before the async sections fill arrives.
-  defp seed_defaults(project) do
-    ProjectRegistry.list_workspaces(project.id)
-    |> Enum.map(fn ws ->
-      Map.merge(ws, %{agent_count: 0, service_count: 0, services_running: 0, volume_count: 0})
-    end)
-  end
-
-  defp load_section(:agents, sections, workspace, ctx) do
-    if :agents in sections do
-      count =
-        Enum.count(ctx.agents, fn a ->
-          a[:bind_mount] == workspace.path || a[:working_dir] == workspace.path ||
-            a[:workspace_id] == workspace.id
-        end)
-
-      %{agent_count: count}
-    else
-      %{}
-    end
-  end
-
-  defp load_section(:services, sections, workspace, _ctx) do
-    if :services in sections do
-      try do
-        # ServiceStatus reads from docker-compose.yml — gives us all defined
-        # services plus their current running state. Show total (so empty
-        # workspaces don't look configurationless) and running side by side.
-        statuses = Loopyard.Docker.Observer.services_for(workspace.id)
-
-        %{
-          service_count: length(statuses),
-          services_running: Enum.count(statuses, &(&1.status == :running))
-        }
-      catch
-        :exit, _ -> %{service_count: 0, services_running: 0}
-      end
-    else
-      %{}
-    end
-  end
-
-  defp load_section(:volumes, sections, workspace, _ctx) do
-    if :volumes in sections do
-      # Read from Docker.Observer's ETS cache — O(1), no shell-out. The
-      # old path called VolumeManager.list_workspace_volumes which ran
-      # `docker volume ls` + `docker volume inspect` + `docker run alpine du`
-      # per volume. On machines with many volumes that blocked the LV.
-      count = length(Loopyard.Docker.Observer.volumes_for(workspace.id))
-      %{volume_count: count}
-    else
-      %{}
-    end
-  end
-
   defp removal_details(project) do
     # For volume-based projects, use the workspace dir
     ws_ids = ProjectRegistry.list_workspaces(project.id) |> Enum.map(& &1.id)
@@ -548,204 +469,206 @@ defmodule LoopyardWeb.ProjectLive do
             <.settings_view project={@project} />
           <% end %>
         <% else %>
-        <%= if @confirming_remove do %>
-          <.remove_confirmation project={@project} details={removal_details(@project)} />
-        <% else %>
-          <div class="flex items-center justify-between mb-6 gap-4">
-            <div class="min-w-0 flex-1">
-              <%= if @editing_name do %>
-                <form
-                  phx-submit="rename_project"
-                  phx-click-away="cancel_rename"
-                  class="flex items-center gap-2"
-                >
-                  <input
-                    type="text"
-                    name="name"
-                    value={@project.name}
-                    autocomplete="off"
-                    autofocus
-                    phx-keydown="cancel_rename"
-                    phx-key="Escape"
-                    class="text-xl font-semibold bg-transparent border-b-2 border-violet-400 focus:outline-none focus:border-violet-500 px-0 py-0.5 min-w-0 flex-1
+          <%= if @confirming_remove do %>
+            <.remove_confirmation project={@project} details={removal_details(@project)} />
+          <% else %>
+            <div class="flex items-center justify-between mb-6 gap-4">
+              <div class="min-w-0 flex-1">
+                <%= if @editing_name do %>
+                  <form
+                    phx-submit="rename_project"
+                    phx-click-away="cancel_rename"
+                    class="flex items-center gap-2"
+                  >
+                    <input
+                      type="text"
+                      name="name"
+                      value={@project.name}
+                      autocomplete="off"
+                      autofocus
+                      phx-keydown="cancel_rename"
+                      phx-key="Escape"
+                      class="text-xl font-semibold bg-transparent border-b-2 border-violet-400 focus:outline-none focus:border-violet-500 px-0 py-0.5 min-w-0 flex-1
                              text-zinc-900 dark:text-zinc-100"
-                  />
+                    />
+                    <button
+                      type="submit"
+                      class="text-xs font-medium text-violet-600 dark:text-violet-400 hover:text-violet-500 transition-colors flex-none"
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      phx-click="cancel_rename"
+                      class="text-xs font-medium text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors flex-none"
+                    >
+                      Cancel
+                    </button>
+                  </form>
+                <% else %>
                   <button
-                    type="submit"
-                    class="text-xs font-medium text-violet-600 dark:text-violet-400 hover:text-violet-500 transition-colors flex-none"
+                    phx-click="start_rename"
+                    class="group flex items-center gap-2 text-left hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
+                    title="Rename project"
                   >
-                    Save
+                    <h2 class="text-xl font-semibold truncate">{@project.name}</h2>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      class="w-3.5 h-3.5 text-zinc-300 dark:text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity flex-none"
+                    >
+                      <path d="M2.695 14.762l-1.262 3.155a.5.5 0 00.65.65l3.155-1.262a4 4 0 001.343-.886L17.5 5.501a2.121 2.121 0 00-3-3L3.58 13.419a4 4 0 00-.885 1.343z" />
+                    </svg>
                   </button>
-                  <button
-                    type="button"
-                    phx-click="cancel_rename"
-                    class="text-xs font-medium text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors flex-none"
-                  >
-                    Cancel
-                  </button>
-                </form>
-              <% else %>
-                <button
-                  phx-click="start_rename"
-                  class="group flex items-center gap-2 text-left hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
-                  title="Rename project"
-                >
-                  <h2 class="text-xl font-semibold truncate">{@project.name}</h2>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                    class="w-3.5 h-3.5 text-zinc-300 dark:text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity flex-none"
-                  >
-                    <path d="M2.695 14.762l-1.262 3.155a.5.5 0 00.65.65l3.155-1.262a4 4 0 001.343-.886L17.5 5.501a2.121 2.121 0 00-3-3L3.58 13.419a4 4 0 00-.885 1.343z" />
-                  </svg>
-                </button>
-              <% end %>
-              <p class="text-xs font-mono text-zinc-400 dark:text-zinc-500 mt-0.5 truncate">
-                {project_location(@project)}
-              </p>
+                <% end %>
+                <p class="text-xs font-mono text-zinc-400 dark:text-zinc-500 mt-0.5 truncate">
+                  {project_location(@project)}
+                </p>
+              </div>
+              <button
+                phx-click="confirm_remove"
+                class="text-xs font-medium text-zinc-400 dark:text-zinc-500 hover:text-red-500 dark:hover:text-red-400 transition-colors flex-none"
+              >
+                Remove project
+              </button>
             </div>
-            <button
-              phx-click="confirm_remove"
-              class="text-xs font-medium text-zinc-400 dark:text-zinc-500 hover:text-red-500 dark:hover:text-red-400 transition-colors flex-none"
-            >
-              Remove project
-            </button>
-          </div>
 
-          <div class="space-y-2 mb-8">
-            <.link
-              :for={workspace <- @workspaces}
-              navigate={"/projects/#{@project.id}/workspaces/#{workspace.id}"}
-              class={[
-                "block rounded-xl border p-4 transition-colors",
-                if(workspace.status == :running,
-                  do:
-                    "border-green-300 dark:border-green-800 bg-green-50/50 dark:bg-green-950/20 hover:border-green-400",
-                  else:
-                    "border-zinc-200 dark:border-zinc-700 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
-                )
-              ]}
-            >
-              <div class="flex items-center gap-3">
-                <div class={"w-2.5 h-2.5 rounded-full flex-none #{cond do
+            <div class="space-y-2 mb-8">
+              <.link
+                :for={workspace <- @workspaces}
+                navigate={"/projects/#{@project.id}/workspaces/#{workspace.id}"}
+                class={[
+                  "block rounded-xl border p-4 transition-colors",
+                  if(workspace.status == :running,
+                    do:
+                      "border-green-300 dark:border-green-800 bg-green-50/50 dark:bg-green-950/20 hover:border-green-400",
+                    else:
+                      "border-zinc-200 dark:border-zinc-700 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+                  )
+                ]}
+              >
+                <div class="flex items-center gap-3">
+                  <div class={"w-2.5 h-2.5 rounded-full flex-none #{cond do
                     Map.get(workspace, :setup, %{})[:phase] == :running -> "bg-blue-500 animate-pulse"
                     Map.get(workspace, :setup, %{})[:phase] == :pending -> "bg-blue-300 animate-pulse"
                     Map.get(workspace, :setup, %{})[:phase] == :failed -> "bg-red-500"
                     workspace.status == :running -> "bg-green-500"
                     true -> "bg-zinc-400"
                   end}"}>
-                </div>
-                <div class="min-w-0 flex-1">
-                  <div class="flex items-center gap-2">
-                    <span class="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate">
-                      {workspace.name}
-                    </span>
-                    <span
-                      :if={workspace[:is_main]}
-                      class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 flex-none"
-                    >
-                      default
-                    </span>
                   </div>
-                  <% setup = Map.get(workspace, :setup, %{}) %>
-                  <% setup_phase = setup[:phase] %>
-                  <p
-                    :if={setup_phase in [:pending, :running, :worktree, :volume, :seeding]}
-                    class="text-xs text-blue-600 dark:text-blue-400 mt-0.5"
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-2">
+                      <span class="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate">
+                        {workspace.name}
+                      </span>
+                      <span
+                        :if={workspace[:is_main]}
+                        class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 flex-none"
+                      >
+                        default
+                      </span>
+                    </div>
+                    <% setup = Map.get(workspace, :setup, %{}) %>
+                    <% setup_phase = setup[:phase] %>
+                    <p
+                      :if={setup_phase in [:pending, :running, :worktree, :volume, :seeding]}
+                      class="text-xs text-blue-600 dark:text-blue-400 mt-0.5"
+                    >
+                      <%= case setup_phase do %>
+                        <% :pending -> %>
+                          Setting up workspace…
+                        <% :running -> %>
+                          Setting up workspace…
+                        <% :worktree -> %>
+                          Creating worktree…
+                        <% :volume -> %>
+                          Creating volume…
+                        <% :seeding -> %>
+                          <% pct = get_in(setup, [:progress, :percent]) %>
+                          {if pct, do: "Seeding files… #{pct}%", else: "Seeding files…"}
+                      <% end %>
+                    </p>
+                    <p
+                      :if={setup_phase == :failed}
+                      class="text-xs text-red-600 dark:text-red-400 mt-0.5"
+                    >
+                      Failed — click to retry
+                    </p>
+                    <p
+                      :if={setup_phase in [:ready, nil] && workspace.status == :running}
+                      class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5"
+                    >
+                      {workspace.agent_count} agent{if workspace.agent_count != 1, do: "s"} · {workspace.services_running} service{if workspace.services_running !=
+                                                                                                                                        1,
+                                                                                                                                      do:
+                                                                                                                                        "s"} running
+                    </p>
+                    <p
+                      :if={setup_phase in [:ready, nil] && workspace.status != :running}
+                      class="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5"
+                    >
+                      Stopped
+                    </p>
+                  </div>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 16 16"
+                    fill="currentColor"
+                    class="w-4 h-4 text-zinc-300 dark:text-zinc-600 flex-none"
                   >
-                    <%= case setup_phase do %>
-                      <% :pending -> %>
-                        Setting up workspace…
-                      <% :running -> %>
-                        Setting up workspace…
-                      <% :worktree -> %>
-                        Creating worktree…
-                      <% :volume -> %>
-                        Creating volume…
-                      <% :seeding -> %>
-                        <% pct = get_in(setup, [:progress, :percent]) %>
-                        {if pct, do: "Seeding files… #{pct}%", else: "Seeding files…"}
-                    <% end %>
-                  </p>
-                  <p
-                    :if={setup_phase == :failed}
-                    class="text-xs text-red-600 dark:text-red-400 mt-0.5"
-                  >
-                    Failed — click to retry
-                  </p>
-                  <p
-                    :if={setup_phase in [:ready, nil] && workspace.status == :running}
-                    class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5"
-                  >
-                    {workspace.agent_count} agent{if workspace.agent_count != 1, do: "s"} · {workspace.services_running} service{if workspace.services_running !=
-                                                                                                                                      1,
-                                                                                                                                    do:
-                                                                                                                                      "s"} running
-                  </p>
-                  <p
-                    :if={setup_phase in [:ready, nil] && workspace.status != :running}
-                    class="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5"
-                  >
-                    Stopped
-                  </p>
+                    <path
+                      fill-rule="evenodd"
+                      d="M6.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 0 1-1.06-1.06L8.94 8 6.22 5.28a.75.75 0 0 1 0-1.06Z"
+                      clip-rule="evenodd"
+                    />
+                  </svg>
                 </div>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 16 16"
-                  fill="currentColor"
-                  class="w-4 h-4 text-zinc-300 dark:text-zinc-600 flex-none"
-                >
-                  <path
-                    fill-rule="evenodd"
-                    d="M6.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 0 1-1.06-1.06L8.94 8 6.22 5.28a.75.75 0 0 1 0-1.06Z"
-                    clip-rule="evenodd"
-                  />
-                </svg>
-              </div>
-            </.link>
-          </div>
+              </.link>
+            </div>
 
-          <% default_branch = get_in(@project, [:source_config, :default_branch]) || "main" %>
-          <form :if={@project.is_git} phx-submit="add_workspace" class="space-y-3">
-            <div class="text-xs font-medium text-zinc-500 dark:text-zinc-400">New workspace</div>
-            <div class="space-y-2">
-              <div>
-                <label class="block text-xs text-zinc-400 dark:text-zinc-500 mb-1">Branch from</label>
-                <input
-                  type="text"
-                  name="from"
-                  value={default_branch}
-                  autocomplete="off"
-                  class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-800/50 px-3 py-2 text-sm font-mono
+            <% default_branch = get_in(@project, [:source_config, :default_branch]) || "main" %>
+            <form :if={@project.is_git} phx-submit="add_workspace" class="space-y-3">
+              <div class="text-xs font-medium text-zinc-500 dark:text-zinc-400">New workspace</div>
+              <div class="space-y-2">
+                <div>
+                  <label class="block text-xs text-zinc-400 dark:text-zinc-500 mb-1">
+                    Branch from
+                  </label>
+                  <input
+                    type="text"
+                    name="from"
+                    value={default_branch}
+                    autocomplete="off"
+                    class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-800/50 px-3 py-2 text-sm font-mono
                            text-zinc-600 dark:text-zinc-300
                            focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
-                />
-              </div>
-              <div>
-                <label class="block text-xs text-zinc-400 dark:text-zinc-500 mb-1">
-                  New branch name
-                </label>
-                <input
-                  type="text"
-                  name="name"
-                  placeholder="e.g. bradgessler/fix-login"
-                  autocomplete="off"
-                  class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm font-mono
+                  />
+                </div>
+                <div>
+                  <label class="block text-xs text-zinc-400 dark:text-zinc-500 mb-1">
+                    New branch name
+                  </label>
+                  <input
+                    type="text"
+                    name="name"
+                    placeholder="e.g. bradgessler/fix-login"
+                    autocomplete="off"
+                    class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm font-mono
                            text-zinc-600 dark:text-zinc-300 placeholder:text-zinc-400
                            focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
-                />
+                  />
+                </div>
               </div>
-            </div>
-            <button
-              type="submit"
-              class="rounded-lg border border-zinc-200 dark:border-zinc-700 px-5 py-2.5 text-sm font-medium text-zinc-600 dark:text-zinc-400
+              <button
+                type="submit"
+                class="rounded-lg border border-zinc-200 dark:border-zinc-700 px-5 py-2.5 text-sm font-medium text-zinc-600 dark:text-zinc-400
                        hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-            >
-              Create workspace
-            </button>
-          </form>
-        <% end %>
+              >
+                Create workspace
+              </button>
+            </form>
+          <% end %>
         <% end %>
       <% end %>
     </.page_shell>

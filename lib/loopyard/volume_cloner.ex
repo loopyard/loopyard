@@ -37,7 +37,9 @@ defmodule Loopyard.VolumeCloner do
         #
         # Use /tmp/colima (mounted into Colima VM by default) instead of
         # System.tmp_dir! (/var/folders/...) which isn't accessible to Docker.
-        tmp_dir = Path.join("/tmp/colima", "loopyard-clone-#{:erlang.unique_integer([:positive])}")
+        tmp_dir =
+          Path.join("/tmp/colima", "loopyard-clone-#{:erlang.unique_integer([:positive])}")
+
         File.mkdir_p!(Path.dirname(tmp_dir))
 
         try do

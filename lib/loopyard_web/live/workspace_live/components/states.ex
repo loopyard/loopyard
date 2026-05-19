@@ -162,7 +162,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.States do
               aria-label="Stop workspace"
               class="focus-ring inline-flex items-center gap-2 rounded-md px-4 min-h-10 text-sm font-medium border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3.5 h-3.5" aria-hidden="true">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 16 16"
+                fill="currentColor"
+                class="w-3.5 h-3.5"
+                aria-hidden="true"
+              >
                 <rect x="3" y="3" width="10" height="10" rx="1.5" />
               </svg>
               Stop
@@ -174,7 +180,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.States do
               aria-label="Start all services"
               class="focus-ring inline-flex items-center gap-2 rounded-md px-4 min-h-10 text-sm font-medium bg-violet-600 hover:bg-violet-700 active:bg-violet-800 text-white transition-colors"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3.5 h-3.5" aria-hidden="true">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 16 16"
+                fill="currentColor"
+                class="w-3.5 h-3.5"
+                aria-hidden="true"
+              >
                 <path d="M4.5 3.5v9l7-4.5-7-4.5Z" />
               </svg>
               Start All
@@ -183,8 +195,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.States do
         </div>
 
         <p class="text-sm text-zinc-500 dark:text-zinc-400">
-          Pick an agent or service from the sidebar, or
-          <.link patch={"#{@base_path}/new"} class="text-violet-600 dark:text-violet-400 hover:underline">
+          Pick an agent or service from the sidebar, or <.link
+            patch={"#{@base_path}/new"}
+            class="text-violet-600 dark:text-violet-400 hover:underline"
+          >
             launch a new agent
           </.link>.
         </p>

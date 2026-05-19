@@ -62,14 +62,20 @@ defmodule LoopyardWeb.Components.DiffView do
         :if={@path}
         class="px-3 py-1 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center gap-2"
       >
-        <a :if={@link} href={@link} class="text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors">
+        <a
+          :if={@link}
+          href={@link}
+          class="text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
+        >
           {@path}
         </a>
         <span :if={!@link} class="text-zinc-500 dark:text-zinc-400">{@path}</span>
       </div>
       <div class="px-3 py-2 text-zinc-500 dark:text-zinc-400">
         Diff too large to render inline ({div(@total_bytes, 1024)} KB).
-        <a :if={@link} href={@link} class="text-violet-600 dark:text-violet-400 hover:underline">Open file</a>
+        <a :if={@link} href={@link} class="text-violet-600 dark:text-violet-400 hover:underline">
+          Open file
+        </a>
       </div>
     </div>
     """
@@ -94,9 +100,15 @@ defmodule LoopyardWeb.Components.DiffView do
       <table class="w-full border-collapse highlight">
         <tbody>
           <tr :for={row <- @rows} class={row.bg}>
-            <td class="select-none text-right pr-1 pl-2 py-0 text-zinc-400 dark:text-zinc-600 align-top w-[1%] whitespace-nowrap opacity-50">{row.old_num}</td>
-            <td class="select-none text-right pr-2 py-0 text-zinc-400 dark:text-zinc-600 align-top w-[1%] whitespace-nowrap opacity-50">{row.new_num}</td>
-            <td class={"pr-3 py-0 whitespace-pre-wrap break-all #{row.text_class}"}><span class="select-none text-zinc-400 dark:text-zinc-600">{row.prefix}</span>{row.content}</td>
+            <td class="select-none text-right pr-1 pl-2 py-0 text-zinc-400 dark:text-zinc-600 align-top w-[1%] whitespace-nowrap opacity-50">
+              {row.old_num}
+            </td>
+            <td class="select-none text-right pr-2 py-0 text-zinc-400 dark:text-zinc-600 align-top w-[1%] whitespace-nowrap opacity-50">
+              {row.new_num}
+            </td>
+            <td class={"pr-3 py-0 whitespace-pre-wrap break-all #{row.text_class}"}>
+              <span class="select-none text-zinc-400 dark:text-zinc-600">{row.prefix}</span>{row.content}
+            </td>
           </tr>
         </tbody>
       </table>

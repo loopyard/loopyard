@@ -522,12 +522,10 @@ defmodule Loopyard.Workspace.ServiceManager do
   # pick this up to transition out of the transitional state so they're
   # not stuck waiting for a broadcast that will never come.
   defp broadcast_compose_result(workspace_id, result) do
-    Loopyard.Events.WorkspaceServices.publish(
-      %Loopyard.Events.WorkspaceServices.ComposeResult{
-        workspace_id: workspace_id,
-        result: result
-      }
-    )
+    Loopyard.Events.WorkspaceServices.publish(%Loopyard.Events.WorkspaceServices.ComposeResult{
+      workspace_id: workspace_id,
+      result: result
+    })
   end
 
   defp broadcast_service_update(state) do
@@ -544,11 +542,9 @@ defmodule Loopyard.Workspace.ServiceManager do
     # Observer. Shipping the statuses blob in the broadcast was wasted
     # serialization across every connected LiveView — none of them
     # actually used the payload.
-    Loopyard.Events.WorkspaceServices.publish(
-      %Loopyard.Events.WorkspaceServices.ServicesUpdated{
-        path: broadcast_dir
-      }
-    )
+    Loopyard.Events.WorkspaceServices.publish(%Loopyard.Events.WorkspaceServices.ServicesUpdated{
+      path: broadcast_dir
+    })
   end
 
   defp via(project_dir) do

@@ -104,14 +104,12 @@ defmodule Loopyard.Tools.Container.DockerCompose do
           %{msg | content: acc}
         end)
 
-        Loopyard.Events.ChatAgentMessage.publish(
-          %Loopyard.Events.ChatAgentMessage.StreamOutput{
-            agent_id: agent_id,
-            data: data,
-            title: "docker compose #{command}",
-            msg_id: msg_id
-          }
-        )
+        Loopyard.Events.ChatAgentMessage.publish(%Loopyard.Events.ChatAgentMessage.StreamOutput{
+          agent_id: agent_id,
+          data: data,
+          title: "docker compose #{command}",
+          msg_id: msg_id
+        })
 
         collect_and_stream(agent_id, port, command, msg_id, acc, timeout)
 

@@ -163,14 +163,12 @@ defmodule Loopyard.Tools.Container.Helpers do
           %{msg | content: acc}
         end)
 
-        Loopyard.Events.ChatAgentMessage.publish(
-          %Loopyard.Events.ChatAgentMessage.StreamOutput{
-            agent_id: agent_id,
-            data: data,
-            title: command,
-            msg_id: msg_id
-          }
-        )
+        Loopyard.Events.ChatAgentMessage.publish(%Loopyard.Events.ChatAgentMessage.StreamOutput{
+          agent_id: agent_id,
+          data: data,
+          title: command,
+          msg_id: msg_id
+        })
 
         stream_port_output(agent_id, port, command, msg_id, acc, timeout)
 

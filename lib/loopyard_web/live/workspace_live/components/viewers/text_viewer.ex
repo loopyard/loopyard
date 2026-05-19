@@ -45,8 +45,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.TextViewer do
         <table class="text-sm font-mono leading-relaxed w-full border-collapse">
           <tbody>
             <tr :for={{line, idx} <- Enum.with_index(@lines, 1)}>
-              <td class="select-none text-right pr-4 pl-4 py-0 text-zinc-400 dark:text-zinc-600 align-top w-[1%] whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">{idx}</td>
-              <td class="pr-4 pl-4 py-0 whitespace-pre-wrap break-all">{Syntax.highlight(line, @language)}</td>
+              <td class="select-none text-right pr-4 pl-4 py-0 text-zinc-400 dark:text-zinc-600 align-top w-[1%] whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">
+                {idx}
+              </td>
+              <td class="pr-4 pl-4 py-0 whitespace-pre-wrap break-all">
+                {Syntax.highlight(line, @language)}
+              </td>
             </tr>
           </tbody>
         </table>

@@ -327,8 +327,9 @@ defmodule Loopyard.Workspace.Setup do
   # ── Per-phase runner ──
 
   # `phase` is constrained to the three atoms in @phases (:worktree |
-  # :volume | :seeding) — Sobelow can't see the constraint statically.
-  @sobelow_skip ["DOS.BinToAtom"]
+  # :volume | :seeding) — Sobelow can't see the constraint statically
+  # and will flag the `:"#{phase}_payload"` interpolation as
+  # DOS.BinToAtom. False positive; ignore that report.
   defp run_phase(phase, ctx) do
     workspace_id = ctx.workspace_id
     phase_started_at = DateTime.utc_now()

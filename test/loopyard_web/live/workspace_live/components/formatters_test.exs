@@ -90,7 +90,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.FormattersTest do
     end
 
     test "postgres volume" do
-      assert Formatters.derive_volume_description("loopyard-abc_postgres-data") == "PostgreSQL data"
+      assert Formatters.derive_volume_description("loopyard-abc_postgres-data") ==
+               "PostgreSQL data"
     end
 
     test "redis volume" do
@@ -98,7 +99,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.FormattersTest do
     end
 
     test "unknown returns name" do
-      assert Formatters.derive_volume_description("loopyard-abc_mystery") == "loopyard-abc_mystery"
+      assert Formatters.derive_volume_description("loopyard-abc_mystery") ==
+               "loopyard-abc_mystery"
     end
   end
 end
