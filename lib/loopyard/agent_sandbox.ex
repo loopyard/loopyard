@@ -194,8 +194,7 @@ defmodule Loopyard.AgentSandbox do
 
       {:error, output} ->
         cond do
-          output =~ "No such image" or output =~ "Unable to find image" or
-              output =~ "manifest unknown" or output =~ "pull access denied" ->
+          image_missing_error?(output) ->
             # Image isn't present locally and can't be pulled (no
             # public registry yet). Build it from priv/ and retry
             # once. This is the "user skipped mix loopyard.setup but
@@ -216,5 +215,16 @@ defmodule Loopyard.AgentSandbox do
             {:error, {:create_failed, output}}
         end
     end
+  end
+
+  @image_missing_markers [
+    "No such image",
+    "Unable to find image",
+    "manifest unknown",
+    "pull access denied"
+  ]
+
+  defp image_missing_error?(output) do
+    Enum.any?(@image_missing_markers, &String.contains?(output, &1))
   end
 end
