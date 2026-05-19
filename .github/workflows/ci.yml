@@ -146,6 +146,9 @@ jobs:
           done
           wait
 
+      - name: Build agent-sandbox image
+        run: mix loopyard.sandbox.build
+
       - name: Run docker E2E tests
         env:
           LOOPYARD_LONG_TIMEOUTS: "1"
