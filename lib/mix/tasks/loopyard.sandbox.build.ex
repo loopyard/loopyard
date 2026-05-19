@@ -23,19 +23,17 @@ defmodule Mix.Tasks.Loopyard.Sandbox.Build do
     Application.ensure_all_started(:loopyard)
 
     image = Loopyard.AgentSandbox.image_name()
-    dockerfile_dir = Application.app_dir(:loopyard, ["priv", "agent-sandbox"])
+    Mix.shell().info("Building #{image}...")
 
-    Mix.shell().info("Building #{image} from #{dockerfile_dir}...")
-
-    case System.cmd("docker", ["build", "-t", image, dockerfile_dir],
-           stderr_to_stdout: true,
-           into: IO.stream(:stdio, :line)
-         ) do
-      {_, 0} ->
+    case Loopyard.AgentSandbox.build_image() do
+      :ok ->
         Mix.shell().info("\n✓ Built #{image}")
 
-      {_, status} ->
-        Mix.raise("docker build failed with exit status #{status}")
+      {:error, :docker_not_installed} ->
+        Mix.raise("docker is not installed — install Docker first.")
+
+      {:error, output} ->
+        Mix.raise("docker build failed:\n#{output}")
     end
   end
 end

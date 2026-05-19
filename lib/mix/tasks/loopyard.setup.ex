@@ -31,6 +31,7 @@ defmodule Mix.Tasks.Loopyard.Setup do
     step("Hex + Rebar", fn -> hex_rebar() end)
     step("Mix dependencies", fn -> mix_deps() end)
     step("Assets", fn -> assets() end)
+    step("Agent sandbox image", fn -> sandbox_image() end)
 
     info("\n✓ Setup complete. Run: mix loopyard.server\n")
   end
@@ -115,6 +116,17 @@ defmodule Mix.Tasks.Loopyard.Setup do
     Mix.Task.run("assets.setup")
     Mix.Task.run("assets.build")
     :ok
+  end
+
+  defp sandbox_image do
+    if System.find_executable("docker") do
+      case Loopyard.AgentSandbox.build_image() do
+        :ok -> :ok
+        {:error, reason} -> {:error, "docker build failed: #{inspect(reason)}"}
+      end
+    else
+      {:skip, "docker not installed (the sandbox image builds lazily on first agent spawn)"}
+    end
   end
 
   defp info(msg), do: Mix.shell().info(msg)

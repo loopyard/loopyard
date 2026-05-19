@@ -33,6 +33,43 @@ defmodule Loopyard.AgentSandbox do
   def image_name, do: @image_name
 
   @doc """
+  Build the sandbox image locally from `priv/agent-sandbox/Dockerfile`.
+
+  Idempotent — Docker's build cache makes re-runs cheap once the layers
+  exist. Returns `:ok` on success, `{:error, reason}` on failure
+  (missing docker, build error, etc.).
+
+  Called by `mix loopyard.setup` and by `ensure_running/3` as a
+  fallback when the image is missing locally.
+  """
+  def build_image do
+    if System.find_executable("docker") do
+      dockerfile_dir = Application.app_dir(:loopyard, ["priv", "agent-sandbox"])
+
+      case Docker.docker(
+             ["build", "-t", @image_name, dockerfile_dir],
+             # Cold build with apk add takes ~30s; warm cache is seconds.
+             timeout: 180_000
+           ) do
+        {:ok, _} -> :ok
+        {:error, output} -> {:error, output}
+      end
+    else
+      {:error, :docker_not_installed}
+    end
+  end
+
+  @doc """
+  Check whether the sandbox image is already present locally.
+  """
+  def image_present? do
+    case Docker.docker(["image", "inspect", @image_name]) do
+      {:ok, _} -> true
+      _ -> false
+    end
+  end
+
+  @doc """
   Deterministic container name for an agent. Compile-time stable —
   no probing, no lookups. Tools resolve this directly from the
   agent_id when they need a container target.
@@ -157,8 +194,18 @@ defmodule Loopyard.AgentSandbox do
 
       {:error, output} ->
         cond do
-          output =~ "No such image" or output =~ "manifest unknown" ->
-            {:error, :image_unavailable}
+          output =~ "No such image" or output =~ "Unable to find image" or
+              output =~ "manifest unknown" or output =~ "pull access denied" ->
+            # Image isn't present locally and can't be pulled (no
+            # public registry yet). Build it from priv/ and retry
+            # once. This is the "user skipped mix loopyard.setup but
+            # spawned an agent anyway" path — should Just Work.
+            with :ok <- build_image(),
+                 {:ok, _} <- Docker.docker(args, timeout: 30_000) do
+              :ok
+            else
+              {:error, build_err} -> {:error, {:image_build_failed, build_err}}
+            end
 
           output =~ "is already in use by container" ->
             # Concurrent ensure_running race — another caller won the
