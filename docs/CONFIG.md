@@ -52,6 +52,19 @@ Constants baked into modules at compile time. Change means recompile.
 | Boundary | `:boundary` dep installed; no `use Boundary` declarations yet | When declared, will enforce cross-namespace dependency rules at compile time. See [IMPROVEMENTS.md](IMPROVEMENTS.md) for the scoped wire-up task. |
 | StreamData | `:stream_data` dep (`:dev`/`:test`) | Property-based testing for state machines, replay, and streaming buffers. See [TESTING.md](TESTING.md#property-based-tests). |
 
+## Agent sandbox image
+
+The agent sandbox is a Loopyard-owned container per agent — see [plans/agent-shell-container.md](../plans/agent-shell-container.md).
+
+| Knob | Where | Value |
+|---|---|---|
+| Pinned image tag | `Loopyard.AgentSandbox.@image_version` | `0.1.0` (move only when `priv/agent-sandbox/Dockerfile` changes) |
+| Image name | `Loopyard.AgentSandbox.image_name/0` | `loopyard/agent-sandbox:0.1.0` |
+| Build command | `mix loopyard.sandbox.build` | Builds the local image from `priv/agent-sandbox/Dockerfile` |
+| Container memory cap | `Loopyard.AgentSandbox.@memory_limit` | `512m` |
+| Container network | hard-coded in `AgentSandbox.create_and_start/4` | `--network none` (sandbox does file I/O only; outbound work goes through `docker_compose exec`) |
+| Container labels | hard-coded | `loopyard.sandbox=true`, `loopyard.workspace_id=<id>`, `loopyard.agent_id=<id>` (Observer + Janitor can filter on these) |
+
 ## Per-workspace config in volumes
 
 Lives in the code volume under `.loopyard/workspace/`. Agents write these; Loopyard reads them.
