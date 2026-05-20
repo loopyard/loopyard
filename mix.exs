@@ -10,6 +10,9 @@ defmodule Loopyard.MixProject do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
+      description:
+        "An open-source multiplayer software factory where humans and AI ship code together.",
+      package: [licenses: ["AGPL-3.0-or-later"], links: %{}],
       test_coverage: [tool: ExCoveralls]
     ]
   end
