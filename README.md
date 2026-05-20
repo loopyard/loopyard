@@ -1,21 +1,23 @@
 # Loopyard
 
-**Agents that set up and run your entire dev environment.** Point Loopyard at a git repo. It examines the codebase, writes a Dockerfile, spins up databases, starts the dev server, and hands you a working environment with Claude Code agents ready to write and run code inside it.
+> An open-source multiplayer software factory where humans and AI ship code together.
 
-Everything is multiplayer. Multiple people can watch agents work, interact with them, and use the same terminal sessions simultaneously. Open the same project on your phone and laptop, or have three developers watching the same agent debug a failing test.
+Point Loopyard at a git repo. It examines the codebase, writes a Dockerfile, spins up databases, starts the dev server, and hands you a working environment with Claude Code agents ready to write and run code inside it.
+
+Everything is multiplayer. Multiple people can watch agents work, interact with them, and share terminal sessions. Open the same project on your phone and laptop, or have three developers watching one agent debug a failing test.
 
 ### Why this exists
 
-Running Claude Code locally is great, but it runs on your host and you manage the environment yourself. Loopyard gives each project a containerized workspace: isolated, reproducible, and sharable. The agent doesn't just write code, it builds the entire stack. Dockerfile, services, dev server, environment variables. Then it execs into that container to work.
+Claude Code runs on your host and you manage the dev environment yourself. Loopyard gives each project a containerized workspace that's isolated and shareable. The agent doesn't just write code; it builds the whole stack (Dockerfile, services, dev server, env vars) and then execs into the container to work.
 
 **What you get:**
-- **Zero-config project setup.** Clone a repo, launch it, the setup agent figures out what to install and run.
-- **Full Docker stack.** Workspace container, dev server, postgres, redis, whatever the project needs.
-- **Multiplayer.** Every chat, terminal, and service log has its own URL. Open in another tab, send to a teammate, or pull up on your phone.
-- **Multiple agents.** Run setup, feature, and debug agents on the same project simultaneously.
-- **SSH into any container.** `ssh -p 2222 container-name@localhost` drops you into a shared terminal session.
-- **Work from any device.** Start a task on your laptop, check progress from your phone on the couch, pick it back up on your desktop. Every device sees the same live state. No syncing, no context lost.
-- **Persistent containers.** Restart the server, containers keep running. Pick up where you left off.
+- Zero-config project setup. Clone a repo, launch it, the setup agent figures out the rest.
+- Full Docker stack: workspace, dev server, postgres, redis, whatever the project needs.
+- Multiplayer. Every chat, terminal, and service log has its own URL.
+- Multiple agents per project, running at the same time.
+- SSH into any container: `ssh -p 2222 container-name@localhost`.
+- Same live state on every device. No syncing.
+- Containers persist across server restarts.
 
 ## Getting started
 
@@ -24,56 +26,44 @@ macOS only. Requires [Homebrew](https://brew.sh).
 ```bash
 git clone https://github.com/loopyard/loopyard.git
 cd loopyard
-mix loopyard.setup    # installs deps, fixes Docker config, builds assets
-mix loopyard.server   # starts the server
+mix loopyard.setup
+mix loopyard.server
 ```
 
 Launch from any project directory:
 
 ```bash
-# The actual URL with secret is printed when the server starts
 open "http://localhost:4000/launch/SECRET?path=$(pwd)"
 ```
 
-The setup agent will examine the project, build a Docker environment, and start everything. Watch it work in real-time.
+The actual URL is printed when the server starts.
 
 ## How it works
 
-1. **Launch a project.** Point Loopyard at any git repo.
-2. **Setup agent** auto-detects the stack: language, framework, databases, services.
-3. **Docker Compose** builds and runs everything. Workspace container, dev server, databases.
-4. **Agents exec into the workspace container** to write code, run tests, debug issues.
-5. **You watch, interact, and collaborate.** Every view is live and multiplayer.
+1. Launch a project. Point Loopyard at any git repo.
+2. Setup agent auto-detects the stack: language, framework, databases, services.
+3. Docker Compose builds and runs everything.
+4. Agents exec into the workspace container to write code, run tests, debug.
+5. You watch, interact, collaborate. Every view is live.
 
 ## Compared to
 
 ### Claude Code CLI
 
-Claude Code runs on your host machine. It's powerful but:
-- No containerization. Installs and changes happen on your actual system.
-- Single user. No multiplayer, no sharing sessions.
-- No infrastructure management. You set up Docker, databases, etc. yourself.
-- One agent at a time.
-
-Loopyard wraps Claude Code in a containerized workspace with multiplayer. The agent gets the same capabilities but in an isolated environment it built itself.
+Claude Code runs on your host. Installs and changes happen on your actual system, there's no multiplayer, and you manage Docker yourself. Loopyard wraps Claude Code in a containerized workspace the agent built itself, and lets a team share it.
 
 ### [Commander](https://thecommander.app)
 
-Commander provides a GUI for managing Claude Code sessions. Loopyard goes further:
-- **Builds the dev environment**, not just manages the session. Dockerfile, Docker Compose, services, dev server.
-- **Multiplayer.** Commander is single-user. Loopyard lets a team watch and interact with agents simultaneously.
-- **Container isolation.** Every project gets its own Docker stack. Nothing touches your host.
-- **SSH access.** Drop into any container from your terminal. Commander is browser-only.
-- **Multiple agents per project.** Run setup, feature, and debug agents simultaneously on the same codebase.
+Commander is a GUI for Claude Code sessions. Loopyard also builds the dev environment (Dockerfile, services, dev server), works for teams (Commander is single-user), supports SSH into any container, and runs multiple agents on the same project at once.
 
 ## Contributing
 
-See [CLAUDE.md](CLAUDE.md) for code rules, architecture, and testing requirements.
+See [CLAUDE.md](CLAUDE.md) for code rules, architecture, and testing.
 
-Claude Code skills are available for common workflows:
-- `/new-feature` — plan, test, build, integrate
-- `/fix-bug` — reproduce in a test first, then fix
-- `/review-pr` — check against project rules
-- `/setup` — get Loopyard running on a new machine
+Claude Code skills for common workflows:
+- `/new-feature` plan, test, build, integrate
+- `/fix-bug` reproduce in a test first, then fix
+- `/review-pr` check against project rules
+- `/setup` get Loopyard running on a new machine
 
-Every feature needs tests. Every bug fix starts with a failing test. No exceptions.
+Every feature needs tests. Every bug fix starts with a failing test.
