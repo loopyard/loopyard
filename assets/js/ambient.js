@@ -1,159 +1,167 @@
-import { Socket } from "phoenix"
-
-// LiveView hook that:
-//  - Opens a Phoenix socket to /ambient
-//  - Joins the "ambient:lobby" channel
-//  - Receives binary 16-bit PCM chunks from the server
-//  - Plays them via WebAudio with sample-accurate scheduling
-//  - Updates an SVG oscilloscope polyline from an AnalyserNode
+// Ambient player hook.
 //
-// All audio synthesis happens in Elixir (Loopyard.Ambient.Engine).
-// The browser is a dumb player + visualizer.
+// Audio plays via the browser's native <audio> element pointed at
+// /ambient/stream.mp3. The browser handles all the streaming,
+// buffering, jitter, and decoding — we just toggle play/pause and
+// tap the output for the SVG oscilloscope visualization.
+
+// Ship any browser-side error back to the server log so the human
+// debugging can read it without copy-pasting from DevTools.
+function logToServer(label, data) {
+  try {
+    fetch("/ambient/diag", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ label, ...data, ts: Date.now() }),
+      keepalive: true
+    }).catch(() => {})
+  } catch (_) {}
+}
+
 export function createAmbientHook() {
   return {
     mounted() {
+      this._audio = this.el.querySelector("#ambient-audio")
+      this._toggle = this.el.querySelector("#ambient-toggle")
+      this._status = this.el.querySelector("#ambient-status")
+      this._iconPlay = this.el.querySelector("#ambient-icon-play")
+      this._iconPause = this.el.querySelector("#ambient-icon-pause")
+      this._scopeLine = this.el.querySelector("#ambient-scope-line")
+
       this._ctx = null
       this._analyser = null
-      this._nextStartTime = 0
-      this._playing = false
-      this._socket = null
-      this._channel = null
       this._rafId = null
-      this._gain = null
 
-      const toggle = document.getElementById("ambient-toggle")
-      const status = document.getElementById("ambient-status")
+      this._toggle.addEventListener("click", () => this._handleToggle())
+      this._audio.addEventListener("playing", () => {
+        this._setUI(true, "Streaming")
+        logToServer("audio:playing", { src: this._audio.src })
+      })
+      this._audio.addEventListener("pause", () => {
+        this._setUI(false, "Paused")
+        logToServer("audio:pause", {})
+      })
+      this._audio.addEventListener("stalled", () => {
+        logToServer("audio:stalled", {
+          networkState: this._audio.networkState,
+          readyState: this._audio.readyState
+        })
+      })
+      this._audio.addEventListener("waiting", () => {
+        logToServer("audio:waiting", {
+          networkState: this._audio.networkState,
+          readyState: this._audio.readyState
+        })
+      })
+      this._audio.addEventListener("error", (e) => {
+        const err = this._audio.error
+        const codes = {
+          1: "MEDIA_ERR_ABORTED",
+          2: "MEDIA_ERR_NETWORK",
+          3: "MEDIA_ERR_DECODE",
+          4: "MEDIA_ERR_SRC_NOT_SUPPORTED"
+        }
+        const info = {
+          code: err?.code,
+          codeName: codes[err?.code] || "unknown",
+          message: err?.message,
+          networkState: this._audio.networkState,
+          readyState: this._audio.readyState,
+          src: this._audio.src,
+          currentSrc: this._audio.currentSrc
+        }
+        console.error("[ambient] audio error", info, e)
+        logToServer("audio:error", info)
+        this._setUI(false, "Stream error (see console)")
+      })
 
-      toggle?.addEventListener("click", () => this._handleToggle(status))
+      // Surface uncaught exceptions on this page back to the server too
+      window.addEventListener("error", (e) => {
+        logToServer("window:error", {
+          message: e.message,
+          filename: e.filename,
+          lineno: e.lineno,
+          colno: e.colno,
+          stack: e.error?.stack
+        })
+      })
+      window.addEventListener("unhandledrejection", (e) => {
+        logToServer("window:unhandledrejection", {
+          reason: String(e.reason),
+          stack: e.reason?.stack
+        })
+      })
     },
 
     destroyed() {
-      this._teardown()
-    },
-
-    _handleToggle(status) {
-      if (this._playing) {
-        this._pause(status)
-      } else {
-        this._play(status)
-      }
-    },
-
-    _play(status) {
-      this._ensureContext()
-
-      // Browser autoplay policy — must resume on user gesture.
-      if (this._ctx.state === "suspended") {
-        this._ctx.resume()
-      }
-
-      // Reset scheduling baseline so we don't try to play in the past
-      // after a long pause.
-      this._nextStartTime = this._ctx.currentTime + 0.1
-
-      if (!this._channel) {
-        this._connect()
-      }
-
-      this._channel.push("play", {})
-      this._setPlayingUI(true, status, "Streaming")
-      this._startAnimation()
-    },
-
-    _pause(status) {
-      this._channel?.push("stop", {})
-      this._setPlayingUI(false, status, "Paused")
       this._stopAnimation()
-      // Ctx stays alive so resuming is instant; just stop scheduling
-      // new buffers — the in-flight ones finish naturally.
+      this._audio?.pause()
     },
 
-    _ensureContext() {
+    _handleToggle() {
+      if (this._audio.paused) {
+        this._ensureAnalyser()
+        this._audio.play().catch((err) => {
+          console.error("[ambient] play failed", err)
+          logToServer("play:rejected", {
+            name: err?.name,
+            message: err?.message,
+            stack: err?.stack
+          })
+          this._setUI(false, "Play failed")
+        })
+        this._startAnimation()
+      } else {
+        this._audio.pause()
+        this._stopAnimation()
+      }
+    },
+
+    // Tap the <audio> element into a WebAudio graph so we can read
+    // its waveform for the SVG oscilloscope. Audio still plays
+    // through the AudioContext's destination, not the audio
+    // element's own output (createMediaElementSource takes over).
+    _ensureAnalyser() {
       if (this._ctx) return
 
-      this._ctx = new (window.AudioContext || window.webkitAudioContext)({
-        sampleRate: 44100
-      })
-
-      this._gain = this._ctx.createGain()
-      this._gain.gain.value = 0.9
-
+      const AudioCtor = window.AudioContext || window.webkitAudioContext
+      this._ctx = new AudioCtor()
+      const source = this._ctx.createMediaElementSource(this._audio)
       this._analyser = this._ctx.createAnalyser()
       this._analyser.fftSize = 1024
       this._analyser.smoothingTimeConstant = 0.6
-
-      this._gain.connect(this._analyser)
+      source.connect(this._analyser)
       this._analyser.connect(this._ctx.destination)
     },
 
-    _connect() {
-      this._socket = new Socket("/ambient", {})
-      this._socket.connect()
-
-      this._channel = this._socket.channel("ambient:lobby", {})
-
-      this._channel.on("chunk", (payload) => {
-        // payload is an ArrayBuffer of little-endian int16 samples.
-        const samples = new Int16Array(payload)
-        const floats = new Float32Array(samples.length)
-        for (let i = 0; i < samples.length; i++) {
-          floats[i] = samples[i] / 32768
-        }
-
-        const buffer = this._ctx.createBuffer(1, floats.length, 44100)
-        buffer.copyToChannel(floats, 0)
-
-        const src = this._ctx.createBufferSource()
-        src.buffer = buffer
-        src.connect(this._gain)
-
-        const startAt = Math.max(this._nextStartTime, this._ctx.currentTime + 0.02)
-        src.start(startAt)
-        this._nextStartTime = startAt + buffer.duration
-      })
-
-      this._channel.join()
-    },
-
-    _setPlayingUI(playing, status, statusText) {
-      this._playing = playing
-      const iconPlay = document.getElementById("ambient-icon-play")
-      const iconPause = document.getElementById("ambient-icon-pause")
+    _setUI(playing, statusText) {
       if (playing) {
-        iconPlay?.classList.add("hidden")
-        iconPause?.classList.remove("hidden")
+        this._iconPlay.classList.add("hidden")
+        this._iconPause.classList.remove("hidden")
       } else {
-        iconPlay?.classList.remove("hidden")
-        iconPause?.classList.add("hidden")
+        this._iconPlay.classList.remove("hidden")
+        this._iconPause.classList.add("hidden")
       }
-      if (status) status.textContent = statusText
+      if (this._status) this._status.textContent = statusText
     },
 
     _startAnimation() {
-      if (this._rafId) return
-
-      const line = document.getElementById("ambient-scope-line")
+      if (this._rafId || !this._analyser) return
       const buf = new Uint8Array(this._analyser.fftSize)
       const width = 800
-      const height = 120
-      const mid = height / 2
+      const mid = 60
 
       const tick = () => {
         this._analyser.getByteTimeDomainData(buf)
-
-        // Downsample to ~80 points for a clean SVG path.
         const step = Math.floor(buf.length / 80)
         let pts = ""
         for (let i = 0; i < buf.length; i += step) {
           const x = (i / buf.length) * width
-          // buf[i] is 0-255, 128 = silence.
           const y = mid + ((buf[i] - 128) / 128) * (mid - 10)
           pts += (pts ? " " : "") + x.toFixed(1) + "," + y.toFixed(1)
         }
-        // Close the rightmost edge so the polyline reaches the full width.
         pts += " " + width + "," + mid.toFixed(1)
-        line?.setAttribute("points", pts)
-
+        this._scopeLine?.setAttribute("points", pts)
         this._rafId = requestAnimationFrame(tick)
       }
       this._rafId = requestAnimationFrame(tick)
@@ -164,20 +172,9 @@ export function createAmbientHook() {
         cancelAnimationFrame(this._rafId)
         this._rafId = null
       }
-      // Reset the line to flat after a beat.
       setTimeout(() => {
-        document
-          .getElementById("ambient-scope-line")
-          ?.setAttribute("points", "0,60 800,60")
+        this._scopeLine?.setAttribute("points", "0,60 800,60")
       }, 400)
-    },
-
-    _teardown() {
-      this._stopAnimation()
-      this._channel?.leave()
-      this._socket?.disconnect()
-      this._channel = null
-      this._socket = null
     }
   }
 }

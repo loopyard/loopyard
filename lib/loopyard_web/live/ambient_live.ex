@@ -1,14 +1,15 @@
 defmodule LoopyardWeb.AmbientLive do
   @moduledoc """
-  Listening page for the ambient soundtrack. Single big play/pause
-  toggle + SVG oscilloscope visualization driven by WebAudio's
-  AnalyserNode in the browser.
+  Listening page for the ambient soundtrack. The audio is served as
+  a streaming WAV from `AmbientStreamController` and played by a
+  native `<audio>` element. JS hook just toggles play/pause and
+  taps the audio output for the SVG oscilloscope.
   """
   use LoopyardWeb, :live_view
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, page_title: "Ambient", playing: false)}
+    {:ok, assign(socket, page_title: "Ambient")}
   end
 
   @impl true
@@ -19,6 +20,8 @@ defmodule LoopyardWeb.AmbientLive do
       phx-hook="Ambient"
       class="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-900 to-zinc-950 text-zinc-200 flex flex-col items-center justify-center px-6 py-12 select-none"
     >
+      <audio id="ambient-audio" src={~p"/ambient/stream.mp3"} preload="none"></audio>
+
       <div class="text-center mb-12">
         <h1 class="text-2xl font-light tracking-wide text-zinc-100">Loopyard Ambient</h1>
         <p class="text-sm text-zinc-500 mt-2 font-light">

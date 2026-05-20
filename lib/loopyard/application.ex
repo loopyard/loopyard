@@ -59,12 +59,6 @@ defmodule Loopyard.Application do
       # Must start after PubSub; order vs. Observer doesn't matter.
       Loopyard.Events.Tap,
 
-      # Generative ambient audio engine. Singleton GenServer that
-      # renders PCM chunks and broadcasts via Events.Ambient. Sleeps
-      # until a client tells it to play. See
-      # plans/ambient-soundtrack.md.
-      Loopyard.Ambient.Engine,
-
       # Saga recorder — attaches to Loopyard.Saga telemetry and
       # keeps the last 100 runs in ETS for /system/sagas. Move #7a.
       # Must start before the first saga runs (which happens on any

@@ -9,7 +9,6 @@ defmodule LoopyardWeb.Endpoint do
   ]
 
   socket "/terminal", LoopyardWeb.UserSocket, websocket: true
-  socket "/ambient", LoopyardWeb.AmbientSocket, websocket: true
 
   socket "/live", Phoenix.LiveView.Socket,
     websocket: [connect_info: [session: @session_options]],
@@ -21,11 +20,15 @@ defmodule LoopyardWeb.Endpoint do
     gzip: false,
     only: LoopyardWeb.static_paths()
 
+  # Tidewave must run BEFORE Plug.Parsers so it can read the raw
+  # request body for MCP messages. Dev-only — `code_reloading?` is
+  # the standard gate for "this is a dev environment."
   if code_reloading? do
+    plug Tidewave
+
     socket "/phoenix/live_reload/socket", Phoenix.LiveReloader.Socket
     plug Phoenix.LiveReloader
     plug Phoenix.CodeReloader
-    plug Tidewave
   end
 
   plug Plug.RequestId
