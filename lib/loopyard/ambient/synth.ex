@@ -81,18 +81,49 @@ defmodule Loopyard.Ambient.Synth do
     pad = (1.0 - alpha) * chord_sum(notes_a, t) + alpha * chord_sum(notes_b, t)
     bass = (1.0 - alpha) * sine(bass_a, t) + alpha * sine(bass_b, t)
 
-    pad_gain = 0.30 * lfo(t, 0.07, 0.85, 1.0)
+    # Two LFOs at coprime-ish frequencies. Their product is
+    # non-periodic over any audible window — no obvious "breath in,
+    # breath out" pattern.
+    pad_gain = 0.30 * lfo(t, 0.07, 0.85, 1.0) * lfo(t, 0.013, 0.92, 1.05)
     bass_gain = 0.18
 
     pad_gain * pad + bass_gain * bass
   end
 
-  # Pick a chord from the pool deterministically from the slot index.
-  # `:erlang.phash2` gives a well-distributed hash, so consecutive
-  # slots almost always pick different chords and the long-term
-  # sequence has no audible repetition pattern.
+  # Pick a chord from the pool deterministically, plus an inversion
+  # and bass-octave shift — all keyed off independent hashes of the
+  # slot so they don't correlate. The combined space is
+  # 10 chords × 3 inversions × 3 bass octaves = 90 distinct
+  # voicings, picked seemingly at random across the slot sequence.
+  # The bass octave variation specifically breaks up the
+  # "down-down-down" directional drift you'd hear with bass notes
+  # only ever in one octave.
   defp chord_for_slot(slot) do
-    Enum.at(@chord_pool, rem(:erlang.phash2(slot), @chord_pool_size))
+    chord_idx = rem(:erlang.phash2({:chord, slot}), @chord_pool_size)
+    inv = rem(:erlang.phash2({:inv, slot}), 3)
+    bass_shift = bass_octave_shift(slot)
+
+    {notes, bass} = Enum.at(@chord_pool, chord_idx)
+    {invert_chord(notes, inv), bass * bass_shift}
+  end
+
+  # Distribution: ~60% default octave, ~20% down, ~20% up.
+  defp bass_octave_shift(slot) do
+    case rem(:erlang.phash2({:bass_oct, slot}), 5) do
+      0 -> 0.5
+      4 -> 2.0
+      _ -> 1.0
+    end
+  end
+
+  # Rotate the chord N positions, moving each rotated note up one
+  # octave. Changes the voicing — actually changes what frequencies
+  # sound — unlike a plain list rotation (which would be silent
+  # since we just sum the sines).
+  defp invert_chord(notes, 0), do: notes
+
+  defp invert_chord([lowest | rest], k) when k > 0 do
+    invert_chord(rest ++ [lowest * 2], k - 1)
   end
 
   defp chord_sum(notes, t) do
