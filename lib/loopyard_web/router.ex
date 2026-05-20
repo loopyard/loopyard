@@ -19,6 +19,7 @@ defmodule LoopyardWeb.Router do
     pipe_through :browser
 
     live "/", ProjectListLive, :index
+    live "/ambient", AmbientLive, :index
     live "/projects/:project_id", ProjectLive, :index
     live "/projects/:project_id/settings", ProjectLive, :settings
     live "/projects/:project_id/workspaces/:workspace_id", WorkspaceLive, :index

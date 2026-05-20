@@ -9,6 +9,7 @@ defmodule LoopyardWeb.Endpoint do
   ]
 
   socket "/terminal", LoopyardWeb.UserSocket, websocket: true
+  socket "/ambient", LoopyardWeb.AmbientSocket, websocket: true
 
   socket "/live", Phoenix.LiveView.Socket,
     websocket: [connect_info: [session: @session_options]],

@@ -2,9 +2,11 @@ import "phoenix_html"
 import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import {createTerminalHook} from "./terminal"
+import {createAmbientHook} from "./ambient"
 
 let Hooks = {}
 Hooks.Terminal = createTerminalHook()
+Hooks.Ambient = createAmbientHook()
 
 // ScrollBottom: lives on #chat-page (ancestor), scrolls #messages
 // (descendant). Hooks on deeply nested elements (inside function
