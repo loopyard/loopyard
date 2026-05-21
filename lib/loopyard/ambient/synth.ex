@@ -12,23 +12,32 @@ defmodule Loopyard.Ambient.Synth do
   that need a human's attention). The music must stay out of the
   way of the signal.
 
-    * `:serene`   — warm major7/min7 pads, mid-tempo
+    * `:serene`   — warm major7/min7 pads, mid-tempo; primary LFO
+                    tuned to 0.1Hz (HRV-resonance breathing rate)
     * `:nocturne` — dark minor-mode, slow, deeper bass
     * `:cascade`  — sustained chord with rotating amplitude
                     emphasis (the chord moves upward through
                     itself, no plucks)
+    * `:hum`      — auditory-masking floor: brown noise + deep
+                    sub-bass drone. No music; the
+                    most-evidence-backed audio intervention for
+                    focus in noisy environments
+    * `:gamma`    — EXPERIMENTAL: Serene + 40Hz amplitude
+                    modulation for possible gamma-band entrainment
 
   Defaults to `:serene`.
   """
 
   alias Loopyard.Ambient.Primitive
 
-  alias Loopyard.Ambient.Tracks.{Serene, Nocturne, Cascade}
+  alias Loopyard.Ambient.Tracks.{Serene, Nocturne, Cascade, Hum, Gamma}
 
   @tracks %{
     serene: Serene,
     nocturne: Nocturne,
-    cascade: Cascade
+    cascade: Cascade,
+    hum: Hum,
+    gamma: Gamma
   }
 
   @doc "Names of all available tracks."

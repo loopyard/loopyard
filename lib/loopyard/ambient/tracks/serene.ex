@@ -44,7 +44,15 @@ defmodule Loopyard.Ambient.Tracks.Serene do
     pad = (1.0 - alpha) * chord_sum(notes_a, t) + alpha * chord_sum(notes_b, t)
     bass = (1.0 - alpha) * sine(bass_a, t) + alpha * sine(bass_b, t)
 
-    pad_gain = 0.30 * lfo(t, 0.07, 0.85, 1.0) * lfo(t, 0.013, 0.92, 1.05)
+    # Primary LFO tuned to 0.1 Hz — the resonance frequency of the
+    # autonomic nervous system. Slow-breathing biofeedback aims
+    # exactly here (one cycle per 10s ≈ 6 breaths/min). Listeners
+    # tend to align their breath to this rhythm subconsciously,
+    # which improves heart-rate variability and parasympathetic
+    # tone — the "calm focus" state we want for coding. Secondary
+    # LFO at coprime 0.013 Hz keeps the combined motion
+    # non-periodic.
+    pad_gain = 0.30 * lfo(t, 0.1, 0.85, 1.0) * lfo(t, 0.013, 0.92, 1.05)
     bass_gain = 0.18
 
     pad_gain * pad + bass_gain * bass

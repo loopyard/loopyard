@@ -15,6 +15,8 @@ defmodule Loopyard.Ambient.SynthTest do
       assert :serene in names
       assert :nocturne in names
       assert :cascade in names
+      assert :hum in names
+      assert :gamma in names
     end
 
     test "resolves by atom" do
