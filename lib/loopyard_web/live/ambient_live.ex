@@ -11,8 +11,8 @@ defmodule LoopyardWeb.AmbientLive do
   @tracks [
     {:serene, "Serene", "warm major7 pads, mid-tempo"},
     {:nocturne, "Nocturne", "dark minor, slow, deep bass"},
-    {:bloom, "Bloom", "high shimmer, no bass, very slow"},
-    {:pulse, "Pulse", "tremolo + faster slots"}
+    {:pulse, "Pulse", "gentle tremolo + faster slots"},
+    {:cascade, "Cascade", "Bach-style ascending arpeggios"}
   ]
 
   @impl true
@@ -42,7 +42,7 @@ defmodule LoopyardWeb.AmbientLive do
     >
       <audio
         id="ambient-audio"
-        src={~p"/ambient/stream.mp3?track=#{@current_track}"}
+        src={~p"/ambient/stream.opus?track=#{@current_track}"}
         preload="none"
         data-track={@current_track}
       >

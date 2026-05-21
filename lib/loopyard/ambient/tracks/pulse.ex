@@ -42,10 +42,11 @@ defmodule Loopyard.Ambient.Tracks.Pulse do
     pad = (1.0 - alpha) * chord_sum(notes_a, t) + alpha * chord_sum(notes_b, t)
     bass = (1.0 - alpha) * sine(bass_a, t) + alpha * sine(bass_b, t)
 
-    # Tremolo: amplitude modulation at 0.5 Hz with a wide swing
-    # (depth 0.5). Combined with the regular LFO this gives a
-    # breathing-pulse feel without going full beat.
-    tremolo = lfo(t, 0.5, 0.5, 1.0)
+    # Tremolo: amplitude modulation at 0.5 Hz with a gentle 15%
+    # swing. Wide-swing tremolo (50%+) felt too "throbby" — this
+    # is just a barely-noticeable breath that adds motion without
+    # competing with the chord pad.
+    tremolo = lfo(t, 0.5, 0.85, 1.0)
     pad_gain = 0.30 * tremolo * lfo(t, 0.07, 0.85, 1.0)
     bass_gain = 0.20
 

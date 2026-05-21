@@ -8,21 +8,21 @@ defmodule Loopyard.Ambient.Synth do
 
     * `:serene`   — warm major7/min7 pads, mid-tempo
     * `:nocturne` — dark minor-mode, slow, deeper bass
-    * `:bloom`    — sparse high-register shimmer, no bass
-    * `:pulse`    — Serene + slow tremolo for gentle rhythmic feel
+    * `:pulse`    — Serene + gentle tremolo
+    * `:cascade`  — Bach-style ascending arpeggios + sustained bass
 
   Defaults to `:serene`.
   """
 
   alias Loopyard.Ambient.Primitive
 
-  alias Loopyard.Ambient.Tracks.{Serene, Nocturne, Bloom, Pulse}
+  alias Loopyard.Ambient.Tracks.{Serene, Nocturne, Pulse, Cascade}
 
   @tracks %{
     serene: Serene,
     nocturne: Nocturne,
-    bloom: Bloom,
-    pulse: Pulse
+    pulse: Pulse,
+    cascade: Cascade
   }
 
   @doc "Names of all available tracks."

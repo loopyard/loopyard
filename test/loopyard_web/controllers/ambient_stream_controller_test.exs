@@ -43,8 +43,8 @@ defmodule LoopyardWeb.AmbientStreamControllerTest do
   end
 
   describe "route resolution" do
-    test "GET /ambient/stream.mp3 routes to AmbientStreamController.stream/2" do
-      route = Phoenix.Router.route_info(LoopyardWeb.Router, "GET", "/ambient/stream.mp3", "")
+    test "GET /ambient/stream.opus routes to AmbientStreamController.stream/2" do
+      route = Phoenix.Router.route_info(LoopyardWeb.Router, "GET", "/ambient/stream.opus", "")
       assert route.plug == LoopyardWeb.AmbientStreamController
       assert route.plug_opts == :stream
     end

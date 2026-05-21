@@ -14,7 +14,6 @@ defmodule Loopyard.Ambient.SynthTest do
       names = Synth.track_names()
       assert :serene in names
       assert :nocturne in names
-      assert :bloom in names
       assert :pulse in names
     end
 
@@ -24,7 +23,7 @@ defmodule Loopyard.Ambient.SynthTest do
     end
 
     test "resolves by string for known tracks" do
-      assert Synth.resolve("bloom") == Loopyard.Ambient.Tracks.Bloom
+      assert Synth.resolve("pulse") == Loopyard.Ambient.Tracks.Pulse
     end
 
     test "returns nil for unknown names" do
@@ -70,13 +69,10 @@ defmodule Loopyard.Ambient.SynthTest do
     end
 
     test "different tracks produce different output for the same time range" do
-      a = Synth.render_chunk(:serene, 0, 512)
-      b = Synth.render_chunk(:nocturne, 0, 512)
-      c = Synth.render_chunk(:bloom, 0, 512)
-      d = Synth.render_chunk(:pulse, 0, 512)
+      outputs = Enum.map(Synth.track_names(), &Synth.render_chunk(&1, 0, 512))
 
-      # Each should be distinct from each other.
-      assert MapSet.new([a, b, c, d]) |> MapSet.size() == 4
+      assert MapSet.new(outputs) |> MapSet.size() == length(Synth.track_names()),
+             "two or more tracks produced byte-identical output"
     end
 
     test "consecutive chunks join continuously at the boundary" do

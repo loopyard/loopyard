@@ -2,12 +2,17 @@ defmodule LoopyardWeb.AmbientStreamController do
   @moduledoc """
   HTTP audio stream for the ambient soundtrack.
 
-  Pipeline: Synth → raw PCM → ffmpeg (encode MP3) → HTTP chunked
-  response → browser `<audio>` element.
+  Pipeline: Synth → raw PCM → ffmpeg (encode Opus into Ogg) →
+  HTTP chunked response → browser `<audio>` element.
 
-  MP3 instead of WAV because Safari refuses to stream
-  unbounded-length WAV via `<audio>` (MEDIA_ERR_SRC_NOT_SUPPORTED).
-  MP3 is a streaming-native format with universal browser support.
+  Opus is the right codec for this:
+    - Best quality per bit for music (96kbps Opus ≈ 192kbps MP3)
+    - ~20ms encoding latency vs MP3's ~200ms — first audio frame
+      reaches the browser faster, helps avoid Safari's
+      "loading too slow → abort" behavior
+    - Designed for streaming (Skype/Discord/WebRTC use it)
+    - Native support in every modern browser (Safari 14+,
+      everything else for years)
 
   Each HTTP listener has its own ffmpeg subprocess and timeline.
   ffmpeg is ~10MB RAM per process — fine for Loopyard's scale.
@@ -40,7 +45,7 @@ defmodule LoopyardWeb.AmbientStreamController do
 
     conn =
       conn
-      |> put_resp_content_type("audio/mpeg")
+      |> put_resp_content_type("audio/ogg")
       |> put_resp_header("cache-control", "no-cache, no-store, must-revalidate")
       |> send_chunked(200)
 
@@ -126,12 +131,21 @@ defmodule LoopyardWeb.AmbientStreamController do
           "1",
           "-i",
           "pipe:0",
-          # Output: MP3, 128kbps, to stdout. low-delay flags so chunks
+          # Output: libopus in Ogg container, 96kbps. -application
+          # audio tunes the codec for music (vs voip which optimizes
+          # for speech intelligibility). -frame_duration 20 keeps
+          # packets small for streaming. -flush_packets so chunks
           # start arriving fast.
-          "-f",
-          "mp3",
+          "-c:a",
+          "libopus",
           "-b:a",
-          "128k",
+          "96k",
+          "-application",
+          "audio",
+          "-frame_duration",
+          "20",
+          "-f",
+          "ogg",
           "-flush_packets",
           "1",
           "pipe:1"

@@ -112,7 +112,7 @@ defmodule LoopyardWeb.Router do
   # (the diag POST is from the same page, JSON only). No session.
   scope "/ambient", LoopyardWeb do
     pipe_through :ambient
-    get "/stream.mp3", AmbientStreamController, :stream
+    get "/stream.opus", AmbientStreamController, :stream
     post "/diag", AmbientStreamController, :diag
   end
 end
