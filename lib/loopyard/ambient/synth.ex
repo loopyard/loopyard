@@ -6,22 +6,28 @@ defmodule Loopyard.Ambient.Synth do
 
   ## Tracks
 
+  These are designed as a CEREBRAL AMBIENT BASELINE — sustained
+  textures with no transients or rhythmic events, intended to sit
+  beneath a future audio-signaling layer (gentle alerts for things
+  that need a human's attention). The music must stay out of the
+  way of the signal.
+
     * `:serene`   — warm major7/min7 pads, mid-tempo
     * `:nocturne` — dark minor-mode, slow, deeper bass
-    * `:pulse`    — Serene + gentle tremolo
-    * `:cascade`  — Bach-style ascending arpeggios + sustained bass
+    * `:cascade`  — sustained chord with rotating amplitude
+                    emphasis (the chord moves upward through
+                    itself, no plucks)
 
   Defaults to `:serene`.
   """
 
   alias Loopyard.Ambient.Primitive
 
-  alias Loopyard.Ambient.Tracks.{Serene, Nocturne, Pulse, Cascade}
+  alias Loopyard.Ambient.Tracks.{Serene, Nocturne, Cascade}
 
   @tracks %{
     serene: Serene,
     nocturne: Nocturne,
-    pulse: Pulse,
     cascade: Cascade
   }
 

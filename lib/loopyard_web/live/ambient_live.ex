@@ -9,10 +9,9 @@ defmodule LoopyardWeb.AmbientLive do
   use LoopyardWeb, :live_view
 
   @tracks [
-    {:serene, "Serene", "warm major7 pads, mid-tempo"},
-    {:nocturne, "Nocturne", "dark minor, slow, deep bass"},
-    {:pulse, "Pulse", "gentle tremolo + faster slots"},
-    {:cascade, "Cascade", "Bach-style ascending arpeggios"}
+    {:serene, "Serene", "warm major7 pads"},
+    {:nocturne, "Nocturne", "dark minor, slow"},
+    {:cascade, "Cascade", "rotating chord, gentle upward motion"}
   ]
 
   @impl true

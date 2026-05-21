@@ -1,17 +1,15 @@
 defmodule Loopyard.Ambient.Tracks.Cascade do
   @moduledoc """
-  Bach prelude-inspired ascending arpeggios. Each 8-second chord
-  slot plays the chord as an 8-note ascending sequence (the chord
-  notes followed by the same notes an octave higher), then resets
-  to the next chord's low note and climbs again. The constant
-  "reset and rise" is what makes Bach preludes feel like they
-  always go up.
+  Loscil-style ascending motion on a sustained pad. No discrete
+  notes — all chord notes play continuously, but each note has its
+  own slow amplitude LFO phased so they peak in ascending order
+  (low note brightest first, then middle, then high, then highest,
+  loop). The listener perceives the chord moving upward through
+  itself, the way Bach preludes *feel* like they always go up,
+  but without any plucked transients.
 
-  Tempo: 1 note per second — slow enough to stay chill, fast
-  enough for the upward motion to register. Plucked envelope
-  (fast attack, exponential decay) + a hint of second/third
-  harmonics gives a soft harpsichord-ish timbre. Sustained bass
-  holds the harmonic floor underneath.
+  Sustained bass underneath. No tremolo, no harmonics — just pure
+  sines blooming gently in sequence.
   """
 
   @behaviour Loopyard.Ambient.Track
@@ -19,22 +17,22 @@ defmodule Loopyard.Ambient.Tracks.Cascade do
   import Loopyard.Ambient.Primitive
 
   @sample_rate Loopyard.Ambient.Primitive.sample_rate()
-  @slot_samples 8 * @sample_rate
-  @notes_per_slot 8
-  @note_samples div(@slot_samples, @notes_per_slot)
+  @slot_samples 20 * @sample_rate
 
-  # Diatonic-feeling chord pool. Major/minor 7ths in related keys.
-  # Random selection per slot (no V-I logic) but the limited
-  # palette keeps it tonal.
+  # The ascending-spotlight period. Each chord note peaks once per
+  # cycle; the cycle takes this many seconds to traverse all four
+  # notes. 24s = 6s per "step" — slow enough to feel meditative,
+  # fast enough that the upward motion is perceptible.
+  @rotation_period_s 24.0
+
+  # Diatonic-feeling pool, same shape as Serene.
   @chord_pool [
     {[261.63, 329.63, 392.00, 493.88], 65.41},
     {[220.00, 261.63, 329.63, 392.00], 55.00},
     {[174.61, 220.00, 261.63, 329.63], 87.31},
     {[196.00, 246.94, 293.66, 369.99], 49.00},
     {[164.81, 207.65, 246.94, 311.13], 82.41},
-    {[146.83, 174.61, 220.00, 261.63], 73.42},
-    {[233.08, 293.66, 349.23, 440.00], 58.27},
-    {[155.56, 196.00, 233.08, 311.13], 77.78}
+    {[146.83, 174.61, 220.00, 261.63], 73.42}
   ]
   @chord_pool_size length(@chord_pool)
 
@@ -42,41 +40,48 @@ defmodule Loopyard.Ambient.Tracks.Cascade do
   def sample_at(n) do
     t = n / @sample_rate
 
-    slot = div(n, @slot_samples)
-    in_slot = rem(n, @slot_samples)
+    chord_slot = div(n, @slot_samples)
+    chord_progress = rem(n, @slot_samples) / @slot_samples
 
-    {chord_notes, bass_freq} = chord_for_slot(slot)
+    {notes_a, bass_a} = chord_for_slot(chord_slot)
+    {notes_b, bass_b} = chord_for_slot(chord_slot + 1)
 
-    # Ascending arpeggio: chord notes, then same notes one octave up.
-    # 4 + 4 = 8 ascending positions across the slot.
-    arp_notes = chord_notes ++ Enum.map(chord_notes, &(&1 * 2.0))
+    alpha = smoothstep(max(0.0, (chord_progress - 0.7) * 3.33))
 
-    note_idx = min(div(in_slot, @note_samples), length(arp_notes) - 1)
-    note_freq = Enum.at(arp_notes, note_idx)
-    in_note = rem(in_slot, @note_samples) / @note_samples
+    # Each chord note has its own amplitude LFO. Phase offset by
+    # note position so they peak in ascending order across the
+    # rotation period.
+    arp_a = ascending_spotlight(notes_a, t)
+    arp_b = ascending_spotlight(notes_b, t)
 
-    # Pluck envelope: ~20ms attack (no click), exponential decay
-    # over the ~1s note. Notes overlap their own tails naturally,
-    # giving a continuous flow without crossfades.
-    envelope = pluck_envelope(in_note)
+    pad = (1.0 - alpha) * arp_a + alpha * arp_b
+    bass = (1.0 - alpha) * sine(bass_a, t) + alpha * sine(bass_b, t)
 
-    arp = pluck_voice(note_freq, t) * envelope
-    bass = sine(bass_freq, t)
+    # Slow gain LFO on the whole thing for natural breath. No
+    # tremolo or harmonics.
+    pad_gain = 0.22 * lfo(t, 0.03, 0.85, 1.0)
+    bass_gain = 0.15
 
-    arp * 0.30 + bass * 0.15
+    pad_gain * pad + bass_gain * bass
   end
 
-  # Plucked tone: fundamental + light 2nd and 3rd harmonics for a
-  # soft harpsichord-ish brightness. All sines so it stays clean.
-  defp pluck_voice(freq, t) do
-    sine(freq, t) + 0.30 * sine(freq * 2.0, t) + 0.12 * sine(freq * 3.0, t)
-  end
+  # All chord notes play continuously, but each has an amplitude
+  # that swells in turn. Phase offsets by note index so they peak
+  # in ascending sequence over @rotation_period_s.
+  defp ascending_spotlight(notes, t) do
+    count = length(notes)
 
-  # 2% attack ramp then exponential decay. Time constant ~2.5
-  # samples through the note gives a soft, mostly-rung-out tail
-  # by the end of the 1-second window.
-  defp pluck_envelope(p) when p < 0.02, do: p / 0.02
-  defp pluck_envelope(p), do: :math.exp(-(p - 0.02) * 2.5)
+    notes
+    |> Enum.with_index()
+    |> Enum.reduce(0.0, fn {freq, idx}, acc ->
+      phase = idx / count * 2.0 * :math.pi
+      # Cosine ranges -1..1; shift to 0..1 with a floor so even
+      # "off" notes contribute a little (smooth cloud, not gating).
+      amp_lfo = 0.35 + 0.65 * (1.0 + :math.cos(2.0 * :math.pi * t / @rotation_period_s - phase)) / 2.0
+      acc + sine(freq, t) * amp_lfo
+    end)
+    |> Kernel./(count)
+  end
 
   defp chord_for_slot(slot) do
     idx = rem(:erlang.phash2({:cascade, slot}), @chord_pool_size)

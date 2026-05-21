@@ -14,7 +14,7 @@ defmodule Loopyard.Ambient.SynthTest do
       names = Synth.track_names()
       assert :serene in names
       assert :nocturne in names
-      assert :pulse in names
+      assert :cascade in names
     end
 
     test "resolves by atom" do
@@ -23,7 +23,7 @@ defmodule Loopyard.Ambient.SynthTest do
     end
 
     test "resolves by string for known tracks" do
-      assert Synth.resolve("pulse") == Loopyard.Ambient.Tracks.Pulse
+      assert Synth.resolve("cascade") == Loopyard.Ambient.Tracks.Cascade
     end
 
     test "returns nil for unknown names" do
