@@ -31,6 +31,7 @@ export function createAmbientHook() {
       this._ctx = null
       this._analyser = null
       this._rafId = null
+      this._currentSrc = this._audio.src
 
       this._toggle.addEventListener("click", () => this._handleToggle())
       this._audio.addEventListener("playing", () => {
@@ -96,6 +97,25 @@ export function createAmbientHook() {
     destroyed() {
       this._stopAnimation()
       this._audio?.pause()
+    },
+
+    // LiveView re-renders when the user picks a different track,
+    // changing the <audio src=...>. Browsers don't auto-reload on
+    // src change — we have to call .load() (and resume playback if
+    // we were playing).
+    updated() {
+      this._audio = this.el.querySelector("#ambient-audio")
+      const newSrc = this._audio.src
+      if (newSrc && newSrc !== this._currentSrc) {
+        const wasPlaying = !this._audio.paused
+        this._currentSrc = newSrc
+        this._audio.load()
+        if (wasPlaying) {
+          this._audio.play().catch((err) => {
+            console.error("[ambient] track-switch play failed", err)
+          })
+        }
+      }
     },
 
     _handleToggle() {

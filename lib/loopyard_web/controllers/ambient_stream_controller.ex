@@ -35,7 +35,9 @@ defmodule LoopyardWeb.AmbientStreamController do
   # at exactly real-time rate.
   @chunk_samples 4_800
 
-  def stream(conn, _params) do
+  def stream(conn, params) do
+    track = resolve_track(params)
+
     conn =
       conn
       |> put_resp_content_type("audio/mpeg")
@@ -44,13 +46,13 @@ defmodule LoopyardWeb.AmbientStreamController do
 
     port = open_ffmpeg(Synth.sample_rate())
 
-    # Producer task: render PCM and pipe to ffmpeg stdin at real-time
-    # rate. Linked to the controller process, so client disconnect →
-    # controller exit → task killed → port closed → ffmpeg exits.
+    # Producer task: render PCM and pipe to ffmpeg stdin. Linked to
+    # the controller process, so client disconnect → controller
+    # exit → task killed → port closed → ffmpeg exits.
     producer =
       Task.async(fn ->
         try do
-          pcm_loop(port, 0)
+          pcm_loop(port, track, 0)
         rescue
           _ -> :ok
         catch
@@ -65,13 +67,24 @@ defmodule LoopyardWeb.AmbientStreamController do
     conn
   end
 
-  defp pcm_loop(port, t) do
-    pcm = Synth.render_chunk(t, @chunk_samples)
+  defp resolve_track(%{"track" => name}) do
+    case Synth.resolve(name) do
+      nil -> :serene
+      _module -> String.to_existing_atom(name)
+    end
+  rescue
+    ArgumentError -> :serene
+  end
+
+  defp resolve_track(_), do: :serene
+
+  defp pcm_loop(port, track, t) do
+    pcm = Synth.render_chunk(track, t, @chunk_samples)
     # Port.command blocks when the OS pipe to ffmpeg is full, which
     # in turn happens when ffmpeg's encode + the browser-side HTTP
     # buffer is full. No manual sleep needed — the chain paces itself.
     Port.command(port, pcm)
-    pcm_loop(port, t + @chunk_samples)
+    pcm_loop(port, track, t + @chunk_samples)
   end
 
   defp read_mp3_loop(conn, port) do

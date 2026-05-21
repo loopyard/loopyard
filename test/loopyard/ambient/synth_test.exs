@@ -9,74 +9,116 @@ defmodule Loopyard.Ambient.SynthTest do
     end
   end
 
-  describe "render_chunk/2" do
+  describe "track_names/0 + resolve/1" do
+    test "lists all known tracks" do
+      names = Synth.track_names()
+      assert :serene in names
+      assert :nocturne in names
+      assert :bloom in names
+      assert :pulse in names
+    end
+
+    test "resolves by atom" do
+      assert Synth.resolve(:serene) == Loopyard.Ambient.Tracks.Serene
+      assert Synth.resolve(:nocturne) == Loopyard.Ambient.Tracks.Nocturne
+    end
+
+    test "resolves by string for known tracks" do
+      assert Synth.resolve("bloom") == Loopyard.Ambient.Tracks.Bloom
+    end
+
+    test "returns nil for unknown names" do
+      assert Synth.resolve(:not_a_track) == nil
+      assert Synth.resolve("definitely-not-a-track-xyz") == nil
+      assert Synth.resolve(123) == nil
+    end
+  end
+
+  describe "render_chunk/3" do
     test "produces 2 bytes per sample (16-bit PCM)" do
-      assert byte_size(Synth.render_chunk(0, 100)) == 200
-      assert byte_size(Synth.render_chunk(0, 4_800)) == 9_600
+      assert byte_size(Synth.render_chunk(:serene, 0, 100)) == 200
+      assert byte_size(Synth.render_chunk(:serene, 0, 4_800)) == 9_600
     end
 
     test "produces zero-length binary for zero samples" do
-      assert Synth.render_chunk(0, 0) == <<>>
+      assert Synth.render_chunk(:serene, 0, 0) == <<>>
     end
 
-    test "all samples are signed 16-bit values" do
-      chunk = Synth.render_chunk(0, 1_000)
-      samples = for <<s::little-signed-16 <- chunk>>, do: s
+    test "all samples are signed 16-bit values for every track" do
+      for track <- Synth.track_names() do
+        chunk = Synth.render_chunk(track, 0, 1_000)
+        samples = for <<s::little-signed-16 <- chunk>>, do: s
 
-      assert length(samples) == 1_000
-      Enum.each(samples, fn s ->
-        assert s >= -32_768 and s <= 32_767, "sample #{s} out of int16 range"
-      end)
+        assert length(samples) == 1_000
+        Enum.each(samples, fn s ->
+          assert s >= -32_768 and s <= 32_767,
+                 "track #{track}: sample #{s} out of int16 range"
+        end)
+      end
     end
 
     test "renders deterministically for the same input" do
-      a = Synth.render_chunk(0, 256)
-      b = Synth.render_chunk(0, 256)
+      a = Synth.render_chunk(:serene, 0, 256)
+      b = Synth.render_chunk(:serene, 0, 256)
       assert a == b
     end
 
-    test "different start_t produces different output (synth is time-dependent)" do
-      a = Synth.render_chunk(0, 256)
-      b = Synth.render_chunk(10_000, 256)
+    test "different start_t produces different output" do
+      a = Synth.render_chunk(:serene, 0, 256)
+      b = Synth.render_chunk(:serene, 10_000, 256)
       refute a == b
+    end
+
+    test "different tracks produce different output for the same time range" do
+      a = Synth.render_chunk(:serene, 0, 512)
+      b = Synth.render_chunk(:nocturne, 0, 512)
+      c = Synth.render_chunk(:bloom, 0, 512)
+      d = Synth.render_chunk(:pulse, 0, 512)
+
+      # Each should be distinct from each other.
+      assert MapSet.new([a, b, c, d]) |> MapSet.size() == 4
     end
 
     test "consecutive chunks join continuously at the boundary" do
-      # Render the first 4800 samples as one chunk, and the same range
-      # as two contiguous 2400-sample chunks. The bytes must match —
-      # samples are a pure function of their absolute index.
-      whole = Synth.render_chunk(0, 4_800)
-      first_half = Synth.render_chunk(0, 2_400)
-      second_half = Synth.render_chunk(2_400, 2_400)
+      whole = Synth.render_chunk(:serene, 0, 4_800)
+      first_half = Synth.render_chunk(:serene, 0, 2_400)
+      second_half = Synth.render_chunk(:serene, 2_400, 2_400)
       assert first_half <> second_half == whole
     end
 
-    test "does not loop on a short cycle (chord pool is hash-driven)" do
-      # The synth picks chords via :erlang.phash2(slot) mod pool_size.
-      # Two slots far apart should produce different output (very
-      # high probability). The previous synth had a 48-second cycle;
-      # the current one shouldn't repeat in any audible window.
-      a = Synth.render_chunk(0, 256)
-      b = Synth.render_chunk(48_000 * 60, 256)
-      refute a == b
+    test "no short-cycle repeat (chord pool is hash-driven)" do
+      for track <- Synth.track_names() do
+        a = Synth.render_chunk(track, 0, 256)
+        b = Synth.render_chunk(track, 48_000 * 60, 256)
+        refute a == b, "track #{track} repeated after 60s — chord pool may be too small"
+      end
     end
 
-    test "produces non-silent output (not all zeros)" do
-      chunk = Synth.render_chunk(0, 4_800)
-      samples = for <<s::little-signed-16 <- chunk>>, do: s
-      assert Enum.any?(samples, &(&1 != 0)), "synth produced only zeros — silent output"
+    test "produces non-silent output (not all zeros) for every track" do
+      for track <- Synth.track_names() do
+        chunk = Synth.render_chunk(track, 0, 4_800)
+        samples = for <<s::little-signed-16 <- chunk>>, do: s
+
+        assert Enum.any?(samples, &(&1 != 0)),
+               "track #{track} produced only zeros — silent output"
+      end
     end
 
-    test "amplitude stays bounded (sample_at clamps to [-1, 1])" do
-      # Render across a chord transition where pad + bass amplitudes
-      # peak. No sample should hit the int16 edges from clipping.
-      chunk = Synth.render_chunk(11 * 48_000, 4_800)
-      samples = for <<s::little-signed-16 <- chunk>>, do: s
-      max_abs = samples |> Enum.map(&abs/1) |> Enum.max()
-      # We expect well under the int16 max — pad_gain ~0.3 + bass_gain
-      # 0.18 = ~0.48 peak amplitude * 32_767 ≈ 15_700.
-      assert max_abs < 30_000,
-             "synth approaching clipping (max abs sample = #{max_abs})"
+    test "amplitude stays bounded — no track approaches clipping" do
+      for track <- Synth.track_names() do
+        chunk = Synth.render_chunk(track, 11 * 48_000, 4_800)
+        samples = for <<s::little-signed-16 <- chunk>>, do: s
+        max_abs = samples |> Enum.map(&abs/1) |> Enum.max()
+
+        assert max_abs < 30_000,
+               "track #{track} approaching clipping (max abs sample = #{max_abs})"
+      end
+    end
+
+    test "unknown track falls back to Serene" do
+      a = Synth.render_chunk(:unknown_track, 0, 256)
+      b = Synth.render_chunk(:serene, 0, 256)
+      assert a == b
     end
   end
 end
