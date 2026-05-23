@@ -338,10 +338,11 @@ export function createAuralHook() {
           this._analyser.getByteTimeDomainData(timeBuf)
         }
 
-        // Bed contributes to the scope only when the user has the
-        // bed playing. Otherwise the scope reflects only what's
-        // audible — chimes (if any), silence otherwise.
-        const bedPlaying = this._audio && !this._audio.paused
+        // Server-pushed peaks drive the bed waveform regardless of
+        // whether this client has hit Play. That's the point of
+        // server-side downsampling: the channel is always alive,
+        // every visitor sees it move, the Play button is for joining
+        // the audible side of what's already visibly going on.
 
         // 80 sample points across the scope width. The wave buffer
         // is exactly 80 long, so each column reads one sample.
@@ -363,11 +364,8 @@ export function createAuralHook() {
           // Bed contribution: read the i-th oldest sample from the
           // ring buffer. Real PCM, so this is an actual waveform —
           // not a fake LFO modulation.
-          let bedY = 0
-          if (bedPlaying) {
-            const slot = (waveHead + i) % waveBuf.length
-            bedY = waveBuf[slot] * amp * bedGain
-          }
+          const slot = (waveHead + i) % waveBuf.length
+          const bedY = waveBuf[slot] * amp * bedGain
 
           // Chime contribution: time-domain sample at this column.
           let chimeY = 0
