@@ -21,11 +21,19 @@ defmodule LoopyardWeb.Router do
     plug :accepts, ["*/*", "json", "html", "mpeg"]
   end
 
+  # Aural LV ships from the `:aural` package — its module is the
+  # top-level `AuralWeb.Live`, not `LoopyardWeb.AuralWeb.Live`. The
+  # scope below has `alias: LoopyardWeb`, which would prepend the
+  # alias, so the aural route lives in its own un-aliased scope.
+  scope "/" do
+    pipe_through :browser
+    live "/aural", AuralWeb.Live, :index
+  end
+
   scope "/", LoopyardWeb do
     pipe_through :browser
 
     live "/", ProjectListLive, :index
-    live "/aural", AuralWeb.Live, :index
     live "/projects/:project_id", ProjectLive, :index
     live "/projects/:project_id/settings", ProjectLive, :settings
     live "/projects/:project_id/workspaces/:workspace_id", WorkspaceLive, :index
