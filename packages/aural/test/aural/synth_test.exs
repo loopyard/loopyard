@@ -1,7 +1,7 @@
-defmodule Loopyard.Ambient.SynthTest do
+defmodule Aural.SynthTest do
   use ExUnit.Case, async: true
 
-  alias Loopyard.Ambient.Synth
+  alias Aural.Synth
 
   describe "sample_rate/0" do
     test "is 48000Hz" do
@@ -20,12 +20,12 @@ defmodule Loopyard.Ambient.SynthTest do
     end
 
     test "resolves by atom" do
-      assert Synth.resolve(:serene) == Loopyard.Ambient.Tracks.Serene
-      assert Synth.resolve(:nocturne) == Loopyard.Ambient.Tracks.Nocturne
+      assert Synth.resolve(:serene) == Aural.Tracks.Serene
+      assert Synth.resolve(:nocturne) == Aural.Tracks.Nocturne
     end
 
     test "resolves by string for known tracks" do
-      assert Synth.resolve("cascade") == Loopyard.Ambient.Tracks.Cascade
+      assert Synth.resolve("cascade") == Aural.Tracks.Cascade
     end
 
     test "returns nil for unknown names" do

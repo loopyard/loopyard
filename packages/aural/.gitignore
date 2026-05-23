@@ -1,0 +1,9 @@
+_build/
+deps/
+*.ez
+.elixir_ls/
+.lexical/
+erl_crash.dump
+
+# Generated chime assets — re-rendered at boot.
+priv/static/chimes/

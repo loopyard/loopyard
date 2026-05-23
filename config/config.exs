@@ -3,6 +3,10 @@ import Config
 config :loopyard,
   generators: [timestamp_type: :utc_datetime]
 
+# Aural broadcasts on the host's PubSub. Without this, every
+# subscriber/broadcast call raises on first use.
+config :aural, pubsub: Loopyard.PubSub
+
 config :loopyard, LoopyardWeb.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
@@ -19,7 +23,13 @@ config :esbuild,
     args:
       ~w(js/app.js --bundle --target=es2017 --outdir=../priv/static/assets --external:/fonts/* --external:/images/* --loader:.css=css),
     cd: Path.expand("../assets", __DIR__),
-    env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
+    # `packages` joins `deps` so Mix path deps (e.g. :aural) can be
+    # imported by name. esbuild resolves `import "aural"` →
+    # packages/aural/package.json → priv/assets/aural.js.
+    env: %{
+      "NODE_PATH" =>
+        Path.expand("../deps", __DIR__) <> ":" <> Path.expand("../packages", __DIR__)
+    }
   ]
 
 config :tailwind,

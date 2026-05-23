@@ -1,4 +1,4 @@
-defmodule Loopyard.Ambient.Tracks.Cascade do
+defmodule Aural.Tracks.Cascade do
   @moduledoc """
   Loscil-style ascending motion on a sustained pad. No discrete
   notes — all chord notes play continuously, but each note has its
@@ -12,11 +12,11 @@ defmodule Loopyard.Ambient.Tracks.Cascade do
   sines blooming gently in sequence.
   """
 
-  @behaviour Loopyard.Ambient.Track
+  @behaviour Aural.Track
 
-  import Loopyard.Ambient.Primitive
+  import Aural.Primitive
 
-  @sample_rate Loopyard.Ambient.Primitive.sample_rate()
+  @sample_rate Aural.Primitive.sample_rate()
   @slot_samples 20 * @sample_rate
 
   # The ascending-spotlight period. Each chord note peaks once per

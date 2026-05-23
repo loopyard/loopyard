@@ -1,0 +1,7 @@
+{
+  "name": "aural",
+  "version": "0.1.0",
+  "description": "Phoenix LiveView hook for Aural ambient audio page.",
+  "main": "priv/assets/aural.js",
+  "license": "AGPL-3.0-or-later"
+}

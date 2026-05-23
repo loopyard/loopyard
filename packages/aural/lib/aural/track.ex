@@ -1,4 +1,4 @@
-defmodule Loopyard.Ambient.Track do
+defmodule Aural.Track do
   @moduledoc """
   Behaviour for ambient tracks. Each track is a pure function from
   integer sample index → float sample in [-1, 1]. The Synth

@@ -20,6 +20,15 @@ defmodule LoopyardWeb.Endpoint do
     gzip: false,
     only: LoopyardWeb.static_paths()
 
+  # Chime WAVs ship from the `:aural` package's priv dir (regenerated
+  # at boot by Aural.ChimeAssets). The package's own Plug.Static would
+  # be nice, but Phoenix endpoints don't compose plugs from deps — so
+  # the host mounts the dep's priv directory directly.
+  plug Plug.Static,
+    at: "/chimes",
+    from: {:aural, "priv/static/chimes"},
+    gzip: false
+
   # Tidewave must run BEFORE Plug.Parsers so it can read the raw
   # request body for MCP messages. Dev-only — `code_reloading?` is
   # the standard gate for "this is a dev environment."

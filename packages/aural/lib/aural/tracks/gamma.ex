@@ -1,4 +1,4 @@
-defmodule Loopyard.Ambient.Tracks.Gamma do
+defmodule Aural.Tracks.Gamma do
   @moduledoc """
   EXPERIMENTAL: Serene with a 40Hz amplitude modulation overlay
   for gamma-band entrainment.
@@ -19,11 +19,11 @@ defmodule Loopyard.Ambient.Tracks.Gamma do
   layer.
   """
 
-  @behaviour Loopyard.Ambient.Track
+  @behaviour Aural.Track
 
-  alias Loopyard.Ambient.Tracks.Serene
+  alias Aural.Tracks.Serene
 
-  @sample_rate Loopyard.Ambient.Primitive.sample_rate()
+  @sample_rate Aural.Primitive.sample_rate()
 
   @impl true
   def sample_at(n) do

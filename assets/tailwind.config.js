@@ -7,7 +7,11 @@ module.exports = {
   content: [
     "./js/**/*.js",
     "../lib/loopyard_web.ex",
-    "../lib/loopyard_web/**/*.*ex"
+    "../lib/loopyard_web/**/*.*ex",
+    // Aural is a Mix path dep — its source lives in packages/, not
+    // deps/ (Mix doesn't symlink path deps). Remote consumers using
+    // git+sparse would point at ../deps/aural/lib instead.
+    "../packages/aural/lib/**/*.{ex,heex}"
   ],
   theme: {
     extend: {

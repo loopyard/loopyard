@@ -1,4 +1,4 @@
-defmodule Loopyard.Ambient.Primitive do
+defmodule Aural.Primitive do
   @moduledoc """
   Shared synth math: sine, LFO, smoothstep, clamp, chord inversion.
   Pure functions, used by every track module.

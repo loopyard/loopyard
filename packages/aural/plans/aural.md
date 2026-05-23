@@ -73,7 +73,7 @@ tracks, and input types are each a new file in the obvious subdir.
 ### Primitive — pure math
 
 ```elixir
-defmodule Loopyard.Ambient.Primitive do
+defmodule Aural.Primitive do
   @sample_rate 44_100
 
   # Returns a function (t_sample -> float in [-1, 1]).
@@ -105,13 +105,13 @@ end
 ### Instrument — voice-builder
 
 ```elixir
-defmodule Loopyard.Ambient.Instrument do
+defmodule Aural.Instrument do
   @callback voice(notes :: [number], t :: integer, opts :: map) :: (integer -> float)
 end
 
-defmodule Loopyard.Ambient.Instruments.Pad do
-  @behaviour Loopyard.Ambient.Instrument
-  alias Loopyard.Ambient.Primitive
+defmodule Aural.Instruments.Pad do
+  @behaviour Aural.Instrument
+  alias Aural.Primitive
 
   def voice(notes, t, opts) do
     gain = Map.get(opts, :gain, 0.3)
@@ -125,16 +125,16 @@ end
 ### Track — composition
 
 ```elixir
-defmodule Loopyard.Ambient.Track do
+defmodule Aural.Track do
   @callback name() :: String.t()
   @callback inputs() :: %{atom => {module, term}}  # default input bindings
   @callback voices(t :: integer, inputs :: map) :: (integer -> float)
 end
 
-defmodule Loopyard.Ambient.Tracks.Serene do
-  @behaviour Loopyard.Ambient.Track
-  alias Loopyard.Ambient.{Primitive, Instruments.Pad, Instruments.Chime, Instruments.Bass}
-  alias Loopyard.Ambient.Inputs.Constant
+defmodule Aural.Tracks.Serene do
+  @behaviour Aural.Track
+  alias Aural.{Primitive, Instruments.Pad, Instruments.Chime, Instruments.Bass}
+  alias Aural.Inputs.Constant
 
   def name, do: "serene"
 
@@ -165,17 +165,17 @@ end
 ### Input — streams of values
 
 ```elixir
-defmodule Loopyard.Ambient.Input do
+defmodule Aural.Input do
   @callback sample(state :: any, t :: integer) :: {value :: number, state}
 end
 
-defmodule Loopyard.Ambient.Inputs.Constant do
-  @behaviour Loopyard.Ambient.Input
+defmodule Aural.Inputs.Constant do
+  @behaviour Aural.Input
   def sample(value, _t), do: {value, value}
 end
 
-defmodule Loopyard.Ambient.Inputs.PubSub do
-  @behaviour Loopyard.Ambient.Input
+defmodule Aural.Inputs.PubSub do
+  @behaviour Aural.Input
   # State: {topic, map fn, current_value}. Subscribes on init,
   # accumulates events into the value via the map fn.
   def sample({_topic, _fn, value} = state, _t), do: {value, state}
@@ -185,7 +185,7 @@ end
 ### Engine — the runtime
 
 ```elixir
-defmodule Loopyard.Ambient.Engine do
+defmodule Aural.Engine do
   use GenServer
 
   @chunk_size 2048   # ~46ms at 44.1kHz
@@ -210,7 +210,7 @@ end
 ### Channel + player
 
 ```elixir
-defmodule Loopyard.Ambient.Channel do
+defmodule Aural.Channel do
   use Phoenix.Channel
 
   def join("ambient:lobby", _, socket) do
@@ -244,7 +244,7 @@ channel.on("chunk", payload => {
   nextStart = Math.max(nextStart, ctx.currentTime + 0.05) + buf.duration
 })
 
-document.getElementById("ambient-toggle")?.addEventListener("click", () => {
+document.getElementById("aural-toggle")?.addEventListener("click", () => {
   ctx.resume()  // satisfies browser autoplay policy
 })
 ```
@@ -255,8 +255,8 @@ When you want to make `serene` get denser when agents are active:
 
 ```elixir
 # Anywhere, once:
-Loopyard.Ambient.Engine.attach_input(:density, {
-  Loopyard.Ambient.Inputs.PubSub,
+Aural.Engine.attach_input(:density, {
+  Aural.Inputs.PubSub,
   topic: "chat_agents",
   map_fn: fn _events_in_last_5s, n -> min(n / 10, 1.0) end
 })
@@ -269,7 +269,7 @@ point of separating tracks (composition) from inputs (data sources).
 ## Implementation order
 
 1. **Primitives + a single instrument + a single track.** No PubSub
-   yet, no channel. `Loopyard.Ambient.Engine.test_render(:serene)`
+   yet, no channel. `Aural.Engine.test_render(:serene)`
    produces a 5-second WAV file you can play locally. Confirms the
    math works.
 2. **Engine GenServer + PubSub broadcast + channel + JS player.**
@@ -340,7 +340,7 @@ real shipping feature.
 
 ## Docs to update when this ships
 
-- `docs/ARCHITECTURE.md` — new `Loopyard.Ambient.*` namespace, the
+- `docs/ARCHITECTURE.md` — new `Aural.*` namespace, the
   engine in the supervisor tree, the channel.
 - `docs/CONFIG.md` — sample rate, chunk size, tick rate (constants
   not currently configurable, but document where they live).

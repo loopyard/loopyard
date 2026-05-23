@@ -15,9 +15,9 @@ defmodule LoopyardWeb.Router do
     plug :accepts, ["json", "text"]
   end
 
-  # Ambient audio + diag — no CSRF (POSTs come from the audio page
+  # Aural audio + diag — no CSRF (POSTs come from the audio page
   # itself, JSON only). No session. Pure media endpoints.
-  pipeline :ambient do
+  pipeline :aural do
     plug :accepts, ["*/*", "json", "html", "mpeg"]
   end
 
@@ -25,7 +25,7 @@ defmodule LoopyardWeb.Router do
     pipe_through :browser
 
     live "/", ProjectListLive, :index
-    live "/ambient", AmbientLive, :index
+    live "/aural", AuralWeb.Live, :index
     live "/projects/:project_id", ProjectLive, :index
     live "/projects/:project_id/settings", ProjectLive, :settings
     live "/projects/:project_id/workspaces/:workspace_id", WorkspaceLive, :index
@@ -108,11 +108,12 @@ defmodule LoopyardWeb.Router do
     get "/log", SystemController, :log
   end
 
-  # Ambient audio stream + browser-side diag loopback. No CSRF
+  # Aural audio stream + browser-side diag loopback. No CSRF
   # (the diag POST is from the same page, JSON only). No session.
-  scope "/ambient", LoopyardWeb do
-    pipe_through :ambient
-    get "/stream.opus", AmbientStreamController, :stream
-    post "/diag", AmbientStreamController, :diag
+  # Both controllers ship from the `:aural` package.
+  scope "/aural" do
+    pipe_through :aural
+    get "/stream.mp3", AuralWeb.StreamController, :stream
+    post "/diag", AuralWeb.StreamController, :diag
   end
 end

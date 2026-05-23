@@ -1,6 +1,6 @@
-defmodule Loopyard.Ambient.Synth do
+defmodule Aural.Synth do
   @moduledoc """
-  Dispatcher across `Loopyard.Ambient.Tracks.*`. Renders chunks of
+  Dispatcher across `Aural.Tracks.*`. Renders chunks of
   16-bit PCM by calling the requested track's `sample_at/1` for
   each sample index.
 
@@ -28,9 +28,9 @@ defmodule Loopyard.Ambient.Synth do
   Defaults to `:serene`.
   """
 
-  alias Loopyard.Ambient.Primitive
+  alias Aural.Primitive
 
-  alias Loopyard.Ambient.Tracks.{Serene, Nocturne, Cascade, Hum, Gamma}
+  alias Aural.Tracks.{Serene, Nocturne, Cascade, Hum, Gamma}
 
   @tracks %{
     serene: Serene,
@@ -64,16 +64,52 @@ defmodule Loopyard.Ambient.Synth do
   Render `n_samples` of audio for the given track, starting at
   sample index `start_t`. Returns a binary of little-endian signed
   16-bit PCM (mono).
-  """
-  def render_chunk(_track, _start_t, 0), do: <<>>
 
-  def render_chunk(track, start_t, n_samples)
+  Optional `signal_state` mixes in the ambient signal layer:
+    * `:activity` (0.0-1.0) — boosts the bed's pad gain
+    * `:chimes` — list of `%{kind, start_n}` (sample-index relative
+      to this listener's t=0) that get sample-mixed into the output
+      until their per-kind lifetime expires.
+  """
+  def render_chunk(track, start_t, n_samples, signal_state \\ %{chimes: [], activity: 0.0})
+
+  def render_chunk(_track, _start_t, 0, _signal_state), do: <<>>
+
+  def render_chunk(track, start_t, n_samples, signal_state)
       when is_atom(track) and is_integer(start_t) and is_integer(n_samples) and n_samples > 0 do
     module = Map.get(@tracks, track) || Serene
+    activity = Map.get(signal_state, :activity, 0.0)
+    chimes = Map.get(signal_state, :chimes, [])
+
+    # Pre-compute chime lifetimes so we don't lookup per-sample.
+    chime_entries =
+      Enum.map(chimes, fn %{kind: kind, start_n: start_n} ->
+        {kind, start_n, Aural.Signals.chime_lifetime_samples(kind)}
+      end)
+
+    # Activity multiplier — at 1.0, pad is 50% louder.
+    bed_gain = 1.0 + activity * 0.5
 
     for i <- 0..(n_samples - 1), into: <<>> do
-      sample = module.sample_at(start_t + i) |> Primitive.clamp()
+      n = start_t + i
+      base = module.sample_at(n) * bed_gain
+      sig = chime_contribution(chime_entries, n)
+      sample = (base + sig) |> Primitive.clamp()
       <<round(sample * 32_767)::little-signed-16>>
     end
+  end
+
+  # Sum the per-sample contribution of every chime that's still alive
+  # at sample index `n`.
+  defp chime_contribution(chime_entries, n) do
+    Enum.reduce(chime_entries, 0.0, fn {kind, start_n, lifetime}, acc ->
+      age = n - start_n
+
+      if age >= 0 and age < lifetime do
+        acc + Aural.Signals.chime_sample(kind, age / 48_000)
+      else
+        acc
+      end
+    end)
   end
 end

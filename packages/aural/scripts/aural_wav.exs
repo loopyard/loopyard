@@ -1,7 +1,7 @@
 # Generate a 10-second ambient pad + bass WAV to ~/Downloads.
 #
-# Standalone proof of concept for plans/ambient-soundtrack.md.
-# Pure Elixir, no deps. Run with: elixir scripts/ambient_wav.exs
+# Standalone proof of concept for plans/aural.md.
+# Pure Elixir, no deps. Run with: elixir scripts/aural_wav.exs
 
 sample_rate = 44_100
 duration_s = 10
@@ -85,7 +85,7 @@ header =
   |> IO.iodata_to_binary()
 
 out_dir = Path.expand("~/Downloads")
-out_path = Path.join(out_dir, "loopyard-ambient-#{:os.system_time(:second)}.wav")
+out_path = Path.join(out_dir, "loopyard-aural-#{:os.system_time(:second)}.wav")
 File.write!(out_path, [header, samples])
 
 total_kb = Float.round(byte_size(header <> samples) / 1024, 1)

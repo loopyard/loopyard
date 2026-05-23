@@ -1,4 +1,4 @@
-defmodule Loopyard.Ambient.Tracks.Nocturne do
+defmodule Aural.Tracks.Nocturne do
   @moduledoc """
   Dark, slow, minor-mode ambient. 16-second chord slots (slower
   than Serene). All chords are minor 7th / minor 9th voicings.
@@ -6,11 +6,11 @@ defmodule Loopyard.Ambient.Tracks.Nocturne do
   Slower LFOs for a more glacial feel.
   """
 
-  @behaviour Loopyard.Ambient.Track
+  @behaviour Aural.Track
 
-  import Loopyard.Ambient.Primitive
+  import Aural.Primitive
 
-  @sample_rate Loopyard.Ambient.Primitive.sample_rate()
+  @sample_rate Aural.Primitive.sample_rate()
   @chord_samples 16 * @sample_rate
 
   # Minor chord pool. Notes are mostly in the same octave as Serene

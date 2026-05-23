@@ -1,4 +1,4 @@
-defmodule Loopyard.Ambient.Tracks.Hum do
+defmodule Aural.Tracks.Hum do
   @moduledoc """
   Auditory-masking floor. No music — just deep brown-noise hiss
   plus a sustained sub-bass drone at C2 with a fifth above.
@@ -15,16 +15,20 @@ defmodule Loopyard.Ambient.Tracks.Hum do
   music tracks are themselves distracting.
   """
 
-  @behaviour Loopyard.Ambient.Track
+  @behaviour Aural.Track
 
-  import Loopyard.Ambient.Primitive
+  import Aural.Primitive
 
-  @sample_rate Loopyard.Ambient.Primitive.sample_rate()
+  @sample_rate Aural.Primitive.sample_rate()
 
   # Box-average window for the brown-noise approximation. Bigger
-  # window = steeper low-pass = closer to true brown spectrum but
-  # more CPU. 32 samples ≈ -3dB at ~750Hz, plenty of low-pass.
-  @brown_window 32
+  # window = lower cutoff = darker, more "rumble," less hiss. A
+  # 128-sample box at 48kHz has its first null at ~375Hz, which
+  # pushes the perceptual character firmly into "deep brown" —
+  # mostly sub-bass and low-mids, almost no audible high content.
+  # CPU cost: ~6M ops/sec for the noise pass, negligible on
+  # modern hardware.
+  @brown_window 128
 
   @impl true
   def sample_at(n) do

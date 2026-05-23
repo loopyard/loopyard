@@ -1,4 +1,4 @@
-defmodule Loopyard.Ambient.Tracks.Serene do
+defmodule Aural.Tracks.Serene do
   @moduledoc """
   Warm major7/minor7 pads. 12-second chord slots with smoothstep
   crossfades, hash-driven chord pool for non-repeating sequence,
@@ -8,11 +8,11 @@ defmodule Loopyard.Ambient.Tracks.Serene do
   The "coding-music default."
   """
 
-  @behaviour Loopyard.Ambient.Track
+  @behaviour Aural.Track
 
-  import Loopyard.Ambient.Primitive
+  import Aural.Primitive
 
-  @sample_rate Loopyard.Ambient.Primitive.sample_rate()
+  @sample_rate Aural.Primitive.sample_rate()
   @chord_samples 12 * @sample_rate
 
   @chord_pool [

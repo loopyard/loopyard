@@ -18,6 +18,7 @@
 # Environment (never commit secrets)
 .env
 .env.*
+.envrc
 !.env.example
 
 # SSH host keys for the embedded SSH server (private — never commit)

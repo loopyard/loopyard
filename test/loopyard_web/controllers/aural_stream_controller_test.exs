@@ -1,21 +1,21 @@
-defmodule LoopyardWeb.AmbientStreamControllerTest do
+defmodule AuralWeb.StreamControllerTest do
   use LoopyardWeb.ConnCase, async: true
 
   import ExUnit.CaptureLog
 
-  describe "POST /ambient/diag" do
+  describe "POST /aural/diag" do
     test "logs the JSON payload and returns 204", %{conn: conn} do
       log =
         capture_log(fn ->
           conn =
             conn
             |> put_req_header("content-type", "application/json")
-            |> post("/ambient/diag", %{label: "audio:error", code: 4, message: "test"})
+            |> post("/aural/diag", %{label: "audio:error", code: 4, message: "test"})
 
           assert response(conn, 204)
         end)
 
-      assert log =~ "[ambient:diag]"
+      assert log =~ "[aural:diag]"
       assert log =~ "audio:error"
       assert log =~ ~s|"code" => 4|
     end
@@ -24,7 +24,7 @@ defmodule LoopyardWeb.AmbientStreamControllerTest do
       conn =
         conn
         |> put_req_header("content-type", "application/json")
-        |> post("/ambient/diag", %{})
+        |> post("/aural/diag", %{})
 
       assert response(conn, 204)
     end
@@ -36,22 +36,22 @@ defmodule LoopyardWeb.AmbientStreamControllerTest do
       conn =
         conn
         |> put_req_header("content-type", "application/json")
-        |> post("/ambient/diag", %{label: "test"})
+        |> post("/aural/diag", %{label: "test"})
 
       assert response(conn, 204)
     end
   end
 
   describe "route resolution" do
-    test "GET /ambient/stream.opus routes to AmbientStreamController.stream/2" do
-      route = Phoenix.Router.route_info(LoopyardWeb.Router, "GET", "/ambient/stream.opus", "")
-      assert route.plug == LoopyardWeb.AmbientStreamController
+    test "GET /aural/stream.mp3 routes to AuralStreamController.stream/2" do
+      route = Phoenix.Router.route_info(LoopyardWeb.Router, "GET", "/aural/stream.mp3", "")
+      assert route.plug == AuralWeb.StreamController
       assert route.plug_opts == :stream
     end
 
-    test "POST /ambient/diag routes to AmbientStreamController.diag/2" do
-      route = Phoenix.Router.route_info(LoopyardWeb.Router, "POST", "/ambient/diag", "")
-      assert route.plug == LoopyardWeb.AmbientStreamController
+    test "POST /aural/diag routes to AuralStreamController.diag/2" do
+      route = Phoenix.Router.route_info(LoopyardWeb.Router, "POST", "/aural/diag", "")
+      assert route.plug == AuralWeb.StreamController
       assert route.plug_opts == :diag
     end
   end

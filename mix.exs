@@ -37,6 +37,7 @@ defmodule Loopyard.MixProject do
       {:phoenix_html, "~> 4.2"},
       {:phoenix_live_reload, "~> 1.5", only: :dev},
       {:phoenix_live_view, "~> 1.0"},
+      {:aural, path: "packages/aural"},
       {:tailwind, "~> 0.2", runtime: Mix.env() == :dev},
       {:esbuild, "~> 0.8", runtime: Mix.env() == :dev},
       {:telemetry_metrics, "~> 1.0"},
