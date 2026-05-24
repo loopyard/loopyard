@@ -12,32 +12,44 @@ defmodule Aural.Synth do
   that need a human's attention). The music must stay out of the
   way of the signal.
 
-    * `:serene`   — warm major7/min7 pads, mid-tempo; primary LFO
-                    tuned to 0.1Hz (HRV-resonance breathing rate)
-    * `:nocturne` — dark minor-mode, slow, deeper bass
-    * `:cascade`  — sustained chord with rotating amplitude
-                    emphasis (the chord moves upward through
-                    itself, no plucks)
-    * `:hum`      — auditory-masking floor: brown noise + deep
-                    sub-bass drone. No music; the
-                    most-evidence-backed audio intervention for
-                    focus in noisy environments
-    * `:gamma`    — EXPERIMENTAL: Serene + 40Hz amplitude
-                    modulation for possible gamma-band entrainment
+    * `:serene`       — warm major7/min7 pads, mid-tempo; primary
+                        LFO tuned to 0.1Hz (HRV-resonance rate)
+    * `:nocturne`     — dark minor-mode, slow, deeper bass
+    * `:cascade`      — sustained chord with rotating amplitude
+                        emphasis (chord moves upward through
+                        itself, no plucks)
+    * `:hum`          — brown-noise masking floor + sub-bass drone.
+                        Most-evidence-backed audio intervention
+                        for focus in noisy environments
+    * `:pink`         — 1/f-spectrum noise (Voss-McCartney). Less
+                        rumble than Hum; the standard tinnitus
+                        masker and Papalambros-style sleep aid
+    * `:gamma`        — EXPERIMENTAL: Serene + 40Hz AM (gamma
+                        entrainment claim)
+    * `:resonance`    — EXPERIMENTAL: overt 0.1 Hz breath pacer,
+                        4s inhale + 6s exhale (HRV biofeedback)
+    * `:theta`        — EXPERIMENTAL: Serene + 6Hz AM (theta-band
+                        entrainment claim)
+    * `:vagal_drone`  — EXPERIMENTAL: pure sub-bass drone,
+                        55/82/110 Hz, no music
 
   Defaults to `:serene`.
   """
 
   alias Aural.Primitive
 
-  alias Aural.Tracks.{Serene, Nocturne, Cascade, Hum, Gamma}
+  alias Aural.Tracks.{Serene, Nocturne, Cascade, Hum, Pink, Gamma, Resonance, Theta, VagalDrone}
 
   @tracks %{
     serene: Serene,
     nocturne: Nocturne,
     cascade: Cascade,
     hum: Hum,
-    gamma: Gamma
+    pink: Pink,
+    gamma: Gamma,
+    resonance: Resonance,
+    theta: Theta,
+    vagal_drone: VagalDrone
   }
 
   @doc "Names of all available tracks."

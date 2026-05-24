@@ -16,7 +16,11 @@ defmodule Aural.SynthTest do
       assert :nocturne in names
       assert :cascade in names
       assert :hum in names
+      assert :pink in names
       assert :gamma in names
+      assert :resonance in names
+      assert :theta in names
+      assert :vagal_drone in names
     end
 
     test "resolves by atom" do

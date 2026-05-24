@@ -35,7 +35,11 @@ defmodule AuralWeb.Live do
     {:nocturne, "Nocturne", "dark minor, slow, deep bass", :baseline},
     {:cascade, "Cascade", "rotating chord, gentle upward motion", :baseline},
     {:hum, "Hum", "brown-noise masking floor + sub-bass drone", :baseline},
-    {:gamma, "Gamma", "Serene + 40Hz amplitude entrainment", :experimental}
+    {:pink, "Pink", "1/f noise — tinnitus masker + sleep aid", :baseline},
+    {:gamma, "Gamma", "Serene + 40Hz amplitude entrainment", :experimental},
+    {:resonance, "Resonance", "overt 0.1Hz breath pacer, 4-in 6-out", :experimental},
+    {:theta, "Theta", "Serene + 6Hz amplitude modulation", :experimental},
+    {:vagal_drone, "Vagal Drone", "sub-bass-only drone, 55/82/110Hz", :experimental}
   ]
 
   @impl true
