@@ -28,6 +28,15 @@ defmodule Aural.Channel do
   # 100ms of audio per chunk; absolute-deadline scheduling.
   @chunk_samples 4_800
   @chunk_ms 100
+
+  # Per-tick exponential-ease coefficient for the activity smoother.
+  # `new = old + (target - old) * @activity_alpha` per chunk gives an
+  # e-folding time of ~1/alpha chunks. At 0.10 that's ~1 second to
+  # reach 63% of target, ~2.3s to reach 90% — slow enough to sound
+  # like a fade, fast enough to feel responsive. Without this, every
+  # set_activity call would snap bed gain at the next chunk boundary,
+  # producing an audible step in the pad's amplitude.
+  @activity_alpha 0.10
   @topic "aural_channel:default"
   # Separate topic for chime alerts. These bypass the bed entirely —
   # subscribers (LiveViews) push the event to their client, which plays
@@ -104,13 +113,17 @@ defmodule Aural.Channel do
        t: 0,
        chunk_n: 0,
        start_ms: start_ms,
-       activity: 0.0
+       # `activity` is the currently-rendered value; `activity_target`
+       # is the most-recent operator intent. Each tick eases the
+       # current toward the target. Both start at 0.0.
+       activity: 0.0,
+       activity_target: 0.0
      }}
   end
 
   @impl true
   def handle_call(:state, _from, state) do
-    {:reply, %{track: state.track, activity: state.activity}, state}
+    {:reply, %{track: state.track, activity: state.activity_target}, state}
   end
 
   @impl true
@@ -122,8 +135,11 @@ defmodule Aural.Channel do
   def handle_cast({:fire, _}, state), do: {:noreply, state}
 
   def handle_cast({:set_activity, level}, state) when is_number(level) do
+    # Sets the TARGET only — the per-tick easer in handle_info(:tick)
+    # walks `state.activity` toward it. A direct write would step the
+    # bed gain at the next chunk boundary; tweening keeps it musical.
     clamped = level |> max(0.0) |> min(1.0) |> :erlang.float()
-    {:noreply, %{state | activity: clamped}}
+    {:noreply, %{state | activity_target: clamped}}
   end
 
   def handle_cast({:set_activity, _}, state), do: {:noreply, state}
@@ -140,7 +156,15 @@ defmodule Aural.Channel do
 
   @impl true
   def handle_info(:tick, state) do
-    sig = %{chimes: [], activity: state.activity}
+    # Two-level smoothing: per-tick exponential ease toward the
+    # target, plus per-sample linear ramp within the chunk (handled
+    # in Synth.render_chunk). Per-tick alone leaves a tiny step at
+    # chunk boundaries when the activity is changing fast; the
+    # intra-chunk ramp erases that step entirely.
+    activity_start = state.activity
+    activity_end = activity_start + (state.activity_target - activity_start) * @activity_alpha
+
+    sig = %{chimes: [], activity_start: activity_start, activity_end: activity_end}
     pcm = Synth.render_chunk(state.track, state.t, @chunk_samples, sig)
     Port.command(state.port, pcm)
 
@@ -157,6 +181,10 @@ defmodule Aural.Channel do
 
     new_t = state.t + @chunk_samples
     new_n = state.chunk_n + 1
+    # Persist the eased activity so the next chunk picks up from
+    # where this one ended — no discontinuity sample-to-sample
+    # across the boundary.
+    state = %{state | activity: activity_end}
 
     # Absolute-deadline scheduling so producer never drifts relative
     # to wall clock — important because the encoded byte stream is

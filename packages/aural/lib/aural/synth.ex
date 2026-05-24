@@ -66,7 +66,12 @@ defmodule Aural.Synth do
   16-bit PCM (mono).
 
   Optional `signal_state` mixes in the ambient signal layer:
-    * `:activity` (0.0-1.0) — boosts the bed's pad gain
+    * `:activity` (0.0-1.0) — constant bed-gain boost for the chunk.
+    * `:activity_start` + `:activity_end` (each 0.0-1.0) — ramp bed
+      gain linearly across the chunk. Overrides `:activity` when set.
+      The Channel's per-tick easer uses this so transitions stay
+      smooth sample-to-sample instead of stepping at chunk
+      boundaries.
     * `:chimes` — list of `%{kind, start_n}` (sample-index relative
       to this listener's t=0) that get sample-mixed into the output
       until their per-kind lifetime expires.
@@ -78,8 +83,16 @@ defmodule Aural.Synth do
   def render_chunk(track, start_t, n_samples, signal_state)
       when is_atom(track) and is_integer(start_t) and is_integer(n_samples) and n_samples > 0 do
     module = Map.get(@tracks, track) || Serene
-    activity = Map.get(signal_state, :activity, 0.0)
     chimes = Map.get(signal_state, :chimes, [])
+
+    # Per-sample activity ramp. Callers may pass `:activity`
+    # (constant) or `:activity_start` + `:activity_end` (linear).
+    # The ramp form removes audible step changes at chunk boundaries
+    # while activity is tweening.
+    a_start = Map.get(signal_state, :activity_start, Map.get(signal_state, :activity, 0.0))
+    a_end = Map.get(signal_state, :activity_end, a_start)
+    bed_gain_start = 1.0 + a_start * 0.5
+    bed_gain_step = (a_end - a_start) * 0.5 / max(1, n_samples - 1)
 
     # Pre-compute chime lifetimes so we don't lookup per-sample.
     chime_entries =
@@ -87,11 +100,9 @@ defmodule Aural.Synth do
         {kind, start_n, Aural.Signals.chime_lifetime_samples(kind)}
       end)
 
-    # Activity multiplier — at 1.0, pad is 50% louder.
-    bed_gain = 1.0 + activity * 0.5
-
     for i <- 0..(n_samples - 1), into: <<>> do
       n = start_t + i
+      bed_gain = bed_gain_start + bed_gain_step * i
       base = module.sample_at(n) * bed_gain
       sig = chime_contribution(chime_entries, n)
       sample = (base + sig) |> Primitive.clamp()
