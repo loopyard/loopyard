@@ -1,138 +1,204 @@
 defmodule Aural.Channel do
   @moduledoc """
-  Single shared audio channel: one always-running synth + ffmpeg
-  pipeline that broadcasts encoded MP3 bytes via PubSub. HTTP
-  listeners subscribe and forward the bytes to their response —
-  N listeners pay the cost of 1 encoder, all hear the same
-  timeline, signals fire once and reach everyone at the same
-  moment in the audio.
+  An audio channel — one synth + ffmpeg pipeline that broadcasts
+  encoded MP3 bytes via `Phoenix.PubSub` to every HTTP listener
+  subscribed to its topic. N listeners pay the cost of 1 encoder
+  and all hear the same byte at the same moment.
+
+  Channels are keyed by an opaque `channel_id` string and live under
+  `Aural.Channel.Supervisor` (a `DynamicSupervisor`); look-up goes
+  through `Aural.Channel.Registry`. Hosts never spawn channels by
+  hand — every public function below auto-starts the channel on
+  first call.
+
+      iex> id = Aural.Channel.new_id()
+      "k3J9_aB2xY8"
+      iex> Aural.Channel.subscribe(id)
+      :ok
+      iex> Aural.Channel.pick_track(id, :nocturne)
+      :ok
+
+  Channels self-terminate after `:idle_timeout_seconds` (default 300)
+  with zero subscribers across all three topics. The URL stays
+  shareable: a request to a stale ID just respawns a fresh channel
+  under the same name.
 
   Why MP3 instead of Opus: MP3 frames are self-contained, so a
-  late-joining listener can start decoding from any frame
-  boundary. Ogg/Opus requires headers + page-level sync that
-  complicates fan-out.
-
-  Future iteration: this is a singleton today, but the GenServer
-  shape is ready to become a Registry-keyed multi-channel
-  arrangement (e.g. one channel per workspace) when we want
-  per-context signal routing.
+  late-joining listener can start decoding from any frame boundary.
+  Ogg/Opus requires headers + page-level sync that complicates
+  fan-out.
   """
 
-  use GenServer
+  use GenServer, restart: :transient
   require Logger
 
   alias Aural.{ChimeAssets, Synth}
-
-  defp pubsub, do: Aural.pubsub()
 
   # 100ms of audio per chunk; absolute-deadline scheduling.
   @chunk_samples 4_800
   @chunk_ms 100
 
   # Per-tick exponential-ease coefficient for the activity smoother.
-  # `new = old + (target - old) * @activity_alpha` per chunk gives an
-  # e-folding time of ~1/alpha chunks. At 0.10 that's ~1 second to
-  # reach 63% of target, ~2.3s to reach 90% — slow enough to sound
-  # like a fade, fast enough to feel responsive. Without this, every
-  # set_activity call would snap bed gain at the next chunk boundary,
-  # producing an audible step in the pad's amplitude.
+  # See moduledoc in v0.1; ~1s to 63%, ~2.3s to 90%.
   @activity_alpha 0.10
 
-  # Number of chunks to crossfade between two tracks when pick_track
-  # is called mid-playback. 30 chunks × 100 ms = 3 seconds — long
-  # enough that the harmonic transition reads as deliberate, short
-  # enough that the new track arrives before the listener loses
-  # interest. Without this the old/new tracks would jump-cut at the
-  # next chunk boundary, producing an audible click and a jarring
-  # harmonic shift.
+  # 30 chunks × 100 ms = 3 second crossfade between tracks.
   @crossfade_chunks 30
-  @topic "aural_channel:default"
-  # Separate topic for chime alerts. These bypass the bed entirely —
-  # subscribers (LiveViews) push the event to their client, which plays
-  # a preloaded local audio element with near-zero latency. The 2-5s
-  # streaming buffer on the MP3 bed makes mixing alerts into the bed
-  # useless for actual signaling.
-  @alert_topic "aural_alerts:default"
-  # Peak amplitude of each rendered chunk, broadcast at chunk rate
-  # (10/sec). Used by the client to draw the scope — Safari's
-  # createMediaElementSource silently fails on chunked-streaming
-  # audio, so we can't rely on the browser's WebAudio analyser for
-  # the bed. Server-side peaks are cross-browser.
-  @peak_topic "aural_channel:peaks"
+
+  # Subscriber-count poll cadence for the idle reaper.
+  @idle_check_ms 30_000
 
   # --- Public API ---
 
-  def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  @typedoc "Opaque channel identifier — anything URL-safe."
+  @type channel_id :: String.t()
 
-  @doc "Subscribe the calling process to receive {:mp3, bytes} messages from the streaming bed."
-  def subscribe, do: Phoenix.PubSub.subscribe(pubsub(), @topic)
+  @doc """
+  Generate a URL-safe channel ID. 11 characters, ~64 bits of entropy.
+  Hosts can also pass any string they like (e.g. a workspace ID) —
+  the engine treats `channel_id` as opaque.
+  """
+  @spec new_id() :: channel_id
+  def new_id, do: :crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false)
 
-  @doc "Unsubscribe from the streaming bed."
-  def unsubscribe, do: Phoenix.PubSub.unsubscribe(pubsub(), @topic)
+  @doc """
+  Ensure a channel is running. Idempotent — if a channel with this
+  ID already exists, returns its pid; otherwise spawns one under
+  `Aural.Channel.Supervisor`. Every other public function calls this
+  first, so hosts rarely need to call it directly.
+  """
+  @spec ensure_started(channel_id) :: {:ok, pid()} | {:error, term()}
+  def ensure_started(channel_id) when is_binary(channel_id) do
+    case DynamicSupervisor.start_child(
+           Aural.Channel.Supervisor,
+           {__MODULE__, channel_id: channel_id}
+         ) do
+      {:ok, pid} -> {:ok, pid}
+      {:error, {:already_started, pid}} -> {:ok, pid}
+      other -> other
+    end
+  end
 
-  @doc "Subscribe to chime alerts. Subscribers receive `{:alert, kind}` messages."
-  def subscribe_alerts, do: Phoenix.PubSub.subscribe(pubsub(), @alert_topic)
+  @doc "Subscribe the calling process to MP3 bytes for `channel_id`."
+  @spec subscribe(channel_id) :: :ok | {:error, term()}
+  def subscribe(channel_id) do
+    ensure_started(channel_id)
+    Phoenix.PubSub.subscribe(pubsub(), stream_topic(channel_id))
+  end
+
+  @doc "Unsubscribe from MP3 bytes."
+  @spec unsubscribe(channel_id) :: :ok
+  def unsubscribe(channel_id),
+    do: Phoenix.PubSub.unsubscribe(pubsub(), stream_topic(channel_id))
+
+  @doc "Subscribe to chime alerts. Receives `{:alert, kind}`."
+  @spec subscribe_alerts(channel_id) :: :ok | {:error, term()}
+  def subscribe_alerts(channel_id) do
+    ensure_started(channel_id)
+    Phoenix.PubSub.subscribe(pubsub(), alert_topic(channel_id))
+  end
 
   @doc "Unsubscribe from chime alerts."
-  def unsubscribe_alerts, do: Phoenix.PubSub.unsubscribe(pubsub(), @alert_topic)
+  @spec unsubscribe_alerts(channel_id) :: :ok
+  def unsubscribe_alerts(channel_id),
+    do: Phoenix.PubSub.unsubscribe(pubsub(), alert_topic(channel_id))
 
-  @doc "Subscribe to peak-amplitude broadcasts. Subscribers receive `{:peak, float}` (0.0..1.0) at chunk rate."
-  def subscribe_peaks, do: Phoenix.PubSub.subscribe(pubsub(), @peak_topic)
+  @doc """
+  Subscribe to peak-amplitude broadcasts. Receives
+  `{:peak, %{p: float}}` at chunk rate (10 Hz).
+  """
+  @spec subscribe_peaks(channel_id) :: :ok | {:error, term()}
+  def subscribe_peaks(channel_id) do
+    ensure_started(channel_id)
+    Phoenix.PubSub.subscribe(pubsub(), peak_topic(channel_id))
+  end
 
   @doc "Unsubscribe from peak broadcasts."
-  def unsubscribe_peaks, do: Phoenix.PubSub.unsubscribe(pubsub(), @peak_topic)
+  @spec unsubscribe_peaks(channel_id) :: :ok
+  def unsubscribe_peaks(channel_id),
+    do: Phoenix.PubSub.unsubscribe(pubsub(), peak_topic(channel_id))
 
   @doc """
-  Fire a chime alert. `kind` is `"done" | "attention" | "alert"`.
-  Broadcasts to every alert subscriber (every connected LiveView),
-  which pushes a client event so the browser plays its preloaded
-  local audio. ~WS RTT latency, not buffer-delayed.
+  Fire a chime alert on `channel_id`. `kind` is `"done"`,
+  `"attention"`, or `"alert"`. Broadcasts to every alert subscriber
+  on this channel.
   """
-  def fire(kind), do: GenServer.cast(__MODULE__, {:fire, kind})
+  @spec fire(channel_id, String.t()) :: :ok
+  def fire(channel_id, kind) do
+    ensure_started(channel_id)
+    GenServer.cast(via(channel_id), {:fire, kind})
+  end
 
-  @doc "Set the activity level (0.0..1.0) — boosts the bed's pad gain."
-  def set_activity(level), do: GenServer.cast(__MODULE__, {:set_activity, level})
+  @doc "Set the activity level (0.0..1.0) for `channel_id`."
+  @spec set_activity(channel_id, number()) :: :ok
+  def set_activity(channel_id, level) do
+    ensure_started(channel_id)
+    GenServer.cast(via(channel_id), {:set_activity, level})
+  end
 
-  @doc "Switch the bed track (atom)."
-  def pick_track(track), do: GenServer.cast(__MODULE__, {:pick_track, track})
+  @doc "Switch the bed track for `channel_id`. Crossfades over ~3s."
+  @spec pick_track(channel_id, atom()) :: :ok
+  def pick_track(channel_id, track) do
+    ensure_started(channel_id)
+    GenServer.cast(via(channel_id), {:pick_track, track})
+  end
 
   @doc """
-  Read a snapshot of the channel state for new HTTP subscribers and
-  for the UI. Returns `{track, activity}` so subscribers can sync
-  their initial UI.
+  Snapshot of channel state: `%{track: atom, activity: float}`.
+  Used by LVs for initial UI sync.
   """
-  def state, do: GenServer.call(__MODULE__, :state)
+  @spec state(channel_id) :: %{track: atom(), activity: float()}
+  def state(channel_id) do
+    ensure_started(channel_id)
+    GenServer.call(via(channel_id), :state)
+  end
+
+  # --- Plumbing exposed for the Supervisor / Registry ---
+
+  @doc false
+  def child_spec(opts) do
+    channel_id = Keyword.fetch!(opts, :channel_id)
+
+    %{
+      id: {__MODULE__, channel_id},
+      start: {__MODULE__, :start_link, [opts]},
+      restart: :transient
+    }
+  end
+
+  @doc false
+  def start_link(opts) do
+    channel_id = Keyword.fetch!(opts, :channel_id)
+    GenServer.start_link(__MODULE__, opts, name: via(channel_id))
+  end
+
+  defp via(channel_id), do: {:via, Registry, {Aural.Channel.Registry, channel_id}}
 
   # --- GenServer callbacks ---
 
   @impl true
-  def init(_opts) do
+  def init(opts) do
+    channel_id = Keyword.fetch!(opts, :channel_id)
     Process.flag(:trap_exit, true)
-    # Render chime WAVs to priv/static on boot if missing — they're
-    # what the browser plays locally for instant alerts. Idempotent.
     ChimeAssets.ensure_rendered!()
     port = open_ffmpeg(Synth.sample_rate())
     start_ms = System.monotonic_time(:millisecond)
     send(self(), :tick)
+    Process.send_after(self(), :idle_check, @idle_check_ms)
 
     {:ok,
      %{
+       channel_id: channel_id,
        port: port,
        track: :serene,
-       # `prev_track` and `crossfade_remaining` drive the track
-       # crossfade. When pick_track switches the bed, prev_track
-       # holds the outgoing track for @crossfade_chunks ticks while
-       # the new one fades in. nil = not currently crossfading.
        prev_track: nil,
        crossfade_remaining: 0,
        t: 0,
        chunk_n: 0,
        start_ms: start_ms,
-       # `activity` is the currently-rendered value; `activity_target`
-       # is the most-recent operator intent. Each tick eases the
-       # current toward the target. Both start at 0.0.
        activity: 0.0,
-       activity_target: 0.0
+       activity_target: 0.0,
+       idle_check_count: 0
      }}
   end
 
@@ -143,16 +209,13 @@ defmodule Aural.Channel do
 
   @impl true
   def handle_cast({:fire, kind}, state) when kind in ["done", "attention", "alert"] do
-    Phoenix.PubSub.broadcast(pubsub(), @alert_topic, {:alert, kind})
+    Phoenix.PubSub.broadcast(pubsub(), alert_topic(state.channel_id), {:alert, kind})
     {:noreply, state}
   end
 
   def handle_cast({:fire, _}, state), do: {:noreply, state}
 
   def handle_cast({:set_activity, level}, state) when is_number(level) do
-    # Sets the TARGET only — the per-tick easer in handle_info(:tick)
-    # walks `state.activity` toward it. A direct write would step the
-    # bed gain at the next chunk boundary; tweening keeps it musical.
     clamped = level |> max(0.0) |> min(1.0) |> :erlang.float()
     {:noreply, %{state | activity_target: clamped}}
   end
@@ -166,14 +229,9 @@ defmodule Aural.Channel do
       not valid? ->
         {:noreply, state}
 
-      # Already on this track and not mid-fade — nothing to do.
       track == state.track and state.prev_track == nil ->
         {:noreply, state}
 
-      # Mid-crossfade and the operator picked the OLD track back —
-      # swap directions in place. The elapsed fraction becomes the
-      # remaining fraction for the reversed transition so we keep
-      # the harmonic blend continuous instead of restarting from 0.
       track == state.prev_track ->
         elapsed = @crossfade_chunks - state.crossfade_remaining
 
@@ -181,8 +239,6 @@ defmodule Aural.Channel do
          %{state | track: track, prev_track: state.track, crossfade_remaining: elapsed}}
 
       true ->
-        # Standard case: start a crossfade from the current track
-        # to the new one over @crossfade_chunks ticks.
         {:noreply,
          %{state | prev_track: state.track, track: track, crossfade_remaining: @crossfade_chunks}}
     end
@@ -192,11 +248,6 @@ defmodule Aural.Channel do
 
   @impl true
   def handle_info(:tick, state) do
-    # Two-level smoothing: per-tick exponential ease toward the
-    # target, plus per-sample linear ramp within the chunk (handled
-    # in Synth.render_chunk). Per-tick alone leaves a tiny step at
-    # chunk boundaries when the activity is changing fast; the
-    # intra-chunk ramp erases that step entirely.
     activity_start = state.activity
     activity_end = activity_start + (state.activity_target - activity_start) * @activity_alpha
 
@@ -204,27 +255,16 @@ defmodule Aural.Channel do
     {pcm, state} = render_bed(state, sig)
     Port.command(state.port, pcm)
 
-    # Broadcast a downsampled snapshot of the chunk: peak amplitude
-    # (0.0..1.0, useful for level indicators) AND 16 real PCM samples
-    # (-1.0..1.0) so the client can draw an actual waveform. Safari
-    # can't analyse the streaming MP3 directly, so the server does the
-    # downsampling and the browser just plots what arrives.
     Phoenix.PubSub.broadcast(
       pubsub(),
-      @peak_topic,
+      peak_topic(state.channel_id),
       {:peak, %{p: peak_of(pcm), s: samples_of(pcm)}}
     )
 
     new_t = state.t + @chunk_samples
     new_n = state.chunk_n + 1
-    # Persist the eased activity so the next chunk picks up from
-    # where this one ended — no discontinuity sample-to-sample
-    # across the boundary.
     state = %{state | activity: activity_end}
 
-    # Absolute-deadline scheduling so producer never drifts relative
-    # to wall clock — important because the encoded byte stream is
-    # consumed by browsers expecting steady real-time delivery.
     next_deadline = state.start_ms + (new_n + 1) * @chunk_ms
     sleep_ms = max(0, next_deadline - System.monotonic_time(:millisecond))
     Process.send_after(self(), :tick, sleep_ms)
@@ -232,25 +272,45 @@ defmodule Aural.Channel do
     {:noreply, %{state | t: new_t, chunk_n: new_n}}
   end
 
-  # ffmpeg emits encoded MP3 bytes on its stdout via the port.
+  # Idle reaper: every @idle_check_ms, poll subscriber counts across
+  # all three topics. After two consecutive empty checks (≥1 full
+  # idle_timeout window), shut down. Two checks instead of one
+  # absorbs the gap between an HTTP listener disconnecting and a
+  # new one connecting on the same URL.
+  def handle_info(:idle_check, state) do
+    n = subscriber_count(state.channel_id)
+    timeout_chunks = max(1, div(idle_timeout_ms(), @idle_check_ms))
+
+    new_count = if n == 0, do: state.idle_check_count + 1, else: 0
+
+    if new_count >= timeout_chunks do
+      Logger.info(
+        "[aural channel #{state.channel_id}] idle for #{div(idle_timeout_ms(), 1000)}s, shutting down"
+      )
+
+      {:stop, :normal, state}
+    else
+      Process.send_after(self(), :idle_check, @idle_check_ms)
+      {:noreply, %{state | idle_check_count: new_count}}
+    end
+  end
+
   def handle_info({port, {:data, mp3}}, %{port: port} = state) do
-    Phoenix.PubSub.broadcast(pubsub(), @topic, {:mp3, mp3})
+    Phoenix.PubSub.broadcast(pubsub(), stream_topic(state.channel_id), {:mp3, mp3})
     {:noreply, state}
   end
 
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
-    Logger.warning("[aural channel] ffmpeg exited with status #{status}, restarting")
+    Logger.warning(
+      "[aural channel #{state.channel_id}] ffmpeg exited with status #{status}, restarting"
+    )
+
     new_port = open_ffmpeg(Synth.sample_rate())
     {:noreply, %{state | port: new_port}}
   end
 
   def handle_info(_msg, state), do: {:noreply, state}
 
-  # Render one chunk, applying a per-sample crossfade between
-  # prev_track → track if a track switch is in flight. Returns the
-  # rendered PCM and the (possibly updated) state — once the
-  # crossfade counter reaches zero we drop prev_track so subsequent
-  # ticks fall back to the single-track fast path.
   defp render_bed(%{prev_track: nil} = state, sig) do
     pcm = Synth.render_chunk(state.track, state.t, @chunk_samples, sig)
     {pcm, state}
@@ -296,12 +356,40 @@ defmodule Aural.Channel do
     :ok
   end
 
-  # --- Internals ---
+  # --- Topic + config helpers ---
 
-  # Sampled peak amplitude — looks at ~32 evenly-spaced samples
-  # across the chunk (instead of all 4800) so the per-tick cost
-  # stays under a millisecond. The scope only needs amplitude
-  # envelope, not sample-accurate waveform.
+  defp pubsub, do: Aural.pubsub()
+
+  defp stream_topic(channel_id), do: "aural:stream:" <> channel_id
+  defp alert_topic(channel_id), do: "aural:alert:" <> channel_id
+  defp peak_topic(channel_id), do: "aural:peak:" <> channel_id
+
+  defp idle_timeout_ms do
+    seconds = Application.get_env(:aural, :idle_timeout_seconds, 300)
+    seconds * 1_000
+  end
+
+  # Phoenix.PubSub doesn't expose subscriber counts directly. Its
+  # PG2 adapter (the default) keeps a process group per topic, and
+  # `:pg.get_members/2` reads it cheaply. The fallback for any other
+  # adapter is 0, which keeps the channel alive forever — safer
+  # than reaping prematurely if we can't measure.
+  defp subscriber_count(channel_id) do
+    [stream_topic(channel_id), alert_topic(channel_id), peak_topic(channel_id)]
+    |> Enum.map(&topic_subscriber_count(pubsub(), &1))
+    |> Enum.sum()
+  end
+
+  defp topic_subscriber_count(pubsub, topic) do
+    :pg.get_members(pubsub, topic) |> length()
+  rescue
+    _ -> 0
+  catch
+    _, _ -> 0
+  end
+
+  # --- PCM helpers ---
+
   defp peak_of(<<>>), do: 0.0
 
   defp peak_of(pcm) do
@@ -318,10 +406,6 @@ defmodule Aural.Channel do
     max_abs / 32_768.0
   end
 
-  # 16 evenly-spaced samples across the chunk, as signed floats in
-  # [-1, 1]. Effective rate: ~160 Hz (16 samples × 10 chunks/sec).
-  # Enough to render sub-bass content; higher frequencies alias but
-  # that's fine for visualization.
   @samples_per_chunk 16
 
   defp samples_of(<<>>), do: List.duplicate(0.0, @samples_per_chunk)
@@ -350,7 +434,6 @@ defmodule Aural.Channel do
           "-hide_banner",
           "-loglevel",
           "error",
-          # Input: raw signed 16-bit little-endian mono PCM from stdin
           "-f",
           "s16le",
           "-ar",
@@ -359,8 +442,6 @@ defmodule Aural.Channel do
           "1",
           "-i",
           "pipe:0",
-          # Output: MP3, 128kbps. Frame-independent format → late
-          # joiners can start decoding mid-stream from any frame.
           "-c:a",
           "libmp3lame",
           "-b:a",

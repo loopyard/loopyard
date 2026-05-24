@@ -23,6 +23,9 @@ defmodule AuralWeb.Live do
   """
   use Phoenix.LiveView, layout: false
 
+  alias Aural.LiveView, as: AuralLV
+  alias Aural.Components
+
   # Each tuple: {atom, display name, one-line description, category}.
   # `:baseline` tracks are the proven roster designed to sit under
   # a future audio-signaling layer. `:experimental` ones are
@@ -36,18 +39,11 @@ defmodule AuralWeb.Live do
   ]
 
   @impl true
-  def mount(_params, session, socket) do
-    # Subscribe to chime alerts so server-pushed events (or a peer
-    # clicking a chime button) reach this client. Only on the live
-    # WebSocket pass — `connected?(socket)` is false on the initial
-    # HTTP render. Also subscribe to bed peak amplitudes — the
-    # browser's WebAudio analyser can't capture chunked-streaming
-    # MP3 in Safari, so we drive the scope from server data instead.
-    if connected?(socket) do
-      Aural.Channel.subscribe_alerts()
-      Aural.Channel.subscribe_peaks()
-    end
-
+  def mount(%{"channel_id" => channel_id}, session, socket) do
+    # AuralLV.subscribe wires us to the channel's alert + peak
+    # topics and assigns :aural_channel so the event helpers can
+    # find it. The MP3 byte stream goes to HTTP listeners via the
+    # controller, not over this WS.
     {:ok,
      socket
      |> assign(:page_title, "Aural")
@@ -55,48 +51,20 @@ defmodule AuralWeb.Live do
      |> assign(:current_track, :serene)
      |> assign(:activity, "0.0")
      |> assign(:back_path, Map.get(session || %{}, "back_path", "/"))
-     |> assign(:back_label, Map.get(session || %{}, "back_label", "Back"))}
+     |> assign(:back_label, Map.get(session || %{}, "back_label", "Back"))
+     |> AuralLV.subscribe(channel_id)}
   end
 
   @impl true
-  def handle_info({:alert, kind}, socket) do
-    # System-initiated chime (server-side Channel.fire). Local UI
-    # button clicks DON'T come through this path — they play
-    # locally in the same gesture tick to dodge the autoplay block.
-    {:noreply, push_event(socket, "alert", %{kind: kind})}
-  end
-
-  def handle_info({:peak, %{p: peak, s: samples}}, socket) do
-    # 10/sec stream of bed audio snapshots — peak amplitude plus
-    # 16 downsampled PCM samples per chunk. Client ring-buffers the
-    # samples to draw the actual waveform.
-    {:noreply, push_event(socket, "peak", %{p: peak, s: samples})}
-  end
+  def handle_info({:alert, _} = msg, socket), do: AuralLV.on_alert(msg, socket)
+  def handle_info({:peak, _} = msg, socket), do: AuralLV.on_peak(msg, socket)
 
   @impl true
-  def handle_event("pick_track", %{"track" => track}, socket) do
-    track_atom = String.to_existing_atom(track)
-    # Track selection updates the SHARED channel — everyone
-    # listening hears the switch. push_event("play") then nudges
-    # this listener's <audio> element to play immediately.
-    Aural.Channel.pick_track(track_atom)
+  def handle_event("pick_track", %{"track" => track}, socket),
+    do: AuralLV.pick_track(socket, track)
 
-    {:noreply,
-     socket
-     |> assign(:current_track, track_atom)
-     |> push_event("play", %{})}
-  rescue
-    ArgumentError -> {:noreply, socket}
-  end
-
-  def handle_event("set_activity", %{"level" => level}, socket) do
-    case Float.parse(level) do
-      {f, _} -> Aural.Channel.set_activity(f)
-      _ -> :ok
-    end
-
-    {:noreply, assign(socket, :activity, level)}
-  end
+  def handle_event("set_activity", %{"level" => level}, socket),
+    do: AuralLV.set_activity(socket, level)
 
   @impl true
   def render(assigns) do
@@ -114,52 +82,7 @@ defmodule AuralWeb.Live do
       phx-hook="Aural"
       class="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 selection:bg-violet-500/20"
     >
-      <%!--
-        crossorigin="anonymous" is needed for Safari/WebKit: without
-        it, createMediaElementSource on a streaming/chunked source
-        silently fails to capture the audio signal — the element
-        plays natively but never feeds the WebAudio analyser. Same-
-        origin doesn't strictly need CORS but Safari is picky here.
-      --%>
-      <audio
-        id="aural-audio"
-        src={"/aural/stream.mp3"}
-        preload="auto"
-        crossorigin="anonymous"
-      >
-      </audio>
-
-      <%!--
-        Preloaded local chime sounds. The server pushes an `alert`
-        event when a chime fires (UI button click or system event);
-        the JS hook plays the matching element instantly, bypassing
-        the streaming bed's 2-5s playback buffer. Hidden — they're
-        triggered programmatically, not via UI.
-      --%>
-      <audio
-        id="aural-chime-done"
-        src={"/chimes/done.wav"}
-        preload="auto"
-        crossorigin="anonymous"
-        class="hidden"
-      >
-      </audio>
-      <audio
-        id="aural-chime-attention"
-        src={"/chimes/attention.wav"}
-        preload="auto"
-        crossorigin="anonymous"
-        class="hidden"
-      >
-      </audio>
-      <audio
-        id="aural-chime-alert"
-        src={"/chimes/alert.wav"}
-        preload="auto"
-        crossorigin="anonymous"
-        class="hidden"
-      >
-      </audio>
+      <Components.audio_elements channel_id={@aural_channel} />
 
       <main class="mx-auto max-w-2xl px-6 py-10 md:py-16">
         <header class="mb-10">

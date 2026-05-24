@@ -21,13 +21,12 @@ defmodule LoopyardWeb.Router do
     plug :accepts, ["*/*", "json", "html", "mpeg"]
   end
 
-  # Aural LV ships from the `:aural` package — its module is the
-  # top-level `AuralWeb.Live`, not `LoopyardWeb.AuralWeb.Live`. The
-  # scope below has `alias: LoopyardWeb`, which would prepend the
-  # alias, so the aural route lives in its own un-aliased scope.
+  # Aural LV ships from the `:aural` package. Each visitor lands on
+  # a per-channel URL `/aural/:channel_id`; the bare `/aural` route
+  # generates a fresh ID and 302s.
   scope "/" do
     pipe_through :browser
-    live "/aural", AuralWeb.Live, :index
+    live "/aural/:channel_id", AuralWeb.Live, :index
   end
 
   scope "/", LoopyardWeb do
@@ -116,12 +115,14 @@ defmodule LoopyardWeb.Router do
     get "/log", SystemController, :log
   end
 
-  # Aural audio stream + browser-side diag loopback. No CSRF
-  # (the diag POST is from the same page, JSON only). No session.
-  # Both controllers ship from the `:aural` package.
+  # Aural transport routes ship from the `:aural` package via the
+  # `aural_routes/0` macro — mounts stream.mp3 for each channel,
+  # the diag loopback, and a bare `/aural` → `/aural/<new_id>`
+  # redirect. All outside the :browser pipeline (no CSRF).
+  import Aural.Router
+
   scope "/aural" do
     pipe_through :aural
-    get "/stream.mp3", AuralWeb.StreamController, :stream
-    post "/diag", AuralWeb.StreamController, :diag
+    aural_routes()
   end
 end

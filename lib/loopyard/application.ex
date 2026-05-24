@@ -59,11 +59,8 @@ defmodule Loopyard.Application do
       # Must start after PubSub; order vs. Observer doesn't matter.
       Loopyard.Events.Tap,
 
-      # Aural channel — one always-on synth + ffmpeg pipeline that
-      # broadcasts MP3 bytes via PubSub. Lives in the `:aural`
-      # package, but the host owns its lifecycle here so it starts
-      # AFTER Loopyard.PubSub (the Channel broadcasts on it).
-      Aural.Channel,
+      # Aural channels are now lazy-started by the package's
+      # DynamicSupervisor — host doesn't add anything here.
 
       # Saga recorder — attaches to Loopyard.Saga telemetry and
       # keeps the last 100 runs in ETS for /system/sagas. Move #7a.

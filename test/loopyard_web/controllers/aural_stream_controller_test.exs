@@ -43,16 +43,25 @@ defmodule AuralWeb.StreamControllerTest do
   end
 
   describe "route resolution" do
-    test "GET /aural/stream.mp3 routes to AuralStreamController.stream/2" do
-      route = Phoenix.Router.route_info(LoopyardWeb.Router, "GET", "/aural/stream.mp3", "")
+    test "GET /aural/:channel_id/stream.mp3 routes to AuralWeb.StreamController.stream/2" do
+      route =
+        Phoenix.Router.route_info(LoopyardWeb.Router, "GET", "/aural/abc123/stream.mp3", "")
+
       assert route.plug == AuralWeb.StreamController
       assert route.plug_opts == :stream
+      assert route.path_params == %{"channel_id" => "abc123"}
     end
 
-    test "POST /aural/diag routes to AuralStreamController.diag/2" do
+    test "POST /aural/diag routes to AuralWeb.StreamController.diag/2" do
       route = Phoenix.Router.route_info(LoopyardWeb.Router, "POST", "/aural/diag", "")
       assert route.plug == AuralWeb.StreamController
       assert route.plug_opts == :diag
+    end
+
+    test "GET /aural routes to the redirect controller" do
+      route = Phoenix.Router.route_info(LoopyardWeb.Router, "GET", "/aural", "")
+      assert route.plug == AuralWeb.RedirectController
+      assert route.plug_opts == :new_channel
     end
   end
 end
