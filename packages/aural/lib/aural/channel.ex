@@ -37,6 +37,15 @@ defmodule Aural.Channel do
   # set_activity call would snap bed gain at the next chunk boundary,
   # producing an audible step in the pad's amplitude.
   @activity_alpha 0.10
+
+  # Number of chunks to crossfade between two tracks when pick_track
+  # is called mid-playback. 30 chunks × 100 ms = 3 seconds — long
+  # enough that the harmonic transition reads as deliberate, short
+  # enough that the new track arrives before the listener loses
+  # interest. Without this the old/new tracks would jump-cut at the
+  # next chunk boundary, producing an audible click and a jarring
+  # harmonic shift.
+  @crossfade_chunks 30
   @topic "aural_channel:default"
   # Separate topic for chime alerts. These bypass the bed entirely —
   # subscribers (LiveViews) push the event to their client, which plays
@@ -110,6 +119,12 @@ defmodule Aural.Channel do
      %{
        port: port,
        track: :serene,
+       # `prev_track` and `crossfade_remaining` drive the track
+       # crossfade. When pick_track switches the bed, prev_track
+       # holds the outgoing track for @crossfade_chunks ticks while
+       # the new one fades in. nil = not currently crossfading.
+       prev_track: nil,
+       crossfade_remaining: 0,
        t: 0,
        chunk_n: 0,
        start_ms: start_ms,
@@ -145,10 +160,31 @@ defmodule Aural.Channel do
   def handle_cast({:set_activity, _}, state), do: {:noreply, state}
 
   def handle_cast({:pick_track, track}, state) when is_atom(track) do
-    if Map.has_key?(Synth.track_names() |> MapSet.new() |> Map.new(&{&1, true}), track) do
-      {:noreply, %{state | track: track}}
-    else
-      {:noreply, state}
+    valid? = track in Synth.track_names()
+
+    cond do
+      not valid? ->
+        {:noreply, state}
+
+      # Already on this track and not mid-fade — nothing to do.
+      track == state.track and state.prev_track == nil ->
+        {:noreply, state}
+
+      # Mid-crossfade and the operator picked the OLD track back —
+      # swap directions in place. The elapsed fraction becomes the
+      # remaining fraction for the reversed transition so we keep
+      # the harmonic blend continuous instead of restarting from 0.
+      track == state.prev_track ->
+        elapsed = @crossfade_chunks - state.crossfade_remaining
+
+        {:noreply,
+         %{state | track: track, prev_track: state.track, crossfade_remaining: elapsed}}
+
+      true ->
+        # Standard case: start a crossfade from the current track
+        # to the new one over @crossfade_chunks ticks.
+        {:noreply,
+         %{state | prev_track: state.track, track: track, crossfade_remaining: @crossfade_chunks}}
     end
   end
 
@@ -165,7 +201,7 @@ defmodule Aural.Channel do
     activity_end = activity_start + (state.activity_target - activity_start) * @activity_alpha
 
     sig = %{chimes: [], activity_start: activity_start, activity_end: activity_end}
-    pcm = Synth.render_chunk(state.track, state.t, @chunk_samples, sig)
+    {pcm, state} = render_bed(state, sig)
     Port.command(state.port, pcm)
 
     # Broadcast a downsampled snapshot of the chunk: peak amplitude
@@ -209,6 +245,45 @@ defmodule Aural.Channel do
   end
 
   def handle_info(_msg, state), do: {:noreply, state}
+
+  # Render one chunk, applying a per-sample crossfade between
+  # prev_track → track if a track switch is in flight. Returns the
+  # rendered PCM and the (possibly updated) state — once the
+  # crossfade counter reaches zero we drop prev_track so subsequent
+  # ticks fall back to the single-track fast path.
+  defp render_bed(%{prev_track: nil} = state, sig) do
+    pcm = Synth.render_chunk(state.track, state.t, @chunk_samples, sig)
+    {pcm, state}
+  end
+
+  defp render_bed(%{prev_track: prev, crossfade_remaining: remaining} = state, sig) do
+    total = @crossfade_chunks
+    elapsed = total - remaining
+    alpha_start = elapsed / total
+    alpha_end = (elapsed + 1) / total
+
+    pcm =
+      Synth.render_crossfade(
+        prev,
+        state.track,
+        state.t,
+        @chunk_samples,
+        alpha_start,
+        alpha_end,
+        sig
+      )
+
+    new_remaining = remaining - 1
+
+    state =
+      if new_remaining <= 0 do
+        %{state | prev_track: nil, crossfade_remaining: 0}
+      else
+        %{state | crossfade_remaining: new_remaining}
+      end
+
+    {pcm, state}
+  end
 
   @impl true
   def terminate(_reason, %{port: port}) do

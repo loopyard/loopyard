@@ -110,6 +110,42 @@ defmodule Aural.Synth do
     end
   end
 
+  @doc """
+  Render `n_samples` of a smooth crossfade between two tracks.
+  Output amplitude is `(1 - alpha) * track_a + alpha * track_b` where
+  `alpha` ramps linearly from `alpha_start` (sample 0) to `alpha_end`
+  (sample n-1). Activity ramp from `signal_state` is applied to both
+  tracks identically.
+
+  Used during a `pick_track` transition: the Channel calls this
+  for as long as it's mid-fade, then falls back to `render_chunk/4`
+  on the new track alone. Per-sample alpha keeps the transition
+  click-free at chunk boundaries.
+  """
+  def render_crossfade(track_a, track_b, start_t, n_samples, alpha_start, alpha_end, signal_state)
+      when is_atom(track_a) and is_atom(track_b) and is_integer(start_t) and
+             is_integer(n_samples) and n_samples > 0 do
+    module_a = Map.get(@tracks, track_a) || Serene
+    module_b = Map.get(@tracks, track_b) || Serene
+
+    a_start = Map.get(signal_state, :activity_start, Map.get(signal_state, :activity, 0.0))
+    a_end = Map.get(signal_state, :activity_end, a_start)
+    bed_gain_start = 1.0 + a_start * 0.5
+    bed_gain_step = (a_end - a_start) * 0.5 / max(1, n_samples - 1)
+
+    alpha_step = (alpha_end - alpha_start) / max(1, n_samples - 1)
+
+    for i <- 0..(n_samples - 1), into: <<>> do
+      n = start_t + i
+      bed_gain = bed_gain_start + bed_gain_step * i
+      alpha = alpha_start + alpha_step * i
+      sample_a = module_a.sample_at(n) * bed_gain
+      sample_b = module_b.sample_at(n) * bed_gain
+      sample = ((1.0 - alpha) * sample_a + alpha * sample_b) |> Primitive.clamp()
+      <<round(sample * 32_767)::little-signed-16>>
+    end
+  end
+
   # Sum the per-sample contribution of every chime that's still alive
   # at sample index `n`.
   defp chime_contribution(chime_entries, n) do

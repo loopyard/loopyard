@@ -29,8 +29,6 @@ export function createAuralHook() {
       this._iconPause = this.el.querySelector("#aural-icon-pause")
       this._scopeLine = this.el.querySelector("#aural-scope-line")
 
-      this._ctx = null
-      this._analyser = null
       this._rafId = null
       this._currentSrc = this._audio.src
 
@@ -70,21 +68,22 @@ export function createAuralHook() {
       }
       this.handleEvent("alert", ({ kind }) => this._playChime(kind))
 
-      // Server-pushed bed waveform. Safari can't analyse the
-      // streaming MP3 directly via WebAudio, so the server sends a
-      // downsampled snapshot of every chunk (16 samples in [-1,1]
-      // per 100ms = 160Hz effective rate). The ring buffer holds
-      // the last 80 samples = ~500ms of bed audio.
-      this._waveBuf = new Float32Array(80)
-      this._waveIdx = 0
-      this._lastPeak = 0
-      this.handleEvent("peak", ({ p, s }) => {
-        this._lastPeak = p
-        if (!s) return
-        for (let i = 0; i < s.length; i++) {
-          this._waveBuf[this._waveIdx] = s[i]
-          this._waveIdx = (this._waveIdx + 1) % this._waveBuf.length
-        }
+      // Server pushes the peak amplitude (0..1) of every 100ms chunk.
+      // We keep an 80-slot ring of those peaks — one per scope column
+      // = 8 seconds of channel history. _peakDisplay is the
+      // smoothly-tweened version of _peakBuf that the rAF tick reads,
+      // so the line flows continuously between the 10 Hz updates
+      // instead of stepping. _playScale eases between 0 and 1 as the
+      // local <audio> goes paused → playing, scaling the rendered
+      // amplitude so the page doesn't look like full audio is playing
+      // when the listener can't actually hear anything yet.
+      this._peakBuf = new Float32Array(80)
+      this._peakDisplay = new Float32Array(80)
+      this._peakIdx = 0
+      this._playScale = 0
+      this.handleEvent("peak", ({ p }) => {
+        this._peakBuf[this._peakIdx] = p || 0
+        this._peakIdx = (this._peakIdx + 1) % this._peakBuf.length
       })
 
       // Scope animates from the moment the page is alive — server
@@ -193,10 +192,6 @@ export function createAuralHook() {
     _playChime(kind) {
       const el = this._chimes?.[kind]
       if (!el) return
-      // First chime click can be the first user gesture — set up
-      // the WebAudio graph here so the chime gets visualized on the
-      // oscilloscope. Idempotent.
-      this._ensureAnalyser()
       try {
         el.currentTime = 0
       } catch (_) {}
@@ -210,9 +205,9 @@ export function createAuralHook() {
         this._startPlayback()
       } else {
         this._audio.pause()
-        // Don't stop the rAF loop — it keeps running so chimes still
-        // draw on the scope even while the bed is paused. The scope's
-        // tick reads `audio.paused` and renders flat for the bed.
+        // Don't stop the rAF loop — _playScale tweens back to its
+        // "paused" target on the next ticks so the scope settles
+        // into the channel-alive indicator instead of jumping flat.
       }
     },
 
@@ -222,7 +217,6 @@ export function createAuralHook() {
     // emit `waiting` until it actively underflows, which means the
     // user sees no feedback during the initial buffer fill.
     _startPlayback() {
-      this._ensureAnalyser()
       this._setUI("loading", "Loading")
       this._audio.play().catch((err) => {
         console.error("[aural] play failed", err)
@@ -233,66 +227,6 @@ export function createAuralHook() {
         })
         this._setUI("paused", "Play failed")
       })
-      // Animation already running since mount; rAF tick reads
-      // audio.paused, so no need to (re)start.
-    },
-
-    // Tap every audio element into a single WebAudio graph so the
-    // analyser sees both bed and chime signals. Audio plays through
-    // the AudioContext destination, not each element's own output —
-    // createMediaElementSource takes over the element. Idempotent;
-    // safe to call before any kind of playback (bed, track, chime).
-    _ensureAnalyser() {
-      if (this._ctx) {
-        // Browsers (especially Safari) frequently leave the
-        // AudioContext in "suspended" state across user
-        // interactions. If we don't explicitly resume, the analyser
-        // reads pure silence and the oscilloscope flat-lines even
-        // though the audio is playing through the WebAudio graph.
-        if (this._ctx.state === "suspended") {
-          this._ctx.resume().catch(() => {})
-        }
-        return
-      }
-
-      const AudioCtor = window.AudioContext || window.webkitAudioContext
-      this._ctx = new AudioCtor()
-      this._analyser = this._ctx.createAnalyser()
-      this._analyser.fftSize = 1024
-      this._analyser.smoothingTimeConstant = 0.6
-      this._analyser.connect(this._ctx.destination)
-
-      // Route the CHIMES through the analyser — they're preloaded
-      // WAVs and Safari can capture them via createMediaElementSource
-      // fine. The bed audio is deliberately NOT routed: Safari can't
-      // capture chunked-streaming MP3 via this API. The bed plays
-      // natively, and the scope's bed portion comes from
-      // server-pushed peak amplitudes (see this._peakBuf above).
-      const sources = Object.values(this._chimes || {})
-      for (const el of sources) {
-        if (!el) continue
-        try {
-          const src = this._ctx.createMediaElementSource(el)
-          src.connect(this._analyser)
-        } catch (err) {
-          logToServer("audio:source-failed", {
-            id: el.id,
-            name: err?.name,
-            message: err?.message
-          })
-        }
-      }
-
-      // Animation already started in mount(). Once this analyser
-      // exists, the rAF tick begins reading it for chime visuals.
-
-      // Even the very first creation can land suspended — Safari
-      // ships AudioContext in suspended state until explicitly
-      // resumed inside a user gesture. We're inside a click handler,
-      // so this resume call counts.
-      if (this._ctx.state === "suspended") {
-        this._ctx.resume().catch(() => {})
-      }
     },
 
     // state: "playing" | "paused" | "loading"
@@ -316,72 +250,58 @@ export function createAuralHook() {
       if (this._status) this._status.textContent = statusText
     },
 
-    // Animation can start even before _ensureAnalyser runs — the
-    // server-pushed peak buffer is enough to draw the bed waveform.
-    // Local analyser data is added on top when chimes play.
+    // The scope renders a smoothly-tweened envelope of server-pushed
+    // peak amplitudes — one peak per 100ms chunk, 80 historical
+    // slots = 8 seconds of channel history. The earlier impl tried
+    // to draw raw PCM samples downsampled to ~160 Hz, which aliased
+    // mid-band audio into static-looking jitter; an amplitude
+    // envelope is honest about what 10 Hz of data can actually show
+    // and reads as a flowing line that moves with the music.
     _startAnimation() {
       if (this._rafId) return
       const width = 800
       const mid = 60
-      const amp = mid - 10 // max vertical excursion from mid
-      // Track-domain buffer for chime samples (only present once
-      // the WebAudio graph has been built — i.e. after a click).
-      let timeBuf = null
+      const maxAmp = mid - 5
 
       const tick = () => {
-        // Sample-accurate chime waveform if available (Chrome and
-        // Safari can both decode preloaded WAVs into WebAudio).
-        if (this._analyser) {
-          if (!timeBuf || timeBuf.length !== this._analyser.fftSize) {
-            timeBuf = new Uint8Array(this._analyser.fftSize)
-          }
-          this._analyser.getByteTimeDomainData(timeBuf)
+        // _playScale eases between "this listener has bed audio
+        // playing" (1.0) and "paused/never started" (0.15). The
+        // scope is then a subtle channel-alive indicator before
+        // Play and a full-amplitude envelope after, with a smooth
+        // ramp in either direction.
+        const audioPlaying = this._audio && !this._audio.paused
+        const target = audioPlaying ? 1.0 : 0.15
+        this._playScale += (target - this._playScale) * 0.06
+
+        // Smooth the displayed peak values toward the buffered
+        // server values — 0.30 per frame gives a ~70ms time
+        // constant, so the line glides between 100ms updates
+        // instead of stepping.
+        const N = 80
+        const peakHead = this._peakIdx
+        for (let i = 0; i < N; i++) {
+          this._peakDisplay[i] += (this._peakBuf[i] - this._peakDisplay[i]) * 0.30
         }
 
-        // Server-pushed peaks drive the bed waveform regardless of
-        // whether this client has hit Play. That's the point of
-        // server-side downsampling: the channel is always alive,
-        // every visitor sees it move, the Play button is for joining
-        // the audible side of what's already visibly going on.
-
-        // 80 sample points across the scope width. The wave buffer
-        // is exactly 80 long, so each column reads one sample.
-        const N = 80
-        const waveBuf = this._waveBuf
-        const waveHead = this._waveIdx
-        const samplesPerPoint = timeBuf ? Math.floor(timeBuf.length / N) : 0
-
-        // Visual gain — bed audio is fairly low-amplitude (ambient
-        // pads ~ 0.3-0.4 peak), so we scale it up so the wave is
-        // visible without clipping. Chimes are louder and already
-        // close to the rails.
-        const bedGain = 2.0
+        const bedAmp = maxAmp * this._playScale
+        // Visual gain — ambient pads peak around 0.3–0.4, so a 2.5×
+        // boost fills the available vertical without ever clipping
+        // (the clamp below catches the rare loud chunk anyway).
+        const gain = 2.5
 
         let pts = ""
         for (let i = 0; i < N; i++) {
-          const x = (i / N) * width
-
-          // Bed contribution: read the i-th oldest sample from the
-          // ring buffer. Real PCM, so this is an actual waveform —
-          // not a fake LFO modulation.
-          const slot = (waveHead + i) % waveBuf.length
-          const bedY = waveBuf[slot] * amp * bedGain
-
-          // Chime contribution: time-domain sample at this column.
-          let chimeY = 0
-          if (timeBuf) {
-            const sample = timeBuf[i * samplesPerPoint] // 0..255, 128 = silence
-            chimeY = ((sample - 128) / 128) * amp
-          }
-
-          // Sum and clamp. Chimes punch through the bed waveform.
-          let y = mid + bedY + chimeY
-          if (y < mid - amp) y = mid - amp
-          if (y > mid + amp) y = mid + amp
-
+          const x = (i / (N - 1)) * width
+          const slot = (peakHead + i) % N
+          let dy = this._peakDisplay[slot] * bedAmp * gain
+          if (dy > maxAmp) dy = maxAmp
+          // Envelope is single-sided above mid — the line draws
+          // amplitude over time, not signed waveform. Higher peak
+          // = line further from baseline. Reads naturally as
+          // "loudness over time".
+          const y = mid - dy
           pts += (pts ? " " : "") + x.toFixed(1) + "," + y.toFixed(1)
         }
-        pts += " " + width + "," + mid.toFixed(1)
         this._scopeLine?.setAttribute("points", pts)
         this._rafId = requestAnimationFrame(tick)
       }
