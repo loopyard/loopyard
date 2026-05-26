@@ -34,39 +34,27 @@ export function createAuralHook() {
 
       this._toggle.addEventListener("click", () => this._handleToggle())
 
-      // Both track rows and chime buttons need to act in the same
-      // click tick — going through a server round-trip loses the
-      // user-gesture token in Safari and audio.play() rejects with
-      // NotAllowedError. Track rows ALSO fire phx-click for
-      // server-side state; chime buttons are pure JS (data-chime
-      // attr only) so the LV is uninvolved.
+      // Track rows: when clicked, kick off audio playback in the
+      // SAME tick — Safari rejects audio.play() if a server
+      // round-trip happens between the click and the .play() call
+      // (user-gesture token expires). The phx-click also fires
+      // server-side to pick the track.
       this.el.addEventListener("click", (e) => {
         const trackBtn = e.target.closest('button[phx-click="pick_track"]')
-        if (trackBtn) {
-          this._startPlayback()
-          return
-        }
-        const chimeBtn = e.target.closest('button[data-chime]')
-        if (chimeBtn) {
-          const kind = chimeBtn.getAttribute("data-chime")
-          if (kind) this._playChime(kind)
-        }
+        if (trackBtn) this._startPlayback()
       })
 
       // Kept as a fallback for any future server-initiated play
       // request (e.g. "tune everyone in now").
       this.handleEvent("play", () => this._startPlayback())
 
-      // Cache references to the preloaded chime audio elements. The
-      // server pushes an `alert` event when a chime fires (button
-      // click or system event); we play the matching one with
-      // near-zero latency — WS RTT only, no decode buffer.
-      this._chimes = {
-        done: this.el.querySelector("#aural-chime-done"),
-        attention: this.el.querySelector("#aural-chime-attention"),
-        alert: this.el.querySelector("#aural-chime-alert")
-      }
-      this.handleEvent("alert", ({ kind }) => this._playChime(kind))
+      // The server fires a `"fire"` event whenever Aural.Channel.fire/2
+      // runs (either from a button click on this page or a system
+      // event elsewhere). The chime is being mixed into the bed
+      // stream on the server, so it'll arrive in the audio buffer
+      // 2-5s later — flash the matching button immediately so the
+      // operator gets click feedback without waiting for the audio.
+      this.handleEvent("fire", ({ kind }) => this._flashFire(kind))
 
       // Server pushes the peak amplitude (0..1) of every 100ms chunk.
       // We keep an 80-slot ring of those peaks — one per scope column
@@ -185,19 +173,41 @@ export function createAuralHook() {
       }
     },
 
-    // Play a preloaded chime. Reset currentTime so rapid repeats
-    // re-fire cleanly instead of stalling on the first decode.
-    // If play() rejects (autoplay block, no gesture yet), just log
-    // and move on — the chime is non-critical.
-    _playChime(kind) {
-      const el = this._chimes?.[kind]
-      if (!el) return
-      try {
-        el.currentTime = 0
-      } catch (_) {}
-      el.play().catch((err) => {
-        logToServer("chime:rejected", { kind, name: err?.name, message: err?.message })
+    // Flash the matching chime button: instant outward glow on
+    // press, slowly fading back over ~1.2s. The actual chime
+    // arrives in the audio bed a few seconds later (it's being
+    // mixed into the stream server-side), so this visual is what
+    // confirms the click registered. Uses currentColor so it
+    // tracks the button's own text color in any host theme.
+    _flashFire(kind) {
+      const btn = this.el.querySelector(
+        `button[phx-click="aural:fire"][phx-value-kind="${kind}"]`
+      )
+      if (!btn) return
+
+      // Apply the press state synchronously, then on the next
+      // animation frame switch on a transition and let it fade.
+      btn.style.transition = "none"
+      btn.style.boxShadow = "0 0 24px 4px currentColor"
+      btn.style.filter = "brightness(1.35)"
+
+      requestAnimationFrame(() => {
+        btn.style.transition =
+          "box-shadow 1200ms ease-out, filter 1200ms ease-out"
+        btn.style.boxShadow = "0 0 0 0 transparent"
+        btn.style.filter = "brightness(1)"
       })
+
+      // Clear the inline styles after the transition finishes so
+      // they don't pin permanently (and so subsequent flashes start
+      // from a clean baseline).
+      clearTimeout(this._fireTimers?.[kind])
+      this._fireTimers = this._fireTimers || {}
+      this._fireTimers[kind] = setTimeout(() => {
+        btn.style.transition = ""
+        btn.style.boxShadow = ""
+        btn.style.filter = ""
+      }, 1400)
     },
 
     _handleToggle() {

@@ -1,68 +1,98 @@
 defmodule Aural.Signals do
   @moduledoc """
-  Chime voice library — the per-sample synthesis for the three
-  alert sounds (done, attention, alert). Used by
-  `Aural.ChimeAssets` to render WAV files at app boot,
-  which the browser then preloads and plays locally for instant
-  server-pushed alerts.
+  Chime voice library — pure per-sample synthesis for the three
+  alert sounds (done, attention, alert). Channel mixes these into
+  the bed PCM stream per-sample (no local-WAV path); bed + chimes
+  share a single ffmpeg encoder so the harmonic integration is
+  mathematical, not "two audio sources happening to overlap."
 
-  No state, no ETS — these are pure functions. State (track,
-  activity, alert routing) lives on `Aural.Channel`.
+  Envelopes apply both their voice-specific shape (bell exponential
+  decay, bow attack/sustain/release) AND a smoothstep tail fadeout
+  in the last 300 ms of the chime's lifetime. Without the tail
+  fadeout, exp decay would still be at ~10-17% amplitude when the
+  Channel drops the chime from its active list — audibly clipping
+  the tail. The smoothstep ramps that residual to zero.
+
+  No state, no ETS — pure functions of `(kind, t)`.
   """
 
   alias Aural.Primitive
 
   @sample_rate Primitive.sample_rate()
 
-  # Sample lifetimes per chime kind, in seconds.
+  # Lifetimes in seconds. The Channel drops a chime when its age
+  # passes this value. Longer than the old WAV-rendered versions
+  # (5.0 / 3.0 / 1.8 vs 3.5 / 2.5 / 1.2) because stream-mixing has
+  # no file-size cost — the chime just stops contributing per-sample
+  # once its envelope ramps to zero.
   @chime_lifetime_s %{
-    "done" => 3.5,
-    "attention" => 2.5,
-    "alert" => 1.2
+    "done" => 5.0,
+    "attention" => 3.0,
+    "alert" => 1.8
   }
 
+  # Tail-taper window: last N seconds of the lifetime where the
+  # smoothstep fade applies. 0.3 s ramps even moderate residuals
+  # (~10-15%) cleanly to zero while leaving the voice's natural
+  # decay intact for the rest of the duration.
+  @fadeout_window 0.3
+
   @doc """
-  Sample contribution from a single chime at the given age (in
-  seconds since the chime fired). Returns a float roughly in
-  [-1.0, 1.0].
+  Per-sample contribution from a single chime at age `t` seconds
+  since the chime fired. Returns a float roughly in `[-1.0, 1.0]`.
   """
-  def chime_sample("done", t) do
-    # Major triad bell — C5 + E5 + G5, exponential decay.
-    env = bell_envelope(t, 2.0)
-    voices = (sine(523.25, t) + sine(659.25, t) + sine(783.99, t)) / 3.0
-    voices * env * 0.30
-  end
+  def chime_sample(kind, t) when is_binary(kind) and is_number(t) and t >= 0.0 do
+    lifetime = Map.get(@chime_lifetime_s, kind, 0.0)
 
-  def chime_sample("attention", t) do
-    # Single bowed A4 with a slow attack and slow decay.
-    env = bow_envelope(t, 0.25, 1.5)
-    sine(440.00, t) * env * 0.25
-  end
-
-  def chime_sample("alert", t) do
-    # Minor 2nd dyad (E5 + F5) — built-in dissonance reads as
-    # "something needs attention" without being harsh.
-    env = bell_envelope(t, 0.6)
-    voices = (sine(659.25, t) + sine(698.46, t)) / 2.0
-    voices * env * 0.28
+    if t >= lifetime do
+      0.0
+    else
+      chime_voice(kind, t) * tail_fadeout(t, lifetime)
+    end
   end
 
   def chime_sample(_, _), do: 0.0
 
-  @doc "Lifetime of a chime in samples (drives WAV-render length)."
+  @doc "Lifetime of a chime in samples. Channel uses this to prune expired entries."
   def chime_lifetime_samples(kind) do
     secs = Map.get(@chime_lifetime_s, kind, 0.0)
     trunc(secs * @sample_rate)
   end
 
-  # --- Voice helpers ---
+  @doc "All known chime kinds."
+  def kinds, do: Map.keys(@chime_lifetime_s)
+
+  # --- Per-voice shapes ---
+
+  # Major triad bell, C5 + E5 + G5, exponential decay.
+  defp chime_voice("done", t) do
+    env = bell_envelope(t, 2.0)
+    voices = (sine(523.25, t) + sine(659.25, t) + sine(783.99, t)) / 3.0
+    voices * env * 0.30
+  end
+
+  # Single bowed A4 with a slow attack and slow decay.
+  defp chime_voice("attention", t) do
+    env = bow_envelope(t, 0.25, 1.5)
+    sine(440.00, t) * env * 0.25
+  end
+
+  # Minor 2nd dyad (E5 + F5) — built-in dissonance reads as
+  # "something needs attention" without being harsh.
+  defp chime_voice("alert", t) do
+    env = bell_envelope(t, 0.6)
+    voices = (sine(659.25, t) + sine(698.46, t)) / 2.0
+    voices * env * 0.28
+  end
+
+  defp chime_voice(_, _), do: 0.0
+
+  # --- Envelope primitives ---
 
   defp sine(freq, t), do: :math.sin(2.0 * :math.pi * freq * t)
 
-  # Bell: hit fast, decay exponentially. `tau` controls how quickly
-  # it rings out (higher = longer ring).
+  # Bell: 5 ms attack ramp to avoid click, then exp decay at `tau`.
   defp bell_envelope(t, tau) when t >= 0.0 do
-    # 5ms attack ramp to avoid click, then exponential decay.
     attack = min(t / 0.005, 1.0)
     decay = :math.exp(-t / tau)
     attack * decay
@@ -80,4 +110,17 @@ defmodule Aural.Signals do
   end
 
   defp bow_envelope(_, _, _), do: 0.0
+
+  # Smoothstep taper to zero across the last @fadeout_window
+  # seconds of the chime's lifetime; 1.0 elsewhere so the voice's
+  # own envelope shape stays intact.
+  defp tail_fadeout(t, lifetime) do
+    fadeout_start = lifetime - @fadeout_window
+
+    if t > fadeout_start do
+      max(0.0, 1.0 - Primitive.smoothstep((t - fadeout_start) / @fadeout_window))
+    else
+      1.0
+    end
+  end
 end

@@ -21,11 +21,11 @@ defmodule Aural.LiveView do
         def handle_info({:peak, _} = msg, socket),
           do: AuralLV.on_peak(msg, socket)
 
-        def handle_info({:alert, _} = msg, socket),
-          do: AuralLV.on_alert(msg, socket)
-
         def handle_event("aural:pick_track", %{"track" => track}, socket),
           do: AuralLV.pick_track(socket, track)
+
+        def handle_event("aural:fire", %{"kind" => kind}, socket),
+          do: AuralLV.fire(socket, kind)
       end
 
   The host's `render/1` uses `Aural.Components` for the DOM contract
@@ -35,7 +35,7 @@ defmodule Aural.LiveView do
   alias Phoenix.LiveView
 
   @doc """
-  Subscribe the socket process to a channel's alert + peak topics
+  Subscribe the socket process to a channel's peak-amplitude topic
   (only on the connected pass — `connected?(socket)` is false on
   the initial HTTP render). Assigns `:aural_channel` so subsequent
   helpers can look it up.
@@ -46,7 +46,6 @@ defmodule Aural.LiveView do
   @spec subscribe(LiveView.Socket.t(), Aural.Channel.channel_id()) :: LiveView.Socket.t()
   def subscribe(socket, channel_id) when is_binary(channel_id) do
     if LiveView.connected?(socket) do
-      Aural.Channel.subscribe_alerts(channel_id)
       Aural.Channel.subscribe_peaks(channel_id)
     end
 
@@ -54,22 +53,13 @@ defmodule Aural.LiveView do
   end
 
   @doc """
-  Handle a `{:peak, %{p: float, s: [float]}}` message by pushing it
-  to the client as a `"peak"` event. Returns the standard
+  Handle a `{:peak, %{p: float}}` message by pushing it to the
+  client as a `"peak"` event. Returns the standard
   `{:noreply, socket}` tuple a `handle_info/2` clause needs.
   """
   @spec on_peak({:peak, map()}, LiveView.Socket.t()) :: {:noreply, LiveView.Socket.t()}
   def on_peak({:peak, payload}, socket) do
     {:noreply, LiveView.push_event(socket, "peak", payload)}
-  end
-
-  @doc """
-  Handle a `{:alert, kind}` message by pushing it to the client as
-  an `"alert"` event so the JS hook can play the local chime WAV.
-  """
-  @spec on_alert({:alert, String.t()}, LiveView.Socket.t()) :: {:noreply, LiveView.Socket.t()}
-  def on_alert({:alert, kind}, socket) do
-    {:noreply, LiveView.push_event(socket, "alert", %{kind: kind})}
   end
 
   @doc """
@@ -111,11 +101,13 @@ defmodule Aural.LiveView do
 
   @doc """
   Apply a `fire` event from the host's UI (or anywhere). `kind` is
-  one of `"done"`, `"attention"`, `"alert"`.
+  one of `"done"`, `"attention"`, `"alert"`. Pushes a `"fire"`
+  client event so the JS hook can flash a button-press glow while
+  the chime works its way through the audio buffer.
   """
   @spec fire(LiveView.Socket.t(), String.t()) :: {:noreply, LiveView.Socket.t()}
   def fire(socket, kind) when is_binary(kind) do
     Aural.Channel.fire(socket.assigns.aural_channel, kind)
-    {:noreply, socket}
+    {:noreply, LiveView.push_event(socket, "fire", %{kind: kind})}
   end
 end

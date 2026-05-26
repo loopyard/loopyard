@@ -60,7 +60,6 @@ defmodule AuralWeb.Live do
   end
 
   @impl true
-  def handle_info({:alert, _} = msg, socket), do: AuralLV.on_alert(msg, socket)
   def handle_info({:peak, _} = msg, socket), do: AuralLV.on_peak(msg, socket)
 
   @impl true
@@ -69,6 +68,9 @@ defmodule AuralWeb.Live do
 
   def handle_event("set_activity", %{"level" => level}, socket),
     do: AuralLV.set_activity(socket, level)
+
+  def handle_event("aural:fire", %{"kind" => kind}, socket),
+    do: AuralLV.fire(socket, kind)
 
   @impl true
   def render(assigns) do
@@ -253,21 +255,27 @@ defmodule AuralWeb.Live do
                 --%>
                 <button
                   type="button"
-                  data-chime="done"
+                  phx-click="aural:fire"
+                  phx-value-kind="done"
+                  data-aural-fire
                   class="px-3 py-2 text-xs font-mono uppercase tracking-widest rounded border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300 dark:hover:border-zinc-700 hover:bg-zinc-100/60 dark:hover:bg-zinc-800/40 transition-colors focus-ring"
                 >
                   Done
                 </button>
                 <button
                   type="button"
-                  data-chime="attention"
+                  phx-click="aural:fire"
+                  phx-value-kind="attention"
+                  data-aural-fire
                   class="px-3 py-2 text-xs font-mono uppercase tracking-widest rounded border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300 dark:hover:border-zinc-700 hover:bg-zinc-100/60 dark:hover:bg-zinc-800/40 transition-colors focus-ring"
                 >
                   Attention
                 </button>
                 <button
                   type="button"
-                  data-chime="alert"
+                  phx-click="aural:fire"
+                  phx-value-kind="alert"
+                  data-aural-fire
                   class="px-3 py-2 text-xs font-mono uppercase tracking-widest rounded border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300 dark:hover:border-zinc-700 hover:bg-zinc-100/60 dark:hover:bg-zinc-800/40 transition-colors focus-ring"
                 >
                   Alert

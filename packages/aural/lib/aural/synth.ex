@@ -147,13 +147,21 @@ defmodule Aural.Synth do
 
     alpha_step = (alpha_end - alpha_start) / max(1, n_samples - 1)
 
+    chimes = Map.get(signal_state, :chimes, [])
+
+    chime_entries =
+      Enum.map(chimes, fn %{kind: kind, start_n: start_n} ->
+        {kind, start_n, Aural.Signals.chime_lifetime_samples(kind)}
+      end)
+
     for i <- 0..(n_samples - 1), into: <<>> do
       n = start_t + i
       bed_gain = bed_gain_start + bed_gain_step * i
       alpha = alpha_start + alpha_step * i
       sample_a = module_a.sample_at(n) * bed_gain
       sample_b = module_b.sample_at(n) * bed_gain
-      sample = ((1.0 - alpha) * sample_a + alpha * sample_b) |> Primitive.clamp()
+      bed = (1.0 - alpha) * sample_a + alpha * sample_b
+      sample = (bed + chime_contribution(chime_entries, n)) |> Primitive.clamp()
       <<round(sample * 32_767)::little-signed-16>>
     end
   end

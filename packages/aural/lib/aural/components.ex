@@ -22,13 +22,12 @@ defmodule Aural.Components do
   use Phoenix.Component
 
   @doc """
-  All `<audio>` elements the JS hook needs: the streaming bed
-  pointed at the channel's `stream.mp3`, plus the three preloaded
-  chime WAVs served from the package's `priv/static/chimes/`.
+  The streaming bed `<audio>` pointed at the channel's
+  `stream.mp3`. Chimes are mixed into the bed PCM server-side, so
+  no separate audio elements are needed for them anymore.
 
-  `crossorigin="anonymous"` is required for Safari/WebKit when the
-  source is on a different origin or chunked-streamed (the streaming
-  bed). It's harmless when not needed.
+  `crossorigin="anonymous"` is harmless on same-origin requests
+  and required by Safari for the chunked-streaming source.
   """
   attr :channel_id, :string, required: true,
     doc: "Channel ID. Built into the streaming bed URL: /aural/<id>/stream.mp3"
@@ -40,27 +39,6 @@ defmodule Aural.Components do
       src={"/aural/#{@channel_id}/stream.mp3"}
       preload="auto"
       crossorigin="anonymous"
-    />
-    <audio
-      id="aural-chime-done"
-      src="/chimes/done.wav"
-      preload="auto"
-      crossorigin="anonymous"
-      class="hidden"
-    />
-    <audio
-      id="aural-chime-attention"
-      src="/chimes/attention.wav"
-      preload="auto"
-      crossorigin="anonymous"
-      class="hidden"
-    />
-    <audio
-      id="aural-chime-alert"
-      src="/chimes/alert.wav"
-      preload="auto"
-      crossorigin="anonymous"
-      class="hidden"
     />
     """
   end

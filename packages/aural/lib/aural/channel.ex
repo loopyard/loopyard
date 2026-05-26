@@ -32,7 +32,7 @@ defmodule Aural.Channel do
   use GenServer, restart: :transient
   require Logger
 
-  alias Aural.{ChimeAssets, Synth}
+  alias Aural.{Signals, Synth}
 
   # 100ms of audio per chunk; absolute-deadline scheduling.
   @chunk_samples 4_800
@@ -90,18 +90,6 @@ defmodule Aural.Channel do
   @spec unsubscribe(channel_id) :: :ok
   def unsubscribe(channel_id),
     do: Phoenix.PubSub.unsubscribe(pubsub(), stream_topic(channel_id))
-
-  @doc "Subscribe to chime alerts. Receives `{:alert, kind}`."
-  @spec subscribe_alerts(channel_id) :: :ok | {:error, term()}
-  def subscribe_alerts(channel_id) do
-    ensure_started(channel_id)
-    Phoenix.PubSub.subscribe(pubsub(), alert_topic(channel_id))
-  end
-
-  @doc "Unsubscribe from chime alerts."
-  @spec unsubscribe_alerts(channel_id) :: :ok
-  def unsubscribe_alerts(channel_id),
-    do: Phoenix.PubSub.unsubscribe(pubsub(), alert_topic(channel_id))
 
   @doc """
   Subscribe to peak-amplitude broadcasts. Receives
@@ -180,7 +168,6 @@ defmodule Aural.Channel do
   def init(opts) do
     channel_id = Keyword.fetch!(opts, :channel_id)
     Process.flag(:trap_exit, true)
-    ChimeAssets.ensure_rendered!()
     port = open_ffmpeg(Synth.sample_rate())
     start_ms = System.monotonic_time(:millisecond)
     send(self(), :tick)
@@ -198,6 +185,11 @@ defmodule Aural.Channel do
        start_ms: start_ms,
        activity: 0.0,
        activity_target: 0.0,
+       # Active chimes: list of %{kind, start_n}. fire/2 prepends a
+       # fresh chime; each tick prunes any whose age has passed
+       # Signals.chime_lifetime_samples/1 and passes the rest to the
+       # synth, which mixes them into the bed per-sample.
+       chimes: [],
        idle_check_count: 0
      }}
   end
@@ -209,8 +201,11 @@ defmodule Aural.Channel do
 
   @impl true
   def handle_cast({:fire, kind}, state) when kind in ["done", "attention", "alert"] do
-    Phoenix.PubSub.broadcast(pubsub(), alert_topic(state.channel_id), {:alert, kind})
-    {:noreply, state}
+    # Schedule the chime at the current sample boundary. Synth picks
+    # it up on the next tick, mixes it into the bed PCM per-sample
+    # until its envelope expires, then the prune step below drops it.
+    chime = %{kind: kind, start_n: state.t}
+    {:noreply, %{state | chimes: [chime | state.chimes]}}
   end
 
   def handle_cast({:fire, _}, state), do: {:noreply, state}
@@ -251,19 +246,30 @@ defmodule Aural.Channel do
     activity_start = state.activity
     activity_end = activity_start + (state.activity_target - activity_start) * @activity_alpha
 
-    sig = %{chimes: [], activity_start: activity_start, activity_end: activity_end}
+    sig = %{
+      chimes: state.chimes,
+      activity_start: activity_start,
+      activity_end: activity_end
+    }
+
     {pcm, state} = render_bed(state, sig)
     Port.command(state.port, pcm)
 
     Phoenix.PubSub.broadcast(
       pubsub(),
       peak_topic(state.channel_id),
-      {:peak, %{p: peak_of(pcm), s: samples_of(pcm)}}
+      {:peak, %{p: peak_of(pcm)}}
     )
 
     new_t = state.t + @chunk_samples
     new_n = state.chunk_n + 1
-    state = %{state | activity: activity_end}
+
+    alive_chimes =
+      Enum.filter(state.chimes, fn %{kind: kind, start_n: start_n} ->
+        new_t - start_n < Signals.chime_lifetime_samples(kind)
+      end)
+
+    state = %{state | activity: activity_end, chimes: alive_chimes}
 
     next_deadline = state.start_ms + (new_n + 1) * @chunk_ms
     sleep_ms = max(0, next_deadline - System.monotonic_time(:millisecond))
@@ -361,7 +367,6 @@ defmodule Aural.Channel do
   defp pubsub, do: Aural.pubsub()
 
   defp stream_topic(channel_id), do: "aural:stream:" <> channel_id
-  defp alert_topic(channel_id), do: "aural:alert:" <> channel_id
   defp peak_topic(channel_id), do: "aural:peak:" <> channel_id
 
   defp idle_timeout_ms do
@@ -375,7 +380,7 @@ defmodule Aural.Channel do
   # adapter is 0, which keeps the channel alive forever — safer
   # than reaping prematurely if we can't measure.
   defp subscriber_count(channel_id) do
-    [stream_topic(channel_id), alert_topic(channel_id), peak_topic(channel_id)]
+    [stream_topic(channel_id), peak_topic(channel_id)]
     |> Enum.map(&topic_subscriber_count(pubsub(), &1))
     |> Enum.sum()
   end
@@ -404,21 +409,6 @@ defmodule Aural.Channel do
       end)
 
     max_abs / 32_768.0
-  end
-
-  @samples_per_chunk 16
-
-  defp samples_of(<<>>), do: List.duplicate(0.0, @samples_per_chunk)
-
-  defp samples_of(pcm) do
-    n_total = div(byte_size(pcm), 2)
-    step = max(1, div(n_total, @samples_per_chunk))
-
-    for i <- 0..(@samples_per_chunk - 1) do
-      offset = min(i * step, n_total - 1) * 2
-      <<_::binary-size(offset), s::16-little-signed, _::binary>> = pcm
-      Float.round(s / 32_768.0, 3)
-    end
   end
 
   defp open_ffmpeg(sample_rate) do
