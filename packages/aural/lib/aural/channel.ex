@@ -48,6 +48,19 @@ defmodule Aural.Channel do
   # Subscriber-count poll cadence for the idle reaper.
   @idle_check_ms 30_000
 
+  # Max concurrent chimes per channel. Each active chime contributes
+  # a per-sample cost to the bed render; 16 is well under 1ms/tick
+  # total even on a small Fly machine. Newest-wins: when at cap, the
+  # oldest queued chime gets clipped so the latest UI click is the
+  # one the listener hears.
+  @max_concurrent_chimes 16
+
+  # channel_id format: 1-64 url-safe chars. Bare minimum sanity check
+  # to keep an attacker from spawning a channel keyed by a multi-MB
+  # path-traversal string. Anything that doesn't pass returns
+  # {:error, :invalid_channel_id} instead of starting a channel.
+  @channel_id_regex ~r/^[A-Za-z0-9_-]{1,64}$/
+
   # --- Public API ---
 
   @typedoc "Opaque channel identifier — anything URL-safe."
@@ -66,17 +79,47 @@ defmodule Aural.Channel do
   ID already exists, returns its pid; otherwise spawns one under
   `Aural.Channel.Supervisor`. Every other public function calls this
   first, so hosts rarely need to call it directly.
+
+  Rejects malformed IDs with `{:error, :invalid_channel_id}`. IDs
+  must match `[A-Za-z0-9_-]{1,64}` — same alphabet
+  `Aural.Channel.new_id/0` produces.
   """
   @spec ensure_started(channel_id) :: {:ok, pid()} | {:error, term()}
   def ensure_started(channel_id) when is_binary(channel_id) do
-    case DynamicSupervisor.start_child(
-           Aural.Channel.Supervisor,
-           {__MODULE__, channel_id: channel_id}
-         ) do
-      {:ok, pid} -> {:ok, pid}
-      {:error, {:already_started, pid}} -> {:ok, pid}
-      other -> other
+    if valid_channel_id?(channel_id) do
+      case DynamicSupervisor.start_child(
+             Aural.Channel.Supervisor,
+             {__MODULE__, channel_id: channel_id}
+           ) do
+        {:ok, pid} -> {:ok, pid}
+        {:error, {:already_started, pid}} -> {:ok, pid}
+        other -> other
+      end
+    else
+      {:error, :invalid_channel_id}
     end
+  end
+
+  @doc """
+  Whether `id` is a syntactically valid channel ID. Exposed so
+  hosts can fail fast before calling `ensure_started/1` (e.g.
+  return a 404 instead of waking the supervisor for garbage input).
+  """
+  @spec valid_channel_id?(term()) :: boolean()
+  def valid_channel_id?(id) when is_binary(id), do: Regex.match?(@channel_id_regex, id)
+  def valid_channel_id?(_), do: false
+
+  @doc """
+  List every channel currently running under
+  `Aural.Channel.Supervisor`. Returns `[{channel_id, pid}, ...]`.
+  Used for `/system/aural`-style observability and tests; not on
+  any hot path.
+  """
+  @spec list() :: [{channel_id, pid()}]
+  def list do
+    Registry.select(Aural.Channel.Registry, [
+      {{:"$1", :"$2", :_}, [], [{{:"$1", :"$2"}}]}
+    ])
   end
 
   @doc "Subscribe the calling process to MP3 bytes for `channel_id`."
@@ -173,6 +216,12 @@ defmodule Aural.Channel do
     send(self(), :tick)
     Process.send_after(self(), :idle_check, @idle_check_ms)
 
+    :telemetry.execute(
+      [:aural, :channel, :start],
+      %{system_time: System.system_time()},
+      %{channel_id: channel_id}
+    )
+
     {:ok,
      %{
        channel_id: channel_id,
@@ -203,15 +252,39 @@ defmodule Aural.Channel do
   def handle_cast({:fire, kind}, state) when kind in ["done", "attention", "alert"] do
     # Schedule the chime at the current sample boundary. Synth picks
     # it up on the next tick, mixes it into the bed PCM per-sample
-    # until its envelope expires, then the prune step below drops it.
+    # until its envelope expires, then the prune step in :tick
+    # drops it.
+    #
+    # Cap at @max_concurrent_chimes: drop the OLDEST if we'd exceed.
+    # Newest-wins means a rapid UI mash still plays the most recent
+    # click; the alternative (drop newest) would silently swallow
+    # user input.
     chime = %{kind: kind, start_n: state.t}
-    {:noreply, %{state | chimes: [chime | state.chimes]}}
+
+    new_chimes =
+      [chime | state.chimes]
+      |> Enum.take(@max_concurrent_chimes)
+
+    :telemetry.execute(
+      [:aural, :channel, :fire],
+      %{active_chimes: length(new_chimes)},
+      %{channel_id: state.channel_id, kind: kind}
+    )
+
+    {:noreply, %{state | chimes: new_chimes}}
   end
 
   def handle_cast({:fire, _}, state), do: {:noreply, state}
 
   def handle_cast({:set_activity, level}, state) when is_number(level) do
     clamped = level |> max(0.0) |> min(1.0) |> :erlang.float()
+
+    :telemetry.execute(
+      [:aural, :channel, :set_activity],
+      %{level: clamped},
+      %{channel_id: state.channel_id}
+    )
+
     {:noreply, %{state | activity_target: clamped}}
   end
 
@@ -230,10 +303,22 @@ defmodule Aural.Channel do
       track == state.prev_track ->
         elapsed = @crossfade_chunks - state.crossfade_remaining
 
+        :telemetry.execute(
+          [:aural, :channel, :pick_track],
+          %{elapsed_chunks: elapsed},
+          %{channel_id: state.channel_id, from: state.track, to: track, reversed: true}
+        )
+
         {:noreply,
          %{state | track: track, prev_track: state.track, crossfade_remaining: elapsed}}
 
       true ->
+        :telemetry.execute(
+          [:aural, :channel, :pick_track],
+          %{elapsed_chunks: 0},
+          %{channel_id: state.channel_id, from: state.track, to: track, reversed: false}
+        )
+
         {:noreply,
          %{state | prev_track: state.track, track: track, crossfade_remaining: @crossfade_chunks}}
     end
@@ -292,6 +377,12 @@ defmodule Aural.Channel do
     if new_count >= timeout_chunks do
       Logger.info(
         "[aural channel #{state.channel_id}] idle for #{div(idle_timeout_ms(), 1000)}s, shutting down"
+      )
+
+      :telemetry.execute(
+        [:aural, :channel, :stop],
+        %{idle_ms: idle_timeout_ms()},
+        %{channel_id: state.channel_id, reason: :idle}
       )
 
       {:stop, :normal, state}
@@ -424,6 +515,7 @@ defmodule Aural.Channel do
           "-hide_banner",
           "-loglevel",
           "error",
+          # Input: raw 16-bit little-endian mono PCM from stdin.
           "-f",
           "s16le",
           "-ar",
@@ -432,10 +524,21 @@ defmodule Aural.Channel do
           "1",
           "-i",
           "pipe:0",
+          # Output: MP3, 128 kbps CBR. Frame-independent so a late-
+          # joining HTTP listener can start decoding from any byte.
           "-c:a",
           "libmp3lame",
           "-b:a",
           "128k",
+          # Low-latency tuning: disable LAME's bit reservoir (look-
+          # ahead window). The reservoir lets the encoder borrow
+          # bits between frames for better quality on transients,
+          # but it also delays the first usable MP3 frame by ~6
+          # frames (~150 ms). For a streaming ambient bed there are
+          # no transients to spend extra bits on — drop the
+          # reservoir, ship frames sooner.
+          "-reservoir",
+          "0",
           "-f",
           "mp3",
           "-flush_packets",
