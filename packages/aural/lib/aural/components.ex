@@ -45,9 +45,16 @@ defmodule Aural.Components do
 
   @doc """
   Oscilloscope SVG. The JS hook tweens the `#aural-scope-line`
-  polyline 60 fps from server-pushed peak amplitudes. The SVG's
-  `viewBox` is fixed at `0 0 800 120`; pass `class` to size and
-  color it for your host design.
+  path 60 fps from server-pushed peak amplitudes, sub-frame
+  interpolated between the 10 Hz updates so the line scrolls
+  continuously instead of stepping. The SVG's `viewBox` is fixed
+  at `0 0 800 120`; pass `class` to size and color it for your
+  host design.
+
+  The `<defs>` mask fades both horizontal edges so new peaks
+  appear out of fade-in on the right and old peaks exit into
+  fade-out on the left — keeps the discrete-arrival nature of
+  10 Hz peaks from showing up as visible pop-in at `x=width`.
   """
   attr :class, :string, default: nil
   attr :rest, :global
@@ -58,19 +65,33 @@ defmodule Aural.Components do
       id="aural-scope"
       viewBox="0 0 800 120"
       preserveAspectRatio="none"
+      overflow="hidden"
       class={@class}
       aria-hidden="true"
       {@rest}
     >
-      <polyline
-        id="aural-scope-line"
-        points="0,60 800,60"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      />
+      <defs>
+        <linearGradient id="aural-scope-fade" x1="0" x2="1" y1="0" y2="0">
+          <stop offset="0" stop-color="white" stop-opacity="0" />
+          <stop offset="0.04" stop-color="white" stop-opacity="1" />
+          <stop offset="0.96" stop-color="white" stop-opacity="1" />
+          <stop offset="1" stop-color="white" stop-opacity="0" />
+        </linearGradient>
+        <mask id="aural-scope-mask">
+          <rect width="800" height="120" fill="url(#aural-scope-fade)" />
+        </mask>
+      </defs>
+      <g mask="url(#aural-scope-mask)">
+        <path
+          id="aural-scope-line"
+          d="M 0,60 L 800,60"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </g>
     </svg>
     """
   end

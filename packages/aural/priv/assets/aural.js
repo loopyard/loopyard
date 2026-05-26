@@ -18,6 +18,41 @@ function logToServer(label, data) {
   } catch (_) {}
 }
 
+// Convert an array of [x, y] points into an SVG `path` `d` string
+// using Catmull-Rom interpolation — each segment between p[i] and
+// p[i+1] becomes a cubic Bezier whose control points are tangent
+// to the neighboring points. Yields a smooth flowing curve instead
+// of the polyline's straight-line zigzag. End points use their own
+// position as the missing neighbor (clamps the spline so it doesn't
+// fly off at the boundaries).
+function catmullRomPath(points) {
+  const n = points.length
+  if (n === 0) return ""
+  if (n === 1) {
+    return `M ${points[0][0].toFixed(1)},${points[0][1].toFixed(1)}`
+  }
+
+  let d = `M ${points[0][0].toFixed(1)},${points[0][1].toFixed(1)}`
+  for (let i = 0; i < n - 1; i++) {
+    const p0 = points[Math.max(0, i - 1)]
+    const p1 = points[i]
+    const p2 = points[i + 1]
+    const p3 = points[Math.min(n - 1, i + 2)]
+
+    // Catmull-Rom (tension = 0.5) → cubic Bezier control points.
+    const c1x = p1[0] + (p2[0] - p0[0]) / 6
+    const c1y = p1[1] + (p2[1] - p0[1]) / 6
+    const c2x = p2[0] - (p3[0] - p1[0]) / 6
+    const c2y = p2[1] - (p3[1] - p1[1]) / 6
+
+    d +=
+      ` C ${c1x.toFixed(1)},${c1y.toFixed(1)} ` +
+      `${c2x.toFixed(1)},${c2y.toFixed(1)} ` +
+      `${p2[0].toFixed(1)},${p2[1].toFixed(1)}`
+  }
+  return d
+}
+
 export function createAuralHook() {
   return {
     mounted() {
@@ -57,32 +92,42 @@ export function createAuralHook() {
       this.handleEvent("fire", ({ kind }) => this._flashFire(kind))
 
       // Server pushes the peak amplitude (0..1) of every 100ms chunk.
-      // We keep an 80-slot ring of those peaks — one per scope column
-      // = 8 seconds of channel history. _peakDisplay is the
-      // smoothly-tweened version of _peakBuf that the rAF tick reads,
-      // so the line flows continuously between the 10 Hz updates
-      // instead of stepping. _playScale eases between 0 and 1 as the
-      // local <audio> goes paused → playing, scaling the rendered
-      // amplitude so the page doesn't look like full audio is playing
-      // when the listener can't actually hear anything yet.
+      // 80-slot ring = 8 seconds of channel history. _peakDisplay is
+      // the smoothly-tweened version the rAF tick reads, so the line
+      // glides at 60 fps between the 10 Hz updates. _lastPeakAt is
+      // the timestamp of the most recent arrival; the render uses it
+      // to slide the wave LEFT continuously between peak arrivals
+      // (sub-frame scroll), so new data doesn't pop in at x=width.
       this._peakBuf = new Float32Array(80)
       this._peakDisplay = new Float32Array(80)
       this._peakIdx = 0
       this._playScale = 0
+      this._lastPeakAt = 0
       this.handleEvent("peak", ({ p }) => {
         this._peakBuf[this._peakIdx] = p || 0
         this._peakIdx = (this._peakIdx + 1) % this._peakBuf.length
+        this._lastPeakAt = performance.now()
       })
 
-      // Scope animates from the moment the page is alive — server
-      // peaks drive the bed visualization regardless of whether the
-      // user has clicked play. Tells them the channel is alive.
+      // _audioPlaying tracks whether audio is ACTUALLY emitting, not
+      // just whether .play() has been called. The browser fires
+      // `playing` when the buffer is full enough to start decoding
+      // (i.e. when sound actually reaches the speakers), and
+      // `pause`/`waiting`/`stalled` when it stops. The scope keys
+      // its amplitude scale off this rather than `!audio.paused`,
+      // which flips the moment `.play()` is called — well before
+      // any audio is audible. Without this distinction the
+      // visualizer leads the audio by 2-5 seconds while the stream
+      // buffer fills.
+      this._audioPlaying = false
       this._startAnimation()
       this._audio.addEventListener("playing", () => {
+        this._audioPlaying = true
         this._setUI("playing", "Streaming")
         logToServer("audio:playing", { src: this._audio.src })
       })
       this._audio.addEventListener("pause", () => {
+        this._audioPlaying = false
         this._setUI("paused", "Paused")
         logToServer("audio:pause", {})
       })
@@ -92,6 +137,7 @@ export function createAuralHook() {
       // surface as "Loading" so the toggle label tells the truth
       // about why nothing's coming out of the speakers yet.
       this._audio.addEventListener("waiting", () => {
+        this._audioPlaying = false
         this._setUI("loading", "Loading")
         logToServer("audio:waiting", {
           networkState: this._audio.networkState,
@@ -99,6 +145,7 @@ export function createAuralHook() {
         })
       })
       this._audio.addEventListener("stalled", () => {
+        this._audioPlaying = false
         this._setUI("loading", "Loading")
         logToServer("audio:stalled", {
           networkState: this._audio.networkState,
@@ -260,33 +307,33 @@ export function createAuralHook() {
       if (this._status) this._status.textContent = statusText
     },
 
-    // The scope renders a smoothly-tweened envelope of server-pushed
-    // peak amplitudes — one peak per 100ms chunk, 80 historical
-    // slots = 8 seconds of channel history. The earlier impl tried
-    // to draw raw PCM samples downsampled to ~160 Hz, which aliased
-    // mid-band audio into static-looking jitter; an amplitude
-    // envelope is honest about what 10 Hz of data can actually show
-    // and reads as a flowing line that moves with the music.
+    // The scope renders an amplitude envelope of server-pushed peak
+    // values — one peak per 100ms chunk, 80 historical slots = 8s
+    // of channel history. Three things make it look continuous:
+    //
+    //   1. _audioPlaying drives _playScale (full vs subtle) based
+    //      on the `playing` event so the envelope's height tracks
+    //      what's actually audible, not "we called .play()".
+    //   2. Sub-frame interpolation between 10 Hz peak arrivals: the
+    //      whole wave slides LEFT by (elapsed_ms / 100) columns
+    //      each frame, so the line glides at 60 fps instead of
+    //      stepping at peak boundaries.
+    //   3. Catmull-Rom smoothing converts the 80 vertices into a
+    //      cubic Bezier path so adjacent peaks blend instead of
+    //      cornering. Combined with the SVG edge-fade mask, new
+    //      peaks emerge out of fade-in on the right rather than
+    //      popping in at x=width.
     _startAnimation() {
       if (this._rafId) return
       const width = 800
       const mid = 60
       const maxAmp = mid - 5
+      const peakIntervalMs = 100
 
       const tick = () => {
-        // _playScale eases between "this listener has bed audio
-        // playing" (1.0) and "paused/never started" (0.15). The
-        // scope is then a subtle channel-alive indicator before
-        // Play and a full-amplitude envelope after, with a smooth
-        // ramp in either direction.
-        const audioPlaying = this._audio && !this._audio.paused
-        const target = audioPlaying ? 1.0 : 0.15
+        const target = this._audioPlaying ? 1.0 : 0.15
         this._playScale += (target - this._playScale) * 0.06
 
-        // Smooth the displayed peak values toward the buffered
-        // server values — 0.30 per frame gives a ~70ms time
-        // constant, so the line glides between 100ms updates
-        // instead of stepping.
         const N = 80
         const peakHead = this._peakIdx
         for (let i = 0; i < N; i++) {
@@ -295,24 +342,38 @@ export function createAuralHook() {
 
         const bedAmp = maxAmp * this._playScale
         // Visual gain — ambient pads peak around 0.3–0.4, so a 2.5×
-        // boost fills the available vertical without ever clipping
-        // (the clamp below catches the rare loud chunk anyway).
+        // boost fills the available vertical without ever clipping.
         const gain = 2.5
 
-        let pts = ""
+        // Sub-frame scroll: how far into the current 100ms peak
+        // interval are we? 0 right after a peak, 1 right before the
+        // next one. We shift the rendered x positions LEFT by this
+        // fraction of a column, so the wave moves continuously at
+        // ~1 column per 100ms instead of jumping every chunk.
+        const now = performance.now()
+        const progress = this._lastPeakAt
+          ? Math.min(1, (now - this._lastPeakAt) / peakIntervalMs)
+          : 0
+
+        const points = []
         for (let i = 0; i < N; i++) {
-          const x = (i / (N - 1)) * width
+          // Without the shift, i=0 sits at x=0 and i=N-1 at x=width.
+          // Subtracting progress slides everything left. The SVG
+          // mask fades the leftmost/rightmost columns so points
+          // entering or exiting the viewport do so smoothly.
+          const x = ((i - progress) / (N - 1)) * width
           const slot = (peakHead + i) % N
           let dy = this._peakDisplay[slot] * bedAmp * gain
           if (dy > maxAmp) dy = maxAmp
-          // Envelope is single-sided above mid — the line draws
-          // amplitude over time, not signed waveform. Higher peak
-          // = line further from baseline. Reads naturally as
-          // "loudness over time".
+          // Single-sided envelope above mid: higher peak = line
+          // further from baseline. Reads as "loudness over time".
           const y = mid - dy
-          pts += (pts ? " " : "") + x.toFixed(1) + "," + y.toFixed(1)
+          points.push([x, y])
         }
-        this._scopeLine?.setAttribute("points", pts)
+
+        if (this._scopeLine) {
+          this._scopeLine.setAttribute("d", catmullRomPath(points))
+        }
         this._rafId = requestAnimationFrame(tick)
       }
       this._rafId = requestAnimationFrame(tick)
@@ -324,7 +385,7 @@ export function createAuralHook() {
         this._rafId = null
       }
       setTimeout(() => {
-        this._scopeLine?.setAttribute("points", "0,60 800,60")
+        this._scopeLine?.setAttribute("d", "M 0,60 L 800,60")
       }, 400)
     }
   }

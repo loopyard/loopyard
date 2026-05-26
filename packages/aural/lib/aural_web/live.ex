@@ -127,23 +127,7 @@ defmodule AuralWeb.Live do
           </div>
 
           <div class="px-4 pt-5 pb-4 bg-white dark:bg-zinc-900">
-            <svg
-              id="aural-scope"
-              viewBox="0 0 800 120"
-              preserveAspectRatio="none"
-              class="w-full h-32 text-violet-500 dark:text-violet-400"
-              aria-hidden="true"
-            >
-              <polyline
-                id="aural-scope-line"
-                points="0,60 800,60"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
+            <Components.scope class="w-full h-32 text-violet-500 dark:text-violet-400" />
           </div>
 
           <button
