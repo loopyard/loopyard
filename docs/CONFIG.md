@@ -27,6 +27,15 @@ Read via `Application.get_env(:loopyard, key)`. Overridable at runtime in `confi
 | `Loopyard.PortRegistry, :port_range` | `4000..9999` | Host port range used by `PortRegistry.assign/3`. Exhaustion returns `{:error, :port_pool_exhausted}`. Keep it outside the ephemeral port range to avoid collisions with transient outbound connections. |
 | `LoopyardWeb.Endpoint, :http, :port` | `4000` | HTTP port. Env-overridable via `PORT` in `runtime.exs`. |
 
+### `:aural` (extracted Mix package — `packages/aural`)
+
+Configured via `Application.put_env(:aural, key, value)`. Set in `config/config.exs`.
+
+| Key | Default | What it does |
+|---|---|---|
+| `:pubsub` | required | The `Phoenix.PubSub` server name the channel broadcasts on. Loopyard sets this to `Loopyard.PubSub`. Raises on every subscribe/broadcast if missing. |
+| `:idle_timeout_seconds` | `300` | Per-channel idle reaper threshold. After this many seconds with zero subscribers across all topics, the channel terminates. Visiting the URL again respawns it under the same ID with fresh state. |
+
 ## Compile-time module attributes
 
 Constants baked into modules at compile time. Change means recompile.

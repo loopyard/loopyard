@@ -164,6 +164,7 @@ timeouts with ETS fallback — a wedged agent doesn't hang the UI.
 - **[docs/HOSTING.md](docs/HOSTING.md)** — Running Loopyard as an always-on local server: macOS power management, keeping it reachable over LAN
 - **[docs/IMPROVEMENTS.md](docs/IMPROVEMENTS.md)** — Prioritized backlog of scoped improvements. Add entries when you find something worth doing but not shipping today.
 - **[plans/](plans/)** — Scoped design plans for features in flight. Read the relevant plan before implementing; update it when the plan evolves during implementation.
+- **[packages/aural/README.md](packages/aural/README.md)** — The `:aural` audio package (lives in this repo, also consumed by the marketing site via git+sparse). API surface, channel model, telemetry, DOM contract.
 
 **Update docs when you ship a major change or feature.** Specifically:
 - New MCP tool, compose rule, source adapter, or security boundary → update the doc that owns that concern (`SECURITY.md`, `SOURCE_ADAPTERS.md`, the tool toolkit's `@moduledoc`).
@@ -257,6 +258,17 @@ Two ways in:
 | `Tools.Container` | MCP toolkit — lists 22 tool modules |
 | `Tools.Container.Helpers` | Shared tool helpers (resolve_container, validate_path) |
 | `Loopyard.Tool` | Macro for defining tool modules |
+| `Aural.Channel` (`packages/aural`) | Per-channel ambient audio engine — synth + ffmpeg + PubSub fan-out. Lazy-spawned multi-tenant. See [packages/aural/README.md](packages/aural/README.md). |
+
+## packages/
+
+In-repo Mix packages extracted for reuse outside loopyard. Today's
+only inhabitant is `:aural` — the cerebral audio bed feeding
+`/aural` here and on the marketing site (loopyard.ai). Loopyard
+pulls it via `path: "packages/aural"`; the marketing site pulls
+via `git+sparse:` so it doesn't need a sibling checkout. New
+extractions go here when something starts pulling its weight as
+its own thing.
 
 ## Stack
 

@@ -439,3 +439,19 @@ When a pattern exists, use it. Don't write your own version.
 | Clone repo into volume | `VolumeCloner.clone_into_volume(vol, url)` | Inline git clone + docker run |
 
 **Every Docker CLI call goes through `Loopyard.Docker`.** No `System.cmd("docker", ...)` anywhere else. Docker.docker/2 handles timeouts, telemetry, and error formatting. Docker.stream/3 handles long-running commands with callbacks. Docker.open_port/1 handles raw port needs (Observer events, terminal).
+
+## URL variants go in the path, never in a query string
+
+When a single resource has multiple representations (formats, transports, codecs), model each one as a **sibling path with an extension or sub-segment**. Never as a `?format=` query param.
+
+Good:
+- `GET /aural/:id/stream.mp3`
+- `POST /aural/:id/stream.whep` (future WebRTC transport)
+- `GET /messages/:id/raw`
+- `GET /branding/logo.svg`, `/branding/logo.png`
+
+Bad:
+- `GET /aural/:id/stream?format=mp3`
+- `GET /messages/:id?format=raw`
+
+Path-based variants read as "the resource in this format," cache better (different URLs → independent cache entries), and are cleaner to copy/share/curl. Reserve query strings for actual query parameters — filters, pagination, search.
