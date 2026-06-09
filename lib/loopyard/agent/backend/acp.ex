@@ -11,11 +11,17 @@ defmodule Loopyard.Agent.Backend.ACP do
   (`docker exec -i <container> <adapter>`), so the harness runs where the code
   lives and native tools work without the MCP filesystem proxy.
 
-  Status: handshake + streamed prompt turns + permission/fs round-trips are
-  implemented and tested against a fake transport. Not yet wired as the default
-  backend. Known gaps (tracked on #3/#6): mapping Loopyard's system prompt +
-  tool policy onto ACP, token-usage surfacing (claude-code-acp doesn't expose
-  it — see cost-visibility decision), and the `:ask` permission mode (#7).
+  Status: handshake + streamed prompt turns + permission/fs round-trips and
+  in-container mode are implemented and tested (fake transport + verified
+  against the real adapter). Not yet wired as the default backend.
+
+  System prompt: there is no ACP `append_system_prompt` — the harness reads
+  `CLAUDE.md` from the session cwd (validated), so `ChatAgent.ClaudeContext.mirror/2`
+  is the mechanism; wiring writes Loopyard's agent prompt into that file.
+
+  Known gaps (tracked on #3/#6): mapping Loopyard's tool *policy* onto ACP,
+  token-usage surfacing (claude-code-acp doesn't expose it — see cost-visibility
+  decision), and the `:ask` permission mode (#7).
   """
   @behaviour Loopyard.Agent.Backend
 

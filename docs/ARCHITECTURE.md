@@ -193,6 +193,20 @@ LiveViews (render updates)
 
 **Session recovery:** ChatAgent auto-restarts dead CLI sessions with exponential backoff (1s → 2s → 4s, max 30s). Builds a resume message from recent activity so the new session can continue.
 
+## Agent backends
+
+The agent is decoupled from any one harness via the `Loopyard.Agent.Backend` behaviour (`start_session / stream / stop / session_alive? / session_id`). Each backend translates its harness's messages into neutral `Loopyard.Agent.Event` structs, so the ChatAgent / StreamHandler / LiveView / multiplayer stack never sees a vendor-specific shape.
+
+- **`Backend.ClaudeCode`** — wraps the `claude_code` SDK (CLI subprocess, stream-json). Today's default.
+- **`Backend.ACP`** (Foundation A of the north-star, [#3]) — drives a *real* harness (Claude Code today, Codex next) over the **Agent Client Protocol** (JSON-RPC over stdio) instead of reimplementing the loop. Submodules under `agent/backend/acp/`:
+  - `Translator` — pure reducer, ACP `session/update` → `Event` structs (accumulates streamed chunks into one committed `Text`, dedupes tool calls, surfaces available commands).
+  - `Connection` — GenServer state machine: handshake (`initialize` → `session/new`), one prompt turn (`session/prompt` → streamed updates → result), and the `fs/*` + `session/request_permission` round-trips the client answers.
+  - `Transport` behaviour + `Transport.Port` (spawns the adapter; `CLAUDECODE` must be unset or it refuses to launch as a "nested" session).
+
+  **Host vs. in-container.** Only the transport `cmd` differs: host-side spawns the adapter directly; in-container (`:container` opt) runs `docker exec -i <container> <adapter>` so the harness runs where the code lives. In-container the client declares **no fs capability**, so the harness uses the container's own filesystem natively instead of delegating `fs/*` back to the host.
+
+  **System prompt over ACP.** There is no `append_system_prompt` param — the harness reads `CLAUDE.md` from the session cwd, so `ClaudeContext.mirror/2` is the system-prompt mechanism (validated). **Permissions** surface as `Event.PermissionRequest` (approve/deny UI is [#7]). **Auth** is per-participant (project/owner credential by default; builders bring their own key — see [#12]); in-container needs a real `ANTHROPIC_API_KEY` (the macOS-keychain subscription token doesn't cross into a Linux container).
+
 ## LiveView architecture
 
 LiveViews are thin — they handle events, delegate to modules, and render.
