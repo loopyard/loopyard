@@ -27,6 +27,13 @@ defmodule Loopyard.ResourceCoverageTest do
     * `lib/loopyard/terminal.ex` — GenServer-owned PTY; the
       Port dies with the Terminal GenServer via BEAM Port linking.
 
+    * `lib/loopyard/agent/backend/acp/transport/port.ex` —
+      GenServer-owned ACP adapter subprocess; the Port is linked to
+      the `Transport.Port` GenServer and dies with it (BEAM Port
+      linking), and the adapter exits on stdin EOF. (Future hardening:
+      track its OS pid via `Resources` like the claude_cli pid, once
+      ACP is wired as the live backend.)
+
     * `lib/loopyard/volume_cloner.ex` — short-lived git clone
       subprocess, linked to the caller.
 
@@ -57,6 +64,7 @@ defmodule Loopyard.ResourceCoverageTest do
   @port_open_allowlist [
     "lib/loopyard/docker.ex",
     "lib/loopyard/terminal.ex",
+    "lib/loopyard/agent/backend/acp/transport/port.ex",
     "lib/loopyard/volume_cloner.ex",
     "lib/loopyard/eval_runner.ex",
     "lib/loopyard/tools/container/docker_compose.ex",
