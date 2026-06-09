@@ -65,4 +65,50 @@ defmodule Loopyard.Agent.Backend.ACPTest do
     assert Enum.any?(events, &match?(%Event.Text{text: "Hi"}, &1))
     assert match?(%Event.SessionResult{}, List.last(events))
   end
+
+  describe "in-container mode (#5)" do
+    test "docker_exec_cmd builds the in-container command" do
+      assert ACP.docker_exec_cmd("ctr") == "docker exec -i ctr claude-code-acp"
+
+      assert ACP.docker_exec_cmd("ctr", "claude-agent-acp") ==
+               "docker exec -i ctr claude-agent-acp"
+    end
+
+    test "container mode declares NO client fs capability and defaults cwd to /workspace" do
+      {:ok, conn} =
+        ACP.start_session(
+          container: "c1",
+          transport: Fake,
+          transport_opts: [test_pid: self(), auto_handshake: true]
+        )
+
+      # No fs capability -> the in-container harness uses the container's own FS.
+      assert_receive {:acp_sent,
+                      %{"method" => "initialize", "params" => %{"clientCapabilities" => caps}}}
+
+      assert caps == %{}
+
+      assert_receive {:acp_sent,
+                      %{"method" => "session/new", "params" => %{"cwd" => "/workspace"}}}
+
+      ACP.stop(conn)
+    end
+
+    test "host mode advertises client fs capability" do
+      {:ok, conn} =
+        ACP.start_session(
+          transport: Fake,
+          transport_opts: [test_pid: self(), auto_handshake: true],
+          cwd: "/tmp"
+        )
+
+      assert_receive {:acp_sent,
+                      %{
+                        "method" => "initialize",
+                        "params" => %{"clientCapabilities" => %{"fs" => _}}
+                      }}
+
+      ACP.stop(conn)
+    end
+  end
 end

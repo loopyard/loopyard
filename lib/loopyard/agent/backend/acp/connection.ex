@@ -66,12 +66,21 @@ defmodule Loopyard.Agent.Backend.ACP.Connection do
           turn: nil
         }
 
+        # In-container (#5): declaring NO client fs capability makes the
+        # adapter use the *container's* filesystem natively, instead of
+        # delegating fs/read_text_file back to the host (which can't see
+        # /workspace). Host-side we advertise fs and answer the delegation.
+        client_caps =
+          if Keyword.get(opts, :client_fs, true) do
+            %{"fs" => %{"readTextFile" => true, "writeTextFile" => true}}
+          else
+            %{}
+          end
+
         state =
           request(state, "initialize", %{
             "protocolVersion" => @protocol_version,
-            "clientCapabilities" => %{
-              "fs" => %{"readTextFile" => true, "writeTextFile" => true}
-            }
+            "clientCapabilities" => client_caps
           })
           |> elem(0)
 

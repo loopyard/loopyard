@@ -28,12 +28,10 @@ defmodule Loopyard.Agent.Backend.ACP do
   def start_session(opts) do
     conn_opts =
       [
-        cwd: Keyword.get(opts, :cwd),
         resume: Keyword.get(opts, :resume),
         permission_mode: acp_permission_mode(opts)
       ]
-      |> maybe_put(:transport, Keyword.get(opts, :transport))
-      |> maybe_put(:transport_opts, Keyword.get(opts, :transport_opts))
+      |> Keyword.merge(runtime_opts(opts))
       |> maybe_put(:model, Keyword.get(opts, :model))
 
     with {:ok, conn} <- Connection.start_link(conn_opts),
@@ -41,6 +39,44 @@ defmodule Loopyard.Agent.Backend.ACP do
       {:ok, conn}
     else
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  The `docker exec -i` command that runs the ACP adapter inside a container —
+  the in-container variant of the transport (#5). Only this string differs from
+  host mode; the protocol/connection layer is identical.
+  """
+  def docker_exec_cmd(container, adapter \\ "claude-code-acp") do
+    "docker exec -i #{container} #{adapter}"
+  end
+
+  # Host mode vs in-container mode (#5). In-container: the adapter runs via
+  # `docker exec -i` where the code lives, cwd defaults to /workspace, and we
+  # declare NO client fs capability so the harness uses the container's own
+  # filesystem natively (validated: docker exec -i transport + handshake work;
+  # full prompt/fs validation gated on an in-container inference credential).
+  defp runtime_opts(opts) do
+    case Keyword.get(opts, :container) do
+      nil ->
+        [cwd: Keyword.get(opts, :cwd), client_fs: true]
+        |> maybe_put(:transport, Keyword.get(opts, :transport))
+        |> maybe_put(:transport_opts, Keyword.get(opts, :transport_opts))
+
+      container ->
+        base = [cwd: Keyword.get(opts, :cwd, "/workspace"), client_fs: false]
+
+        case Keyword.get(opts, :transport) do
+          # Tests can inject a fake transport even in container mode.
+          nil ->
+            adapter = Keyword.get(opts, :adapter, "claude-code-acp")
+            Keyword.put(base, :transport_opts, cmd: docker_exec_cmd(container, adapter))
+
+          transport ->
+            base
+            |> Keyword.put(:transport, transport)
+            |> maybe_put(:transport_opts, Keyword.get(opts, :transport_opts))
+        end
     end
   end
 
