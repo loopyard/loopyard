@@ -25,19 +25,22 @@ defmodule Loopyard.Agent.Backend.ACP do
   """
   @behaviour Loopyard.Agent.Backend
 
-  alias Loopyard.Agent.Backend.ACP.Connection
+  alias Loopyard.Agent.Backend.ACP.{Connection, SystemPrompt}
 
   @ready_timeout 30_000
   @turn_timeout 600_000
 
   @impl true
   def start_session(opts) do
+    runtime = runtime_opts(opts)
+    maybe_install_system_prompt(opts, runtime)
+
     conn_opts =
       [
         resume: Keyword.get(opts, :resume),
         permission_mode: acp_permission_mode(opts)
       ]
-      |> Keyword.merge(runtime_opts(opts))
+      |> Keyword.merge(runtime)
       |> maybe_put(:model, Keyword.get(opts, :model))
 
     with {:ok, conn} <- Connection.start_link(conn_opts),
@@ -46,6 +49,22 @@ defmodule Loopyard.Agent.Backend.ACP do
     else
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  # Loopyard's agent system prompt reaches the harness via CLAUDE.local.md in
+  # the cwd (claude-code-acp has no append_system_prompt). Host mode writes it
+  # directly; in-container mode must write the same file into the code volume
+  # (deferred until that path can be validated end to end).
+  defp maybe_install_system_prompt(opts, runtime) do
+    prompt = Keyword.get(opts, :system_prompt)
+    cwd = Keyword.get(runtime, :cwd)
+    container? = not is_nil(Keyword.get(opts, :container))
+
+    if is_binary(prompt) and prompt != "" and is_binary(cwd) and not container? do
+      SystemPrompt.install(cwd, prompt)
+    end
+
+    :ok
   end
 
   @doc """

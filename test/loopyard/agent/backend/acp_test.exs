@@ -111,4 +111,40 @@ defmodule Loopyard.Agent.Backend.ACPTest do
       ACP.stop(conn)
     end
   end
+
+  describe "system prompt install (#6)" do
+    setup do
+      dir = Path.join(System.tmp_dir!(), "acp-bsp-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(dir)
+      on_exit(fn -> File.rm_rf!(dir) end)
+      {:ok, dir: dir}
+    end
+
+    test "host mode installs the system prompt as CLAUDE.local.md", %{dir: dir} do
+      {:ok, conn} =
+        ACP.start_session(
+          transport: Fake,
+          transport_opts: [test_pid: self(), auto_handshake: true],
+          cwd: dir,
+          system_prompt: "You are a Loopyard agent. Be excellent."
+        )
+
+      assert File.read!(Path.join(dir, "CLAUDE.local.md")) =~ "You are a Loopyard agent"
+      ACP.stop(conn)
+    end
+
+    test "container mode skips host filesystem install (targets the volume instead)", %{dir: dir} do
+      {:ok, conn} =
+        ACP.start_session(
+          container: "c1",
+          cwd: dir,
+          transport: Fake,
+          transport_opts: [test_pid: self(), auto_handshake: true],
+          system_prompt: "x"
+        )
+
+      refute File.exists?(Path.join(dir, "CLAUDE.local.md"))
+      ACP.stop(conn)
+    end
+  end
 end
