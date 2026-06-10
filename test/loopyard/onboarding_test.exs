@@ -108,7 +108,63 @@ defmodule Loopyard.OnboardingTest do
     assert names == ["branchx", "main"]
   end
 
+  test "github sync wiring: attach a remote (persisted) + sync pushes canonical main to it" do
+    {:ok, project, _main} = Onboarding.create_project("sync-#{uid()}")
+    remote_vol = "loopyard-tmpremote-#{uid()}-canonical"
+
+    on_exit(fn ->
+      cleanup(project)
+      VolumeManager.delete_volume(remote_vol)
+    end)
+
+    # Attach + persist a (string) remote — the "hook up GitHub later" move.
+    :ok = Onboarding.attach_remote(project.id, "git@github.com:acme/repo.git")
+
+    assert Loopyard.ProjectRegistry.get_project(project.id).source_config.remote ==
+             "git@github.com:acme/repo.git"
+
+    assert CanonicalStore.load()[project.id]["remote"] == "git@github.com:acme/repo.git"
+
+    # Sync to a local empty bare remote (override) — proves canonical main is pushed.
+    assert {:ok, _} = empty_bare(remote_vol)
+    assert {:ok, _} = Onboarding.sync(project.id, remote: {:volume, remote_vol})
+
+    assert {:ok, out} =
+             Docker.docker([
+               "run",
+               "--rm",
+               "--entrypoint",
+               "sh",
+               "-v",
+               "#{remote_vol}:/r",
+               "alpine/git:latest",
+               "-c",
+               "cd /r && git branch"
+             ])
+
+    assert out =~ "main"
+  end
+
   defp uid, do: :crypto.strong_rand_bytes(3) |> Base.encode16(case: :lower)
+
+  defp empty_bare(volume) do
+    :ok = VolumeManager.create_volume(volume)
+
+    Docker.docker(
+      [
+        "run",
+        "--rm",
+        "--entrypoint",
+        "sh",
+        "-v",
+        "#{volume}:/r",
+        "alpine/git:latest",
+        "-c",
+        "git init --bare --initial-branch=main /r"
+      ],
+      timeout: 60_000
+    )
+  end
 
   defp git_in(volume, cmd) do
     Docker.docker(

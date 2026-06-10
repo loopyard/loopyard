@@ -81,6 +81,49 @@ defmodule Loopyard.Onboarding do
   end
 
   @doc """
+  Attach (or change) the git remote a project syncs to — the "hook up GitHub
+  later" move (#13). Persisted. `remote_url` is a git URL string.
+  """
+  @spec attach_remote(String.t(), String.t()) :: :ok | {:error, term()}
+  def attach_remote(project_id, remote_url) when is_binary(remote_url) do
+    case ProjectRegistry.get_project(project_id) do
+      nil ->
+        {:error, :not_found}
+
+      project ->
+        source_config = Map.put(project.source_config || %{}, :remote, remote_url)
+        ProjectRegistry.register(Map.put(project, :source_config, source_config))
+        persist(project_id)
+        :ok
+    end
+  end
+
+  @doc """
+  Sync (push) the project's canonical `main` to its git remote — the
+  sync-container role (#13). `opts[:remote]` overrides the project's remote
+  (e.g. a local bare repo in tests); `opts[:token]` for auth.
+  """
+  @spec sync(String.t(), keyword()) :: {:ok, term()} | {:error, term()}
+  def sync(project_id, opts \\ []) do
+    project = ProjectRegistry.get_project(project_id)
+    remote = opts[:remote] || (project && project.source_config[:remote])
+
+    cond do
+      is_nil(project) ->
+        {:error, :not_found}
+
+      is_nil(remote) ->
+        {:error, :no_remote}
+
+      true ->
+        CanonicalRepo.push(project_id, remote,
+          token: opts[:token],
+          refspec: Keyword.get(opts, :refspec, "main:main")
+        )
+    end
+  end
+
+  @doc """
   Re-register persisted canonical projects + their workspaces on boot (#19).
   Skips any whose volumes no longer exist (project/workspace was destroyed).
   """
