@@ -731,6 +731,11 @@ defmodule LoopyardWeb.WorkspaceLive do
     cport = String.to_integer(cport)
     exposed? = expose == "true"
 
+    host_port =
+      Enum.find_value(socket.assigns.service_statuses, fn s ->
+        if s.name == svc_name, do: s[:host_port]
+      end)
+
     case Loopyard.PortRegistry.set_exposure(workspace_id, svc_name, cport, exposed?) do
       :ok ->
         # Surgical update: patch ONLY the toggled service's :exposed
@@ -743,16 +748,54 @@ defmodule LoopyardWeb.WorkspaceLive do
             if s.name == svc_name, do: Map.put(s, :exposed, exposed?), else: s
           end)
 
-        # Route through guard_service_statuses even though `updated`
-        # is a map over the existing list and can't go empty —
-        # keeps the invariant uniform.
+        # Feedback so open/close is never a silent no-op — and on OPEN,
+        # surface the actual shareable LAN URL (what you'd send to demo it).
+        flash =
+          if exposed? do
+            url = if host_port, do: "http://#{lan_ip()}:#{host_port}", else: "your machine's IP"
+            "Port opened — '#{svc_name}' is now reachable on your network at #{url}"
+          else
+            "Port closed — '#{svc_name}' is local-only again (not reachable from other devices)."
+          end
+
         {:noreply,
-         assign(socket, :service_statuses, DockerEvents.guard_service_statuses(socket, updated))}
+         socket
+         |> assign(:service_statuses, DockerEvents.guard_service_statuses(socket, updated))
+         |> put_flash(:info, flash)}
 
       {:error, reason} ->
         require Logger
         Logger.warning("[workspace_live] toggle_port_exposure failed: #{inspect(reason)}")
-        {:noreply, socket}
+
+        msg =
+          case reason do
+            :no_docker_port ->
+              "Can't open the port yet — the service's container port isn't mapped. Is '#{svc_name}' running?"
+
+            :not_registered ->
+              "Can't open the port — '#{svc_name}' (#{cport}) isn't registered. Restart the service and try again."
+
+            other ->
+              "Couldn't toggle the port: #{inspect(other)}"
+          end
+
+        {:noreply, put_flash(socket, :error, msg)}
+    end
+  end
+
+  # First non-loopback, non-link-local IPv4 — the address another device on
+  # the LAN uses to reach an exposed port (for demos).
+  defp lan_ip do
+    case :inet.getifaddrs() do
+      {:ok, ifaces} ->
+        ifaces
+        |> Enum.flat_map(fn {_name, opts} ->
+          for {:addr, {a, b, c, d}} <- opts, a != 127, a != 169, do: "#{a}.#{b}.#{c}.#{d}"
+        end)
+        |> List.first() || "localhost"
+
+      _ ->
+        "localhost"
     end
   end
 
