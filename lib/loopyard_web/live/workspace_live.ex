@@ -733,7 +733,7 @@ defmodule LoopyardWeb.WorkspaceLive do
 
     host_port =
       Enum.find_value(socket.assigns.service_statuses, fn s ->
-        if s.name == svc_name, do: s[:host_port]
+        if s.name == svc_name, do: Map.get(s, :host_port)
       end)
 
     case Loopyard.PortRegistry.set_exposure(workspace_id, svc_name, cport, exposed?) do
