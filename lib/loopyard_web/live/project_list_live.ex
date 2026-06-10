@@ -5,11 +5,17 @@ defmodule LoopyardWeb.ProjectListLive do
   alias Loopyard.ProjectRegistry
 
   @impl true
+  @behaviour Loopyard.Events.Projects.Subscriber
+
   def mount(_params, _session, socket) do
     socket =
-      if connected?(socket),
-        do: subscribe_iex(socket),
-        else: assign(socket, :iex_session, %{level: nil})
+      if connected?(socket) do
+        # Multiplayer: a project anyone creates/removes shows up in this list live.
+        Loopyard.Events.Projects.subscribe()
+        subscribe_iex(socket)
+      else
+        assign(socket, :iex_session, %{level: nil})
+      end
 
     secret = Application.get_env(:loopyard, :launch_secret, "")
     port = Application.get_env(:loopyard, LoopyardWeb.Endpoint)[:http][:port] || 4000
@@ -19,6 +25,24 @@ defmodule LoopyardWeb.ProjectListLive do
      socket
      |> assign(:projects, load_projects())
      |> assign(:launch_cmd, launch_cmd)}
+  end
+
+  @impl true
+  def handle_event("create_project", %{"name" => name}, socket) do
+    name = String.trim(name)
+
+    if name == "" do
+      {:noreply, put_flash(socket, :error, "Name your project")}
+    else
+      case Loopyard.Onboarding.create_project(name) do
+        {:ok, project, ws} ->
+          {:noreply,
+           push_navigate(socket, to: "/projects/#{project.id}/workspaces/#{ws.id}")}
+
+        {:error, reason} ->
+          {:noreply, put_flash(socket, :error, "Couldn't create project: #{inspect(reason)}")}
+      end
+    end
   end
 
   @impl true
@@ -46,7 +70,12 @@ defmodule LoopyardWeb.ProjectListLive do
   end
 
   @impl true
+  def handle_info(%Loopyard.Events.Projects.Changed{} = e, socket), do: on_changed(e, socket)
+
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  @impl Loopyard.Events.Projects.Subscriber
+  def on_changed(_e, socket), do: {:noreply, assign(socket, :projects, load_projects())}
 
   defp load_projects do
     ProjectRegistry.list_projects()
@@ -68,12 +97,52 @@ defmodule LoopyardWeb.ProjectListLive do
       max_width={:sm}
       flash={@flash}
     >
+      <%!-- Primary CTA: start a brand-new project, zero friction --%>
+      <div class="mb-6">
+        <form
+          phx-submit="create_project"
+          class="rounded-xl border border-violet-200 dark:border-violet-800/60 bg-violet-50/60 dark:bg-violet-900/10 p-5"
+        >
+          <h2 class="text-lg font-semibold mb-1">Start a new project</h2>
+          <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-3">
+            Name it and start building — a fresh repo, ready instantly. No GitHub needed;
+            connect one later when it matters.
+          </p>
+          <div class="flex items-center gap-2">
+            <input
+              type="text"
+              name="name"
+              placeholder="my-idea"
+              autocomplete="off"
+              autofocus
+              class="flex-1 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-3 py-2 text-sm
+                     text-zinc-900 dark:text-zinc-200 placeholder:text-zinc-400 dark:placeholder:text-zinc-600
+                     focus:outline-none focus:ring-1 focus:ring-violet-500/30 focus:border-violet-400"
+            />
+            <button
+              type="submit"
+              class="flex-none inline-flex items-center gap-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 px-5 py-2 text-sm font-semibold text-white transition-colors"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                class="w-4 h-4"
+                aria-hidden="true"
+              >
+                <path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" />
+              </svg>
+              Create
+            </button>
+          </div>
+        </form>
+      </div>
+
       <%!-- Empty state --%>
       <div :if={!@has_projects} class="mb-8">
-        <h2 class="text-xl font-semibold mb-2">Add a project to get started</h2>
         <p class="text-sm text-zinc-500 dark:text-zinc-400 leading-relaxed">
-          Point Loopyard at a project directory. It'll spin up a Docker environment
-          and launch an AI agent to set everything up. Paste a path below or use the terminal command.
+          Or bring in an existing project — point Loopyard at a directory on this machine
+          (paste a path or use the terminal command below).
         </p>
       </div>
 

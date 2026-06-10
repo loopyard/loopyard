@@ -210,6 +210,12 @@ defmodule Loopyard.ProjectRegistry do
 
         ProjectStore.add(project.path, source_type: :local)
 
+        # Multiplayer: every open project list picks it up live.
+        Loopyard.Events.Projects.publish(%Loopyard.Events.Projects.Changed{
+          action: :created,
+          project_id: project.id
+        })
+
         {:ok, project, workspace}
 
       {:error, reason} ->
@@ -491,6 +497,12 @@ defmodule Loopyard.ProjectRegistry do
     # Remove from ETS
     Enum.each(workspaces, fn ws -> WorkspaceRegistry.delete(ws.id) end)
     :ets.delete(@projects_table, id)
+    # Multiplayer: every open project list drops it without a refresh.
+    Loopyard.Events.Projects.publish(%Loopyard.Events.Projects.Changed{
+      action: :removed,
+      project_id: id
+    })
+
     :ok
   end
 

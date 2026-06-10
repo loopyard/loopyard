@@ -65,6 +65,12 @@ defmodule Loopyard.Onboarding do
       # branch is a live, workable box the moment it exists (no cold start when
       # you start working). Best-effort + async — never block creation on it.
       start_work_async(ws_id)
+      # Multiplayer: every open project list updates without a refresh.
+      Loopyard.Events.Projects.publish(%Loopyard.Events.Projects.Changed{
+        action: :created,
+        project_id: project_id
+      })
+
       {:ok, project, ws}
     end
   end
