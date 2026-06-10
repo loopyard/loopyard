@@ -315,7 +315,15 @@ defmodule LoopyardWeb.WorkspaceLive do
       |> assign(:selected_service, nil)
       |> assign(:tab, :chat)
 
-    {:noreply, socket}
+    # Working is the default: an empty workspace shouldn't make you click
+    # "New agent" before you can do anything. Just put a working agent there so
+    # you land in a live chat and start the idea. `do_spawn_agent` navigates to
+    # the new agent. Only on the connected mount, only when there are none.
+    if connected?(socket) and socket.assigns.agents == [] do
+      AgentLifecycle.do_spawn_agent(socket)
+    else
+      {:noreply, socket}
+    end
   end
 
   # Volume info page
