@@ -24,24 +24,33 @@ defmodule LoopyardWeb.ProjectListLive do
     {:ok,
      socket
      |> assign(:projects, load_projects())
-     |> assign(:launch_cmd, launch_cmd)}
+     |> assign(:launch_cmd, launch_cmd)
+     |> assign(:creating, nil)}
   end
 
   @impl true
   def handle_event("create_project", %{"name" => name}, socket) do
     name = String.trim(name)
 
-    if name == "" do
-      {:noreply, put_flash(socket, :error, "Name your project")}
-    else
-      case Loopyard.Onboarding.create_project(name) do
-        {:ok, project, ws} ->
-          {:noreply,
-           push_navigate(socket, to: "/projects/#{project.id}/workspaces/#{ws.id}")}
+    cond do
+      name == "" ->
+        {:noreply, put_flash(socket, :error, "Name your project")}
 
-        {:error, reason} ->
-          {:noreply, put_flash(socket, :error, "Couldn't create project: #{inspect(reason)}")}
-      end
+      socket.assigns.creating ->
+        # Already creating — ignore the double-submit.
+        {:noreply, socket}
+
+      true ->
+        # Creating a canonical project does a couple seconds of Docker/git work.
+        # Run it OFF the LiveView process so the UI stays responsive (shows a
+        # "Creating…" state) instead of freezing; navigate when it's done.
+        lv = self()
+
+        Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
+          send(lv, {:project_created, Loopyard.Onboarding.create_project(name)})
+        end)
+
+        {:noreply, assign(socket, :creating, name)}
     end
   end
 
@@ -70,6 +79,17 @@ defmodule LoopyardWeb.ProjectListLive do
   end
 
   @impl true
+  def handle_info({:project_created, {:ok, project, ws}}, socket) do
+    {:noreply, push_navigate(socket, to: "/projects/#{project.id}/workspaces/#{ws.id}")}
+  end
+
+  def handle_info({:project_created, {:error, reason}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:creating, nil)
+     |> put_flash(:error, "Couldn't create project: #{inspect(reason)}")}
+  end
+
   def handle_info(%Loopyard.Events.Projects.Changed{} = e, socket), do: on_changed(e, socket)
 
   def handle_info(_msg, socket), do: {:noreply, socket}
@@ -115,24 +135,47 @@ defmodule LoopyardWeb.ProjectListLive do
               placeholder="my-idea"
               autocomplete="off"
               autofocus
+              disabled={@creating != nil}
+              value={@creating}
               class="flex-1 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-3 py-2 text-sm
-                     text-zinc-900 dark:text-zinc-200 placeholder:text-zinc-400 dark:placeholder:text-zinc-600
+                     text-zinc-900 dark:text-zinc-200 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 disabled:opacity-60
                      focus:outline-none focus:ring-1 focus:ring-violet-500/30 focus:border-violet-400"
             />
             <button
               type="submit"
-              class="flex-none inline-flex items-center gap-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 px-5 py-2 text-sm font-semibold text-white transition-colors"
+              disabled={@creating != nil}
+              class="flex-none inline-flex items-center gap-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 disabled:opacity-70 disabled:hover:bg-violet-600 px-5 py-2 text-sm font-semibold text-white transition-colors"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-                class="w-4 h-4"
-                aria-hidden="true"
-              >
-                <path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" />
-              </svg>
-              Create
+              <%= if @creating do %>
+                <svg
+                  class="w-4 h-4 animate-spin"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
+                  </circle>
+                  <path
+                    class="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  >
+                  </path>
+                </svg>
+                Creating…
+              <% else %>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  class="w-4 h-4"
+                  aria-hidden="true"
+                >
+                  <path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" />
+                </svg>
+                Create
+              <% end %>
             </button>
           </div>
         </form>
