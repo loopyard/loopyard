@@ -31,7 +31,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
     service_name = Keyword.get(opts, :service_name)
 
     ws_config =
-      case Loopyard.Workspace.load_from_volume("code-#{ws_id}") do
+      case Loopyard.Workspace.load_from_volume(Loopyard.Workspace.volume_name_for(ws_id)) do
         {:ok, ws} -> ws
         _ -> nil
       end
@@ -57,10 +57,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
       agent_type: agent_type
     ]
 
-    # Only set bind_mount if no workspace container exists (pre-setup state).
-    # When containers are running, agents use volume-based MCP tools instead.
+    # Volume-backed workspaces (canonical / local) work via the cheap work
+    # container — the agent is container-only (no bind_mount), using volume-based
+    # MCP tools. Only legacy host-bind-mount projects, whose code lives on the
+    # host, get a bind_mount. The old check keyed off the *compose* container
+    # being up — never true under "working is the default" — so canonical agents
+    # wrongly got a host bind_mount at an empty dir and timed out on boot.
+    container_only? =
+      Loopyard.Workspace.container_running?(ws_id) or volume_based?(ws_id)
+
     agent_opts =
-      if Loopyard.Workspace.container_running?(ws_id),
+      if container_only?,
         do: agent_opts,
         else: agent_opts ++ [bind_mount: working_dir]
 
@@ -160,6 +167,16 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
     adj = Enum.random(@adjectives)
     noun = Enum.random(@nouns)
     "#{adj} #{noun}"
+  end
+
+  # Volume-backed workspaces (canonical / local) — code lives in a Docker
+  # volume, so the agent must be container-only (work container), never a host
+  # bind_mount.
+  defp volume_based?(ws_id) do
+    case Loopyard.WorkspaceRegistry.get_workspace(ws_id) do
+      %{volume_based: true} -> true
+      _ -> false
+    end
   end
 
   @doc """

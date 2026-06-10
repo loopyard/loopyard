@@ -386,18 +386,17 @@ defmodule Loopyard.Workspace.ServiceManager do
     else
       Loopyard.EventLog.info(
         "workspace:#{state.workspace_id}",
-        "No docker-compose.yml yet, waiting for agent to write it"
+        "No docker-compose.yml yet — no dev services defined"
       )
 
       replay_agent_log(state.project_dir, state.workspace_id)
-      # No compose file → nothing actually starting. Unblock the LV's
-      # :starting pill so it can settle back to :stopped instead of
-      # spinning forever waiting for a cluster that was never going
-      # to come up.
-      broadcast_compose_result(
-        state.workspace_id,
-        {:error, "No docker-compose.yml — agent needs to write one"}
-      )
+      # No compose file is NORMAL under "working is the default": the workspace
+      # is for *working* (the cheap work container); dev-service clusters get
+      # added on demand as the app evolves (the agent writes a compose + boots
+      # it via the docker_compose tool). So this is NOT an error — broadcast a
+      # benign `:no_services` so the LV settles the :starting pill back to
+      # :stopped WITHOUT a scary "Cluster didn't start" banner.
+      broadcast_compose_result(state.workspace_id, :no_services)
 
       {:ok, %{state | volume_name: volume_name}}
     end

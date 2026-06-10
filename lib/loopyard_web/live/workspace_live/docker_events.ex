@@ -70,6 +70,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.DockerEvents do
         case {socket.assigns.workspace_state, result} do
           {:starting, :ok} -> :started
           {:starting, {:error, _}} -> :stopped
+          {:starting, :no_services} -> :stopped
           {:stopping, :ok} -> :stopped
           {:stopping, {:error, _}} -> :started
           _ -> socket.assigns.workspace_state
@@ -79,6 +80,20 @@ defmodule LoopyardWeb.Live.WorkspaceLive.DockerEvents do
         case result do
           {:error, reason} ->
             put_flash(socket, :error, "Cluster didn't start: #{truncate(reason, 200)}")
+
+          :no_services ->
+            # No dev services defined yet — normal under "working is the
+            # default". Only surface a gentle hint if the user explicitly tried
+            # to start the preview env; otherwise stay quiet.
+            if socket.assigns.workspace_state == :starting do
+              put_flash(
+                socket,
+                :info,
+                "No dev services defined yet — ask the agent to add a docker-compose.yml when the app needs them."
+              )
+            else
+              socket
+            end
 
           :ok ->
             socket
