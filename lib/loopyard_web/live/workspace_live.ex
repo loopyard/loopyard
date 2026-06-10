@@ -1623,6 +1623,7 @@ defmodule LoopyardWeb.WorkspaceLive do
             <.workspace_not_running
               :if={
                 @workspace_state in [:stopped, :starting] && !@selected_agent &&
+                  is_nil(@booting_agent_id) &&
                   @live_action in [:index, :chat, :container]
               }
               workspace={@workspace}
