@@ -9,7 +9,15 @@ defmodule Loopyard.OnboardingTest do
   @moduletag :docker
   @moduletag timeout: 300_000
 
-  alias Loopyard.{Onboarding, CanonicalRepo, VolumeManager, VolumeIO, WorkspaceRegistry, Docker}
+  alias Loopyard.{
+    Onboarding,
+    CanonicalRepo,
+    CanonicalStore,
+    VolumeManager,
+    VolumeIO,
+    WorkspaceRegistry,
+    Docker
+  }
 
   test "v1 loop: create project → code-ready main → fork → commit → integrate → fork sees it" do
     {:ok, project, main_ws} = Onboarding.create_project("smoke-#{uid()}")
@@ -75,6 +83,31 @@ defmodule Loopyard.OnboardingTest do
     assert out =~ "Up"
   end
 
+  test "persistence: canonical project + workspaces survive a restore (simulated restart)" do
+    {:ok, project, _main} = Onboarding.create_project("persist-#{uid()}")
+    {:ok, _ws} = Onboarding.fork(project.id, "main", "branchx")
+    on_exit(fn -> cleanup(project) end)
+
+    # Persisted to disk.
+    assert Map.has_key?(CanonicalStore.load(), project.id)
+
+    # Simulate a restart: drop this project's ETS rows.
+    for w <- WorkspaceRegistry.list_workspaces(project.id), do: WorkspaceRegistry.delete(w.id)
+    :ets.delete(:project_registry, project.id)
+    assert WorkspaceRegistry.list_workspaces(project.id) == []
+    refute Enum.find(Loopyard.ProjectRegistry.list_projects(), &(&1.id == project.id))
+
+    # Restore from disk re-registers the project + both workspaces (volumes persist).
+    Onboarding.restore()
+
+    assert Enum.find(Loopyard.ProjectRegistry.list_projects(), &(&1.id == project.id))
+
+    names =
+      WorkspaceRegistry.list_workspaces(project.id) |> Enum.map(& &1.name) |> Enum.sort()
+
+    assert names == ["branchx", "main"]
+  end
+
   defp uid, do: :crypto.strong_rand_bytes(3) |> Base.encode16(case: :lower)
 
   defp git_in(volume, cmd) do
@@ -104,5 +137,6 @@ defmodule Loopyard.OnboardingTest do
 
     CanonicalRepo.remove(project.id)
     :ets.delete(:project_registry, project.id)
+    CanonicalStore.delete(project.id)
   end
 end

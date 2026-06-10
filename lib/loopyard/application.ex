@@ -124,6 +124,9 @@ defmodule Loopyard.Application do
     # ServiceManager will reconnect to any running containers
     Loopyard.ProjectRegistry.restore()
 
+    # Restore canonical-backed projects (#19) from canonical_projects.json.
+    safe_restore("CanonicalProjects", fn -> Loopyard.Onboarding.restore() end)
+
     # Surface any workspaces whose setup saga was running when the BEAM
     # last died. We mark them :failed with `:interrupted_by_restart` so
     # the operator can click Retry — auto-resume is too risky (host

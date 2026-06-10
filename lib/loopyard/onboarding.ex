@@ -60,6 +60,7 @@ defmodule Loopyard.Onboarding do
         })
 
       ws = register_workspace(project_id, ws_id, "main", is_main: true)
+      persist(project_id)
       {:ok, project, ws}
     end
   end
@@ -73,8 +74,39 @@ defmodule Loopyard.Onboarding do
     ws_id = uid()
 
     with {:ok, _ws_vol} <- CanonicalRepo.fork(project_id, ws_id, base, branch) do
-      {:ok, register_workspace(project_id, ws_id, branch, is_main: false)}
+      ws = register_workspace(project_id, ws_id, branch, is_main: false)
+      persist(project_id)
+      {:ok, ws}
     end
+  end
+
+  @doc """
+  Re-register persisted canonical projects + their workspaces on boot (#19).
+  Skips any whose volumes no longer exist (project/workspace was destroyed).
+  """
+  @spec restore() :: :ok
+  def restore do
+    for {project_id, entry} <- Loopyard.CanonicalStore.load(),
+        VolumeManager.volume_exists?(CanonicalRepo.volume_name(project_id)) do
+      ProjectRegistry.register(%{
+        id: project_id,
+        name: entry["name"],
+        is_git: true,
+        volume_based: true,
+        canonical: true,
+        canonical_volume: CanonicalRepo.volume_name(project_id),
+        source_type: :github,
+        source_config: %{remote: entry["remote"]},
+        added_at: DateTime.utc_now()
+      })
+
+      for ws <- entry["workspaces"] || [],
+          VolumeManager.volume_exists?(VolumeManager.code_volume_name(ws["id"])) do
+        register_workspace(project_id, ws["id"], ws["branch"], is_main: ws["is_main"])
+      end
+    end
+
+    :ok
   end
 
   @doc """
@@ -129,6 +161,22 @@ defmodule Loopyard.Onboarding do
   end
 
   # --- internals ---
+
+  # Persist a project's current state (name, remote, workspaces) to disk so it
+  # survives a restart. Called after create_project + fork.
+  defp persist(project_id) do
+    project = ProjectRegistry.get_project(project_id)
+    workspaces = WorkspaceRegistry.list_workspaces(project_id)
+
+    Loopyard.CanonicalStore.put(project_id, %{
+      "name" => project.name,
+      "remote" => project.source_config[:remote],
+      "workspaces" =>
+        Enum.map(workspaces, fn ws ->
+          %{"id" => ws.id, "branch" => ws.branch, "is_main" => ws.is_main}
+        end)
+    })
+  end
 
   defp register_workspace(project_id, ws_id, branch, opts) do
     ws = %{
