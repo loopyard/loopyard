@@ -47,6 +47,8 @@ A prioritized list of known, scoped improvements for Loopyard. Ordered within ea
 
 ## Product vision
 
+12. **Weave Aural (ambient sound) into the workspace experience.** Brad wants the `:aural` audio bed (`packages/aural`, already shipping at `/aural`) to be part of Loopyard itself — sound as a first-class layer of "the room", not a separate page. Open questions to settle when this is picked up: which signals drive the bed (agent thinking vs idle vs a decision waiting vs build running?), per-participant mute/volume (it's multiplayer — one person's audio ≠ everyone's), and whether channels map to workspaces/agents. Deferred by Brad ("we'll deal with that later, but it's a thing"). Lives near the collaborative-listening direction (Presence + per-room channel) already sketched for Aural.
+
 9. **Tool cards: rich visual previews for every tool call.** Each tool call in the chat should be a compact, visual window into what the agent is doing — not raw text dumps. DiffView (syntax-highlighted diffs for edits) is the first. Future cards: terminal output (exec — looks like a mini terminal), search results (grep — highlighted matches in context), file viewer (read — syntax-highlighted code), git log (commit list), browser screenshots (headless browser). Each card type has a compact (inline chat) and expanded (full-screen) mode. Clicking a card opens the full view. Same rendering components power both. The code browser / file viewer / git viewer are standalone product surfaces; the chat embeds previews that link into them.
 
 ## How to work this list
