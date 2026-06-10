@@ -49,6 +49,47 @@ defmodule Loopyard.Workspace.WorkContainerTest do
     assert still =~ "agent-wrote"
   end
 
+  test "the work container is a harness host: the REAL Claude harness handshakes over ACP" do
+    # The north star — the box hosts a real harness, it doesn't reimplement one.
+    # We prove the cheap, code-mounted work container can run the actual Claude
+    # Code harness (via the claude-code-acp adapter baked into the base image)
+    # and complete an ACP `initialize` handshake. Only a full prompt needs auth
+    # (the parked piece); the handshake is pre-auth and proves the seam.
+    ws = "acp-#{uid()}"
+    volume = VolumeManager.code_volume_name(ws)
+
+    on_exit(fn ->
+      WorkContainer.down(ws)
+      VolumeManager.delete_volume(volume)
+    end)
+
+    assert {:ok, name} = WorkContainer.ensure_up(ws)
+
+    # The harness toolchain is present in the box.
+    assert {:ok, tools} = Docker.exec_in(name, "node --version && which claude-code-acp")
+    assert tools =~ "claude-code-acp"
+
+    # Boot the REAL harness inside the container and speak ACP to it. The adapter
+    # is a stdio JSON-RPC server; we pipe one `initialize` request and read the
+    # response, then EOF. `Loopyard.Docker` has no stdin channel, so a test-only
+    # shell pipeline drives `docker exec -i`.
+    req =
+      ~s({"jsonrpc":"2.0","id":0,"method":"initialize",) <>
+        ~s("params":{"protocolVersion":1,"clientCapabilities":) <>
+        ~s({"fs":{"readTextFile":true,"writeTextFile":true}}}})
+
+    cmd =
+      "printf '%s\\n' '#{req}' | timeout 25 docker exec -i #{name} " <>
+        "sh -c 'unset CLAUDECODE; claude-code-acp'"
+
+    {resp, _status} = System.cmd("sh", ["-c", cmd], stderr_to_stdout: true)
+
+    # A valid ACP initialize result from the real Claude Code harness.
+    assert resp =~ ~s("protocolVersion":1)
+    assert resp =~ "Claude Code"
+    assert resp =~ "authMethods"
+  end
+
   test "ensure_up restarts a stopped work container rather than orphaning it" do
     ws = "wc-#{uid()}"
     volume = VolumeManager.code_volume_name(ws)

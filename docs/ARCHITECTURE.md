@@ -123,7 +123,9 @@ A workspace is a git branch in its own env. *Most* interaction is just "read/wri
 - `AgentBoot`'s `:ensure_services` step, for volume-backed workspaces, calls `Workspace.ensure_working/1` (cheap) instead of booting the compose cluster. Legacy host bind-mount projects keep the old `ServiceManager.start_services` path. So spawning an agent makes the workspace *workable*, not *fully running*.
 - The workspace UI (`States.workspace_not_running`) defaults to "Ready to work — start an agent"; booting the preview env is a quiet secondary action. The stored workspace `status` still tracks only the preview cluster (`:stopped`/`:starting`/`:running`); "working" is a derived query, not a stored status.
 
-`apk`-level tooling only (git, bash, curl) — running the project's own test/build toolchain needs the project image, i.e. the preview env. Cheap container = code + git; preview = run the app.
+**The work container is also the harness host.** Its base image (`priv/workspace-base/Dockerfile`) carries Node + the ACP adapter (`@zed-industries/claude-code-acp`), so the **real** Claude/Codex harness runs *inside* the box via `docker exec -i loopyard-<ws>-work claude-code-acp` (ACP = JSON-RPC over stdio), against the mounted code volume — natively, with native tools/skills/subagents. This is the north star: the box hosts a real harness, it doesn't reimplement one; new harnesses plug in by adding their adapter to the base image, nothing else about the sandbox changes. Validated headlessly: the work container completes an ACP `initialize` handshake with the real harness (`test/loopyard/workspace/work_container_test.exs`); a full prompt additionally needs in-container auth (the parked credential piece — see #3/#12).
+
+The base image carries git/bash/curl/node + the harness adapter — *not* the project's own toolchain (elixir, the app's deps, postgres). Running the project's tests/build or the app itself still needs the project image, i.e. the **preview env**. Cheap container = code + git + harness; preview = run the app.
 
 ## Docker interface
 
