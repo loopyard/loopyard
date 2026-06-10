@@ -120,14 +120,70 @@ defmodule Loopyard.Workspace do
   end
 
   @doc """
-  Check if the workspace container is running. When true, agents should
-  use container tools (exec, read_file) — not host-side file access.
+  Check if the **compose** workspace service container is running (the
+  `loopyard-<ws>-workspace-1` container that comes up with the preview
+  cluster). When true, agents should use container tools (exec, read_file)
+  — not host-side file access.
+
+  NOTE: this is *not* the same as "can the agent work" — see `working?/1`.
+  Most of the time an agent works against the cheap `WorkContainer`, with no
+  compose cluster running at all.
   """
   def container_running?(workspace_id) do
     container =
       Loopyard.Workspace.ServiceManager.service_container_name(workspace_id, "workspace")
 
     Loopyard.Docker.container_running?(container)
+  end
+
+  @doc """
+  Is the workspace in a **working** state — i.e. does it have *some*
+  code-mounted container an agent can exec into? True if either the compose
+  workspace service container OR the cheap `WorkContainer` is up.
+
+  This is the north-star default (D10): working doesn't require the dev/preview
+  cluster. The preview cluster (`status: :running`) is a separate, opt-in thing.
+  """
+  def working?(workspace_id) do
+    container_running?(workspace_id) or
+      Loopyard.Workspace.WorkContainer.running?(workspace_id)
+  end
+
+  @doc """
+  Ensure the workspace can be worked on *right now*, cheaply.
+
+  If the compose workspace container is already up (preview running), that's
+  enough. Otherwise bring up the cheap `WorkContainer` (no project image, no
+  services). Returns `{:ok, container_name}` — the container an agent should
+  exec into — or `{:error, reason}`.
+  """
+  def ensure_working(workspace_id) do
+    if container_running?(workspace_id) do
+      {:ok, Loopyard.Workspace.ServiceManager.service_container_name(workspace_id, "workspace")}
+    else
+      Loopyard.Workspace.WorkContainer.ensure_up(workspace_id)
+    end
+  end
+
+  @doc """
+  The container an agent should exec into for this workspace, preferring the
+  full compose workspace container when the preview cluster is up (it has the
+  project's real toolchain) and otherwise the cheap `WorkContainer`.
+
+  Returns `{:ok, name}` when one is running, or `{:error, :not_working}` when
+  neither is up (caller should `ensure_working/1` first).
+  """
+  def agent_container(workspace_id) do
+    cond do
+      container_running?(workspace_id) ->
+        {:ok, Loopyard.Workspace.ServiceManager.service_container_name(workspace_id, "workspace")}
+
+      Loopyard.Workspace.WorkContainer.running?(workspace_id) ->
+        {:ok, Loopyard.Workspace.WorkContainer.container_name(workspace_id)}
+
+      true ->
+        {:error, :not_working}
+    end
   end
 
   @doc """

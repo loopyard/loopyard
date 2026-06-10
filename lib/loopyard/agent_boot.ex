@@ -10,13 +10,16 @@ defmodule Loopyard.AgentBoot do
 
     1. `:load_config` — read workspace config from the volume. Pure
        read; no rollback.
-    2. `:ensure_services` — if the workspace container isn't already
-       running, kick off compose-up via `ServiceManager.start_services`.
-       For Setup agents, a compose-up failure is a soft error (they
-       exist to fix broken infrastructure). Rollback: no-op. Services
-       staying up on failure is fine — the next boot reuses them, and
-       tearing down a cluster because one agent failed to start would
-       harm other users on the same workspace.
+    2. `:ensure_services` — make the workspace *workable*. For
+       volume-backed workspaces this brings up the cheap, code-mounted
+       `WorkContainer` (north-star D10: "working is the default" — an
+       agent does NOT boot the dev/preview cluster just to start; the
+       agent or a human boots preview on demand). Legacy host
+       bind-mount projects keep the old behavior (compose-up via
+       `ServiceManager.start_services`). For Setup agents, failure is a
+       soft error (they exist to fix broken infrastructure). Rollback:
+       no-op — a container staying up on failure is fine; the next boot
+       reuses it.
     3. `:start_agent` — spawn the ChatAgent GenServer under the
        workspace supervisor (with one rebuild-retry). Rollback:
        `ChatAgent.stop_agent/1` — terminates the GenServer so we don't
@@ -221,40 +224,76 @@ defmodule Loopyard.AgentBoot do
         ws_container =
           Workspace.ServiceManager.service_container_name(workspace_id, "workspace")
 
-        if Loopyard.Docker.container_running?(ws_container) do
-          {:ok, %{services_started_here: false}}
-        else
-          ChatAgent.update_boot_status(id, "Starting services...")
+        cond do
+          # Preview cluster already up — its `workspace` service is the agent's
+          # exec target; nothing to do.
+          Loopyard.Docker.container_running?(ws_container) ->
+            {:ok, %{services_started_here: false}}
 
-          case Workspace.ServiceManager.start_services(working_dir) do
-            {:ok, _} ->
-              {:ok, %{services_started_here: true}}
+          # Working is the default (D10): a volume-backed workspace just needs
+          # the cheap, code-mounted WorkContainer — NOT the dev/preview cluster.
+          # The agent (or a human) boots preview on demand via the
+          # `docker_compose` tool / `Onboarding.start_preview`.
+          volume_based?(workspace_id) ->
+            ChatAgent.update_boot_status(id, "Preparing workspace...")
 
-            {:error, :service_manager_not_running} ->
-              # ServiceManager hasn't been supervised yet — not fatal;
-              # start_agent_with_retry below will rebuild the workspace
-              # supervisor on first spawn attempt.
-              {:ok, %{services_started_here: false}}
+            case Workspace.ensure_working(workspace_id) do
+              {:ok, _container} ->
+                {:ok, %{services_started_here: false}}
 
-            {:error, reason} when agent_type == "setup" ->
-              Logger.warning(
-                "[AgentBoot] #{id} compose up failed; booting Setup agent anyway " <>
-                  "so it can fix the cluster: #{inspect(reason)}"
-              )
+              {:error, reason} when agent_type == "setup" ->
+                Logger.warning(
+                  "[AgentBoot] #{id} work container failed; booting Setup agent " <>
+                    "anyway so it can diagnose: #{inspect(reason)}"
+                )
 
-              ChatAgent.update_boot_status(
-                id,
-                "Cluster unhealthy — Setup agent will diagnose"
-              )
+                {:ok, %{services_started_here: false}}
 
-              {:ok, %{services_started_here: false}}
+              {:error, reason} ->
+                {:error, {:work_container_failed, reason}}
+            end
 
-            {:error, reason} ->
-              {:error, {:service_start_failed, reason}}
-          end
+          # Legacy host bind-mount projects: bring up the compose cluster the
+          # agent expects on the host (pre-volume behavior).
+          true ->
+            ChatAgent.update_boot_status(id, "Starting services...")
+
+            case Workspace.ServiceManager.start_services(working_dir) do
+              {:ok, _} ->
+                {:ok, %{services_started_here: true}}
+
+              {:error, :service_manager_not_running} ->
+                # ServiceManager hasn't been supervised yet — not fatal;
+                # start_agent_with_retry below will rebuild the workspace
+                # supervisor on first spawn attempt.
+                {:ok, %{services_started_here: false}}
+
+              {:error, reason} when agent_type == "setup" ->
+                Logger.warning(
+                  "[AgentBoot] #{id} compose up failed; booting Setup agent anyway " <>
+                    "so it can fix the cluster: #{inspect(reason)}"
+                )
+
+                ChatAgent.update_boot_status(
+                  id,
+                  "Cluster unhealthy — Setup agent will diagnose"
+                )
+
+                {:ok, %{services_started_here: false}}
+
+              {:error, reason} ->
+                {:error, {:service_start_failed, reason}}
+            end
         end
       end
     }
+  end
+
+  defp volume_based?(workspace_id) do
+    case Loopyard.WorkspaceRegistry.get_workspace(workspace_id) do
+      %{volume_based: true} -> true
+      _ -> false
+    end
   end
 
   # Spawn the ChatAgent GenServer. Rollback stops it so a

@@ -203,6 +203,37 @@ defmodule Loopyard.Onboarding do
     end
   end
 
+  @doc """
+  Make a workspace **workable right now** — the default state (north-star D10).
+
+  Brings up the cheap, code-mounted `WorkContainer` (no project image, no
+  services) so an agent can read/write code and run commands immediately,
+  *without* the preview cluster. This is what "working is the default" means:
+  you don't boot containers to start working; you boot containers (the preview
+  env) only when you want to *run* the app.
+
+  Idempotent. Returns `{:ok, container_name}` or `{:error, reason}`.
+  """
+  @spec start_working(String.t()) :: {:ok, String.t()} | {:error, term()}
+  def start_working(workspace_id) do
+    case WorkspaceRegistry.get_workspace(workspace_id) do
+      nil -> {:error, :not_found}
+      ws -> Loopyard.Workspace.ensure_working(ws.id)
+    end
+  end
+
+  @doc """
+  Stop the cheap work container. Does NOT touch the preview cluster or the code
+  volume — purely releases the lightweight agent container.
+  """
+  @spec stop_working(String.t()) :: :ok | {:error, term()}
+  def stop_working(workspace_id) do
+    case WorkspaceRegistry.get_workspace(workspace_id) do
+      nil -> {:error, :not_found}
+      ws -> Loopyard.Workspace.WorkContainer.down(ws.id)
+    end
+  end
+
   # --- internals ---
 
   # Persist a project's current state (name, remote, workspaces) to disk so it

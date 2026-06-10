@@ -50,6 +50,40 @@ defmodule Loopyard.OnboardingTest do
     assert out =~ "hi"
   end
 
+  test "working is the default: start_working boots a cheap agent container, no compose cluster" do
+    {:ok, project, ws} = Onboarding.create_project("working-#{uid()}")
+
+    on_exit(fn ->
+      Onboarding.stop_working(ws.id)
+      cleanup(project)
+    end)
+
+    # Fresh workspace: code-ready, but nothing is "working" yet.
+    refute Loopyard.Workspace.working?(ws.id)
+
+    # Start working — cheap, no preview cluster, no agent-written compose needed.
+    assert {:ok, container} = Onboarding.start_working(ws.id)
+    assert container == "loopyard-#{ws.id}-work"
+    assert Loopyard.Workspace.working?(ws.id)
+
+    # The preview cluster is a *separate* concern and is NOT running.
+    refute Loopyard.Workspace.container_running?(ws.id)
+    assert WorkspaceRegistry.get_workspace(ws.id).status == :stopped
+
+    # The agent's exec target resolves to the work container.
+    assert {:ok, ^container} = Loopyard.Workspace.agent_container(ws.id)
+
+    # And the canonical main code is actually there (git-populated volume).
+    assert {:ok, out} =
+             Loopyard.Workspace.WorkContainer.exec(ws.id, "ls -a /workspace")
+
+    assert out =~ ".git"
+
+    # Stop working releases the container; code volume untouched.
+    :ok = Onboarding.stop_working(ws.id)
+    refute Loopyard.Workspace.working?(ws.id)
+  end
+
   test "preview env opt-in: code-ready workspace + compose → a real running container" do
     {:ok, project, ws} = Onboarding.create_project("preview-#{uid()}")
 

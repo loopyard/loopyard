@@ -1619,6 +1619,7 @@ defmodule LoopyardWeb.WorkspaceLive do
               }
               workspace={@workspace}
               workspace_state={@workspace_state}
+              base_path={@base_path}
             />
             <.new_agent_screen
               :if={@live_action == :new}

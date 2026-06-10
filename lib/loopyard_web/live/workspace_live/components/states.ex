@@ -39,65 +39,86 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.States do
     """
   end
 
+  # The workspace root when no agent is selected. Working is the DEFAULT
+  # state (north-star D10): you don't boot containers to start working — you
+  # start an agent and it works against the cheap, code-mounted work container,
+  # showing its work as it goes. Booting the dev/preview cluster is a separate,
+  # opt-in action (for *running* the app), demoted to a quiet secondary link.
+  attr :workspace, :map, required: true
+  attr :workspace_state, :atom, required: true
+  attr :base_path, :string, required: true
+
   def workspace_not_running(assigns) do
     ~H"""
     <div class="flex-1 flex items-center justify-center">
       <div class="text-center max-w-md px-4">
-        <div class="w-16 h-16 rounded-2xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mx-auto mb-4">
+        <div class="w-16 h-16 rounded-2xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center mx-auto mb-4">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 24 24"
             fill="currentColor"
-            class="w-7 h-7 text-zinc-300 dark:text-zinc-600"
+            class="w-7 h-7 text-violet-500"
           >
+            <path d="M16.5 7.5h-9v9h9v-9Z" />
             <path
               fill-rule="evenodd"
-              d="M2.25 6a3 3 0 0 1 3-3h13.5a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H5.25a3 3 0 0 1-3-3V6Zm3.97.97a.75.75 0 0 1 1.06 0l2.25 2.25a.75.75 0 0 1 0 1.06l-2.25 2.25a.75.75 0 0 1-1.06-1.06l1.72-1.72-1.72-1.72a.75.75 0 0 1 0-1.06Zm4.28 4.28a.75.75 0 0 0 0 1.5h3a.75.75 0 0 0 0-1.5h-3Z"
+              d="M8.25 2.25A.75.75 0 0 1 9 3v.75h2.25V3a.75.75 0 0 1 1.5 0v.75H15V3a.75.75 0 0 1 1.5 0v.75h.75a3 3 0 0 1 3 3v.75H21A.75.75 0 0 1 21 9h-.75v2.25H21a.75.75 0 0 1 0 1.5h-.75V15H21a.75.75 0 0 1 0 1.5h-.75v.75a3 3 0 0 1-3 3h-.75V21a.75.75 0 0 1-1.5 0v-.75h-2.25V21a.75.75 0 0 1-1.5 0v-.75H9V21a.75.75 0 0 1-1.5 0v-.75h-.75a3 3 0 0 1-3-3v-.75H3A.75.75 0 0 1 3 15h.75v-2.25H3a.75.75 0 0 1 0-1.5h.75V9H3a.75.75 0 0 1 0-1.5h.75V6.75a3 3 0 0 1 3-3h.75V3a.75.75 0 0 1 .75-.75ZM6 6.75A.75.75 0 0 1 6.75 6h10.5a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75H6.75a.75.75 0 0 1-.75-.75V6.75Z"
               clip-rule="evenodd"
             />
           </svg>
         </div>
         <h3 class="text-lg font-semibold mb-1">{@workspace.name}</h3>
         <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-6">
-          This workspace isn't running. Start it to bring up containers, agents, and dev services.
+          Ready to work. Start an agent and it'll begin showing its work as it goes —
+          no need to boot containers first.
         </p>
-        <%= if @workspace_state == :starting do %>
-          <div class="inline-flex items-center gap-2 text-sm text-zinc-500 animate-pulse">
-            <svg
-              class="w-4 h-4 animate-spin"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
-              </circle>
-              <path
-                class="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              >
-              </path>
-            </svg>
-            Starting workspace...
-          </div>
-        <% else %>
-          <button
-            phx-click="boot_workspace"
-            class="focus-ring inline-flex items-center gap-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white px-6 py-3 text-sm font-medium transition-colors"
+        <.link
+          patch={"#{@base_path}/new"}
+          class="focus-ring inline-flex items-center gap-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white px-6 py-3 text-sm font-medium transition-colors"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            class="w-5 h-5"
+            aria-hidden="true"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              class="w-5 h-5"
-              aria-hidden="true"
+            <path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" />
+          </svg>
+          New agent
+        </.link>
+
+        <div class="mt-6 text-xs text-zinc-400 dark:text-zinc-500">
+          <%= if @workspace_state == :starting do %>
+            <span class="inline-flex items-center gap-2 animate-pulse">
+              <svg
+                class="w-3.5 h-3.5 animate-spin"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
+                </circle>
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                >
+                </path>
+              </svg>
+              Starting preview environment…
+            </span>
+          <% else %>
+            Need to run the app?
+            <button
+              phx-click="boot_workspace"
+              class="focus-ring underline hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
             >
-              <path d="M6.3 2.84A1.5 1.5 0 0 0 4 4.11v11.78a1.5 1.5 0 0 0 2.3 1.27l9.344-5.891a1.5 1.5 0 0 0 0-2.538L6.3 2.841Z" />
-            </svg>
-            Start workspace
-          </button>
-        <% end %>
+              Start the preview environment
+            </button>
+          <% end %>
+        </div>
       </div>
     </div>
     """

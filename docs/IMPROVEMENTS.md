@@ -37,6 +37,8 @@ A prioritized list of known, scoped improvements for Loopyard. Ordered within ea
 
 ## Performance
 
+10. **Cache `resolve_container` / `agent_container` resolution per turn.** Every container tool call (`exec`/`grep`/`glob`/`tree`/`file_info`/`logs`/`ports`) now resolves its target via `Workspace.agent_container/1`, which does up to two `docker inspect` calls (compose container, then the cheap `WorkContainer`). That's correct but adds ~20–60ms per tool call on a hot agent loop. Cheap win: memoize the resolved container name on the agent's ETS state, invalidated when preview is started/stopped (those are the only transitions that change which container is the exec target). Keep the lazy `ensure_working/1` self-heal on cache miss.
+
 8. **Paginate chat messages (load recent, fetch older on scroll-up).** Currently all messages are rendered into the DOM on mount (400+ for long-lived agents). At scale this will bog down both the server (serializing the full list) and the browser (laying out hundreds of nodes). Load the last ~50 messages on mount, prepend older batches when the user scrolls to the top. Hard parts: maintaining scroll position when prepending content, coordinating with LiveView's DOM diffing, and deciding the fetch boundary (ETS slice vs. cursor). The `ScrollBottom` hook already tracks scroll position — extend it to detect "at top" and `pushEvent` to request more.
 
 ## Product vision

@@ -74,8 +74,15 @@ defmodule Loopyard.Tools.Container.Helpers do
   def resolve_container(agent_id) do
     case Loopyard.ChatAgent.get_state(agent_id) do
       %{workspace_id: workspace_id} when is_binary(workspace_id) ->
-        container = ServiceManager.service_container_name(workspace_id, "workspace")
-        {:ok, container}
+        # "Working is the default" (north-star D10): prefer whatever code-mounted
+        # container is up — the full compose `workspace` service if the preview
+        # cluster is running, otherwise the cheap `WorkContainer`. If neither is
+        # up yet, lazily bring the cheap one up so tools self-heal instead of
+        # failing. We never boot the dev/preview cluster just to run a tool.
+        case Loopyard.Workspace.agent_container(workspace_id) do
+          {:ok, container} -> {:ok, container}
+          {:error, :not_working} -> Loopyard.Workspace.ensure_working(workspace_id)
+        end
 
       _ ->
         {:error, "Agent #{agent_id} has no workspace"}

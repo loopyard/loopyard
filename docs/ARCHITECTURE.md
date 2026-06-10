@@ -105,6 +105,26 @@ No persistent git server, no host paths, no Mutagen — git is the only thing th
 - `Loopyard.CanonicalStore` — durable persistence: a JSON map at `<LOOPYARD_HOME>/canonical_projects.json` (project → name/remote/workspaces). `Onboarding.restore/0` re-registers projects + workspaces on boot (hooked into `Application.start`), skipping any whose volumes are gone. Volumes are durable; the store records just enough to rebuild the ETS rows.
 - `Loopyard.Workflow` — confirmation-gated `fork`/`integrate` (#10). A pluggable policy (`:auto` default, or `(action -> :approve | :deny)`) runs before the boundary-crossing op; the UI passes a function that renders the action as an editable mini-app card and blocks on a human decision. In-sandbox ops are NOT gated — only new-workspace/merge-to-main come through here.
 
+## Working is the default — `WorkContainer` vs the preview cluster (north-star D10)
+
+A workspace is a git branch in its own env. *Most* interaction is just "read/write code, run commands, let the agent show its work" — that must NOT require booting the project's dev cluster (postgres, dev server, stock services). So there are **two distinct things** a workspace can have running, and they're decoupled:
+
+- **The work container (`Loopyard.Workspace.WorkContainer`)** — the cheap, Loopyard-owned place an agent acts. Built from `priv/workspace-base/Dockerfile` (alpine + git/gh/ssh/bash/curl/rsync, `sleep infinity`), built on demand and cached. Named `loopyard-<ws>-work`, it mounts the `loopyard-<ws>-code` volume at `/workspace`. Boots sub-second once the base image is cached. This is what "working is the default" means: you don't boot containers to start working.
+- **The preview/dev cluster** — the agent-written `.loopyard/workspace/docker-compose.yml`, brought up via `Onboarding.start_preview/1` (the `loopyard-<ws>-workspace-1` + service containers). Opt-in, for when you want to *run* the app.
+
+**The seam (in `Loopyard.Workspace`):**
+- `container_running?/1` — is the **compose** workspace service up (preview running)?
+- `working?/1` — is *either* the compose workspace container or the cheap `WorkContainer` up? (Can an agent act at all?)
+- `ensure_working/1` — make the workspace workable now: reuse the compose container if preview is up, else bring up the cheap `WorkContainer`.
+- `agent_container/1` — the container an agent execs into: the compose `workspace` service when preview is up (real project toolchain), else the work container.
+
+**Where it's wired:**
+- `Tools.Container.Helpers.resolve_container/1` (the target of every container tool — exec/grep/glob/tree/file_info/logs/ports) resolves via `agent_container/1`, lazily `ensure_working/1` if nothing is up. It NEVER boots the preview cluster to run a tool.
+- `AgentBoot`'s `:ensure_services` step, for volume-backed workspaces, calls `Workspace.ensure_working/1` (cheap) instead of booting the compose cluster. Legacy host bind-mount projects keep the old `ServiceManager.start_services` path. So spawning an agent makes the workspace *workable*, not *fully running*.
+- The workspace UI (`States.workspace_not_running`) defaults to "Ready to work — start an agent"; booting the preview env is a quiet secondary action. The stored workspace `status` still tracks only the preview cluster (`:stopped`/`:starting`/`:running`); "working" is a derived query, not a stored status.
+
+`apk`-level tooling only (git, bash, curl) — running the project's own test/build toolchain needs the project image, i.e. the preview env. Cheap container = code + git; preview = run the app.
+
 ## Docker interface
 
 **Every Docker CLI call goes through `Loopyard.Docker`.** No `System.cmd("docker", ...)` anywhere else.
