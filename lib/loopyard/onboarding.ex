@@ -17,7 +17,16 @@ defmodule Loopyard.Onboarding do
   are registered `:ready` directly (skipping the Source-adapter setup saga).
   """
 
-  alias Loopyard.{CanonicalRepo, ProjectRegistry, WorkspaceRegistry, VolumeManager, Workspace}
+  alias Loopyard.{
+    CanonicalRepo,
+    ProjectRegistry,
+    WorkspaceRegistry,
+    VolumeManager,
+    Workspace,
+    Compose
+  }
+
+  alias Loopyard.Tools.Container.Helpers
 
   @doc """
   Create a project (new blank, or existing via `remote:`), register it, and
@@ -65,6 +74,57 @@ defmodule Loopyard.Onboarding do
 
     with {:ok, _ws_vol} <- CanonicalRepo.fork(project_id, ws_id, base, branch) do
       {:ok, register_workspace(project_id, ws_id, branch, is_main: false)}
+    end
+  end
+
+  @doc """
+  Bring up the workspace's **preview env** — the opt-in "run it" step. Code-ready
+  workspaces have no compose cluster; this materializes the agent-written compose
+  from the volume to the host compose dir (processed + port-assigned) and runs
+  `Compose.up`. The compose file must already exist in the volume at
+  `.loopyard/workspace/docker-compose.yml` (the agent writes it).
+  """
+  @spec start_preview(String.t()) :: {:ok, term()} | {:error, term()}
+  def start_preview(workspace_id) do
+    case WorkspaceRegistry.get_workspace(workspace_id) do
+      nil ->
+        {:error, :not_found}
+
+      ws ->
+        # Materialize the agent-written compose from the volume → host compose
+        # dir (processed + port-assigned). It writes nothing if the compose is
+        # missing or rejected by the security validator, so check the result.
+        Helpers.sync_volume_to_host(ws.volume, ws.compose_dir)
+
+        if File.exists?(Compose.compose_path(ws.compose_dir)) do
+          case Compose.up(ws.compose_dir, ws.id) do
+            {:ok, out} ->
+              WorkspaceRegistry.update_workspace_status(ws.id, :running)
+              {:ok, out}
+
+            err ->
+              err
+          end
+        else
+          {:error,
+           "No usable docker-compose.yml in the workspace " <>
+             "(.loopyard/workspace/docker-compose.yml). Write one (and pass the " <>
+             "security validator) before starting the preview."}
+        end
+    end
+  end
+
+  @doc "Tear down the workspace's preview env."
+  @spec stop_preview(String.t()) :: :ok | {:error, term()}
+  def stop_preview(workspace_id) do
+    case WorkspaceRegistry.get_workspace(workspace_id) do
+      nil ->
+        {:error, :not_found}
+
+      ws ->
+        Compose.down(ws.compose_dir, ws.id)
+        WorkspaceRegistry.update_workspace_status(ws.id, :stopped)
+        :ok
     end
   end
 

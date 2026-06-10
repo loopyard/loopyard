@@ -9,7 +9,7 @@ defmodule Loopyard.OnboardingTest do
   @moduletag :docker
   @moduletag timeout: 300_000
 
-  alias Loopyard.{Onboarding, CanonicalRepo, VolumeManager, WorkspaceRegistry, Docker}
+  alias Loopyard.{Onboarding, CanonicalRepo, VolumeManager, VolumeIO, WorkspaceRegistry, Docker}
 
   test "v1 loop: create project → code-ready main → fork → commit → integrate → fork sees it" do
     {:ok, project, main_ws} = Onboarding.create_project("smoke-#{uid()}")
@@ -39,6 +39,40 @@ defmodule Loopyard.OnboardingTest do
     {:ok, ws2} = Onboarding.fork(project.id, "main", "verify")
     assert {:ok, out} = git_in(ws2.volume, "cat f.txt")
     assert out =~ "hi"
+  end
+
+  test "preview env opt-in: code-ready workspace + compose → a real running container" do
+    {:ok, project, ws} = Onboarding.create_project("preview-#{uid()}")
+
+    on_exit(fn ->
+      Onboarding.stop_preview(ws.id)
+      cleanup(project)
+    end)
+
+    # The agent writes a minimal compose into the volume.
+    :ok =
+      VolumeIO.write_file(
+        ws.volume,
+        ".loopyard/workspace/docker-compose.yml",
+        ~s(services:\n  web:\n    image: nginx:alpine\n    ports:\n      - "80"\n)
+      )
+
+    # Opt-in: bring up the preview env.
+    assert {:ok, _} = Onboarding.start_preview(ws.id)
+    assert WorkspaceRegistry.get_workspace(ws.id).status == :running
+
+    # A real container is up for this workspace.
+    assert {:ok, out} =
+             Docker.docker([
+               "ps",
+               "--filter",
+               "name=loopyard-#{ws.id}",
+               "--format",
+               "{{.Names}} {{.Status}}"
+             ])
+
+    assert out =~ "loopyard-#{ws.id}-web-1"
+    assert out =~ "Up"
   end
 
   defp uid, do: :crypto.strong_rand_bytes(3) |> Base.encode16(case: :lower)
