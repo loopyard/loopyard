@@ -85,6 +85,20 @@ Containers survive server reboots:
 - If not found: does full `compose up --build`
 - `POST /system/reset` is the only path that calls `compose down`
 
+## Hub-and-spokes git storage (v1 — `Loopyard.CanonicalRepo`)
+
+The v1 spine (#13/#15/#17). Each project has ONE **canonical** bare git repo in its own volume (`loopyard-<project_id>-canonical`) — the hub, the source of truth, that nobody works in. Workspaces are **clones** of it in their own code volumes (the spokes), each on its own branch.
+
+`Loopyard.CanonicalRepo` runs every git operation in a **transient git container** (`docker run --rm` against `alpine/git`, with the relevant volume(s) mounted, via `Docker.docker/2`):
+
+- `init/1` — new blank project (empty canonical, `main` + initial commit).
+- `init_from_remote/3` — existing project (bare clone of a remote / GitHub).
+- `fork/4` — clone canonical → a workspace volume on a new branch (cut from any base).
+- `integrate/4` — rebase the workspace's branch onto canonical `main` + fast-forward (the merge gate; conflicts leave the workspace mid-rebase for the agent to resolve).
+- `push/3` — sync canonical → a git remote (the "sync container" role).
+
+No persistent git server, no host paths, no Mutagen — git is the only thing that crosses between hub and spokes, and Loopyard mediates `fork`/`integrate`/`push` by mounting the right volumes. Isolation is physical (separate volumes); the merge is the one human-gated crossing. Onboarding decouples cleanly: `init`/`init_from_remote` + `fork` give a **code-ready** workspace volume; the compose preview cluster (`Compose.up`) is a separate, opt-in step.
+
 ## Docker interface
 
 **Every Docker CLI call goes through `Loopyard.Docker`.** No `System.cmd("docker", ...)` anywhere else.
