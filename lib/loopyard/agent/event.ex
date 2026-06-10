@@ -23,7 +23,8 @@ defmodule Loopyard.Agent.Event do
     ToolResult,
     SessionResult,
     RateLimitStatus,
-    AuthStatus
+    AuthStatus,
+    PermissionRequest
   }
 
   @type t ::
@@ -34,4 +35,5 @@ defmodule Loopyard.Agent.Event do
           | SessionResult.t()
           | RateLimitStatus.t()
           | AuthStatus.t()
+          | PermissionRequest.t()
 end

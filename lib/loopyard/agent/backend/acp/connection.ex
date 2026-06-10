@@ -1,0 +1,295 @@
+defmodule Loopyard.Agent.Backend.ACP.Connection do
+  @moduledoc """
+  Owns one ACP session: handshake (`initialize` → `session/new`), one prompt
+  turn at a time (`session/prompt` → streamed `session/update`s → result),
+  and the agent-initiated requests the client must answer (`fs/read_text_file`,
+  `fs/write_text_file`, `session/request_permission`).
+
+  Translated `Loopyard.Agent.Event` structs are pushed to the turn's
+  subscriber as `{:acp_event, ref, event}`, terminated by
+  `{:acp_done, ref, stop_reason}`. `Backend.ACP` wraps that flow as a
+  `Stream` so the rest of the agent pipeline is unchanged.
+
+  Permission handling is pluggable via `:permission_mode` — today `:auto_allow`
+  (and we still surface a `%Event.PermissionRequest{}` so the #7 UI can later
+  intercept); `:ask` (block on a UI decision) is future work.
+  """
+  use GenServer
+  require Logger
+
+  alias Loopyard.Agent.Backend.ACP.Translator
+  alias Loopyard.Agent.Event
+
+  @protocol_version 1
+
+  # ---- public API ----
+
+  def start_link(opts), do: GenServer.start_link(__MODULE__, opts)
+
+  @doc "Block until the session is ready (handshake complete) or fails."
+  def await_ready(pid, timeout \\ 30_000), do: GenServer.call(pid, :await_ready, timeout)
+
+  @doc "Start a prompt turn; events stream to `subscriber` tagged with `ref`."
+  def prompt(pid, text, subscriber, ref),
+    do: GenServer.cast(pid, {:prompt, text, subscriber, ref})
+
+  def session_id(pid) do
+    GenServer.call(pid, :session_id, 1_000)
+  catch
+    :exit, _ -> nil
+  end
+
+  def stop(pid), do: GenServer.stop(pid, :normal)
+
+  # ---- init / handshake ----
+
+  @impl true
+  def init(opts) do
+    transport_mod = Keyword.get(opts, :transport, Loopyard.Agent.Backend.ACP.Transport.Port)
+    transport_opts = Keyword.get(opts, :transport_opts, [])
+
+    case transport_mod.start_link([owner: self()] ++ transport_opts) do
+      {:ok, transport} ->
+        state = %{
+          transport_mod: transport_mod,
+          transport: transport,
+          next_id: 1,
+          pending: %{},
+          session_id: nil,
+          status: :initializing,
+          model: Keyword.get(opts, :model),
+          cwd: Keyword.get(opts, :cwd) || File.cwd!(),
+          resume: Keyword.get(opts, :resume),
+          mcp_servers: Keyword.get(opts, :mcp_servers, []),
+          permission_mode: Keyword.get(opts, :permission_mode, :auto_allow),
+          waiters: [],
+          turn: nil
+        }
+
+        # In-container (#5): declaring NO client fs capability makes the
+        # adapter use the *container's* filesystem natively, instead of
+        # delegating fs/read_text_file back to the host (which can't see
+        # /workspace). Host-side we advertise fs and answer the delegation.
+        client_caps =
+          if Keyword.get(opts, :client_fs, true) do
+            %{"fs" => %{"readTextFile" => true, "writeTextFile" => true}}
+          else
+            %{}
+          end
+
+        state =
+          request(state, "initialize", %{
+            "protocolVersion" => @protocol_version,
+            "clientCapabilities" => client_caps
+          })
+          |> elem(0)
+
+        {:ok, state}
+
+      {:error, reason} ->
+        {:stop, {:transport_failed, reason}}
+    end
+  end
+
+  # ---- calls ----
+
+  @impl true
+  def handle_call(:await_ready, _from, %{status: :ready} = state), do: {:reply, :ok, state}
+
+  def handle_call(:await_ready, _from, %{status: :closed} = state),
+    do: {:reply, {:error, :closed}, state}
+
+  def handle_call(:await_ready, from, state),
+    do: {:noreply, %{state | waiters: [from | state.waiters]}}
+
+  def handle_call(:session_id, _from, state), do: {:reply, state.session_id, state}
+
+  # ---- casts ----
+
+  @impl true
+  def handle_cast({:prompt, _text, subscriber, ref}, %{status: status} = state)
+      when status != :ready do
+    send(subscriber, {:acp_done, ref, {:error, status}})
+    {:noreply, state}
+  end
+
+  def handle_cast({:prompt, text, subscriber, ref}, state) do
+    {state, _id} =
+      request(state, "session/prompt", %{
+        "sessionId" => state.session_id,
+        "prompt" => [%{"type" => "text", "text" => text}]
+      })
+
+    turn = %{ref: ref, subscriber: subscriber, translator: Translator.new(model: state.model)}
+    {:noreply, %{state | turn: turn}}
+  end
+
+  # ---- inbound messages ----
+
+  @impl true
+  def handle_info({:acp_msg, %{"id" => id} = msg}, state) do
+    cond do
+      Map.has_key?(state.pending, id) ->
+        # Response to one of our requests.
+        {kind, pending} = Map.pop(state.pending, id)
+        handle_response(kind, msg, %{state | pending: pending})
+
+      Map.has_key?(msg, "method") ->
+        # Agent-initiated request — we must answer.
+        handle_agent_request(msg["method"], id, msg["params"] || %{}, state)
+
+      true ->
+        {:noreply, state}
+    end
+  end
+
+  def handle_info({:acp_msg, %{"method" => method} = msg}, state) do
+    handle_notification(method, msg["params"] || %{}, state)
+  end
+
+  def handle_info({:acp_closed, reason}, state) do
+    state = reply_waiters(state, {:error, {:closed, reason}})
+
+    if state.turn do
+      send(state.turn.subscriber, {:acp_done, state.turn.ref, {:error, {:closed, reason}}})
+    end
+
+    {:stop, :normal, %{state | status: :closed, turn: nil}}
+  end
+
+  def handle_info(_other, state), do: {:noreply, state}
+
+  # ---- response routing ----
+
+  defp handle_response(:initialize, _msg, state) do
+    {state, _} =
+      request(state, "session/new", %{"cwd" => state.cwd, "mcpServers" => state.mcp_servers})
+
+    {:noreply, state}
+  end
+
+  defp handle_response(:session_new, %{"result" => result}, state) do
+    sid = result["sessionId"]
+    model = get_in(result, ["models", "currentModelId"]) || state.model
+    state = %{state | session_id: sid, model: model, status: :ready}
+    {:noreply, reply_waiters(state, :ok)}
+  end
+
+  defp handle_response(:session_new, %{"error" => error}, state) do
+    {:noreply, reply_waiters(%{state | status: :closed}, {:error, error})}
+  end
+
+  defp handle_response(:session_prompt, _msg, %{turn: nil} = state), do: {:noreply, state}
+
+  defp handle_response(:session_prompt, msg, state) do
+    turn = state.turn
+    stop_reason = get_in(msg, ["result", "stopReason"])
+    {_translator, events} = Translator.finish(turn.translator, stop_reason)
+
+    Enum.each(events, &send(turn.subscriber, {:acp_event, turn.ref, &1}))
+    send(turn.subscriber, {:acp_done, turn.ref, stop_reason || prompt_error(msg)})
+
+    {:noreply, %{state | turn: nil}}
+  end
+
+  defp prompt_error(%{"error" => error}), do: {:error, error}
+  defp prompt_error(_), do: :unknown
+
+  # ---- notifications ----
+
+  defp handle_notification("session/update", %{"update" => update}, %{turn: turn} = state)
+       when not is_nil(turn) do
+    {translator, events} = Translator.step(turn.translator, update)
+    Enum.each(events, &send(turn.subscriber, {:acp_event, turn.ref, &1}))
+    {:noreply, %{state | turn: %{turn | translator: translator}}}
+  end
+
+  defp handle_notification(_method, _params, state), do: {:noreply, state}
+
+  # ---- agent requests we must answer ----
+
+  defp handle_agent_request("fs/read_text_file", id, params, state) do
+    result =
+      case File.read(params["path"] || "") do
+        {:ok, content} -> %{"content" => content}
+        {:error, reason} -> %{"content" => "ERROR: #{:file.format_error(reason)}"}
+      end
+
+    {:noreply, respond(state, id, result)}
+  end
+
+  defp handle_agent_request("fs/write_text_file", id, params, state) do
+    path = params["path"]
+    _ = path && File.write(path, params["content"] || "")
+    {:noreply, respond(state, id, %{})}
+  end
+
+  defp handle_agent_request("session/request_permission", id, params, state) do
+    options = params["options"] || []
+
+    # Surface for the (future) UI even though we auto-decide for now.
+    if state.turn do
+      send(
+        state.turn.subscriber,
+        {:acp_event, state.turn.ref,
+         %Event.PermissionRequest{
+           request_id: id,
+           session_id: params["sessionId"],
+           tool_call_id: get_in(params, ["toolCall", "toolCallId"]),
+           tool_name: get_in(params, ["toolCall", "title"]),
+           input: get_in(params, ["toolCall", "rawInput"]),
+           options: normalize_options(options)
+         }}
+      )
+    end
+
+    {:noreply, decide_permission(state, id, options)}
+  end
+
+  defp handle_agent_request(method, id, _params, state) do
+    Logger.debug("ACP: unhandled agent request #{method}; responding empty")
+    {:noreply, respond(state, id, %{})}
+  end
+
+  defp decide_permission(%{permission_mode: :auto_allow} = state, id, options) do
+    pick =
+      Enum.find(options, &String.starts_with?(to_string(&1["kind"] || ""), "allow")) ||
+        List.first(options)
+
+    respond(state, id, %{
+      "outcome" => %{"outcome" => "selected", "optionId" => pick && pick["optionId"]}
+    })
+  end
+
+  defp normalize_options(options) do
+    Enum.map(options, fn o ->
+      %{id: o["optionId"], name: o["name"], kind: o["kind"]}
+    end)
+  end
+
+  # ---- jsonrpc plumbing ----
+
+  defp request(state, method, params) do
+    id = state.next_id
+    kind = method_kind(method)
+    send_msg(state, %{"jsonrpc" => "2.0", "id" => id, "method" => method, "params" => params})
+    {%{state | next_id: id + 1, pending: Map.put(state.pending, id, kind)}, id}
+  end
+
+  defp respond(state, id, result) do
+    send_msg(state, %{"jsonrpc" => "2.0", "id" => id, "result" => result})
+    state
+  end
+
+  defp send_msg(state, msg), do: state.transport_mod.send_msg(state.transport, msg)
+
+  defp method_kind("initialize"), do: :initialize
+  defp method_kind("session/new"), do: :session_new
+  defp method_kind("session/prompt"), do: :session_prompt
+  defp method_kind(other), do: other
+
+  defp reply_waiters(state, reply) do
+    Enum.each(state.waiters, &GenServer.reply(&1, reply))
+    %{state | waiters: []}
+  end
+end
