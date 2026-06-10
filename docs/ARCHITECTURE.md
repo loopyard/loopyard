@@ -99,6 +99,12 @@ The v1 spine (#13/#15/#17). Each project has ONE **canonical** bare git repo in 
 
 No persistent git server, no host paths, no Mutagen — git is the only thing that crosses between hub and spokes, and Loopyard mediates `fork`/`integrate`/`push` by mounting the right volumes. Isolation is physical (separate volumes); the merge is the one human-gated crossing. Onboarding decouples cleanly: `init`/`init_from_remote` + `fork` give a **code-ready** workspace volume; the compose preview cluster (`Compose.up`) is a separate, opt-in step.
 
+**The v1 layer on top of the engine:**
+
+- `Loopyard.Onboarding` — the "one flow" door (#14/#19). `create_project/2` (new blank, or existing via `remote:`) inits the canonical, registers the project, and materializes a **code-ready `main` workspace** (no compose cluster — preview is opt-in). `fork/3` cuts a branch+workspace from any base. `start_preview/1` / `stop_preview/1` bring the compose cluster up/down on demand (materialize the agent's compose from the volume via `Helpers.sync_volume_to_host` + `Compose.up`). `attach_remote/2` + `sync/2` hook the project to a git remote and push the canonical to it. Canonical-backed workspaces register `:ready` directly (the engine materializes synchronously — no Source-adapter saga).
+- `Loopyard.CanonicalStore` — durable persistence: a JSON map at `<LOOPYARD_HOME>/canonical_projects.json` (project → name/remote/workspaces). `Onboarding.restore/0` re-registers projects + workspaces on boot (hooked into `Application.start`), skipping any whose volumes are gone. Volumes are durable; the store records just enough to rebuild the ETS rows.
+- `Loopyard.Workflow` — confirmation-gated `fork`/`integrate` (#10). A pluggable policy (`:auto` default, or `(action -> :approve | :deny)`) runs before the boundary-crossing op; the UI passes a function that renders the action as an editable mini-app card and blocks on a human decision. In-sandbox ops are NOT gated — only new-workspace/merge-to-main come through here.
+
 ## Docker interface
 
 **Every Docker CLI call goes through `Loopyard.Docker`.** No `System.cmd("docker", ...)` anywhere else.
