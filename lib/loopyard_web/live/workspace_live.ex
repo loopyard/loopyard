@@ -318,9 +318,12 @@ defmodule LoopyardWeb.WorkspaceLive do
     # Working is the default: an empty workspace shouldn't make you click
     # "New agent" before you can do anything. Just put a working agent there so
     # you land in a live chat and start the idea. `do_spawn_agent` navigates to
-    # the new agent. Only on the connected mount, only when there are none.
-    if connected?(socket) and socket.assigns.agents == [] do
-      AgentLifecycle.do_spawn_agent(socket)
+    # the new agent. Only on the connected mount, only when there are none, and
+    # only once per LiveView (the `:auto_spawned` flag guards against :index
+    # re-firing before the booting agent lands in `@agents` — which would
+    # otherwise spawn a second agent).
+    if connected?(socket) and socket.assigns.agents == [] and !socket.assigns[:auto_spawned] do
+      AgentLifecycle.do_spawn_agent(assign(socket, :auto_spawned, true))
     else
       {:noreply, socket}
     end
