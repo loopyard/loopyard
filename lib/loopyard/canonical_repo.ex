@@ -97,6 +97,24 @@ defmodule Loopyard.CanonicalRepo do
   end
 
   @doc """
+  Materialize a workspace volume as a clone of the canonical on an EXISTING
+  branch (e.g. "main" for the project's main workspace). Unlike `fork/4`, no
+  new branch is created. Returns the workspace code-volume name.
+  """
+  @spec checkout(String.t(), String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
+  def checkout(project_id, workspace_id, branch) do
+    canon = volume_name(project_id)
+    ws = VolumeManager.code_volume_name(workspace_id)
+
+    cmd = "git clone /canonical /workspace && cd /workspace && git checkout #{shq(branch)}"
+
+    with :ok <- VolumeManager.create_volume(ws),
+         {:ok, _} <- git([{canon, "/canonical"}, {ws, "/workspace"}], cmd) do
+      {:ok, ws}
+    end
+  end
+
+  @doc """
   Integrate a workspace's branch back into canonical `main`: rebase the branch
   onto the latest canonical `main`, then fast-forward `main` to it. Returns
   `{:error, ...}` if the rebase hits conflicts (in production the workspace

@@ -163,6 +163,15 @@ defmodule Loopyard.ProjectRegistry do
     end
   end
 
+  @doc """
+  Register (upsert) a project map into the registry. Returns the project.
+  Low-level primitive used by canonical-backed onboarding (#19).
+  """
+  def register(%{id: id} = project) do
+    :ets.insert(@projects_table, {id, project})
+    project
+  end
+
   defp extract_repo_name(git_url) do
     git_url
     |> String.replace(~r/\.git$/, "")
