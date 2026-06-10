@@ -61,6 +61,10 @@ defmodule Loopyard.Onboarding do
 
       ws = register_workspace(project_id, ws_id, "main", is_main: true)
       persist(project_id)
+      # Always-on per branch: bring the cheap work container up now so the
+      # branch is a live, workable box the moment it exists (no cold start when
+      # you start working). Best-effort + async — never block creation on it.
+      start_work_async(ws_id)
       {:ok, project, ws}
     end
   end
@@ -76,6 +80,7 @@ defmodule Loopyard.Onboarding do
     with {:ok, _ws_vol} <- CanonicalRepo.fork(project_id, ws_id, base, branch) do
       ws = register_workspace(project_id, ws_id, branch, is_main: false)
       persist(project_id)
+      start_work_async(ws_id)
       {:ok, ws}
     end
   end
@@ -146,6 +151,9 @@ defmodule Loopyard.Onboarding do
       for ws <- entry["workspaces"] || [],
           VolumeManager.volume_exists?(VolumeManager.code_volume_name(ws["id"])) do
         register_workspace(project_id, ws["id"], ws["branch"], is_main: ws["is_main"])
+        # Always-on per branch: bring each restored branch's work container back
+        # up after a server restart (best-effort, async).
+        start_work_async(ws["id"])
       end
     end
 
@@ -235,6 +243,18 @@ defmodule Loopyard.Onboarding do
   end
 
   # --- internals ---
+
+  # Always-on per branch: fire-and-forget the cheap work container so a branch
+  # is a live, workable box as soon as it exists / is restored. Best-effort —
+  # the lazy `Workspace.ensure_working/1` on agent spawn / tool use is the
+  # safety net if this misses.
+  defp start_work_async(ws_id) do
+    Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
+      Loopyard.Workspace.ensure_working(ws_id)
+    end)
+
+    :ok
+  end
 
   # Persist a project's current state (name, remote, workspaces) to disk so it
   # survives a restart. Called after create_project + fork.

@@ -56,17 +56,12 @@ defmodule Loopyard.ChatAgent.Prompt do
 
   @doc false
   def base_prompt(agent_id, _bind_mount, workspace_id) do
-    container =
-      if workspace_id do
-        Loopyard.Workspace.ServiceManager.service_container_name(workspace_id, "workspace")
-      else
-        "loopyard-unknown-workspace-1"
-      end
-
     """
-    Workspace container: #{container}. YOUR AGENT ID: #{agent_id}. Pass agent_id to every tool call.
+    YOUR AGENT ID: #{agent_id} — pass agent_id to every tool call. Workspace: #{workspace_id}.
 
-    Use loopyard-container MCP tools for ALL work. `exec` for shell commands (output streams live, use timeout for long-running ones). ALWAYS use the `docker_compose` MCP tool — never run `docker compose` via Bash. /workspace is a Docker volume that persists across container restarts. Dev server runs in a separate container — use `logs` and `service_status` to check it.
+    You work in an always-on, lightweight container; the code is at /workspace (a Docker volume that persists across restarts). Use loopyard-container MCP tools for ALL work — `exec` for shell commands (output streams live; use timeout for long-running ones).
+
+    Dev-service cluster (dev server, postgres, etc.): NONE runs by default. When the app needs to RUN, YOU stand it up — write `.loopyard/workspace/docker-compose.yml`, then bring it up with the `docker_compose` MCP tool (never `docker compose` via `exec`). Add and evolve services as the app grows. Check what's currently running with `service_containers` and `workspace_info`; use `logs` for a service's output.
 
     Long command output is truncated — you'll see the last ~80 lines. The full output is visible to the user in the chat.
 
