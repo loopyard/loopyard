@@ -41,19 +41,43 @@ defmodule Loopyard.Tools.Container.Git do
     case args do
       [subcmd | _] when subcmd in @branch_switch_commands ->
         {:error,
-         "Cannot #{subcmd} — each workspace is locked to its branch. " <>
-           "To work on a different branch, create a new workspace. " <>
+         "Cannot #{subcmd} — a workspace is a worktree locked to ONE branch. " <>
+           "To work on a different branch, that's a new workspace. " <>
            "You can still read other branches: git diff main, git show main:file, git merge main, etc."}
 
-      _ ->
-        # Volume-backed workspaces keep their `.git` INSIDE the code volume
-        # (at /workspace), reachable only through the container — run git there.
-        # Legacy Local workspaces keep the host worktree path.
-        if volume_based?(workspace_id) do
-          run_git_in_container(workspace_id, args, command)
-        else
-          run_git_host(workspace_id, args, command)
+      # A workspace IS a worktree on a branch — branching means creating a new
+      # workspace, and deleting a branch means deleting one. Route those through
+      # the gated (human-approved) workspace flow instead of raw git.
+      ["branch" | rest] ->
+        cond do
+          Enum.any?(rest, &(&1 in ["-d", "-D", "--delete"])) ->
+            {:error,
+             "To remove a branch, use `propose_delete_workspace` — a branch's workspace is the worktree, " <>
+               "and deleting it is the destructive, human-approved action."}
+
+          Enum.any?(rest, &(not String.starts_with?(&1, "-"))) ->
+            {:error,
+             "To create a branch, use `propose_fork` — branching means a new workspace (its own worktree + env), " <>
+               "which the user approves. `git branch` (no name) to list is fine."}
+
+          true ->
+            # Listing branches (no name, just flags like -a/-v) — allowed.
+            run_git_for_workspace(workspace_id, args, command)
         end
+
+      _ ->
+        run_git_for_workspace(workspace_id, args, command)
+    end
+  end
+
+  # Volume-backed workspaces keep their `.git` INSIDE the code volume (at
+  # /workspace), reachable only through the container — run git there. Legacy
+  # Local workspaces keep the host worktree path.
+  defp run_git_for_workspace(workspace_id, args, command) do
+    if volume_based?(workspace_id) do
+      run_git_in_container(workspace_id, args, command)
+    else
+      run_git_host(workspace_id, args, command)
     end
   end
 
