@@ -132,6 +132,7 @@ defmodule Loopyard.WorkspaceRegistry do
       [{^workspace_id, workspace}] ->
         updated = %{workspace | status: status}
         :ets.insert(@workspaces_table, {workspace_id, updated})
+        publish_change(updated[:project_id], :status, workspace_id)
         {:ok, updated}
 
       [] ->
@@ -156,15 +157,37 @@ defmodule Loopyard.WorkspaceRegistry do
 
   @doc false
   def insert(workspace_id, workspace) do
-    :ets.insert(@workspaces_table, {workspace_id, workspace})
+    result = :ets.insert(@workspaces_table, {workspace_id, workspace})
+    publish_change(workspace[:project_id], :created, workspace_id)
+    result
   end
 
   @doc false
   def delete(workspace_id) do
-    :ets.delete(@workspaces_table, workspace_id)
+    project_id =
+      case :ets.lookup(@workspaces_table, workspace_id) do
+        [{^workspace_id, ws}] -> ws[:project_id]
+        _ -> nil
+      end
+
+    result = :ets.delete(@workspaces_table, workspace_id)
+    publish_change(project_id, :removed, workspace_id)
+    result
   end
 
   # --- Private ---
+
+  # Nudge the project's workspace-list subscribers (switcher + project grid) to
+  # reload. project_id can be nil for legacy/path-based workspaces — skip then.
+  defp publish_change(nil, _action, _workspace_id), do: :ok
+
+  defp publish_change(project_id, action, workspace_id) do
+    Loopyard.Events.Workspaces.publish(%Loopyard.Events.Workspaces.Changed{
+      project_id: project_id,
+      action: action,
+      workspace_id: workspace_id
+    })
+  end
 
   defp create_workspace(project_id, workspace_name, path) do
     project = Loopyard.ProjectRegistry.get_project(project_id)

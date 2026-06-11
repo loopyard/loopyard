@@ -26,6 +26,7 @@ defmodule LoopyardWeb.WorkspaceLive do
   @behaviour Loopyard.Events.WorkspaceServices.Subscriber
   @behaviour Loopyard.Events.SourceSync.Subscriber
   @behaviour Loopyard.Events.WorkspaceSetup.Subscriber
+  @behaviour Loopyard.Events.Workspaces.Subscriber
 
   @impl true
   def mount(%{"project_id" => project_id, "workspace_id" => workspace_id}, _session, socket) do
@@ -53,6 +54,11 @@ defmodule LoopyardWeb.WorkspaceLive do
       Loopyard.Workspace.ServiceManager.subscribe()
       Loopyard.Docker.Observer.subscribe()
       Loopyard.Events.WorkspaceSetup.subscribe(workspace.id)
+
+      # A workspace added/removed/status-changed in this project → refresh the
+      # left switcher live (a fork someone makes appears without a reload).
+      if project = extra_assigns[:project],
+        do: Loopyard.Events.Workspaces.subscribe(project.id)
 
       # Local workspaces broadcast sync-session state changes on their own
       # PubSub topic; the sidebar shows them in a small "Sync" card.
@@ -1156,6 +1162,8 @@ defmodule LoopyardWeb.WorkspaceLive do
   def handle_info(%Events.WorkspaceSetup.RetryScheduled{} = e, socket),
     do: on_setup_retry_scheduled(e, socket)
 
+  def handle_info(%Events.Workspaces.Changed{} = e, socket), do: on_workspaces_changed(e, socket)
+
   # Non-PubSub internal messages (send/2 self-dispatches, async task
   # replies). These aren't subject to the publisher-module boundary
   # because they never leave this process.
@@ -1427,6 +1435,14 @@ defmodule LoopyardWeb.WorkspaceLive do
 
   @impl Events.WorkspaceServices.Subscriber
   def on_services_updated(event, socket), do: DockerEvents.handle_services_updated(event, socket)
+
+  # --- Workspaces (switcher list) subscriber callback ---
+
+  @impl Events.Workspaces.Subscriber
+  def on_workspaces_changed(_event, socket) do
+    {:noreply,
+     assign(socket, :project_workspaces, list_project_workspaces(socket.assigns.project))}
+  end
 
   # --- SourceSync subscriber callbacks ---
   # Logic extracted to DockerEvents — callbacks delegate there.

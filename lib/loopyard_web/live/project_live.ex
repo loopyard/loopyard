@@ -10,6 +10,7 @@ defmodule LoopyardWeb.ProjectLive do
   @behaviour Loopyard.Events.ChatAgent.Subscriber
   @behaviour Loopyard.Events.WorkspaceServices.Subscriber
   @behaviour Loopyard.Events.WorkspaceSetup.Subscriber
+  @behaviour Loopyard.Events.Workspaces.Subscriber
 
   @impl true
   def mount(%{"project_id" => project_id}, _session, socket) do
@@ -24,6 +25,8 @@ defmodule LoopyardWeb.ProjectLive do
         # Subscribe to setup events globally so workspace cards reflect
         # in-flight Setup sagas without waiting for a card click.
         Loopyard.Events.WorkspaceSetup.subscribe_global()
+        # A workspace added/removed/status-changed → refresh the grid live.
+        Loopyard.Events.Workspaces.subscribe(project_id)
         # Service/volume counts touch the filesystem and Docker — never
         # block mount on them. Render immediately with zeros, then fill
         # in via :fetch_service_counts.
@@ -248,6 +251,8 @@ defmodule LoopyardWeb.ProjectLive do
   def handle_info(%Events.WorkspaceSetup.RetryScheduled{} = e, socket),
     do: on_setup_retry_scheduled(e, socket)
 
+  def handle_info(%Events.Workspaces.Changed{} = e, socket), do: on_workspaces_changed(e, socket)
+
   def handle_info(:fetch_service_counts, socket) do
     # Initial async fill after mount. Load all three sections off the LV
     # process via start_async so a slow Docker call can't block message
@@ -320,6 +325,20 @@ defmodule LoopyardWeb.ProjectLive do
     # Compose result doesn't directly change what this page shows —
     # the service status broadcast follows and drives the refresh.
     {:noreply, socket}
+  end
+
+  # --- Workspaces (grid list) subscriber callback ---
+
+  @impl Events.Workspaces.Subscriber
+  def on_workspaces_changed(_e, socket) do
+    # A workspace appeared/disappeared/changed status — reload the grid so a
+    # fork (or a deletion) shows up live for everyone on the project page.
+    {:noreply,
+     assign(
+       socket,
+       :workspaces,
+       SectionLoader.load_workspaces(socket.assigns.project, [:agents, :services, :volumes])
+     )}
   end
 
   # --- WorkspaceSetup subscriber callbacks ---
