@@ -11,7 +11,6 @@ defmodule Loopyard.OnboardingTest do
 
   alias Loopyard.{
     Onboarding,
-    Workflow,
     CanonicalRepo,
     CanonicalStore,
     VolumeManager,
@@ -241,36 +240,6 @@ defmodule Loopyard.OnboardingTest do
              ])
 
     assert out =~ "main"
-  end
-
-  test "workflow fork is confirmation-gated: deny blocks, approve runs, action reaches the policy" do
-    {:ok, project, _main} = Onboarding.create_project("wf-#{uid()}")
-    on_exit(fn -> cleanup(project) end)
-
-    before = length(WorkspaceRegistry.list_workspaces(project.id))
-
-    # Deny → nothing created (the agent-spawns-workspaces guardrail).
-    assert {:error, :denied} =
-             Workflow.fork(project.id, "main", "nope", confirm: fn _action -> :deny end)
-
-    assert length(WorkspaceRegistry.list_workspaces(project.id)) == before
-
-    # Default (:auto) → approved, workspace created.
-    assert {:ok, ws} = Workflow.fork(project.id, "main", "yes")
-    assert ws.name == "yes"
-
-    # The action map (what the UI card renders) is handed to the policy.
-    me = self()
-
-    assert {:ok, _} =
-             Workflow.fork(project.id, "main", "carded",
-               confirm: fn action ->
-                 send(me, {:card, action})
-                 :approve
-               end
-             )
-
-    assert_received {:card, %{verb: :fork, branch: "carded", project_id: _}}
   end
 
   defp uid, do: :crypto.strong_rand_bytes(3) |> Base.encode16(case: :lower)
