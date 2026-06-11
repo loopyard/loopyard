@@ -709,12 +709,23 @@ defmodule LoopyardWeb.WorkspaceLive do
   @impl true
   def handle_event("decide_approval", %{"approval_id" => id, "decision" => decision}, socket) do
     decision = if decision == "approve", do: :approve, else: :deny
+    agent_id = socket.assigns.selected_id
 
-    # The action lives on the approval card message.
-    action =
-      Enum.find_value(socket.assigns.messages, fn m ->
-        if m[:approval_id] == id, do: m[:action]
-      end)
+    # The approval card message carries both the action and its msg id.
+    card =
+      Enum.find(socket.assigns.messages, fn m -> m[:approval_id] == id end)
+
+    action = card && card[:action]
+
+    # Optimistically flip the card to its working state the instant the human
+    # clicks — fork/integrate can take a few seconds, and we don't want the
+    # buttons to sit there looking unclicked. Persisted + broadcast, so every
+    # viewer sees "Creating…/Merging…" immediately. The tool's own resolve/3
+    # calls that follow are idempotent.
+    if decision == :approve && agent_id && card && action[:verb] != :delete_workspace do
+      transient = if action[:verb] == :integrate, do: :integrating, else: :creating
+      ChatAgent.update_message(agent_id, card.id, fn m -> Map.put(m, :status, transient) end)
+    end
 
     # Deliver to the blocked propose_* tool. For fork/integrate the tool runs the
     # action; for delete_workspace the agent would be killed by its own

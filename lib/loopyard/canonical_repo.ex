@@ -97,6 +97,37 @@ defmodule Loopyard.CanonicalRepo do
   end
 
   @doc """
+  Fork from a LIVE workspace: copy the source workspace's code volume — its
+  full working tree (including uncommitted edits), its gitignored `.loopyard/`
+  infra (Dockerfile, docker-compose.yml), and its `.git` — into a fresh volume,
+  then cut `new_branch` from the copy's current HEAD.
+
+  This is "branch THIS and try something else": the new workspace is a true
+  copy of the running one, just on its own branch + volume, so it boots with
+  the same env and the same in-progress work. (`fork/4` clones the canonical
+  bare repo instead — committed state only, no infra — for "new branch from
+  main" when there's no live workspace to copy.) Returns the new volume name.
+  """
+  @spec fork_from_workspace(String.t(), String.t(), String.t()) ::
+          {:ok, String.t()} | {:error, term()}
+  def fork_from_workspace(source_ws_id, new_ws_id, new_branch) do
+    src = VolumeManager.code_volume_name(source_ws_id)
+    dst = VolumeManager.code_volume_name(new_ws_id)
+
+    # cp -a preserves perms + dotfiles (.git, .loopyard). checkout -b keeps the
+    # working tree, so uncommitted changes ride along onto the new branch.
+    cmd =
+      "cp -a /src/. /workspace/ && cd /workspace && #{@identity} && " <>
+        "git config --global --add safe.directory /workspace && " <>
+        "git checkout -b #{shq(new_branch)}"
+
+    with :ok <- VolumeManager.create_volume(dst),
+         {:ok, _} <- git([{src, "/src"}, {dst, "/workspace"}], cmd, timeout: 300_000) do
+      {:ok, dst}
+    end
+  end
+
+  @doc """
   Materialize a workspace volume as a clone of the canonical on an EXISTING
   branch (e.g. "main" for the project's main workspace). Unlike `fork/4`, no
   new branch is created. Returns the workspace code-volume name.

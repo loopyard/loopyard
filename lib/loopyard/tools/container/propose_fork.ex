@@ -31,7 +31,10 @@ defmodule Loopyard.Tools.Container.ProposeFork do
         {:approve, msg_id} ->
           Approvals.resolve(agent_id, msg_id, %{status: :creating})
 
-          case Onboarding.fork(project_id, base, branch) do
+          # Copy THIS workspace (working tree + .loopyard infra), not a fresh
+          # canonical clone — "branch this and try something else" should bring
+          # the in-progress files and env along. `base` is just the card label.
+          case Onboarding.fork_from_workspace(project_id, ws_id, branch) do
             {:ok, new_ws} ->
               Approvals.resolve(agent_id, msg_id, %{
                 status: :approved,

@@ -50,6 +50,37 @@ defmodule Loopyard.OnboardingTest do
     assert out =~ "hi"
   end
 
+  test "fork_from_workspace copies the LIVE workspace: uncommitted edits + .loopyard infra" do
+    {:ok, project, main_ws} = Onboarding.create_project("livefork-#{uid()}")
+    on_exit(fn -> cleanup(project) end)
+
+    # The agent has UNCOMMITTED work-in-progress + gitignored infra in its volume.
+    :ok = VolumeIO.write_file(main_ws.volume, "wip.txt", "in progress\n")
+
+    :ok =
+      VolumeIO.write_file(
+        main_ws.volume,
+        ".loopyard/workspace/docker-compose.yml",
+        ~s(services:\n  web:\n    image: nginx:alpine\n)
+      )
+
+    # "Branch THIS and try something else" — fork the live workspace.
+    {:ok, fork} = Onboarding.fork_from_workspace(project.id, main_ws.id, "experiment")
+
+    # New branch, its own volume.
+    assert {:ok, b} = git_in(fork.volume, "git branch --show-current")
+    assert b =~ "experiment"
+    refute fork.volume == main_ws.volume
+
+    # The in-progress file came along (it was never committed).
+    assert {:ok, wip} = git_in(fork.volume, "cat wip.txt")
+    assert wip =~ "in progress"
+
+    # The gitignored .loopyard infra came along too — so the fork boots ready.
+    assert {:ok, compose} = git_in(fork.volume, "cat .loopyard/workspace/docker-compose.yml")
+    assert compose =~ "nginx:alpine"
+  end
+
   test "working is the default: start_working boots a cheap agent container, no compose cluster" do
     {:ok, project, ws} = Onboarding.create_project("working-#{uid()}")
 

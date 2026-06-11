@@ -92,6 +92,27 @@ defmodule Loopyard.Onboarding do
   end
 
   @doc """
+  Fork from a LIVE workspace — copy `source_ws_id`'s volume (working tree +
+  `.loopyard` infra + git history) onto a new branch in its own volume. This is
+  what an agent's `propose_fork` should do: "branch THIS workspace and try
+  something else" brings the in-progress files and the env config along, so the
+  new workspace boots ready instead of empty. See
+  `CanonicalRepo.fork_from_workspace/3`.
+  """
+  @spec fork_from_workspace(String.t(), String.t(), String.t()) ::
+          {:ok, map()} | {:error, term()}
+  def fork_from_workspace(project_id, source_ws_id, branch) do
+    ws_id = uid()
+
+    with {:ok, _ws_vol} <- CanonicalRepo.fork_from_workspace(source_ws_id, ws_id, branch) do
+      ws = register_workspace(project_id, ws_id, branch, is_main: false)
+      persist(project_id)
+      start_work_async(ws_id)
+      {:ok, ws}
+    end
+  end
+
+  @doc """
   Attach (or change) the git remote a project syncs to — the "hook up GitHub
   later" move (#13). Persisted. `remote_url` is a git URL string.
   """

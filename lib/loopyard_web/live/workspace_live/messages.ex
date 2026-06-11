@@ -25,6 +25,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
 
   alias LoopyardWeb.Components.ToolSummary
 
+  # Tools that render their OWN interactive card (role: :approval / :question) —
+  # the card IS the human-facing surface, so we suppress the raw tool-call echo
+  # and the tool-result echo for them. Matched by suffix against the fully
+  # qualified MCP tool name (e.g. "mcp__loopyard-container__propose_fork").
+  @miniapp_tools ~w(propose_fork propose_integrate propose_delete_workspace ask_user)
+
   attr :msg, :map, required: true
   attr :idx, :integer, required: true
   attr :messages, :list, default: []
@@ -279,6 +285,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   end
 
   def chat_msg(%{msg: %{role: :tool}} = assigns) do
+    # Mini-app tools own their own card — don't also echo the raw tool call.
+    if miniapp_tool?(assigns.msg[:tool] || "") do
+      ~H"<div></div>"
+    else
+      render_tool_call(assigns)
+    end
+  end
+
+  defp render_tool_call(assigns) do
     tool_name = assigns.msg[:tool] || ""
     input = assigns.msg.input || %{}
 
@@ -351,6 +366,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
 
     cond do
       is_binary(content) && String.contains?(content, "completed with no output") ->
+        ~H"<div></div>"
+
+      # Mini-app tools (propose_fork, ask_user, …) show their outcome in their
+      # own card — the tool-result echo below it is the "card thing" we don't want.
+      miniapp_tool_result?(assigns) ->
         ~H"<div></div>"
 
       # exec output is already shown in the streaming build message above —
@@ -528,6 +548,34 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   end
 
   defp answer_for(_msg, _q), do: "✓ answered"
+
+  defp miniapp_tool?(tool) when is_binary(tool),
+    do: Enum.any?(@miniapp_tools, &String.ends_with?(tool, &1))
+
+  defp miniapp_tool?(_), do: false
+
+  # A tool_result whose matching :tool call is a mini-app tool — its outcome
+  # already lives in the approval/question card, so suppress the echo.
+  defp miniapp_tool_result?(assigns) do
+    case matching_tool_call(assigns) do
+      %{role: :tool, tool: tool} when is_binary(tool) -> miniapp_tool?(tool)
+      _ -> false
+    end
+  end
+
+  # Walk backwards from a tool_result to the :tool call it belongs to, skipping
+  # any streamed build messages in between.
+  defp matching_tool_call(assigns) do
+    idx = assigns[:idx]
+    messages = assigns[:messages]
+
+    if idx && messages && idx > 0 do
+      messages
+      |> Enum.slice(0, idx)
+      |> Enum.reverse()
+      |> Enum.find(fn m -> m.role not in [:build, :build_done, :build_failed] end)
+    end
+  end
 
   # Check if this tool_result has a streamed build message above it —
   # the output was already shown live, so rendering it again is redundant.
