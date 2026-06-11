@@ -710,12 +710,31 @@ defmodule LoopyardWeb.WorkspaceLive do
   def handle_event("decide_approval", %{"approval_id" => id, "decision" => decision}, socket) do
     decision = if decision == "approve", do: :approve, else: :deny
 
-    # Deliver to the blocked propose_fork tool. It runs the fork (off this
-    # process, so the LiveView never freezes) and flips the card to the outcome
-    # for everyone.
-    case Loopyard.Harness.Approvals.decide(id, decision) do
-      :ok -> {:noreply, socket}
-      {:error, :not_found} -> {:noreply, put_flash(socket, :info, "That proposal was already decided.")}
+    # The action lives on the approval card message.
+    action =
+      Enum.find_value(socket.assigns.messages, fn m ->
+        if m[:approval_id] == id, do: m[:action]
+      end)
+
+    # Deliver to the blocked propose_* tool. For fork/integrate the tool runs the
+    # action; for delete_workspace the agent would be killed by its own
+    # deletion, so the LiveView runs the destroy + navigates away.
+    Loopyard.Harness.Approvals.decide(id, decision)
+
+    cond do
+      decision == :approve && action && action[:verb] == :delete_workspace ->
+        ws_id = action.workspace_id
+        Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
+          Loopyard.Workspace.Destructor.destroy(ws_id)
+        end)
+
+        {:noreply,
+         socket
+         |> put_flash(:info, "Workspace deleted.")
+         |> push_navigate(to: "/projects/#{action.project_id}")}
+
+      true ->
+        {:noreply, socket}
     end
   end
 

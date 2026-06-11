@@ -59,7 +59,8 @@ defmodule Loopyard.Tools.Container do
     Container.FileInfo,
     Container.AskUser,
     Container.ProposeFork,
-    Container.ProposeIntegrate
+    Container.ProposeIntegrate,
+    Container.ProposeDeleteWorkspace
   ]
 
   def __tool_server__ do

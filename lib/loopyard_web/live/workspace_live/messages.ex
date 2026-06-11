@@ -101,7 +101,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3.5 h-3.5">
             <path d="M8 1.5a2 2 0 0 0-2 2v.5H4.5A1.5 1.5 0 0 0 3 5.5v.879a2.5 2.5 0 0 0 0 4.242V13.5A1.5 1.5 0 0 0 4.5 15h7a1.5 1.5 0 0 0 1.5-1.5v-2.879a2.5 2.5 0 0 0 0-4.242V5.5A1.5 1.5 0 0 0 11.5 4H10v-.5a2 2 0 0 0-2-2Z" />
           </svg>
-          {if @action.verb == :integrate, do: "Merge proposal — needs your OK", else: "Branch proposal — needs your OK"}
+          {case @action.verb do
+            :integrate -> "Merge proposal — needs your OK"
+            :delete_workspace -> "Delete workspace — needs your OK"
+            _ -> "Branch proposal — needs your OK"
+          end}
         </div>
 
         <div :if={@action.verb == :integrate} class="text-sm text-zinc-800 dark:text-zinc-200 mb-1">
@@ -109,7 +113,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
           → <code class="text-xs bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">main</code>
           <span class="text-zinc-400">(rebase + merge into the green main)</span>
         </div>
-        <div :if={@action.verb != :integrate} class="text-sm text-zinc-800 dark:text-zinc-200 mb-1">
+        <div :if={@action.verb == :delete_workspace} class="text-sm text-zinc-800 dark:text-zinc-200 mb-1">
+          Delete workspace
+          <code class="text-xs bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">{@action.branch}</code>
+          <span class="text-zinc-400">— removes its env + containers (the code stays in main)</span>
+        </div>
+        <div :if={@action.verb == :fork} class="text-sm text-zinc-800 dark:text-zinc-200 mb-1">
           Fork <code class="text-xs bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">{@action.base}</code>
           → new branch
           <code class="text-xs bg-violet-200/70 dark:bg-violet-800/50 rounded px-1 py-0.5">{@action.branch}</code>
@@ -126,9 +135,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
                 phx-click="decide_approval"
                 phx-value-approval_id={@msg.approval_id}
                 phx-value-decision="approve"
-                class="focus-ring inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-4 py-1.5 text-sm font-medium text-white transition-colors"
+                class={[
+                  "focus-ring inline-flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium text-white transition-colors",
+                  if(@action.verb == :delete_workspace,
+                    do: "bg-red-600 hover:bg-red-700",
+                    else: "bg-emerald-600 hover:bg-emerald-700"
+                  )
+                ]}
               >
-                Approve
+                {if @action.verb == :delete_workspace, do: "Delete", else: "Approve"}
               </button>
               <button
                 type="button"
