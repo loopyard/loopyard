@@ -7,13 +7,15 @@ defmodule LoopyardWeb.WorkspaceLive do
   alias Loopyard.StreamBuffer
 
   use LoopyardWeb.Live.WorkspaceLive.Components
+  import LoopyardWeb.Live.WorkspaceLive.MainContent
 
   alias LoopyardWeb.Live.WorkspaceLive.{
     AgentLifecycle,
     DiffLoader,
     DockerEvents,
     FileBrowser,
-    ServiceLogs
+    ServiceLogs,
+    Switcher
   }
 
   # Move #3 strict subscriber behaviours — compile-time enforcement that
@@ -125,10 +127,10 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:workspace_entry, extra_assigns[:workspace_entry])
      |> assign(
        :project_workspaces,
-       list_project_workspaces(extra_assigns[:project], socket.transport_pid)
+       Switcher.list_project_workspaces(extra_assigns[:project], socket.transport_pid)
      )
      |> assign(:base_path, base_path)
-     |> attach_view_tracker()
+     |> Switcher.attach_view_tracker()
      |> assign(:host, host)
      |> assign(:agents, agents)
      |> assign(:service_statuses, service_statuses)
@@ -1448,7 +1450,7 @@ defmodule LoopyardWeb.WorkspaceLive do
      assign(
        socket,
        :project_workspaces,
-       list_project_workspaces(socket.assigns.project, socket.transport_pid)
+       Switcher.list_project_workspaces(socket.assigns.project, socket.transport_pid)
      )}
   end
 
@@ -1681,62 +1683,6 @@ defmodule LoopyardWeb.WorkspaceLive do
     end
   end
 
-  # Sibling workspaces of this project, for the left switcher rail. Cheap
-  # (ETS only). Returns [] when there's no project (legacy single-workspace).
-  defp list_project_workspaces(nil, _conn), do: []
-
-  defp list_project_workspaces(project, conn) do
-    # Enrich each sibling workspace with (a) this WINDOW's last-viewed path there
-    # (resume where you left off, per-window) and (b) its most-recent agent id
-    # (the fallback when there's nothing to resume — lands in a chat, not a blank
-    # "select an agent" screen). list_agents/0 is newest-first, so the first
-    # agent per workspace is the latest.
-    agents_by_ws = Enum.group_by(ChatAgent.list_agents(), & &1[:workspace_id])
-
-    Loopyard.ProjectRegistry.list_workspaces(project.id)
-    |> Enum.map(fn ws ->
-      latest = agents_by_ws |> Map.get(ws.id, []) |> List.first()
-
-      ws
-      |> Map.put(:latest_agent_id, latest && latest.id)
-      |> Map.put(:resume_path, Loopyard.WindowViews.resume_path(conn, ws.id))
-    end)
-  end
-
-  # Record where this window is, per workspace, so the switcher resumes there.
-  # A handle_params hook fires on every navigation (initial + each patch),
-  # keyed by socket.transport_pid (the window's connection — stable across the
-  # workspace-switch remount, unique per window).
-  defp attach_view_tracker(socket) do
-    if connected?(socket) do
-      conn = socket.transport_pid
-
-      # Clean up this window's view rows when its CONNECTION dies (tab/window
-      # closed, socket dropped) — not when the per-workspace LiveView remounts.
-      # Owner = the connection, so a workspace switch (same conn, new LV) is NOT
-      # a teardown and the map survives. Re-tracking on each mount is idempotent.
-      Loopyard.Resources.track(conn, :window_views, conn, fn ->
-        Loopyard.WindowViews.clear(conn)
-      end)
-
-      attach_hook(socket, :track_view, :handle_params, fn _params, uri, socket ->
-        c = socket.transport_pid
-        ws_id = socket.assigns.workspace.id
-        if c && ws_id, do: Loopyard.WindowViews.touch(c, ws_id, view_path(uri))
-        {:cont, socket}
-      end)
-    else
-      socket
-    end
-  end
-
-  defp view_path(uri) do
-    case URI.parse(uri) do
-      %URI{path: path} -> path
-      _ -> nil
-    end
-  end
-
   # --- Render ---
 
   @impl true
@@ -1769,154 +1715,7 @@ defmodule LoopyardWeb.WorkspaceLive do
           id="main-content"
           class={"flex-1 flex flex-col min-w-0 #{if @live_action == :index && !@selected_id && !@selected_service, do: "hidden md:flex", else: "flex"}"}
         >
-          <%!-- When the workspace setup saga hasn't finished (volume not yet
-               populated) take over the main content area. The sidebar keeps
-               showing so the user has navigation; the workspace content is
-               replaced with the SetupProgress step list. --%>
-          <%= if !Loopyard.Workspace.ready?(@workspace_entry) do %>
-            <.setup_progress
-              setup={Map.get(@workspace_entry, :setup, %{phase: :pending})}
-              workspace_id={@workspace.id}
-              workspace_name={@workspace_entry[:name] || ""}
-            />
-          <% else %>
-            <%!-- Stopped-workspace screen only when the user isn't looking
-               at a specific agent. Agent history stays readable regardless
-               of service state — sending new messages is what the running
-               workspace gates. --%>
-            <%!-- Cluster is down → show the big "Start workspace" empty
-               state ONLY on the workspace root and the agent-less
-               chat/container routes. Volume, git, sync, service, and
-               new-agent views all carry their own content that should
-               render regardless of cluster state — overlaying the
-               start screen on top of them is the bug we're avoiding. --%>
-            <.workspace_not_running
-              :if={
-                @workspace_state in [:stopped, :starting] && !@selected_agent &&
-                  is_nil(@booting_agent_id) &&
-                  @live_action in [:index, :chat, :container]
-              }
-              workspace={@workspace}
-              workspace_state={@workspace_state}
-              base_path={@base_path}
-            />
-            <.new_agent_screen
-              :if={@live_action == :new}
-              workspace={@workspace}
-              base_path={@base_path}
-            />
-            <.service_log_view
-              :if={@live_action == :service}
-              service_name={@selected_service}
-              service_statuses={@service_statuses}
-              logs={@service_logs}
-              base_path={@base_path}
-              host={@host}
-              workspace_state={@workspace_state}
-            />
-            <.console_view
-              :if={@live_action == :console}
-              service_name={@selected_service}
-              container={@console_container}
-            />
-            <.all_services_view :if={@live_action == :services} all_service_logs={@all_service_logs} />
-            <.volume_detail
-              :if={@live_action in [:volume, :volume_files_root, :volume_file, :volume_git]}
-              volume_name={@selected_volume}
-              volumes={@volumes}
-              workspace_id={@workspace.id}
-              base_path={@base_path}
-              volume_tab={@volume_tab}
-              file_tree={@file_tree}
-              file_content={@file_content}
-              file_path={@file_path}
-              browse_path={@browse_path}
-              git_log={@git_log}
-              git_status={@git_status}
-              diff_content={@diff_content}
-              supports_git={@supports_git}
-            />
-            <%= if @live_action in [:git_diff, :git_staged_diff] && @diff_content && @diff_content != :loading do %>
-              <div class="flex flex-col h-full">
-                <div class="flex-none px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center gap-2 text-xs">
-                  <.link
-                    patch={"#{@base_path}/volumes/#{@selected_volume}/git"}
-                    class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                  >
-                    ← Git
-                  </.link>
-                  <span class="text-zinc-300 dark:text-zinc-600">·</span>
-                  <span class="font-mono text-zinc-600 dark:text-zinc-400">{@diff_path}</span>
-                  <span
-                    :if={@live_action == :git_staged_diff}
-                    class="text-green-600 dark:text-green-400 text-[10px] font-semibold uppercase"
-                  >
-                    staged
-                  </span>
-                </div>
-                <LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer.diff_viewer
-                  diff={@diff_content}
-                  path={@diff_path}
-                />
-              </div>
-            <% end %>
-            <%= if @live_action == :git_commit && is_map(@commit_detail) do %>
-              <div class="flex flex-col h-full">
-                <div class="flex-none px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80 text-xs">
-                  <.link
-                    patch={"#{@base_path}/volumes/#{@selected_volume}/git"}
-                    class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                  >
-                    ← Git
-                  </.link>
-                </div>
-                <LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer.commit_detail
-                  commit={@commit_detail}
-                  base_path={@base_path}
-                  volume_name={@selected_volume}
-                />
-              </div>
-            <% end %>
-            <%= if @live_action == :git_commit_file && @diff_content && @diff_content != :loading do %>
-              <div class="flex flex-col h-full">
-                <div class="flex-none px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center gap-2 text-xs">
-                  <.link
-                    patch={"#{@base_path}/volumes/#{@selected_volume}/git/commits/#{@commit_sha}"}
-                    class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                  >
-                    ← {String.slice(@commit_sha || "", 0..6)}
-                  </.link>
-                  <span class="text-zinc-300 dark:text-zinc-600">·</span>
-                  <span class="font-mono text-zinc-600 dark:text-zinc-400">{@diff_path}</span>
-                </div>
-                <LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer.diff_viewer
-                  diff={@diff_content}
-                  path={@diff_path}
-                />
-              </div>
-            <% end %>
-            <.sync_detail
-              :if={@live_action == :sync}
-              sync_status={@sync_status}
-              workspace_id={@workspace.id}
-              workspace={@workspace}
-            />
-            <.booting_screen
-              :if={
-                @live_action in [:index, :chat, :container] && @booting_agent_id && !@selected_agent
-              }
-              agent_id={@booting_agent_id}
-              status={@boot_status}
-              boot_log={@boot_log}
-            />
-            <.empty_state :if={
-              @live_action in [:index, :chat, :container] && !@booting_agent_id && !@selected_agent
-            } />
-            <.agent_view
-              :if={@live_action in [:index, :chat, :container, :context_panel] && @selected_agent}
-              {assigns}
-            />
-          <% end %>
+          <.main_content {assigns} />
         </main>
         <%!-- RIGHT rail: Agents/Services/Volumes nav + the selected agent's
              context (model, tokens, cost). The old left sidebar, flipped. --%>
