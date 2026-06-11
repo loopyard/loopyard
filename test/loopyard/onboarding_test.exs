@@ -84,6 +84,38 @@ defmodule Loopyard.OnboardingTest do
     refute Loopyard.Workspace.working?(ws.id)
   end
 
+  test "git works in the work container against the canonical workspace's .git (commit lands)" do
+    {:ok, project, ws} = Onboarding.create_project("git-#{uid()}")
+
+    on_exit(fn ->
+      Loopyard.Workspace.WorkContainer.down(ws.id)
+      cleanup(project)
+    end)
+
+    alias Loopyard.Workspace.WorkContainer
+    {:ok, _} = WorkContainer.ensure_up(ws.id)
+
+    setup_git =
+      "git config --global --add safe.directory /workspace; " <>
+        "git config --global user.email a@a; git config --global user.name A"
+
+    # The canonical checkout seeded an initial commit on main — the agent can read it.
+    assert {:ok, log} = WorkContainer.exec(ws.id, "#{setup_git}; git -C /workspace log --oneline")
+    assert log =~ ~r/\w+/
+
+    # The agent can commit new work — which is what makes merge-back meaningful.
+    assert {:ok, _} = WorkContainer.exec(ws.id, "echo 'agent change' > /workspace/feature.txt")
+
+    assert {:ok, _} =
+             WorkContainer.exec(
+               ws.id,
+               "#{setup_git}; git -C /workspace add -A && git -C /workspace commit -m 'agent work'"
+             )
+
+    assert {:ok, log2} = WorkContainer.exec(ws.id, "git -C /workspace log --oneline")
+    assert log2 =~ "agent work"
+  end
+
   test "preview env opt-in: code-ready workspace + compose → a real running container" do
     {:ok, project, ws} = Onboarding.create_project("preview-#{uid()}")
 

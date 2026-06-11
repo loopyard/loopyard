@@ -46,25 +46,66 @@ defmodule Loopyard.Tools.Container.Git do
            "You can still read other branches: git diff main, git show main:file, git merge main, etc."}
 
       _ ->
-        case host_git_path(workspace_id) do
-          {:ok, path} ->
-            case System.cmd("git", args,
-                   cd: path,
-                   stderr_to_stdout: true,
-                   env: [{"GIT_TERMINAL_PROMPT", "0"}]
-                 ) do
-              {output, 0} ->
-                {:ok, Pagination.cap(output)}
-
-              {output, code} ->
-                {:error, "git #{command} failed (exit #{code}):\n#{Pagination.cap(output)}"}
-            end
-
-          {:error, reason} ->
-            {:error, reason}
+        # Volume-backed workspaces keep their `.git` INSIDE the code volume
+        # (at /workspace), reachable only through the container — run git there.
+        # Legacy Local workspaces keep the host worktree path.
+        if volume_based?(workspace_id) do
+          run_git_in_container(workspace_id, args, command)
+        else
+          run_git_host(workspace_id, args, command)
         end
     end
   end
+
+  defp run_git_host(workspace_id, args, command) do
+    case host_git_path(workspace_id) do
+      {:ok, path} ->
+        case System.cmd("git", args,
+               cd: path,
+               stderr_to_stdout: true,
+               env: [{"GIT_TERMINAL_PROMPT", "0"}]
+             ) do
+          {output, 0} -> {:ok, Pagination.cap(output)}
+          {output, code} -> {:error, "git #{command} failed (exit #{code}):\n#{Pagination.cap(output)}"}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp run_git_in_container(workspace_id, args, command) do
+    case Loopyard.Workspace.ensure_working(workspace_id) do
+      {:ok, container} ->
+        git_args = Enum.map_join(args, " ", &shq/1)
+
+        # safe.directory + a default identity so commits work in the container.
+        # (Per-participant authorship is a future refinement.)
+        cmd =
+          "git config --global --add safe.directory /workspace 2>/dev/null; " <>
+            "git config --global user.email 'loopyard@local' 2>/dev/null; " <>
+            "git config --global user.name 'Loopyard' 2>/dev/null; " <>
+            "git -C /workspace #{git_args}"
+
+        case Loopyard.Docker.exec_in(container, cmd) do
+          {:ok, output} -> {:ok, Pagination.cap(output)}
+          {:error, output} -> {:error, "git #{command} failed:\n#{Pagination.cap(output)}"}
+        end
+
+      {:error, reason} ->
+        {:error, "Couldn't reach the workspace container for git: #{inspect(reason)}"}
+    end
+  end
+
+  defp volume_based?(workspace_id) do
+    case Loopyard.ProjectRegistry.get_workspace(workspace_id) do
+      %{volume_based: true} -> true
+      _ -> false
+    end
+  end
+
+  # Single-quote an arg for safe interpolation into the container shell command.
+  defp shq(s), do: "'" <> String.replace(s, "'", "'\\''") <> "'"
 
   defp host_git_path(workspace_id) do
     with %{project_id: project_id} = workspace <-
