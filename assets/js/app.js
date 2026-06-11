@@ -251,32 +251,34 @@ Hooks.CopySource = {
   }
 }
 
-// Per-workspace "last view" memory. Purely browser-side (localStorage) —
-// per-user, per-device, no server/db state.
-const WS_VIEW_KEY = (id) => "loopyard:lastview:" + id
+// Generic client-side navigation memory — like the browser's own scroll
+// restoration, but for "which screen was I on." No per-feature JS: opt in
+// purely with data attributes, reusable for any "remember where I was" need.
+//
+//   data-remember="<key>"  on an element → saves the current URL under <key>
+//                                          (on mount + every LiveView update)
+//   data-resume="<key>"    on a link     → clicking it resumes to <key>'s
+//                                          saved URL, else the link's own href
+const NAV_KEY = (k) => "nav:" + k
 
-// Record the current path as this workspace's last view (hook at the LV top
-// level — hooks nested in function components don't mount reliably).
-Hooks.WorkspaceMemory = {
-  mounted() { this.record() },
-  updated() { this.record() },
-  record() {
-    const id = this.el.dataset.workspaceId
-    if (!id) return
-    try { localStorage.setItem(WS_VIEW_KEY(id), location.pathname + location.search) } catch (e) {}
+Hooks.RememberNav = {
+  mounted() { this.save() },
+  updated() { this.save() },
+  save() {
+    const k = this.el.dataset.remember
+    if (!k) return
+    try { localStorage.setItem(NAV_KEY(k), location.pathname + location.search) } catch (e) {}
   }
 }
 
-// Resume a workspace at its last-viewed screen: rewrite the switcher link's
-// href at CLICK time (capture phase, before LiveView's handler reads it), so a
-// re-render can't clobber it. No remembered view → the server-rendered default
-// href (latest agent) stands.
+// Apply the remembered URL at CLICK time (capture phase, before LiveView's
+// handler reads the href) so a re-render can't clobber a pre-set href.
 document.addEventListener("click", (e) => {
-  const a = e.target.closest && e.target.closest("a[data-ws-resume]")
+  const a = e.target.closest && e.target.closest("a[data-resume]")
   if (!a) return
-  let remembered = null
-  try { remembered = localStorage.getItem(WS_VIEW_KEY(a.dataset.wsId)) } catch (e) {}
-  if (remembered) a.setAttribute("href", remembered)
+  let saved = null
+  try { saved = localStorage.getItem(NAV_KEY(a.dataset.resume)) } catch (e) {}
+  if (saved) a.setAttribute("href", saved)
 }, true)
 
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")

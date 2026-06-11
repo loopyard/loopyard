@@ -1685,14 +1685,15 @@ defmodule LoopyardWeb.WorkspaceLive do
       phx-hook="ScrollBottom"
       class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100"
     >
-      <%!-- Browser-side per-workspace "last view" memory. Records this view as
-           the workspace's last screen and rewrites the switcher links to
-           resume there. data-key changes on view switches so updated() fires. --%>
+      <%!-- Generic nav memory (RememberNav hook): saves this view as the last
+           screen for key "ws:<id>" so the switcher can resume here. data-nav
+           changes on view switches so the hook's updated() fires and re-saves.
+           data-remember/data-resume are a reusable primitive — see app.js. --%>
       <div
         id="workspace-memory"
-        phx-hook="WorkspaceMemory"
-        data-workspace-id={@workspace.id}
-        data-key={"#{@live_action}:#{@selected_id}:#{@selected_service}:#{@selected_volume}"}
+        phx-hook="RememberNav"
+        data-remember={"ws:#{@workspace.id}"}
+        data-nav={"#{@live_action}:#{@selected_id}:#{@selected_service}:#{@selected_volume}"}
         hidden
       >
       </div>
