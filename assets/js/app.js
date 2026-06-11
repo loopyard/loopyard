@@ -251,6 +251,33 @@ Hooks.CopySource = {
   }
 }
 
+// Per-workspace "last view" memory. Purely browser-side (localStorage) —
+// per-user, per-device, no server/db state. Two jobs, both at the LV top
+// level (hooks nested in function components don't mount reliably):
+//   1. record the current path as this workspace's last view, and
+//   2. rewrite the switcher links so jumping to a workspace resumes where
+//      you left off (falling back to the server-rendered default href).
+const WS_VIEW_KEY = (id) => "loopyard:lastview:" + id
+
+Hooks.WorkspaceMemory = {
+  mounted() { this.record(); this.restoreLinks() },
+  updated() { this.record(); this.restoreLinks() },
+  record() {
+    const id = this.el.dataset.workspaceId
+    if (!id) return
+    try { localStorage.setItem(WS_VIEW_KEY(id), location.pathname + location.search) } catch (e) {}
+  },
+  restoreLinks() {
+    document.querySelectorAll("a[data-ws-resume]").forEach((a) => {
+      const id = a.dataset.wsId
+      if (!id) return
+      let remembered = null
+      try { remembered = localStorage.getItem(WS_VIEW_KEY(id)) } catch (e) {}
+      if (remembered) a.setAttribute("href", remembered)
+    })
+  }
+}
+
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 let liveSocket = new LiveSocket("/live", Socket, {
   hooks: Hooks,

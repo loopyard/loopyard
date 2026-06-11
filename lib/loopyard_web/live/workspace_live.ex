@@ -1685,6 +1685,17 @@ defmodule LoopyardWeb.WorkspaceLive do
       phx-hook="ScrollBottom"
       class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100"
     >
+      <%!-- Browser-side per-workspace "last view" memory. Records this view as
+           the workspace's last screen and rewrites the switcher links to
+           resume there. data-key changes on view switches so updated() fires. --%>
+      <div
+        id="workspace-memory"
+        phx-hook="WorkspaceMemory"
+        data-workspace-id={@workspace.id}
+        data-key={"#{@live_action}:#{@selected_id}:#{@selected_service}:#{@selected_volume}"}
+        hidden
+      >
+      </div>
       <.chat_header
         workspace={@workspace}
         project={@project}
