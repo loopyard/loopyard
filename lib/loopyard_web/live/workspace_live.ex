@@ -693,6 +693,20 @@ defmodule LoopyardWeb.WorkspaceLive do
   end
 
   @impl true
+  def handle_event(
+        "answer_question",
+        %{"question_id" => qid, "q" => q_id, "option" => option},
+        socket
+      ) do
+    # Deliver the human's choice to the blocked harness question (multiplayer:
+    # the broker flips the message to :answered for every viewer).
+    case Loopyard.Harness.Questions.answer(qid, %{q_id => [option]}) do
+      :ok -> {:noreply, socket}
+      {:error, :not_found} -> {:noreply, put_flash(socket, :info, "That question was already answered.")}
+    end
+  end
+
+  @impl true
   def handle_event("restart_session", %{"id" => id}, socket) do
     ChatAgent.restart_session(id)
     {:noreply, socket}

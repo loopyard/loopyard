@@ -32,6 +32,61 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   attr :workspace_id, :string, default: nil
   attr :host, :string, default: "localhost"
 
+  # The agent asked the user a question (via the ask_user tool / harness
+  # question machinery). Render it as an interactive decision card — options as
+  # buttons. Multiplayer: this message is broadcast, so the card shows for the
+  # whole room; answering flips status to :answered for everyone.
+  def chat_msg(%{msg: %{role: :question}} = assigns) do
+    ~H"""
+    <div class="pl-10 py-2">
+      <div class="rounded-xl border border-violet-200 dark:border-violet-800/60 bg-violet-50/50 dark:bg-violet-900/10 p-4 max-w-xl">
+        <div class="flex items-center gap-1.5 text-xs font-medium text-violet-600 dark:text-violet-400 mb-3">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3.5 h-3.5">
+            <path
+              fill-rule="evenodd"
+              d="M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14Zm.93-9.412c-.44-.305-1.054-.305-1.494 0-.146.101-.27.245-.354.435a.75.75 0 0 1-1.372-.606c.18-.405.45-.74.819-.995 1.041-.722 2.486-.722 3.527 0 .54.375.94.94.94 1.626 0 .609-.314 1.07-.658 1.39-.124.115-.26.222-.387.32l-.10.078c-.179.139-.31.255-.404.385-.087.12-.12.222-.12.334a.75.75 0 0 1-1.5 0c0-.49.218-.884.47-1.226.21-.286.482-.502.679-.654l.078-.06c.139-.108.224-.18.286-.237.087-.08.108-.13.108-.27a.484.484 0 0 0-.298-.473ZM8 12a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"
+              clip-rule="evenodd"
+            />
+          </svg>
+          The agent needs your input
+        </div>
+
+        <div :for={q <- @msg.questions} class="mb-3 last:mb-0">
+          <div :if={q.header != ""} class="text-[11px] uppercase tracking-wide text-zinc-400 dark:text-zinc-500 mb-1">
+            {q.header}
+          </div>
+          <div class="text-sm font-medium text-zinc-800 dark:text-zinc-200 mb-2">{q.prompt}</div>
+
+          <div :if={@msg.status == :pending} class="flex flex-wrap gap-1.5">
+            <button
+              :for={o <- q.options}
+              type="button"
+              phx-click="answer_question"
+              phx-value-question_id={@msg.question_id}
+              phx-value-q={q.id}
+              phx-value-option={o.label}
+              title={o.description}
+              class="focus-ring inline-flex items-center rounded-lg border border-violet-300 dark:border-violet-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-sm font-medium text-violet-700 dark:text-violet-300 hover:bg-violet-600 hover:text-white hover:border-violet-600 transition-colors"
+            >
+              {o.label}
+            </button>
+          </div>
+
+          <div :if={@msg.status != :pending} class="flex flex-wrap items-center gap-2 text-sm">
+            <span class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 font-medium text-emerald-600 dark:text-emerald-400">
+              {answer_for(@msg, q)}
+            </span>
+          </div>
+        </div>
+
+        <div :if={@msg.status == :timeout} class="text-xs text-zinc-400 dark:text-zinc-500">
+          No answer — the agent moved on.
+        </div>
+      </div>
+    </div>
+    """
+  end
+
   def chat_msg(%{msg: %{role: :user}} = assigns) do
     assigns = assign(assigns, :url, msg_url(assigns))
     assigns = assign(assigns, :raw, raw_url(assigns))
@@ -362,6 +417,16 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     </div>
     """
   end
+
+  # The human's chosen answer for a question, once answered.
+  defp answer_for(%{selections: sel}, q) when is_map(sel) do
+    case Map.get(sel, q.id, []) do
+      [] -> "✓ answered"
+      chosen -> Enum.join(chosen, ", ")
+    end
+  end
+
+  defp answer_for(_msg, _q), do: "✓ answered"
 
   # Check if this tool_result has a streamed build message above it —
   # the output was already shown live, so rendering it again is redundant.

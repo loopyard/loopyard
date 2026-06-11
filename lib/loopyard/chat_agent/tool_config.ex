@@ -51,7 +51,11 @@ defmodule Loopyard.ChatAgent.ToolConfig do
     # Sub-agents would also violate our workspace boundary (one agent
     # = one workspace_id). Until we design sub-agent identity properly,
     # disable Task.
-    "Task"
+    "Task",
+    # The native AskUserQuestion can't reach our UI / round-trip in headless
+    # mode. Route questions through the `ask_user` MCP tool instead, which shows
+    # an interactive card and waits for the answer (Loopyard.Harness.Questions).
+    "AskUserQuestion"
   ]
 
   @doc "Returns the list of native tools denied for container-only agents."

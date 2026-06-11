@@ -28,6 +28,10 @@ defmodule Loopyard.StateKeeper do
     # Loopyard.PortRegistry entries keyed by {workspace_id, service, container_port}.
     # Writes serialize through the PortRegistry GenServer; reads go direct.
     {:port_registry, [:named_table, :public, :set, {:read_concurrency, true}]},
+    # Loopyard.Harness.Questions — pending harness→user questions keyed by
+    # question_id. The asking process (an MCP tool / ACP connection) blocks on
+    # receive; the UI's answer delivers via the stored waiter pid. Public set.
+    {:harness_questions, [:named_table, :public, :set, {:read_concurrency, true}]},
     # Ring buffer for Loopyard.Events.Tap — every broadcast on every
     # known topic. ordered_set keyed by a monotonic counter so the
     # newest records come out with a single :ets.select_reverse.
