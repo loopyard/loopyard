@@ -1662,7 +1662,17 @@ defmodule LoopyardWeb.WorkspaceLive do
   defp list_project_workspaces(nil), do: []
 
   defp list_project_workspaces(project) do
+    # Enrich each sibling workspace with its most-recent agent id so the
+    # switcher can land you straight in that workspace's chat instead of a
+    # blank "select an agent" screen. list_agents/0 is sorted newest-first,
+    # so the first agent per workspace is the latest.
+    agents_by_ws = Enum.group_by(ChatAgent.list_agents(), & &1[:workspace_id])
+
     Loopyard.ProjectRegistry.list_workspaces(project.id)
+    |> Enum.map(fn ws ->
+      latest = agents_by_ws |> Map.get(ws.id, []) |> List.first()
+      Map.put(ws, :latest_agent_id, latest && latest.id)
+    end)
   end
 
   # --- Render ---

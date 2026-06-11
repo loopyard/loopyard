@@ -161,6 +161,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
 
   # --- Workspace switcher (LEFT rail / "super-task-bar") ---
 
+  # Land on the workspace's latest agent (a live chat) when it has one;
+  # otherwise the workspace root, which spawns a working agent (D10).
+  defp ws_switch_target(project_id, ws) do
+    base = "/projects/#{project_id}/workspaces/#{ws.id}"
+    if ws[:latest_agent_id], do: "#{base}/agents/#{ws.latest_agent_id}", else: base
+  end
+
   @doc """
   The left rail: switch between the workspaces (branches) of this project.
   Each row navigates to that workspace; a status dot reflects whether its
@@ -179,7 +186,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
         <.section label="Workspaces">
           <.link
             :for={ws <- @workspaces}
-            navigate={"/projects/#{@project.id}/workspaces/#{ws.id}"}
+            navigate={ws_switch_target(@project.id, ws)}
             class={[
               "flex items-center gap-2 px-3 min-h-9 text-sm transition-colors",
               if(ws.id == @current_id,
