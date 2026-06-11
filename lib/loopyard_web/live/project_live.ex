@@ -447,7 +447,7 @@ defmodule LoopyardWeb.ProjectLive do
     <.page_shell
       breadcrumbs={breadcrumbs_for(assigns)}
       iex_session={@iex_session}
-      max_width={:md}
+      max_width={:xl}
       flash={@flash}
     >
       <%= if @removing do %>
@@ -532,110 +532,85 @@ defmodule LoopyardWeb.ProjectLive do
               </button>
             </div>
 
-            <div class="space-y-2 mb-8">
-              <.link
+            <.section_header title="Workspaces">
+              <:action :if={@project.is_git}>
+                <.new_button navigate={"/projects/#{@project.id}/new"}>New workspace</.new_button>
+              </:action>
+            </.section_header>
+
+            <div class="space-y-2.5">
+              <.row_card
                 :for={workspace <- @workspaces}
                 navigate={"/projects/#{@project.id}/workspaces/#{workspace.id}"}
-                class={[
-                  "block rounded-xl border p-4 transition-colors",
-                  if(workspace.status == :running,
-                    do:
-                      "border-green-300 dark:border-green-800 bg-green-50/50 dark:bg-green-950/20 hover:border-green-400",
-                    else:
-                      "border-zinc-200 dark:border-zinc-700 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
-                  )
-                ]}
+                accent={
+                  workspace.status == :running &&
+                    "border-green-300 dark:border-green-800 bg-green-50/50 dark:bg-green-950/20 hover:border-green-400"
+                }
               >
-                <div class="flex items-center gap-3">
-                  <div class={"w-2.5 h-2.5 rounded-full flex-none #{cond do
-                    Map.get(workspace, :setup, %{})[:phase] == :running -> "bg-blue-500 animate-pulse"
-                    Map.get(workspace, :setup, %{})[:phase] == :pending -> "bg-blue-300 animate-pulse"
-                    Map.get(workspace, :setup, %{})[:phase] == :failed -> "bg-red-500"
-                    workspace.status == :running -> "bg-green-500"
-                    true -> "bg-zinc-400"
-                  end}"}>
-                  </div>
-                  <div class="min-w-0 flex-1">
-                    <div class="flex items-center gap-2">
-                      <span class="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate">
-                        {workspace.name}
-                      </span>
-                      <span
-                        :if={workspace[:is_main]}
-                        class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 flex-none"
-                      >
-                        default
-                      </span>
-                    </div>
-                    <% setup = Map.get(workspace, :setup, %{}) %>
-                    <% setup_phase = setup[:phase] %>
-                    <p
-                      :if={setup_phase in [:pending, :running, :worktree, :volume, :seeding]}
-                      class="text-xs text-blue-600 dark:text-blue-400 mt-0.5"
-                    >
-                      <%= case setup_phase do %>
-                        <% :pending -> %>
-                          Setting up workspace…
-                        <% :running -> %>
-                          Setting up workspace…
-                        <% :worktree -> %>
-                          Creating worktree…
-                        <% :volume -> %>
-                          Creating volume…
-                        <% :seeding -> %>
-                          <% pct = get_in(setup, [:progress, :percent]) %>
-                          {if pct, do: "Seeding files… #{pct}%", else: "Seeding files…"}
-                      <% end %>
-                    </p>
-                    <p
-                      :if={setup_phase == :failed}
-                      class="text-xs text-red-600 dark:text-red-400 mt-0.5"
-                    >
-                      Failed — click to retry
-                    </p>
-                    <p
-                      :if={setup_phase in [:ready, nil] && workspace.status == :running}
-                      class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5"
-                    >
-                      {workspace.agent_count} agent{if workspace.agent_count != 1, do: "s"} · {workspace.services_running} service{if workspace.services_running !=
-                                                                                                                                        1,
-                                                                                                                                      do:
-                                                                                                                                        "s"} running
-                    </p>
-                    <p
-                      :if={setup_phase in [:ready, nil] && workspace.status != :running}
-                      class="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5"
-                    >
-                      Stopped
-                    </p>
-                  </div>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 16 16"
-                    fill="currentColor"
-                    class="w-4 h-4 text-zinc-300 dark:text-zinc-600 flex-none"
-                  >
-                    <path
-                      fill-rule="evenodd"
-                      d="M6.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 0 1-1.06-1.06L8.94 8 6.22 5.28a.75.75 0 0 1 0-1.06Z"
-                      clip-rule="evenodd"
-                    />
-                  </svg>
+                <div class={"w-2.5 h-2.5 md:w-3 md:h-3 rounded-full flex-none #{cond do
+                  Map.get(workspace, :setup, %{})[:phase] == :running -> "bg-blue-500 animate-pulse"
+                  Map.get(workspace, :setup, %{})[:phase] == :pending -> "bg-blue-300 animate-pulse"
+                  Map.get(workspace, :setup, %{})[:phase] == :failed -> "bg-red-500"
+                  workspace.status == :running -> "bg-green-500"
+                  true -> "bg-zinc-400"
+                end}"}>
                 </div>
-              </.link>
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm md:text-base font-medium text-zinc-900 dark:text-zinc-100 truncate">
+                      {workspace.name}
+                    </span>
+                    <span
+                      :if={workspace[:is_main]}
+                      class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 flex-none"
+                    >
+                      default
+                    </span>
+                  </div>
+                  <% setup = Map.get(workspace, :setup, %{}) %>
+                  <% setup_phase = setup[:phase] %>
+                  <p
+                    :if={setup_phase in [:pending, :running, :worktree, :volume, :seeding]}
+                    class="text-xs md:text-sm text-blue-600 dark:text-blue-400 mt-0.5"
+                  >
+                    <%= case setup_phase do %>
+                      <% :pending -> %>
+                        Setting up workspace…
+                      <% :running -> %>
+                        Setting up workspace…
+                      <% :worktree -> %>
+                        Creating worktree…
+                      <% :volume -> %>
+                        Creating volume…
+                      <% :seeding -> %>
+                        <% pct = get_in(setup, [:progress, :percent]) %>
+                        {if pct, do: "Seeding files… #{pct}%", else: "Seeding files…"}
+                    <% end %>
+                  </p>
+                  <p
+                    :if={setup_phase == :failed}
+                    class="text-xs md:text-sm text-red-600 dark:text-red-400 mt-0.5"
+                  >
+                    Failed — click to retry
+                  </p>
+                  <p
+                    :if={setup_phase in [:ready, nil] && workspace.status == :running}
+                    class="text-xs md:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5"
+                  >
+                    {workspace.agent_count} agent{if workspace.agent_count != 1, do: "s"} · {workspace.services_running} service{if workspace.services_running !=
+                                                                                                                                      1,
+                                                                                                                                    do:
+                                                                                                                                      "s"} running
+                  </p>
+                  <p
+                    :if={setup_phase in [:ready, nil] && workspace.status != :running}
+                    class="text-xs md:text-sm text-zinc-400 dark:text-zinc-500 mt-0.5"
+                  >
+                    Stopped
+                  </p>
+                </div>
+              </.row_card>
             </div>
-
-            <.link
-              :if={@project.is_git}
-              navigate={"/projects/#{@project.id}/new"}
-              class="inline-flex items-center gap-2 rounded-lg border border-zinc-200 dark:border-zinc-700 px-5 py-2.5 text-sm font-medium text-zinc-600 dark:text-zinc-400
-                     hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
-                <path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" />
-              </svg>
-              New workspace
-            </.link>
         <% end %>
       <% end %>
     </.page_shell>
@@ -723,7 +698,7 @@ defmodule LoopyardWeb.ProjectLive do
 
   defp settings_view(assigns) do
     ~H"""
-    <div class="space-y-8">
+    <div class="space-y-8 max-w-2xl">
       <div>
         <h2 class="text-xl font-semibold text-zinc-900 dark:text-zinc-100">Project settings</h2>
         <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
@@ -782,7 +757,7 @@ defmodule LoopyardWeb.ProjectLive do
 
   defp remove_confirmation(assigns) do
     ~H"""
-    <div class="space-y-6">
+    <div class="space-y-6 max-w-2xl">
       <div>
         <h2 class="text-xl font-semibold text-red-600 dark:text-red-400">Remove {@project.name}</h2>
         <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">

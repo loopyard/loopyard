@@ -144,6 +144,111 @@ defmodule LoopyardWeb.Components.Common do
   end
 
   @doc """
+  A chevron-right affordance for navigable rows. Scales up slightly on
+  desktop. Reacts to a parent `.group` hover.
+  """
+  def chevron(assigns) do
+    ~H"""
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 16 16"
+      fill="currentColor"
+      class="w-4 h-4 md:w-5 md:h-5 flex-none text-zinc-300 dark:text-zinc-600 group-hover:text-zinc-500 dark:group-hover:text-zinc-400 transition-colors"
+    >
+      <path
+        fill-rule="evenodd"
+        d="M6.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 0 1-1.06-1.06L8.94 8 6.22 5.28a.75.75 0 0 1 0-1.06Z"
+        clip-rule="evenodd"
+      />
+    </svg>
+    """
+  end
+
+  @doc """
+  A full-width, navigable list row. Responsive-first: compact on
+  mobile, roomier padding + larger type on desktop. Used by every list
+  page (projects, workspaces) so they stay visually consistent.
+
+  Pass `accent` to override the default border/hover (e.g. a running
+  workspace gets a green accent). The trailing chevron is built in.
+
+      <.row_card navigate={"/projects/" <> p.id}>
+        <div class="min-w-0 flex-1">…</div>
+      </.row_card>
+  """
+  attr :navigate, :string, required: true
+  attr :accent, :string, default: nil
+  attr :rest, :global
+  slot :inner_block, required: true
+
+  def row_card(assigns) do
+    ~H"""
+    <.link
+      navigate={@navigate}
+      class={[
+        "group block w-full rounded-xl border transition-colors p-4 md:p-5",
+        @accent ||
+          "border-zinc-200 dark:border-zinc-700 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+      ]}
+      {@rest}
+    >
+      <div class="flex items-center gap-3 md:gap-4">
+        {render_slot(@inner_block)}
+        <.chevron />
+      </div>
+    </.link>
+    """
+  end
+
+  @doc """
+  A section header: a title (and optional subtitle) on the left, a
+  primary action on the right. Stacks vertically on mobile (action goes
+  full-width) and becomes a row on desktop. Use the `action` slot for a
+  `<.new_button>`.
+  """
+  attr :title, :string, required: true
+  attr :subtitle, :string, default: nil
+  attr :class, :string, default: nil
+  slot :action
+
+  def section_header(assigns) do
+    ~H"""
+    <div class={["flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4 md:mb-5", @class]}>
+      <div class="min-w-0">
+        <h2 class="text-lg md:text-xl font-semibold">{@title}</h2>
+        <p :if={@subtitle} class="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">{@subtitle}</p>
+      </div>
+      <div :if={@action != []} class="flex-none">
+        {render_slot(@action)}
+      </div>
+    </div>
+    """
+  end
+
+  @doc """
+  The standard primary "New …" action used in a `section_header`.
+  Full-width on mobile, auto-width on desktop — consistent everywhere.
+  """
+  attr :navigate, :string, required: true
+  attr :rest, :global
+  slot :inner_block, required: true
+
+  def new_button(assigns) do
+    ~H"""
+    <.link
+      navigate={@navigate}
+      class="focus-ring inline-flex items-center justify-center gap-1.5 w-full sm:w-auto rounded-lg bg-violet-600 hover:bg-violet-700 text-white px-4 py-2.5 text-sm font-semibold transition-colors"
+      {@rest}
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
+        <path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" />
+      </svg>
+      {render_slot(@inner_block)}
+    </.link>
+    """
+  end
+
+  @doc """
   Standard page shell for all non-chat pages. Provides consistent
   layout: full-height dark/light bg, header, and centered content area.
 

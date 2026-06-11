@@ -110,47 +110,37 @@ defmodule LoopyardWeb.ProjectListLive do
     assigns = assign(assigns, :has_projects, assigns.projects != [])
 
     ~H"""
-    <.page_shell breadcrumbs={crumbs(@live_action)} iex_session={@iex_session} max_width={:sm} flash={@flash}>
+    <.page_shell breadcrumbs={crumbs(@live_action)} iex_session={@iex_session} max_width={:xl} flash={@flash}>
       <%= case @live_action do %>
         <% :index -> %>
-          <.link
-            navigate="/projects/new"
-            class="focus-ring flex items-center justify-center gap-2 w-full rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-5 py-3 text-sm font-semibold transition-colors mb-6"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
-              <path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" />
-            </svg>
-            New project
-          </.link>
+          <.section_header title="Projects">
+            <:action>
+              <.new_button navigate="/projects/new">New project</.new_button>
+            </:action>
+          </.section_header>
 
-          <div :if={@has_projects} class="space-y-2">
-            <.link
-              :for={project <- @projects}
-              navigate={"/projects/#{project.id}"}
-              class="block w-full rounded-xl border border-zinc-200 dark:border-zinc-700 p-4 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group"
-            >
-              <div class="flex items-center justify-between">
-                <div class="min-w-0">
-                  <div class="flex items-center gap-2">
-                    <span class="text-sm font-semibold truncate">{project.name}</span>
-                    <span :if={project.workspace_count > 1} class="text-xs text-zinc-400 dark:text-zinc-500">
-                      {project.workspace_count} workspaces
-                    </span>
-                  </div>
-                  <p class="text-xs font-mono text-zinc-400 dark:text-zinc-500 mt-0.5 truncate">
-                    {project_location(project)}
-                  </p>
+          <div :if={@has_projects} class="space-y-2.5">
+            <.row_card :for={project <- @projects} navigate={"/projects/#{project.id}"}>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2">
+                  <span class="text-sm md:text-base font-semibold truncate">{project.name}</span>
+                  <span :if={project.workspace_count > 1} class="text-xs text-zinc-400 dark:text-zinc-500 flex-none">
+                    {project.workspace_count} workspaces
+                  </span>
                 </div>
-                <.chevron />
+                <p class="text-xs md:text-sm font-mono text-zinc-400 dark:text-zinc-500 mt-0.5 truncate">
+                  {project_location(project)}
+                </p>
               </div>
-            </.link>
+            </.row_card>
           </div>
 
-          <div :if={!@has_projects} class="text-center py-14 text-sm text-zinc-400 dark:text-zinc-500">
+          <div :if={!@has_projects} class="text-center py-16 md:py-24 text-sm text-zinc-400 dark:text-zinc-500">
             No projects yet — hit <span class="font-medium text-zinc-500 dark:text-zinc-400">New project</span> to start.
           </div>
 
         <% :new -> %>
+          <div class="max-w-2xl">
           <h1 class="text-xl font-semibold mb-1">New project</h1>
           <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-5">How do you want to start?</p>
           <div class="space-y-2.5">
@@ -171,8 +161,10 @@ defmodule LoopyardWeb.ProjectListLive do
               badge="Soon"
             />
           </div>
+          </div>
 
         <% :new_scratch -> %>
+          <div class="max-w-2xl">
           <h1 class="text-xl font-semibold mb-1">From scratch</h1>
           <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-5">
             A fresh repo, ready instantly. No GitHub needed — connect one later when it matters.
@@ -202,8 +194,10 @@ defmodule LoopyardWeb.ProjectListLive do
               {if @creating, do: "Creating…", else: "Create project"}
             </button>
           </form>
+          </div>
 
         <% :new_folder -> %>
+          <div class="max-w-2xl">
           <h1 class="text-xl font-semibold mb-1">From a folder on this machine</h1>
           <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-5">
             Point Loopyard at a directory you already have.
@@ -242,8 +236,10 @@ defmodule LoopyardWeb.ProjectListLive do
               </button>
             </div>
           </div>
+          </div>
 
         <% :new_github -> %>
+          <div class="max-w-2xl">
           <h1 class="text-xl font-semibold mb-1 flex items-center gap-2">
             From GitHub
             <span class="text-[10px] font-medium uppercase tracking-wide rounded-full bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400 px-2 py-0.5">Soon</span>
@@ -253,6 +249,7 @@ defmodule LoopyardWeb.ProjectListLive do
           </p>
           <div class="rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 p-8 text-center text-sm text-zinc-400 dark:text-zinc-500">
             Coming soon.
+          </div>
           </div>
       <% end %>
     </.page_shell>
@@ -285,23 +282,6 @@ defmodule LoopyardWeb.ProjectListLive do
       </div>
       <.chevron />
     </.link>
-    """
-  end
-
-  defp chevron(assigns) do
-    ~H"""
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 16 16"
-      fill="currentColor"
-      class="w-3.5 h-3.5 flex-none text-zinc-300 dark:text-zinc-600 group-hover:text-zinc-500 dark:group-hover:text-zinc-400 transition-colors"
-    >
-      <path
-        fill-rule="evenodd"
-        d="M6.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 0 1-1.06-1.06L8.94 8 6.22 5.28a.75.75 0 0 1 0-1.06Z"
-        clip-rule="evenodd"
-      />
-    </svg>
     """
   end
 
