@@ -28,7 +28,7 @@ defmodule LoopyardWeb.WorkspaceLive do
   @behaviour Loopyard.Events.WorkspaceSetup.Subscriber
 
   @impl true
-  def mount(%{"project_id" => project_id, "workspace_id" => workspace_id}, session, socket) do
+  def mount(%{"project_id" => project_id, "workspace_id" => workspace_id}, _session, socket) do
     project = Loopyard.ProjectRegistry.get_project(project_id)
     workspace_entry = Loopyard.ProjectRegistry.get_workspace(workspace_id)
 
@@ -40,8 +40,7 @@ defmodule LoopyardWeb.WorkspaceLive do
 
       mount_with_workspace(socket, workspace, %{
         project: project,
-        workspace_entry: workspace_entry,
-        session_id: session[LoopyardWeb.Plugs.SessionId.key()]
+        workspace_entry: workspace_entry
       })
     end
   end
@@ -118,13 +117,8 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:workspace, workspace)
      |> assign(:project, extra_assigns[:project])
      |> assign(:workspace_entry, extra_assigns[:workspace_entry])
-     |> assign(:session_id, extra_assigns[:session_id])
-     |> assign(
-       :project_workspaces,
-       list_project_workspaces(extra_assigns[:project], extra_assigns[:session_id])
-     )
+     |> assign(:project_workspaces, list_project_workspaces(extra_assigns[:project]))
      |> assign(:base_path, base_path)
-     |> attach_view_tracker()
      |> assign(:host, host)
      |> assign(:agents, agents)
      |> assign(:service_statuses, service_statuses)
@@ -1665,47 +1659,20 @@ defmodule LoopyardWeb.WorkspaceLive do
 
   # Sibling workspaces of this project, for the left switcher rail. Cheap
   # (ETS only). Returns [] when there's no project (legacy single-workspace).
-  defp list_project_workspaces(nil, _session_id), do: []
+  defp list_project_workspaces(nil), do: []
 
-  defp list_project_workspaces(project, session_id) do
-    # Enrich each sibling workspace with (a) this session's last-viewed path
-    # there (resume where you left off) and (b) its most-recent agent id (the
-    # fallback when there's nothing to resume — lands in a chat, not a blank
-    # "select an agent" screen). list_agents/0 is newest-first, so the first
-    # agent per workspace is the latest.
+  defp list_project_workspaces(project) do
+    # Enrich each sibling workspace with its most-recent agent id so the
+    # switcher can land you straight in that workspace's chat instead of a
+    # blank "select an agent" screen. list_agents/0 is sorted newest-first,
+    # so the first agent per workspace is the latest.
     agents_by_ws = Enum.group_by(ChatAgent.list_agents(), & &1[:workspace_id])
 
     Loopyard.ProjectRegistry.list_workspaces(project.id)
     |> Enum.map(fn ws ->
       latest = agents_by_ws |> Map.get(ws.id, []) |> List.first()
-
-      ws
-      |> Map.put(:latest_agent_id, latest && latest.id)
-      |> Map.put(:resume_path, Loopyard.Session.ViewTracker.resume_path(session_id, ws.id))
+      Map.put(ws, :latest_agent_id, latest && latest.id)
     end)
-  end
-
-  # Track where this session is, per workspace, so the switcher resumes there.
-  # A handle_params hook fires on every navigation (initial + each patch),
-  # recording the current path into the per-session ETS view tracker.
-  defp attach_view_tracker(socket) do
-    if connected?(socket) do
-      attach_hook(socket, :track_view, :handle_params, fn _params, uri, socket ->
-        sid = socket.assigns[:session_id]
-        ws_id = socket.assigns.workspace.id
-        if sid && ws_id, do: Loopyard.Session.ViewTracker.touch(sid, ws_id, view_path(uri))
-        {:cont, socket}
-      end)
-    else
-      socket
-    end
-  end
-
-  defp view_path(uri) do
-    case URI.parse(uri) do
-      %URI{path: path} -> path
-      _ -> nil
-    end
   end
 
   # --- Render ---
@@ -1718,6 +1685,17 @@ defmodule LoopyardWeb.WorkspaceLive do
       phx-hook="ScrollBottom"
       class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100"
     >
+      <%!-- Browser-side per-workspace "last view" memory. Records this view as
+           the workspace's last screen and rewrites the switcher links to
+           resume there. data-key changes on view switches so updated() fires. --%>
+      <div
+        id="workspace-memory"
+        phx-hook="WorkspaceMemory"
+        data-workspace-id={@workspace.id}
+        data-key={"#{@live_action}:#{@selected_id}:#{@selected_service}:#{@selected_volume}"}
+        hidden
+      >
+      </div>
       <.chat_header
         workspace={@workspace}
         project={@project}
