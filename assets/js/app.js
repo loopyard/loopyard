@@ -252,31 +252,32 @@ Hooks.CopySource = {
 }
 
 // Per-workspace "last view" memory. Purely browser-side (localStorage) —
-// per-user, per-device, no server/db state. Two jobs, both at the LV top
-// level (hooks nested in function components don't mount reliably):
-//   1. record the current path as this workspace's last view, and
-//   2. rewrite the switcher links so jumping to a workspace resumes where
-//      you left off (falling back to the server-rendered default href).
+// per-user, per-device, no server/db state.
 const WS_VIEW_KEY = (id) => "loopyard:lastview:" + id
 
+// Record the current path as this workspace's last view (hook at the LV top
+// level — hooks nested in function components don't mount reliably).
 Hooks.WorkspaceMemory = {
-  mounted() { this.record(); this.restoreLinks() },
-  updated() { this.record(); this.restoreLinks() },
+  mounted() { this.record() },
+  updated() { this.record() },
   record() {
     const id = this.el.dataset.workspaceId
     if (!id) return
     try { localStorage.setItem(WS_VIEW_KEY(id), location.pathname + location.search) } catch (e) {}
-  },
-  restoreLinks() {
-    document.querySelectorAll("a[data-ws-resume]").forEach((a) => {
-      const id = a.dataset.wsId
-      if (!id) return
-      let remembered = null
-      try { remembered = localStorage.getItem(WS_VIEW_KEY(id)) } catch (e) {}
-      if (remembered) a.setAttribute("href", remembered)
-    })
   }
 }
+
+// Resume a workspace at its last-viewed screen: rewrite the switcher link's
+// href at CLICK time (capture phase, before LiveView's handler reads it), so a
+// re-render can't clobber it. No remembered view → the server-rendered default
+// href (latest agent) stands.
+document.addEventListener("click", (e) => {
+  const a = e.target.closest && e.target.closest("a[data-ws-resume]")
+  if (!a) return
+  let remembered = null
+  try { remembered = localStorage.getItem(WS_VIEW_KEY(a.dataset.wsId)) } catch (e) {}
+  if (remembered) a.setAttribute("href", remembered)
+}, true)
 
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 let liveSocket = new LiveSocket("/live", Socket, {
