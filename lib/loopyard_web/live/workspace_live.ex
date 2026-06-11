@@ -1709,10 +1709,20 @@ defmodule LoopyardWeb.WorkspaceLive do
   # workspace-switch remount, unique per window).
   defp attach_view_tracker(socket) do
     if connected?(socket) do
+      conn = socket.transport_pid
+
+      # Clean up this window's view rows when its CONNECTION dies (tab/window
+      # closed, socket dropped) — not when the per-workspace LiveView remounts.
+      # Owner = the connection, so a workspace switch (same conn, new LV) is NOT
+      # a teardown and the map survives. Re-tracking on each mount is idempotent.
+      Loopyard.Resources.track(conn, :window_views, conn, fn ->
+        Loopyard.WindowViews.clear(conn)
+      end)
+
       attach_hook(socket, :track_view, :handle_params, fn _params, uri, socket ->
-        conn = socket.transport_pid
+        c = socket.transport_pid
         ws_id = socket.assigns.workspace.id
-        if conn && ws_id, do: Loopyard.WindowViews.touch(conn, ws_id, view_path(uri))
+        if c && ws_id, do: Loopyard.WindowViews.touch(c, ws_id, view_path(uri))
         {:cont, socket}
       end)
     else

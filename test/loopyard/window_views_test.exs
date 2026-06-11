@@ -30,6 +30,31 @@ defmodule Loopyard.WindowViewsTest do
     assert WindowViews.resume_path(win2, "ws-a") == "/win2-view-of-a"
   end
 
+  test "3 windows in the same browser each keep an independent switcher" do
+    # Each browser window/tab is its own LiveView connection (transport_pid).
+    [w1, w2, w3] = for _ <- 1..3, do: spawn(fn -> :ok end)
+
+    # Each window wanders to a different place across the SAME two workspaces.
+    WindowViews.touch(w1, "main", "/main/services/dev")
+    WindowViews.touch(w1, "feature", "/feature/agents/a1")
+
+    WindowViews.touch(w2, "main", "/main/agents/a2")
+    WindowViews.touch(w2, "feature", "/feature/volumes/code/files/lib")
+
+    WindowViews.touch(w3, "main", "/main/git")
+    # w3 never visited feature → no resume there.
+
+    # Every window resumes ONLY its own trail. No bleed between the three.
+    assert WindowViews.resume_path(w1, "main") == "/main/services/dev"
+    assert WindowViews.resume_path(w1, "feature") == "/feature/agents/a1"
+
+    assert WindowViews.resume_path(w2, "main") == "/main/agents/a2"
+    assert WindowViews.resume_path(w2, "feature") == "/feature/volumes/code/files/lib"
+
+    assert WindowViews.resume_path(w3, "main") == "/main/git"
+    assert WindowViews.resume_path(w3, "feature") == nil
+  end
+
   test "latest touch wins within a window" do
     WindowViews.touch(self(), "ws-a", "/first")
     WindowViews.touch(self(), "ws-a", "/second")
@@ -46,5 +71,20 @@ defmodule Loopyard.WindowViewsTest do
     :ets.insert(:window_views, {{self(), "ws-a"}, "/old", 0})
     assert WindowViews.resume_path(self(), "ws-a") == nil
     assert :ets.lookup(:window_views, {self(), "ws-a"}) == []
+  end
+
+  test "clear removes all of a connection's rows, leaving other windows intact" do
+    other = spawn(fn -> :ok end)
+    WindowViews.touch(self(), "ws-a", "/a")
+    WindowViews.touch(self(), "ws-b", "/b")
+    WindowViews.touch(other, "ws-a", "/other-a")
+
+    :ok = WindowViews.clear(self())
+
+    # This connection's rows are gone…
+    assert WindowViews.resume_path(self(), "ws-a") == nil
+    assert WindowViews.resume_path(self(), "ws-b") == nil
+    # …but another window's are untouched.
+    assert WindowViews.resume_path(other, "ws-a") == "/other-a"
   end
 end

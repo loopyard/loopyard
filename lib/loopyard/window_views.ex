@@ -52,5 +52,18 @@ defmodule Loopyard.WindowViews do
 
   def resume_path(_, _), do: nil
 
+  @doc """
+  Delete every row for a window's connection. Called when that connection goes
+  DOWN (window/tab closed, socket dropped) via `Loopyard.Resources` ownership —
+  so rows don't linger until the TTL. A no-op for a non-pid.
+  """
+  @spec clear(pid() | term()) :: :ok
+  def clear(conn) when is_pid(conn) do
+    :ets.match_delete(@table, {{conn, :_}, :_, :_})
+    :ok
+  end
+
+  def clear(_), do: :ok
+
   defp now_ms, do: System.system_time(:millisecond)
 end
