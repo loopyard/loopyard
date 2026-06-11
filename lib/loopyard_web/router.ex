@@ -33,7 +33,14 @@ defmodule LoopyardWeb.Router do
     pipe_through :browser
 
     live "/", ProjectListLive, :index
+    # New-project flow — its own screens (static, must precede /projects/:project_id).
+    live "/projects/new", ProjectListLive, :new
+    live "/projects/new/scratch", ProjectListLive, :new_scratch
+    live "/projects/new/folder", ProjectListLive, :new_folder
+    live "/projects/new/github", ProjectListLive, :new_github
     live "/projects/:project_id", ProjectLive, :index
+    # New-workspace flow gets its own screen too.
+    live "/projects/:project_id/new", ProjectLive, :new_workspace
     live "/projects/:project_id/settings", ProjectLive, :settings
     live "/projects/:project_id/workspaces/:workspace_id", WorkspaceLive, :index
     live "/projects/:project_id/workspaces/:workspace_id/new", WorkspaceLive, :new

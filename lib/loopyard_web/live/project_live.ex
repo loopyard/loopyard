@@ -462,16 +462,14 @@ defmodule LoopyardWeb.ProjectLive do
           </p>
         </div>
       <% else %>
-        <%= if @live_action == :settings do %>
-          <%= if @confirming_remove do %>
+        <%= cond do %>
+          <% @confirming_remove -> %>
             <.remove_confirmation project={@project} details={removal_details(@project)} />
-          <% else %>
+          <% @live_action == :settings -> %>
             <.settings_view project={@project} />
-          <% end %>
-        <% else %>
-          <%= if @confirming_remove do %>
-            <.remove_confirmation project={@project} details={removal_details(@project)} />
-          <% else %>
+          <% @live_action == :new_workspace -> %>
+            <.new_workspace_screen project={@project} />
+          <% true -> %>
             <div class="flex items-center justify-between mb-6 gap-4">
               <div class="min-w-0 flex-1">
                 <%= if @editing_name do %>
@@ -627,48 +625,17 @@ defmodule LoopyardWeb.ProjectLive do
               </.link>
             </div>
 
-            <% default_branch = get_in(@project, [:source_config, :default_branch]) || "main" %>
-            <form :if={@project.is_git} phx-submit="add_workspace" class="space-y-3">
-              <div class="text-xs font-medium text-zinc-500 dark:text-zinc-400">New workspace</div>
-              <div class="space-y-2">
-                <div>
-                  <label class="block text-xs text-zinc-400 dark:text-zinc-500 mb-1">
-                    Branch from
-                  </label>
-                  <input
-                    type="text"
-                    name="from"
-                    value={default_branch}
-                    autocomplete="off"
-                    class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-800/50 px-3 py-2 text-sm font-mono
-                           text-zinc-600 dark:text-zinc-300
-                           focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
-                  />
-                </div>
-                <div>
-                  <label class="block text-xs text-zinc-400 dark:text-zinc-500 mb-1">
-                    New branch name
-                  </label>
-                  <input
-                    type="text"
-                    name="name"
-                    placeholder="e.g. bradgessler/fix-login"
-                    autocomplete="off"
-                    class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm font-mono
-                           text-zinc-600 dark:text-zinc-300 placeholder:text-zinc-400
-                           focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
-                  />
-                </div>
-              </div>
-              <button
-                type="submit"
-                class="rounded-lg border border-zinc-200 dark:border-zinc-700 px-5 py-2.5 text-sm font-medium text-zinc-600 dark:text-zinc-400
-                       hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-              >
-                Create workspace
-              </button>
-            </form>
-          <% end %>
+            <.link
+              :if={@project.is_git}
+              navigate={"/projects/#{@project.id}/new"}
+              class="inline-flex items-center gap-2 rounded-lg border border-zinc-200 dark:border-zinc-700 px-5 py-2.5 text-sm font-medium text-zinc-600 dark:text-zinc-400
+                     hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
+                <path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" />
+              </svg>
+              New workspace
+            </.link>
         <% end %>
       <% end %>
     </.page_shell>
@@ -679,8 +646,79 @@ defmodule LoopyardWeb.ProjectLive do
     [{"Loopyard", "/"}, {project.name, "/projects/#{project.id}"}, {"Settings", nil}]
   end
 
+  defp breadcrumbs_for(%{live_action: :new_workspace, project: project}) do
+    [{"Loopyard", "/"}, {project.name, "/projects/#{project.id}"}, {"New workspace", nil}]
+  end
+
   defp breadcrumbs_for(%{project: project}) do
     [{"Loopyard", "/"}, {project.name, nil}]
+  end
+
+  defp new_workspace_screen(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :default_branch,
+        get_in(assigns.project, [:source_config, :default_branch]) || "main"
+      )
+
+    ~H"""
+    <div class="max-w-lg">
+      <div class="mb-8">
+        <h2 class="text-xl font-semibold text-zinc-900 dark:text-zinc-100">New workspace</h2>
+        <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
+          A workspace is a branch in its own isolated environment — fork from any branch,
+          build, then merge it back into <span class="font-mono">{@default_branch}</span>.
+        </p>
+      </div>
+
+      <form phx-submit="add_workspace" class="space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1.5">
+            Branch from
+          </label>
+          <input
+            type="text"
+            name="from"
+            value={@default_branch}
+            autocomplete="off"
+            class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-800/50 px-3 py-2.5 text-sm font-mono
+                   text-zinc-600 dark:text-zinc-300
+                   focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+          />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1.5">
+            New branch name
+          </label>
+          <input
+            type="text"
+            name="name"
+            placeholder="e.g. bradgessler/fix-login"
+            autocomplete="off"
+            autofocus
+            class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2.5 text-sm font-mono
+                   text-zinc-600 dark:text-zinc-300 placeholder:text-zinc-400
+                   focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+          />
+        </div>
+        <div class="flex items-center gap-3 pt-1">
+          <button
+            type="submit"
+            class="rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium px-4 py-2.5 transition-colors"
+          >
+            Create workspace
+          </button>
+          <.link
+            navigate={"/projects/#{@project.id}"}
+            class="text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
+          >
+            Cancel
+          </.link>
+        </div>
+      </form>
+    </div>
+    """
   end
 
   defp settings_view(assigns) do

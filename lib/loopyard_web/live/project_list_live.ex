@@ -107,28 +107,77 @@ defmodule LoopyardWeb.ProjectListLive do
 
   @impl true
   def render(assigns) do
-    has_projects = assigns.projects != []
-    assigns = assign(assigns, :has_projects, has_projects)
+    assigns = assign(assigns, :has_projects, assigns.projects != [])
 
     ~H"""
-    <.page_shell
-      breadcrumbs={[{"Loopyard", nil}]}
-      iex_session={@iex_session}
-      max_width={:sm}
-      flash={@flash}
-    >
-      <%!-- Primary CTA: start a brand-new project, zero friction --%>
-      <div class="mb-6">
-        <form
-          phx-submit="create_project"
-          class="rounded-xl border border-violet-200 dark:border-violet-800/60 bg-violet-50/60 dark:bg-violet-900/10 p-5"
-        >
-          <h2 class="text-lg font-semibold mb-1">Start a new project</h2>
-          <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-3">
-            Name it and start building — a fresh repo, ready instantly. No GitHub needed;
-            connect one later when it matters.
+    <.page_shell breadcrumbs={crumbs(@live_action)} iex_session={@iex_session} max_width={:sm} flash={@flash}>
+      <%= case @live_action do %>
+        <% :index -> %>
+          <.link
+            navigate="/projects/new"
+            class="focus-ring flex items-center justify-center gap-2 w-full rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-5 py-3 text-sm font-semibold transition-colors mb-6"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
+              <path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" />
+            </svg>
+            New project
+          </.link>
+
+          <div :if={@has_projects} class="space-y-2">
+            <.link
+              :for={project <- @projects}
+              navigate={"/projects/#{project.id}"}
+              class="block w-full rounded-xl border border-zinc-200 dark:border-zinc-700 p-4 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group"
+            >
+              <div class="flex items-center justify-between">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm font-semibold truncate">{project.name}</span>
+                    <span :if={project.workspace_count > 1} class="text-xs text-zinc-400 dark:text-zinc-500">
+                      {project.workspace_count} workspaces
+                    </span>
+                  </div>
+                  <p class="text-xs font-mono text-zinc-400 dark:text-zinc-500 mt-0.5 truncate">
+                    {project_location(project)}
+                  </p>
+                </div>
+                <.chevron />
+              </div>
+            </.link>
+          </div>
+
+          <div :if={!@has_projects} class="text-center py-14 text-sm text-zinc-400 dark:text-zinc-500">
+            No projects yet — hit <span class="font-medium text-zinc-500 dark:text-zinc-400">New project</span> to start.
+          </div>
+
+        <% :new -> %>
+          <h1 class="text-xl font-semibold mb-1">New project</h1>
+          <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-5">How do you want to start?</p>
+          <div class="space-y-2.5">
+            <.method_card
+              navigate="/projects/new/scratch"
+              title="From scratch"
+              desc="Name it and start building — a fresh repo, ready instantly."
+            />
+            <.method_card
+              navigate="/projects/new/folder"
+              title="From a folder on this machine"
+              desc="Bring in code you already have on disk."
+            />
+            <.method_card
+              navigate="/projects/new/github"
+              title="From GitHub"
+              desc="Clone a repo to start, sync back as it matures."
+              badge="Soon"
+            />
+          </div>
+
+        <% :new_scratch -> %>
+          <h1 class="text-xl font-semibold mb-1">From scratch</h1>
+          <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-5">
+            A fresh repo, ready instantly. No GitHub needed — connect one later when it matters.
           </p>
-          <div class="flex items-center gap-2">
+          <form phx-submit="create_project" class="space-y-3">
             <input
               type="text"
               name="name"
@@ -137,122 +186,47 @@ defmodule LoopyardWeb.ProjectListLive do
               autofocus
               disabled={@creating != nil}
               value={@creating}
-              class="flex-1 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-3 py-2 text-sm
+              class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-3 py-2.5 text-sm
                      text-zinc-900 dark:text-zinc-200 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 disabled:opacity-60
                      focus:outline-none focus:ring-1 focus:ring-violet-500/30 focus:border-violet-400"
             />
             <button
               type="submit"
               disabled={@creating != nil}
-              class="flex-none inline-flex items-center gap-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 disabled:opacity-70 disabled:hover:bg-violet-600 px-5 py-2 text-sm font-semibold text-white transition-colors"
+              class="focus-ring w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 disabled:opacity-70 px-5 py-2.5 text-sm font-semibold text-white transition-colors"
             >
-              <%= if @creating do %>
-                <svg
-                  class="w-4 h-4 animate-spin"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                >
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
-                  </circle>
-                  <path
-                    class="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  >
-                  </path>
-                </svg>
-                Creating…
-              <% else %>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                  class="w-4 h-4"
-                  aria-hidden="true"
-                >
-                  <path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" />
-                </svg>
-                Create
-              <% end %>
+              <svg :if={@creating} class="w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              {if @creating, do: "Creating…", else: "Create project"}
             </button>
-          </div>
-        </form>
-      </div>
+          </form>
 
-      <%!-- Existing projects --%>
-      <div :if={@has_projects} class="space-y-2 mb-6">
-        <.link
-          :for={project <- @projects}
-          navigate={"/projects/#{project.id}"}
-          class="block w-full rounded-xl border border-zinc-200 dark:border-zinc-700 p-4 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group"
-        >
-          <div class="flex items-center justify-between">
-            <div class="min-w-0">
-              <div class="flex items-center gap-2">
-                <span class="text-sm font-semibold truncate">{project.name}</span>
-                <span
-                  :if={project.workspace_count > 1}
-                  class="text-xs text-zinc-400 dark:text-zinc-500"
-                >
-                  {project.workspace_count} workspaces
-                </span>
-              </div>
-              <p class="text-xs font-mono text-zinc-400 dark:text-zinc-500 mt-0.5 truncate">
-                {project_location(project)}
-              </p>
-            </div>
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 16 16"
-              fill="currentColor"
-              class="w-3.5 h-3.5 text-zinc-300 dark:text-zinc-600 group-hover:text-zinc-500 dark:group-hover:text-zinc-400 transition-colors flex-none"
-            >
-              <path
-                fill-rule="evenodd"
-                d="M6.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 0 1-1.06-1.06L8.94 8 6.22 5.28a.75.75 0 0 1 0-1.06Z"
-                clip-rule="evenodd"
-              />
-            </svg>
-          </div>
-        </.link>
-      </div>
-
-      <%!-- Add an existing project — one card per source. --%>
-      <div class="mt-2 mb-3">
-        <h2 class="text-lg font-semibold">Add an existing project</h2>
-        <p class="text-sm text-zinc-500 dark:text-zinc-400">Bring in code you already have.</p>
-      </div>
-
-      <div class="grid sm:grid-cols-2 gap-3">
-        <%!-- From a folder on this machine (paste path + terminal, grouped) --%>
-        <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 p-5 flex flex-col">
-          <div class="flex items-center gap-2 mb-1">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4 text-zinc-400 dark:text-zinc-500">
-              <path d="M3.75 3A1.75 1.75 0 0 0 2 4.75v3.26a3.235 3.235 0 0 1 1.75-.51h12.5c.644 0 1.245.188 1.75.51V6.75A1.75 1.75 0 0 0 16.25 5h-4.836a.25.25 0 0 1-.177-.073L9.823 3.513A1.75 1.75 0 0 0 8.586 3H3.75ZM3.75 9A1.75 1.75 0 0 0 2 10.75v4.5c0 .966.784 1.75 1.75 1.75h12.5A1.75 1.75 0 0 0 18 15.25v-4.5A1.75 1.75 0 0 0 16.25 9H3.75Z" />
-            </svg>
-            <h3 class="text-sm font-semibold">From a folder on this machine</h3>
-          </div>
-          <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-3">Point Loopyard at a directory you already have.</p>
-          <form phx-submit="add_project" class="flex items-center gap-2">
+        <% :new_folder -> %>
+          <h1 class="text-xl font-semibold mb-1">From a folder on this machine</h1>
+          <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-5">
+            Point Loopyard at a directory you already have.
+          </p>
+          <form phx-submit="add_project" class="flex items-center gap-2 mb-5">
             <input
               type="text"
               name="path"
               placeholder="/Users/you/projects/my-app"
               autocomplete="off"
-              class="flex-1 min-w-0 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-3 py-2 text-sm font-mono
-                         text-zinc-900 dark:text-zinc-300 placeholder:text-zinc-400 dark:placeholder:text-zinc-600
-                         focus:outline-none focus:ring-1 focus:ring-violet-500/20 focus:border-violet-400"
+              autofocus
+              class="flex-1 min-w-0 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-3 py-2.5 text-sm font-mono
+                     text-zinc-900 dark:text-zinc-300 placeholder:text-zinc-400 dark:placeholder:text-zinc-600
+                     focus:outline-none focus:ring-1 focus:ring-violet-500/20 focus:border-violet-400"
             />
             <button
               type="submit"
-              class="flex-none rounded-lg bg-zinc-900 dark:bg-zinc-200 hover:bg-zinc-800 dark:hover:bg-white px-4 py-2 text-sm font-semibold text-white dark:text-zinc-900 transition-colors"
+              class="focus-ring flex-none rounded-lg bg-zinc-900 dark:bg-zinc-200 hover:bg-zinc-800 dark:hover:bg-white px-5 py-2.5 text-sm font-semibold text-white dark:text-zinc-900 transition-colors"
             >
               Open
             </button>
           </form>
-          <div class="mt-3 pt-3 border-t border-zinc-200/80 dark:border-zinc-700/60">
+          <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 p-4">
             <p class="text-[11px] text-zinc-400 dark:text-zinc-500 mb-1.5">Or run this from that folder in your terminal:</p>
             <div class="flex items-center gap-2">
               <div class="flex-1 min-w-0 bg-zinc-900 dark:bg-zinc-950 rounded-lg px-3 py-1.5 font-mono text-[11px] text-zinc-300 overflow-x-auto whitespace-nowrap select-all">
@@ -268,32 +242,73 @@ defmodule LoopyardWeb.ProjectListLive do
               </button>
             </div>
           </div>
-        </div>
 
-        <%!-- From GitHub — engine exists, UI coming. --%>
-        <div class="rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 bg-zinc-50/40 dark:bg-zinc-800/30 p-5 flex flex-col">
-          <div class="flex items-center gap-2 mb-1">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-4 h-4 text-zinc-400 dark:text-zinc-500">
-              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
-            </svg>
-            <h3 class="text-sm font-semibold text-zinc-500 dark:text-zinc-400">From GitHub</h3>
-            <span class="text-[10px] font-medium uppercase tracking-wide rounded-full bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400 px-1.5 py-0.5">Soon</span>
-          </div>
-          <p class="text-xs text-zinc-400 dark:text-zinc-500">
-            Clone a repo to start, and sync back as it matures. The engine's built — wiring up the UI next.
+        <% :new_github -> %>
+          <h1 class="text-xl font-semibold mb-1 flex items-center gap-2">
+            From GitHub
+            <span class="text-[10px] font-medium uppercase tracking-wide rounded-full bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400 px-2 py-0.5">Soon</span>
+          </h1>
+          <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-5">
+            Clone a repo to start, and sync back as it matures. The engine's built — the UI is next.
           </p>
-          <div class="mt-auto pt-3">
-            <button
-              type="button"
-              disabled
-              class="rounded-lg border border-zinc-300 dark:border-zinc-600 px-4 py-2 text-sm font-medium text-zinc-400 dark:text-zinc-500 opacity-60 cursor-not-allowed"
-            >
-              Connect GitHub
-            </button>
+          <div class="rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 p-8 text-center text-sm text-zinc-400 dark:text-zinc-500">
+            Coming soon.
           </div>
-        </div>
-      </div>
+      <% end %>
     </.page_shell>
     """
   end
+
+  # A single creation-method row on the /projects/new menu.
+  attr :navigate, :string, required: true
+  attr :title, :string, required: true
+  attr :desc, :string, required: true
+  attr :badge, :string, default: nil
+
+  defp method_card(assigns) do
+    ~H"""
+    <.link
+      navigate={@navigate}
+      class="flex items-center justify-between gap-3 w-full rounded-xl border border-zinc-200 dark:border-zinc-700 p-4 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group"
+    >
+      <div class="min-w-0">
+        <div class="flex items-center gap-2">
+          <span class="text-sm font-semibold">{@title}</span>
+          <span
+            :if={@badge}
+            class="text-[10px] font-medium uppercase tracking-wide rounded-full bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400 px-1.5 py-0.5"
+          >
+            {@badge}
+          </span>
+        </div>
+        <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">{@desc}</p>
+      </div>
+      <.chevron />
+    </.link>
+    """
+  end
+
+  defp chevron(assigns) do
+    ~H"""
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 16 16"
+      fill="currentColor"
+      class="w-3.5 h-3.5 flex-none text-zinc-300 dark:text-zinc-600 group-hover:text-zinc-500 dark:group-hover:text-zinc-400 transition-colors"
+    >
+      <path
+        fill-rule="evenodd"
+        d="M6.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 0 1-1.06-1.06L8.94 8 6.22 5.28a.75.75 0 0 1 0-1.06Z"
+        clip-rule="evenodd"
+      />
+    </svg>
+    """
+  end
+
+  defp crumbs(:index), do: [{"Loopyard", nil}]
+  defp crumbs(:new), do: [{"Loopyard", "/"}, {"New project", nil}]
+  defp crumbs(:new_scratch), do: [{"Loopyard", "/"}, {"New project", "/projects/new"}, {"From scratch", nil}]
+  defp crumbs(:new_folder), do: [{"Loopyard", "/"}, {"New project", "/projects/new"}, {"Folder", nil}]
+  defp crumbs(:new_github), do: [{"Loopyard", "/"}, {"New project", "/projects/new"}, {"GitHub", nil}]
+  defp crumbs(_), do: [{"Loopyard", nil}]
 end
