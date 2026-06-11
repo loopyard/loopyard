@@ -181,14 +181,6 @@ defmodule LoopyardWeb.ProjectListLive do
         </form>
       </div>
 
-      <%!-- Empty state --%>
-      <div :if={!@has_projects} class="mb-8">
-        <p class="text-sm text-zinc-500 dark:text-zinc-400 leading-relaxed">
-          Or bring in an existing project — point Loopyard at a directory on this machine
-          (paste a path or use the terminal command below).
-        </p>
-      </div>
-
       <%!-- Existing projects --%>
       <div :if={@has_projects} class="space-y-2 mb-6">
         <.link
@@ -227,57 +219,78 @@ defmodule LoopyardWeb.ProjectListLive do
         </.link>
       </div>
 
-      <%!-- Add project --%>
-      <div :if={@has_projects} class="mb-3">
-        <h2 class="text-lg font-semibold">Add a project</h2>
+      <%!-- Add an existing project — one card per source. --%>
+      <div class="mt-2 mb-3">
+        <h2 class="text-lg font-semibold">Add an existing project</h2>
+        <p class="text-sm text-zinc-500 dark:text-zinc-400">Bring in code you already have.</p>
       </div>
 
-      <div class="space-y-3">
-        <%!-- Option: Terminal command --%>
+      <div class="grid sm:grid-cols-2 gap-3">
+        <%!-- From a folder on this machine (paste path + terminal, grouped) --%>
         <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 p-5 flex flex-col">
-          <h3 class="text-sm font-semibold mb-1">From terminal</h3>
-          <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
-            <code class="text-zinc-700 dark:text-zinc-300">cd</code>
-            into your project and run this command.
-          </p>
-          <div class="flex items-center gap-2 mt-auto">
-            <div class="flex-1 bg-zinc-900 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 font-mono text-xs text-zinc-300 overflow-x-auto whitespace-nowrap select-all">
-              <span class="text-zinc-500 select-none">$ </span>{@launch_cmd}
-            </div>
-            <button
-              id="copy-launch"
-              phx-hook="CopySource"
-              data-source={@launch_cmd}
-              class="flex-none rounded-lg bg-zinc-900 dark:bg-zinc-200 hover:bg-zinc-800 dark:hover:bg-white px-4 py-2 text-sm font-semibold text-white dark:text-zinc-900 transition-colors"
-            >
-              Copy
-            </button>
+          <div class="flex items-center gap-2 mb-1">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4 text-zinc-400 dark:text-zinc-500">
+              <path d="M3.75 3A1.75 1.75 0 0 0 2 4.75v3.26a3.235 3.235 0 0 1 1.75-.51h12.5c.644 0 1.245.188 1.75.51V6.75A1.75 1.75 0 0 0 16.25 5h-4.836a.25.25 0 0 1-.177-.073L9.823 3.513A1.75 1.75 0 0 0 8.586 3H3.75ZM3.75 9A1.75 1.75 0 0 0 2 10.75v4.5c0 .966.784 1.75 1.75 1.75h12.5A1.75 1.75 0 0 0 18 15.25v-4.5A1.75 1.75 0 0 0 16.25 9H3.75Z" />
+            </svg>
+            <h3 class="text-sm font-semibold">From a folder on this machine</h3>
           </div>
-        </div>
-
-        <%!-- Option: Paste path --%>
-        <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 p-5 flex flex-col">
-          <h3 class="text-sm font-semibold mb-1">Paste a path</h3>
-          <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
-            Full path to a project directory on this machine.
-          </p>
-          <form phx-submit="add_project" class="flex items-center gap-2 mt-auto">
+          <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-3">Point Loopyard at a directory you already have.</p>
+          <form phx-submit="add_project" class="flex items-center gap-2">
             <input
               type="text"
               name="path"
               placeholder="/Users/you/projects/my-app"
               autocomplete="off"
-              class="flex-1 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-3 py-2 text-sm font-mono
+              class="flex-1 min-w-0 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-3 py-2 text-sm font-mono
                          text-zinc-900 dark:text-zinc-300 placeholder:text-zinc-400 dark:placeholder:text-zinc-600
                          focus:outline-none focus:ring-1 focus:ring-violet-500/20 focus:border-violet-400"
             />
             <button
               type="submit"
-              class="rounded-lg bg-zinc-900 dark:bg-zinc-200 hover:bg-zinc-800 dark:hover:bg-white px-4 py-2 text-sm font-semibold text-white dark:text-zinc-900 transition-colors flex-none"
+              class="flex-none rounded-lg bg-zinc-900 dark:bg-zinc-200 hover:bg-zinc-800 dark:hover:bg-white px-4 py-2 text-sm font-semibold text-white dark:text-zinc-900 transition-colors"
             >
-              Launch
+              Open
             </button>
           </form>
+          <div class="mt-3 pt-3 border-t border-zinc-200/80 dark:border-zinc-700/60">
+            <p class="text-[11px] text-zinc-400 dark:text-zinc-500 mb-1.5">Or run this from that folder in your terminal:</p>
+            <div class="flex items-center gap-2">
+              <div class="flex-1 min-w-0 bg-zinc-900 dark:bg-zinc-950 rounded-lg px-3 py-1.5 font-mono text-[11px] text-zinc-300 overflow-x-auto whitespace-nowrap select-all">
+                <span class="text-zinc-500 select-none">$ </span>{@launch_cmd}
+              </div>
+              <button
+                id="copy-launch"
+                phx-hook="CopySource"
+                data-source={@launch_cmd}
+                class="flex-none rounded-lg border border-zinc-300 dark:border-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-300 transition-colors"
+              >
+                Copy
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <%!-- From GitHub — engine exists, UI coming. --%>
+        <div class="rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 bg-zinc-50/40 dark:bg-zinc-800/30 p-5 flex flex-col">
+          <div class="flex items-center gap-2 mb-1">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-4 h-4 text-zinc-400 dark:text-zinc-500">
+              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+            </svg>
+            <h3 class="text-sm font-semibold text-zinc-500 dark:text-zinc-400">From GitHub</h3>
+            <span class="text-[10px] font-medium uppercase tracking-wide rounded-full bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400 px-1.5 py-0.5">Soon</span>
+          </div>
+          <p class="text-xs text-zinc-400 dark:text-zinc-500">
+            Clone a repo to start, and sync back as it matures. The engine's built — wiring up the UI next.
+          </p>
+          <div class="mt-auto pt-3">
+            <button
+              type="button"
+              disabled
+              class="rounded-lg border border-zinc-300 dark:border-zinc-600 px-4 py-2 text-sm font-medium text-zinc-400 dark:text-zinc-500 opacity-60 cursor-not-allowed"
+            >
+              Connect GitHub
+            </button>
+          </div>
         </div>
       </div>
     </.page_shell>
