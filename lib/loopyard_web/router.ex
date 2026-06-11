@@ -4,6 +4,7 @@ defmodule LoopyardWeb.Router do
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
+    plug LoopyardWeb.Plugs.SessionId
     plug :fetch_live_flash
     plug :put_root_layout, html: {LoopyardWeb.Layouts, :root}
     plug :protect_from_forgery

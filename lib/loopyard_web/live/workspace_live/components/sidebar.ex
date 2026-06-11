@@ -161,11 +161,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
 
   # --- Workspace switcher (LEFT rail / "super-task-bar") ---
 
-  # Land on the workspace's latest agent (a live chat) when it has one;
-  # otherwise the workspace root, which spawns a working agent (D10).
+  # Where clicking a workspace lands you, in priority order:
+  #   1. resume_path — this session's last view there (server-tracked), then
+  #   2. its latest agent's chat, else
+  #   3. the workspace root (which spawns a working agent, D10).
   defp ws_switch_target(project_id, ws) do
     base = "/projects/#{project_id}/workspaces/#{ws.id}"
-    if ws[:latest_agent_id], do: "#{base}/agents/#{ws.latest_agent_id}", else: base
+
+    cond do
+      ws[:resume_path] -> ws.resume_path
+      ws[:latest_agent_id] -> "#{base}/agents/#{ws.latest_agent_id}"
+      true -> base
+    end
   end
 
   @doc """
@@ -187,8 +194,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
           <.link
             :for={ws <- @workspaces}
             navigate={ws_switch_target(@project.id, ws)}
-            data-ws-resume
-            data-ws-id={ws.id}
             class={[
               "flex items-center gap-2 px-3 min-h-9 text-sm transition-colors",
               if(ws.id == @current_id,

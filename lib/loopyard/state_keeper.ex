@@ -63,7 +63,12 @@ defmodule Loopyard.StateKeeper do
     # Moved here from LogBuffer.init/1 for the same reason as
     # :saga_recorder: StateKeeper is sole ETS owner so buffered logs
     # survive a LogBuffer GenServer crash. Audit-2 MEDIUM #6.
-    {:log_buffer, [:named_table, :public, :set]}
+    {:log_buffer, [:named_table, :public, :set]},
+    # Loopyard.Session.ViewTracker — per-browser-session "where was I": the
+    # last view (path) a session was on in each workspace, so the workspace
+    # switcher resumes there. Keyed by {session_id, workspace_id}. Server-side
+    # UI state in ONE place (here) rather than a process per session. Node-local.
+    {:session_views, [:named_table, :public, :set, {:read_concurrency, true}]}
   ]
 
   def start_link(_opts) do
