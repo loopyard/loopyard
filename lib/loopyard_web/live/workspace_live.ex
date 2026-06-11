@@ -123,8 +123,12 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:workspace, workspace)
      |> assign(:project, extra_assigns[:project])
      |> assign(:workspace_entry, extra_assigns[:workspace_entry])
-     |> assign(:project_workspaces, list_project_workspaces(extra_assigns[:project]))
+     |> assign(
+       :project_workspaces,
+       list_project_workspaces(extra_assigns[:project], socket.transport_pid)
+     )
      |> assign(:base_path, base_path)
+     |> attach_view_tracker()
      |> assign(:host, host)
      |> assign(:agents, agents)
      |> assign(:service_statuses, service_statuses)
@@ -1441,7 +1445,11 @@ defmodule LoopyardWeb.WorkspaceLive do
   @impl Events.Workspaces.Subscriber
   def on_workspaces_changed(_event, socket) do
     {:noreply,
-     assign(socket, :project_workspaces, list_project_workspaces(socket.assigns.project))}
+     assign(
+       socket,
+       :project_workspaces,
+       list_project_workspaces(socket.assigns.project, socket.transport_pid)
+     )}
   end
 
   # --- SourceSync subscriber callbacks ---
@@ -1675,20 +1683,48 @@ defmodule LoopyardWeb.WorkspaceLive do
 
   # Sibling workspaces of this project, for the left switcher rail. Cheap
   # (ETS only). Returns [] when there's no project (legacy single-workspace).
-  defp list_project_workspaces(nil), do: []
+  defp list_project_workspaces(nil, _conn), do: []
 
-  defp list_project_workspaces(project) do
-    # Enrich each sibling workspace with its most-recent agent id so the
-    # switcher can land you straight in that workspace's chat instead of a
-    # blank "select an agent" screen. list_agents/0 is sorted newest-first,
-    # so the first agent per workspace is the latest.
+  defp list_project_workspaces(project, conn) do
+    # Enrich each sibling workspace with (a) this WINDOW's last-viewed path there
+    # (resume where you left off, per-window) and (b) its most-recent agent id
+    # (the fallback when there's nothing to resume — lands in a chat, not a blank
+    # "select an agent" screen). list_agents/0 is newest-first, so the first
+    # agent per workspace is the latest.
     agents_by_ws = Enum.group_by(ChatAgent.list_agents(), & &1[:workspace_id])
 
     Loopyard.ProjectRegistry.list_workspaces(project.id)
     |> Enum.map(fn ws ->
       latest = agents_by_ws |> Map.get(ws.id, []) |> List.first()
-      Map.put(ws, :latest_agent_id, latest && latest.id)
+
+      ws
+      |> Map.put(:latest_agent_id, latest && latest.id)
+      |> Map.put(:resume_path, Loopyard.WindowViews.resume_path(conn, ws.id))
     end)
+  end
+
+  # Record where this window is, per workspace, so the switcher resumes there.
+  # A handle_params hook fires on every navigation (initial + each patch),
+  # keyed by socket.transport_pid (the window's connection — stable across the
+  # workspace-switch remount, unique per window).
+  defp attach_view_tracker(socket) do
+    if connected?(socket) do
+      attach_hook(socket, :track_view, :handle_params, fn _params, uri, socket ->
+        conn = socket.transport_pid
+        ws_id = socket.assigns.workspace.id
+        if conn && ws_id, do: Loopyard.WindowViews.touch(conn, ws_id, view_path(uri))
+        {:cont, socket}
+      end)
+    else
+      socket
+    end
+  end
+
+  defp view_path(uri) do
+    case URI.parse(uri) do
+      %URI{path: path} -> path
+      _ -> nil
+    end
   end
 
   # --- Render ---
