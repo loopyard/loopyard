@@ -538,8 +538,8 @@ defmodule LoopyardWeb.ProjectLive do
               </:action>
             </.section_header>
 
-            <div class="space-y-2.5">
-              <.row_card
+            <.card_grid>
+              <.tile_card
                 :for={workspace <- @workspaces}
                 navigate={"/projects/#{@project.id}/workspaces/#{workspace.id}"}
                 accent={
@@ -547,70 +547,68 @@ defmodule LoopyardWeb.ProjectLive do
                     "border-green-300 dark:border-green-800 bg-green-50/50 dark:bg-green-950/20 hover:border-green-400"
                 }
               >
-                <div class={"w-2.5 h-2.5 md:w-3 md:h-3 rounded-full flex-none #{cond do
-                  Map.get(workspace, :setup, %{})[:phase] == :running -> "bg-blue-500 animate-pulse"
-                  Map.get(workspace, :setup, %{})[:phase] == :pending -> "bg-blue-300 animate-pulse"
-                  Map.get(workspace, :setup, %{})[:phase] == :failed -> "bg-red-500"
-                  workspace.status == :running -> "bg-green-500"
-                  true -> "bg-zinc-400"
-                end}"}>
-                </div>
-                <div class="min-w-0 flex-1">
-                  <div class="flex items-center gap-2">
-                    <span class="text-sm md:text-base font-medium text-zinc-900 dark:text-zinc-100 truncate">
-                      {workspace.name}
-                    </span>
-                    <span
-                      :if={workspace[:is_main]}
-                      class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 flex-none"
-                    >
-                      default
-                    </span>
+                <div class="flex items-center gap-2">
+                  <div class={"w-2.5 h-2.5 md:w-3 md:h-3 rounded-full flex-none #{cond do
+                    Map.get(workspace, :setup, %{})[:phase] == :running -> "bg-blue-500 animate-pulse"
+                    Map.get(workspace, :setup, %{})[:phase] == :pending -> "bg-blue-300 animate-pulse"
+                    Map.get(workspace, :setup, %{})[:phase] == :failed -> "bg-red-500"
+                    workspace.status == :running -> "bg-green-500"
+                    true -> "bg-zinc-400"
+                  end}"}>
                   </div>
-                  <% setup = Map.get(workspace, :setup, %{}) %>
-                  <% setup_phase = setup[:phase] %>
-                  <p
-                    :if={setup_phase in [:pending, :running, :worktree, :volume, :seeding]}
-                    class="text-xs md:text-sm text-blue-600 dark:text-blue-400 mt-0.5"
+                  <span class="text-sm md:text-base font-medium text-zinc-900 dark:text-zinc-100 truncate">
+                    {workspace.name}
+                  </span>
+                  <span
+                    :if={workspace[:is_main]}
+                    class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 flex-none"
                   >
-                    <%= case setup_phase do %>
-                      <% :pending -> %>
-                        Setting up workspace…
-                      <% :running -> %>
-                        Setting up workspace…
-                      <% :worktree -> %>
-                        Creating worktree…
-                      <% :volume -> %>
-                        Creating volume…
-                      <% :seeding -> %>
-                        <% pct = get_in(setup, [:progress, :percent]) %>
-                        {if pct, do: "Seeding files… #{pct}%", else: "Seeding files…"}
-                    <% end %>
-                  </p>
-                  <p
-                    :if={setup_phase == :failed}
-                    class="text-xs md:text-sm text-red-600 dark:text-red-400 mt-0.5"
-                  >
-                    Failed — click to retry
-                  </p>
-                  <p
-                    :if={setup_phase in [:ready, nil] && workspace.status == :running}
-                    class="text-xs md:text-sm text-zinc-500 dark:text-zinc-400 mt-0.5"
-                  >
-                    {workspace.agent_count} agent{if workspace.agent_count != 1, do: "s"} · {workspace.services_running} service{if workspace.services_running !=
-                                                                                                                                      1,
-                                                                                                                                    do:
-                                                                                                                                      "s"} running
-                  </p>
-                  <p
-                    :if={setup_phase in [:ready, nil] && workspace.status != :running}
-                    class="text-xs md:text-sm text-zinc-400 dark:text-zinc-500 mt-0.5"
-                  >
-                    Stopped
-                  </p>
+                    default
+                  </span>
                 </div>
-              </.row_card>
-            </div>
+                <% setup = Map.get(workspace, :setup, %{}) %>
+                <% setup_phase = setup[:phase] %>
+                <p
+                  :if={setup_phase in [:pending, :running, :worktree, :volume, :seeding]}
+                  class="text-xs md:text-sm text-blue-600 dark:text-blue-400 mt-1.5"
+                >
+                  <%= case setup_phase do %>
+                    <% :pending -> %>
+                      Setting up workspace…
+                    <% :running -> %>
+                      Setting up workspace…
+                    <% :worktree -> %>
+                      Creating worktree…
+                    <% :volume -> %>
+                      Creating volume…
+                    <% :seeding -> %>
+                      <% pct = get_in(setup, [:progress, :percent]) %>
+                      {if pct, do: "Seeding files… #{pct}%", else: "Seeding files…"}
+                  <% end %>
+                </p>
+                <p
+                  :if={setup_phase == :failed}
+                  class="text-xs md:text-sm text-red-600 dark:text-red-400 mt-1.5"
+                >
+                  Failed — click to retry
+                </p>
+                <p
+                  :if={setup_phase in [:ready, nil] && workspace.status == :running}
+                  class="text-xs md:text-sm text-zinc-500 dark:text-zinc-400 mt-1.5"
+                >
+                  {workspace.agent_count} agent{if workspace.agent_count != 1, do: "s"} · {workspace.services_running} service{if workspace.services_running !=
+                                                                                                                                    1,
+                                                                                                                                  do:
+                                                                                                                                    "s"} running
+                </p>
+                <p
+                  :if={setup_phase in [:ready, nil] && workspace.status != :running}
+                  class="text-xs md:text-sm text-zinc-400 dark:text-zinc-500 mt-1.5"
+                >
+                  Stopped
+                </p>
+              </.tile_card>
+            </.card_grid>
         <% end %>
       <% end %>
     </.page_shell>

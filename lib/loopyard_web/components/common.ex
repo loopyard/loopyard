@@ -165,35 +165,55 @@ defmodule LoopyardWeb.Components.Common do
   end
 
   @doc """
-  A full-width, navigable list row. Responsive-first: compact on
-  mobile, roomier padding + larger type on desktop. Used by every list
-  page (projects, workspaces) so they stay visually consistent.
+  Responsive grid wrapper for `tile_card`s: one column on mobile, two on
+  small screens, three on large. Used by every list page (projects,
+  workspaces) so they stay visually consistent.
+  """
+  slot :inner_block, required: true
+
+  def card_grid(assigns) do
+    ~H"""
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+      {render_slot(@inner_block)}
+    </div>
+    """
+  end
+
+  @doc """
+  A navigable card tile. On mobile it's a compact row (auto height); on
+  desktop it becomes a ~4:3 tile in the `card_grid`, with the content at
+  the top and the chevron pinned bottom-right. Responsive-first: one set
+  of classes, two shapes.
 
   Pass `accent` to override the default border/hover (e.g. a running
-  workspace gets a green accent). The trailing chevron is built in.
+  workspace gets a green accent).
 
-      <.row_card navigate={"/projects/" <> p.id}>
-        <div class="min-w-0 flex-1">…</div>
-      </.row_card>
+      <.card_grid>
+        <.tile_card :for={p <- @projects} navigate={"/projects/" <> p.id}>
+          <h3 class="font-semibold truncate">{p.name}</h3>
+        </.tile_card>
+      </.card_grid>
   """
   attr :navigate, :string, required: true
   attr :accent, :string, default: nil
   attr :rest, :global
   slot :inner_block, required: true
 
-  def row_card(assigns) do
+  def tile_card(assigns) do
     ~H"""
     <.link
       navigate={@navigate}
       class={[
-        "group block w-full rounded-xl border transition-colors p-4 md:p-5",
+        "group flex flex-col rounded-xl border transition-colors p-4 md:p-5 sm:aspect-[4/3]",
         @accent ||
           "border-zinc-200 dark:border-zinc-700 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
       ]}
       {@rest}
     >
-      <div class="flex items-center gap-3 md:gap-4">
+      <div class="min-w-0 flex-1">
         {render_slot(@inner_block)}
+      </div>
+      <div class="mt-3 flex items-center justify-end">
         <.chevron />
       </div>
     </.link>

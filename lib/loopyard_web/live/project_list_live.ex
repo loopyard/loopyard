@@ -119,21 +119,17 @@ defmodule LoopyardWeb.ProjectListLive do
             </:action>
           </.section_header>
 
-          <div :if={@has_projects} class="space-y-2.5">
-            <.row_card :for={project <- @projects} navigate={"/projects/#{project.id}"}>
-              <div class="min-w-0 flex-1">
-                <div class="flex items-center gap-2">
-                  <span class="text-sm md:text-base font-semibold truncate">{project.name}</span>
-                  <span :if={project.workspace_count > 1} class="text-xs text-zinc-400 dark:text-zinc-500 flex-none">
-                    {project.workspace_count} workspaces
-                  </span>
-                </div>
-                <p class="text-xs md:text-sm font-mono text-zinc-400 dark:text-zinc-500 mt-0.5 truncate">
-                  {project_location(project)}
-                </p>
-              </div>
-            </.row_card>
-          </div>
+          <.card_grid :if={@has_projects}>
+            <.tile_card :for={project <- @projects} navigate={"/projects/#{project.id}"}>
+              <h3 class="text-base font-semibold truncate">{project.name}</h3>
+              <p class="text-xs md:text-sm font-mono text-zinc-400 dark:text-zinc-500 mt-1 truncate">
+                {project_location(project)}
+              </p>
+              <p :if={project.workspace_count > 1} class="text-xs text-zinc-400 dark:text-zinc-500 mt-2">
+                {project.workspace_count} workspaces
+              </p>
+            </.tile_card>
+          </.card_grid>
 
           <div :if={!@has_projects} class="text-center py-16 md:py-24 text-sm text-zinc-400 dark:text-zinc-500">
             No projects yet — hit <span class="font-medium text-zinc-500 dark:text-zinc-400">New project</span> to start.
