@@ -87,6 +87,81 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     """
   end
 
+  # The agent proposed a boundary-crossing action (fork = new branch workspace).
+  # Render an Approve/Deny card — the guardrail against an agent spawning
+  # workspaces unattended. Persisted + broadcast, so the decision and its
+  # outcome show for the whole room.
+  def chat_msg(%{msg: %{role: :approval}} = assigns) do
+    assigns = assign(assigns, :action, assigns.msg.action)
+
+    ~H"""
+    <div class="pl-10 py-2">
+      <div class="rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50/50 dark:bg-amber-900/10 p-4 max-w-xl">
+        <div class="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 mb-2">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3.5 h-3.5">
+            <path d="M8 1.5a2 2 0 0 0-2 2v.5H4.5A1.5 1.5 0 0 0 3 5.5v.879a2.5 2.5 0 0 0 0 4.242V13.5A1.5 1.5 0 0 0 4.5 15h7a1.5 1.5 0 0 0 1.5-1.5v-2.879a2.5 2.5 0 0 0 0-4.242V5.5A1.5 1.5 0 0 0 11.5 4H10v-.5a2 2 0 0 0-2-2Z" />
+          </svg>
+          Branch proposal — needs your OK
+        </div>
+
+        <div class="text-sm text-zinc-800 dark:text-zinc-200 mb-1">
+          Fork <code class="text-xs bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">{@action.base}</code>
+          → new branch
+          <code class="text-xs bg-violet-200/70 dark:bg-violet-800/50 rounded px-1 py-0.5">{@action.branch}</code>
+          <span class="text-zinc-400">(its own isolated workspace)</span>
+        </div>
+        <div :if={@action[:reason]} class="text-xs text-zinc-500 dark:text-zinc-400 mb-3">{@action.reason}</div>
+        <div :if={!@action[:reason]} class="mb-3"></div>
+
+        <%= case @msg.status do %>
+          <% :pending -> %>
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                phx-click="decide_approval"
+                phx-value-approval_id={@msg.approval_id}
+                phx-value-decision="approve"
+                class="focus-ring inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-4 py-1.5 text-sm font-medium text-white transition-colors"
+              >
+                Approve
+              </button>
+              <button
+                type="button"
+                phx-click="decide_approval"
+                phx-value-approval_id={@msg.approval_id}
+                phx-value-decision="deny"
+                class="focus-ring inline-flex items-center rounded-lg border border-zinc-300 dark:border-zinc-600 px-4 py-1.5 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              >
+                Deny
+              </button>
+            </div>
+          <% :creating -> %>
+            <div class="inline-flex items-center gap-2 text-sm text-zinc-500 animate-pulse">
+              <svg class="w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Creating the branch workspace…
+            </div>
+          <% :approved -> %>
+            <.link
+              navigate={"/projects/#{@msg[:project_id]}/workspaces/#{@msg[:workspace_id]}"}
+              class="focus-ring inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
+            >
+              Created — open <code class="text-xs">{@action.branch}</code> →
+            </.link>
+          <% :denied -> %>
+            <span class="text-sm text-zinc-400 dark:text-zinc-500">Declined.</span>
+          <% :failed -> %>
+            <span class="text-sm text-red-500">Couldn't create the branch: {@msg[:error]}</span>
+          <% _ -> %>
+            <span></span>
+        <% end %>
+      </div>
+    </div>
+    """
+  end
+
   def chat_msg(%{msg: %{role: :user}} = assigns) do
     assigns = assign(assigns, :url, msg_url(assigns))
     assigns = assign(assigns, :raw, raw_url(assigns))

@@ -63,7 +63,7 @@ defmodule Loopyard.ChatAgent.Prompt do
 
     Dev-service cluster (dev server, postgres, etc.): NONE runs by default. When the app needs to RUN, YOU stand it up — write `.loopyard/workspace/docker-compose.yml`, then bring it up with the `docker_compose` MCP tool (never `docker compose` via `exec`). Add and evolve services as the app grows. Check what's currently running with `service_containers` and `workspace_info`; use `logs` for a service's output.
 
-    When you need the user to make a decision or pick between options, call the `ask_user` tool (it shows them clickable buttons and waits) instead of asking in prose and hoping they reply.
+    When you need the user to make a decision or pick between options, call the `ask_user` tool (it shows them clickable buttons and waits) instead of asking in prose and hoping they reply. To try an idea on a separate branch without disturbing this one, call `propose_fork` (the user approves creating a new branch workspace) — never assume you can branch on your own.
 
     Long command output is truncated — you'll see the last ~80 lines. The full output is visible to the user in the chat.
 

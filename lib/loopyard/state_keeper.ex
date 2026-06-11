@@ -32,6 +32,10 @@ defmodule Loopyard.StateKeeper do
     # question_id. The asking process (an MCP tool / ACP connection) blocks on
     # receive; the UI's answer delivers via the stored waiter pid. Public set.
     {:harness_questions, [:named_table, :public, :set, {:read_concurrency, true}]},
+    # Loopyard.Harness.Approvals — pending boundary-crossing action proposals
+    # (fork/integrate) awaiting a human approve/deny, keyed by approval_id. Same
+    # blocking-waiter pattern as :harness_questions.
+    {:harness_approvals, [:named_table, :public, :set, {:read_concurrency, true}]},
     # Ring buffer for Loopyard.Events.Tap — every broadcast on every
     # known topic. ordered_set keyed by a monotonic counter so the
     # newest records come out with a single :ets.select_reverse.

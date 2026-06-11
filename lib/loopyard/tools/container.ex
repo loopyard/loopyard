@@ -57,7 +57,8 @@ defmodule Loopyard.Tools.Container do
     Container.AppUrl,
     Container.Git,
     Container.FileInfo,
-    Container.AskUser
+    Container.AskUser,
+    Container.ProposeFork
   ]
 
   def __tool_server__ do

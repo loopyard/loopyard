@@ -707,6 +707,19 @@ defmodule LoopyardWeb.WorkspaceLive do
   end
 
   @impl true
+  def handle_event("decide_approval", %{"approval_id" => id, "decision" => decision}, socket) do
+    decision = if decision == "approve", do: :approve, else: :deny
+
+    # Deliver to the blocked propose_fork tool. It runs the fork (off this
+    # process, so the LiveView never freezes) and flips the card to the outcome
+    # for everyone.
+    case Loopyard.Harness.Approvals.decide(id, decision) do
+      :ok -> {:noreply, socket}
+      {:error, :not_found} -> {:noreply, put_flash(socket, :info, "That proposal was already decided.")}
+    end
+  end
+
+  @impl true
   def handle_event("restart_session", %{"id" => id}, socket) do
     ChatAgent.restart_session(id)
     {:noreply, socket}
