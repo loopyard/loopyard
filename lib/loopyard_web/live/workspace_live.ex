@@ -117,6 +117,7 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:workspace, workspace)
      |> assign(:project, extra_assigns[:project])
      |> assign(:workspace_entry, extra_assigns[:workspace_entry])
+     |> assign(:project_workspaces, list_project_workspaces(extra_assigns[:project]))
      |> assign(:base_path, base_path)
      |> assign(:host, host)
      |> assign(:agents, agents)
@@ -1656,6 +1657,14 @@ defmodule LoopyardWeb.WorkspaceLive do
     end
   end
 
+  # Sibling workspaces of this project, for the left switcher rail. Cheap
+  # (ETS only). Returns [] when there's no project (legacy single-workspace).
+  defp list_project_workspaces(nil), do: []
+
+  defp list_project_workspaces(project) do
+    Loopyard.ProjectRegistry.list_workspaces(project.id)
+  end
+
   # --- Render ---
 
   @impl true
@@ -1676,28 +1685,14 @@ defmodule LoopyardWeb.WorkspaceLive do
       />
       <.flash_banner flash={@flash} kind={:error} class="mx-4 mt-2" />
       <div class="flex-1 flex min-h-0">
-        <%!-- Sidebar: always visible on md+, full-screen on mobile when no agent/service selected --%>
-        <.sidebar
-          agents={@agents}
-          selected_id={@selected_id}
-          workspace_id={@workspace.id}
+        <%!-- LEFT rail: switch between this project's workspaces (desktop-only). --%>
+        <.workspace_switcher
+          :if={@project}
+          workspaces={@project_workspaces}
+          current_id={@workspace.id}
           project={@project}
-          workspace_entry={@workspace_entry}
-          service_statuses={@service_statuses}
-          selected_service={@selected_service}
-          services_loaded={@services_loaded}
-          volumes_loaded={@volumes_loaded}
-          live_action={@live_action}
-          volumes={@volumes}
-          base_path={@base_path}
-          host={@host}
-          is_local_source?={@is_local_source?}
-          sync_status={@sync_status}
-          workspace_state={@workspace_state}
-          workspace_state_since={@workspace_state_since}
-          docker_connected?={@docker_connected?}
         />
-        <%!-- Main content: hidden on mobile when sidebar is showing (index/new with no selection) --%>
+        <%!-- Main content: hidden on mobile when the rail is showing (index/new with no selection) --%>
         <main
           id="main-content"
           class={"flex-1 flex flex-col min-w-0 #{if @live_action == :index && !@selected_id && !@selected_service, do: "hidden md:flex", else: "flex"}"}
@@ -1851,6 +1846,32 @@ defmodule LoopyardWeb.WorkspaceLive do
             />
           <% end %>
         </main>
+        <%!-- RIGHT rail: Agents/Services/Volumes nav + the selected agent's
+             context (model, tokens, cost). The old left sidebar, flipped. --%>
+        <.sidebar
+          agents={@agents}
+          selected_id={@selected_id}
+          selected_agent={@selected_agent}
+          editing_name={@editing_name}
+          container_env={@container_env}
+          container_logs={@container_logs}
+          workspace_id={@workspace.id}
+          project={@project}
+          workspace_entry={@workspace_entry}
+          service_statuses={@service_statuses}
+          selected_service={@selected_service}
+          services_loaded={@services_loaded}
+          volumes_loaded={@volumes_loaded}
+          live_action={@live_action}
+          volumes={@volumes}
+          base_path={@base_path}
+          host={@host}
+          is_local_source?={@is_local_source?}
+          sync_status={@sync_status}
+          workspace_state={@workspace_state}
+          workspace_state_since={@workspace_state_since}
+          docker_connected?={@docker_connected?}
+        />
       </div>
     </div>
     """

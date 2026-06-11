@@ -188,15 +188,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           has_container={@has_container}
         />
       </div>
-      <%!-- Context panel: always visible on lg+, full-screen on mobile when :context_panel --%>
-      <div class={if @tab == :context_panel, do: "flex-1 lg:w-80 lg:flex-none", else: ""}>
+      <%!-- Agent context lives in the right rail on desktop. On mobile that
+           rail is hidden, so the "Info" link (:context_panel) shows the same
+           context full-screen here. --%>
+      <div :if={@tab == :context_panel} class="flex-1 lg:hidden">
         <.context_panel
           agent={@selected_agent}
           has_container={@has_container}
           container_env={@container_env}
           container_logs={@container_logs}
           editing_name={@editing_name}
-          mobile={@tab == :context_panel}
+          mobile={true}
         />
       </div>
     </div>

@@ -13,6 +13,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
     ]
 
   import LoopyardWeb.Components.SideNav, only: [section: 1, row: 1, empty: 1]
+  import LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel, only: [context_sections: 1]
 
   import LoopyardWeb.Live.WorkspaceLive.Components.Formatters,
     only: [
@@ -60,10 +61,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
     assigns = assign(assigns, :base_path, base_path)
 
     ~H"""
-    <%!-- On mobile: full-width when visible (index/new), hidden when agent/service selected.
-         On md+: always visible as a fixed-width sidebar. --%>
+    <%!-- The workspace rail (RIGHT side): Agents/Services/Volumes nav + the
+         selected agent's context. On mobile: full-width when visible
+         (index/context), hidden when an agent/service is selected. On md+:
+         always visible as a fixed-width rail. --%>
     <aside class={[
-      "flex-none border-r border-zinc-200 dark:border-zinc-700/80 flex flex-col bg-zinc-50 dark:bg-zinc-900/50",
+      "flex-none border-l border-zinc-200 dark:border-zinc-700/80 flex flex-col bg-zinc-50 dark:bg-zinc-900/50",
       "w-full md:w-80",
       if(
         @live_action in [
@@ -141,6 +144,76 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
             >
             </span>
             <span class="truncate text-zinc-600 dark:text-zinc-400">Host file sync</span>
+          </.row>
+        </.section>
+
+        <%!-- The selected agent's context (model, tokens, cost, docker, tools)
+             folds in below the workspace nav — one combined rail. --%>
+        <.context_sections
+          :if={@selected_agent}
+          agent={@selected_agent}
+          editing_name={@editing_name}
+        />
+      </div>
+    </aside>
+    """
+  end
+
+  # --- Workspace switcher (LEFT rail / "super-task-bar") ---
+
+  @doc """
+  The left rail: switch between the workspaces (branches) of this project.
+  Each row navigates to that workspace; a status dot reflects whether its
+  cluster is running. A "New workspace" link goes to the project's
+  new-workspace screen. Desktop-only (lg+); mobile switches via the project
+  page.
+  """
+  attr :workspaces, :list, default: []
+  attr :current_id, :string, required: true
+  attr :project, :map, required: true
+
+  def workspace_switcher(assigns) do
+    ~H"""
+    <aside class="hidden lg:flex flex-none w-56 border-r border-zinc-200 dark:border-zinc-700/80 flex-col bg-zinc-50 dark:bg-zinc-900/50">
+      <div class="flex-1 overflow-y-auto">
+        <.section label="Workspaces">
+          <.link
+            :for={ws <- @workspaces}
+            navigate={"/projects/#{@project.id}/workspaces/#{ws.id}"}
+            class={[
+              "flex items-center gap-2 px-3 min-h-9 text-sm transition-colors",
+              if(ws.id == @current_id,
+                do: "bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300 font-medium",
+                else: "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/60"
+              )
+            ]}
+            aria-current={ws.id == @current_id && "page"}
+          >
+            <span class={"w-1.5 h-1.5 rounded-full flex-none #{if ws.status == :running, do: "bg-emerald-500", else: "bg-zinc-400"}"}>
+            </span>
+            <span class="truncate flex-1">{ws.name}</span>
+            <span
+              :if={ws[:is_main]}
+              class="text-[9px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 flex-none"
+            >
+              default
+            </span>
+          </.link>
+          <.empty :if={@workspaces == []} text="No workspaces" />
+          <.row
+            navigate={"/projects/#{@project.id}/new"}
+            class="text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 16 16"
+              fill="currentColor"
+              class="w-3.5 h-3.5 flex-none"
+              aria-hidden="true"
+            >
+              <path d="M8.75 3.75a.75.75 0 0 0-1.5 0v3.5h-3.5a.75.75 0 0 0 0 1.5h3.5v3.5a.75.75 0 0 0 1.5 0v-3.5h3.5a.75.75 0 0 0 0-1.5h-3.5v-3.5Z" />
+            </svg>
+            <span>New workspace</span>
           </.row>
         </.section>
       </div>

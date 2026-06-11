@@ -23,39 +23,54 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
       "flex-col h-full bg-zinc-50 dark:bg-zinc-900/50 overflow-y-auto border-l border-zinc-200 dark:border-zinc-700/80",
       if(@mobile, do: "flex flex-1", else: "hidden lg:flex w-80 flex-none")
     ]}>
-      <.agent_name agent={@agent} editing_name={@editing_name} />
-
-      <.context_files agent={@agent} />
-
-      <.section label="Info">
-        <.info_row
-          label="Status"
-          value={
-            if @agent[:active_tool] && @agent.status == :thinking,
-              do: "using #{short_tool(@agent.active_tool)}",
-              else: @agent.status
-          }
-        />
-        <.info_row label="Turns" value={@agent[:turns] || 0} />
-        <.info_row label="Tool calls" value={@agent.tool_calls} />
-        <.info_row
-          label="Errors"
-          value={@agent.errors}
-          class={if @agent.errors > 0, do: "text-red-500 font-medium"}
-        />
-        <.info_row label="Messages" value={length(@agent.messages)} />
-        <.info_row :if={@agent[:started_at]} label="Started" value={time_ago(@agent.started_at)} />
-        <.info_row
-          :if={@agent[:last_activity_at]}
-          label="Last active"
-          value={time_ago(@agent.last_activity_at)}
-        />
-      </.section>
-
-      <.docker_context agent={@agent} />
-      <.claude_usage agent={@agent} />
-      <.tool_list />
+      <.context_sections agent={@agent} editing_name={@editing_name} />
     </aside>
+    """
+  end
+
+  @doc """
+  The context panel's body sections (agent name, context files, Info,
+  Docker, Claude, Tools) WITHOUT the `<aside>` wrapper — so they can be
+  embedded directly in the combined workspace rail (right side) below the
+  Agents/Services/Volumes nav.
+  """
+  attr :agent, :map, required: true
+  attr :editing_name, :boolean, default: false
+
+  def context_sections(assigns) do
+    ~H"""
+    <.agent_name agent={@agent} editing_name={@editing_name} />
+
+    <.context_files agent={@agent} />
+
+    <.section label="Info">
+      <.info_row
+        label="Status"
+        value={
+          if @agent[:active_tool] && @agent.status == :thinking,
+            do: "using #{short_tool(@agent.active_tool)}",
+            else: @agent.status
+        }
+      />
+      <.info_row label="Turns" value={@agent[:turns] || 0} />
+      <.info_row label="Tool calls" value={@agent.tool_calls} />
+      <.info_row
+        label="Errors"
+        value={@agent.errors}
+        class={if @agent.errors > 0, do: "text-red-500 font-medium"}
+      />
+      <.info_row label="Messages" value={length(@agent.messages)} />
+      <.info_row :if={@agent[:started_at]} label="Started" value={time_ago(@agent.started_at)} />
+      <.info_row
+        :if={@agent[:last_activity_at]}
+        label="Last active"
+        value={time_ago(@agent.last_activity_at)}
+      />
+    </.section>
+
+    <.docker_context agent={@agent} />
+    <.claude_usage agent={@agent} />
+    <.tool_list />
     """
   end
 
