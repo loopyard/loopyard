@@ -251,36 +251,6 @@ Hooks.CopySource = {
   }
 }
 
-// Generic client-side navigation memory — like the browser's own scroll
-// restoration, but for "which screen was I on." No per-feature JS: opt in
-// purely with data attributes, reusable for any "remember where I was" need.
-//
-//   data-remember="<key>"  on an element → saves the current URL under <key>
-//                                          (on mount + every LiveView update)
-//   data-resume="<key>"    on a link     → clicking it resumes to <key>'s
-//                                          saved URL, else the link's own href
-const NAV_KEY = (k) => "nav:" + k
-
-Hooks.RememberNav = {
-  mounted() { this.save() },
-  updated() { this.save() },
-  save() {
-    const k = this.el.dataset.remember
-    if (!k) return
-    try { localStorage.setItem(NAV_KEY(k), location.pathname + location.search) } catch (e) {}
-  }
-}
-
-// Apply the remembered URL at CLICK time (capture phase, before LiveView's
-// handler reads the href) so a re-render can't clobber a pre-set href.
-document.addEventListener("click", (e) => {
-  const a = e.target.closest && e.target.closest("a[data-resume]")
-  if (!a) return
-  let saved = null
-  try { saved = localStorage.getItem(NAV_KEY(a.dataset.resume)) } catch (e) {}
-  if (saved) a.setAttribute("href", saved)
-}, true)
-
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 let liveSocket = new LiveSocket("/live", Socket, {
   hooks: Hooks,

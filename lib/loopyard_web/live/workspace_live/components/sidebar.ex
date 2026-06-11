@@ -187,7 +187,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
           <.link
             :for={ws <- @workspaces}
             navigate={ws_switch_target(@project.id, ws)}
-            data-resume={"ws:#{ws.id}"}
             class={[
               "flex items-center gap-2 px-3 min-h-9 text-sm transition-colors",
               if(ws.id == @current_id,
