@@ -138,7 +138,6 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:selected_id, nil)
      |> assign(:selected_agent, nil)
      |> assign(:messages, [])
-     |> assign(:messages_total, 0)
      |> assign(:has_more_messages, false)
      |> assign(:streaming_text, "")
      |> assign(:streaming_thinking, "")
@@ -149,7 +148,6 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:container_log_service, nil)
      |> assign(:has_container, false)
      |> assign(:booting_agent_id, nil)
-     |> assign(:booting_agent_name, nil)
      |> assign(:boot_status, "Initializing...")
      |> assign(:boot_log, [])
      |> assign(:editing_name, false)
@@ -670,7 +668,6 @@ defmodule LoopyardWeb.WorkspaceLive do
         {:noreply,
          socket
          |> assign(:messages, combined)
-         |> assign(:messages_total, total)
          |> assign(:has_more_messages, length(combined) < total)
          |> push_event("messages_prepended", %{})}
       else
@@ -1354,7 +1351,6 @@ defmodule LoopyardWeb.WorkspaceLive do
       socket =
         socket
         |> assign(:messages, socket.assigns.messages ++ [msg])
-        |> update(:messages_total, &(&1 + 1))
         |> AgentEvents.refresh_selected_from_agents(id, socket.assigns.agents)
         |> push_event("scroll_bottom", %{})
 

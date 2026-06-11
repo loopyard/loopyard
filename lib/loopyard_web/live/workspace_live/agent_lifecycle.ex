@@ -121,7 +121,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
           |> assign(:selected_id, id)
           |> assign(:selected_agent, nil)
           |> assign(:booting_agent_id, id)
-          |> assign(:booting_agent_name, summary.name)
           |> assign(:boot_status, summary[:boot_status] || "Initializing...")
           |> assign(:boot_log, [])
 
@@ -156,7 +155,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
 
     socket
     |> assign(:messages, messages)
-    |> assign(:messages_total, total)
     |> assign(:has_more_messages, length(messages) < total)
   end
 

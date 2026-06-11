@@ -105,7 +105,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentEvents do
       if socket.assigns.selected_id == summary.id do
         assign(socket,
           booting_agent_id: summary.id,
-          booting_agent_name: summary.name,
           boot_status: summary[:boot_status] || "Initializing...",
           boot_log: []
         )
@@ -230,7 +229,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentEvents do
       socket =
         socket
         |> assign(:messages, socket.assigns.messages ++ [msg])
-        |> update(:messages_total, &(&1 + 1))
         |> refresh_selected_from_agents(id, socket.assigns.agents)
         |> push_event("scroll_bottom", %{})
 
