@@ -25,11 +25,15 @@ defmodule Loopyard.Harness.QuestionsTest do
       assert q.prompt == "Which framework?"
       assert q.header == "Framework"
       refute q.multi
-      assert [%{label: "Rails", description: "Ruby"}, %{label: "Phoenix", description: nil}] = q.options
+
+      assert [%{label: "Rails", description: "Ruby"}, %{label: "Phoenix", description: nil}] =
+               q.options
     end
 
     test "accepts the {questions: [...]} envelope and rejects junk" do
-      assert {:ok, [_]} = ClaudeCode.parse(%{"questions" => [%{"question" => "x", "options" => []}]})
+      assert {:ok, [_]} =
+               ClaudeCode.parse(%{"questions" => [%{"question" => "x", "options" => []}]})
+
       assert :error = ClaudeCode.parse([])
       assert :error = ClaudeCode.parse("nope")
     end
@@ -44,7 +48,9 @@ defmodule Loopyard.Harness.QuestionsTest do
   describe "broker ask/answer" do
     test "ask blocks until answered, then returns the selections" do
       {:ok, questions} =
-        ClaudeCode.parse([%{"question" => "Go?", "options" => [%{"label" => "Yes"}, %{"label" => "No"}]}])
+        ClaudeCode.parse([
+          %{"question" => "Go?", "options" => [%{"label" => "Yes"}, %{"label" => "No"}]}
+        ])
 
       task = Task.async(fn -> Questions.ask("q-test-agent", questions) end)
 
@@ -58,14 +64,19 @@ defmodule Loopyard.Harness.QuestionsTest do
     end
 
     test "answering an unknown question is a clean error" do
-      assert {:error, :not_found} = Questions.answer("nope-#{System.unique_integer()}", %{"q0" => ["x"]})
+      assert {:error, :not_found} =
+               Questions.answer("nope-#{System.unique_integer()}", %{"q0" => ["x"]})
     end
   end
 
   defp wait_for_pending(tries \\ 50) do
     case :ets.tab2list(:harness_questions) do
-      [{qid, _} | _] -> qid
-      [] when tries > 0 -> Process.sleep(10); wait_for_pending(tries - 1)
+      [{qid, _} | _] ->
+        qid
+
+      [] when tries > 0 ->
+        Process.sleep(10)
+        wait_for_pending(tries - 1)
     end
   end
 end

@@ -11,11 +11,13 @@ defmodule LoopyardWeb.ProjectListLiveTest do
   end
 
   describe "mount" do
-    test "renders the home page with project input and launch command", %{conn: conn} do
+    # The home page is now a projects list + a "New project" button; the
+    # creation methods (folder/scratch/github) each live on their own screen.
+    test "renders the home page with the projects list and New project", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/")
       assert html =~ "Loopyard"
-      assert html =~ "From terminal"
-      assert html =~ "Paste a path"
+      assert html =~ "Projects"
+      assert html =~ "New project"
     end
 
     test "shows Remote and System links in header", %{conn: conn} do
@@ -32,9 +34,16 @@ defmodule LoopyardWeb.ProjectListLiveTest do
     end
   end
 
-  describe "add project" do
-    test "adding invalid path shows error", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/")
+  describe "new project from a folder" do
+    test "the folder screen has the path form + the terminal launch command", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/projects/new/folder")
+      assert html =~ "form"
+      assert html =~ "terminal"
+      assert html =~ "add_project"
+    end
+
+    test "adding an invalid path shows an error", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/projects/new/folder")
 
       view
       |> element("form[phx-submit='add_project']")

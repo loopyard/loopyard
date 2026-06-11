@@ -197,7 +197,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
             class={[
               "flex items-center gap-2 px-3 min-h-9 text-sm transition-colors",
               if(ws.id == @current_id,
-                do: "bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300 font-medium",
+                do:
+                  "bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300 font-medium",
                 else: "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/60"
               )
             ]}

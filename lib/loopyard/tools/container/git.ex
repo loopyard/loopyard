@@ -89,8 +89,11 @@ defmodule Loopyard.Tools.Container.Git do
                stderr_to_stdout: true,
                env: [{"GIT_TERMINAL_PROMPT", "0"}]
              ) do
-          {output, 0} -> {:ok, Pagination.cap(output)}
-          {output, code} -> {:error, "git #{command} failed (exit #{code}):\n#{Pagination.cap(output)}"}
+          {output, 0} ->
+            {:ok, Pagination.cap(output)}
+
+          {output, code} ->
+            {:error, "git #{command} failed (exit #{code}):\n#{Pagination.cap(output)}"}
         end
 
       {:error, reason} ->

@@ -18,7 +18,8 @@ defmodule Loopyard.Tools.Container.ProposeIntegrate do
 
   def execute(%{agent_id: agent_id}, _assigns) do
     with %{workspace_id: ws_id} when is_binary(ws_id) <- ChatAgent.get_state(agent_id),
-         %{project_id: project_id, branch: branch} when is_binary(project_id) and is_binary(branch) <-
+         %{project_id: project_id, branch: branch}
+         when is_binary(project_id) and is_binary(branch) <-
            WorkspaceRegistry.get_workspace(ws_id) do
       action = %{verb: :integrate, project_id: project_id, workspace_id: ws_id, branch: branch}
 

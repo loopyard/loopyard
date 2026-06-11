@@ -12,8 +12,7 @@ defmodule Loopyard.Tools.Container.AskUser do
     busy_words: ["waiting on you", "asking"],
     params: [
       agent_id: {:string, required: true},
-      questions:
-        {:list, required: true, description: "List of question objects (usually one)."}
+      questions: {:list, required: true, description: "List of question objects (usually one)."}
     ]
 
   alias Loopyard.Harness.Questions

@@ -13,6 +13,7 @@ defmodule Loopyard.Harness.QuestionAdapter.ClaudeCode do
 
   @impl true
   def parse(%{"questions" => qs}), do: parse(qs)
+
   def parse(qs) when is_list(qs) and qs != [] do
     {:ok, qs |> Enum.with_index() |> Enum.map(fn {q, i} -> normalize_question(q, i) end)}
   end
@@ -50,7 +51,11 @@ defmodule Loopyard.Harness.QuestionAdapter.ClaudeCode do
   defp normalize_option(o, oi) when is_binary(o), do: %{id: "o#{oi}", label: o, description: nil}
 
   defp normalize_option(o, oi) when is_map(o),
-    do: %{id: "o#{oi}", label: get(o, ["label", "value"]) || "", description: get(o, ["description"])}
+    do: %{
+      id: "o#{oi}",
+      label: get(o, ["label", "value"]) || "",
+      description: get(o, ["description"])
+    }
 
   defp normalize_option(o, oi), do: %{id: "o#{oi}", label: to_string(o), description: nil}
 

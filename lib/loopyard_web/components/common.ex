@@ -233,7 +233,10 @@ defmodule LoopyardWeb.Components.Common do
 
   def section_header(assigns) do
     ~H"""
-    <div class={["flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4 md:mb-5", @class]}>
+    <div class={[
+      "flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4 md:mb-5",
+      @class
+    ]}>
       <div class="min-w-0">
         <h2 class="text-lg md:text-xl font-semibold">{@title}</h2>
         <p :if={@subtitle} class="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">{@subtitle}</p>

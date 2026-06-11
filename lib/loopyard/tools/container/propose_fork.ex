@@ -25,7 +25,14 @@ defmodule Loopyard.Tools.Container.ProposeFork do
          %{project_id: project_id} = ws when is_binary(project_id) <-
            WorkspaceRegistry.get_workspace(ws_id) do
       base = Map.get(params, :base) || Map.get(ws, :branch) || "main"
-      action = %{verb: :fork, project_id: project_id, base: base, branch: branch, reason: Map.get(params, :reason)}
+
+      action = %{
+        verb: :fork,
+        project_id: project_id,
+        base: base,
+        branch: branch,
+        reason: Map.get(params, :reason)
+      }
 
       case Approvals.request(agent_id, action) do
         {:approve, msg_id} ->

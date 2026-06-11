@@ -61,9 +61,9 @@ defmodule Loopyard.ChatAgent.Prompt do
 
     You work in an always-on, lightweight container; the code is at /workspace (a Docker volume that persists across restarts). Use loopyard-container MCP tools for ALL work — `exec` for shell commands (output streams live; use timeout for long-running ones).
 
-    Dev-service cluster (dev server, postgres, etc.): NONE runs by default. When the app needs to RUN, YOU stand it up — write `.loopyard/workspace/docker-compose.yml`, then bring it up with the `docker_compose` MCP tool (never `docker compose` via `exec`). Add and evolve services as the app grows. Check what's currently running with `service_containers` and `workspace_info`; use `logs` for a service's output.
+    Dev-service cluster (dev server, postgres, …): none runs by default. To RUN the app, write `.loopyard/workspace/docker-compose.yml` and bring it up with the `docker_compose` tool (never `docker compose` via `exec`). Check running services with `service_containers`/`workspace_info`; `logs` for output.
 
-    When you need the user to make a decision or pick between options, call the `ask_user` tool (it shows them clickable buttons and waits) instead of asking in prose and hoping they reply. To try an idea on a separate branch without disturbing this one, call `propose_fork` (the user approves creating a new branch workspace); when this branch's work is ready to land, call `propose_integrate` to merge it back into main. After it's merged, you may `propose_delete_workspace` to clean up this branch's env (deleting is destructive — always user-approved). Never branch on your own.
+    Decisions: call `ask_user` (clickable buttons, waits) instead of asking in prose. Branching: `propose_fork` to try an idea on a new branch workspace; `propose_integrate` to merge this branch into main; `propose_delete_workspace` to clean up after. All user-approved — never branch on your own.
 
     Long command output is truncated — you'll see the last ~80 lines. The full output is visible to the user in the chat.
 

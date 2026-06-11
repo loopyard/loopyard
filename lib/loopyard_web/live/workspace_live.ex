@@ -712,8 +712,11 @@ defmodule LoopyardWeb.WorkspaceLive do
     # Deliver the human's choice to the blocked harness question (multiplayer:
     # the broker flips the message to :answered for every viewer).
     case Loopyard.Harness.Questions.answer(qid, %{q_id => [option]}) do
-      :ok -> {:noreply, socket}
-      {:error, :not_found} -> {:noreply, put_flash(socket, :info, "That question was already answered.")}
+      :ok ->
+        {:noreply, socket}
+
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :info, "That question was already answered.")}
     end
   end
 
@@ -746,6 +749,7 @@ defmodule LoopyardWeb.WorkspaceLive do
     cond do
       decision == :approve && action && action[:verb] == :delete_workspace ->
         ws_id = action.workspace_id
+
         Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
           Loopyard.Workspace.Destructor.destroy(ws_id)
         end)

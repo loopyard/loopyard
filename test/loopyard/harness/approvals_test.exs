@@ -21,7 +21,9 @@ defmodule Loopyard.Harness.ApprovalsTest do
   end
 
   test "deny round-trips" do
-    task = Task.async(fn -> Approvals.request("appr-test-agent2", %{verb: :fork, branch: "x"}) end)
+    task =
+      Task.async(fn -> Approvals.request("appr-test-agent2", %{verb: :fork, branch: "x"}) end)
+
     id = wait_for_pending()
     assert :ok = Approvals.decide(id, :deny)
     assert {:deny, _} = Task.await(task, 2_000)
@@ -33,8 +35,12 @@ defmodule Loopyard.Harness.ApprovalsTest do
 
   defp wait_for_pending(tries \\ 50) do
     case :ets.tab2list(:harness_approvals) do
-      [{id, _} | _] -> id
-      [] when tries > 0 -> Process.sleep(10); wait_for_pending(tries - 1)
+      [{id, _} | _] ->
+        id
+
+      [] when tries > 0 ->
+        Process.sleep(10)
+        wait_for_pending(tries - 1)
     end
   end
 end
