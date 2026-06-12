@@ -55,6 +55,12 @@ defmodule LoopyardWeb.Components.AppHeader do
           Remote
         </.link>
         <.link
+          navigate="/workstation"
+          class="focus-ring inline-flex items-center px-2 min-h-11 md:min-h-0 md:py-1 text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 transition-colors rounded"
+        >
+          Workstation
+        </.link>
+        <.link
           navigate="/system"
           class="focus-ring inline-flex items-center px-2 min-h-11 md:min-h-0 md:py-1 text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 transition-colors rounded"
         >

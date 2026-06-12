@@ -98,6 +98,8 @@ defmodule LoopyardWeb.Router do
 
     live "/projects/:project_id/workspaces/:workspace_id/sync", WorkspaceLive, :sync
 
+    live "/workstation", WorkstationLive, :index
+
     live "/system", SystemLive, :index
     live "/system/workspaces", SystemWorkspacesLive, :index
     live "/system/docker", SystemDockerLive, :index
