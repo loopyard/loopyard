@@ -11,7 +11,7 @@ defmodule LoopyardWeb.WorkstationLive do
   use LoopyardWeb, :live_view
   use LoopyardWeb.IExAware
 
-  alias Loopyard.Workstation.Image
+  alias Loopyard.Workstation.{Container, Image}
 
   @impl true
   def mount(_params, _session, socket) do
@@ -26,13 +26,37 @@ defmodule LoopyardWeb.WorkstationLive do
         _ -> ""
       end
 
-    {:ok,
-     socket
-     |> assign(:dockerfile, dockerfile)
-     |> assign(:image, Image.status())
-     |> assign(:building, false)
-     |> assign(:build_output, "")
-     |> assign(:build_result, nil)}
+    socket =
+      socket
+      |> assign(:dockerfile, dockerfile)
+      |> assign(:image, Image.status())
+      |> assign(:building, false)
+      |> assign(:build_output, "")
+      |> assign(:build_result, nil)
+      |> assign(:console_container, nil)
+      |> assign(:console_error, nil)
+
+    # Bring the workstation console container up off the LV process (it may need
+    # to create the container / volume). The terminal renders once it's ready.
+    socket =
+      if connected?(socket),
+        do: start_async(socket, :ensure_console, fn -> Container.ensure_up() end),
+        else: socket
+
+    {:ok, socket}
+  end
+
+  @impl true
+  def handle_async(:ensure_console, {:ok, {:ok, name}}, socket) do
+    {:noreply, assign(socket, :console_container, name)}
+  end
+
+  def handle_async(:ensure_console, {:ok, {:error, reason}}, socket) do
+    {:noreply, assign(socket, :console_error, inspect(reason))}
+  end
+
+  def handle_async(:ensure_console, {:exit, reason}, socket) do
+    {:noreply, assign(socket, :console_error, inspect(reason))}
   end
 
   @impl true
@@ -103,10 +127,47 @@ defmodule LoopyardWeb.WorkstationLive do
         <div>
           <h2 class="text-lg md:text-xl font-semibold">Workstation</h2>
           <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
-            The base image every agent is stamped from — your tools, your machine. Edit the
-            Dockerfile and rebuild; new agents pick it up. (Your logins and language versions
-            live in <span class="font-mono">$HOME</span>, not here.)
+            Your machine — a console + the base image every agent is stamped from. Log into your
+            tools here; it persists and every agent inherits it.
           </p>
+        </div>
+
+        <%!-- The console: a shell on your workstation ($HOME volume mounted). --%>
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+              Console
+            </div>
+            <div class="text-[11px] text-zinc-400 dark:text-zinc-500">logins persist in $HOME</div>
+          </div>
+          <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-2">
+            Log in once — every agent inherits it:
+            <span class="font-mono text-zinc-600 dark:text-zinc-300">gh auth login</span> ·
+            <span class="font-mono text-zinc-600 dark:text-zinc-300">claude login</span> ·
+            <span class="font-mono text-zinc-600 dark:text-zinc-300">fly auth login</span> ·
+            <span class="font-mono text-zinc-600 dark:text-zinc-300">mise use -g elixir@1.17 erlang@27</span>
+          </p>
+          <div
+            :if={@console_container}
+            id={"terminal-#{@console_container}"}
+            phx-hook="Terminal"
+            data-container={@console_container}
+            phx-update="ignore"
+            class="h-[58vh] min-h-[320px] bg-[#18181b] rounded-lg p-2 overflow-hidden"
+          >
+          </div>
+          <div
+            :if={!@console_container && !@console_error}
+            class="h-[58vh] min-h-[320px] bg-[#18181b] rounded-lg flex items-center justify-center text-sm text-zinc-500"
+          >
+            <span class="inline-flex items-center gap-2"><.spinner /> Starting your console…</span>
+          </div>
+          <div
+            :if={@console_error}
+            class="rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-3 text-sm text-red-600 dark:text-red-400"
+          >
+            Couldn't start the workstation console: {@console_error}
+          </div>
         </div>
 
         <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 p-4 flex items-center justify-between gap-3">

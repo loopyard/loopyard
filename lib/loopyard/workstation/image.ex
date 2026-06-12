@@ -51,6 +51,23 @@ defmodule Loopyard.Workstation.Image do
     )
   end
 
+  @doc "Build the workstation image if it isn't present yet (non-streaming, for the hot path)."
+  @spec ensure_built() :: :ok | {:error, term()}
+  def ensure_built do
+    case Docker.docker(["image", "inspect", @tag], retry: false) do
+      {:ok, _} ->
+        :ok
+
+      _ ->
+        ensure_seeded()
+
+        case Docker.docker(["build", "-t", @tag, dir()], timeout: 1_800_000) do
+          {:ok, _} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
+    end
+  end
+
   @doc "Status of the built image: `%{exists: bool, size: string|nil, created: string|nil}`."
   @spec status() :: %{exists: boolean(), size: String.t() | nil, created: String.t() | nil}
   def status do
