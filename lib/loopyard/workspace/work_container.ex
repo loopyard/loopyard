@@ -135,13 +135,21 @@ defmodule Loopyard.Workspace.WorkContainer do
   end
 
   defp run(name, volume) do
+    # Mount the branch's code at /workspace AND the shared workstation $HOME
+    # volume at /root — so the agent inherits the logins/tools the user set up
+    # in the Workstation console (gh/claude/fly/mise), exactly like every other
+    # agent. Single-user MVP: one home volume (docker auto-creates by name if the
+    # console hasn't been opened yet; the console reuses the same name).
     Docker.docker([
       "run",
       "-d",
       "--name",
       name,
+      "--init",
       "-v",
       "#{volume}:#{@workdir}",
+      "-v",
+      "#{Loopyard.Workstation.Container.home_volume()}:/root",
       "-w",
       @workdir,
       @image,
