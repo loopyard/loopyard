@@ -19,9 +19,12 @@ defmodule Loopyard.Events.SubscriberContractTest do
     Loopyard.Events.ChatAgent.Subscriber,
     Loopyard.Events.ChatAgentMessage.Subscriber,
     Loopyard.Events.DockerObserver.Subscriber,
+    Loopyard.Events.Projects.Subscriber,
     Loopyard.Events.SourceSync.Subscriber,
+    Loopyard.Events.Workspaces.Subscriber,
     Loopyard.Events.WorkspaceServices.Subscriber,
-    Loopyard.Events.WorkspaceSetup.Subscriber
+    Loopyard.Events.WorkspaceSetup.Subscriber,
+    Loopyard.Events.Workstation.Subscriber
   ]
 
   describe "subscriber behaviours have NO @optional_callbacks" do

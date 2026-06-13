@@ -24,6 +24,19 @@ defmodule Loopyard.ChatAgent.Prompt do
   to the default agent.
   """
   def build_system_prompt(agent_id, opts) when is_list(opts) do
+    case Keyword.get(opts, :system_prompt) do
+      override when is_binary(override) and override != "" ->
+        # Custom agents (e.g. the Workstation agent) supply a COMPLETE prompt and
+        # skip the workspace/container scaffolding entirely. Still length-checked.
+        warn_if_too_long(override)
+        override
+
+      _ ->
+        build_default_system_prompt(agent_id, opts)
+    end
+  end
+
+  defp build_default_system_prompt(agent_id, opts) do
     bind_mount = Keyword.get(opts, :bind_mount)
     workspace_id = Keyword.get(opts, :workspace_id)
     workspace = Keyword.get(opts, :workspace)
@@ -43,6 +56,11 @@ defmodule Loopyard.ChatAgent.Prompt do
       |> Enum.reject(&(&1 == ""))
       |> Enum.join("\n\n")
 
+    warn_if_too_long(prompt)
+    prompt
+  end
+
+  defp warn_if_too_long(prompt) do
     if String.length(prompt) > @max_system_prompt_chars do
       Logger.warning(
         "[ChatAgent] System prompt is #{String.length(prompt)} chars " <>
@@ -50,8 +68,6 @@ defmodule Loopyard.ChatAgent.Prompt do
           "Move content into agent files or CLAUDE.md."
       )
     end
-
-    prompt
   end
 
   @doc false

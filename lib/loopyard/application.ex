@@ -41,6 +41,11 @@ defmodule Loopyard.Application do
       {Registry, keys: :unique, name: Loopyard.Workspace.Setup.Registry},
       {DynamicSupervisor, name: Loopyard.TerminalSupervisor, strategy: :one_for_one},
       {Task.Supervisor, name: Loopyard.TaskSupervisor},
+      # Global home for agents NOT scoped to a workspace (e.g. the Workstation
+      # agent). Workspace agents live under their WorkspaceGroup's
+      # AgentSupervisor; ChatAgent.do_start_agent falls back here when
+      # workspace_id is nil.
+      {DynamicSupervisor, name: Loopyard.AgentSupervisor, strategy: :one_for_one},
       Loopyard.WorkspaceSupervisor,
       Loopyard.PortRegistry,
       {Registry, keys: :unique, name: Loopyard.PortExposerRegistry},

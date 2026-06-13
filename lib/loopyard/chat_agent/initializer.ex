@@ -67,6 +67,9 @@ defmodule Loopyard.ChatAgent.Initializer do
 
     system_prompt =
       Prompt.build_system_prompt(id,
+        # Custom agents (e.g. Workstation) pass a complete prompt that overrides
+        # the workspace/container scaffolding. nil falls through to the default.
+        system_prompt: Keyword.get(opts, :system_prompt),
         bind_mount: bind_mount,
         workspace_id: workspace_id,
         workspace: workspace,
