@@ -1,5 +1,7 @@
 import { Terminal } from "@xterm/xterm"
 import { FitAddon } from "@xterm/addon-fit"
+import { WebLinksAddon } from "@xterm/addon-web-links"
+import { ClipboardAddon } from "@xterm/addon-clipboard"
 import { Socket } from "phoenix"
 
 // Track active terminal connections globally so we can clean up
@@ -37,8 +39,33 @@ export function createTerminalHook() {
 
       const fitAddon = new FitAddon()
       term.loadAddon(fitAddon)
+      // Make URLs in the output tappable — a tap opens a real browser tab.
+      // This is how device-flow logins work from a phone: `gh auth login`,
+      // `claude login`, `fly auth login` all PRINT the URL+code (then fail to
+      // auto-open a browser, harmlessly, since the container is headless). The
+      // tap is a user gesture, so it dodges popup blockers.
+      term.loadAddon(new WebLinksAddon((_ev, uri) => window.open(uri, "_blank", "noopener")))
+      // Honor OSC 52 clipboard writes — that's how TUIs like `claude login`'s
+      // "(c to copy)" put a URL on the clipboard. xterm ignores OSC 52 by
+      // default; this addon bridges it to the browser clipboard.
+      term.loadAddon(new ClipboardAddon())
       term.open(this.el)
-      fitAddon.fit()
+
+      let lastCols = 0, lastRows = 0
+      // Fit xterm to its container AND tell the server PTY the new size, so the
+      // remote shell wraps at the same width xterm renders. Guarded against the
+      // zero-size measurement you get before layout/fonts settle.
+      const syncFit = () => {
+        try { fitAddon.fit() } catch (_) { return }
+        if (!term.cols || !term.rows) return
+        if (term.cols !== lastCols || term.rows !== lastRows) {
+          lastCols = term.cols
+          lastRows = term.rows
+          if (channel.state === "joined") {
+            channel.push("resize", { cols: term.cols, rows: term.rows })
+          }
+        }
+      }
 
       const socket = new Socket("/terminal", {})
       socket.connect()
@@ -47,6 +74,13 @@ export function createTerminalHook() {
 
       channel.join()
         .receive("ok", () => {
+          // Layout + web-font metrics aren't final on mount; fit after a frame,
+          // and again once the mono font loads, then push the real size to the
+          // PTY (the very first resize the server hears).
+          requestAnimationFrame(syncFit)
+          if (document.fonts && document.fonts.ready) {
+            document.fonts.ready.then(syncFit)
+          }
           term.write("\r\n\x1b[32mConnected to " + container + "\x1b[0m\r\n\r\n")
         })
         .receive("error", (resp) => {
@@ -95,17 +129,9 @@ export function createTerminalHook() {
       })
 
       let resizeTimer = null
-      let lastCols = 0, lastRows = 0
       const handleResize = () => {
         clearTimeout(resizeTimer)
-        resizeTimer = setTimeout(() => {
-          fitAddon.fit()
-          if (term.cols !== lastCols || term.rows !== lastRows) {
-            lastCols = term.cols
-            lastRows = term.rows
-            channel.push("resize", { cols: term.cols, rows: term.rows })
-          }
-        }, 150)
+        resizeTimer = setTimeout(syncFit, 150)
       }
 
       window.addEventListener("resize", handleResize)
