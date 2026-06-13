@@ -63,19 +63,27 @@ defmodule Loopyard.Workspace.WorkContainer do
   def ensure_up(workspace_id) do
     name = container_name(workspace_id)
 
-    cond do
-      Docker.container_running?(name) ->
-        {:ok, name}
+    result =
+      cond do
+        Docker.container_running?(name) ->
+          {:ok, name}
 
-      Docker.container_exists?(name) ->
-        # Stopped leftover (e.g. across a daemon restart) — start it back up.
-        case Docker.docker(["start", name]) do
-          {:ok, _} -> {:ok, name}
-          {:error, _} -> recreate(workspace_id, name)
-        end
+        Docker.container_exists?(name) ->
+          # Stopped leftover (e.g. across a daemon restart) — start it back up.
+          case Docker.docker(["start", name]) do
+            {:ok, _} -> {:ok, name}
+            {:error, _} -> recreate(workspace_id, name)
+          end
 
-      true ->
-        recreate(workspace_id, name)
+        true ->
+          recreate(workspace_id, name)
+      end
+
+    # Let the agent's CLIs route browser-opens back to the operator (same bridge
+    # as the workstation console). Self-heals containers from a pre-bridge image.
+    with {:ok, n} <- result do
+      Loopyard.Workstation.OpenBridge.install(n)
+      {:ok, n}
     end
   end
 
@@ -140,22 +148,27 @@ defmodule Loopyard.Workspace.WorkContainer do
     # in the Workstation console (gh/claude/fly/mise), exactly like every other
     # agent. Single-user MVP: one home volume (docker auto-creates by name if the
     # console hasn't been opened yet; the console reuses the same name).
-    Docker.docker([
-      "run",
-      "-d",
-      "--name",
-      name,
-      "--init",
-      "-v",
-      "#{volume}:#{@workdir}",
-      "-v",
-      "#{Loopyard.Workstation.Container.home_volume()}:/root",
-      "-w",
-      @workdir,
-      @image,
-      "sleep",
-      "infinity"
-    ])
+    Docker.docker(
+      [
+        "run",
+        "-d",
+        "--name",
+        name,
+        "--init",
+        "-v",
+        "#{volume}:#{@workdir}",
+        "-v",
+        "#{Loopyard.Workstation.Container.home_volume()}:/root",
+        "-w",
+        @workdir
+      ] ++
+        Loopyard.Workstation.OpenBridge.env_args() ++
+        [
+          @image,
+          "sleep",
+          "infinity"
+        ]
+    )
   end
 
   defp ensure_volume(volume) do

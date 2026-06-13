@@ -124,6 +124,13 @@ defmodule LoopyardWeb.Router do
     get "/log", SystemController, :log
   end
 
+  # Container → browser bridge: the in-container `xdg-open` shim POSTs a login
+  # URL here. Token-gated (see Loopyard.Workstation.OpenBridge), no CSRF.
+  scope "/internal", LoopyardWeb do
+    pipe_through :api
+    post "/open-url", OpenUrlController, :create
+  end
+
   # Aural transport routes ship from the `:aural` package via the
   # `aural_routes/0` macro — mounts stream.mp3 for each channel,
   # the diag loopback, and a bare `/aural` → `/aural/<new_id>`

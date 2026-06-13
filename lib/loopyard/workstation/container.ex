@@ -42,18 +42,26 @@ defmodule Loopyard.Workstation.Container do
   """
   @spec ensure_up() :: {:ok, String.t()} | {:error, term()}
   def ensure_up do
-    cond do
-      Docker.container_running?(@name) ->
-        {:ok, @name}
+    result =
+      cond do
+        Docker.container_running?(@name) ->
+          {:ok, @name}
 
-      Docker.container_exists?(@name) ->
-        case Docker.docker(["start", @name]) do
-          {:ok, _} -> {:ok, @name}
-          {:error, _} -> recreate()
-        end
+        Docker.container_exists?(@name) ->
+          case Docker.docker(["start", @name]) do
+            {:ok, _} -> {:ok, @name}
+            {:error, _} -> recreate()
+          end
 
-      true ->
-        recreate()
+        true ->
+          recreate()
+      end
+
+    # Make sure the running container can route browser-opens back to us, even
+    # if it was created before the bridge existed (no recreate needed).
+    with {:ok, name} <- result do
+      Workstation.OpenBridge.install(name)
+      {:ok, name}
     end
   end
 
@@ -76,20 +84,25 @@ defmodule Loopyard.Workstation.Container do
   end
 
   defp run do
-    Docker.docker([
-      "run",
-      "-d",
-      "--name",
-      @name,
-      "--init",
-      "-v",
-      "#{@home_volume}:#{@home}",
-      "-w",
-      @home,
-      Workstation.Image.tag(),
-      "sleep",
-      "infinity"
-    ])
+    Docker.docker(
+      [
+        "run",
+        "-d",
+        "--name",
+        @name,
+        "--init",
+        "-v",
+        "#{@home_volume}:#{@home}",
+        "-w",
+        @home
+      ] ++
+        Workstation.OpenBridge.env_args() ++
+        [
+          Workstation.Image.tag(),
+          "sleep",
+          "infinity"
+        ]
+    )
   end
 
   defp ensure_volume do

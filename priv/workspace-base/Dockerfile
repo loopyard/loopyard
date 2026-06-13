@@ -55,6 +55,18 @@ RUN curl -L https://fly.io/install.sh | FLYCTL_INSTALL=/usr/local sh
 # per-project Elixir/Erlang, which Debian's apt can't give you.
 RUN curl https://mise.run | MISE_INSTALL_PATH=/usr/local/bin/mise sh
 
+# Browser shim — the box is headless, so device-flow logins (`gh auth login`,
+# `claude login`, `fly auth login`) can't open a browser. The shim POSTs the URL
+# to Loopyard (see Loopyard.Workstation.OpenBridge), which pops a one-tap "Open"
+# button on the Workstation page — config (endpoint + token) comes from env vars
+# or /etc/loopyard-open.env, both injected at runtime. It ALSO prints the URL so
+# the console's web-links addon makes it tappable as a fallback. The CLIs honor
+# $BROWSER (and many call xdg-open directly), so we wire both.
+COPY loopyard-open /usr/local/bin/loopyard-open
+RUN chmod +x /usr/local/bin/loopyard-open \
+    && ln -sf /usr/local/bin/loopyard-open /usr/local/bin/xdg-open
+ENV BROWSER=/usr/local/bin/loopyard-open
+
 WORKDIR /workspace
 
 CMD ["sleep", "infinity"]
