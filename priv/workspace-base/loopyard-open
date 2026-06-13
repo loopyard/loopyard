@@ -1,17 +1,6 @@
 #!/bin/sh
-# Loopyard browser shim. A headless container can't open a browser, so device-
-# flow logins call this (via $BROWSER / xdg-open). We POST the URL to Loopyard,
-# which pops a one-tap "Open" button on the Workstation page. Config is injected
-# at runtime — env vars (docker run -e) or /etc/loopyard-open.env. We also print
-# the URL as a tappable fallback. Best-effort: never fail the calling CLI.
-[ -f /etc/loopyard-open.env ] && . /etc/loopyard-open.env
-
-url="$1"
-
-if [ -n "$LOOPYARD_OPEN_URL" ] && [ -n "$url" ]; then
-  curl -fsS -m 5 -X POST "$LOOPYARD_OPEN_URL" \
-    -H "X-Loopyard-Token: ${LOOPYARD_TOKEN}" \
-    --data-urlencode "url=${url}" >/dev/null 2>&1 || true
-fi
-
-printf '\n\033[1;36m🔗 Open this link to continue:\033[0m\n   %s\n\n' "$url"
+# Loopyard browser shim. The container is headless, so instead of failing to
+# open a browser (or erroring with "xdg-open: not found"), print the URL on its
+# own line — the console's web-links addon makes it tappable. Wired as both
+# $BROWSER and xdg-open. Never fails the calling CLI.
+printf '\n\033[1;36m🔗 Open this link:\033[0m\n   %s\n\n' "$1"

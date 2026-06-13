@@ -14,10 +14,10 @@ defmodule Loopyard.Events.Workstation do
   """
   @telemetry [:loopyard, :events, :publish]
 
-  alias Loopyard.Events.Workstation.{BuildOutput, BuildDone, OpenUrl}
+  alias Loopyard.Events.Workstation.{BuildOutput, BuildDone}
 
   @topic "workstation"
-  @events [BuildOutput, BuildDone, OpenUrl]
+  @events [BuildOutput, BuildDone]
 
   def events, do: @events
   def topic, do: @topic
@@ -26,7 +26,6 @@ defmodule Loopyard.Events.Workstation do
 
   def publish(%BuildOutput{} = e), do: bcast(e)
   def publish(%BuildDone{} = e), do: bcast(e)
-  def publish(%OpenUrl{} = e), do: bcast(e)
 
   defp bcast(%mod{} = e) do
     :telemetry.execute(@telemetry, %{count: 1}, %{topic: @topic, event: mod})
@@ -48,13 +47,6 @@ defmodule Loopyard.Events.Workstation.BuildDone do
   @type t :: %__MODULE__{result: :ok | {:error, term()}}
 end
 
-defmodule Loopyard.Events.Workstation.OpenUrl do
-  @moduledoc "A container asked to open `url` in the operator's browser (login flow)."
-  @enforce_keys [:url]
-  defstruct [:url]
-  @type t :: %__MODULE__{url: String.t()}
-end
-
 defmodule Loopyard.Events.Workstation.Subscriber do
   @moduledoc """
   Behaviour for views subscribed to the `"workstation"` topic. Implement every
@@ -67,5 +59,4 @@ defmodule Loopyard.Events.Workstation.Subscriber do
 
   @callback on_build_output(Workstation.BuildOutput.t(), socket) :: result
   @callback on_build_done(Workstation.BuildDone.t(), socket) :: result
-  @callback on_open_url(Workstation.OpenUrl.t(), socket) :: result
 end

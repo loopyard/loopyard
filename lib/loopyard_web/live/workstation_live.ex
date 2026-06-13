@@ -24,7 +24,8 @@ defmodule LoopyardWeb.WorkstationLive do
 
   alias Loopyard.ChatAgent
   alias Loopyard.Events
-  alias Loopyard.Workstation.{Agent, Container, Image}
+  alias Loopyard.Terminal
+  alias Loopyard.Workstation.{Agent, Container, Env, Image}
 
   @behaviour Events.ChatAgentMessage.Subscriber
   @behaviour Events.Workstation.Subscriber
@@ -65,7 +66,10 @@ defmodule LoopyardWeb.WorkstationLive do
       |> assign(:build_result, nil)
       |> assign(:console_container, nil)
       |> assign(:console_error, nil)
-      |> assign(:open_url, nil)
+      |> assign(:tab, :console)
+      |> assign(:term_nonce, 0)
+      |> assign(:restarting, false)
+      |> assign_env()
 
     # Bring the console container + the agent up off the LV process — both can
     # block (create container / boot a CLI session). The UI renders once ready.
@@ -103,6 +107,22 @@ defmodule LoopyardWeb.WorkstationLive do
   def handle_async(:ensure_agent, {:exit, reason}, socket),
     do: {:noreply, assign(socket, :agent_error, inspect(reason))}
 
+  def handle_async(:restart_machine, {:ok, {:ok, name}}, socket) do
+    # Bump the nonce so the terminal hook remounts and reconnects to the fresh
+    # container instead of clinging to the dead exec.
+    {:noreply,
+     socket
+     |> assign(:restarting, false)
+     |> assign(:console_container, name)
+     |> assign(:term_nonce, socket.assigns.term_nonce + 1)}
+  end
+
+  def handle_async(:restart_machine, {:ok, {:error, reason}}, socket),
+    do: {:noreply, socket |> assign(:restarting, false) |> assign(:console_error, inspect(reason))}
+
+  def handle_async(:restart_machine, {:exit, reason}, socket),
+    do: {:noreply, socket |> assign(:restarting, false) |> assign(:console_error, inspect(reason))}
+
   # --- chat input ---
 
   @impl true
@@ -118,8 +138,51 @@ defmodule LoopyardWeb.WorkstationLive do
     end
   end
 
-  def handle_event("dismiss_open_url", _params, socket),
-    do: {:noreply, assign(socket, :open_url, nil)}
+  def handle_event("add_env", %{"name" => name, "value" => value}, socket) do
+    case Env.put(name, value) do
+      :ok ->
+        {:noreply,
+         socket
+         |> assign_env()
+         |> put_flash(:info, "Saved #{String.trim(name)} — Restart the machine to apply.")}
+
+      {:error, :invalid_key} ->
+        {:noreply, put_flash(socket, :error, "Invalid env var name (use A–Z, 0–9, _).")}
+    end
+  end
+
+  def handle_event("delete_env", %{"key" => key}, socket) do
+    Env.delete(key)
+
+    {:noreply,
+     socket
+     |> assign(:env_keys, Env.keys())
+     |> put_flash(:info, "Removed #{key} — Restart the machine to apply.")}
+  end
+
+  def handle_event("switch_tab", %{"tab" => "dockerfile"}, socket),
+    do: {:noreply, assign(socket, :tab, :dockerfile)}
+
+  def handle_event("switch_tab", %{"tab" => _}, socket),
+    do: {:noreply, assign(socket, :tab, :console)}
+
+  def handle_event("restart_machine", _params, socket) do
+    # Recreate the workstation container from scratch — for when the shell wedges.
+    # Kill the terminal session first so a fresh `docker exec` lands on the new
+    # container; the $HOME volume (logins/dotfiles) is untouched.
+    socket =
+      socket
+      |> assign(:restarting, true)
+      |> assign(:console_container, nil)
+      |> assign(:tab, :console)
+      |> start_async(:restart_machine, fn ->
+        Terminal.stop(Container.name())
+        Container.down()
+        Container.ensure_up()
+      end)
+
+    {:noreply, socket}
+  end
 
   # --- Dockerfile editor (manual path) ---
 
@@ -220,10 +283,6 @@ defmodule LoopyardWeb.WorkstationLive do
      |> assign(:image, Image.status())}
   end
 
-  @impl Events.Workstation.Subscriber
-  def on_open_url(%Events.Workstation.OpenUrl{url: url}, socket),
-    do: {:noreply, assign(socket, :open_url, url)}
-
   # --- handle_info dispatch (struct -> on_* callback; no macro, per Move #3) ---
 
   @impl true
@@ -235,7 +294,6 @@ defmodule LoopyardWeb.WorkstationLive do
 
   def handle_info(%Events.Workstation.BuildOutput{} = e, socket), do: on_build_output(e, socket)
   def handle_info(%Events.Workstation.BuildDone{} = e, socket), do: on_build_done(e, socket)
-  def handle_info(%Events.Workstation.OpenUrl{} = e, socket), do: on_open_url(e, socket)
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   # --- helpers ---
@@ -250,6 +308,15 @@ defmodule LoopyardWeb.WorkstationLive do
     |> assign(:building, true)
     |> assign(:build_output, "")
     |> assign(:build_result, nil)
+  end
+
+  defp assign_env(socket) do
+    keys = Env.keys()
+    integration_keys = Enum.map(Env.integrations(), & &1.key)
+
+    socket
+    |> assign(:env_keys, keys)
+    |> assign(:other_env_keys, keys -- integration_keys)
   end
 
   defp refresh_agent(socket, id) do
@@ -278,52 +345,132 @@ defmodule LoopyardWeb.WorkstationLive do
     <.page_shell
       breadcrumbs={[{"Loopyard", "/"}, {"Workstation", nil}]}
       iex_session={@iex_session}
-      max_width={:lg}
+      max_width={:xl}
       flash={@flash}
     >
-      <div class="space-y-6">
-        <%!-- One-tap login: a container's `xdg-open` routed a URL here. Tapping
-             the anchor is a user gesture, so it opens reliably (even on mobile). --%>
-        <div
-          :if={@open_url}
-          class="sticky top-2 z-20 flex items-center gap-3 rounded-xl border border-violet-300 dark:border-violet-700 bg-violet-50 dark:bg-violet-950/40 px-4 py-3 shadow-sm"
-        >
-          <span class="text-lg flex-none">🔗</span>
-          <div class="min-w-0 flex-1">
-            <div class="text-sm font-medium text-zinc-800 dark:text-zinc-100">
-              A login wants to open a page
-            </div>
-            <div class="text-xs text-zinc-500 dark:text-zinc-400 truncate font-mono">{@open_url}</div>
-          </div>
-          <a
-            href={@open_url}
-            target="_blank"
-            rel="noopener"
-            phx-click="dismiss_open_url"
-            class="focus-ring flex-none inline-flex items-center rounded-lg bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 text-sm font-semibold transition-colors"
-          >
-            Open
-          </a>
-          <button
-            phx-click="dismiss_open_url"
-            aria-label="Dismiss"
-            class="flex-none text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 text-lg leading-none px-1"
-          >
-            ×
-          </button>
-        </div>
-
-        <div>
+      <div class="space-y-4">
+        <div class="flex items-baseline justify-between gap-3">
           <h2 class="text-lg md:text-xl font-semibold">Workstation</h2>
-          <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
-            Your machine. Tell the agent what to install and it edits the image + rebuilds —
-            or log into your tools in the console, or hand-edit the Dockerfile yourself.
-          </p>
+          <span class="text-[11px] font-mono text-zinc-400 dark:text-zinc-500 truncate">
+            {Image.tag()} · {if @image.exists, do: @image.size <> " · built", else: "not built"}
+          </span>
         </div>
 
-        <%!-- Chat with the workstation agent — the primary way to configure the box. --%>
-        <div id="chat-page" phx-hook="ScrollBottom" class="rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden">
-          <div class="h-[58vh] min-h-[360px] flex flex-col">
+        <%!-- Two columns: a prominent Console|Dockerfile tab panel, and the agent
+             chat always visible alongside. Stacks on mobile. --%>
+        <div class="flex flex-col lg:flex-row gap-4 lg:h-[calc(100dvh-9.5rem)]">
+          <%!-- LEFT: Console / Dockerfile tabs (terminal is the default).
+               dvh (not vh) so iOS Safari's address bar is accounted for. --%>
+          <div class="flex flex-col min-h-0 lg:flex-[3] h-[68dvh] lg:h-auto rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden">
+            <div class="flex-none flex items-center gap-1 px-2 border-b border-zinc-200 dark:border-zinc-700">
+              <button phx-click="switch_tab" phx-value-tab="console" class={tab_class(@tab == :console)}>
+                Console
+              </button>
+              <button phx-click="switch_tab" phx-value-tab="dockerfile" class={tab_class(@tab == :dockerfile)}>
+                Dockerfile
+              </button>
+              <div class="ml-auto flex items-center gap-2 pr-1">
+                <span class="text-[11px] text-zinc-400 dark:text-zinc-500 hidden md:block">
+                  {if @tab == :console, do: "logins persist in $HOME", else: "baked into every agent"}
+                </span>
+                <button
+                  phx-click="restart_machine"
+                  disabled={@restarting}
+                  title="Recreate the workstation container (your $HOME / logins are kept)"
+                  class="focus-ring inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+                >
+                  <svg
+                    class={["w-3.5 h-3.5", @restarting && "animate-spin"]}
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  {if @restarting, do: "Restarting…", else: "Restart"}
+                </button>
+              </div>
+            </div>
+
+            <%!-- Console body — the terminal stays mounted and is hidden (not removed)
+                 when inactive, so switching tabs never drops the shell session. --%>
+            <div class={["flex-1 min-h-0 p-2", @tab != :console && "hidden"]}>
+              <div
+                :if={@console_container}
+                id={"terminal-#{@console_container}-#{@term_nonce}"}
+                phx-hook="Terminal"
+                data-container={@console_container}
+                phx-update="ignore"
+                class="h-full bg-[#18181b] rounded-lg p-2 overflow-hidden"
+              >
+              </div>
+              <div
+                :if={!@console_container && !@console_error}
+                class="h-full bg-[#18181b] rounded-lg flex items-center justify-center text-sm text-zinc-500"
+              >
+                <span class="inline-flex items-center gap-2">
+                  <.spinner /> {if @restarting, do: "Restarting the machine…", else: "Starting your console…"}
+                </span>
+              </div>
+              <div
+                :if={@console_error}
+                class="rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-3 text-sm text-red-600 dark:text-red-400"
+              >
+                Couldn't start the workstation console: {@console_error}
+              </div>
+            </div>
+
+            <%!-- Dockerfile body — the whole tab is the editor form. --%>
+            <form
+              phx-submit="apply"
+              class={["flex-1 min-h-0 flex flex-col gap-3 p-3", @tab != :dockerfile && "hidden"]}
+            >
+              <div class="flex-none flex items-center gap-2">
+                <button
+                  type="submit"
+                  name="action"
+                  value="rebuild"
+                  disabled={@building}
+                  class="focus-ring inline-flex items-center justify-center gap-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white px-4 py-2 text-sm font-semibold transition-colors"
+                >
+                  {if @building, do: "Building…", else: "Save & Rebuild"}
+                </button>
+                <button
+                  type="submit"
+                  name="action"
+                  value="save"
+                  disabled={@building}
+                  class="focus-ring inline-flex items-center rounded-lg border border-zinc-300 dark:border-zinc-600 px-4 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-60 transition-colors"
+                >
+                  Save
+                </button>
+                <span class="ml-auto text-[11px] text-zinc-400 dark:text-zinc-500 hidden sm:block">
+                  changes every agent's image
+                </span>
+              </div>
+              <textarea
+                name="dockerfile"
+                spellcheck="false"
+                autocapitalize="off"
+                autocomplete="off"
+                autocorrect="off"
+                class="flex-1 min-h-0 w-full resize-none font-mono text-xs leading-relaxed rounded-lg border border-zinc-300 dark:border-zinc-700 bg-zinc-950 text-zinc-100 p-3
+                       focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400"
+              >{@dockerfile}</textarea>
+            </form>
+          </div>
+
+          <%!-- RIGHT: the agent chat, always visible. --%>
+          <div
+            id="chat-page"
+            phx-hook="ScrollBottom"
+            class="flex flex-col min-h-0 lg:flex-[2] h-[60dvh] lg:h-auto rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden"
+          >
+            <div class="flex-none px-4 py-2 border-b border-zinc-200 dark:border-zinc-700 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+              Agent — tell it what to install
+            </div>
             <div :if={@agent_ready} class="flex-1 flex flex-col min-h-0">
               <.chat_panel
                 messages={@messages}
@@ -350,6 +497,117 @@ defmodule LoopyardWeb.WorkstationLive do
           </div>
         </div>
 
+        <%!-- Environment — token slots stamped into the console + every agent. --%>
+        <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 p-4">
+          <div class="flex items-baseline justify-between gap-2 mb-3">
+            <div class="text-sm font-medium">Connect your tools</div>
+            <div class="text-[11px] text-zinc-400 dark:text-zinc-500">
+              one token each · every agent + the console inherit it · Restart to apply
+            </div>
+          </div>
+
+          <%!-- Guided integration slots: pick the tool, paste the token. --%>
+          <div class="grid gap-3 sm:grid-cols-3">
+            <div
+              :for={ig <- Env.integrations()}
+              class="rounded-lg border border-zinc-200 dark:border-zinc-700 p-3 flex flex-col"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-sm font-medium">{ig.label}</span>
+                <span
+                  :if={ig.key in @env_keys}
+                  class="text-[10px] font-medium text-emerald-600 dark:text-emerald-400"
+                >
+                  ✓ set
+                </span>
+                <span :if={ig.key not in @env_keys} class="text-[10px] text-zinc-400 dark:text-zinc-500">
+                  not set
+                </span>
+              </div>
+              <div class="font-mono text-[10px] text-zinc-400 dark:text-zinc-500 mt-0.5 truncate">
+                {ig.key}
+              </div>
+              <div class="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 mb-2 leading-snug">
+                {ig.hint}
+              </div>
+              <form phx-submit="add_env" class="mt-auto flex gap-1.5">
+                <input type="hidden" name="name" value={ig.key} />
+                <input
+                  name="value"
+                  type="password"
+                  placeholder={if ig.key in @env_keys, do: "update…", else: "paste token"}
+                  autocomplete="off"
+                  spellcheck="false"
+                  class="min-w-0 flex-1 font-mono text-xs rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-1.5 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+                />
+                <button
+                  type="submit"
+                  class="focus-ring inline-flex items-center rounded-md bg-violet-600 hover:bg-violet-700 text-white px-2.5 py-1.5 text-xs font-semibold transition-colors flex-none"
+                >
+                  Save
+                </button>
+                <button
+                  :if={ig.key in @env_keys}
+                  type="button"
+                  phx-click="delete_env"
+                  phx-value-key={ig.key}
+                  data-confirm={"Clear #{ig.key}?"}
+                  class="text-xs text-zinc-400 hover:text-red-500 transition-colors flex-none px-1"
+                >
+                  Clear
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <%!-- Anything else: a plain NAME / value escape hatch + the custom list. --%>
+          <details class="mt-4">
+            <summary class="cursor-pointer select-none text-xs font-medium text-zinc-500 dark:text-zinc-400">
+              Other env vars{if @other_env_keys != [], do: " (#{length(@other_env_keys)})", else: ""}
+            </summary>
+            <div class="mt-3">
+              <form phx-submit="add_env" class="flex flex-col sm:flex-row gap-2 mb-2">
+                <input
+                  name="name"
+                  placeholder="NAME"
+                  autocomplete="off"
+                  autocapitalize="characters"
+                  spellcheck="false"
+                  class="sm:w-56 font-mono text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+                />
+                <input
+                  name="value"
+                  type="password"
+                  placeholder="value"
+                  autocomplete="off"
+                  spellcheck="false"
+                  class="flex-1 font-mono text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+                />
+                <button
+                  type="submit"
+                  class="focus-ring inline-flex items-center justify-center rounded-lg border border-zinc-300 dark:border-zinc-600 px-4 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors flex-none"
+                >
+                  Add
+                </button>
+              </form>
+              <ul :if={@other_env_keys != []} class="divide-y divide-zinc-100 dark:divide-zinc-800">
+                <li :for={k <- @other_env_keys} class="flex items-center gap-3 py-2">
+                  <span class="font-mono text-sm text-zinc-700 dark:text-zinc-300">{k}</span>
+                  <span class="font-mono text-xs text-zinc-400 dark:text-zinc-600 select-none">••••••••</span>
+                  <button
+                    phx-click="delete_env"
+                    phx-value-key={k}
+                    data-confirm={"Remove #{k}?"}
+                    class="ml-auto text-xs text-zinc-400 hover:text-red-500 transition-colors"
+                  >
+                    Remove
+                  </button>
+                </li>
+              </ul>
+            </div>
+          </details>
+        </div>
+
         <%!-- Build output — fills live whenever a build runs (agent or manual). --%>
         <div :if={@building || @build_output != ""}>
           <div class="flex items-center justify-between mb-1">
@@ -369,97 +627,24 @@ defmodule LoopyardWeb.WorkstationLive do
           <pre
             id="ws-build-output"
             phx-hook="TailScroll"
-            class="max-h-96 overflow-auto rounded-lg bg-zinc-950 text-zinc-300 text-[11px] leading-relaxed font-mono p-3 whitespace-pre-wrap"
+            class="max-h-72 overflow-auto rounded-lg bg-zinc-950 text-zinc-300 text-[11px] leading-relaxed font-mono p-3 whitespace-pre-wrap"
           >{@build_output}</pre>
         </div>
-
-        <%!-- Console: the shell where you log into your tools. --%>
-        <details open class="rounded-xl border border-zinc-200 dark:border-zinc-700 group">
-          <summary class="cursor-pointer select-none px-4 py-3 flex items-center justify-between">
-            <span class="text-sm font-medium">Console</span>
-            <span class="text-[11px] text-zinc-400 dark:text-zinc-500">
-              logins persist in $HOME · gh auth login · claude login · fly auth login
-            </span>
-          </summary>
-          <div class="px-4 pb-4">
-            <div
-              :if={@console_container}
-              id={"terminal-#{@console_container}"}
-              phx-hook="Terminal"
-              data-container={@console_container}
-              phx-update="ignore"
-              class="h-[48vh] min-h-[300px] bg-[#18181b] rounded-lg p-2 overflow-hidden"
-            >
-            </div>
-            <div
-              :if={!@console_container && !@console_error}
-              class="h-[48vh] min-h-[300px] bg-[#18181b] rounded-lg flex items-center justify-center text-sm text-zinc-500"
-            >
-              <span class="inline-flex items-center gap-2"><.spinner /> Starting your console…</span>
-            </div>
-            <div
-              :if={@console_error}
-              class="rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-3 text-sm text-red-600 dark:text-red-400"
-            >
-              Couldn't start the workstation console: {@console_error}
-            </div>
-          </div>
-        </details>
-
-        <%!-- Image + Dockerfile: the agent edits this, but you can too. --%>
-        <details class="rounded-xl border border-zinc-200 dark:border-zinc-700">
-          <summary class="cursor-pointer select-none px-4 py-3 flex items-center justify-between gap-3">
-            <span class="text-sm font-medium">Image &amp; Dockerfile</span>
-            <span class="text-[11px] font-mono text-zinc-400 dark:text-zinc-500 truncate">
-              {Image.tag()} ·
-              <%= if @image.exists do %>
-                {@image.size}
-              <% else %>
-                not built
-              <% end %>
-            </span>
-          </summary>
-          <div class="px-4 pb-4">
-            <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-2">
-              Tools/packages baked into every agent. Ask the agent above to change it, or edit directly:
-            </p>
-            <form phx-submit="apply" class="space-y-3">
-              <div class="flex items-center gap-2">
-                <button
-                  type="submit"
-                  name="action"
-                  value="rebuild"
-                  disabled={@building}
-                  class="focus-ring inline-flex items-center justify-center gap-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white px-4 py-2.5 text-sm font-semibold transition-colors"
-                >
-                  {if @building, do: "Building…", else: "Save & Rebuild"}
-                </button>
-                <button
-                  type="submit"
-                  name="action"
-                  value="save"
-                  disabled={@building}
-                  class="focus-ring inline-flex items-center rounded-lg border border-zinc-300 dark:border-zinc-600 px-4 py-2.5 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-60 transition-colors"
-                >
-                  Save
-                </button>
-              </div>
-              <textarea
-                name="dockerfile"
-                rows="22"
-                spellcheck="false"
-                autocapitalize="off"
-                autocomplete="off"
-                autocorrect="off"
-                class="w-full font-mono text-xs leading-relaxed rounded-lg border border-zinc-300 dark:border-zinc-700 bg-zinc-950 text-zinc-100 p-3
-                       focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400"
-              >{@dockerfile}</textarea>
-            </form>
-          </div>
-        </details>
       </div>
     </.page_shell>
     """
+  end
+
+  defp tab_class(active?) do
+    base = "px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors focus-ring"
+
+    state =
+      if active?,
+        do: "border-violet-500 text-violet-600 dark:text-violet-400",
+        else:
+          "border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+
+    [base, state]
   end
 
   defp spinner(assigns) do
