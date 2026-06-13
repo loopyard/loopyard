@@ -52,19 +52,25 @@ export function createTerminalHook() {
       term.open(this.el)
 
       let lastCols = 0, lastRows = 0
-      // Fit xterm to its container AND tell the server PTY the new size, so the
-      // remote shell wraps at the same width xterm renders. Guarded against the
-      // zero-size measurement you get before layout/fonts settle.
+      // Push xterm's current size to the server PTY so the remote shell/TUI wraps
+      // at the SAME width xterm renders. Critically, `lastCols/lastRows` are only
+      // recorded once we ACTUALLY push (channel joined) — otherwise a fit that
+      // runs before the websocket joins would mark the size "sent" without
+      // sending it, and the post-join fit would skip it as unchanged, leaving the
+      // PTY stuck at the default 80×24 (claude then draws 80-wide and smears).
+      const pushSize = () => {
+        if (channel.state !== "joined") return
+        if (!term.cols || !term.rows) return
+        if (term.cols === lastCols && term.rows === lastRows) return
+        lastCols = term.cols
+        lastRows = term.rows
+        channel.push("resize", { cols: term.cols, rows: term.rows })
+      }
+      // Fit xterm to its container, then push. Guarded against the zero-size
+      // measurement you get before layout/fonts settle.
       const syncFit = () => {
         try { fitAddon.fit() } catch (_) { return }
-        if (!term.cols || !term.rows) return
-        if (term.cols !== lastCols || term.rows !== lastRows) {
-          lastCols = term.cols
-          lastRows = term.rows
-          if (channel.state === "joined") {
-            channel.push("resize", { cols: term.cols, rows: term.rows })
-          }
-        }
+        pushSize()
       }
 
       const socket = new Socket("/terminal", {})

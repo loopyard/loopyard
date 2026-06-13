@@ -28,6 +28,14 @@ defmodule Loopyard.Terminal do
     end
   end
 
+  @doc "Stop a terminal session (so a fresh `docker exec` starts on next join)."
+  def stop(container) do
+    case RegistryHelper.whereis(@registry, container) do
+      {:ok, pid} -> DynamicSupervisor.terminate_child(Loopyard.TerminalSupervisor, pid)
+      :error -> :ok
+    end
+  end
+
   @doc "Send input (keystrokes) to the terminal."
   def send_input(container, data) do
     case RegistryHelper.whereis(@registry, container) do
