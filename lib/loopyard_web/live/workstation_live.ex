@@ -555,8 +555,35 @@ defmodule LoopyardWeb.WorkstationLive do
           <div class="flex items-baseline justify-between gap-2 mb-3">
             <div class="text-sm font-medium">Connect your tools</div>
             <div class="text-[11px] text-zinc-400 dark:text-zinc-500">
-              one token each · every agent + the console inherit it · Restart to apply
+              every agent + the console inherit it
             </div>
+          </div>
+
+          <%!-- The lazy path: one command on your Mac transfers everything
+               you're logged into (tokens + cred files). --%>
+          <div class="rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50/60 dark:bg-violet-950/30 p-3 mb-4">
+            <div class="text-xs font-medium text-zinc-700 dark:text-zinc-200 mb-1.5">
+              🖥️ Transfer everything from your Mac
+            </div>
+            <p class="text-[11px] text-zinc-500 dark:text-zinc-400 mb-2">
+              Run this where you're logged in — it grabs your gh / fly / claude / codex creds and curls them up:
+            </p>
+            <div class="flex items-center gap-2">
+              <pre class="flex-1 overflow-x-auto rounded-md bg-zinc-950 text-zinc-200 text-[11px] font-mono px-3 py-2">curl -fsS http://localhost:{@http_port}/workstation/setup.sh | sh</pre>
+              <button
+                id="clip-setup"
+                type="button"
+                phx-hook="Clip"
+                data-label="Copy"
+                data-copy={"curl -fsS http://localhost:#{@http_port}/workstation/setup.sh | sh"}
+                class="focus-ring flex-none rounded-md bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 text-xs font-semibold"
+              >
+                Copy
+              </button>
+            </div>
+            <p class="text-[10px] text-zinc-400 dark:text-zinc-500 mt-1.5">
+              Files apply live; env tokens apply on Restart. Or set tools individually below.
+            </p>
           </div>
 
           <%!-- Guided integration slots: pick the tool, paste the token. --%>

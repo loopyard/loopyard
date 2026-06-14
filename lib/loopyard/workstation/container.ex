@@ -69,6 +69,41 @@ defmodule Loopyard.Workstation.Container do
     end
   end
 
+  @doc """
+  Write a file into the workstation `$HOME` volume at `rel_path` (relative to
+  `/root`). Creates parent dirs. Used to transfer credential files from your Mac
+  (`~/.codex/auth.json`, `~/.config/gh/hosts.yml`, …) — they land in the shared
+  `$HOME` volume, so every agent inherits them *live* (no restart needed).
+
+  `rel_path` is validated: relative, no `..`, no NUL. Returns `:ok | {:error, _}`.
+  """
+  @spec write_file(String.t(), binary()) :: :ok | {:error, term()}
+  def write_file(rel_path, content) when is_binary(rel_path) and is_binary(content) do
+    with :ok <- validate_rel_path(rel_path),
+         {:ok, name} <- ensure_up() do
+      full = "#{@home}/#{rel_path}"
+      dir = Path.dirname(full)
+      b64 = Base.encode64(content)
+      cmd = "mkdir -p '#{dir}' && printf '%s' '#{b64}' | base64 -d > '#{full}' && chmod 600 '#{full}'"
+
+      case Docker.exec_in(name, cmd) do
+        {:ok, _} -> :ok
+        err -> err
+      end
+    end
+  end
+
+  defp validate_rel_path(p) do
+    cond do
+      p == "" -> {:error, :empty_path}
+      String.starts_with?(p, "/") -> {:error, :absolute_path}
+      String.contains?(p, "..") -> {:error, :path_traversal}
+      String.contains?(p, "\0") -> {:error, :invalid_path}
+      not Regex.match?(~r|^[A-Za-z0-9._/\-]+$|, p) -> {:error, :invalid_path}
+      true -> :ok
+    end
+  end
+
   @doc "Stop + remove the workstation container. The `$HOME` volume is untouched."
   @spec down() :: :ok
   def down do

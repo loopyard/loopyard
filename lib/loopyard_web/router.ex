@@ -124,13 +124,17 @@ defmodule LoopyardWeb.Router do
     get "/log", SystemController, :log
   end
 
-  # Push a workstation env var in from your Mac. Local requests need no auth
-  # (a curl on this machine is already trusted); tunnel/remote requests need the
-  # PushToken. See EnvController.
-  #   gh auth token | curl -T - http://localhost:4000/workstation/env/GITHUB_TOKEN
-  scope "/workstation/env", LoopyardWeb do
+  # Transfer credentials from your Mac into the workstation. Local requests need
+  # no auth (a curl on this machine is already trusted); tunnel/remote requests
+  # need the PushToken (see PushAuth).
+  #   curl -fsS http://localhost:4000/workstation/setup.sh | sh    # everything
+  #   gh auth token | curl -T - .../workstation/env/GITHUB_TOKEN    # one env var
+  #   curl -T - .../workstation/file/.codex/auth.json < ~/.codex/auth.json  # one file
+  scope "/workstation", LoopyardWeb do
     pipe_through :api
-    put "/:key", EnvController, :put
+    get "/setup.sh", SetupController, :script
+    put "/env/:key", EnvController, :put
+    put "/file/*path", FileController, :put
   end
 
   # Aural transport routes ship from the `:aural` package via the
