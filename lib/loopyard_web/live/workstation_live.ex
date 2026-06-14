@@ -548,14 +548,26 @@ defmodule LoopyardWeb.WorkstationLive do
               class="rounded-lg border border-zinc-200 dark:border-zinc-700 p-3 flex flex-col"
             >
               <div class="flex items-center justify-between gap-2">
-                <span class="text-sm font-medium">{ig.label}</span>
+                <span class="flex items-center gap-1.5 min-w-0">
+                  <span class="text-sm font-medium">{ig.label}</span>
+                  <span
+                    :if={ig.setup == :desktop}
+                    title="Minting this token needs a desktop browser (loopback OAuth)"
+                    class="text-[9px] uppercase tracking-wide rounded px-1 py-px bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 flex-none"
+                  >
+                    desktop
+                  </span>
+                </span>
                 <span
                   :if={ig.key in @env_keys}
-                  class="text-[10px] font-medium text-emerald-600 dark:text-emerald-400"
+                  class="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 flex-none"
                 >
                   ✓ set
                 </span>
-                <span :if={ig.key not in @env_keys} class="text-[10px] text-zinc-400 dark:text-zinc-500">
+                <span
+                  :if={ig.key not in @env_keys}
+                  class="text-[10px] text-zinc-400 dark:text-zinc-500 flex-none"
+                >
                   not set
                 </span>
               </div>

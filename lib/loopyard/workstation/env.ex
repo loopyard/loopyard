@@ -32,21 +32,26 @@ defmodule Loopyard.Workstation.Env do
       label: "GitHub",
       hint: "gh auth token  (you're already logged in) — or a fine-grained PAT",
       cli: "gh auth token",
-      cli_label: "Import from gh"
+      cli_label: "Import from gh",
+      # PAT on mobile web, device flow, or the in-container import all work.
+      setup: :anywhere
     },
     %{
       key: "CLAUDE_CODE_OAUTH_TOKEN",
       label: "Claude",
       hint: "claude setup-token  on your Mac — Claude's loopback auth is hostile to remote",
       cli: nil,
-      cli_label: nil
+      cli_label: nil,
+      # `setup-token` does loopback OAuth → needs a browser on the same machine.
+      setup: :desktop
     },
     %{
       key: "FLY_ACCESS_TOKEN",
       label: "Fly",
       hint: "fly tokens create",
       cli: nil,
-      cli_label: nil
+      cli_label: nil,
+      setup: :anywhere
     }
   ]
 
