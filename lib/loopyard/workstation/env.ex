@@ -22,21 +22,31 @@ defmodule Loopyard.Workstation.Env do
   # Known integrations — rendered as labeled paste slots so setup is "pick the
   # tool, paste the token" instead of "remember the variable name." Still just
   # env vars under the hood. `hint` says exactly how to mint the token.
+  # `cli`, when set, is a command run INSIDE the workstation container to mint/
+  # read the token from an existing login — surfaced as a one-click "Import"
+  # button. `nil` means the token must be pasted (e.g. Claude's `setup-token`
+  # needs a desktop browser; there's no in-container path).
   @integrations [
     %{
       key: "GITHUB_TOKEN",
       label: "GitHub",
-      hint: "gh auth token  (you're already logged in) — or a fine-grained PAT"
+      hint: "gh auth token  (you're already logged in) — or a fine-grained PAT",
+      cli: "gh auth token",
+      cli_label: "Import from gh"
     },
     %{
       key: "CLAUDE_CODE_OAUTH_TOKEN",
       label: "Claude",
-      hint: "claude setup-token  on your Mac — Claude's loopback auth is hostile to remote"
+      hint: "claude setup-token  on your Mac — Claude's loopback auth is hostile to remote",
+      cli: nil,
+      cli_label: nil
     },
     %{
       key: "FLY_ACCESS_TOKEN",
       label: "Fly",
-      hint: "fly tokens create"
+      hint: "fly tokens create",
+      cli: nil,
+      cli_label: nil
     }
   ]
 

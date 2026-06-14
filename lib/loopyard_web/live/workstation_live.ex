@@ -123,6 +123,28 @@ defmodule LoopyardWeb.WorkstationLive do
   def handle_async(:restart_machine, {:exit, reason}, socket),
     do: {:noreply, socket |> assign(:restarting, false) |> assign(:console_error, inspect(reason))}
 
+  def handle_async({:import_token, key}, {:ok, {:ok, output}}, socket) do
+    token = String.trim(output)
+
+    if token != "" and not String.contains?(token, " ") and not String.contains?(token, "\n") do
+      Env.put(key, token)
+
+      {:noreply,
+       socket |> assign_env() |> put_flash(:info, "Imported #{key} — Restart the machine to apply.")}
+    else
+      {:noreply,
+       put_flash(socket, :error, "Couldn't read a token (is the tool logged in? try the console).")}
+    end
+  end
+
+  def handle_async({:import_token, key}, {:ok, {:error, _}}, socket),
+    do:
+      {:noreply,
+       put_flash(socket, :error, "Couldn't import #{key} — log the tool in first (e.g. `gh auth login`).")}
+
+  def handle_async({:import_token, _key}, {:exit, reason}, socket),
+    do: {:noreply, put_flash(socket, :error, "Import failed: #{inspect(reason)}")}
+
   # --- chat input ---
 
   @impl true
@@ -156,8 +178,21 @@ defmodule LoopyardWeb.WorkstationLive do
 
     {:noreply,
      socket
-     |> assign(:env_keys, Env.keys())
+     |> assign_env()
      |> put_flash(:info, "Removed #{key} — Restart the machine to apply.")}
+  end
+
+  def handle_event("import_token", %{"key" => key}, socket) do
+    case Enum.find(Env.integrations(), &(&1.key == key && is_binary(&1.cli))) do
+      %{cli: cli} = ig ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Importing #{key} via `#{ig.cli}`…")
+         |> start_async({:import_token, key}, fn -> Container.exec(cli) end)}
+
+      _ ->
+        {:noreply, socket}
+    end
   end
 
   def handle_event("switch_tab", %{"tab" => "dockerfile"}, socket),
@@ -557,6 +592,16 @@ defmodule LoopyardWeb.WorkstationLive do
                   Clear
                 </button>
               </form>
+              <%!-- One-click import for tools with an in-container login (gh). --%>
+              <button
+                :if={ig.cli}
+                type="button"
+                phx-click="import_token"
+                phx-value-key={ig.key}
+                class="focus-ring mt-1.5 self-start text-[11px] text-violet-600 dark:text-violet-400 hover:underline"
+              >
+                ↓ {ig.cli_label}
+              </button>
             </div>
           </div>
 

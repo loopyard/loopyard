@@ -57,6 +57,18 @@ defmodule Loopyard.Workstation.Container do
     end
   end
 
+  @doc """
+  Run a shell command inside the workstation container (bringing it up first).
+  Used for one-click token imports (`gh auth token`, …). Returns
+  `Docker.exec_in/3`'s `{:ok, output} | {:error, reason}`.
+  """
+  @spec exec(String.t()) :: {:ok, String.t()} | {:error, term()}
+  def exec(command) do
+    with {:ok, name} <- ensure_up() do
+      Docker.exec_in(name, command)
+    end
+  end
+
   @doc "Stop + remove the workstation container. The `$HOME` volume is untouched."
   @spec down() :: :ok
   def down do
