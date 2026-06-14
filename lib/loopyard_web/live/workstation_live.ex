@@ -52,6 +52,8 @@ defmodule LoopyardWeb.WorkstationLive do
     socket =
       socket
       |> assign(:agent_id, agent_id)
+      |> assign(:current_id, Loopyard.Workstation.current())
+      |> assign(:workstation_ids, Loopyard.Workstation.list())
       |> assign(:agent, %{id: agent_id, status: :booting})
       |> assign(:agent_ready, false)
       |> assign(:agent_error, nil)
@@ -420,10 +422,45 @@ defmodule LoopyardWeb.WorkstationLive do
     >
       <div id="ws-page" phx-hook="WsScroll" class="space-y-4">
         <div class="flex items-baseline justify-between gap-3">
-          <h2 class="text-lg md:text-xl font-semibold">Workstation</h2>
+          <h2 class="text-lg md:text-xl font-semibold">
+            Workstation
+            <span class="ml-1.5 text-base font-normal text-zinc-400 dark:text-zinc-500">/ {@current_id}</span>
+          </h2>
           <span class="text-[11px] font-mono text-zinc-400 dark:text-zinc-500 truncate">
             {Image.tag()} · {if @image.exists, do: @image.size <> " · built", else: "not built"}
           </span>
+        </div>
+
+        <%!-- Identity row: who you operate as + spin up a new one. New agents
+             inherit the current identity's image, logins, and commit name. --%>
+        <div class="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm">
+          <span class="text-zinc-400 dark:text-zinc-500">Operating as</span>
+          <%= for id <- @workstation_ids do %>
+            <.link
+              href={"/workstation/switch/#{id}"}
+              class={[
+                "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 border transition-colors",
+                if(id == @current_id,
+                  do: "border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300 font-medium",
+                  else: "border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600")
+              ]}
+            >
+              <span class={["w-1.5 h-1.5 rounded-full", if(id == @current_id, do: "bg-sky-500", else: "bg-zinc-300 dark:bg-zinc-600")]}></span>
+              {id}
+            </.link>
+          <% end %>
+          <form action="/workstation/create" method="post" class="inline-flex items-center gap-1.5">
+            <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
+            <input
+              type="text"
+              name="ws_id"
+              placeholder="new-id"
+              pattern="[a-z0-9][a-z0-9-]*"
+              title="lowercase letters, digits, dashes"
+              class="w-24 rounded-full border border-dashed border-zinc-300 dark:border-zinc-600 bg-transparent px-2.5 py-0.5 text-sm placeholder:text-zinc-400 focus-ring"
+            />
+            <button type="submit" class="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 text-lg leading-none" title="Create workstation">+</button>
+          </form>
         </div>
 
         <%!-- Two columns: a prominent Console|Dockerfile tab panel, and the agent

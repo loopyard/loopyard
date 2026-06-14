@@ -99,6 +99,9 @@ defmodule LoopyardWeb.Router do
     live "/projects/:project_id/workspaces/:workspace_id/sync", WorkspaceLive, :sync
 
     live "/workstation", WorkstationLive, :index
+    # Switch / create the current identity (mutates global Workstation.current/0).
+    get "/workstation/switch/:id", WorkstationController, :switch
+    post "/workstation/create", WorkstationController, :create
 
     live "/system", SystemLive, :index
     live "/system/workspaces", SystemWorkspacesLive, :index

@@ -66,8 +66,13 @@ defmodule Loopyard.Workstation do
   @doc "Switch the identity you operate as."
   def set_current(id) do
     cond do
-      not exists?(id) -> {:error, :not_found}
-      true -> File.write!(current_path(), id) && :ok
+      not exists?(id) ->
+        {:error, :not_found}
+
+      true ->
+        File.mkdir_p!(base_dir())
+        File.write!(current_path(), id)
+        :ok
     end
   end
 
