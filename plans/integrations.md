@@ -73,6 +73,36 @@ Adding a tool = a `priv/integrations/<id>.md` + one map entry.
 5. Index: the "Connect your tools" panel → cards that link to `/workstation/:tool`
    and show connected/not. Keep the all-in-one `setup.sh` callout.
 
+## Workstation = identity (decided 2026-06-14)
+
+A workstation is **a person's identity**, not a per-purpose box. `brad`, `jamie` —
+each is one workstation = {id, their Dockerfile/image, their logins in the home
+volume, their env}. **Profile, user, and workstation collapse into one concept.**
+
+- You **operate as** a workstation (a lightweight identity selector on entering
+  Loopyard — featherweight login). Agents you spin up **inherit** it: your image,
+  your creds, your name on commits.
+- This **solves "which image does the agent use"**: it doesn't ask — it follows
+  the driver's identity. No per-agent pick, no default/pin machinery, no
+  dev/deploy split (your workstation holds your whole identity).
+- Multiplayer = "one driver, their logins": brad's agents run as brad, jamie's as
+  jamie. An agent is owned by its spawner and runs on that identity.
+
+Dir structure (Phase 2): `<LOOPYARD_HOME>/workstations/<id>/` (Dockerfile, env.json,
+workstation.json{label}); Docker holds `loopyard-ws-<id>` image + `loopyard-ws-<id>-home`
+volume. Today's singleton becomes one entry. Image/Env/Integration modules go from
+"the workstation" → "workstation `<id>`"; UI/MCP operate per-id, defaulting to the
+operating-as identity.
+
+## MCP + HTTP parity (Phase 1, building first)
+
+Every capability is **one handler, two doors**: an HTTP route AND an MCP tool call
+the same function. Tools take an optional `workstation_id` (defaults to current
+identity) so they're born multi-aware. Tools: `list_integrations`,
+`read_integration`, `set_env`, `push_file`, `workstation_status`, `restart`,
+maybe `run_console`. Gated by `PushToken`. HTTP twins already exist for env/file/
+docs; complete the set. So: tell an agent "set up my workstation," or curl it.
+
 ## Notes
 
 - Route precedence: `/workstation/setup.sh` (static) must win over
