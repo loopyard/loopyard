@@ -46,7 +46,7 @@ defmodule Loopyard.Workstation do
       exists?(id) -> {:error, :exists}
       true ->
         File.mkdir_p!(dir(id))
-        if id == @default_id, do: migrate_legacy(id), else: seed_dockerfile(id)
+        seed_dockerfile(id)
         :ok
     end
   end
@@ -72,16 +72,8 @@ defmodule Loopyard.Workstation do
   end
 
   # --- Docker naming (per identity) ---
-  # The `default` workstation keeps the LEGACY names so the existing container,
-  # home volume (your transferred creds), and image aren't orphaned by the move
-  # to named workstations. New workstations use the clean `loopyard-ws-<id>` scheme.
-  def container_name(@default_id), do: "loopyard-workstation"
   def container_name(id), do: "loopyard-ws-#{id}"
-
-  def home_volume(@default_id), do: "loopyard-workstation-home"
   def home_volume(id), do: "loopyard-ws-#{id}-home"
-
-  def image_tag(@default_id), do: "loopyard-workspace-base:latest"
   def image_tag(id), do: "loopyard-ws-#{id}:latest"
 
   @doc "The default identity id."
@@ -101,22 +93,6 @@ defmodule Loopyard.Workstation do
     target = Path.join(dir(id), "Dockerfile")
     stock = Application.app_dir(:loopyard, "priv/workspace-base/Dockerfile")
     if File.exists?(stock), do: File.cp!(stock, target)
-    true
-  end
-
-  # Bring the pre-named-workstations singleton (`<LOOPYARD_HOME>/workstation/`)
-  # forward into `workstations/default/` — Dockerfile + env carry over (the home
-  # volume + image keep their legacy names, so nothing is lost).
-  defp migrate_legacy(id) do
-    legacy = Path.join(Workspace.home_dir(), "workstation")
-
-    for f <- ["Dockerfile", "env.json"] do
-      src = Path.join(legacy, f)
-      dst = Path.join(dir(id), f)
-      if File.exists?(src) and not File.exists?(dst), do: File.cp!(src, dst)
-    end
-
-    unless File.exists?(Path.join(dir(id), "Dockerfile")), do: seed_dockerfile(id)
     true
   end
 end
