@@ -133,8 +133,16 @@ defmodule LoopyardWeb.Router do
   scope "/workstation", LoopyardWeb do
     pipe_through :api
     get "/setup.sh", SetupController, :script
+    get "/:tool/docs.md", IntegrationController, :doc
     put "/env/:key", EnvController, :put
     put "/file/*path", FileController, :put
+  end
+
+  # Per-tool integration pages — defined AFTER the /workstation api scope so the
+  # static routes above (setup.sh, env, file, docs.md) win over the `:tool` param.
+  scope "/", LoopyardWeb do
+    pipe_through :browser
+    live "/workstation/:tool", WorkstationToolLive, :show
   end
 
   # Aural transport routes ship from the `:aural` package via the

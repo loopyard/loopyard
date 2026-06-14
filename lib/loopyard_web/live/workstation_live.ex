@@ -25,7 +25,7 @@ defmodule LoopyardWeb.WorkstationLive do
   alias Loopyard.ChatAgent
   alias Loopyard.Events
   alias Loopyard.Terminal
-  alias Loopyard.Workstation.{Agent, Container, Env, Image}
+  alias Loopyard.Workstation.{Agent, Container, Env, Image, Integration}
 
   @behaviour Events.ChatAgentMessage.Subscriber
   @behaviour Events.Workstation.Subscriber
@@ -71,6 +71,8 @@ defmodule LoopyardWeb.WorkstationLive do
       |> assign(:restarting, false)
       |> assign(:push_token, Loopyard.PushToken.get())
       |> assign(:http_port, LoopyardWeb.Endpoint.config(:http)[:port] || 4000)
+      |> assign(:integrations, Integration.all())
+      |> assign(:integration_status, Map.new(Integration.all(), &{&1.id, :checking}))
       |> assign_env()
 
     # Bring the console container + the agent up off the LV process — both can
@@ -80,11 +82,18 @@ defmodule LoopyardWeb.WorkstationLive do
         socket
         |> start_async(:ensure_console, fn -> Container.ensure_up() end)
         |> start_async(:ensure_agent, fn -> Agent.ensure_started() end)
+        |> check_integrations()
       else
         socket
       end
 
     {:ok, socket}
+  end
+
+  defp check_integrations(socket) do
+    Enum.reduce(socket.assigns.integrations, socket, fn ig, s ->
+      start_async(s, {:int_status, ig.id}, fn -> Integration.connected?(ig) end)
+    end)
   end
 
   # --- async boots ---
@@ -108,6 +117,14 @@ defmodule LoopyardWeb.WorkstationLive do
 
   def handle_async(:ensure_agent, {:exit, reason}, socket),
     do: {:noreply, assign(socket, :agent_error, inspect(reason))}
+
+  def handle_async({:int_status, id}, {:ok, connected?}, socket) do
+    state = if connected?, do: :connected, else: :not_connected
+    {:noreply, update(socket, :integration_status, &Map.put(&1, id, state))}
+  end
+
+  def handle_async({:int_status, id}, {:exit, _}, socket),
+    do: {:noreply, update(socket, :integration_status, &Map.put(&1, id, :not_connected))}
 
   def handle_async(:restart_machine, {:ok, {:ok, name}}, socket) do
     # Bump the nonce so the terminal hook remounts and reconnects to the fresh
@@ -586,12 +603,42 @@ defmodule LoopyardWeb.WorkstationLive do
             </p>
           </div>
 
-          <%!-- Guided integration slots: pick the tool, paste the token. --%>
-          <div class="grid gap-3 sm:grid-cols-3">
-            <div
-              :for={ig <- Env.integrations()}
-              class="rounded-lg border border-zinc-200 dark:border-zinc-700 p-3 flex flex-col"
+          <%!-- Click into each tool to set it up (its doc + console + status). --%>
+          <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-4">
+            <.link
+              :for={ig <- @integrations}
+              navigate={"/workstation/#{ig.id}"}
+              class="rounded-lg border border-zinc-200 dark:border-zinc-700 p-3 hover:border-violet-400 dark:hover:border-violet-500 transition-colors"
             >
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-sm font-medium">{ig.label}</span>
+                <span class={[
+                  "text-[10px] font-medium",
+                  @integration_status[ig.id] == :connected && "text-emerald-600 dark:text-emerald-400",
+                  @integration_status[ig.id] == :checking && "text-zinc-300 dark:text-zinc-600 animate-pulse",
+                  @integration_status[ig.id] == :not_connected && "text-violet-600 dark:text-violet-400"
+                ]}>
+                  {case @integration_status[ig.id] do
+                    :connected -> "✓ connected"
+                    :checking -> "…"
+                    _ -> "set up →"
+                  end}
+                </span>
+              </div>
+              <div class="text-[10px] text-zinc-400 dark:text-zinc-500 mt-1 truncate">{ig.lands}</div>
+            </.link>
+          </div>
+
+          <details class="mb-1">
+            <summary class="cursor-pointer select-none text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2">
+              Set tokens inline (advanced)
+            </summary>
+            <%!-- Guided integration slots: pick the tool, paste the token. --%>
+            <div class="grid gap-3 sm:grid-cols-3">
+              <div
+                :for={ig <- Env.integrations()}
+                class="rounded-lg border border-zinc-200 dark:border-zinc-700 p-3 flex flex-col"
+              >
               <div class="flex items-center justify-between gap-2">
                 <span class="flex items-center gap-1.5 min-w-0">
                   <span class="text-sm font-medium">{ig.label}</span>
@@ -685,6 +732,7 @@ defmodule LoopyardWeb.WorkstationLive do
               </div>
             </div>
           </div>
+          </details>
 
           <%!-- Anything else: a plain NAME / value escape hatch + the custom list. --%>
           <details class="mt-4">
