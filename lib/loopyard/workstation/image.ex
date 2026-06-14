@@ -1,67 +1,49 @@
 defmodule Loopyard.Workstation.Image do
   @moduledoc """
-  The user's **workstation** base image — the Docker image every agent is
-  stamped from (`Loopyard.Workspace.WorkContainer` runs containers from this
-  tag). The Dockerfile lives in user data
-  (`<LOOPYARD_HOME>/workstation/Dockerfile`), **seeded once** from the stock base
-  shipped in `priv/workspace-base/`. From there it's the user's to edit and
-  rebuild — from the Workstation page, which works from a phone.
-
-  This is the "image" half of a workstation (the `$HOME` volume is the other
-  half — see plans/workstations.md). Tools/system packages go here; logins and
-  dotfiles live in `$HOME`.
+  A **workstation's** base image — the Docker image its agents are stamped from.
+  Keyed by workstation id (identity); defaults to the one you're operating as
+  (`Loopyard.Workstation.current/0`). The Dockerfile lives in the workstation's
+  dir (`<LOOPYARD_HOME>/workstations/<id>/Dockerfile`), seeded from the stock base
+  in `priv/workspace-base/`. Editable + rebuildable from the Workstation page.
   """
-  alias Loopyard.{Docker, Workspace}
+  alias Loopyard.{Docker, Workstation}
 
-  # Same tag WorkContainer boots from — rebuilding here updates what agents use.
-  @tag "loopyard-workspace-base:latest"
+  def tag(id \\ Workstation.current()), do: Workstation.image_tag(id)
+  def dir(id \\ Workstation.current()), do: Workstation.dir(id)
+  def dockerfile_path(id \\ Workstation.current()), do: Path.join(dir(id), "Dockerfile")
 
-  def tag, do: @tag
-
-  def dir, do: Path.join(Workspace.home_dir(), "workstation")
-  def dockerfile_path, do: Path.join(dir(), "Dockerfile")
-
-  @doc "Read the workstation Dockerfile, seeding it from the stock base on first use."
-  @spec read_dockerfile() :: {:ok, String.t()} | {:error, term()}
-  def read_dockerfile do
-    ensure_seeded()
-    File.read(dockerfile_path())
+  @doc "Read the workstation's Dockerfile, seeding it from the stock base on first use."
+  @spec read_dockerfile(String.t()) :: {:ok, String.t()} | {:error, term()}
+  def read_dockerfile(id \\ Workstation.current()) do
+    ensure_seeded(id)
+    File.read(dockerfile_path(id))
   end
 
-  @doc "Overwrite the workstation Dockerfile."
-  @spec write_dockerfile(String.t()) :: :ok | {:error, term()}
-  def write_dockerfile(contents) when is_binary(contents) do
-    File.mkdir_p!(dir())
-    File.write(dockerfile_path(), contents)
+  @doc "Overwrite the workstation's Dockerfile."
+  @spec write_dockerfile(String.t(), String.t()) :: :ok | {:error, term()}
+  def write_dockerfile(contents, id \\ Workstation.current()) when is_binary(contents) do
+    File.mkdir_p!(dir(id))
+    File.write(dockerfile_path(id), contents)
   end
 
-  @doc """
-  Rebuild the workstation image, streaming `docker build` output line-by-line to
-  `callback`. Writes nothing — call `write_dockerfile/1` first. Returns
-  `:ok | {:error, reason}` when the build finishes.
-  """
-  @spec build((String.t() -> any())) :: :ok | {:error, term()}
-  def build(callback) when is_function(callback, 1) do
-    ensure_seeded()
-    # `--progress=plain` gives readable, non-TTY line output to stream.
-    Docker.stream(
-      ["build", "--progress=plain", "-t", @tag, dir()],
-      callback,
-      timeout: 1_800_000
-    )
+  @doc "Rebuild the workstation image, streaming `docker build` output to `callback`."
+  @spec build((String.t() -> any()), String.t()) :: :ok | {:error, term()}
+  def build(callback, id \\ Workstation.current()) when is_function(callback, 1) do
+    ensure_seeded(id)
+    Docker.stream(["build", "--progress=plain", "-t", tag(id), dir(id)], callback, timeout: 1_800_000)
   end
 
-  @doc "Build the workstation image if it isn't present yet (non-streaming, for the hot path)."
-  @spec ensure_built() :: :ok | {:error, term()}
-  def ensure_built do
-    case Docker.docker(["image", "inspect", @tag], retry: false) do
+  @doc "Build the workstation image if it isn't present yet (non-streaming, hot path)."
+  @spec ensure_built(String.t()) :: :ok | {:error, term()}
+  def ensure_built(id \\ Workstation.current()) do
+    case Docker.docker(["image", "inspect", tag(id)], retry: false) do
       {:ok, _} ->
         :ok
 
       _ ->
-        ensure_seeded()
+        ensure_seeded(id)
 
-        case Docker.docker(["build", "-t", @tag, dir()], timeout: 1_800_000) do
+        case Docker.docker(["build", "-t", tag(id), dir(id)], timeout: 1_800_000) do
           {:ok, _} -> :ok
           {:error, reason} -> {:error, reason}
         end
@@ -69,9 +51,9 @@ defmodule Loopyard.Workstation.Image do
   end
 
   @doc "Status of the built image: `%{exists: bool, size: string|nil, created: string|nil}`."
-  @spec status() :: %{exists: boolean(), size: String.t() | nil, created: String.t() | nil}
-  def status do
-    case Docker.docker(["image", "inspect", @tag, "--format", "{{.Size}}|{{.Created}}"],
+  @spec status(String.t()) :: %{exists: boolean(), size: String.t() | nil, created: String.t() | nil}
+  def status(id \\ Workstation.current()) do
+    case Docker.docker(["image", "inspect", tag(id), "--format", "{{.Size}}|{{.Created}}"],
            retry: false
          ) do
       {:ok, out} ->
@@ -85,11 +67,11 @@ defmodule Loopyard.Workstation.Image do
     end
   end
 
-  defp ensure_seeded do
-    unless File.exists?(dockerfile_path()) do
-      File.mkdir_p!(dir())
+  defp ensure_seeded(id) do
+    unless File.exists?(dockerfile_path(id)) do
+      File.mkdir_p!(dir(id))
       stock = Application.app_dir(:loopyard, "priv/workspace-base/Dockerfile")
-      File.cp!(stock, dockerfile_path())
+      File.cp!(stock, dockerfile_path(id))
     end
 
     :ok

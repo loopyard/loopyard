@@ -125,7 +125,9 @@ defmodule Loopyard.Workspace.WorkContainer do
   defp recreate(workspace_id, name) do
     volume = VolumeManager.code_volume_name(workspace_id)
 
-    with :ok <- ensure_image(),
+    # Agents boot the CURRENT identity's image — the workstation you're operating
+    # as (its customized Dockerfile), not the stock base.
+    with :ok <- Loopyard.Workstation.Image.ensure_built(),
          :ok <- ensure_volume(volume),
          # Clear any stopped container of the same name before run.
          _ <- Docker.docker(["rm", "-f", name]),
@@ -156,7 +158,7 @@ defmodule Loopyard.Workspace.WorkContainer do
       ] ++
         Loopyard.Workstation.Env.env_args() ++
         [
-          @image,
+          Loopyard.Workstation.Image.tag(),
           "sleep",
           "infinity"
         ]

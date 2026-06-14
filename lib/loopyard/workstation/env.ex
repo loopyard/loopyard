@@ -15,7 +15,7 @@ defmodule Loopyard.Workstation.Env do
   per-workspace scoping is a later refinement (the `Loopyard.Secrets` store
   already models scope if we want to merge them).
   """
-  alias Loopyard.Workspace
+  alias Loopyard.Workstation
 
   @key_re ~r/^[A-Za-z_][A-Za-z0-9_]*$/
 
@@ -70,13 +70,13 @@ defmodule Loopyard.Workstation.Env do
   def integrations, do: @integrations
 
   @doc "Is `key` currently set?"
-  @spec set?(String.t()) :: boolean()
-  def set?(key), do: Map.has_key?(all(), key)
+  @spec set?(String.t(), String.t()) :: boolean()
+  def set?(key, id \\ Workstation.current()), do: Map.has_key?(all(id), key)
 
   @doc "The full env map, `%{\"KEY\" => \"value\"}`."
-  @spec all() :: %{optional(String.t()) => String.t()}
-  def all do
-    case File.read(path()) do
+  @spec all(String.t()) :: %{optional(String.t()) => String.t()}
+  def all(id \\ Workstation.current()) do
+    case File.read(path(id)) do
       {:ok, body} ->
         case Jason.decode(body) do
           {:ok, m} when is_map(m) -> m
@@ -89,16 +89,16 @@ defmodule Loopyard.Workstation.Env do
   end
 
   @doc "Sorted list of the env var names (no values)."
-  @spec keys() :: [String.t()]
-  def keys, do: all() |> Map.keys() |> Enum.sort()
+  @spec keys(String.t()) :: [String.t()]
+  def keys(id \\ Workstation.current()), do: all(id) |> Map.keys() |> Enum.sort()
 
   @doc "Set `key=value`. Validates the name is a legal env var. Overwrites."
-  @spec put(String.t(), String.t()) :: :ok | {:error, :invalid_key}
-  def put(key, value) when is_binary(key) and is_binary(value) do
+  @spec put(String.t(), String.t(), String.t()) :: :ok | {:error, :invalid_key}
+  def put(key, value, id \\ Workstation.current()) when is_binary(key) and is_binary(value) do
     key = String.trim(key)
 
     if Regex.match?(@key_re, key) do
-      all() |> Map.put(key, value) |> save()
+      all(id) |> Map.put(key, value) |> save(id)
       :ok
     else
       {:error, :invalid_key}
@@ -106,24 +106,24 @@ defmodule Loopyard.Workstation.Env do
   end
 
   @doc "Remove an env var."
-  @spec delete(String.t()) :: :ok
-  def delete(key) do
-    all() |> Map.delete(key) |> save()
+  @spec delete(String.t(), String.t()) :: :ok
+  def delete(key, id \\ Workstation.current()) do
+    all(id) |> Map.delete(key) |> save(id)
     :ok
   end
 
   @doc "`docker run` args injecting every env var: `[\"-e\", \"K=V\", ...]`."
-  @spec env_args() :: [String.t()]
-  def env_args do
-    all() |> Enum.flat_map(fn {k, v} -> ["-e", "#{k}=#{v}"] end)
+  @spec env_args(String.t()) :: [String.t()]
+  def env_args(id \\ Workstation.current()) do
+    all(id) |> Enum.flat_map(fn {k, v} -> ["-e", "#{k}=#{v}"] end)
   end
 
-  defp save(map) do
-    File.mkdir_p!(Path.dirname(path()))
-    File.write!(path(), Jason.encode!(map))
-    _ = File.chmod(path(), 0o600)
+  defp save(map, id) do
+    File.mkdir_p!(Path.dirname(path(id)))
+    File.write!(path(id), Jason.encode!(map))
+    _ = File.chmod(path(id), 0o600)
     :ok
   end
 
-  defp path, do: Path.join([Workspace.home_dir(), "workstation", "env.json"])
+  defp path(id), do: Path.join(Workstation.dir(id), "env.json")
 end

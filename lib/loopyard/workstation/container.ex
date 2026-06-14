@@ -1,92 +1,84 @@
 defmodule Loopyard.Workstation.Container do
   @moduledoc """
-  The long-lived **workstation container** — a shell on *your machine*, separate
-  from any project. It boots the workstation image with the workstation `$HOME`
-  volume mounted at `/root`, so logins you do here (`gh auth login`,
-  `claude login`, `fly auth login`) and versions you install (`mise use …`) land
-  in the `$HOME` volume and **persist** — and every agent that mounts the same
-  `$HOME` inherits them.
+  The long-lived **workstation container** for an identity — a shell on *that
+  person's machine*. Boots the workstation's image with its `$HOME` volume
+  mounted at `/root`, so logins (`gh auth login`, …) and installs land in the
+  volume and **persist**, and every agent on that identity inherits them.
 
-  This is the "console" half of a workstation (the Workstation page renders a
-  terminal into it). Single-user MVP: one container + one home volume; per-user
-  is a later refinement keyed by the profile id.
+  Keyed by workstation id; defaults to the one you're operating as
+  (`Loopyard.Workstation.current/0`). Names come from `Loopyard.Workstation`
+  (the `default` identity keeps the legacy `loopyard-workstation*` names so the
+  existing container/volume aren't orphaned).
 
-  Tools live in the *image* (system paths like `/usr/local/bin`), so mounting
-  the volume at `/root` (`$HOME`) holds only mutable state and never shadows the
-  tools — the deliberate image/`$HOME` split (plans/workstations.md).
+  Tools live in the *image* (system paths), so mounting the volume at `/root`
+  (`$HOME`) holds only mutable state and never shadows the tools.
   """
   require Logger
 
   alias Loopyard.{Docker, VolumeManager, Workstation}
 
-  @name "loopyard-workstation"
-  @home_volume "loopyard-workstation-home"
-  # The harness/console run as root, so $HOME is /root.
+  # The harness/console run as root, so $HOME is /root (in-container path).
   @home "/root"
 
   @doc "The workstation container name (what the terminal channel attaches to)."
-  @spec name() :: String.t()
-  def name, do: @name
+  @spec name(String.t()) :: String.t()
+  def name(id \\ Workstation.current()), do: Workstation.container_name(id)
 
-  @doc "The per-user `$HOME` volume name (single-user MVP)."
-  @spec home_volume() :: String.t()
-  def home_volume, do: @home_volume
+  @doc "The identity's `$HOME` volume name."
+  @spec home_volume(String.t()) :: String.t()
+  def home_volume(id \\ Workstation.current()), do: Workstation.home_volume(id)
 
-  @spec running?() :: boolean()
-  def running?, do: Docker.container_running?(@name)
+  @spec running?(String.t()) :: boolean()
+  def running?(id \\ Workstation.current()), do: Docker.container_running?(name(id))
 
   @doc """
-  Ensure the workstation container is up, mounting the `$HOME` volume. Idempotent
+  Ensure the workstation container is up, mounting its `$HOME` volume. Idempotent
   (running → ok; stopped → start; absent → build image if needed, ensure volume,
   run). Returns `{:ok, name}` or `{:error, reason}`.
   """
-  @spec ensure_up() :: {:ok, String.t()} | {:error, term()}
-  def ensure_up do
-    cond do
-      Docker.container_running?(@name) ->
-        {:ok, @name}
+  @spec ensure_up(String.t()) :: {:ok, String.t()} | {:error, term()}
+  def ensure_up(id \\ Workstation.current()) do
+    n = name(id)
 
-      Docker.container_exists?(@name) ->
-        case Docker.docker(["start", @name]) do
-          {:ok, _} -> {:ok, @name}
-          {:error, _} -> recreate()
+    cond do
+      Docker.container_running?(n) ->
+        {:ok, n}
+
+      Docker.container_exists?(n) ->
+        case Docker.docker(["start", n]) do
+          {:ok, _} -> {:ok, n}
+          {:error, _} -> recreate(id)
         end
 
       true ->
-        recreate()
+        recreate(id)
+    end
+  end
+
+  @doc "Run a shell command inside the workstation container (bringing it up first)."
+  @spec exec(String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
+  def exec(command, id \\ Workstation.current()) do
+    with {:ok, n} <- ensure_up(id) do
+      Docker.exec_in(n, command)
     end
   end
 
   @doc """
-  Run a shell command inside the workstation container (bringing it up first).
-  Used for one-click token imports (`gh auth token`, …). Returns
-  `Docker.exec_in/3`'s `{:ok, output} | {:error, reason}`.
+  Write a file into the identity's `$HOME` volume at `rel_path` (relative to
+  `/root`) — credential files transferred from your Mac land here, live, inherited
+  by every agent on this identity. `rel_path` validated (relative, no `..`, no NUL).
   """
-  @spec exec(String.t()) :: {:ok, String.t()} | {:error, term()}
-  def exec(command) do
-    with {:ok, name} <- ensure_up() do
-      Docker.exec_in(name, command)
-    end
-  end
-
-  @doc """
-  Write a file into the workstation `$HOME` volume at `rel_path` (relative to
-  `/root`). Creates parent dirs. Used to transfer credential files from your Mac
-  (`~/.codex/auth.json`, `~/.config/gh/hosts.yml`, …) — they land in the shared
-  `$HOME` volume, so every agent inherits them *live* (no restart needed).
-
-  `rel_path` is validated: relative, no `..`, no NUL. Returns `:ok | {:error, _}`.
-  """
-  @spec write_file(String.t(), binary()) :: :ok | {:error, term()}
-  def write_file(rel_path, content) when is_binary(rel_path) and is_binary(content) do
+  @spec write_file(String.t(), binary(), String.t()) :: :ok | {:error, term()}
+  def write_file(rel_path, content, id \\ Workstation.current())
+      when is_binary(rel_path) and is_binary(content) do
     with :ok <- validate_rel_path(rel_path),
-         {:ok, name} <- ensure_up() do
+         {:ok, n} <- ensure_up(id) do
       full = "#{@home}/#{rel_path}"
       dir = Path.dirname(full)
       b64 = Base.encode64(content)
       cmd = "mkdir -p '#{dir}' && printf '%s' '#{b64}' | base64 -d > '#{full}' && chmod 600 '#{full}'"
 
-      case Docker.exec_in(name, cmd) do
+      case Docker.exec_in(n, cmd) do
         {:ok, _} -> :ok
         err -> err
       end
@@ -105,48 +97,49 @@ defmodule Loopyard.Workstation.Container do
   end
 
   @doc "Stop + remove the workstation container. The `$HOME` volume is untouched."
-  @spec down() :: :ok
-  def down do
-    _ = Docker.docker(["rm", "-f", @name])
+  @spec down(String.t()) :: :ok
+  def down(id \\ Workstation.current()) do
+    _ = Docker.docker(["rm", "-f", name(id)])
     :ok
   end
 
   # --- internals ---
 
-  defp recreate do
-    with :ok <- Workstation.Image.ensure_built(),
-         :ok <- ensure_volume(),
-         _ <- Docker.docker(["rm", "-f", @name]),
-         {:ok, _} <- run() do
-      {:ok, @name}
+  defp recreate(id) do
+    n = name(id)
+
+    with :ok <- Workstation.Image.ensure_built(id),
+         :ok <- ensure_volume(id),
+         _ <- Docker.docker(["rm", "-f", n]),
+         {:ok, _} <- run(id) do
+      {:ok, n}
     end
   end
 
-  defp run do
+  defp run(id) do
     Docker.docker(
       [
         "run",
         "-d",
         "--name",
-        @name,
+        name(id),
         "--init",
         "-v",
-        "#{@home_volume}:#{@home}",
+        "#{home_volume(id)}:#{@home}",
         "-w",
         @home
       ] ++
-        Workstation.Env.env_args() ++
+        Workstation.Env.env_args(id) ++
         [
-          Workstation.Image.tag(),
+          Workstation.Image.tag(id),
           "sleep",
           "infinity"
         ]
     )
   end
 
-  defp ensure_volume do
-    if VolumeManager.volume_exists?(@home_volume),
-      do: :ok,
-      else: VolumeManager.create_volume(@home_volume)
+  defp ensure_volume(id) do
+    v = home_volume(id)
+    if VolumeManager.volume_exists?(v), do: :ok, else: VolumeManager.create_volume(v)
   end
 end
