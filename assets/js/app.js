@@ -61,6 +61,19 @@ Hooks.ScrollBottom = {
 
 // Auto-scroll element to bottom on every update (tail mode).
 // Pauses when user scrolls up; resumes when they scroll back to bottom.
+// Clip: copy this element's data-copy to the clipboard, with a brief
+// "Copied — paste on your Mac" confirmation. Used by the per-tool "Copy for Mac".
+Hooks.Clip = {
+  mounted() {
+    this.el.addEventListener("click", () => {
+      navigator.clipboard?.writeText(this.el.dataset.copy || "")
+      const label = this.el.dataset.label || this.el.textContent
+      this.el.textContent = "✓ Copied — paste on your Mac"
+      setTimeout(() => { this.el.textContent = label }, 1600)
+    })
+  }
+}
+
 // PushCmd: fills the real server origin into the "push from your Mac" curl and
 // copies the whole command (token included) to the clipboard.
 Hooks.PushCmd = {

@@ -3,16 +3,16 @@ defmodule LoopyardWeb.EnvController do
   Receive endpoint for pushing a workstation env var in from outside Loopyard —
   the "transfer credentials from your Mac into the Docker workstation" path:
 
-      gh auth token | curl -X PUT \\
-        -H "Authorization: Bearer <push-token>" \\
-        -H "Content-Type: text/plain" \\
-        --data-binary @- \\
-        https://<loopyard>/env/GITHUB_TOKEN
+      gh auth token | curl -T - http://localhost:4000/workstation/env/GITHUB_TOKEN
 
-  Stores the value via `Loopyard.Workstation.Env` (injected as `-e` into the
-  console + every agent at boot — Restart to apply). Token-gated (see
-  `Loopyard.PushToken`) since the route is reachable over the public tunnel; the
-  body is the raw token value (`text/plain`, passes Plug.Parsers' `*/*`).
+  `-T -` PUTs stdin as the raw body (no `-X`, no `-d`, no content-type). Stores
+  the value via `Loopyard.Workstation.Env` (injected as `-e` into the console +
+  every agent at boot — Restart to apply).
+
+  Auth: a **local** request (loopback peer, no proxy/forwarding headers) needs
+  no token — a curl on this machine is already trusted. A **tunnel/remote**
+  request must carry the `Loopyard.PushToken` (Bearer header or `?token=`), since
+  the route is reachable over the public quick-tunnel.
   """
   use LoopyardWeb, :controller
 
@@ -39,12 +39,28 @@ defmodule LoopyardWeb.EnvController do
   end
 
   defp authorized?(conn) do
-    token =
-      case get_req_header(conn, "authorization") do
-        ["Bearer " <> t | _] -> String.trim(t)
-        _ -> conn.params["token"]
-      end
+    local?(conn) or PushToken.valid?(supplied_token(conn))
+  end
 
-    PushToken.valid?(token)
+  # A genuine local request: loopback peer AND no proxy/forwarding headers. The
+  # tunnel (cloudflared) connects FROM loopback but adds X-Forwarded-For /
+  # Cf-Connecting-Ip, so this stays false for tunneled traffic — which is what
+  # keeps the no-token path local-only.
+  defp local?(conn) do
+    loopback?(conn.remote_ip) and
+      get_req_header(conn, "x-forwarded-for") == [] and
+      get_req_header(conn, "cf-connecting-ip") == [] and
+      get_req_header(conn, "forwarded") == []
+  end
+
+  defp loopback?({127, 0, 0, 1}), do: true
+  defp loopback?({0, 0, 0, 0, 0, 0, 0, 1}), do: true
+  defp loopback?(_), do: false
+
+  defp supplied_token(conn) do
+    case get_req_header(conn, "authorization") do
+      ["Bearer " <> t | _] -> String.trim(t)
+      _ -> conn.params["token"]
+    end
   end
 end

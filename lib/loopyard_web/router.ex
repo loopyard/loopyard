@@ -124,10 +124,11 @@ defmodule LoopyardWeb.Router do
     get "/log", SystemController, :log
   end
 
-  # Push a workstation env var in from your Mac (token-gated, see PushToken):
-  #   gh auth token | curl -X PUT -H "Authorization: Bearer <t>" \
-  #     -H "Content-Type: text/plain" --data-binary @- <loopyard>/env/GITHUB_TOKEN
-  scope "/env", LoopyardWeb do
+  # Push a workstation env var in from your Mac. Local requests need no auth
+  # (a curl on this machine is already trusted); tunnel/remote requests need the
+  # PushToken. See EnvController.
+  #   gh auth token | curl -T - http://localhost:4000/workstation/env/GITHUB_TOKEN
+  scope "/workstation/env", LoopyardWeb do
     pipe_through :api
     put "/:key", EnvController, :put
   end

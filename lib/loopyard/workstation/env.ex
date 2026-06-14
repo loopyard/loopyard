@@ -40,7 +40,9 @@ defmodule Loopyard.Workstation.Env do
       setup: :anywhere,
       commands: [%{cmd: "gh auth login", label: "Run gh auth login"}],
       cli: "gh auth token",
-      cli_label: "Import from gh"
+      cli_label: "Import from gh",
+      # The command that prints the token on your Mac — piped into the push curl.
+      mac: "gh auth token"
     },
     %{
       key: "CLAUDE_CODE_OAUTH_TOKEN",
@@ -49,7 +51,8 @@ defmodule Loopyard.Workstation.Env do
       setup: :desktop,
       commands: [],
       cli: nil,
-      cli_label: nil
+      cli_label: nil,
+      mac: "claude setup-token"
     },
     %{
       key: "FLY_ACCESS_TOKEN",
@@ -58,7 +61,8 @@ defmodule Loopyard.Workstation.Env do
       setup: :anywhere,
       commands: [],
       cli: nil,
-      cli_label: nil
+      cli_label: nil,
+      mac: "fly auth token"
     }
   ]
 

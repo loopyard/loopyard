@@ -70,6 +70,7 @@ defmodule LoopyardWeb.WorkstationLive do
       |> assign(:term_nonce, 0)
       |> assign(:restarting, false)
       |> assign(:push_token, Loopyard.PushToken.get())
+      |> assign(:http_port, LoopyardWeb.Endpoint.config(:http)[:port] || 4000)
       |> assign_env()
 
     # Bring the console container + the agent up off the LV process — both can
@@ -642,6 +643,18 @@ defmodule LoopyardWeb.WorkstationLive do
                 >
                   ↓ {ig.cli_label}
                 </button>
+                <button
+                  :if={ig.mac}
+                  id={"clip-#{ig.key}"}
+                  type="button"
+                  phx-hook="Clip"
+                  data-label="📋 Copy for Mac"
+                  data-copy={"#{ig.mac} | curl -fsS -T - http://localhost:#{@http_port}/workstation/env/#{ig.key}"}
+                  title="Copy a one-liner to run on your Mac — pipes the token straight in"
+                  class="focus-ring text-[11px] text-violet-600 dark:text-violet-400 hover:underline"
+                >
+                  📋 Copy for Mac
+                </button>
               </div>
             </div>
           </div>
@@ -700,13 +713,13 @@ defmodule LoopyardWeb.WorkstationLive do
             </summary>
             <div class="mt-3">
               <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-2">
-                Already logged in on your Mac? Pipe a token straight in — no paste, no re-auth:
+                The per-tool <span class="font-mono">📋 Copy for Mac</span> buttons above are the easy path.
+                For a custom key or a remote Loopyard, this is the general form (carries your push token):
               </p>
               <div id="ws-push" phx-hook="PushCmd" data-token={@push_token} class="relative">
-                <pre class="overflow-x-auto rounded-lg bg-zinc-950 text-zinc-200 text-[11px] leading-relaxed font-mono p-3 pr-16"><code class="ws-push-cmd">gh auth token | curl -fsS -X PUT \
+                <pre class="overflow-x-auto rounded-lg bg-zinc-950 text-zinc-200 text-[11px] leading-relaxed font-mono p-3 pr-16"><code class="ws-push-cmd">gh auth token | curl -fsS -T - \
   -H "Authorization: Bearer {@push_token}" \
-  -H "Content-Type: text/plain" --data-binary @- \
-  __ORIGIN__/env/GITHUB_TOKEN</code></pre>
+  __ORIGIN__/workstation/env/GITHUB_TOKEN</code></pre>
                 <button
                   type="button"
                   class="ws-push-copy focus-ring absolute top-2 right-2 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-2 py-1 text-[11px]"
@@ -715,10 +728,8 @@ defmodule LoopyardWeb.WorkstationLive do
                 </button>
               </div>
               <p class="text-[11px] text-zinc-400 dark:text-zinc-500 mt-2">
-                Swap <span class="font-mono">GITHUB_TOKEN</span> for any key
-                (<span class="font-mono">CLAUDE_CODE_OAUTH_TOKEN</span>,
-                <span class="font-mono">FLY_ACCESS_TOKEN</span>, …). Restart to apply.
-                This command carries your push token — keep it secret.
+                Swap <span class="font-mono">GITHUB_TOKEN</span> for any key. On *this* machine you can
+                drop the token entirely. Restart to apply. Keep this command secret — it carries your push token.
               </p>
             </div>
           </details>
