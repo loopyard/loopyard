@@ -61,6 +61,24 @@ Hooks.ScrollBottom = {
 
 // Auto-scroll element to bottom on every update (tail mode).
 // Pauses when user scrolls up; resumes when they scroll back to bottom.
+// PushCmd: fills the real server origin into the "push from your Mac" curl and
+// copies the whole command (token included) to the clipboard.
+Hooks.PushCmd = {
+  mounted() {
+    const code = this.el.querySelector(".ws-push-cmd")
+    if (code) code.textContent = code.textContent.replace("__ORIGIN__", window.location.origin)
+    const btn = this.el.querySelector(".ws-push-copy")
+    if (btn && code) {
+      btn.addEventListener("click", () => {
+        navigator.clipboard?.writeText(code.textContent)
+        const prev = btn.textContent
+        btn.textContent = "Copied"
+        setTimeout(() => { btn.textContent = prev }, 1200)
+      })
+    }
+  }
+}
+
 // WsScroll: on the Workstation page, scroll the console into view when a
 // runnable-doc "▶ Run" sends a command to it (the terminal lives where the
 // instruction is, so we bring it into view after you click Run).

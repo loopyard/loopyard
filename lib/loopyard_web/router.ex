@@ -124,6 +124,14 @@ defmodule LoopyardWeb.Router do
     get "/log", SystemController, :log
   end
 
+  # Push a workstation env var in from your Mac (token-gated, see PushToken):
+  #   gh auth token | curl -X PUT -H "Authorization: Bearer <t>" \
+  #     -H "Content-Type: text/plain" --data-binary @- <loopyard>/env/GITHUB_TOKEN
+  scope "/env", LoopyardWeb do
+    pipe_through :api
+    put "/:key", EnvController, :put
+  end
+
   # Aural transport routes ship from the `:aural` package via the
   # `aural_routes/0` macro — mounts stream.mp3 for each channel,
   # the diag loopback, and a bare `/aural` → `/aural/<new_id>`
