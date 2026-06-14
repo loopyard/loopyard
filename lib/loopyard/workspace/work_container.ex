@@ -125,18 +125,24 @@ defmodule Loopyard.Workspace.WorkContainer do
   defp recreate(workspace_id, name) do
     volume = VolumeManager.code_volume_name(workspace_id)
 
-    # Agents boot the CURRENT identity's image — the workstation you're operating
-    # as (its customized Dockerfile), not the stock base.
-    with :ok <- Loopyard.Workstation.Image.ensure_built(),
+    # The work container is stamped with an identity at creation: the workstation
+    # you're operating as (its customized image + $HOME logins), not the stock
+    # base. We resolve `current/0` ONCE here, explicitly — the one sanctioned
+    # "current identity" read on the boot path. (A future refinement stamps the
+    # identity onto the workspace at create time so even headless boots are
+    # deterministic; until then, first boot follows the current driver.)
+    ws = Loopyard.Workstation.current()
+
+    with :ok <- Loopyard.Workstation.Image.ensure_built(ws),
          :ok <- ensure_volume(volume),
          # Clear any stopped container of the same name before run.
          _ <- Docker.docker(["rm", "-f", name]),
-         {:ok, _} <- run(name, volume) do
+         {:ok, _} <- run(name, volume, ws) do
       {:ok, name}
     end
   end
 
-  defp run(name, volume) do
+  defp run(name, volume, ws) do
     # Mount the branch's code at /workspace AND the shared workstation $HOME
     # volume at /root — so the agent inherits the logins/tools the user set up
     # in the Workstation console (gh/claude/fly/mise), exactly like every other
@@ -152,13 +158,13 @@ defmodule Loopyard.Workspace.WorkContainer do
         "-v",
         "#{volume}:#{@workdir}",
         "-v",
-        "#{Loopyard.Workstation.Container.home_volume()}:/root",
+        "#{Loopyard.Workstation.Container.home_volume(ws)}:/root",
         "-w",
         @workdir
       ] ++
-        Loopyard.Workstation.Env.env_args() ++
+        Loopyard.Workstation.Env.env_args(ws) ++
         [
-          Loopyard.Workstation.Image.tag(),
+          Loopyard.Workstation.Image.tag(ws),
           "sleep",
           "infinity"
         ]

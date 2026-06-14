@@ -5,10 +5,10 @@ defmodule Loopyard.Workstation.Container do
   mounted at `/root`, so logins (`gh auth login`, …) and installs land in the
   volume and **persist**, and every agent on that identity inherits them.
 
-  Keyed by workstation id; defaults to the one you're operating as
-  (`Loopyard.Workstation.current/0`). Names come from `Loopyard.Workstation`
-  (the `default` identity keeps the legacy `loopyard-workstation*` names so the
-  existing container/volume aren't orphaned).
+  Keyed by workstation id; `id` is **required** — no implicit "current" default,
+  so headless callers can't silently inherit the UI's current identity. The UI
+  resolves `Loopyard.Workstation.current/0` at its boundary and passes the id
+  down. Names come from `Loopyard.Workstation`.
 
   Tools live in the *image* (system paths), so mounting the volume at `/root`
   (`$HOME`) holds only mutable state and never shadows the tools.
@@ -22,14 +22,14 @@ defmodule Loopyard.Workstation.Container do
 
   @doc "The workstation container name (what the terminal channel attaches to)."
   @spec name(String.t()) :: String.t()
-  def name(id \\ Workstation.current()), do: Workstation.container_name(id)
+  def name(id), do: Workstation.container_name(id)
 
   @doc "The identity's `$HOME` volume name."
   @spec home_volume(String.t()) :: String.t()
-  def home_volume(id \\ Workstation.current()), do: Workstation.home_volume(id)
+  def home_volume(id), do: Workstation.home_volume(id)
 
   @spec running?(String.t()) :: boolean()
-  def running?(id \\ Workstation.current()), do: Docker.container_running?(name(id))
+  def running?(id), do: Docker.container_running?(name(id))
 
   @doc """
   Ensure the workstation container is up, mounting its `$HOME` volume. Idempotent
@@ -37,7 +37,7 @@ defmodule Loopyard.Workstation.Container do
   run). Returns `{:ok, name}` or `{:error, reason}`.
   """
   @spec ensure_up(String.t()) :: {:ok, String.t()} | {:error, term()}
-  def ensure_up(id \\ Workstation.current()) do
+  def ensure_up(id) do
     n = name(id)
 
     cond do
@@ -57,7 +57,7 @@ defmodule Loopyard.Workstation.Container do
 
   @doc "Run a shell command inside the workstation container (bringing it up first)."
   @spec exec(String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
-  def exec(command, id \\ Workstation.current()) do
+  def exec(command, id) do
     with {:ok, n} <- ensure_up(id) do
       Docker.exec_in(n, command)
     end
@@ -69,7 +69,7 @@ defmodule Loopyard.Workstation.Container do
   by every agent on this identity. `rel_path` validated (relative, no `..`, no NUL).
   """
   @spec write_file(String.t(), binary(), String.t()) :: :ok | {:error, term()}
-  def write_file(rel_path, content, id \\ Workstation.current())
+  def write_file(rel_path, content, id)
       when is_binary(rel_path) and is_binary(content) do
     with :ok <- validate_rel_path(rel_path),
          {:ok, n} <- ensure_up(id) do
@@ -98,7 +98,7 @@ defmodule Loopyard.Workstation.Container do
 
   @doc "Stop + remove the workstation container. The `$HOME` volume is untouched."
   @spec down(String.t()) :: :ok
-  def down(id \\ Workstation.current()) do
+  def down(id) do
     _ = Docker.docker(["rm", "-f", name(id)])
     :ok
   end

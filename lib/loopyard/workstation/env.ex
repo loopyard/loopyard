@@ -71,11 +71,11 @@ defmodule Loopyard.Workstation.Env do
 
   @doc "Is `key` currently set?"
   @spec set?(String.t(), String.t()) :: boolean()
-  def set?(key, id \\ Workstation.current()), do: Map.has_key?(all(id), key)
+  def set?(key, id), do: Map.has_key?(all(id), key)
 
   @doc "The full env map, `%{\"KEY\" => \"value\"}`."
   @spec all(String.t()) :: %{optional(String.t()) => String.t()}
-  def all(id \\ Workstation.current()) do
+  def all(id) do
     case File.read(path(id)) do
       {:ok, body} ->
         case Jason.decode(body) do
@@ -90,11 +90,11 @@ defmodule Loopyard.Workstation.Env do
 
   @doc "Sorted list of the env var names (no values)."
   @spec keys(String.t()) :: [String.t()]
-  def keys(id \\ Workstation.current()), do: all(id) |> Map.keys() |> Enum.sort()
+  def keys(id), do: all(id) |> Map.keys() |> Enum.sort()
 
   @doc "Set `key=value`. Validates the name is a legal env var. Overwrites."
   @spec put(String.t(), String.t(), String.t()) :: :ok | {:error, :invalid_key}
-  def put(key, value, id \\ Workstation.current()) when is_binary(key) and is_binary(value) do
+  def put(key, value, id) when is_binary(key) and is_binary(value) do
     key = String.trim(key)
 
     if Regex.match?(@key_re, key) do
@@ -107,14 +107,14 @@ defmodule Loopyard.Workstation.Env do
 
   @doc "Remove an env var."
   @spec delete(String.t(), String.t()) :: :ok
-  def delete(key, id \\ Workstation.current()) do
+  def delete(key, id) do
     all(id) |> Map.delete(key) |> save(id)
     :ok
   end
 
   @doc "`docker run` args injecting every env var: `[\"-e\", \"K=V\", ...]`."
   @spec env_args(String.t()) :: [String.t()]
-  def env_args(id \\ Workstation.current()) do
+  def env_args(id) do
     all(id) |> Enum.flat_map(fn {k, v} -> ["-e", "#{k}=#{v}"] end)
   end
 

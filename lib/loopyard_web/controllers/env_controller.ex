@@ -1,9 +1,10 @@
 defmodule LoopyardWeb.EnvController do
   @moduledoc """
-  Receive endpoint for pushing a workstation env var in from outside Loopyard —
-  the "transfer credentials from your Mac into the Docker workstation" path:
+  Receive endpoint for pushing an env var into a *named* workstation from outside
+  Loopyard — the "transfer credentials from your Mac into the Docker workstation"
+  path. The workstation id is in the URL (the curl names which identity):
 
-      gh auth token | curl -T - http://localhost:4000/workstation/env/GITHUB_TOKEN
+      gh auth token | curl -T - http://localhost:4000/workstation/brad/env/GITHUB_TOKEN
 
   `-T -` PUTs stdin as the raw body (no `-X`, no `-d`, no content-type). Stores
   the value via `Loopyard.Workstation.Env` (injected as `-e` into the console +
@@ -16,25 +17,35 @@ defmodule LoopyardWeb.EnvController do
   """
   use LoopyardWeb, :controller
 
+  alias Loopyard.Workstation
   alias Loopyard.Workstation.Env
   alias LoopyardWeb.PushAuth
 
-  def put(conn, %{"key" => key}) do
-    if PushAuth.authorized?(conn) do
-      {:ok, raw, conn} = read_body(conn)
+  def put(conn, %{"ws" => ws, "key" => key}) do
+    cond do
+      not PushAuth.authorized?(conn) ->
+        conn |> put_status(:forbidden) |> json(%{error: "bad or missing push token"})
 
-      case String.trim(raw) do
-        "" ->
-          conn |> put_status(:bad_request) |> json(%{error: "empty value"})
+      not Workstation.exists?(ws) ->
+        conn |> put_status(:not_found) |> json(%{error: "no such workstation: #{ws}"})
 
-        value ->
-          case Env.put(key, value) do
-            :ok -> send_resp(conn, :no_content, "")
-            {:error, :invalid_key} -> conn |> put_status(:bad_request) |> json(%{error: "invalid key"})
-          end
-      end
-    else
-      conn |> put_status(:forbidden) |> json(%{error: "bad or missing push token"})
+      true ->
+        do_put(conn, ws, key)
+    end
+  end
+
+  defp do_put(conn, ws, key) do
+    {:ok, raw, conn} = read_body(conn)
+
+    case String.trim(raw) do
+      "" ->
+        conn |> put_status(:bad_request) |> json(%{error: "empty value"})
+
+      value ->
+        case Env.put(key, value, ws) do
+          :ok -> send_resp(conn, :no_content, "")
+          {:error, :invalid_key} -> conn |> put_status(:bad_request) |> json(%{error: "invalid key"})
+        end
     end
   end
 end

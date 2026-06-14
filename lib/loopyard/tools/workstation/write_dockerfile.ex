@@ -9,10 +9,11 @@ defmodule Loopyard.Tools.Workstation.WriteDockerfile do
       contents: {:string, required: true, description: "The complete new Dockerfile contents."}
     ]
 
+  alias Loopyard.Workstation
   alias Loopyard.Workstation.Image
 
   def execute(%{agent_id: _id, contents: contents}, _assigns) when is_binary(contents) do
-    case Image.write_dockerfile(contents) do
+    case Image.write_dockerfile(contents, Workstation.current()) do
       :ok ->
         {:ok, "Dockerfile updated (#{byte_size(contents)} bytes). Call rebuild_image to apply it."}
 

@@ -4,7 +4,7 @@ defmodule LoopyardWeb.FileController do
   volume from your Mac — for tools whose login lives in a file rather than an
   env var (Codex `~/.codex/auth.json`, gh `~/.config/gh/hosts.yml`, AWS, …):
 
-      curl -T - http://localhost:4000/workstation/file/.codex/auth.json < ~/.codex/auth.json
+      curl -T - http://localhost:4000/workstation/brad/file/.codex/auth.json < ~/.codex/auth.json
 
   The file lands in the shared `$HOME` volume, so every agent inherits it **live**
   (no Restart — unlike env vars). Same auth as the env push (local = no token,
@@ -12,21 +12,27 @@ defmodule LoopyardWeb.FileController do
   """
   use LoopyardWeb, :controller
 
+  alias Loopyard.Workstation
   alias Loopyard.Workstation.Container
   alias LoopyardWeb.PushAuth
 
-  def put(conn, %{"path" => segments}) do
+  def put(conn, %{"ws" => ws, "path" => segments}) do
     rel = Enum.join(List.wrap(segments), "/")
 
-    if PushAuth.authorized?(conn) do
-      {:ok, body, conn} = read_body(conn, length: 5_000_000)
+    cond do
+      not PushAuth.authorized?(conn) ->
+        conn |> put_status(:forbidden) |> json(%{error: "bad or missing push token"})
 
-      case Container.write_file(rel, body) do
-        :ok -> send_resp(conn, :no_content, "")
-        {:error, reason} -> conn |> put_status(:bad_request) |> json(%{error: inspect(reason)})
-      end
-    else
-      conn |> put_status(:forbidden) |> json(%{error: "bad or missing push token"})
+      not Workstation.exists?(ws) ->
+        conn |> put_status(:not_found) |> json(%{error: "no such workstation: #{ws}"})
+
+      true ->
+        {:ok, body, conn} = read_body(conn, length: 5_000_000)
+
+        case Container.write_file(rel, body, ws) do
+          :ok -> send_resp(conn, :no_content, "")
+          {:error, reason} -> conn |> put_status(:bad_request) |> json(%{error: inspect(reason)})
+        end
     end
   end
 end

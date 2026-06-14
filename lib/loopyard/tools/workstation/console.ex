@@ -12,6 +12,7 @@ defmodule Loopyard.Tools.Workstation.Console do
 
   alias Loopyard.Docker
   alias Loopyard.Tools.Container.Helpers
+  alias Loopyard.Workstation
   alias Loopyard.Workstation.Container
 
   def execute(%{agent_id: _id, command: command} = params, _assigns) do
@@ -19,7 +20,7 @@ defmodule Loopyard.Tools.Workstation.Console do
 
     with :ok <- Helpers.validate_string(command, "command", 10_000),
          :ok <- Helpers.validate_timeout(timeout),
-         {:ok, name} <- Container.ensure_up() do
+         {:ok, name} <- Container.ensure_up(Workstation.current()) do
       case Docker.exec_in(name, command, timeout: timeout * 1_000) do
         {:ok, output} -> {:ok, Helpers.truncate_for_agent(output)}
         {:error, output} when is_binary(output) -> {:error, Helpers.truncate_for_agent(output)}

@@ -94,18 +94,44 @@ volume. Today's singleton becomes one entry. Image/Env/Integration modules go fr
 "the workstation" → "workstation `<id>`"; UI/MCP operate per-id, defaulting to the
 operating-as identity.
 
+## `current` is UI-only; headless names the workstation (decided 2026-06-14)
+
+A server-global `current` that *headless* callers silently inherit is spooky
+action at a distance — a `mix`/`rpc`/MCP call would operate on whatever the UI
+last clicked, with no trace in the call. So:
+
+- **`Loopyard.Workstation.current/0` survives, but only the *UI* reads it.** The
+  nav switcher + Workstation page set/read it (a file: `<HOME>/workstations/.current`).
+- **`Image`/`Env`/`Container` take a *required* `id` — no `\\ current()` default.**
+  Removing the default is the enforcement: a headless caller physically cannot
+  inherit the global; it must pass an id. The UI resolves `current()` once at its
+  boundary (mount / event handler) and threads it down.
+- **HTTP push names the workstation in the URL:** `/workstation/:ws/{setup.sh,env,file}`.
+  A curl always says which identity; unknown id → 404. The page bakes your current
+  id into the command it shows, so copy-paste is unchanged. (`:tool/docs.md` stays
+  identity-agnostic.)
+- **Sanctioned `current()` reads** (explicit, greppable — not hidden defaults): the
+  two LiveViews, the workstation-management agent + its tools (it configures
+  whatever you're operating as), and `WorkContainer.recreate` (the agent-boot stamp
+  point — a future refinement stamps the identity onto the workspace at create time
+  so even headless boots are deterministic).
+
 ## MCP + HTTP parity (Phase 1, building first)
 
 Every capability is **one handler, two doors**: an HTTP route AND an MCP tool call
-the same function. Tools take an optional `workstation_id` (defaults to current
-identity) so they're born multi-aware. Tools: `list_integrations`,
-`read_integration`, `set_env`, `push_file`, `workstation_status`, `restart`,
-maybe `run_console`. Gated by `PushToken`. HTTP twins already exist for env/file/
-docs; complete the set. So: tell an agent "set up my workstation," or curl it.
+the same function. Per the decision above, the MCP tools take a **required**
+`workstation_id` (headless = always explicit) — no defaulting to a server global.
+Tools: `list_integrations`, `read_integration`, `set_env`, `push_file`,
+`workstation_status`, `restart`, maybe `run_console`. Gated by `PushToken`. HTTP
+twins already exist for env/file/docs; complete the set. So: tell an agent "set up
+workstation brad," or curl it.
 
 ## Notes
 
-- Route precedence: `/workstation/setup.sh` (static) must win over
-  `/workstation/:tool` (dynamic). Phoenix matches static before dynamic — verify.
+- Route precedence: the `/workstation/:ws/{setup.sh,env,file}` push routes +
+  `/workstation/:tool/docs.md` are distinguished by their literal trailing segment;
+  `/workstation/switch/:id` + `/workstation/create` are 2-seg literals. The bare
+  `/workstation/:tool` integration page is last so it can't shadow the deeper routes.
+  Phoenix matches in **definition order** — verify with `mix phx.routes`.
 - Status checks hit the container (exec) — do them async per page, not inline.
 - File-based creds land in `$HOME` (live, no restart); env tokens need a Restart.

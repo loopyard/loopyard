@@ -12,6 +12,7 @@ defmodule Loopyard.Workstation.Agent do
   Single-user MVP: one fixed id, one agent. Per-user is a later refinement.
   """
   alias Loopyard.ChatAgent
+  alias Loopyard.Workstation
   alias Loopyard.Workstation.Image
 
   @id "workstation"
@@ -33,13 +34,15 @@ defmodule Loopyard.Workstation.Agent do
     else
       ensure_supervisor()
 
-      # Seed the Dockerfile so the agent's working_dir exists + read_dockerfile works.
-      _ = Image.read_dockerfile()
+      # Bind to the identity you're currently operating as. Seed its Dockerfile so
+      # the agent's working_dir exists + read_dockerfile works.
+      ws = Workstation.current()
+      _ = Image.read_dockerfile(ws)
 
       opts = [
         id: @id,
         name: @name,
-        working_dir: Image.dir(),
+        working_dir: Image.dir(ws),
         started_by: "browser",
         # No workspace_id → global supervisor, no workspace coupling.
         tools: [Loopyard.Tools.Workstation],

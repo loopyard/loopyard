@@ -9,7 +9,8 @@ defmodule LoopyardWeb.WorkstationToolLive do
   use LoopyardWeb.IExAware
 
   alias Loopyard.Terminal
-  alias Loopyard.Workstation.{Container, Env, Integration}
+  alias Loopyard.Workstation
+  alias Loopyard.Workstation.{Container, Integration}
 
   @impl true
   def mount(%{"tool" => id}, _session, socket) do
@@ -23,9 +24,13 @@ defmodule LoopyardWeb.WorkstationToolLive do
             do: subscribe_iex(socket),
             else: assign(socket, :iex_session, %{level: nil})
 
+        # The identity you're operating as — baked into the Copy-for-Mac command
+        # and the doc's curl examples so they name which workstation to push to.
+        ws = Workstation.current()
+
         doc =
           case Integration.doc(id) do
-            {:ok, md} -> fill(md)
+            {:ok, md} -> fill(md, ws)
             _ -> "_No doc yet for #{ig.label}._"
           end
 
@@ -38,16 +43,17 @@ defmodule LoopyardWeb.WorkstationToolLive do
           |> assign(:console_error, nil)
           |> assign(:term_nonce, 0)
           |> assign(:http_port, port())
-          |> assign(:mac_cmd, mac_cmd(ig))
+          |> assign(:current_id, ws)
+          |> assign(:mac_cmd, mac_cmd(ig, ws))
 
         socket =
           if connected?(socket) do
             socket =
               if ig.method == :console,
-                do: start_async(socket, :ensure_console, fn -> Container.ensure_up() end),
+                do: start_async(socket, :ensure_console, fn -> Container.ensure_up(ws) end),
                 else: socket
 
-            start_async(socket, :status, fn -> Integration.connected?(ig) end)
+            start_async(socket, :status, fn -> Integration.connected?(ig, ws) end)
           else
             socket
           end
@@ -84,24 +90,31 @@ defmodule LoopyardWeb.WorkstationToolLive do
   end
 
   def handle_event("recheck", _params, socket) do
+    %{ig: ig, current_id: ws} = socket.assigns
+
     {:noreply,
      socket
      |> assign(:status, :checking)
-     |> start_async(:status, fn -> Integration.connected?(socket.assigns.ig) end)}
+     |> start_async(:status, fn -> Integration.connected?(ig, ws) end)}
   end
 
-  # Replace the $LOOPYARD placeholder in docs with this server's local base URL.
-  defp fill(md), do: String.replace(md, "$LOOPYARD", "http://localhost:#{port()}")
+  # Fill doc placeholders: $LOOPYARD → this server, $WS → the current identity
+  # (concrete, so the rendered curl is copy-paste ready).
+  defp fill(md, ws) do
+    md
+    |> String.replace("$LOOPYARD", "http://localhost:#{port()}")
+    |> String.replace("$WS", ws)
+  end
 
   defp port, do: LoopyardWeb.Endpoint.config(:http)[:port] || 4000
 
-  defp mac_cmd(%{method: :file, mac: mac, file: file}),
-    do: "#{mac} | curl -fsS -T - http://localhost:#{port()}/workstation/file/#{file}"
+  defp mac_cmd(%{method: :file, mac: mac, file: file}, ws),
+    do: "#{mac} | curl -fsS -T - http://localhost:#{port()}/workstation/#{ws}/file/#{file}"
 
-  defp mac_cmd(%{method: :env, mac: mac, env: env}),
-    do: "#{mac} | curl -fsS -T - http://localhost:#{port()}/workstation/env/#{env}"
+  defp mac_cmd(%{method: :env, mac: mac, env: env}, ws),
+    do: "#{mac} | curl -fsS -T - http://localhost:#{port()}/workstation/#{ws}/env/#{env}"
 
-  defp mac_cmd(_), do: nil
+  defp mac_cmd(_, _ws), do: nil
 
   @impl true
   def render(assigns) do

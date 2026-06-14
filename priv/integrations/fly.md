@@ -6,7 +6,7 @@ Deploy to Fly.io from the box. Fly reads a token from the env, so this one's an
 ## Mint a token on your Mac
 
 ```
-fly auth token | curl -fsS -T - $LOOPYARD/workstation/env/FLY_ACCESS_TOKEN
+fly auth token | curl -fsS -T - $LOOPYARD/workstation/$WS/env/FLY_ACCESS_TOKEN
 ```
 
 (Not logged in on your Mac? `fly auth login` first. Or mint a scoped token with

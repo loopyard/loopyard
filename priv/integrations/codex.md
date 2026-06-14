@@ -7,7 +7,7 @@ in the shared `$HOME` volume: **live**, every agent inherits it, no Restart.
 ## Already logged in on your Mac (recommended)
 
 ```
-curl -fsS -T - $LOOPYARD/workstation/file/.codex/auth.json < ~/.codex/auth.json
+curl -fsS -T - $LOOPYARD/workstation/$WS/file/.codex/auth.json < ~/.codex/auth.json
 ```
 
 (If you're not logged in there yet: `codex login` on your Mac first.)

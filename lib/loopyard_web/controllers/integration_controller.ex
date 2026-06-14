@@ -11,9 +11,16 @@ defmodule LoopyardWeb.IntegrationController do
   def doc(conn, %{"tool" => tool}) do
     case Integration.doc(tool) do
       {:ok, md} ->
+        # Agent-facing: $LOOPYARD → this server; $WS stays a named placeholder so
+        # the agent substitutes the workstation it's actually pushing to.
+        body =
+          md
+          |> String.replace("$LOOPYARD", base_url(conn))
+          |> String.replace("$WS", "<workstation-id>")
+
         conn
         |> put_resp_content_type("text/markdown")
-        |> send_resp(200, String.replace(md, "$LOOPYARD", base_url(conn)))
+        |> send_resp(200, body)
 
       {:error, :not_found} ->
         conn |> put_resp_content_type("text/plain") |> send_resp(404, "no such integration: #{tool}\n")

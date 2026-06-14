@@ -33,6 +33,9 @@ defmodule LoopyardWeb.WorkstationLive do
   @impl true
   def mount(_params, _session, socket) do
     agent_id = Agent.id()
+    # The identity this page operates on — resolved once at the UI boundary and
+    # threaded into every Image/Env/Container call below (no implicit default).
+    ws = Loopyard.Workstation.current()
 
     socket =
       if connected?(socket) do
@@ -44,7 +47,7 @@ defmodule LoopyardWeb.WorkstationLive do
       end
 
     dockerfile =
-      case Image.read_dockerfile() do
+      case Image.read_dockerfile(ws) do
         {:ok, d} -> d
         _ -> ""
       end
@@ -52,7 +55,7 @@ defmodule LoopyardWeb.WorkstationLive do
     socket =
       socket
       |> assign(:agent_id, agent_id)
-      |> assign(:current_id, Loopyard.Workstation.current())
+      |> assign(:current_id, ws)
       |> assign(:workstation_ids, Loopyard.Workstation.list())
       |> assign(:agent, %{id: agent_id, status: :booting})
       |> assign(:agent_ready, false)
@@ -62,7 +65,7 @@ defmodule LoopyardWeb.WorkstationLive do
       |> assign(:streaming_thinking, "")
       |> assign(:thinking_word, "thinking")
       |> assign(:dockerfile, dockerfile)
-      |> assign(:image, Image.status())
+      |> assign(:image, Image.status(ws))
       |> assign(:building, false)
       |> assign(:build_output, "")
       |> assign(:build_result, nil)
@@ -82,7 +85,7 @@ defmodule LoopyardWeb.WorkstationLive do
     socket =
       if connected?(socket) do
         socket
-        |> start_async(:ensure_console, fn -> Container.ensure_up() end)
+        |> start_async(:ensure_console, fn -> Container.ensure_up(ws) end)
         |> start_async(:ensure_agent, fn -> Agent.ensure_started() end)
         |> check_integrations()
       else
@@ -93,8 +96,10 @@ defmodule LoopyardWeb.WorkstationLive do
   end
 
   defp check_integrations(socket) do
+    ws = socket.assigns.current_id
+
     Enum.reduce(socket.assigns.integrations, socket, fn ig, s ->
-      start_async(s, {:int_status, ig.id}, fn -> Integration.connected?(ig) end)
+      start_async(s, {:int_status, ig.id}, fn -> Integration.connected?(ig, ws) end)
     end)
   end
 
@@ -148,7 +153,7 @@ defmodule LoopyardWeb.WorkstationLive do
     token = String.trim(output)
 
     if token != "" and not String.contains?(token, " ") and not String.contains?(token, "\n") do
-      Env.put(key, token)
+      Env.put(key, token, socket.assigns.current_id)
 
       {:noreply,
        socket |> assign_env() |> put_flash(:info, "Imported #{key} — Restart the machine to apply.")}
@@ -182,7 +187,7 @@ defmodule LoopyardWeb.WorkstationLive do
   end
 
   def handle_event("add_env", %{"name" => name, "value" => value}, socket) do
-    case Env.put(name, value) do
+    case Env.put(name, value, socket.assigns.current_id) do
       :ok ->
         {:noreply,
          socket
@@ -195,7 +200,7 @@ defmodule LoopyardWeb.WorkstationLive do
   end
 
   def handle_event("delete_env", %{"key" => key}, socket) do
-    Env.delete(key)
+    Env.delete(key, socket.assigns.current_id)
 
     {:noreply,
      socket
@@ -204,12 +209,14 @@ defmodule LoopyardWeb.WorkstationLive do
   end
 
   def handle_event("import_token", %{"key" => key}, socket) do
+    ws = socket.assigns.current_id
+
     case Enum.find(Env.integrations(), &(&1.key == key && is_binary(&1.cli))) do
       %{cli: cli} = ig ->
         {:noreply,
          socket
          |> put_flash(:info, "Importing #{key} via `#{ig.cli}`…")
-         |> start_async({:import_token, key}, fn -> Container.exec(cli) end)}
+         |> start_async({:import_token, key}, fn -> Container.exec(cli, ws) end)}
 
       _ ->
         {:noreply, socket}
@@ -242,15 +249,17 @@ defmodule LoopyardWeb.WorkstationLive do
     # Recreate the workstation container from scratch — for when the shell wedges.
     # Kill the terminal session first so a fresh `docker exec` lands on the new
     # container; the $HOME volume (logins/dotfiles) is untouched.
+    ws = socket.assigns.current_id
+
     socket =
       socket
       |> assign(:restarting, true)
       |> assign(:console_container, nil)
       |> assign(:tab, :console)
       |> start_async(:restart_machine, fn ->
-        Terminal.stop(Container.name())
-        Container.down()
-        Container.ensure_up()
+        Terminal.stop(Container.name(ws))
+        Container.down(ws)
+        Container.ensure_up(ws)
       end)
 
     {:noreply, socket}
@@ -259,7 +268,7 @@ defmodule LoopyardWeb.WorkstationLive do
   # --- Dockerfile editor (manual path) ---
 
   def handle_event("apply", %{"action" => action, "dockerfile" => df}, socket) do
-    case Image.write_dockerfile(df) do
+    case Image.write_dockerfile(df, socket.assigns.current_id) do
       :ok ->
         socket = assign(socket, :dockerfile, df)
 
@@ -294,7 +303,7 @@ defmodule LoopyardWeb.WorkstationLive do
         # The agent may have edited the Dockerfile / rebuilt — keep the editor +
         # status in sync after every turn step.
         |> assign(:dockerfile, current_dockerfile(socket))
-        |> assign(:image, Image.status())
+        |> assign(:image, Image.status(socket.assigns.current_id))
         |> push_event("scroll_bottom", %{})
 
       {:noreply, socket}
@@ -352,7 +361,7 @@ defmodule LoopyardWeb.WorkstationLive do
      socket
      |> assign(:building, false)
      |> assign(:build_result, result)
-     |> assign(:image, Image.status())}
+     |> assign(:image, Image.status(socket.assigns.current_id))}
   end
 
   # --- handle_info dispatch (struct -> on_* callback; no macro, per Move #3) ---
@@ -371,8 +380,15 @@ defmodule LoopyardWeb.WorkstationLive do
   # --- helpers ---
 
   defp start_build(socket) do
+    ws = socket.assigns.current_id
+
     Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
-      result = Image.build(fn data -> Events.Workstation.publish(%Events.Workstation.BuildOutput{data: data}) end)
+      result =
+        Image.build(
+          fn data -> Events.Workstation.publish(%Events.Workstation.BuildOutput{data: data}) end,
+          ws
+        )
+
       Events.Workstation.publish(%Events.Workstation.BuildDone{result: result})
     end)
 
@@ -383,7 +399,7 @@ defmodule LoopyardWeb.WorkstationLive do
   end
 
   defp assign_env(socket) do
-    keys = Env.keys()
+    keys = Env.keys(socket.assigns.current_id)
     integration_keys = Enum.map(Env.integrations(), & &1.key)
 
     socket
@@ -400,7 +416,7 @@ defmodule LoopyardWeb.WorkstationLive do
 
   # Re-read the Dockerfile from disk, falling back to the current assign on error.
   defp current_dockerfile(socket) do
-    case Image.read_dockerfile() do
+    case Image.read_dockerfile(socket.assigns.current_id) do
       {:ok, d} -> d
       _ -> socket.assigns.dockerfile
     end
@@ -427,7 +443,7 @@ defmodule LoopyardWeb.WorkstationLive do
             <span class="ml-1.5 text-base font-normal text-zinc-400 dark:text-zinc-500">/ {@current_id}</span>
           </h2>
           <span class="text-[11px] font-mono text-zinc-400 dark:text-zinc-500 truncate">
-            {Image.tag()} · {if @image.exists, do: @image.size <> " · built", else: "not built"}
+            {Image.tag(@current_id)} · {if @image.exists, do: @image.size <> " · built", else: "not built"}
           </span>
         </div>
 
@@ -623,13 +639,13 @@ defmodule LoopyardWeb.WorkstationLive do
               Run this where you're logged in — it grabs your gh / fly / claude / codex creds and curls them up:
             </p>
             <div class="flex items-center gap-2">
-              <pre class="flex-1 overflow-x-auto rounded-md bg-zinc-950 text-zinc-200 text-[11px] font-mono px-3 py-2">curl -fsS http://localhost:{@http_port}/workstation/setup.sh | sh</pre>
+              <pre class="flex-1 overflow-x-auto rounded-md bg-zinc-950 text-zinc-200 text-[11px] font-mono px-3 py-2">curl -fsS http://localhost:{@http_port}/workstation/{@current_id}/setup.sh | sh</pre>
               <button
                 id="clip-setup"
                 type="button"
                 phx-hook="Clip"
                 data-label="Copy"
-                data-copy={"curl -fsS http://localhost:#{@http_port}/workstation/setup.sh | sh"}
+                data-copy={"curl -fsS http://localhost:#{@http_port}/workstation/#{@current_id}/setup.sh | sh"}
                 class="focus-ring flex-none rounded-md bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 text-xs font-semibold"
               >
                 Copy
@@ -760,7 +776,7 @@ defmodule LoopyardWeb.WorkstationLive do
                   type="button"
                   phx-hook="Clip"
                   data-label="📋 Copy for Mac"
-                  data-copy={"#{ig.mac} | curl -fsS -T - http://localhost:#{@http_port}/workstation/env/#{ig.key}"}
+                  data-copy={"#{ig.mac} | curl -fsS -T - http://localhost:#{@http_port}/workstation/#{@current_id}/env/#{ig.key}"}
                   title="Copy a one-liner to run on your Mac — pipes the token straight in"
                   class="focus-ring text-[11px] text-violet-600 dark:text-violet-400 hover:underline"
                 >
@@ -831,7 +847,7 @@ defmodule LoopyardWeb.WorkstationLive do
               <div id="ws-push" phx-hook="PushCmd" data-token={@push_token} class="relative">
                 <pre class="overflow-x-auto rounded-lg bg-zinc-950 text-zinc-200 text-[11px] leading-relaxed font-mono p-3 pr-16"><code class="ws-push-cmd">gh auth token | curl -fsS -T - \
   -H "Authorization: Bearer {@push_token}" \
-  __ORIGIN__/workstation/env/GITHUB_TOKEN</code></pre>
+  __ORIGIN__/workstation/{@current_id}/env/GITHUB_TOKEN</code></pre>
                 <button
                   type="button"
                   class="ws-push-copy focus-ring absolute top-2 right-2 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-2 py-1 text-[11px]"

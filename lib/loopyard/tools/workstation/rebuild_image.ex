@@ -10,6 +10,7 @@ defmodule Loopyard.Tools.Workstation.RebuildImage do
 
   alias Loopyard.Events
   alias Loopyard.Events.Workstation.{BuildDone, BuildOutput}
+  alias Loopyard.Workstation
   alias Loopyard.Workstation.Image
 
   # How much of the build log to hand back to the agent (the full log streams to
@@ -17,13 +18,14 @@ defmodule Loopyard.Tools.Workstation.RebuildImage do
   @tail_bytes 6_000
 
   def execute(%{agent_id: _id}, _assigns) do
+    ws = Workstation.current()
     {:ok, agent} = Agent.start_link(fn -> "" end)
 
     result =
       Image.build(fn data ->
         Agent.update(agent, &(&1 <> data))
         Events.Workstation.publish(%BuildOutput{data: data})
-      end)
+      end, ws)
 
     log = Agent.get(agent, & &1)
     Agent.stop(agent)
@@ -32,7 +34,7 @@ defmodule Loopyard.Tools.Workstation.RebuildImage do
 
     case result do
       :ok ->
-        status = Image.status()
+        status = Image.status(ws)
         size = if status.exists, do: status.size, else: "unknown size"
         {:ok, "✓ Build succeeded. Image is #{size}. Every agent now stamps from it."}
 

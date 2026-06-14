@@ -127,18 +127,22 @@ defmodule LoopyardWeb.Router do
     get "/log", SystemController, :log
   end
 
-  # Transfer credentials from your Mac into the workstation. Local requests need
-  # no auth (a curl on this machine is already trusted); tunnel/remote requests
-  # need the PushToken (see PushAuth).
-  #   curl -fsS http://localhost:4000/workstation/setup.sh | sh    # everything
-  #   gh auth token | curl -T - .../workstation/env/GITHUB_TOKEN    # one env var
-  #   curl -T - .../workstation/file/.codex/auth.json < ~/.codex/auth.json  # one file
+  # Transfer credentials from your Mac into a *named* workstation. The id is in
+  # the URL — a headless curl always names which identity it's pushing to (never
+  # an implicit server-side "current"). The Workstation page bakes your current
+  # id into the commands it shows, so copy-paste is unchanged. `docs.md` is the
+  # exception: integration docs are identity-agnostic, so no `:ws`.
+  #   curl -fsS http://localhost:4000/workstation/brad/setup.sh | sh    # everything
+  #   gh auth token | curl -T - .../workstation/brad/env/GITHUB_TOKEN    # one env var
+  #   curl -T - .../workstation/brad/file/.codex/auth.json < ~/.codex/auth.json  # one file
+  # Local requests need no auth (a curl on this machine is already trusted);
+  # tunnel/remote requests need the PushToken (see PushAuth).
   scope "/workstation", LoopyardWeb do
     pipe_through :api
-    get "/setup.sh", SetupController, :script
     get "/:tool/docs.md", IntegrationController, :doc
-    put "/env/:key", EnvController, :put
-    put "/file/*path", FileController, :put
+    get "/:ws/setup.sh", SetupController, :script
+    put "/:ws/env/:key", EnvController, :put
+    put "/:ws/file/*path", FileController, :put
   end
 
   # Per-tool integration pages — defined AFTER the /workstation api scope so the

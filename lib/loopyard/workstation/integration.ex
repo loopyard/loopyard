@@ -66,24 +66,25 @@ defmodule Loopyard.Workstation.Integration do
   end
 
   @doc """
-  Cheap "is this set up?" probe. Greps a marker rather than trusting exit codes.
-  Hits the container for `:file`/`:console`; `:env` is just a key lookup.
+  Cheap "is this set up?" probe for a given workstation `id`. Greps a marker
+  rather than trusting exit codes. Hits the container for `:file`/`:console`;
+  `:env` is just a key lookup.
   """
-  @spec connected?(map()) :: boolean()
-  def connected?(%{method: :env, env: key}), do: key in Env.keys()
+  @spec connected?(map(), String.t()) :: boolean()
+  def connected?(%{method: :env, env: key}, id), do: key in Env.keys(id)
 
-  def connected?(%{method: :file, file: rel}) do
-    exec_says?("test -f '/root/#{rel}' && echo CONNECTED", "CONNECTED")
+  def connected?(%{method: :file, file: rel}, id) do
+    exec_says?("test -f '/root/#{rel}' && echo CONNECTED", "CONNECTED", id)
   end
 
-  def connected?(%{method: :console, status_cmd: cmd, status_marker: marker}) do
-    exec_says?(cmd, marker)
+  def connected?(%{method: :console, status_cmd: cmd, status_marker: marker}, id) do
+    exec_says?(cmd, marker, id)
   end
 
-  def connected?(_), do: false
+  def connected?(_, _id), do: false
 
-  defp exec_says?(cmd, marker) do
-    case Container.exec(cmd) do
+  defp exec_says?(cmd, marker, id) do
+    case Container.exec(cmd, id) do
       {:ok, out} -> String.contains?(out, marker)
       {:error, out} when is_binary(out) -> String.contains?(out, marker)
       _ -> false
