@@ -195,6 +195,22 @@ defmodule LoopyardWeb.WorkstationLive do
     end
   end
 
+  def handle_event("run_in_console", %{"cmd" => cmd}, socket) do
+    # Runnable docs: type the command into the live console + take you to it, so
+    # the terminal is where the instruction is (not "go run this elsewhere").
+    if socket.assigns.console_container do
+      Terminal.send_input(socket.assigns.console_container, cmd <> "\n")
+
+      {:noreply,
+       socket
+       |> assign(:tab, :console)
+       |> push_event("ws_focus_console", %{})
+       |> put_flash(:info, "Running `#{cmd}` in the console — follow the prompts there.")}
+    else
+      {:noreply, put_flash(socket, :error, "Console is still starting — try again in a moment.")}
+    end
+  end
+
   def handle_event("switch_tab", %{"tab" => "dockerfile"}, socket),
     do: {:noreply, assign(socket, :tab, :dockerfile)}
 
@@ -383,7 +399,7 @@ defmodule LoopyardWeb.WorkstationLive do
       max_width={:xl}
       flash={@flash}
     >
-      <div class="space-y-4">
+      <div id="ws-page" phx-hook="WsScroll" class="space-y-4">
         <div class="flex items-baseline justify-between gap-3">
           <h2 class="text-lg md:text-xl font-semibold">Workstation</h2>
           <span class="text-[11px] font-mono text-zinc-400 dark:text-zinc-500 truncate">
@@ -396,7 +412,7 @@ defmodule LoopyardWeb.WorkstationLive do
         <div class="flex flex-col lg:flex-row gap-4 lg:h-[calc(100dvh-9.5rem)]">
           <%!-- LEFT: Console / Dockerfile tabs (terminal is the default).
                dvh (not vh) so iOS Safari's address bar is accounted for. --%>
-          <div class="flex flex-col min-h-0 lg:flex-[3] h-[68dvh] lg:h-auto rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden">
+          <div id="ws-console" class="flex flex-col min-h-0 lg:flex-[3] h-[68dvh] lg:h-auto rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden">
             <div class="flex-none flex items-center gap-1 px-2 border-b border-zinc-200 dark:border-zinc-700">
               <button phx-click="switch_tab" phx-value-tab="console" class={tab_class(@tab == :console)}>
                 Console
@@ -604,16 +620,28 @@ defmodule LoopyardWeb.WorkstationLive do
                   Clear
                 </button>
               </form>
-              <%!-- One-click import for tools with an in-container login (gh). --%>
-              <button
-                :if={ig.cli}
-                type="button"
-                phx-click="import_token"
-                phx-value-key={ig.key}
-                class="focus-ring mt-1.5 self-start text-[11px] text-violet-600 dark:text-violet-400 hover:underline"
-              >
-                ↓ {ig.cli_label}
-              </button>
+              <%!-- Runnable docs: type a setup command into the live console. --%>
+              <div :if={ig.commands != [] || ig.cli} class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <button
+                  :for={c <- ig.commands}
+                  type="button"
+                  phx-click="run_in_console"
+                  phx-value-cmd={c.cmd}
+                  title={"Runs `#{c.cmd}` in the console"}
+                  class="focus-ring text-[11px] text-violet-600 dark:text-violet-400 hover:underline"
+                >
+                  ▶ {c.label}
+                </button>
+                <button
+                  :if={ig.cli}
+                  type="button"
+                  phx-click="import_token"
+                  phx-value-key={ig.key}
+                  class="focus-ring text-[11px] text-violet-600 dark:text-violet-400 hover:underline"
+                >
+                  ↓ {ig.cli_label}
+                </button>
+              </div>
             </div>
           </div>
 

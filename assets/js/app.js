@@ -61,6 +61,17 @@ Hooks.ScrollBottom = {
 
 // Auto-scroll element to bottom on every update (tail mode).
 // Pauses when user scrolls up; resumes when they scroll back to bottom.
+// WsScroll: on the Workstation page, scroll the console into view when a
+// runnable-doc "▶ Run" sends a command to it (the terminal lives where the
+// instruction is, so we bring it into view after you click Run).
+Hooks.WsScroll = {
+  mounted() {
+    this.handleEvent("ws_focus_console", () => {
+      document.getElementById("ws-console")?.scrollIntoView({behavior: "smooth", block: "start"})
+    })
+  }
+}
+
 Hooks.TailScroll = {
   mounted() {
     this._userScrolledUp = false

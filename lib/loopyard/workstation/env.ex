@@ -22,36 +22,43 @@ defmodule Loopyard.Workstation.Env do
   # Known integrations — rendered as labeled paste slots so setup is "pick the
   # tool, paste the token" instead of "remember the variable name." Still just
   # env vars under the hood. `hint` says exactly how to mint the token.
-  # `cli`, when set, is a command run INSIDE the workstation container to mint/
-  # read the token from an existing login — surfaced as a one-click "Import"
-  # button. `nil` means the token must be pasted (e.g. Claude's `setup-token`
-  # needs a desktop browser; there's no in-container path).
+  # An integration is a set of "ways to get the token", any/all of which render:
+  #   * paste     — always; the value input (write-only).
+  #   * cli/cli_label — a one-click "Import" that runs `cli` in the container to
+  #     read/mint the token from an existing login (e.g. `gh auth token`). nil =
+  #     no in-container path (Claude's setup-token needs a desktop browser).
+  #   * commands  — runnable-doc steps: `%{cmd, label}` rendered as ▶ Run buttons
+  #     that type the command into the console and take you to it. The terminal
+  #     lives where we tell you to run things, instead of "go run this elsewhere."
+  #   * setup     — :anywhere | :desktop (minting needs a same-machine browser).
+  # (OAuth-redirect methods can slot in here later for services that support it.)
   @integrations [
     %{
       key: "GITHUB_TOKEN",
       label: "GitHub",
-      hint: "gh auth token  (you're already logged in) — or a fine-grained PAT",
+      hint: "Log in once (device flow — phone-friendly), then import the token.",
+      setup: :anywhere,
+      commands: [%{cmd: "gh auth login", label: "Run gh auth login"}],
       cli: "gh auth token",
-      cli_label: "Import from gh",
-      # PAT on mobile web, device flow, or the in-container import all work.
-      setup: :anywhere
+      cli_label: "Import from gh"
     },
     %{
       key: "CLAUDE_CODE_OAUTH_TOKEN",
       label: "Claude",
       hint: "claude setup-token  on your Mac — Claude's loopback auth is hostile to remote",
+      setup: :desktop,
+      commands: [],
       cli: nil,
-      cli_label: nil,
-      # `setup-token` does loopback OAuth → needs a browser on the same machine.
-      setup: :desktop
+      cli_label: nil
     },
     %{
       key: "FLY_ACCESS_TOKEN",
       label: "Fly",
       hint: "fly tokens create",
+      setup: :anywhere,
+      commands: [],
       cli: nil,
-      cli_label: nil,
-      setup: :anywhere
+      cli_label: nil
     }
   ]
 
