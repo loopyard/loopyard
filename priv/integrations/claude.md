@@ -5,7 +5,7 @@ Claude Code in the box. Two ways, depending on what you've got:
 ## Copy your Mac's login file (live, no Restart)
 
 ```
-curl -fsS -T - $LOOPYARD/workstation/$WS/file/.claude/.credentials.json < ~/.claude/.credentials.json
+curl -fsS -T - $LOOPYARD/workstations/$WS/file/.claude/.credentials.json < ~/.claude/.credentials.json
 ```
 
 This mirrors your existing `claude login`. It uses your Claude subscription. The

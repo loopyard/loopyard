@@ -1,22 +1,23 @@
 defmodule LoopyardWeb.IntegrationController do
   @moduledoc """
   Serves an integration's doc as raw markdown — the same source the per-tool page
-  renders, so an **agent** can fetch `/workstation/:tool/docs.md` and read how to
-  wire a tool into the box (then do it, or walk the user through it).
+  renders, so an **agent** can fetch `/workstations/:id/:tool/docs.md` and read how
+  to wire a tool into the box (then do it, or walk the user through it). The doc is
+  identity-agnostic; the `:id` just scopes the URL + fills the `$WS` placeholder.
   """
   use LoopyardWeb, :controller
 
   alias Loopyard.Workstation.Integration
 
-  def doc(conn, %{"tool" => tool}) do
+  def doc(conn, %{"id" => ws, "tool" => tool}) do
     case Integration.doc(tool) do
       {:ok, md} ->
-        # Agent-facing: $LOOPYARD → this server; $WS stays a named placeholder so
-        # the agent substitutes the workstation it's actually pushing to.
+        # Agent-facing: $LOOPYARD → this server; $WS → the workstation in the URL,
+        # so the curl examples name the identity the agent fetched the doc for.
         body =
           md
           |> String.replace("$LOOPYARD", base_url(conn))
-          |> String.replace("$WS", "<workstation-id>")
+          |> String.replace("$WS", ws)
 
         conn
         |> put_resp_content_type("text/markdown")

@@ -69,9 +69,8 @@ defmodule LoopyardWeb.Components.AppHeader do
   @doc """
   The primary-nav **identity switcher**. Shows who you're operating as
   (`Loopyard.Workstation.current/0`) and drops down to switch — each row links to
-  `GET /workstation/switch/:id`, which mutates the *global* current (a file, so
-  `mix loopyard.rpc` and agent tool calls follow the same identity). The footer
-  link opens the full Workstation page (edit image, manage integrations, create).
+  that workstation's page (`/workstations/:id`). *Visiting* a workstation makes it
+  the one you're operating as, so the nav, agents, and URL stay in sync.
 
   Pure `<details>`/`<summary>` — no JS hook, closes on outside click via the
   invisible backdrop label.
@@ -95,8 +94,7 @@ defmodule LoopyardWeb.Components.AppHeader do
         </div>
         <.link
           :for={id <- @ids}
-          href={"/workstation/switch/#{id}"}
-          method="get"
+          href={"/workstations/#{id}"}
           class={[
             "flex items-center gap-2 px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800",
             if(id == @current, do: "text-zinc-900 dark:text-zinc-100 font-medium", else: "text-zinc-600 dark:text-zinc-300")
@@ -110,7 +108,7 @@ defmodule LoopyardWeb.Components.AppHeader do
         </.link>
         <div class="my-1 border-t border-zinc-100 dark:border-zinc-800"></div>
         <.link
-          navigate="/workstation"
+          href="/workstations"
           class="block px-3 py-1.5 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
         >
           Manage workstations →

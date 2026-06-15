@@ -98,10 +98,12 @@ defmodule LoopyardWeb.Router do
 
     live "/projects/:project_id/workspaces/:workspace_id/sync", WorkspaceLive, :sync
 
-    live "/workstation", WorkstationLive, :index
-    # Switch / create the current identity (mutates global Workstation.current/0).
-    get "/workstation/switch/:id", WorkstationController, :switch
-    post "/workstation/create", WorkstationController, :create
+    # Workstations — each identity has its own URL. Visiting one makes it the one
+    # you're operating as. Bare /workstation(s) → redirect to your current id.
+    get "/workstation", WorkstationController, :index
+    get "/workstations", WorkstationController, :index
+    post "/workstations/create", WorkstationController, :create
+    live "/workstations/:id", WorkstationLive, :show
 
     live "/system", SystemLive, :index
     live "/system/workspaces", SystemWorkspacesLive, :index
@@ -130,26 +132,26 @@ defmodule LoopyardWeb.Router do
   # Transfer credentials from your Mac into a *named* workstation. The id is in
   # the URL — a headless curl always names which identity it's pushing to (never
   # an implicit server-side "current"). The Workstation page bakes your current
-  # id into the commands it shows, so copy-paste is unchanged. `docs.md` is the
-  # exception: integration docs are identity-agnostic, so no `:ws`.
-  #   curl -fsS http://localhost:4000/workstation/brad/setup.sh | sh    # everything
-  #   gh auth token | curl -T - .../workstation/brad/env/GITHUB_TOKEN    # one env var
-  #   curl -T - .../workstation/brad/file/.codex/auth.json < ~/.codex/auth.json  # one file
+  # id into the commands it shows, so copy-paste is unchanged.
+  #   curl -fsS http://localhost:4000/workstations/brad/setup.sh | sh    # everything
+  #   gh auth token | curl -T - .../workstations/brad/env/GITHUB_TOKEN    # one env var
+  #   curl -T - .../workstations/brad/file/.codex/auth.json < ~/.codex/auth.json  # one file
   # Local requests need no auth (a curl on this machine is already trusted);
-  # tunnel/remote requests need the PushToken (see PushAuth).
-  scope "/workstation", LoopyardWeb do
+  # tunnel/remote requests need the PushToken (see PushAuth). Defined BEFORE the
+  # `/workstations/:id/:tool` page route so these literal sub-paths win.
+  scope "/workstations", LoopyardWeb do
     pipe_through :api
-    get "/:tool/docs.md", IntegrationController, :doc
-    get "/:ws/setup.sh", SetupController, :script
-    put "/:ws/env/:key", EnvController, :put
-    put "/:ws/file/*path", FileController, :put
+    get "/:id/:tool/docs.md", IntegrationController, :doc
+    get "/:id/setup.sh", SetupController, :script
+    put "/:id/env/:key", EnvController, :put
+    put "/:id/file/*path", FileController, :put
   end
 
-  # Per-tool integration pages — defined AFTER the /workstation api scope so the
-  # static routes above (setup.sh, env, file, docs.md) win over the `:tool` param.
+  # Per-tool integration pages, scoped to a workstation. After the api scope so the
+  # literal sub-paths above (setup.sh, env, file, docs.md) win over `:tool`.
   scope "/", LoopyardWeb do
     pipe_through :browser
-    live "/workstation/:tool", WorkstationToolLive, :show
+    live "/workstations/:id/:tool", WorkstationToolLive, :show
   end
 
   # Aural transport routes ship from the `:aural` package via the

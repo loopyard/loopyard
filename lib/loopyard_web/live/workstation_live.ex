@@ -31,11 +31,23 @@ defmodule LoopyardWeb.WorkstationLive do
   @behaviour Events.Workstation.Subscriber
 
   @impl true
-  def mount(_params, _session, socket) do
+  def mount(%{"id" => ws}, _session, socket) do
+    if Loopyard.Workstation.exists?(ws) do
+      mount_workstation(ws, socket)
+    else
+      {:ok,
+       socket
+       |> put_flash(:error, "No workstation \"#{ws}\".")
+       |> push_navigate(to: "/workstations/#{Loopyard.Workstation.current()}")}
+    end
+  end
+
+  # The page operates on the workstation in the URL. Visiting it makes it the
+  # identity you're operating as (what new agents inherit). `ws` is threaded into
+  # every Image/Env/Container call below — no implicit "current" default.
+  defp mount_workstation(ws, socket) do
+    _ = Loopyard.Workstation.set_current(ws)
     agent_id = Agent.id()
-    # The identity this page operates on — resolved once at the UI boundary and
-    # threaded into every Image/Env/Container call below (no implicit default).
-    ws = Loopyard.Workstation.current()
 
     socket =
       if connected?(socket) do
@@ -431,7 +443,7 @@ defmodule LoopyardWeb.WorkstationLive do
   def render(assigns) do
     ~H"""
     <.page_shell
-      breadcrumbs={[{"Loopyard", "/"}, {"Workstation", nil}]}
+      breadcrumbs={[{"Loopyard", "/"}, {"Workstations", "/workstations"}, {@current_id, nil}]}
       iex_session={@iex_session}
       max_width={:xl}
       flash={@flash}
@@ -453,7 +465,7 @@ defmodule LoopyardWeb.WorkstationLive do
           <span class="text-zinc-400 dark:text-zinc-500">Operating as</span>
           <%= for id <- @workstation_ids do %>
             <.link
-              href={"/workstation/switch/#{id}"}
+              href={"/workstations/#{id}"}
               class={[
                 "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 border transition-colors",
                 if(id == @current_id,
@@ -465,7 +477,7 @@ defmodule LoopyardWeb.WorkstationLive do
               {id}
             </.link>
           <% end %>
-          <form action="/workstation/create" method="post" class="inline-flex items-center gap-1.5">
+          <form action="/workstations/create" method="post" class="inline-flex items-center gap-1.5">
             <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
             <input
               type="text"
@@ -639,13 +651,13 @@ defmodule LoopyardWeb.WorkstationLive do
               Run this where you're logged in — it grabs your gh / fly / claude / codex creds and curls them up:
             </p>
             <div class="flex items-center gap-2">
-              <pre class="flex-1 overflow-x-auto rounded-md bg-zinc-950 text-zinc-200 text-[11px] font-mono px-3 py-2">curl -fsS http://localhost:{@http_port}/workstation/{@current_id}/setup.sh | sh</pre>
+              <pre class="flex-1 overflow-x-auto rounded-md bg-zinc-950 text-zinc-200 text-[11px] font-mono px-3 py-2">curl -fsS http://localhost:{@http_port}/workstations/{@current_id}/setup.sh | sh</pre>
               <button
                 id="clip-setup"
                 type="button"
                 phx-hook="Clip"
                 data-label="Copy"
-                data-copy={"curl -fsS http://localhost:#{@http_port}/workstation/#{@current_id}/setup.sh | sh"}
+                data-copy={"curl -fsS http://localhost:#{@http_port}/workstations/#{@current_id}/setup.sh | sh"}
                 class="focus-ring flex-none rounded-md bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 text-xs font-semibold"
               >
                 Copy
@@ -660,7 +672,7 @@ defmodule LoopyardWeb.WorkstationLive do
           <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-4">
             <.link
               :for={ig <- @integrations}
-              navigate={"/workstation/#{ig.id}"}
+              navigate={"/workstations/#{@current_id}/#{ig.id}"}
               class="rounded-lg border border-zinc-200 dark:border-zinc-700 p-3 hover:border-violet-400 dark:hover:border-violet-500 transition-colors"
             >
               <div class="flex items-center justify-between gap-2">
@@ -776,7 +788,7 @@ defmodule LoopyardWeb.WorkstationLive do
                   type="button"
                   phx-hook="Clip"
                   data-label="📋 Copy for Mac"
-                  data-copy={"#{ig.mac} | curl -fsS -T - http://localhost:#{@http_port}/workstation/#{@current_id}/env/#{ig.key}"}
+                  data-copy={"#{ig.mac} | curl -fsS -T - http://localhost:#{@http_port}/workstations/#{@current_id}/env/#{ig.key}"}
                   title="Copy a one-liner to run on your Mac — pipes the token straight in"
                   class="focus-ring text-[11px] text-violet-600 dark:text-violet-400 hover:underline"
                 >
@@ -847,7 +859,7 @@ defmodule LoopyardWeb.WorkstationLive do
               <div id="ws-push" phx-hook="PushCmd" data-token={@push_token} class="relative">
                 <pre class="overflow-x-auto rounded-lg bg-zinc-950 text-zinc-200 text-[11px] leading-relaxed font-mono p-3 pr-16"><code class="ws-push-cmd">gh auth token | curl -fsS -T - \
   -H "Authorization: Bearer {@push_token}" \
-  __ORIGIN__/workstation/{@current_id}/env/GITHUB_TOKEN</code></pre>
+  __ORIGIN__/workstations/{@current_id}/env/GITHUB_TOKEN</code></pre>
                 <button
                   type="button"
                   class="ws-push-copy focus-ring absolute top-2 right-2 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-2 py-1 text-[11px]"

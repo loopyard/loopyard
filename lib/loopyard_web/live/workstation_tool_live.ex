@@ -13,23 +13,32 @@ defmodule LoopyardWeb.WorkstationToolLive do
   alias Loopyard.Workstation.{Container, Integration}
 
   @impl true
-  def mount(%{"tool" => id}, _session, socket) do
-    case Integration.get(id) do
-      nil ->
-        {:ok, socket |> put_flash(:error, "Unknown tool: #{id}") |> push_navigate(to: "/workstation")}
+  def mount(%{"id" => ws, "tool" => tool}, _session, socket) do
+    cond do
+      not Workstation.exists?(ws) ->
+        {:ok,
+         socket
+         |> put_flash(:error, "No workstation \"#{ws}\".")
+         |> push_navigate(to: "/workstations/#{Workstation.current()}")}
 
-      ig ->
+      is_nil(Integration.get(tool)) ->
+        {:ok,
+         socket |> put_flash(:error, "Unknown tool: #{tool}") |> push_navigate(to: "/workstations/#{ws}")}
+
+      true ->
+        # Operating-as follows the workstation in the URL; it's baked into the
+        # Copy-for-Mac command + the doc's curl examples so they name which
+        # workstation to push to.
+        _ = Workstation.set_current(ws)
+        ig = Integration.get(tool)
+
         socket =
           if connected?(socket),
             do: subscribe_iex(socket),
             else: assign(socket, :iex_session, %{level: nil})
 
-        # The identity you're operating as — baked into the Copy-for-Mac command
-        # and the doc's curl examples so they name which workstation to push to.
-        ws = Workstation.current()
-
         doc =
-          case Integration.doc(id) do
+          case Integration.doc(tool) do
             {:ok, md} -> fill(md, ws)
             _ -> "_No doc yet for #{ig.label}._"
           end
@@ -109,10 +118,10 @@ defmodule LoopyardWeb.WorkstationToolLive do
   defp port, do: LoopyardWeb.Endpoint.config(:http)[:port] || 4000
 
   defp mac_cmd(%{method: :file, mac: mac, file: file}, ws),
-    do: "#{mac} | curl -fsS -T - http://localhost:#{port()}/workstation/#{ws}/file/#{file}"
+    do: "#{mac} | curl -fsS -T - http://localhost:#{port()}/workstations/#{ws}/file/#{file}"
 
   defp mac_cmd(%{method: :env, mac: mac, env: env}, ws),
-    do: "#{mac} | curl -fsS -T - http://localhost:#{port()}/workstation/#{ws}/env/#{env}"
+    do: "#{mac} | curl -fsS -T - http://localhost:#{port()}/workstations/#{ws}/env/#{env}"
 
   defp mac_cmd(_, _ws), do: nil
 
@@ -120,7 +129,12 @@ defmodule LoopyardWeb.WorkstationToolLive do
   def render(assigns) do
     ~H"""
     <.page_shell
-      breadcrumbs={[{"Loopyard", "/"}, {"Workstation", "/workstation"}, {@ig.label, nil}]}
+      breadcrumbs={[
+        {"Loopyard", "/"},
+        {"Workstations", "/workstations"},
+        {@current_id, "/workstations/#{@current_id}"},
+        {@ig.label, nil}
+      ]}
       iex_session={@iex_session}
       max_width={:lg}
       flash={@flash}

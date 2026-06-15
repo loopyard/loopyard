@@ -3,11 +3,11 @@ defmodule LoopyardWeb.SetupController do
   Serves the one-shot credential-transfer script for a *named* workstation. On
   your Mac:
 
-      curl -fsS http://localhost:4000/workstation/brad/setup.sh | sh
+      curl -fsS http://localhost:4000/workstations/brad/setup.sh | sh
 
   The script harvests whatever you're logged into (gh/fly tokens via env, plus
-  file-based logins like Codex/Claude/gh) and curls them into workstation `:ws` —
-  env vars via `/workstation/:ws/env`, files via `/workstation/:ws/file`. Host,
+  file-based logins like Codex/Claude/gh) and curls them into workstation `:id` —
+  env vars via `/workstations/:id/env`, files via `/workstations/:id/file`. Host,
   push token, and the target workstation are baked in from the request, so it
   Just Works against this Loopyard. The Workstation page bakes your current id in.
 
@@ -18,7 +18,7 @@ defmodule LoopyardWeb.SetupController do
   alias Loopyard.{PushToken, Workstation}
   alias LoopyardWeb.PushAuth
 
-  def script(conn, %{"ws" => ws}) do
+  def script(conn, %{"id" => ws}) do
     cond do
       not PushAuth.authorized?(conn) ->
         conn
@@ -54,7 +54,7 @@ defmodule LoopyardWeb.SetupController do
     """
     #!/bin/sh
     # Loopyard — transfer your logged-in Mac credentials into workstation '#{ws}'.
-    # Run on the Mac where you're logged in:  curl -fsS #{base}/workstation/#{ws}/setup.sh | sh
+    # Run on the Mac where you're logged in:  curl -fsS #{base}/workstations/#{ws}/setup.sh | sh
     L="#{base}"
     WS="#{ws}"
     AUTH="Authorization: Bearer #{token}"
@@ -64,12 +64,12 @@ defmodule LoopyardWeb.SetupController do
 
     env_push() {  # NAME VALUE
       [ -n "$2" ] || { skip "$1"; return; }
-      printf '%s' "$2" | curl -fsS -T - -H "$AUTH" "$L/workstation/$WS/env/$1" >/dev/null 2>&1 \\
+      printf '%s' "$2" | curl -fsS -T - -H "$AUTH" "$L/workstations/$WS/env/$1" >/dev/null 2>&1 \\
         && ok "$1 (env)" || skip "$1"
     }
     file_push() {  # LOCAL REMOTE
       [ -f "$1" ] || { skip "$2"; return; }
-      curl -fsS -T - -H "$AUTH" "$L/workstation/$WS/file/$2" < "$1" >/dev/null 2>&1 \\
+      curl -fsS -T - -H "$AUTH" "$L/workstations/$WS/file/$2" < "$1" >/dev/null 2>&1 \\
         && ok "$2 (file)" || skip "$2"
     }
 

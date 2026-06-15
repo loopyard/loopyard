@@ -22,7 +22,7 @@ That's it — it's a device flow, so it works from your phone too. No PAT needed
 ## Already logged in on your Mac? Push it instead
 
 ```
-curl -fsS -T - $LOOPYARD/workstation/$WS/file/.config/gh/hosts.yml < ~/.config/gh/hosts.yml
+curl -fsS -T - $LOOPYARD/workstations/$WS/file/.config/gh/hosts.yml < ~/.config/gh/hosts.yml
 ```
 
 Or set just a token: `gh auth token` → the `GITHUB_TOKEN` env var (the slot on the
