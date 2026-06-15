@@ -10,11 +10,16 @@ defmodule Loopyard.ChatAgent.Prompt do
 
   alias Loopyard.Agents.Registry
 
-  # The system prompt is passed as a CLI argument (--system-prompt).
-  # If it's too long, the OS will SIGKILL the CLI process (exit 137).
-  # Keep it under this limit. Anything larger should go in CLAUDE.md
-  # or a file the agent reads via `read_agent_file`.
-  @max_system_prompt_chars 2000
+  # The system prompt is passed as a single `--append-system-prompt` CLI arg.
+  # The real OS cap on one argument is ~128KB (Linux MAX_ARG_STRLEN; macOS
+  # ARG_MAX is 256KB total) — a normal multi-KB prompt is nowhere near it.
+  #
+  # So this is a *runaway guardrail*, NOT a hard SIGKILL boundary: if a prompt
+  # blows past it, something (a whole file, a giant agent definition) leaked in
+  # and should move into CLAUDE.md or a file read via `read_agent_file`. The old
+  # 2000 value was wrong — it false-alarmed on every normal agent (the default
+  # prompt alone is ~3.2KB), which is misleading log noise, not a real risk.
+  @max_system_prompt_chars 16_000
 
   @doc """
   Build the system prompt for an agent session.
