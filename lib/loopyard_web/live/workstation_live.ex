@@ -161,28 +161,6 @@ defmodule LoopyardWeb.WorkstationLive do
   def handle_async(:restart_machine, {:exit, reason}, socket),
     do: {:noreply, socket |> assign(:restarting, false) |> assign(:console_error, inspect(reason))}
 
-  def handle_async({:import_token, key}, {:ok, {:ok, output}}, socket) do
-    token = String.trim(output)
-
-    if token != "" and not String.contains?(token, " ") and not String.contains?(token, "\n") do
-      Env.put(key, token, socket.assigns.current_id)
-
-      {:noreply,
-       socket |> assign_env() |> put_flash(:info, "Imported #{key} — Restart the machine to apply.")}
-    else
-      {:noreply,
-       put_flash(socket, :error, "Couldn't read a token (is the tool logged in? try the console).")}
-    end
-  end
-
-  def handle_async({:import_token, key}, {:ok, {:error, _}}, socket),
-    do:
-      {:noreply,
-       put_flash(socket, :error, "Couldn't import #{key} — log the tool in first (e.g. `gh auth login`).")}
-
-  def handle_async({:import_token, _key}, {:exit, reason}, socket),
-    do: {:noreply, put_flash(socket, :error, "Import failed: #{inspect(reason)}")}
-
   # --- chat input ---
 
   @impl true
@@ -218,37 +196,6 @@ defmodule LoopyardWeb.WorkstationLive do
      socket
      |> assign_env()
      |> put_flash(:info, "Removed #{key} — Restart the machine to apply.")}
-  end
-
-  def handle_event("import_token", %{"key" => key}, socket) do
-    ws = socket.assigns.current_id
-
-    case Enum.find(Env.integrations(), &(&1.key == key && is_binary(&1.cli))) do
-      %{cli: cli} = ig ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Importing #{key} via `#{ig.cli}`…")
-         |> start_async({:import_token, key}, fn -> Container.exec(cli, ws) end)}
-
-      _ ->
-        {:noreply, socket}
-    end
-  end
-
-  def handle_event("run_in_console", %{"cmd" => cmd}, socket) do
-    # Runnable docs: type the command into the live console + take you to it, so
-    # the terminal is where the instruction is (not "go run this elsewhere").
-    if socket.assigns.console_container do
-      Terminal.send_input(socket.assigns.console_container, cmd <> "\n")
-
-      {:noreply,
-       socket
-       |> assign(:tab, :console)
-       |> push_event("ws_focus_console", %{})
-       |> put_flash(:info, "Running `#{cmd}` in the console — follow the prompts there.")}
-    else
-      {:noreply, put_flash(socket, :error, "Console is still starting — try again in a moment.")}
-    end
   end
 
   def handle_event("switch_tab", %{"tab" => "dockerfile"}, socket),
