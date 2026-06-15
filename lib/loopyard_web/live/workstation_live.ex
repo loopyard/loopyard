@@ -92,20 +92,31 @@ defmodule LoopyardWeb.WorkstationLive do
       |> assign(:integration_status, Map.new(Integration.all(), &{&1.id, :checking}))
       |> assign_env()
 
-    # Bring the console container + the agent up off the LV process — both can
-    # block (create container / boot a CLI session). The UI renders once ready.
-    socket =
-      if connected?(socket) do
-        socket
-        |> start_async(:ensure_console, fn -> Container.ensure_up(ws) end)
-        |> start_async(:ensure_agent, fn -> Agent.ensure_started() end)
-        |> check_integrations()
-      else
-        socket
-      end
+    # Boot only what THIS page uses (off the LV process — these block on
+    # container create / CLI boot). The calm hub no longer spins up the
+    # workstation agent + console on every view/reconnect — that needless boot
+    # (the agent's CLI churns) was part of why the page felt busy.
+    socket = if connected?(socket), do: boot_for_action(socket, socket.assigns.live_action, ws), else: socket
 
     {:ok, socket}
   end
+
+  # Image page: the Dockerfile editor + the agent that edits it, plus a console.
+  defp boot_for_action(socket, :image, ws) do
+    socket
+    |> start_async(:ensure_console, fn -> Container.ensure_up(ws) end)
+    |> start_async(:ensure_agent, fn -> Agent.ensure_started() end)
+  end
+
+  # Console page: just the shell.
+  defp boot_for_action(socket, :console, ws),
+    do: start_async(socket, :ensure_console, fn -> Container.ensure_up(ws) end)
+
+  # Hub: only the integration status probes (each execs into the container).
+  defp boot_for_action(socket, :show, _ws), do: check_integrations(socket)
+
+  # Env (and anything else): nothing to boot.
+  defp boot_for_action(socket, _action, _ws), do: socket
 
   defp check_integrations(socket) do
     ws = socket.assigns.current_id
