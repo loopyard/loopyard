@@ -69,15 +69,9 @@ defmodule Loopyard.Workstation.Image do
     end
   end
 
-  defp ensure_seeded(id) do
-    unless File.exists?(dockerfile_path(id)) do
-      File.mkdir_p!(dir(id))
-      stock = Application.app_dir(:loopyard, "priv/workspace-base/Dockerfile")
-      File.cp!(stock, dockerfile_path(id))
-    end
-
-    :ok
-  end
+  # Ensure the full build context (Dockerfile + sibling files the Dockerfile
+  # COPYs, e.g. loopyard-open) is present before a build.
+  defp ensure_seeded(id), do: Workstation.ensure_context(id)
 
   defp human_size(bytes_str) do
     case Integer.parse(String.trim(bytes_str)) do
