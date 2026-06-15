@@ -31,7 +31,7 @@ defmodule LoopyardWeb.WorkstationToolLive do
         # Operating-as follows the workstation in the URL.
         _ = Workstation.set_current(ws)
         ig = Integration.get(tool)
-        mac = Integration.mac_command(ig, base_url(), ws)
+        mac = Integration.mac_script(ig, base_url(), ws)
 
         doc =
           case Integration.doc(tool) do

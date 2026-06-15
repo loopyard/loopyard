@@ -1,15 +1,18 @@
 defmodule Loopyard.Workstation.Integration do
   @moduledoc """
   Registry of workstation integrations — each tool you might connect (GitHub,
-  Claude, Codex, Fly…). Every entry is **data**: a label, a one-line blurb, the
-  default **"run it on your Mac"** command that transfers the credential, optional
-  alternatives (a `:env` token slot, a `:console` terminal command), a "connected?"
-  probe, and a markdown doc (`priv/integrations/<id>.md`).
+  Claude, Codex, Fly…). Every entry is **data**: a label, a one-line blurb,
+  optional alternatives (a `:env` token slot, a `:console` terminal command), a
+  "connected?" probe, and a markdown doc (`priv/integrations/<id>.md`).
 
-  The connect model is **Mac-first**: the default path is a single command you run
-  on your Mac (where you're already logged in) that pipes the credential into the
-  box. `set env var` and `use the terminal` are the *other ways*, not the front
-  door. Adding a tool = a markdown file + a map entry here.
+  The connect model is **Mac-first**: the default path is a command you run on your
+  Mac (where you're already logged in) that transfers the login into the box. The
+  per-tool transfer script (`mac_script/4`) is **keychain-aware**: on macOS, `gh`
+  and Claude keep credentials in the Keychain (not files), so a naive
+  `cat ~/.claude/.credentials.json` finds nothing. The scripts read the Keychain
+  (with a Linux file fallback), and — for Claude — also push the minimal
+  `~/.claude.json` onboarding config, without which *interactive* `claude` re-runs
+  its login flow even with valid credentials. Same scripts power `setup.sh`.
 
   Integrations are **additive** — nothing here is required for an agent to run.
   """
@@ -20,19 +23,15 @@ defmodule Loopyard.Workstation.Integration do
       id: "github",
       label: "GitHub",
       blurb: "Clone private repos, push, and use the gh CLI — give the box your GitHub login.",
-      mac_produces: "gh auth token",
-      mac_target: {:env, "GITHUB_TOKEN"},
       env: "GITHUB_TOKEN",
       console: "gh auth login",
       check: {:console, "gh auth status", "Logged in"},
-      lands: "GITHUB_TOKEN — restart to apply"
+      lands: "gh login (live) + GITHUB_TOKEN env (Restart)"
     },
     %{
       id: "claude",
       label: "Claude",
       blurb: "Run Claude Code in the box using your Claude subscription.",
-      mac_produces: "cat ~/.claude/.credentials.json",
-      mac_target: {:file, ".claude/.credentials.json"},
       env: "CLAUDE_CODE_OAUTH_TOKEN",
       console: nil,
       check: {:file, ".claude/.credentials.json"},
@@ -42,8 +41,6 @@ defmodule Loopyard.Workstation.Integration do
       id: "codex",
       label: "Codex",
       blurb: "Use the OpenAI Codex CLI in the box with your login.",
-      mac_produces: "cat ~/.codex/auth.json",
-      mac_target: {:file, ".codex/auth.json"},
       env: "OPENAI_API_KEY",
       console: "codex login",
       check: {:file, ".codex/auth.json"},
@@ -53,8 +50,6 @@ defmodule Loopyard.Workstation.Integration do
       id: "fly",
       label: "Fly",
       blurb: "Deploy to Fly.io from the box.",
-      mac_produces: "fly auth token",
-      mac_target: {:env, "FLY_ACCESS_TOKEN"},
       env: "FLY_ACCESS_TOKEN",
       console: nil,
       check: {:env, "FLY_ACCESS_TOKEN"},
@@ -80,16 +75,64 @@ defmodule Loopyard.Workstation.Integration do
   end
 
   @doc """
-  The **default** "run it on your Mac" command: produce the credential where you're
-  logged in, pipe it into this workstation. One copy-paste, no terminal-fishing.
+  The host-side shell that transfers this tool's login into workstation `ws`.
+
+  Run on the Mac where you're logged in. Keychain-aware (with a Linux file
+  fallback) and guarded — it pushes nothing if the credential isn't found, so a
+  missing tool never writes an empty file. `curl_flags` lets the caller add flags
+  (e.g. the push-token header for a remote `setup.sh`); the default is the bare,
+  local form shown on the tool page.
   """
-  @spec mac_command(map(), String.t(), String.t()) :: String.t()
-  def mac_command(%{mac_produces: produces, mac_target: target}, base, ws) do
-    "#{produces} | curl -fsS -T - #{base}/workstations/#{ws}/#{endpoint(target)}"
+  @spec mac_script(map(), String.t(), String.t(), String.t()) :: String.t()
+  def mac_script(integration, base, ws, curl_flags \\ "-fsS")
+
+  def mac_script(%{id: "github"}, base, ws, cf) do
+    env = url(base, ws, "env/GITHUB_TOKEN")
+    hosts = url(base, ws, "file/.config/gh/hosts.yml")
+
+    """
+    if command -v gh >/dev/null 2>&1; then
+      t=$(gh auth token 2>/dev/null)
+      if [ -n "$t" ]; then
+        printf '%s' "$t" | curl #{cf} -T - "#{env}"
+        printf 'github.com:\\n    oauth_token: %s\\n    user: %s\\n    git_protocol: ssh\\n' "$t" "$(gh api user -q .login 2>/dev/null)" | curl #{cf} -T - "#{hosts}"
+      fi
+    fi\
+    """
   end
 
-  defp endpoint({:env, key}), do: "env/#{key}"
-  defp endpoint({:file, path}), do: "file/#{path}"
+  def mac_script(%{id: "claude"}, base, ws, cf) do
+    creds_url = url(base, ws, "file/.claude/.credentials.json")
+    cfg_url = url(base, ws, "file/.claude.json")
+
+    """
+    c=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null || cat "$HOME/.claude/.credentials.json" 2>/dev/null)
+    if [ -n "$c" ]; then
+      printf '%s' "$c" | curl #{cf} -T - "#{creds_url}"
+      cfg=$(python3 -c 'import json,os,sys; d=json.load(open(os.path.expanduser("~/.claude.json"))); k=["hasCompletedOnboarding","oauthAccount","userID","lastOnboardingVersion","firstStartTime","claudeCodeFirstTokenDate","numStartups","tipsHistory"]; o={x:d[x] for x in k if x in d}; o["hasCompletedOnboarding"]=True; sys.stdout.write(json.dumps(o))' 2>/dev/null)
+      [ -n "$cfg" ] || cfg='{"hasCompletedOnboarding":true}'
+      printf '%s' "$cfg" | curl #{cf} -T - "#{cfg_url}"
+    fi\
+    """
+  end
+
+  def mac_script(%{id: "codex"}, base, ws, cf) do
+    file = url(base, ws, "file/.codex/auth.json")
+
+    """
+    [ -f "$HOME/.codex/auth.json" ] && cat "$HOME/.codex/auth.json" | curl #{cf} -T - "#{file}"\
+    """
+  end
+
+  def mac_script(%{id: "fly"}, base, ws, cf) do
+    env = url(base, ws, "env/FLY_ACCESS_TOKEN")
+
+    """
+    command -v fly >/dev/null 2>&1 && t=$(fly auth token 2>/dev/null) && [ -n "$t" ] && printf '%s' "$t" | curl #{cf} -T - "#{env}"\
+    """
+  end
+
+  defp url(base, ws, path), do: "#{base}/workstations/#{ws}/#{path}"
 
   @doc """
   Cheap "is this connected?" probe for a given workstation `id`. Greps a marker

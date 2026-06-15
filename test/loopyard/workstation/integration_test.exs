@@ -34,19 +34,37 @@ defmodule Loopyard.Workstation.IntegrationTest do
     end
   end
 
-  describe "mac_command/3 — the Mac-first default" do
-    test "env target pipes a producer into the env push endpoint" do
-      gh = Integration.get("github")
-
-      assert Integration.mac_command(gh, "http://localhost:4000", "brad") ==
-               "gh auth token | curl -fsS -T - http://localhost:4000/workstations/brad/env/GITHUB_TOKEN"
+  describe "mac_script/4 — keychain-aware Mac transfer" do
+    test "github: pushes the token to env AND builds a live hosts.yml from it" do
+      s = Integration.mac_script(Integration.get("github"), "http://localhost:4000", "brad")
+      assert s =~ "gh auth token"
+      assert s =~ "http://localhost:4000/workstations/brad/env/GITHUB_TOKEN"
+      assert s =~ "http://localhost:4000/workstations/brad/file/.config/gh/hosts.yml"
     end
 
-    test "file target pipes a producer into the file push endpoint" do
-      codex = Integration.get("codex")
+    test "claude: reads the macOS Keychain (file fallback) + pushes the onboarding config" do
+      s = Integration.mac_script(Integration.get("claude"), "https://x.example", "jamie")
+      # the gotcha that motivated all this: keychain, not a cat of a missing file
+      assert s =~ ~s(security find-generic-password -s "Claude Code-credentials")
+      assert s =~ "$HOME/.claude/.credentials.json"
+      assert s =~ "https://x.example/workstations/jamie/file/.claude/.credentials.json"
+      assert s =~ "https://x.example/workstations/jamie/file/.claude.json"
+      assert s =~ "hasCompletedOnboarding"
+    end
 
-      assert Integration.mac_command(codex, "https://x.example", "jamie") ==
-               "cat ~/.codex/auth.json | curl -fsS -T - https://x.example/workstations/jamie/file/.codex/auth.json"
+    test "codex: file with a guard; fly: token to env" do
+      cs = Integration.mac_script(Integration.get("codex"), "http://h", "w")
+      assert cs =~ "$HOME/.codex/auth.json"
+      assert cs =~ "http://h/workstations/w/file/.codex/auth.json"
+
+      fs = Integration.mac_script(Integration.get("fly"), "http://h", "w")
+      assert fs =~ "fly auth token"
+      assert fs =~ "http://h/workstations/w/env/FLY_ACCESS_TOKEN"
+    end
+
+    test "curl_flags are injected (e.g. the push-token header for setup.sh)" do
+      s = Integration.mac_script(Integration.get("fly"), "http://h", "w", ~s(-fsS -H "$AUTH"))
+      assert s =~ ~s(curl -fsS -H "$AUTH" -T -)
     end
   end
 

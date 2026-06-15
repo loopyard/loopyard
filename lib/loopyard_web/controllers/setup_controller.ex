@@ -5,17 +5,19 @@ defmodule LoopyardWeb.SetupController do
 
       curl -fsS http://localhost:4000/workstations/brad/setup.sh | sh
 
-  The script harvests whatever you're logged into (gh/fly tokens via env, plus
-  file-based logins like Codex/Claude/gh) and curls them into workstation `:id` —
-  env vars via `/workstations/:id/env`, files via `/workstations/:id/file`. Host,
-  push token, and the target workstation are baked in from the request, so it
-  Just Works against this Loopyard. The Workstation page bakes your current id in.
+  The script is just the per-tool transfer scripts (`Integration.mac_script/4`)
+  concatenated, with the push-token header baked in. Those are **keychain-aware**:
+  on macOS `gh` and Claude keep credentials in the Keychain, not files, and Claude
+  also needs its onboarding config — a naive `cat ~/.claude/.credentials.json`
+  transfers nothing. Host, push token, and target workstation are baked in from
+  the request, so it Just Works against this Loopyard.
 
   Gated by `PushAuth` (local = no token; remote fetch needs `?token=`).
   """
   use LoopyardWeb, :controller
 
   alias Loopyard.{PushToken, Workstation}
+  alias Loopyard.Workstation.Integration
   alias LoopyardWeb.PushAuth
 
   def script(conn, %{"id" => ws}) do
@@ -51,41 +53,30 @@ defmodule LoopyardWeb.SetupController do
   end
 
   defp build_script(base, token, ws) do
+    # Each tool's transfer is `Integration.mac_script/4` with the push-token
+    # header (so it works over the tunnel too). The scripts are self-guarding —
+    # they push nothing if the credential isn't present.
+    tools =
+      Integration.all()
+      |> Enum.map_join("\n\n", fn ig ->
+        ~s(echo "  #{ig.label}…"\n) <> Integration.mac_script(ig, "$L", "$WS", ~s(-fsS -H "$AUTH"))
+      end)
+
     """
     #!/bin/sh
     # Loopyard — transfer your logged-in Mac credentials into workstation '#{ws}'.
-    # Run on the Mac where you're logged in:  curl -fsS #{base}/workstations/#{ws}/setup.sh | sh
+    # Run on the Mac where you're logged in:
+    #   curl -fsS #{base}/workstations/#{ws}/setup.sh | sh
+    # Keychain-aware: gh + Claude keep creds in the macOS Keychain, not files.
     L="#{base}"
     WS="#{ws}"
     AUTH="Authorization: Bearer #{token}"
 
-    ok()   { printf "  \\033[32m✓\\033[0m %s\\n" "$1"; }
-    skip() { printf "  \\033[2m–  %s (not found)\\033[0m\\n" "$1"; }
+    echo "Transferring your logins → $L (workstation: $WS)"
 
-    env_push() {  # NAME VALUE
-      [ -n "$2" ] || { skip "$1"; return; }
-      printf '%s' "$2" | curl -fsS -T - -H "$AUTH" "$L/workstations/$WS/env/$1" >/dev/null 2>&1 \\
-        && ok "$1 (env)" || skip "$1"
-    }
-    file_push() {  # LOCAL REMOTE
-      [ -f "$1" ] || { skip "$2"; return; }
-      curl -fsS -T - -H "$AUTH" "$L/workstations/$WS/file/$2" < "$1" >/dev/null 2>&1 \\
-        && ok "$2 (file)" || skip "$2"
-    }
+    #{tools}
 
-    echo "Transferring credentials → $L (workstation: $WS)"
-
-    # token-based (env vars — Restart to apply)
-    command -v gh  >/dev/null 2>&1 && env_push GITHUB_TOKEN     "$(gh auth token 2>/dev/null)"
-    command -v fly >/dev/null 2>&1 && env_push FLY_ACCESS_TOKEN "$(fly auth token 2>/dev/null)"
-
-    # file-based logins (land in $HOME — live, no restart)
-    file_push "$HOME/.codex/auth.json"          ".codex/auth.json"
-    file_push "$HOME/.claude/.credentials.json" ".claude/.credentials.json"
-    file_push "$HOME/.config/gh/hosts.yml"      ".config/gh/hosts.yml"
-    file_push "$HOME/.netrc"                    ".netrc"
-
-    echo "Done. Env vars need a workstation Restart; files are already live."
+    echo "Done. Files are live now; GitHub/Fly env tokens apply on the next Restart."
     """
   end
 end

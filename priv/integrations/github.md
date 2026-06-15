@@ -1,32 +1,24 @@
 # GitHub
 
 Gives the workstation (and every agent) your GitHub access — clone private repos,
-push branches, open PRs via `gh`. Lands in `~/.config/gh` in the shared `$HOME`
-volume, so it's **live** — no Restart, every agent inherits it.
+push branches, open PRs via `gh`. The **"Run this on your Mac"** command above
+does it: it reads your `gh` token (from the macOS Keychain via `gh auth token`)
+and pushes **both** a live `~/.config/gh/hosts.yml` (so `gh` works immediately —
+no Restart) **and** the `GITHUB_TOKEN` env var (for tools that read it, on the
+next Restart).
 
-## Set it up — `gh auth login` in the console
+> On macOS `gh` keeps its token in the Keychain, so there's no `~/.config/gh/hosts.yml`
+> file to copy — the command rebuilds one from `gh auth token`. A plain file copy
+> only works if you logged in with `gh auth login` on a Linux host.
 
-Click **▶ Run** below (or run it in the console yourself):
+## Alternatives
 
-```
-gh auth login
-```
-
-Then, in the terminal:
-1. Pick **GitHub.com** → **HTTPS** → **Login with a web browser**
-2. Copy the one-time code it prints
-3. Open **github.com/login/device** (tap the link — it's clickable), paste the code, authorize
-
-That's it — it's a device flow, so it works from your phone too. No PAT needed.
-
-## Already logged in on your Mac? Push it instead
-
-```
-curl -fsS -T - $LOOPYARD/workstations/$WS/file/.config/gh/hosts.yml < ~/.config/gh/hosts.yml
-```
-
-Or set just a token: `gh auth token` → the `GITHUB_TOKEN` env var (the slot on the
-index). `gh` honors `GH_TOKEN`/`GITHUB_TOKEN`, so a fine-grained PAT works too.
+- **`gh auth login` in the console** (under *Other ways*) — a device flow that
+  works from your phone: pick GitHub.com → HTTPS → web browser, then open
+  **github.com/login/device** and paste the one-time code. No PAT needed.
+- **A token** — paste a `gh auth token` value (or a fine-grained PAT) into the
+  `GITHUB_TOKEN` slot. `gh` honors `GH_TOKEN`/`GITHUB_TOKEN`. Needs a Restart.
 
 ## Check it
-`gh auth status` — "Logged in to github.com" means you're connected.
+
+`gh auth status` in the console — "Logged in to github.com" means you're connected.
