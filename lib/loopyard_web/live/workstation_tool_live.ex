@@ -55,17 +55,21 @@ defmodule LoopyardWeb.WorkstationToolLive do
           |> assign(:console_error, nil)
           |> assign(:term_nonce, 0)
 
-        socket =
-          if connected?(socket) do
-            # Bring the shared console up only if this tool offers a terminal path.
-            socket = if ig.console, do: start_async(socket, :ensure_console, fn -> Container.ensure_up(ws) end), else: socket
-            start_async(socket, :status, fn -> Integration.connected?(ig, ws) end)
-          else
-            socket
-          end
-
+        socket = if connected?(socket), do: boot(socket, ig, ws), else: socket
         {:ok, socket}
     end
+  end
+
+  # Kick off the async probes off the mount body — keeping the slow
+  # Container.ensure_up out of mount/handle_params (see LiveViewAsyncContractTest;
+  # mirrors WorkstationLive.boot_for_action). Nothing here blocks the first paint.
+  defp boot(socket, ig, ws) do
+    socket =
+      if ig.console,
+        do: start_async(socket, :ensure_console, fn -> Container.ensure_up(ws) end),
+        else: socket
+
+    start_async(socket, :status, fn -> Integration.connected?(ig, ws) end)
   end
 
   @impl true
