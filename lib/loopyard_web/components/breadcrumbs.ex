@@ -22,7 +22,12 @@ defmodule LoopyardWeb.Components.Breadcrumbs do
     <nav aria-label="Breadcrumb" class={["flex items-center gap-2 min-w-0", @class]}>
       <ol class="flex items-center gap-2 min-w-0 list-none p-0 m-0">
         <%= for {{label, path}, idx} <- Enum.with_index(@crumbs) do %>
-          <li class="flex items-center gap-2 min-w-0">
+          <%!-- On mobile show only the current page; the full trail returns at sm+
+               so it stops truncating into ellipsis soup against the nav. --%>
+          <li class={[
+            "items-center gap-2 min-w-0",
+            if(idx == length(@crumbs) - 1, do: "flex", else: "hidden sm:flex")
+          ]}>
             <%= if path do %>
               <.link
                 navigate={path}

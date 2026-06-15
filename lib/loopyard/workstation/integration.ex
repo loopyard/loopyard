@@ -1,12 +1,15 @@
 defmodule Loopyard.Workstation.Integration do
   @moduledoc """
-  Registry of workstation integrations — each tool you might wire into the box
-  (GitHub, Claude, Codex, Fly…). Every entry is **data**: a label, the method it
-  sets up by (`:console` / `:file` / `:env`), the bits that method needs, a cheap
-  "connected?" probe, and a markdown doc (`priv/integrations/<id>.md`) that's the
-  single source of truth for humans *and* agents.
+  Registry of workstation integrations — each tool you might connect (GitHub,
+  Claude, Codex, Fly…). Every entry is **data**: a label, a one-line blurb, the
+  default **"run it on your Mac"** command that transfers the credential, optional
+  alternatives (a `:env` token slot, a `:console` terminal command), a "connected?"
+  probe, and a markdown doc (`priv/integrations/<id>.md`).
 
-  Adding a tool = a markdown file + a map entry here. See plans/integrations.md.
+  The connect model is **Mac-first**: the default path is a single command you run
+  on your Mac (where you're already logged in) that pipes the credential into the
+  box. `set env var` and `use the terminal` are the *other ways*, not the front
+  door. Adding a tool = a markdown file + a map entry here.
 
   Integrations are **additive** — nothing here is required for an agent to run.
   """
@@ -16,35 +19,46 @@ defmodule Loopyard.Workstation.Integration do
     %{
       id: "github",
       label: "GitHub",
-      method: :console,
+      blurb: "Clone private repos, push, and use the gh CLI — give the box your GitHub login.",
+      mac_produces: "gh auth token",
+      mac_target: {:env, "GITHUB_TOKEN"},
+      env: "GITHUB_TOKEN",
       console: "gh auth login",
-      status_cmd: "gh auth status",
-      status_marker: "Logged in",
-      lands: "~/.config/gh (file, live)"
+      check: {:console, "gh auth status", "Logged in"},
+      lands: "GITHUB_TOKEN — restart to apply"
     },
     %{
       id: "claude",
       label: "Claude",
-      method: :file,
-      file: ".claude/.credentials.json",
-      mac: "cat ~/.claude/.credentials.json",
-      lands: "~/.claude (file, live)"
+      blurb: "Run Claude Code in the box using your Claude subscription.",
+      mac_produces: "cat ~/.claude/.credentials.json",
+      mac_target: {:file, ".claude/.credentials.json"},
+      env: "CLAUDE_CODE_OAUTH_TOKEN",
+      console: nil,
+      check: {:file, ".claude/.credentials.json"},
+      lands: "~/.claude — live, every agent inherits it"
     },
     %{
       id: "codex",
       label: "Codex",
-      method: :file,
-      file: ".codex/auth.json",
-      mac: "cat ~/.codex/auth.json",
-      lands: "~/.codex/auth.json (file, live)"
+      blurb: "Use the OpenAI Codex CLI in the box with your login.",
+      mac_produces: "cat ~/.codex/auth.json",
+      mac_target: {:file, ".codex/auth.json"},
+      env: "OPENAI_API_KEY",
+      console: "codex login",
+      check: {:file, ".codex/auth.json"},
+      lands: "~/.codex — live, every agent inherits it"
     },
     %{
       id: "fly",
       label: "Fly",
-      method: :env,
+      blurb: "Deploy to Fly.io from the box.",
+      mac_produces: "fly auth token",
+      mac_target: {:env, "FLY_ACCESS_TOKEN"},
       env: "FLY_ACCESS_TOKEN",
-      mac: "fly auth token",
-      lands: "FLY_ACCESS_TOKEN (env, Restart)"
+      console: nil,
+      check: {:env, "FLY_ACCESS_TOKEN"},
+      lands: "FLY_ACCESS_TOKEN — restart to apply"
     }
   ]
 
@@ -66,18 +80,29 @@ defmodule Loopyard.Workstation.Integration do
   end
 
   @doc """
-  Cheap "is this set up?" probe for a given workstation `id`. Greps a marker
-  rather than trusting exit codes. Hits the container for `:file`/`:console`;
-  `:env` is just a key lookup.
+  The **default** "run it on your Mac" command: produce the credential where you're
+  logged in, pipe it into this workstation. One copy-paste, no terminal-fishing.
+  """
+  @spec mac_command(map(), String.t(), String.t()) :: String.t()
+  def mac_command(%{mac_produces: produces, mac_target: target}, base, ws) do
+    "#{produces} | curl -fsS -T - #{base}/workstations/#{ws}/#{endpoint(target)}"
+  end
+
+  defp endpoint({:env, key}), do: "env/#{key}"
+  defp endpoint({:file, path}), do: "file/#{path}"
+
+  @doc """
+  Cheap "is this connected?" probe for a given workstation `id`. Greps a marker
+  rather than trusting exit codes; `:env` is just a key lookup.
   """
   @spec connected?(map(), String.t()) :: boolean()
-  def connected?(%{method: :env, env: key}, id), do: key in Env.keys(id)
+  def connected?(%{check: {:env, key}}, id), do: key in Env.keys(id)
 
-  def connected?(%{method: :file, file: rel}, id) do
+  def connected?(%{check: {:file, rel}}, id) do
     exec_says?("test -f '/root/#{rel}' && echo CONNECTED", "CONNECTED", id)
   end
 
-  def connected?(%{method: :console, status_cmd: cmd, status_marker: marker}, id) do
+  def connected?(%{check: {:console, cmd, marker}}, id) do
     exec_says?(cmd, marker, id)
   end
 

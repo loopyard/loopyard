@@ -443,19 +443,16 @@ defmodule LoopyardWeb.WorkstationLive do
   def render(assigns) do
     ~H"""
     <.page_shell
-      breadcrumbs={[{"Loopyard", "/"}, {"Workstations", "/workstations"}, {@current_id, nil}]}
+      breadcrumbs={[{"Workstations", "/workstations"}, {@current_id, nil}]}
       iex_session={@iex_session}
-      max_width={:xl}
+      max_width={:lg}
       flash={@flash}
     >
-      <div id="ws-page" phx-hook="WsScroll" class="space-y-4">
+      <div id="ws-page" phx-hook="WsScroll" class="max-w-2xl space-y-6">
         <div class="flex items-baseline justify-between gap-3">
-          <h2 class="text-lg md:text-xl font-semibold">
-            Workstation
-            <span class="ml-1.5 text-base font-normal text-zinc-400 dark:text-zinc-500">/ {@current_id}</span>
-          </h2>
+          <h1 class="text-xl font-semibold tracking-tight">{@current_id}</h1>
           <span class="text-[11px] font-mono text-zinc-400 dark:text-zinc-500 truncate">
-            {Image.tag(@current_id)} · {if @image.exists, do: @image.size <> " · built", else: "not built"}
+            {if @image.exists, do: "Image built · " <> @image.size, else: "Image not built"}
           </span>
         </div>
 
@@ -491,9 +488,42 @@ defmodule LoopyardWeb.WorkstationLive do
           </form>
         </div>
 
-        <%!-- Two columns: a prominent Console|Dockerfile tab panel, and the agent
-             chat always visible alongside. Stacks on mobile. --%>
-        <div class="flex flex-col lg:flex-row gap-4 lg:h-[calc(100dvh-9.5rem)]">
+        <%!-- Connect your tools — one row per service, tap into each. The default
+             on each is "run it on your Mac"; env / terminal are the other ways. --%>
+        <section class="space-y-2">
+          <h2 class="text-sm font-medium text-zinc-800 dark:text-zinc-100">Connect your tools</h2>
+          <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 divide-y divide-zinc-100 dark:divide-zinc-800 overflow-hidden">
+            <.link
+              :for={ig <- @integrations}
+              navigate={"/workstations/#{@current_id}/#{ig.id}"}
+              class="flex items-center justify-between gap-3 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+            >
+              <div class="min-w-0">
+                <div class="text-sm font-medium text-zinc-800 dark:text-zinc-100">{ig.label}</div>
+                <div class="text-[11px] text-zinc-400 dark:text-zinc-500 truncate">{ig.blurb}</div>
+              </div>
+              <span class="flex items-center gap-2 flex-none text-xs">
+                <span :if={@integration_status[ig.id] == :connected} class="text-emerald-600 dark:text-emerald-400 font-medium">Connected</span>
+                <span :if={@integration_status[ig.id] == :checking} class="text-zinc-300 dark:text-zinc-600 animate-pulse">Checking…</span>
+                <span :if={@integration_status[ig.id] == :not_connected} class="text-zinc-400 dark:text-zinc-500">Set up</span>
+                <svg class="w-3.5 h-3.5 text-zinc-300 dark:text-zinc-600" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                  <path d="M4.5 3 7.5 6 4.5 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </span>
+            </.link>
+          </div>
+        </section>
+
+        <%!-- Console, image & agent — the workshop, collapsed by default so the
+             page stays calm. The terminal refits when the section opens. --%>
+        <details class="group rounded-xl border border-zinc-200 dark:border-zinc-800">
+          <summary class="cursor-pointer list-none flex items-center gap-2 px-4 py-3 text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200">
+            <svg class="w-3 h-3 group-open:rotate-90 transition-transform" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+              <path d="M4.5 3 7.5 6 4.5 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            Console, image &amp; agent
+          </summary>
+          <div class="p-3 border-t border-zinc-100 dark:border-zinc-800 flex flex-col lg:flex-row gap-4 lg:h-[70dvh]">
           <%!-- LEFT: Console / Dockerfile tabs (terminal is the default).
                dvh (not vh) so iOS Safari's address bar is accounted for. --%>
           <div id="ws-console" class="flex flex-col min-h-0 lg:flex-[3] h-[68dvh] lg:h-auto rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden">
@@ -506,7 +536,7 @@ defmodule LoopyardWeb.WorkstationLive do
               </button>
               <div class="ml-auto flex items-center gap-2 pr-1">
                 <span class="text-[11px] text-zinc-400 dark:text-zinc-500 hidden md:block">
-                  {if @tab == :console, do: "logins persist in $HOME", else: "baked into every agent"}
+                  {if @tab == :console, do: "Logins persist in $HOME", else: "Baked into every agent"}
                 </span>
                 <button
                   phx-click="restart_machine"
@@ -582,7 +612,7 @@ defmodule LoopyardWeb.WorkstationLive do
                   Save
                 </button>
                 <span class="ml-auto text-[11px] text-zinc-400 dark:text-zinc-500 hidden sm:block">
-                  changes every agent's image
+                  Changes every agent's image
                 </span>
               </div>
               <textarea
@@ -631,173 +661,36 @@ defmodule LoopyardWeb.WorkstationLive do
             </div>
           </div>
         </div>
+        </details>
 
-        <%!-- Environment — token slots stamped into the console + every agent. --%>
-        <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 p-4">
-          <div class="flex items-baseline justify-between gap-2 mb-3">
-            <div class="text-sm font-medium">Connect your tools</div>
-            <div class="text-[11px] text-zinc-400 dark:text-zinc-500">
-              every agent + the console inherit it
-            </div>
-          </div>
-
-          <%!-- The lazy path: one command on your Mac transfers everything
-               you're logged into (tokens + cred files). --%>
-          <div class="rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50/60 dark:bg-violet-950/30 p-3 mb-4">
-            <div class="text-xs font-medium text-zinc-700 dark:text-zinc-200 mb-1.5">
-              🖥️ Transfer everything from your Mac
-            </div>
-            <p class="text-[11px] text-zinc-500 dark:text-zinc-400 mb-2">
-              Run this where you're logged in — it grabs your gh / fly / claude / codex creds and curls them up:
+        <%!-- Transfer everything from your Mac in one command. --%>
+        <details class="group rounded-xl border border-zinc-200 dark:border-zinc-800">
+          <summary class="cursor-pointer list-none flex items-center gap-2 px-4 py-3 text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200">
+            <svg class="w-3 h-3 group-open:rotate-90 transition-transform" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+              <path d="M4.5 3 7.5 6 4.5 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            Transfer everything from your Mac
+          </summary>
+          <div class="px-4 pb-4 pt-3 space-y-2 border-t border-zinc-100 dark:border-zinc-800">
+            <p class="text-[11px] text-zinc-500 dark:text-zinc-400">
+              One command, run where you're logged in — it grabs your gh / fly / claude / codex creds and pipes them up. Files apply live; tokens need a Restart.
             </p>
-            <div class="flex items-center gap-2">
-              <pre class="flex-1 overflow-x-auto rounded-md bg-zinc-950 text-zinc-200 text-[11px] font-mono px-3 py-2">curl -fsS http://localhost:{@http_port}/workstations/{@current_id}/setup.sh | sh</pre>
+            <div class="flex items-stretch gap-2">
+              <pre class="flex-1 overflow-x-auto rounded-lg bg-zinc-900 dark:bg-zinc-950 text-zinc-100 text-[11px] font-mono px-3 py-2.5 ring-1 ring-zinc-800">curl -fsS http://localhost:{@http_port}/workstations/{@current_id}/setup.sh | sh</pre>
               <button
                 id="clip-setup"
                 type="button"
                 phx-hook="Clip"
                 data-label="Copy"
                 data-copy={"curl -fsS http://localhost:#{@http_port}/workstations/#{@current_id}/setup.sh | sh"}
-                class="focus-ring flex-none rounded-md bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 text-xs font-semibold"
+                class="focus-ring flex-none self-start rounded-lg bg-zinc-900 hover:bg-zinc-700 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white px-3.5 py-2.5 text-xs font-medium transition-colors"
               >
                 Copy
               </button>
             </div>
-            <p class="text-[10px] text-zinc-400 dark:text-zinc-500 mt-1.5">
-              Files apply live; env tokens apply on Restart. Or set tools individually below.
-            </p>
           </div>
+        </details>
 
-          <%!-- Click into each tool to set it up (its doc + console + status). --%>
-          <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-4">
-            <.link
-              :for={ig <- @integrations}
-              navigate={"/workstations/#{@current_id}/#{ig.id}"}
-              class="rounded-lg border border-zinc-200 dark:border-zinc-700 p-3 hover:border-violet-400 dark:hover:border-violet-500 transition-colors"
-            >
-              <div class="flex items-center justify-between gap-2">
-                <span class="text-sm font-medium">{ig.label}</span>
-                <span class={[
-                  "text-[10px] font-medium",
-                  @integration_status[ig.id] == :connected && "text-emerald-600 dark:text-emerald-400",
-                  @integration_status[ig.id] == :checking && "text-zinc-300 dark:text-zinc-600 animate-pulse",
-                  @integration_status[ig.id] == :not_connected && "text-violet-600 dark:text-violet-400"
-                ]}>
-                  {case @integration_status[ig.id] do
-                    :connected -> "✓ connected"
-                    :checking -> "…"
-                    _ -> "set up →"
-                  end}
-                </span>
-              </div>
-              <div class="text-[10px] text-zinc-400 dark:text-zinc-500 mt-1 truncate">{ig.lands}</div>
-            </.link>
-          </div>
-
-          <details class="mb-1">
-            <summary class="cursor-pointer select-none text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2">
-              Set tokens inline (advanced)
-            </summary>
-            <%!-- Guided integration slots: pick the tool, paste the token. --%>
-            <div class="grid gap-3 sm:grid-cols-3">
-              <div
-                :for={ig <- Env.integrations()}
-                class="rounded-lg border border-zinc-200 dark:border-zinc-700 p-3 flex flex-col"
-              >
-              <div class="flex items-center justify-between gap-2">
-                <span class="flex items-center gap-1.5 min-w-0">
-                  <span class="text-sm font-medium">{ig.label}</span>
-                  <span
-                    :if={ig.setup == :desktop}
-                    title="Minting this token needs a desktop browser (loopback OAuth)"
-                    class="text-[9px] uppercase tracking-wide rounded px-1 py-px bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 flex-none"
-                  >
-                    desktop
-                  </span>
-                </span>
-                <span
-                  :if={ig.key in @env_keys}
-                  class="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 flex-none"
-                >
-                  ✓ set
-                </span>
-                <span
-                  :if={ig.key not in @env_keys}
-                  class="text-[10px] text-zinc-400 dark:text-zinc-500 flex-none"
-                >
-                  not set
-                </span>
-              </div>
-              <div class="font-mono text-[10px] text-zinc-400 dark:text-zinc-500 mt-0.5 truncate">
-                {ig.key}
-              </div>
-              <div class="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 mb-2 leading-snug">
-                {ig.hint}
-              </div>
-              <form phx-submit="add_env" class="mt-auto flex gap-1.5">
-                <input type="hidden" name="name" value={ig.key} />
-                <input
-                  name="value"
-                  type="password"
-                  placeholder={if ig.key in @env_keys, do: "update…", else: "paste token"}
-                  autocomplete="off"
-                  spellcheck="false"
-                  class="min-w-0 flex-1 font-mono text-xs rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-1.5 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
-                />
-                <button
-                  type="submit"
-                  class="focus-ring inline-flex items-center rounded-md bg-violet-600 hover:bg-violet-700 text-white px-2.5 py-1.5 text-xs font-semibold transition-colors flex-none"
-                >
-                  Save
-                </button>
-                <button
-                  :if={ig.key in @env_keys}
-                  type="button"
-                  phx-click="delete_env"
-                  phx-value-key={ig.key}
-                  data-confirm={"Clear #{ig.key}?"}
-                  class="text-xs text-zinc-400 hover:text-red-500 transition-colors flex-none px-1"
-                >
-                  Clear
-                </button>
-              </form>
-              <%!-- Runnable docs: type a setup command into the live console. --%>
-              <div :if={ig.commands != [] || ig.cli} class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-                <button
-                  :for={c <- ig.commands}
-                  type="button"
-                  phx-click="run_in_console"
-                  phx-value-cmd={c.cmd}
-                  title={"Runs `#{c.cmd}` in the console"}
-                  class="focus-ring text-[11px] text-violet-600 dark:text-violet-400 hover:underline"
-                >
-                  ▶ {c.label}
-                </button>
-                <button
-                  :if={ig.cli}
-                  type="button"
-                  phx-click="import_token"
-                  phx-value-key={ig.key}
-                  class="focus-ring text-[11px] text-violet-600 dark:text-violet-400 hover:underline"
-                >
-                  ↓ {ig.cli_label}
-                </button>
-                <button
-                  :if={ig.mac}
-                  id={"clip-#{ig.key}"}
-                  type="button"
-                  phx-hook="Clip"
-                  data-label="📋 Copy for Mac"
-                  data-copy={"#{ig.mac} | curl -fsS -T - http://localhost:#{@http_port}/workstations/#{@current_id}/env/#{ig.key}"}
-                  title="Copy a one-liner to run on your Mac — pipes the token straight in"
-                  class="focus-ring text-[11px] text-violet-600 dark:text-violet-400 hover:underline"
-                >
-                  📋 Copy for Mac
-                </button>
-              </div>
-            </div>
-          </div>
-          </details>
 
           <%!-- Anything else: a plain NAME / value escape hatch + the custom list. --%>
           <details class="mt-4">
@@ -853,8 +746,8 @@ defmodule LoopyardWeb.WorkstationLive do
             </summary>
             <div class="mt-3">
               <p class="text-xs text-zinc-500 dark:text-zinc-400 mb-2">
-                The per-tool <span class="font-mono">📋 Copy for Mac</span> buttons above are the easy path.
-                For a custom key or a remote Loopyard, this is the general form (carries your push token):
+                Each tool's page has the easy path. For a custom key or a remote Loopyard, this is
+                the general form (carries your push token):
               </p>
               <div id="ws-push" phx-hook="PushCmd" data-token={@push_token} class="relative">
                 <pre class="overflow-x-auto rounded-lg bg-zinc-950 text-zinc-200 text-[11px] leading-relaxed font-mono p-3 pr-16"><code class="ws-push-cmd">gh auth token | curl -fsS -T - \
@@ -873,7 +766,6 @@ defmodule LoopyardWeb.WorkstationLive do
               </p>
             </div>
           </details>
-        </div>
 
         <%!-- Build output — fills live whenever a build runs (agent or manual). --%>
         <div :if={@building || @build_output != ""}>

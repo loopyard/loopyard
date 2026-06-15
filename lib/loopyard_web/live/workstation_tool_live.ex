@@ -1,16 +1,16 @@
 defmodule LoopyardWeb.WorkstationToolLive do
   @moduledoc """
-  A page per integration (`/workstation/:tool`) — the doc for the tool plus the
-  setup widget for its method: an embedded console + ▶ Run for `:console` tools
-  (GitHub's `gh auth login`), a 📋 Copy-for-Mac for `:file`/`:env` tools (Codex,
-  Claude, Fly). Async status probe. See plans/integrations.md.
+  One page per integration (`/workstations/:id/:tool`). **Mac-first**: the default
+  is a single command you run on your Mac that pipes the credential into the box.
+  "Set a token" and "Use the terminal" live under *Other ways*. The doc is tucked
+  under *Reference*. See plans/integrations.md.
   """
   use LoopyardWeb, :live_view
   use LoopyardWeb.IExAware
 
   alias Loopyard.Terminal
   alias Loopyard.Workstation
-  alias Loopyard.Workstation.{Container, Integration}
+  alias Loopyard.Workstation.{Container, Env, Integration}
 
   @impl true
   def mount(%{"id" => ws, "tool" => tool}, _session, socket) do
@@ -26,42 +26,37 @@ defmodule LoopyardWeb.WorkstationToolLive do
          socket |> put_flash(:error, "Unknown tool: #{tool}") |> push_navigate(to: "/workstations/#{ws}")}
 
       true ->
-        # Operating-as follows the workstation in the URL; it's baked into the
-        # Copy-for-Mac command + the doc's curl examples so they name which
-        # workstation to push to.
+        # Operating-as follows the workstation in the URL.
         _ = Workstation.set_current(ws)
         ig = Integration.get(tool)
+        mac = Integration.mac_command(ig, base_url(), ws)
+
+        doc =
+          case Integration.doc(tool) do
+            {:ok, md} -> fill(md, ws)
+            _ -> "_No reference yet for #{ig.label}._"
+          end
 
         socket =
           if connected?(socket),
             do: subscribe_iex(socket),
             else: assign(socket, :iex_session, %{level: nil})
 
-        doc =
-          case Integration.doc(tool) do
-            {:ok, md} -> fill(md, ws)
-            _ -> "_No doc yet for #{ig.label}._"
-          end
-
         socket =
           socket
           |> assign(:ig, ig)
+          |> assign(:current_id, ws)
+          |> assign(:mac_cmd, mac)
           |> assign(:doc, doc)
           |> assign(:status, :checking)
           |> assign(:console_container, nil)
           |> assign(:console_error, nil)
           |> assign(:term_nonce, 0)
-          |> assign(:http_port, port())
-          |> assign(:current_id, ws)
-          |> assign(:mac_cmd, mac_cmd(ig, ws))
 
         socket =
           if connected?(socket) do
-            socket =
-              if ig.method == :console,
-                do: start_async(socket, :ensure_console, fn -> Container.ensure_up(ws) end),
-                else: socket
-
+            # Bring the shared console up only if this tool offers a terminal path.
+            socket = if ig.console, do: start_async(socket, :ensure_console, fn -> Container.ensure_up(ws) end), else: socket
             start_async(socket, :status, fn -> Integration.connected?(ig, ws) end)
           else
             socket
@@ -92,9 +87,27 @@ defmodule LoopyardWeb.WorkstationToolLive do
       {:noreply,
        socket
        |> push_event("ws_focus_console", %{})
-       |> put_flash(:info, "Running `#{cmd}` in the console — follow the prompts.")}
+       |> put_flash(:info, "Running #{cmd} in the console — follow the prompts.")}
     else
       {:noreply, put_flash(socket, :error, "Console still starting — try again in a moment.")}
+    end
+  end
+
+  def handle_event("save_env", %{"value" => value}, socket) do
+    %{ig: ig, current_id: ws} = socket.assigns
+
+    case String.trim(value) do
+      "" ->
+        {:noreply, put_flash(socket, :error, "Paste a value first.")}
+
+      token ->
+        case Env.put(ig.env, token, ws) do
+          :ok ->
+            {:noreply, put_flash(socket, :info, "Saved #{ig.env} — Restart the workstation to apply.")}
+
+          {:error, _} ->
+            {:noreply, put_flash(socket, :error, "Couldn't save #{ig.env}.")}
+        end
     end
   end
 
@@ -107,114 +120,145 @@ defmodule LoopyardWeb.WorkstationToolLive do
      |> start_async(:status, fn -> Integration.connected?(ig, ws) end)}
   end
 
-  # Fill doc placeholders: $LOOPYARD → this server, $WS → the current identity
-  # (concrete, so the rendered curl is copy-paste ready).
+  # Fill doc placeholders: $LOOPYARD → this server, $WS → the workstation.
   defp fill(md, ws) do
     md
-    |> String.replace("$LOOPYARD", "http://localhost:#{port()}")
+    |> String.replace("$LOOPYARD", base_url())
     |> String.replace("$WS", ws)
   end
 
+  defp base_url, do: "http://localhost:#{port()}"
   defp port, do: LoopyardWeb.Endpoint.config(:http)[:port] || 4000
-
-  defp mac_cmd(%{method: :file, mac: mac, file: file}, ws),
-    do: "#{mac} | curl -fsS -T - http://localhost:#{port()}/workstations/#{ws}/file/#{file}"
-
-  defp mac_cmd(%{method: :env, mac: mac, env: env}, ws),
-    do: "#{mac} | curl -fsS -T - http://localhost:#{port()}/workstations/#{ws}/env/#{env}"
-
-  defp mac_cmd(_, _ws), do: nil
 
   @impl true
   def render(assigns) do
     ~H"""
     <.page_shell
       breadcrumbs={[
-        {"Loopyard", "/"},
         {"Workstations", "/workstations"},
         {@current_id, "/workstations/#{@current_id}"},
         {@ig.label, nil}
       ]}
       iex_session={@iex_session}
-      max_width={:lg}
+      max_width={:md}
       flash={@flash}
     >
-      <div id="ws-page" phx-hook="WsScroll" class="space-y-5">
-        <div class="flex items-center justify-between gap-3">
-          <h2 class="text-lg md:text-xl font-semibold">Connect {@ig.label}</h2>
-          <.status_badge status={@status} />
+      <div id="ws-page" phx-hook="WsScroll" class="max-w-xl space-y-8">
+        <%!-- Header: what this is + status --%>
+        <div class="space-y-1">
+          <div class="flex items-center justify-between gap-3">
+            <h1 class="text-xl font-semibold tracking-tight">Connect {@ig.label}</h1>
+            <.status_badge status={@status} />
+          </div>
+          <p class="text-sm text-zinc-500 dark:text-zinc-400 leading-relaxed">{@ig.blurb}</p>
         </div>
 
-        <%!-- Setup widget: console+Run for :console, Copy-for-Mac for :file/:env --%>
-        <div class="rounded-xl border border-violet-200 dark:border-violet-800 bg-violet-50/50 dark:bg-violet-950/20 p-4">
-          <div :if={@ig.method == :console}>
-            <button
-              type="button"
-              phx-click="run_in_console"
-              phx-value-cmd={@ig.console}
-              class="focus-ring inline-flex items-center gap-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 text-sm font-semibold transition-colors"
-            >
-              ▶ Run <span class="font-mono">{@ig.console}</span>
-            </button>
-            <span class="ml-2 text-xs text-zinc-500 dark:text-zinc-400">in the console below, then follow the steps</span>
+        <%!-- DEFAULT: run it on your Mac --%>
+        <section class="space-y-3">
+          <div>
+            <h2 class="text-sm font-medium text-zinc-800 dark:text-zinc-100">Run this on your Mac</h2>
+            <p class="text-xs text-zinc-500 dark:text-zinc-400">
+              On the machine where you're already logged in — it pipes the credential into this workstation.
+            </p>
           </div>
 
-          <div :if={@mac_cmd} class="flex items-center gap-2">
-            <pre class="flex-1 overflow-x-auto rounded-md bg-zinc-950 text-zinc-200 text-[11px] font-mono px-3 py-2">{@mac_cmd}</pre>
+          <div class="flex items-stretch gap-2">
+            <pre class="flex-1 overflow-x-auto rounded-lg bg-zinc-900 dark:bg-zinc-950 text-zinc-100 text-[11px] leading-relaxed font-mono px-3 py-2.5 ring-1 ring-zinc-800">{@mac_cmd}</pre>
             <button
               id="clip-mac"
               type="button"
               phx-hook="Clip"
-              data-label="📋 Copy for Mac"
+              data-label="Copy"
               data-copy={@mac_cmd}
-              class="focus-ring flex-none rounded-md bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 text-xs font-semibold"
+              class="focus-ring flex-none self-start rounded-lg bg-zinc-900 hover:bg-zinc-700 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white px-3.5 py-2.5 text-xs font-medium transition-colors"
             >
-              📋 Copy for Mac
+              Copy
             </button>
           </div>
 
-          <div class="mt-2 flex items-center gap-3">
-            <button phx-click="recheck" class="focus-ring text-[11px] text-violet-600 dark:text-violet-400 hover:underline">
-              ↻ Re-check status
+          <div class="flex items-center gap-4 text-[11px] text-zinc-400 dark:text-zinc-500">
+            <button phx-click="recheck" class="focus-ring hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">
+              ↻ Re-check
             </button>
-            <span class="text-[11px] text-zinc-400 dark:text-zinc-500">lands in {@ig.lands}</span>
+            <span>Lands in {@ig.lands}</span>
           </div>
-        </div>
+        </section>
 
-        <%!-- The doc — single source for humans + agents (also at /workstation/:tool/docs.md). --%>
-        <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 p-4 md:p-5">
-          <div
-            id="ws-tool-doc"
-            phx-hook="Markdown"
-            data-source={@doc}
-            class="markdown-body text-sm text-zinc-800 dark:text-zinc-200"
-          >
-          </div>
-        </div>
+        <%!-- Other ways: env token, terminal — collapsed by default --%>
+        <details :if={@ig.env || @ig.console} class="group rounded-lg border border-zinc-200 dark:border-zinc-800">
+          <summary class="cursor-pointer list-none flex items-center gap-2 px-3.5 py-2.5 text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200">
+            <svg class="w-3 h-3 group-open:rotate-90 transition-transform" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+              <path d="M4.5 3 7.5 6 4.5 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            Other ways
+          </summary>
 
-        <%!-- Embedded console for :console tools — same shared session as the workstation. --%>
-        <div :if={@ig.method == :console} id="ws-console" class="rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden h-[58dvh] min-h-[340px] flex flex-col">
-          <div class="flex-none px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-700 text-[11px] text-zinc-500 dark:text-zinc-400">
-            Console — shared with the workstation
-          </div>
-          <div class="flex-1 min-h-0 p-2">
-            <div
-              :if={@console_container}
-              id={"terminal-#{@console_container}-#{@term_nonce}"}
-              phx-hook="Terminal"
-              data-container={@console_container}
-              phx-update="ignore"
-              class="h-full bg-[#18181b] rounded-lg p-2 overflow-hidden"
-            >
+          <div class="px-3.5 pb-4 pt-1 space-y-5 border-t border-zinc-100 dark:border-zinc-800">
+            <%!-- Set a token --%>
+            <form :if={@ig.env} phx-submit="save_env" class="space-y-2 pt-3">
+              <div>
+                <h3 class="text-xs font-medium text-zinc-700 dark:text-zinc-200">Set a token</h3>
+                <p class="text-[11px] text-zinc-400 dark:text-zinc-500">
+                  Paste <span class="font-mono">{@ig.env}</span> — Restart to apply.
+                </p>
+              </div>
+              <div class="flex gap-2">
+                <input
+                  type="password"
+                  name="value"
+                  autocomplete="off"
+                  placeholder={"paste #{@ig.env}"}
+                  class="flex-1 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-transparent px-3 py-2 text-sm font-mono placeholder:font-sans placeholder:text-zinc-400 focus-ring"
+                />
+                <button type="submit" class="focus-ring flex-none rounded-lg bg-zinc-900 hover:bg-zinc-700 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white px-3.5 py-2 text-xs font-medium transition-colors">
+                  Save
+                </button>
+              </div>
+            </form>
+
+            <%!-- Use the terminal --%>
+            <div :if={@ig.console} class="space-y-2 pt-1">
+              <div class="flex items-center justify-between gap-2">
+                <h3 class="text-xs font-medium text-zinc-700 dark:text-zinc-200">Use the terminal</h3>
+                <button
+                  type="button"
+                  phx-click="run_in_console"
+                  phx-value-cmd={@ig.console}
+                  class="focus-ring rounded-md border border-zinc-200 dark:border-zinc-700 px-2.5 py-1 text-[11px] font-mono text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                >
+                  ▶ {@ig.console}
+                </button>
+              </div>
+              <div id="ws-console" class="rounded-lg overflow-hidden h-[44dvh] min-h-[280px] bg-[#18181b]">
+                <div
+                  :if={@console_container}
+                  id={"terminal-#{@console_container}-#{@term_nonce}"}
+                  phx-hook="Terminal"
+                  data-container={@console_container}
+                  phx-update="ignore"
+                  class="h-full p-2 overflow-hidden"
+                >
+                </div>
+                <div :if={!@console_container} class="h-full flex items-center justify-center text-xs text-zinc-500">
+                  Starting console…
+                </div>
+              </div>
             </div>
-            <div
-              :if={!@console_container}
-              class="h-full bg-[#18181b] rounded-lg flex items-center justify-center text-sm text-zinc-500"
-            >
-              Starting console…
-            </div>
           </div>
-        </div>
+        </details>
+
+        <%!-- Reference doc — collapsed; child .markdown-body is where the hook renders --%>
+        <details class="group">
+          <summary class="cursor-pointer list-none flex items-center gap-2 text-xs font-medium text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300">
+            <svg class="w-3 h-3 group-open:rotate-90 transition-transform" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+              <path d="M4.5 3 7.5 6 4.5 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            Reference
+          </summary>
+          <div id="ws-tool-doc" phx-hook="Markdown" data-source={@doc} class="mt-3">
+            <div class="markdown-body text-sm text-zinc-700 dark:text-zinc-300"></div>
+          </div>
+        </details>
       </div>
     </.page_shell>
     """
@@ -224,21 +268,21 @@ defmodule LoopyardWeb.WorkstationToolLive do
     ~H"""
     <span
       :if={@status == :connected}
-      class="text-xs font-medium rounded-full px-2.5 py-1 bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400"
+      class="flex-none text-xs font-medium rounded-full px-2.5 py-1 bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400"
     >
-      ✓ Connected
+      Connected
     </span>
     <span
       :if={@status == :not_connected}
-      class="text-xs font-medium rounded-full px-2.5 py-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400"
+      class="flex-none text-xs font-medium rounded-full px-2.5 py-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400"
     >
       Not connected
     </span>
     <span
       :if={@status == :checking}
-      class="text-xs rounded-full px-2.5 py-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-400 animate-pulse"
+      class="flex-none text-xs rounded-full px-2.5 py-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-400 animate-pulse"
     >
-      checking…
+      Checking…
     </span>
     """
   end
