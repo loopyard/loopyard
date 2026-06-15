@@ -8,6 +8,8 @@ defmodule LoopyardWeb.WorkstationToolLive do
   use LoopyardWeb, :live_view
   use LoopyardWeb.IExAware
 
+  import LoopyardWeb.Components.Workstation
+
   alias Loopyard.Terminal
   alias Loopyard.Workstation
   alias Loopyard.Workstation.{Container, Env, Integration}
@@ -143,46 +145,29 @@ defmodule LoopyardWeb.WorkstationToolLive do
       max_width={:md}
       flash={@flash}
     >
-      <div id="ws-page" phx-hook="WsScroll" class="max-w-xl space-y-8">
+      <div id="ws-page" phx-hook="WsScroll" class="space-y-8">
         <%!-- Header: what this is + status --%>
         <div class="space-y-1">
           <div class="flex items-center justify-between gap-3">
             <h1 class="text-xl font-semibold tracking-tight">Connect {@ig.label}</h1>
-            <.status_badge status={@status} />
+            <.status_pill status={@status} />
           </div>
           <p class="text-sm text-zinc-500 dark:text-zinc-400 leading-relaxed">{@ig.blurb}</p>
         </div>
 
         <%!-- DEFAULT: run it on your Mac --%>
-        <section class="space-y-3">
-          <div>
-            <h2 class="text-sm font-medium text-zinc-800 dark:text-zinc-100">Run this on your Mac</h2>
-            <p class="text-xs text-zinc-500 dark:text-zinc-400">
-              On the machine where you're already logged in — it pipes the credential into this workstation.
-            </p>
-          </div>
-
-          <div class="flex items-stretch gap-2">
-            <pre class="flex-1 overflow-x-auto rounded-lg bg-zinc-900 dark:bg-zinc-950 text-zinc-100 text-[11px] leading-relaxed font-mono px-3 py-2.5 ring-1 ring-zinc-800">{@mac_cmd}</pre>
-            <button
-              id="clip-mac"
-              type="button"
-              phx-hook="Clip"
-              data-label="Copy"
-              data-copy={@mac_cmd}
-              class="focus-ring flex-none self-start rounded-lg bg-zinc-900 hover:bg-zinc-700 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white px-3.5 py-2.5 text-xs font-medium transition-colors"
-            >
-              Copy
-            </button>
-          </div>
-
+        <.section
+          title="Run this on your Mac"
+          hint="On the machine where you're already logged in — it pipes the credential into this workstation."
+        >
+          <.command_box id="clip-mac" command={@mac_cmd} />
           <div class="flex items-center gap-4 text-[11px] text-zinc-400 dark:text-zinc-500">
             <button phx-click="recheck" class="focus-ring hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">
               ↻ Re-check
             </button>
             <span>Lands in {@ig.lands}</span>
           </div>
-        </section>
+        </.section>
 
         <%!-- Other ways: env token + terminal — spread out, not collapsed. --%>
         <section :if={@ig.env || @ig.console} class="space-y-5 border-t border-zinc-100 dark:border-zinc-800 pt-6">
@@ -204,9 +189,7 @@ defmodule LoopyardWeb.WorkstationToolLive do
                 placeholder={"paste #{@ig.env}"}
                 class="flex-1 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-transparent px-3 py-2 text-sm font-mono placeholder:font-sans placeholder:text-zinc-400 focus-ring"
               />
-              <button type="submit" class="focus-ring flex-none rounded-lg bg-zinc-900 hover:bg-zinc-700 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white px-3.5 py-2 text-xs font-medium transition-colors">
-                Save
-              </button>
+              <.button variant={:secondary} type="submit" class="flex-none">Save</.button>
             </div>
           </form>
 
@@ -252,26 +235,4 @@ defmodule LoopyardWeb.WorkstationToolLive do
     """
   end
 
-  defp status_badge(assigns) do
-    ~H"""
-    <span
-      :if={@status == :connected}
-      class="flex-none text-xs font-medium rounded-full px-2.5 py-1 bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400"
-    >
-      Connected
-    </span>
-    <span
-      :if={@status == :not_connected}
-      class="flex-none text-xs font-medium rounded-full px-2.5 py-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400"
-    >
-      Not connected
-    </span>
-    <span
-      :if={@status == :checking}
-      class="flex-none text-xs rounded-full px-2.5 py-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-400 animate-pulse"
-    >
-      Checking…
-    </span>
-    """
-  end
 end

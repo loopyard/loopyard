@@ -21,6 +21,7 @@ defmodule LoopyardWeb.WorkstationLive do
   use LoopyardWeb.IExAware
 
   import LoopyardWeb.Live.WorkspaceLive.Components.Chat, only: [chat_panel: 1]
+  import LoopyardWeb.Components.Workstation
 
   alias Loopyard.ChatAgent
   alias Loopyard.Events
@@ -390,23 +391,23 @@ defmodule LoopyardWeb.WorkstationLive do
     <.page_shell
       breadcrumbs={[{"Workstations", "/workstations"}, {@current_id, nil}]}
       iex_session={@iex_session}
-      max_width={:lg}
+      max_width={:md}
       flash={@flash}
     >
-      <div id="ws-page" phx-hook="WsScroll" class="max-w-2xl space-y-6">
-        <div class="flex items-baseline justify-between gap-3">
-          <h1 class="text-xl font-semibold tracking-tight">{@current_id}</h1>
-          <span class="text-[11px] font-mono text-zinc-400 dark:text-zinc-500 truncate">
-            {if @image.exists, do: "Image built · " <> @image.size, else: "Image not built"}
-          </span>
-        </div>
+      <div id="ws-page" phx-hook="WsScroll" class="space-y-8">
+        <div class="space-y-3">
+          <div class="flex items-baseline justify-between gap-3">
+            <h1 class="text-xl font-semibold tracking-tight">{@current_id}</h1>
+            <span class="text-[11px] font-mono text-zinc-400 dark:text-zinc-500 truncate">
+              {if @image.exists, do: "Image built · " <> @image.size, else: "Image not built"}
+            </span>
+          </div>
 
-        <%!-- Identity row: who you operate as + spin up a new one. New agents
-             inherit the current identity's image, logins, and commit name. --%>
-        <div class="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm">
-          <span class="text-zinc-400 dark:text-zinc-500">Operating as</span>
-          <%= for id <- @workstation_ids do %>
+          <%!-- Operating as: who agents inherit + spin up a new identity. --%>
+          <div class="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm">
+            <span class="text-zinc-400 dark:text-zinc-500">Operating as</span>
             <.link
+              :for={id <- @workstation_ids}
               href={"/workstations/#{id}"}
               class={[
                 "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 border transition-colors",
@@ -418,77 +419,43 @@ defmodule LoopyardWeb.WorkstationLive do
               <span class={["w-1.5 h-1.5 rounded-full", if(id == @current_id, do: "bg-sky-500", else: "bg-zinc-300 dark:bg-zinc-600")]}></span>
               {id}
             </.link>
-          <% end %>
-          <form action="/workstations/create" method="post" class="inline-flex items-center gap-1.5">
-            <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
-            <input
-              type="text"
-              name="ws_id"
-              placeholder="new-id"
-              pattern="[a-z0-9][a-z0-9-]*"
-              title="lowercase letters, digits, dashes"
-              class="w-24 rounded-full border border-dashed border-zinc-300 dark:border-zinc-600 bg-transparent px-2.5 py-0.5 text-sm placeholder:text-zinc-400 focus-ring"
-            />
-            <button type="submit" class="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 text-lg leading-none" title="Create workstation">+</button>
-          </form>
+            <form action="/workstations/create" method="post" class="inline-flex items-center gap-1.5">
+              <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
+              <input
+                type="text"
+                name="ws_id"
+                placeholder="new-id"
+                pattern="[a-z0-9][a-z0-9-]*"
+                title="Lowercase letters, digits, dashes"
+                class="w-24 rounded-full border border-dashed border-zinc-300 dark:border-zinc-600 bg-transparent px-2.5 py-0.5 text-sm placeholder:text-zinc-400 focus-ring"
+              />
+              <button type="submit" class="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 text-lg leading-none" title="Create workstation">+</button>
+            </form>
+          </div>
         </div>
 
-        <%!-- Connect your tools — one row per service, tap into each. The default
-             on each is "run it on your Mac"; env / terminal are the other ways. --%>
-        <section class="space-y-2">
-          <h2 class="text-sm font-medium text-zinc-800 dark:text-zinc-100">Connect your tools</h2>
-          <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 divide-y divide-zinc-100 dark:divide-zinc-800 overflow-hidden">
-            <.link
+        <.section title="Connect your tools" hint="Click in to connect — the default on each is one command you run on your Mac.">
+          <.nav_list>
+            <.nav_row
               :for={ig <- @integrations}
               navigate={"/workstations/#{@current_id}/#{ig.id}"}
-              class="flex items-center justify-between gap-3 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+              title={ig.label}
+              desc={ig.blurb}
             >
-              <div class="min-w-0">
-                <div class="text-sm font-medium text-zinc-800 dark:text-zinc-100">{ig.label}</div>
-                <div class="text-[11px] text-zinc-400 dark:text-zinc-500 truncate">{ig.blurb}</div>
-              </div>
-              <span class="flex items-center gap-2 flex-none text-xs">
-                <span :if={@integration_status[ig.id] == :connected} class="text-emerald-600 dark:text-emerald-400 font-medium">Connected</span>
-                <span :if={@integration_status[ig.id] == :checking} class="text-zinc-300 dark:text-zinc-600 animate-pulse">Checking…</span>
-                <span :if={@integration_status[ig.id] == :not_connected} class="text-zinc-400 dark:text-zinc-500">Set up</span>
-                <svg class="w-3.5 h-3.5 text-zinc-300 dark:text-zinc-600" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                  <path d="M4.5 3 7.5 6 4.5 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
-              </span>
-            </.link>
-          </div>
-        </section>
+              <:trailing><.status_pill status={@integration_status[ig.id]} /></:trailing>
+            </.nav_row>
+          </.nav_list>
+        </.section>
 
-        <%!-- Configure — each gets its own page (hyperlinks, not collapsibles). --%>
-        <section class="space-y-2">
-          <h2 class="text-sm font-medium text-zinc-800 dark:text-zinc-100">Configure</h2>
-          <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 divide-y divide-zinc-100 dark:divide-zinc-800 overflow-hidden">
-            <.config_row href={"/workstations/#{@current_id}/console"} title="Console" desc="A shell on the workstation — test commands, poke around." />
-            <.config_row href={"/workstations/#{@current_id}/image"} title="Image & agent" desc="Edit the Dockerfile, or tell the agent what to install." />
-            <.config_row href={"/workstations/#{@current_id}/env"} title="Environment" desc="Transfer creds from your Mac, set env vars, push tokens." />
-          </div>
-        </section>
+        <.section title="Configure">
+          <.nav_list>
+            <.nav_row navigate={"/workstations/#{@current_id}/console"} title="Console" desc="A shell on the workstation — test commands, poke around." />
+            <.nav_row navigate={"/workstations/#{@current_id}/image"} title="Image & agent" desc="Edit the Dockerfile, or tell the agent what to install." />
+            <.nav_row navigate={"/workstations/#{@current_id}/env"} title="Environment" desc="Transfer creds from your Mac, set env vars, push tokens." />
+          </.nav_list>
+        </.section>
       </div>
     </.page_shell>
-    """
-  end
-
-  # A row in the hub's "Configure" list — a hyperlink to a full sub-page.
-  attr :href, :string, required: true
-  attr :title, :string, required: true
-  attr :desc, :string, required: true
-
-  defp config_row(assigns) do
-    ~H"""
-    <.link navigate={@href} class="flex items-center justify-between gap-3 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
-      <div class="min-w-0">
-        <div class="text-sm font-medium text-zinc-800 dark:text-zinc-100">{@title}</div>
-        <div class="text-[11px] text-zinc-400 dark:text-zinc-500 truncate">{@desc}</div>
-      </div>
-      <svg class="w-3.5 h-3.5 flex-none text-zinc-300 dark:text-zinc-600" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-        <path d="M4.5 3 7.5 6 4.5 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-      </svg>
-    </.link>
     """
   end
 
@@ -549,12 +516,12 @@ defmodule LoopyardWeb.WorkstationLive do
           <%!-- Dockerfile editor --%>
           <form phx-submit="apply" class="flex flex-col min-h-0 lg:flex-[3] h-[50dvh] lg:h-auto gap-3 rounded-xl border border-zinc-200 dark:border-zinc-700 p-3">
             <div class="flex-none flex items-center gap-2">
-              <button type="submit" name="action" value="rebuild" disabled={@building} class="focus-ring inline-flex items-center justify-center gap-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white px-4 py-2 text-sm font-semibold transition-colors">
+              <.button variant={:primary} type="submit" name="action" value="rebuild" disabled={@building}>
                 {if @building, do: "Building…", else: "Save & Rebuild"}
-              </button>
-              <button type="submit" name="action" value="save" disabled={@building} class="focus-ring inline-flex items-center rounded-lg border border-zinc-300 dark:border-zinc-600 px-4 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-60 transition-colors">
+              </.button>
+              <.button variant={:secondary} type="submit" name="action" value="save" disabled={@building}>
                 Save
-              </button>
+              </.button>
               <.restart_button restarting={@restarting} class="ml-auto" />
             </div>
             <textarea name="dockerfile" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" class="flex-1 min-h-0 w-full resize-none font-mono text-xs leading-relaxed rounded-lg border border-zinc-300 dark:border-zinc-700 bg-zinc-950 text-zinc-100 p-3 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400">{@dockerfile}</textarea>
@@ -599,27 +566,19 @@ defmodule LoopyardWeb.WorkstationLive do
       max_width={:md}
       flash={@flash}
     >
-      <div id="ws-page" phx-hook="WsScroll" class="max-w-xl space-y-8">
-        <%!-- Transfer everything --%>
-        <section class="space-y-2">
-          <h2 class="text-sm font-medium text-zinc-800 dark:text-zinc-100">Transfer everything from your Mac</h2>
-          <p class="text-[11px] text-zinc-500 dark:text-zinc-400">
-            One command, run where you're logged in — grabs your gh / fly / claude / codex creds and pipes them up. Files apply live; tokens need a Restart.
-          </p>
-          <div class="flex items-stretch gap-2">
-            <pre class="flex-1 overflow-x-auto rounded-lg bg-zinc-900 dark:bg-zinc-950 text-zinc-100 text-[11px] font-mono px-3 py-2.5 ring-1 ring-zinc-800">curl -fsS http://localhost:{@http_port}/workstations/{@current_id}/setup.sh | sh</pre>
-            <button id="clip-setup" type="button" phx-hook="Clip" data-label="Copy" data-copy={"curl -fsS http://localhost:#{@http_port}/workstations/#{@current_id}/setup.sh | sh"} class="focus-ring flex-none self-start rounded-lg bg-zinc-900 hover:bg-zinc-700 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white px-3.5 py-2.5 text-xs font-medium transition-colors">Copy</button>
-          </div>
-        </section>
+      <div id="ws-page" phx-hook="WsScroll" class="space-y-8">
+        <.section
+          title="Transfer everything from your Mac"
+          hint="One command, run where you're logged in — grabs your gh / fly / claude / codex creds and pipes them up. Files apply live; tokens need a Restart."
+        >
+          <.command_box id="clip-setup" command={"curl -fsS http://localhost:#{@http_port}/workstations/#{@current_id}/setup.sh | sh"} />
+        </.section>
 
-        <%!-- Env vars --%>
-        <section class="space-y-2">
-          <h2 class="text-sm font-medium text-zinc-800 dark:text-zinc-100">Environment variables</h2>
-          <p class="text-[11px] text-zinc-500 dark:text-zinc-400">Stamped into the console + every agent at boot. Restart to apply.</p>
+        <.section title="Environment variables" hint="Stamped into the console + every agent at boot. Restart to apply.">
           <form phx-submit="add_env" class="flex flex-col sm:flex-row gap-2">
             <input name="name" placeholder="NAME" autocomplete="off" autocapitalize="characters" spellcheck="false" class="sm:w-56 font-mono text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400" />
             <input name="value" type="password" placeholder="value" autocomplete="off" spellcheck="false" class="flex-1 font-mono text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400" />
-            <button type="submit" class="focus-ring inline-flex items-center justify-center rounded-lg border border-zinc-300 dark:border-zinc-600 px-4 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors flex-none">Add</button>
+            <.button variant={:secondary} type="submit" class="flex-none">Add</.button>
           </form>
           <ul :if={@other_env_keys != []} class="divide-y divide-zinc-100 dark:divide-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-800 px-3">
             <li :for={k <- @other_env_keys} class="flex items-center gap-3 py-2">
@@ -628,16 +587,14 @@ defmodule LoopyardWeb.WorkstationLive do
               <button phx-click="delete_env" phx-value-key={k} data-confirm={"Remove #{k}?"} class="ml-auto text-xs text-zinc-400 hover:text-red-500 transition-colors">Remove</button>
             </li>
           </ul>
-        </section>
+        </.section>
 
-        <%!-- Push from Mac --%>
-        <section class="space-y-2">
-          <h2 class="text-sm font-medium text-zinc-800 dark:text-zinc-100">Push a single credential</h2>
-          <p class="text-[11px] text-zinc-500 dark:text-zinc-400">
-            Each tool's page has the easy path. For a custom key or a remote Loopyard, this is the general form (carries your push token):
-          </p>
+        <.section
+          title="Push a single credential"
+          hint="Each tool's page has the easy path. For a custom key or a remote Loopyard, this is the general form (carries your push token):"
+        >
           <div id="ws-push" phx-hook="PushCmd" data-token={@push_token} class="relative">
-            <pre class="overflow-x-auto rounded-lg bg-zinc-950 text-zinc-200 text-[11px] leading-relaxed font-mono p-3 pr-16"><code class="ws-push-cmd">gh auth token | curl -fsS -T - \
+            <pre class="overflow-x-auto rounded-lg bg-zinc-900 dark:bg-zinc-950 text-zinc-100 text-[11px] leading-relaxed font-mono p-3 pr-16 ring-1 ring-zinc-800"><code class="ws-push-cmd">gh auth token | curl -fsS -T - \
   -H "Authorization: Bearer {@push_token}" \
   __ORIGIN__/workstations/{@current_id}/env/GITHUB_TOKEN</code></pre>
             <button type="button" class="ws-push-copy focus-ring absolute top-2 right-2 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-2 py-1 text-[11px]">Copy</button>
@@ -645,29 +602,9 @@ defmodule LoopyardWeb.WorkstationLive do
           <p class="text-[11px] text-zinc-400 dark:text-zinc-500">
             Swap GITHUB_TOKEN for any key. On this machine you can drop the token entirely. Restart to apply — keep this command secret.
           </p>
-        </section>
+        </.section>
       </div>
     </.page_shell>
-    """
-  end
-
-  # Shared Restart button — recreates the container ($HOME / logins kept).
-  attr :restarting, :boolean, required: true
-  attr :class, :string, default: ""
-
-  defp restart_button(assigns) do
-    ~H"""
-    <button
-      phx-click="restart_machine"
-      disabled={@restarting}
-      title="Recreate the workstation container (your $HOME / logins are kept)"
-      class={["focus-ring inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-50 transition-colors", @class]}
-    >
-      <svg class={["w-3.5 h-3.5", @restarting && "animate-spin"]} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-      </svg>
-      {if @restarting, do: "Restarting…", else: "Restart"}
-    </button>
     """
   end
 
