@@ -184,81 +184,69 @@ defmodule LoopyardWeb.WorkstationToolLive do
           </div>
         </section>
 
-        <%!-- Other ways: env token, terminal — collapsed by default --%>
-        <details :if={@ig.env || @ig.console} class="group rounded-lg border border-zinc-200 dark:border-zinc-800">
-          <summary class="cursor-pointer list-none flex items-center gap-2 px-3.5 py-2.5 text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200">
-            <svg class="w-3 h-3 group-open:rotate-90 transition-transform" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-              <path d="M4.5 3 7.5 6 4.5 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-            Other ways
-          </summary>
+        <%!-- Other ways: env token + terminal — spread out, not collapsed. --%>
+        <section :if={@ig.env || @ig.console} class="space-y-5 border-t border-zinc-100 dark:border-zinc-800 pt-6">
+          <h2 class="text-sm font-medium text-zinc-500 dark:text-zinc-400">Other ways</h2>
 
-          <div class="px-3.5 pb-4 pt-1 space-y-5 border-t border-zinc-100 dark:border-zinc-800">
-            <%!-- Set a token --%>
-            <form :if={@ig.env} phx-submit="save_env" class="space-y-2 pt-3">
-              <div>
-                <h3 class="text-xs font-medium text-zinc-700 dark:text-zinc-200">Set a token</h3>
-                <p class="text-[11px] text-zinc-400 dark:text-zinc-500">
-                  Paste <span class="font-mono">{@ig.env}</span> — Restart to apply.
-                </p>
-              </div>
-              <div class="flex gap-2">
-                <input
-                  type="password"
-                  name="value"
-                  autocomplete="off"
-                  placeholder={"paste #{@ig.env}"}
-                  class="flex-1 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-transparent px-3 py-2 text-sm font-mono placeholder:font-sans placeholder:text-zinc-400 focus-ring"
-                />
-                <button type="submit" class="focus-ring flex-none rounded-lg bg-zinc-900 hover:bg-zinc-700 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white px-3.5 py-2 text-xs font-medium transition-colors">
-                  Save
-                </button>
-              </div>
-            </form>
+          <%!-- Set a token --%>
+          <form :if={@ig.env} phx-submit="save_env" class="space-y-2">
+            <div>
+              <h3 class="text-xs font-medium text-zinc-700 dark:text-zinc-200">Set a token</h3>
+              <p class="text-[11px] text-zinc-400 dark:text-zinc-500">
+                Paste <span class="font-mono">{@ig.env}</span> — Restart to apply.
+              </p>
+            </div>
+            <div class="flex gap-2">
+              <input
+                type="password"
+                name="value"
+                autocomplete="off"
+                placeholder={"paste #{@ig.env}"}
+                class="flex-1 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-transparent px-3 py-2 text-sm font-mono placeholder:font-sans placeholder:text-zinc-400 focus-ring"
+              />
+              <button type="submit" class="focus-ring flex-none rounded-lg bg-zinc-900 hover:bg-zinc-700 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white px-3.5 py-2 text-xs font-medium transition-colors">
+                Save
+              </button>
+            </div>
+          </form>
 
-            <%!-- Use the terminal --%>
-            <div :if={@ig.console} class="space-y-2 pt-1">
-              <div class="flex items-center justify-between gap-2">
-                <h3 class="text-xs font-medium text-zinc-700 dark:text-zinc-200">Use the terminal</h3>
-                <button
-                  type="button"
-                  phx-click="run_in_console"
-                  phx-value-cmd={@ig.console}
-                  class="focus-ring rounded-md border border-zinc-200 dark:border-zinc-700 px-2.5 py-1 text-[11px] font-mono text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-                >
-                  ▶ {@ig.console}
-                </button>
+          <%!-- Use the terminal --%>
+          <div :if={@ig.console} class="space-y-2">
+            <div class="flex items-center justify-between gap-2">
+              <h3 class="text-xs font-medium text-zinc-700 dark:text-zinc-200">Use the terminal</h3>
+              <button
+                type="button"
+                phx-click="run_in_console"
+                phx-value-cmd={@ig.console}
+                class="focus-ring rounded-md border border-zinc-200 dark:border-zinc-700 px-2.5 py-1 text-[11px] font-mono text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              >
+                ▶ {@ig.console}
+              </button>
+            </div>
+            <div id="ws-console" class="rounded-lg overflow-hidden h-[44dvh] min-h-[280px] bg-[#18181b]">
+              <div
+                :if={@console_container}
+                id={"terminal-#{@console_container}-#{@term_nonce}"}
+                phx-hook="Terminal"
+                data-container={@console_container}
+                phx-update="ignore"
+                class="h-full p-2 overflow-hidden"
+              >
               </div>
-              <div id="ws-console" class="rounded-lg overflow-hidden h-[44dvh] min-h-[280px] bg-[#18181b]">
-                <div
-                  :if={@console_container}
-                  id={"terminal-#{@console_container}-#{@term_nonce}"}
-                  phx-hook="Terminal"
-                  data-container={@console_container}
-                  phx-update="ignore"
-                  class="h-full p-2 overflow-hidden"
-                >
-                </div>
-                <div :if={!@console_container} class="h-full flex items-center justify-center text-xs text-zinc-500">
-                  Starting console…
-                </div>
+              <div :if={!@console_container} class="h-full flex items-center justify-center text-xs text-zinc-500">
+                Starting console…
               </div>
             </div>
           </div>
-        </details>
+        </section>
 
-        <%!-- Reference doc — collapsed; child .markdown-body is where the hook renders --%>
-        <details class="group">
-          <summary class="cursor-pointer list-none flex items-center gap-2 text-xs font-medium text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300">
-            <svg class="w-3 h-3 group-open:rotate-90 transition-transform" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-              <path d="M4.5 3 7.5 6 4.5 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-            Reference
-          </summary>
-          <div id="ws-tool-doc" phx-hook="Markdown" data-source={@doc} class="mt-3">
+        <%!-- Reference doc — inline; child .markdown-body is where the hook renders. --%>
+        <section class="space-y-2 border-t border-zinc-100 dark:border-zinc-800 pt-6">
+          <h2 class="text-sm font-medium text-zinc-500 dark:text-zinc-400">Reference</h2>
+          <div id="ws-tool-doc" phx-hook="Markdown" data-source={@doc}>
             <div class="markdown-body text-sm text-zinc-700 dark:text-zinc-300"></div>
           </div>
-        </details>
+        </section>
       </div>
     </.page_shell>
     """
