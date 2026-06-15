@@ -93,132 +93,67 @@ defmodule LoopyardWeb.Components.SidebarTest do
     end
   end
 
-  describe "agent_item/1" do
-    # agent_display_status/1 checks ChatAgentRegistry to decide if an
-    # agent is "Sleeping" (no live GenServer) vs. Ready/Thinking. For
-    # these rendering tests to assert the live states, register a
-    # dummy pid under the agent id so the liveness check passes.
+  describe "agent_display_status/1 → status_dot/1" do
+    # The agent_item/console_item components were folded into the generic
+    # `sidebar_item` (the status→dot mapping moved to the call sites). The
+    # *logic* lives in these two public functions — test it directly.
+    #
+    # agent_display_status falls back to a ChatAgentRegistry lookup when the
+    # agent map carries no cached `:alive?` flag, so register a pid under the
+    # id to make the "live" cases pass.
     defp register_live_agent(id) do
-      {:ok, pid} =
-        Task.start_link(fn ->
-          receive do
-            _ -> :ok
-          end
-        end)
-
       {:ok, _} = Registry.register(Loopyard.ChatAgentRegistry, id, nil)
-      on_exit_stop(pid)
-      pid
+      :ok
     end
 
-    defp on_exit_stop(pid) do
-      ExUnit.Callbacks.on_exit(fn -> send(pid, :stop) end)
-    end
+    defp dot(agent), do: status_dot(agent_display_status(agent))
 
-    test "renders agent name and status dot (live idle → green/Ready)" do
+    test "live + idle → ready (green)" do
       register_live_agent("a1")
-      agent = %{id: "a1", name: "Test Agent", status: :idle}
-      html = render_comp(&agent_item/1, %{agent: agent, selected: false})
-      assert html =~ "Test Agent"
-      assert html =~ "bg-green-500"
+      assert dot(%{id: "a1", name: "Test Agent", status: :idle}) == "bg-green-500"
     end
 
-    test "no live GenServer → Sleeping (gray, no green)" do
-      agent = %{id: "orphan", name: "Agent", status: :idle}
-      html = render_comp(&agent_item/1, %{agent: agent, selected: false})
-      assert html =~ "Sleeping"
-      assert html =~ "bg-zinc-400"
-      refute html =~ "bg-green-500"
+    test "no live GenServer → sleeping (gray)" do
+      assert agent_display_status(%{id: "orphan", name: "Agent", status: :idle}) == :sleeping
+      assert dot(%{id: "orphan", name: "Agent", status: :idle}) == "bg-zinc-400"
     end
 
-    test "no remove button in sidebar for any status" do
-      for status <- [:idle, :thinking, :stopped, :crashed, :booting] do
-        agent = %{id: "no-remove-#{status}", name: "Agent", status: status}
-        html = render_comp(&agent_item/1, %{agent: agent, selected: false})
-        refute html =~ "remove_agent", "expected no remove_agent for status #{status}"
-        refute html =~ "&times;", "expected no × for status #{status}"
-      end
+    test "a cached alive?: false overrides the registry → sleeping" do
+      register_live_agent("cached")
+      assert dot(%{id: "cached", name: "C", status: :idle, alive?: false}) == "bg-zinc-400"
     end
 
-    test "shows boot status subtitle when booting" do
-      register_live_agent("a1-booting")
+    test "quarantined → red, regardless of liveness" do
+      assert agent_display_status(%{id: "q", name: "Q", status: :idle, quarantined: true}) ==
+               :quarantined
 
-      agent = %{
-        id: "a1-booting",
-        name: "Agent",
-        status: :booting,
-        boot_status: "Building image..."
-      }
-
-      html = render_comp(&agent_item/1, %{agent: agent, selected: false})
-      assert html =~ "Building image..."
+      assert dot(%{id: "q", name: "Q", status: :idle, quarantined: true}) == "bg-red-500"
     end
 
-    test "quarantined flag → red dot (distinct from :ready/:crashed mapping)" do
-      register_live_agent("quar-1")
-      agent = %{id: "quar-1", name: "Quar", status: :idle, quarantined: true}
-      html = render_comp(&agent_item/1, %{agent: agent, selected: false})
-      assert html =~ "bg-red-500"
-      refute html =~ "bg-green-500"
+    test "booting (live) → violet pulse" do
+      register_live_agent("boot")
+      assert dot(%{id: "boot", name: "B", status: :booting}) =~ "animate-pulse"
     end
 
-    test ":rate_limited status → violet pulse (thinking look — auto-retry armed)" do
-      register_live_agent("rl-1")
-      agent = %{id: "rl-1", name: "RL", status: :rate_limited}
-      html = render_comp(&agent_item/1, %{agent: agent, selected: false})
-      assert html =~ "bg-violet-500"
-      assert html =~ "animate-pulse"
+    test "rate_limited (live) → violet pulse (auto-retry armed)" do
+      register_live_agent("rl")
+      d = dot(%{id: "rl", name: "RL", status: :rate_limited})
+      assert d =~ "bg-violet-500"
+      assert d =~ "animate-pulse"
     end
 
-    test ":auth_expired status → red dot (terminal without manual re-auth)" do
-      register_live_agent("auth-1")
-      agent = %{id: "auth-1", name: "AuthExp", status: :auth_expired}
-      html = render_comp(&agent_item/1, %{agent: agent, selected: false})
-      assert html =~ "bg-red-500"
-    end
-  end
-
-  describe "console_item/1" do
-    test "renders console name with green dot" do
-      console = %{id: "c1", name: "workspace"}
-
-      html =
-        render_comp(&console_item/1, %{
-          console: console,
-          base_path: "/projects/p1/workspaces/w1",
-          selected: false
-        })
-
-      assert html =~ "workspace"
-      assert html =~ "bg-green-500"
+    test "auth_expired (live) → red (terminal without re-auth)" do
+      register_live_agent("auth")
+      assert dot(%{id: "auth", name: "AuthExp", status: :auth_expired}) == "bg-red-500"
     end
 
-    test "does not render remove/close button" do
-      console = %{id: "c1", name: "workspace"}
-
-      html =
-        render_comp(&console_item/1, %{
-          console: console,
-          base_path: "/projects/p1/workspaces/w1",
-          selected: false
-        })
-
-      refute html =~ "close_console"
-      refute html =~ "remove"
-      refute html =~ "&times;"
+    test "destroying → hidden (gray)" do
+      register_live_agent("gone")
+      assert agent_display_status(%{id: "gone", name: "G", status: :destroying}) == :hidden
     end
 
-    test "links to console path" do
-      console = %{id: "c1", name: "workspace"}
-
-      html =
-        render_comp(&console_item/1, %{
-          console: console,
-          base_path: "/projects/p1/workspaces/w1",
-          selected: false
-        })
-
-      assert html =~ "/projects/p1/workspaces/w1/consoles/c1"
+    test "malformed agent map → sleeping (never crashes the sidebar)" do
+      assert agent_display_status(%{}) == :sleeping
     end
   end
 

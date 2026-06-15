@@ -1,6 +1,13 @@
 defmodule LoopyardWeb.MessageLiveTest do
   use LoopyardWeb.ConnCase
 
+  # The setup boots a real workspace + agent (WorkspaceGroup.start_agent →
+  # ChatAgent), which under full-suite load can take several seconds while the
+  # workspace group churns and the agent CLI session comes up. The test logic
+  # itself is fast (ETS reads + LiveView render); the default 2s per-test cap
+  # was just too tight for the boot, causing flaky timeouts. Give it headroom.
+  @moduletag timeout: 30_000
+
   import Phoenix.LiveViewTest
 
   alias Loopyard.ChatAgent
