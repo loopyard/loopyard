@@ -23,8 +23,7 @@ defmodule Loopyard.Events.SubscriberContractTest do
     Loopyard.Events.SourceSync.Subscriber,
     Loopyard.Events.Workspaces.Subscriber,
     Loopyard.Events.WorkspaceServices.Subscriber,
-    Loopyard.Events.WorkspaceSetup.Subscriber,
-    Loopyard.Events.Workstation.Subscriber
+    Loopyard.Events.WorkspaceSetup.Subscriber
   ]
 
   describe "subscriber behaviours have NO @optional_callbacks" do

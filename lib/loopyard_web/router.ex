@@ -107,7 +107,6 @@ defmodule LoopyardWeb.Router do
     # Sub-pages of a workstation (own URL each, not collapsibles). Literal segments
     # so they win over the `/workstations/:id/:tool` integration route below.
     live "/workstations/:id/console", WorkstationLive, :console
-    live "/workstations/:id/image", WorkstationLive, :image
     live "/workstations/:id/env", WorkstationLive, :env
 
     live "/system", SystemLive, :index

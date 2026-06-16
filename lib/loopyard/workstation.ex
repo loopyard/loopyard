@@ -121,9 +121,10 @@ defmodule Loopyard.Workstation do
   end
 
   # --- Docker naming (per identity) ---
+  # Identity is the home volume; the toolchain is the shared base image, so there
+  # is no per-identity image tag.
   def container_name(id), do: "loopyard-ws-#{id}"
   def home_volume(id), do: "loopyard-ws-#{id}-home"
-  def image_tag(id), do: "loopyard-ws-#{id}:latest"
 
   @doc """
   The id to bootstrap a fresh install with — your name, not a generic "default".
@@ -155,15 +156,6 @@ defmodule Loopyard.Workstation do
   defp rename_docker(old, new) do
     if Docker.container_exists?(container_name(old)) do
       _ = Docker.docker(["rename", container_name(old), container_name(new)])
-    end
-
-    case Docker.docker(["image", "inspect", image_tag(old)], retry: false) do
-      {:ok, _} ->
-        _ = Docker.docker(["tag", image_tag(old), image_tag(new)])
-        _ = Docker.docker(["rmi", image_tag(old)])
-
-      _ ->
-        :ok
     end
 
     if VolumeManager.volume_exists?(home_volume(old)) do

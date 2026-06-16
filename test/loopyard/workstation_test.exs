@@ -99,10 +99,9 @@ defmodule Loopyard.WorkstationTest do
   end
 
   describe "naming (per identity)" do
-    test "container / volume / image names are derived from the id" do
+    test "container / volume names are derived from the id" do
       assert Workstation.container_name("brad") == "loopyard-ws-brad"
       assert Workstation.home_volume("brad") == "loopyard-ws-brad-home"
-      assert Workstation.image_tag("brad") == "loopyard-ws-brad:latest"
     end
   end
 
