@@ -37,6 +37,20 @@ defmodule LoopyardWeb.WorkstationLive do
     end
   end
 
+  # Bare /workstations — the list, where you see all identities + create one.
+  # Switching/creating lives HERE, not on a single workstation's page.
+  def mount(_params, _session, socket) do
+    socket =
+      if connected?(socket),
+        do: subscribe_iex(socket),
+        else: assign(socket, :iex_session, %{level: nil})
+
+    {:ok,
+     socket
+     |> assign(:workstation_ids, Loopyard.Workstation.list())
+     |> assign(:current_id, Loopyard.Workstation.current())}
+  end
+
   # The page operates on the workstation in the URL. Visiting it makes it the
   # identity you're operating as (what new agents inherit).
   defp mount_workstation(ws, socket) do
@@ -184,9 +198,58 @@ defmodule LoopyardWeb.WorkstationLive do
   end
 
   @impl true
+  def render(%{live_action: :index} = assigns), do: index_page(assigns)
   def render(%{live_action: :console} = assigns), do: console_page(assigns)
   def render(%{live_action: :env} = assigns), do: env_page(assigns)
   def render(assigns), do: hub_page(assigns)
+
+  # --- Index: all workstations + create one. ---
+  defp index_page(assigns) do
+    ~H"""
+    <.page_shell breadcrumbs={[{"Workstations", nil}]} iex_session={@iex_session} max_width={:md} flash={@flash}>
+      <div class="space-y-8">
+        <div class="space-y-1">
+          <h1 class="text-xl font-semibold tracking-tight">Workstations</h1>
+          <p class="text-sm text-zinc-500 dark:text-zinc-400">
+            An identity is a home folder of credentials — every agent you spin up inherits it.
+          </p>
+        </div>
+
+        <.section title="Your workstations">
+          <.nav_list>
+            <.nav_row
+              :for={id <- @workstation_ids}
+              navigate={"/workstations/#{id}"}
+              title={id}
+              desc={if id == @current_id, do: "The identity you're operating as.", else: "Open to switch to it."}
+            >
+              <:trailing :if={id == @current_id}>
+                <span class="inline-flex items-center gap-1.5 text-[11px] text-sky-600 dark:text-sky-400">
+                  <span class="w-1.5 h-1.5 rounded-full bg-sky-500"></span> current
+                </span>
+              </:trailing>
+            </.nav_row>
+          </.nav_list>
+        </.section>
+
+        <.section title="New workstation" hint="A fresh identity — connect its own tools, set up its own creds.">
+          <form action="/workstations/create" method="post" class="flex items-center gap-2">
+            <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
+            <input
+              type="text"
+              name="ws_id"
+              placeholder="new-id"
+              pattern="[a-z0-9][a-z0-9-]*"
+              title="Lowercase letters, digits, dashes"
+              class="flex-1 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm placeholder:text-zinc-400 focus-ring"
+            />
+            <.button variant={:primary} type="submit" class="flex-none">Create</.button>
+          </form>
+        </.section>
+      </div>
+    </.page_shell>
+    """
+  end
 
   # The hub: who you are, the services to connect, and links to the rest.
   defp hub_page(assigns) do
@@ -198,38 +261,9 @@ defmodule LoopyardWeb.WorkstationLive do
       flash={@flash}
     >
       <div id="ws-page" phx-hook="WsScroll" class="space-y-8">
-        <div class="space-y-3">
+        <div class="flex items-baseline gap-3">
           <h1 class="text-xl font-semibold tracking-tight">{@current_id}</h1>
-
-          <%!-- Operating as: who agents inherit + spin up a new identity. --%>
-          <div class="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-sm">
-            <span class="text-zinc-400 dark:text-zinc-500">Operating as</span>
-            <.link
-              :for={id <- @workstation_ids}
-              href={"/workstations/#{id}"}
-              class={[
-                "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 border transition-colors",
-                if(id == @current_id,
-                  do: "border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300 font-medium",
-                  else: "border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600")
-              ]}
-            >
-              <span class={["w-1.5 h-1.5 rounded-full", if(id == @current_id, do: "bg-sky-500", else: "bg-zinc-300 dark:bg-zinc-600")]}></span>
-              {id}
-            </.link>
-            <form action="/workstations/create" method="post" class="inline-flex items-center gap-1.5">
-              <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
-              <input
-                type="text"
-                name="ws_id"
-                placeholder="new-id"
-                pattern="[a-z0-9][a-z0-9-]*"
-                title="Lowercase letters, digits, dashes"
-                class="w-24 rounded-full border border-dashed border-zinc-300 dark:border-zinc-600 bg-transparent px-2.5 py-0.5 text-sm placeholder:text-zinc-400 focus-ring"
-              />
-              <button type="submit" class="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 text-lg leading-none" title="Create workstation">+</button>
-            </form>
-          </div>
+          <.link navigate="/workstations" class="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300">All workstations</.link>
         </div>
 
         <.section title="Connect your tools" hint="Click in to connect — the default on each is one command you run on your Mac.">

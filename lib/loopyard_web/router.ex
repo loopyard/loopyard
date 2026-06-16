@@ -99,10 +99,11 @@ defmodule LoopyardWeb.Router do
     live "/projects/:project_id/workspaces/:workspace_id/sync", WorkspaceLive, :sync
 
     # Workstations — each identity has its own URL. Visiting one makes it the one
-    # you're operating as. Bare /workstation(s) → redirect to your current id.
+    # you're operating as. /workstations is the list (switch / create); bare
+    # singular /workstation → your current id.
     get "/workstation", WorkstationController, :index
-    get "/workstations", WorkstationController, :index
     post "/workstations/create", WorkstationController, :create
+    live "/workstations", WorkstationLive, :index
     live "/workstations/:id", WorkstationLive, :show
     # Sub-pages of a workstation (own URL each, not collapsibles). Literal segments
     # so they win over the `/workstations/:id/:tool` integration route below.
