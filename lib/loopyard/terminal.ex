@@ -84,15 +84,18 @@ defmodule Loopyard.Terminal do
       # don't provide one). The container's shell handles echo and line
       # editing via its own TTY (-t flag). The JS-side activeTerminals
       # dedup prevents double-output from stale reconnections.
+      # `sh -l` (login shell) so ~/.profile is sourced — identity env (tokens
+      # written to ~/.loopyard/env by Env.sync_home/1) is in scope for what a
+      # human types here, same as the agent's login-wrapped exec.
       case :os.type() do
         {:unix, :darwin} ->
-          {script, ["-q", "/dev/null", docker, "exec", "-it", container, "sh"]}
+          {script, ["-q", "/dev/null", docker, "exec", "-it", container, "sh", "-l"]}
 
         _ ->
-          {script, ["-qc", "#{docker} exec -it #{container} sh", "/dev/null"]}
+          {script, ["-qc", "#{docker} exec -it #{container} sh -l", "/dev/null"]}
       end
     else
-      {docker, ["exec", "-i", container, "sh"]}
+      {docker, ["exec", "-i", container, "sh", "-l"]}
     end
   end
 
