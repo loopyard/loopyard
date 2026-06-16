@@ -59,7 +59,9 @@ defmodule Loopyard.Workstation.Container do
   @spec exec(String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
   def exec(command, id) do
     with {:ok, n} <- ensure_up(id) do
-      Docker.exec_in(n, command)
+      # login: true so the console sources ~/.profile and sees identity env
+      # (tokens live as files in the home volume, not `docker run -e`).
+      Docker.exec_in(n, command, login: true)
     end
   end
 
@@ -110,6 +112,9 @@ defmodule Loopyard.Workstation.Container do
 
     with :ok <- Workstation.Image.ensure_built(id),
          :ok <- ensure_volume(id),
+         # Materialize identity env into the home volume's ~/.profile (files-in-
+         # $HOME) instead of injecting secrets via `docker run -e`.
+         _ <- Workstation.Env.sync_home(id),
          _ <- Docker.docker(["rm", "-f", n]),
          {:ok, _} <- run(id) do
       {:ok, n}
@@ -117,6 +122,8 @@ defmodule Loopyard.Workstation.Container do
   end
 
   defp run(id) do
+    # Env (tokens) is NOT passed via `-e`; it lives as files in the $HOME volume
+    # (`~/.loopyard/env`, sourced by `~/.profile`) — see Env.sync_home/1.
     Docker.docker(
       [
         "run",
@@ -127,14 +134,11 @@ defmodule Loopyard.Workstation.Container do
         "-v",
         "#{home_volume(id)}:#{@home}",
         "-w",
-        @home
-      ] ++
-        Workstation.Env.env_args(id) ++
-        [
-          Workstation.Image.tag(id),
-          "sleep",
-          "infinity"
-        ]
+        @home,
+        Workstation.Image.tag(id),
+        "sleep",
+        "infinity"
+      ]
     )
   end
 

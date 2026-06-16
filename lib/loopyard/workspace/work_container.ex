@@ -89,7 +89,10 @@ defmodule Loopyard.Workspace.WorkContainer do
   @spec exec(String.t(), String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
   def exec(workspace_id, command, opts \\ []) do
     with {:ok, name} <- ensure_up(workspace_id) do
-      Docker.exec_in(name, command, Keyword.put_new(opts, :workdir, @workdir))
+      # login: true → source the home volume's ~/.profile so identity env (tokens)
+      # is in scope, since we no longer inject it via `docker run -e`.
+      opts = opts |> Keyword.put_new(:workdir, @workdir) |> Keyword.put_new(:login, true)
+      Docker.exec_in(name, command, opts)
     end
   end
 
@@ -135,6 +138,9 @@ defmodule Loopyard.Workspace.WorkContainer do
 
     with :ok <- Loopyard.Workstation.Image.ensure_built(ws),
          :ok <- ensure_volume(volume),
+         # Materialize identity env into the home volume's ~/.profile (files-in-
+         # $HOME), so we never inject secrets via `docker run -e`.
+         _ <- Loopyard.Workstation.Env.sync_home(ws),
          # Clear any stopped container of the same name before run.
          _ <- Docker.docker(["rm", "-f", name]),
          {:ok, _} <- run(name, volume, ws) do
@@ -146,8 +152,10 @@ defmodule Loopyard.Workspace.WorkContainer do
     # Mount the branch's code at /workspace AND the shared workstation $HOME
     # volume at /root — so the agent inherits the logins/tools the user set up
     # in the Workstation console (gh/claude/fly/mise), exactly like every other
-    # agent. Single-user MVP: one home volume (docker auto-creates by name if the
-    # console hasn't been opened yet; the console reuses the same name).
+    # agent. Env (tokens) is NOT injected via `-e`; it lives as files in the home
+    # volume (`~/.loopyard/env`, sourced by `~/.profile`) — see Env.sync_home/1
+    # and Docker.with_login_profile/1. Single-user MVP: one home volume (docker
+    # auto-creates by name if the console hasn't been opened yet).
     Docker.docker(
       [
         "run",
@@ -160,14 +168,11 @@ defmodule Loopyard.Workspace.WorkContainer do
         "-v",
         "#{Loopyard.Workstation.Container.home_volume(ws)}:/root",
         "-w",
-        @workdir
-      ] ++
-        Loopyard.Workstation.Env.env_args(ws) ++
-        [
-          Loopyard.Workstation.Image.tag(ws),
-          "sleep",
-          "infinity"
-        ]
+        @workdir,
+        Loopyard.Workstation.Image.tag(ws),
+        "sleep",
+        "infinity"
+      ]
     )
   end
 

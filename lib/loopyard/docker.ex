@@ -88,10 +88,31 @@ defmodule Loopyard.Docker do
     end
   end
 
-  @doc "Execute a command in any container by name"
+  @doc """
+  Wrap a command so the login profile (`~/.profile`) is sourced before it runs.
+
+  Portable on purpose: plain `sh -c` with an explicit `.` source, so it works on
+  busybox ash, dash, and bash alike — no reliance on `-l` or bash being present
+  in the target image. This is how a container's identity env (credentials
+  written to `~/.loopyard/env` and sourced from `~/.profile`) reaches a command
+  WITHOUT putting secrets in `docker run -e` (which leaks them into
+  `docker inspect`). See `Loopyard.Workstation.Env.sync_home/1`.
+  """
+  @spec with_login_profile(String.t()) :: String.t()
+  def with_login_profile(command), do: ~s(. "$HOME/.profile" 2>/dev/null\n) <> command
+
+  @doc """
+  Execute a command in any container by name.
+
+  Opts: `:workdir`, `:timeout`, and `:login` (default `false`). With `login: true`
+  the command is wrapped via `with_login_profile/1` so identity env from the home
+  volume is in scope — use it for credential-sensitive commands (the agent's
+  shell, the workstation console), not for data-plumbing execs (tar, cat).
+  """
   def exec_in(container_name, command, opts \\ []) do
     workdir = Keyword.get(opts, :workdir)
     timeout = Keyword.get(opts, :timeout, 120_000)
+    command = if Keyword.get(opts, :login, false), do: with_login_profile(command), else: command
 
     args = ["exec"]
     args = if workdir, do: args ++ ["-w", workdir], else: args

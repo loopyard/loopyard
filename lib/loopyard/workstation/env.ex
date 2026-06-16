@@ -118,6 +118,44 @@ defmodule Loopyard.Workstation.Env do
     all(id) |> Enum.flat_map(fn {k, v} -> ["-e", "#{k}=#{v}"] end)
   end
 
+  @doc """
+  Materialize the identity's env vars into its `$HOME` volume as a sourced file —
+  the **files-in-$HOME** path that replaces `docker run -e` (which leaked secrets
+  into `docker inspect`).
+
+  Writes `~/.loopyard/env` (mode 0600) holding `export K='V'` lines and ensures
+  `~/.profile` sources it, so a login shell (`Docker.with_login_profile/1`) puts
+  the env in scope. Idempotent; call before boot. Runs via a transient
+  `docker run --rm` mounting the home volume (auto-creates it if absent), so it
+  works whether or not a container is currently up.
+  """
+  @spec sync_home(String.t()) :: :ok | {:error, term()}
+  def sync_home(id) do
+    vol = Workstation.home_volume(id)
+    b64 = id |> env_file_body() |> Base.encode64()
+
+    script =
+      "mkdir -p /vol/.loopyard && " <>
+        "printf '%s' '#{b64}' | base64 -d > /vol/.loopyard/env && " <>
+        "chmod 600 /vol/.loopyard/env && " <>
+        "touch /vol/.profile && " <>
+        "(grep -q '.loopyard/env' /vol/.profile 2>/dev/null || " <>
+        ~s|printf '\\n%s\\n' '[ -f "$HOME/.loopyard/env" ] && . "$HOME/.loopyard/env"' >> /vol/.profile)|
+
+    case Loopyard.Docker.docker(["run", "--rm", "-v", "#{vol}:/vol", "alpine", "sh", "-c", script]) do
+      {:ok, _} -> :ok
+      err -> err
+    end
+  end
+
+  # The body of ~/.loopyard/env: `export K='V'` lines, single-quote-escaped so a
+  # value containing `'` survives (`'` → `'\''`).
+  defp env_file_body(id) do
+    all(id)
+    |> Enum.sort()
+    |> Enum.map_join("\n", fn {k, v} -> "export #{k}='#{String.replace(v, "'", "'\\''")}'" end)
+  end
+
   defp save(map, id) do
     File.mkdir_p!(Path.dirname(path(id)))
     File.write!(path(id), Jason.encode!(map))

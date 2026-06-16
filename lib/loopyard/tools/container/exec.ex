@@ -29,9 +29,11 @@ defmodule Loopyard.Tools.Container.Exec do
           do: stream_msg.id,
           else: :crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false)
 
+      # Login-wrap so the agent's shell sees identity env (credentials sourced
+      # from the home volume's ~/.profile) — not injected via `docker run -e`.
       args = ["exec"]
       args = if params[:workdir], do: args ++ ["-w", params.workdir], else: args
-      args = args ++ [container, "sh", "-c", command]
+      args = args ++ [container, "sh", "-c", Loopyard.Docker.with_login_profile(command)]
 
       port =
         Port.open(
