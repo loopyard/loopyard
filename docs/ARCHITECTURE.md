@@ -127,6 +127,34 @@ A workspace is a git branch in its own env. *Most* interaction is just "read/wri
 
 The base image carries git/bash/curl/node + the harness adapter — *not* the project's own toolchain (elixir, the app's deps, postgres). Running the project's tests/build or the app itself still needs the project image, i.e. the **preview env**. Cheap container = code + git + harness; preview = run the app.
 
+## Environment layering — image · home · code · services
+
+An agent's environment is **composed from independent layers, each owning one concern with one mechanism**. The design invariant is orthogonality: any layer changes without touching the others. Full model + build order in [plans/agent-home-and-refresh.md](../plans/agent-home-and-refresh.md).
+
+```
+agent = image (tools) + /home/<name> (you) + /workspace (code), launched with a login shell
+```
+
+| layer | owns | scope | mechanism |
+|-------|------|-------|-----------|
+| **image** | the tools (ruby, node, gh, git, the harness adapter) | per project (shared) | a Dockerfile (`FROM loopyard/base`) |
+| **`/home/<name>` volume** | *identity* — creds, dotfiles, env | per seat (per person) | a named Docker volume |
+| **`/workspace` volume** | the code | per branch | a named Docker volume |
+| **services** | db, redis, web | per project (inherited) | one Loopyard-authored compose |
+| **networking / exposure** | who can reach what | per workspace | control plane (per-ws nets, `PortExposer`) |
+
+Swap the home volume → different person, same everything else. Grow the image → more tools, same identity/code. New branch → new code volume, same image/cluster. Nothing leaks across the seams.
+
+**Identity is a home volume (the "workstation" pulled apart).** Identity is *not* an entity or a per-user image — it's a named Docker volume `loopyard-home-<name>`, mounted at `/home/<name>`, with the container running as user `<name>` (so `$HOME=/home/<name>`) under a login shell (`bash -lc`, so `~/.profile` is sourced). The durable noun is the volume; `docker volume ls --filter label=loopyard.role=home` is the list of identities (naming convention + labels, no separate registry to drift). Creds are **files under `$HOME`, nowhere else** — file creds at their paths, env vars as `export` lines in `~/.profile`. Never a secret in container config (`-e SECRET=…`) or an image layer. Every credential surface the host has (keychain, OAuth, env, files) is normalized to files-under-`$HOME` by a **host-side intake step** — the one place tool-specific quirks live — so the container sees a single exception-free surface. The thing formerly called a "workstation" is just a **throwaway shell container with the home volume mounted at `$HOME`**: log in (or run the pump scripts) and set up creds; only what lands in `/home/<name>` persists.
+
+**The bench grows in place; cattle build from the record.** The per-workspace `WorkContainer` is the always-on bench and harness host. It boots `loopyard/base` and accretes the project toolchain *into itself* at runtime (`mise install`, `bundle install`) — the **pet** model, no swap to a fatter image to gain a tool. The Dockerfile the agent writes is the **record** (cold-start + reproducibility), not the mechanism. test/staging/prod are **cattle** — built fresh from that Dockerfile + lockfile, clean and reproducible — which keeps the pet honest (a live-installed tool missing from the Dockerfile fails the next clean build). Dependencies live in the lockfile + a shared bundle volume, never baked per-add; adding a gem = edit Gemfile + `bundle install` + restart the web *process*, never an image rebuild.
+
+**The bench is mission control, not a member of the cluster.** The harness runs *in* the bench (ACP) and reaches services **over the network** (`db:5432`) — it never execs into a service to do work. From the bench the agent also spins up / tears down **ephemeral clusters** for isolated jobs (e.g. a test suite against a frozen commit + a clean db, run in parallel while the dev bench keeps working). Environments are per-branch and ephemeral, fanning into one prod: **dev** (the bench's preview cluster), **test** (clean ephemeral run), **staging** (preview URL), **prod** (the deploy target — a deploy axis, not an exec axis).
+
+**One compose definition per project, inherited by branches.** The cluster is authored once (git-tracked, or Loopyard project-seeded) and every workspace inherits it — a new branch never regenerates a cluster from scratch. Definition is shared; running instances stay cheap and isolated per branch (one postgres with a per-branch *database*, only the app spun per-branch).
+
+**Cross-agent isolation is structural, not trust-based.** Each workspace's cluster is its own compose project on its own Docker bridge network, which Docker firewalls apart by default (`DOCKER-ISOLATION` chains drop inter-bridge traffic — no ping cluster→cluster by name or IP). The bench has **no docker socket**, so it can't bridge networks or reach a neighbor's containers; every container op funnels through the `docker_compose` tool on the control plane, where **compose-processing** strips the four escape hatches (`ports:`, `external` networks, `network_mode: host`, multi-network attach). External exposure is the control plane's alone, via `PortExposer`. The agent can *request* exposure; it cannot *open* a hole — five independent reasons agent A can't reach agent B, none depending on the agent behaving.
+
 ## Docker interface
 
 **Every Docker CLI call goes through `Loopyard.Docker`.** No `System.cmd("docker", ...)` anywhere else.
