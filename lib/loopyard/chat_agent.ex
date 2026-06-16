@@ -37,6 +37,10 @@ defmodule Loopyard.ChatAgent do
     :working_dir,
     :bind_mount,
     :workspace_id,
+    # The workstation identity this agent boots its home/env from (the one you
+    # were operating as when it started). Lets us count agents per identity and,
+    # later, find who to refresh when that identity's home changes.
+    :workstation_identity,
     :started_at,
     :started_by,
     :last_activity_at,
@@ -465,6 +469,7 @@ defmodule Loopyard.ChatAgent do
       name: name,
       working_dir: working_dir,
       workspace_id: workspace_id,
+      workstation_identity: Keyword.get(opts, :workstation_identity) || Loopyard.Workstation.current(),
       service_name: Keyword.get(opts, :service_name),
       started_at: now,
       started_by: "browser",
@@ -1597,6 +1602,7 @@ defmodule Loopyard.ChatAgent do
       working_dir: state.working_dir,
       bind_mount: state.bind_mount,
       workspace_id: state.workspace_id,
+      workstation_identity: state.workstation_identity,
       started_at: state.started_at,
       started_by: state.started_by,
       last_activity_at: state.last_activity_at,

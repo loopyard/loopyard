@@ -76,10 +76,12 @@ defmodule LoopyardWeb.SystemLive do
   defp load_counts do
     resources = Loopyard.Resources.all()
     checkpointers = Loopyard.AgentLog.Checkpointer.list_all()
+    agents = Loopyard.ChatAgent.list_agents()
 
     %{
       workspaces: length(Loopyard.ProjectRegistry.list_projects()),
-      agents: length(Loopyard.ChatAgent.list_agents()),
+      agents: length(agents),
+      workstations: agents_per_workstation(agents),
       cli: length(SystemStats.claude_cli_processes()),
       quarantined: length(Loopyard.ChatAgent.RestartController.list_quarantined()),
       sagas: Loopyard.Saga.Recorder.summary(),
@@ -95,6 +97,16 @@ defmodule LoopyardWeb.SystemLive do
           end)
       }
     }
+  end
+
+  # Running agents grouped by the workstation identity they booted from →
+  # `[{identity, count}]`, busiest first. The blast radius for a credential
+  # change on an identity is everyone in its bucket.
+  defp agents_per_workstation(agents) do
+    agents
+    |> Enum.group_by(&(&1[:workstation_identity] || "—"))
+    |> Enum.map(fn {identity, list} -> {identity, length(list)} end)
+    |> Enum.sort_by(fn {_identity, n} -> -n end)
   end
 
   # --- Refresh timers ---
@@ -388,6 +400,24 @@ defmodule LoopyardWeb.SystemLive do
               <span class="font-mono">{w}</span>
               workspaces · <span class="font-mono">{a}</span>
               agents
+            <% _ -> %>
+              <span class="text-zinc-400">loading…</span>
+          <% end %>
+        </.drilldown_card>
+
+        <.drilldown_card
+          href="/workstations"
+          title="Workstations"
+          subtitle="Running agents per identity (a credential change's blast radius)"
+        >
+          <%= case @counts do %>
+            <% %{ok?: true, result: %{workstations: []}} -> %>
+              <span class="text-zinc-400">no agents running</span>
+            <% %{ok?: true, result: %{workstations: usage}} -> %>
+              <span :for={{identity, n} <- usage} class="mr-2 whitespace-nowrap">
+                <span class="font-mono text-zinc-700 dark:text-zinc-300">{identity}</span>
+                <span class="font-mono">{n}</span>
+              </span>
             <% _ -> %>
               <span class="text-zinc-400">loading…</span>
           <% end %>

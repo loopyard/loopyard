@@ -299,6 +299,8 @@ defmodule Loopyard.ChatAgent.Initializer do
       working_dir: working_dir,
       bind_mount: bind_mount,
       workspace_id: workspace_id,
+      workstation_identity:
+        Keyword.get(opts, :workstation_identity) || Loopyard.Workstation.current(),
       started_at: now,
       started_by: started_by,
       last_activity_at: now,
