@@ -112,9 +112,14 @@ defmodule Loopyard.Workstation.Integration do
     c=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null || cat "$HOME/.claude/.credentials.json" 2>/dev/null)
     if [ -n "$c" ]; then
       printf '%s' "$c" | curl #{cf} -T - "#{creds_url}"
-      cfg=$(python3 -c 'import json,os,sys; d=json.load(open(os.path.expanduser("~/.claude.json"))); k=["hasCompletedOnboarding","oauthAccount","userID","lastOnboardingVersion","firstStartTime","claudeCodeFirstTokenDate","numStartups","tipsHistory"]; o={x:d[x] for x in k if x in d}; o["hasCompletedOnboarding"]=True; sys.stdout.write(json.dumps(o))' 2>/dev/null)
-      [ -n "$cfg" ] || cfg='{"hasCompletedOnboarding":true}'
-      printf '%s' "$cfg" | curl #{cf} -T - "#{cfg_url}"
+      # Onboarding config so interactive `claude` doesn't re-prompt. Push the Mac's
+      # ~/.claude.json as-is (it already has hasCompletedOnboarding) — no python/jq,
+      # runs on any machine; minimal fallback if it's absent.
+      if [ -f "$HOME/.claude.json" ]; then
+        curl #{cf} -T "$HOME/.claude.json" "#{cfg_url}"
+      else
+        printf '{"hasCompletedOnboarding":true}' | curl #{cf} -T - "#{cfg_url}"
+      fi
     fi\
     """
   end
