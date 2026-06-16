@@ -19,9 +19,11 @@ model never tangles:
 | **`/home/<name>` volume** | *you* — creds, dotfiles, env | per seat (per person) | a named Docker volume |
 | **`/workspace`** | the code | per branch | a named Docker volume |
 
-Run the container as user `<name>` so `$HOME=/home/<name>` falls out naturally
-(non-root is also more secure). Launch via a login shell (`bash -lc 'exec
-<harness>'`) so `~/.profile` is always sourced.
+Mount the home volume at `/home/<name>` with `$HOME` set to match, so every tool
+resolves creds there. The dev bench keeps **root** (the pet model installs tools
+live — `apt`/`mise`/`gem` need it; true non-root is a cattle/prod concern).
+Commands are login-wrapped (`Docker.with_login_profile/1` sources `~/.profile`
+portably via `sh -c`) so identity env is in scope.
 
 ## Identity is a named volume — the durable noun
 

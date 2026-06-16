@@ -149,13 +149,16 @@ defmodule Loopyard.Workspace.WorkContainer do
   end
 
   defp run(name, volume, ws) do
-    # Mount the branch's code at /workspace AND the shared workstation $HOME
-    # volume at /root — so the agent inherits the logins/tools the user set up
-    # in the Workstation console (gh/claude/fly/mise), exactly like every other
-    # agent. Env (tokens) is NOT injected via `-e`; it lives as files in the home
-    # volume (`~/.loopyard/env`, sourced by `~/.profile`) — see Env.sync_home/1
-    # and Docker.with_login_profile/1. Single-user MVP: one home volume (docker
-    # auto-creates by name if the console hasn't been opened yet).
+    # Mount the branch's code at /workspace AND the identity's $HOME volume at
+    # /home/<id> — so the agent inherits the logins/tools the user set up
+    # (gh/claude/fly/mise), exactly like every other agent. `$HOME` is set to the
+    # mount so every tool resolves creds there. We keep **root** (the pet model
+    # installs tools live — apt/mise/gem need it); non-root is a cattle/prod
+    # concern. Env (tokens) is NOT injected via `-e`; it lives as files in the
+    # home volume (`~/.loopyard/env`, sourced by `~/.profile`) — see
+    # Env.sync_home/1 and Docker.with_login_profile/1.
+    home = home_path(ws)
+
     Docker.docker(
       [
         "run",
@@ -166,7 +169,9 @@ defmodule Loopyard.Workspace.WorkContainer do
         "-v",
         "#{volume}:#{@workdir}",
         "-v",
-        "#{Loopyard.Workstation.Container.home_volume(ws)}:/root",
+        "#{Loopyard.Workstation.Container.home_volume(ws)}:#{home}",
+        "-e",
+        "HOME=#{home}",
         "-w",
         @workdir,
         Loopyard.Workstation.Image.tag(ws),
@@ -175,6 +180,9 @@ defmodule Loopyard.Workspace.WorkContainer do
       ]
     )
   end
+
+  # The identity's $HOME inside the container: /home/<id>.
+  defp home_path(ws), do: "/home/#{ws}"
 
   defp ensure_volume(volume) do
     if VolumeManager.volume_exists?(volume), do: :ok, else: VolumeManager.create_volume(volume)

@@ -1,24 +1,22 @@
 defmodule Loopyard.Workstation.Container do
   @moduledoc """
   The long-lived **workstation container** for an identity — a shell on *that
-  person's machine*. Boots the workstation's image with its `$HOME` volume
-  mounted at `/root`, so logins (`gh auth login`, …) and installs land in the
-  volume and **persist**, and every agent on that identity inherits them.
+  person's machine*. Boots the base image with its `$HOME` volume mounted at
+  `/home/<id>` (with `$HOME` set to match), so logins (`gh auth login`, …) and
+  installs land in the volume and **persist**, and every agent on that identity
+  inherits them.
 
   Keyed by workstation id; `id` is **required** — no implicit "current" default,
   so headless callers can't silently inherit the UI's current identity. The UI
   resolves `Loopyard.Workstation.current/0` at its boundary and passes the id
   down. Names come from `Loopyard.Workstation`.
 
-  Tools live in the *image* (system paths), so mounting the volume at `/root`
-  (`$HOME`) holds only mutable state and never shadows the tools.
+  Tools live in the *image* (system paths), so mounting the volume at `$HOME`
+  holds only mutable state and never shadows the tools.
   """
   require Logger
 
   alias Loopyard.{Docker, VolumeManager, Workstation}
-
-  # The harness/console run as root, so $HOME is /root (in-container path).
-  @home "/root"
 
   @doc "The workstation container name (what the terminal channel attaches to)."
   @spec name(String.t()) :: String.t()
@@ -75,7 +73,7 @@ defmodule Loopyard.Workstation.Container do
       when is_binary(rel_path) and is_binary(content) do
     with :ok <- validate_rel_path(rel_path),
          {:ok, n} <- ensure_up(id) do
-      full = "#{@home}/#{rel_path}"
+      full = "#{home_path(id)}/#{rel_path}"
       dir = Path.dirname(full)
       b64 = Base.encode64(content)
       cmd = "mkdir -p '#{dir}' && printf '%s' '#{b64}' | base64 -d > '#{full}' && chmod 600 '#{full}'"
@@ -124,6 +122,8 @@ defmodule Loopyard.Workstation.Container do
   defp run(id) do
     # Env (tokens) is NOT passed via `-e`; it lives as files in the $HOME volume
     # (`~/.loopyard/env`, sourced by `~/.profile`) — see Env.sync_home/1.
+    home = home_path(id)
+
     Docker.docker(
       [
         "run",
@@ -132,9 +132,11 @@ defmodule Loopyard.Workstation.Container do
         name(id),
         "--init",
         "-v",
-        "#{home_volume(id)}:#{@home}",
+        "#{home_volume(id)}:#{home}",
+        "-e",
+        "HOME=#{home}",
         "-w",
-        @home,
+        home,
         Workstation.Image.tag(id),
         "sleep",
         "infinity"
@@ -146,4 +148,7 @@ defmodule Loopyard.Workstation.Container do
     v = home_volume(id)
     if VolumeManager.volume_exists?(v), do: :ok, else: VolumeManager.create_volume(v)
   end
+
+  # The identity's $HOME inside the container: /home/<id>.
+  defp home_path(id), do: "/home/#{id}"
 end
