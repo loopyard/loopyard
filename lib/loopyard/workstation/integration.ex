@@ -34,8 +34,11 @@ defmodule Loopyard.Workstation.Integration do
       blurb: "Run Claude Code in the box using your Claude subscription.",
       env: "CLAUDE_CODE_OAUTH_TOKEN",
       console: nil,
-      check: {:file, ".claude/.credentials.json"},
-      lands: "~/.claude — live, every agent inherits it"
+      # The recommended headless path is a long-lived (1-year) token from
+      # `claude setup-token`, delivered as CLAUDE_CODE_OAUTH_TOKEN — not the
+      # short-lived ~/.claude/.credentials.json (which 401s within hours).
+      check: {:env, "CLAUDE_CODE_OAUTH_TOKEN"},
+      lands: "CLAUDE_CODE_OAUTH_TOKEN — durable 1-year token; restart to apply"
     },
     %{
       id: "codex",
