@@ -419,20 +419,20 @@ defmodule Loopyard.ChatAgent.StreamHandler do
   def on_stream_timeout(state) do
     id = state.id
 
-    Loopyard.EventLog.warning("agent:#{state.name}", "Stream timed out, resetting to idle")
+    Loopyard.EventLog.warning(
+      "agent:#{state.name}",
+      "Stream timed out after 10m — rebooting the CLI and resuming the conversation"
+    )
 
     # Finalize any partial text the stream produced before the timeout
     state = finalize_partial_on_stream_interrupt(state, id, :timeout)
 
     error_msg = %{
-      role: :error,
+      role: :system,
       content:
-        "Agent stopped responding after 10 minutes. " <>
-          "WHY: the streaming task produced no events within the timeout window — usually a tool " <>
-          "call (exec, rebuild, compose up) hung, or the CLI deadlocked. " <>
-          "CONSEQUENCE: the turn was dropped; any partial assistant text was preserved. " <>
-          "ACTION: send another message to retry. If the same tool keeps wedging, check " <>
-          "/system/events for the tool name and diagnose it in isolation.",
+        "The harness went silent for 10 minutes — a tool call hung or the CLI deadlocked. " <>
+          "Loopyard is rebooting the CLI and resuming this conversation; your chat history is " <>
+          "preserved. Any messages you queued will run on the fresh session.",
       timestamp: DateTime.utc_now()
     }
 
@@ -445,7 +445,11 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     })
 
     Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
-    drain_pending_sends(state)
+
+    # Reboot the harness (keeps history, resumes via claude_session_id). Queued
+    # messages drain onto the fresh CLI inside the restart path — NOT here, so we
+    # never drain onto the wedged session we're about to replace.
+    {:reboot, state}
   end
 
   @doc """

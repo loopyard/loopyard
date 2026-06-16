@@ -905,6 +905,18 @@ defmodule Loopyard.ChatAgent do
           end
         end
 
+        # Drain a message the user queued while the harness was wedged onto the
+        # fresh CLI (the rest pop on turn completion, preserving FIFO order).
+        state =
+          case state.pending_sends do
+            [next | rest] ->
+              GenServer.cast(self(), {:send_message, next})
+              %{state | pending_sends: rest}
+
+            [] ->
+              state
+          end
+
         {:noreply, state}
 
       {:error, reason} ->
@@ -1151,8 +1163,12 @@ defmodule Loopyard.ChatAgent do
         %{id: id, status: :thinking, stream_ref: ref} = state
       ) do
     case StreamHandler.on_stream_timeout(state) do
-      {:drain, text, state} -> send_message_normal(state, text)
-      {:noreply, state} -> {:noreply, state}
+      {:reboot, state} ->
+        # Reboot the CLI with resume — clears the wedge, keeps the full chat
+        # history, continues the conversation. Queued messages drain onto the
+        # fresh CLI inside the restart path.
+        GenServer.cast(self(), :restart_session)
+        {:noreply, state}
     end
   end
 
