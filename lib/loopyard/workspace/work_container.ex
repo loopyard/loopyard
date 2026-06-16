@@ -136,7 +136,9 @@ defmodule Loopyard.Workspace.WorkContainer do
     # deterministic; until then, first boot follows the current driver.)
     ws = Loopyard.Workstation.current()
 
-    with :ok <- Loopyard.Workstation.Image.ensure_built(ws),
+    # Toolchain = the shared stock base image (identity-agnostic). Identity is the
+    # home volume mounted below, NOT a per-identity image.
+    with :ok <- ensure_image(),
          :ok <- ensure_volume(volume),
          # Materialize identity env into the home volume's ~/.profile (files-in-
          # $HOME), so we never inject secrets via `docker run -e`.
@@ -174,7 +176,7 @@ defmodule Loopyard.Workspace.WorkContainer do
         "HOME=#{home}",
         "-w",
         @workdir,
-        Loopyard.Workstation.Image.tag(ws),
+        @image,
         "sleep",
         "infinity"
       ]

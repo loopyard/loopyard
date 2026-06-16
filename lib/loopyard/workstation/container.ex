@@ -108,7 +108,9 @@ defmodule Loopyard.Workstation.Container do
   defp recreate(id) do
     n = name(id)
 
-    with :ok <- Workstation.Image.ensure_built(id),
+    # Toolchain = the shared stock base image (identity-agnostic); identity is the
+    # home volume mounted below.
+    with :ok <- Loopyard.Workspace.WorkContainer.ensure_image(),
          :ok <- ensure_volume(id),
          # Materialize identity env into the home volume's ~/.profile (files-in-
          # $HOME) instead of injecting secrets via `docker run -e`.
@@ -137,7 +139,7 @@ defmodule Loopyard.Workstation.Container do
         "HOME=#{home}",
         "-w",
         home,
-        Workstation.Image.tag(id),
+        Loopyard.Workspace.WorkContainer.image(),
         "sleep",
         "infinity"
       ]
