@@ -171,9 +171,20 @@ shows a per-identity count.)**
 
 1. **Stamp + track + count.** Record each agent's `{identity, home_version,
    image}`; add the `/system` query + count. Pure observability. **(Slice 1 landed.)**
-2. **Boot the agent from `image + /home/<name> volume + /workspace`**, running as
-   user `<name>` with a login shell. Replace the per-identity workstation-image
-   path; keep the home mount.
+2a. **Creds → `~/.profile`, not `docker -e`.** `Env.sync_home/1` materializes the
+   identity env into `~/.loopyard/env` (0600) in the home volume + sources it from
+   `~/.profile`; commands are login-wrapped (`Docker.with_login_profile/1`). Secrets
+   leave `docker inspect`. **(Landed + verified.)**
+2b. **Home at `/home/<id>` + `$HOME` set** (was `/root`). Root retained (the pet
+   model installs tools live). Volume content is mount-path-agnostic, so existing
+   homes carry over. **(Landed + verified.)**
+2c. **Boot from the project image** (grown) / a shared base (bare), instead of the
+   per-identity `loopyard-ws-<id>` image. **GATED:** depends on project images
+   existing (the pet/cattle + project-Dockerfile slices below), and the per-identity
+   image is now a benign *tools-only* layer (creds moved to the home volume in 2a),
+   so there is nothing unsafe to rush. Reshaping/removing it also touches the
+   conversational-image feature (`Workstation.Agent` + the Dockerfile editor) — a
+   product call to make with the server up.
 3. **Home versioning** (content hash) + the **stale trigger**.
 4. **Graceful drain**: harness restart-with-resume at turn boundary on stale; force
    path for revocation.
@@ -181,6 +192,12 @@ shows a per-identity count.)**
    volume a read-only *source* + copy-seed a per-agent writable home on boot
    (tighten perms: `chmod 600 ~/.ssh/*`). Only land this when concurrency actually
    forces it.
+
+> **Key reframe (2026-06-16):** the model's *essential* change — creds/identity
+> separated **out of the image** into the home volume — is fully done by 2a+2b.
+> The per-identity image stops being a cred/identity surface and is just "the tools
+> layer," which evolves into the project image later. So 2c is forward evolution,
+> not a cleanup blocking anything.
 
 ## Out of scope / deferred
 
