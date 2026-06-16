@@ -167,15 +167,23 @@ defmodule Loopyard.Terminal do
 
   @impl true
   def handle_info({port, {:data, data}}, %{port: port} = state) do
-    Loopyard.Events.Terminal.publish(%Loopyard.Events.Terminal.Output{
-      container: state.container,
-      data: data
-    })
+    # Terminal output is raw bytes; a multibyte UTF-8 char (Claude's TUI box-
+    # drawing, etc.) can split across port chunks. Phoenix JSON-encodes whatever we
+    # broadcast — invalid UTF-8 there CRASHES the channel. So we only ever emit a
+    # valid-UTF-8 prefix and carry the incomplete trailing bytes to the next chunk.
+    {clean, pending} = split_valid_utf8((state[:pending] || "") <> data)
 
-    buffer = state.buffer <> data
+    if clean != "" do
+      Loopyard.Events.Terminal.publish(%Loopyard.Events.Terminal.Output{
+        container: state.container,
+        data: clean
+      })
+    end
+
+    buffer = state.buffer <> clean
     buffer = if byte_size(buffer) > 50_000, do: String.slice(buffer, -50_000..-1//1), else: buffer
 
-    {:noreply, %{state | buffer: buffer}}
+    {:noreply, state |> Map.put(:buffer, buffer) |> Map.put(:pending, pending)}
   end
 
   def handle_info({port, {:exit_status, code}}, %{port: port} = state) do
@@ -201,6 +209,21 @@ defmodule Loopyard.Terminal do
     )
 
     {:noreply, state}
+  end
+
+  # Split a binary into {valid-UTF-8 prefix, incomplete trailing bytes}. An
+  # incomplete trailing multibyte sequence is carried forward (completed by the
+  # next chunk); a genuinely invalid byte is replaced with U+FFFD and we continue.
+  # Guarantees the returned prefix is valid UTF-8 → safe to JSON-encode.
+  defp split_valid_utf8(bin), do: split_valid_utf8(bin, "")
+
+  defp split_valid_utf8(bin, acc) do
+    case :unicode.characters_to_binary(bin, :utf8, :utf8) do
+      valid when is_binary(valid) -> {acc <> valid, ""}
+      {:incomplete, valid, rest} -> {acc <> valid, rest}
+      {:error, valid, <<_bad, rest::binary>>} -> split_valid_utf8(rest, acc <> valid <> "�")
+      {:error, valid, <<>>} -> {acc <> valid, ""}
+    end
   end
 
   @impl true

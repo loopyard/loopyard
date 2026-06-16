@@ -441,9 +441,41 @@ defmodule Loopyard.ChatAgent do
         :ok
     end
 
+    # Hard-stop the live GenServer FIRST so it can't restart and can't re-insert
+    # itself into ETS. Deleting the ETS row alone left the process running, and
+    # its next summary write resurrected the row — the "removed agent came back"
+    # bug. Terminate via the DynamicSupervisor so OTP won't restart it.
+    terminate_process(id)
+
     # Remove from sidebar
     :ets.delete(@ets_table, id)
     Events.ChatAgent.publish(%Events.ChatAgent.Removed{id: id})
+  end
+
+  # Terminate an agent's process so a removed agent stays removed. Best-effort:
+  # via the workspace's agent supervisor (no restart) when we know the workspace,
+  # else a direct stop; never raises.
+  defp terminate_process(id) do
+    ws_id =
+      case :ets.lookup(@ets_table, id) do
+        [{^id, summary}] -> summary[:workspace_id]
+        _ -> nil
+      end
+
+    case Registry.lookup(Loopyard.ChatAgentRegistry, id) do
+      [{pid, _}] when is_binary(ws_id) ->
+        DynamicSupervisor.terminate_child(Loopyard.WorkspaceGroup.agent_sup_name(ws_id), pid)
+
+      [{pid, _}] ->
+        if Process.alive?(pid), do: GenServer.stop(pid, :normal, 3_000)
+
+      [] ->
+        :ok
+    end
+  rescue
+    _ -> :ok
+  catch
+    _, _ -> :ok
   end
 
   @doc "Register an agent as booting in ETS so all viewers can see it"
