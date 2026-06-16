@@ -39,6 +39,69 @@ defmodule LoopyardWeb.SetupController do
     end
   end
 
+  @doc """
+  Serves ONE tool's transfer script — so the per-tool page shows a clean
+  `curl …/:tool/setup.sh | sh` instead of a giant pasted blob.
+
+  Claude is special: its durable path (`claude setup-token`, a 1-year token) is
+  interactive, so its script mints that token and pushes it — not the short-lived
+  keychain copy the bulk transfer uses.
+  """
+  def tool_script(conn, %{"id" => ws, "tool" => tool}) do
+    cond do
+      not PushAuth.authorized?(conn) ->
+        shell(conn, 403, "echo 'Loopyard: unauthorized — append ?token=<push-token>'\n")
+
+      not Workstation.exists?(ws) ->
+        shell(conn, 404, "echo 'Loopyard: no such workstation: #{ws}'\n")
+
+      is_nil(Integration.get(tool)) ->
+        shell(conn, 404, "echo 'Loopyard: no such tool: #{tool}'\n")
+
+      true ->
+        shell(conn, 200, tool_script_body(Integration.get(tool), base_url(conn), PushToken.get(), ws))
+    end
+  end
+
+  defp shell(conn, status, body) do
+    conn |> put_resp_content_type("text/x-shellscript") |> send_resp(status, body)
+  end
+
+  # Claude → mint a long-lived token (browser OAuth) and push it. The token is
+  # extracted by pattern so prose around it doesn't matter; graceful fallback.
+  defp tool_script_body(%{id: "claude"}, base, token, ws) do
+    env_url = "#{base}/workstations/#{ws}/env/CLAUDE_CODE_OAUTH_TOKEN"
+
+    """
+    #!/bin/sh
+    # Loopyard — mint a long-lived Claude token and push it into workstation '#{ws}'.
+    command -v claude >/dev/null 2>&1 || { echo "Install Claude Code on your Mac first."; exit 1; }
+    echo "Authorizing Claude — a browser will open; approve it to mint a 1-year token."
+    t=$(claude setup-token 2>/dev/null | grep -oE 'sk-ant-oat[A-Za-z0-9_-]+' | head -1)
+    if [ -n "$t" ]; then
+      printf '%s' "$t" | curl -fsS -H "Authorization: Bearer #{token}" -T - "#{env_url}"
+      echo
+      echo "Pushed CLAUDE_CODE_OAUTH_TOKEN to '#{ws}'. Restart the box to apply."
+    else
+      echo "Couldn't capture a token. Run 'claude setup-token' yourself, then paste it on the Claude page."
+    fi
+    """
+  end
+
+  # Everything else → the tool's keychain/file transfer, wrapped as a runnable script.
+  defp tool_script_body(ig, base, token, ws) do
+    """
+    #!/bin/sh
+    # Loopyard — transfer your #{ig.label} login into workstation '#{ws}'.
+    L="#{base}"
+    WS="#{ws}"
+    AUTH="Authorization: Bearer #{token}"
+    echo "Transferring #{ig.label} → $L (workstation: $WS)"
+    #{Integration.mac_script(ig, "$L", "$WS", ~s(-fsS -H "$AUTH"))}
+    echo "Done. Files apply live; env tokens apply on the next Restart."
+    """
+  end
+
   defp base_url(conn) do
     proto = first(conn, "x-forwarded-proto", to_string(conn.scheme))
     host = first(conn, "host", "#{conn.host}:#{conn.port}")

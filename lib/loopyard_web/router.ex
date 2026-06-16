@@ -147,6 +147,7 @@ defmodule LoopyardWeb.Router do
   scope "/workstations", LoopyardWeb do
     pipe_through :api
     get "/:id/:tool/docs.md", IntegrationController, :doc
+    get "/:id/:tool/setup.sh", SetupController, :tool_script
     get "/:id/setup.sh", SetupController, :script
     put "/:id/env/:key", EnvController, :put
     put "/:id/file/*path", FileController, :put

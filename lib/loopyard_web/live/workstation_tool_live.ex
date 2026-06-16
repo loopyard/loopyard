@@ -31,7 +31,9 @@ defmodule LoopyardWeb.WorkstationToolLive do
         # Operating-as follows the workstation in the URL.
         _ = Workstation.set_current(ws)
         ig = Integration.get(tool)
-        mac = Integration.mac_script(ig, base_url(), ws)
+        # A clean one-liner that pulls the per-tool script and runs it, instead of
+        # pasting a giant blob. (Claude's script mints the durable setup-token.)
+        mac = "curl -fsS #{base_url()}/workstations/#{ws}/#{tool}/setup.sh | sh"
 
         doc =
           case Integration.doc(tool) do
