@@ -447,7 +447,12 @@ defmodule Loopyard.ChatAgent.RestartController do
            workspace_id
          ) do
       [{pid, _}] ->
-        GenServer.call(pid, {:start_agent, agent_opts}, 10_000)
+        # ChatAgent.init starts the Claude CLI session synchronously, so this call
+        # blocks on the CLI coming up. When the workspace supervisor also has to be
+        # rebuilt first (cold workspace / after a crash), 10s was too tight — the
+        # agent booted fine a few seconds later but the saga had already reported
+        # failure. 30s covers rebuild + CLI start. (Async init is the real fix; later.)
+        GenServer.call(pid, {:start_agent, agent_opts}, 30_000)
 
       [] ->
         {:error, :workspace_not_running}
