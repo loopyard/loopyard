@@ -212,11 +212,34 @@ Hooks.ChatForm = {
       const text = ta.value.trim()
       if (!text) return
       sending = true
-      ta.value = ""
-      ta.style.height = "auto"
-      this.pushEvent("send_message", { message: text })
-      // Reset guard after a tick so the next message can be sent
-      requestAnimationFrame(() => { sending = false })
+      if (btn) btn.disabled = true
+
+      // Do NOT clear the input yet. Keep the text until the server ACKS the
+      // send (the handle_event reply). If the socket is disconnected (live
+      // reload, reconnect, flaky phone link), the callback never fires — a
+      // timeout restores the box so the message is never silently lost.
+      let settled = false
+      const settle = (ok) => {
+        if (settled) return
+        settled = true
+        sending = false
+        if (btn) btn.disabled = false
+        if (ok) {
+          ta.value = ""
+          ta.style.height = "auto"
+        } else {
+          // Text is still in the box — just flag it so the user knows to retry.
+          ta.style.boxShadow = "0 0 0 2px rgb(248 113 113)"
+          setTimeout(() => { ta.style.boxShadow = "" }, 2500)
+          ta.focus()
+        }
+      }
+
+      const timer = setTimeout(() => settle(false), 6000)
+      this.pushEvent("send_message", { message: text }, (reply) => {
+        clearTimeout(timer)
+        settle(reply && reply.ok)
+      })
     }
 
     // Enter sends, Shift+Enter for newline

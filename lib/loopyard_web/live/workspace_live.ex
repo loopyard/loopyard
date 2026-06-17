@@ -646,9 +646,13 @@ defmodule LoopyardWeb.WorkspaceLive do
       # This ensures multiplayer: every viewer (including the sender) sees the
       # message via the same path.
       ChatAgent.send_message(socket.assigns.selected_id, message)
-      {:noreply, socket}
+      # Reply so the client's ChatForm hook knows the send LANDED and can clear
+      # the input. Without an ack, a send fired into a momentarily-disconnected
+      # socket (live-reload, reconnect, flaky link) clears the box and vanishes
+      # silently. The hook keeps the text until this reply arrives.
+      {:reply, %{ok: true}, socket}
     else
-      {:noreply, socket}
+      {:reply, %{ok: false}, socket}
     end
   end
 
