@@ -41,17 +41,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     ~H"""
     <.agent_name agent={@agent} editing_name={@editing_name} />
 
+    <.harness_status agent={@agent} />
+
     <.context_files agent={@agent} />
 
     <.section label="Info">
-      <.info_row
-        label="Status"
-        value={
-          if @agent[:active_tool] && @agent.status == :thinking,
-            do: "using #{short_tool(@agent.active_tool)}",
-            else: @agent.status
-        }
-      />
       <.info_row label="Turns" value={@agent[:turns] || 0} />
       <.info_row label="Tool calls" value={@agent.tool_calls} />
       <.info_row
@@ -72,6 +66,130 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     <.claude_usage agent={@agent} />
     <.tool_list />
     """
+  end
+
+  # Prominent, color-coded harness state — the one place to glance at to know
+  # whether it's safe to send, working, waiting, or in a bad state (rate-limited,
+  # auth expired, reconnecting, offline). The bad states are loud on purpose: the
+  # whole point is that "something's wrong / your message will wait" is never a
+  # silent surprise.
+  defp harness_status(assigns) do
+    assigns = assign(assigns, :hs, harness_state(assigns.agent))
+
+    ~H"""
+    <div class="px-3 py-2.5 border-b border-zinc-200 dark:border-zinc-700/80">
+      <div class={["flex items-center gap-2.5 rounded-lg px-2.5 py-2", @hs.bg]}>
+        <span class={["w-2 h-2 rounded-full flex-none", @hs.dot, @hs.pulse]}></span>
+        <div class="min-w-0">
+          <div class={["text-xs font-semibold leading-tight", @hs.text]}>{@hs.label}</div>
+          <div :if={@hs.detail} class="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">
+            {@hs.detail}
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  # Map agent state → display. Order matters: worst/most-actionable states win,
+  # so a rate-limit or dead session is never masked by a stale :thinking.
+  defp harness_state(agent) do
+    status = agent[:status]
+    alive? = Map.get(agent, :alive?, true)
+
+    cond do
+      alive? == false ->
+        bad("Harness offline", "reconnecting the CLI — your messages will queue")
+
+      agent[:auth_error] ->
+        bad("Auth expired", "re-login required — connect Claude on /workstation")
+
+      Map.get(agent, :rate_limit_status, :ok) != :ok or status == :rate_limited ->
+        warn("amber", "Rate-limited", "messages are queued and send automatically when it clears")
+
+      status == :backoff ->
+        warn("blue", "Reconnecting…", "restarting the harness, then resuming")
+
+      status in [:booting, :starting] ->
+        warn("blue", "Starting…", "bringing the harness up")
+
+      status == :thinking ->
+        tool = agent[:active_tool]
+        detail = if tool, do: "running #{short_tool(tool)}", else: "thinking…"
+        %{
+          bg: "bg-violet-500/10",
+          dot: "bg-violet-500",
+          pulse: "animate-pulse",
+          text: "text-violet-700 dark:text-violet-300",
+          label: "Working",
+          detail: detail
+        }
+
+      status == :idle ->
+        %{
+          bg: "bg-emerald-500/10",
+          dot: "bg-emerald-500",
+          pulse: "",
+          text: "text-emerald-700 dark:text-emerald-400",
+          label: "Ready",
+          detail: "connected — safe to send"
+        }
+
+      status == :stopped ->
+        %{
+          bg: "bg-zinc-500/10",
+          dot: "bg-zinc-400",
+          pulse: "",
+          text: "text-zinc-600 dark:text-zinc-300",
+          label: "Stopped",
+          detail: "send a message to start it"
+        }
+
+      true ->
+        %{
+          bg: "bg-zinc-500/10",
+          dot: "bg-zinc-400",
+          pulse: "",
+          text: "text-zinc-600 dark:text-zinc-300",
+          label: to_string(status || "unknown"),
+          detail: nil
+        }
+    end
+  end
+
+  defp bad(label, detail) do
+    %{
+      bg: "bg-red-500/10",
+      dot: "bg-red-500",
+      pulse: "animate-pulse",
+      text: "text-red-600 dark:text-red-400",
+      label: label,
+      detail: detail
+    }
+  end
+
+  # Literal class strings per color — Tailwind's purge only sees literals, never
+  # interpolated names, so each tone is spelled out in full.
+  defp warn("amber", label, detail) do
+    %{
+      bg: "bg-amber-500/10",
+      dot: "bg-amber-500",
+      pulse: "animate-pulse",
+      text: "text-amber-700 dark:text-amber-400",
+      label: label,
+      detail: detail
+    }
+  end
+
+  defp warn("blue", label, detail) do
+    %{
+      bg: "bg-blue-500/10",
+      dot: "bg-blue-500",
+      pulse: "animate-pulse",
+      text: "text-blue-700 dark:text-blue-400",
+      label: label,
+      detail: detail
+    }
   end
 
   defp agent_name(assigns) do
