@@ -50,18 +50,53 @@ defmodule Loopyard.Harness.Approvals do
     end
   end
 
-  @doc "Deliver a human's approve/deny. Called from the LiveView."
+  @doc """
+  Deliver a human's approve/deny. Called from the LiveView. If the waiter
+  (the blocked `propose_*` tool process) has died, the decision can't be
+  delivered — reap the leaked entry, flip the card to `:timeout`, and return
+  `{:error, :not_found}` instead of silently sending to a dead pid.
+  """
   @spec decide(String.t(), :approve | :deny) :: :ok | {:error, :not_found}
   def decide(id, decision) when is_binary(id) and decision in [:approve, :deny] do
     case :ets.lookup(@table, id) do
       [{^id, %{waiter: pid}}] when is_pid(pid) ->
-        send(pid, {:decided, id, decision})
-        :ok
+        if Process.alive?(pid) do
+          send(pid, {:decided, id, decision})
+          :ok
+        else
+          reap(id)
+          {:error, :not_found}
+        end
 
       _ ->
         {:error, :not_found}
     end
   end
+
+  @doc """
+  The pending approval for `agent_id`, if any: `{id, entry}` or `nil`. An agent
+  blocks on at most one `propose_*` call at a time, so there's one entry to
+  find. If the waiter died abnormally (session restart, stream replaced, CLI
+  crash) the receive in `request/2` never ran and the entry leaked — reap it
+  here and flip the card off "Pending…" so a dead approval can't spin forever.
+  """
+  @spec pending_for_agent(String.t()) :: {String.t(), map()} | nil
+  def pending_for_agent(agent_id) when is_binary(agent_id) do
+    :ets.tab2list(@table)
+    |> Enum.filter(fn {_id, entry} -> entry.agent_id == agent_id end)
+    |> Enum.find_value(fn {id, entry} ->
+      if Process.alive?(entry.waiter) do
+        {id, entry}
+      else
+        reap(id, entry)
+        nil
+      end
+    end)
+  end
+
+  @doc "Whether `agent_id` is currently blocked awaiting an approval decision."
+  @spec pending_for_agent?(String.t()) :: boolean()
+  def pending_for_agent?(agent_id), do: pending_for_agent(agent_id) != nil
 
   @doc "Update the approval card with the outcome (persisted + broadcast)."
   @spec resolve(String.t(), String.t() | nil, map()) :: :ok
@@ -74,6 +109,22 @@ defmodule Loopyard.Harness.Approvals do
 
   @spec pending?(String.t()) :: boolean()
   def pending?(id), do: :ets.member(@table, id)
+
+  # --- internals ---
+
+  # Reap a leaked entry (waiter dead): drop it from ETS and flip the card off
+  # "Pending…" so it can't spin forever.
+  defp reap(id) do
+    case :ets.lookup(@table, id) do
+      [{^id, entry}] -> reap(id, entry)
+      _ -> :ok
+    end
+  end
+
+  defp reap(id, entry) do
+    :ets.delete(@table, id)
+    resolve(entry.agent_id, entry.msg_id, %{status: :timeout})
+  end
 
   defp gen_id, do: :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
 end

@@ -69,6 +69,55 @@ defmodule Loopyard.Harness.QuestionsTest do
     end
   end
 
+  describe "free-text answer (user typed instead of clicking)" do
+    test "answer_with_text/2 resolves a pending question, flips it to :answered" do
+      agent = "q-text-agent-#{System.unique_integer([:positive])}"
+
+      {:ok, questions} =
+        ClaudeCode.parse([
+          %{"question" => "Go?", "options" => [%{"label" => "Yes"}, %{"label" => "No"}]}
+        ])
+
+      task = Task.async(fn -> Questions.ask(agent, questions) end)
+
+      qid = wait_for_pending()
+      assert Questions.pending_for_agent?(agent)
+
+      assert :ok = Questions.answer_with_text(agent, "maybe later")
+
+      # The blocked waiter unblocks with the typed text mapped onto each question.
+      assert {:ok, %{"q0" => ["maybe later"]}} = Task.await(task, 2_000)
+      refute Questions.pending?(qid)
+    end
+
+    test "answer_with_text/2 with nothing pending is a clean no-op" do
+      assert {:error, :none_pending} =
+               Questions.answer_with_text("q-none-#{System.unique_integer()}", "hi")
+    end
+  end
+
+  describe "dead-waiter reaping" do
+    test "pending_for_agent? reaps an entry whose waiter died" do
+      agent = "q-dead-agent-#{System.unique_integer([:positive])}"
+
+      {:ok, questions} =
+        ClaudeCode.parse([%{"question" => "Go?", "options" => [%{"label" => "Yes"}]}])
+
+      # Spawn a waiter that registers the question then exits, leaking the entry.
+      {pid, ref} = spawn_monitor(fn -> Questions.ask(agent, questions) end)
+      qid = wait_for_pending()
+      assert Questions.pending?(qid)
+
+      # Kill the waiter — the receive in ask/2 never delivers, entry leaks.
+      Process.exit(pid, :kill)
+      assert_receive {:DOWN, ^ref, :process, ^pid, _}, 2_000
+
+      # First liveness check reaps the orphan.
+      refute Questions.pending_for_agent?(agent)
+      refute Questions.pending?(qid)
+    end
+  end
+
   defp wait_for_pending(tries \\ 50) do
     case :ets.tab2list(:harness_questions) do
       [{qid, _} | _] ->

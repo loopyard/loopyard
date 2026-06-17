@@ -33,6 +33,44 @@ defmodule Loopyard.Harness.ApprovalsTest do
     assert {:error, :not_found} = Approvals.decide("nope-#{System.unique_integer()}", :approve)
   end
 
+  describe "dead-waiter guard" do
+    test "decide after the waiter died returns {:error, :not_found} and doesn't crash" do
+      agent = "appr-dead-agent-#{System.unique_integer([:positive])}"
+
+      {pid, ref} =
+        spawn_monitor(fn -> Approvals.request(agent, %{verb: :fork, branch: "x"}) end)
+
+      id = wait_for_pending()
+      assert Approvals.pending?(id)
+
+      # Kill the waiter — the receive in request/2 never delivers, entry leaks.
+      Process.exit(pid, :kill)
+      assert_receive {:DOWN, ^ref, :process, ^pid, _}, 2_000
+
+      # The decision can't reach a dead pid — reap + clean error, no crash.
+      assert {:error, :not_found} = Approvals.decide(id, :approve)
+      refute Approvals.pending?(id)
+    end
+
+    test "pending_for_agent? reflects liveness and reaps a dead waiter" do
+      agent = "appr-live-agent-#{System.unique_integer([:positive])}"
+
+      {pid, ref} =
+        spawn_monitor(fn -> Approvals.request(agent, %{verb: :fork, branch: "y"}) end)
+
+      id = wait_for_pending()
+      # Live waiter → reported pending.
+      assert Approvals.pending_for_agent?(agent)
+
+      Process.exit(pid, :kill)
+      assert_receive {:DOWN, ^ref, :process, ^pid, _}, 2_000
+
+      # Dead waiter → reaped on the liveness check.
+      refute Approvals.pending_for_agent?(agent)
+      refute Approvals.pending?(id)
+    end
+  end
+
   defp wait_for_pending(tries \\ 50) do
     case :ets.tab2list(:harness_approvals) do
       [{id, _} | _] ->
