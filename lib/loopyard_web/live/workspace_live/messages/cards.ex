@@ -206,10 +206,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
             </div>
           <% :approved -> %>
             <.link
-              navigate={"/projects/#{@msg[:project_id]}/workspaces/#{@msg[:workspace_id]}"}
+              navigate={approved_link(@msg)}
               class="focus-ring inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
             >
-              Created — open <code class="text-xs">{@action.branch}</code> →
+              Ready — open <code class="text-xs">{@action.branch}</code> →
             </.link>
           <% :integrated -> %>
             <span class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400">
@@ -229,6 +229,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
       </div>
     </div>
     """
+  end
+
+  # Where "Open" lands after a fork is approved: straight on the branch's agent
+  # when it was provisioned (it always is now), else the workspace.
+  defp approved_link(msg) do
+    base = "/projects/#{msg[:project_id]}/workspaces/#{msg[:workspace_id]}"
+    if msg[:agent_id], do: "#{base}/agents/#{msg[:agent_id]}", else: base
   end
 
   # The human's chosen answer for a question, once answered.

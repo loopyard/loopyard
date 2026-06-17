@@ -130,6 +130,79 @@ defmodule Loopyard.Onboarding do
     end
   end
 
+  @doc """
+  Spawn an agent for a workspace — the single backend spawn path shared by the
+  LiveView ("New agent") and provisioning flows (fork). Builds the agent opts,
+  registers the booting stub (so it lands in ETS immediately), and boots it via
+  AgentBoot. Returns `{:ok, agent_id}` or `{:error, reason}`.
+
+  opts: `:name`, `:agent_type`, `:service_name`, `:initial_message`,
+  `:started_by` (default "system").
+  """
+  @spec spawn_agent(String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
+  def spawn_agent(ws_id, opts \\ []) do
+    case WorkspaceRegistry.get_workspace(ws_id) do
+      nil ->
+        {:error, :not_found}
+
+      ws ->
+        working_dir = ws[:path] || ws[:working_dir]
+        id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
+        service_name = Keyword.get(opts, :service_name)
+
+        ws_config =
+          case Loopyard.Workspace.load_from_volume(Loopyard.Workspace.volume_name_for(ws_id)) do
+            {:ok, c} -> c
+            _ -> nil
+          end
+
+        name =
+          Keyword.get(opts, :name) ||
+            cond do
+              service_name -> "#{service_name}-agent"
+              ws_config && ws_config.name -> ws_config.name
+              true -> Loopyard.Agents.Name.generate()
+            end
+
+        agent_type = Keyword.get(opts, :agent_type) || Loopyard.Agents.Registry.default_agent_name()
+
+        agent_opts =
+          [
+            id: id,
+            name: name,
+            working_dir: working_dir,
+            started_by: Keyword.get(opts, :started_by, "system"),
+            workspace_id: ws_id,
+            agent_type: agent_type
+          ]
+
+        # Volume-backed workspaces run container-only (cheap work container); only
+        # legacy host bind-mount projects get a bind_mount.
+        container_only? = Loopyard.Workspace.container_running?(ws_id) or agent_volume_based?(ws_id)
+        agent_opts = if container_only?, do: agent_opts, else: agent_opts ++ [bind_mount: working_dir]
+        agent_opts = if service_name, do: agent_opts ++ [service_name: service_name], else: agent_opts
+
+        boot_opts =
+          cond do
+            service_name -> [service_name: service_name]
+            msg = Keyword.get(opts, :initial_message) -> [initial_message: msg]
+            true -> [initial_message: :none]
+          end
+
+        register_opts = if service_name, do: [service_name: service_name], else: []
+        ChatAgent.register_booting(id, name, working_dir, register_opts)
+        Loopyard.AgentBoot.start_monitored(id, agent_opts, boot_opts)
+        {:ok, id}
+    end
+  end
+
+  defp agent_volume_based?(ws_id) do
+    case WorkspaceRegistry.get_workspace(ws_id) do
+      %{volume_based: true} -> true
+      _ -> false
+    end
+  end
+
   # True when the workspace's preview cluster (the compose `workspace` service) is
   # up — i.e. the source had its services running and the fork should too.
   defp preview_running?(ws_id), do: Loopyard.Workspace.container_running?(ws_id)

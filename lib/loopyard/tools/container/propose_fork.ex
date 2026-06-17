@@ -49,15 +49,28 @@ defmodule Loopyard.Tools.Container.ProposeFork do
           # the in-progress files and env along. `base` is just the card label.
           case Onboarding.fork_from_workspace(project_id, ws_id, branch, progress) do
             {:ok, new_ws} ->
+              # Spin up the branch's agent as part of provisioning, so the fork is
+              # ready WITH an agent before it becomes available — "Open" lands you
+              # straight on a live chat, not a blank workspace that scrambles to
+              # auto-spawn. Services keep booting in the background.
+              progress.("Starting the agent…")
+
+              new_agent_id =
+                case Onboarding.spawn_agent(new_ws.id, started_by: "fork") do
+                  {:ok, aid} -> aid
+                  _ -> nil
+                end
+
               Approvals.resolve(agent_id, msg_id, %{
                 status: :approved,
                 workspace_id: new_ws.id,
-                project_id: project_id
+                project_id: project_id,
+                agent_id: new_agent_id
               })
 
               {:ok,
                "Approved. Created branch '#{branch}' as a new workspace (#{new_ws.id}), " <>
-                 "forked from '#{base}'. The user can open it from the card."}
+                 "forked from '#{base}', with an agent ready. The user can open it from the card."}
 
             {:error, reason} ->
               Approvals.resolve(agent_id, msg_id, %{status: :failed, error: inspect(reason)})

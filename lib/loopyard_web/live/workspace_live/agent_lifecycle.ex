@@ -16,77 +16,22 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
   alias Loopyard.ChatAgent
   alias Loopyard.StreamBuffer
 
-  @adjectives ~w(Swift Bright Calm Deep Quick Sharp Keen Bold Clear True)
-  @nouns ~w(Spark Drift Pulse Wave Bloom Forge Sage Fern Tide Mesa)
-
   @doc """
   Spawn a new agent for the given workspace. Accepts optional `service_name: name`
   in opts. Returns `{:noreply, socket}`.
   """
   def do_spawn_agent(socket, opts \\ []) do
-    workspace = socket.assigns.workspace
-    working_dir = workspace.path
-    ws_id = Loopyard.Workspace.workspace_id(working_dir)
-    id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
-    service_name = Keyword.get(opts, :service_name)
+    ws_id = Loopyard.Workspace.workspace_id(socket.assigns.workspace.path)
 
-    ws_config =
-      case Loopyard.Workspace.load_from_volume(Loopyard.Workspace.volume_name_for(ws_id)) do
-        {:ok, ws} -> ws
-        _ -> nil
-      end
+    # Delegate to the single backend spawn path (Onboarding.spawn_agent) so the
+    # "New agent" button and the fork-provisioning flow build agents identically.
+    case Loopyard.Onboarding.spawn_agent(ws_id, Keyword.put(opts, :started_by, "browser")) do
+      {:ok, id} ->
+        {:noreply, push_patch(socket, to: "#{socket.assigns.base_path}/agents/#{id}")}
 
-    # One self-determining agent: it inspects the workspace at runtime and sets
-    # up the dev env only if it's actually missing, otherwise it just works on
-    # the code. No more guessing "setup vs coding" up front — that's what spawned
-    # a re-scaffolding setup agent onto an already-configured fork.
-    agent_type = Keyword.get(opts, :agent_type) || Loopyard.Agents.Registry.default_agent_name()
-
-    name =
-      cond do
-        service_name -> "#{service_name}-agent"
-        ws_config && ws_config.name -> ws_config.name
-        true -> auto_name()
-      end
-
-    agent_opts = [
-      id: id,
-      name: name,
-      working_dir: working_dir,
-      started_by: "browser",
-      workspace_id: ws_id,
-      agent_type: agent_type
-    ]
-
-    # Volume-backed workspaces (canonical / local) work via the cheap work
-    # container — the agent is container-only (no bind_mount), using volume-based
-    # MCP tools. Only legacy host-bind-mount projects, whose code lives on the
-    # host, get a bind_mount. The old check keyed off the *compose* container
-    # being up — never true under "working is the default" — so canonical agents
-    # wrongly got a host bind_mount at an empty dir and timed out on boot.
-    container_only? =
-      Loopyard.Workspace.container_running?(ws_id) or volume_based?(ws_id)
-
-    agent_opts =
-      if container_only?,
-        do: agent_opts,
-        else: agent_opts ++ [bind_mount: working_dir]
-
-    agent_opts = if service_name, do: agent_opts ++ [service_name: service_name], else: agent_opts
-    initial_message = Keyword.get(opts, :initial_message)
-
-    boot_opts =
-      cond do
-        service_name -> [service_name: service_name]
-        initial_message -> [initial_message: initial_message]
-        true -> [initial_message: :none]
-      end
-
-    register_opts = if service_name, do: [service_name: service_name], else: []
-    ChatAgent.register_booting(id, name, working_dir, register_opts)
-    Loopyard.AgentBoot.start_monitored(id, agent_opts, boot_opts)
-
-    {:noreply, push_patch(socket, to: "#{socket.assigns.base_path}/agents/#{id}")}
+      {:error, _reason} ->
+        {:noreply, socket}
+    end
   end
 
   @doc """
@@ -159,24 +104,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
     |> assign(:has_more_messages, length(messages) < total)
   end
 
-  @doc """
-  Generate a random two-word agent name.
-  """
-  def auto_name do
-    adj = Enum.random(@adjectives)
-    noun = Enum.random(@nouns)
-    "#{adj} #{noun}"
-  end
-
-  # Volume-backed workspaces (canonical / local) — code lives in a Docker
-  # volume, so the agent must be container-only (work container), never a host
-  # bind_mount.
-  defp volume_based?(ws_id) do
-    case Loopyard.WorkspaceRegistry.get_workspace(ws_id) do
-      %{volume_based: true} -> true
-      _ -> false
-    end
-  end
 
   @doc """
   List agents belonging to the given workspace path.
