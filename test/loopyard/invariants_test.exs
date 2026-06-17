@@ -191,6 +191,59 @@ defmodule Loopyard.InvariantsTest do
                "ETS table :#{table} is defined in StateKeeper but never referenced elsewhere"
       end
     end
+
+    # The "StateKeeper is the sole ETS owner" invariant (CLAUDE.md) was
+    # convention-only — nothing failed CI if someone added :ets.new
+    # elsewhere, which would create a table whose lifetime is wrong (dies
+    # with the wrong process) and that the reconciler/health map can't see.
+    test ":ets.new is only called in StateKeeper" do
+      violations =
+        Path.wildcard("lib/**/*.ex")
+        |> Enum.reject(&String.contains?(&1, "state_keeper.ex"))
+        |> Enum.flat_map(fn path ->
+          File.read!(path)
+          |> String.split("\n")
+          |> Enum.with_index(1)
+          # Real calls only — skip comment lines (a few modules mention
+          # :ets.new in a comment documenting their migration away from it).
+          |> Enum.filter(fn {line, _} ->
+            String.contains?(line, ":ets.new(") and
+              not String.starts_with?(String.trim_leading(line), "#")
+          end)
+          |> Enum.map(fn {_, n} -> "#{path}:#{n}" end)
+        end)
+
+      assert violations == [],
+             "`:ets.new` must only appear in StateKeeper (the sole ETS owner). " <>
+               "Add your table to StateKeeper's @tables instead. Found: #{inspect(violations)}"
+    end
+  end
+
+  # ---------------------------------------------------------------
+  # Boundary-crossing guardrail: a tool that creates or destroys a
+  # workspace MUST route through the human-approval broker. The
+  # propose_*/Approvals wiring was convention — a new destructive tool
+  # that called Onboarding/Destructor directly would skip the guardrail
+  # and not trip CI. This sweep makes it enforced.
+  # ---------------------------------------------------------------
+  describe "approval-gating invariants" do
+    test "any tool touching workspace lifecycle routes through Approvals" do
+      # Functions that create/destroy a workspace — the boundary-crossing ops.
+      lifecycle_call = ~r/(fork_from_workspace|Workspace\.Destructor|destroy_workspace)/
+
+      violations =
+        Path.wildcard("lib/loopyard/tools/**/*.ex")
+        |> Enum.filter(fn path ->
+          src = File.read!(path)
+          Regex.match?(lifecycle_call, src) and
+            not String.contains?(src, "Approvals.request")
+        end)
+
+      assert violations == [],
+             "Tool(s) create/destroy a workspace without going through " <>
+               "Loopyard.Harness.Approvals.request (the human-approval guardrail): " <>
+               "#{inspect(violations)}. Route the action through a propose_* approval."
+    end
   end
 
   # ---------------------------------------------------------------
