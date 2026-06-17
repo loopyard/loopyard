@@ -26,6 +26,7 @@ defmodule Loopyard.Compose do
       {:ok, compose} ->
         with :ok <- validate_no_host_mounts(compose) do
           compose = process_services(compose, code_volume, workspace_id)
+          compose = normalize_code_volume_names(compose, code_volume)
           compose = ensure_code_volume(compose, code_volume)
           compose = inject_identity_home(compose)
           {:ok, Jason.encode!(compose, pretty: true)}
@@ -458,6 +459,37 @@ defmodule Loopyard.Compose do
     volumes = Map.get(compose, "volumes", %{}) || %{}
     volumes = Map.put(volumes, code_volume, %{"external" => true})
     Map.put(compose, "volumes", volumes)
+  end
+
+  # FORK SAFETY: rewrite any top-level external volume whose `name:` points at
+  # *another* workspace's code volume (`loopyard-<id>-code`) to THIS workspace's
+  # code volume. An agent that hardcoded the literal name instead of
+  # ${CODE_VOLUME} (e.g. `name: loopyard-a6e9da50-code`) would otherwise have the
+  # FORK mount and mutate the SOURCE's code — silent cross-workspace corruption.
+  # We only touch names that match the loopyard code-volume shape, so unrelated
+  # named volumes (postgres-data, etc.) are left alone.
+  @code_volume_name ~r/^loopyard-.+-code$/
+  defp normalize_code_volume_names(compose, code_volume) do
+    case Map.get(compose, "volumes") do
+      volumes when is_map(volumes) ->
+        fixed =
+          Map.new(volumes, fn
+            {k, %{"name" => name} = spec} when is_binary(name) ->
+              if Regex.match?(@code_volume_name, name) and name != code_volume do
+                {k, Map.put(spec, "name", code_volume)}
+              else
+                {k, spec}
+              end
+
+            {k, v} ->
+              {k, v}
+          end)
+
+        Map.put(compose, "volumes", fixed)
+
+      _ ->
+        compose
+    end
   end
 
   defp update_volumes_placeholder(svc, code_volume) when is_map(svc) do

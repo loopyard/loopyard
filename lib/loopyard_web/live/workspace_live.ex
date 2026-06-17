@@ -331,17 +331,28 @@ defmodule LoopyardWeb.WorkspaceLive do
     #   1. no agents yet → auto-spawn one (you land in a fresh live chat),
     #   2. agents exist → resume this window's last view here (WindowViews), or
     #      fall back to the latest agent's chat.
-    # The `:auto_spawned` flag guards against :index re-firing before the booting
-    # agent lands in `@agents` (which would spawn a second agent).
-    cond do
-      connected?(socket) and socket.assigns.agents == [] and !socket.assigns[:auto_spawned] ->
-        AgentLifecycle.do_spawn_agent(assign(socket, :auto_spawned, true))
+    #
+    # CRITICAL: read the LIVE agent list here, not socket.assigns.agents — that's
+    # a mount-time snapshot, stale across the remounts a reconnect/live-reload
+    # causes. A fresh fork plus a couple of reconnects each saw the stale empty
+    # snapshot and auto-spawned, piling up 3 agents. register_booting/4 lands the
+    # agent in ETS synchronously before we navigate, so a re-fetch sees it.
+    live_agents =
+      if connected?(socket),
+        do: AgentLifecycle.list_workspace_agents(socket.assigns.workspace.path),
+        else: socket.assigns.agents
 
-      connected?(socket) and socket.assigns.agents != [] ->
+    socket = assign(socket, :agents, live_agents)
+
+    cond do
+      live_agents != [] ->
         case landing_target(socket) do
           nil -> {:noreply, socket}
           path -> {:noreply, push_patch(socket, to: path)}
         end
+
+      connected?(socket) and !socket.assigns[:auto_spawned] ->
+        AgentLifecycle.do_spawn_agent(assign(socket, :auto_spawned, true))
 
       true ->
         {:noreply, socket}
