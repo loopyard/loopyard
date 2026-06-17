@@ -347,3 +347,22 @@ let liveSocket = new LiveSocket("/live", Socket, {
 
 liveSocket.connect()
 window.liveSocket = liveSocket
+
+// Connection-lost banner: reveal #conn-banner when the websocket has been down
+// past a short grace period (so a quick reconnect — live reload, blip — doesn't
+// flash it), hide it the moment we're back. This is the "is it safe to type"
+// signal; the ChatForm hook independently keeps your text until the server acks.
+;(() => {
+  const banner = document.getElementById("conn-banner")
+  if (!banner) return
+  let downTimer = null
+  const show = () => banner.classList.remove("hidden")
+  const hide = () => {
+    if (downTimer) { clearTimeout(downTimer); downTimer = null }
+    banner.classList.add("hidden")
+  }
+  const armDown = () => { if (!downTimer) downTimer = setTimeout(show, 1500) }
+  liveSocket.socket.onOpen(hide)
+  liveSocket.socket.onError(armDown)
+  liveSocket.socket.onClose(armDown)
+})()
