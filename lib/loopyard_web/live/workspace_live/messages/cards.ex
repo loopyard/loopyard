@@ -45,7 +45,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           </div>
           <div class="text-sm font-medium text-zinc-800 dark:text-zinc-200 mb-2">{q.prompt}</div>
 
-          <div :if={@msg.status == :pending} class="flex flex-wrap gap-1.5">
+          <div :if={@msg.status == :pending} class="flex flex-col gap-1.5">
             <button
               :for={o <- q.options}
               type="button"
@@ -53,10 +53,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
               phx-value-question_id={@msg.question_id}
               phx-value-q={q.id}
               phx-value-option={o.label}
-              title={o.description}
-              class="focus-ring inline-flex items-center rounded-lg border border-violet-300 dark:border-violet-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-sm font-medium text-violet-700 dark:text-violet-300 hover:bg-violet-600 hover:text-white hover:border-violet-600 transition-colors"
+              class="focus-ring group/opt text-left rounded-lg border border-violet-300 dark:border-violet-700 bg-white dark:bg-zinc-900 px-3 py-2 hover:bg-violet-600 hover:border-violet-600 transition-colors"
             >
-              {o.label}
+              <div class="text-sm font-medium text-violet-700 dark:text-violet-300 group-hover/opt:text-white">
+                {o.label}
+              </div>
+              <div
+                :if={o.description not in [nil, ""]}
+                class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 group-hover/opt:text-violet-100"
+              >
+                {o.description}
+              </div>
             </button>
           </div>
 
