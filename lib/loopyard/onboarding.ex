@@ -114,8 +114,29 @@ defmodule Loopyard.Onboarding do
       persist(project_id)
       progress.("Starting the environment…")
       start_work_async(ws_id)
+
+      # Replicate the source's RUNNING state: if its preview cluster (services)
+      # was up, bring the fork's up too — "branch this and keep working" means the
+      # dev server should be running, not a dead sidebar. Async + best-effort:
+      # the fork is usable immediately; services come up in the background and the
+      # sidebar goes green via the Observer. Safe now that code-volume names are
+      # normalized to THIS workspace (see Compose.normalize_code_volume_names).
+      if preview_running?(source_ws_id) do
+        progress.("Starting services…")
+        start_preview_async(ws_id)
+      end
+
       {:ok, ws}
     end
+  end
+
+  # True when the workspace's preview cluster (the compose `workspace` service) is
+  # up — i.e. the source had its services running and the fork should too.
+  defp preview_running?(ws_id), do: Loopyard.Workspace.container_running?(ws_id)
+
+  defp start_preview_async(ws_id) do
+    Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn -> start_preview(ws_id) end)
+    :ok
   end
 
   @doc """
