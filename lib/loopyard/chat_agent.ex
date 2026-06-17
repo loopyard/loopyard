@@ -712,6 +712,29 @@ defmodule Loopyard.ChatAgent do
     :telemetry.execute([:loopyard, :agent, :message], %{}, %{agent_id: state.id, role: :user})
 
     cond do
+      # The agent is BLOCKED on an `ask_user` question (its turn is
+      # parked inside the tool call, waiting for the card to be
+      # answered). A free-text chat message here means "use this
+      # instead of the buttons" — deliver it as the answer so the turn
+      # unblocks with the user's actual intent. Without this, the
+      # message queues behind a turn that can't finish until the
+      # question is answered → deadlock (the agent shows "Asking…"
+      # forever while the user's reply sits "Queued"). Record the
+      # message as a normal user turn-input so it's visible, then
+      # resolve the question.
+      Loopyard.Harness.Questions.pending_for_agent?(state.id) ->
+        user_msg = %{role: :user, content: text, timestamp: DateTime.utc_now()}
+        {state, user_msg} = append_message(state, user_msg)
+        Persistence.persist_message(state, user_msg)
+
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+          agent_id: state.id,
+          msg: user_msg
+        })
+
+        Loopyard.Harness.Questions.answer_with_text(state.id, text)
+        {:noreply, state}
+
       # Agent-sanity #15. If a turn is already in flight (:thinking)
       # or pending restart (:backoff), starting a second stream Task
       # against the same Claude session risks interleaved events or

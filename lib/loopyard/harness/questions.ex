@@ -51,7 +51,11 @@ defmodule Loopyard.Harness.Questions do
       })
 
     msg_id = msg && msg.id
-    :ets.insert(@table, {qid, %{agent_id: agent_id, msg_id: msg_id, waiter: self()}})
+
+    :ets.insert(
+      @table,
+      {qid, %{agent_id: agent_id, msg_id: msg_id, waiter: self(), questions: questions}}
+    )
 
     receive do
       {:answered, ^qid, selections} ->
@@ -86,6 +90,57 @@ defmodule Loopyard.Harness.Questions do
   @doc "Is this question still awaiting an answer?"
   @spec pending?(String.t()) :: boolean()
   def pending?(qid), do: :ets.member(@table, qid)
+
+  @doc """
+  The pending question for `agent_id`, if any: `{qid, entry}` or `nil`.
+  An agent blocks on at most one `ask_user` call at a time, so there's
+  one entry to find. Small table (a handful of in-flight questions), so
+  a linear scan is fine.
+  """
+  @spec pending_for_agent(String.t()) :: {String.t(), map()} | nil
+  def pending_for_agent(agent_id) when is_binary(agent_id) do
+    :ets.tab2list(@table)
+    |> Enum.filter(fn {_qid, entry} -> entry.agent_id == agent_id end)
+    |> Enum.find_value(fn {qid, entry} ->
+      # A question is only really pending if its waiter (the blocked
+      # harness tool process) is still alive. If the tool died abnormally
+      # (session restart, stream replaced, CLI crash) the receive in
+      # ask/2 never ran, so the entry leaked. Reap it here — and flip the
+      # card off "Asking…" — so a dead question can't hijack a chat
+      # message (route it to a dead pid = silently lost).
+      if Process.alive?(entry.waiter) do
+        {qid, entry}
+      else
+        :ets.delete(@table, qid)
+        update_msg(entry.agent_id, entry.msg_id, %{status: :timeout})
+        nil
+      end
+    end)
+  end
+
+  @doc "Whether `agent_id` is currently blocked awaiting a question answer."
+  @spec pending_for_agent?(String.t()) :: boolean()
+  def pending_for_agent?(agent_id), do: pending_for_agent(agent_id) != nil
+
+  @doc """
+  Resolve an agent's pending question with free-text the user typed into
+  chat (instead of clicking a button). Maps the text onto every question
+  in the pending call as the chosen answer, so the blocked harness turn
+  unblocks with the user's actual words. No-op (`{:error, :none_pending}`)
+  if nothing's pending. This is what makes "just chat at the agent while
+  it's asking" work instead of deadlocking the turn.
+  """
+  @spec answer_with_text(String.t(), String.t()) :: :ok | {:error, :none_pending}
+  def answer_with_text(agent_id, text) when is_binary(agent_id) and is_binary(text) do
+    case pending_for_agent(agent_id) do
+      {qid, %{questions: questions}} ->
+        selections = Map.new(questions, fn q -> {q.id, [text]} end)
+        answer(qid, selections)
+
+      _ ->
+        {:error, :none_pending}
+    end
+  end
 
   # --- internals ---
 
