@@ -20,7 +20,10 @@ defmodule Mix.Tasks.Loopyard.Server do
     # Cookie always lives at ~/.loopyard/cookie so loopyard.rpc can find it
     cookie = ensure_cookie()
 
-    case Node.start(:loopyard, :shortnames) do
+    # Loopback longname, NOT a hostname-derived shortname — macOS flips the
+    # hostname (Mac ↔ Mac.localdomain ↔ macbook), which silently broke remote
+    # access (`loopyard.rpc` could no longer find the node). 127.0.0.1 is stable.
+    case Node.start(:"loopyard@127.0.0.1", :longnames) do
       {:ok, _} ->
         Node.set_cookie(cookie)
 

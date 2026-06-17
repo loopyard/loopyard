@@ -58,9 +58,9 @@ defmodule Mix.Tasks.Loopyard.Rpc do
     node = target_node()
     cookie = read_cookie()
 
-    sname = :"rpc_#{System.pid()}_#{System.monotonic_time()}"
+    sname = :"rpc_#{System.pid()}_#{System.monotonic_time()}@127.0.0.1"
 
-    case Node.start(sname, :shortnames) do
+    case Node.start(sname, :longnames) do
       {:ok, _} ->
         Node.set_cookie(cookie)
 
@@ -80,8 +80,9 @@ defmodule Mix.Tasks.Loopyard.Rpc do
   end
 
   defp target_node do
-    {:ok, hostname} = :inet.gethostname()
-    :"loopyard@#{hostname}"
+    # Pin to a loopback longname so remote access survives macOS hostname flips
+    # (Mac ↔ Mac.localdomain ↔ macbook), which silently broke `loopyard.rpc`.
+    :"loopyard@127.0.0.1"
   end
 
   defp read_cookie do
