@@ -335,7 +335,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           <.thinking_indicator
             :if={
               @agent.status == :thinking && @streaming_text == "" &&
-                (assigns[:streaming_thinking] || "") == ""
+                (assigns[:streaming_thinking] || "") == "" &&
+                not awaiting_answer?(@messages)
             }
             messages={@messages}
             word={@thinking_word}
@@ -368,6 +369,20 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       </div>
     </div>
     """
+  end
+
+  # True when the most recent question card is still unanswered. While it
+  # is, the agent's turn is parked inside ask_user waiting on the human —
+  # so the "Asking…" bouncing-dots indicator is redundant with the card
+  # (which already says "The agent needs your input"). Suppress the dots.
+  defp awaiting_answer?(messages) do
+    messages
+    |> Enum.reverse()
+    |> Enum.find(&(&1.role == :question))
+    |> case do
+      %{status: :pending} -> true
+      _ -> false
+    end
   end
 
   def thinking_indicator(assigns) do
