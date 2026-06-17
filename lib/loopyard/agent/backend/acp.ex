@@ -73,7 +73,12 @@ defmodule Loopyard.Agent.Backend.ACP do
   host mode; the protocol/connection layer is identical.
   """
   def docker_exec_cmd(container, adapter \\ "claude-code-acp") do
-    "docker exec -i #{container} #{adapter}"
+    # Launch the adapter through an in-container shell that sources ~/.profile, so
+    # the identity env (CLAUDE_CODE_OAUTH_TOKEN, written to ~/.loopyard/env and
+    # sourced from ~/.profile by Env.sync_home/1) is in scope. A bare
+    # `docker exec ... claude-code-acp` would NOT source it → the harness 401s.
+    # Single-quoted so $HOME expands in the CONTAINER, not on the host.
+    ~s(docker exec -i #{container} sh -c '. "$HOME/.profile" 2>/dev/null; exec #{adapter}')
   end
 
   # Host mode vs in-container mode (#5). In-container: the adapter runs via
