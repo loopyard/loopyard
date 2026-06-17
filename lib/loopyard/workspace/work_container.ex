@@ -141,8 +141,10 @@ defmodule Loopyard.Workspace.WorkContainer do
     with :ok <- ensure_image(),
          :ok <- ensure_volume(volume),
          # Materialize identity env into the home volume's ~/.profile (files-in-
-         # $HOME), so we never inject secrets via `docker run -e`.
+         # $HOME), so we never inject secrets via `docker run -e`. Stage operator
+         # CLIs into the volume too so they travel to any container mounting it.
          _ <- Loopyard.Workstation.Env.sync_home(ws),
+         _ <- Loopyard.Workstation.Env.stage_tools(ws),
          # Clear any stopped container of the same name before run.
          _ <- Docker.docker(["rm", "-f", name]),
          {:ok, _} <- run(name, volume, ws) do

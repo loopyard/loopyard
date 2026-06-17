@@ -27,12 +27,74 @@ defmodule Loopyard.Compose do
         with :ok <- validate_no_host_mounts(compose) do
           compose = process_services(compose, code_volume, workspace_id)
           compose = ensure_code_volume(compose, code_volume)
+          compose = inject_identity_home(compose)
           {:ok, Jason.encode!(compose, pretty: true)}
         end
 
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  # Mount the operator's identity $HOME volume into the agent's bench
+  # service (`workspace`) so an agent exec'ing there inherits the same
+  # logins/tools (gh/claude/fly) it gets in the cheap WorkContainer.
+  # WITHOUT this, when the preview cluster is up `agent_container/1`
+  # prefers the compose `workspace` service — which had no home mount,
+  # so gh/claude auth silently vanished (the "no GH_TOKEN here" bug).
+  #
+  # Only the `workspace` service gets the identity. App services (`dev`,
+  # db, redis…) are cattle — they must NOT see the operator's personal
+  # tokens. Env (tokens) is NOT injected via compose `environment:`;
+  # it lives as files in the home volume (`~/.loopyard/env`, sourced by
+  # `~/.profile`), exactly like WorkContainer. We only set `HOME` + the
+  # mount here; `Compose.up/2` runs `Env.sync_home/1` first.
+  defp inject_identity_home(compose) do
+    case get_in(compose, ["services", "workspace"]) do
+      svc when is_map(svc) ->
+        identity = Loopyard.Workstation.current()
+        home_volume = Loopyard.Workstation.home_volume(identity)
+        home_path = "/home/#{identity}"
+
+        svc =
+          svc
+          |> add_volume_mount("#{home_volume}:#{home_path}")
+          |> put_env("HOME", home_path)
+
+        compose
+        |> put_in(["services", "workspace"], svc)
+        |> ensure_external_volume(home_volume)
+
+      _ ->
+        compose
+    end
+  end
+
+  defp add_volume_mount(svc, mount) do
+    volumes = Map.get(svc, "volumes", []) || []
+    Map.put(svc, "volumes", volumes ++ [mount])
+  end
+
+  # Compose `environment:` is either a list ("K=V") or a map (%{"K" => "V"}).
+  # Preserve whichever shape the agent wrote.
+  defp put_env(svc, key, value) do
+    case Map.get(svc, "environment") do
+      env when is_list(env) ->
+        env = Enum.reject(env, &String.starts_with?(to_string(&1), "#{key}="))
+        Map.put(svc, "environment", env ++ ["#{key}=#{value}"])
+
+      env when is_map(env) ->
+        Map.put(svc, "environment", Map.put(env, key, value))
+
+      _ ->
+        Map.put(svc, "environment", ["#{key}=#{value}"])
+    end
+  end
+
+  defp ensure_external_volume(compose, volume_name) do
+    volumes = Map.get(compose, "volumes", %{}) || %{}
+    volumes = Map.put_new(volumes, volume_name, %{"external" => true})
+    Map.put(compose, "volumes", volumes)
   end
 
   @doc """
@@ -521,6 +583,16 @@ defmodule Loopyard.Compose do
   @doc "Start all services."
   def up(project_dir, workspace_id) do
     :telemetry.span([:loopyard, :compose, :up], %{workspace_id: workspace_id}, fn ->
+      # Materialize the operator's identity env (tokens) into the home
+      # volume's ~/.profile BEFORE the cluster boots, so the `workspace`
+      # service (which mounts that volume — see inject_identity_home/1)
+      # has gh/claude/fly creds the moment an agent execs into it. Stage
+      # the operator CLIs (gh/fly) into the volume too — the project's app
+      # image doesn't ship them.
+      identity = Loopyard.Workstation.current()
+      _ = Loopyard.Workstation.Env.sync_home(identity)
+      _ = Loopyard.Workstation.Env.stage_tools(identity)
+
       result = compose(project_dir, workspace_id, ["up", "-d", "--build"], timeout: 600_000)
       {result, %{}}
     end)

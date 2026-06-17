@@ -148,6 +148,48 @@ defmodule Loopyard.Workstation.Env do
     end
   end
 
+  # Operator CLIs we carry in the identity home volume so they're
+  # available in ANY container that mounts it — including the project's
+  # compose `workspace` service, whose app image (ruby/node/…) doesn't
+  # ship gh/fly. Static, self-contained binaries only (no shared libs),
+  # so a copy from the base image runs unchanged under a different
+  # distro. claude is NOT staged — the harness runs it host-side / via
+  # ACP, not as a shell command in the project container.
+  @staged_tools ~w(gh fly)
+
+  @doc """
+  Stage operator CLI binaries (#{Enum.join(@staged_tools, ", ")}) from the
+  stock base image into the identity's `$HOME/.local/bin`, and ensure that
+  dir is on `PATH` via `~/.profile`. This is what lets `gh` work inside the
+  project's `workspace` service — that image has the right language runtime
+  but none of the operator toolchain. Idempotent (skips a tool already
+  staged) and cheap on the hot path; the base image is local so the
+  transient `docker run` doesn't pull. Best-effort: a failure here must not
+  block boot, so callers ignore the result.
+  """
+  @spec stage_tools(String.t()) :: :ok | {:error, term()}
+  def stage_tools(id) do
+    vol = Workstation.home_volume(id)
+    image = Loopyard.Workspace.WorkContainer.image()
+    tools = Enum.join(@staged_tools, " ")
+
+    script =
+      "mkdir -p /vol/.local/bin && " <>
+        "for t in #{tools}; do " <>
+        "src=$(command -v $t 2>/dev/null) || continue; " <>
+        "[ -x /vol/.local/bin/$t ] && continue; " <>
+        "cp \"$src\" /vol/.local/bin/$t; " <>
+        "done && " <>
+        "touch /vol/.profile && " <>
+        "(grep -q '.local/bin' /vol/.profile 2>/dev/null || " <>
+        ~s|printf '\\n%s\\n' 'export PATH="$HOME/.local/bin:$PATH"' >> /vol/.profile)|
+
+    case Loopyard.Docker.docker(["run", "--rm", "-v", "#{vol}:/vol", image, "sh", "-c", script]) do
+      {:ok, _} -> :ok
+      err -> err
+    end
+  end
+
   # The body of ~/.loopyard/env: `export K='V'` lines, single-quote-escaped so a
   # value containing `'` survives (`'` → `'\''`).
   defp env_file_body(id) do
