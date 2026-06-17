@@ -937,7 +937,7 @@ defmodule Loopyard.ChatAgent do
         # With a session_id, `resume:` already restored the full
         # conversation — no need to pollute it with a summary prompt.
         if is_nil(state.claude_session_id) do
-          resume_msg = build_resume_message(state)
+          resume_msg = Loopyard.ChatAgent.ResumeMessage.build(state.messages)
 
           if resume_msg do
             GenServer.cast(self(), {:send_message, resume_msg})
@@ -1081,7 +1081,7 @@ defmodule Loopyard.ChatAgent do
         }
 
         # Send the resume summary
-        resume = build_resume_message(state)
+        resume = Loopyard.ChatAgent.ResumeMessage.build(state.messages)
         if resume, do: GenServer.cast(self(), {:send_message, resume})
 
         # Re-send the user's last message so the agent acts on it
@@ -1235,7 +1235,7 @@ defmodule Loopyard.ChatAgent do
   def handle_info({:stream_error, id, reason}, %{id: id} = state) do
     case StreamHandler.on_stream_error(state, reason) do
       {:build_resume, state} ->
-        resume_msg = build_resume_message(state)
+        resume_msg = Loopyard.ChatAgent.ResumeMessage.build(state.messages)
 
         if resume_msg do
           GenServer.cast(self(), {:send_message, resume_msg})
@@ -1526,64 +1526,6 @@ defmodule Loopyard.ChatAgent do
   end
 
   # --- Private ---
-
-  defp build_resume_message(state) do
-    # Build a compact summary of recent activity so the new session can continue
-    recent = state.messages |> Enum.take(20) |> Enum.reverse()
-    return_nothing = length(recent) < 3
-
-    if return_nothing do
-      nil
-    else
-      # Summarize what tools were used and what the last assistant message said
-      tool_names =
-        recent
-        |> Enum.filter(&(&1.role == :tool))
-        |> Enum.map(& &1[:tool])
-        |> Enum.uniq()
-
-      last_assistant =
-        recent
-        |> Enum.filter(&(&1.role == :assistant))
-        |> List.last()
-
-      last_system =
-        recent
-        |> Enum.filter(&(&1.role in [:system, :build_done]))
-        |> List.last()
-
-      parts = ["Your session crashed and was restarted. Here's what was happening:"]
-
-      parts =
-        if tool_names != [] do
-          parts ++ ["Recent tools used: #{Enum.join(tool_names, ", ")}"]
-        else
-          parts
-        end
-
-      parts =
-        if last_assistant do
-          parts ++ ["Your last message: #{String.slice(last_assistant.content, 0..500)}"]
-        else
-          parts
-        end
-
-      parts =
-        if last_system do
-          parts ++ ["Last system status: #{String.slice(last_system.content, 0..500)}"]
-        else
-          parts
-        end
-
-      parts =
-        parts ++
-          [
-            "Continue where you left off. If you were setting up the dev environment, check service_status and follow the verification loop."
-          ]
-
-      Enum.join(parts, "\n\n")
-    end
-  end
 
   # Ensure whatever session_opts we hand to the backend carry the
   # latest Claude CLI session_id as `resume:`. This is what makes a

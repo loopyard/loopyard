@@ -19,6 +19,7 @@ defmodule Loopyard.Onboarding do
 
   alias Loopyard.{
     CanonicalRepo,
+    ChatAgent,
     ProjectRegistry,
     WorkspaceRegistry,
     VolumeManager,

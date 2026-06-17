@@ -14,6 +14,7 @@ defmodule LoopyardWeb.WorkspaceLive do
     DiffLoader,
     DockerEvents,
     FileBrowser,
+    Navigation,
     ServiceLogs,
     Switcher
   }
@@ -346,7 +347,7 @@ defmodule LoopyardWeb.WorkspaceLive do
 
     cond do
       live_agents != [] ->
-        case landing_target(socket) do
+        case Navigation.landing_target(socket) do
           nil -> {:noreply, socket}
           path -> {:noreply, push_patch(socket, to: path)}
         end
@@ -357,30 +358,6 @@ defmodule LoopyardWeb.WorkspaceLive do
       true ->
         {:noreply, socket}
     end
-  end
-
-  # Where to send a window that lands on the bare workspace (:index) URL when
-  # agents exist: this window's last meaningful view here (so a switch resumes
-  # where you were), else the latest agent's chat. Returns nil when we're already
-  # there (no redirect needed) — avoids a navigate loop.
-  defp landing_target(socket) do
-    base = socket.assigns.base_path
-    ws_id = socket.assigns.workspace.id
-    resume = Loopyard.WindowViews.resume_path(socket.transport_pid, ws_id)
-
-    target =
-      if is_binary(resume) and resume != base do
-        resume
-      else
-        case List.first(socket.assigns.agents) do
-          %{id: id} -> "#{base}/agents/#{id}"
-          _ -> nil
-        end
-      end
-
-    # current_path is the bare :index (base) — if target resolves back to it,
-    # there's nothing to do.
-    if target && target != base, do: target
   end
 
   # Volume info page
@@ -660,8 +637,8 @@ defmodule LoopyardWeb.WorkspaceLive do
   @impl true
   def handle_event("spawn_agent_with_message", %{"preset" => preset}, socket) do
     AgentLifecycle.do_spawn_agent(socket,
-      initial_message: preset_message(preset),
-      agent_type: preset_agent_type(preset)
+      initial_message: Navigation.preset_message(preset),
+      agent_type: Navigation.preset_agent_type(preset)
     )
   end
 
@@ -1614,24 +1591,6 @@ defmodule LoopyardWeb.WorkspaceLive do
 
     assign(socket, :volume_tab, tab)
   end
-
-  defp preset_message("setup") do
-    "Look at the project in /workspace and set up a development environment. Start by reading `setup_guide.md` with `read_agent_file` — it has the full playbook."
-  end
-
-  defp preset_message("debug") do
-    "Check `service_status` for all services. For any that are crashed or unhealthy, pull their logs and diagnose the issue. Fix what you can."
-  end
-
-  defp preset_message("explore") do
-    "Explore the project in /workspace. Use `tree` to see the structure, then read key files (README, package.json/Gemfile/mix.exs, config files) and give me a summary of what this project is and how it's built."
-  end
-
-  defp preset_message(_), do: nil
-
-  # One agent now — it self-determines setup vs coding. Presets only differ in
-  # their kick-off message, not the agent.
-  defp preset_agent_type(_), do: Loopyard.Agents.Registry.default_agent_name()
 
   defp load_git_data(assigns) do
     project = assigns.project
