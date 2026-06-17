@@ -16,7 +16,9 @@ Loopyard is a **Docker control plane** with **AI agents** wired into it. Dev env
 
 **Source adapters — the ingress layer:** Source adapters (`Source.Local`, `Source.GitHub`) are how code gets INTO the volume, but they don't participate in the dev environment. Local uses Mutagen to sync host filesystem to the Docker volume. GitHub clones via API into the volume. Once code is in the volume, everything is Docker — agents have NO host filesystem access when containers are running. See [docs/SOURCE_ADAPTERS.md](docs/SOURCE_ADAPTERS.md).
 
-**The agents:** Claude Code sessions run as GenServer processes. Each agent exec's into the workspace container to read/write code and run commands. Agents use MCP tools from `loopyard-container`: `exec` for commands, `write_file` for Dockerfile/docker-compose.yml, `docker_compose` for container lifecycle, `logs` for debugging. All tool operations go through Docker — `Docker.exec_in` for commands, `VolumeIO` for file I/O. Tool output is truncated for agents (via `Helpers.truncate_for_agent`, ~80 lines) to save context tokens, but streamed in full to the UI for humans. The setup agent bootstraps a project from scratch by examining the codebase and writing infrastructure files directly.
+**The agents:** Claude Code sessions run as GenServer processes. Each agent exec's into the workspace container to read/write code and run commands. Agents use MCP tools from `loopyard-container`: `exec` for commands, `write_file` for Dockerfile/docker-compose.yml, `docker_compose` for container lifecycle, `logs` for debugging. All tool operations go through Docker — `Docker.exec_in` for commands, `VolumeIO` for file I/O. Tool output is truncated for agents (via `Helpers.truncate_for_agent`, ~80 lines) to save context tokens, but streamed in full to the UI for humans.
+
+**One self-determining agent — no setup-vs-coding split.** There is a single agent type (`priv/agents/coding/agent.md`). It reads the situation before acting: it runs `service_status` and inspects `/workspace`, then bootstraps the dev environment ONLY if it's actually missing (no `.loopyard/workspace/docker-compose.yml`), brings it back up if it exists but is down, and otherwise just codes without re-scaffolding a working environment. The setup playbook (`setup_guide.md`) and per-stack guides (`stacks/`) live alongside the agent prompt in `priv/agents/coding/`; the agent reads them on demand via `read_agent_file` (relative paths). There is no separate "setup agent."
 
 **The multiplayer layer:** Everything is wired through PubSub. Chat messages, terminal I/O, service status changes, build output — all broadcast to every connected viewer. LiveViews subscribe and render. The terminal system supports both browser (xterm.js via Phoenix Channel) and SSH access to the same shared session. Multiple people can watch an agent work, type in the same terminal, or monitor services simultaneously.
 
@@ -150,6 +152,64 @@ timeouts with ETS fallback — a wedged agent doesn't hang the UI.
 `terminate/2` caps `backend.stop` at 3s via `Task.yield` +
 `Task.shutdown`. Stream task has a 10-min safety timer via
 `:stream_timeout` ref-tagged.
+
+## Harness backend seam (ACP-first)
+
+**The Backend behaviour is the pluggable harness seam.**
+`Loopyard.Agent.Backend` (`lib/loopyard/agent/backend.ex`) defines
+`start_session/1`, `stream/2`, `stop/1`, `session_alive?/1`,
+`session_id/1`. Everything above it (ChatAgent, StreamHandler,
+multiplayer fan-out) consumes neutral `Loopyard.Agent.Event` structs,
+so only the event *source* differs per backend. Implementations:
+`Backend.ClaudeCode` (the SDK/CLI today), `Backend.ACP`
+(`backend/acp.ex` — drives a **real** Claude/Codex harness over the
+Agent Client Protocol, JSON-RPC over stdio), `Backend.Fake` (tests).
+ACP is the north-star direction (#3): run the real harness
+*in-container* (`docker exec -i <work> claude-code-acp`) against the
+mounted code volume, instead of reimplementing the agent loop. ACP is
+implemented + tested but not yet the default backend — see
+`docs/IMPROVEMENTS.md` for the open ACP gaps (permission round-trip,
+cancel/interrupt, resume, token cost, session_opts shape).
+
+**Inbox vs. turn execution — the durability boundary.** Loopyard owns
+the **durable message inbox**: ordering, the persisted message log, the
+`pending_sends` FIFO queue, and the rate-limit/auth/backoff gating.
+The harness (whichever Backend) owns only **turn execution** — taking a
+prompt and streaming a response. This split is why a harness restart
+doesn't lose messages: the inbox is Loopyard state, not harness state.
+
+## Fork readiness (provision-before-available)
+
+A fork is fully provisioned **before** it becomes available — "Open"
+lands you on a live agent, never a blank scrambling workspace. The flow
+(`propose_fork` → `Onboarding.fork_from_workspace/4`):
+1. Copy the source workspace's code volume (working tree + `.loopyard`
+   infra + git history) onto the new branch's OWN volume. Stale
+   pid/socket files are scrubbed during the copy.
+2. Normalize the compose code-volume names to the fork's own volume
+   (`Compose.normalize_code_volume_names`) — fork-safety: the fork must
+   never mount the source's volume.
+3. If the source's preview cluster (services) was running, start the
+   fork's too (async, best-effort).
+4. Spawn the branch's agent via the unified `Onboarding.spawn_agent/2`
+   (the single backend-spawn path shared by the LiveView "New agent"
+   and provisioning flows).
+Each phase streams into the approval card via the `progress` callback;
+the card resolves to "Ready — open `<branch>` →".
+
+## Send reliability (no silent loss)
+
+- **Send waits for a server ack before clearing the input.** The
+  `send_message` LiveView event replies `%{ok: true}`; the `ChatForm`
+  JS hook keeps your typed text until that reply lands (`app.js`). A
+  disconnected socket → no ack → text stays, nothing is dropped.
+- **Connection-lost banner** (`#conn-banner`) reveals after a short
+  grace period when the websocket is down, hides on reconnect — the
+  "is it safe to type" signal.
+- **Harness-status block** in the agent sidebar
+  (`context_panel.ex` → `harness_status/1`) is the one place to glance
+  at to know harness state (Ready / Starting / Reconnecting / offline /
+  rate-limited), with a plain-language consequence line.
 
 ## Docs
 

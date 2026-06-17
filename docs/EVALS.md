@@ -1,6 +1,6 @@
 # Evals
 
-Evals test whether the setup agent can configure a project from scratch. Each eval lives in `evals/<name>/` with this structure:
+Evals test whether the agent can configure a project from scratch — the single self-determining agent inspects the workspace and bootstraps the dev env when it's missing (there's no separate "setup agent"). Each eval lives in `evals/<name>/` with this structure:
 
 ```
 evals/<name>/

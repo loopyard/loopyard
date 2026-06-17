@@ -6,7 +6,7 @@ user_invocable: true
 
 # Eval: Test Project Setup End-to-End
 
-Run an automated eval that launches a project in Loopyard and monitors the setup agent until services are healthy.
+Run an automated eval that launches a project in Loopyard and monitors the agent until services are healthy. (There's one self-determining agent — it inspects the workspace and bootstraps the dev env when it's missing; there's no separate "setup agent.")
 
 **Critical principle: zero nudges.** An eval only truly passes if the agent completes setup with NO human intervention. If nudges are needed, that's a system failure to fix — not a successful eval.
 

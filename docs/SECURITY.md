@@ -107,6 +107,23 @@ All file I/O goes through `VolumeIO` against the agent's own volume (`volume_nam
 
 `Loopyard.Secrets` entries carry an optional `scope: [workspace_id | project_id]`. Empty scope = global; non-empty = only matching workspaces/projects. `Tools.Secrets` derives the requesting agent's workspace and project from the session and filters. Out-of-scope `get_secret` returns "not found" — indistinguishable from a missing key, so one agent can't probe for another project's secret names.
 
+## ACP adapter trust boundary
+
+Loopyard is moving to run a **real** coding harness (Claude Code today, Codex next) in-container over the **Agent Client Protocol** instead of reimplementing the agent loop (`Loopyard.Agent.Backend.ACP`; north-star issue #3). This changes the trust picture: the harness is no longer an SDK we call into — it's an **untrusted subprocess** speaking JSON-RPC over stdio, and it talks *back* to Loopyard (it can issue requests, not just stream responses). Treat ACP frames the way you'd treat any untrusted network input.
+
+**Where the boundary sits.** The ACP adapter (`@zed-industries/claude-code-acp`) runs as an OS subprocess — host-side today via an Erlang Port (`Transport.Port`), in-container next via `docker exec -i <work> claude-code-acp` (#5). The harness inside has whatever authority its own credentials carry. What Loopyard must NOT do is treat ACP frames as trusted just because the connection started with a valid handshake.
+
+**What the ACP adapter is trusted to do:**
+- Drive a conversation turn: stream `session/update` notifications (text, thinking, tool calls/results) that the `Translator` maps to neutral `Loopyard.Agent.Event` structs. These are *display/persistence* data, not commands against Loopyard.
+- In **in-container** mode, use the container's own filesystem natively (no client-fs capability advertised), so all its file I/O is already inside the `/workspace` sandbox by construction — the same volume boundary every other tool respects.
+
+**What Loopyard must validate from it (and must NOT blindly honor):**
+- **`fs/read_text_file` / `fs/write_text_file` (host mode only).** When Loopyard advertises the client-fs capability (host-side), the adapter can ask Loopyard to read/write arbitrary host paths. Today `Connection.handle_agent_request/4` passes the requested `path` straight to `File.read/1` / `File.write/2` with **no `validate_workspace_path` check** — host mode therefore trusts the adapter with the host filesystem. This is acceptable only because host mode is a dev/spike path; **the production target is in-container mode, which advertises NO fs capability** so the adapter never delegates fs back to Loopyard. Before host mode ships to anything but spikes, these handlers MUST go through the same `validate_workspace_path` clamp as the file tools (§5). Tracked in `docs/IMPROVEMENTS.md`.
+- **`session/request_permission`.** The adapter asks Loopyard to approve a tool call. Today the policy is `:auto_allow` (picks the first `allow*` option) — Loopyard does not yet enforce its own tool policy here, and the `%Event.PermissionRequest{}` it surfaces is dropped by `StreamHandler`. The eventual `:ask` mode (#7) is where a human/Loopyard decision actually gates the call. Until then, an in-container harness is bounded by the **container sandbox**, not by per-tool approval.
+- **Frame size / hung harness.** The transport reads newline-delimited JSON with an 8MB per-line buffer cap (`{:line, 8_000_000}`); a continuation (`:noeol`) chunk stream is accumulated in `state.buf` with no hard ceiling, so a pathological adapter could grow that buffer — a bounded-buffer cap is **planned, not enforced**. Unparseable frames are skipped (`Jason.decode` failure → drop), but there is **no JSON-RPC schema validation** of well-formed-but-unexpected frames. A hung harness is bounded by `@turn_timeout` (10 min) and `@ready_timeout` (30 s); there is no `session/cancel` interrupt yet (#3 gap).
+
+**Rule of thumb for the ACP seam:** the in-container variant is the safe target precisely because it collapses the trust question into the *existing* container/volume sandbox — the harness can only touch `/workspace` because that's all its container can see. Host mode (no fs clamp, auto-allow permissions) is a spike convenience, not a security posture. Do not enable host mode against real user projects, and do not add new client capabilities (fs or otherwise) to the host-mode handshake without a path-validation + policy story. Every ACP gap above is tracked in `docs/IMPROVEMENTS.md`.
+
 ## Notes on the BEAM-side Docker plane
 
 The Loopyard BEAM makes Docker CLI calls of its own (not through agent tools). These calls are the control plane and are intentionally trusted:

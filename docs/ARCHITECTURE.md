@@ -238,7 +238,16 @@ The macro generates `__tool_name__/0`, `__description__/0`, `input_schema/0`. Yo
 
 ## ChatAgent internals
 
-Each `ChatAgent` is a GenServer owning a Claude Code SDK session (CLI subprocess).
+Each `ChatAgent` is a GenServer owning a conversation **backend** session. There is **one agent type** — a self-determining coding agent (`priv/agents/coding/agent.md`) that inspects the workspace (`service_status` + `/workspace`) and bootstraps the dev environment only if it's actually missing, otherwise just codes. There is no setup-vs-coding split.
+
+**The Backend behaviour is the pluggable harness seam.** `Loopyard.Agent.Backend` (`lib/loopyard/agent/backend.ex`) defines `start_session/1`, `stream/2`, `stop/1`, `session_alive?/1`, `session_id/1`. ChatAgent / StreamHandler / multiplayer fan-out consume neutral `Loopyard.Agent.Event` structs, so swapping backends changes only the event *source*:
+- `Backend.ClaudeCode` — the Claude Code SDK / CLI subprocess (today's default).
+- `Backend.ACP` (`backend/acp.ex`) — drives a **real** Claude/Codex harness over the Agent Client Protocol (JSON-RPC over stdio), host-side today and in-container next (`docker exec -i <work> claude-code-acp`). North-star direction (#3); implemented + tested but not yet the default. See [SECURITY.md](SECURITY.md) for its trust boundary and [IMPROVEMENTS.md](IMPROVEMENTS.md) for open gaps.
+- `Backend.Fake` — deterministic test backend.
+
+**Inbox vs. turn execution — the durability boundary.** Loopyard owns the **durable message inbox**: message ordering, the persisted ETF message log, the `pending_sends` FIFO queue, and rate-limit/auth/backoff gating. The backend (whichever harness) owns only **turn execution** — taking a prompt and streaming a response. This is why a harness restart never loses messages: the inbox is Loopyard state, not harness state. The `send_message` LiveView event replies with a server **ack** (`%{ok: true}`) so the browser only clears the input once Loopyard has durably accepted the message.
+
+Each `ChatAgent` GenServer (with the default backend) owns a Claude Code SDK session (CLI subprocess).
 
 **Message storage:** Reversed list internally for O(1) prepend. `append_message` returns `{state, msg}`. `summary/1` reverses before exposing to readers. Capped at 1000 messages in memory — the ETF agent log retains full history.
 
