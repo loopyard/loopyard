@@ -64,6 +64,7 @@ defmodule LoopyardWeb.Components.LogViewer do
   attr :title, :string, default: nil
   attr :raw_url, :string, default: nil
   attr :max_lines, :integer, default: 50
+  attr :started, :any, default: nil
 
   def log_inline(assigns) do
     {label, dot_class} =
@@ -92,6 +93,16 @@ defmodule LoopyardWeb.Components.LogViewer do
       <div class="flex items-center gap-2 px-3 py-1.5 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
         <div class={"w-1.5 h-1.5 rounded-full flex-none #{@dot_class}"}></div>
         <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">{@label}</span>
+        <span
+          :if={@status == :building && elapsed_since(@started)}
+          id={"elapsed-#{elapsed_since(@started)}"}
+          phx-hook="Elapsed"
+          phx-update="ignore"
+          data-since={elapsed_since(@started)}
+          class="text-[10px] tabular-nums text-amber-500 dark:text-amber-400"
+        >
+          0s
+        </span>
         <span :if={@truncated} class="text-[10px] text-zinc-400">... truncated</span>
         <div class="ml-auto flex items-center gap-1">
           <button
@@ -213,4 +224,10 @@ defmodule LoopyardWeb.Components.LogViewer do
     </div>
     """
   end
+
+  # Unix-ms start time for the client-side Elapsed hook, which ticks the
+  # counter every second from this anchor (no server round-trips). Tolerant
+  # of a missing/odd timestamp — returns nil so the timer simply doesn't show.
+  defp elapsed_since(%DateTime{} = dt), do: DateTime.to_unix(dt, :millisecond)
+  defp elapsed_since(_), do: nil
 end

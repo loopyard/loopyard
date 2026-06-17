@@ -259,7 +259,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     assigns = assign(assigns, :link, msg_url(assigns))
 
     ~H"""
-    <.log_inline content={@msg.content} status={:building} raw_url={@link} title={@msg[:title]} />
+    <.log_inline
+      content={@msg.content}
+      status={:building}
+      raw_url={@link}
+      title={@msg[:title]}
+      started={@msg[:timestamp]}
+    />
     """
   end
 

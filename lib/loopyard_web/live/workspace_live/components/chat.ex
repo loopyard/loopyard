@@ -336,7 +336,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             :if={
               @agent.status == :thinking && @streaming_text == "" &&
                 (assigns[:streaming_thinking] || "") == "" &&
-                not awaiting_answer?(@messages)
+                not awaiting_answer?(@messages) && not building?(@messages)
             }
             messages={@messages}
             word={@thinking_word}
@@ -383,6 +383,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       %{status: :pending} -> true
       _ -> false
     end
+  end
+
+  # True when a command is actively streaming into its own build bubble (the
+  # latest message is an in-flight role: :build, not yet :build_done/:build_failed).
+  # While it is, that bubble — with its live output + elapsed timer — IS the
+  # "watch it work" surface, so the generic "Twirling…" indicator echoing the
+  # same command is redundant. Suppress it.
+  defp building?(messages) do
+    match?(%{role: :build}, List.last(messages))
   end
 
   def thinking_indicator(assigns) do

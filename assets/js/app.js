@@ -179,6 +179,28 @@ Hooks.LogExpand = {
   }
 }
 
+// Live elapsed-time counter for a running command's build bubble. Ticks
+// every second from data-since (unix ms), entirely client-side — no server
+// round-trips. Makes a silent long command visibly "alive" so you can tell
+// working from wedged. phx-update="ignore" keeps LiveView off our textContent.
+Hooks.Elapsed = {
+  mounted() {
+    const since = parseInt(this.el.dataset.since, 10)
+    if (!since) return
+    const fmt = (ms) => {
+      const s = Math.max(0, Math.floor(ms / 1000))
+      if (s < 60) return `${s}s`
+      const m = Math.floor(s / 60), r = s % 60
+      if (m < 60) return `${m}m ${r}s`
+      return `${Math.floor(m / 60)}h ${m % 60}m`
+    }
+    const tick = () => { this.el.textContent = fmt(Date.now() - since) }
+    tick()
+    this._timer = setInterval(tick, 1000)
+  },
+  destroyed() { if (this._timer) clearInterval(this._timer) }
+}
+
 Hooks.ChatForm = {
   mounted() {
     const ta = this.el.querySelector("#chat-input")
