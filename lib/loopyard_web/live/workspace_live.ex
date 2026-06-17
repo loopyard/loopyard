@@ -326,18 +326,50 @@ defmodule LoopyardWeb.WorkspaceLive do
       |> assign(:selected_service, nil)
       |> assign(:tab, :chat)
 
-    # Working is the default: an empty workspace shouldn't make you click
-    # "New agent" before you can do anything. Just put a working agent there so
-    # you land in a live chat and start the idea. `do_spawn_agent` navigates to
-    # the new agent. Only on the connected mount, only when there are none, and
-    # only once per LiveView (the `:auto_spawned` flag guards against :index
-    # re-firing before the booting agent lands in `@agents` — which would
-    # otherwise spawn a second agent).
-    if connected?(socket) and socket.assigns.agents == [] and !socket.assigns[:auto_spawned] do
-      AgentLifecycle.do_spawn_agent(assign(socket, :auto_spawned, true))
-    else
-      {:noreply, socket}
+    # Working is the default: landing on a bare workspace URL should NEVER dump
+    # you on a blank "select an agent" screen. Resolve a real landing target:
+    #   1. no agents yet → auto-spawn one (you land in a fresh live chat),
+    #   2. agents exist → resume this window's last view here (WindowViews), or
+    #      fall back to the latest agent's chat.
+    # The `:auto_spawned` flag guards against :index re-firing before the booting
+    # agent lands in `@agents` (which would spawn a second agent).
+    cond do
+      connected?(socket) and socket.assigns.agents == [] and !socket.assigns[:auto_spawned] ->
+        AgentLifecycle.do_spawn_agent(assign(socket, :auto_spawned, true))
+
+      connected?(socket) and socket.assigns.agents != [] ->
+        case landing_target(socket) do
+          nil -> {:noreply, socket}
+          path -> {:noreply, push_patch(socket, to: path)}
+        end
+
+      true ->
+        {:noreply, socket}
     end
+  end
+
+  # Where to send a window that lands on the bare workspace (:index) URL when
+  # agents exist: this window's last meaningful view here (so a switch resumes
+  # where you were), else the latest agent's chat. Returns nil when we're already
+  # there (no redirect needed) — avoids a navigate loop.
+  defp landing_target(socket) do
+    base = socket.assigns.base_path
+    ws_id = socket.assigns.workspace.id
+    resume = Loopyard.WindowViews.resume_path(socket.transport_pid, ws_id)
+
+    target =
+      if is_binary(resume) and resume != base do
+        resume
+      else
+        case List.first(socket.assigns.agents) do
+          %{id: id} -> "#{base}/agents/#{id}"
+          _ -> nil
+        end
+      end
+
+    # current_path is the bare :index (base) — if target resolves back to it,
+    # there's nothing to do.
+    if target && target != base, do: target
   end
 
   # Volume info page
