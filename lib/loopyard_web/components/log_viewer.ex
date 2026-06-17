@@ -92,14 +92,19 @@ defmodule LoopyardWeb.Components.LogViewer do
     >
       <div class="flex items-center gap-2 px-3 py-1.5 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
         <div class={"w-1.5 h-1.5 rounded-full flex-none #{@dot_class}"}></div>
-        <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">{@label}</span>
+        <span
+          title={@label}
+          class="text-xs font-medium text-zinc-500 dark:text-zinc-400 truncate min-w-0 flex-1"
+        >
+          {@label}
+        </span>
         <span
           :if={@status == :building && elapsed_since(@started)}
           id={"elapsed-#{elapsed_since(@started)}"}
           phx-hook="Elapsed"
           phx-update="ignore"
           data-since={elapsed_since(@started)}
-          class="text-[10px] tabular-nums text-amber-500 dark:text-amber-400"
+          class="text-[10px] tabular-nums text-amber-500 dark:text-amber-400 flex-none"
         >
           0s
         </span>
