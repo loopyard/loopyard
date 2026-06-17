@@ -870,7 +870,23 @@ defmodule Loopyard.ChatAgent do
     # CLI picks up the same conversation.
     case state.backend.start_session(SessionManager.build_resume_opts(state)) do
       {:ok, new_session} ->
-        state = SessionManager.track_os_pid(%{state | session: new_session, status: :idle})
+        # A reboot is a full reset-to-idle — clear EVERY piece of transient turn
+        # state, or the agent looks idle while the stream machinery thinks a turn
+        # is live (stale stream_ref), and the next send is silently swallowed.
+        state =
+          SessionManager.track_os_pid(%{
+            state
+            | session: new_session,
+              status: :idle,
+              stream_ref: nil,
+              active_tool: nil,
+              in_flight_partial: "",
+              tool_calls_this_turn: 0,
+              tool_runaway_warned: false,
+              last_tool_call: nil,
+              context_warning_sent: false
+          })
+
         :ets.insert(@ets_table, {state.id, summary(state)})
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :idle})
 
@@ -1559,19 +1575,47 @@ defmodule Loopyard.ChatAgent do
   defp send_message_normal(state, text) do
     state = SessionManager.ensure_alive(state)
 
-    user_msg = %{role: :user, content: text, timestamp: DateTime.utc_now()}
-    {state, user_msg} = append_message(state, user_msg)
-    Persistence.persist_message(state, user_msg)
-
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-      agent_id: state.id,
-      msg: user_msg
-    })
-
     if not state.backend.session_alive?(state.session) do
+      # ensure_alive/1 just tried to (re)spawn the CLI and it's STILL
+      # dead. Do NOT silently drop the message back to :idle — that's
+      # the "swallow" bug: the user's text vanishes and the UI looks
+      # idle as if nothing was sent. Instead: record a WHY/CONSEQUENCE/
+      # ACTION error, queue the RAW text (drain_pending_sends re-runs
+      # this fn, which appends the user message exactly once when a live
+      # session finally takes it), and kick a restart.
+      err = %{
+        role: :error,
+        timestamp: DateTime.utc_now(),
+        content:
+          "The Claude CLI session could not be started, so your message hasn't been sent yet.\n\n" <>
+            "Your message is saved and queued — nothing was lost. It will be delivered " <>
+            "automatically once the session reconnects.\n\n" <>
+            "If this persists, restart the agent's session from the agent menu " <>
+            "(Stop, then send again), or check /system/quarantine for a crash-looping agent."
+      }
+
+      {state, err_msg} = append_message(state, err)
+      Persistence.persist_message(state, err_msg)
+
+      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+        agent_id: state.id,
+        msg: err_msg
+      })
+
+      state = %{state | pending_sends: state.pending_sends ++ [text]}
       Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :idle})
+      GenServer.cast(self(), :restart_session)
       {:noreply, state}
     else
+      user_msg = %{role: :user, content: text, timestamp: DateTime.utc_now()}
+      {state, user_msg} = append_message(state, user_msg)
+      Persistence.persist_message(state, user_msg)
+
+      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+        agent_id: state.id,
+        msg: user_msg
+      })
+
       state = %{state | status: :thinking}
       :ets.insert(@ets_table, {state.id, summary(state)})
       Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :thinking})
