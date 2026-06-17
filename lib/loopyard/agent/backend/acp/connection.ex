@@ -209,19 +209,35 @@ defmodule Loopyard.Agent.Backend.ACP.Connection do
   # ---- agent requests we must answer ----
 
   defp handle_agent_request("fs/read_text_file", id, params, state) do
-    result =
-      case File.read(params["path"] || "") do
-        {:ok, content} -> %{"content" => content}
-        {:error, reason} -> %{"content" => "ERROR: #{:file.format_error(reason)}"}
-      end
+    # SECURITY: the adapter is untrusted. In host mode we advertise the fs
+    # capability, so it can ask us to read ANY path the BEAM user can reach.
+    # Clamp the requested path to the session cwd before touching disk.
+    case clamp_path(state.cwd, params["path"]) do
+      {:ok, safe} ->
+        result =
+          case File.read(safe) do
+            {:ok, content} -> %{"content" => content}
+            {:error, reason} -> %{"content" => "ERROR: #{:file.format_error(reason)}"}
+          end
 
-    {:noreply, respond(state, id, result)}
+        {:noreply, respond(state, id, result)}
+
+      {:error, reason} ->
+        {:noreply, respond_error(state, id, -32_602, "path outside workspace: #{reason}")}
+    end
   end
 
   defp handle_agent_request("fs/write_text_file", id, params, state) do
-    path = params["path"]
-    _ = path && File.write(path, params["content"] || "")
-    {:noreply, respond(state, id, %{})}
+    # SECURITY: same clamp as reads — a host-fs write escape is worse than a
+    # read. Reject (JSON-RPC error) instead of silently writing outside cwd.
+    case clamp_path(state.cwd, params["path"]) do
+      {:ok, safe} ->
+        _ = File.write(safe, params["content"] || "")
+        {:noreply, respond(state, id, %{})}
+
+      {:error, reason} ->
+        {:noreply, respond_error(state, id, -32_602, "path outside workspace: #{reason}")}
+    end
   end
 
   defp handle_agent_request("session/request_permission", id, params, state) do
@@ -279,6 +295,34 @@ defmodule Loopyard.Agent.Backend.ACP.Connection do
   defp respond(state, id, result) do
     send_msg(state, %{"jsonrpc" => "2.0", "id" => id, "result" => result})
     state
+  end
+
+  defp respond_error(state, id, code, message) do
+    send_msg(state, %{
+      "jsonrpc" => "2.0",
+      "id" => id,
+      "error" => %{"code" => code, "message" => message}
+    })
+
+    state
+  end
+
+  # Resolve an adapter-supplied path against the session cwd and reject any
+  # path that escapes the cwd root. Both `..` traversal and absolute paths
+  # outside cwd collapse to the same prefix check after `Path.expand`, which
+  # normalizes `.`/`..`/symlink-free segments. `cwd` itself is allowed.
+  defp clamp_path(_cwd, path) when not is_binary(path) or path == "",
+    do: {:error, "missing path"}
+
+  defp clamp_path(cwd, path) do
+    root = Path.expand(cwd)
+    resolved = Path.expand(path, root)
+
+    if resolved == root or String.starts_with?(resolved, root <> "/") do
+      {:ok, resolved}
+    else
+      {:error, path}
+    end
   end
 
   defp send_msg(state, msg), do: state.transport_mod.send_msg(state.transport, msg)

@@ -19,6 +19,14 @@ defmodule Loopyard.Agent.Backend.ACP.Transport.Port do
   # to the verified name and let callers override.
   @default_cmd "npx -y @zed-industries/claude-code-acp"
 
+  # SECURITY: hard ceiling on the partial-frame buffer. `{:line, 8_000_000}`
+  # caps a single delivered chunk, but `:noeol` continuations accumulate in
+  # `state.buf` with no inherent limit — an adapter that never sends a newline
+  # could grow it without bound and OOM the BEAM. On exceed we error+close the
+  # transport rather than buffer forever. 16MB leaves headroom over the 8MB
+  # line cap while staying small enough to never threaten the VM.
+  @max_buffer_bytes 16_000_000
+
   @impl Loopyard.Agent.Backend.ACP.Transport
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts)
 
@@ -62,7 +70,17 @@ defmodule Loopyard.Agent.Backend.ACP.Transport.Port do
   end
 
   def handle_info({port, {:data, {:noeol, chunk}}}, %{port: port} = state) do
-    {:noreply, %{state | buf: state.buf <> chunk}}
+    buf = state.buf <> chunk
+
+    if byte_size(buf) > @max_buffer_bytes do
+      # Malicious/buggy harness streaming an endless line with no newline.
+      # Treat it as a transport failure: notify the owner and stop so we
+      # don't accumulate unboundedly.
+      send(state.owner, {:acp_closed, {:error, :frame_too_large}})
+      {:stop, :normal, state}
+    else
+      {:noreply, %{state | buf: buf}}
+    end
   end
 
   def handle_info({port, {:exit_status, code}}, %{port: port} = state) do

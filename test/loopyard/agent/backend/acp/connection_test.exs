@@ -67,6 +67,22 @@ defmodule Loopyard.Agent.Backend.ACP.ConnectionTest do
     {conn, transport}
   end
 
+  # Start a Connection rooted at `cwd` and drive it to :ready. Used by the
+  # fs clamp tests, which need a real on-disk cwd (handshake/1 below pins the
+  # default "/workspace").
+  defp ready_conn(cwd) do
+    {conn, _transport} = start_conn(cwd: cwd)
+
+    assert_receive {:sent, %{"method" => "initialize", "id" => init_id}}
+    send(conn, {:acp_msg, %{"id" => init_id, "result" => %{}}})
+
+    assert_receive {:sent, %{"method" => "session/new", "id" => new_id}}
+    send(conn, {:acp_msg, %{"id" => new_id, "result" => %{"sessionId" => "sess-fs"}}})
+
+    :ok = Connection.await_ready(conn, 1_000)
+    conn
+  end
+
   # Drive the handshake to :ready, returning the session id used.
   defp handshake(conn) do
     # Connection sent "initialize" on init.
@@ -215,10 +231,16 @@ defmodule Loopyard.Agent.Backend.ACP.ConnectionTest do
       assert result["outcome"] == %{"outcome" => "selected", "optionId" => "allow-1"}
     end
 
-    test "fs/read_text_file is answered with file content", %{conn: conn} do
-      path = Path.join(System.tmp_dir!(), "acp_conn_read_#{:erlang.unique_integer([:positive])}")
+    test "fs/read_text_file is answered with file content for an in-cwd path" do
+      # handshake() above used cwd "/workspace"; for a real read we need a real
+      # cwd. Start a fresh connection rooted at a tmp dir and write inside it.
+      cwd = Path.join(System.tmp_dir!(), "acp_cwd_#{:erlang.unique_integer([:positive])}")
+      File.mkdir_p!(cwd)
+      on_exit(fn -> File.rm_rf(cwd) end)
+
+      conn = ready_conn(cwd)
+      path = Path.join(cwd, "data.txt")
       File.write!(path, "VOLUME DATA")
-      on_exit(fn -> File.rm(path) end)
 
       send(
         conn,
@@ -227,6 +249,56 @@ defmodule Loopyard.Agent.Backend.ACP.ConnectionTest do
       )
 
       assert_receive {:sent, %{"id" => 7, "result" => %{"content" => "VOLUME DATA"}}}
+    end
+
+    test "fs/read_text_file rejects a path that escapes the cwd root" do
+      cwd = Path.join(System.tmp_dir!(), "acp_cwd_#{:erlang.unique_integer([:positive])}")
+      File.mkdir_p!(cwd)
+      on_exit(fn -> File.rm_rf(cwd) end)
+
+      conn = ready_conn(cwd)
+
+      # Plant a secret OUTSIDE cwd; the adapter must not be able to read it.
+      secret = Path.join(System.tmp_dir!(), "acp_secret_#{:erlang.unique_integer([:positive])}")
+      File.write!(secret, "TOP SECRET")
+      on_exit(fn -> File.rm(secret) end)
+
+      # `..` traversal back out of cwd.
+      escape = Path.join(cwd, "../" <> Path.basename(secret))
+
+      send(
+        conn,
+        {:acp_msg,
+         %{"id" => 8, "method" => "fs/read_text_file", "params" => %{"path" => escape}}}
+      )
+
+      assert_receive {:sent, %{"id" => 8, "error" => %{"code" => -32_602, "message" => msg}}}
+      assert msg =~ "path outside workspace"
+      refute_received {:sent, %{"id" => 8, "result" => _}}
+    end
+
+    test "fs/write_text_file rejects an absolute path outside the cwd root" do
+      cwd = Path.join(System.tmp_dir!(), "acp_cwd_#{:erlang.unique_integer([:positive])}")
+      File.mkdir_p!(cwd)
+      on_exit(fn -> File.rm_rf(cwd) end)
+
+      conn = ready_conn(cwd)
+
+      target = Path.join(System.tmp_dir!(), "acp_evil_#{:erlang.unique_integer([:positive])}")
+      on_exit(fn -> File.rm(target) end)
+
+      send(
+        conn,
+        {:acp_msg,
+         %{
+           "id" => 9,
+           "method" => "fs/write_text_file",
+           "params" => %{"path" => target, "content" => "owned"}
+         }}
+      )
+
+      assert_receive {:sent, %{"id" => 9, "error" => %{"code" => -32_602}}}
+      refute File.exists?(target)
     end
   end
 
