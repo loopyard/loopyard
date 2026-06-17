@@ -4,17 +4,11 @@ defmodule Loopyard.Agents.RegistryTest do
   alias Loopyard.Agents.Registry
 
   describe "list/0 + get/1 with built-in agents" do
-    test "lists built-in agents (setup + coding)" do
-      agents = Registry.list()
-      names = Enum.map(agents, & &1.name)
-      assert "Setup" in names
+    test "ships a single self-determining built-in agent (coding)" do
+      names = Registry.list() |> Enum.map(& &1.name)
       assert "Coding" in names
-    end
-
-    test "get/1 loads the setup agent" do
-      assert {:ok, agent} = Registry.get("setup")
-      assert agent.name == "Setup"
-      assert agent.body =~ "Setup agent"
+      # The old setup/coding split is gone — one agent decides at runtime.
+      refute "Setup" in names
     end
 
     test "get/1 loads the coding agent" do
@@ -35,19 +29,14 @@ defmodule Loopyard.Agents.RegistryTest do
   end
 
   describe "catalog/1" do
-    test "lists files in the setup folder, excluding agent.md" do
-      {:ok, agent} = Registry.get("setup")
+    test "the coding agent carries the setup playbook + stacks, excluding agent.md" do
+      {:ok, agent} = Registry.get("coding")
       catalog = Registry.catalog(agent)
 
       assert "setup_guide.md" in catalog
       refute "agent.md" in catalog
       # Has at least one stack template
       assert Enum.any?(catalog, &String.starts_with?(&1, "stacks/"))
-    end
-
-    test "coding agent has an empty catalog (just agent.md)" do
-      {:ok, agent} = Registry.get("coding")
-      assert Registry.catalog(agent) == []
     end
   end
 

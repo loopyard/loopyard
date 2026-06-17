@@ -36,10 +36,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
         _ -> nil
       end
 
-    # agent_type: explicit opt > ws_config-aware default (setup if unconfigured, coding otherwise)
-    agent_type =
-      Keyword.get(opts, :agent_type) ||
-        if ws_config, do: "coding", else: "setup"
+    # One self-determining agent: it inspects the workspace at runtime and sets
+    # up the dev env only if it's actually missing, otherwise it just works on
+    # the code. No more guessing "setup vs coding" up front — that's what spawned
+    # a re-scaffolding setup agent onto an already-configured fork.
+    agent_type = Keyword.get(opts, :agent_type) || Loopyard.Agents.Registry.default_agent_name()
 
     name =
       cond do

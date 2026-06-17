@@ -4,18 +4,18 @@ defmodule Loopyard.ChatAgent.PromptTest do
   alias Loopyard.ChatAgent.Prompt
 
   describe "build_system_prompt/2" do
-    test "default agent (coding) includes agent ID and container info" do
+    test "default agent includes agent ID, container info, and the unified body" do
       prompt = Prompt.build_system_prompt("test-id", bind_mount: "/tmp/project")
       assert prompt =~ "test-id"
       assert prompt =~ "loopyard-container"
-      assert prompt =~ "coding agent"
+      # The one self-determining agent tells itself to assess before acting.
+      assert prompt =~ "service_status"
     end
 
-    test "setup agent includes setup-specific body and catalog" do
+    test "unified agent carries the setup playbook in its catalog" do
       prompt =
-        Prompt.build_system_prompt("test-id", agent_type: "setup", bind_mount: "/tmp/project")
+        Prompt.build_system_prompt("test-id", agent_type: "coding", bind_mount: "/tmp/project")
 
-      assert prompt =~ "Setup agent"
       assert prompt =~ "setup_guide.md"
       # Catalog enumerates real files in the folder
       assert prompt =~ "stacks/"
@@ -25,15 +25,15 @@ defmodule Loopyard.ChatAgent.PromptTest do
       prompt =
         Prompt.build_system_prompt("test-id", agent_type: "coding", bind_mount: "/tmp/project")
 
-      assert String.length(prompt) <= 3500
+      assert String.length(prompt) <= 6000
     end
 
     test "setup agent prompt stays under CLI argument limit" do
       prompt =
-        Prompt.build_system_prompt("test-id", agent_type: "setup", bind_mount: "/tmp/project")
+        Prompt.build_system_prompt("test-id", agent_type: "coding", bind_mount: "/tmp/project")
 
-      assert String.length(prompt) <= 3500,
-             "Setup prompt is #{String.length(prompt)} chars, max is 3500."
+      assert String.length(prompt) <= 6000,
+             "Setup prompt is #{String.length(prompt)} chars, max is 6000."
     end
 
     test "container agent prompt with workspace stays under limit" do
@@ -54,7 +54,7 @@ defmodule Loopyard.ChatAgent.PromptTest do
 
       assert prompt =~ "test-project"
       assert prompt =~ "Rails app"
-      assert String.length(prompt) <= 3500
+      assert String.length(prompt) <= 6000
     end
 
     test "container agent with service stays under limit" do
@@ -74,7 +74,7 @@ defmodule Loopyard.ChatAgent.PromptTest do
           agent_type: "coding"
         )
 
-      assert String.length(prompt) <= 3500
+      assert String.length(prompt) <= 6000
     end
 
     test "service agent prompt includes service name and container" do

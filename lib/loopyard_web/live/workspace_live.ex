@@ -1629,8 +1629,9 @@ defmodule LoopyardWeb.WorkspaceLive do
 
   defp preset_message(_), do: nil
 
-  defp preset_agent_type("setup"), do: "setup"
-  defp preset_agent_type(_), do: "coding"
+  # One agent now — it self-determines setup vs coding. Presets only differ in
+  # their kick-off message, not the agent.
+  defp preset_agent_type(_), do: Loopyard.Agents.Registry.default_agent_name()
 
   defp load_git_data(assigns) do
     project = assigns.project

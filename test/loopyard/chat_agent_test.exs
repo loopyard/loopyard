@@ -497,7 +497,7 @@ defmodule Loopyard.ChatAgentTest do
   describe "build_system_prompt/2" do
     test "setup agent prompt stays under CLI argument limit" do
       prompt =
-        ChatAgent.build_system_prompt("test-id", agent_type: "setup", bind_mount: "/tmp/project")
+        ChatAgent.build_system_prompt("test-id", agent_type: "coding", bind_mount: "/tmp/project")
 
       assert String.length(prompt) <= 3500,
              "Setup prompt is #{String.length(prompt)} chars, max is 3500."

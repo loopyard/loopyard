@@ -128,15 +128,15 @@ grep pattern="Login to Chatwoot" include="*.json"
    - **Node (other)** → `package.json` with `express`/`fastify`/`koa`/`hono`/`@nestjs/core`, lockfiles, `tsconfig.json`
    - **Elixir/Phoenix** → `mix.exs`, `config/config.exs`, `lib/<app>_web/`
    - **Anything else** → `README.md`, `Dockerfile` (existing), `Makefile`, `docker-compose.yml` (existing)
-2. **Read the stack guide** — match to ONE of:
-   - `priv/prompts/stacks/rails.md` (Ruby on Rails)
-   - `priv/prompts/stacks/laravel.md` (PHP / Laravel)
-   - `priv/prompts/stacks/django.md` (Python / Django)
-   - `priv/prompts/stacks/python.md` (Flask / FastAPI / other Python)
-   - `priv/prompts/stacks/nextjs.md` (Next.js)
-   - `priv/prompts/stacks/node.md` (Express / Fastify / Hono / NestJS / generic Node)
-   - `priv/prompts/stacks/phoenix.md` (Elixir / Phoenix)
-   - `priv/prompts/stacks/generic.md` (anything else — fallback)
+2. **Read the stack guide** via `read_agent_file` — match to ONE of:
+   - `stacks/rails.md` (Ruby on Rails)
+   - `stacks/laravel.md` (PHP / Laravel)
+   - `stacks/django.md` (Python / Django)
+   - `stacks/python.md` (Flask / FastAPI / other Python)
+   - `stacks/nextjs.md` (Next.js)
+   - `stacks/node.md` (Express / Fastify / Hono / NestJS / generic Node)
+   - `stacks/phoenix.md` (Elixir / Phoenix)
+   - `stacks/generic.md` (anything else — fallback)
 
    Read it for framework-specific patterns. Do NOT read more than one — pick the closest match.
 3. **Write the Dockerfile** via `write_file` path=`.loopyard/workspace/Dockerfile`

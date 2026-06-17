@@ -217,7 +217,7 @@ defmodule Loopyard.AgentBoot do
   # boot reuses them, and tearing the cluster down because one
   # agent failed to spawn would harm other agents or users on
   # the same workspace.
-  defp ensure_services_step(id, workspace_id, working_dir, agent_type) do
+  defp ensure_services_step(id, workspace_id, working_dir, _agent_type) do
     %{
       name: :ensure_services,
       run: fn _ctx ->
@@ -241,16 +241,16 @@ defmodule Loopyard.AgentBoot do
               {:ok, _container} ->
                 {:ok, %{services_started_here: false}}
 
-              {:error, reason} when agent_type == "setup" ->
+              # Boot the agent even if the work container didn't come up, so it
+              # can diagnose + fix instead of the whole boot hard-failing into a
+              # blank screen. The agent self-determines what's wrong.
+              {:error, reason} ->
                 Logger.warning(
-                  "[AgentBoot] #{id} work container failed; booting Setup agent " <>
-                    "anyway so it can diagnose: #{inspect(reason)}"
+                  "[AgentBoot] #{id} work container failed; booting anyway so the " <>
+                    "agent can diagnose: #{inspect(reason)}"
                 )
 
                 {:ok, %{services_started_here: false}}
-
-              {:error, reason} ->
-                {:error, {:work_container_failed, reason}}
             end
 
           # Legacy host bind-mount projects: bring up the compose cluster the
@@ -268,21 +268,16 @@ defmodule Loopyard.AgentBoot do
                 # supervisor on first spawn attempt.
                 {:ok, %{services_started_here: false}}
 
-              {:error, reason} when agent_type == "setup" ->
-                Logger.warning(
-                  "[AgentBoot] #{id} compose up failed; booting Setup agent anyway " <>
-                    "so it can fix the cluster: #{inspect(reason)}"
-                )
-
-                ChatAgent.update_boot_status(
-                  id,
-                  "Cluster unhealthy — Setup agent will diagnose"
-                )
-
-                {:ok, %{services_started_here: false}}
-
+              # Boot the agent even if compose failed, so it can fix the cluster
+              # rather than the boot hard-failing.
               {:error, reason} ->
-                {:error, {:service_start_failed, reason}}
+                Logger.warning(
+                  "[AgentBoot] #{id} compose up failed; booting anyway so the agent " <>
+                    "can fix the cluster: #{inspect(reason)}"
+                )
+
+                ChatAgent.update_boot_status(id, "Cluster unhealthy — the agent will diagnose")
+                {:ok, %{services_started_here: false}}
             end
         end
       end
@@ -410,20 +405,16 @@ defmodule Loopyard.AgentBoot do
     end
   end
 
-  defp default_message(agent_type, ws_config, service_name) do
-    cond do
-      service_name ->
-        "Check the logs for the #{service_name} service and help me debug any issues."
-
-      agent_type == "setup" ->
-        "Look at the project in /workspace and set up a development environment. Start by reading `setup_guide.md` with `read_agent_file` — it has the full playbook. " <>
-          "Note: the cluster may not be up yet (compose build can fail if infrastructure files like Dockerfile are missing). Read what's currently in `.loopyard/workspace/` and fix any gaps before re-running compose."
-
-      ws_config && ws_config.dockerfile ->
-        "The workspace has an existing configuration. Check `service_status` — if services are running and healthy, you're good. If not, run `rebuild` then install dependencies via `exec`."
-
-      true ->
-        nil
+  # One self-determining kick-off. The agent runs service_status first and does
+  # the right thing — bootstrap if unconfigured, confirm health if already set
+  # up — so we don't have to guess "setup vs coding" up front.
+  defp default_message(_agent_type, _ws_config, service_name) do
+    if service_name do
+      "Check the logs for the #{service_name} service and help me debug any issues."
+    else
+      "Take a look at the workspace in /workspace and get it ready to work on. Run `service_status` first: " <>
+        "if the dev environment isn't set up yet, set it up (read `setup_guide.md` via `read_agent_file` for the playbook, then the matching stack from `stacks/`). " <>
+        "If it's already configured and running, just confirm it's healthy and give me a one-line summary of the project."
     end
   end
 end

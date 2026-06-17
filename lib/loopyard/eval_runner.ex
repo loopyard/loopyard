@@ -221,7 +221,7 @@ defmodule Loopyard.EvalRunner do
           started_by: "eval_runner",
           workspace_id: workspace.id,
           volume: volume_name,
-          agent_type: "setup"
+          agent_type: "coding"
         ]
 
         # Before spawning the agent we wait for two things:

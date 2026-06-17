@@ -12,7 +12,7 @@ defmodule Loopyard.Tools.AgentFiles.ReadAgentFileTest do
        %{
          id: id,
          name: "Setup",
-         agent_type: "setup",
+         agent_type: "coding",
          working_dir: "/tmp",
          workspace_id: "ws-test"
        }}
@@ -59,17 +59,17 @@ defmodule Loopyard.Tools.AgentFiles.ReadAgentFileTest do
       assert reason =~ "not found"
     end
 
-    test "uses default agent when state has none" do
+    test "uses default agent (coding) when state has none" do
       id = "no-type-test-#{System.unique_integer([:positive])}"
 
       :ets.insert(:chat_agents, {id, %{id: id, name: "x"}})
       on_exit(fn -> :ets.delete(:chat_agents, id) end)
 
-      # Default is coding; its folder has no other files
-      {:error, reason} =
+      # Default is coding; its folder carries the setup playbook, so this reads.
+      {:ok, content} =
         ReadAgentFile.execute(%{agent_id: id, path: "setup_guide.md"}, %{})
 
-      assert reason =~ "not found"
+      assert content =~ "Dockerfile"
     end
   end
 end
