@@ -116,8 +116,13 @@ defmodule Loopyard.CanonicalRepo do
 
     # cp -a preserves perms + dotfiles (.git, .loopyard). checkout -b keeps the
     # working tree, so uncommitted changes ride along onto the new branch.
+    # Then scrub stale runtime cruft that would break the fork's own services:
+    # server PID files (Rails `tmp/pids/server.pid` makes Puma exit with "a server
+    # is already running") and unix sockets. Best-effort (`;`), never blocks.
     cmd =
-      "cp -a /src/. /workspace/ && cd /workspace && #{@identity} && " <>
+      "cp -a /src/. /workspace/ && cd /workspace && " <>
+        "rm -f tmp/pids/*.pid 2>/dev/null; find tmp -name '*.sock' -delete 2>/dev/null; " <>
+        "#{@identity} && " <>
         "git config --global --add safe.directory /workspace && " <>
         "git checkout -b #{shq(new_branch)}"
 
