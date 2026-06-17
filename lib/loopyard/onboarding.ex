@@ -99,14 +99,20 @@ defmodule Loopyard.Onboarding do
   new workspace boots ready instead of empty. See
   `CanonicalRepo.fork_from_workspace/3`.
   """
-  @spec fork_from_workspace(String.t(), String.t(), String.t()) ::
+  @spec fork_from_workspace(String.t(), String.t(), String.t(), (String.t() -> any())) ::
           {:ok, map()} | {:error, term()}
-  def fork_from_workspace(project_id, source_ws_id, branch) do
+  def fork_from_workspace(project_id, source_ws_id, branch, progress \\ fn _ -> :ok end) do
     ws_id = uid()
 
+    # progress.(step) streams creation phases to the caller (e.g. the approval
+    # card) so a multi-second fork shows what it's doing instead of a dead spinner.
+    progress.("Forking the code volume…")
+
     with {:ok, _ws_vol} <- CanonicalRepo.fork_from_workspace(source_ws_id, ws_id, branch) do
+      progress.("Registering the workspace…")
       ws = register_workspace(project_id, ws_id, branch, is_main: false)
       persist(project_id)
+      progress.("Starting the environment…")
       start_work_async(ws_id)
       {:ok, ws}
     end

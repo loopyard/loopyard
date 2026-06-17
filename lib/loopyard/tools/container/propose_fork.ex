@@ -36,12 +36,18 @@ defmodule Loopyard.Tools.Container.ProposeFork do
 
       case Approvals.request(agent_id, action) do
         {:approve, msg_id} ->
-          Approvals.resolve(agent_id, msg_id, %{status: :creating})
+          Approvals.resolve(agent_id, msg_id, %{status: :creating, detail: "Starting…"})
+
+          # Stream each creation phase into the card so the human watches it work
+          # (mini-app progress) instead of staring at a static "Creating…" spinner.
+          progress = fn step ->
+            Approvals.resolve(agent_id, msg_id, %{status: :creating, detail: step})
+          end
 
           # Copy THIS workspace (working tree + .loopyard infra), not a fresh
           # canonical clone — "branch this and try something else" should bring
           # the in-progress files and env along. `base` is just the card label.
-          case Onboarding.fork_from_workspace(project_id, ws_id, branch) do
+          case Onboarding.fork_from_workspace(project_id, ws_id, branch, progress) do
             {:ok, new_ws} ->
               Approvals.resolve(agent_id, msg_id, %{
                 status: :approved,

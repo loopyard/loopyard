@@ -336,7 +336,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             :if={
               @agent.status == :thinking && @streaming_text == "" &&
                 (assigns[:streaming_thinking] || "") == "" &&
-                not awaiting_answer?(@messages) && not building?(@messages)
+                not awaiting_answer?(@messages) && not awaiting_approval?(@messages) &&
+                not building?(@messages)
             }
             messages={@messages}
             word={@thinking_word}
@@ -379,6 +380,19 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     messages
     |> Enum.reverse()
     |> Enum.find(&(&1.role == :question))
+    |> case do
+      %{status: :pending} -> true
+      _ -> false
+    end
+  end
+
+  # True when the most recent approval card is still pending. Like the question
+  # case, the agent's turn is parked inside propose_* waiting on the human, so the
+  # "Awaiting approval…" dots are redundant with the Approve/Deny card itself.
+  defp awaiting_approval?(messages) do
+    messages
+    |> Enum.reverse()
+    |> Enum.find(&(&1.role == :approval))
     |> case do
       %{status: :pending} -> true
       _ -> false

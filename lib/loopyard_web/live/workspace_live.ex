@@ -779,7 +779,24 @@ defmodule LoopyardWeb.WorkspaceLive do
     # Deliver to the blocked propose_* tool. For fork/integrate the tool runs the
     # action; for delete_workspace the agent would be killed by its own
     # deletion, so the LiveView runs the destroy + navigates away.
-    Loopyard.Harness.Approvals.decide(id, decision)
+    case Loopyard.Harness.Approvals.decide(id, decision) do
+      :ok ->
+        :ok
+
+      {:error, :not_found} ->
+        # The propose_* tool that posted this card is gone (session restart,
+        # crash, or the 30-min timeout) — nothing is listening, so the decision
+        # would vanish and the card (already flipped to :creating above) would
+        # spin forever. Flip it to a terminal state so the human isn't stuck.
+        if agent_id && card do
+          ChatAgent.update_message(agent_id, card.id, fn m ->
+            Map.merge(m, %{
+              status: :failed,
+              error: "this proposal expired — ask the agent to create the branch again"
+            })
+          end)
+        end
+    end
 
     cond do
       decision == :approve && action && action[:verb] == :delete_workspace ->

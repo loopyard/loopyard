@@ -172,9 +172,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
               </button>
             </div>
           <% s when s in [:creating, :integrating] -> %>
-            <div class="inline-flex items-center gap-2 text-sm text-zinc-500 animate-pulse">
+            <div class="flex items-center gap-2 text-sm text-zinc-500">
               <svg
-                class="w-4 h-4 animate-spin"
+                class="w-4 h-4 animate-spin flex-none"
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
                 viewBox="0 0 24 24"
@@ -195,9 +195,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                 >
                 </path>
               </svg>
-              {if @msg.status == :integrating,
-                do: "Merging into main…",
-                else: "Creating the branch workspace…"}
+              <span class="font-medium">
+                {if @msg.status == :integrating,
+                  do: "Merging into main",
+                  else: "Creating the branch workspace"}
+              </span>
+              <span :if={@msg[:detail]} class="text-zinc-400 animate-pulse truncate">
+                · {@msg.detail}
+              </span>
             </div>
           <% :approved -> %>
             <.link
