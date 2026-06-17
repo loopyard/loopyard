@@ -962,11 +962,11 @@ defmodule Loopyard.ChatAgent do
         error_msg = %{
           role: :error,
           content:
-            "Failed to restart the CLI session: #{inspect(reason)}. " <>
-              "WHY: the Claude Code CLI couldn't be spawned — usually auth, " <>
-              "missing `claude` binary, or a bad working directory. " <>
+            "Failed to restart the agent session: #{inspect(reason)}. " <>
+              "WHY: the agent harness failed to start — usually auth, " <>
+              "the harness not being installed in the container, or a bad working directory. " <>
               "CONSEQUENCE: this agent can't accept new messages. " <>
-              "ACTION: run `mix loopyard.rpc 'ClaudeCode.Test.smoke()'` to diagnose, " <>
+              "ACTION: check the harness is installed in the container, " <>
               "then click Restart in the sidebar. If restart keeps failing, " <>
               "remove the agent and create a new one.",
           timestamp: DateTime.utc_now()
@@ -1270,7 +1270,7 @@ defmodule Loopyard.ChatAgent do
       error_msg = %{
         role: :error,
         content:
-          "Agent crashed #{consecutive} times in a row — giving up to protect the Claude API from hot-loop retries. " <>
+          "Agent crashed #{consecutive} times in a row — giving up to protect the harness API from hot-loop retries. " <>
             "WHY: the streaming task kept dying within the exponential-backoff window. Most common cause: " <>
             "a repeatable bug in a tool the agent keeps calling. " <>
             "CONSEQUENCE: this agent is now :crashed and won't auto-retry. Prior conversation is preserved. " <>

@@ -1,11 +1,14 @@
 defmodule Loopyard.ChatAgent.OSProcess do
   @moduledoc """
-  OS-level process wrangling for a ChatAgent's Claude CLI subprocess.
+  OS-level process wrangling for a ChatAgent's harness subprocess.
 
-  The SDK session is a BEAM GenServer, but underneath it spawns a
-  Node.js Claude CLI subprocess via `Port`. When we need to hard-stop
-  an agent, terminating the GenServer isn't enough — it leaves the CLI
-  running as an orphan. These helpers find and kill the OS pid.
+  The harness session is a BEAM GenServer, but underneath it spawns an
+  OS-level subprocess via `Port` — the agent CLI for the Claude SDK
+  backend, or the transport Port for an ACP backend. When we need to
+  hard-stop an agent, terminating the GenServer isn't enough — it
+  leaves that subprocess running as an orphan. These helpers introspect
+  the harness session GenServer's linked-process topology to find and
+  kill the OS pid.
 
   Extracted from `ChatAgent` so the GenServer body isn't peppered with
   unrelated `:sys.get_state` introspection of deps internals.

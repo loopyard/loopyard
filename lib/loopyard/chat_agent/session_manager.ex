@@ -181,11 +181,11 @@ defmodule Loopyard.ChatAgent.SessionManager do
           fail_msg = %{
             role: :error,
             content:
-              "Failed to reconnect to Claude CLI: #{inspect(reason)}. " <>
-                "WHY: the CLI session died, and trying to spawn a new one failed. " <>
-                "CONSEQUENCE: your message was saved but won't be processed until the CLI is back. " <>
-                "ACTION: (1) check that `claude` is installed and authenticated " <>
-                "(`mix loopyard.rpc 'ClaudeCode.Test.smoke()'`), (2) click Restart in the sidebar, " <>
+              "Failed to reconnect to the agent harness: #{inspect(reason)}. " <>
+                "WHY: the harness session died, and trying to spawn a new one failed. " <>
+                "CONSEQUENCE: your message was saved but won't be processed until the harness is back. " <>
+                "ACTION: (1) check the harness is installed in the container and authenticated, " <>
+                "(2) click Restart in the sidebar, " <>
                 "(3) send your message again. Prior conversation context is preserved.",
             timestamp: DateTime.utc_now()
           }

@@ -364,8 +364,8 @@ defmodule Loopyard.ChatAgent.StreamHandler do
               "CLI session crashed and failed to restart: #{inspect(reason)}. " <>
                 "WHY: the CLI died mid-stream, and the second attempt to spawn a new one failed. " <>
                 "CONSEQUENCE: this agent can't respond until the CLI is restored. " <>
-                "ACTION: click Restart in the sidebar. If that also fails, the Claude CLI " <>
-                "may be misconfigured — verify `claude --version` and re-authenticate.",
+                "ACTION: click Restart in the sidebar. If that also fails, the agent harness " <>
+                "may be misconfigured — verify the harness is installed in the container and re-authenticate.",
             timestamp: DateTime.utc_now()
           }
 
@@ -539,7 +539,7 @@ defmodule Loopyard.ChatAgent.StreamHandler do
         rl_msg = %{
           role: :system,
           content:
-            "Rate-limited by Claude API (#{rl.rate_limit_type || "limit"}). " <>
+            "Rate-limited (#{rl.rate_limit_type || "limit"}). The harness hit a rate limit. " <>
               "Retrying automatically in ~#{div(wait_ms, 1000)}s.",
           timestamp: DateTime.utc_now()
         }

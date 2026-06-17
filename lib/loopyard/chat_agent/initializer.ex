@@ -127,10 +127,10 @@ defmodule Loopyard.ChatAgent.Initializer do
       {:error, reason} ->
         raise RuntimeError,
           message:
-            "Failed to start CLI session for agent #{id}: #{inspect(reason)}. " <>
-              "Usually this means: the `claude` binary isn't on PATH, the workspace volume " <>
-              "is unreachable, or auth isn't configured. Run " <>
-              "`mix loopyard.rpc 'ClaudeCode.Test.smoke()'` to diagnose."
+            "Failed to start the agent harness for agent #{id}: #{inspect(reason)}. " <>
+              "Usually this means: the harness isn't installed in the container, the workspace volume " <>
+              "is unreachable, or auth isn't configured. Check the harness is installed in the " <>
+              "container to diagnose."
     end
   end
 
