@@ -222,7 +222,7 @@ defmodule Loopyard.ChatAgent.RateLimitTest do
   end
 
   describe "send_message while blocked" do
-    test "send_message while :rate_limited does not spawn a stream task",
+    test "send_message while :rate_limited queues without touching the chat stream",
          %{id: id} do
       pid = agent_pid(id)
 
@@ -236,22 +236,19 @@ defmodule Loopyard.ChatAgent.RateLimitTest do
         }
       end)
 
-      # Before sending, record how many Backend.stream calls happened.
-      # RecordingBackend only records start_session; it returns [] from
-      # stream. Easier signal: assert status stays :rate_limited after
-      # the send (a real CLI hit would transition through :thinking).
       ChatAgent.send_message(id, "hey")
       Process.sleep(100)
 
       state = :sys.get_state(pid)
+      # Rate-limiting is a turn-execution concern, not an inbox one: the agent
+      # is "busy", so the message PARKS in the queue (no stream, no chat bubble,
+      # no "Holding" explainer). It enters the chat only when it drains.
       assert state.status == :rate_limited
+      assert state.pending_sends == ["hey"]
+      refute Enum.any?(state.messages, &(&1.role == :user and &1.content == "hey"))
 
-      # Both the user message AND the "Holding your message" explainer
-      # should appear.
-      assert Enum.any?(state.messages, &(&1.role == :user and &1.content == "hey"))
-
-      assert Enum.any?(state.messages, fn m ->
-               m.role == :system and String.contains?(m.content, "Holding your message")
+      refute Enum.any?(state.messages, fn m ->
+               m.role == :system and String.contains?(m.content || "", "Holding")
              end)
     end
 

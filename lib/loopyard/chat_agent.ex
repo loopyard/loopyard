@@ -743,47 +743,16 @@ defmodule Loopyard.ChatAgent do
       # post-turn drain. The turn-completion handlers
       # (:stream_done / :stream_error / :stream_timeout) pop the
       # queue and resume sends in order.
-      state.status in [:thinking, :backoff] ->
-        # Turn-taking: the agent holds the turn, so park the message in the
-        # pending queue instead of slapping it into the chat stream (which
-        # interleaved user bubbles + "Queued" notes through the agent's
-        # reasoning). It surfaces in the queue panel under the live activity,
-        # and only enters the chat history when it's actually sent on drain.
+      state.status in [:thinking, :backoff, :rate_limited] ->
+        # The agent holds the turn (actively streaming, restarting, OR waiting out
+        # a rate limit — all "busy" from the INBOX's view). Rate-limiting is a
+        # turn-EXECUTION concern; it must not block the inbox. So park the message
+        # in the queue (shown in the queue panel) instead of slapping it into the
+        # chat stream — it enters the history only when actually sent on drain.
         state = %{state | pending_sends: state.pending_sends ++ [text]}
         # Refresh the ETS summary so the live queue panel updates.
         :ets.insert(@ets_table, {state.id, summary(state)})
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: state.status})
-        {:noreply, state}
-
-      state.status == :rate_limited ->
-        # Don't hammer the API while we're rate-limited. The send was
-        # worth recording (so the user sees their message in the log)
-        # but we skip the CLI roundtrip — it would just emit another
-        # :rejected event and re-schedule. Auto-retry is already armed
-        # via Process.send_after by handle_rate_limit_event.
-        user_msg = %{role: :user, content: text, timestamp: DateTime.utc_now()}
-        {state, user_msg} = append_message(state, user_msg)
-        Persistence.persist_message(state, user_msg)
-
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-          agent_id: state.id,
-          msg: user_msg
-        })
-
-        hold_msg = %{
-          role: :system,
-          content:
-            "Holding your message — rate-limited, will send #{StreamHandler.format_reset(state.rate_limit_resets_at_ms)}.",
-          timestamp: DateTime.utc_now()
-        }
-
-        {state, hold_msg} = append_message(state, hold_msg)
-
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-          agent_id: state.id,
-          msg: hold_msg
-        })
-
         {:noreply, state}
 
       state.status == :auth_expired ->
@@ -1400,33 +1369,41 @@ defmodule Loopyard.ChatAgent do
     SessionManager.handle_retry(state, consecutive, @max_consecutive_crashes)
   end
 
-  # Fired by handle_rate_limit_event when a :rejected status was seen.
-  # We scheduled this for ~`resets_at_ms`. On fire, only flip back to
-  # idle if the agent is still in :rate_limited (another path may have
-  # moved it; don't stomp). Let the user's next send_message actually
-  # try the CLI again — if we're still rate-limited, the CLI will
-  # emit another :rejected and we'll re-schedule.
+  # Fired by handle_rate_limit_event. Don't optimistically attempt every interval
+  # (that re-failed and re-appended unanswered messages, and spammed "window
+  # cleared"). Instead: if the reset time hasn't passed yet, quietly reschedule —
+  # nothing reaches the chat. Once the window has actually cleared, go idle and
+  # drain whatever the user queued (silently, as one batched turn). The whole
+  # rate limit lives at the turn-execution layer; the inbox never sees it beyond
+  # the harness-status block.
   def handle_info({:rate_limit_retry, id}, %{id: id, status: :rate_limited} = state) do
-    state = %{state | status: :idle, rate_limit_status: :ok, rate_limit_resets_at_ms: nil}
-    :ets.insert(@ets_table, {id, summary(state)})
-    Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
+    now = System.system_time(:millisecond)
+    resets_at = state.rate_limit_resets_at_ms
 
-    resumed_msg = %{
-      role: :system,
-      content: "Rate-limit window cleared. Send a message to continue.",
-      timestamp: DateTime.utc_now()
-    }
+    if is_integer(resets_at) and now < resets_at do
+      Process.send_after(
+        self(),
+        {:rate_limit_retry, id},
+        StreamHandler.compute_rate_limit_wait_ms(resets_at)
+      )
 
-    {state, resumed_msg} = append_message(state, resumed_msg)
+      {:noreply, state}
+    else
+      state = %{
+        state
+        | status: :idle,
+          rate_limit_status: :ok,
+          rate_limit_resets_at_ms: nil,
+          rate_limit_type: nil
+      }
 
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-      agent_id: id,
-      msg: resumed_msg
-    })
+      :ets.insert(@ets_table, {id, summary(state)})
+      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
 
-    case state.pending_sends do
-      [] -> {:noreply, state}
-      [head | rest] -> send_message_normal(%{state | pending_sends: rest}, head)
+      case state.pending_sends do
+        [] -> {:noreply, state}
+        pending -> send_batch(%{state | pending_sends: []}, pending)
+      end
     end
   end
 
