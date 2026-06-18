@@ -139,6 +139,15 @@ defmodule Loopyard.Agent.Backend.ACP do
   end
 
   @impl true
+  def cancel_turn(_conn) do
+    # TODO: send ACP `session/cancel` to interrupt the turn while keeping the
+    # connection warm (Connection has no cancel path yet — plans/turn-taking.md
+    # step 2). Until then, the ChatAgent invalidates the turn on its side; the
+    # session stays up. No-op rather than tearing the connection down.
+    :ok
+  end
+
+  @impl true
   def session_alive?(conn), do: is_pid(conn) and Process.alive?(conn)
 
   @impl true

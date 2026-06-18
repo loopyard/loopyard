@@ -823,6 +823,12 @@ defmodule LoopyardWeb.WorkspaceLive do
   end
 
   @impl true
+  def handle_event("interrupt_agent", %{"id" => id}, socket) do
+    ChatAgent.interrupt(id)
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_event("stop_agent", %{"id" => id}, socket) do
     ChatAgent.stop_agent(id)
     {:noreply, socket}

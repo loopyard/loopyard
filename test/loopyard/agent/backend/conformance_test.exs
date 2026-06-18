@@ -25,6 +25,7 @@ defmodule Loopyard.Agent.Backend.ConformanceTest do
         {:start_session, 1},
         {:stream, 2},
         {:stop, 1},
+        {:cancel_turn, 1},
         {:session_alive?, 1},
         {:session_id, 1}
       ])

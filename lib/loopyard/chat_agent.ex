@@ -1092,6 +1092,37 @@ defmodule Loopyard.ChatAgent do
     end
   end
 
+  def handle_cast(:interrupt, %{status: :thinking} = state) do
+    # Warm interrupt (the turn machine's :cancel_turn effect): tell the backend
+    # to stop generating but keep the session ALIVE, then return to :idle so the
+    # user can immediately redirect — no kill, no log-replay (vs. :stop). Preserve
+    # the half-answer, invalidate the stream so late events from the interrupted
+    # turn are dropped, and clear all transient turn state. Drop the queue (the
+    # user is redirecting).
+    if state.session, do: state.backend.cancel_turn(state.session)
+    state = StreamHandler.finalize_partial_on_stream_interrupt(state, state.id, :stopped_by_user)
+
+    state = %{
+      state
+      | status: :idle,
+        stream_ref: nil,
+        active_tool: nil,
+        in_flight_partial: "",
+        tool_calls_this_turn: 0,
+        tool_runaway_warned: false,
+        last_tool_call: nil,
+        context_warning_sent: false,
+        pending_sends: []
+    }
+
+    :ets.insert(@ets_table, {state.id, summary(state)})
+    Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :idle})
+    {:noreply, state}
+  end
+
+  # Not mid-turn — "Stop" while idle means put the agent to sleep (hard stop).
+  def handle_cast(:interrupt, state), do: handle_cast(:stop, state)
+
   def handle_cast(:clear_pending, state) do
     if state.pending_sends == [] do
       {:noreply, state}
@@ -1728,6 +1759,9 @@ defmodule Loopyard.ChatAgent do
 
   @doc "Drop all queued (pending) messages without stopping the current turn."
   def clear_pending(id), do: GenServer.cast(via(id), :clear_pending)
+
+  @doc "Warm-interrupt the in-flight turn (keep the session); sleep the agent if idle."
+  def interrupt(id), do: GenServer.cast(via(id), :interrupt)
 
   @doc "Remove a single queued message by its index in the pending queue."
   def remove_pending(id, index) when is_integer(index),

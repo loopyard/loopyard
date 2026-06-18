@@ -25,6 +25,22 @@ defmodule Loopyard.Agent.Backend.ClaudeCode do
   end
 
   @impl true
+  def cancel_turn(session) do
+    # Interrupt the in-flight query WITHOUT killing the session — the CLI stops
+    # generating and emits a result, leaving the session warm to continue the
+    # conversation. This is the clean "Stop" (vs. stop/1 which tears it down).
+    if is_pid(session) and Process.alive?(session) do
+      try do
+        ClaudeCode.Session.interrupt(session)
+      catch
+        :exit, reason -> {:error, reason}
+      end
+    else
+      :ok
+    end
+  end
+
+  @impl true
   def session_alive?(session) do
     is_pid(session) && Process.alive?(session)
   end

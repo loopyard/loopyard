@@ -85,6 +85,9 @@ defmodule Loopyard.TestSupport.RecordingBackend do
   end
 
   @impl true
+  def cancel_turn(_session), do: :ok
+
+  @impl true
   def session_alive?(session), do: is_pid(session) and Process.alive?(session)
 
   @impl true

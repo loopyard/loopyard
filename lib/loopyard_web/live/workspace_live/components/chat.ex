@@ -247,7 +247,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                consistency across the workspace. --%>
           <.control_btn
             :if={agent_display_status(@agent) in [:ready, :thinking]}
-            phx-click="stop_agent"
+            phx-click="interrupt_agent"
             phx-value-id={@agent.id}
           >
             Stop

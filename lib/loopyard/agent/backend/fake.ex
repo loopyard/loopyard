@@ -44,6 +44,9 @@ defmodule Loopyard.Agent.Backend.Fake do
   end
 
   @impl Loopyard.Agent.Backend
+  def cancel_turn(_session), do: :ok
+
+  @impl Loopyard.Agent.Backend
   def session_alive?(session), do: is_pid(session) and Process.alive?(session)
 
   @impl Loopyard.Agent.Backend
