@@ -744,33 +744,15 @@ defmodule Loopyard.ChatAgent do
       # (:stream_done / :stream_error / :stream_timeout) pop the
       # queue and resume sends in order.
       state.status in [:thinking, :backoff] ->
-        user_msg = %{role: :user, content: text, timestamp: DateTime.utc_now()}
-        {state, user_msg} = append_message(state, user_msg)
-        Persistence.persist_message(state, user_msg)
-
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-          agent_id: state.id,
-          msg: user_msg
-        })
-
+        # Turn-taking: the agent holds the turn, so park the message in the
+        # pending queue instead of slapping it into the chat stream (which
+        # interleaved user bubbles + "Queued" notes through the agent's
+        # reasoning). It surfaces in the queue panel under the live activity,
+        # and only enters the chat history when it's actually sent on drain.
         state = %{state | pending_sends: state.pending_sends ++ [text]}
-        # Refresh the ETS summary so the sidebar's queued count updates live.
+        # Refresh the ETS summary so the live queue panel updates.
         :ets.insert(@ets_table, {state.id, summary(state)})
-
-        queued_msg = %{
-          role: :system,
-          content:
-            "Queued — agent is still working on the previous turn. Will process after it finishes.",
-          timestamp: DateTime.utc_now()
-        }
-
-        {state, queued_msg} = append_message(state, queued_msg)
-
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-          agent_id: state.id,
-          msg: queued_msg
-        })
-
+        Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: state.status})
         {:noreply, state}
 
       state.status == :rate_limited ->
@@ -1112,23 +1094,12 @@ defmodule Loopyard.ChatAgent do
     if state.pending_sends == [] do
       {:noreply, state}
     else
-      note = %{
-        role: :system,
-        content: "Cleared #{length(state.pending_sends)} queued message(s).",
-        timestamp: DateTime.utc_now()
-      }
-
-      {state, note} = append_message(%{state | pending_sends: []}, note)
-      :ets.insert(@ets_table, {state.id, summary(state)})
-
-      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-        agent_id: state.id,
-        msg: note
-      })
-
-      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: state.status})
-      {:noreply, state}
+      {:noreply, set_pending(state, [])}
     end
+  end
+
+  def handle_cast({:remove_pending, index}, state) do
+    {:noreply, set_pending(state, List.delete_at(state.pending_sends, index))}
   end
 
   # Catchall for unknown casts. Without this, any bogus cast would
@@ -1146,6 +1117,14 @@ defmodule Loopyard.ChatAgent do
     )
 
     {:noreply, state}
+  end
+
+  # Replace the pending queue + push the fresh summary to the live queue panel.
+  defp set_pending(state, pending) do
+    state = %{state | pending_sends: pending}
+    :ets.insert(@ets_table, {state.id, summary(state)})
+    Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: state.status})
+    state
   end
 
   @impl true
@@ -1708,12 +1687,17 @@ defmodule Loopyard.ChatAgent do
       auth_error: state.auth_error,
       prompt_hash: state.prompt_hash,
       context_utilization: state.context_utilization,
-      pending_count: length(state.pending_sends)
+      pending_count: length(state.pending_sends),
+      pending_messages: state.pending_sends
     }
   end
 
   @doc "Drop all queued (pending) messages without stopping the current turn."
   def clear_pending(id), do: GenServer.cast(via(id), :clear_pending)
+
+  @doc "Remove a single queued message by its index in the pending queue."
+  def remove_pending(id, index) when is_integer(index),
+    do: GenServer.cast(via(id), {:remove_pending, index})
 
   # All broadcast from ChatAgent is done through the typed publisher
   # modules `Loopyard.Events.ChatAgent` (topic `"chat_agents"`) and

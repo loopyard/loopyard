@@ -346,19 +346,39 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       </div>
       <div
         :if={(@agent[:pending_count] || 0) > 0}
-        class="flex-none flex items-center justify-between gap-2 px-4 pt-2 text-xs text-zinc-500 dark:text-zinc-400"
+        class="flex-none mx-4 mb-1 rounded-lg border border-violet-200 dark:border-violet-800/50 bg-violet-50/40 dark:bg-violet-900/10 px-3 py-2"
       >
-        <span>
-          {@agent.pending_count} message{if @agent.pending_count == 1, do: "", else: "s"} queued — sends when the agent is free
-        </span>
-        <button
-          type="button"
-          phx-click="clear_pending"
-          phx-value-id={@agent.id}
-          class="focus-ring font-medium text-violet-600 dark:text-violet-400 hover:underline flex-none"
-        >
-          Clear
-        </button>
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="text-[11px] font-medium uppercase tracking-wide text-violet-600 dark:text-violet-400">
+            Queued — sends when the agent finishes
+          </span>
+          <button
+            type="button"
+            phx-click="clear_pending"
+            phx-value-id={@agent.id}
+            class="focus-ring text-[11px] text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+          >
+            Clear all
+          </button>
+        </div>
+        <ul class="space-y-1">
+          <li
+            :for={{text, i} <- Enum.with_index(@agent[:pending_messages] || [])}
+            class="flex items-center gap-2 group/q"
+          >
+            <span class="flex-1 truncate text-sm text-zinc-700 dark:text-zinc-300">{text}</span>
+            <button
+              type="button"
+              phx-click="remove_pending"
+              phx-value-id={@agent.id}
+              phx-value-index={i}
+              title="Remove from queue"
+              class="focus-ring flex-none w-5 h-5 rounded flex items-center justify-center text-zinc-400 hover:text-red-500 hover:bg-red-500/10 opacity-0 group-hover/q:opacity-100 transition-opacity"
+            >
+              ✕
+            </button>
+          </li>
+        </ul>
       </div>
       <div
         id="chat-form-wrapper"
