@@ -54,7 +54,15 @@ Hooks.ScrollBottom = {
     }, { passive: true })
 
     this.handleEvent("scroll_bottom", () => {
-      el.scrollTop = 0
+      // Only auto-scroll if you're already AT/near the bottom. In
+      // column-reverse, bottom is scrollTop ~ 0; a large |scrollTop|
+      // means you scrolled up to read — don't yank you back down while
+      // messages stream in. Auto-scroll resumes once you return to the
+      // bottom. ~120px of slack so a tiny manual nudge still counts as
+      // "at the bottom".
+      if (Math.abs(el.scrollTop) < 120) {
+        el.scrollTop = 0
+      }
     })
   }
 }

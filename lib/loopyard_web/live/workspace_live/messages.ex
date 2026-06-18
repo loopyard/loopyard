@@ -52,7 +52,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     <div class="flex flex-col items-end mt-3 mb-1 group/msg">
       <div
         class="max-w-[85%] rounded-2xl rounded-tr-sm bg-violet-600 text-white px-4 py-2.5"
-        id={"msg-user-#{hash_content(@msg.content)}"}
+        id={"msg-user-#{@msg[:id] || hash_content(@msg.content)}"}
         phx-hook="Markdown"
         data-source={@msg.content}
       >
@@ -95,7 +95,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         </div>
         <div
           class="max-w-[85%] rounded-2xl rounded-tl-sm bg-zinc-100 dark:bg-zinc-800 px-4 py-2.5"
-          id={"msg-#{hash_content(@msg.content)}"}
+          id={"msg-#{@msg[:id] || hash_content(@msg.content)}"}
           phx-hook="Markdown"
           data-source={@rendered_content}
         >
