@@ -117,11 +117,15 @@ defmodule Loopyard.ChatAgent.ConcurrentSendTest do
         |> Enum.filter(&(&1.role == :user))
         |> Enum.map(& &1.content)
 
-      # One batched user message, framed as an ordered sequence (not two).
-      assert [batched] = user_contents
-      assert batched =~ "1. first queued"
-      assert batched =~ "2. second queued"
+      # The CHAT shows your actual individual messages — not framing machinery.
+      assert user_contents == ["first queued", "second queued"]
       assert state.pending_sends == []
+
+      # The PROMPT streamed to the model is the framed batch.
+      [framed] = Loopyard.TestSupport.RecordingBackend.streamed_prompts()
+      assert framed =~ "1. first queued"
+      assert framed =~ "2. second queued"
+      assert framed =~ "later ones may refine or correct earlier ones"
     end
 
     test "three rapid sends park in FIFO order, then drain as one batch", %{id: id} do
@@ -150,14 +154,19 @@ defmodule Loopyard.ChatAgent.ConcurrentSendTest do
       state_after = :sys.get_state(pid)
       assert state_after.pending_sends == []
 
-      [batched] =
+      # Chat shows the three individual messages...
+      user_after =
         state_after.messages
         |> Enum.reverse()
         |> Enum.filter(&(&1.role == :user))
         |> Enum.map(& &1.content)
 
-      assert batched =~ "1. A"
-      assert batched =~ "3. C"
+      assert user_after == ["A", "B", "C"]
+
+      # ...but the model got one framed batch.
+      [framed] = Loopyard.TestSupport.RecordingBackend.streamed_prompts()
+      assert framed =~ "1. A"
+      assert framed =~ "3. C"
     end
   end
 end

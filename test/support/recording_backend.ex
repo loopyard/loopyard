@@ -16,7 +16,7 @@ defmodule Loopyard.TestSupport.RecordingBackend do
   use Agent
 
   def start_link(_opts \\ []) do
-    Agent.start_link(fn -> %{starts: [], session_id_override: nil} end, name: __MODULE__)
+    Agent.start_link(fn -> %{starts: [], streamed: [], session_id_override: nil} end, name: __MODULE__)
   end
 
   def reset do
@@ -30,7 +30,7 @@ defmodule Loopyard.TestSupport.RecordingBackend do
 
       pid when is_pid(pid) ->
         try do
-          Agent.update(__MODULE__, fn _ -> %{starts: [], session_id_override: nil} end)
+          Agent.update(__MODULE__, fn _ -> %{starts: [], streamed: [], session_id_override: nil} end)
         catch
           :exit, _ ->
             # Agent was alive when we checked, died by now. Start fresh.
@@ -68,7 +68,12 @@ defmodule Loopyard.TestSupport.RecordingBackend do
   end
 
   @impl true
-  def stream(_session, _prompt), do: []
+  def stream(_session, prompt) do
+    Agent.update(__MODULE__, fn s -> %{s | streamed: [prompt | Map.get(s, :streamed, [])]} end)
+    []
+  end
+
+  def streamed_prompts, do: Agent.get(__MODULE__, &Map.get(&1, :streamed, [])) |> Enum.reverse()
 
   @impl true
   def stop(session) do

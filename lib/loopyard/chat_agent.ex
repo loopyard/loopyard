@@ -1191,8 +1191,8 @@ defmodule Loopyard.ChatAgent do
         GenServer.cast(self(), {:auto_restart_context, last_user_text})
         {:noreply, state}
 
-      {:drain, text, state} ->
-        send_message_normal(state, text)
+      {:drain, list, state} ->
+        send_batch(state, list)
 
       {:noreply, state} ->
         {:noreply, state}
@@ -1249,8 +1249,8 @@ defmodule Loopyard.ChatAgent do
 
         {:noreply, state}
 
-      {:drain, text, state} ->
-        send_message_normal(state, text)
+      {:drain, list, state} ->
+        send_batch(state, list)
 
       {:noreply, state} ->
         {:noreply, state}
@@ -1587,49 +1587,81 @@ defmodule Loopyard.ChatAgent do
         msg: user_msg
       })
 
-      state = %{state | status: :thinking}
-      :ets.insert(@ets_table, {state.id, summary(state)})
-      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :thinking})
-
-      # Generate stream_ref BEFORE spawning the Task so every event the
-      # Task emits is tagged with the ref that identifies THIS stream.
-      # When the session is replaced mid-stream (CLI crash retry, user
-      # restart), the handler on the other side uses the ref to drop
-      # stale events from the dead stream — otherwise they'd land on
-      # the new state and corrupt the next turn. See agent-sanity #16.
-      stream_ref = make_ref()
-      me = self()
-      agent_id = state.id
-      session = state.session
-      backend = state.backend
-
-      Task.start_link(fn ->
-        try do
-          backend.stream(session, text)
-          |> Enum.each(fn event ->
-            send(me, {:stream_event, agent_id, stream_ref, event})
-          end)
-
-          send(me, {:stream_done, agent_id, stream_ref})
-        rescue
-          e ->
-            send(me, {:stream_error, agent_id, stream_ref, Exception.message(e)})
-        catch
-          :exit, reason ->
-            send(
-              me,
-              {:stream_error, agent_id, stream_ref, "CLI session exited: #{inspect(reason)}"}
-            )
-        end
-      end)
-
-      Process.send_after(self(), {:stream_timeout, agent_id, stream_ref}, 600_000)
-
-      # Clear in_flight_partial — any prior partial was already
-      # finalized on the prior turn's stream_done/error. New stream,
-      # new accumulator.
-      {:noreply, %{state | stream_ref: stream_ref, in_flight_partial: ""}}
+      start_turn(state, text)
     end
+  end
+
+  # Drain a parked flurry: show the user's ACTUAL individual messages in the
+  # chat, but stream the FRAMED batch (Turn.batch_prompt) as the prompt — so the
+  # history reads like what you typed, and only the model sees the "you sent N
+  # messages…" framing. A single message takes the normal path.
+  defp send_batch(state, [single]), do: send_message_normal(state, single)
+
+  defp send_batch(state, list) when is_list(list) do
+    state = SessionManager.ensure_alive(state)
+
+    if not state.backend.session_alive?(state.session) do
+      # Dead at drain time — re-queue the whole flurry and restart; never lose it.
+      state = %{state | pending_sends: list}
+      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :idle})
+      GenServer.cast(self(), :restart_session)
+      {:noreply, state}
+    else
+      state =
+        Enum.reduce(list, state, fn text, st ->
+          msg = %{role: :user, content: text, timestamp: DateTime.utc_now()}
+          {st, msg} = append_message(st, msg)
+          Persistence.persist_message(st, msg)
+
+          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+            agent_id: st.id,
+            msg: msg
+          })
+
+          st
+        end)
+
+      start_turn(state, Loopyard.Turn.batch_prompt(list))
+    end
+  end
+
+  # Start the agent's turn: stream `prompt` to the backend, tagged with a fresh
+  # stream_ref. This is the turn machine's `{:start_turn, prompt}` effect made
+  # concrete; it does NOT append a user message (the caller decides what to show,
+  # which is what lets a batch display individual messages but stream the framed
+  # prompt). stream_ref is generated BEFORE the Task so every event is tagged
+  # with the ref identifying THIS stream — a replaced session's stale events are
+  # dropped by ref on the other side (agent-sanity #16).
+  defp start_turn(state, prompt) do
+    state = %{state | status: :thinking}
+    :ets.insert(@ets_table, {state.id, summary(state)})
+    Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :thinking})
+
+    stream_ref = make_ref()
+    me = self()
+    agent_id = state.id
+    session = state.session
+    backend = state.backend
+
+    Task.start_link(fn ->
+      try do
+        backend.stream(session, prompt)
+        |> Enum.each(fn event ->
+          send(me, {:stream_event, agent_id, stream_ref, event})
+        end)
+
+        send(me, {:stream_done, agent_id, stream_ref})
+      rescue
+        e ->
+          send(me, {:stream_error, agent_id, stream_ref, Exception.message(e)})
+      catch
+        :exit, reason ->
+          send(me, {:stream_error, agent_id, stream_ref, "CLI session exited: #{inspect(reason)}"})
+      end
+    end)
+
+    Process.send_after(self(), {:stream_timeout, agent_id, stream_ref}, 600_000)
+    {:noreply, %{state | stream_ref: stream_ref, in_flight_partial: ""}}
   end
 
   @max_messages 1000
