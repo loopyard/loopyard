@@ -344,6 +344,23 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           />
         </div>
       </div>
+      <%!-- Prominent, obvious interrupt right where you're looking while the
+            agent works — the top-right "Stop" is cramped/ambiguous on mobile.
+            Warm-cancels the turn (keeps the session); type to redirect. --%>
+      <div
+        :if={agent_display_status(@agent) == :thinking}
+        class="flex-none flex justify-center pb-2"
+      >
+        <button
+          type="button"
+          phx-click="interrupt_agent"
+          phx-value-id={@agent.id}
+          class="focus-ring inline-flex items-center gap-1.5 rounded-full border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-200 shadow-sm hover:border-red-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+        >
+          <span class="w-2.5 h-2.5 rounded-[3px] bg-red-500"></span>
+          Stop
+        </button>
+      </div>
       <div
         :if={(@agent[:pending_count] || 0) > 0}
         class="flex-none mx-4 mb-1 rounded-lg border border-violet-200 dark:border-violet-800/50 bg-violet-50/40 dark:bg-violet-900/10 px-3 py-2"
