@@ -127,8 +127,29 @@ defmodule Loopyard.Turn do
   # agent worked — batch the whole flurry into ONE next turn (the agent "looks at
   # the flurry" together) rather than firing a turn per message.
   defp settle(%__MODULE__{phase: :human, queue: [_ | _] = q} = t) do
-    {:ok, %{t | phase: :agent, queue: []}, [{:start_turn, Enum.join(q, "\n\n")}]}
+    {:ok, %{t | phase: :agent, queue: []}, [{:start_turn, batch_prompt(q)}]}
   end
 
   defp settle(%__MODULE__{} = t), do: {:ok, t, []}
+
+  @doc """
+  Format a parked flurry into one prompt. A single message goes through as-is; a
+  flurry is FRAMED as an ordered sequence so the agent treats later messages as
+  refinements/corrections of earlier ones (not three independent demands). The
+  single source of truth for the batch format — used by the turn machine and the
+  live ChatAgent drain.
+  """
+  @spec batch_prompt([String.t()]) :: String.t()
+  def batch_prompt([single]), do: single
+
+  def batch_prompt(messages) when is_list(messages) do
+    numbered =
+      messages
+      |> Enum.with_index(1)
+      |> Enum.map_join("\n", fn {m, i} -> "#{i}. #{m}" end)
+
+    "You sent #{length(messages)} messages while I was working, in order:\n" <>
+      numbered <>
+      "\n\nHandle them together; later ones may refine or correct earlier ones."
+  end
 end

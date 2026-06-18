@@ -784,13 +784,17 @@ defmodule Loopyard.ChatAgent.StreamHandler do
 
   defp maybe_warn_context_full(state, _id, _utilization), do: state
 
-  # Drain the pending-sends queue. Returns `{:drain, text, state}` when
-  # there's a message to send, or `{:noreply, state}` when empty. The
-  # caller (ChatAgent) handles the actual `send_message_normal` dispatch.
+  # Drain the pending-sends queue as ONE batched turn. Returns
+  # `{:drain, prompt, state}` with the whole flurry framed into a single prompt
+  # (Loopyard.Turn.batch_prompt — the agent "looks at the flurry" together,
+  # treating later messages as refinements), or `{:noreply, state}` when empty.
+  # Batched, not one-per-turn: a flurry queued while rate-limited would otherwise
+  # be N separate trips through the rate limit. The caller (ChatAgent) handles
+  # the actual send_message_normal dispatch.
   defp drain_pending_sends(%{pending_sends: []} = state), do: {:noreply, state}
 
-  defp drain_pending_sends(%{pending_sends: [head | rest]} = state) do
-    {:drain, head, %{state | pending_sends: rest}}
+  defp drain_pending_sends(%{pending_sends: pending} = state) do
+    {:drain, Loopyard.Turn.batch_prompt(pending), %{state | pending_sends: []}}
   end
 
   defp empty_last_response?(state) do

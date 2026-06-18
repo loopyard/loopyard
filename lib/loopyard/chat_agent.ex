@@ -929,7 +929,9 @@ defmodule Loopyard.ChatAgent do
         end
 
         # Drain a message the user queued while the harness was wedged onto the
-        # fresh CLI (the rest pop on turn completion, preserving FIFO order).
+        # fresh CLI (one at a time — the rest pop on turn completion, which
+        # batches). NOT batched here: if the backend is permanently dead, this
+        # recovery path loops, and batching would nest the queue exponentially.
         state =
           case state.pending_sends do
             [next | rest] ->

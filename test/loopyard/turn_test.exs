@@ -82,13 +82,24 @@ defmodule Loopyard.TurnTest do
                Turn.step(%Turn{phase: :agent}, :turn_complete)
     end
 
-    test "batch-drains a parked flurry into ONE next turn" do
+    test "batch-drains a parked flurry into ONE framed next turn" do
       t = %Turn{phase: :agent, queue: ["first", "second", "third"]}
 
       assert {:ok, %Turn{phase: :agent, queue: []}, [{:start_turn, prompt}]} =
                Turn.step(t, :turn_complete)
 
-      assert prompt == "first\n\nsecond\n\nthird"
+      # Framed as an ordered sequence so later messages can refine earlier ones.
+      assert prompt =~ "You sent 3 messages while I was working, in order:"
+      assert prompt =~ "1. first"
+      assert prompt =~ "2. second"
+      assert prompt =~ "3. third"
+      assert prompt =~ "later ones may refine or correct earlier ones"
+    end
+
+    test "a single parked message drains as-is (no framing)" do
+      t = %Turn{phase: :agent, queue: ["just one"]}
+      assert {:ok, %Turn{phase: :human, queue: []}, []} = Turn.step(%{t | queue: []}, :turn_complete)
+      assert {:ok, _, [{:start_turn, "just one"}]} = Turn.step(t, :turn_complete)
     end
 
     test "completing while blocked clears the block and settles" do
@@ -168,9 +179,11 @@ defmodule Loopyard.TurnTest do
         :turn_complete
       ])
 
-      # one initial turn + one batched drain
+      # one initial turn + one batched, framed drain
       starts = Enum.filter(effects, &match?({:start_turn, _}, &1))
-      assert [{:start_turn, "go"}, {:start_turn, "also this\n\nand this"}] = starts
+      assert [{:start_turn, "go"}, {:start_turn, batched}] = starts
+      assert batched =~ "1. also this"
+      assert batched =~ "2. and this"
       assert final.phase == :agent
       assert final.queue == []
     end

@@ -69,7 +69,7 @@ defmodule Loopyard.ChatAgent.ConcurrentSendTest do
   end
 
   describe "surface #15: concurrent send serialization" do
-    test "second :send_message while :thinking enqueues and surfaces 'Queued' marker",
+    test "a send while :thinking parks in the queue without polluting the chat",
          %{id: id} do
       pid = agent_pid(id)
 
@@ -81,38 +81,29 @@ defmodule Loopyard.ChatAgent.ConcurrentSendTest do
 
       state = :sys.get_state(pid)
 
-      # Message went into pending_sends, not a fresh stream.
+      # Message parked in pending_sends, not started as a fresh stream.
       assert state.status == :thinking
       assert state.pending_sends == ["second message arrives mid-turn"]
 
-      # User message persisted, plus an explanatory "Queued" marker.
-      assert Enum.any?(state.messages, fn m ->
+      # Turn-taking: a parked message does NOT append a user bubble or a
+      # "Queued" marker into the chat stream — it surfaces in the queue panel
+      # and only enters the history when it's actually sent on drain.
+      refute Enum.any?(state.messages, fn m ->
                m.role == :user and m.content == "second message arrives mid-turn"
              end)
 
-      assert Enum.any?(state.messages, fn m ->
+      refute Enum.any?(state.messages, fn m ->
                m.role == :system and String.contains?(m.content || "", "Queued")
              end)
     end
 
-    test "stream_done with non-empty pending drains head via send_message_normal (FIFO)",
+    test "stream_done with a non-empty queue drains it as ONE batched, framed turn",
          %{id: id} do
-      # Under RecordingBackend, Backend.stream/2 returns an empty
-      # stream so every "turn" completes instantly. That means both
-      # queued items drain on the same stream_done, which is still the
-      # right behavior — just faster than we can observe mid-drain.
-      # Assert on the END state: user messages appear in FIFO order.
       pid = agent_pid(id)
-
       ref = make_ref()
 
       :sys.replace_state(pid, fn s ->
-        %{
-          s
-          | status: :thinking,
-            stream_ref: ref,
-            pending_sends: ["first queued", "second queued"]
-        }
+        %{s | status: :thinking, stream_ref: ref, pending_sends: ["first queued", "second queued"]}
       end)
 
       send(pid, {:stream_done, id, ref})
@@ -120,23 +111,24 @@ defmodule Loopyard.ChatAgent.ConcurrentSendTest do
 
       state = :sys.get_state(pid)
 
-      # state.messages is stored newest-first (reverse list for O(1)
-      # prepend) — Enum.reverse to get chronological order.
       user_contents =
         state.messages
         |> Enum.reverse()
         |> Enum.filter(&(&1.role == :user))
         |> Enum.map(& &1.content)
 
-      assert user_contents == ["first queued", "second queued"]
+      # One batched user message, framed as an ordered sequence (not two).
+      assert [batched] = user_contents
+      assert batched =~ "1. first queued"
+      assert batched =~ "2. second queued"
       assert state.pending_sends == []
     end
 
-    test "three rapid sends → user messages appear in FIFO order", %{id: id} do
+    test "three rapid sends park in FIFO order, then drain as one batch", %{id: id} do
       pid = agent_pid(id)
 
-      # Force :thinking so the very first send queues too — simulates
-      # the true concurrent race where no turn has drained yet.
+      # Force :thinking so the very first send queues too — the true concurrent
+      # race where no turn has drained yet.
       :sys.replace_state(pid, fn s -> %{s | status: :thinking} end)
 
       ChatAgent.send_message(id, "A")
@@ -146,24 +138,26 @@ defmodule Loopyard.ChatAgent.ConcurrentSendTest do
 
       state = :sys.get_state(pid)
 
-      # All three queued (status still :thinking).
+      # All three parked in order; none appended to the chat yet.
       assert state.pending_sends == ["A", "B", "C"]
+      assert Enum.filter(state.messages, &(&1.role == :user)) == []
 
-      user_contents =
-        state.messages
-        |> Enum.reverse()
-        |> Enum.filter(&(&1.role == :user))
-        |> Enum.map(& &1.content)
-
-      assert user_contents == ["A", "B", "C"]
-
-      # Draining in order: fire stream_done to flush.
-      ref = :sys.get_state(pid).stream_ref
+      # Drain → one batched turn containing all three.
+      ref = state.stream_ref
       send(pid, {:stream_done, id, ref})
       Process.sleep(100)
 
       state_after = :sys.get_state(pid)
       assert state_after.pending_sends == []
+
+      [batched] =
+        state_after.messages
+        |> Enum.reverse()
+        |> Enum.filter(&(&1.role == :user))
+        |> Enum.map(& &1.content)
+
+      assert batched =~ "1. A"
+      assert batched =~ "3. C"
     end
   end
 end
