@@ -754,6 +754,8 @@ defmodule Loopyard.ChatAgent do
         })
 
         state = %{state | pending_sends: state.pending_sends ++ [text]}
+        # Refresh the ETS summary so the sidebar's queued count updates live.
+        :ets.insert(@ets_table, {state.id, summary(state)})
 
         queued_msg = %{
           role: :system,
@@ -1103,6 +1105,29 @@ defmodule Loopyard.ChatAgent do
         {state, err} = append_message(state, err)
         Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: err})
         {:noreply, state}
+    end
+  end
+
+  def handle_cast(:clear_pending, state) do
+    if state.pending_sends == [] do
+      {:noreply, state}
+    else
+      note = %{
+        role: :system,
+        content: "Cleared #{length(state.pending_sends)} queued message(s).",
+        timestamp: DateTime.utc_now()
+      }
+
+      {state, note} = append_message(%{state | pending_sends: []}, note)
+      :ets.insert(@ets_table, {state.id, summary(state)})
+
+      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+        agent_id: state.id,
+        msg: note
+      })
+
+      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: state.status})
+      {:noreply, state}
     end
   end
 
@@ -1682,9 +1707,13 @@ defmodule Loopyard.ChatAgent do
       rate_limit_type: state.rate_limit_type,
       auth_error: state.auth_error,
       prompt_hash: state.prompt_hash,
-      context_utilization: state.context_utilization
+      context_utilization: state.context_utilization,
+      pending_count: length(state.pending_sends)
     }
   end
+
+  @doc "Drop all queued (pending) messages without stopping the current turn."
+  def clear_pending(id), do: GenServer.cast(via(id), :clear_pending)
 
   # All broadcast from ChatAgent is done through the typed publisher
   # modules `Loopyard.Events.ChatAgent` (topic `"chat_agents"`) and

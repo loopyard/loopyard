@@ -811,6 +811,12 @@ defmodule LoopyardWeb.WorkspaceLive do
   end
 
   @impl true
+  def handle_event("clear_pending", %{"id" => id}, socket) do
+    ChatAgent.clear_pending(id)
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_event("stop_agent", %{"id" => id}, socket) do
     ChatAgent.stop_agent(id)
     {:noreply, socket}

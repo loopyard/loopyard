@@ -345,6 +345,22 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
         </div>
       </div>
       <div
+        :if={(@agent[:pending_count] || 0) > 0}
+        class="flex-none flex items-center justify-between gap-2 px-4 pt-2 text-xs text-zinc-500 dark:text-zinc-400"
+      >
+        <span>
+          {@agent.pending_count} message{if @agent.pending_count == 1, do: "", else: "s"} queued — sends when the agent is free
+        </span>
+        <button
+          type="button"
+          phx-click="clear_pending"
+          phx-value-id={@agent.id}
+          class="focus-ring font-medium text-violet-600 dark:text-violet-400 hover:underline flex-none"
+        >
+          Clear
+        </button>
+      </div>
+      <div
         id="chat-form-wrapper"
         phx-update="ignore"
         class="flex-none border-t border-zinc-200 dark:border-zinc-700/80 p-3 md:p-4"
