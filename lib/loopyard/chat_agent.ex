@@ -1094,11 +1094,12 @@ defmodule Loopyard.ChatAgent do
 
   def handle_cast(:interrupt, %{status: :thinking} = state) do
     # Warm interrupt (the turn machine's :cancel_turn effect): tell the backend
-    # to stop generating but keep the session ALIVE, then return to :idle so the
-    # user can immediately redirect — no kill, no log-replay (vs. :stop). Preserve
-    # the half-answer, invalidate the stream so late events from the interrupted
-    # turn are dropped, and clear all transient turn state. Drop the queue (the
-    # user is redirecting).
+    # to stop generating but keep the session ALIVE — no kill, no log-replay (vs.
+    # :stop). Preserve the half-answer and invalidate the stream so late events
+    # from the interrupted turn are dropped. The QUEUE IS NOT TOUCHED: the
+    # interrupt makes the turn finish, so the queue then sends — exactly what the
+    # queue panel promises ("sends when the agent finishes"). Use Clear all to
+    # discard it instead.
     if state.session, do: state.backend.cancel_turn(state.session)
     state = StreamHandler.finalize_partial_on_stream_interrupt(state, state.id, :stopped_by_user)
 
@@ -1111,13 +1112,20 @@ defmodule Loopyard.ChatAgent do
         tool_calls_this_turn: 0,
         tool_runaway_warned: false,
         last_tool_call: nil,
-        context_warning_sent: false,
-        pending_sends: []
+        context_warning_sent: false
     }
 
-    :ets.insert(@ets_table, {state.id, summary(state)})
-    Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :idle})
-    {:noreply, state}
+    case state.pending_sends do
+      [] ->
+        :ets.insert(@ets_table, {state.id, summary(state)})
+        Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :idle})
+        {:noreply, state}
+
+      pending ->
+        # The agent just "finished" — drain the parked queue as the next turn.
+        :ets.insert(@ets_table, {state.id, summary(%{state | pending_sends: []})})
+        send_batch(%{state | pending_sends: []}, pending)
+    end
   end
 
   # Not mid-turn — "Stop" while idle means put the agent to sleep (hard stop).

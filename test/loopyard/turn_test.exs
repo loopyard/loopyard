@@ -114,16 +114,22 @@ defmodule Loopyard.TurnTest do
   end
 
   describe ":interrupt (Stop)" do
-    test "from :agent cancels the turn, drops the queue, hands control back" do
-      t = %Turn{phase: :agent, queue: ["x", "y"]}
+    test "with no queue cancels the turn and yields to the human" do
+      t = %Turn{phase: :agent, queue: []}
       assert {:ok, %Turn{phase: :human, queue: [], blocked_on: nil}, [:cancel_turn]} =
                Turn.step(t, :interrupt)
     end
 
+    test "KEEPS the parked queue and drains it as the next turn (not discarded)" do
+      t = %Turn{phase: :agent, queue: ["x", "y"]}
+      assert {:ok, %Turn{phase: :agent, queue: []}, effects} = Turn.step(t, :interrupt)
+      assert :cancel_turn in effects
+      assert Enum.any?(effects, &match?({:start_turn, _}, &1))
+    end
+
     test "from :agent_blocked also cancels" do
       t = %Turn{phase: :agent_blocked, blocked_on: %{kind: :permission, id: 1, payload: %{}}}
-      assert {:ok, %Turn{phase: :human, blocked_on: nil}, [:cancel_turn]} =
-               Turn.step(t, :interrupt)
+      assert {:ok, %Turn{blocked_on: nil}, [:cancel_turn | _]} = Turn.step(t, :interrupt)
     end
 
     test "is invalid on the human's turn (nothing to interrupt)" do
@@ -188,14 +194,17 @@ defmodule Loopyard.TurnTest do
       assert final.queue == []
     end
 
-    test "interrupt mid-flurry drops everything and yields to the human" do
-      {final, _} = run_state(Turn.new(), [
+    test "interrupt mid-flurry keeps the queue and drains it as a follow-up turn" do
+      {final, effects} = run_state(Turn.new(), [
         {:send, "go"},
         {:send, "queued"},
         :interrupt
       ])
 
-      assert final.phase == :human
+      assert :cancel_turn in effects
+      # The queued message is NOT lost — it becomes the next turn.
+      assert {:start_turn, "queued"} in effects
+      assert final.phase == :agent
       assert final.queue == []
     end
   end

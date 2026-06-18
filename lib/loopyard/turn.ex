@@ -103,10 +103,15 @@ defmodule Loopyard.Turn do
     settle(%{t | phase: :human, blocked_on: nil})
   end
 
-  # --- interrupt (Stop): cancel the turn, drop the queue, hand control back ---
+  # --- interrupt (Stop): cancel the turn but KEEP the queue ---
 
   def step(%__MODULE__{phase: phase} = t, :interrupt) when phase in [:agent, :agent_blocked] do
-    {:ok, %{t | phase: :human, queue: [], blocked_on: nil}, [:cancel_turn]}
+    # Stop interrupts the in-flight turn — but the parked queue is what you still
+    # want to say, so it's NOT discarded. The agent "finishes", so the queue
+    # drains as the next turn (settle), same as turn_complete. cancel_turn first,
+    # then any start_turn from the drain. Use :clear_queue to discard instead.
+    {:ok, t2, effects} = settle(%{t | phase: :human, blocked_on: nil})
+    {:ok, t2, [:cancel_turn | effects]}
   end
 
   # --- queue management (valid in any phase, never changes whose turn it is) ---
