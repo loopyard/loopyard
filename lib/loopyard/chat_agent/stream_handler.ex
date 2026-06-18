@@ -456,18 +456,36 @@ defmodule Loopyard.ChatAgent.StreamHandler do
   Compute the wait time in milliseconds before retrying after a rate limit.
   Public because ChatAgent.handle_cast(:send_message) also uses it.
   """
+  # Re-check at most this often. A weekly (seven_day) limit resets days out;
+  # waiting until exactly then is right, but a single multi-day timer is fragile
+  # (idle-reap, restart), so cap the poll — without spamming every 60s like before.
+  @max_rate_limit_poll_ms 5 * 60 * 1000
+
   def compute_rate_limit_wait_ms(resets_at_ms) when is_integer(resets_at_ms) do
-    now_ms = System.system_time(:millisecond)
-    delta = resets_at_ms - now_ms
+    delta = resets_at_ms - System.system_time(:millisecond)
 
     cond do
-      delta <= 0 -> 60_000
-      delta > 3_600_000 -> 60_000
-      true -> delta + 1_000
+      delta <= 0 -> 5_000
+      true -> min(delta + 1_000, @max_rate_limit_poll_ms)
     end
   end
 
   def compute_rate_limit_wait_ms(_), do: 60_000
+
+  @doc "Human-readable time until a rate-limit reset, e.g. \"in ~3 days\"."
+  def format_reset(resets_at_ms) when is_integer(resets_at_ms) do
+    delta = resets_at_ms - System.system_time(:millisecond)
+
+    cond do
+      delta <= 0 -> "any moment"
+      delta < 90_000 -> "in ~#{div(delta, 1000)}s"
+      delta < 5_400_000 -> "in ~#{max(1, div(delta, 60_000))} min"
+      delta < 86_400_000 -> "in ~#{max(1, div(delta, 3_600_000))} hr"
+      true -> "in ~#{max(1, div(delta, 86_400_000))} days"
+    end
+  end
+
+  def format_reset(_), do: "shortly"
 
   @doc """
   Finalize any partial text accumulated from TextDelta events when a
@@ -528,45 +546,54 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     case rl.status do
       :rejected ->
         wait_ms = compute_rate_limit_wait_ms(rl.resets_at_ms)
-
-        Loopyard.EventLog.warning(
-          "agent:#{state.name}",
-          "Rate-limited (#{inspect(rl.rate_limit_type)}), retrying in #{div(wait_ms, 1000)}s"
-        )
-
+        # Only the FIRST rejection adds a chat message — every retry that's still
+        # limited would otherwise re-spam the stream. The harness-status block
+        # carries the live state after that.
+        first? = state.rate_limit_status != :rejected
         Process.send_after(self(), {:rate_limit_retry, id}, wait_ms)
 
-        rl_msg = %{
-          role: :system,
-          content:
-            "Rate-limited (#{rl.rate_limit_type || "limit"}). The harness hit a rate limit. " <>
-              "Retrying automatically in ~#{div(wait_ms, 1000)}s.",
-          timestamp: DateTime.utc_now()
+        state = %{
+          state
+          | status: :rate_limited,
+            active_tool: nil,
+            rate_limit_status: :rejected,
+            rate_limit_resets_at_ms: rl.resets_at_ms,
+            rate_limit_type: rl.rate_limit_type
         }
 
-        {state, rl_msg} =
-          append_message(
-            %{
-              state
-              | status: :rate_limited,
-                active_tool: nil,
-                rate_limit_status: :rejected,
-                rate_limit_resets_at_ms: rl.resets_at_ms,
-                rate_limit_type: rl.rate_limit_type
-            },
-            rl_msg
+        :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
+        Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :rate_limited})
+
+        if first? do
+          Loopyard.EventLog.warning(
+            "agent:#{state.name}",
+            "Rate-limited (#{inspect(rl.rate_limit_type)}); resets #{format_reset(rl.resets_at_ms)}"
           )
 
-        Persistence.persist_message(state, rl_msg)
-        :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
+          content =
+            case rl.rate_limit_type do
+              :seven_day ->
+                "You've hit your weekly Claude usage limit — resets #{format_reset(rl.resets_at_ms)}. " <>
+                  "I'll pick back up automatically when it clears. (For heavy continuous use, " <>
+                  "switching the harness to API credits avoids the weekly cap.)"
 
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-          agent_id: id,
-          msg: rl_msg
-        })
+              other ->
+                "Rate-limited (#{other || "limit"}) — I'll resume #{format_reset(rl.resets_at_ms)}."
+            end
 
-        Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :rate_limited})
-        state
+          rl_msg = %{role: :system, content: content, timestamp: DateTime.utc_now()}
+          {state, rl_msg} = append_message(state, rl_msg)
+          Persistence.persist_message(state, rl_msg)
+
+          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+            agent_id: id,
+            msg: rl_msg
+          })
+
+          state
+        else
+          state
+        end
 
       :allowed_warning ->
         state = %{

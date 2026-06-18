@@ -770,15 +770,10 @@ defmodule Loopyard.ChatAgent do
           msg: user_msg
         })
 
-        wait_s =
-          case StreamHandler.compute_rate_limit_wait_ms(state.rate_limit_resets_at_ms) do
-            n when is_integer(n) -> div(n, 1000)
-            _ -> 60
-          end
-
         hold_msg = %{
           role: :system,
-          content: "Holding your message — rate-limited, retrying in ~#{wait_s}s.",
+          content:
+            "Holding your message — rate-limited, will send #{StreamHandler.format_reset(state.rate_limit_resets_at_ms)}.",
           timestamp: DateTime.utc_now()
         }
 

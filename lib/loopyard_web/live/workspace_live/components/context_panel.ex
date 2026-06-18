@@ -105,7 +105,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
         bad("Auth expired", "re-login required — connect Claude on /workstation")
 
       Map.get(agent, :rate_limit_status, :ok) != :ok or status == :rate_limited ->
-        warn("amber", "Rate-limited", "messages are queued and send automatically when it clears")
+        reset = Loopyard.ChatAgent.StreamHandler.format_reset(agent[:rate_limit_resets_at_ms])
+
+        case agent[:rate_limit_type] do
+          :seven_day -> warn("amber", "Weekly limit reached", "resets #{reset} · queued messages auto-send")
+          _ -> warn("amber", "Rate-limited", "resumes #{reset} · queued messages auto-send")
+        end
 
       status == :backoff ->
         warn("blue", "Reconnecting…", "restarting the harness, then resuming")
