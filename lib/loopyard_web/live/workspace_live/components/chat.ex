@@ -10,7 +10,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     only: [chat_msg: 1, streaming_bubble: 1, streaming_thinking: 1]
 
   import LoopyardWeb.Live.WorkspaceLive.Components.Formatters, only: [time_ago: 1]
-  import LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel, only: [context_panel: 1]
+  import LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel,
+    only: [context_panel: 1, context_sections: 1]
 
   # Build the breadcrumb trail for this workspace view.
   #   Loopyard / {project.name} / {workspace label}
@@ -190,18 +191,38 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           has_container={@has_container}
         />
       </div>
-      <%!-- Agent context lives in the right rail on desktop. On mobile that
-           rail is hidden, so the "Info" link (:context_panel) shows the same
-           context full-screen here. --%>
-      <div :if={@tab == :context_panel} class="flex-1 lg:hidden">
-        <.context_panel
-          agent={@selected_agent}
-          has_container={@has_container}
-          container_env={@container_env}
-          container_logs={@container_logs}
-          editing_name={@editing_name}
-          mobile={true}
-        />
+      <%!-- The desktop right rail (Agents + Services + Volumes + this agent's
+           context) is hidden on phones, so the "Info" view IS that rail on
+           mobile — the whole workspace in one scrollable, touch-sized panel.
+           Tapping an agent switches to it; tapping a service opens it. --%>
+      <div
+        :if={@tab == :context_panel}
+        class="flex-1 lg:hidden overflow-y-auto bg-zinc-50 dark:bg-zinc-900/50"
+      >
+        <LoopyardWeb.Components.SideNav.section label="Agents">
+          <LoopyardWeb.Live.WorkspaceLive.Components.Sidebar.agent_list_item
+            :for={a <- @agents}
+            agent={a}
+            selected={@selected_id == a.id}
+          />
+          <.link
+            patch={"#{@base_path}/new"}
+            class="flex items-center gap-2 px-3 min-h-[2.75rem] text-sm font-medium text-violet-600 dark:text-violet-400 active:bg-violet-50 dark:active:bg-violet-500/10"
+          >
+            + New agent
+          </.link>
+        </LoopyardWeb.Components.SideNav.section>
+        <LoopyardWeb.Components.SideNav.section :if={@service_statuses != []} label="Services">
+          <LoopyardWeb.Live.WorkspaceLive.Components.Sidebar.service_item
+            :for={svc <- @service_statuses}
+            svc={svc}
+            base_path={@base_path}
+            selected={@selected_service == svc.name}
+            host={@host}
+            workspace_id={@workspace.id}
+          />
+        </LoopyardWeb.Components.SideNav.section>
+        <.context_sections agent={@selected_agent} editing_name={@editing_name} />
       </div>
     </div>
     """
@@ -227,55 +248,53 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             {time_ago(@agent[:last_activity_at])}
           </span>
         </div>
-        <div class="flex items-center gap-1 md:gap-2 flex-none">
-          <%!--
-            Mobile-only navigation into the Agent Context pane. On lg+
-            the pane is always visible in the right rail, so we hide
-            the link. Mirrors the "Menu" back-link on the left that
-            returns to the sidebar — sidebar → chat → context.
-          --%>
+        <div class="flex items-center gap-2 flex-none">
           <.detail_level_control level={@detail_level} />
+          <%!-- Agent context — mobile/tablet only (the right rail shows it on lg+).
+               Real touch target (≈40px tall), and the only control on the phone
+               header so it can't be fat-fingered into a destructive action. --%>
           <.link
             patch={"#{@base_path}/agents/#{@agent.id}/context"}
-            class="lg:hidden text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded-md px-2 py-1"
-            aria-label="Agent context"
+            class="lg:hidden inline-flex items-center min-h-[2.5rem] px-3 rounded-lg text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 active:bg-zinc-200 dark:active:bg-zinc-600 transition-colors"
+            aria-label="Agent context, services, and info"
           >
             Info
           </.link>
-          <%!-- Two primary actions, mutually exclusive. Stop shows while
-               the agent is Ready or Thinking; Start shows while it's
-               Sleeping or Crashed. (No "Restart CLI" — Stop + Start
-               gives the same effect by replaying from the log.)
-               Matches the service-control button style for visual
-               consistency across the workspace. --%>
-          <.control_btn
-            :if={agent_display_status(@agent) in [:ready, :thinking]}
-            phx-click="interrupt_agent"
-            phx-value-id={@agent.id}
-          >
-            Stop
-          </.control_btn>
-          <.control_btn
-            :if={agent_display_status(@agent) in [:sleeping, :crashed]}
-            variant={:primary}
-            phx-click="start_agent"
-            phx-value-id={@agent.id}
-          >
-            Start
-          </.control_btn>
-          <.control_btn
-            :if={agent_display_status(@agent) in [:sleeping, :crashed]}
-            phx-click="remove_agent"
-            phx-value-id={@agent.id}
-          >
-            Remove
-          </.control_btn>
-          <span
-            :if={@agent.status == :destroying}
-            class="text-xs font-medium text-red-400 px-2 py-1"
-          >
-            Destroying...
-          </span>
+          <%!-- Container lifecycle is DESTRUCTIVE (Stop kills the container; Remove
+               deletes the agent) — keep it off the cramped phone header, where it
+               sat one thumb-width from Info. On phones: interrupt a running turn
+               with the big red pill above the input; start/remove a sleeping agent
+               from the agents list (Menu). On md+ there's room, so show them. --%>
+          <div class="hidden md:flex items-center gap-2">
+            <.control_btn
+              :if={agent_display_status(@agent) in [:ready, :thinking]}
+              phx-click="interrupt_agent"
+              phx-value-id={@agent.id}
+            >
+              Stop
+            </.control_btn>
+            <.control_btn
+              :if={agent_display_status(@agent) in [:sleeping, :crashed]}
+              variant={:primary}
+              phx-click="start_agent"
+              phx-value-id={@agent.id}
+            >
+              Start
+            </.control_btn>
+            <.control_btn
+              :if={agent_display_status(@agent) in [:sleeping, :crashed]}
+              phx-click="remove_agent"
+              phx-value-id={@agent.id}
+            >
+              Remove
+            </.control_btn>
+            <span
+              :if={@agent.status == :destroying}
+              class="text-xs font-medium text-red-400 px-2 py-1"
+            >
+              Destroying...
+            </span>
+          </div>
         </div>
       </div>
       <div :if={@has_container} class="flex gap-0 px-4">
