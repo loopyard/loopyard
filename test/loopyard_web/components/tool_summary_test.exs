@@ -65,17 +65,36 @@ defmodule LoopyardWeb.Components.ToolSummaryTest do
     end
 
     test "logs tool" do
-      assert ToolSummary.summarize("mcp__loopyard-container__logs", %{}) == "logs"
+      assert ToolSummary.summarize("mcp__loopyard-container__logs", %{}) == "Read logs"
+
+      assert ToolSummary.summarize("mcp__loopyard-container__logs", %{"service" => "web"}) ==
+               "Read logs (web)"
     end
 
-    test "service_status tool" do
+    test "service_status tool reads as a verb+object" do
       assert ToolSummary.summarize("mcp__loopyard-container__service_status", %{}) ==
-               "Service status"
+               "Check service status"
     end
 
-    test "service_containers tool" do
+    test "service_containers tool reads as a verb+object" do
       assert ToolSummary.summarize("mcp__loopyard-container__service_containers", %{}) ==
-               "Service containers"
+               "List service containers"
+    end
+
+    test "app_url reads as a real action, not a bare noun" do
+      assert ToolSummary.summarize("mcp__loopyard-container__app_url", %{}) == "Get preview URL"
+
+      assert ToolSummary.summarize("mcp__loopyard-container__app_url", %{"service" => "dev"}) ==
+               "Get preview URL (dev)"
+    end
+
+    test "workspace_info / ports / inspect_env read as actions" do
+      assert ToolSummary.summarize("mcp__loopyard-container__workspace_info", %{}) ==
+               "Read workspace info"
+
+      assert ToolSummary.summarize("mcp__loopyard-container__ports", %{}) == "List ports"
+
+      assert ToolSummary.summarize("mcp__loopyard-container__inspect_env", %{}) == "Read env vars"
     end
 
     # --- Workspace tools ---

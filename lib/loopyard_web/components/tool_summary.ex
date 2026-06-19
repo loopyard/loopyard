@@ -137,23 +137,26 @@ defmodule LoopyardWeb.Components.ToolSummary do
       {"inspect_service", _} ->
         "Inspect service"
 
+      {"app_url", %{"service" => svc}} ->
+        "Get preview URL (#{svc})"
+
       {"app_url", _} ->
-        "App URL"
+        "Get preview URL"
 
       {"file_url", _} ->
-        "File URL"
+        "Get file URL"
 
       {"workspace_info", _} ->
-        "Workspace info"
+        "Read workspace info"
 
       {"logs", %{"service" => svc}} ->
-        "logs #{svc}"
+        "Read logs (#{svc})"
 
       {"logs", _} ->
-        "logs"
+        "Read logs"
 
       {"inspect_env", _} ->
-        "env"
+        "Read env vars"
 
       {"start_service", %{"name" => n}} ->
         "Start service #{n}"
@@ -162,7 +165,7 @@ defmodule LoopyardWeb.Components.ToolSummary do
         "Start service"
 
       {"ports", _} ->
-        "Ports"
+        "List ports"
 
       {"set_dockerfile", _} ->
         "Update Dockerfile"
@@ -204,10 +207,10 @@ defmodule LoopyardWeb.Components.ToolSummary do
         "Rebuild"
 
       {"service_status", _} ->
-        "Service status"
+        "Check service status"
 
       {"service_containers", _} ->
-        "Service containers"
+        "List service containers"
 
       {"list_secrets", _} ->
         "List secrets"
