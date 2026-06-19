@@ -24,6 +24,7 @@ Read via `Application.get_env(:loopyard, key)`. Overridable at runtime in `confi
 | `:mutagen_runner` | `&System.cmd/3` | Injection seam for the Mutagen CLI. Tests override with a fake to avoid shelling out. |
 | `:container_ready_check` | `nil` | Injection seam for SyncMonitor's "is the destination container up" probe. Tests override; production uses the real Docker check. |
 | `:crash_backoff_base_ms` | `1_000` | Base backoff for the CLI auto-restart loop in `ChatAgent`. Exponential from here up to a cap. |
+| `:agent_thinking` | `:adaptive` | Extended-thinking config passed to the Claude Code SDK per session. `:adaptive` lets the model scale reasoning to the turn (streams into the chat's thinking bubble before tool calls); `:disabled` turns it off; `{:enabled, budget_tokens: N}` caps it. Applies on the next CLI session start. |
 | `Loopyard.PortRegistry, :port_range` | `4000..9999` | Host port range used by `PortRegistry.assign/3`. Exhaustion returns `{:error, :port_pool_exhausted}`. Keep it outside the ephemeral port range to avoid collisions with transient outbound connections. |
 | `LoopyardWeb.Endpoint, :http, :port` | `4000` | HTTP port. Env-overridable via `PORT` in `runtime.exs`. |
 

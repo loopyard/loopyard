@@ -72,12 +72,22 @@ defmodule Loopyard.ChatAgent.SessionManager do
   continue the same conversation instead of booting fresh.
   """
   def build_resume_opts(state) do
+    # Re-apply the live thinking config on every (re)start, so a config change
+    # reaches agents whose session_opts were frozen at an earlier boot — not
+    # only freshly-created ones.
+    opts =
+      Keyword.put(
+        state.session_opts,
+        :thinking,
+        Application.get_env(:loopyard, :agent_thinking, :adaptive)
+      )
+
     case state.claude_session_id do
       sid when is_binary(sid) and sid != "" ->
-        Keyword.put(state.session_opts, :resume, sid)
+        Keyword.put(opts, :resume, sid)
 
       _ ->
-        Keyword.delete(state.session_opts, :resume)
+        Keyword.delete(opts, :resume)
     end
   end
 

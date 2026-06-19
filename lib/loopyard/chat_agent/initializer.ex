@@ -93,7 +93,12 @@ defmodule Loopyard.ChatAgent.Initializer do
       dangerously_skip_permissions: true,
       mcp_servers: ToolConfig.build_mcp_servers(tools, id),
       allowed_tools: ToolConfig.build_allowed_tools(tools, container_only?),
-      append_system_prompt: system_prompt
+      append_system_prompt: system_prompt,
+      # Extended thinking: the model streams its reasoning before tool calls,
+      # which we surface live in the chat's thinking bubble. :adaptive lets it
+      # scale effort to the turn (down to ~nothing on trivial ones). Tunable via
+      # config without a code change — set to :disabled or {:enabled, budget_tokens: N}.
+      thinking: Application.get_env(:loopyard, :agent_thinking, :adaptive)
     ]
 
     session_opts =
