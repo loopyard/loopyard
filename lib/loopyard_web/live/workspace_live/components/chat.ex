@@ -168,6 +168,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           tab={@tab}
           has_container={@has_container}
           base_path={@base_path}
+          detail_level={@detail_level}
         />
         <.chat_panel
           :if={@tab in [:chat, :context_panel]}
@@ -179,6 +180,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           host={@host}
           thinking_word={@thinking_word}
           has_more_messages={@has_more_messages}
+          detail_level={@detail_level}
         />
         <.container_panel
           :if={@tab == :container}
@@ -232,6 +234,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             the link. Mirrors the "Menu" back-link on the left that
             returns to the sidebar — sidebar → chat → context.
           --%>
+          <.detail_level_control level={@detail_level} />
           <.link
             patch={"#{@base_path}/agents/#{@agent.id}/context"}
             class="lg:hidden text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded-md px-2 py-1"
@@ -301,9 +304,60 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     """
   end
 
+  @detail_levels [
+    {:trace, "All", "Reasoning + tool calls + full output"},
+    {:actions, "Actions", "Reasoning + tool calls; output one click away"},
+    {:chat, "Chat", "Just the conversation"}
+  ]
+
+  @doc """
+  Segmented control for how much of the agent's inner work to show. Starts at
+  :trace (maximum visibility / trust); lower levels collapse a layer at a time,
+  and you can always switch back up to drill into history. The `DetailLevel`
+  hook persists the choice to localStorage and restores it on connect.
+  """
+  attr :level, :atom, required: true
+
+  def detail_level_control(assigns) do
+    assigns = assign(assigns, :levels, @detail_levels)
+
+    ~H"""
+    <div
+      id="detail-level"
+      phx-hook="DetailLevel"
+      data-level={@level}
+      class="hidden sm:inline-flex items-center rounded-lg bg-zinc-100 dark:bg-zinc-800 p-0.5"
+      role="group"
+      aria-label="Activity detail level"
+    >
+      <button
+        :for={{value, label, hint} <- @levels}
+        phx-click="set_detail_level"
+        phx-value-level={value}
+        title={hint}
+        aria-pressed={@level == value}
+        class={[
+          "px-2 py-0.5 text-[11px] font-medium rounded-md transition-colors",
+          if(@level == value,
+            do: "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm",
+            else: "text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+          )
+        ]}
+      >
+        {label}
+      </button>
+    </div>
+    """
+  end
+
   # --- Chat Panel ---
 
   def chat_panel(assigns) do
+    # While the agent is working, its in-progress tool calls are shown in the
+    # live activity feed (thinking_indicator) — so suppress the SAME rows here
+    # to avoid double-listing. They render inline normally once the turn ends.
+    assigns = assign(assigns, :live_tool_from, active_turn_cutoff(assigns))
+
     ~H"""
     <div class="flex-1 flex flex-col min-h-0">
       <div id="messages" class="flex-1 overflow-y-auto flex flex-col-reverse px-4 md:px-6 py-4">
@@ -319,16 +373,21 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           </p>
           <div :for={{msg, idx} <- Enum.with_index(@messages)}>
             <.chat_msg
+              :if={not in_live_feed?(@live_tool_from, msg, idx)}
               msg={msg}
               idx={idx}
               messages={@messages}
               agent_id={@agent.id}
               workspace_id={@workspace_id}
               host={@host}
+              detail_level={@detail_level}
             />
           </div>
           <.streaming_thinking
-            :if={assigns[:streaming_thinking] != "" && assigns[:streaming_thinking] != nil}
+            :if={
+              @detail_level != :chat && assigns[:streaming_thinking] != "" &&
+                assigns[:streaming_thinking] != nil
+            }
             text={@streaming_thinking}
           />
           <.streaming_bubble :if={@streaming_text != ""} text={@streaming_text} />
@@ -462,26 +521,26 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   end
 
   def thinking_indicator(assigns) do
-    last_tool =
-      assigns.messages
-      |> Enum.reverse()
-      |> Enum.find(&(&1.role == :tool))
+    # Live activity feed: every tool action since the last human turn, in
+    # order, the most recent one still running (⟳) and the rest done (✓).
+    # These are the SAME tool messages the chat would render inline — while
+    # the agent is working we surface them here as a pinned, rolling feed
+    # instead (chat_panel suppresses the inline rows for the active turn),
+    # so you can watch it work without the list scrolling away.
+    activity = current_turn_activity(assigns.messages)
 
-    last_action =
-      if last_tool do
-        LoopyardWeb.Components.ToolSummary.summarize(last_tool.tool, last_tool.input)
-      else
-        nil
-      end
-
-    assigns = assign(assigns, :last_action, last_action)
+    assigns =
+      assigns
+      |> assign(:activity, activity)
+      |> assign(:turn_since, turn_started_unix_ms(assigns.messages))
+      |> assign(:stall_hint, retry_hint(assigns.messages))
 
     ~H"""
     <div class="flex gap-3 mt-3">
       <div class="flex-none w-7 h-7 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center mt-0.5">
         <span class="text-xs font-bold text-violet-600 dark:text-violet-400">C</span>
       </div>
-      <div class="rounded-2xl rounded-tl-sm bg-zinc-100 dark:bg-zinc-800 px-4 py-3">
+      <div class="rounded-2xl rounded-tl-sm bg-zinc-100 dark:bg-zinc-800 px-4 py-3 min-w-0 max-w-[85%]">
         <div class="flex items-center gap-2">
           <div class="flex gap-1 flex-none">
             <div
@@ -501,14 +560,137 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             </div>
           </div>
           <span class="text-base text-violet-500 dark:text-violet-400 flex-none">{@word}...</span>
+          <span
+            :if={@turn_since}
+            id="turn-elapsed"
+            phx-hook="Elapsed"
+            phx-update="ignore"
+            data-since={@turn_since}
+            class="text-xs text-zinc-400 dark:text-zinc-500 flex-none tabular-nums"
+          >
+          </span>
         </div>
-        <p :if={@last_action} class="text-xs text-zinc-500 dark:text-zinc-400 mt-1 truncate">
-          {@last_action}
+        <ul :if={@activity != []} class="mt-2 space-y-1">
+          <li :for={a <- @activity} class="flex items-start gap-1.5 text-xs leading-snug">
+            <span class={[
+              "flex-none w-3 text-center mt-px",
+              a.active && "text-violet-500 animate-pulse",
+              !a.active && "text-emerald-500/70"
+            ]}>
+              {if a.active, do: "▸", else: "✓"}
+            </span>
+            <span class={[
+              "min-w-0 break-words font-mono",
+              a.active && "text-zinc-700 dark:text-zinc-200",
+              !a.active && "text-zinc-400 dark:text-zinc-500"
+            ]}>
+              {a.summary}
+            </span>
+          </li>
+        </ul>
+        <p
+          :if={@stall_hint}
+          class="mt-2 flex items-start gap-1.5 text-xs leading-snug text-amber-600 dark:text-amber-400"
+        >
+          <span class="flex-none">⚠</span>
+          <span class="min-w-0">{@stall_hint}</span>
         </p>
       </div>
     </div>
     """
   end
+
+  # If the agent's last actual response was an upstream API failure (overload,
+  # 5xx, timeout), it's almost certainly retrying it right now — say so, so a
+  # long-running "thinking…" reads as "Anthropic is busy" not "wedged".
+  @api_error_re ~r/\b(529|503|502|500|overloaded|api error|internal server error|service unavailable|upstream)\b/i
+
+  defp retry_hint(messages) do
+    last_response =
+      messages
+      |> Enum.reverse()
+      |> Enum.find(fn m -> m.role in [:assistant, :error] and is_binary(m[:content]) and m.content != "" end)
+
+    case last_response do
+      %{content: c} ->
+        cond do
+          c =~ ~r/\b(529|overloaded)\b/i ->
+            "Claude's servers are overloaded — retrying this turn. Can take a minute; press Stop and resend if it doesn't recover."
+
+          c =~ @api_error_re ->
+            "Last response hit a temporary server error — retrying. Press Stop and resend if it doesn't recover."
+
+          true ->
+            nil
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  @doc """
+  Tool actions for the in-progress turn (since the last human message),
+  oldest→newest, each tagged `active: true` (the latest — still running) or
+  `false` (done). The same set chat_panel suppresses inline, so the feed and
+  the scrollback never double-list.
+  """
+  def current_turn_activity(messages) do
+    tools = current_turn_tools(messages)
+    last = length(tools) - 1
+
+    tools
+    |> Enum.with_index()
+    |> Enum.map(fn {m, i} ->
+      %{
+        summary: LoopyardWeb.Components.ToolSummary.summarize(m.tool, m.input || %{}),
+        active: i == last
+      }
+    end)
+  end
+
+  # Unix-ms of the last human message — the live elapsed timer counts up from
+  # here, so even a long silent prefill (huge context, no tokens yet) shows a
+  # ticking "it's alive" signal. nil (no timer) if the turn start isn't on the
+  # current page or carries no timestamp.
+  defp turn_started_unix_ms(messages) do
+    case Enum.reverse(messages) |> Enum.find(&(&1.role == :user)) do
+      %{timestamp: %DateTime{} = ts} -> DateTime.to_unix(ts, :millisecond)
+      _ -> nil
+    end
+  end
+
+  defp current_turn_tools(messages) do
+    messages
+    |> Enum.reverse()
+    |> Enum.take_while(&(&1.role != :user))
+    |> Enum.reverse()
+    |> Enum.filter(&(&1.role == :tool))
+  end
+
+  # Index of the last human message — tools after it belong to the active
+  # turn and live in the feed. Returns nil (suppress nothing) unless the
+  # feed is actually on screen, so a tool row is never hidden with no home.
+  defp active_turn_cutoff(assigns) do
+    if thinking_feed_visible?(assigns) do
+      assigns.messages
+      |> Enum.with_index()
+      |> Enum.reverse()
+      |> Enum.find_value(-1, fn {m, i} -> if m.role == :user, do: i end)
+    end
+  end
+
+  defp thinking_feed_visible?(assigns) do
+    assigns.agent.status == :thinking and
+      (assigns[:streaming_text] || "") == "" and
+      (assigns[:streaming_thinking] || "") == "" and
+      not awaiting_answer?(assigns.messages) and
+      not awaiting_approval?(assigns.messages) and
+      not building?(assigns.messages)
+  end
+
+  defp in_live_feed?(nil, _msg, _idx), do: false
+  defp in_live_feed?(from, msg, idx), do: idx > from and msg.role in [:tool, :tool_result]
 
   # --- Container Panel ---
 

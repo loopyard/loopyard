@@ -146,6 +146,10 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:streaming_thinking, "")
      |> assign(:thinking_word, nil)
      |> assign(:tab, :chat)
+     # Activity disclosure level. Starts at :trace (everything visible) for
+     # maximum trust; the DetailLevel JS hook restores the user's saved
+     # preference from localStorage on connect.
+     |> assign(:detail_level, :trace)
      |> assign(:container_logs, "")
      |> assign(:container_env, nil)
      |> assign(:container_log_service, nil)
@@ -928,6 +932,14 @@ defmodule LoopyardWeb.WorkspaceLive do
         "localhost"
     end
   end
+
+  @impl true
+  def handle_event("set_detail_level", %{"level" => level}, socket)
+      when level in ~w(trace actions chat) do
+    {:noreply, assign(socket, :detail_level, String.to_existing_atom(level))}
+  end
+
+  def handle_event("set_detail_level", _params, socket), do: {:noreply, socket}
 
   @impl true
   def handle_event("start_rename", _params, socket) do

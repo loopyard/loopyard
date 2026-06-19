@@ -38,6 +38,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   attr :agent_id, :string, required: true
   attr :workspace_id, :string, default: nil
   attr :host, :string, default: "localhost"
+  # Disclosure level — how much of the agent's inner work to show:
+  #   :trace   — everything, reasoning + tool outputs expanded (default, max trust)
+  #   :actions — reasoning + tool calls; outputs collapsed (click to drill down)
+  #   :chat    — just the conversation; activity hidden (still drillable by switching back)
+  attr :detail_level, :atom, default: :trace
 
   # The two interactive mini-app cards live in Messages.Cards (extracted to keep
   # this file under its line cap). chat_msg delegates the matching roles.
@@ -135,11 +140,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   end
 
   def chat_msg(%{msg: %{role: :tool}} = assigns) do
-    # Mini-app tools own their own card — don't also echo the raw tool call.
-    if miniapp_tool?(assigns.msg[:tool] || "") do
-      ~H"<div></div>"
-    else
-      render_tool_call(assigns)
+    cond do
+      # :chat hides the agent's mechanics — switch up a level to see them again.
+      assigns.detail_level == :chat -> ~H"<div></div>"
+      # Mini-app tools own their own card — don't also echo the raw tool call.
+      miniapp_tool?(assigns.msg[:tool] || "") -> ~H"<div></div>"
+      true -> render_tool_call(assigns)
     end
   end
 
@@ -200,11 +206,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     """
   end
 
+  def chat_msg(%{msg: %{role: :thinking}, detail_level: :chat} = assigns) do
+    ~H"<div></div>"
+  end
+
   def chat_msg(%{msg: %{role: :thinking}} = assigns) do
     ~H"""
-    <details class="ml-10 my-1 group">
+    <details class="ml-10 my-1 group" open={@detail_level == :trace}>
       <summary class="text-xs text-zinc-400 dark:text-zinc-500 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none">
-        Thinking...
+        💭 Reasoning
       </summary>
       <pre class="mt-1 p-3 rounded-lg text-xs font-mono bg-zinc-50 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 whitespace-pre-wrap max-h-60 overflow-y-auto">{@msg.content}</pre>
     </details>
@@ -215,6 +225,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     content = assigns.msg.content
 
     cond do
+      # :chat collapses all the mechanics away — bump the level to drill back in.
+      assigns.detail_level == :chat ->
+        ~H"<div></div>"
+
       is_binary(content) && String.contains?(content, "completed with no output") ->
         ~H"<div></div>"
 
@@ -353,12 +367,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
 
   # --- Internal helpers ---
 
+  # How many lines of output we keep in the inline DOM. The full text is always
+  # one click away via the raw link; this just bounds a pathological 10k-line
+  # dump from bloating the page. Generous so "see everything" mostly means it.
+  @result_line_cap 300
+
   defp chat_msg_tool_result(assigns) do
     content = assigns.msg.content
     display = format_tool_result(content)
     lines = String.split(display, "\n")
-    truncated = length(lines) > 40
-    display = if truncated, do: Enum.take(lines, 40) |> Enum.join("\n"), else: display
+    truncated = length(lines) > @result_line_cap
+    display = if truncated, do: Enum.take(lines, @result_line_cap) |> Enum.join("\n"), else: display
     url = msg_url(assigns)
     raw = raw_url(assigns)
 
@@ -368,30 +387,27 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         truncated: truncated,
         is_error: assigns.msg.is_error,
         line_count: length(lines),
+        cap: @result_line_cap,
         url: url,
         raw: raw
       )
 
     ~H"""
-    <div class="pl-10 py-0.5 group/result">
-      <pre class={"p-3 rounded-lg text-xs font-mono overflow-x-auto max-h-80 overflow-y-auto whitespace-pre-wrap
+    <details class="pl-10 py-0.5 group/result" open={@detail_level == :trace || @is_error}>
+      <summary class="text-[11px] text-zinc-400 dark:text-zinc-500 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5">
+        <span class="transition-transform group-open/result:rotate-90">▸</span>
+        <span>{if @is_error, do: "error output", else: "output"} · {@line_count} {if @line_count == 1, do: "line", else: "lines"}</span>
+      </summary>
+      <pre class={"mt-1 p-3 rounded-lg text-xs font-mono overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap
                    #{if @is_error, do: "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300", else: "bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-zinc-300"}"}>{Ansi.to_html(@display)}</pre>
       <div class="flex items-center gap-2 mt-1 h-5">
         <p :if={@truncated} class="text-[10px] text-zinc-400 dark:text-zinc-500">
-          ... truncated ({@line_count - 40} more lines)
+          ... {@line_count - @cap} more lines — open raw to see all
         </p>
-        <.copy_btn
-          :if={@raw}
-          raw_url={@raw}
-          class="opacity-0 group-hover/result:opacity-100 transition-opacity"
-        />
-        <.open_btn
-          :if={@url}
-          url={@url}
-          class="opacity-0 group-hover/result:opacity-100 transition-opacity"
-        />
+        <.copy_btn :if={@raw} raw_url={@raw} />
+        <.open_btn :if={@url} url={@url} />
       </div>
-    </div>
+    </details>
     """
   end
 

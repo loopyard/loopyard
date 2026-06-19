@@ -209,6 +209,24 @@ Hooks.Elapsed = {
   destroyed() { if (this._timer) clearInterval(this._timer) }
 }
 
+// Persist the activity detail level (All / Actions / Chat) across reloads.
+// The server starts everyone at :trace (max visibility); on connect we restore
+// the user's saved choice, and we save whenever it changes. localStorage, so
+// the preference is per-device and survives reconnects.
+Hooks.DetailLevel = {
+  mounted() {
+    const saved = localStorage.getItem("loopyard:detail_level")
+    if (saved && saved !== this.el.dataset.level) {
+      this.pushEvent("set_detail_level", { level: saved })
+    }
+  },
+  updated() {
+    if (this.el.dataset.level) {
+      localStorage.setItem("loopyard:detail_level", this.el.dataset.level)
+    }
+  }
+}
+
 Hooks.ChatForm = {
   mounted() {
     const ta = this.el.querySelector("#chat-input")
