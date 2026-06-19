@@ -58,10 +58,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       <div
         class="max-w-[85%] rounded-2xl rounded-tr-sm bg-violet-600 text-white px-4 py-2.5"
         id={"msg-user-#{@msg[:id] || hash_content(@msg.content)}"}
-        phx-hook="Markdown"
-        data-source={@msg.content}
       >
-        <div class="markdown-body markdown-body-user text-base"></div>
+        <div class="markdown-body markdown-body-user text-base">{Loopyard.Markdown.to_html(@msg.content)}</div>
       </div>
       <div class="flex items-center gap-1 mt-0.5 h-5 opacity-0 group-hover/msg:opacity-100 transition-opacity">
         <.copy_btn :if={@raw} raw_url={@raw} />
@@ -101,10 +99,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         <div
           class="max-w-[85%] rounded-2xl rounded-tl-sm bg-zinc-100 dark:bg-zinc-800 px-4 py-2.5"
           id={"msg-#{@msg[:id] || hash_content(@msg.content)}"}
-          phx-hook="Markdown"
-          data-source={@rendered_content}
         >
-          <div class="markdown-body text-base text-zinc-900 dark:text-zinc-100"></div>
+          <div class="markdown-body text-base text-zinc-900 dark:text-zinc-100">{Loopyard.Markdown.to_html(@rendered_content)}</div>
         </div>
       </div>
       <div :if={@port_info && !@port_info.exposed} class="ml-10 mt-1.5 flex items-center gap-2 py-1">
@@ -311,10 +307,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         <div
           class="text-xs text-zinc-400 dark:text-zinc-500 italic"
           id={"system-msg-#{@msg[:id] || hash_content(@msg.content)}"}
-          phx-hook="Markdown"
-          data-source={@msg.content}
         >
-          <div class="markdown-body"></div>
+          <div class="markdown-body">{Loopyard.Markdown.to_html(@msg.content)}</div>
         </div>
       </div>
       """
@@ -338,10 +332,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       <div
         class="max-w-[85%] rounded-2xl rounded-tl-sm bg-zinc-100 dark:bg-zinc-800 px-4 py-2.5"
         id="streaming-msg"
-        phx-hook="Markdown"
-        data-source={@text}
       >
-        <div class="markdown-body text-base text-zinc-900 dark:text-zinc-100"></div>
+        <div class="markdown-body text-base text-zinc-900 dark:text-zinc-100">{Loopyard.Markdown.to_html(@text)}</div>
         <span class="inline-block w-1.5 h-4 bg-violet-500 animate-pulse ml-0.5 align-middle"></span>
       </div>
     </div>

@@ -51,6 +51,7 @@ defmodule Loopyard.MixProject do
       {:yaml_elixir, "~> 2.9"},
       {:makeup, "~> 1.2"},
       {:makeup_syntect, "~> 0.1"},
+      {:mdex, "~> 0.10"},
 
       # Quality tools
       {:excoveralls, "~> 0.18", only: :test},
