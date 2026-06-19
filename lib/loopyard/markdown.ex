@@ -32,6 +32,20 @@ defmodule Loopyard.Markdown do
   def to_html(content) when content in [nil, ""], do: Phoenix.HTML.raw("")
 
   def to_html(content) when is_binary(content) do
+    # Memoize: content is immutable, and LiveView re-renders every visible
+    # bubble on every chat update (hundreds of times per streaming turn). Without
+    # the cache, that's MDEx-per-bubble-per-render — enough to starve the LV and
+    # time out user sends. A hit is always correct; the table may not exist in a
+    # non-app context (raw script), so guard the lookup.
+    case cache_get(content) do
+      {:ok, safe} -> safe
+      :miss -> content |> render!() |> cache_put(content)
+    end
+  end
+
+  def to_html(_), do: Phoenix.HTML.raw("")
+
+  defp render!(content) do
     case MDEx.to_html(content, @opts) do
       {:ok, html} -> Phoenix.HTML.raw(open_links_in_new_tab(html))
       {:error, _} -> Phoenix.HTML.html_escape(content)
@@ -43,7 +57,21 @@ defmodule Loopyard.Markdown do
     _ -> Phoenix.HTML.html_escape(content)
   end
 
-  def to_html(_), do: Phoenix.HTML.raw("")
+  defp cache_get(content) do
+    case :ets.lookup(:markdown_cache, content) do
+      [{^content, safe}] -> {:ok, safe}
+      [] -> :miss
+    end
+  rescue
+    ArgumentError -> :miss
+  end
+
+  defp cache_put(safe, content) do
+    :ets.insert(:markdown_cache, {content, safe})
+    safe
+  rescue
+    ArgumentError -> safe
+  end
 
   # All links open in a new tab so following one never navigates away from the
   # app. Safe to string-rewrite: MDEx has already sanitized the HTML.

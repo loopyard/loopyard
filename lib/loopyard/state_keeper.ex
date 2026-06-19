@@ -19,6 +19,12 @@ defmodule Loopyard.StateKeeper do
 
   @tables [
     {:chat_agents, [:named_table, :public, :set]},
+    # Loopyard.Markdown render cache, keyed by content. Chat bubbles render
+    # Markdown server-side; without this, LiveView re-runs MDEx for every
+    # visible bubble on every chat re-render (hundreds per streaming turn),
+    # starving the LV process and timing out user sends. Content is immutable,
+    # so a hit is always correct. Read-heavy; reads go direct.
+    {:markdown_cache, [:named_table, :public, :set, {:read_concurrency, true}]},
     {:project_registry, [:named_table, :public, :set]},
     {:workspace_registry, [:named_table, :public, :set]},
     {:event_log, [:named_table, :public, :ordered_set]},
