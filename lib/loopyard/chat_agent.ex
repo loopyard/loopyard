@@ -69,6 +69,9 @@ defmodule Loopyard.ChatAgent do
     rate_limit_status: :ok,
     rate_limit_resets_at_ms: nil,
     rate_limit_type: nil,
+    # Fraction of the cap consumed (0.0–1.0+, >1 once in overage), so the
+    # UI/chat can say "~92% of cap" instead of just "limited".
+    rate_limit_utilization: nil,
     auth_error: nil,
     # OS pid of the Claude CLI subprocess owned by state.session. Tracked
     # via Loopyard.Resources.track/4 so the Janitor kills it on our
@@ -1394,7 +1397,8 @@ defmodule Loopyard.ChatAgent do
         | status: :idle,
           rate_limit_status: :ok,
           rate_limit_resets_at_ms: nil,
-          rate_limit_type: nil
+          rate_limit_type: nil,
+          rate_limit_utilization: nil
       }
 
       :ets.insert(@ets_table, {id, summary(state)})
@@ -1729,6 +1733,7 @@ defmodule Loopyard.ChatAgent do
       rate_limit_status: state.rate_limit_status,
       rate_limit_resets_at_ms: state.rate_limit_resets_at_ms,
       rate_limit_type: state.rate_limit_type,
+      rate_limit_utilization: state.rate_limit_utilization,
       auth_error: state.auth_error,
       prompt_hash: state.prompt_hash,
       context_utilization: state.context_utilization,

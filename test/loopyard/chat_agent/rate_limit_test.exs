@@ -97,10 +97,12 @@ defmodule Loopyard.ChatAgent.RateLimitTest do
       assert state.rate_limit_resets_at_ms == resets_at
       assert state.rate_limit_type == "five_hour"
 
-      # The inline system message is appended for UI visibility (do NOT
-      # rely on it being a specific wording — just assert it's there).
+      # The inline system message names the SPECIFIC limit (5-hour here,
+      # from rate_limit_type "five_hour") and the utilization — a generic
+      # "you're rate limited" is useless to someone who's always limited.
       assert Enum.any?(state.messages, fn m ->
-               m.role == :system and String.contains?(m.content, "Rate-limited")
+               m.role == :system and String.contains?(m.content, "5-hour") and
+                 String.contains?(m.content, "% of cap")
              end)
 
       # After the resets_at window, the scheduled :rate_limit_retry should

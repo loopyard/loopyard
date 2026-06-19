@@ -106,11 +106,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
 
       Map.get(agent, :rate_limit_status, :ok) != :ok or status == :rate_limited ->
         reset = Loopyard.ChatAgent.StreamHandler.format_reset(agent[:rate_limit_resets_at_ms])
+        label = Loopyard.ChatAgent.StreamHandler.rate_limit_label(agent[:rate_limit_type])
+        util = agent[:rate_limit_utilization]
 
-        case agent[:rate_limit_type] do
-          :seven_day -> warn("amber", "Weekly limit reached", "resets #{reset} · queued messages auto-send")
-          _ -> warn("amber", "Rate-limited", "resumes #{reset} · queued messages auto-send")
-        end
+        pct =
+          if is_number(util) and util > 0, do: " · ~#{round(util * 100)}% of cap", else: ""
+
+        warn(
+          "amber",
+          "#{String.capitalize(label)} limit reached",
+          "resets #{reset}#{pct} · queued messages auto-send"
+        )
 
       status == :backoff ->
         warn("blue", "Reconnecting…", "restarting the harness, then resuming")

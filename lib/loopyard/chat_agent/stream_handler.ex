@@ -488,6 +488,55 @@ defmodule Loopyard.ChatAgent.StreamHandler do
   def format_reset(_), do: "shortly"
 
   @doc """
+  Human-readable name for a rate-limit type. Accepts atom or string
+  (`ClaudeCode` may hand back either) so callers don't have to normalize.
+  Returns just the noun — callers add "limit" etc.
+  """
+  def rate_limit_label(type) do
+    case to_string(type || "") do
+      "seven_day" -> "weekly"
+      "five_hour" -> "5-hour"
+      "opus_weekly" -> "weekly Opus"
+      "" -> "usage"
+      other -> String.replace(other, "_", " ")
+    end
+  end
+
+  @doc "True when the limit is one of the multi-day caps API credits sidestep."
+  def weekly_limit?(type), do: to_string(type || "") =~ "week" or to_string(type || "") =~ "seven_day"
+
+  # "(at ~92% of cap)" when utilization is known, else "".
+  defp rate_limit_util_phrase(util) when is_number(util) and util > 0 do
+    " (at ~#{round(util * 100)}% of cap)"
+  end
+
+  defp rate_limit_util_phrase(_), do: ""
+
+  @doc """
+  The chat-surfaced explanation for a rejection. Names the SPECIFIC
+  limit (weekly / 5-hour / …), how close to the cap, whether overage
+  credits are in play, and when it clears — because "you're rate
+  limited" with no specifics is useless to someone who's always limited.
+  """
+  def rate_limit_message(%Event.RateLimitStatus{} = rl) do
+    label = rate_limit_label(rl.rate_limit_type)
+    reset = format_reset(rl.resets_at_ms)
+    util = rate_limit_util_phrase(rl.utilization)
+
+    overage = if rl.is_using_overage, do: " You're now into overage credits.", else: ""
+
+    hint =
+      if weekly_limit?(rl.rate_limit_type) do
+        " (For heavy continuous use, switching the harness to API credits avoids the weekly cap.)"
+      else
+        ""
+      end
+
+    "Hit your #{label} Claude usage limit#{util} — resets #{reset}. " <>
+      "I'll pick back up automatically when it clears.#{overage}#{hint}"
+  end
+
+  @doc """
   Finalize any partial text accumulated from TextDelta events when a
   stream is interrupted (error, timeout, user stop). Persists the
   partial as a truncated assistant message.
@@ -558,7 +607,8 @@ defmodule Loopyard.ChatAgent.StreamHandler do
             active_tool: nil,
             rate_limit_status: :rejected,
             rate_limit_resets_at_ms: rl.resets_at_ms,
-            rate_limit_type: rl.rate_limit_type
+            rate_limit_type: rl.rate_limit_type,
+            rate_limit_utilization: rl.utilization
         }
 
         :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
@@ -567,21 +617,10 @@ defmodule Loopyard.ChatAgent.StreamHandler do
         if first? do
           Loopyard.EventLog.warning(
             "agent:#{state.name}",
-            "Rate-limited (#{inspect(rl.rate_limit_type)}); resets #{format_reset(rl.resets_at_ms)}"
+            "Rate-limited (#{rate_limit_label(rl.rate_limit_type)}); resets #{format_reset(rl.resets_at_ms)}"
           )
 
-          content =
-            case rl.rate_limit_type do
-              :seven_day ->
-                "You've hit your weekly Claude usage limit — resets #{format_reset(rl.resets_at_ms)}. " <>
-                  "I'll pick back up automatically when it clears. (For heavy continuous use, " <>
-                  "switching the harness to API credits avoids the weekly cap.)"
-
-              other ->
-                "Rate-limited (#{other || "limit"}) — I'll resume #{format_reset(rl.resets_at_ms)}."
-            end
-
-          rl_msg = %{role: :system, content: content, timestamp: DateTime.utc_now()}
+          rl_msg = %{role: :system, content: rate_limit_message(rl), timestamp: DateTime.utc_now()}
           {state, rl_msg} = append_message(state, rl_msg)
           Persistence.persist_message(state, rl_msg)
 
@@ -600,7 +639,8 @@ defmodule Loopyard.ChatAgent.StreamHandler do
           state
           | rate_limit_status: :warning,
             rate_limit_resets_at_ms: rl.resets_at_ms,
-            rate_limit_type: rl.rate_limit_type
+            rate_limit_type: rl.rate_limit_type,
+            rate_limit_utilization: rl.utilization
         }
 
         :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
@@ -615,7 +655,8 @@ defmodule Loopyard.ChatAgent.StreamHandler do
           | status: new_main_status,
             rate_limit_status: :ok,
             rate_limit_resets_at_ms: nil,
-            rate_limit_type: nil
+            rate_limit_type: nil,
+            rate_limit_utilization: nil
         }
 
         :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
