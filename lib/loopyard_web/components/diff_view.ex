@@ -41,7 +41,14 @@ defmodule LoopyardWeb.Components.DiffView do
         diff_ops = List.myers_difference(old_lines, new_lines)
         language = if assigns.path, do: FileType.language(assigns.path)
 
-        {rows, _, _} = build_rows(diff_ops, language)
+        # Highlight each side in ONE tokenize pass (see Syntax.highlight_lines/2).
+        # Per-line highlighting was O(lines) NIF calls at ~18ms each — a 70-line
+        # edit took >1s to render, stalling every chat page load that scrolled
+        # past it. These two calls replace 2·N calls.
+        old_hl = highlight_block(assigns.old, old_lines, language)
+        new_hl = highlight_block(assigns.new, new_lines, language)
+
+        {rows, _, _} = build_rows(diff_ops, old_hl, new_hl)
 
         assigns =
           assigns
@@ -116,64 +123,85 @@ defmodule LoopyardWeb.Components.DiffView do
     """
   end
 
-  # Build row structs from myers diff operations.
-  # Returns {rows, old_line_num, new_line_num}.
-  defp build_rows(diff_ops, language) do
-    Enum.reduce(diff_ops, {[], 1, 1}, fn
-      {:eq, lines}, {rows, old_n, new_n} ->
-        new_rows =
-          Enum.with_index(lines, fn line, i ->
-            %{
-              old_num: old_n + i,
-              new_num: new_n + i,
-              prefix: " ",
-              content: highlight_line(line, language),
-              bg: "",
-              text_class: "text-zinc-700 dark:text-zinc-300"
-            }
-          end)
+  # Pre-highlighted lines for one side, aligned 1:1 to `lines`. Falls back
+  # to plain strings (HEEx auto-escapes) when there's no language, the
+  # language is unsupported, or the highlighter's line count doesn't match
+  # — so a highlighting hiccup degrades to a plain diff, never a broken one.
+  defp highlight_block(text, lines, language) do
+    case language && Syntax.highlight_lines(text, language) do
+      hl when is_list(hl) and length(hl) == length(lines) ->
+        hl
 
-        {rows ++ new_rows, old_n + length(lines), new_n + length(lines)}
-
-      {:del, lines}, {rows, old_n, new_n} ->
-        new_rows =
-          Enum.with_index(lines, fn line, i ->
-            %{
-              old_num: old_n + i,
-              new_num: "",
-              prefix: "-",
-              content: highlight_line(line, language),
-              bg: "bg-red-50/50 dark:bg-red-900/10",
-              text_class: "text-red-700 dark:text-red-300"
-            }
-          end)
-
-        {rows ++ new_rows, old_n + length(lines), new_n}
-
-      {:ins, lines}, {rows, old_n, new_n} ->
-        new_rows =
-          Enum.with_index(lines, fn line, i ->
-            %{
-              old_num: "",
-              new_num: new_n + i,
-              prefix: "+",
-              content: highlight_line(line, language),
-              bg: "bg-green-50/50 dark:bg-green-900/10",
-              text_class: "text-green-700 dark:text-green-300"
-            }
-          end)
-
-        {rows ++ new_rows, old_n, new_n + length(lines)}
-    end)
+      _ ->
+        Enum.map(lines, fn
+          "" -> Phoenix.HTML.raw("&nbsp;")
+          line -> line
+        end)
+    end
   end
 
-  defp highlight_line("", _language), do: Phoenix.HTML.raw("&nbsp;")
-  defp highlight_line(line, nil), do: line
+  # Build row structs from myers diff operations, pulling each line's
+  # rendered content from the pre-highlighted `old_hl` / `new_hl` lists
+  # (consumed sequentially in lockstep with the diff ops).
+  # Returns {rows, old_line_num, new_line_num}.
+  defp build_rows(diff_ops, old_hl, new_hl) do
+    {rows, old_n, new_n, _oh, _nh} =
+      Enum.reduce(diff_ops, {[], 1, 1, old_hl, new_hl}, fn
+        {:eq, lines}, {rows, old_n, new_n, oh, nh} ->
+          n = length(lines)
+          {content, nh} = Enum.split(nh, n)
 
-  defp highlight_line(line, language) do
-    case Syntax.highlight(line, language) do
-      {:safe, html} -> Phoenix.HTML.raw(html)
-      plain -> plain
-    end
+          new_rows =
+            Enum.with_index(content, fn c, i ->
+              %{
+                old_num: old_n + i,
+                new_num: new_n + i,
+                prefix: " ",
+                content: c,
+                bg: "",
+                text_class: "text-zinc-700 dark:text-zinc-300"
+              }
+            end)
+
+          {rows ++ new_rows, old_n + n, new_n + n, Enum.drop(oh, n), nh}
+
+        {:del, lines}, {rows, old_n, new_n, oh, nh} ->
+          n = length(lines)
+          {content, oh} = Enum.split(oh, n)
+
+          new_rows =
+            Enum.with_index(content, fn c, i ->
+              %{
+                old_num: old_n + i,
+                new_num: "",
+                prefix: "-",
+                content: c,
+                bg: "bg-red-50/50 dark:bg-red-900/10",
+                text_class: "text-red-700 dark:text-red-300"
+              }
+            end)
+
+          {rows ++ new_rows, old_n + n, new_n, oh, nh}
+
+        {:ins, lines}, {rows, old_n, new_n, oh, nh} ->
+          n = length(lines)
+          {content, nh} = Enum.split(nh, n)
+
+          new_rows =
+            Enum.with_index(content, fn c, i ->
+              %{
+                old_num: "",
+                new_num: new_n + i,
+                prefix: "+",
+                content: c,
+                bg: "bg-green-50/50 dark:bg-green-900/10",
+                text_class: "text-green-700 dark:text-green-300"
+              }
+            end)
+
+          {rows ++ new_rows, old_n, new_n + n, oh, nh}
+      end)
+
+    {rows, old_n, new_n}
   end
 end

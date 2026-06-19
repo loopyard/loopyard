@@ -41,6 +41,72 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.Syntax do
     end
   end
 
+  @doc """
+  Highlight a multi-line block in ONE tokenize pass, returning a list of
+  `{:safe, html}` (or `"&nbsp;"`) — one entry per line, in order. Same
+  per-line output shape as calling `highlight/2` on each line, but ~15x
+  faster: `MakeupSyntect.tokenize/2` has a large fixed per-call NIF cost
+  (~18ms), so a 70-line block is 70× that when highlighted line-by-line.
+
+  Returns `nil` when the language is unsupported or highlighting fails —
+  the signal for callers to fall back to plain (unhighlighted) lines.
+  The returned list length always equals `length(String.split(text, "\\n"))`,
+  so callers can map it 1:1 onto their own line splitting.
+  """
+  def highlight_lines(text, language) when is_binary(text) do
+    case syntect_name(language) do
+      nil ->
+        nil
+
+      syntect_lang ->
+        try do
+          MakeupSyntect.tokenize(text, language: syntect_lang)
+          |> tokens_to_lines()
+          |> Enum.map(&format_line/1)
+        rescue
+          _ -> nil
+        end
+    end
+  end
+
+  def highlight_lines(_text, _language), do: nil
+
+  # Group a flat token stream into per-line token lists, splitting any
+  # token whose value spans a newline. One `:newline` marker is emitted
+  # per "\n" character, so the line count matches String.split/2 exactly.
+  defp tokens_to_lines(tokens) do
+    segments =
+      Enum.flat_map(tokens, fn {ttype, meta, value} ->
+        value
+        |> List.wrap()
+        |> IO.iodata_to_binary()
+        |> String.split("\n")
+        |> Enum.map(fn part -> {ttype, meta, part} end)
+        |> Enum.intersperse(:newline)
+      end)
+
+    {lines, current} =
+      Enum.reduce(segments, {[], []}, fn
+        :newline, {lines, current} -> {[Enum.reverse(current) | lines], []}
+        seg, {lines, current} -> {lines, [seg | current]}
+      end)
+
+    Enum.reverse([Enum.reverse(current) | lines])
+  end
+
+  defp format_line(tokens) do
+    case Enum.reject(tokens, fn {_t, _m, v} -> v == "" end) do
+      [] ->
+        Phoenix.HTML.raw("&nbsp;")
+
+      toks ->
+        Makeup.Formatters.HTML.HTMLFormatter.format_as_iolist(toks)
+        |> IO.iodata_to_binary()
+        |> strip_wrapper()
+        |> Phoenix.HTML.raw()
+    end
+  end
+
   # Strip Makeup's <pre><code>...</code></pre> wrapper — the viewer
   # handles its own layout (table with line numbers).
   defp strip_wrapper(html) do
