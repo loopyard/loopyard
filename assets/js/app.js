@@ -244,8 +244,9 @@ Hooks.ChatForm = {
       // send (the handle_event reply). If the socket is disconnected (live
       // reload, reconnect, flaky phone link), the callback never fires — a
       // timeout restores the box so the message is never silently lost.
+      const status = document.getElementById("send-status")
       let settled = false
-      const settle = (ok) => {
+      const settle = (ok, reason) => {
         if (settled) return
         settled = true
         sending = false
@@ -253,18 +254,27 @@ Hooks.ChatForm = {
         if (ok) {
           ta.value = ""
           ta.style.height = "auto"
+          if (status) status.classList.add("hidden")
         } else {
-          // Text is still in the box — just flag it so the user knows to retry.
+          // Text is still in the box — flag it AND say why, so a failed send is
+          // never a silent red flash.
           ta.style.boxShadow = "0 0 0 2px rgb(248 113 113)"
           setTimeout(() => { ta.style.boxShadow = "" }, 2500)
+          if (status) {
+            status.textContent = reason || "Send didn't go through — your text is kept, press Send to retry."
+            status.classList.remove("hidden")
+          }
           ta.focus()
         }
       }
 
-      const timer = setTimeout(() => settle(false), 6000)
+      const timer = setTimeout(() =>
+        settle(false, "⚠ Couldn't reach the server — connection blip or the page is reloading. Your text is safe; press Send to retry."),
+      6000)
       this.pushEvent("send_message", { message: text }, (reply) => {
         clearTimeout(timer)
-        settle(reply && reply.ok)
+        if (reply && reply.ok) settle(true)
+        else settle(false, "⚠ The server rejected the send — make sure an agent is selected, then try again.")
       })
     }
 
@@ -273,8 +283,10 @@ Hooks.ChatForm = {
       if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send() }
     })
 
-    // Auto-resize textarea
+    // Auto-resize textarea + clear any stale "send failed" notice as you edit
     ta.addEventListener("input", () => {
+      const status = document.getElementById("send-status")
+      if (status && !status.classList.contains("hidden")) status.classList.add("hidden")
       requestAnimationFrame(() => {
         ta.style.height = "auto"
         ta.style.height = Math.min(ta.scrollHeight, 200) + "px"

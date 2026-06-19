@@ -479,6 +479,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             Send
           </button>
         </form>
+        <%!-- Why a send failed — the ChatForm hook fills + reveals this so a
+              rejected send is never just a silent red flash. --%>
+        <p id="send-status" class="hidden mt-1.5 text-xs text-red-500 dark:text-red-400"></p>
       </div>
     </div>
     """
