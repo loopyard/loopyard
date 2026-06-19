@@ -307,29 +307,36 @@ Hooks.ChatForm = {
 }
 
 // Renders markdown content and provides a copy-source button
-Hooks.Markdown = {
-  mounted() {
-    this.render()
-  },
-  updated() {
-    this.render()
-  },
-  render() {
-    const source = this.el.dataset.source
-    if (!source || !window.marked) return
+// Render one Markdown bubble's data-source into its .markdown-body. Shared by
+// the LiveView hook AND an eager page-load pass (renderAllMarkdown) so chat
+// bubbles aren't empty in the window between HTML paint and socket connect.
+function renderMarkdownEl(el) {
+  const source = el.dataset.source
+  if (!source || !window.marked) return
+  const container = el.querySelector(".markdown-body")
+  if (!container) return
+  // Idempotent: skip if we already rendered this exact source (the hook's
+  // mounted/updated will call again on connect — no need to redo identical work).
+  if (container.dataset.rendered === source) return
 
-    const container = this.el.querySelector(".markdown-body")
-    if (container) {
-      const renderer = new marked.Renderer()
-      const origLink = renderer.link.bind(renderer)
-      renderer.link = function(href, title, text) {
-        const html = origLink(href, title, text)
-        // Open all links in new tabs
-        return html.replace('<a ', '<a target="_blank" rel="noopener noreferrer" ')
-      }
-      container.innerHTML = marked.parse(source, { breaks: true, renderer })
-    }
+  const renderer = new marked.Renderer()
+  const origLink = renderer.link.bind(renderer)
+  renderer.link = function(href, title, text) {
+    return origLink(href, title, text).replace('<a ', '<a target="_blank" rel="noopener noreferrer" ')
   }
+  container.innerHTML = marked.parse(source, { breaks: true, renderer })
+  container.dataset.rendered = source
+}
+
+// Fill every Markdown bubble currently in the DOM, right now — no waiting on the
+// LiveView socket. Called on page load so a refresh never shows empty bubbles.
+function renderAllMarkdown() {
+  document.querySelectorAll('[phx-hook="Markdown"]').forEach(renderMarkdownEl)
+}
+
+Hooks.Markdown = {
+  mounted() { renderMarkdownEl(this.el) },
+  updated() { renderMarkdownEl(this.el) }
 }
 
 Hooks.CopySource = {
@@ -384,6 +391,13 @@ let liveSocket = new LiveSocket("/live", Socket, {
 
 liveSocket.connect()
 window.liveSocket = liveSocket
+
+// Paint chat markdown immediately, without waiting for the socket to connect —
+// otherwise a refresh shows empty bubbles until the LiveView mounts the hooks
+// (slow on a heavy agent page). Run now, and again on `load` in case the marked
+// global finished loading a tick after us. renderMarkdownEl is idempotent.
+renderAllMarkdown()
+window.addEventListener("load", renderAllMarkdown)
 
 // Connection-lost banner: reveal #conn-banner when the websocket has been down
 // past a short grace period (so a quick reconnect — live reload, blip — doesn't
