@@ -193,11 +193,29 @@ defmodule Loopyard.ChatAgent.StreamHandler do
 
     state = maybe_warn_context_full(state, id, utilization)
 
+    # A turn that failed on a transient upstream error (529 / overload /
+    # execution error) is flagged here; on_stream_done reads the flag and
+    # decides whether to auto-retry. Limit-class failures (max turns/budget)
+    # aren't retryable — retrying can't fix them.
+    state =
+      if result.is_error and retryable_turn_error?(result.error_subtype) do
+        %{state | pending_turn_error: result.error_subtype}
+      else
+        state
+      end
+
     :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
     Persistence.persist_agent(state, &Loopyard.ChatAgent.summary/1)
     Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: state.status})
     state
   end
+
+  # Limit-class failures can't be fixed by retrying; everything else
+  # (execution errors, upstream 529/overload, unknown) is transient enough
+  # to be worth a bounded retry.
+  @non_retryable_turn_errors ~w(error_max_turns error_max_budget_usd error_max_structured_output_retries)
+  def retryable_turn_error?(nil), do: false
+  def retryable_turn_error?(subtype), do: subtype not in @non_retryable_turn_errors
 
   def process_event(%Event.RateLimitStatus{} = rl, state) do
     handle_rate_limit_event(state, rl)
@@ -209,11 +227,114 @@ defmodule Loopyard.ChatAgent.StreamHandler do
 
   def process_event(_other, state), do: state
 
+  # Auto-retry a transient turn failure this many times before giving the
+  # message back to the human. DEFAULT 0 — the contract the user wants is
+  # "never lose my text": on failure, put it back in the box, don't silently
+  # retry. Opt into auto-retry by setting :agent_turn_retries > 0.
+  defp max_turn_retries, do: Application.get_env(:loopyard, :agent_turn_retries, 0)
+
   @doc """
-  Handle a clean stream completion. Returns `{:drain, text, state}` if
-  there's a pending send to dispatch, or `{:noreply, state}` otherwise.
+  Handle a stream completion.
+
+    * Turn failed on a transient upstream error (529/overload/execution) with
+      retries left → `{:retry_turn, prompt, state}`. OFF by default
+      (`:agent_turn_retries` is 0) — opt in only.
+    * Failed with no retries → preserve the prompt, surface a clear error, and
+      `{:restore_input, prompt, state}` so the UI puts the text back in the box.
+      Nothing lost, nothing silently accepted; the human hits Send to retry.
+    * Completed normally → `{:drain, list, state}` if parked sends, else
+      `{:noreply, state}`.
   """
   def on_stream_done(state) do
+    cond do
+      state.pending_turn_error && state.turn_retry_count < max_turn_retries() &&
+          is_binary(state.current_turn_prompt) ->
+        schedule_turn_retry(state)
+
+      state.pending_turn_error ->
+        preserve_failed_turn(state)
+
+      true ->
+        complete_turn(state)
+    end
+  end
+
+  # Auto-retry (opt-in): re-issue the prompt after a backoff with an honest note.
+  defp schedule_turn_retry(state) do
+    attempt = state.turn_retry_count + 1
+
+    state = %{
+      state
+      | turn_retry_count: attempt,
+        pending_turn_error: nil,
+        active_tool: nil,
+        in_flight_partial: ""
+    }
+
+    msg = %{
+      role: :system,
+      content:
+        "Anthropic's API returned a transient error (their servers, not your " <>
+          "message). Retrying (#{attempt}/#{max_turn_retries()})…",
+      timestamp: DateTime.utc_now()
+    }
+
+    {state, msg} = append_message(state, msg)
+    Persistence.persist_message(state, msg)
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: msg})
+    :ets.insert(@ets_table, {state.id, Loopyard.ChatAgent.summary(state)})
+
+    {:retry_turn, state.current_turn_prompt, state}
+  end
+
+  # The turn failed and we're not auto-retrying: DON'T lose the text and DON'T
+  # pretend it went through. Surface a clear error, stash the prompt, and tell
+  # the caller to put it back in the input box — the human hits Send to retry.
+  defp preserve_failed_turn(state) do
+    id = state.id
+    prompt = state.current_turn_prompt
+
+    err = %{
+      role: :error,
+      content:
+        "Your message didn't go through — Anthropic's API returned an error " <>
+          "(their servers, not your code or your message).\n\n" <>
+          "Nothing was lost: your text is back in the message box. Hit Send to try " <>
+          "again (Anthropic blips are usually brief — status: https://status.claude.com).",
+      timestamp: DateTime.utc_now()
+    }
+
+    {state, err} = append_message(state, err)
+    Persistence.persist_message(state, err)
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: err})
+
+    # Settle to idle WITHOUT draining pending — we're handing the prompt back to
+    # the human, not auto-starting another turn.
+    state = %{
+      state
+      | status: :idle,
+        active_tool: nil,
+        turns: state.turns + 1,
+        turn_retry_count: 0,
+        pending_turn_error: nil,
+        current_turn_prompt: nil,
+        in_flight_partial: "",
+        context_warning_sent: false,
+        last_tool_call: nil,
+        tool_calls_this_turn: 0,
+        tool_runaway_warned: false,
+        failed_prompt: prompt,
+        errors: state.errors + 1
+    }
+
+    :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
+    Persistence.persist_agent(state, &Loopyard.ChatAgent.summary/1)
+    Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
+
+    if is_binary(prompt), do: {:restore_input, prompt, state}, else: {:noreply, state}
+  end
+
+  defp complete_turn(state) do
     id = state.id
 
     state = %{
@@ -221,6 +342,9 @@ defmodule Loopyard.ChatAgent.StreamHandler do
       | status: :idle,
         active_tool: nil,
         turns: state.turns + 1,
+        turn_retry_count: 0,
+        pending_turn_error: nil,
+        current_turn_prompt: nil,
         in_flight_partial: "",
         context_warning_sent: false,
         last_tool_call: nil,

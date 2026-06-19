@@ -292,6 +292,17 @@ Hooks.ChatForm = {
     this.el.addEventListener("submit", (e) => { e.preventDefault(); send() })
     this.handleEvent("focus_input", () => ta.focus())
 
+    // A turn failed (e.g. Anthropic 529) — the server preserved the prompt and
+    // pushes it back here. Refill the box ONLY if empty, so we never clobber
+    // something the user has since started typing. The text is right where they
+    // left it; they hit Enter to retry, as many times as they want.
+    this.handleEvent("restore_input", ({ text }) => {
+      if (!text || ta.value.trim() !== "") return
+      ta.value = text
+      ta.style.height = "auto"
+      ta.style.height = Math.min(ta.scrollHeight, 200) + "px"
+      ta.focus()
+    })
   }
 }
 

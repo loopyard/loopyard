@@ -1,13 +1,25 @@
 defmodule Loopyard.Agent.Event.SessionResult do
-  @moduledoc "End-of-turn summary with token usage, cost, and model info."
+  @moduledoc """
+  End-of-turn summary with token usage, cost, and model info.
+
+  `is_error` + `error_subtype` mirror the SDK's `ResultMessage` failure
+  signal (e.g. `"error_during_execution"` for an upstream 529/overload).
+  A failed turn is otherwise shaped exactly like a successful one, so this
+  flag is the only honest way to know the turn didn't really complete —
+  it's what drives the bounded auto-retry.
+  """
   defstruct [
     :model,
-    :input_tokens,
-    :output_tokens,
-    :cache_read_tokens,
-    :cost_usd,
-    :duration_ms,
-    :num_turns
+    is_error: false,
+    error_subtype: nil,
+    # Numeric fields default to 0 so a result is always safe to fold into the
+    # running totals (`total + result.x`) even if a field is absent.
+    input_tokens: 0,
+    output_tokens: 0,
+    cache_read_tokens: 0,
+    cost_usd: 0.0,
+    duration_ms: 0.0,
+    num_turns: 0
   ]
 
   @type t :: %__MODULE__{
@@ -17,6 +29,8 @@ defmodule Loopyard.Agent.Event.SessionResult do
           cache_read_tokens: non_neg_integer(),
           cost_usd: float(),
           duration_ms: float(),
-          num_turns: non_neg_integer()
+          num_turns: non_neg_integer(),
+          is_error: boolean(),
+          error_subtype: String.t() | nil
         }
 end

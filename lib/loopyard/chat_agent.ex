@@ -73,6 +73,18 @@ defmodule Loopyard.ChatAgent do
     # UI/chat can say "~92% of cap" instead of just "limited".
     rate_limit_utilization: nil,
     auth_error: nil,
+    # Transient turn-failure auto-retry (529 / overload / execution error).
+    # The inbox owns durability, so a turn that fails on an upstream blip is
+    # re-issued rather than silently answered-with-an-error. `current_turn_prompt`
+    # is the exact text sent to the backend for this turn (so a retry re-issues
+    # it verbatim); `turn_retry_count` bounds the attempts; `pending_turn_error`
+    # is set by the SessionResult handler and read at stream-done to decide a
+    # retry; `failed_prompt` preserves the message for one-tap resend once
+    # retries are exhausted.
+    current_turn_prompt: nil,
+    turn_retry_count: 0,
+    pending_turn_error: nil,
+    failed_prompt: nil,
     # OS pid of the Claude CLI subprocess owned by state.session. Tracked
     # via Loopyard.Resources.track/4 so the Janitor kills it on our
     # DOWN — covers the brutal_kill / node crash / :shutdown-timeout
@@ -1079,7 +1091,12 @@ defmodule Loopyard.ChatAgent do
         tool_calls_this_turn: 0,
         tool_runaway_warned: false,
         last_tool_call: nil,
-        context_warning_sent: false
+        context_warning_sent: false,
+        # Cancel any scheduled transient-failure retry (the counter guard in
+        # {:retry_turn_now} mismatches once this is reset).
+        turn_retry_count: 0,
+        pending_turn_error: nil,
+        current_turn_prompt: nil
     }
 
     case state.pending_sends do
@@ -1197,6 +1214,18 @@ defmodule Loopyard.ChatAgent do
         GenServer.cast(self(), {:auto_restart_context, last_user_text})
         {:noreply, state}
 
+      {:retry_turn, prompt, state} ->
+        # Opt-in auto-retry. Re-issue after backoff, tagged with the attempt
+        # count so a Stop / new message cancels it on arrival.
+        delay = Loopyard.Retry.backoff_ms(state.turn_retry_count, {:exponential, 2_000})
+        Process.send_after(self(), {:retry_turn_now, id, prompt, state.turn_retry_count}, delay)
+        {:noreply, state}
+
+      {:restore_input, _prompt, state} ->
+        # The failed prompt is preserved in state.failed_prompt and rode the
+        # StatusChanged broadcast; the LiveView refills the input box from it.
+        {:noreply, state}
+
       {:drain, list, state} ->
         send_batch(state, list)
 
@@ -1204,6 +1233,18 @@ defmodule Loopyard.ChatAgent do
         {:noreply, state}
     end
   end
+
+  # Fire a scheduled transient-failure retry — but only if still valid: same
+  # attempt number (a new turn or Stop resets it) and still thinking.
+  @impl true
+  def handle_info(
+        {:retry_turn_now, id, prompt, attempt},
+        %{id: id, status: :thinking, turn_retry_count: attempt} = state
+      ) do
+    start_turn(state, prompt)
+  end
+
+  def handle_info({:retry_turn_now, _id, _prompt, _attempt}, state), do: {:noreply, state}
 
   # Stale stream_done — belongs to a replaced stream, ignore.
   def handle_info({:stream_done, _id, _ref}, state), do: {:noreply, state}
@@ -1602,7 +1643,9 @@ defmodule Loopyard.ChatAgent do
         msg: user_msg
       })
 
-      start_turn(state, text)
+      # Fresh human turn → reset the transient-retry counter and any prior
+      # failed-prompt banner.
+      start_turn(%{state | turn_retry_count: 0, failed_prompt: nil}, text)
     end
   end
 
@@ -1636,7 +1679,7 @@ defmodule Loopyard.ChatAgent do
           st
         end)
 
-      start_turn(state, Loopyard.Turn.batch_prompt(list))
+      start_turn(%{state | turn_retry_count: 0, failed_prompt: nil}, Loopyard.Turn.batch_prompt(list))
     end
   end
 
@@ -1676,7 +1719,8 @@ defmodule Loopyard.ChatAgent do
     end)
 
     Process.send_after(self(), {:stream_timeout, agent_id, stream_ref}, 600_000)
-    {:noreply, %{state | stream_ref: stream_ref, in_flight_partial: ""}}
+    # Stash the exact prompt so a transient-failure retry re-issues it verbatim.
+    {:noreply, %{state | stream_ref: stream_ref, in_flight_partial: "", current_turn_prompt: prompt}}
   end
 
   @max_messages 1000
@@ -1735,6 +1779,9 @@ defmodule Loopyard.ChatAgent do
       rate_limit_type: state.rate_limit_type,
       rate_limit_utilization: state.rate_limit_utilization,
       auth_error: state.auth_error,
+      # Preserved prompt of a turn that exhausted its transient-failure retries,
+      # so the UI can offer one-tap Resend. nil when there's nothing to resend.
+      failed_prompt: state.failed_prompt,
       prompt_hash: state.prompt_hash,
       context_utilization: state.context_utilization,
       pending_count: length(state.pending_sends),

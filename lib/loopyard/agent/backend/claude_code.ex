@@ -135,7 +135,9 @@ defmodule Loopyard.Agent.Backend.ClaudeCode do
         cache_read_tokens: usage[:cache_read_input_tokens] || 0,
         cost_usd: msg.total_cost_usd || 0.0,
         duration_ms: msg.duration_ms || 0.0,
-        num_turns: msg.num_turns || 0
+        num_turns: msg.num_turns || 0,
+        is_error: msg.is_error == true,
+        error_subtype: if(msg.is_error == true, do: to_string(msg.subtype || "error"))
       }
     ]
   end
