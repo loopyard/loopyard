@@ -151,18 +151,11 @@ defmodule Loopyard.Onboarding do
         id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
         service_name = Keyword.get(opts, :service_name)
 
-        ws_config =
-          case Loopyard.Workspace.load_from_volume(Loopyard.Workspace.volume_name_for(ws_id)) do
-            {:ok, c} -> c
-            _ -> nil
-          end
-
         name =
           Keyword.get(opts, :name) ||
             cond do
               service_name -> "#{service_name}-agent"
-              ws_config && ws_config.name -> ws_config.name
-              true -> Loopyard.Agents.Name.generate()
+              true -> Loopyard.Agents.Name.for_workspace(ws_id, Keyword.get(opts, :backend))
             end
 
         agent_type = Keyword.get(opts, :agent_type) || Loopyard.Agents.Registry.default_agent_name()
