@@ -490,10 +490,13 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
       %{agent_id: id}
     end
 
-    test "idle agent shows green dot and stop button", %{conn: conn, agent_id: id, workspace: ws} do
+    test "idle agent shows green dot and a Stop control", %{conn: conn, agent_id: id, workspace: ws} do
       {:ok, view, _html} = live(conn, ws_chat_path(ws, id))
       assert has_element?(view, "div.bg-green-500")
-      assert has_element?(view, "button[phx-click='stop_agent']")
+      # The header's "Stop" warm-cancels the turn (interrupt_agent). The
+      # destructive container lifecycle (stop/sleep, remove) moved off the
+      # header in the phone-friendly redesign — see chat.ex agent_header.
+      assert has_element?(view, "button[phx-click='interrupt_agent']")
     end
 
     # DELETED: "stopped agent shows remove button"
@@ -577,11 +580,12 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
       assert html =~ "chat-form"
     end
 
-    test "shows agent name and stop button", %{conn: conn, agent_id: id, workspace: ws} do
+    test "shows agent name and a Stop control", %{conn: conn, agent_id: id, workspace: ws} do
       {:ok, view, html} = live(conn, ws_chat_path(ws, id))
 
       assert html =~ "Tab Test"
-      assert has_element?(view, "button[phx-click='stop_agent']")
+      # Header "Stop" interrupts the turn now (see chat.ex agent_header).
+      assert has_element?(view, "button[phx-click='interrupt_agent']")
     end
   end
 
