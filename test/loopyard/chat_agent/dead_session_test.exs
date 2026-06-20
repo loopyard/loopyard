@@ -44,7 +44,7 @@ defmodule Loopyard.ChatAgent.DeadSessionTest do
 
   # --- Stub backend that always reports the session as dead ---
   defmodule DeadBackend do
-    @behaviour Loopyard.Agent.Backend
+    @behaviour Loopyard.Harness
 
     @impl true
     def start_session(_opts) do
@@ -177,7 +177,7 @@ defmodule Loopyard.ChatAgent.DeadSessionTest do
   # Counting variant of DeadBackend — reports each start_session call to
   # a test pid so we can prove the :restart_session cast fired.
   defmodule CountingDeadBackend do
-    @behaviour Loopyard.Agent.Backend
+    @behaviour Loopyard.Harness
 
     def set_reporter(pid), do: :persistent_term.put({__MODULE__, :reporter}, pid)
     defp reporter, do: :persistent_term.get({__MODULE__, :reporter}, nil)

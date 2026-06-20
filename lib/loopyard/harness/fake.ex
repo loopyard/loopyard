@@ -1,8 +1,8 @@
-defmodule Loopyard.Agent.Backend.Fake do
+defmodule Loopyard.Harness.Fake do
   @moduledoc """
   No-op Agent.Backend for tests.
 
-  The real backend (`Loopyard.Agent.Backend.ClaudeCode`) spawns the
+  The real backend (`Loopyard.Harness.Claude`) spawns the
   Node.js Claude CLI subprocess via a Port. With real API auth it
   works; without it the subprocess exits immediately and the stream
   surfaces `{:error, {:provisioning_failed, {:cli_exit, 1}}}` after
@@ -22,19 +22,19 @@ defmodule Loopyard.Agent.Backend.Fake do
   Set as the default in `config/test.exs` so tests that don't opt in
   to a specific backend don't accidentally hit the real CLI.
   """
-  @behaviour Loopyard.Agent.Backend
+  @behaviour Loopyard.Harness
 
   use GenServer
 
-  @impl Loopyard.Agent.Backend
+  @impl Loopyard.Harness
   def start_session(_opts) do
     GenServer.start_link(__MODULE__, :ok)
   end
 
-  @impl Loopyard.Agent.Backend
+  @impl Loopyard.Harness
   def stream(_session, _prompt), do: []
 
-  @impl Loopyard.Agent.Backend
+  @impl Loopyard.Harness
   def stop(session) do
     if is_pid(session) and Process.alive?(session) do
       GenServer.stop(session, :normal, 1_000)
@@ -43,13 +43,13 @@ defmodule Loopyard.Agent.Backend.Fake do
     :ok
   end
 
-  @impl Loopyard.Agent.Backend
+  @impl Loopyard.Harness
   def cancel_turn(_session), do: :ok
 
-  @impl Loopyard.Agent.Backend
+  @impl Loopyard.Harness
   def session_alive?(session), do: is_pid(session) and Process.alive?(session)
 
-  @impl Loopyard.Agent.Backend
+  @impl Loopyard.Harness
   def session_id(_session), do: nil
 
   @impl GenServer

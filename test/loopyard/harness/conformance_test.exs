@@ -1,6 +1,6 @@
-defmodule Loopyard.Agent.Backend.ConformanceTest do
+defmodule Loopyard.Harness.ConformanceTest do
   @moduledoc """
-  Behaviour conformance: every concrete `Loopyard.Agent.Backend` implementation
+  Behaviour conformance: every concrete `Loopyard.Harness` implementation
   must export every callback of the behaviour at the right arity.
 
   This is the cheap guard that catches a backend drifting out of shape — e.g.
@@ -9,12 +9,12 @@ defmodule Loopyard.Agent.Backend.ConformanceTest do
   """
   use ExUnit.Case, async: true
 
-  @behaviour_mod Loopyard.Agent.Backend
+  @behaviour_mod Loopyard.Harness
 
   @backends [
-    Loopyard.Agent.Backend.ClaudeCode,
-    Loopyard.Agent.Backend.ACP,
-    Loopyard.Agent.Backend.Fake
+    Loopyard.Harness.Claude,
+    Loopyard.Harness.ACP,
+    Loopyard.Harness.Fake
   ]
 
   test "the behaviour declares the callbacks we expect" do
@@ -45,7 +45,7 @@ defmodule Loopyard.Agent.Backend.ConformanceTest do
       end
     end
 
-    test "#{inspect(backend)} declares @behaviour Loopyard.Agent.Backend" do
+    test "#{inspect(backend)} declares @behaviour Loopyard.Harness" do
       backend = unquote(backend)
       Code.ensure_loaded!(backend)
 

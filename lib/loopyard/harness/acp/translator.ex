@@ -1,4 +1,4 @@
-defmodule Loopyard.Agent.Backend.ACP.Translator do
+defmodule Loopyard.Harness.ACP.Translator do
   @moduledoc """
   Pure, stateful translation of ACP `session/update` notifications into
   `Loopyard.Agent.Event` structs — the neutral vocabulary the whole

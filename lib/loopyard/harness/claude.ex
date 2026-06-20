@@ -1,9 +1,9 @@
-defmodule Loopyard.Agent.Backend.ClaudeCode do
+defmodule Loopyard.Harness.Claude do
   @moduledoc """
   Backend implementation wrapping the `claude_code` hex package (CLI subprocess).
   Translates SDK message types into `Loopyard.Agent.Event` structs.
   """
-  @behaviour Loopyard.Agent.Backend
+  @behaviour Loopyard.Harness
 
   alias Loopyard.Agent.Event
 

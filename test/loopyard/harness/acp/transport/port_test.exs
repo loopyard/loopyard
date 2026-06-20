@@ -1,4 +1,4 @@
-defmodule Loopyard.Agent.Backend.ACP.Transport.PortTest do
+defmodule Loopyard.Harness.ACP.Transport.PortTest do
   @moduledoc """
   Tests for the framing + buffer-safety logic of the real Port transport.
 
@@ -12,7 +12,7 @@ defmodule Loopyard.Agent.Backend.ACP.Transport.PortTest do
   """
   use ExUnit.Case, async: true
 
-  alias Loopyard.Agent.Backend.ACP.Transport.Port, as: T
+  alias Loopyard.Harness.ACP.Transport.Port, as: T
 
   # @max_buffer_bytes in the module under test (kept in sync with the source).
   @cap 16_000_000

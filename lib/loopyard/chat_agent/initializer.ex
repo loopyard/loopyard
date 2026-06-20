@@ -58,8 +58,8 @@ defmodule Loopyard.ChatAgent.Initializer do
     default_backend =
       Application.get_env(
         :loopyard,
-        :default_agent_backend,
-        Loopyard.Agent.Backend.ClaudeCode
+        :default_harness,
+        Loopyard.Harness.Claude
       )
 
     backend = Keyword.get(opts, :backend, default_backend)

@@ -1,4 +1,4 @@
-defmodule Loopyard.Agent.Backend.ACP.Connection do
+defmodule Loopyard.Harness.ACP.Connection do
   @moduledoc """
   Owns one ACP session: handshake (`initialize` → `session/new`), one prompt
   turn at a time (`session/prompt` → streamed `session/update`s → result),
@@ -17,7 +17,7 @@ defmodule Loopyard.Agent.Backend.ACP.Connection do
   use GenServer
   require Logger
 
-  alias Loopyard.Agent.Backend.ACP.Translator
+  alias Loopyard.Harness.ACP.Translator
   alias Loopyard.Agent.Event
 
   @protocol_version 1
@@ -45,7 +45,7 @@ defmodule Loopyard.Agent.Backend.ACP.Connection do
 
   @impl true
   def init(opts) do
-    transport_mod = Keyword.get(opts, :transport, Loopyard.Agent.Backend.ACP.Transport.Port)
+    transport_mod = Keyword.get(opts, :transport, Loopyard.Harness.ACP.Transport.Port)
     transport_opts = Keyword.get(opts, :transport_opts, [])
 
     case transport_mod.start_link([owner: self()] ++ transport_opts) do

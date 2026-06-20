@@ -11,7 +11,7 @@ defmodule Loopyard.TestSupport.RecordingBackend do
   the captured conversation.
   """
 
-  @behaviour Loopyard.Agent.Backend
+  @behaviour Loopyard.Harness
 
   use Agent
 

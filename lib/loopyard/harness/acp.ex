@@ -1,8 +1,8 @@
-defmodule Loopyard.Agent.Backend.ACP do
+defmodule Loopyard.Harness.ACP do
   @moduledoc """
   Agent backend that drives a *real* coding harness (Claude Code today, Codex
   next) over the **Agent Client Protocol** instead of reimplementing the agent
-  loop. Implements the same `Loopyard.Agent.Backend` behaviour as
+  loop. Implements the same `Loopyard.Harness` behaviour as
   `Backend.ClaudeCode`, so the ChatAgent / StreamHandler / multiplayer stack is
   unchanged — only the event *source* differs.
 
@@ -23,9 +23,9 @@ defmodule Loopyard.Agent.Backend.ACP do
   token-usage surfacing (claude-code-acp doesn't expose it — see cost-visibility
   decision), and the `:ask` permission mode (#7).
   """
-  @behaviour Loopyard.Agent.Backend
+  @behaviour Loopyard.Harness
 
-  alias Loopyard.Agent.Backend.ACP.{Connection, SystemPrompt}
+  alias Loopyard.Harness.ACP.{Connection, SystemPrompt}
 
   @ready_timeout 30_000
   @turn_timeout 600_000

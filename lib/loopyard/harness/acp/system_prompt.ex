@@ -1,4 +1,4 @@
-defmodule Loopyard.Agent.Backend.ACP.SystemPrompt do
+defmodule Loopyard.Harness.ACP.SystemPrompt do
   @moduledoc """
   Installs Loopyard's agent system prompt where the ACP harness will read it.
 

@@ -19,7 +19,7 @@ config :loopyard,
   # Default every ChatAgent in tests to a no-op backend so we never
   # accidentally spawn the real Claude CLI subprocess. Individual
   # tests can still pass `backend: SomeOther` in opts to override.
-  default_agent_backend: Loopyard.Agent.Backend.Fake,
+  default_harness: Loopyard.Harness.Fake,
   # Disable Saga.Journal writes by default in test env. Async saga
   # tests would otherwise share one journal file and race on
   # compaction. Tests that exercise the journal explicitly opt in via

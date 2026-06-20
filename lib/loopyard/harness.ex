@@ -1,4 +1,4 @@
-defmodule Loopyard.Agent.Backend do
+defmodule Loopyard.Harness do
   @moduledoc """
   Behaviour for conversation backends.
 

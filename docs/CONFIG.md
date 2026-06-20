@@ -24,7 +24,10 @@ Read via `Application.get_env(:loopyard, key)`. Overridable at runtime in `confi
 | `:mutagen_runner` | `&System.cmd/3` | Injection seam for the Mutagen CLI. Tests override with a fake to avoid shelling out. |
 | `:container_ready_check` | `nil` | Injection seam for SyncMonitor's "is the destination container up" probe. Tests override; production uses the real Docker check. |
 | `:crash_backoff_base_ms` | `1_000` | Base backoff for the CLI auto-restart loop in `ChatAgent`. Exponential from here up to a cap. |
-| `:agent_thinking` | `:adaptive` | Extended-thinking config passed to the Claude Code SDK per session. `:adaptive` lets the model scale reasoning to the turn (streams into the chat's thinking bubble before tool calls); `:disabled` turns it off; `{:enabled, budget_tokens: N}` caps it. Applies on the next CLI session start. |
+| `:agent_thinking` | `:adaptive` | Extended-thinking config passed to the harness per session. `:adaptive` lets the model scale reasoning to the turn (streams into the chat's thinking bubble before tool calls); `:disabled` turns it off; `{:enabled, budget_tokens: N}` caps it. Applies on the next session start. |
+| `:default_harness` | `Loopyard.Harness.Claude` | Which harness adapter a new agent uses (`Loopyard.Harness.{Claude,ACP,Fake}`). Test env uses `Fake`. The agent stores the module, so a change applies to newly-spawned agents (existing ones on the next replay). |
+| `:model_windows` | map (see `config.exs`) | Per-model context-window sizes in tokens; keys are `String.starts_with?` prefixes so dated variants match. **Add a row when a new frontier model ships** — an unlisted model logs loudly + assumes `:model_window_default`. |
+| `:model_window_default` | `200_000` | Fallback window for a model not in `:model_windows`. Conservative on purpose. |
 | `Loopyard.PortRegistry, :port_range` | `4000..9999` | Host port range used by `PortRegistry.assign/3`. Exhaustion returns `{:error, :port_pool_exhausted}`. Keep it outside the ephemeral port range to avoid collisions with transient outbound connections. |
 | `LoopyardWeb.Endpoint, :http, :port` | `4000` | HTTP port. Env-overridable via `PORT` in `runtime.exs`. |
 
@@ -107,7 +110,7 @@ If you need a test to avoid shelling out or hitting real infra, these are the ex
 |---|---|---|
 | `:mutagen_runner` | `&System.cmd/3` | Fake that returns stubbed output (see `test/loopyard/source/local/mutagen_test.exs`). |
 | `:container_ready_check` | Real Docker probe | Fake returning `true`/`false` on demand. |
-| Tool `:backend` in `ChatAgent` opts | `Loopyard.Agent.Backend.ClaudeCode` | `Loopyard.Agent.Backend.Fake` for unit tests that don't want a real CLI. |
+| Tool `:backend` in `ChatAgent` opts | `Loopyard.Harness.Claude` | `Loopyard.Harness.Fake` for unit tests that don't want a real CLI. |
 
 ## How to add a new setting
 

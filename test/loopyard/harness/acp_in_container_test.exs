@@ -1,4 +1,4 @@
-defmodule Loopyard.Agent.Backend.ACPInContainerTest do
+defmodule Loopyard.Harness.ACPInContainerTest do
   @moduledoc """
   The convergence test: Loopyard's `Backend.ACP` (the Elixir side) drives the
   REAL Claude harness running *inside* the cheap `WorkContainer`, over ACP via
@@ -17,7 +17,7 @@ defmodule Loopyard.Agent.Backend.ACPInContainerTest do
   @moduletag :docker
   @moduletag timeout: 600_000
 
-  alias Loopyard.Agent.Backend.ACP
+  alias Loopyard.Harness.ACP
   alias Loopyard.Workspace.WorkContainer
   alias Loopyard.{VolumeManager, VolumeIO}
 

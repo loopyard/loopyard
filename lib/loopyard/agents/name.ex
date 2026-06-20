@@ -9,7 +9,7 @@ defmodule Loopyard.Agents.Name do
   fork/onboarding spawn path share one source of truth.
   """
 
-  alias Loopyard.Agent.Backend
+  alias Loopyard.Harness
 
   @doc """
   A name for a new agent in `ws_id`, derived from its harness `backend`
@@ -25,9 +25,9 @@ defmodule Loopyard.Agents.Name do
 
   @doc "The human harness label for a backend module."
   @spec label_for(module() | nil) :: String.t()
-  def label_for(Backend.ClaudeCode), do: "Claude"
-  def label_for(Backend.ACP), do: "Claude"
-  def label_for(Backend.Fake), do: "Claude"
+  def label_for(Harness.Claude), do: "Claude"
+  def label_for(Harness.ACP), do: "Claude"
+  def label_for(Harness.Fake), do: "Claude"
   # Any future harness module (e.g. Backend.Codex) → its last name segment.
   def label_for(mod) when is_atom(mod) and not is_nil(mod), do: mod |> Module.split() |> List.last()
   def label_for(_), do: "Claude"

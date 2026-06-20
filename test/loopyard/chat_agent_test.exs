@@ -307,19 +307,19 @@ defmodule Loopyard.ChatAgentTest do
       Test backend that spawns a real OS process (sleep) via a linked adapter.
       The session is a GenServer that links to the adapter — same topology as ClaudeCode.
       """
-      @behaviour Loopyard.Agent.Backend
+      @behaviour Loopyard.Harness
 
       use GenServer
 
-      @impl Loopyard.Agent.Backend
+      @impl Loopyard.Harness
       def start_session(_opts) do
         GenServer.start_link(__MODULE__, :ok)
       end
 
-      @impl Loopyard.Agent.Backend
+      @impl Loopyard.Harness
       def stream(_session, _prompt), do: []
 
-      @impl Loopyard.Agent.Backend
+      @impl Loopyard.Harness
       def stop(session) do
         if is_pid(session) and Process.alive?(session) do
           GenServer.stop(session, :normal, 1_000)
@@ -328,10 +328,10 @@ defmodule Loopyard.ChatAgentTest do
         :ok
       end
 
-      @impl Loopyard.Agent.Backend
+      @impl Loopyard.Harness
       def session_alive?(session), do: is_pid(session) and Process.alive?(session)
 
-      @impl Loopyard.Agent.Backend
+      @impl Loopyard.Harness
       def session_id(_session), do: nil
 
       # GenServer that links to a PortAdapter child
@@ -651,7 +651,7 @@ defmodule Loopyard.ChatAgentTest do
           resume: true,
           working_dir: tmp_dir,
           started_by: "test",
-          backend: Loopyard.Agent.Backend.Fake
+          backend: Loopyard.Harness.Fake
         )
 
       live = ChatAgent.get_state(id)
@@ -717,7 +717,7 @@ defmodule Loopyard.ChatAgentTest do
           resume: true,
           working_dir: tmp_dir,
           started_by: "test",
-          backend: Loopyard.Agent.Backend.Fake
+          backend: Loopyard.Harness.Fake
         )
 
       # Force an external append (doesn't need the CLI) so we exercise

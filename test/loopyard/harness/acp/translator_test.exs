@@ -1,4 +1,4 @@
-defmodule Loopyard.Agent.Backend.ACP.TranslatorTest do
+defmodule Loopyard.Harness.ACP.TranslatorTest do
   @moduledoc """
   Pure unit tests for the ACP `session/update` → `%Event.*{}` reducer.
 
@@ -9,7 +9,7 @@ defmodule Loopyard.Agent.Backend.ACP.TranslatorTest do
   """
   use ExUnit.Case, async: true
 
-  alias Loopyard.Agent.Backend.ACP.Translator
+  alias Loopyard.Harness.ACP.Translator
   alias Loopyard.Agent.Event
 
   # Run a list of update maps through step/2, collecting all emitted events

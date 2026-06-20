@@ -109,7 +109,7 @@ All file I/O goes through `VolumeIO` against the agent's own volume (`volume_nam
 
 ## ACP adapter trust boundary
 
-Loopyard is moving to run a **real** coding harness (Claude Code today, Codex next) in-container over the **Agent Client Protocol** instead of reimplementing the agent loop (`Loopyard.Agent.Backend.ACP`; north-star issue #3). This changes the trust picture: the harness is no longer an SDK we call into — it's an **untrusted subprocess** speaking JSON-RPC over stdio, and it talks *back* to Loopyard (it can issue requests, not just stream responses). Treat ACP frames the way you'd treat any untrusted network input.
+Loopyard is moving to run a **real** coding harness (Claude Code today, Codex next) in-container over the **Agent Client Protocol** instead of reimplementing the agent loop (`Loopyard.Harness.ACP`; north-star issue #3). This changes the trust picture: the harness is no longer an SDK we call into — it's an **untrusted subprocess** speaking JSON-RPC over stdio, and it talks *back* to Loopyard (it can issue requests, not just stream responses). Treat ACP frames the way you'd treat any untrusted network input.
 
 **Where the boundary sits.** The ACP adapter (`@zed-industries/claude-code-acp`) runs as an OS subprocess — host-side today via an Erlang Port (`Transport.Port`), in-container next via `docker exec -i <work> claude-code-acp` (#5). The harness inside has whatever authority its own credentials carry. What Loopyard must NOT do is treat ACP frames as trusted just because the connection started with a valid handshake.
 

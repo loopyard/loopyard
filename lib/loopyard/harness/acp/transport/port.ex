@@ -1,4 +1,4 @@
-defmodule Loopyard.Agent.Backend.ACP.Transport.Port do
+defmodule Loopyard.Harness.ACP.Transport.Port do
   @moduledoc """
   Real ACP transport: spawns the adapter as an OS subprocess over an Erlang
   Port and exchanges newline-delimited JSON-RPC on its stdio.
@@ -13,7 +13,7 @@ defmodule Loopyard.Agent.Backend.ACP.Transport.Port do
   """
   use GenServer
 
-  @behaviour Loopyard.Agent.Backend.ACP.Transport
+  @behaviour Loopyard.Harness.ACP.Transport
 
   # Package was renamed to @agentclientprotocol/claude-agent-acp; we default
   # to the verified name and let callers override.
@@ -27,13 +27,13 @@ defmodule Loopyard.Agent.Backend.ACP.Transport.Port do
   # line cap while staying small enough to never threaten the VM.
   @max_buffer_bytes 16_000_000
 
-  @impl Loopyard.Agent.Backend.ACP.Transport
+  @impl Loopyard.Harness.ACP.Transport
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts)
 
-  @impl Loopyard.Agent.Backend.ACP.Transport
+  @impl Loopyard.Harness.ACP.Transport
   def send_msg(pid, message), do: GenServer.cast(pid, {:send, message})
 
-  @impl Loopyard.Agent.Backend.ACP.Transport
+  @impl Loopyard.Harness.ACP.Transport
   def close(pid), do: GenServer.stop(pid, :normal)
 
   @impl GenServer

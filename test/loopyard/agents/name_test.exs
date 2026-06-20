@@ -2,13 +2,13 @@ defmodule Loopyard.Agents.NameTest do
   use ExUnit.Case, async: true
 
   alias Loopyard.Agents.Name
-  alias Loopyard.Agent.Backend
+  alias Loopyard.Harness
 
   describe "label_for/1" do
     test "known harnesses map to their brand" do
-      assert Name.label_for(Backend.ClaudeCode) == "Claude"
-      assert Name.label_for(Backend.ACP) == "Claude"
-      assert Name.label_for(Backend.Fake) == "Claude"
+      assert Name.label_for(Harness.Claude) == "Claude"
+      assert Name.label_for(Harness.ACP) == "Claude"
+      assert Name.label_for(Harness.Fake) == "Claude"
     end
 
     test "nil falls back to the default harness" do

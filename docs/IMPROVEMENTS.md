@@ -41,7 +41,7 @@ A prioritized list of known, scoped improvements for Loopyard. Ordered within ea
 
 ## ACP backend gaps (before it becomes the default)
 
-These are the concrete gaps between `Backend.ACP` (`lib/loopyard/agent/backend/acp/`) and the parity it needs to replace `Backend.ClaudeCode`. None block the spike; all block making ACP the default. Grouped because they share a context — pick them up together when ACP gets promoted.
+These are the concrete gaps between `Harness.ACP` (`lib/loopyard/harness/acp/`) and the parity it needs to replace `Harness.Claude`. None block the spike; all block making ACP the default. Grouped because they share a context — pick them up together when ACP gets promoted.
 
 13. **Plumb `session/request_permission` through to a real decision.** `Connection.handle_agent_request("session/request_permission", …)` surfaces a `%Event.PermissionRequest{}` but `StreamHandler.process_event/2` has no clause for it — it falls through `process_event(_other, state)` and is **dropped**, so the UI never sees it. Meanwhile `ACP.acp_permission_mode/1` hardcodes `:auto_allow` (Connection picks the first `allow*` option). Wire the event into StreamHandler → an approval card (reuse the `Harness.Approvals` broker), and add the `:ask` permission mode (#7) so a human gates the call instead of auto-allowing. Until then, an ACP agent is bounded only by the container sandbox, not per-tool policy (see SECURITY.md → ACP adapter trust boundary).
 

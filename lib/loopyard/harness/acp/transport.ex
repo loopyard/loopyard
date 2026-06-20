@@ -1,4 +1,4 @@
-defmodule Loopyard.Agent.Backend.ACP.Transport do
+defmodule Loopyard.Harness.ACP.Transport do
   @moduledoc """
   A transport carries newline-delimited JSON-RPC between Loopyard and an ACP
   agent process. It owns framing + (de)serialization so the `Connection`

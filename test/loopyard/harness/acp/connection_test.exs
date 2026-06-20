@@ -1,4 +1,4 @@
-defmodule Loopyard.Agent.Backend.ACP.ConnectionTest do
+defmodule Loopyard.Harness.ACP.ConnectionTest do
   @moduledoc """
   Connection tests against a FAKE transport — no Port, no subprocess.
 
@@ -17,14 +17,14 @@ defmodule Loopyard.Agent.Backend.ACP.ConnectionTest do
   """
   use ExUnit.Case, async: true
 
-  alias Loopyard.Agent.Backend.ACP.Connection
+  alias Loopyard.Harness.ACP.Connection
   alias Loopyard.Agent.Event
 
   # ---- fake transport ----
 
   defmodule FakeTransport do
     @moduledoc false
-    @behaviour Loopyard.Agent.Backend.ACP.Transport
+    @behaviour Loopyard.Harness.ACP.Transport
     use GenServer
 
     @impl true

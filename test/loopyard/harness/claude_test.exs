@@ -1,7 +1,7 @@
-defmodule Loopyard.Agent.Backend.ClaudeCodeTest do
+defmodule Loopyard.Harness.ClaudeTest do
   use ExUnit.Case, async: true
 
-  alias Loopyard.Agent.Backend.ClaudeCode, as: Backend
+  alias Loopyard.Harness.Claude, as: Backend
   alias Loopyard.Agent.Event
 
   # Helpers for building SDK structs with enforce_keys

@@ -155,15 +155,15 @@ timeouts with ETS fallback — a wedged agent doesn't hang the UI.
 
 ## Harness backend seam (ACP-first)
 
-**The Backend behaviour is the pluggable harness seam.**
-`Loopyard.Agent.Backend` (`lib/loopyard/agent/backend.ex`) defines
+**The Harness behaviour is the pluggable harness seam.**
+`Loopyard.Harness` (`lib/loopyard/harness.ex`) defines
 `start_session/1`, `stream/2`, `stop/1`, `session_alive?/1`,
 `session_id/1`. Everything above it (ChatAgent, StreamHandler,
 multiplayer fan-out) consumes neutral `Loopyard.Agent.Event` structs,
 so only the event *source* differs per backend. Implementations:
-`Backend.ClaudeCode` (the SDK/CLI today), `Backend.ACP`
-(`backend/acp.ex` — drives a **real** Claude/Codex harness over the
-Agent Client Protocol, JSON-RPC over stdio), `Backend.Fake` (tests).
+`Harness.Claude` (the SDK/CLI today), `Harness.ACP`
+(`harness/acp.ex` — drives a **real** Claude/Codex harness over the
+Agent Client Protocol, JSON-RPC over stdio), `Harness.Fake` (tests).
 ACP is the north-star direction (#3): run the real harness
 *in-container* (`docker exec -i <work> claude-code-acp`) against the
 mounted code volume, instead of reimplementing the agent loop. ACP is
