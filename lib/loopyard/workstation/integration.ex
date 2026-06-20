@@ -2,8 +2,9 @@ defmodule Loopyard.Workstation.Integration do
   @moduledoc """
   Registry of workstation integrations — each tool you might connect (GitHub,
   Claude, Codex, Fly…). Every entry is **data**: a label, a one-line blurb,
-  optional alternatives (a `:env` token slot, a `:console` terminal command), a
-  "connected?" probe, and a markdown doc (`priv/integrations/<id>.md`).
+  optional alternatives (a `:env` token slot, a `:console` terminal command with
+  an optional `:console_label` for the button), a "connected?" probe, and a
+  markdown doc (`priv/integrations/<id>.md`).
 
   The connect model is **Mac-first**: the default path is a command you run on your
   Mac (where you're already logged in) that transfers the login into the box. The
@@ -22,11 +23,22 @@ defmodule Loopyard.Workstation.Integration do
     %{
       id: "github",
       label: "GitHub",
-      blurb: "Clone private repos, push, and use the gh CLI — give the box your GitHub login.",
+      blurb:
+        "Clone private repos, push, and use the gh CLI. Connect from your phone — no laptop needed.",
       env: "GITHUB_TOKEN",
-      console: "gh auth login",
+      # Phone-native connect: this IS GitHub's OAuth *device flow*, so it needs no
+      # fixed callback URL — GitHub hosts the verification page. Run headless in the
+      # box console it prints a one-time code + `github.com/login/device`; open that
+      # on your PHONE, enter the code, approve. The flags pre-answer gh's interactive
+      # prompts (github.com / HTTPS / web / no SSH key) and `< /dev/null` drops the
+      # TTY "Press Enter to open a browser" step there's no browser for — so it jumps
+      # straight to the code. The login lands in the box's persistent $HOME volume
+      # (~/.config/gh), so it survives Restart with no token to copy anywhere.
+      console: "gh auth login --hostname github.com --git-protocol https --web --skip-ssh-key < /dev/null",
+      # Tidy button label — the full flag soup above would overflow on a phone.
+      console_label: "gh auth login (device flow)",
       check: {:console, "gh auth status", "Logged in"},
-      lands: "gh login (live) + GITHUB_TOKEN env (Restart)"
+      lands: "gh login in the box $HOME — live now, persists across Restart"
     },
     %{
       id: "claude",

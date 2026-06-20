@@ -209,7 +209,7 @@ defmodule LoopyardWeb.WorkstationToolLive do
                 phx-value-cmd={@ig.console}
                 class="focus-ring rounded-md border border-zinc-200 dark:border-zinc-700 px-2.5 py-1 text-[11px] font-mono text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
               >
-                ▶ {@ig.console}
+                ▶ {@ig[:console_label] || @ig.console}
               </button>
             </div>
             <div id="ws-console" class="rounded-lg overflow-hidden h-[44dvh] min-h-[280px] bg-[#18181b]">
