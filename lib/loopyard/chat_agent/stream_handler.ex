@@ -39,23 +39,6 @@ defmodule Loopyard.ChatAgent.StreamHandler do
   # Max in-memory messages (matching ChatAgent's cap).
   @max_messages 1000
 
-  # Published Claude model window sizes. Keys double as `String.starts_with?`
-  # prefixes (see context_window_for/1), so dated variants match the base entry.
-  # MISSING the current model here is a real bug: utilization is computed against
-  # the wrong window (or 0), so the context warning + auto-compaction misfire.
-  @context_windows %{
-    "claude-opus-4-8" => 1_000_000,
-    "claude-opus-4-7" => 1_000_000,
-    "claude-opus-4-7-20250929" => 1_000_000,
-    "claude-opus-4-6" => 1_000_000,
-    "claude-opus-4-5" => 1_000_000,
-    "claude-sonnet-4-6" => 200_000,
-    "claude-sonnet-4-5" => 200_000,
-    "claude-sonnet-4-5-20250929" => 200_000,
-    "claude-haiku-4-5" => 200_000,
-    "claude-haiku-4-5-20251001" => 200_000
-  }
-
   # --- Public API ---
 
   @doc """
@@ -983,19 +966,40 @@ defmodule Loopyard.ChatAgent.StreamHandler do
   defp maybe_detect_tool_runaway(state, _id), do: state
 
   # Context window sizes for known models.
-  defp context_window_for(nil), do: 200_000
-
   defp context_window_for(model) when is_binary(model) do
-    # Unknown model → conservative floor, NEVER 0. A 0 window froze utilization
-    # at a stale value (the bug that hid a 6× overflow as "603%").
-    Map.get(@context_windows, model) ||
-      Enum.find_value(@context_windows, fn {prefix, size} ->
+    windows = Application.get_env(:loopyard, :model_windows, %{})
+
+    Map.get(windows, model) ||
+      Enum.find_value(windows, fn {prefix, size} ->
         if String.starts_with?(model, prefix), do: size
       end) ||
-      200_000
+      unknown_model_window(model)
   end
 
-  defp context_window_for(_), do: 200_000
+  defp context_window_for(_), do: model_window_default()
+
+  defp model_window_default, do: Application.get_env(:loopyard, :model_window_default, 200_000)
+
+  # A model we don't have a window for. DON'T silently miscompute (a 0 froze
+  # utilization at a stale value; a wrong default hid a 6x overflow). Assume the
+  # conservative default but SCREAM so it gets added to config.
+  defp unknown_model_window(model) do
+    default = model_window_default()
+
+    :telemetry.execute(
+      [:loopyard, :agent, :unknown_model_window],
+      %{default: default},
+      %{model: model}
+    )
+
+    Logger.warning(
+      "[ContextWindow] Model #{inspect(model)} has no entry in :model_windows config — " <>
+        "assuming #{default} tokens. Context utilization + auto-compaction will be off for it " <>
+        "until you add the real window to config/config.exs."
+    )
+
+    default
+  end
 
   # One-shot warning when context utilization crosses the threshold.
   defp maybe_warn_context_full(state, id, utilization)

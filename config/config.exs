@@ -3,6 +3,27 @@ import Config
 config :loopyard,
   generators: [timestamp_type: :utc_datetime]
 
+# Harness model context-window sizes (tokens). Keys double as
+# `String.starts_with?` prefixes, so dated variants match the base entry. This
+# lives in config (not a compiled module attribute) so a new frontier-model
+# release is a one-line edit, not a code change. An UNLISTED model logs loudly
+# and assumes :model_window_default rather than silently miscomputing (which is
+# what hid a 6x context overflow as "603% full").
+config :loopyard,
+  model_window_default: 200_000,
+  model_windows: %{
+    "claude-opus-4-8" => 1_000_000,
+    "claude-opus-4-7" => 1_000_000,
+    "claude-opus-4-6" => 1_000_000,
+    "claude-opus-4-5" => 1_000_000,
+    "claude-sonnet-4-6" => 200_000,
+    "claude-sonnet-4-5" => 200_000,
+    "claude-haiku-4-5" => 200_000,
+    # Codex / GPT frontier — add real numbers as they ship.
+    "gpt-5" => 400_000,
+    "o4" => 200_000
+  }
+
 # Aural broadcasts on the host's PubSub. Without this, every
 # subscriber/broadcast call raises on first use.
 config :aural, pubsub: Loopyard.PubSub
