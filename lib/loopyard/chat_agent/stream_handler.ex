@@ -31,12 +31,20 @@ defmodule Loopyard.ChatAgent.StreamHandler do
 
   # Context window warning threshold.
   @context_warn_threshold 0.85
+  # Proactively compact (summarize → fresh session) once a turn ends this far into
+  # the window — BEFORE the next turn overflows and wedges. Sits above the warn so
+  # the user sees the warning first.
+  @context_compact_threshold 0.92
 
   # Max in-memory messages (matching ChatAgent's cap).
   @max_messages 1000
 
-  # Published Claude model window sizes.
+  # Published Claude model window sizes. Keys double as `String.starts_with?`
+  # prefixes (see context_window_for/1), so dated variants match the base entry.
+  # MISSING the current model here is a real bug: utilization is computed against
+  # the wrong window (or 0), so the context warning + auto-compaction misfire.
   @context_windows %{
+    "claude-opus-4-8" => 1_000_000,
     "claude-opus-4-7" => 1_000_000,
     "claude-opus-4-7-20250929" => 1_000_000,
     "claude-opus-4-6" => 1_000_000,
@@ -281,7 +289,12 @@ defmodule Loopyard.ChatAgent.StreamHandler do
 
     {state, msg} = append_message(state, msg)
     Persistence.persist_message(state, msg)
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: msg})
+
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+      agent_id: state.id,
+      msg: msg
+    })
+
     :ets.insert(@ets_table, {state.id, Loopyard.ChatAgent.summary(state)})
 
     {:retry_turn, state.current_turn_prompt, state}
@@ -354,62 +367,86 @@ defmodule Loopyard.ChatAgent.StreamHandler do
 
     state = Map.put(state, :consecutive_crashes, 0)
 
-    # Detect empty responses when context is full — auto-restart the
-    # session with a summary so the conversation continues instead of
-    # silently dying.
-    if state.context_utilization >= 1.0 && empty_last_response?(state) do
-      # Brief status so the user knows why there's a pause
-      status_msg = %{
-        role: :system,
-        content: "Refreshing context...",
-        timestamp: DateTime.utc_now()
-      }
+    cond do
+      # Proactive compaction: turn finished but we're deep into the window. Compact
+      # NOW (summarize → fresh session, no re-send — the turn already answered) so
+      # the NEXT turn starts fresh instead of overflowing and wedging. Only when the
+      # queue is empty, so we don't delay parked messages (they'll trip it next).
+      state.context_utilization >= @context_compact_threshold and state.pending_sends == [] ->
+        status_msg = %{
+          role: :system,
+          content:
+            "Compacting context (this session got large — summarizing so it can keep going)…",
+          timestamp: DateTime.utc_now()
+        }
 
-      {state, status_msg} = append_message(state, status_msg)
+        {state, status_msg} = append_message(state, status_msg)
 
-      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-        agent_id: id,
-        msg: status_msg
-      })
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+          agent_id: id,
+          msg: status_msg
+        })
 
-      # Find the user's last message so we can re-send it after restart
-      last_user_msg =
-        state.messages
-        |> Enum.filter(&(&1.role == :user))
-        |> List.last()
+        :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
+        Persistence.persist_agent(state, &Loopyard.ChatAgent.summary/1)
+        {:auto_restart_context, nil, state}
 
-      :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
-      Persistence.persist_agent(state, &Loopyard.ChatAgent.summary/1)
+      # Recovery: context overflowed so hard the model returned NOTHING — compact
+      # AND re-send the user's message so they still get an answer.
+      state.context_utilization >= 1.0 && empty_last_response?(state) ->
+        # Brief status so the user knows why there's a pause
+        status_msg = %{
+          role: :system,
+          content: "Refreshing context...",
+          timestamp: DateTime.utc_now()
+        }
 
-      {:auto_restart_context, last_user_msg && last_user_msg.content, state}
-    else
-      # If the agent finished a turn without producing any visible
-      # response, tell the user instead of silently going idle.
-      state =
-        if empty_last_response?(state) do
-          no_response_msg = %{
-            role: :system,
-            content:
-              "Agent completed without a visible response. Try rephrasing or sending your message again.",
-            timestamp: DateTime.utc_now()
-          }
+        {state, status_msg} = append_message(state, status_msg)
 
-          {state, no_response_msg} = append_message(state, no_response_msg)
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+          agent_id: id,
+          msg: status_msg
+        })
 
-          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-            agent_id: id,
-            msg: no_response_msg
-          })
+        # Find the user's last message so we can re-send it after restart
+        last_user_msg =
+          state.messages
+          |> Enum.filter(&(&1.role == :user))
+          |> List.last()
 
-          state
-        else
-          state
-        end
+        :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
+        Persistence.persist_agent(state, &Loopyard.ChatAgent.summary/1)
 
-      :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
-      Persistence.persist_agent(state, &Loopyard.ChatAgent.summary/1)
-      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
-      drain_pending_sends(state)
+        {:auto_restart_context, last_user_msg && last_user_msg.content, state}
+
+      true ->
+        # If the agent finished a turn without producing any visible
+        # response, tell the user instead of silently going idle.
+        state =
+          if empty_last_response?(state) do
+            no_response_msg = %{
+              role: :system,
+              content:
+                "Agent completed without a visible response. Try rephrasing or sending your message again.",
+              timestamp: DateTime.utc_now()
+            }
+
+            {state, no_response_msg} = append_message(state, no_response_msg)
+
+            Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+              agent_id: id,
+              msg: no_response_msg
+            })
+
+            state
+          else
+            state
+          end
+
+        :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
+        Persistence.persist_agent(state, &Loopyard.ChatAgent.summary/1)
+        Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
+        drain_pending_sends(state)
     end
   end
 
@@ -627,7 +664,8 @@ defmodule Loopyard.ChatAgent.StreamHandler do
   end
 
   @doc "True when the limit is one of the multi-day caps API credits sidestep."
-  def weekly_limit?(type), do: to_string(type || "") =~ "week" or to_string(type || "") =~ "seven_day"
+  def weekly_limit?(type),
+    do: to_string(type || "") =~ "week" or to_string(type || "") =~ "seven_day"
 
   # "(at ~92% of cap)" when utilization is known, else "".
   defp rate_limit_util_phrase(util) when is_number(util) and util > 0 do
@@ -744,7 +782,12 @@ defmodule Loopyard.ChatAgent.StreamHandler do
             "Rate-limited (#{rate_limit_label(rl.rate_limit_type)}); resets #{format_reset(rl.resets_at_ms)}"
           )
 
-          rl_msg = %{role: :system, content: rate_limit_message(rl), timestamp: DateTime.utc_now()}
+          rl_msg = %{
+            role: :system,
+            content: rate_limit_message(rl),
+            timestamp: DateTime.utc_now()
+          }
+
           {state, rl_msg} = append_message(state, rl_msg)
           Persistence.persist_message(state, rl_msg)
 
@@ -943,10 +986,13 @@ defmodule Loopyard.ChatAgent.StreamHandler do
   defp context_window_for(nil), do: 200_000
 
   defp context_window_for(model) when is_binary(model) do
+    # Unknown model → conservative floor, NEVER 0. A 0 window froze utilization
+    # at a stale value (the bug that hid a 6× overflow as "603%").
     Map.get(@context_windows, model) ||
-      Enum.find_value(@context_windows, 0, fn {prefix, size} ->
+      Enum.find_value(@context_windows, fn {prefix, size} ->
         if String.starts_with?(model, prefix), do: size
-      end)
+      end) ||
+      200_000
   end
 
   defp context_window_for(_), do: 200_000

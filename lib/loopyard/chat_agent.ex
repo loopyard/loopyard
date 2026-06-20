@@ -1034,12 +1034,20 @@ defmodule Loopyard.ChatAgent do
       Task.yield(task, 3_000) || Task.shutdown(task, :brutal_kill)
     end
 
-    # Start fresh session
-    case state.backend.start_session(SessionManager.build_resume_opts(state)) do
+    # Start a GENUINELY fresh session — clear claude_session_id so build_resume_opts
+    # does NOT pass `resume:`. Resuming would reload the full (overflowing) history
+    # and defeat the whole point: this path compacts by handing a FRESH session a
+    # SUMMARY (ResumeMessage), so the model's context resets while Loopyard keeps
+    # the full chat log. (The old code resumed → summary-into-full-session → a
+    # no-op that let a 48h session grow to 6× the window.)
+    fresh = %{state | claude_session_id: nil}
+
+    case state.backend.start_session(SessionManager.build_resume_opts(fresh)) do
       {:ok, new_session} ->
         state = %{
           state
           | session: new_session,
+            claude_session_id: nil,
             status: :idle,
             context_utilization: 0.0,
             context_warning_sent: false

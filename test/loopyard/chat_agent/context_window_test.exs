@@ -18,10 +18,14 @@ defmodule Loopyard.ChatAgent.ContextWindowTest do
        warning re-fires on subsequent turns if utilization stays
        high).
 
-  Auto-compaction on threshold is NOT implemented yet — the SDK
-  doesn't expose a programmatic `/compact` API. Scope stays at
-  "make the user aware" so they can start a fresh agent or run
-  /clear themselves.
+  Auto-compaction IS now implemented: once a turn ends past
+  `@context_compact_threshold`, the agent summarizes the conversation
+  into a GENUINELY FRESH session (clearing `claude_session_id` so the
+  CLI doesn't `resume:` the overflowing history). Without this, a long
+  session grows past the window and the model wedges (it can't take the
+  turn). The model's window must be in `@context_windows` for any of
+  this to fire — a missing model computes utilization against the wrong
+  size and the triggers misbehave.
   """
 
   use ExUnit.Case, async: false
@@ -228,6 +232,119 @@ defmodule Loopyard.ChatAgent.ContextWindowTest do
              end)
 
       assert state.context_warning_sent == false
+    end
+  end
+
+  describe "model window table (the bug that hid a 6x overflow)" do
+    test "claude-opus-4-8 is a 1M window, not the 200K default", %{id: id} do
+      pid = agent_pid(id)
+      ref = make_ref()
+      :sys.replace_state(pid, fn s -> %{s | stream_ref: ref} end)
+
+      # 600K tokens. Against the true 1M window = 60%. Against the old missing-model
+      # default (200K) it would read 300% — the class of bug that showed "603% full".
+      send(
+        pid,
+        {:stream_event, id, ref,
+         %Event.SessionResult{model: "claude-opus-4-8", input_tokens: 600_000, cache_read_tokens: 0}}
+      )
+
+      _ = :sys.get_state(pid)
+      assert_in_delta :sys.get_state(pid).context_utilization, 0.6, 0.01
+    end
+
+    test "a dated opus-4-8 variant prefix-matches the 1M entry", %{id: id} do
+      pid = agent_pid(id)
+      ref = make_ref()
+      :sys.replace_state(pid, fn s -> %{s | stream_ref: ref} end)
+
+      send(
+        pid,
+        {:stream_event, id, ref,
+         %Event.SessionResult{
+           model: "claude-opus-4-8-20260601",
+           input_tokens: 500_000,
+           cache_read_tokens: 0
+         }}
+      )
+
+      _ = :sys.get_state(pid)
+      assert_in_delta :sys.get_state(pid).context_utilization, 0.5, 0.01
+    end
+
+    test "an unknown model falls back to 200K — never 0 (a 0 window froze utilization)",
+         %{id: id} do
+      pid = agent_pid(id)
+      ref = make_ref()
+      :sys.replace_state(pid, fn s -> %{s | stream_ref: ref, context_utilization: 0.0} end)
+
+      send(
+        pid,
+        {:stream_event, id, ref,
+         %Event.SessionResult{
+           model: "claude-something-unreleased",
+           input_tokens: 100_000,
+           cache_read_tokens: 0
+         }}
+      )
+
+      _ = :sys.get_state(pid)
+      # 100K / 200K = 0.5 — a real number, not frozen at 0.
+      assert_in_delta :sys.get_state(pid).context_utilization, 0.5, 0.01
+    end
+  end
+
+  describe "proactive auto-compaction (summarize -> fresh session)" do
+    test "a turn ending past the compact threshold restarts a FRESH session", %{id: id} do
+      pid = agent_pid(id)
+      RecordingBackend.reset()
+      ref = make_ref()
+
+      :sys.replace_state(pid, fn s ->
+        %{
+          s
+          | stream_ref: ref,
+            status: :thinking,
+            context_utilization: 0.95,
+            claude_session_id: "old-overflowing-session",
+            pending_sends: []
+        }
+      end)
+
+      send(pid, {:stream_done, id, ref})
+      Process.sleep(80)
+
+      state = :sys.get_state(pid)
+
+      # The compaction surfaced to the user.
+      assert Enum.any?(state.messages, fn m ->
+               m.role == :system and String.contains?(m.content, "Compacting context")
+             end)
+
+      # The session was restarted FRESH — claude_session_id cleared, and the new
+      # start_session carried NO `resume:` (the whole point — don't reload the
+      # overflowing history).
+      assert state.claude_session_id == nil
+      latest_start = RecordingBackend.starts() |> List.last()
+      refute Keyword.has_key?(latest_start || [], :resume)
+    end
+
+    test "drains queued messages FIRST, doesn't drop them to compact", %{id: id} do
+      pid = agent_pid(id)
+      ref = make_ref()
+
+      :sys.replace_state(pid, fn s ->
+        %{s | stream_ref: ref, status: :thinking, context_utilization: 0.95, pending_sends: ["queued"]}
+      end)
+
+      send(pid, {:stream_done, id, ref})
+      Process.sleep(80)
+
+      # The queued message is delivered (drained as a real user turn) — NOT skipped
+      # in a rush to compact. Compaction then follows once the queue is empty.
+      assert Enum.any?(:sys.get_state(pid).messages, fn m ->
+               m.role == :user and m.content == "queued"
+             end)
     end
   end
 end
