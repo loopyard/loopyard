@@ -156,14 +156,10 @@ defmodule LoopyardWeb.MessageLive do
           class="text-sm rounded-lg p-4 max-h-[calc(100vh-6rem)]"
         />
 
-        <div
-          :if={@msg.role == :assistant}
-          id="msg-content"
-          phx-hook="Markdown"
-          data-source={if @streaming_text != "", do: @streaming_text, else: @msg.content}
-          class="prose dark:prose-invert max-w-none"
-        >
-          <div class="markdown-body"></div>
+        <div :if={@msg.role == :assistant} id="msg-content" class="prose dark:prose-invert max-w-none">
+          <div class="markdown-body">
+            {Loopyard.Markdown.to_html(if @streaming_text != "", do: @streaming_text, else: @msg.content)}
+          </div>
         </div>
 
         <%!-- Show streaming indicator when accumulating text --%>

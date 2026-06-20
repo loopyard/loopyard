@@ -232,8 +232,10 @@ defmodule LoopyardWeb.WorkstationToolLive do
         <%!-- Reference doc — inline; child .markdown-body is where the hook renders. --%>
         <section class="space-y-2 border-t border-zinc-100 dark:border-zinc-800 pt-6">
           <h2 class="text-sm font-medium text-zinc-500 dark:text-zinc-400">Reference</h2>
-          <div id="ws-tool-doc" phx-hook="Markdown" data-source={@doc}>
-            <div class="markdown-body text-sm text-zinc-700 dark:text-zinc-300"></div>
+          <div id="ws-tool-doc">
+            <div class="markdown-body text-sm text-zinc-700 dark:text-zinc-300">
+              {Loopyard.Markdown.to_html(@doc)}
+            </div>
           </div>
         </section>
       </div>
