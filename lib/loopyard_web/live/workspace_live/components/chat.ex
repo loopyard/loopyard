@@ -456,12 +456,23 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             Clear all
           </button>
         </div>
-        <ul class="space-y-1">
+        <ul class="space-y-0.5">
           <li
             :for={{text, i} <- Enum.with_index(@agent[:pending_messages] || [])}
-            class="flex items-center gap-2 group/q"
+            class="flex items-center gap-1 group/q"
           >
-            <span class="flex-1 truncate text-sm text-zinc-700 dark:text-zinc-300">{text}</span>
+            <%!-- Tap a queued message to pull it back into the box and edit it
+                 (removes it from the queue). You can always edit the queue. --%>
+            <button
+              type="button"
+              phx-click="edit_pending"
+              phx-value-id={@agent.id}
+              phx-value-index={i}
+              title="Edit — pull back into the message box"
+              class="focus-ring flex-1 min-w-0 text-left truncate text-sm text-zinc-700 dark:text-zinc-300 rounded px-1 py-0.5 hover:bg-violet-100/60 dark:hover:bg-violet-500/10"
+            >
+              {text}
+            </button>
             <button
               type="button"
               phx-click="remove_pending"
@@ -474,6 +485,20 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             </button>
           </li>
         </ul>
+      </div>
+      <%!-- Context-window heads-up. A full window used to silently wedge the
+           agent (it can't take the turn); now it auto-compacts at ~92%, and this
+           tells you it's coming / happening instead of leaving you guessing. --%>
+      <div
+        :if={(@agent[:context_utilization] || 0.0) >= 0.85}
+        class="flex-none mx-4 mb-1 flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400"
+      >
+        <span class="flex-none">{if (@agent[:context_utilization] || 0.0) >= 0.92, do: "🗜", else: "⚠"}</span>
+        <span class="min-w-0">
+          {if (@agent[:context_utilization] || 0.0) >= 0.92,
+            do: "Context full — compacting (summarizing the conversation so it can keep going).",
+            else: "Context #{round((@agent[:context_utilization] || 0.0) * 100)}% full — I'll auto-compact soon to keep going."}
+        </span>
       </div>
       <div
         id="chat-form-wrapper"

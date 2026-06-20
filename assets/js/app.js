@@ -310,11 +310,19 @@ Hooks.ChatForm = {
     // left it; they hit Enter to retry, as many times as they want.
     this.handleEvent("restore_input", ({ text }) => {
       if (!text || ta.value.trim() !== "") return
+      fillBox(text)
+    })
+
+    // Explicit edit (tapping a queued message to pull it back) — always fills,
+    // even over existing text, since it's a deliberate action.
+    this.handleEvent("fill_input", ({ text }) => { if (text) fillBox(text) })
+
+    function fillBox(text) {
       ta.value = text
       ta.style.height = "auto"
       ta.style.height = Math.min(ta.scrollHeight, 200) + "px"
       ta.focus()
-    })
+    }
   }
 }
 

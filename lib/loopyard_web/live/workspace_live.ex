@@ -827,6 +827,21 @@ defmodule LoopyardWeb.WorkspaceLive do
   end
 
   @impl true
+  def handle_event("edit_pending", %{"id" => id, "index" => index}, socket) do
+    # Pull a queued message back into the box to edit it: remove it from the
+    # queue and fill the input with its text. You can always edit the queue.
+    index = String.to_integer(index)
+    text = Enum.at(socket.assigns.selected_agent[:pending_messages] || [], index)
+    ChatAgent.remove_pending(id, index)
+
+    if is_binary(text) do
+      {:noreply, push_event(socket, "fill_input", %{text: text})}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
   def handle_event("interrupt_agent", %{"id" => id}, socket) do
     ChatAgent.interrupt(id)
     {:noreply, socket}
