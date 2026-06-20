@@ -2,29 +2,36 @@
 
 Run Claude Code in the box on your Claude subscription (Pro/Max/Team) — no API key.
 
-## Recommended: a long-lived token (`claude setup-token`)
+## Reconnect from your phone (`claude setup-token`)
 
-[Anthropic's documented path](https://code.claude.com/docs/en/authentication.md#generate-a-long-lived-token)
-for headless/container use, and the one you want for a box you keep around:
+The path that needs **no laptop**. When Anthropic expires your login while you're
+out, you can re-auth entirely from your phone:
 
-1. **On your Mac** (needs a browser): `claude setup-token` → approve in the browser → copy the token it prints. Good for **one year**.
-2. Paste it into the **`CLAUDE_CODE_OAUTH_TOKEN`** env slot (Environment page) — or push it.
-3. **Restart the machine** — it's written to `~/.profile` at boot and the login shell sources it, so both the agent and the console see it.
+1. Tap **▶ claude setup-token** under *Use the terminal* below. It runs in the box
+   and prints an **authorization URL**.
+2. Open that URL **on your phone**, sign in, approve.
+3. The browser shows a **code** (the box can't catch the local callback — expected
+   in a container). Paste it back into the terminal at the `Paste code here`
+   prompt.
+4. `setup-token` prints a **token** (good for one year). Copy it into the
+   **`CLAUDE_CODE_OAUTH_TOKEN`** box under *Set a token*, and **Restart**.
+
+That's it — a full re-auth with nothing but the phone in your hand.
 
 `CLAUDE_CODE_OAUTH_TOKEN` is the env var Claude Code reads for non-interactive use;
 it takes precedence over `~/.claude/.credentials.json` and needs **no** `~/.claude`
-files at all. The token from interactive `claude login` (`.credentials.json`) is
-short-lived and 401s within hours — this avoids that treadmill.
+files at all. The interactive-login token (`.credentials.json`) is short-lived and
+401s within hours — this avoids that treadmill.
 
 > Don't run `claude -p --bare` in the box — bare mode ignores the token. Plain `claude -p "…"` is fine.
 
 ## Quick start (expires): transfer your Mac login
 
-The bulk **"Run this on your Mac"** command also copies your current Claude login
+The bulk **"Run this on your Mac"** command copies your *current* Claude login
 (from the macOS Keychain item `Claude Code-credentials`) into `~/.claude`, plus a
 minimal `~/.claude.json` so interactive `claude` doesn't re-run its login flow.
 Enough to make `claude -p` work *right now* — but that token is short-lived. Use
-the long-lived token above for anything lasting.
+the phone-native long-lived token above for anything lasting.
 
 ## Check it
 

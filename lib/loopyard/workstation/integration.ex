@@ -31,12 +31,16 @@ defmodule Loopyard.Workstation.Integration do
     %{
       id: "claude",
       label: "Claude",
-      blurb: "Run Claude Code in the box using your Claude subscription.",
+      blurb:
+        "Run Claude Code in the box on your Claude subscription. Reconnect from your phone — no laptop needed.",
       env: "CLAUDE_CODE_OAUTH_TOKEN",
-      console: nil,
-      # The recommended headless path is a long-lived (1-year) token from
-      # `claude setup-token`, delivered as CLAUDE_CODE_OAUTH_TOKEN — not the
-      # short-lived ~/.claude/.credentials.json (which 401s within hours).
+      # Phone-native re-auth: `claude setup-token` runs headless in the box
+      # console — it prints an auth URL you open on your PHONE, and because the
+      # container can't reach the local callback it shows a code you paste back
+      # into the terminal. Out it comes a long-lived (1-year) token you drop in
+      # the CLAUDE_CODE_OAUTH_TOKEN box below. No trusted-machine browser, no
+      # `~/.claude` files, none of the short-lived-credential 401 treadmill.
+      console: "claude setup-token",
       check: {:env, "CLAUDE_CODE_OAUTH_TOKEN"},
       lands: "CLAUDE_CODE_OAUTH_TOKEN — durable 1-year token; restart to apply"
     },
