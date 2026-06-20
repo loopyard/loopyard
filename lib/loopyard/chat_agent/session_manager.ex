@@ -67,14 +67,21 @@ defmodule Loopyard.ChatAgent.SessionManager do
   # --- Build resume opts ---
 
   @doc """
-  Build session start options, including `resume:` when we have a
-  captured Claude session ID. This is what makes a respawned CLI
-  continue the same conversation instead of booting fresh.
+  THE single source of harness start options for every (re)start path —
+  `:restart_session`, crash recovery, retry backoff, `ensure_alive`, and
+  compaction all call this. It takes the opts frozen at the agent's first
+  boot (`state.session_opts`) and re-applies the parts that must be LIVE:
+
+    * config-driven opts (`:thinking`) — so a config change reaches agents
+      booted before it, not only freshly-created ones,
+    * `:resume` from the captured session id — so a respawned harness
+      continues the same conversation instead of booting amnesic (cleared
+      when there's no id, e.g. a deliberate fresh/compacted session).
+
+  **Add any new config-driven session option HERE**, not at a call site —
+  that's what keeps "a new harness flag" a one-place change.
   """
-  def build_resume_opts(state) do
-    # Re-apply the live thinking config on every (re)start, so a config change
-    # reaches agents whose session_opts were frozen at an earlier boot — not
-    # only freshly-created ones.
+  def start_opts(state) do
     opts =
       Keyword.put(
         state.session_opts,
@@ -161,7 +168,7 @@ defmodule Loopyard.ChatAgent.SessionManager do
         msg: restart_msg
       })
 
-      case state.backend.start_session(build_resume_opts(state)) do
+      case state.backend.start_session(start_opts(state)) do
         {:ok, new_session} ->
           Loopyard.EventLog.info("agent:#{state.name}", "CLI session restarted")
 
@@ -224,7 +231,7 @@ defmodule Loopyard.ChatAgent.SessionManager do
   def handle_retry(state, consecutive, max_consecutive_crashes) do
     id = state.id
 
-    case state.backend.start_session(build_resume_opts(state)) do
+    case state.backend.start_session(start_opts(state)) do
       {:ok, new_session} ->
         content =
           if is_binary(state.claude_session_id) do

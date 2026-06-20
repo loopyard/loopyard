@@ -854,7 +854,7 @@ defmodule Loopyard.ChatAgent do
     # Start a fresh session with the same opts. When we have a Claude
     # session_id captured from prior turns, pass it as `resume:` so the
     # CLI picks up the same conversation.
-    case state.backend.start_session(SessionManager.build_resume_opts(state)) do
+    case state.backend.start_session(SessionManager.start_opts(state)) do
       {:ok, new_session} ->
         # A reboot is a full reset-to-idle — clear EVERY piece of transient turn
         # state, or the agent looks idle while the stream machinery thinks a turn
@@ -1034,7 +1034,7 @@ defmodule Loopyard.ChatAgent do
       Task.yield(task, 3_000) || Task.shutdown(task, :brutal_kill)
     end
 
-    # Start a GENUINELY fresh session — clear claude_session_id so build_resume_opts
+    # Start a GENUINELY fresh session — clear claude_session_id so start_opts
     # does NOT pass `resume:`. Resuming would reload the full (overflowing) history
     # and defeat the whole point: this path compacts by handing a FRESH session a
     # SUMMARY (ResumeMessage), so the model's context resets while Loopyard keeps
@@ -1042,7 +1042,7 @@ defmodule Loopyard.ChatAgent do
     # no-op that let a 48h session grow to 6× the window.)
     fresh = %{state | claude_session_id: nil}
 
-    case state.backend.start_session(SessionManager.build_resume_opts(fresh)) do
+    case state.backend.start_session(SessionManager.start_opts(fresh)) do
       {:ok, new_session} ->
         state = %{
           state
