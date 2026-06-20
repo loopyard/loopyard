@@ -137,7 +137,7 @@ defmodule Loopyard.Onboarding do
   registers the booting stub (so it lands in ETS immediately), and boots it via
   AgentBoot. Returns `{:ok, agent_id}` or `{:error, reason}`.
 
-  opts: `:name`, `:agent_type`, `:service_name`, `:initial_message`,
+  opts: `:name`, `:service_name`, `:initial_message`,
   `:started_by` (default "system").
   """
   @spec spawn_agent(String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
@@ -158,16 +158,13 @@ defmodule Loopyard.Onboarding do
               true -> Loopyard.Agents.Name.for_workspace(ws_id, Keyword.get(opts, :backend))
             end
 
-        agent_type = Keyword.get(opts, :agent_type) || Loopyard.Agents.Registry.default_agent_name()
-
         agent_opts =
           [
             id: id,
             name: name,
             working_dir: working_dir,
             started_by: Keyword.get(opts, :started_by, "system"),
-            workspace_id: ws_id,
-            agent_type: agent_type
+            workspace_id: ws_id
           ]
 
         # Volume-backed workspaces run container-only (cheap work container); only

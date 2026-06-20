@@ -156,7 +156,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
   # Wake a sleeping agent — agent exists in ETS but its GenServer is gone
   # (server restart without ServiceManager replay, user stopped it, crash).
   # Spawns a new ChatAgent with resume: true; init_resume pulls the rest
-  # of the opts (working_dir, bind_mount, workspace_id, agent_type) from
+  # of the opts (working_dir, bind_mount, workspace_id) from
   # the agent's saved ETS entry. No-op if the agent is already running
   # or has no ETS entry at all.
   defp maybe_wake_agent(id) do

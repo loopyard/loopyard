@@ -45,7 +45,6 @@ defmodule Loopyard.ChatAgent do
     :started_by,
     :last_activity_at,
     :service_name,
-    :agent_type,
     :claude_session_id,
     status: :idle,
     messages: [],
@@ -93,7 +92,7 @@ defmodule Loopyard.ChatAgent do
     # SHA-256 of the system_prompt passed to `append_system_prompt` on
     # start_session. Stored alongside claude_session_id so init_resume
     # can detect when the prompt has changed between boots (CLAUDE.md
-    # edit, tool set updated, agent_type reassigned). When it differs,
+    # edit, tool set updated). When it differs,
     # we emit telemetry + an inline marker so the user knows the agent
     # is now operating under different instructions than its earlier
     # turns were generated under. See agent-sanity #19.
@@ -1773,7 +1772,6 @@ defmodule Loopyard.ChatAgent do
       tool_calls: state.tool_calls,
       errors: state.errors,
       service_name: state.service_name,
-      agent_type: state.agent_type,
       model: state.model,
       total_input_tokens: state.total_input_tokens,
       total_output_tokens: state.total_output_tokens,

@@ -42,8 +42,4 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Navigation do
   end
 
   def preset_message(_), do: nil
-
-  # One agent now — it self-determines setup vs coding. Presets only differ in
-  # their kick-off message, not the agent.
-  def preset_agent_type(_), do: Loopyard.Agents.Registry.default_agent_name()
 end

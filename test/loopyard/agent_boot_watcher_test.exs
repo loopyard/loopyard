@@ -135,11 +135,10 @@ defmodule Loopyard.AgentBootWatcherTest do
         id,
         [
           working_dir: File.cwd!(),
-          workspace_id: "nonexistent-ws",
-          agent_type: "definitely_not_a_real_agent_type_#{:rand.uniform(1_000_000)}"
+          workspace_id: "nonexistent-ws-#{:rand.uniform(1_000_000)}"
         ],
-        # Tight deadline keeps the test fast — the saga raises on the
-        # bogus agent_type lookup well before this elapses, so the
+        # Tight deadline keeps the test fast — the saga fails on the
+        # nonexistent workspace well before this elapses, so the
         # deadline is just the upper bound.
         boot_deadline_ms: 500
       )

@@ -641,8 +641,7 @@ defmodule LoopyardWeb.WorkspaceLive do
   @impl true
   def handle_event("spawn_agent_with_message", %{"preset" => preset}, socket) do
     AgentLifecycle.do_spawn_agent(socket,
-      initial_message: Navigation.preset_message(preset),
-      agent_type: Navigation.preset_agent_type(preset)
+      initial_message: Navigation.preset_message(preset)
     )
   end
 

@@ -2,11 +2,11 @@ defmodule Loopyard.Tools.AgentFiles do
   @moduledoc """
   MCP toolkit for reading an agent's own definition files.
 
-  Every agent is a folder on disk — `agent.md` plus arbitrary support
+  The agent is a folder on disk — `agent.md` plus arbitrary support
   files (guides, stack templates, etc.). This toolkit exposes a
   single tool (`read_agent_file`) that lets the agent pull those
-  files on demand. Sandbox: reads are scoped to the agent's own
-  folder only, via the registry lookup on the agent's `agent_type`.
+  files on demand. Sandbox: reads are scoped to the single coding
+  agent's folder only (`Loopyard.Agents.Coding.folder/0`).
 
   This toolkit is always-on for every agent — it's part of the base
   capability, not an opt-in MCP server. An agent cannot function

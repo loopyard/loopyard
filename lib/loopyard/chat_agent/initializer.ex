@@ -48,9 +48,6 @@ defmodule Loopyard.ChatAgent.Initializer do
     workspace_id = Keyword.get(params, :workspace_id)
     service_name = Keyword.get(params, :service_name)
 
-    agent_type =
-      Keyword.get(params, :agent_type) || Loopyard.Agents.Registry.default_agent_name()
-
     resume_session_id = Keyword.get(params, :claude_session_id)
 
     tools = Keyword.get(opts, :tools, ToolConfig.default_tools())
@@ -73,8 +70,7 @@ defmodule Loopyard.ChatAgent.Initializer do
         bind_mount: bind_mount,
         workspace_id: workspace_id,
         workspace: workspace,
-        service_name: service_name,
-        agent_type: agent_type
+        service_name: service_name
       )
 
     # Mirror CLAUDE.md + .claude/ from the workspace volume into working_dir
@@ -190,15 +186,12 @@ defmodule Loopyard.ChatAgent.Initializer do
   end
 
   defp resume_from_summary(id, opts, saved) do
-    agent_type = saved[:agent_type] || Loopyard.Agents.Registry.default_agent_name()
-
     {session, session_opts, backend, new_prompt_hash} =
       start_session(id, opts,
         working_dir: saved.working_dir,
         bind_mount: saved.bind_mount,
         workspace_id: saved.workspace_id,
         service_name: saved[:service_name],
-        agent_type: agent_type,
         claude_session_id: saved[:claude_session_id]
       )
 
@@ -223,7 +216,6 @@ defmodule Loopyard.ChatAgent.Initializer do
         status: :idle,
         stream_ref: nil,
         active_tool: nil,
-        agent_type: agent_type,
         messages: internal_messages,
         tracked_cli_os_pid: nil,
         prompt_hash: new_prompt_hash,
@@ -281,7 +273,6 @@ defmodule Loopyard.ChatAgent.Initializer do
     bind_mount = Keyword.get(opts, :bind_mount)
     workspace_id = Keyword.get(opts, :workspace_id)
     service_name = Keyword.get(opts, :service_name)
-    agent_type = Keyword.get(opts, :agent_type) || Loopyard.Agents.Registry.default_agent_name()
 
     {session, session_opts, backend, prompt_hash} =
       start_session(id, opts,
@@ -289,7 +280,6 @@ defmodule Loopyard.ChatAgent.Initializer do
         bind_mount: bind_mount,
         workspace_id: workspace_id,
         service_name: service_name,
-        agent_type: agent_type,
         max_turns: 50
       )
 
@@ -312,7 +302,6 @@ defmodule Loopyard.ChatAgent.Initializer do
       status: :idle,
       messages: [],
       service_name: service_name,
-      agent_type: agent_type,
       prompt_hash: prompt_hash
     }
 

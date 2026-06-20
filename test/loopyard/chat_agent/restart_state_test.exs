@@ -289,7 +289,6 @@ defmodule Loopyard.ChatAgent.RestartStateTest do
         tool_calls: 0,
         errors: 0,
         service_name: orig.service_name,
-        agent_type: orig.agent_type,
         model: nil,
         total_input_tokens: 0,
         total_output_tokens: 0,

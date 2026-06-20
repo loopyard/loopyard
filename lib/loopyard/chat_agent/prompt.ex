@@ -2,13 +2,13 @@ defmodule Loopyard.ChatAgent.Prompt do
   @moduledoc """
   System prompt construction for ChatAgent sessions.
 
-  Pure functions that build the system prompt from the agent's type
-  (a folder under `priv/agents/` or its user/project overrides), the
-  workspace config, and the service context. No GenServer state needed.
+  Pure functions that build the system prompt from the single agent
+  definition (`priv/agents/coding/`), the workspace config, and the
+  service context. No GenServer state needed.
   """
   require Logger
 
-  alias Loopyard.Agents.Registry
+  alias Loopyard.Agents.Coding
 
   # The system prompt is passed as a single `--append-system-prompt` CLI arg.
   # The real OS cap on one argument is ~128KB (Linux MAX_ARG_STRLEN; macOS
@@ -22,11 +22,10 @@ defmodule Loopyard.ChatAgent.Prompt do
   @max_system_prompt_chars 16_000
 
   @doc """
-  Build the system prompt for an agent session.
-
-  `agent_type` identifies the folder under `priv/agents/` (or a
-  user/project override). If the type can't be resolved, falls back
-  to the default agent.
+  Build the system prompt for an agent session: the base prompt + the single
+  coding agent's definition (`Loopyard.Agents.Coding`) + workspace/service
+  context. A custom `:system_prompt` opt (e.g. the Workstation agent) overrides
+  the whole thing.
   """
   def build_system_prompt(agent_id, opts) when is_list(opts) do
     case Keyword.get(opts, :system_prompt) do
@@ -46,11 +45,10 @@ defmodule Loopyard.ChatAgent.Prompt do
     workspace_id = Keyword.get(opts, :workspace_id)
     workspace = Keyword.get(opts, :workspace)
     service_name = Keyword.get(opts, :service_name)
-    agent_type = Keyword.get(opts, :agent_type) || Registry.default_agent_name()
 
     parts = [
       base_prompt(agent_id, bind_mount, workspace_id),
-      agent_definition(agent_type),
+      agent_definition(),
       workspace_prompt(workspace),
       service_prompt(service_name, workspace_id)
     ]
@@ -109,24 +107,21 @@ defmodule Loopyard.ChatAgent.Prompt do
   end
 
   @doc false
-  def agent_definition(agent_type) do
-    case Registry.get(agent_type) do
+  def agent_definition do
+    case Coding.definition() do
       {:ok, agent} ->
         body = agent.body || ""
-        catalog_str = catalog_section(agent)
+        catalog_str = catalog_section()
         [body, catalog_str] |> Enum.reject(&(&1 == "")) |> Enum.join("\n\n")
 
-      {:error, _} ->
-        Logger.warning(
-          "[ChatAgent] Unknown agent_type #{inspect(agent_type)}; using empty definition"
-        )
-
+      {:error, reason} ->
+        Logger.warning("[ChatAgent] Could not load the coding agent definition: #{inspect(reason)}")
         ""
     end
   end
 
-  defp catalog_section(agent) do
-    case Registry.catalog(agent) do
+  defp catalog_section do
+    case Coding.catalog() do
       [] -> ""
       files -> "Agent files (use `read_agent_file`): " <> Enum.join(files, ", ")
     end

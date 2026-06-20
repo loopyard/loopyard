@@ -12,7 +12,6 @@ defmodule Loopyard.Tools.AgentFiles.ReadAgentFileTest do
        %{
          id: id,
          name: "Setup",
-         agent_type: "coding",
          working_dir: "/tmp",
          workspace_id: "ws-test"
        }}

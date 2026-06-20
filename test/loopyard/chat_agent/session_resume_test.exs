@@ -211,7 +211,6 @@ defmodule Loopyard.ChatAgent.SessionResumeTest do
         tool_calls: 0,
         errors: 0,
         service_name: live_state.service_name,
-        agent_type: live_state.agent_type,
         model: nil,
         total_input_tokens: 0,
         total_output_tokens: 0,

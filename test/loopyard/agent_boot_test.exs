@@ -30,8 +30,7 @@ defmodule Loopyard.AgentBootTest do
 
       Loopyard.Saga.maybe_log_rollback_failed(:rolled_back, :boot_agent, %{
         agent_id: "a1",
-        workspace_id: "w1",
-        agent_type: "coding"
+        workspace_id: "w1"
       })
 
       refute_receive {[:loopyard, :saga, :call_site_rollback_failed], _, _, _}, 100
@@ -48,7 +47,7 @@ defmodule Loopyard.AgentBootTest do
       Loopyard.Saga.maybe_log_rollback_failed(
         {:rollback_failed, [{:start_agent, :stuck}]},
         :boot_agent,
-        %{agent_id: "a1", workspace_id: "w1", agent_type: "coding"}
+        %{agent_id: "a1", workspace_id: "w1"}
       )
 
       assert_receive {[:loopyard, :saga, :call_site_rollback_failed], ^ref, %{count: 1},
@@ -56,7 +55,6 @@ defmodule Loopyard.AgentBootTest do
                         saga_name: :boot_agent,
                         agent_id: "a1",
                         workspace_id: "w1",
-                        agent_type: "coding",
                         failed_rollbacks: [{:start_agent, :stuck}]
                       }},
                      500

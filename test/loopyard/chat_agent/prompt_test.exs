@@ -14,7 +14,7 @@ defmodule Loopyard.ChatAgent.PromptTest do
 
     test "unified agent carries the setup playbook in its catalog" do
       prompt =
-        Prompt.build_system_prompt("test-id", agent_type: "coding", bind_mount: "/tmp/project")
+        Prompt.build_system_prompt("test-id", bind_mount: "/tmp/project")
 
       assert prompt =~ "setup_guide.md"
       # Catalog enumerates real files in the folder
@@ -23,14 +23,14 @@ defmodule Loopyard.ChatAgent.PromptTest do
 
     test "coding agent has a small definition (fits comfortably in system prompt)" do
       prompt =
-        Prompt.build_system_prompt("test-id", agent_type: "coding", bind_mount: "/tmp/project")
+        Prompt.build_system_prompt("test-id", bind_mount: "/tmp/project")
 
       assert String.length(prompt) <= 6000
     end
 
     test "setup agent prompt stays under CLI argument limit" do
       prompt =
-        Prompt.build_system_prompt("test-id", agent_type: "coding", bind_mount: "/tmp/project")
+        Prompt.build_system_prompt("test-id", bind_mount: "/tmp/project")
 
       assert String.length(prompt) <= 6000,
              "Setup prompt is #{String.length(prompt)} chars, max is 6000."
@@ -49,7 +49,7 @@ defmodule Loopyard.ChatAgent.PromptTest do
           bind_mount: "/tmp/project",
           workspace_id: "abcd",
           workspace: workspace,
-          agent_type: "coding"
+          
         )
 
       assert prompt =~ "test-project"
@@ -71,7 +71,7 @@ defmodule Loopyard.ChatAgent.PromptTest do
           workspace_id: "abcd",
           workspace: workspace,
           service_name: "postgres",
-          agent_type: "coding"
+          
         )
 
       assert String.length(prompt) <= 6000
@@ -90,20 +90,20 @@ defmodule Loopyard.ChatAgent.PromptTest do
           workspace_id: "ws-123",
           workspace: workspace,
           service_name: "redis",
-          agent_type: "coding"
+          
         )
 
       assert prompt =~ "redis"
       assert prompt =~ "Service agent"
     end
 
-    test "unknown agent_type falls back to base prompt without crashing" do
-      prompt =
-        Prompt.build_system_prompt("test-id", agent_type: "nonexistent", bind_mount: "/tmp")
+    test "always includes the single coding agent's definition" do
+      prompt = Prompt.build_system_prompt("test-id", bind_mount: "/tmp")
 
-      # Still includes the base prompt with the agent id
       assert prompt =~ "test-id"
       assert prompt =~ "loopyard-container"
+      # the coding agent definition + its file catalog are folded in
+      assert prompt =~ "read_agent_file"
     end
   end
 

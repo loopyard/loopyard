@@ -459,7 +459,7 @@ defmodule Loopyard.ChatAgent.StreamHandler do
       # CLI died — restart session and resume the same conversation
       state = %{state | last_activity_at: now, errors: state.errors + 1}
 
-      case state.backend.start_session(SessionManager.build_resume_opts(state)) do
+      case state.backend.start_session(SessionManager.start_opts(state)) do
         {:ok, new_session} ->
           recovered_msg =
             if is_binary(state.claude_session_id) do

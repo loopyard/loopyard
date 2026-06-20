@@ -497,7 +497,7 @@ defmodule Loopyard.ChatAgentTest do
   describe "build_system_prompt/2" do
     test "setup agent prompt stays under CLI argument limit" do
       prompt =
-        ChatAgent.build_system_prompt("test-id", agent_type: "coding", bind_mount: "/tmp/project")
+        ChatAgent.build_system_prompt("test-id", bind_mount: "/tmp/project")
 
       assert String.length(prompt) <= 6000,
              "Setup prompt is #{String.length(prompt)} chars, max is 6000."
@@ -515,8 +515,7 @@ defmodule Loopyard.ChatAgentTest do
         ChatAgent.build_system_prompt("test-id",
           bind_mount: "/tmp/project",
           workspace_id: "abcd",
-          workspace: workspace,
-          agent_type: "coding"
+          workspace: workspace
         )
 
       assert String.length(prompt) <= 6000,
@@ -536,8 +535,7 @@ defmodule Loopyard.ChatAgentTest do
           bind_mount: "/tmp/project",
           workspace_id: "abcd",
           workspace: workspace,
-          service_name: "postgres",
-          agent_type: "coding"
+          service_name: "postgres"
         )
 
       assert String.length(prompt) <= 6000,
@@ -630,7 +628,6 @@ defmodule Loopyard.ChatAgentTest do
         tool_calls: 7,
         errors: 1,
         service_name: nil,
-        agent_type: "coding",
         model: "claude-opus-4-7",
         total_input_tokens: 12_345,
         total_output_tokens: 6_789,
@@ -665,7 +662,6 @@ defmodule Loopyard.ChatAgentTest do
       assert live.turns == 42
       assert live.tool_calls == 7
       assert live.errors == 1
-      assert live.agent_type == "coding"
       assert live.name == "Resume Test"
       assert live.started_by == "test"
       assert live.started_at == ~U[2026-01-01 00:00:00Z]
@@ -696,7 +692,6 @@ defmodule Loopyard.ChatAgentTest do
         tool_calls: 0,
         errors: 0,
         service_name: nil,
-        agent_type: "coding",
         model: nil,
         total_input_tokens: 0,
         total_output_tokens: 0,

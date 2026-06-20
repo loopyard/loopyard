@@ -130,9 +130,6 @@ defmodule Loopyard.AgentBoot do
     service_name = Keyword.get(opts, :service_name)
     initial_message = Keyword.get(opts, :initial_message)
 
-    agent_type =
-      Keyword.get(agent_opts, :agent_type) || Loopyard.Agents.Registry.default_agent_name()
-
     # Use workspace_id from opts if provided (volume-based workspaces pass it),
     # otherwise compute from path (bind-mount workspaces)
     workspace_id = Keyword.get(agent_opts, :workspace_id) || Workspace.workspace_id(working_dir)
@@ -142,16 +139,16 @@ defmodule Loopyard.AgentBoot do
 
     steps = [
       load_config_step(volume_name),
-      ensure_services_step(id, workspace_id, working_dir, agent_type),
-      start_agent_step(id, workspace_id, agent_opts, working_dir, agent_type),
-      send_initial_message_step(id, agent_type, initial_message, service_name)
+      ensure_services_step(id, workspace_id, working_dir),
+      start_agent_step(id, workspace_id, agent_opts, working_dir),
+      send_initial_message_step(id, initial_message, service_name)
     ]
 
     saga_result =
       Saga.run(steps,
         name: :boot_agent,
-        context: %{id: id, workspace_id: workspace_id, agent_type: agent_type},
-        metadata: %{agent_id: id, workspace_id: workspace_id, agent_type: agent_type},
+        context: %{id: id, workspace_id: workspace_id},
+        metadata: %{agent_id: id, workspace_id: workspace_id},
         # :rollback is the safest default for mid-crash recovery.
         # If the BEAM dies between :start_agent and
         # :send_initial_message, resuming forward would try to re-send
@@ -173,7 +170,7 @@ defmodule Loopyard.AgentBoot do
         Loopyard.EventLog.error(
           "agent_boot:#{workspace_id}",
           "boot saga failed at #{step}: #{inspect(reason)} " <>
-            "ws_id=#{workspace_id} type=#{agent_type}"
+            "ws_id=#{workspace_id}"
         )
 
         # Audit LOW #16: surface the rollback_failed path loudly at
@@ -182,7 +179,7 @@ defmodule Loopyard.AgentBoot do
         Saga.maybe_log_rollback_failed(
           rollback_outcome,
           :boot_agent,
-          %{agent_id: id, workspace_id: workspace_id, agent_type: agent_type}
+          %{agent_id: id, workspace_id: workspace_id}
         )
 
         ChatAgent.boot_failed(id, reason)
@@ -217,7 +214,7 @@ defmodule Loopyard.AgentBoot do
   # boot reuses them, and tearing the cluster down because one
   # agent failed to spawn would harm other agents or users on
   # the same workspace.
-  defp ensure_services_step(id, workspace_id, working_dir, _agent_type) do
+  defp ensure_services_step(id, workspace_id, working_dir) do
     %{
       name: :ensure_services,
       run: fn _ctx ->
@@ -293,15 +290,13 @@ defmodule Loopyard.AgentBoot do
 
   # Spawn the ChatAgent GenServer. Rollback stops it so a
   # later-step failure doesn't leak a running agent.
-  defp start_agent_step(id, workspace_id, agent_opts, working_dir, agent_type) do
+  defp start_agent_step(id, workspace_id, agent_opts, working_dir) do
     %{
       name: :start_agent,
       run: fn _ctx ->
         ChatAgent.update_boot_status(id, "Starting Claude session...")
 
-        Logger.info(
-          "[AgentBoot] #{id} starting Claude session ws=#{workspace_id} type=#{agent_type}"
-        )
+        Logger.info("[AgentBoot] #{id} starting Claude session ws=#{workspace_id}")
 
         case start_agent_with_retry(workspace_id, agent_opts, working_dir) do
           {:ok, pid} ->
@@ -309,7 +304,7 @@ defmodule Loopyard.AgentBoot do
 
             Loopyard.EventLog.info(
               "agent_boot:#{workspace_id}",
-              "Agent #{id} (#{agent_type}) Claude session started"
+              "Agent #{id} Claude session started"
             )
 
             {:ok, %{agent_pid: pid}}
@@ -353,7 +348,7 @@ defmodule Loopyard.AgentBoot do
   # can't fail synchronously. Included as a saga step so the
   # send-or-skip decision is visible in `/system/sagas` alongside
   # the earlier steps.
-  defp send_initial_message_step(id, agent_type, initial_message, service_name) do
+  defp send_initial_message_step(id, initial_message, service_name) do
     %{
       name: :send_initial_message,
       run: fn ctx ->
@@ -362,7 +357,7 @@ defmodule Loopyard.AgentBoot do
         if initial_message == :none do
           {:ok, %{initial_message: :skipped}}
         else
-          msg = initial_message || default_message(agent_type, ws_config, service_name)
+          msg = initial_message || default_message(ws_config, service_name)
 
           if msg do
             ChatAgent.send_message(id, msg)
@@ -408,7 +403,7 @@ defmodule Loopyard.AgentBoot do
   # One self-determining kick-off. The agent runs service_status first and does
   # the right thing — bootstrap if unconfigured, confirm health if already set
   # up — so we don't have to guess "setup vs coding" up front.
-  defp default_message(_agent_type, _ws_config, service_name) do
+  defp default_message(_ws_config, service_name) do
     if service_name do
       "Check the logs for the #{service_name} service and help me debug any issues."
     else

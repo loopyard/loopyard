@@ -1,9 +1,7 @@
 defmodule Loopyard.Tools.AgentFiles.ReadAgentFile do
   @moduledoc """
-  Read a file from the current agent's own folder.
-
-  The allowed folder is resolved from the agent's `agent_type` via
-  `Loopyard.Agents.Registry`. Paths are validated to stay within
+  Read a file from the agent's own definition folder
+  (`Loopyard.Agents.Coding.folder/0`). Paths are validated to stay within
   that folder — no `..` escape, no absolute paths.
   """
 
@@ -16,29 +14,16 @@ defmodule Loopyard.Tools.AgentFiles.ReadAgentFile do
       path: {:string, required: true, description: "Relative path inside the agent folder"}
     ]
 
-  alias Loopyard.Agents.Registry
+  alias Loopyard.Agents.Coding
 
   @max_bytes 200_000
 
-  def execute(%{agent_id: agent_id, path: path}, _assigns) do
-    with {:ok, agent_type} <- fetch_agent_type(agent_id),
-         {:ok, folder} <- Registry.folder_for(agent_type),
-         {:ok, abs_path} <- validate_path(folder, path),
+  def execute(%{path: path}, _assigns) do
+    folder = Coding.folder()
+
+    with {:ok, abs_path} <- validate_path(folder, path),
          {:ok, contents} <- read_file(abs_path) do
       {:ok, contents}
-    end
-  end
-
-  defp fetch_agent_type(agent_id) do
-    case Loopyard.ChatAgent.get_state(agent_id) do
-      %{agent_type: type} when is_binary(type) ->
-        {:ok, type}
-
-      %{} ->
-        {:ok, Registry.default_agent_name()}
-
-      _ ->
-        {:error, "Agent #{agent_id} has no state"}
     end
   end
 
