@@ -28,20 +28,45 @@ defmodule LoopyardWeb.Live.WorkspaceLive.TranscriptLayoutTest do
   test "agent prose is a document, not a bubble" do
     html = render([user("go"), assistant("On it.")], 1)
 
-    # No chat-bubble chrome on the agent's prose.
+    # No chat-bubble chrome on the agent's prose — it's flowing document text.
+    # (The faint spine lives on the run wrapper in chat_panel, not the message.)
     refute html =~ "rounded-2xl"
     refute html =~ "bg-zinc-100 dark:bg-zinc-800"
-    # It flows with a faint left spine (the gutter).
-    assert html =~ "border-l"
+    assert html =~ "leading-relaxed"
     assert html =~ "On it."
   end
 
-  test "the Claude identity shows once — at the start of a run" do
-    # First agent message after a human → run header present.
-    assert render([user("go"), assistant("First.")], 1) =~ "Claude"
+  test "transcript_groups bundles consecutive agent messages into one run" do
+    msgs = [
+      user("go"),
+      assistant("First."),
+      %{role: :tool, tool: "x"},
+      assistant("Done."),
+      user("again"),
+      assistant("Sure.")
+    ]
 
-    # A following agent message in the same run → no repeated header.
-    refute render([user("go"), assistant("First."), assistant("Still me.")], 2) =~ "Claude"
+    groups = Messages.transcript_groups(msgs)
+
+    assert [
+             {:break, {%{role: :user}, 0}},
+             {:run, run1},
+             {:break, {%{role: :user}, 4}},
+             {:run, run2}
+           ] = groups
+
+    # The whole agent stretch (prose + tool + prose) is ONE run → one header.
+    assert Enum.map(run1, fn {_m, i} -> i end) == [1, 2, 3]
+    assert Enum.map(run2, fn {_m, i} -> i end) == [5]
+  end
+
+  test "a run that opens with a tool is still its own run (header would still show)" do
+    # Regression: the header used to live on the assistant clause, so a run
+    # starting with a tool had no header. Grouping fixes that.
+    [{:break, _}, {:run, run}] =
+      Messages.transcript_groups([user("go"), %{role: :tool, tool: "x"}, assistant("hi")])
+
+    assert Enum.map(run, fn {_m, i} -> i end) == [1, 2]
   end
 
   test "the human stays a right-aligned bubble" do

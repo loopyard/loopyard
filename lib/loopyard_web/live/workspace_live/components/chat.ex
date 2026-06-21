@@ -7,7 +7,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   import LoopyardWeb.Components.Breadcrumbs, only: [breadcrumbs: 1]
 
   import LoopyardWeb.Live.WorkspaceLive.Messages,
-    only: [chat_msg: 1, streaming_bubble: 1, streaming_thinking: 1]
+    only: [chat_msg: 1, streaming_bubble: 1, streaming_thinking: 1, run_header: 1]
 
   import LoopyardWeb.Live.WorkspaceLive.Components.Formatters, only: [time_ago: 1]
   import LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel,
@@ -390,26 +390,56 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           >
             Loading older messages...
           </p>
-          <div :for={{msg, idx} <- Enum.with_index(@messages)}>
-            <.chat_msg
-              :if={not in_live_feed?(@live_tool_from, msg, idx)}
-              msg={msg}
-              idx={idx}
-              messages={@messages}
-              agent_id={@agent.id}
-              workspace_id={@workspace_id}
-              host={@host}
-              detail_level={@detail_level}
+          <%!-- The transcript groups consecutive agent messages into a RUN: one
+               faint spine + one "Claude" header own the whole run, so it reads as
+               a continuous document. Human messages (bubbles / cards) stand alone
+               and break the spine. --%>
+          <%= for group <- LoopyardWeb.Live.WorkspaceLive.Messages.transcript_groups(@messages) do %>
+            <%= case group do %>
+              <% {:break, {msg, idx}} -> %>
+                <.chat_msg
+                  :if={not in_live_feed?(@live_tool_from, msg, idx)}
+                  msg={msg}
+                  idx={idx}
+                  messages={@messages}
+                  agent_id={@agent.id}
+                  workspace_id={@workspace_id}
+                  host={@host}
+                  detail_level={@detail_level}
+                />
+              <% {:run, items} -> %>
+                <div class="mt-3">
+                  <.run_header timestamp={run_timestamp(items)} />
+                  <div class="border-l border-zinc-200/70 dark:border-zinc-800/80 ml-3">
+                    <.chat_msg
+                      :for={{msg, idx} <- items}
+                      :if={not in_live_feed?(@live_tool_from, msg, idx)}
+                      msg={msg}
+                      idx={idx}
+                      messages={@messages}
+                      agent_id={@agent.id}
+                      workspace_id={@workspace_id}
+                      host={@host}
+                      detail_level={@detail_level}
+                    />
+                  </div>
+                </div>
+            <% end %>
+          <% end %>
+          <%!-- Live turn: continues the spine while text streams in. --%>
+          <div
+            :if={@streaming_text != "" || (assigns[:streaming_thinking] || "") != ""}
+            class="border-l border-zinc-200/70 dark:border-zinc-800/80 ml-3 mt-3"
+          >
+            <.streaming_thinking
+              :if={
+                @detail_level != :chat && assigns[:streaming_thinking] != "" &&
+                  assigns[:streaming_thinking] != nil
+              }
+              text={@streaming_thinking}
             />
+            <.streaming_bubble :if={@streaming_text != ""} text={@streaming_text} />
           </div>
-          <.streaming_thinking
-            :if={
-              @detail_level != :chat && assigns[:streaming_thinking] != "" &&
-                assigns[:streaming_thinking] != nil
-            }
-            text={@streaming_thinking}
-          />
-          <.streaming_bubble :if={@streaming_text != ""} text={@streaming_text} />
           <.thinking_indicator
             :if={
               @agent.status == :thinking && @streaming_text == "" &&
@@ -738,6 +768,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
 
   defp in_live_feed?(nil, _msg, _idx), do: false
   defp in_live_feed?(from, msg, idx), do: idx > from and msg.role in [:tool, :tool_result]
+
+  # The "Claude · HH:MM" header timestamp for a run = the first message in it.
+  defp run_timestamp([{%{timestamp: ts}, _idx} | _]), do: ts
+  defp run_timestamp(_), do: nil
 
   # --- Container Panel ---
 

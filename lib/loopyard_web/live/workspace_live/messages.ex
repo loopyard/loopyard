@@ -79,7 +79,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   def chat_msg(%{msg: %{role: :assistant}} = assigns) do
     assigns = assign(assigns, :url, msg_url(assigns))
     assigns = assign(assigns, :raw, raw_url(assigns))
-    assigns = assign(assigns, :run_start, run_start?(assigns))
 
     assigns =
       assign(
@@ -92,12 +91,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       assign(assigns, :port_info, detect_port_info(assigns.msg.content, assigns[:workspace_id]))
 
     # The agent writes a CONTINUOUS transcript: no bubble, no per-message avatar.
-    # The "● Claude" identity shows ONCE at the start of a run (right after a human
-    # interjection); subsequent agent prose + action rows flow under a faint left
-    # spine. Humans are the only bubbles — the landmarks you scan for.
+    # The run wrapper (chat_panel) owns the "● Claude" header + the faint left
+    # spine; this clause just contributes flowing prose into that gutter.
     ~H"""
     <div class="group/msg" id={"msg-#{@msg[:id] || hash_content(@msg.content)}"}>
-      <.run_header :if={@run_start} timestamp={@msg[:timestamp]} />
       <div class={[gutter(), "pl-7 py-0.5"]}>
         <div class="markdown-body text-[15px] leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl">{Loopyard.Markdown.to_html(@rendered_content)}</div>
         <div :if={@port_info && !@port_info.exposed} class="mt-1.5 flex items-center gap-2 py-1">
@@ -133,10 +130,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     """
   end
 
-  # The agent's identity marker — shown once at the top of each run.
+  @doc "The agent's identity marker — rendered once at the top of each run."
   attr :timestamp, :any, default: nil
 
-  defp run_header(assigns) do
+  def run_header(assigns) do
     ~H"""
     <div class="flex items-center gap-2 mt-5 mb-2">
       <span class="flex-none w-5 h-5 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center">
@@ -365,25 +362,51 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
 
   # --- Internal helpers ---
 
-  # The shared left structure that makes the agent's output read as one
-  # continuous transcript: a faint vertical spine every agent-role row hangs
-  # off. Action rows pad their icon to `pl-5` (icons hang in the gutter, just
-  # left of the prose); prose pads to `pl-7`. Within a run the segments line up
-  # into a near-continuous spine; a human bubble naturally breaks it.
-  defp gutter, do: "ml-3 border-l border-zinc-200/70 dark:border-zinc-800/80"
+  # Left padding alignment for agent rows. The faint spine itself now lives on
+  # the RUN WRAPPER (chat_panel), so a run reads as one unbroken line; rows just
+  # keep their content inset (action icons hang at `pl-5`, just left of the
+  # `pl-7` prose). Kept as a seam in case rows ever need a shared base class.
+  defp gutter, do: ""
 
-  # Is this the FIRST agent message of a run — i.e. the one right after a human
-  # interjection (or the very first message)? Only then do we stamp the
-  # "● Claude" identity header, so it appears once per run, not per message.
-  defp run_start?(%{idx: idx, messages: messages})
-       when is_integer(idx) and is_list(messages) and idx > 0 do
-    case Enum.at(messages, idx - 1) do
-      %{role: role} -> role in [:user, :question, :approval]
-      _ -> true
-    end
+  @doc """
+  Group the message list into transcript segments for the run-spine layout.
+
+  Returns an ordered list of:
+    * `{:run, [{msg, idx}]}` — consecutive agent-authored messages that share
+      ONE spine + ONE "Claude" header.
+    * `{:break, {msg, idx}}` — a human-facing message (user bubble, or a
+      question/approval card) that stands alone and breaks the run.
+
+  Indices are the original positions in `messages` (so `chat_msg` look-back
+  helpers still work).
+  """
+  def transcript_groups(messages) do
+    messages
+    |> Enum.with_index()
+    |> Enum.reduce([], fn {msg, idx}, groups ->
+      cond do
+        break_msg?(msg) ->
+          [{:break, {msg, idx}} | groups]
+
+        match?([{:run, _} | _], groups) ->
+          [{:run, items} | rest] = groups
+          [{:run, [{msg, idx} | items]} | rest]
+
+        true ->
+          [{:run, [{msg, idx}]} | groups]
+      end
+    end)
+    |> Enum.map(fn
+      {:run, items} -> {:run, Enum.reverse(items)}
+      other -> other
+    end)
+    |> Enum.reverse()
   end
 
-  defp run_start?(_), do: true
+  # Human-facing roles break a run: the user bubble, and the ask_user /
+  # approval cards (which are answered by a human).
+  defp break_msg?(%{role: role}), do: role in [:user, :question, :approval]
+  defp break_msg?(_), do: false
 
   # How many lines of output we keep in the inline DOM. The full text is always
   # one click away via the raw link; this just bounds a pathological 10k-line
