@@ -72,7 +72,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.TranscriptLayoutTest do
   test "the human prompt is a full-width sticky purple band, not a bubble" do
     html = render([user("make it pop")], 0)
     assert html =~ "sticky"
-    assert html =~ "bg-violet-600/15"
+    assert html =~ "bg-violet-600/30"
     assert html =~ "make it pop"
     # Not the old right-aligned bubble.
     refute html =~ "rounded-2xl"

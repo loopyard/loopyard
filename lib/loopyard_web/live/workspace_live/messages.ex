@@ -61,15 +61,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     # response scrolls underneath.
     ~H"""
     <div
-      class="sticky top-0 z-20 -mx-4 md:-mx-6 px-4 md:px-6 py-5 bg-violet-600/15 dark:bg-violet-500/[0.1] backdrop-blur-md border-y border-violet-500/20 group/msg"
+      class="sticky top-0 z-20 -mx-4 md:-mx-6 px-4 md:px-6 py-3 bg-violet-200/80 dark:bg-violet-600/30 backdrop-blur-md border-y border-violet-400/50 dark:border-violet-500/40 group/msg"
       id={"msg-user-#{@msg[:id] || hash_content(@msg.content)}"}
     >
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0">
-          <div class="text-[11px] font-semibold uppercase tracking-wide text-violet-500 dark:text-violet-300 mb-1.5">
+          <div class="text-[11px] font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-200 mb-0.5">
             You
           </div>
-          <div class="markdown-body text-lg leading-relaxed text-zinc-800 dark:text-zinc-50 max-w-3xl">{Loopyard.Markdown.to_html(@msg.content)}</div>
+          <%!-- Clamp to a few lines: the prompt is a sticky HEADER, so a long
+               paste must stay header-sized (full text via the ↗ link). --%>
+          <div class="markdown-body text-base leading-relaxed text-zinc-800 dark:text-zinc-50 max-w-3xl line-clamp-3">{Loopyard.Markdown.to_html(@msg.content)}</div>
         </div>
         <div class="flex items-center gap-1 flex-none opacity-0 group-hover/msg:opacity-100 transition-opacity">
           <.copy_btn :if={@raw} raw_url={@raw} />
