@@ -79,6 +79,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   def chat_msg(%{msg: %{role: :assistant}} = assigns) do
     assigns = assign(assigns, :url, msg_url(assigns))
     assigns = assign(assigns, :raw, raw_url(assigns))
+    assigns = assign(assigns, :run_start, run_start?(assigns))
 
     assigns =
       assign(
@@ -90,47 +91,61 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     assigns =
       assign(assigns, :port_info, detect_port_info(assigns.msg.content, assigns[:workspace_id]))
 
+    # The agent writes a CONTINUOUS transcript: no bubble, no per-message avatar.
+    # The "● Claude" identity shows ONCE at the start of a run (right after a human
+    # interjection); subsequent agent prose + action rows flow under a faint left
+    # spine. Humans are the only bubbles — the landmarks you scan for.
     ~H"""
-    <div class="mt-3 mb-1 group/msg">
-      <div class="flex gap-3">
-        <div class="flex-none w-7 h-7 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center mt-0.5">
-          <span class="text-xs font-bold text-violet-600 dark:text-violet-400">C</span>
+    <div class="group/msg" id={"msg-#{@msg[:id] || hash_content(@msg.content)}"}>
+      <.run_header :if={@run_start} timestamp={@msg[:timestamp]} />
+      <div class={[gutter(), "pl-7 py-0.5"]}>
+        <div class="markdown-body text-[15px] leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl">{Loopyard.Markdown.to_html(@rendered_content)}</div>
+        <div :if={@port_info && !@port_info.exposed} class="mt-1.5 flex items-center gap-2 py-1">
+          <div class="w-1.5 h-1.5 rounded-full flex-none bg-amber-400"></div>
+          <span class="text-xs text-zinc-500 dark:text-zinc-400">{@port_info.service} port closed</span>
+          <button
+            phx-click="open_port_from_chat"
+            phx-value-service={@port_info.service}
+            phx-value-container_port={@port_info.container_port}
+            class="inline-flex items-center px-1.5 rounded text-[10px] font-medium text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+          >
+            Open Port
+          </button>
         </div>
-        <div
-          class="max-w-[85%] rounded-2xl rounded-tl-sm bg-zinc-100 dark:bg-zinc-800 px-4 py-2.5"
-          id={"msg-#{@msg[:id] || hash_content(@msg.content)}"}
-        >
-          <div class="markdown-body text-base text-zinc-900 dark:text-zinc-100">{Loopyard.Markdown.to_html(@rendered_content)}</div>
+        <div :if={@port_info && @port_info.exposed} class="mt-1.5 flex items-center gap-2 py-1">
+          <div class="w-1.5 h-1.5 rounded-full flex-none bg-emerald-500"></div>
+          <span class="text-xs text-zinc-500 dark:text-zinc-400">{@port_info.service}</span>
+          <a
+            href={"http://#{assigns[:host] || "localhost"}:#{@port_info.host_port}"}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center px-2 rounded text-xs font-mono font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
+          >
+            :{@port_info.host_port}
+          </a>
+        </div>
+        <div class="flex items-center gap-1 mt-0.5 h-5 opacity-0 group-hover/msg:opacity-100 transition-opacity">
+          <.copy_btn :if={@raw} raw_url={@raw} />
+          <.open_btn :if={@url} url={@url} />
         </div>
       </div>
-      <div :if={@port_info && !@port_info.exposed} class="ml-10 mt-1.5 flex items-center gap-2 py-1">
-        <div class="w-1.5 h-1.5 rounded-full flex-none bg-amber-400"></div>
-        <span class="text-xs text-zinc-500 dark:text-zinc-400">{@port_info.service} port closed</span>
-        <button
-          phx-click="open_port_from_chat"
-          phx-value-service={@port_info.service}
-          phx-value-container_port={@port_info.container_port}
-          class="inline-flex items-center px-1.5 rounded text-[10px] font-medium text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
-        >
-          Open Port
-        </button>
-      </div>
-      <div :if={@port_info && @port_info.exposed} class="ml-10 mt-1.5 flex items-center gap-2 py-1">
-        <div class="w-1.5 h-1.5 rounded-full flex-none bg-emerald-500"></div>
-        <span class="text-xs text-zinc-500 dark:text-zinc-400">{@port_info.service}</span>
-        <a
-          href={"http://#{assigns[:host] || "localhost"}:#{@port_info.host_port}"}
-          target="_blank"
-          rel="noopener noreferrer"
-          class="inline-flex items-center px-2 rounded text-xs font-mono font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
-        >
-          :{@port_info.host_port}
-        </a>
-      </div>
-      <div class="flex items-center gap-1 ml-10 mt-0.5 h-5 opacity-0 group-hover/msg:opacity-100 transition-opacity">
-        <.copy_btn :if={@raw} raw_url={@raw} />
-        <.open_btn :if={@url} url={@url} />
-      </div>
+    </div>
+    """
+  end
+
+  # The agent's identity marker — shown once at the top of each run.
+  attr :timestamp, :any, default: nil
+
+  defp run_header(assigns) do
+    ~H"""
+    <div class="flex items-center gap-2 mt-5 mb-2">
+      <span class="flex-none w-5 h-5 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center">
+        <span class="w-1.5 h-1.5 rounded-full bg-violet-500 dark:bg-violet-400"></span>
+      </span>
+      <span class="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Claude</span>
+      <span :if={@timestamp} class="text-xs text-zinc-400 dark:text-zinc-500">
+        · {Calendar.strftime(@timestamp, "%H:%M")}
+      </span>
     </div>
     """
   end
@@ -166,7 +181,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       |> assign(:file_link, file_link)
 
     ~H"""
-    <div class="py-1 pl-10">
+    <div class={[gutter(), "py-1 pl-5"]}>
       <div class="flex items-center gap-2">
         <div class="w-4 h-4 rounded bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center flex-none">
           <svg
@@ -208,7 +223,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
 
   def chat_msg(%{msg: %{role: :thinking}} = assigns) do
     ~H"""
-    <details class="ml-10 my-1 group" open={@detail_level == :trace}>
+    <details class={[gutter(), "pl-5 my-1 group"]} open={@detail_level == :trace}>
       <summary class="text-xs text-zinc-400 dark:text-zinc-500 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none">
         💭 Reasoning
       </summary>
@@ -253,7 +268,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
 
   def chat_msg(%{msg: %{role: :error}} = assigns) do
     ~H"""
-    <div class="flex items-start gap-2 py-1 pl-10">
+    <div class={[gutter(), "flex items-start gap-2 py-1 pl-5"]}>
       <div class="w-4 h-4 rounded bg-red-100 dark:bg-red-900/30 flex items-center justify-center flex-none mt-0.5">
         <span class="text-[10px] font-bold text-red-500">!</span>
       </div>
@@ -303,7 +318,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       ~H"<div></div>"
     else
       ~H"""
-      <div class="py-1 pl-10">
+      <div class={[gutter(), "py-1 pl-7"]}>
         <div
           class="text-xs text-zinc-400 dark:text-zinc-500 italic"
           id={"system-msg-#{@msg[:id] || hash_content(@msg.content)}"}
@@ -325,17 +340,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
 
   def streaming_bubble(assigns) do
     ~H"""
-    <div class="flex gap-3 mt-3">
-      <div class="flex-none w-7 h-7 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center mt-0.5">
-        <span class="text-xs font-bold text-violet-600 dark:text-violet-400">C</span>
-      </div>
-      <div
-        class="max-w-[85%] rounded-2xl rounded-tl-sm bg-zinc-100 dark:bg-zinc-800 px-4 py-2.5"
-        id="streaming-msg"
-      >
-        <div class="markdown-body text-base text-zinc-900 dark:text-zinc-100">{Loopyard.Markdown.to_html(@text)}</div>
-        <span class="inline-block w-1.5 h-4 bg-violet-500 animate-pulse ml-0.5 align-middle"></span>
-      </div>
+    <div class={[gutter(), "pl-7 py-0.5 mt-2"]} id="streaming-msg">
+      <div class="markdown-body text-[15px] leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl">{Loopyard.Markdown.to_html(@text)}<span class="inline-block w-1.5 h-4 bg-violet-500 animate-pulse ml-0.5 align-middle"></span></div>
     </div>
     """
   end
@@ -358,6 +364,26 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   end
 
   # --- Internal helpers ---
+
+  # The shared left structure that makes the agent's output read as one
+  # continuous transcript: a faint vertical spine every agent-role row hangs
+  # off. Action rows pad their icon to `pl-5` (icons hang in the gutter, just
+  # left of the prose); prose pads to `pl-7`. Within a run the segments line up
+  # into a near-continuous spine; a human bubble naturally breaks it.
+  defp gutter, do: "ml-3 border-l border-zinc-200/70 dark:border-zinc-800/80"
+
+  # Is this the FIRST agent message of a run — i.e. the one right after a human
+  # interjection (or the very first message)? Only then do we stamp the
+  # "● Claude" identity header, so it appears once per run, not per message.
+  defp run_start?(%{idx: idx, messages: messages})
+       when is_integer(idx) and is_list(messages) and idx > 0 do
+    case Enum.at(messages, idx - 1) do
+      %{role: role} -> role in [:user, :question, :approval]
+      _ -> true
+    end
+  end
+
+  defp run_start?(_), do: true
 
   # How many lines of output we keep in the inline DOM. The full text is always
   # one click away via the raw link; this just bounds a pathological 10k-line
@@ -385,7 +411,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       )
 
     ~H"""
-    <details class="pl-10 py-0.5 group/result" open={@detail_level == :trace || @is_error}>
+    <details class={[gutter(), "pl-5 py-0.5 group/result"]} open={@detail_level == :trace || @is_error}>
       <summary class="text-[11px] text-zinc-400 dark:text-zinc-500 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5">
         <span class="transition-transform group-open/result:rotate-90">▸</span>
         <span>{if @is_error, do: "error output", else: "output"} · {@line_count} {if @line_count == 1, do: "line", else: "lines"}</span>
@@ -478,7 +504,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     assigns = assign(assigns, url: url, service: service, container_port: container_port)
 
     ~H"""
-    <div class="pl-10 py-1">
+    <div class={[gutter(), "pl-5 py-1"]}>
       <div class="inline-flex items-center gap-3 rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 py-2.5">
         <a
           :if={@url}
