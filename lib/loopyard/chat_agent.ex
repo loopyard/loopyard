@@ -749,6 +749,22 @@ defmodule Loopyard.ChatAgent do
         Loopyard.Harness.Questions.answer_with_text(state.id, text)
         {:noreply, state}
 
+      # Ghost :thinking — the status says a turn is in flight, but there's
+      # NO live stream and NO live session. A real turn always carries a
+      # stream_ref backed by a live session (set atomically in start_turn);
+      # this shape only happens when a turn died WITHOUT running a
+      # reset-to-idle path (e.g. a session crash during a reconnect). If we
+      # let it fall into the busy-enqueue clause below, the message parks
+      # behind a turn that can never complete or drain → the agent silently
+      # wedges and every send vanishes. Self-heal to idle and send for real.
+      ghost_thinking?(state) ->
+        Logger.warning(
+          "[#{state.id}] recovering ghost :thinking (no stream, no live session) on send"
+        )
+
+        :telemetry.execute([:loopyard, :agent, :ghost_turn_recovered], %{}, %{agent_id: state.id})
+        send_message_normal(reset_ghost_turn(state), text)
+
       # Agent-sanity #15. If a turn is already in flight (:thinking)
       # or pending restart (:backoff), starting a second stream Task
       # against the same Claude session risks interleaved events or
@@ -1602,6 +1618,46 @@ defmodule Loopyard.ChatAgent do
   # fresh. Called on every code path that restarts the session —
   # :restart_session cast, crash-recovery, retry-after-backoff,
   # ensure_session_alive.
+  # A turn is only genuinely in flight if its stream is live. A real
+  # :thinking turn always carries a stream_ref (set with the status flip in
+  # start_turn) backed by a live session. :thinking with NO stream_ref AND
+  # NO live session is a ghost — the turn died without resetting to idle.
+  defp ghost_thinking?(%{status: :thinking, stream_ref: nil} = state),
+    do: not live_session?(state)
+
+  defp ghost_thinking?(_), do: false
+
+  defp live_session?(%{session: nil}), do: false
+
+  defp live_session?(%{session: session, backend: backend}) do
+    backend.session_alive?(session)
+  rescue
+    _ -> false
+  catch
+    _, _ -> false
+  end
+
+  # Clear all transient turn state and return to idle — same fields the
+  # interrupt/stream-done resets clear (agent-sanity: every reset-to-idle
+  # path clears transient state). Used to recover a ghost :thinking before
+  # re-sending, so the fresh turn starts clean.
+  defp reset_ghost_turn(state) do
+    %{
+      state
+      | status: :idle,
+        stream_ref: nil,
+        active_tool: nil,
+        in_flight_partial: "",
+        tool_calls_this_turn: 0,
+        tool_runaway_warned: false,
+        last_tool_call: nil,
+        context_warning_sent: false,
+        turn_retry_count: 0,
+        pending_turn_error: nil,
+        current_turn_prompt: nil
+    }
+  end
+
   # The normal (non-rate-limited, non-auth-expired) path of
   # handle_cast({:send_message, text}). Kept as a defp so the cast
   # clauses stay contiguous (Elixir warns on non-grouped clauses) and
