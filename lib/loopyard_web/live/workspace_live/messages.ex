@@ -61,7 +61,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     # response scrolls underneath.
     ~H"""
     <div
-      class="sticky top-0 z-20 -mx-4 md:-mx-6 px-4 md:px-6 py-3 bg-violet-200/80 dark:bg-violet-600/30 backdrop-blur-md border-y border-violet-400/50 dark:border-violet-500/40 group/msg"
+      class="sticky top-0 z-20 -mx-4 md:-mx-6 px-4 md:px-6 py-3 bg-violet-200/60 dark:bg-violet-600/20 backdrop-blur-xl border-y border-violet-400/40 dark:border-violet-500/30 group/msg"
       id={"msg-user-#{@msg[:id] || hash_content(@msg.content)}"}
     >
       <div class="flex items-start justify-between gap-3">
@@ -71,7 +71,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
           </div>
           <%!-- Clamp to a few lines: the prompt is a sticky HEADER, so a long
                paste must stay header-sized (full text via the ↗ link). --%>
-          <div class="markdown-body text-base leading-relaxed text-zinc-800 dark:text-zinc-50 max-w-3xl line-clamp-3">{Loopyard.Markdown.to_html(@msg.content)}</div>
+          <div class="markdown-body text-lg leading-relaxed text-zinc-800 dark:text-zinc-50 max-w-3xl line-clamp-3">{Loopyard.Markdown.to_html(@msg.content)}</div>
         </div>
         <div class="flex items-center gap-1 flex-none opacity-0 group-hover/msg:opacity-100 transition-opacity">
           <.copy_btn :if={@raw} raw_url={@raw} />
