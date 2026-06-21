@@ -338,7 +338,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
 
     ~H"""
     <div class="flex-1 flex flex-col min-h-0">
-      <div id="messages" class="flex-1 overflow-y-auto flex flex-col-reverse px-4 md:px-6 py-4">
+      <div id="messages" class="flex-1 overflow-y-auto flex flex-col-reverse px-4 md:px-6 pt-1 pb-4">
         <%!-- flex-col-reverse: browser anchors scroll to the bottom naturally.
              scrollTop=0 IS the bottom. No JS timing hacks needed.
              Content is rendered inside a nested div in normal order. --%>

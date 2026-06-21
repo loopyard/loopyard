@@ -61,7 +61,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     # response scrolls underneath.
     ~H"""
     <div
-      class="sticky top-0 z-20 -mx-4 md:-mx-6 px-4 md:px-6 py-3 bg-violet-200/60 dark:bg-violet-600/20 backdrop-blur-xl border-y border-violet-400/40 dark:border-violet-500/30 group/msg"
+      class="sticky top-0 z-20 -mx-4 md:-mx-6 px-4 md:px-6 py-3 bg-violet-100 dark:bg-violet-950 border-y border-violet-300/70 dark:border-violet-500/30 group/msg"
       id={"msg-user-#{@msg[:id] || hash_content(@msg.content)}"}
     >
       <div class="flex items-start justify-between gap-3">
@@ -148,7 +148,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
 
   def run_header(assigns) do
     ~H"""
-    <div class="flex items-center gap-2 mt-5 mb-2">
+    <div class="flex items-center gap-2 mt-3 mb-1.5">
       <span class="flex-none w-5 h-5 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center">
         <span class="w-1.5 h-1.5 rounded-full bg-violet-500 dark:bg-violet-400"></span>
       </span>
