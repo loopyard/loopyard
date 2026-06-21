@@ -426,9 +426,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                 </div>
             <% end %>
           <% end %>
-          <%!-- Live turn: continues the spine while text streams in. --%>
+          <%!-- Live tail: the agent's in-progress work continues the SAME spine —
+               streamed reasoning, streamed text, and the activity feed all flow
+               here (no bubble, no second avatar) as one continuation of the run. --%>
           <div
-            :if={@streaming_text != "" || (assigns[:streaming_thinking] || "") != ""}
+            :if={
+              @streaming_text != "" || (assigns[:streaming_thinking] || "") != "" ||
+                (@agent.status == :thinking && not awaiting_answer?(@messages) &&
+                   not awaiting_approval?(@messages) && not building?(@messages))
+            }
             class="border-l border-zinc-200/70 dark:border-zinc-800/80 ml-3 mt-3"
           >
             <.streaming_thinking
@@ -439,17 +445,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               text={@streaming_thinking}
             />
             <.streaming_bubble :if={@streaming_text != ""} text={@streaming_text} />
+            <.thinking_indicator
+              :if={
+                @agent.status == :thinking && @streaming_text == "" &&
+                  (assigns[:streaming_thinking] || "") == "" &&
+                  not awaiting_answer?(@messages) && not awaiting_approval?(@messages) &&
+                  not building?(@messages)
+              }
+              messages={@messages}
+              word={@thinking_word}
+            />
           </div>
-          <.thinking_indicator
-            :if={
-              @agent.status == :thinking && @streaming_text == "" &&
-                (assigns[:streaming_thinking] || "") == "" &&
-                not awaiting_answer?(@messages) && not awaiting_approval?(@messages) &&
-                not building?(@messages)
-            }
-            messages={@messages}
-            word={@thinking_word}
-          />
         </div>
       </div>
       <%!-- Prominent, obvious interrupt right where you're looking while the
@@ -612,67 +618,64 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       |> assign(:turn_since, turn_started_unix_ms(assigns.messages))
       |> assign(:stall_hint, retry_hint(assigns.messages))
 
+    # No bubble, no avatar — the live work flows on the transcript spine like
+    # everything else the agent does, just bigger: this IS "the computer
+    # thinking", so give it room. The chat_panel wraps it in the run-spine.
     ~H"""
-    <div class="flex gap-3 mt-3">
-      <div class="flex-none w-7 h-7 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center mt-0.5">
-        <span class="text-xs font-bold text-violet-600 dark:text-violet-400">C</span>
-      </div>
-      <div class="rounded-2xl rounded-tl-sm bg-zinc-100 dark:bg-zinc-800 px-4 py-3 min-w-0 max-w-[85%]">
-        <div class="flex items-center gap-2">
-          <div class="flex gap-1 flex-none">
-            <div
-              class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce"
-              style="animation-delay: 0ms"
-            >
-            </div>
-            <div
-              class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce"
-              style="animation-delay: 150ms"
-            >
-            </div>
-            <div
-              class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce"
-              style="animation-delay: 300ms"
-            >
-            </div>
+    <div class="pl-7 py-1.5">
+      <div class="flex items-center gap-2.5">
+        <div class="flex gap-1 flex-none">
+          <div class="w-2 h-2 rounded-full bg-violet-400 animate-bounce" style="animation-delay: 0ms">
           </div>
-          <span class="text-base text-violet-500 dark:text-violet-400 flex-none">{@word}...</span>
-          <span
-            :if={@turn_since}
-            id="turn-elapsed"
-            phx-hook="Elapsed"
-            phx-update="ignore"
-            data-since={@turn_since}
-            class="text-xs text-zinc-400 dark:text-zinc-500 flex-none tabular-nums"
+          <div
+            class="w-2 h-2 rounded-full bg-violet-400 animate-bounce"
+            style="animation-delay: 150ms"
           >
-          </span>
+          </div>
+          <div
+            class="w-2 h-2 rounded-full bg-violet-400 animate-bounce"
+            style="animation-delay: 300ms"
+          >
+          </div>
         </div>
-        <ul :if={@activity != []} class="mt-2 space-y-1">
-          <li :for={a <- @activity} class="flex items-start gap-1.5 text-xs leading-snug">
-            <span class={[
-              "flex-none w-3 text-center mt-px",
-              a.active && "text-violet-500 animate-pulse",
-              !a.active && "text-emerald-500/70"
-            ]}>
-              {if a.active, do: "▸", else: "✓"}
-            </span>
-            <span class={[
-              "min-w-0 break-words font-mono",
-              a.active && "text-zinc-700 dark:text-zinc-200",
-              !a.active && "text-zinc-400 dark:text-zinc-500"
-            ]}>
-              {a.summary}
-            </span>
-          </li>
-        </ul>
-        <p
-          :if={@stall_hint}
-          class="mt-2 flex items-start gap-1.5 text-xs leading-snug text-amber-600 dark:text-amber-400"
+        <span class="text-lg font-medium text-violet-500 dark:text-violet-400 flex-none">
+          {@word}...
+        </span>
+        <span
+          :if={@turn_since}
+          id="turn-elapsed"
+          phx-hook="Elapsed"
+          phx-update="ignore"
+          data-since={@turn_since}
+          class="text-sm text-zinc-400 dark:text-zinc-500 flex-none tabular-nums"
         >
-          <span class="flex-none">⚠</span>
-          <span class="min-w-0">{@stall_hint}</span>
-        </p>
+        </span>
       </div>
+      <ul :if={@activity != []} class="mt-3 space-y-1.5">
+        <li :for={a <- @activity} class="flex items-start gap-2 text-sm leading-relaxed">
+          <span class={[
+            "flex-none w-3.5 text-center mt-0.5",
+            a.active && "text-violet-500 animate-pulse",
+            !a.active && "text-emerald-500/70"
+          ]}>
+            {if a.active, do: "▸", else: "✓"}
+          </span>
+          <span class={[
+            "min-w-0 break-words font-mono",
+            a.active && "text-zinc-700 dark:text-zinc-200",
+            !a.active && "text-zinc-400 dark:text-zinc-500"
+          ]}>
+            {a.summary}
+          </span>
+        </li>
+      </ul>
+      <p
+        :if={@stall_hint}
+        class="mt-3 flex items-start gap-2 text-sm leading-relaxed text-amber-600 dark:text-amber-400"
+      >
+        <span class="flex-none">⚠</span>
+        <span class="min-w-0">{@stall_hint}</span>
+      </p>
     </div>
     """
   end
