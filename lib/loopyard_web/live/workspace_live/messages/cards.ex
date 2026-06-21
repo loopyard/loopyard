@@ -19,7 +19,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
   def question_card(assigns) do
     ~H"""
     <div class="pl-10 py-2">
-      <div class="rounded-xl border border-violet-200 dark:border-violet-800/60 bg-violet-50/50 dark:bg-violet-900/10 p-4 max-w-xl">
+      <div class="rounded-xl border border-violet-200 dark:border-violet-800/60 bg-violet-50/50 dark:bg-violet-900/10 p-4">
         <div class="flex items-center gap-1.5 text-xs font-medium text-violet-600 dark:text-violet-400 mb-3">
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -43,27 +43,33 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           >
             {q.header}
           </div>
-          <div class="text-sm font-medium text-zinc-800 dark:text-zinc-200 mb-2">{q.prompt}</div>
+          <div class="text-[15px] font-medium leading-snug text-zinc-800 dark:text-zinc-200 mb-3">
+            {q.prompt}
+          </div>
 
-          <div :if={@msg.status == :pending} class="flex flex-col gap-3">
-            <div :for={o <- q.options}>
-              <button
-                type="button"
-                phx-click="answer_question"
-                phx-value-question_id={@msg.question_id}
-                phx-value-q={q.id}
-                phx-value-option={o.label}
-                class="focus-ring inline-flex items-center rounded-lg border border-violet-300 dark:border-violet-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-sm font-medium text-violet-700 dark:text-violet-300 hover:bg-violet-600 hover:text-white hover:border-violet-600 transition-colors"
-              >
-                {o.label}
-              </button>
+          <%!-- Each option is a full-width row: the label is the primary
+               affordance, the description hugs it directly below (tight
+               mt-0.5) so it reads as subordinate, and a larger gap-2.5
+               separates one option from the next. The whole row is the
+               click target — a real tap area on phones. --%>
+          <div :if={@msg.status == :pending} class="flex flex-col gap-2.5">
+            <button
+              :for={o <- q.options}
+              type="button"
+              phx-click="answer_question"
+              phx-value-question_id={@msg.question_id}
+              phx-value-q={q.id}
+              phx-value-option={o.label}
+              class="focus-ring group/opt block w-full text-left rounded-lg border border-violet-200/70 dark:border-violet-800/50 bg-white/70 dark:bg-zinc-900/40 px-3.5 py-2.5 hover:border-violet-400 hover:bg-violet-50 dark:hover:border-violet-600/80 dark:hover:bg-violet-900/20 transition-colors"
+            >
+              <div class="text-sm font-medium text-violet-700 dark:text-violet-300">{o.label}</div>
               <div
                 :if={o.description not in [nil, ""]}
-                class="text-xs text-zinc-500 dark:text-zinc-400 mt-1"
+                class="mt-0.5 text-xs leading-relaxed text-zinc-500 dark:text-zinc-400"
               >
                 {o.description}
               </div>
-            </div>
+            </button>
           </div>
 
           <div :if={@msg.status != :pending} class="flex flex-wrap items-center gap-2 text-sm">
