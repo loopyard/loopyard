@@ -98,7 +98,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
 
     ~H"""
     <div class="pl-10 py-2">
-      <div class="rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50/50 dark:bg-amber-900/10 p-4 max-w-xl">
+      <div class="rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50/50 dark:bg-amber-900/10 p-4">
         <div class="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 mb-2">
           <svg
             xmlns="http://www.w3.org/2000/svg"

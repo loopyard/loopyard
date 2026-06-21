@@ -176,32 +176,24 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       |> assign(:summary, ToolSummary.summarize(assigns.msg.tool, input))
       |> assign(is_edit: is_edit, old_str: old_str, new_str: new_str)
       |> assign(:file_link, file_link)
+      |> assign(:tool_name, tool_name)
 
+    # Quiet, scannable row: a small category-tinted dot (violet=write/edit,
+    # green=run, blue=read/search) in the gutter, then the verb+object summary.
+    # Color is reserved for SIGNAL — the dot's category and the blue of a
+    # clickable file link. A plain summary stays muted, not blue.
     ~H"""
     <div class={[gutter(), "py-1 pl-5"]}>
       <div class="flex items-center gap-2">
-        <div class="w-4 h-4 rounded bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center flex-none">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 16 16"
-            fill="currentColor"
-            class="w-2.5 h-2.5 text-blue-500 dark:text-blue-400"
-          >
-            <path
-              fill-rule="evenodd"
-              d="M6.955 1.45A.5.5 0 0 1 7.452 1h1.096a.5.5 0 0 1 .497.45l.17 1.699c.484.12.94.312 1.356.562l1.321-.916a.5.5 0 0 1 .67.033l.774.775a.5.5 0 0 1 .034.67l-.916 1.32c.25.417.443.873.563 1.357l1.699.17a.5.5 0 0 1 .45.497v1.096a.5.5 0 0 1-.45.497l-1.699.17c-.12.484-.312.94-.562 1.356l.916 1.321a.5.5 0 0 1-.034.67l-.774.774a.5.5 0 0 1-.67.033l-1.32-.916c-.417.25-.874.443-1.357.563l-.17 1.699a.5.5 0 0 1-.497.45H7.452a.5.5 0 0 1-.497-.45l-.17-1.699a4.973 4.973 0 0 1-1.356-.562l-1.321.916a.5.5 0 0 1-.67-.033l-.774-.775a.5.5 0 0 1-.034-.67l.916-1.32a4.971 4.971 0 0 1-.562-1.357l-1.699-.17A.5.5 0 0 1 1 8.548V7.452a.5.5 0 0 1 .45-.497l1.699-.17c.12-.484.312-.94.562-1.356l-.916-1.321a.5.5 0 0 1 .034-.67l.774-.774a.5.5 0 0 1 .67-.033l1.32.916c.417-.25.874-.443 1.357-.563l.17-1.699ZM8 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"
-              clip-rule="evenodd"
-            />
-          </svg>
-        </div>
+        <span class={["w-1.5 h-1.5 rounded-full flex-none", tool_dot(@tool_name)]}></span>
         <a
           :if={@file_link}
           href={@file_link}
-          class="text-base text-blue-600 dark:text-blue-400 hover:underline"
+          class="text-sm text-blue-600 dark:text-blue-400 hover:underline"
         >
           {@summary}
         </a>
-        <span :if={!@file_link} class="text-base text-blue-600 dark:text-blue-400">{@summary}</span>
+        <span :if={!@file_link} class="text-sm text-zinc-600 dark:text-zinc-400">{@summary}</span>
       </div>
       <.diff
         :if={@is_edit && @old_str && @new_str}
@@ -367,6 +359,30 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   # keep their content inset (action icons hang at `pl-5`, just left of the
   # `pl-7` prose). Kept as a seam in case rows ever need a shared base class.
   defp gutter, do: ""
+
+  # Category tint for a tool-call's gutter dot — a quiet scan aid: you read the
+  # color column to see the SHAPE of what happened (writes vs runs vs reads)
+  # without reading the text. Tint = signal, kept muted.
+  defp tool_dot(tool) when is_binary(tool) do
+    cond do
+      String.ends_with?(tool, "__edit") or String.ends_with?(tool, "__multi_edit") or
+          String.ends_with?(tool, "__write_file") ->
+        "bg-violet-400"
+
+      String.ends_with?(tool, "__exec") or String.ends_with?(tool, "__docker_compose") ->
+        "bg-emerald-400"
+
+      String.contains?(tool, "read") or String.contains?(tool, "tree") or
+        String.contains?(tool, "search") or String.contains?(tool, "grep") or
+          String.contains?(tool, "logs") ->
+        "bg-blue-400"
+
+      true ->
+        "bg-zinc-300 dark:bg-zinc-600"
+    end
+  end
+
+  defp tool_dot(_), do: "bg-zinc-300 dark:bg-zinc-600"
 
   @doc """
   Group the message list into transcript segments for the run-spine layout.
