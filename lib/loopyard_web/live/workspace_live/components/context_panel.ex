@@ -77,7 +77,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     assigns = assign(assigns, :hs, harness_state(assigns.agent))
 
     ~H"""
-    <div class="px-3 py-2.5 border-b border-zinc-200 dark:border-zinc-700/80">
+    <div class="px-3 pt-1 pb-2">
       <div class={["flex items-center gap-2.5 rounded-lg px-2.5 py-2", @hs.bg]}>
         <span class={["w-2 h-2 rounded-full flex-none", @hs.dot, @hs.pulse]}></span>
         <div class="min-w-0">
@@ -205,7 +205,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
 
   defp agent_name(assigns) do
     ~H"""
-    <div class="px-3 py-3 md:py-2 border-b border-zinc-200 dark:border-zinc-700/80">
+    <div class="px-3 pt-4 pb-1">
       <form
         :if={@editing_name}
         phx-submit="rename_agent"
