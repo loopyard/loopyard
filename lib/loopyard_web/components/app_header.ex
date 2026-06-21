@@ -20,12 +20,14 @@ defmodule LoopyardWeb.Components.AppHeader do
   attr :iex_session, :map, default: %{level: nil}
   attr :current_path, :string, default: "/"
   attr :host_exposed, :boolean, default: false
+  slot :back, doc: "Optional leading element (e.g. a mobile back button) before the breadcrumbs."
   slot :inner_block
 
   def header(assigns) do
     ~H"""
     <header class="flex-none h-14 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center justify-between px-4 md:px-5">
       <div class="flex items-center gap-3 min-w-0">
+        {render_slot(@back)}
         <.breadcrumbs crumbs={@breadcrumbs} />
         <.iex_indicator :if={@iex_session.level} session={@iex_session} />
       </div>

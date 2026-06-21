@@ -4,7 +4,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
 
   import LoopyardWeb.Components.Common, only: [dot: 1, control_btn: 1]
   import LoopyardWeb.Components.Sidebar, only: [status_dot: 1, agent_display_status: 1]
-  import LoopyardWeb.Components.Breadcrumbs, only: [breadcrumbs: 1]
 
   import LoopyardWeb.Live.WorkspaceLive.Messages,
     only: [chat_msg: 1, streaming_bubble: 1, streaming_thinking: 1, run_header: 1]
@@ -60,7 +59,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       end
 
     crumbs = workspace_crumbs(assigns)
-    mobile_crumbs = Enum.take(crumbs, -1)
 
     assigns =
       assigns
@@ -68,23 +66,26 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       |> assign(:back_target, back_target)
       |> assign(:back_label, back_label)
       |> assign(:crumbs, crumbs)
-      |> assign(:mobile_crumbs, mobile_crumbs)
       |> assign(:host_exposed, Loopyard.HostExposer.exposed?())
 
+    # Delegate to the ONE canonical app header (same component every page uses),
+    # so the top nav — breadcrumbs, Remote, the workstation switcher, System — is
+    # identical app-wide. The only workspace-specific bit is the mobile back
+    # button, injected via the header's `back` slot.
     ~H"""
-    <header class="flex-none h-14 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center justify-between px-4 md:px-5">
-      <div class="flex items-center gap-3 min-w-0">
+    <LoopyardWeb.Components.AppHeader.header
+      breadcrumbs={@crumbs}
+      iex_session={@iex_session}
+      current_path={@base_path}
+      host_exposed={@host_exposed}
+    >
+      <:back>
         <.link
           :if={@back_kind == :patch}
           patch={@back_target}
           class="md:hidden -ml-1 inline-flex items-center gap-1 px-2 py-1 rounded-md text-base font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 active:bg-violet-100 dark:active:bg-violet-500/20 transition-colors flex-none min-w-0"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            class="w-5 h-5 flex-none"
-          >
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 flex-none">
             <path
               fill-rule="evenodd"
               d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z"
@@ -98,12 +99,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           navigate={@back_target}
           class="md:hidden -ml-1 inline-flex items-center gap-1 px-2 py-1 rounded-md text-base font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 active:bg-violet-100 dark:active:bg-violet-500/20 transition-colors flex-none min-w-0"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            class="w-5 h-5 flex-none"
-          >
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 flex-none">
             <path
               fill-rule="evenodd"
               d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z"
@@ -112,45 +108,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           </svg>
           <span class="truncate">{@back_label}</span>
         </.link>
-        <.breadcrumbs crumbs={@crumbs} class="hidden md:flex" />
-        <.breadcrumbs crumbs={@mobile_crumbs} class="md:hidden" />
-        <LoopyardWeb.Components.AppHeader.iex_indicator
-          :if={@iex_session.level}
-          session={@iex_session}
-        />
-      </div>
-      <div class="flex items-center gap-2 flex-none hidden md:flex">
-        <.link
-          navigate={Path.join("/remote", @base_path)}
-          aria-label={
-            if @host_exposed,
-              do: "Remote access — exposed. Open connect page.",
-              else: "Remote access — private. Open connect page."
-          }
-          class={[
-            "focus-ring inline-flex items-center gap-1.5 px-2 py-1 text-sm font-medium transition-colors rounded",
-            if(@host_exposed,
-              do: "text-emerald-600 dark:text-emerald-400 hover:text-emerald-500",
-              else: "text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100"
-            )
-          ]}
-        >
-          <span
-            :if={@host_exposed}
-            class="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-none"
-            aria-hidden="true"
-          >
-          </span>
-          Remote
-        </.link>
-        <.link
-          navigate="/system"
-          class="focus-ring inline-flex items-center px-2 py-1 text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 transition-colors rounded"
-        >
-          System
-        </.link>
-      </div>
-    </header>
+      </:back>
+    </LoopyardWeb.Components.AppHeader.header>
     """
   end
 

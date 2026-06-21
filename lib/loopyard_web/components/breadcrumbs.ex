@@ -19,19 +19,21 @@ defmodule LoopyardWeb.Components.Breadcrumbs do
 
   def breadcrumbs(assigns) do
     ~H"""
-    <nav aria-label="Breadcrumb" class={["flex items-center gap-2 min-w-0", @class]}>
-      <ol class="flex items-center gap-2 min-w-0 list-none p-0 m-0">
+    <nav aria-label="Breadcrumb" class={["flex items-center min-w-0", @class]}>
+      <ol class="flex items-center gap-1.5 min-w-0 list-none p-0 m-0">
         <%= for {{label, path}, idx} <- Enum.with_index(@crumbs) do %>
           <%!-- On mobile show only the current page; the full trail returns at sm+
-               so it stops truncating into ellipsis soup against the nav. --%>
+               so it stops truncating into ellipsis soup against the nav. Hierarchy
+               is by COLOR (ancestors muted, current page solid) — same font weight
+               throughout so navigating up never shifts the layout by a pixel. --%>
           <li class={[
-            "items-center gap-2 min-w-0",
+            "items-center gap-1.5 min-w-0",
             if(idx == length(@crumbs) - 1, do: "flex", else: "hidden sm:flex")
           ]}>
             <%= if path do %>
               <.link
                 navigate={path}
-                class="focus-ring text-sm font-medium text-zinc-700 dark:text-zinc-200 hover:text-violet-600 dark:hover:text-violet-400 transition-colors truncate rounded"
+                class="focus-ring text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors truncate rounded"
               >
                 {label}
               </.link>
@@ -43,13 +45,19 @@ defmodule LoopyardWeb.Components.Breadcrumbs do
                 {label}
               </span>
             <% end %>
-            <span
+            <svg
               :if={idx != length(@crumbs) - 1}
               aria-hidden="true"
-              class="text-zinc-300 dark:text-zinc-600 select-none"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              class="w-4 h-4 flex-none text-zinc-300 dark:text-zinc-600"
             >
-              /
-            </span>
+              <path
+                fill-rule="evenodd"
+                d="M8.22 5.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L11.94 10 8.22 6.28a.75.75 0 0 1 0-1.06Z"
+                clip-rule="evenodd"
+              />
+            </svg>
           </li>
         <% end %>
       </ol>
