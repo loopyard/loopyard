@@ -69,10 +69,29 @@ defmodule LoopyardWeb.Live.WorkspaceLive.TranscriptLayoutTest do
     assert Enum.map(run, fn {_m, i} -> i end) == [1, 2]
   end
 
-  test "the human stays a right-aligned bubble" do
+  test "the human prompt is a full-width sticky purple band, not a bubble" do
     html = render([user("make it pop")], 0)
-    assert html =~ "items-end"
-    assert html =~ "rounded-2xl"
-    assert html =~ "bg-violet-600"
+    assert html =~ "sticky"
+    assert html =~ "bg-violet-600/15"
+    assert html =~ "make it pop"
+    # Not the old right-aligned bubble.
+    refute html =~ "rounded-2xl"
+    refute html =~ "items-end"
+  end
+
+  test "transcript_sections pairs each prompt with the response it owns" do
+    msgs = [
+      assistant("greeting"),
+      user("a"),
+      assistant("answer a"),
+      user("b"),
+      assistant("answer b")
+    ]
+
+    assert [
+             %{prompt: nil, body: [{:run, _}]},
+             %{prompt: {%{role: :user, content: "a"}, 1}, body: [{:run, _}]},
+             %{prompt: {%{role: :user, content: "b"}, 3}, body: [{:run, _}]}
+           ] = Messages.transcript_sections(msgs)
   end
 end

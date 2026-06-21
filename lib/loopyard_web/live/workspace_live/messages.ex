@@ -53,17 +53,28 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     assigns = assign(assigns, :url, msg_url(assigns))
     assigns = assign(assigns, :raw, raw_url(assigns))
 
+    # The human prompt is a full-bleed purple band, not a bubble. It's `sticky`
+    # to the top of its <section> (chat_panel wraps each prompt + its response in
+    # one), so the prompt that owns the response you're reading stays pinned —
+    # scroll through a long answer and you never lose the question. `-mx` makes
+    # the shade reach the column edges; `backdrop-blur` keeps it legible as the
+    # response scrolls underneath.
     ~H"""
-    <div class="flex flex-col items-end mt-3 mb-1 group/msg">
-      <div
-        class="max-w-[85%] rounded-2xl rounded-tr-sm bg-violet-600 text-white px-4 py-2.5"
-        id={"msg-user-#{@msg[:id] || hash_content(@msg.content)}"}
-      >
-        <div class="markdown-body markdown-body-user text-base">{Loopyard.Markdown.to_html(@msg.content)}</div>
-      </div>
-      <div class="flex items-center gap-1 mt-0.5 h-5 opacity-0 group-hover/msg:opacity-100 transition-opacity">
-        <.copy_btn :if={@raw} raw_url={@raw} />
-        <.open_btn :if={@url} url={@url} />
+    <div
+      class="sticky top-0 z-20 -mx-4 md:-mx-6 px-4 md:px-6 py-5 bg-violet-600/15 dark:bg-violet-500/[0.1] backdrop-blur-md border-y border-violet-500/20 group/msg"
+      id={"msg-user-#{@msg[:id] || hash_content(@msg.content)}"}
+    >
+      <div class="flex items-start justify-between gap-3">
+        <div class="min-w-0">
+          <div class="text-[11px] font-semibold uppercase tracking-wide text-violet-500 dark:text-violet-300 mb-1.5">
+            You
+          </div>
+          <div class="markdown-body text-lg leading-relaxed text-zinc-800 dark:text-zinc-50 max-w-3xl">{Loopyard.Markdown.to_html(@msg.content)}</div>
+        </div>
+        <div class="flex items-center gap-1 flex-none opacity-0 group-hover/msg:opacity-100 transition-opacity">
+          <.copy_btn :if={@raw} raw_url={@raw} />
+          <.open_btn :if={@url} url={@url} />
+        </div>
       </div>
     </div>
     """
@@ -420,6 +431,38 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   # approval cards (which are answered by a human).
   defp break_msg?(%{role: role}), do: role in [:user, :question, :approval]
   defp break_msg?(_), do: false
+
+  @doc """
+  Group the transcript into SECTIONS for the sticky-prompt layout.
+
+  Each section is `%{prompt: {msg, idx} | nil, body: [group]}` where a new
+  section begins at every human **prompt** (`:user`) and `body` is the
+  transcript groups (runs + question/approval cards) that answer it. The leading
+  section before the first prompt has `prompt: nil`.
+
+  The point: chat_panel wraps each section in a `<section>` and makes the prompt
+  `sticky` — so the prompt that owns the response you're scrolling stays pinned
+  at the top until the next prompt's section takes over.
+  """
+  def transcript_sections(messages) do
+    messages
+    |> transcript_groups()
+    |> Enum.reduce([], fn group, sections ->
+      case group do
+        {:break, {%{role: :user}, _idx}} = prompt ->
+          {:break, p} = prompt
+          [%{prompt: p, body: []} | sections]
+
+        other ->
+          case sections do
+            [%{body: body} = sec | rest] -> [%{sec | body: [other | body]} | rest]
+            [] -> [%{prompt: nil, body: [other]}]
+          end
+      end
+    end)
+    |> Enum.map(fn %{body: body} = sec -> %{sec | body: Enum.reverse(body)} end)
+    |> Enum.reverse()
+  end
 
   # How many lines of output we keep in the inline DOM. The full text is always
   # one click away via the raw link; this just bounds a pathological 10k-line
