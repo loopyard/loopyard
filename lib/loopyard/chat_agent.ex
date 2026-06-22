@@ -51,6 +51,10 @@ defmodule Loopyard.ChatAgent do
     tool_calls: 0,
     errors: 0,
     stream_ref: nil,
+    # Reference to the live stream SILENCE watchdog (Process.send_after). Reset on
+    # every stream event so it only fires after real silence, never on a long but
+    # actively-working turn. Runtime-only — never persisted in summary/1.
+    stream_timeout_timer: nil,
     model: nil,
     total_input_tokens: 0,
     total_output_tokens: 0,
@@ -1211,7 +1215,9 @@ defmodule Loopyard.ChatAgent do
   # new state. Events with a ref != state.stream_ref are dropped. See
   # agent-sanity #16.
   def handle_info({:stream_event, id, ref, event}, %{id: id, stream_ref: ref} = state) do
-    {:noreply, StreamHandler.process_event(event, state)}
+    # Activity ⇒ not silent ⇒ push the watchdog forward. This is what makes a
+    # long, actively-working turn safe from the 10-minute reboot.
+    {:noreply, StreamHandler.process_event(event, arm_stream_watchdog(state))}
   end
 
   # Stale stream event — ref doesn't match the current stream. The Task
@@ -1781,9 +1787,24 @@ defmodule Loopyard.ChatAgent do
       end
     end)
 
-    Process.send_after(self(), {:stream_timeout, agent_id, stream_ref}, 600_000)
     # Stash the exact prompt so a transient-failure retry re-issues it verbatim.
-    {:noreply, %{state | stream_ref: stream_ref, in_flight_partial: "", current_turn_prompt: prompt}}
+    state = %{state | stream_ref: stream_ref, in_flight_partial: "", current_turn_prompt: prompt}
+    # Arm the SILENCE watchdog — re-armed on every stream event below, so a long
+    # but actively-streaming turn never trips it; only true silence does.
+    {:noreply, arm_stream_watchdog(state)}
+  end
+
+  # The harness is silent for this long (no stream events at all) before we treat
+  # it as hung and reboot the CLI. It is a SILENCE timeout, not a turn cap: the
+  # clock resets on every event, so an agent can reason + run tools for hours as
+  # long as something is happening.
+  @stream_silence_ms 600_000
+
+  # Cancel any pending watchdog and arm a fresh one for the current stream.
+  defp arm_stream_watchdog(%{stream_timeout_timer: old, id: id, stream_ref: ref} = state) do
+    if is_reference(old), do: Process.cancel_timer(old)
+    timer = Process.send_after(self(), {:stream_timeout, id, ref}, @stream_silence_ms)
+    %{state | stream_timeout_timer: timer}
   end
 
   @max_messages 1000
