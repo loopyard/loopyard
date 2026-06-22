@@ -5,42 +5,51 @@ defmodule Loopyard.Tools.Workspace do
   Infrastructure (Dockerfile, docker-compose.yml) is written directly via
   loopyard-container tools (write_file, docker_compose). This module
   does NOT handle infrastructure — only metadata that persists in workspace.json.
-  """
-  use ClaudeCode.MCP.Server, name: "loopyard-workspace"
 
+  Built on our own `Loopyard.Tool` macro (NOT the claude_code SDK's tool DSL),
+  so it's insulated from SDK churn. `__tool_server__/0` lists the tool modules;
+  `ChatAgent.ToolConfig` serves them via the same path as the container tools.
+  """
   alias Loopyard.Workspace
 
-  # --- Tool definitions ---
+  defmodule SetWorkspaceName do
+    use Loopyard.Tool,
+      name: "set_workspace_name",
+      description:
+        "Set the project name. Pick something a human will recognize and that doesn't collide with other projects (a numeric suffix is appended on collision). This is what shows up in the project list.",
+      params: [
+        agent_id: {:string, required: true},
+        name: {:string, required: true}
+      ]
 
-  tool :set_workspace_name,
-       "Set the project name. Pick something a human will recognize and that doesn't collide with other projects (a numeric suffix is appended on collision). This is what shows up in the project list." do
-    field(:agent_id, :string, required: true)
-    field(:name, :string, required: true)
-
-    def execute(%{agent_id: agent_id, name: name} = params, assigns) do
-      with :ok <- Loopyard.Tool.authorize_agent(params, assigns) do
-        Loopyard.Tools.Workspace.do_set_project_name(agent_id, name)
-      end
+    def execute(%{agent_id: agent_id, name: name}, _assigns) do
+      Loopyard.Tools.Workspace.do_set_project_name(agent_id, name)
     end
   end
 
-  tool :set_system_prompt,
-       "Set a system prompt fragment that future agents will see when working on this project." do
-    field(:agent_id, :string, required: true)
-    field(:system_prompt, :string, required: true)
+  defmodule SetSystemPrompt do
+    use Loopyard.Tool,
+      name: "set_system_prompt",
+      description:
+        "Set a system prompt fragment that future agents will see when working on this project.",
+      params: [
+        agent_id: {:string, required: true},
+        system_prompt: {:string, required: true}
+      ]
 
-    def execute(%{agent_id: agent_id, system_prompt: prompt} = params, assigns) do
-      with :ok <- Loopyard.Tool.authorize_agent(params, assigns) do
-        Loopyard.Tools.Workspace.do_update_config(
-          agent_id,
-          fn ws ->
-            %{ws | system_prompt: prompt}
-          end,
-          "Wrote system prompt to workspace config. Future agents will see this."
-        )
-      end
+    def execute(%{agent_id: agent_id, system_prompt: prompt}, _assigns) do
+      Loopyard.Tools.Workspace.do_update_config(
+        agent_id,
+        fn ws -> %{ws | system_prompt: prompt} end,
+        "Wrote system prompt to workspace config. Future agents will see this."
+      )
     end
   end
+
+  @tools [SetWorkspaceName, SetSystemPrompt]
+
+  @doc "MCP server descriptor — name + the list of tool modules."
+  def __tool_server__, do: %{name: "loopyard-workspace", tools: @tools}
 
   # --- Public helpers ---
 

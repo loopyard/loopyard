@@ -31,7 +31,8 @@ defmodule Loopyard.Tools.ContainerTest do
       expected =
         ~w(exec logs inspect_env ports service_containers write_file read_file
            edit multi_edit grep glob probe_http tree inspect_service read_files
-           docker_compose workspace_info volumes file_url app_url git file_info)
+           docker_compose workspace_info volumes file_url app_url git file_info
+           ask_user propose_fork propose_integrate propose_delete_workspace)
 
       assert MapSet.size(tool_names) == length(expected)
 

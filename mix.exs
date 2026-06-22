@@ -33,7 +33,7 @@ defmodule Loopyard.MixProject do
 
   defp deps do
     [
-      {:phoenix, "~> 1.7.20"},
+      {:phoenix, "~> 1.8"},
       {:phoenix_html, "~> 4.2"},
       {:phoenix_live_reload, "~> 1.5", only: :dev},
       {:phoenix_live_view, "~> 1.0"},
@@ -45,9 +45,9 @@ defmodule Loopyard.MixProject do
       {:jason, "~> 1.2"},
       {:bandit, "~> 1.6"},
       {:claude_code, "~> 0.34"},
-      {:dotenvy, "~> 0.9"},
+      {:dotenvy, "~> 1.1"},
       {:lazy_html, ">= 0.1.0", only: :test},
-      {:eqrcode, "~> 0.1.10"},
+      {:eqrcode, "~> 0.2"},
       {:yaml_elixir, "~> 2.9"},
       {:makeup, "~> 1.2"},
       {:makeup_syntect, "~> 0.1"},
