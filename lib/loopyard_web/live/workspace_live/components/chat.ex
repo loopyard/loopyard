@@ -50,6 +50,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     #   - viewing the sidebar/new screen -> navigate up to the project page
     {back_kind, back_target, back_label} =
       cond do
+        # Info (context panel) is a drill-IN from the agent — back returns to the
+        # agent's chat, not all the way out to the project.
+        assigns.live_action == :context_panel && assigns[:agent] ->
+          {:patch, "#{assigns.base_path}/agents/#{assigns.agent.id}", assigns.agent.name}
+
         assigns.live_action in [:chat, :container, :service, :console, :services] ->
           {:patch, assigns.base_path, "Menu"}
 
