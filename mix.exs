@@ -8,6 +8,9 @@ defmodule Loopyard.MixProject do
       elixir: "~> 1.17",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
+      # Phoenix 1.8 drives dev code reloading through a Mix listener; without
+      # this every reload-triggering request crashes CodeReloader.Server.
+      listeners: [Phoenix.CodeReloader],
       aliases: aliases(),
       deps: deps(),
       description:
