@@ -342,7 +342,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
         <%!-- flex-col-reverse: browser anchors scroll to the bottom naturally.
              scrollTop=0 IS the bottom. No JS timing hacks needed.
              Content is rendered inside a nested div in normal order. --%>
-        <div class="space-y-1">
+        <div class="space-y-2">
           <p
             :if={assigns[:has_more_messages]}
             class="text-center py-2 text-xs text-zinc-400 dark:text-zinc-500"

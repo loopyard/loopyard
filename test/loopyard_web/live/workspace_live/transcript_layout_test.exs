@@ -72,7 +72,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.TranscriptLayoutTest do
   test "the human prompt is a full-width sticky purple band, not a bubble" do
     html = render([user("make it pop")], 0)
     assert html =~ "sticky"
-    assert html =~ "bg-violet-100"
+    assert html =~ "bg-violet-50"
     # No backdrop-blur on the sticky band: blur on a sticky element inside the
     # flex-col-reverse scroll container is a browser compositing bug that made
     # the prompt vanish. Solid fill instead.
