@@ -338,10 +338,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
 
     ~H"""
     <div class="flex-1 flex flex-col min-h-0">
-      <div id="messages" class="flex-1 overflow-y-auto flex flex-col-reverse px-4 md:px-6 pt-1 pb-4">
-        <%!-- flex-col-reverse: browser anchors scroll to the bottom naturally.
-             scrollTop=0 IS the bottom. No JS timing hacks needed.
-             Content is rendered inside a nested div in normal order. --%>
+      <div id="messages" class="flex-1 overflow-y-auto flex flex-col px-4 md:px-6 pb-4">
+        <%!-- Normal flow (NOT flex-col-reverse). The ScrollBottom hook keeps you
+             pinned to the bottom on new messages and anchors on load-more; this
+             is what lets `position: sticky` on the prompt band work flush on
+             mobile (col-reverse broke sticky). --%>
         <div class="space-y-2">
           <p
             :if={assigns[:has_more_messages]}

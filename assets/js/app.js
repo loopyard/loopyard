@@ -13,25 +13,42 @@ Hooks.Aural = createAuralHook()
 // components with phx-id) don't mount in LiveView — so the hook
 // must live on the root-level element.
 //
-// Scrolls on every `updated()` callback and on mount. Pauses when
-// user scrolls up; resumes when they scroll back to the bottom.
-// #messages uses flex-direction: column-reverse — the browser anchors
-// scroll to the bottom automatically. scrollTop=0 IS the bottom.
-// No JS needed for initial scroll or new message scroll.
-//
-// This hook only handles:
-// 1. Load-more: detect when user scrolls to the top (high scrollTop
-//    in column-reverse) and fetch older messages
-// 2. Scroll-to-bottom: when server pushes scroll_bottom event, reset
-//    scrollTop to 0 (which is the bottom in column-reverse)
+// #messages is NORMAL flow (flex-col), so position:sticky on the prompt
+// band works flush (column-reverse broke it). That means the hook now owns
+// scroll behavior:
+//  - Tail mode: snap to bottom on mount and on every update IF the user was
+//    already at the bottom (so streaming/new messages follow). If they
+//    scrolled up to read, leave them be.
+//  - Load-more: when they scroll near the TOP, fetch older messages. Older
+//    messages prepend above the viewport; browser overflow-anchor (default)
+//    keeps the visible content from jumping, and we also pin scrollTop by the
+//    height delta as a belt-and-suspenders.
 Hooks.ScrollBottom = {
   mounted() {
     this._loading = false
+    this._atBottom = true
+    this._prevHeight = 0
     this._bind()
+    this._toBottom()
   },
 
   updated() {
     this._bind()
+    const el = this._el
+    if (!el) return
+    if (this._loading && this._prevHeight) {
+      // Older messages just prepended at the top — keep the reading position
+      // fixed by the amount the content grew.
+      el.scrollTop += el.scrollHeight - this._prevHeight
+      this._prevHeight = 0
+    } else if (this._atBottom) {
+      this._toBottom()
+    }
+  },
+
+  _toBottom() {
+    const el = this._el
+    if (el) el.scrollTop = el.scrollHeight
   },
 
   _bind() {
@@ -40,29 +57,21 @@ Hooks.ScrollBottom = {
     this._el = el
 
     el.addEventListener("scroll", () => {
-      // In column-reverse, scrollTop=0 is bottom. Large scrollTop = near top.
-      // scrollTop is NEGATIVE in column-reverse in some browsers, positive in others.
-      // The "top" (oldest messages) is at max scroll distance from 0.
-      const maxScroll = el.scrollHeight - el.clientHeight
-      const distFromTop = maxScroll - Math.abs(el.scrollTop)
+      const distFromBottom = el.scrollHeight - el.clientHeight - el.scrollTop
+      this._atBottom = distFromBottom < 120
 
-      if (distFromTop < 300 && maxScroll > 300 && !this._loading) {
+      if (el.scrollTop < 300 && (el.scrollHeight - el.clientHeight) > 300 && !this._loading) {
         this._loading = true
+        this._prevHeight = el.scrollHeight
         this.pushEvent("load_more", {})
-        setTimeout(() => { this._loading = false }, 5000)
+        setTimeout(() => { this._loading = false; this._prevHeight = 0 }, 5000)
       }
     }, { passive: true })
 
     this.handleEvent("scroll_bottom", () => {
-      // Only auto-scroll if you're already AT/near the bottom. In
-      // column-reverse, bottom is scrollTop ~ 0; a large |scrollTop|
-      // means you scrolled up to read — don't yank you back down while
-      // messages stream in. Auto-scroll resumes once you return to the
-      // bottom. ~120px of slack so a tiny manual nudge still counts as
-      // "at the bottom".
-      if (Math.abs(el.scrollTop) < 120) {
-        el.scrollTop = 0
-      }
+      // Only follow if you're already near the bottom — don't yank you down
+      // while you're scrolled up reading. ~120px slack.
+      if (this._atBottom) this._toBottom()
     })
   }
 }

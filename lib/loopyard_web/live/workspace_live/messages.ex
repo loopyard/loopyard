@@ -72,7 +72,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     ~H"""
     <div
       class={[
-        "md:sticky md:top-0 z-20 -mx-4 md:-mx-6 px-4 md:px-6 py-4 bg-violet-100 dark:bg-[#2b2348] group/msg",
+        "sticky top-0 z-20 -mx-4 md:-mx-6 px-4 md:px-6 py-4 bg-violet-100 dark:bg-[#2b2348] group/msg",
         @band_top,
         @band_bottom
       ]}
