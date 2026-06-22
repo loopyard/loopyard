@@ -61,12 +61,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     # response scrolls underneath.
     ~H"""
     <div
-      class="sticky top-0 z-20 -mx-4 md:-mx-6 px-4 md:px-6 py-4 md:py-5 mt-20 md:mt-36 mb-12 md:mb-20 bg-violet-50 dark:bg-[#1d1830] group/msg"
+      class="sticky top-0 z-20 -mx-4 md:-mx-6 px-4 md:px-6 py-4 mt-16 md:mt-24 mb-10 md:mb-14 bg-violet-100 dark:bg-[#2b2348] group/msg"
       id={"msg-user-#{@msg[:id] || hash_content(@msg.content)}"}
     >
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0">
-          <div class="text-[11px] font-semibold uppercase tracking-wide text-violet-500 dark:text-violet-300/80 mb-1">
+          <div class="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300 mb-1.5">
+            <svg viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5 flex-none" aria-hidden="true">
+              <path d="M10 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM3.465 14.493a1.23 1.23 0 0 0 .41 1.412A9.957 9.957 0 0 0 10 18c2.31 0 4.438-.784 6.131-2.1.43-.333.604-.903.408-1.41a7.002 7.002 0 0 0-13.074.003Z" />
+            </svg>
             You
           </div>
           <%!-- Clamp to a few lines: the prompt is a sticky HEADER, so a long
@@ -150,7 +153,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     ~H"""
     <div class="flex items-center gap-2 mt-3 mb-1.5">
       <span class="flex-none w-5 h-5 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center">
-        <span class="w-1.5 h-1.5 rounded-full bg-violet-500 dark:bg-violet-400"></span>
+        <svg
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          class="w-3 h-3 text-violet-600 dark:text-violet-400"
+          aria-hidden="true"
+        >
+          <path
+            fill-rule="evenodd"
+            d="M9 4.5a.75.75 0 0 1 .721.544l.813 2.846a3.75 3.75 0 0 0 2.576 2.576l2.846.813a.75.75 0 0 1 0 1.442l-2.846.813a3.75 3.75 0 0 0-2.576 2.576l-.813 2.846a.75.75 0 0 1-1.442 0l-.813-2.846a3.75 3.75 0 0 0-2.576-2.576l-2.846-.813a.75.75 0 0 1 0-1.442l2.846-.813A3.75 3.75 0 0 0 7.466 7.89l.813-2.846A.75.75 0 0 1 9 4.5Z"
+            clip-rule="evenodd"
+          />
+        </svg>
       </span>
       <span class="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Claude</span>
       <span :if={@timestamp} class="text-xs text-zinc-400 dark:text-zinc-500">
