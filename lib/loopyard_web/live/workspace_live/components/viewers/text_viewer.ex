@@ -16,13 +16,24 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.TextViewer do
 
   def text_viewer(assigns) do
     language = FileType.language(assigns.path)
-    lines = String.split(assigns.content, "\n")
+    raw_lines = String.split(assigns.content, "\n")
+
+    # Highlight the WHOLE file in ONE tokenize pass. The old code called
+    # Syntax.highlight/2 per line, so a 1000-line file fired ~1000 MakeupSyntect
+    # (Rust NIF) calls and took 10-18s synchronously in render — the page
+    # appeared to "not load". highlight_lines/2 returns a list aligned to
+    # String.split (nil → plain-text fallback).
+    lines =
+      case Syntax.highlight_lines(assigns.content, language) do
+        nil -> Enum.map(raw_lines, fn "" -> Phoenix.HTML.raw("&nbsp;"); l -> l end)
+        highlighted -> highlighted
+      end
 
     assigns =
       assigns
       |> assign(:language, language)
       |> assign(:lines, lines)
-      |> assign(:line_count, length(lines))
+      |> assign(:line_count, length(raw_lines))
 
     ~H"""
     <div class="flex flex-col overflow-hidden h-full">
@@ -49,7 +60,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.TextViewer do
               space (pushing code right) and blank lines (making every row tall). --%>
             <tr :for={{line, idx} <- Enum.with_index(@lines, 1)}>
               <td phx-no-format class="select-none text-right pr-4 pl-4 py-0 text-zinc-400 dark:text-zinc-600 align-top w-[1%] whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">{idx}</td>
-              <td phx-no-format class="pr-4 pl-4 py-0 whitespace-pre-wrap break-all">{Syntax.highlight(line, @language)}</td>
+              <td phx-no-format class="pr-4 pl-4 py-0 whitespace-pre-wrap break-all">{line}</td>
             </tr>
           </tbody>
         </table>
