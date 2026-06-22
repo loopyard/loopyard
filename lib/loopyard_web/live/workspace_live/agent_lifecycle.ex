@@ -72,6 +72,23 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
 
         {:noreply, socket}
 
+      # Incomplete record: the agent was restored from the log but its GenServer
+      # hasn't finished booting (the ETS row is still the minimal {id, messages}
+      # stub — common under load). It has no :status yet, so rendering it as a
+      # full agent would KeyError. Show the booting state and let the agent
+      # PubSub wake it; selecting again once it's up lands on the real agent.
+      summary when not is_map_key(summary, :status) ->
+        socket =
+          socket
+          |> assign(:agents, list_workspace_agents(socket.assigns.workspace.path))
+          |> assign(:selected_id, id)
+          |> assign(:selected_agent, nil)
+          |> assign(:booting_agent_id, id)
+          |> assign(:boot_status, "Restoring…")
+          |> assign(:boot_log, [])
+
+        {:noreply, socket}
+
       agent ->
         ChatAgent.subscribe(id)
         agents = list_workspace_agents(socket.assigns.workspace.path)
