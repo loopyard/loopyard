@@ -50,7 +50,29 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   def chat_msg(%{msg: %{role: :question}} = assigns), do: Cards.question_card(assigns)
   def chat_msg(%{msg: %{role: :approval}} = assigns), do: Cards.approval_card(assigns)
 
-  def chat_msg(%{msg: %{role: :user}} = assigns) do
+  # Crash-recovery summaries used to be recorded as :user messages, so old logs
+  # still carry a "Your session crashed…" turn wearing a "You" band. It was never
+  # the human's input — render any such message (old or new) as a muted system
+  # note instead. New recoveries are already tagged :system upstream.
+  def chat_msg(%{msg: %{role: :user, content: content}} = assigns)
+      when is_binary(content) do
+    if String.starts_with?(content, "Your session crashed and was restarted") do
+      ~H"""
+      <div class={[gutter(), "py-1 pl-7"]}>
+        <div class="flex items-center gap-1.5 text-xs text-zinc-400 dark:text-zinc-500 italic">
+          <.icon name={:sparkle} class="w-3 h-3 flex-none" />
+          Session restarted — resumed where it left off.
+        </div>
+      </div>
+      """
+    else
+      user_band(assigns)
+    end
+  end
+
+  def chat_msg(%{msg: %{role: :user}} = assigns), do: user_band(assigns)
+
+  defp user_band(assigns) do
     assigns = assign(assigns, :url, msg_url(assigns))
     assigns = assign(assigns, :raw, raw_url(assigns))
 
@@ -187,15 +209,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       toolsearch?(tool) ->
         ~H"<div></div>"
 
-      # The todo/plan tracker (TaskCreate/TaskUpdate) folds into ONE live
-      # checklist anchored at the first task call. Later task calls just mutate
-      # that list's state, so they render nothing of their own.
+      # The todo/plan tracker (TaskCreate/TaskUpdate) folds into the docked plan
+      # checklist above the composer (always visible, full history) — so the raw
+      # task calls render nothing inline.
       task_tool?(tool) ->
-        if first_task_msg?(assigns) do
-          plan_card(assign(assigns, :tasks, plan_tasks(assigns.messages)))
-        else
-          ~H"<div></div>"
-        end
+        ~H"<div></div>"
 
       # Mini-app tools own their own card — don't also echo the raw tool call.
       miniapp_tool?(tool) ->
@@ -410,93 +428,85 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     """
   end
 
-  # --- Plan checklist (folds the harness's Task* tracker) ---
-
-  @doc """
-  Fold the harness's TaskCreate/TaskUpdate calls into the current todo list.
-
-  Pure over the message list, so the checklist re-derives from scratch on every
-  render — which is exactly what makes it stream: each new task call that lands
-  produces a fresh, updated list. Tasks are numbered in creation order (the
-  harness assigns "Task #1", "#2", …); TaskUpdate references that number via
-  `taskId`. Returns `[%{n, subject, active_form, status}]`.
-  """
-  def plan_tasks(messages) when is_list(messages) do
-    {tasks, _n} =
-      Enum.reduce(messages, {[], 0}, fn m, {tasks, n} ->
-        cond do
-          task_create?(m) ->
-            input = m[:input] || %{}
-            n2 = n + 1
-
-            task = %{
-              n: n2,
-              subject: input["subject"] || input["activeForm"] || "Task #{n2}",
-              active_form: input["activeForm"],
-              status: "pending"
-            }
-
-            {tasks ++ [task], n2}
-
-          task_update?(m) ->
-            input = m[:input] || %{}
-            tid = to_string(input["taskId"] || input["task_id"] || "")
-            status = input["status"] || "pending"
-
-            updated =
-              Enum.map(tasks, fn t ->
-                if to_string(t.n) == tid, do: %{t | status: status}, else: t
-              end)
-
-            {updated, n}
-
-          true ->
-            {tasks, n}
-        end
-      end)
-
-    tasks
-  end
-
-  def plan_tasks(_), do: []
+  # --- Plan checklist (renders the Loopyard-owned plan) ---
 
   attr :tasks, :list, required: true
+  attr :agent_id, :string, default: nil
 
-  @doc "The agent's plan rendered as one live checklist (folds all Task* calls)."
+  @doc """
+  The agent's plan as one docked, collapsible checklist.
+
+  Renders a `Loopyard.Plan` — the harness-agnostic primitive the ChatAgent OWNS
+  (not folded from messages here). Lives above the composer so it stays visible
+  no matter how far the transcript has paged. Auto-open while work remains,
+  collapsed once everything's done. The Clear button dismisses it through
+  Loopyard with no model round-trip — for when the harness leaves a stale or
+  half-finished checklist.
+  """
   def plan_card(assigns) do
     tasks = assigns.tasks
-    done = Enum.count(tasks, &(&1.status == "completed"))
-    assigns = assign(assigns, done: done, total: length(tasks))
+    %{done: done, total: total} = Loopyard.Plan.counts(tasks)
+
+    assigns =
+      assign(assigns,
+        done: done,
+        total: total,
+        active: Loopyard.Plan.active(tasks),
+        all_done: Loopyard.Plan.all_done?(tasks)
+      )
 
     ~H"""
-    <div :if={@total > 0} class="pl-5 my-2">
-      <div class="max-w-2xl rounded-lg border border-zinc-200 dark:border-zinc-700/80 overflow-hidden">
-        <div class="flex items-center gap-2 px-3 py-1.5 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
-          <.icon name={:list} class="w-3.5 h-3.5 text-violet-500 dark:text-violet-400 flex-none" />
-          <span class="text-[11px] font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300">
-            Plan
-          </span>
-          <span class="text-[11px] text-zinc-400 dark:text-zinc-500 tabular-nums">
-            {@done}/{@total}
-          </span>
+    <details
+      :if={@total > 0}
+      class="group/plan rounded-lg border border-zinc-200 dark:border-zinc-700/80 bg-white dark:bg-zinc-800/40 overflow-hidden"
+      open={!@all_done}
+    >
+      <summary class="flex items-center gap-2 px-3 py-2 cursor-pointer select-none list-none">
+        <.icon name={:list} class="w-3.5 h-3.5 text-violet-500 dark:text-violet-400 flex-none" />
+        <span class="text-[11px] font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300 flex-none">
+          Plan
+        </span>
+        <span class="text-[11px] text-zinc-400 dark:text-zinc-500 tabular-nums flex-none">
+          {@done}/{@total}
+        </span>
+        <span
+          :if={@active}
+          class="text-xs text-zinc-500 dark:text-zinc-400 truncate min-w-0 group-open/plan:hidden"
+        >
+          · {@active.subject}
+        </span>
+        <div class="ml-auto flex items-center gap-2 flex-none">
+          <button
+            :if={@agent_id}
+            type="button"
+            phx-click="clear_plan"
+            phx-value-id={@agent_id}
+            class="focus-ring text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 opacity-0 group-hover/plan:opacity-100 transition-opacity"
+            title="Dismiss this checklist"
+          >
+            Clear
+          </button>
+          <.icon
+            name={:chevron_down}
+            class="w-4 h-4 text-zinc-400 transition-transform group-open/plan:rotate-180"
+          />
         </div>
-        <ul class="divide-y divide-zinc-100 dark:divide-zinc-800/80">
-          <li :for={t <- @tasks} class="flex items-start gap-2.5 px-3 py-1.5">
-            <.plan_check status={t.status} />
-            <span class={[
-              "text-sm leading-snug min-w-0",
-              plan_text_class(t.status)
-            ]}>{plan_label(t)}</span>
-          </li>
-        </ul>
-      </div>
-    </div>
+      </summary>
+      <ul class="border-t border-zinc-200 dark:border-zinc-700/80 divide-y divide-zinc-100 dark:divide-zinc-800/80 max-h-56 overflow-y-auto">
+        <li :for={t <- @tasks} class="flex items-start gap-2.5 px-3 py-1.5">
+          <.plan_check status={t.status} />
+          <span class={["text-sm leading-snug min-w-0", plan_text_class(t.status)]}>
+            {plan_label(t)}
+          </span>
+        </li>
+      </ul>
+    </details>
     """
   end
 
-  attr :status, :string, required: true
+  attr :status, :atom, required: true
 
-  defp plan_check(%{status: "completed"} = assigns) do
+  defp plan_check(%{status: :completed} = assigns) do
     ~H"""
     <span class="mt-0.5 flex-none w-4 h-4 rounded-full bg-green-500 flex items-center justify-center">
       <.icon name={:check} class="w-2.5 h-2.5 text-white" />
@@ -504,7 +514,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     """
   end
 
-  defp plan_check(%{status: "in_progress"} = assigns) do
+  defp plan_check(%{status: :in_progress} = assigns) do
     ~H"""
     <span class="mt-0.5 flex-none w-4 h-4 rounded-full border-2 border-violet-500 flex items-center justify-center">
       <span class="w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse"></span>
@@ -518,11 +528,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     """
   end
 
-  defp plan_text_class("completed"), do: "text-zinc-400 dark:text-zinc-500 line-through"
-  defp plan_text_class("in_progress"), do: "text-zinc-800 dark:text-zinc-100 font-medium"
+  defp plan_text_class(:completed), do: "text-zinc-400 dark:text-zinc-500 line-through"
+  defp plan_text_class(:in_progress), do: "text-zinc-800 dark:text-zinc-100 font-medium"
   defp plan_text_class(_), do: "text-zinc-600 dark:text-zinc-300"
 
-  defp plan_label(%{status: "in_progress", active_form: a}) when is_binary(a) and a != "", do: a
+  defp plan_label(%{status: :in_progress, active_form: a}) when is_binary(a) and a != "", do: a
   defp plan_label(%{subject: s}) when is_binary(s) and s != "", do: s
   defp plan_label(%{active_form: a}) when is_binary(a) and a != "", do: a
   defp plan_label(_), do: "Task"
@@ -581,26 +591,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   defp task_tool?(t) when is_binary(t), do: t in @task_tools
   defp task_tool?(_), do: false
 
-  defp task_create?(%{role: :tool, tool: "TaskCreate"}), do: true
-  defp task_create?(_), do: false
-
-  defp task_update?(%{role: :tool, tool: "TaskUpdate"}), do: true
-  defp task_update?(_), do: false
-
   defp toolsearch?(t) when is_binary(t), do: t == "ToolSearch"
   defp toolsearch?(_), do: false
 
   defp exec_tool?(t) when is_binary(t), do: String.ends_with?(t, "__exec")
   defp exec_tool?(_), do: false
-
-  # True only for the FIRST task call in the conversation — the anchor where the
-  # single plan checklist renders. All later task calls suppress their own row.
-  defp first_task_msg?(%{idx: idx, messages: messages})
-       when is_integer(idx) and is_list(messages) do
-    not Enum.any?(Enum.slice(messages, 0, idx), &task_tool?(&1[:tool]))
-  end
-
-  defp first_task_msg?(_), do: false
 
   # True when the very next message is a streamed build card — meaning this tool
   # call's command + output + status already lives in that card below it.

@@ -83,6 +83,13 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     # turn is almost always the agent flailing. Warn once.
     state = maybe_detect_tool_runaway(state, id)
 
+    # A task tool just changed the owned plan (append_message folded it in) —
+    # refresh the ETS summary so the docked checklist updates LIVE; the LiveView
+    # reads the plan from the summary on each broadcast message.
+    if Loopyard.Harness.Claude.Plan.event(tool_msg) != :ignore do
+      :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
+    end
+
     Persistence.persist_message(state, tool_msg)
     Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: tool_msg})
     state
@@ -349,6 +356,10 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     }
 
     state = Map.put(state, :consecutive_crashes, 0)
+
+    # Between-turn derivation: re-derive the owned checklist from the durable
+    # message log so harness drift (forgotten check-offs) can't accumulate.
+    state = Loopyard.ChatAgent.reconcile_plan(state)
 
     cond do
       # Proactive compaction: turn finished but we're deep into the window. Compact

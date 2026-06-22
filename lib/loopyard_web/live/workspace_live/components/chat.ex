@@ -6,7 +6,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   import LoopyardWeb.Components.Sidebar, only: [status_dot: 1, agent_display_status: 1]
 
   import LoopyardWeb.Live.WorkspaceLive.Messages,
-    only: [chat_msg: 1, streaming_bubble: 1, streaming_thinking: 1, run_header: 1]
+    only: [chat_msg: 1, streaming_bubble: 1, streaming_thinking: 1, run_header: 1, plan_card: 1]
 
   import LoopyardWeb.Components.Icon
 
@@ -450,6 +450,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             LiveView-updated, so you can keep queuing and watch progress while the
             agent works. --%>
       <div class="flex-none border-t border-zinc-200 dark:border-zinc-700/80 p-3 md:p-4 space-y-2">
+        <%!-- The agent's plan — the Loopyard-OWNED checklist (Loopyard.Plan),
+              read straight off the agent summary, so it's always visible and
+              survives transcript paging and restarts. Checks off live; collapses
+              to "Plan · 2/4" when done; Clear dismisses it without the model. --%>
+        <.plan_card :if={(@agent[:plan] || []) != []} tasks={@agent[:plan]} agent_id={@agent.id} />
         <%!-- Reasoning Bar ABOVE the queue: it's what's working now, and what
               picks up the next queued card. --%>
         <.reasoning_bar
@@ -791,15 +796,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   end
 
   defp in_live_feed?(nil, _msg, _idx), do: false
-
-  defp in_live_feed?(from, msg, idx) do
-    # Bookkeeping tools are NOT in the activity feed (current_turn_tools rejects
-    # them), so they must stay visible inline — otherwise the plan card, which
-    # anchors on a TaskCreate, would be suppressed during the very turn it's
-    # being built. Only real tool calls/results are the feed's to hide.
-    not harness_bookkeeping_tool?(msg[:tool]) and idx > from and
-      msg.role in [:tool, :tool_result]
-  end
+  defp in_live_feed?(from, msg, idx), do: idx > from and msg.role in [:tool, :tool_result]
 
   # The "Claude · HH:MM" header timestamp for a run = the first message in it.
   defp run_timestamp([{%{timestamp: ts}, _idx} | _]), do: ts

@@ -155,7 +155,16 @@ defmodule Loopyard.ChatAgent do
     # lose the partial response after a browser refresh. Transient;
     # NOT included in summary/1 — lives only in the live GenServer.
     # See plans/agent-sanity.md #3.
-    in_flight_partial: ""
+    in_flight_partial: "",
+    # The agent's task checklist — a Loopyard-owned `Loopyard.Plan`, NOT harness
+    # state. Harness adapters (e.g. Loopyard.Harness.Claude.Plan) fold their
+    # native todo signals into it via append_message; the UI and persistence read
+    # one neutral shape. Tasks keep their ids forever (alignment with the
+    # harness's numbering); `plan_cleared_through` is the high-water id the human
+    # "Clear"ed — tasks at or below it are hidden but retained, so a clear can't
+    # desync future task numbering. Both ride summary/1, so they survive restart.
+    plan: [],
+    plan_cleared_through: 0
   ]
 
   @ets_table :chat_agents
@@ -824,6 +833,41 @@ defmodule Loopyard.ChatAgent do
     end
   end
 
+  # Crash-recovery prompt. The verbose "Your session crashed…" summary is
+  # context for the MODEL, not something the human typed — so it must never
+  # render as a "You" bubble. We record a short, clearly-system note for the
+  # human and feed the full summary to the CLI as the turn's prompt WITHOUT
+  # recording it as a visible message. Used by the three restart-recovery paths.
+  @impl true
+  def handle_cast({:resume_prompt, text}, state) when is_binary(text) do
+    note = %{
+      role: :system,
+      content: "↻ Session restarted — resuming where it left off.",
+      timestamp: DateTime.utc_now()
+    }
+
+    {state, note} = append_message(state, note)
+    Persistence.persist_message(state, note)
+
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+      agent_id: state.id,
+      msg: note
+    })
+
+    state = SessionManager.ensure_alive(state)
+
+    if state.backend.session_alive?(state.session) do
+      start_turn(%{state | turn_retry_count: 0, failed_prompt: nil}, text)
+    else
+      # Session died before we could resume — restart; the next successful boot
+      # rebuilds a fresh resume summary from state.messages. Don't re-route the
+      # text through :send_message (that would record it as a "You" message).
+      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :idle})
+      GenServer.cast(self(), :restart_session)
+      {:noreply, state}
+    end
+  end
+
   @impl true
   def handle_cast(:stop, state) do
     # If the agent was mid-turn with streamed text accumulated but
@@ -922,7 +966,7 @@ defmodule Loopyard.ChatAgent do
           resume_msg = Loopyard.ChatAgent.ResumeMessage.build(state.messages)
 
           if resume_msg do
-            GenServer.cast(self(), {:send_message, resume_msg})
+            GenServer.cast(self(), {:resume_prompt, resume_msg})
           end
         end
 
@@ -1074,7 +1118,7 @@ defmodule Loopyard.ChatAgent do
 
         # Send the resume summary
         resume = Loopyard.ChatAgent.ResumeMessage.build(state.messages)
-        if resume, do: GenServer.cast(self(), {:send_message, resume})
+        if resume, do: GenServer.cast(self(), {:resume_prompt, resume})
 
         # Re-send the user's last message so the agent acts on it
         if last_user_text && last_user_text != "" do
@@ -1152,6 +1196,15 @@ defmodule Loopyard.ChatAgent do
 
   def handle_cast({:remove_pending, index}, state) do
     {:noreply, set_pending(state, List.delete_at(state.pending_sends, index))}
+  end
+
+  def handle_cast(:clear_plan, state) do
+    # Hide everything created so far; keep the tasks for id continuity.
+    hw = state.plan |> Enum.map(& &1.id) |> Enum.max(fn -> 0 end)
+    state = %{state | plan_cleared_through: hw}
+    :ets.insert(@ets_table, {state.id, summary(state)})
+    Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: state.status})
+    {:noreply, state}
   end
 
   # Catchall for unknown casts. Without this, any bogus cast would
@@ -1320,7 +1373,7 @@ defmodule Loopyard.ChatAgent do
         resume_msg = Loopyard.ChatAgent.ResumeMessage.build(state.messages)
 
         if resume_msg do
-          GenServer.cast(self(), {:send_message, resume_msg})
+          GenServer.cast(self(), {:resume_prompt, resume_msg})
         end
 
         {:noreply, state}
@@ -1817,8 +1870,37 @@ defmodule Loopyard.ChatAgent do
     reversed =
       if length(reversed) > @max_messages, do: Enum.take(reversed, @max_messages), else: reversed
 
-    {%{state | messages: reversed}, msg}
+    {%{state | messages: reversed, plan: maybe_update_plan(state.plan, msg)}, msg}
   end
+
+  # Fold a freshly-appended message into the owned plan via the harness's plan
+  # adapter. This is the per-harness seam: Claude's Task* tools map here today;
+  # a Codex/ACP adapter would dispatch off the agent's backend in the same spot.
+  # Non-task messages are a cheap no-op. The plan is RECONCILED authoritatively
+  # from history at each turn boundary (reconcile_plan/1), so this incremental
+  # path never has to be perfect.
+  defp maybe_update_plan(plan, %{role: :tool} = msg),
+    do: Loopyard.Harness.Claude.Plan.apply_message(plan, msg)
+
+  defp maybe_update_plan(plan, _msg), do: plan
+
+  @doc """
+  Re-derive the owned checklist from the durable message log. The harness can
+  drift the checklist (forget to mark a task done, abandon one); calling this at
+  each turn boundary keeps Loopyard's state matching ground truth regardless of
+  in-turn drift. The Clear watermark is untouched (it filters at read time).
+  """
+  def reconcile_plan(state) do
+    derived = Loopyard.Harness.Claude.Plan.from_messages([], Enum.reverse(state.messages))
+    %{state | plan: derived}
+  end
+
+  # Tasks at/below the human's "Clear" high-water mark are hidden but retained,
+  # so clearing can't desync the harness's task numbering for future tasks.
+  defp visible_plan(%{plan: plan, plan_cleared_through: hw}) when is_list(plan),
+    do: Enum.filter(plan, &(&1.id > hw))
+
+  defp visible_plan(_), do: []
 
   defp generate_msg_id do
     :crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false)
@@ -1868,9 +1950,23 @@ defmodule Loopyard.ChatAgent do
       prompt_hash: state.prompt_hash,
       context_utilization: state.context_utilization,
       pending_count: length(state.pending_sends),
-      pending_messages: state.pending_sends
+      pending_messages: state.pending_sends,
+      # The Loopyard-owned checklist (harness-agnostic). Visible = above the
+      # human's Clear watermark. `struct(saved)` would restore this on resume,
+      # but the Initializer re-derives the FULL plan from history instead (id
+      # continuity); the watermark below is what actually persists the clear.
+      plan: visible_plan(state),
+      plan_cleared_through: state.plan_cleared_through
     }
   end
+
+  @doc """
+  Dismiss the current task checklist. Loopyard owns the plan, so the human can
+  clear it without asking the model — fixing the "Claude left a half-finished
+  checklist" case. Retains the tasks (so harness numbering stays aligned) but
+  hides everything created so far behind the Clear watermark.
+  """
+  def clear_plan(id), do: GenServer.cast(via(id), :clear_plan)
 
   @doc "Drop all queued (pending) messages without stopping the current turn."
   def clear_pending(id), do: GenServer.cast(via(id), :clear_pending)

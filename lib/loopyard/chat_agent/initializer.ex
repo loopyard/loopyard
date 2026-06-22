@@ -217,6 +217,11 @@ defmodule Loopyard.ChatAgent.Initializer do
         stream_ref: nil,
         active_tool: nil,
         messages: internal_messages,
+        # Re-derive the FULL plan from history (keeps task ids continuous) rather
+        # than trust the filtered copy in the summary. The Clear watermark DOES
+        # restore from the summary, so a cleared checklist stays cleared.
+        plan: Loopyard.Harness.Claude.Plan.from_messages([], saved[:messages] || []),
+        plan_cleared_through: saved[:plan_cleared_through] || 0,
         tracked_cli_os_pid: nil,
         prompt_hash: new_prompt_hash,
         rate_limit_status: :ok,
