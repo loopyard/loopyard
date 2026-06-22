@@ -69,7 +69,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatActivityTest do
       ts = ~U[2026-06-18 10:00:00Z]
       msgs = [%{role: :user, content: "go", timestamp: ts}, tool("Bash", %{"command" => "ls"})]
 
-      html = render_component(&Chat.thinking_indicator/1, %{messages: msgs, word: "Working"})
+      # The elapsed timer now lives in the docked Reasoning Bar (above the input),
+      # not the transcript feed — so it never scrolls off on a long turn.
+      html =
+        render_component(&Chat.reasoning_bar/1, %{messages: msgs, word: "Working", agent_id: "a1"})
 
       assert html =~ ~s(phx-hook="Elapsed")
       assert html =~ ~s(data-since="#{DateTime.to_unix(ts, :millisecond)}")
