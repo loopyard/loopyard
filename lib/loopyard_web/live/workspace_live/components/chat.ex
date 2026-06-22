@@ -436,28 +436,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           </div>
         </div>
       </div>
-      <%!-- Prominent, obvious interrupt right where you're looking while the
-            agent works — the top-right "Stop" is cramped/ambiguous on mobile.
-            Warm-cancels the turn (keeps the session); type to redirect. --%>
-      <div
-        :if={agent_display_status(@agent) == :thinking}
-        class="flex-none flex justify-center pb-2"
-      >
-        <button
-          type="button"
-          phx-click="interrupt_agent"
-          phx-value-id={@agent.id}
-          class="focus-ring inline-flex items-center gap-1.5 rounded-full border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-200 shadow-sm hover:border-red-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+      <%!-- The composer: queue + Reasoning Bar + input, grouped as ONE unit. The
+            input lives in its own phx-update="ignore" wrapper (the ChatForm hook
+            owns flush/ack/mobile/Enter — do NOT move it inside something LV
+            patches). The queue and the always-visible Reasoning Bar sit above it,
+            LiveView-updated, so you can keep queuing and watch progress while the
+            agent works. --%>
+      <div class="flex-none border-t border-zinc-200 dark:border-zinc-700/80 p-3 md:p-4 space-y-2">
+        <div
+          :if={(@agent[:pending_count] || 0) > 0}
+          class="rounded-lg border border-violet-200 dark:border-violet-800/50 bg-violet-50/40 dark:bg-violet-900/10 px-3 py-2"
         >
-          <span class="w-2.5 h-2.5 rounded-[3px] bg-red-500"></span>
-          Stop
-        </button>
-      </div>
-      <div
-        :if={(@agent[:pending_count] || 0) > 0}
-        class="flex-none mx-4 mb-1 rounded-lg border border-violet-200 dark:border-violet-800/50 bg-violet-50/40 dark:bg-violet-900/10 px-3 py-2"
-      >
-        <div class="flex items-center justify-between mb-1.5">
+          <div class="flex items-center justify-between mb-1.5">
           <span class="text-[11px] font-medium uppercase tracking-wide text-violet-600 dark:text-violet-400">
             Queued — sends when the agent finishes
           </span>
@@ -505,7 +495,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
            tells you it's coming / happening instead of leaving you guessing. --%>
       <div
         :if={(@agent[:context_utilization] || 0.0) >= 0.85}
-        class="flex-none mx-4 mb-1 flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400"
+        class="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400"
       >
         <span class="flex-none">{if (@agent[:context_utilization] || 0.0) >= 0.92, do: "🗜", else: "⚠"}</span>
         <span class="min-w-0">
@@ -514,11 +504,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             else: "Context #{round((@agent[:context_utilization] || 0.0) * 100)}% full — I'll auto-compact soon to keep going."}
         </span>
       </div>
-      <div
-        id="chat-form-wrapper"
-        phx-update="ignore"
-        class="flex-none border-t border-zinc-200 dark:border-zinc-700/80 p-3 md:p-4"
-      >
+      <.reasoning_bar
+        :if={agent_display_status(@agent) == :thinking}
+        messages={@messages}
+        word={@thinking_word}
+        agent_id={@agent.id}
+      />
+      <div id="chat-form-wrapper" phx-update="ignore">
         <form id="chat-form" phx-submit="send_message" phx-hook="ChatForm" class="flex gap-2">
           <textarea
             name="message"
@@ -540,6 +532,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
         <%!-- Why a send failed — the ChatForm hook fills + reveals this so a
               rejected send is never just a silent red flash. --%>
         <p id="send-status" class="hidden mt-1.5 text-xs text-red-500 dark:text-red-400"></p>
+        </div>
       </div>
     </div>
     """
@@ -600,36 +593,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     # everything else the agent does, just bigger: this IS "the computer
     # thinking", so give it room. The chat_panel wraps it in the run-spine.
     ~H"""
-    <div class="pl-7 py-1.5">
-      <div class="flex items-center gap-2.5">
-        <div class="flex gap-1 flex-none">
-          <div class="w-2 h-2 rounded-full bg-violet-400 animate-bounce" style="animation-delay: 0ms">
-          </div>
-          <div
-            class="w-2 h-2 rounded-full bg-violet-400 animate-bounce"
-            style="animation-delay: 150ms"
-          >
-          </div>
-          <div
-            class="w-2 h-2 rounded-full bg-violet-400 animate-bounce"
-            style="animation-delay: 300ms"
-          >
-          </div>
-        </div>
-        <span class="text-lg font-medium text-violet-500 dark:text-violet-400 flex-none">
-          {@word}...
-        </span>
-        <span
-          :if={@turn_since}
-          id="turn-elapsed"
-          phx-hook="Elapsed"
-          phx-update="ignore"
-          data-since={@turn_since}
-          class="text-sm text-zinc-400 dark:text-zinc-500 flex-none tabular-nums"
-        >
-        </span>
-      </div>
-      <ul :if={@activity != []} class="mt-3 space-y-1.5">
+    <%!-- Live tool feed only. The status header (word + elapsed + Stop) is
+         docked at the bottom in the Reasoning Bar so it never scrolls off the
+         top, no matter how long the work runs. --%>
+    <div :if={@activity != [] || @stall_hint} class="pl-7 py-1.5">
+      <ul :if={@activity != []} class="space-y-1.5">
         <li :for={a <- @activity} class="flex items-start gap-2 text-sm leading-relaxed">
           <span class={[
             "flex-none w-3.5 text-center mt-0.5",
@@ -654,6 +622,65 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
         <span class="flex-none">⚠</span>
         <span class="min-w-0">{@stall_hint}</span>
       </p>
+    </div>
+    """
+  end
+
+  @doc """
+  The Reasoning Bar — the live status, docked just above the input so it's ALWAYS
+  visible (the transcript feed scrolls off; this never does). Animated dots +
+  status word + elapsed + the current action + a compact Stop. Reasoning "comes
+  out of" the composer: it sits fused above the message box, and you can keep
+  queuing while it runs (the queue renders right above it).
+  """
+  attr :messages, :list, required: true
+  attr :word, :string, required: true
+  attr :agent_id, :string, required: true
+
+  def reasoning_bar(assigns) do
+    activity = current_turn_activity(assigns.messages)
+    current = Enum.find(activity, & &1.active) || List.last(activity)
+
+    assigns =
+      assigns
+      |> assign(:turn_since, turn_started_unix_ms(assigns.messages))
+      |> assign(:current_action, current && current.summary)
+
+    ~H"""
+    <div class="flex items-center gap-2.5 rounded-xl bg-violet-50 dark:bg-violet-500/10 border border-violet-200/70 dark:border-violet-500/20 px-3.5 py-2">
+      <div class="flex gap-1 flex-none" aria-hidden="true">
+        <div class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style="animation-delay: 0ms">
+        </div>
+        <div class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style="animation-delay: 150ms">
+        </div>
+        <div class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style="animation-delay: 300ms">
+        </div>
+      </div>
+      <span class="text-sm font-medium text-violet-600 dark:text-violet-300 flex-none">{@word}…</span>
+      <span
+        :if={@turn_since}
+        id="turn-elapsed"
+        phx-hook="Elapsed"
+        phx-update="ignore"
+        data-since={@turn_since}
+        class="text-xs text-zinc-400 dark:text-zinc-500 flex-none tabular-nums"
+      >
+      </span>
+      <span
+        :if={@current_action}
+        class="hidden sm:block text-xs text-zinc-500 dark:text-zinc-400 truncate min-w-0"
+      >
+        · {@current_action}
+      </span>
+      <div class="flex-1"></div>
+      <button
+        type="button"
+        phx-click="interrupt_agent"
+        phx-value-id={@agent_id}
+        class="focus-ring inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 transition-colors flex-none"
+      >
+        <span class="w-2 h-2 rounded-[2px] bg-red-500"></span> Stop
+      </button>
     </div>
     """
   end
