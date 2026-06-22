@@ -38,9 +38,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
   attr :editing_name, :boolean, default: false
 
   def context_sections(assigns) do
+    # No agent-name header here on purpose: the AGENTS nav list already names
+    # the agent (and owns rename via double-click → start_rename_sidebar).
+    # Repeating it here read as "two Claudes" on the combined mobile rail.
     ~H"""
-    <.agent_name agent={@agent} editing_name={@editing_name} />
-
     <.harness_status agent={@agent} />
 
     <.context_files agent={@agent} />
@@ -203,51 +204,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     }
   end
 
-  defp agent_name(assigns) do
-    ~H"""
-    <div class="px-3 pt-4 pb-1">
-      <form
-        :if={@editing_name}
-        phx-submit="rename_agent"
-        phx-click-away="cancel_rename"
-        class="flex items-center gap-2"
-      >
-        <input
-          type="text"
-          name="name"
-          value={@agent.name}
-          autofocus
-          phx-mounted={Phoenix.LiveView.JS.dispatch("focus")}
-          class="flex-1 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-1.5 text-sm
-                 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-violet-500/30"
-        />
-        <button
-          type="submit"
-          class="focus-ring text-xs font-medium text-violet-600 dark:text-violet-400 hover:underline flex-none"
-        >
-          Save
-        </button>
-      </form>
-      <div
-        :if={!@editing_name}
-        phx-click="start_rename"
-        class="cursor-pointer group flex items-center gap-2 px-2"
-      >
-        <span class="text-sm font-medium text-zinc-900 dark:text-zinc-100">{@agent.name}</span>
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 16 16"
-          fill="currentColor"
-          class="w-3 h-3 text-zinc-300 dark:text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity"
-          aria-hidden="true"
-        >
-          <path d="M13.488 2.513a1.75 1.75 0 0 0-2.475 0L6.75 6.774a2.75 2.75 0 0 0-.596.892l-.848 2.047a.75.75 0 0 0 .98.98l2.047-.848a2.75 2.75 0 0 0 .892-.596l4.261-4.262a1.75 1.75 0 0 0 0-2.474Z" />
-          <path d="M4.75 3.5c-.69 0-1.25.56-1.25 1.25v6.5c0 .69.56 1.25 1.25 1.25h6.5c.69 0 1.25-.56 1.25-1.25V9A.75.75 0 0 1 14 9v2.25A2.75 2.75 0 0 1 11.25 14h-6.5A2.75 2.75 0 0 1 2 11.25v-6.5A2.75 2.75 0 0 1 4.75 2H7a.75.75 0 0 1 0 1.5H4.75Z" />
-        </svg>
-      </div>
-    </div>
-    """
-  end
 
   defp docker_context(assigns) do
     ctx = docker_ctx(assigns.agent)
