@@ -61,7 +61,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     # response scrolls underneath.
     ~H"""
     <div
-      class="sticky top-0 z-20 -mx-4 md:-mx-6 px-4 md:px-6 py-3.5 bg-violet-50 dark:bg-[#1d1830] border-b border-violet-100 dark:border-violet-500/15 group/msg"
+      class="sticky top-0 z-20 -mx-4 md:-mx-6 px-4 md:px-6 py-3.5 mt-16 mb-10 bg-violet-50 dark:bg-[#1d1830] group/msg"
       id={"msg-user-#{@msg[:id] || hash_content(@msg.content)}"}
     >
       <div class="flex items-start justify-between gap-3">
