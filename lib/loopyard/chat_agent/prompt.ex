@@ -76,7 +76,7 @@ defmodule Loopyard.ChatAgent.Prompt do
   @doc false
   def base_prompt(agent_id, _bind_mount, workspace_id) do
     """
-    YOUR AGENT ID: #{agent_id} — pass agent_id to every tool call. Workspace: #{workspace_id}.
+    YOUR AGENT ID: #{agent_id} — pass `agent_id` to the loopyard-* MCP tools (the `mcp__loopyard-container__*` and `mcp__loopyard-secrets__*` tools). Do NOT pass `agent_id` to built-in tools (Read, Bash, TaskCreate/TaskUpdate, etc.) — they reject unknown parameters and the call will fail. Workspace: #{workspace_id}.
 
     You work in an always-on, lightweight container; the code is at /workspace (a Docker volume that persists across restarts). Use loopyard-container MCP tools for ALL work — `exec` for shell commands (output streams live; use timeout for long-running ones).
 
