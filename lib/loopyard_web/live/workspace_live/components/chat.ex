@@ -756,7 +756,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     |> Enum.take_while(&(&1.role != :user))
     |> Enum.reverse()
     |> Enum.filter(&(&1.role == :tool))
+    # Harness self-plumbing (deferred-tool loading, the todo tracker) isn't
+    # "work" — it's noise in the live activity feed. ToolSearch is dropped;
+    # the Task* tracker has its own plan card in the transcript.
+    |> Enum.reject(&harness_bookkeeping_tool?(&1[:tool]))
   end
+
+  @harness_bookkeeping_tools ~w(ToolSearch TaskCreate TaskUpdate TaskView TaskList)
+
+  defp harness_bookkeeping_tool?(tool) when is_binary(tool),
+    do: tool in @harness_bookkeeping_tools
+
+  defp harness_bookkeeping_tool?(_), do: false
 
   # Index of the last human message — tools after it belong to the active
   # turn and live in the feed. Returns nil (suppress nothing) unless the
@@ -780,7 +791,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   end
 
   defp in_live_feed?(nil, _msg, _idx), do: false
-  defp in_live_feed?(from, msg, idx), do: idx > from and msg.role in [:tool, :tool_result]
+
+  defp in_live_feed?(from, msg, idx) do
+    # Bookkeeping tools are NOT in the activity feed (current_turn_tools rejects
+    # them), so they must stay visible inline — otherwise the plan card, which
+    # anchors on a TaskCreate, would be suppressed during the very turn it's
+    # being built. Only real tool calls/results are the feed's to hide.
+    not harness_bookkeeping_tool?(msg[:tool]) and idx > from and
+      msg.role in [:tool, :tool_result]
+  end
 
   # The "Claude · HH:MM" header timestamp for a run = the first message in it.
   defp run_timestamp([{%{timestamp: ts}, _idx} | _]), do: ts

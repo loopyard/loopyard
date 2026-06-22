@@ -175,12 +175,40 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   end
 
   def chat_msg(%{msg: %{role: :tool}} = assigns) do
+    tool = assigns.msg[:tool] || ""
+
     cond do
       # :chat hides the agent's mechanics — switch up a level to see them again.
-      assigns.detail_level == :chat -> ~H"<div></div>"
+      assigns.detail_level == :chat ->
+        ~H"<div></div>"
+
+      # Harness self-plumbing: ToolSearch is the deferred-tool loader. It's
+      # context bookkeeping, never work on the project — hide it outright.
+      toolsearch?(tool) ->
+        ~H"<div></div>"
+
+      # The todo/plan tracker (TaskCreate/TaskUpdate) folds into ONE live
+      # checklist anchored at the first task call. Later task calls just mutate
+      # that list's state, so they render nothing of their own.
+      task_tool?(tool) ->
+        if first_task_msg?(assigns) do
+          plan_card(assign(assigns, :tasks, plan_tasks(assigns.messages)))
+        else
+          ~H"<div></div>"
+        end
+
       # Mini-app tools own their own card — don't also echo the raw tool call.
-      miniapp_tool?(assigns.msg[:tool] || "") -> ~H"<div></div>"
-      true -> render_tool_call(assigns)
+      miniapp_tool?(tool) ->
+        ~H"<div></div>"
+
+      # Streamed command: the build card right below is the single home for the
+      # command (its title), the live output, and the done/failed status. Don't
+      # ALSO print a plain `$ cmd` row above it — that's the command twice.
+      exec_tool?(tool) and followed_by_stream_card?(assigns) ->
+        ~H"<div></div>"
+
+      true ->
+        render_tool_call(assigns)
     end
   end
 
@@ -262,6 +290,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       # Mini-app tools (propose_fork, ask_user, …) show their outcome in their
       # own card — the tool-result echo below it is the "card thing" we don't want.
       miniapp_tool_result?(assigns) ->
+        ~H"<div></div>"
+
+      # Results of harness self-plumbing (ToolSearch, TaskCreate/TaskUpdate —
+      # including their `agent_id`-rejection retries) are internal: the plan
+      # card, or nothing, is the user-facing surface.
+      internal_tool_result?(assigns) ->
         ~H"<div></div>"
 
       # exec output is already shown in the streaming build message above —
@@ -376,6 +410,123 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     """
   end
 
+  # --- Plan checklist (folds the harness's Task* tracker) ---
+
+  @doc """
+  Fold the harness's TaskCreate/TaskUpdate calls into the current todo list.
+
+  Pure over the message list, so the checklist re-derives from scratch on every
+  render — which is exactly what makes it stream: each new task call that lands
+  produces a fresh, updated list. Tasks are numbered in creation order (the
+  harness assigns "Task #1", "#2", …); TaskUpdate references that number via
+  `taskId`. Returns `[%{n, subject, active_form, status}]`.
+  """
+  def plan_tasks(messages) when is_list(messages) do
+    {tasks, _n} =
+      Enum.reduce(messages, {[], 0}, fn m, {tasks, n} ->
+        cond do
+          task_create?(m) ->
+            input = m[:input] || %{}
+            n2 = n + 1
+
+            task = %{
+              n: n2,
+              subject: input["subject"] || input["activeForm"] || "Task #{n2}",
+              active_form: input["activeForm"],
+              status: "pending"
+            }
+
+            {tasks ++ [task], n2}
+
+          task_update?(m) ->
+            input = m[:input] || %{}
+            tid = to_string(input["taskId"] || input["task_id"] || "")
+            status = input["status"] || "pending"
+
+            updated =
+              Enum.map(tasks, fn t ->
+                if to_string(t.n) == tid, do: %{t | status: status}, else: t
+              end)
+
+            {updated, n}
+
+          true ->
+            {tasks, n}
+        end
+      end)
+
+    tasks
+  end
+
+  def plan_tasks(_), do: []
+
+  attr :tasks, :list, required: true
+
+  @doc "The agent's plan rendered as one live checklist (folds all Task* calls)."
+  def plan_card(assigns) do
+    tasks = assigns.tasks
+    done = Enum.count(tasks, &(&1.status == "completed"))
+    assigns = assign(assigns, done: done, total: length(tasks))
+
+    ~H"""
+    <div :if={@total > 0} class="pl-5 my-2">
+      <div class="max-w-2xl rounded-lg border border-zinc-200 dark:border-zinc-700/80 overflow-hidden">
+        <div class="flex items-center gap-2 px-3 py-1.5 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
+          <.icon name={:list} class="w-3.5 h-3.5 text-violet-500 dark:text-violet-400 flex-none" />
+          <span class="text-[11px] font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300">
+            Plan
+          </span>
+          <span class="text-[11px] text-zinc-400 dark:text-zinc-500 tabular-nums">
+            {@done}/{@total}
+          </span>
+        </div>
+        <ul class="divide-y divide-zinc-100 dark:divide-zinc-800/80">
+          <li :for={t <- @tasks} class="flex items-start gap-2.5 px-3 py-1.5">
+            <.plan_check status={t.status} />
+            <span class={[
+              "text-sm leading-snug min-w-0",
+              plan_text_class(t.status)
+            ]}>{plan_label(t)}</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+    """
+  end
+
+  attr :status, :string, required: true
+
+  defp plan_check(%{status: "completed"} = assigns) do
+    ~H"""
+    <span class="mt-0.5 flex-none w-4 h-4 rounded-full bg-green-500 flex items-center justify-center">
+      <.icon name={:check} class="w-2.5 h-2.5 text-white" />
+    </span>
+    """
+  end
+
+  defp plan_check(%{status: "in_progress"} = assigns) do
+    ~H"""
+    <span class="mt-0.5 flex-none w-4 h-4 rounded-full border-2 border-violet-500 flex items-center justify-center">
+      <span class="w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse"></span>
+    </span>
+    """
+  end
+
+  defp plan_check(assigns) do
+    ~H"""
+    <span class="mt-0.5 flex-none w-4 h-4 rounded-full border-2 border-zinc-300 dark:border-zinc-600"></span>
+    """
+  end
+
+  defp plan_text_class("completed"), do: "text-zinc-400 dark:text-zinc-500 line-through"
+  defp plan_text_class("in_progress"), do: "text-zinc-800 dark:text-zinc-100 font-medium"
+  defp plan_text_class(_), do: "text-zinc-600 dark:text-zinc-300"
+
+  defp plan_label(%{status: "in_progress", active_form: a}) when is_binary(a) and a != "", do: a
+  defp plan_label(%{subject: s}) when is_binary(s) and s != "", do: s
+  defp plan_label(%{active_form: a}) when is_binary(a) and a != "", do: a
+  defp plan_label(_), do: "Task"
+
   # --- Internal helpers ---
 
   # Left padding alignment for agent rows. The faint spine itself now lives on
@@ -419,6 +570,57 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   end
 
   defp tool_dot(_), do: "bg-zinc-300 dark:bg-zinc-600"
+
+  # --- Harness self-plumbing tool classification -------------------------------
+  # ToolSearch (deferred-tool loader) and the Task* todo tracker are the harness
+  # talking to ITSELF — not work on the project. They get special transcript
+  # treatment (hidden / folded into the plan card) instead of raw tool rows.
+
+  @task_tools ~w(TaskCreate TaskUpdate TaskView TaskList)
+
+  defp task_tool?(t) when is_binary(t), do: t in @task_tools
+  defp task_tool?(_), do: false
+
+  defp task_create?(%{role: :tool, tool: "TaskCreate"}), do: true
+  defp task_create?(_), do: false
+
+  defp task_update?(%{role: :tool, tool: "TaskUpdate"}), do: true
+  defp task_update?(_), do: false
+
+  defp toolsearch?(t) when is_binary(t), do: t == "ToolSearch"
+  defp toolsearch?(_), do: false
+
+  defp exec_tool?(t) when is_binary(t), do: String.ends_with?(t, "__exec")
+  defp exec_tool?(_), do: false
+
+  # True only for the FIRST task call in the conversation — the anchor where the
+  # single plan checklist renders. All later task calls suppress their own row.
+  defp first_task_msg?(%{idx: idx, messages: messages})
+       when is_integer(idx) and is_list(messages) do
+    not Enum.any?(Enum.slice(messages, 0, idx), &task_tool?(&1[:tool]))
+  end
+
+  defp first_task_msg?(_), do: false
+
+  # True when the very next message is a streamed build card — meaning this tool
+  # call's command + output + status already lives in that card below it.
+  defp followed_by_stream_card?(%{idx: idx, messages: messages})
+       when is_integer(idx) and is_list(messages) do
+    case Enum.at(messages, idx + 1) do
+      %{role: role} -> role in [:build, :build_done, :build_failed]
+      _ -> false
+    end
+  end
+
+  defp followed_by_stream_card?(_), do: false
+
+  # A tool_result belonging to a ToolSearch / Task* call — internal, suppress it.
+  defp internal_tool_result?(assigns) do
+    case matching_tool_call(assigns) do
+      %{tool: t} when is_binary(t) -> task_tool?(t) or toolsearch?(t)
+      _ -> false
+    end
+  end
 
   @doc """
   Group the message list into transcript segments for the run-spine layout.
