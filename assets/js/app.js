@@ -278,9 +278,11 @@ Hooks.ChatForm = {
       })
     }
 
-    // Enter sends, Shift+Enter for newline
+    // Enter inserts a newline; you submit with the Send button (or, for
+    // keyboard users, Cmd/Ctrl+Enter). Much friendlier on mobile — the return
+    // key composes text instead of firing off a half-written message.
     ta.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send() }
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send() }
     })
 
     // Auto-resize textarea + clear any stale "send failed" notice as you edit

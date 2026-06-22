@@ -54,6 +54,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     assigns = assign(assigns, :url, msg_url(assigns))
     assigns = assign(assigns, :raw, raw_url(assigns))
 
+    # The big "chapter-break" air belongs at human<->machine boundaries only.
+    # Back-to-back human messages (accidental keystrokes, rapid-fire follow-ups)
+    # stay tight — no cavernous gap between two of your own lines.
+    assigns =
+      assign(assigns,
+        band_top: if(prev_role(assigns) == :user, do: "mt-2", else: "mt-16 md:mt-24"),
+        band_bottom: if(next_role(assigns) == :user, do: "mb-2", else: "mb-10 md:mb-14")
+      )
+
     # The human prompt is a full-bleed purple band, not a bubble. It's `sticky`
     # to the top of its <section> (chat_panel wraps each prompt + its response in
     # one), so the prompt that owns the response you're reading stays pinned —
@@ -62,7 +71,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     # response scrolls underneath.
     ~H"""
     <div
-      class="sticky top-0 z-20 -mx-4 md:-mx-6 px-4 md:px-6 py-4 mt-16 md:mt-24 mb-10 md:mb-14 bg-violet-100 dark:bg-[#2b2348] group/msg"
+      class={[
+        "sticky top-0 z-20 -mx-4 md:-mx-6 px-4 md:px-6 py-4 bg-violet-100 dark:bg-[#2b2348] group/msg",
+        @band_top,
+        @band_bottom
+      ]}
       id={"msg-user-#{@msg[:id] || hash_content(@msg.content)}"}
     >
       <div class="flex items-start justify-between gap-3">
@@ -370,6 +383,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   # keep their content inset (action icons hang at `pl-5`, just left of the
   # `pl-7` prose). Kept as a seam in case rows ever need a shared base class.
   defp gutter, do: ""
+
+  # Role of the message immediately before/after this one — used to keep the big
+  # band air at human<->machine boundaries only (tight between consecutive humans).
+  defp prev_role(%{idx: idx, messages: messages}) when is_integer(idx) and idx > 0,
+    do: Enum.at(messages, idx - 1, %{})[:role]
+
+  defp prev_role(_), do: nil
+
+  defp next_role(%{idx: idx, messages: messages}) when is_integer(idx) and is_list(messages),
+    do: Enum.at(messages, idx + 1, %{})[:role]
+
+  defp next_role(_), do: nil
 
   # Category tint for a tool-call's gutter dot — a quiet scan aid: you read the
   # color column to see the SHAPE of what happened (writes vs runs vs reads)
