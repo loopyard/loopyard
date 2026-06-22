@@ -74,6 +74,10 @@ defmodule LoopyardWeb do
       # imported on demand by the LiveViews that use them.
       import LoopyardWeb.Components.Common
 
+      # The one icon renderer — <.icon name={:user} class="w-4 h-4" />.
+      # Always reach for this instead of pasting an inline <svg>.
+      import LoopyardWeb.Components.Icon
+
       alias Phoenix.LiveView.JS
 
       unquote(verified_routes())

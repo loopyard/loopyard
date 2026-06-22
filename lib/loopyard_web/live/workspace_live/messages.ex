@@ -20,6 +20,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
 
   import LoopyardWeb.Components.LogViewer, only: [log_inline: 1]
   import LoopyardWeb.Components.DiffView, only: [diff: 1]
+  import LoopyardWeb.Components.Icon
 
   alias LoopyardWeb.Components.Ansi
 
@@ -67,10 +68,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0">
           <div class="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300 mb-1.5">
-            <svg viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5 flex-none" aria-hidden="true">
-              <path d="M10 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM3.465 14.493a1.23 1.23 0 0 0 .41 1.412A9.957 9.957 0 0 0 10 18c2.31 0 4.438-.784 6.131-2.1.43-.333.604-.903.408-1.41a7.002 7.002 0 0 0-13.074.003Z" />
-            </svg>
-            You
+            <.icon name={:user} class="w-3.5 h-3.5 flex-none" /> You
           </div>
           <%!-- Clamp to a few lines: the prompt is a sticky HEADER, so a long
                paste must stay header-sized (full text via the ↗ link). --%>
@@ -153,18 +151,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     ~H"""
     <div class="flex items-center gap-2 mt-3 mb-1.5">
       <span class="flex-none w-5 h-5 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center">
-        <svg
-          viewBox="0 0 20 20"
-          fill="currentColor"
-          class="w-3 h-3 text-violet-600 dark:text-violet-400"
-          aria-hidden="true"
-        >
-          <path
-            fill-rule="evenodd"
-            d="M9 4.5a.75.75 0 0 1 .721.544l.813 2.846a3.75 3.75 0 0 0 2.576 2.576l2.846.813a.75.75 0 0 1 0 1.442l-2.846.813a3.75 3.75 0 0 0-2.576 2.576l-.813 2.846a.75.75 0 0 1-1.442 0l-.813-2.846a3.75 3.75 0 0 0-2.576-2.576l-2.846-.813a.75.75 0 0 1 0-1.442l2.846-.813A3.75 3.75 0 0 0 7.466 7.89l.813-2.846A.75.75 0 0 1 9 4.5Z"
-            clip-rule="evenodd"
-          />
-        </svg>
+        <.icon name={:sparkle} class="w-3 h-3 text-violet-600 dark:text-violet-400" />
       </span>
       <span class="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Claude</span>
       <span :if={@timestamp} class="text-xs text-zinc-400 dark:text-zinc-500">
@@ -647,27 +634,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       class={"p-1 rounded-md cursor-pointer text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 #{@extra_class}"}
       title="Copy"
     >
-      <svg
-        class="w-3.5 h-3.5 copy-icon"
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 16 16"
-        fill="currentColor"
-      >
-        <path d="M5.5 3.5A1.5 1.5 0 0 1 7 2h2.879a1.5 1.5 0 0 1 1.06.44l2.122 2.12a1.5 1.5 0 0 1 .439 1.061V9.5A1.5 1.5 0 0 1 12 11V8.621a3 3 0 0 0-.879-2.121L9 4.379A3 3 0 0 0 6.879 3.5H5.5Z" />
-        <path d="M4 5a1.5 1.5 0 0 0-1.5 1.5v6A1.5 1.5 0 0 0 4 14h5a1.5 1.5 0 0 0 1.5-1.5V8.621a1.5 1.5 0 0 0-.44-1.06L7.94 5.439A1.5 1.5 0 0 0 6.878 5H4Z" />
-      </svg>
-      <svg
-        class="w-3.5 h-3.5 check-icon hidden"
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 16 16"
-        fill="currentColor"
-      >
-        <path
-          fill-rule="evenodd"
-          d="M12.416 3.376a.75.75 0 0 1 .208 1.04l-5 7.5a.75.75 0 0 1-1.154.114l-3-3a.75.75 0 0 1 1.06-1.06l2.353 2.353 4.493-6.74a.75.75 0 0 1 1.04-.207Z"
-          clip-rule="evenodd"
-        />
-      </svg>
+      <.icon name={:copy} class="w-3.5 h-3.5 copy-icon" />
+      <.icon name={:check} class="w-3.5 h-3.5 check-icon hidden" />
     </button>
     """
   end
@@ -684,15 +652,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       class={"p-1 rounded-md text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 #{@extra_class}"}
       title="Open"
     >
-      <svg
-        class="w-3.5 h-3.5"
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 16 16"
-        fill="currentColor"
-      >
-        <path d="M6.22 8.72a.75.75 0 0 0 1.06 1.06l5.22-5.22v1.69a.75.75 0 0 0 1.5 0v-3.5a.75.75 0 0 0-.75-.75h-3.5a.75.75 0 0 0 0 1.5h1.69L6.22 8.72Z" />
-        <path d="M3.5 6.75c0-.69.56-1.25 1.25-1.25H7A.75.75 0 0 0 7 4H4.75A2.75 2.75 0 0 0 2 6.75v4.5A2.75 2.75 0 0 0 4.75 14h4.5A2.75 2.75 0 0 0 12 11.25V9a.75.75 0 0 0-1.5 0v2.25c0 .69-.56 1.25-1.25 1.25h-4.5c-.69 0-1.25-.56-1.25-1.25v-4.5Z" />
-      </svg>
+      <.icon name={:external} class="w-3.5 h-3.5" />
     </a>
     """
   end
