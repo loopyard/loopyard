@@ -8,6 +8,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   import LoopyardWeb.Live.WorkspaceLive.Messages,
     only: [chat_msg: 1, streaming_bubble: 1, streaming_thinking: 1, run_header: 1]
 
+  import LoopyardWeb.Components.Icon
+
   import LoopyardWeb.Live.WorkspaceLive.Components.Formatters, only: [time_ago: 1]
   import LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel,
     only: [context_panel: 1, context_sections: 1]
@@ -443,37 +445,41 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             LiveView-updated, so you can keep queuing and watch progress while the
             agent works. --%>
       <div class="flex-none border-t border-zinc-200 dark:border-zinc-700/80 p-3 md:p-4 space-y-2">
-        <div
-          :if={(@agent[:pending_count] || 0) > 0}
-          class="rounded-lg border border-violet-200 dark:border-violet-800/50 bg-violet-50/40 dark:bg-violet-900/10 px-3 py-2"
-        >
-          <div class="flex items-center justify-between mb-1.5">
-          <span class="text-[11px] font-medium uppercase tracking-wide text-violet-600 dark:text-violet-400">
-            Queued — sends when the agent finishes
-          </span>
-          <button
-            type="button"
-            phx-click="clear_pending"
-            phx-value-id={@agent.id}
-            class="focus-ring text-[11px] text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
-          >
-            Clear all
-          </button>
-        </div>
-        <ul class="space-y-0.5">
-          <li
+        <%!-- Reasoning Bar ABOVE the queue: it's what's working now, and what
+              picks up the next queued card. --%>
+        <.reasoning_bar
+          :if={agent_display_status(@agent) == :thinking}
+          messages={@messages}
+          word={@thinking_word}
+          agent_id={@agent.id}
+        />
+        <%!-- The queue is a small STACK OF CARDS waiting for the agent to pick up
+              next. Tap a card to pull it back into the box and edit it. --%>
+        <div :if={(@agent[:pending_count] || 0) > 0} class="space-y-1.5">
+          <div class="flex items-center justify-between px-0.5">
+            <span class="text-[11px] font-medium uppercase tracking-wide text-violet-500 dark:text-violet-400">
+              Queued · sends when the agent finishes
+            </span>
+            <button
+              type="button"
+              phx-click="clear_pending"
+              phx-value-id={@agent.id}
+              class="focus-ring text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+            >
+              Clear all
+            </button>
+          </div>
+          <div
             :for={{text, i} <- Enum.with_index(@agent[:pending_messages] || [])}
-            class="flex items-center gap-1 group/q"
+            class="group/q flex items-center gap-1.5 rounded-lg border border-zinc-200/80 dark:border-zinc-700 bg-white dark:bg-zinc-800/70 shadow-sm px-3 py-2"
           >
-            <%!-- Tap a queued message to pull it back into the box and edit it
-                 (removes it from the queue). You can always edit the queue. --%>
             <button
               type="button"
               phx-click="edit_pending"
               phx-value-id={@agent.id}
               phx-value-index={i}
               title="Edit — pull back into the message box"
-              class="focus-ring flex-1 min-w-0 text-left truncate text-sm text-zinc-700 dark:text-zinc-300 rounded px-1 py-0.5 hover:bg-violet-100/60 dark:hover:bg-violet-500/10"
+              class="focus-ring flex-1 min-w-0 text-left truncate text-sm text-zinc-700 dark:text-zinc-200"
             >
               {text}
             </button>
@@ -487,9 +493,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             >
               ✕
             </button>
-          </li>
-        </ul>
-      </div>
+          </div>
+        </div>
       <%!-- Context-window heads-up. A full window used to silently wedge the
            agent (it can't take the turn); now it auto-compacts at ~92%, and this
            tells you it's coming / happening instead of leaving you guessing. --%>
@@ -504,14 +509,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             else: "Context #{round((@agent[:context_utilization] || 0.0) * 100)}% full — I'll auto-compact soon to keep going."}
         </span>
       </div>
-      <.reasoning_bar
-        :if={agent_display_status(@agent) == :thinking}
-        messages={@messages}
-        word={@thinking_word}
-        agent_id={@agent.id}
-      />
       <div id="chat-form-wrapper" phx-update="ignore">
-        <form id="chat-form" phx-submit="send_message" phx-hook="ChatForm" class="flex gap-2">
+        <form id="chat-form" phx-submit="send_message" phx-hook="ChatForm" class="flex items-end gap-2">
           <textarea
             name="message"
             id="chat-input"
@@ -524,9 +523,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           ></textarea>
           <button
             type="submit"
-            class="rounded-xl bg-violet-600 hover:bg-violet-700 px-4 py-2.5 text-base font-medium text-white transition-colors flex-none"
+            aria-label="Send"
+            class="focus-ring flex-none flex items-center justify-center rounded-xl bg-violet-600 hover:bg-violet-700 w-11 h-11 text-white transition-colors"
           >
-            Send
+            <.icon name={:arrow_up} class="w-5 h-5" />
           </button>
         </form>
         <%!-- Why a send failed — the ChatForm hook fills + reveals this so a
