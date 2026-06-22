@@ -72,7 +72,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     ~H"""
     <div
       class={[
-        "sticky top-0 z-20 -mx-4 md:-mx-6 px-4 md:px-6 py-4 bg-violet-100 dark:bg-[#2b2348] group/msg",
+        "md:sticky md:top-0 z-20 -mx-4 md:-mx-6 px-4 md:px-6 py-4 bg-violet-100 dark:bg-[#2b2348] group/msg",
         @band_top,
         @band_bottom
       ]}
@@ -85,7 +85,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
           </div>
           <%!-- Clamp to a few lines: the prompt is a sticky HEADER, so a long
                paste must stay header-sized (full text via the ↗ link). --%>
-          <div class="markdown-body text-base leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-3xl line-clamp-3">{Loopyard.Markdown.to_html(@msg.content)}</div>
+          <div class="markdown-body text-sm md:text-base leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-3xl line-clamp-3">{Loopyard.Markdown.to_html(@msg.content)}</div>
         </div>
         <div class="flex items-center gap-1 flex-none opacity-0 group-hover/msg:opacity-100 transition-opacity">
           <.copy_btn :if={@raw} raw_url={@raw} />
