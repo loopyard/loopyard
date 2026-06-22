@@ -350,36 +350,30 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           >
             Loading older messages...
           </p>
-          <%!-- The transcript is split into SECTIONS: each human prompt + the
-               response it owns. The prompt is `sticky` within its <section>, so
-               it pins to the top while you scroll its (often long) response and
-               the next prompt's section takes over as you reach it. Inside a
-               section the agent's messages group into RUNS (one spine + one
-               "Claude" header each); a continuous document. --%>
-          <%!-- Flat, NOT per-section. Every human prompt shares ONE sticky
-               context, so as you scroll each prompt cleanly covers the previous
-               one at the top — no <section> boundary, so no sliver of the prior
-               turn peeking above the pinned band. Runs still group under one
-               spine + "Claude" header. --%>
-          <%= for group <- LoopyardWeb.Live.WorkspaceLive.Messages.transcript_groups(@messages) do %>
-            <%= case group do %>
-              <% {:break, {msg, idx}} -> %>
+          <%!-- Split into SECTIONS: each human prompt + the response it owns. The
+               prompt is `sticky top-0` WITHIN its <section>, so it pins while you
+               scroll its response and then RELEASES at the section boundary as the
+               next prompt's section takes over — prompts replace each other
+               instead of stacking. Pure CSS; the normal-flow scroll (not
+               col-reverse) is what makes the per-section sticky pin flush. --%>
+          <%= for section <- LoopyardWeb.Live.WorkspaceLive.Messages.transcript_sections(@messages) do %>
+            <section>
+              <%= if section.prompt do %>
+                <% {pmsg, pidx} = section.prompt %>
                 <.chat_msg
-                  :if={not in_live_feed?(@live_tool_from, msg, idx)}
-                  msg={msg}
-                  idx={idx}
+                  msg={pmsg}
+                  idx={pidx}
                   messages={@messages}
                   agent_id={@agent.id}
                   workspace_id={@workspace_id}
                   host={@host}
                   detail_level={@detail_level}
                 />
-              <% {:run, items} -> %>
-                <div class="mt-3">
-                  <.run_header timestamp={run_timestamp(items)} />
-                  <div class="border-l border-zinc-200/70 dark:border-zinc-800/80 ml-3">
+              <% end %>
+              <%= for group <- section.body do %>
+                <%= case group do %>
+                  <% {:break, {msg, idx}} -> %>
                     <.chat_msg
-                      :for={{msg, idx} <- items}
                       :if={not in_live_feed?(@live_tool_from, msg, idx)}
                       msg={msg}
                       idx={idx}
@@ -389,9 +383,26 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                       host={@host}
                       detail_level={@detail_level}
                     />
-                  </div>
-                </div>
-            <% end %>
+                  <% {:run, items} -> %>
+                    <div class="mt-3">
+                      <.run_header timestamp={run_timestamp(items)} />
+                      <div class="border-l border-zinc-200/70 dark:border-zinc-800/80 ml-3">
+                        <.chat_msg
+                          :for={{msg, idx} <- items}
+                          :if={not in_live_feed?(@live_tool_from, msg, idx)}
+                          msg={msg}
+                          idx={idx}
+                          messages={@messages}
+                          agent_id={@agent.id}
+                          workspace_id={@workspace_id}
+                          host={@host}
+                          detail_level={@detail_level}
+                        />
+                      </div>
+                    </div>
+                <% end %>
+              <% end %>
+            </section>
           <% end %>
           <%!-- Live tail: the agent's in-progress work continues the SAME spine —
                streamed reasoning, streamed text, and the activity feed all flow
