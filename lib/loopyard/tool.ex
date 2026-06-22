@@ -73,14 +73,54 @@ defmodule Loopyard.Tool do
     quote do
       defoverridable execute: 2
 
-      def execute(params, assigns) do
-        case Loopyard.Tool.authorize_agent(params, assigns) do
-          :ok -> super(params, assigns)
-          {:error, _} = err -> err
-        end
+      def execute(params, frame_or_assigns) do
+        {assigns, frame} = Loopyard.Tool.__unwrap_frame__(frame_or_assigns)
+
+        result =
+          case Loopyard.Tool.authorize_agent(params, assigns) do
+            :ok -> super(params, assigns)
+            {:error, _} = err -> err
+          end
+
+        Loopyard.Tool.__reply__(result, frame)
       end
     end
   end
+
+  # --- claude_code 0.36+ MCP contract adapter ------------------------------
+  #
+  # The SDK's Anubis backend now calls `execute(params, %Anubis.Server.Frame{})`
+  # and expects `{:reply, %Anubis.Server.Response{}, frame}` back. Our tools (and
+  # the direct-call tests) speak the simpler `{:ok, result}` / `{:error, msg}`.
+  # These two helpers bridge the contracts in ONE place: when a Frame is present
+  # (the SDK), translate to the Response shape; when it's a plain assigns map
+  # (tests / direct calls), pass the raw result straight through. This keeps the
+  # whole tool layer insulated from the SDK's MCP backend churn.
+
+  @doc false
+  def __unwrap_frame__(%Anubis.Server.Frame{assigns: assigns} = frame), do: {assigns, frame}
+  def __unwrap_frame__(assigns) when is_map(assigns), do: {assigns, nil}
+
+  @doc false
+  # No frame ⇒ direct/test call: keep the {:ok, ...}/{:error, ...} contract.
+  def __reply__(result, nil), do: result
+  # Frame present ⇒ SDK call: adapt to {:reply, %Response{}, frame}.
+  def __reply__({:ok, result}, frame), do: {:reply, __to_response__(result), frame}
+  def __reply__(:ok, frame), do: {:reply, __to_response__("ok"), frame}
+
+  def __reply__({:error, msg}, frame),
+    do: {:reply, Anubis.Server.Response.error(Anubis.Server.Response.tool(), __err_text__(msg)), frame}
+
+  def __reply__(other, frame), do: {:reply, __to_response__(other), frame}
+
+  defp __to_response__(text) when is_binary(text),
+    do: Anubis.Server.Response.text(Anubis.Server.Response.tool(), text)
+
+  defp __to_response__(data),
+    do: Anubis.Server.Response.json(Anubis.Server.Response.tool(), data)
+
+  defp __err_text__(msg) when is_binary(msg), do: msg
+  defp __err_text__(msg), do: inspect(msg)
 
   @doc """
   Authorize a tool call against the session-bound agent_id.
