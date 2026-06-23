@@ -688,7 +688,8 @@ defmodule LoopyardWeb.WorkspaceLive do
         ChatAgent.get_messages(
           socket.assigns.selected_id,
           limit: 50,
-          before_id: oldest && oldest[:id]
+          before_id: oldest && oldest[:id],
+          snap_to_prompt: true
         )
 
       if older != [] do
@@ -743,6 +744,23 @@ defmodule LoopyardWeb.WorkspaceLive do
 
       {:error, :not_found} ->
         {:noreply, put_flash(socket, :info, "That question was already answered.")}
+    end
+  end
+
+  @impl true
+  def handle_event("submit_secret", %{"request_id" => rid, "secret" => value}, socket) do
+    # The masked value goes straight to the on-disk store (scoped to this
+    # workspace) and the broker signals the blocked agent with only the KEY — the
+    # value is never assigned, broadcast, or returned here, so it stays out of the
+    # transcript. `value` is dropped immediately after this call.
+    ws_id = socket.assigns.workspace.id
+
+    case Loopyard.Harness.SecretRequests.submit(rid, value, ws_id, nil) do
+      {:ok, _key} ->
+        {:noreply, socket}
+
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :info, "That secret request is no longer waiting.")}
     end
   end
 

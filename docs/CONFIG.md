@@ -30,6 +30,7 @@ Read via `Application.get_env(:loopyard, key)`. Overridable at runtime in `confi
 | `:model_window_default` | `200_000` | Fallback window for a model not in `:model_windows`. Conservative on purpose. |
 | `Loopyard.PortRegistry, :port_range` | `4000..9999` | Host port range used by `PortRegistry.assign/3`. Exhaustion returns `{:error, :port_pool_exhausted}`. Keep it outside the ephemeral port range to avoid collisions with transient outbound connections. |
 | `LoopyardWeb.Endpoint, :http, :port` | `4000` | HTTP port. Env-overridable via `PORT` in `runtime.exs`. |
+| `:phoenix, :filter_parameters` | `["password", "secret"]` | Param keys redacted from request/event logs. `"secret"` covers the `request_secret` masked field so a submitted key never lands in the log. Setting this overrides Phoenix's `["password"]` default — keep both. |
 
 ### `:aural` (extracted Mix package — `packages/aural`)
 

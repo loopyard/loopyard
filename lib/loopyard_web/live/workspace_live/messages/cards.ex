@@ -88,6 +88,79 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
   end
 
   @doc """
+  The agent asked for a SECRET (api key / token) via `request_secret`. A masked
+  input card: the value goes straight to the on-disk secret store and NEVER into
+  the chat — every viewer sees the request and that it was submitted, never the
+  value. Submitting flips the card to "Submitted" for the whole room.
+  """
+  def secret_card(assigns) do
+    ~H"""
+    <div class="pl-10 py-2">
+      <div class="rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50/50 dark:bg-amber-900/10 p-4">
+        <div class="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 mb-2">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3.5 h-3.5">
+            <path
+              fill-rule="evenodd"
+              d="M8 1a3 3 0 0 0-3 3v2H4.5A1.5 1.5 0 0 0 3 7.5v5A1.5 1.5 0 0 0 4.5 14h7a1.5 1.5 0 0 0 1.5-1.5v-5A1.5 1.5 0 0 0 11.5 6H11V4a3 3 0 0 0-3-3Zm1.5 5V4a1.5 1.5 0 1 0-3 0v2h3Z"
+              clip-rule="evenodd"
+            />
+          </svg>
+          The agent needs a secret
+        </div>
+
+        <div class="text-[15px] font-medium leading-snug text-zinc-800 dark:text-zinc-200">
+          <span class="font-mono">{@msg.name}</span>
+        </div>
+        <div :if={@msg[:why] not in [nil, ""]} class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+          {@msg.why}
+        </div>
+
+        <%!-- The whole room sees this field, but only the submitter's browser sends
+             the value, and it goes straight to disk — never into the transcript. The
+             field is named "secret", which is in `filter_parameters` so it's redacted
+             from server logs too. --%>
+        <form
+          :if={@msg.status == :pending}
+          phx-submit="submit_secret"
+          autocomplete="off"
+          class="mt-3 flex items-center gap-2"
+        >
+          <input type="hidden" name="request_id" value={@msg.request_id} />
+          <input
+            type="password"
+            name="secret"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder={"Paste #{@msg.name}…"}
+            class="flex-1 min-w-0 rounded-lg border border-amber-300 dark:border-amber-700/60 bg-white dark:bg-zinc-900 px-3 py-2 text-sm font-mono text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+          />
+          <button
+            type="submit"
+            class="focus-ring flex-none rounded-lg bg-amber-600 hover:bg-amber-700 px-3.5 py-2 text-sm font-medium text-white transition-colors"
+          >
+            Submit
+          </button>
+        </form>
+
+        <div
+          :if={@msg.status == :submitted}
+          class="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400"
+        >
+          <span>✓</span>
+          {if @msg[:submitted_by] in [nil, ""],
+            do: "Submitted — stored securely, not shown in chat.",
+            else: "Submitted by #{@msg.submitted_by} — kept out of chat."}
+        </div>
+
+        <div :if={@msg.status == :timeout} class="mt-3 text-xs text-zinc-400 dark:text-zinc-500">
+          No secret submitted — the agent moved on.
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  @doc """
   The agent proposed a boundary-crossing action (fork / integrate /
   delete-workspace). An Approve/Deny card — the guardrail against an agent
   spawning or destroying workspaces unattended. Shows the resolved outcome

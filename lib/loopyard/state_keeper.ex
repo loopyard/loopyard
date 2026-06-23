@@ -42,6 +42,11 @@ defmodule Loopyard.StateKeeper do
     # (fork/integrate) awaiting a human approve/deny, keyed by approval_id. Same
     # blocking-waiter pattern as :harness_questions.
     {:harness_approvals, [:named_table, :public, :set, {:read_concurrency, true}]},
+    # Loopyard.Harness.SecretRequests — pending agent secret requests awaiting a
+    # human-submitted value, keyed by request_id. Same blocking-waiter pattern as
+    # :harness_questions; the secret VALUE is never stored here (it goes straight
+    # to the on-disk secret store from the LiveView).
+    {:secret_requests, [:named_table, :public, :set, {:read_concurrency, true}]},
     # Ring buffer for Loopyard.Events.Tap — every broadcast on every
     # known topic. ordered_set keyed by a monotonic counter so the
     # newest records come out with a single :ets.select_reverse.

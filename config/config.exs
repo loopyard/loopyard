@@ -70,6 +70,11 @@ config :logger, :console,
 
 config :phoenix, :json_library, Jason
 
+# Redact secret-bearing params from request/event logs. "password" is Phoenix's
+# default; "secret" covers the `request_secret` masked field so a submitted key
+# never lands in the dev log.
+config :phoenix, :filter_parameters, ["password", "secret"]
+
 # Use system-installed claude CLI instead of bundled version
 config :claude_code, cli_path: :global
 

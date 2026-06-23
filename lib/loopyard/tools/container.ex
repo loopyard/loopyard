@@ -58,6 +58,7 @@ defmodule Loopyard.Tools.Container do
     Container.Git,
     Container.FileInfo,
     Container.AskUser,
+    Container.RequestSecret,
     Container.ProposeFork,
     Container.ProposeIntegrate,
     Container.ProposeDeleteWorkspace
