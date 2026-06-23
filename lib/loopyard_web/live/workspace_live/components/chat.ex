@@ -458,25 +458,27 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             LiveView-updated, so you can keep queuing and watch progress while the
             agent works. --%>
       <div class="flex-none border-t border-zinc-200 dark:border-zinc-700/80 p-3 md:p-4 space-y-2">
-        <%!-- The queue is a small STACK OF CARDS waiting for the agent to pick up
-              next. Tap a card to pull it back into the box and edit it. --%>
-        <div :if={(@agent[:pending_count] || 0) > 0} class="space-y-1.5">
+        <%!-- The queue is a quiet, COMPACT list waiting for the agent to pick up
+              next — kept dense (small text, tight rows, no card chrome) so a few
+              stacked don't dominate the composer. Tap a row to pull it back into
+              the box and edit it. --%>
+        <div :if={(@agent[:pending_count] || 0) > 0} class="space-y-0.5">
           <div class="flex items-center justify-between px-0.5">
-            <span class="text-[11px] font-medium uppercase tracking-wide text-violet-500 dark:text-violet-400">
+            <span class="text-[10px] font-medium uppercase tracking-wide text-violet-500/80 dark:text-violet-400/80">
               Queued · sends when the agent finishes
             </span>
             <button
               type="button"
               phx-click="clear_pending"
               phx-value-id={@agent.id}
-              class="focus-ring text-[11px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+              class="focus-ring text-[10px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
             >
               Clear all
             </button>
           </div>
           <div
             :for={{text, i} <- Enum.with_index(@agent[:pending_messages] || [])}
-            class="group/q flex items-center gap-1.5 rounded-lg border border-zinc-200/80 dark:border-zinc-700 bg-white dark:bg-zinc-800/70 shadow-sm px-3 py-2"
+            class="group/q flex items-center gap-1.5 rounded-md border border-zinc-200/60 dark:border-zinc-700/50 bg-zinc-50 dark:bg-zinc-800/40 px-2.5 py-1"
           >
             <button
               type="button"
@@ -484,7 +486,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               phx-value-id={@agent.id}
               phx-value-index={i}
               title="Edit — pull back into the message box"
-              class="focus-ring flex-1 min-w-0 text-left truncate text-sm text-zinc-700 dark:text-zinc-200"
+              class="focus-ring flex-1 min-w-0 text-left truncate text-xs text-zinc-600 dark:text-zinc-300"
             >
               {text}
             </button>
