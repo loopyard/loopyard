@@ -765,6 +765,14 @@ defmodule LoopyardWeb.WorkspaceLive do
   end
 
   @impl true
+  def handle_event("cancel_secret", %{"request_id" => rid}, socket) do
+    # The human declined — flip the card to :declined for everyone and let the
+    # agent's turn resume so it stops asking.
+    Loopyard.Harness.SecretRequests.cancel(rid, nil)
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_event("decide_approval", %{"approval_id" => id, "decision" => decision}, socket) do
     decision = if decision == "approve", do: :approve, else: :deny
     agent_id = socket.assigns.selected_id

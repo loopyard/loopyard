@@ -40,7 +40,7 @@ defmodule Loopyard.Harness.SecretRequests do
   one that blocks + receives the signal.
   """
   @spec request(String.t(), String.t(), String.t() | nil) ::
-          {:ok, String.t()} | {:error, :timeout}
+          {:ok, String.t()} | {:cancelled} | {:error, :timeout}
   def request(agent_id, name, why \\ nil) when is_binary(agent_id) and is_binary(name) do
     rid = gen_id()
     key = normalize_key(name)
@@ -68,11 +68,34 @@ defmodule Loopyard.Harness.SecretRequests do
       # everyone — the waiter just resumes the agent's turn with the key.
       {:submitted, ^rid, _submitter} ->
         {:ok, key}
+
+      # The human declined (no such secret) — resume the turn so the agent moves on.
+      {:cancelled, ^rid} ->
+        {:cancelled}
     after
       @timeout_ms ->
         :ets.delete(@table, rid)
         update_msg(agent_id, msg_id, %{status: :timeout})
         {:error, :timeout}
+    end
+  end
+
+  @doc """
+  Decline a pending secret request (the human doesn't have it / won't provide it).
+  Flips the card to :declined for every viewer and resumes the agent's turn so it
+  stops waiting. Returns `:ok`, or `{:error, :not_found}` if nothing's pending.
+  """
+  @spec cancel(String.t(), String.t() | nil) :: :ok | {:error, :not_found}
+  def cancel(rid, submitter \\ nil) when is_binary(rid) do
+    case :ets.lookup(@table, rid) do
+      [{^rid, %{waiter: pid, agent_id: agent_id, msg_id: msg_id}}] ->
+        :ets.delete(@table, rid)
+        update_msg(agent_id, msg_id, %{status: :declined, submitted_by: submitter})
+        if is_pid(pid) and Process.alive?(pid), do: send(pid, {:cancelled, rid})
+        :ok
+
+      _ ->
+        {:error, :not_found}
     end
   end
 

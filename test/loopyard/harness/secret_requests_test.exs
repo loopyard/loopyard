@@ -69,6 +69,23 @@ defmodule Loopyard.Harness.SecretRequestsTest do
     assert card.status == :submitted
   end
 
+  test "cancel declines the request, flips the card to :declined, and resumes the agent",
+       %{agent_id: agent_id} do
+    task = Task.async(fn -> SecretRequests.request(agent_id, "GMAIL_TOKEN", "for tests") end)
+    rid = wait_for_request(agent_id)
+
+    assert :ok = SecretRequests.cancel(rid, nil)
+    assert {:cancelled} = Task.await(task)
+    refute SecretRequests.pending?(rid)
+
+    [{^agent_id, %{messages: msgs}}] = :ets.lookup(:chat_agents, agent_id)
+    card = Enum.find(msgs, &(&1[:role] == :secret_request))
+    assert card.status == :declined
+
+    # Nothing was stored.
+    assert :not_found = Secrets.get("gmail_token", "ws-1", nil)
+  end
+
   defp wait_for_request(agent_id, tries \\ 200) do
     case Enum.find(:ets.tab2list(:secret_requests), fn {_rid, e} -> e.agent_id == agent_id end) do
       {rid, _} ->

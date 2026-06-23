@@ -32,10 +32,16 @@ defmodule Loopyard.Tools.Container.RequestSecret do
            "value, call `get_secret` with key `#{key}` — ideally to set an env var " <>
            "right before the command that needs it, not to print it."}
 
+      {:cancelled} ->
+        {:ok,
+         "The user DECLINED to provide `#{name}` (they don't have it). Do NOT ask " <>
+           "for it again — proceed without it, work around it, or tell the user what " <>
+           "you can't do without it."}
+
       {:error, :timeout} ->
         {:ok,
-         "The user did not submit `#{name}` in time. Ask again if it's essential, " <>
-           "or proceed without it."}
+         "The user did not submit `#{name}` in time. Don't keep waiting — proceed " <>
+           "without it or ask again later only if it's essential."}
     end
   end
 end

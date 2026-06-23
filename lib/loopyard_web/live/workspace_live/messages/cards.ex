@@ -18,7 +18,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
   """
   def question_card(assigns) do
     ~H"""
-    <div class="pl-10 py-2">
+    <div class="pl-7 py-2">
       <div class="rounded-xl border border-violet-200 dark:border-violet-800/60 bg-violet-50/50 dark:bg-violet-900/10 p-4">
         <div class="flex items-center gap-1.5 text-xs font-medium text-violet-600 dark:text-violet-400 mb-3">
           <svg
@@ -95,7 +95,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
   """
   def secret_card(assigns) do
     ~H"""
-    <div class="pl-10 py-2">
+    <div class="pl-7 py-2">
       <div class="rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50/50 dark:bg-amber-900/10 p-4">
         <div class="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 mb-2">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3.5 h-3.5">
@@ -119,28 +119,42 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
              the value, and it goes straight to disk — never into the transcript. The
              field is named "secret", which is in `filter_parameters` so it's redacted
              from server logs too. --%>
-        <form
-          :if={@msg.status == :pending}
-          phx-submit="submit_secret"
-          autocomplete="off"
-          class="mt-3 flex items-center gap-2"
-        >
-          <input type="hidden" name="request_id" value={@msg.request_id} />
-          <input
-            type="password"
-            name="secret"
-            autocomplete="off"
-            spellcheck="false"
-            placeholder={"Paste #{@msg.name}…"}
-            class="flex-1 min-w-0 rounded-lg border border-amber-300 dark:border-amber-700/60 bg-white dark:bg-zinc-900 px-3 py-2 text-sm font-mono text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
-          />
+        <div :if={@msg.status == :pending}>
+          <form phx-submit="submit_secret" autocomplete="off" class="mt-3 flex items-center gap-2">
+            <input type="hidden" name="request_id" value={@msg.request_id} />
+            <input
+              type="password"
+              name="secret"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder={"Paste #{@msg.name}…"}
+              class="flex-1 min-w-0 rounded-lg border border-amber-300 dark:border-amber-700/60 bg-white dark:bg-zinc-900 px-3 py-2 text-sm font-mono text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+            />
+            <button
+              type="submit"
+              class="focus-ring flex-none rounded-lg bg-amber-600 hover:bg-amber-700 px-3.5 py-2 text-sm font-medium text-white transition-colors"
+            >
+              Submit
+            </button>
+          </form>
+          <%!-- Escape hatch: you don't have it / won't provide it. Resumes the
+               agent's turn so it stops waiting and moves on. --%>
           <button
-            type="submit"
-            class="focus-ring flex-none rounded-lg bg-amber-600 hover:bg-amber-700 px-3.5 py-2 text-sm font-medium text-white transition-colors"
+            type="button"
+            phx-click="cancel_secret"
+            phx-value-request_id={@msg.request_id}
+            class="focus-ring mt-2 text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
           >
-            Submit
+            I don't have it — skip
           </button>
-        </form>
+        </div>
+
+        <div
+          :if={@msg.status == :declined}
+          class="mt-3 text-xs text-zinc-400 dark:text-zinc-500"
+        >
+          Declined — the agent will proceed without it.
+        </div>
 
         <div
           :if={@msg.status == :submitted}
@@ -170,7 +184,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
     assigns = assign(assigns, :action, assigns.msg.action)
 
     ~H"""
-    <div class="pl-10 py-2">
+    <div class="pl-7 py-2">
       <div class="rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50/50 dark:bg-amber-900/10 p-4">
         <div class="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 mb-2">
           <svg
