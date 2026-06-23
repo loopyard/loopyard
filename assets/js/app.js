@@ -242,6 +242,31 @@ Hooks.ChatForm = {
     const btn = this.el.querySelector("button[type=submit]")
     let sending = false
 
+    // Draft persistence — the LAST line of defense for a half-typed message.
+    // phx-update="ignore" already protects the box from LiveView patches, but a
+    // FULL reload (Elixir code reload, server restart → remount, browser refresh)
+    // rebuilds the DOM from scratch and would wipe it. So we mirror every
+    // keystroke into localStorage (keyed per-agent via the path) and restore it
+    // on mount. Cleared only on a confirmed send.
+    const draftKey = "loopyard:draft:" + location.pathname
+    const saveDraft = () => {
+      try { ta.value ? localStorage.setItem(draftKey, ta.value) : localStorage.removeItem(draftKey) } catch (_) {}
+    }
+    const clearDraft = () => { try { localStorage.removeItem(draftKey) } catch (_) {} }
+
+    // Restore a draft from a prior session, but never clobber text already in the
+    // box (e.g. server-restored input that mounted first).
+    try {
+      const saved = localStorage.getItem(draftKey)
+      if (saved && ta.value.trim() === "") {
+        ta.value = saved
+        requestAnimationFrame(() => {
+          ta.style.height = "auto"
+          ta.style.height = Math.min(ta.scrollHeight, 200) + "px"
+        })
+      }
+    } catch (_) {}
+
     const send = () => {
       if (sending) return
       const text = ta.value.trim()
@@ -263,6 +288,7 @@ Hooks.ChatForm = {
         if (ok) {
           ta.value = ""
           ta.style.height = "auto"
+          clearDraft()
           if (status) status.classList.add("hidden")
         } else {
           // Text is still in the box — flag it AND say why, so a failed send is
@@ -298,6 +324,7 @@ Hooks.ChatForm = {
     ta.addEventListener("input", () => {
       const status = document.getElementById("send-status")
       if (status && !status.classList.contains("hidden")) status.classList.add("hidden")
+      saveDraft()
       requestAnimationFrame(() => {
         ta.style.height = "auto"
         ta.style.height = Math.min(ta.scrollHeight, 200) + "px"
@@ -332,6 +359,7 @@ Hooks.ChatForm = {
       ta.value = text
       ta.style.height = "auto"
       ta.style.height = Math.min(ta.scrollHeight, 200) + "px"
+      saveDraft()
       ta.focus()
     }
   }
