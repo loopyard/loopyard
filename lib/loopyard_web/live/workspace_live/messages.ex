@@ -49,6 +49,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   # this file under its line cap). chat_msg delegates the matching roles.
   def chat_msg(%{msg: %{role: :question}} = assigns), do: Cards.question_card(assigns)
   def chat_msg(%{msg: %{role: :approval}} = assigns), do: Cards.approval_card(assigns)
+  def chat_msg(%{msg: %{role: :secret_request}} = assigns), do: Cards.secret_card(assigns)
 
   def chat_msg(%{msg: %{role: :user}} = assigns) do
     assigns = assign(assigns, :url, msg_url(assigns))
@@ -180,9 +181,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       assigns.detail_level == :chat -> ~H"<div></div>"
       # Mini-app tools own their own card — don't also echo the raw tool call.
       miniapp_tool?(assigns.msg[:tool] || "") -> ~H"<div></div>"
+      # exec / docker_compose render as a console box whose TITLE is the command —
+      # the raw "$ cmd" tool row would just show the command a second time. Suppress
+      # it so the console window is the single representation of the command.
+      console_command_tool?(assigns.msg[:tool]) -> ~H"<div></div>"
       true -> render_tool_call(assigns)
     end
   end
+
+  defp console_command_tool?(tool) when is_binary(tool),
+    do: String.ends_with?(tool, "__exec") or String.ends_with?(tool, "__docker_compose")
+
+  defp console_command_tool?(_), do: false
 
   defp render_tool_call(assigns) do
     tool_name = assigns.msg[:tool] || ""
@@ -322,7 +332,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     assigns = assign(assigns, :link, msg_url(assigns))
 
     ~H"""
-    <.log_inline content={@msg.content} status={:failed} raw_url={@link} title={@msg[:title]} />
+    <.log_inline
+      content={@msg.content}
+      status={:failed}
+      raw_url={@link}
+      title={@msg[:title]}
+      exit_code={@msg[:exit_code]}
+    />
     """
   end
 
@@ -334,13 +350,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       ~H"<div></div>"
     else
       ~H"""
-      <div class={[gutter(), "py-1 pl-7"]}>
-        <div
-          class="text-xs text-zinc-400 dark:text-zinc-500 italic"
+      <%!-- Meta notes (compaction, CLI crash/restart, context refresh) are
+           house-keeping, not conversation — keep them a quiet aside: tiny, muted,
+           a small dot in the gutter, so you can SEE them happen without them
+           competing with what the agent actually said. --%>
+      <div class={[gutter(), "py-1 pl-7 flex items-baseline gap-1.5 text-zinc-400/70 dark:text-zinc-600"]}>
+        <span aria-hidden="true" class="flex-none select-none leading-none">·</span>
+        <span
+          class="text-[11px] italic leading-relaxed"
           id={"system-msg-#{@msg[:id] || hash_content(@msg.content)}"}
         >
-          <div class="markdown-body">{Loopyard.Markdown.to_html(@msg.content)}</div>
-        </div>
+          {@msg.content}
+        </span>
       </div>
       """
     end

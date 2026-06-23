@@ -340,7 +340,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
 
     ~H"""
     <div class="flex-1 flex flex-col min-h-0">
-      <div id="messages" class="flex-1 overflow-y-auto flex flex-col px-4 md:px-6 pb-4">
+      <%!-- scroll-smooth: the auto-tail (ScrollBottom hook nudges scrollTop as the
+           agent streams) animates instead of jumping, so following the thinking
+           glides. Pure CSS — honors prefers-reduced-motion automatically. --%>
+      <div id="messages" class="flex-1 overflow-y-auto flex flex-col px-4 md:px-6 pb-4 scroll-smooth">
         <%!-- Normal flow (NOT flex-col-reverse). The ScrollBottom hook keeps you
              pinned to the bottom on new messages and anchors on load-more; this
              is what lets `position: sticky` on the prompt band work flush on
@@ -435,6 +438,16 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               messages={@messages}
               word={@thinking_word}
             />
+            <%!-- The live status (word + elapsed + Stop) is the LAST thing on the
+                 transcript spine — below whatever the turn has produced so far,
+                 un-boxed, flowing with the conversation. It used to be a docked
+                 box above the input; it now lives at the foot of the timeline. --%>
+            <.live_status
+              :if={@agent.status == :thinking}
+              messages={@messages}
+              word={@thinking_word}
+              agent_id={@agent.id}
+            />
           </div>
         </div>
       </div>
@@ -445,14 +458,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             LiveView-updated, so you can keep queuing and watch progress while the
             agent works. --%>
       <div class="flex-none border-t border-zinc-200 dark:border-zinc-700/80 p-3 md:p-4 space-y-2">
-        <%!-- Reasoning Bar ABOVE the queue: it's what's working now, and what
-              picks up the next queued card. --%>
-        <.reasoning_bar
-          :if={agent_display_status(@agent) == :thinking}
-          messages={@messages}
-          word={@thinking_word}
-          agent_id={@agent.id}
-        />
         <%!-- The queue is a small STACK OF CARDS waiting for the agent to pick up
               next. Tap a card to pull it back into the box and edit it. --%>
         <div :if={(@agent[:pending_count] || 0) > 0} class="space-y-1.5">
@@ -627,6 +632,58 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   end
 
   @doc """
+  The live status line — animated dots + status word + elapsed + a compact Stop,
+  rendered UN-BOXED at the foot of the transcript spine (below everything the turn
+  has produced so far, above the composer). No card, no background: it reads as the
+  conversation's live tail, not a docked widget.
+  """
+  attr :messages, :list, required: true
+  attr :word, :string, required: true
+  attr :agent_id, :string, required: true
+
+  def live_status(assigns) do
+    assigns = assign(assigns, :turn_since, turn_started_unix_ms(assigns.messages))
+
+    ~H"""
+    <%!-- Full-width live bar at the BOTTOM of the timeline. Its content sits on the
+         SAME left gutter (pl-7) as the activity rows above, so the dots line up
+         under the ✓/$ column. Squared + borderless on the LEFT so it runs flush
+         into the timeline (reads as part of it), rounded on the RIGHT. --%>
+    <div class="mt-2">
+      <div class="flex items-center gap-3 rounded-r-xl rounded-l-none border border-l-0 border-violet-200/70 dark:border-violet-500/20 bg-violet-50 dark:bg-violet-500/10 pl-7 pr-3 py-2.5">
+        <div class="flex gap-1.5 flex-none" aria-hidden="true">
+          <div class="w-2 h-2 rounded-full bg-violet-400 animate-bounce" style="animation-delay: 0ms">
+          </div>
+          <div class="w-2 h-2 rounded-full bg-violet-400 animate-bounce" style="animation-delay: 150ms">
+          </div>
+          <div class="w-2 h-2 rounded-full bg-violet-400 animate-bounce" style="animation-delay: 300ms">
+          </div>
+        </div>
+        <span class="text-sm font-semibold text-violet-700 dark:text-violet-200 flex-none">{@word}…</span>
+        <span
+          :if={@turn_since}
+          id="turn-elapsed"
+          phx-hook="Elapsed"
+          phx-update="ignore"
+          data-since={@turn_since}
+          class="text-xs text-violet-500/70 dark:text-violet-300/50 flex-none tabular-nums"
+        >
+        </span>
+        <div class="flex-1 min-w-0"></div>
+        <button
+          type="button"
+          phx-click="interrupt_agent"
+          phx-value-id={@agent_id}
+          class="focus-ring inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 active:bg-red-500/20 transition-colors flex-none"
+        >
+          <span class="w-2.5 h-2.5 rounded-[3px] bg-red-500"></span> Stop
+        </button>
+      </div>
+    </div>
+    """
+  end
+
+  @doc """
   The Reasoning Bar — the live status, docked just above the input so it's ALWAYS
   visible (the transcript feed scrolls off; this never does). Animated dots +
   status word + elapsed + the current action + a compact Stop. Reasoning "comes
@@ -750,8 +807,16 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     |> Enum.reverse()
     |> Enum.take_while(&(&1.role != :user))
     |> Enum.reverse()
-    |> Enum.filter(&(&1.role == :tool))
+    |> Enum.filter(&(&1.role == :tool and not console_command_tool?(&1[:tool])))
   end
+
+  # exec / docker_compose stream into their own console box (command in the title,
+  # output below) — so they don't also belong in the compact activity feed, which
+  # would show the command a second time.
+  defp console_command_tool?(tool) when is_binary(tool),
+    do: String.ends_with?(tool, "__exec") or String.ends_with?(tool, "__docker_compose")
+
+  defp console_command_tool?(_), do: false
 
   # Index of the last human message — tools after it belong to the active
   # turn and live in the feed. Returns nil (suppress nothing) unless the

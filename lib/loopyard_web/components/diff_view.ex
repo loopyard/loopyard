@@ -64,7 +64,7 @@ defmodule LoopyardWeb.Components.DiffView do
     assigns = assign(assigns, :total_bytes, total_bytes)
 
     ~H"""
-    <div class="mt-1 ml-6 rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-700/80 text-xs font-mono">
+    <div class="mt-1 rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-700/80 text-xs font-mono">
       <div
         :if={@path}
         class="px-3 py-1 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center gap-2"
@@ -90,7 +90,7 @@ defmodule LoopyardWeb.Components.DiffView do
 
   defp render_diff(assigns) do
     ~H"""
-    <div class="mt-1 ml-6 rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-700/80 text-xs font-mono">
+    <div class="mt-1 rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-700/80 text-xs font-mono">
       <div
         :if={@path}
         class="px-3 py-1 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center gap-2"
@@ -104,21 +104,26 @@ defmodule LoopyardWeb.Components.DiffView do
         </a>
         <span :if={!@link} class="text-zinc-500 dark:text-zinc-400">{@path}</span>
       </div>
-      <table class="w-full border-collapse highlight">
-        <tbody>
-          <tr :for={row <- @rows} class={row.bg}>
-            <td class="select-none text-right pr-1 pl-2 py-0 text-zinc-400 dark:text-zinc-600 align-top w-[1%] whitespace-nowrap opacity-50">
-              {row.old_num}
-            </td>
-            <td class="select-none text-right pr-2 py-0 text-zinc-400 dark:text-zinc-600 align-top w-[1%] whitespace-nowrap opacity-50">
-              {row.new_num}
-            </td>
-<%!-- phx-no-format + hugged tags: the cell is whitespace-pre-wrap, so any template
-              indentation here renders as blank lines above/below the diff line. --%>
-            <td phx-no-format class={"pr-3 py-0 whitespace-pre-wrap break-all #{row.text_class}"}><span class="select-none text-zinc-400 dark:text-zinc-600">{row.prefix}</span>{row.content}</td>
-          </tr>
-        </tbody>
-      </table>
+      <%!-- Code-editor pane: lines DON'T wrap — they overflow and scroll
+           horizontally — and the whole diff is height-capped so a big edit doesn't
+           swallow the chat. Click the path/Open to see the full file. --%>
+      <div class="overflow-auto max-h-80">
+        <table class="w-full border-collapse highlight">
+          <tbody>
+            <tr :for={row <- @rows} class={row.bg}>
+              <td class="select-none text-right pr-1 pl-2 py-0 text-zinc-400 dark:text-zinc-600 align-top w-[1%] whitespace-nowrap opacity-50">
+                {row.old_num}
+              </td>
+              <td class="select-none text-right pr-2 py-0 text-zinc-400 dark:text-zinc-600 align-top w-[1%] whitespace-nowrap opacity-50">
+                {row.new_num}
+              </td>
+<%!-- phx-no-format + hugged tags: the cell is whitespace-pre, so any template
+              indentation here renders as literal leading space on the diff line. --%>
+              <td phx-no-format class={"pr-3 py-0 whitespace-pre #{row.text_class}"}><span class="select-none text-zinc-400 dark:text-zinc-600">{row.prefix}</span>{row.content}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
     """
   end

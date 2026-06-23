@@ -65,13 +65,14 @@ defmodule LoopyardWeb.Components.LogViewer do
   attr :raw_url, :string, default: nil
   attr :max_lines, :integer, default: 50
   attr :started, :any, default: nil
+  attr :exit_code, :integer, default: nil
 
   def log_inline(assigns) do
-    {label, dot_class} =
+    {status_label, dot_class} =
       case assigns.status do
-        :building -> {assigns.title || "Running...", "bg-amber-400 animate-pulse"}
-        :done -> {(assigns.title || "Command") <> " — done", "bg-green-500"}
-        :failed -> {(assigns.title || "Command") <> " — failed", "bg-red-500"}
+        :building -> {"Running", "bg-amber-400 animate-pulse"}
+        :done -> {"Done", "bg-green-500"}
+        :failed -> {"Failed", "bg-red-500"}
       end
 
     content = assigns.content || ""
@@ -82,21 +83,31 @@ defmodule LoopyardWeb.Components.LogViewer do
       if truncated, do: Enum.take(lines, -assigns.max_lines) |> Enum.join("\n"), else: content
 
     assigns =
-      assign(assigns, label: label, dot_class: dot_class, display: display, truncated: truncated)
+      assign(assigns,
+        status_label: status_label,
+        dot_class: dot_class,
+        display: display,
+        truncated: truncated,
+        command: assigns.title
+      )
 
     ~H"""
     <div
       id={"log-wrap-#{System.unique_integer([:positive])}"}
       phx-hook="LogExpand"
-      class="mt-2 mb-1 ml-10 rounded-lg border border-zinc-200 dark:border-zinc-700/80 overflow-hidden"
+      class="mt-2 mb-1 ml-5 rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden bg-zinc-100 dark:bg-zinc-950"
     >
-      <div class="flex items-center gap-2 px-3 py-1.5 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
+      <%!-- Terminal title bar: the COMMAND is the title (one line, truncated — long
+           commands don't wrap and wreck the layout; hover for the full text). It
+           finalizes with a green `exit 0` or red `exit N`. The output streams in
+           the body below; the command is NOT repeated there. --%>
+      <div class="flex items-center gap-2 px-3 py-1.5 bg-zinc-50 dark:bg-zinc-900/60 border-b border-zinc-200 dark:border-zinc-800">
         <div class={"w-1.5 h-1.5 rounded-full flex-none #{@dot_class}"}></div>
         <span
-          title={@label}
-          class="text-xs font-medium text-zinc-500 dark:text-zinc-400 truncate min-w-0 flex-1"
+          title={@command}
+          class="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 truncate min-w-0 flex-1"
         >
-          {@label}
+          {@command || @status_label}
         </span>
         <span
           :if={@status == :building && elapsed_since(@started)}
@@ -108,8 +119,20 @@ defmodule LoopyardWeb.Components.LogViewer do
         >
           0s
         </span>
-        <span :if={@truncated} class="text-[10px] text-zinc-400">... truncated</span>
-        <div class="ml-auto flex items-center gap-1">
+        <span
+          :if={@status != :building}
+          class={[
+            "text-[10px] font-semibold tabular-nums flex-none",
+            if(@status == :done,
+              do: "text-green-600 dark:text-green-400",
+              else: "text-red-500 dark:text-red-400"
+            )
+          ]}
+        >
+          {exit_label(@status, @exit_code)}
+        </span>
+        <span :if={@truncated} class="text-[10px] text-zinc-400 flex-none">… truncated</span>
+        <div class="flex items-center gap-1 flex-none">
           <button
             type="button"
             data-expand
@@ -176,9 +199,12 @@ defmodule LoopyardWeb.Components.LogViewer do
           </a>
         </div>
       </div>
+      <%!-- Output reads like a code-editor pane: no wrap (lines overflow and scroll
+           horizontally), height-capped so a long log doesn't swallow the chat —
+           click (LogExpand) to open the full thing. --%>
       <pre
         data-log-pre
-        class={"px-3 py-2 text-xs font-mono text-zinc-800 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-950 whitespace-pre-wrap overflow-y-auto #{if @status == :building, do: "max-h-64", else: "max-h-32"}"}
+        class={["text-xs font-mono leading-snug text-zinc-800 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-950 whitespace-pre overflow-auto px-3 py-2", if(@status == :building, do: "max-h-64", else: "max-h-32")]}
       >{Ansi.to_html(@display)}</pre>
     </div>
     """
@@ -235,4 +261,11 @@ defmodule LoopyardWeb.Components.LogViewer do
   # of a missing/odd timestamp — returns nil so the timer simply doesn't show.
   defp elapsed_since(%DateTime{} = dt), do: DateTime.to_unix(dt, :millisecond)
   defp elapsed_since(_), do: nil
+
+  # The finalized status badge: green `exit 0` on success, red `exit N` on failure
+  # (or `exit ✗` when the numeric code wasn't captured).
+  defp exit_label(:done, _), do: "exit 0"
+  defp exit_label(:failed, code) when is_integer(code), do: "exit #{code}"
+  defp exit_label(:failed, _), do: "exit ✗"
+  defp exit_label(_, _), do: ""
 end

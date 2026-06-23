@@ -74,7 +74,9 @@ defmodule Loopyard.Tools.Container.Exec do
         done_role = if code == 0, do: :build_done, else: :build_failed
 
         Loopyard.ChatAgent.update_message(agent_id, msg_id, fn msg ->
-          %{msg | role: done_role, content: acc}
+          # Stamp the real exit code so the console title can finalize to "exit N".
+          # Map.put (not `|`) since the build message has no :exit_code key yet.
+          %{msg | role: done_role, content: acc} |> Map.put(:exit_code, code)
         end)
 
         {acc, code}
@@ -83,7 +85,7 @@ defmodule Loopyard.Tools.Container.Exec do
         Port.close(port)
 
         Loopyard.ChatAgent.update_message(agent_id, msg_id, fn msg ->
-          %{msg | role: :build_failed, content: acc}
+          %{msg | role: :build_failed, content: acc} |> Map.put(:exit_code, 124)
         end)
 
         {acc <> "\n[timed out after #{div(timeout, 1_000)}s]", 1}

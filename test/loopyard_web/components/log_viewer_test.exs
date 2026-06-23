@@ -39,7 +39,7 @@ defmodule LoopyardWeb.Components.LogViewerTest do
         })
 
       assert html =~ "animate-pulse"
-      assert html =~ "Running..."
+      assert html =~ "Running"
       assert html =~ "Building..."
     end
 
@@ -54,7 +54,24 @@ defmodule LoopyardWeb.Components.LogViewerTest do
         })
 
       assert html =~ "bg-green-500"
-      assert html =~ "npm install — done"
+      # The command is the title; a green "exit 0" badge finalizes it.
+      assert html =~ "npm install"
+      assert html =~ "exit 0"
+    end
+
+    test "renders the real exit code for a failed command" do
+      html =
+        render_comp(&log_inline/1, %{
+          content: "boom",
+          status: :failed,
+          title: "mix test",
+          raw_url: nil,
+          max_lines: 50,
+          exit_code: 2
+        })
+
+      assert html =~ "mix test"
+      assert html =~ "exit 2"
     end
 
     test "renders failed status with red dot" do
@@ -68,7 +85,8 @@ defmodule LoopyardWeb.Components.LogViewerTest do
         })
 
       assert html =~ "bg-red-500"
-      assert html =~ "Command — failed"
+      # No numeric code captured → red "exit ✗" badge.
+      assert html =~ "exit ✗"
     end
 
     test "truncates long output and shows indicator" do
