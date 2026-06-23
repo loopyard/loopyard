@@ -115,4 +115,40 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatActivityTest do
       refute html =~ "⚠"
     end
   end
+
+  describe "live tail timeline (pure thinking)" do
+    test "renders the icon rail + centered continuous line + flowing bar (not a floating box)" do
+      agent = %{
+        id: "a1",
+        status: :thinking,
+        context_utilization: 0.0,
+        pending_count: 0,
+        pending_messages: []
+      }
+
+      html =
+        render_component(&Chat.chat_panel/1, %{
+          messages: [%{role: :user, content: "go", timestamp: ~U[2026-06-23 19:14:00Z], id: "u1"}],
+          streaming_text: "",
+          streaming_thinking: "",
+          agent: agent,
+          workspace_id: "w1",
+          host: "localhost",
+          thinking_word: "Riffing",
+          has_more_messages: false,
+          detail_level: :trace
+        })
+
+      # The rail is a w-5 column with a centered 1px line — so the line passes
+      # through the icon's center and extends from its bottom (no gap).
+      assert html =~ "absolute left-0 top-0 bottom-1 w-5"
+      assert html =~ "w-px flex-1"
+      # "Claude · HH:MM" at the top.
+      assert html =~ "Claude"
+      assert html =~ "19:14"
+      # The live status FLOWS on the spine — no floating rounded-pill box.
+      assert html =~ "Riffing"
+      refute html =~ "rounded-r-xl rounded-l-none"
+    end
+  end
 end

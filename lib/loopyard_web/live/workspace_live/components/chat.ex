@@ -409,55 +409,71 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               <% end %>
             </section>
           <% end %>
-          <%!-- Live tail: the agent's in-progress work — streamed reasoning, text,
-               the activity feed, and the live status bar — all on ONE continuous
-               spine ending in the bar, so the timeline reads as a single thing from
-               "Claude" down to what it's doing now. The "Claude" header renders here
-               ONLY when the response hasn't produced inline content yet (pure
-               thinking/streaming) — once it has, the section above owns the header,
-               so we never show two. --%>
-          <div :if={
-            @streaming_text != "" || (assigns[:streaming_thinking] || "") != "" ||
-              @agent.status in [:backoff, :compacting] ||
-              (@agent.status == :thinking && not awaiting_answer?(@messages) &&
-                 not awaiting_approval?(@messages) && not building?(@messages))
-          }>
-            <.run_header
-              :if={not turn_started_rendering?(@messages)}
-              timestamp={current_turn_timestamp(@messages)}
-            />
-            <div class={[
-              "border-l border-zinc-200/70 dark:border-zinc-800/80 ml-3",
-              turn_started_rendering?(@messages) && "mt-3"
-            ]}>
-              <.streaming_thinking
-                :if={
-                  @detail_level != :chat && assigns[:streaming_thinking] != "" &&
-                    assigns[:streaming_thinking] != nil
-                }
-                text={@streaming_thinking}
-              />
-              <.streaming_bubble :if={@streaming_text != ""} text={@streaming_text} />
-              <.thinking_indicator
-                :if={
-                  @agent.status == :thinking && @streaming_text == "" &&
-                    (assigns[:streaming_thinking] || "") == "" &&
-                    not awaiting_answer?(@messages) && not awaiting_approval?(@messages) &&
-                    not building?(@messages)
-                }
-                messages={@messages}
-                word={@thinking_word}
-              />
-              <%!-- The live status bar is the LAST thing on the spine — the live tip
-                   of the timeline, flowing from everything above it. --%>
-              <.live_status
-                :if={@agent.status in [:thinking, :backoff, :compacting]}
-                messages={@messages}
-                word={@thinking_word}
-                agent_id={@agent.id}
-                mode={live_status_mode(@agent)}
-              />
+          <%!-- Live tail: the agent's in-progress work on ONE continuous rail. A
+               single line runs from the Claude icon's CENTER straight down through
+               the reasoning and into the live status — one unbroken timeline. The
+               icon + "Claude" label show only when this is the top of the response
+               (pure thinking); once the section above owns the header, just the line
+               continues. --%>
+          <div
+            :if={
+              @streaming_text != "" || (assigns[:streaming_thinking] || "") != "" ||
+                @agent.status in [:backoff, :compacting] ||
+                (@agent.status == :thinking && not awaiting_answer?(@messages) &&
+                   not awaiting_approval?(@messages) && not building?(@messages))
+            }
+            class="relative mt-3"
+          >
+            <%!-- The rail: icon on top, then a 1px line filling the rest of the
+                 height. `items-center` centers the line in the w-5 column so it
+                 passes straight through the icon's center and extends from its
+                 bottom with no gap. --%>
+            <div class="absolute left-0 top-0 bottom-1 w-5 flex flex-col items-center">
+              <span
+                :if={not turn_started_rendering?(@messages)}
+                class="w-5 h-5 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center flex-none"
+              >
+                <.icon name={:sparkle} class="w-3 h-3 text-violet-600 dark:text-violet-400" />
+              </span>
+              <div class="w-px flex-1 bg-zinc-200 dark:bg-zinc-700/60"></div>
             </div>
+
+            <%!-- "Claude · HH:MM", vertically centered with the icon — top only. --%>
+            <div :if={not turn_started_rendering?(@messages)} class="pl-7 h-5 flex items-center">
+              <span class="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Claude</span>
+              <span
+                :if={current_turn_timestamp(@messages)}
+                class="ml-2 text-xs text-zinc-400 dark:text-zinc-500"
+              >
+                · {Calendar.strftime(current_turn_timestamp(@messages), "%H:%M")}
+              </span>
+            </div>
+
+            <.streaming_thinking
+              :if={
+                @detail_level != :chat && assigns[:streaming_thinking] != "" &&
+                  assigns[:streaming_thinking] != nil
+              }
+              text={@streaming_thinking}
+            />
+            <.streaming_bubble :if={@streaming_text != ""} text={@streaming_text} />
+            <.thinking_indicator
+              :if={
+                @agent.status == :thinking && @streaming_text == "" &&
+                  (assigns[:streaming_thinking] || "") == "" &&
+                  not awaiting_answer?(@messages) && not awaiting_approval?(@messages) &&
+                  not building?(@messages)
+              }
+              messages={@messages}
+              word={@thinking_word}
+            />
+            <.live_status
+              :if={@agent.status in [:thinking, :backoff, :compacting]}
+              messages={@messages}
+              word={@thinking_word}
+              agent_id={@agent.id}
+              mode={live_status_mode(@agent)}
+            />
           </div>
         </div>
       </div>
@@ -662,40 +678,38 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       |> assign_status_styles()
 
     ~H"""
-    <%!-- Full-width live bar at the BOTTOM of the timeline. Its content sits on the
-         SAME left gutter (pl-7) as the activity rows above, so the dots line up
-         under the ✓/$ column. Squared + borderless on the LEFT so it runs flush
-         into the timeline (reads as part of it), rounded on the RIGHT. --%>
-    <div class="mt-2">
-      <div class={["flex items-center gap-3 rounded-r-xl rounded-l-none border border-l-0 pl-7 pr-3 py-2.5", @container_class]}>
-        <div class="flex gap-1.5 flex-none" aria-hidden="true">
-          <div class={["w-2 h-2 rounded-full animate-bounce", @dot_class]} style="animation-delay: 0ms">
-          </div>
-          <div class={["w-2 h-2 rounded-full animate-bounce", @dot_class]} style="animation-delay: 150ms">
-          </div>
-          <div class={["w-2 h-2 rounded-full animate-bounce", @dot_class]} style="animation-delay: 300ms">
-          </div>
+    <%!-- The live tip of the timeline. It FLOWS on the spine like the activity rows
+         above it — same pl-7 gutter, NO box, NO gap — so the faint vertical line
+         runs straight down into it as one continuous timeline (not a floating
+         widget). dots + word + elapsed on the left, Stop docked right. --%>
+    <div class="flex items-center gap-2.5 pl-7 pr-1 py-1.5">
+      <div class="flex gap-1.5 flex-none" aria-hidden="true">
+        <div class={["w-2 h-2 rounded-full animate-bounce", @dot_class]} style="animation-delay: 0ms">
         </div>
-        <span class={["text-sm font-semibold flex-none", @text_class]}>{@word}…</span>
-        <span
-          :if={@turn_since}
-          id="turn-elapsed"
-          phx-hook="Elapsed"
-          phx-update="ignore"
-          data-since={@turn_since}
-          class={["text-xs flex-none tabular-nums", @elapsed_class]}
-        >
-        </span>
-        <div class="flex-1 min-w-0"></div>
-        <button
-          type="button"
-          phx-click="interrupt_agent"
-          phx-value-id={@agent_id}
-          class="focus-ring inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 active:bg-red-500/20 transition-colors flex-none"
-        >
-          <span class="w-2.5 h-2.5 rounded-[3px] bg-red-500"></span> Stop
-        </button>
+        <div class={["w-2 h-2 rounded-full animate-bounce", @dot_class]} style="animation-delay: 150ms">
+        </div>
+        <div class={["w-2 h-2 rounded-full animate-bounce", @dot_class]} style="animation-delay: 300ms">
+        </div>
       </div>
+      <span class={["text-sm font-semibold flex-none", @text_class]}>{@word}…</span>
+      <span
+        :if={@turn_since}
+        id="turn-elapsed"
+        phx-hook="Elapsed"
+        phx-update="ignore"
+        data-since={@turn_since}
+        class={["text-xs flex-none tabular-nums", @elapsed_class]}
+      >
+      </span>
+      <div class="flex-1 min-w-0"></div>
+      <button
+        type="button"
+        phx-click="interrupt_agent"
+        phx-value-id={@agent_id}
+        class="focus-ring inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 active:bg-red-500/20 transition-colors flex-none"
+      >
+        <span class="w-2.5 h-2.5 rounded-[3px] bg-red-500"></span> Stop
+      </button>
     </div>
     """
   end
