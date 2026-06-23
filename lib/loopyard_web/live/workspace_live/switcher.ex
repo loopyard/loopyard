@@ -51,7 +51,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Switcher do
       attach_hook(socket, :track_view, :handle_params, fn _params, uri, socket ->
         c = socket.transport_pid
         ws_id = socket.assigns.workspace.id
-        if c && ws_id, do: Loopyard.WindowViews.touch(c, ws_id, view_path(uri))
+        path = view_path(uri)
+        base = socket.assigns[:base_path]
+
+        # Record only MEANINGFUL sub-views (agent / console / service / volume),
+        # never the bare workspace base URL. The base is the transient `:index`
+        # landing that immediately resumes/redirects — recording it would CLOBBER
+        # this window's real last view, so the next return to the workspace would
+        # fall back to "first agent" instead of where you actually were.
+        if c && ws_id && is_binary(path) && path != base do
+          Loopyard.WindowViews.touch(c, ws_id, path)
+        end
+
         {:cont, socket}
       end)
     else
