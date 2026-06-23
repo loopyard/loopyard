@@ -99,10 +99,10 @@ defmodule Loopyard.Git do
   Options:
     - :limit — max number of commits (default 20)
   """
-  def log(path, opts \\ []) do
+  def log(target, opts \\ []) do
     limit = Keyword.get(opts, :limit, 20)
 
-    case git(["log", "--oneline", "--format=%H\t%s\t%an\t%aI", "-#{limit}"], cd: path) do
+    case run(target, ["log", "--oneline", "--format=%H\t%s\t%an\t%aI", "-#{limit}"]) do
       {:ok, output} ->
         entries =
           output
@@ -134,8 +134,8 @@ defmodule Loopyard.Git do
   Git's porcelain format uses two columns: XY where X = index (staged)
   and Y = worktree (unstaged). We split these into two lists.
   """
-  def status(path) do
-    case git(["status", "--porcelain"], cd: path) do
+  def status(target) do
+    case run(target, ["status", "--porcelain"]) do
       {:ok, output} ->
         {staged, unstaged} =
           output
@@ -177,18 +177,18 @@ defmodule Loopyard.Git do
   @doc """
   Get diff for staged changes only.
   """
-  def diff_staged(path, opts \\ []) do
+  def diff_staged(target, opts \\ []) do
     file = Keyword.get(opts, :file)
     args = ["diff", "--cached"] ++ if(file, do: ["--", file], else: [])
-    git(args, cd: path)
+    run(target, args)
   end
 
   @doc """
   Get commit detail: files changed with insertions/deletions.
   Returns {:ok, %{sha, message, author, date, files: [%{path, insertions, deletions, status}]}}.
   """
-  def commit_detail(path, sha) do
-    case git(["show", "--format=%H\t%s\t%an\t%aI", "--stat=200", "--numstat", sha], cd: path) do
+  def commit_detail(target, sha) do
+    case run(target, ["show", "--format=%H\t%s\t%an\t%aI", "--stat=200", "--numstat", sha]) do
       {:ok, output} ->
         lines = String.split(output, "\n", trim: true)
 
@@ -225,10 +225,10 @@ defmodule Loopyard.Git do
   Options:
     - :file — limit to a specific file
   """
-  def commit_diff(path, sha, opts \\ []) do
+  def commit_diff(target, sha, opts \\ []) do
     file = Keyword.get(opts, :file)
     args = ["show", "--format=", sha] ++ if(file, do: ["--", file], else: [])
-    git(args, cd: path)
+    run(target, args)
   end
 
   defp parse_numstat(lines) do
@@ -253,7 +253,7 @@ defmodule Loopyard.Git do
     - :ref — compare against a specific ref (e.g. "HEAD~1")
     - :file — limit diff to a specific file
   """
-  def diff(path, opts \\ []) do
+  def diff(target, opts \\ []) do
     ref = Keyword.get(opts, :ref)
     file = Keyword.get(opts, :file)
 
@@ -262,15 +262,15 @@ defmodule Loopyard.Git do
         if(ref, do: [ref], else: []) ++
         if(file, do: ["--", file], else: [])
 
-    git(args, cd: path)
+    run(target, args)
   end
 
   @doc """
   Show file contents at a specific ref.
   Returns {:ok, content} or {:error, reason}.
   """
-  def show(path, ref, file) do
-    git(["show", "#{ref}:#{file}"], cd: path)
+  def show(target, ref, file) do
+    run(target, ["show", "#{ref}:#{file}"])
   end
 
   # --- Private ---
@@ -285,6 +285,14 @@ defmodule Loopyard.Git do
       {output, _} -> {:error, String.trim(output)}
     end
   end
+
+  # Run a git command against a `target` that is EITHER a host path (binary —
+  # legacy Local worktrees, where .git lives on disk) OR a runner function
+  # (`(args -> {:ok, output} | {:error, reason})` — volume-backed workspaces, where
+  # .git lives only inside the code volume and git must run in the container). This
+  # is what lets the same parsing serve both host and container git.
+  defp run(target, args) when is_binary(target), do: git(args, cd: target)
+  defp run(target, args) when is_function(target, 1), do: target.(args)
 
   defp parse_worktree_list(output) do
     output

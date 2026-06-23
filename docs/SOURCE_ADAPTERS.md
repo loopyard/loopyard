@@ -2,9 +2,9 @@
 
 The `Source` behaviour (`lib/loopyard/source.ex`) defines how a project's code is materialized. Each project carries a `source_type` (`:local` or `:github`). `Source.for_project/1` dispatches to the right adapter.
 
-**Local** (`Source.Local`): the user already has the code on their machine. `ProjectRegistry.add(path)` registers it. Files live in a Docker volume; Mutagen syncs the volume with a host-side git worktree. Git is a host-side human concern — agents edit files, humans commit/push.
+**Local** (`Source.Local`): the user already has the code on their machine. `ProjectRegistry.add(path)` registers it. Files live in a Docker volume; Mutagen syncs the volume with a host-side git worktree. Git is a host-side human concern — agents edit files, humans commit/push. Its `git_*` callbacks run host git against the synced worktree.
 
-**GitHub** (future): OAuth, clone via API, PR integration. The stub forwards to `add_from_url` today.
+**GitHub** (future): OAuth, clone via API, PR integration. The stub forwards to `add_from_url` today. **Git, though, is wired up:** a GitHub workspace has NO host worktree — `.git` lives only inside the code volume — so its `git_*` callbacks hand `Loopyard.Git` a *runner* that execs `git -C /workspace` inside the workspace container (`safe.directory` set per-call because volume files are root-owned). `Loopyard.Git`'s functions take a `target` that is either a host path (binary) or a runner fn, so the same parsing serves both. This is what makes the git viewer (`/volumes/:vol/git`) work for volume-only workspaces.
 
 ## Rules
 

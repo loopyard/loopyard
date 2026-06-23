@@ -27,12 +27,15 @@ defmodule Loopyard.SourceTest do
       assert Source.supports_git?(Loopyard.Source.Local)
     end
 
-    test "GitHub git stubs return :not_implemented" do
-      # GitHub adapter exports git functions but they return :not_implemented
-      assert {:error, :not_implemented} = Loopyard.Source.GitHub.git_log(nil, nil, [])
-      assert {:error, :not_implemented} = Loopyard.Source.GitHub.git_status(nil, nil)
-      assert {:error, :not_implemented} = Loopyard.Source.GitHub.git_diff(nil, nil, [])
-      assert {:error, :not_implemented} = Loopyard.Source.GitHub.git_show(nil, nil, "HEAD", "f")
+    test "GitHub git ops route to container git (no longer stubbed)" do
+      # GitHub workspaces have no host worktree — git runs in the container against
+      # the code volume. With no workspace id there's nothing to reach, so we get a
+      # plain error tuple: NOT :not_implemented, and no crash.
+      assert {:error, msg} = Loopyard.Source.GitHub.git_log(nil, %{}, [])
+      assert is_binary(msg)
+      assert {:error, _} = Loopyard.Source.GitHub.git_status(nil, %{})
+      assert {:error, _} = Loopyard.Source.GitHub.git_diff(nil, %{}, [])
+      assert {:error, _} = Loopyard.Source.GitHub.git_show(nil, %{}, "HEAD", "f")
     end
   end
 end

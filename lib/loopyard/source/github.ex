@@ -12,6 +12,8 @@ defmodule Loopyard.Source.GitHub do
 
   require Logger
 
+  alias Loopyard.Git
+
   @behaviour Loopyard.Source
 
   @impl true
@@ -94,19 +96,48 @@ defmodule Loopyard.Source.GitHub do
   @impl true
   def on_container_down(_workspace), do: :ok
 
-  # Git operations not supported for GitHub source (yet)
+  # Git operations for GitHub-source workspaces. The code (and its `.git`) lives
+  # ONLY inside the code volume — there is no host worktree — so git must run in
+  # the workspace container against `/workspace`. We hand `Loopyard.Git` a runner
+  # that execs git in the container, reusing all of its parsing.
   @impl true
-  def git_log(_project, _workspace, _opts \\ []), do: {:error, :not_implemented}
+  def git_log(_project, workspace, opts \\ []), do: Git.log(runner(workspace), opts)
   @impl true
-  def git_status(_project, _workspace), do: {:error, :not_implemented}
+  def git_status(_project, workspace), do: Git.status(runner(workspace))
   @impl true
-  def git_diff(_project, _workspace, _opts \\ []), do: {:error, :not_implemented}
+  def git_diff(_project, workspace, opts \\ []), do: Git.diff(runner(workspace), opts)
   @impl true
-  def git_show(_project, _workspace, _ref, _path), do: {:error, :not_implemented}
+  def git_show(_project, workspace, ref, path), do: Git.show(runner(workspace), ref, path)
   @impl true
-  def git_diff_staged(_project, _workspace, _opts \\ []), do: {:error, :not_implemented}
+  def git_diff_staged(_project, workspace, opts \\ []), do: Git.diff_staged(runner(workspace), opts)
   @impl true
-  def git_commit_detail(_project, _workspace, _sha), do: {:error, :not_implemented}
+  def git_commit_detail(_project, workspace, sha), do: Git.commit_detail(runner(workspace), sha)
   @impl true
-  def git_commit_diff(_project, _workspace, _sha, _opts \\ []), do: {:error, :not_implemented}
+  def git_commit_diff(_project, workspace, sha, opts \\ []),
+    do: Git.commit_diff(runner(workspace), sha, opts)
+
+  # A `Loopyard.Git` runner that execs `git` inside the workspace container against
+  # the mounted code volume. `safe.directory` is set per-invocation because the
+  # volume's files are root-owned (git refuses "dubious ownership" otherwise).
+  defp runner(%{id: workspace_id}) when is_binary(workspace_id) do
+    fn args ->
+      case Loopyard.Workspace.ensure_working(workspace_id) do
+        {:ok, container} ->
+          cmd = "git -c safe.directory=/workspace -C /workspace " <> Enum.map_join(args, " ", &shq/1)
+
+          case Loopyard.Docker.exec_in(container, cmd) do
+            {:ok, output} -> {:ok, output}
+            {:error, output} -> {:error, String.trim(to_string(output))}
+          end
+
+        {:error, reason} ->
+          {:error, "workspace container unavailable for git: #{inspect(reason)}"}
+      end
+    end
+  end
+
+  defp runner(_), do: fn _args -> {:error, "no workspace id for git"} end
+
+  # Single-quote an arg for safe interpolation into the container shell command.
+  defp shq(s), do: "'" <> String.replace(to_string(s), "'", "'\\''") <> "'"
 end
