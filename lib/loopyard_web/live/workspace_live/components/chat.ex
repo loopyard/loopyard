@@ -409,50 +409,55 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               <% end %>
             </section>
           <% end %>
-          <%!-- Live tail: the agent's in-progress work continues the SAME spine —
-               streamed reasoning, streamed text, and the activity feed all flow
-               here (no bubble, no second avatar) as one continuation of the run.
-               NO run header here — the "Claude" header belongs ONCE at the start of
-               the response (rendered by the section above); a header here would
-               duplicate it at the bottom mid-stream. --%>
-          <div
-            :if={
-              @streaming_text != "" || (assigns[:streaming_thinking] || "") != "" ||
-                @agent.status in [:backoff, :compacting] ||
-                (@agent.status == :thinking && not awaiting_answer?(@messages) &&
-                   not awaiting_approval?(@messages) && not building?(@messages))
-            }
-            class="border-l border-zinc-200/70 dark:border-zinc-800/80 ml-3 mt-3"
-          >
-            <.streaming_thinking
-              :if={
-                @detail_level != :chat && assigns[:streaming_thinking] != "" &&
-                  assigns[:streaming_thinking] != nil
-              }
-              text={@streaming_thinking}
+          <%!-- Live tail: the agent's in-progress work — streamed reasoning, text,
+               the activity feed, and the live status bar — all on ONE continuous
+               spine ending in the bar, so the timeline reads as a single thing from
+               "Claude" down to what it's doing now. The "Claude" header renders here
+               ONLY when the response hasn't produced inline content yet (pure
+               thinking/streaming) — once it has, the section above owns the header,
+               so we never show two. --%>
+          <div :if={
+            @streaming_text != "" || (assigns[:streaming_thinking] || "") != "" ||
+              @agent.status in [:backoff, :compacting] ||
+              (@agent.status == :thinking && not awaiting_answer?(@messages) &&
+                 not awaiting_approval?(@messages) && not building?(@messages))
+          }>
+            <.run_header
+              :if={not turn_started_rendering?(@messages)}
+              timestamp={current_turn_timestamp(@messages)}
             />
-            <.streaming_bubble :if={@streaming_text != ""} text={@streaming_text} />
-            <.thinking_indicator
-              :if={
-                @agent.status == :thinking && @streaming_text == "" &&
-                  (assigns[:streaming_thinking] || "") == "" &&
-                  not awaiting_answer?(@messages) && not awaiting_approval?(@messages) &&
-                  not building?(@messages)
-              }
-              messages={@messages}
-              word={@thinking_word}
-            />
-            <%!-- The live status (word + elapsed + Stop) is the LAST thing on the
-                 transcript spine — below whatever the turn has produced so far,
-                 un-boxed, flowing with the conversation. It used to be a docked
-                 box above the input; it now lives at the foot of the timeline. --%>
-            <.live_status
-              :if={@agent.status in [:thinking, :backoff, :compacting]}
-              messages={@messages}
-              word={@thinking_word}
-              agent_id={@agent.id}
-              mode={live_status_mode(@agent)}
-            />
+            <div class={[
+              "border-l border-zinc-200/70 dark:border-zinc-800/80 ml-3",
+              turn_started_rendering?(@messages) && "mt-3"
+            ]}>
+              <.streaming_thinking
+                :if={
+                  @detail_level != :chat && assigns[:streaming_thinking] != "" &&
+                    assigns[:streaming_thinking] != nil
+                }
+                text={@streaming_thinking}
+              />
+              <.streaming_bubble :if={@streaming_text != ""} text={@streaming_text} />
+              <.thinking_indicator
+                :if={
+                  @agent.status == :thinking && @streaming_text == "" &&
+                    (assigns[:streaming_thinking] || "") == "" &&
+                    not awaiting_answer?(@messages) && not awaiting_approval?(@messages) &&
+                    not building?(@messages)
+                }
+                messages={@messages}
+                word={@thinking_word}
+              />
+              <%!-- The live status bar is the LAST thing on the spine — the live tip
+                   of the timeline, flowing from everything above it. --%>
+              <.live_status
+                :if={@agent.status in [:thinking, :backoff, :compacting]}
+                messages={@messages}
+                word={@thinking_word}
+                agent_id={@agent.id}
+                mode={live_status_mode(@agent)}
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -855,6 +860,27 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       %{timestamp: %DateTime{} = ts} -> DateTime.to_unix(ts, :millisecond)
       _ -> nil
     end
+  end
+
+  # The current turn's start time (the last human message) — for the live tail's
+  # "Claude · HH:MM" header so it reads the same as a finished run.
+  defp current_turn_timestamp(messages) do
+    case Enum.reverse(messages) |> Enum.find(&(&1.role == :user)) do
+      %{timestamp: %DateTime{} = ts} -> ts
+      _ -> nil
+    end
+  end
+
+  # True once the current turn has produced ANY message after the prompt — at which
+  # point the section above renders the "Claude" header for that content, so the
+  # live tail must NOT render its own (that's the duplicate). False during a pure
+  # prefill/think with nothing rendered yet, where the live tail IS the top of the
+  # response and owns the header.
+  defp turn_started_rendering?(messages) do
+    messages
+    |> Enum.reverse()
+    |> Enum.take_while(&(&1.role != :user))
+    |> Enum.any?()
   end
 
   defp current_turn_tools(messages) do
