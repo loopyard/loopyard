@@ -56,12 +56,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     assigns = assign(assigns, :raw, raw_url(assigns))
 
     # The big "chapter-break" air belongs at human<->machine boundaries only.
-    # Back-to-back human messages (accidental keystrokes, rapid-fire follow-ups)
-    # stay tight — no cavernous gap between two of your own lines.
+    # Consecutive human messages (a flurry / queued batch) GROUP into one purple
+    # area: the "You" label + the sticky header show on the FIRST only, and the
+    # bands butt together (tight padding, no gap) so they read as a single block,
+    # not N separate cards.
+    first? = prev_role(assigns) != :user
+
     assigns =
       assign(assigns,
-        band_top: if(prev_role(assigns) == :user, do: "mt-2", else: "mt-16 md:mt-24"),
-        band_bottom: if(next_role(assigns) == :user, do: "mb-2", else: "mb-10 md:mb-14")
+        show_user_label: first?,
+        sticky_class: if(first?, do: "sticky top-0 z-20", else: ""),
+        band_top: if(first?, do: "mt-16 md:mt-24 pt-4", else: "mt-0 pt-1"),
+        band_bottom: if(next_role(assigns) == :user, do: "mb-0 pb-1", else: "mb-10 md:mb-14 pb-4")
       )
 
     # The human prompt is a full-bleed purple band, not a bubble. It's `sticky`
@@ -73,7 +79,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     ~H"""
     <div
       class={[
-        "sticky top-0 z-20 -mx-4 md:-mx-6 px-4 md:px-6 py-4 bg-violet-100 dark:bg-[#2b2348] group/msg",
+        "-mx-4 md:-mx-6 px-4 md:px-6 bg-violet-100 dark:bg-[#2b2348] group/msg",
+        @sticky_class,
         @band_top,
         @band_bottom
       ]}
@@ -81,7 +88,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     >
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0">
-          <div class="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300 mb-1.5">
+          <div
+            :if={@show_user_label}
+            class="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300 mb-1.5"
+          >
             <.icon name={:user} class="w-3.5 h-3.5 flex-none" /> You
           </div>
           <%!-- Clamp to a few lines: the prompt is a sticky HEADER, so a long
@@ -500,7 +510,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       case group do
         {:break, {%{role: :user}, _idx}} = prompt ->
           {:break, p} = prompt
-          [%{prompt: p, body: []} | sections]
+
+          # A consecutive human message with NO agent response yet folds into the
+          # SAME section's body — a flurry of messages becomes ONE "You" area
+          # instead of a new chapter (and a new card) per line. Folds repeatedly
+          # (3rd, 4th, …) until the agent actually answers (a :run appears).
+          if foldable_user_section?(sections) do
+            [sec | rest] = sections
+            [%{sec | body: [prompt | sec.body]} | rest]
+          else
+            [%{prompt: p, body: []} | sections]
+          end
 
         other ->
           case sections do
@@ -512,6 +532,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     |> Enum.map(fn %{body: body} = sec -> %{sec | body: Enum.reverse(body)} end)
     |> Enum.reverse()
   end
+
+  # The current (most recent) section is a human-prompt section that the agent
+  # hasn't answered yet — its body has no agent run, only earlier folded prompts.
+  # A new human message folds into it (same "You" area) rather than starting a new
+  # chapter.
+  defp foldable_user_section?([%{prompt: {%{role: :user}, _}, body: body} | _]),
+    do: not Enum.any?(body, &match?({:run, _}, &1))
+
+  defp foldable_user_section?(_), do: false
 
   # How many lines of output we keep in the inline DOM. The full text is always
   # one click away via the raw link; this just bounds a pathological 10k-line

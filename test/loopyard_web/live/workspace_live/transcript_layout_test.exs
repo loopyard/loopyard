@@ -83,6 +83,33 @@ defmodule LoopyardWeb.Live.WorkspaceLive.TranscriptLayoutTest do
     refute html =~ "items-end"
   end
 
+  test "a flurry of consecutive human messages folds into ONE section (one You area)" do
+    msgs = [user("one"), user("two"), user("three"), assistant("got it")]
+
+    # ONE section — the follow-ups + the response all live in its body, so they
+    # render as a single grouped "You" area, not three separate cards.
+    assert [%{prompt: {%{role: :user, content: "one"}, 0}, body: body}] =
+             Messages.transcript_sections(msgs)
+
+    assert [
+             {:break, {%{role: :user, content: "two"}, 1}},
+             {:break, {%{role: :user, content: "three"}, 2}},
+             {:run, _}
+           ] = body
+  end
+
+  test "the You label + sticky show only on the FIRST of a consecutive run" do
+    msgs = [user("first"), user("second")]
+    # First: labelled + sticky header for the group.
+    first = render(msgs, 0)
+    assert first =~ "sticky"
+    assert first =~ "You"
+    # Second (prev is also user): no label, not sticky — it joins the same area.
+    second = render(msgs, 1)
+    refute second =~ "sticky"
+    refute second =~ "You"
+  end
+
   test "transcript_sections pairs each prompt with the response it owns" do
     msgs = [
       assistant("greeting"),
