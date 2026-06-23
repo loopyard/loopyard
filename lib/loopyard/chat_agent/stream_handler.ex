@@ -573,10 +573,7 @@ defmodule Loopyard.ChatAgent.StreamHandler do
 
     error_msg = %{
       role: :system,
-      content:
-        "The harness went silent for 10 minutes — a tool call hung or the CLI deadlocked. " <>
-          "Loopyard is rebooting the CLI and resuming this conversation; your chat history is " <>
-          "preserved. Any messages you queued will run on the fresh session.",
+      content: "CLI went unresponsive — auto-restarted, history kept.",
       timestamp: DateTime.utc_now()
     }
 

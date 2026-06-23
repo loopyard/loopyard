@@ -503,29 +503,16 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             </button>
           </div>
         </div>
-      <%!-- Context-window heads-up — a STATUS, not an error. A full window used to
-           silently wedge the agent; now it auto-compacts at ~92%. Compacting reads
-           calm (violet, like the thinking status) with "nothing's wrong" wording so
-           it's never mistaken for a failure; the earlier "approaching" heads-up is a
-           quiet muted line. --%>
+      <%!-- Auto-compaction is house-keeping the user shouldn't have to care about:
+           no pre-warning, and only a tiny muted marker WHILE it's actually
+           happening (≥92%). It's automatic and lossless (full history is kept),
+           so it never needs a sentence or an alarm. --%>
       <div
-        :if={(@agent[:context_utilization] || 0.0) >= 0.85}
-        class={[
-          "flex items-center gap-2 text-xs",
-          if((@agent[:context_utilization] || 0.0) >= 0.92,
-            do: "text-violet-600 dark:text-violet-300",
-            else: "text-zinc-400 dark:text-zinc-500"
-          )
-        ]}
+        :if={(@agent[:context_utilization] || 0.0) >= 0.92}
+        class="flex items-center gap-1.5 text-[11px] text-zinc-400 dark:text-zinc-500"
       >
-        <span class="flex-none">{if (@agent[:context_utilization] || 0.0) >= 0.92, do: "🗜", else: "·"}</span>
-        <span class="min-w-0">
-          {if (@agent[:context_utilization] || 0.0) >= 0.92,
-            do:
-              "Compacting — summarizing the conversation so I can keep going. This is automatic; nothing's wrong.",
-            else:
-              "Context #{round((@agent[:context_utilization] || 0.0) * 100)}% full — I'll auto-compact soon to keep going."}
-        </span>
+        <span class="flex-none">🗜</span>
+        <span class="min-w-0">Compacting…</span>
       </div>
       <div id="chat-form-wrapper" phx-update="ignore">
         <form id="chat-form" phx-submit="send_message" phx-hook="ChatForm" class="flex items-end gap-2">
