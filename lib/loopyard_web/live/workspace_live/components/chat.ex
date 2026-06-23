@@ -500,18 +500,28 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             </button>
           </div>
         </div>
-      <%!-- Context-window heads-up. A full window used to silently wedge the
-           agent (it can't take the turn); now it auto-compacts at ~92%, and this
-           tells you it's coming / happening instead of leaving you guessing. --%>
+      <%!-- Context-window heads-up — a STATUS, not an error. A full window used to
+           silently wedge the agent; now it auto-compacts at ~92%. Compacting reads
+           calm (violet, like the thinking status) with "nothing's wrong" wording so
+           it's never mistaken for a failure; the earlier "approaching" heads-up is a
+           quiet muted line. --%>
       <div
         :if={(@agent[:context_utilization] || 0.0) >= 0.85}
-        class="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400"
+        class={[
+          "flex items-center gap-2 text-xs",
+          if((@agent[:context_utilization] || 0.0) >= 0.92,
+            do: "text-violet-600 dark:text-violet-300",
+            else: "text-zinc-400 dark:text-zinc-500"
+          )
+        ]}
       >
-        <span class="flex-none">{if (@agent[:context_utilization] || 0.0) >= 0.92, do: "🗜", else: "⚠"}</span>
+        <span class="flex-none">{if (@agent[:context_utilization] || 0.0) >= 0.92, do: "🗜", else: "·"}</span>
         <span class="min-w-0">
           {if (@agent[:context_utilization] || 0.0) >= 0.92,
-            do: "Context full — compacting (summarizing the conversation so it can keep going).",
-            else: "Context #{round((@agent[:context_utilization] || 0.0) * 100)}% full — I'll auto-compact soon to keep going."}
+            do:
+              "Compacting — summarizing the conversation so I can keep going. This is automatic; nothing's wrong.",
+            else:
+              "Context #{round((@agent[:context_utilization] || 0.0) * 100)}% full — I'll auto-compact soon to keep going."}
         </span>
       </div>
       <div id="chat-form-wrapper" phx-update="ignore">
@@ -642,7 +652,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   attr :agent_id, :string, required: true
 
   def live_status(assigns) do
-    assigns = assign(assigns, :turn_since, turn_started_unix_ms(assigns.messages))
+    # `word` is nil until a tool event fires (e.g. during prefill/compaction), which
+    # rendered a bare "…". Default to "Thinking" so the bar always reads as something.
+    assigns =
+      assigns
+      |> assign(:turn_since, turn_started_unix_ms(assigns.messages))
+      |> assign(:word, if(assigns.word in [nil, ""], do: "Thinking", else: assigns.word))
 
     ~H"""
     <%!-- Full-width live bar at the BOTTOM of the timeline. Its content sits on the
@@ -807,16 +822,21 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     |> Enum.reverse()
     |> Enum.take_while(&(&1.role != :user))
     |> Enum.reverse()
-    |> Enum.filter(&(&1.role == :tool and not console_command_tool?(&1[:tool])))
+    |> Enum.filter(&(&1.role == :tool and not own_surface_tool?(&1[:tool])))
   end
 
-  # exec / docker_compose stream into their own console box (command in the title,
-  # output below) — so they don't also belong in the compact activity feed, which
-  # would show the command a second time.
-  defp console_command_tool?(tool) when is_binary(tool),
-    do: String.ends_with?(tool, "__exec") or String.ends_with?(tool, "__docker_compose")
+  # Tools that render their OWN prominent surface — exec/docker_compose as a
+  # console box, and ask_user/request_secret/propose_* as an interactive card — so
+  # they don't ALSO belong in the compact activity feed, which would double-show
+  # them (the command/card a second time).
+  @own_surface_tools ~w(
+    exec docker_compose ask_user request_secret
+    propose_fork propose_integrate propose_delete_workspace
+  )
+  defp own_surface_tool?(tool) when is_binary(tool),
+    do: Enum.any?(@own_surface_tools, &String.ends_with?(tool, &1))
 
-  defp console_command_tool?(_), do: false
+  defp own_surface_tool?(_), do: false
 
   # Index of the last human message — tools after it belong to the active
   # turn and live in the feed. Returns nil (suppress nothing) unless the
