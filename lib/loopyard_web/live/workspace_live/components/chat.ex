@@ -410,17 +410,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             </section>
           <% end %>
           <%!-- Live tail: the agent's in-progress work continues the SAME spine —
-               streamed reasoning, streamed text, and the activity feed all flow
-               here (no bubble, no second avatar) as one continuation of the run. --%>
-          <div
-            :if={
-              @streaming_text != "" || (assigns[:streaming_thinking] || "") != "" ||
-                (@agent.status == :thinking && not awaiting_answer?(@messages) &&
-                   not awaiting_approval?(@messages) && not building?(@messages))
-            }
-            class="border-l border-zinc-200/70 dark:border-zinc-800/80 ml-3 mt-3"
-          >
-            <.streaming_thinking
+               streamed reasoning, streamed text, and the activity feed. We show the
+               "Claude" run header from the START of the turn (it appears anyway once
+               content lands, so show it immediately instead of popping in). --%>
+          <div :if={
+            @streaming_text != "" || (assigns[:streaming_thinking] || "") != "" ||
+              (@agent.status == :thinking && not awaiting_answer?(@messages) &&
+                 not awaiting_approval?(@messages) && not building?(@messages))
+          }>
+            <.run_header timestamp={current_turn_timestamp(@messages)} />
+            <div class="border-l border-zinc-200/70 dark:border-zinc-800/80 ml-3">
+              <.streaming_thinking
               :if={
                 @detail_level != :chat && assigns[:streaming_thinking] != "" &&
                   assigns[:streaming_thinking] != nil
@@ -448,6 +448,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               word={@thinking_word}
               agent_id={@agent.id}
             />
+            </div>
           </div>
         </div>
       </div>
@@ -815,6 +816,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   defp turn_started_unix_ms(messages) do
     case Enum.reverse(messages) |> Enum.find(&(&1.role == :user)) do
       %{timestamp: %DateTime{} = ts} -> DateTime.to_unix(ts, :millisecond)
+      _ -> nil
+    end
+  end
+
+  # The current turn's start time (the last human message) — used for the live
+  # "Claude · HH:MM" run header so it reads the same as a finished run.
+  defp current_turn_timestamp(messages) do
+    case Enum.reverse(messages) |> Enum.find(&(&1.role == :user)) do
+      %{timestamp: %DateTime{} = ts} -> ts
       _ -> nil
     end
   end
