@@ -113,12 +113,15 @@ defmodule Loopyard.ChatAgentTest do
 
       ChatAgent.restart_session(id)
 
-      # Should receive a system message about the restart
+      # Should receive a system message about the restart (recovery note —
+      # wording names the crash + that it's resuming/replaying).
       assert_receive %Loopyard.Events.ChatAgentMessage.Message{
                        agent_id: ^id,
-                       msg: %{role: :system, content: "CLI session restarted"}
+                       msg: %{role: :system, content: restart_note}
                      },
                      5000
+
+      assert restart_note =~ "restarting"
 
       # Agent should still be idle after restart
       state_after = ChatAgent.get_state(id)
@@ -726,6 +729,143 @@ defmodule Loopyard.ChatAgentTest do
       live = ChatAgent.get_state(id)
       contents = Enum.map(live.messages, & &1.content)
       assert contents == ["first", "second", "third", "fourth"]
+    end
+  end
+
+  describe "get_messages/2 snap_to_prompt" do
+    # chronological (oldest→newest): two groups, each led by a :user prompt.
+    @msgs [
+      %{id: "m0", role: :user, content: "p0"},
+      %{id: "m1", role: :assistant, content: "a1"},
+      %{id: "m2", role: :tool, content: "t2"},
+      %{id: "m3", role: :user, content: "p3"},
+      %{id: "m4", role: :assistant, content: "a4"},
+      %{id: "m5", role: :tool, content: "t5"},
+      %{id: "m6", role: :assistant, content: "a6"},
+      %{id: "m7", role: :user, content: "p7"}
+    ]
+
+    setup do
+      id = "snap-test-#{:rand.uniform(1_000_000)}"
+      :ets.insert(:chat_agents, {id, %{messages: @msgs}})
+      on_exit(fn -> :ets.delete(:chat_agents, id) end)
+      %{id: id}
+    end
+
+    test "snaps the loaded chunk back to the nearest human prompt", %{id: id} do
+      # before_id m7 (idx 7), limit 3 → raw start = idx 4 (m4), which is mid-group
+      # (its prompt is m3). Snap pulls the top back to m3 so the chunk starts at a
+      # "You".
+      {slice, total} =
+        ChatAgent.get_messages(id, limit: 3, before_id: "m7", snap_to_prompt: true)
+
+      assert total == 8
+      assert Enum.map(slice, & &1.id) == ["m3", "m4", "m5", "m6"]
+      assert hd(slice).role == :user
+    end
+
+    test "without snap, loads exactly `limit` (may start mid-group)", %{id: id} do
+      {slice, _total} = ChatAgent.get_messages(id, limit: 3, before_id: "m7")
+      assert Enum.map(slice, & &1.id) == ["m4", "m5", "m6"]
+      assert hd(slice).role == :assistant
+    end
+
+    test "snap runs to the top when no earlier prompt exists", %{id: id} do
+      # before_id m3 (idx 3), limit 10 → raw start 0; m0 is already a prompt.
+      {slice, _} = ChatAgent.get_messages(id, limit: 10, before_id: "m3", snap_to_prompt: true)
+      assert Enum.map(slice, & &1.id) == ["m0", "m1", "m2"]
+    end
+  end
+
+  describe "warm interrupt under a wedged CLI" do
+    defmodule WedgedBackend do
+      @moduledoc """
+      Backend whose warm interrupt never acks within the deadline — simulates a
+      wedged CLI (the SDK's interrupt write blocks on a full stdin pipe). The
+      session GenServer itself is healthy and stoppable; only cancel_turn hangs.
+      """
+      @behaviour Loopyard.Harness
+      use GenServer
+
+      @impl true
+      def start_session(_opts), do: GenServer.start_link(__MODULE__, :ok)
+      @impl true
+      def stream(_session, _prompt), do: []
+      @impl true
+      def stop(session) do
+        if is_pid(session) and Process.alive?(session), do: GenServer.stop(session, :normal, 1_000)
+        :ok
+      end
+      @impl true
+      def cancel_turn(_session) do
+        # Way past @interrupt_deadline_ms — the agent should give up and hard-restart.
+        Process.sleep(3_000)
+        :ok
+      end
+      @impl true
+      def session_alive?(session), do: is_pid(session) and Process.alive?(session)
+      @impl true
+      def session_id(_session), do: nil
+      @impl GenServer
+      def init(:ok), do: {:ok, %{}}
+    end
+
+    setup do
+      tmp_dir = scratch_dir("wedge-test")
+      id = "wedge-test-#{:rand.uniform(100_000)}"
+
+      {:ok, _pid} =
+        Loopyard.TestHelpers.start_agent(
+          id: id,
+          name: "Wedge Test",
+          working_dir: tmp_dir,
+          started_by: "test",
+          backend: WedgedBackend
+        )
+
+      on_exit(fn ->
+        try do
+          ChatAgent.stop_agent(id)
+        catch
+          :exit, _ -> :ok
+        end
+
+        Process.sleep(50)
+      end)
+
+      on_exit(fn -> File.rm_rf!(tmp_dir) end)
+      %{id: id, tmp_dir: tmp_dir}
+    end
+
+    test "a wedged interrupt hard-restarts (kill + resume) instead of hanging on the SDK's 5s self-crash",
+         %{id: id} do
+      [{pid, _}] = Registry.lookup(Loopyard.ChatAgentRegistry, id)
+      %{session: session_before} = :sys.get_state(pid, 1_000)
+
+      # Put the agent mid-turn so :interrupt takes the warm path.
+      :sys.replace_state(pid, fn s -> %{s | status: :thinking, stream_ref: make_ref()} end)
+
+      ChatAgent.subscribe(id)
+      ChatAgent.subscribe()
+      ChatAgent.interrupt(id)
+
+      # The warm interrupt can't ack within @interrupt_deadline_ms, so rather than
+      # block until the SDK self-crashes at 5s, the agent hard-restarts: a recovery
+      # :system note lands, status returns to idle, and the (wedged) session pid is
+      # replaced with a fresh one.
+      assert_receive %Loopyard.Events.ChatAgentMessage.Message{
+                       agent_id: ^id,
+                       msg: %{role: :system, content: note}
+                     },
+                     5_000
+
+      assert note =~ "restarting"
+
+      Process.sleep(200)
+      %{status: status, session: session_after} = :sys.get_state(pid, 1_000)
+      assert status == :idle
+      assert is_pid(session_after)
+      assert session_after != session_before
     end
   end
 end

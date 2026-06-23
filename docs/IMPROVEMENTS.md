@@ -8,6 +8,8 @@ A prioritized list of known, scoped improvements for Loopyard. Ordered within ea
 
 ## Robustness (handles edge cases gracefully)
 
+0. **Report (and ideally fix) the upstream `claude_code` interrupt-timeout bug.** `deps/claude_code/lib/claude_code/adapter/port.ex:102` — `def interrupt(adapter), do: GenServer.call(adapter, :interrupt)` uses the default 5s `GenServer.call` timeout, while every other control call in that file passes `:infinity`/`@default_control_timeout` (60s). When the CLI subprocess is wedged (stdin pipe full), the adapter's interrupt write blocks, the call times out at 5s, and `ClaudeCode.Session.Server` crashes. (Confirmed 0.36.5, the latest.) Loopyard now mitigates this in `ChatAgent.handle_cast(:interrupt)`: it runs the warm interrupt under `@interrupt_deadline_ms` (1.5s) and, if it doesn't ack, hard-restarts (kill + resume) to preempt the 5s self-crash — fast when healthy, reliable when wedged, no work lost. The clean upstream fix is to pass a timeout to that `interrupt/1` call (or make it a cast); file it / PR it and drop our deadline workaround once it lands.
+
 1. **Declare `Boundary` boundaries for `Loopyard` / `LoopyardWeb` / `Loopyard.Events`.** The `:boundary` dep is installed but no `use Boundary` declarations exist yet, so it currently does nothing. Wiring it up is a real architectural pass:
    - Top-level `Loopyard` boundary (create `lib/loopyard.ex`) with `deps: []` and explicit exports for the modules `LoopyardWeb` is allowed to call.
    - `LoopyardWeb` boundary with `deps: [Loopyard]` — catches "web depends on domain, never reverse" at compile time.

@@ -165,6 +165,19 @@ defmodule Loopyard.ChatAgent do
   # that want to exercise the reject path with smaller inputs.
   @max_message_bytes Application.compile_env(:loopyard, :max_message_bytes, 1_048_576)
 
+  # Warm-interrupt deadline. The SDK's interrupt only blocks when the CLI is
+  # wedged (stdin pipe full); a healthy interrupt acks in microseconds. If the
+  # warm interrupt doesn't land within this window the CLI is wedged, so we
+  # preempt the SDK's own 5s self-crash with a hard restart (kill + resume).
+  # Keep it well under that 5s so we always win the race.
+  @interrupt_deadline_ms 1_500
+
+  # Hard ceiling on a single snap-to-prompt scroll-up load. The base page is 50;
+  # snapping extends up to the nearest "You" prompt, but never past this many
+  # messages total — so one absurdly long agent run (100s of tool messages in a
+  # single group) can't turn one scroll-up into a giant, slow render.
+  @snap_max_load 150
+
   # --- Public API ---
 
   def start_link(opts) do
@@ -259,6 +272,20 @@ defmodule Loopyard.ChatAgent do
           if before_id do
             idx = Enum.find_index(messages, &(&1[:id] == before_id)) || 0
             start = max(0, idx - limit)
+
+            # Snap the top of the loaded chunk back to the nearest human prompt so a
+            # scroll-up load always brings in COMPLETE prompt-groups — you never land
+            # on a headless mid-group view missing its sticky "You" prompt. Capped at
+            # @snap_max_load total so a pathologically long agent run (100s of tool
+            # messages in one group) can't balloon a single load — it stays fast.
+            start =
+              if Keyword.get(opts, :snap_to_prompt, false) do
+                floor = max(0, idx - @snap_max_load)
+                snap_to_prompt_start(messages, start, floor)
+              else
+                start
+              end
+
             Enum.slice(messages, start, idx - start)
           else
             Enum.take(messages, -limit)
@@ -268,6 +295,22 @@ defmodule Loopyard.ChatAgent do
 
       _ ->
         {[], 0}
+    end
+  end
+
+  # Nearest human (:user) prompt index in `floor..start` — the start of a group —
+  # so a scroll-up load begins at a "You" instead of mid-conversation. Bounded:
+  # only the `floor..start` window is scanned (≤ @snap_max_load - page_size
+  # elements), and if no prompt sits in that window we stop at `floor` so the load
+  # never runs away. Returns `floor` when there's nothing earlier to snap to.
+  defp snap_to_prompt_start(_messages, start, floor) when start <= floor, do: floor
+
+  defp snap_to_prompt_start(messages, start, floor) do
+    window = Enum.slice(messages, floor, start - floor + 1)
+
+    case window |> Enum.reverse() |> Enum.find_index(&(&1[:role] == :user)) do
+      nil -> floor
+      rev_i -> start - rev_i
     end
   end
 
@@ -896,11 +939,15 @@ defmodule Loopyard.ChatAgent do
             %{
               role: :system,
               content:
-                "CLI session restarted (resumed conversation #{String.slice(state.claude_session_id, 0..7)}…)",
+                "CLI crashed — restarting and resuming where it left off (#{String.slice(state.claude_session_id, 0..7)}…).",
               timestamp: DateTime.utc_now()
             }
           else
-            %{role: :system, content: "CLI session restarted", timestamp: DateTime.utc_now()}
+            %{
+              role: :system,
+              content: "CLI crashed — restarting and replaying recent context.",
+              timestamp: DateTime.utc_now()
+            }
           end
 
         {state, restart_msg} = append_message(state, restart_msg)
@@ -918,7 +965,7 @@ defmodule Loopyard.ChatAgent do
           resume_msg = Loopyard.ChatAgent.ResumeMessage.build(state.messages)
 
           if resume_msg do
-            GenServer.cast(self(), {:send_message, resume_msg})
+            GenServer.cast(self(), {:resume_prompt, resume_msg})
           end
         end
 
@@ -961,6 +1008,25 @@ defmodule Loopyard.ChatAgent do
         })
 
         {:noreply, state}
+    end
+  end
+
+  # Feed a continuation prompt to a freshly-restarted/compacted CLI WITHOUT
+  # recording it as a human turn. The user never typed this — it's the
+  # crash/compaction resume summary that gets the model going again, so it must
+  # never appear as a "YOU" message. The visible artifact is the subtle ":system"
+  # recovery note appended by the caller. Best-effort: only start a turn if the
+  # agent is idle with a live session; if it's busy (already continuing) or the
+  # session is dead (restart flow owns it), drop the nudge — NEVER queue it, since
+  # the drain path would resurface it as a fake user turn.
+  @impl true
+  def handle_cast({:resume_prompt, text}, state) when is_binary(text) do
+    state = SessionManager.ensure_alive(state)
+
+    if state.status == :idle and state.backend.session_alive?(state.session) do
+      start_turn(state, text)
+    else
+      {:noreply, state}
     end
   end
 
@@ -1068,9 +1134,10 @@ defmodule Loopyard.ChatAgent do
             context_warning_sent: false
         }
 
-        # Send the resume summary
+        # Send the resume summary as a SILENT continuation (the user never typed
+        # it — it's the compaction summary), not a visible :user turn.
         resume = Loopyard.ChatAgent.ResumeMessage.build(state.messages)
-        if resume, do: GenServer.cast(self(), {:send_message, resume})
+        if resume, do: GenServer.cast(self(), {:resume_prompt, resume})
 
         # Re-send the user's last message so the agent acts on it
         if last_user_text && last_user_text != "" do
@@ -1102,7 +1169,14 @@ defmodule Loopyard.ChatAgent do
     # interrupt makes the turn finish, so the queue then sends — exactly what the
     # queue panel promises ("sends when the agent finishes"). Use Clear all to
     # discard it instead.
-    if state.session, do: state.backend.cancel_turn(state.session)
+    #
+    # But the warm interrupt can WEDGE: the SDK writes to the CLI's stdin and, if
+    # the subprocess is hung (pipe full), the call blocks and then the SDK's own
+    # session self-crashes at 5s. So we run cancel_turn under a short deadline; if
+    # it doesn't ack, the CLI is wedged and we hard-restart (kill + resume),
+    # preempting that crash. Fast when healthy, reliable when wedged, no work lost.
+    warm_ok? = warm_interrupt(state)
+
     state = StreamHandler.finalize_partial_on_stream_interrupt(state, state.id, :stopped_by_user)
 
     state = %{
@@ -1122,16 +1196,25 @@ defmodule Loopyard.ChatAgent do
         current_turn_prompt: nil
     }
 
-    case state.pending_sends do
-      [] ->
+    cond do
+      not warm_ok? ->
+        # CLI was wedged — the warm interrupt didn't land. Hard-restart (kill +
+        # resume) clears the wedge and preempts the SDK's 5s self-crash. The
+        # restart path drains the pending queue itself, so don't also drain here.
+        :ets.insert(@ets_table, {state.id, summary(state)})
+        Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :idle})
+        GenServer.cast(self(), :restart_session)
+        {:noreply, state}
+
+      state.pending_sends == [] ->
         :ets.insert(@ets_table, {state.id, summary(state)})
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :idle})
         {:noreply, state}
 
-      pending ->
+      true ->
         # The agent just "finished" — drain the parked queue as the next turn.
         :ets.insert(@ets_table, {state.id, summary(%{state | pending_sends: []})})
-        send_batch(%{state | pending_sends: []}, pending)
+        send_batch(%{state | pending_sends: []}, state.pending_sends)
     end
   end
 
@@ -1314,7 +1397,7 @@ defmodule Loopyard.ChatAgent do
         resume_msg = Loopyard.ChatAgent.ResumeMessage.build(state.messages)
 
         if resume_msg do
-          GenServer.cast(self(), {:send_message, resume_msg})
+          GenServer.cast(self(), {:resume_prompt, resume_msg})
         end
 
         {:noreply, state}
@@ -1662,6 +1745,21 @@ defmodule Loopyard.ChatAgent do
   # handle_cast({:send_message, text}). Kept as a defp so the cast
   # clauses stay contiguous (Elixir warns on non-grouped clauses) and
   # the cond in send_message stays readable.
+  # Run the backend's warm interrupt under @interrupt_deadline_ms. Returns true if
+  # it acked cleanly, false if it errored or timed out (CLI wedged → caller hard-
+  # restarts). cancel_turn is exit-safe (it catches the SDK's own exits), so the
+  # linked Task can't take us down; a timeout just means "wedged".
+  defp warm_interrupt(%{session: nil}), do: true
+
+  defp warm_interrupt(%{session: session, backend: backend}) do
+    task = Task.async(fn -> backend.cancel_turn(session) end)
+
+    case Task.yield(task, @interrupt_deadline_ms) || Task.shutdown(task, :brutal_kill) do
+      {:ok, :ok} -> true
+      _ -> false
+    end
+  end
+
   defp send_message_normal(state, text) do
     state = SessionManager.ensure_alive(state)
 

@@ -82,7 +82,7 @@ defmodule Loopyard.ChatAgent.Prompt do
 
     Dev-service cluster (dev server, postgres, …): none runs by default. To RUN the app, write `.loopyard/workspace/docker-compose.yml` and bring it up with the `docker_compose` tool (never `docker compose` via `exec`). Check running services with `service_containers`/`workspace_info`; `logs` for output.
 
-    Decisions: call `ask_user` (clickable buttons, waits) instead of asking in prose. Branching: `propose_fork` to try an idea on a new branch workspace; `propose_integrate` to merge this branch into main; `propose_delete_workspace` to clean up after. All user-approved — never branch on your own.
+    Decisions: call `ask_user` (clickable buttons, waits) instead of asking in prose. Secrets: when you need an API key/token/password, call `request_secret` (masked field, kept OUT of the chat) — never ask the user to paste a secret into the conversation. It returns a storage key; read the value with `get_secret` only when you actually need it (ideally to set an env var right before the command that needs it). Branching: `propose_fork` to try an idea on a new branch workspace; `propose_integrate` to merge this branch into main; `propose_delete_workspace` to clean up after. All user-approved — never branch on your own.
 
     Long command output is truncated — you'll see the last ~80 lines. The full output is visible to the user in the chat.
 
