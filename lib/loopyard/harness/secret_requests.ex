@@ -64,9 +64,9 @@ defmodule Loopyard.Harness.SecretRequests do
     )
 
     receive do
-      {:submitted, ^rid, submitter} ->
-        :ets.delete(@table, rid)
-        update_msg(agent_id, msg_id, %{status: :submitted, submitted_by: submitter})
+      # submit/4 already stored the value and flipped the card to :submitted for
+      # everyone — the waiter just resumes the agent's turn with the key.
+      {:submitted, ^rid, _submitter} ->
         {:ok, key}
     after
       @timeout_ms ->
@@ -84,28 +84,32 @@ defmodule Loopyard.Harness.SecretRequests do
   on the card (who provided it); the value is intentionally absent from the
   return so a careless caller can't echo it.
 
-  Returns `{:ok, key}` on success, `{:error, :not_found}` if nothing's pending
-  (or the requesting tool already died — the card is reaped).
+  Returns `{:ok, key}` on success, `{:error, :not_found}` if nothing's pending.
+
+  The store + the card flip happen HERE (not in the waiter), so a submitted secret
+  is saved and shows as "Submitted" on EVERY viewer even if the requesting tool
+  process already died (CLI crash / stream replaced). The waiter is only signalled
+  to resume the agent's turn when it's still alive.
   """
   @spec submit(String.t(), String.t(), String.t() | nil, String.t() | nil) ::
           {:ok, String.t()} | {:error, :not_found}
   def submit(rid, value, workspace_id, submitter \\ nil)
       when is_binary(rid) and is_binary(value) do
     case :ets.lookup(@table, rid) do
-      [{^rid, %{waiter: pid, name: name, key: key} = entry}] ->
-        if Process.alive?(pid) do
-          scope = if is_binary(workspace_id), do: [workspace_id], else: []
-          Secrets.put(key, name, value, scope)
-          send(pid, {:submitted, rid, submitter})
-          {:ok, key}
-        else
-          # The requesting tool died (CLI crash / stream replaced) — its receive
-          # is gone, so storing now would orphan the value with nothing to resume.
-          # Reap the card so it doesn't sit "pending" forever.
-          :ets.delete(@table, rid)
-          update_msg(entry.agent_id, entry.msg_id, %{status: :timeout})
-          {:error, :not_found}
-        end
+      [{^rid, %{waiter: pid, name: name, key: key, agent_id: agent_id, msg_id: msg_id}}] ->
+        scope = if is_binary(workspace_id), do: [workspace_id], else: []
+        Secrets.put(key, name, value, scope)
+        :ets.delete(@table, rid)
+
+        # Flip the card to :submitted for EVERY viewer (multiplayer broadcast),
+        # independent of waiter liveness — so all UIs know a secret was submitted
+        # (never the value).
+        update_msg(agent_id, msg_id, %{status: :submitted, submitted_by: submitter})
+
+        # Resume the blocked agent turn only if its waiter is still alive.
+        if is_pid(pid) and Process.alive?(pid), do: send(pid, {:submitted, rid, submitter})
+
+        {:ok, key}
 
       _ ->
         {:error, :not_found}

@@ -50,15 +50,23 @@ defmodule Loopyard.Harness.SecretRequestsTest do
     refute Map.has_key?(card, :value)
   end
 
-  test "submit to a dead waiter reaps the card and returns not_found", %{agent_id: agent_id} do
+  test "a submitted secret is stored + shown 'Submitted' to everyone even if the waiter died",
+       %{agent_id: agent_id} do
     task = Task.async(fn -> SecretRequests.request(agent_id, "TOKEN", nil) end)
     rid = wait_for_request(agent_id)
 
     Task.shutdown(task, :brutal_kill)
     Process.sleep(20)
 
-    assert {:error, :not_found} = SecretRequests.submit(rid, "whatever", "ws-1", nil)
+    # The requesting tool is gone, but the value must NOT be discarded: it's stored
+    # and the card flips to :submitted for every viewer.
+    assert {:ok, "token"} = SecretRequests.submit(rid, "tok-123", "ws-1", "brad")
     refute SecretRequests.pending?(rid)
+    assert {:ok, "tok-123"} = Secrets.get("token", "ws-1", nil)
+
+    [{^agent_id, %{messages: msgs}}] = :ets.lookup(:chat_agents, agent_id)
+    card = Enum.find(msgs, &(&1[:role] == :secret_request))
+    assert card.status == :submitted
   end
 
   defp wait_for_request(agent_id, tries \\ 200) do
