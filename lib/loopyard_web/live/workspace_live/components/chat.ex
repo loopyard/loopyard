@@ -410,17 +410,21 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             </section>
           <% end %>
           <%!-- Live tail: the agent's in-progress work continues the SAME spine —
-               streamed reasoning, streamed text, and the activity feed. We show the
-               "Claude" run header from the START of the turn (it appears anyway once
-               content lands, so show it immediately instead of popping in). --%>
-          <div :if={
-            @streaming_text != "" || (assigns[:streaming_thinking] || "") != "" ||
-              (@agent.status == :thinking && not awaiting_answer?(@messages) &&
-                 not awaiting_approval?(@messages) && not building?(@messages))
-          }>
-            <.run_header timestamp={current_turn_timestamp(@messages)} />
-            <div class="border-l border-zinc-200/70 dark:border-zinc-800/80 ml-3">
-              <.streaming_thinking
+               streamed reasoning, streamed text, and the activity feed all flow
+               here (no bubble, no second avatar) as one continuation of the run.
+               NO run header here — the "Claude" header belongs ONCE at the start of
+               the response (rendered by the section above); a header here would
+               duplicate it at the bottom mid-stream. --%>
+          <div
+            :if={
+              @streaming_text != "" || (assigns[:streaming_thinking] || "") != "" ||
+                @agent.status in [:backoff, :compacting] ||
+                (@agent.status == :thinking && not awaiting_answer?(@messages) &&
+                   not awaiting_approval?(@messages) && not building?(@messages))
+            }
+            class="border-l border-zinc-200/70 dark:border-zinc-800/80 ml-3 mt-3"
+          >
+            <.streaming_thinking
               :if={
                 @detail_level != :chat && assigns[:streaming_thinking] != "" &&
                   assigns[:streaming_thinking] != nil
@@ -443,12 +447,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                  un-boxed, flowing with the conversation. It used to be a docked
                  box above the input; it now lives at the foot of the timeline. --%>
             <.live_status
-              :if={@agent.status == :thinking}
+              :if={@agent.status in [:thinking, :backoff, :compacting]}
               messages={@messages}
               word={@thinking_word}
               agent_id={@agent.id}
+              mode={live_status_mode(@agent)}
             />
-            </div>
           </div>
         </div>
       </div>
@@ -640,14 +644,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   attr :messages, :list, required: true
   attr :word, :string, required: true
   attr :agent_id, :string, required: true
+  attr :mode, :atom, default: :thinking
 
   def live_status(assigns) do
-    # `word` is nil until a tool event fires (e.g. during prefill/compaction), which
-    # rendered a bare "…". Default to "Thinking" so the bar always reads as something.
+    # The bar shows the WORK BEING DONE — not all of it is thinking. Harness
+    # maintenance (compacting the context, restarting a crashed CLI) gets its own
+    # word + a color shift away from thinking-violet, so you can tell at a glance
+    # that the pause is the harness, not the model.
     assigns =
       assigns
       |> assign(:turn_since, turn_started_unix_ms(assigns.messages))
-      |> assign(:word, if(assigns.word in [nil, ""], do: "Thinking", else: assigns.word))
+      |> assign_status_styles()
 
     ~H"""
     <%!-- Full-width live bar at the BOTTOM of the timeline. Its content sits on the
@@ -655,23 +662,23 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
          under the ✓/$ column. Squared + borderless on the LEFT so it runs flush
          into the timeline (reads as part of it), rounded on the RIGHT. --%>
     <div class="mt-2">
-      <div class="flex items-center gap-3 rounded-r-xl rounded-l-none border border-l-0 border-violet-200/70 dark:border-violet-500/20 bg-violet-50 dark:bg-violet-500/10 pl-7 pr-3 py-2.5">
+      <div class={["flex items-center gap-3 rounded-r-xl rounded-l-none border border-l-0 pl-7 pr-3 py-2.5", @container_class]}>
         <div class="flex gap-1.5 flex-none" aria-hidden="true">
-          <div class="w-2 h-2 rounded-full bg-violet-400 animate-bounce" style="animation-delay: 0ms">
+          <div class={["w-2 h-2 rounded-full animate-bounce", @dot_class]} style="animation-delay: 0ms">
           </div>
-          <div class="w-2 h-2 rounded-full bg-violet-400 animate-bounce" style="animation-delay: 150ms">
+          <div class={["w-2 h-2 rounded-full animate-bounce", @dot_class]} style="animation-delay: 150ms">
           </div>
-          <div class="w-2 h-2 rounded-full bg-violet-400 animate-bounce" style="animation-delay: 300ms">
+          <div class={["w-2 h-2 rounded-full animate-bounce", @dot_class]} style="animation-delay: 300ms">
           </div>
         </div>
-        <span class="text-sm font-semibold text-violet-700 dark:text-violet-200 flex-none">{@word}…</span>
+        <span class={["text-sm font-semibold flex-none", @text_class]}>{@word}…</span>
         <span
           :if={@turn_since}
           id="turn-elapsed"
           phx-hook="Elapsed"
           phx-update="ignore"
           data-since={@turn_since}
-          class="text-xs text-violet-500/70 dark:text-violet-300/50 flex-none tabular-nums"
+          class={["text-xs flex-none tabular-nums", @elapsed_class]}
         >
         </span>
         <div class="flex-1 min-w-0"></div>
@@ -686,6 +693,49 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       </div>
     </div>
     """
+  end
+
+  # What the harness is doing right now, for the live bar's word + colour. The
+  # agent sets :backoff while restarting a crashed CLI and :compacting while it
+  # summarizes a full context; everything else reads as the model thinking.
+  defp live_status_mode(agent) do
+    case agent.status do
+      :backoff -> :restarting
+      :compacting -> :compacting
+      _ -> :thinking
+    end
+  end
+
+  # Word + colour scheme for the live bar, by what the harness is actually doing.
+  # Thinking stays violet; harness maintenance (compacting, restarting a crashed
+  # CLI) shifts to amber/rose so a pause clearly reads as "the harness", not "the
+  # model is slow". Full class strings (no interpolation) so Tailwind keeps them.
+  defp assign_status_styles(assigns) do
+    {word, dot, container, text, elapsed} =
+      case assigns[:mode] || :thinking do
+        :compacting ->
+          {"Compacting", "bg-amber-400",
+           "border-amber-200/70 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-500/10",
+           "text-amber-700 dark:text-amber-200", "text-amber-500/70 dark:text-amber-300/50"}
+
+        :restarting ->
+          {"Restarting harness", "bg-rose-400",
+           "border-rose-200/70 dark:border-rose-500/20 bg-rose-50 dark:bg-rose-500/10",
+           "text-rose-700 dark:text-rose-200", "text-rose-500/70 dark:text-rose-300/50"}
+
+        _ ->
+          {if(assigns.word in [nil, ""], do: "Thinking", else: assigns.word), "bg-violet-400",
+           "border-violet-200/70 dark:border-violet-500/20 bg-violet-50 dark:bg-violet-500/10",
+           "text-violet-700 dark:text-violet-200", "text-violet-500/70 dark:text-violet-300/50"}
+      end
+
+    assign(assigns,
+      word: word,
+      dot_class: dot,
+      container_class: container,
+      text_class: text,
+      elapsed_class: elapsed
+    )
   end
 
   @doc """
@@ -803,15 +853,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   defp turn_started_unix_ms(messages) do
     case Enum.reverse(messages) |> Enum.find(&(&1.role == :user)) do
       %{timestamp: %DateTime{} = ts} -> DateTime.to_unix(ts, :millisecond)
-      _ -> nil
-    end
-  end
-
-  # The current turn's start time (the last human message) — used for the live
-  # "Claude · HH:MM" run header so it reads the same as a finished run.
-  defp current_turn_timestamp(messages) do
-    case Enum.reverse(messages) |> Enum.find(&(&1.role == :user)) do
-      %{timestamp: %DateTime{} = ts} -> ts
       _ -> nil
     end
   end

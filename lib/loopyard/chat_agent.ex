@@ -1109,6 +1109,14 @@ defmodule Loopyard.ChatAgent do
   def handle_cast({:auto_restart_context, last_user_text}, state) do
     id = state.id
 
+    # Surface "Compacting" on the live bar BEFORE the (blocking) session swap — the
+    # GenServer is about to block on stop+start, but this broadcast reaches the LV
+    # first, so the user sees the harness doing maintenance (not the model thinking)
+    # for the duration of the swap.
+    state = %{state | status: :compacting}
+    :ets.insert(@ets_table, {id, summary(state)})
+    Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :compacting})
+
     # Stop old session
     if state.session do
       task = Task.async(fn -> state.backend.stop(state.session) end)
