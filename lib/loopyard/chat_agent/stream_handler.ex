@@ -201,13 +201,6 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     state
   end
 
-  # Limit-class failures can't be fixed by retrying; everything else
-  # (execution errors, upstream 529/overload, unknown) is transient enough
-  # to be worth a bounded retry.
-  @non_retryable_turn_errors ~w(error_max_turns error_max_budget_usd error_max_structured_output_retries)
-  def retryable_turn_error?(nil), do: false
-  def retryable_turn_error?(subtype), do: subtype not in @non_retryable_turn_errors
-
   def process_event(%Event.RateLimitStatus{} = rl, state) do
     handle_rate_limit_event(state, rl)
   end
@@ -217,6 +210,13 @@ defmodule Loopyard.ChatAgent.StreamHandler do
   end
 
   def process_event(_other, state), do: state
+
+  # Limit-class failures can't be fixed by retrying; everything else
+  # (execution errors, upstream 529/overload, unknown) is transient enough
+  # to be worth a bounded retry.
+  @non_retryable_turn_errors ~w(error_max_turns error_max_budget_usd error_max_structured_output_retries)
+  def retryable_turn_error?(nil), do: false
+  def retryable_turn_error?(subtype), do: subtype not in @non_retryable_turn_errors
 
   # Auto-retry a transient turn failure this many times before giving the
   # message back to the human. DEFAULT 0 — the contract the user wants is

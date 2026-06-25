@@ -957,22 +957,6 @@ defmodule LoopyardWeb.WorkspaceLive do
     end
   end
 
-  # First non-loopback, non-link-local IPv4 — the address another device on
-  # the LAN uses to reach an exposed port (for demos).
-  defp lan_ip do
-    case :inet.getifaddrs() do
-      {:ok, ifaces} ->
-        ifaces
-        |> Enum.flat_map(fn {_name, opts} ->
-          for {:addr, {a, b, c, d}} <- opts, a != 127, a != 169, do: "#{a}.#{b}.#{c}.#{d}"
-        end)
-        |> List.first() || "localhost"
-
-      _ ->
-        "localhost"
-    end
-  end
-
   @impl true
   def handle_event("set_detail_level", %{"level" => level}, socket)
       when level in ~w(trace actions chat) do
@@ -1211,6 +1195,22 @@ defmodule LoopyardWeb.WorkspaceLive do
     service = if service == "", do: nil, else: service
     socket = assign(socket, :container_log_service, service)
     {:noreply, fetch_container_data(socket)}
+  end
+
+  # First non-loopback, non-link-local IPv4 — the address another device on
+  # the LAN uses to reach an exposed port (for demos).
+  defp lan_ip do
+    case :inet.getifaddrs() do
+      {:ok, ifaces} ->
+        ifaces
+        |> Enum.flat_map(fn {_name, opts} ->
+          for {:addr, {a, b, c, d}} <- opts, a != 127, a != 169, do: "#{a}.#{b}.#{c}.#{d}"
+        end)
+        |> List.first() || "localhost"
+
+      _ ->
+        "localhost"
+    end
   end
 
   # --- PubSub ---

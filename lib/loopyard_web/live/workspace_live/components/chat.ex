@@ -12,7 +12,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
 
   import LoopyardWeb.Live.WorkspaceLive.Components.Formatters, only: [time_ago: 1]
   import LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel,
-    only: [context_panel: 1, context_sections: 1]
+    only: [context_sections: 1]
 
   # Build the breadcrumb trail for this workspace view.
   #   Loopyard / {project.name} / {workspace label}

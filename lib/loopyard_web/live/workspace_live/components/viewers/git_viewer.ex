@@ -189,7 +189,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
       <div class="flex-1 overflow-auto highlight">
         <table class="text-xs font-mono leading-relaxed w-full border-collapse">
           <tbody>
-<%!-- phx-no-format + hugged tags: pre-wrap cell renders template indentation
+            <%!-- phx-no-format + hugged tags: pre-wrap cell renders template indentation
               as literal leading space + blank rows. Keep content flush to the tags. --%>
             <tr :for={{line, idx} <- Enum.with_index(@lines, 1)} class={diff_line_bg(line)}>
               <td phx-no-format class="select-none text-right pr-2 pl-3 py-0 text-zinc-400 dark:text-zinc-600 align-top w-[1%] whitespace-nowrap opacity-50">{idx}</td>

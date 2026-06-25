@@ -367,9 +367,7 @@ defmodule LoopyardWeb.WorkstationLive do
           hint="Each tool's page has the easy path. For a custom key or a remote Loopyard, this is the general form (carries your push token):"
         >
           <div id="ws-push" phx-hook="PushCmd" data-token={@push_token} class="relative">
-            <pre class="overflow-x-auto rounded-lg bg-zinc-900 dark:bg-zinc-950 text-zinc-100 text-[11px] leading-relaxed font-mono p-3 pr-16 ring-1 ring-zinc-800"><code class="ws-push-cmd">gh auth token | curl -fsS -T - \
-  -H "Authorization: Bearer {@push_token}" \
-  __ORIGIN__/workstations/{@current_id}/env/GITHUB_TOKEN</code></pre>
+            <pre class="overflow-x-auto rounded-lg bg-zinc-900 dark:bg-zinc-950 text-zinc-100 text-[11px] leading-relaxed font-mono p-3 pr-16 ring-1 ring-zinc-800"><code class="ws-push-cmd">{push_cmd(@push_token, @current_id)}</code></pre>
             <button type="button" class="ws-push-copy focus-ring absolute top-2 right-2 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-2 py-1 text-[11px]">Copy</button>
           </div>
           <p class="text-[11px] text-zinc-400 dark:text-zinc-500">
@@ -378,6 +376,16 @@ defmodule LoopyardWeb.WorkstationLive do
         </.section>
       </div>
     </.page_shell>
+    """
+  end
+
+  # Flush-left so the rendered <pre> shows the bare command. The trailing
+  # backslashes are literal shell line-continuations (escaped here as \\).
+  defp push_cmd(token, current_id) do
+    """
+    gh auth token | curl -fsS -T - \\
+      -H "Authorization: Bearer #{token}" \\
+      __ORIGIN__/workstations/#{current_id}/env/GITHUB_TOKEN\
     """
   end
 

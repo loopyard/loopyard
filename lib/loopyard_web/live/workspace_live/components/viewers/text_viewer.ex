@@ -55,7 +55,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.TextViewer do
       <div class="flex-1 overflow-auto highlight">
         <table class="text-sm font-mono leading-relaxed w-full border-collapse">
           <tbody>
-<%!-- phx-no-format + hugged tags: the code cell is whitespace-pre-wrap, so any
+            <%!-- phx-no-format + hugged tags: the code cell is whitespace-pre-wrap, so any
               template indentation/newlines around the content render as literal leading
               space (pushing code right) and blank lines (making every row tall). --%>
             <tr :for={{line, idx} <- Enum.with_index(@lines, 1)}>

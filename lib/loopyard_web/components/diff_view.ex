@@ -136,7 +136,7 @@ defmodule LoopyardWeb.Components.DiffView do
               <td class="select-none text-right pr-2 py-0 text-zinc-400 dark:text-zinc-600 align-top w-[1%] whitespace-nowrap opacity-50">
                 {row.new_num}
               </td>
-<%!-- phx-no-format + hugged tags: the cell is whitespace-pre, so any template
+              <%!-- phx-no-format + hugged tags: the cell is whitespace-pre, so any template
               indentation here renders as literal leading space on the diff line. --%>
               <td phx-no-format class={"pr-3 py-0 whitespace-pre #{row.text_class}"}><span class="select-none text-zinc-400 dark:text-zinc-600">{row.prefix}</span>{row.content}</td>
             </tr>

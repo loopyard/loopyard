@@ -168,23 +168,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     """
   end
 
-  @doc "The agent's identity marker — rendered once at the top of each run."
-  attr :timestamp, :any, default: nil
-
-  def run_header(assigns) do
-    ~H"""
-    <div class="flex items-center gap-2 mt-3 mb-1.5">
-      <span class="flex-none w-5 h-5 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center">
-        <.icon name={:sparkle} class="w-3 h-3 text-violet-600 dark:text-violet-400" />
-      </span>
-      <span class="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Claude</span>
-      <span :if={@timestamp} class="text-xs text-zinc-400 dark:text-zinc-500">
-        · {Calendar.strftime(@timestamp, "%H:%M")}
-      </span>
-    </div>
-    """
-  end
-
   def chat_msg(%{msg: %{role: :tool}} = assigns) do
     cond do
       # :chat hides the agent's mechanics — switch up a level to see them again.
@@ -197,60 +180,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       console_command_tool?(assigns.msg[:tool]) -> ~H"<div></div>"
       true -> render_tool_call(assigns)
     end
-  end
-
-  defp console_command_tool?(tool) when is_binary(tool),
-    do: String.ends_with?(tool, "__exec") or String.ends_with?(tool, "__docker_compose")
-
-  defp console_command_tool?(_), do: false
-
-  defp render_tool_call(assigns) do
-    tool_name = assigns.msg[:tool] || ""
-    input = assigns.msg.input || %{}
-
-    is_edit =
-      String.ends_with?(tool_name, "__edit") || String.ends_with?(tool_name, "__multi_edit")
-
-    old_str = if is_edit, do: input["old_string"]
-    new_str = if is_edit, do: input["new_string"]
-
-    # Build file link for tools that operate on files
-    file_path = input["path"] || input["file_path"]
-    file_link = build_file_link(file_path, assigns[:workspace_id])
-
-    assigns =
-      assigns
-      |> assign(:summary, ToolSummary.summarize(assigns.msg.tool, input))
-      |> assign(is_edit: is_edit, old_str: old_str, new_str: new_str)
-      |> assign(:file_link, file_link)
-      |> assign(:tool_name, tool_name)
-
-    # Quiet, scannable row: a small category-tinted dot (violet=write/edit,
-    # green=run, blue=read/search) in the gutter, then the verb+object summary.
-    # Color is reserved for SIGNAL — the dot's category and the blue of a
-    # clickable file link. A plain summary stays muted, not blue.
-    ~H"""
-    <div class={[gutter(), "py-1 pl-5"]}>
-      <div class="flex items-center gap-2">
-        <span class={["w-1.5 h-1.5 rounded-full flex-none", tool_dot(@tool_name)]}></span>
-        <a
-          :if={@file_link}
-          href={@file_link}
-          class="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-        >
-          {@summary}
-        </a>
-        <span :if={!@file_link} class="text-sm text-zinc-600 dark:text-zinc-400">{@summary}</span>
-      </div>
-      <.diff
-        :if={@is_edit && @old_str && @new_str}
-        old={@old_str}
-        new={@new_str}
-        path={@msg.input["path"]}
-        link={@file_link}
-      />
-    </div>
-    """
   end
 
   def chat_msg(%{msg: %{role: :thinking}, detail_level: :chat} = assigns) do
@@ -380,6 +309,77 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   def chat_msg(assigns) do
     ~H"""
     <div></div>
+    """
+  end
+
+  @doc "The agent's identity marker — rendered once at the top of each run."
+  attr :timestamp, :any, default: nil
+
+  def run_header(assigns) do
+    ~H"""
+    <div class="flex items-center gap-2 mt-3 mb-1.5">
+      <span class="flex-none w-5 h-5 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center">
+        <.icon name={:sparkle} class="w-3 h-3 text-violet-600 dark:text-violet-400" />
+      </span>
+      <span class="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Claude</span>
+      <span :if={@timestamp} class="text-xs text-zinc-400 dark:text-zinc-500">
+        · {Calendar.strftime(@timestamp, "%H:%M")}
+      </span>
+    </div>
+    """
+  end
+
+  defp console_command_tool?(tool) when is_binary(tool),
+    do: String.ends_with?(tool, "__exec") or String.ends_with?(tool, "__docker_compose")
+
+  defp console_command_tool?(_), do: false
+
+  defp render_tool_call(assigns) do
+    tool_name = assigns.msg[:tool] || ""
+    input = assigns.msg.input || %{}
+
+    is_edit =
+      String.ends_with?(tool_name, "__edit") || String.ends_with?(tool_name, "__multi_edit")
+
+    old_str = if is_edit, do: input["old_string"]
+    new_str = if is_edit, do: input["new_string"]
+
+    # Build file link for tools that operate on files
+    file_path = input["path"] || input["file_path"]
+    file_link = build_file_link(file_path, assigns[:workspace_id])
+
+    assigns =
+      assigns
+      |> assign(:summary, ToolSummary.summarize(assigns.msg.tool, input))
+      |> assign(is_edit: is_edit, old_str: old_str, new_str: new_str)
+      |> assign(:file_link, file_link)
+      |> assign(:tool_name, tool_name)
+
+    # Quiet, scannable row: a small category-tinted dot (violet=write/edit,
+    # green=run, blue=read/search) in the gutter, then the verb+object summary.
+    # Color is reserved for SIGNAL — the dot's category and the blue of a
+    # clickable file link. A plain summary stays muted, not blue.
+    ~H"""
+    <div class={[gutter(), "py-1 pl-5"]}>
+      <div class="flex items-center gap-2">
+        <span class={["w-1.5 h-1.5 rounded-full flex-none", tool_dot(@tool_name)]}></span>
+        <a
+          :if={@file_link}
+          href={@file_link}
+          class="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+        >
+          {@summary}
+        </a>
+        <span :if={!@file_link} class="text-sm text-zinc-600 dark:text-zinc-400">{@summary}</span>
+      </div>
+      <.diff
+        :if={@is_edit && @old_str && @new_str}
+        old={@old_str}
+        new={@new_str}
+        path={@msg.input["path"]}
+        link={@file_link}
+      />
+    </div>
     """
   end
 
