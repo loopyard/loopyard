@@ -26,6 +26,7 @@ macOS only. Requires [Homebrew](https://brew.sh).
 ```bash
 git clone https://github.com/loopyard/loopyard.git
 cd loopyard
+mix deps.get
 mix loopyard.setup
 mix loopyard.server
 ```
