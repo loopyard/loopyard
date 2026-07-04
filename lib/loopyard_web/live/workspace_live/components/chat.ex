@@ -11,6 +11,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   import LoopyardWeb.Components.Icon
 
   import LoopyardWeb.Live.WorkspaceLive.Components.Formatters, only: [time_ago: 1]
+
   import LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel,
     only: [context_sections: 1]
 
@@ -87,7 +88,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           patch={@back_target}
           class="md:hidden -ml-1 inline-flex items-center gap-1 px-2 py-1 rounded-md text-base font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 active:bg-violet-100 dark:active:bg-violet-500/20 transition-colors flex-none min-w-0"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 flex-none">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            class="w-5 h-5 flex-none"
+          >
             <path
               fill-rule="evenodd"
               d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z"
@@ -101,7 +107,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           navigate={@back_target}
           class="md:hidden -ml-1 inline-flex items-center gap-1 px-2 py-1 rounded-md text-base font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 active:bg-violet-100 dark:active:bg-violet-500/20 transition-colors flex-none min-w-0"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 flex-none">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            class="w-5 h-5 flex-none"
+          >
             <path
               fill-rule="evenodd"
               d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z"
@@ -528,40 +539,45 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             </button>
           </div>
         </div>
-      <%!-- Auto-compaction is house-keeping the user shouldn't have to care about:
+        <%!-- Auto-compaction is house-keeping the user shouldn't have to care about:
            no pre-warning, and only a tiny muted marker WHILE it's actually
            happening (≥92%). It's automatic and lossless (full history is kept),
            so it never needs a sentence or an alarm. --%>
-      <div
-        :if={(@agent[:context_utilization] || 0.0) >= 0.92}
-        class="flex items-center gap-1.5 text-[11px] text-zinc-400 dark:text-zinc-500"
-      >
-        <span class="flex-none">🗜</span>
-        <span class="min-w-0">Compacting…</span>
-      </div>
-      <div id="chat-form-wrapper" phx-update="ignore">
-        <form id="chat-form" phx-submit="send_message" phx-hook="ChatForm" class="flex items-end gap-2">
-          <textarea
-            name="message"
-            id="chat-input"
-            rows="1"
-            placeholder="Type a message..."
-            autocomplete="off"
-            class="flex-1 rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-2.5 text-base
+        <div
+          :if={(@agent[:context_utilization] || 0.0) >= 0.92}
+          class="flex items-center gap-1.5 text-[11px] text-zinc-400 dark:text-zinc-500"
+        >
+          <span class="flex-none">🗜</span>
+          <span class="min-w-0">Compacting…</span>
+        </div>
+        <div id="chat-form-wrapper" phx-update="ignore">
+          <form
+            id="chat-form"
+            phx-submit="send_message"
+            phx-hook="ChatForm"
+            class="flex items-end gap-2"
+          >
+            <textarea
+              name="message"
+              id="chat-input"
+              rows="1"
+              placeholder="Type a message..."
+              autocomplete="off"
+              class="flex-1 rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-2.5 text-base
                    text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 resize-none
                    focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
-          ></textarea>
-          <button
-            type="submit"
-            aria-label="Send"
-            class="focus-ring flex-none flex items-center justify-center rounded-xl bg-violet-600 hover:bg-violet-700 w-11 h-11 text-white transition-colors"
-          >
-            <.icon name={:arrow_up} class="w-5 h-5" />
-          </button>
-        </form>
-        <%!-- Why a send failed — the ChatForm hook fills + reveals this so a
+            ></textarea>
+            <button
+              type="submit"
+              aria-label="Send"
+              class="focus-ring flex-none flex items-center justify-center rounded-xl bg-violet-600 hover:bg-violet-700 w-11 h-11 text-white transition-colors"
+            >
+              <.icon name={:arrow_up} class="w-5 h-5" />
+            </button>
+          </form>
+          <%!-- Why a send failed — the ChatForm hook fills + reveals this so a
               rejected send is never just a silent red flash. --%>
-        <p id="send-status" class="hidden mt-1.5 text-xs text-red-500 dark:text-red-400"></p>
+          <p id="send-status" class="hidden mt-1.5 text-xs text-red-500 dark:text-red-400"></p>
         </div>
       </div>
     </div>
@@ -686,9 +702,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       <div class="flex gap-1.5 flex-none" aria-hidden="true">
         <div class={["w-2 h-2 rounded-full animate-bounce", @dot_class]} style="animation-delay: 0ms">
         </div>
-        <div class={["w-2 h-2 rounded-full animate-bounce", @dot_class]} style="animation-delay: 150ms">
+        <div
+          class={["w-2 h-2 rounded-full animate-bounce", @dot_class]}
+          style="animation-delay: 150ms"
+        >
         </div>
-        <div class={["w-2 h-2 rounded-full animate-bounce", @dot_class]} style="animation-delay: 300ms">
+        <div
+          class={["w-2 h-2 rounded-full animate-bounce", @dot_class]}
+          style="animation-delay: 300ms"
+        >
         </div>
       </div>
       <span class={["text-sm font-semibold flex-none", @text_class]}>{@word}…</span>
@@ -699,8 +721,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
         phx-update="ignore"
         data-since={@turn_since}
         class={["text-xs flex-none tabular-nums", @elapsed_class]}
-      >
-      </span>
+      ></span>
       <div class="flex-1 min-w-0"></div>
       <button
         type="button"
@@ -780,11 +801,20 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     ~H"""
     <div class="flex items-center gap-2.5 rounded-xl bg-violet-50 dark:bg-violet-500/10 border border-violet-200/70 dark:border-violet-500/20 px-3.5 py-2">
       <div class="flex gap-1 flex-none" aria-hidden="true">
-        <div class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style="animation-delay: 0ms">
+        <div
+          class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce"
+          style="animation-delay: 0ms"
+        >
         </div>
-        <div class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style="animation-delay: 150ms">
+        <div
+          class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce"
+          style="animation-delay: 150ms"
+        >
         </div>
-        <div class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style="animation-delay: 300ms">
+        <div
+          class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce"
+          style="animation-delay: 300ms"
+        >
         </div>
       </div>
       <span class="text-sm font-medium text-violet-600 dark:text-violet-300 flex-none">{@word}…</span>
@@ -795,8 +825,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
         phx-update="ignore"
         data-since={@turn_since}
         class="text-xs text-zinc-400 dark:text-zinc-500 flex-none tabular-nums"
-      >
-      </span>
+      ></span>
       <span
         :if={@current_action}
         class="hidden sm:block text-xs text-zinc-500 dark:text-zinc-400 truncate min-w-0"
@@ -825,7 +854,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     last_response =
       messages
       |> Enum.reverse()
-      |> Enum.find(fn m -> m.role in [:assistant, :error] and is_binary(m[:content]) and m.content != "" end)
+      |> Enum.find(fn m ->
+        m.role in [:assistant, :error] and is_binary(m[:content]) and m.content != ""
+      end)
 
     case last_response do
       %{content: c} ->

@@ -99,7 +99,8 @@ defmodule Loopyard.Turn do
 
   # --- turn completes: settle to :human, or batch-drain a parked flurry ---
 
-  def step(%__MODULE__{phase: phase} = t, :turn_complete) when phase in [:agent, :agent_blocked] do
+  def step(%__MODULE__{phase: phase} = t, :turn_complete)
+      when phase in [:agent, :agent_blocked] do
     settle(%{t | phase: :human, blocked_on: nil})
   end
 

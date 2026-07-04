@@ -89,8 +89,7 @@ defmodule Loopyard.ComposeSecurityTest do
            "`network_mode: host` is not allowed"},
           {"pid host", %{"pid" => "host"}, "`pid: host` is not allowed"},
           {"ipc host", %{"ipc" => "host"}, "`ipc: host` is not allowed"},
-          {"userns_mode host", %{"userns_mode" => "host"},
-           "`userns_mode: host` is not allowed"},
+          {"userns_mode host", %{"userns_mode" => "host"}, "`userns_mode: host` is not allowed"},
           {"devices", %{"devices" => ["/dev/sda:/dev/sda"]}, "`devices:` is not allowed"}
         ] do
       test "rejects #{label}" do

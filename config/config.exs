@@ -48,8 +48,7 @@ config :esbuild,
     # imported by name. esbuild resolves `import "aural"` →
     # packages/aural/package.json → priv/assets/aural.js.
     env: %{
-      "NODE_PATH" =>
-        Path.expand("../deps", __DIR__) <> ":" <> Path.expand("../packages", __DIR__)
+      "NODE_PATH" => Path.expand("../deps", __DIR__) <> ":" <> Path.expand("../packages", __DIR__)
     }
   ]
 

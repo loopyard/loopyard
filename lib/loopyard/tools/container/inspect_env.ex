@@ -29,9 +29,9 @@ defmodule Loopyard.Tools.Container.InspectEnv do
 
         results =
           Enum.map(checks, fn {label, cmd} ->
+            # login: true so env checks reflect identity env sourced from
+            # ~/.profile (tokens live in the home volume, not `docker run -e`).
             output =
-              # login: true so env checks reflect identity env sourced from
-              # ~/.profile (tokens live in the home volume, not `docker run -e`).
               case Docker.exec_in(container, cmd, login: true) do
                 {:ok, out} -> String.trim(out)
                 {:error, _} -> "[error]"

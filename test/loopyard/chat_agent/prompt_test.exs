@@ -48,8 +48,7 @@ defmodule Loopyard.ChatAgent.PromptTest do
         Prompt.build_system_prompt("test-id",
           bind_mount: "/tmp/project",
           workspace_id: "abcd",
-          workspace: workspace,
-          
+          workspace: workspace
         )
 
       assert prompt =~ "test-project"
@@ -70,8 +69,7 @@ defmodule Loopyard.ChatAgent.PromptTest do
           bind_mount: "/tmp/project",
           workspace_id: "abcd",
           workspace: workspace,
-          service_name: "postgres",
-          
+          service_name: "postgres"
         )
 
       assert String.length(prompt) <= 6000
@@ -89,8 +87,7 @@ defmodule Loopyard.ChatAgent.PromptTest do
         Prompt.build_system_prompt("test-id",
           workspace_id: "ws-123",
           workspace: workspace,
-          service_name: "redis",
-          
+          service_name: "redis"
         )
 
       assert prompt =~ "redis"

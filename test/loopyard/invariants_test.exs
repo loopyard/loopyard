@@ -235,6 +235,7 @@ defmodule Loopyard.InvariantsTest do
         Path.wildcard("lib/loopyard/tools/**/*.ex")
         |> Enum.filter(fn path ->
           src = File.read!(path)
+
           Regex.match?(lifecycle_call, src) and
             not String.contains?(src, "Approvals.request")
         end)

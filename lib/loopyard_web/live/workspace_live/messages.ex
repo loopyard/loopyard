@@ -96,7 +96,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
           </div>
           <%!-- Clamp to a few lines: the prompt is a sticky HEADER, so a long
                paste must stay header-sized (full text via the ↗ link). --%>
-          <div class="markdown-body text-sm md:text-base leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-3xl line-clamp-3">{Loopyard.Markdown.to_html(@msg.content)}</div>
+          <div class="markdown-body text-sm md:text-base leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-3xl line-clamp-3">
+            {Loopyard.Markdown.to_html(@msg.content)}
+          </div>
         </div>
         <div class="flex items-center gap-1 flex-none opacity-0 group-hover/msg:opacity-100 transition-opacity">
           <.copy_btn :if={@raw} raw_url={@raw} />
@@ -134,7 +136,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     ~H"""
     <div class="group/msg" id={"msg-#{@msg[:id] || hash_content(@msg.content)}"}>
       <div class={[gutter(), "pl-7 py-0.5"]}>
-        <div class="markdown-body text-[15px] leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl">{Loopyard.Markdown.to_html(@rendered_content)}</div>
+        <div class="markdown-body text-[15px] leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl">
+          {Loopyard.Markdown.to_html(@rendered_content)}
+        </div>
         <div :if={@port_info && !@port_info.exposed} class="mt-1.5 flex items-center gap-2 py-1">
           <div class="w-1.5 h-1.5 rounded-full flex-none bg-amber-400"></div>
           <span class="text-xs text-zinc-500 dark:text-zinc-400">{@port_info.service} port closed</span>
@@ -293,7 +297,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
            house-keeping, not conversation — keep them a quiet aside: tiny, muted,
            a small dot in the gutter, so you can SEE them happen without them
            competing with what the agent actually said. --%>
-      <div class={[gutter(), "py-1 pl-7 flex items-baseline gap-1.5 text-zinc-400/70 dark:text-zinc-600"]}>
+      <div class={[
+        gutter(),
+        "py-1 pl-7 flex items-baseline gap-1.5 text-zinc-400/70 dark:text-zinc-600"
+      ]}>
         <span aria-hidden="true" class="flex-none select-none leading-none">·</span>
         <span
           class="text-[11px] italic leading-relaxed"
@@ -388,7 +395,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   def streaming_bubble(assigns) do
     ~H"""
     <div class={[gutter(), "pl-7 py-0.5 mt-2"]} id="streaming-msg">
-      <div class="markdown-body text-[15px] leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl">{Loopyard.Markdown.to_html(@text)}<span class="inline-block w-1.5 h-4 bg-violet-500 animate-pulse ml-0.5 align-middle"></span></div>
+      <div class="markdown-body text-[15px] leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl">
+        {Loopyard.Markdown.to_html(@text)}<span class="inline-block w-1.5 h-4 bg-violet-500 animate-pulse ml-0.5 align-middle"></span>
+      </div>
     </div>
     """
   end
@@ -552,7 +561,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     display = format_tool_result(content)
     lines = String.split(display, "\n")
     truncated = length(lines) > @result_line_cap
-    display = if truncated, do: Enum.take(lines, @result_line_cap) |> Enum.join("\n"), else: display
+
+    display =
+      if truncated, do: Enum.take(lines, @result_line_cap) |> Enum.join("\n"), else: display
+
     url = msg_url(assigns)
     raw = raw_url(assigns)
 
@@ -568,10 +580,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       )
 
     ~H"""
-    <details class={[gutter(), "pl-5 py-0.5 group/result"]} open={@detail_level == :trace || @is_error}>
+    <details
+      class={[gutter(), "pl-5 py-0.5 group/result"]}
+      open={@detail_level == :trace || @is_error}
+    >
       <summary class="text-[11px] text-zinc-400 dark:text-zinc-500 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5">
         <span class="transition-transform group-open/result:rotate-90">▸</span>
-        <span>{if @is_error, do: "error output", else: "output"} · {@line_count} {if @line_count == 1, do: "line", else: "lines"}</span>
+        <span>{if @is_error, do: "error output", else: "output"} · {@line_count} {if @line_count == 1,
+          do: "line",
+          else: "lines"}</span>
       </summary>
       <pre class={"mt-1 p-3 rounded-lg text-xs font-mono overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap
                    #{if @is_error, do: "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300", else: "bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-zinc-300"}"}>{Ansi.to_html(@display)}</pre>

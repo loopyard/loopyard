@@ -169,9 +169,14 @@ defmodule Loopyard.Onboarding do
 
         # Volume-backed workspaces run container-only (cheap work container); only
         # legacy host bind-mount projects get a bind_mount.
-        container_only? = Loopyard.Workspace.container_running?(ws_id) or agent_volume_based?(ws_id)
-        agent_opts = if container_only?, do: agent_opts, else: agent_opts ++ [bind_mount: working_dir]
-        agent_opts = if service_name, do: agent_opts ++ [service_name: service_name], else: agent_opts
+        container_only? =
+          Loopyard.Workspace.container_running?(ws_id) or agent_volume_based?(ws_id)
+
+        agent_opts =
+          if container_only?, do: agent_opts, else: agent_opts ++ [bind_mount: working_dir]
+
+        agent_opts =
+          if service_name, do: agent_opts ++ [service_name: service_name], else: agent_opts
 
         boot_opts =
           cond do

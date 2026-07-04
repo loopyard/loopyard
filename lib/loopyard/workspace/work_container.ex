@@ -163,26 +163,24 @@ defmodule Loopyard.Workspace.WorkContainer do
     # Env.sync_home/1 and Docker.with_login_profile/1.
     home = home_path(ws)
 
-    Docker.docker(
-      [
-        "run",
-        "-d",
-        "--name",
-        name,
-        "--init",
-        "-v",
-        "#{volume}:#{@workdir}",
-        "-v",
-        "#{Loopyard.Workstation.Container.home_volume(ws)}:#{home}",
-        "-e",
-        "HOME=#{home}",
-        "-w",
-        @workdir,
-        @image,
-        "sleep",
-        "infinity"
-      ]
-    )
+    Docker.docker([
+      "run",
+      "-d",
+      "--name",
+      name,
+      "--init",
+      "-v",
+      "#{volume}:#{@workdir}",
+      "-v",
+      "#{Loopyard.Workstation.Container.home_volume(ws)}:#{home}",
+      "-e",
+      "HOME=#{home}",
+      "-w",
+      @workdir,
+      @image,
+      "sleep",
+      "infinity"
+    ])
   end
 
   # The identity's $HOME inside the container: /home/<id>.

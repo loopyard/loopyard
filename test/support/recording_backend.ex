@@ -16,7 +16,9 @@ defmodule Loopyard.TestSupport.RecordingBackend do
   use Agent
 
   def start_link(_opts \\ []) do
-    Agent.start_link(fn -> %{starts: [], streamed: [], session_id_override: nil} end, name: __MODULE__)
+    Agent.start_link(fn -> %{starts: [], streamed: [], session_id_override: nil} end,
+      name: __MODULE__
+    )
   end
 
   def reset do
@@ -30,7 +32,9 @@ defmodule Loopyard.TestSupport.RecordingBackend do
 
       pid when is_pid(pid) ->
         try do
-          Agent.update(__MODULE__, fn _ -> %{starts: [], streamed: [], session_id_override: nil} end)
+          Agent.update(__MODULE__, fn _ ->
+            %{starts: [], streamed: [], session_id_override: nil}
+          end)
         catch
           :exit, _ ->
             # Agent was alive when we checked, died by now. Start fresh.

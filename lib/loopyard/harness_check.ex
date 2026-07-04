@@ -80,7 +80,13 @@ defmodule Loopyard.HarnessCheck do
       {:ok, %{latency_ms: latency, response: response, backend: backend}}
     else
       {:error,
-       %{reason: :token_not_found, expected: token, got: response, latency_ms: latency, backend: backend}}
+       %{
+         reason: :token_not_found,
+         expected: token,
+         got: response,
+         latency_ms: latency,
+         backend: backend
+       }}
     end
   end
 
@@ -116,7 +122,11 @@ defmodule Loopyard.HarnessCheck do
         end)
 
       if hit do
-        {:ok, %{latency_ms: System.monotonic_time(:millisecond) - t0, response: String.trim(hit.content)}}
+        {:ok,
+         %{
+           latency_ms: System.monotonic_time(:millisecond) - t0,
+           response: String.trim(hit.content)
+         }}
       else
         Process.sleep(500)
         await_token(agent_id, token, t0, deadline)

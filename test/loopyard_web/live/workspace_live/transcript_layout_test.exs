@@ -23,7 +23,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.TranscriptLayoutTest do
   end
 
   defp user(text), do: %{role: :user, content: text}
-  defp assistant(text), do: %{role: :assistant, content: text, timestamp: ~U[2026-06-21 09:30:00Z]}
+
+  defp assistant(text),
+    do: %{role: :assistant, content: text, timestamp: ~U[2026-06-21 09:30:00Z]}
 
   test "agent prose is a document, not a bubble" do
     html = render([user("go"), assistant("On it.")], 1)

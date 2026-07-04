@@ -17,7 +17,9 @@ defmodule Loopyard.TurnTest do
 
     test "from :agent parks the message in the queue (no stream pollution)" do
       t = %Turn{phase: :agent}
-      assert {:ok, %Turn{phase: :agent, queue: ["a"]}, [{:queued, "a"}]} = Turn.step(t, {:send, "a"})
+
+      assert {:ok, %Turn{phase: :agent, queue: ["a"]}, [{:queued, "a"}]} =
+               Turn.step(t, {:send, "a"})
     end
 
     test "parks in order while the agent works" do
@@ -29,6 +31,7 @@ defmodule Loopyard.TurnTest do
 
     test "from :agent_blocked parks too (answer is a separate event)" do
       t = %Turn{phase: :agent_blocked, blocked_on: %{kind: :question, id: 1, payload: %{}}}
+
       assert {:ok, %Turn{phase: :agent_blocked, queue: ["x"]}, [{:queued, "x"}]} =
                Turn.step(t, {:send, "x"})
     end
@@ -58,7 +61,10 @@ defmodule Loopyard.TurnTest do
   describe ":answer" do
     setup do
       {:ok,
-       blocked: %Turn{phase: :agent_blocked, blocked_on: %{kind: :question, id: "q1", payload: %{}}}}
+       blocked: %Turn{
+         phase: :agent_blocked,
+         blocked_on: %{kind: :question, id: "q1", payload: %{}}
+       }}
     end
 
     test "matching id resumes the turn and emits the harness reply", %{blocked: t} do
@@ -98,7 +104,10 @@ defmodule Loopyard.TurnTest do
 
     test "a single parked message drains as-is (no framing)" do
       t = %Turn{phase: :agent, queue: ["just one"]}
-      assert {:ok, %Turn{phase: :human, queue: []}, []} = Turn.step(%{t | queue: []}, :turn_complete)
+
+      assert {:ok, %Turn{phase: :human, queue: []}, []} =
+               Turn.step(%{t | queue: []}, :turn_complete)
+
       assert {:ok, _, [{:start_turn, "just one"}]} = Turn.step(t, :turn_complete)
     end
 
@@ -116,6 +125,7 @@ defmodule Loopyard.TurnTest do
   describe ":interrupt (Stop)" do
     test "with no queue cancels the turn and yields to the human" do
       t = %Turn{phase: :agent, queue: []}
+
       assert {:ok, %Turn{phase: :human, queue: [], blocked_on: nil}, [:cancel_turn]} =
                Turn.step(t, :interrupt)
     end
@@ -157,33 +167,36 @@ defmodule Loopyard.TurnTest do
 
   describe "full scenarios" do
     test "ask → answer → complete round-trip" do
-      effects = run(Turn.new(), [
-        {:send, "build it"},
-        {:input_requested, :permission, "p1", %{tool: "write"}},
-        {:answer, "p1", :approve},
-        :turn_complete
-      ])
+      effects =
+        run(Turn.new(), [
+          {:send, "build it"},
+          {:input_requested, :permission, "p1", %{tool: "write"}},
+          {:answer, "p1", :approve},
+          :turn_complete
+        ])
 
       assert {:start_turn, "build it"} in effects
       assert {:answer_input, "p1", :approve} in effects
       # ends back on the human's turn
-      {final, _} = run_state(Turn.new(), [
-        {:send, "build it"},
-        {:input_requested, :permission, "p1", %{tool: "write"}},
-        {:answer, "p1", :approve},
-        :turn_complete
-      ])
+      {final, _} =
+        run_state(Turn.new(), [
+          {:send, "build it"},
+          {:input_requested, :permission, "p1", %{tool: "write"}},
+          {:answer, "p1", :approve},
+          :turn_complete
+        ])
 
       assert final.phase == :human
     end
 
     test "a flurry mid-turn drains as one batched turn after completion" do
-      {final, effects} = run_state(Turn.new(), [
-        {:send, "go"},
-        {:send, "also this"},
-        {:send, "and this"},
-        :turn_complete
-      ])
+      {final, effects} =
+        run_state(Turn.new(), [
+          {:send, "go"},
+          {:send, "also this"},
+          {:send, "and this"},
+          :turn_complete
+        ])
 
       # one initial turn + one batched, framed drain
       starts = Enum.filter(effects, &match?({:start_turn, _}, &1))
@@ -195,11 +208,12 @@ defmodule Loopyard.TurnTest do
     end
 
     test "interrupt mid-flurry keeps the queue and drains it as a follow-up turn" do
-      {final, effects} = run_state(Turn.new(), [
-        {:send, "go"},
-        {:send, "queued"},
-        :interrupt
-      ])
+      {final, effects} =
+        run_state(Turn.new(), [
+          {:send, "go"},
+          {:send, "queued"},
+          :interrupt
+        ])
 
       assert :cancel_turn in effects
       # The queued message is NOT lost — it becomes the next turn.

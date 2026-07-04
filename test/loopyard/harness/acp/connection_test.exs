@@ -99,8 +99,7 @@ defmodule Loopyard.Harness.ACP.ConnectionTest do
     # Reply to session/new with a session id → status becomes :ready.
     send(
       conn,
-      {:acp_msg,
-       %{"id" => new_id, "result" => %{"sessionId" => "sess-123", "models" => %{}}}}
+      {:acp_msg, %{"id" => new_id, "result" => %{"sessionId" => "sess-123", "models" => %{}}}}
     )
 
     :ok = Connection.await_ready(conn, 1_000)
@@ -244,8 +243,7 @@ defmodule Loopyard.Harness.ACP.ConnectionTest do
 
       send(
         conn,
-        {:acp_msg,
-         %{"id" => 7, "method" => "fs/read_text_file", "params" => %{"path" => path}}}
+        {:acp_msg, %{"id" => 7, "method" => "fs/read_text_file", "params" => %{"path" => path}}}
       )
 
       assert_receive {:sent, %{"id" => 7, "result" => %{"content" => "VOLUME DATA"}}}
@@ -268,8 +266,7 @@ defmodule Loopyard.Harness.ACP.ConnectionTest do
 
       send(
         conn,
-        {:acp_msg,
-         %{"id" => 8, "method" => "fs/read_text_file", "params" => %{"path" => escape}}}
+        {:acp_msg, %{"id" => 8, "method" => "fs/read_text_file", "params" => %{"path" => escape}}}
       )
 
       assert_receive {:sent, %{"id" => 8, "error" => %{"code" => -32_602, "message" => msg}}}
@@ -335,7 +332,10 @@ defmodule Loopyard.Harness.ACP.ConnectionTest do
   # ---- helpers ----
 
   defp notif(kind, extra) do
-    %{"method" => "session/update", "params" => %{"update" => Map.put(extra, "sessionUpdate", kind)}}
+    %{
+      "method" => "session/update",
+      "params" => %{"update" => Map.put(extra, "sessionUpdate", kind)}
+    }
   end
 
   defp text(t), do: %{"type" => "text", "text" => t}

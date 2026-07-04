@@ -23,7 +23,9 @@ defmodule LoopyardWeb.Components.Workstation do
     <section class="space-y-2">
       <div>
         <h2 class="text-sm font-medium text-zinc-800 dark:text-zinc-100">{@title}</h2>
-        <p :if={@hint} class="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">{@hint}</p>
+        <p :if={@hint} class="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+          {@hint}
+        </p>
       </div>
       {render_slot(@inner_block)}
     </section>
@@ -166,8 +168,19 @@ defmodule LoopyardWeb.Components.Workstation do
         @class
       ]}
     >
-      <svg class={["w-3.5 h-3.5", @restarting && "animate-spin"]} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+      <svg
+        class={["w-3.5 h-3.5", @restarting && "animate-spin"]}
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        stroke-width="2"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+        />
       </svg>
       {if @restarting, do: "Restarting…", else: "Restart"}
     </button>
@@ -177,8 +190,19 @@ defmodule LoopyardWeb.Components.Workstation do
   @doc "The trailing chevron used on nav rows."
   def chevron(assigns) do
     ~H"""
-    <svg class="w-3.5 h-3.5 flex-none text-zinc-300 dark:text-zinc-600" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-      <path d="M4.5 3 7.5 6 4.5 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+    <svg
+      class="w-3.5 h-3.5 flex-none text-zinc-300 dark:text-zinc-600"
+      viewBox="0 0 12 12"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M4.5 3 7.5 6 4.5 9"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      />
     </svg>
     """
   end

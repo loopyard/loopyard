@@ -19,7 +19,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.MessagesDetailLevelTest do
 
   describe "tool call gating" do
     setup do
-      {:ok, msg: %{role: :tool, tool: "mcp__loopyard-container__exec", input: %{"command" => "ls"}}}
+      {:ok,
+       msg: %{role: :tool, tool: "mcp__loopyard-container__exec", input: %{"command" => "ls"}}}
     end
 
     test "shows the tool call at :trace and :actions", %{msg: msg} do

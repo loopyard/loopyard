@@ -76,7 +76,9 @@ defmodule Loopyard.Workstation.Container do
       full = "#{home_path(id)}/#{rel_path}"
       dir = Path.dirname(full)
       b64 = Base.encode64(content)
-      cmd = "mkdir -p '#{dir}' && printf '%s' '#{b64}' | base64 -d > '#{full}' && chmod 600 '#{full}'"
+
+      cmd =
+        "mkdir -p '#{dir}' && printf '%s' '#{b64}' | base64 -d > '#{full}' && chmod 600 '#{full}'"
 
       case Docker.exec_in(n, cmd) do
         {:ok, _} -> :ok
@@ -126,24 +128,22 @@ defmodule Loopyard.Workstation.Container do
     # (`~/.loopyard/env`, sourced by `~/.profile`) — see Env.sync_home/1.
     home = home_path(id)
 
-    Docker.docker(
-      [
-        "run",
-        "-d",
-        "--name",
-        name(id),
-        "--init",
-        "-v",
-        "#{home_volume(id)}:#{home}",
-        "-e",
-        "HOME=#{home}",
-        "-w",
-        home,
-        Loopyard.Workspace.WorkContainer.image(),
-        "sleep",
-        "infinity"
-      ]
-    )
+    Docker.docker([
+      "run",
+      "-d",
+      "--name",
+      name(id),
+      "--init",
+      "-v",
+      "#{home_volume(id)}:#{home}",
+      "-e",
+      "HOME=#{home}",
+      "-w",
+      home,
+      Loopyard.Workspace.WorkContainer.image(),
+      "sleep",
+      "infinity"
+    ])
   end
 
   defp ensure_volume(id) do

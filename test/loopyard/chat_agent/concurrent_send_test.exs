@@ -103,7 +103,12 @@ defmodule Loopyard.ChatAgent.ConcurrentSendTest do
       ref = make_ref()
 
       :sys.replace_state(pid, fn s ->
-        %{s | status: :thinking, stream_ref: ref, pending_sends: ["first queued", "second queued"]}
+        %{
+          s
+          | status: :thinking,
+            stream_ref: ref,
+            pending_sends: ["first queued", "second queued"]
+        }
       end)
 
       send(pid, {:stream_done, id, ref})

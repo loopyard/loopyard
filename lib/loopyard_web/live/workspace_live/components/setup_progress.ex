@@ -99,11 +99,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.SetupProgress do
       <span class="mt-0.5 flex-none">
         <%= case @status do %>
           <% :pending -> %>
-            <span class="block w-4 h-4 rounded-full border border-zinc-300 dark:border-zinc-600">
-            </span>
+            <span class="block w-4 h-4 rounded-full border border-zinc-300 dark:border-zinc-600"></span>
           <% :running -> %>
-            <span class="block w-4 h-4 rounded-full border-2 border-blue-500 border-t-transparent animate-spin">
-            </span>
+            <span class="block w-4 h-4 rounded-full border-2 border-blue-500 border-t-transparent animate-spin"></span>
           <% :complete -> %>
             <span class="block w-4 h-4 rounded-full bg-green-500 flex items-center justify-center">
               <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">

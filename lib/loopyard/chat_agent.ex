@@ -558,7 +558,8 @@ defmodule Loopyard.ChatAgent do
       name: name,
       working_dir: working_dir,
       workspace_id: workspace_id,
-      workstation_identity: Keyword.get(opts, :workstation_identity) || Loopyard.Workstation.current(),
+      workstation_identity:
+        Keyword.get(opts, :workstation_identity) || Loopyard.Workstation.current(),
       service_name: Keyword.get(opts, :service_name),
       started_at: now,
       started_by: "browser",
@@ -825,7 +826,12 @@ defmodule Loopyard.ChatAgent do
         state = %{state | pending_sends: state.pending_sends ++ [text]}
         # Refresh the ETS summary so the live queue panel updates.
         :ets.insert(@ets_table, {state.id, summary(state)})
-        Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: state.status})
+
+        Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{
+          id: state.id,
+          status: state.status
+        })
+
         {:noreply, state}
 
       state.status == :auth_expired ->
@@ -1848,7 +1854,10 @@ defmodule Loopyard.ChatAgent do
           st
         end)
 
-      start_turn(%{state | turn_retry_count: 0, failed_prompt: nil}, Loopyard.Turn.batch_prompt(list))
+      start_turn(
+        %{state | turn_retry_count: 0, failed_prompt: nil},
+        Loopyard.Turn.batch_prompt(list)
+      )
     end
   end
 
@@ -1883,13 +1892,17 @@ defmodule Loopyard.ChatAgent do
           send(me, {:stream_error, agent_id, stream_ref, Exception.message(e)})
       catch
         :exit, reason ->
-          send(me, {:stream_error, agent_id, stream_ref, "CLI session exited: #{inspect(reason)}"})
+          send(
+            me,
+            {:stream_error, agent_id, stream_ref, "CLI session exited: #{inspect(reason)}"}
+          )
       end
     end)
 
     Process.send_after(self(), {:stream_timeout, agent_id, stream_ref}, 600_000)
     # Stash the exact prompt so a transient-failure retry re-issues it verbatim.
-    {:noreply, %{state | stream_ref: stream_ref, in_flight_partial: "", current_turn_prompt: prompt}}
+    {:noreply,
+     %{state | stream_ref: stream_ref, in_flight_partial: "", current_turn_prompt: prompt}}
   end
 
   @max_messages 1000

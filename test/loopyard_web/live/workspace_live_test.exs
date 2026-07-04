@@ -490,7 +490,11 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
       %{agent_id: id}
     end
 
-    test "idle agent shows green dot and a Stop control", %{conn: conn, agent_id: id, workspace: ws} do
+    test "idle agent shows green dot and a Stop control", %{
+      conn: conn,
+      agent_id: id,
+      workspace: ws
+    } do
       {:ok, view, _html} = live(conn, ws_chat_path(ws, id))
       assert has_element?(view, "div.bg-green-500")
       # The header's "Stop" warm-cancels the turn (interrupt_agent). The

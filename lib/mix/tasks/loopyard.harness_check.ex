@@ -42,7 +42,10 @@ defmodule Mix.Tasks.Loopyard.HarnessCheck do
     failed = loops - passed
 
     Mix.shell().info("")
-    Mix.shell().info("#{passed}/#{loops} passed" <> if(failed > 0, do: ", #{failed} FAILED", else: ""))
+
+    Mix.shell().info(
+      "#{passed}/#{loops} passed" <> if(failed > 0, do: ", #{failed} FAILED", else: "")
+    )
 
     if failed > 0, do: exit({:shutdown, 1})
   end
@@ -80,13 +83,19 @@ defmodule Mix.Tasks.Loopyard.HarnessCheck do
     sname = :"harness_check_#{System.pid()}_#{System.monotonic_time()}@127.0.0.1"
 
     case Node.start(sname, :longnames) do
-      {:ok, _} -> Node.set_cookie(cookie)
-      {:error, reason} -> Mix.raise("Could not start distributed node: #{inspect(reason)}. Is epmd running?")
+      {:ok, _} ->
+        Node.set_cookie(cookie)
+
+      {:error, reason} ->
+        Mix.raise("Could not start distributed node: #{inspect(reason)}. Is epmd running?")
     end
 
     case :net_adm.ping(node) do
-      :pong -> :ok
-      :pang -> Mix.raise("Loopyard node (#{node}) is not reachable. Start with: mix loopyard.server")
+      :pong ->
+        :ok
+
+      :pang ->
+        Mix.raise("Loopyard node (#{node}) is not reachable. Start with: mix loopyard.server")
     end
 
     {node, cookie}

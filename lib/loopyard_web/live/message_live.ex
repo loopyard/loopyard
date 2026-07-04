@@ -158,7 +158,9 @@ defmodule LoopyardWeb.MessageLive do
 
         <div :if={@msg.role == :assistant} id="msg-content" class="prose dark:prose-invert max-w-none">
           <div class="markdown-body">
-            {Loopyard.Markdown.to_html(if @streaming_text != "", do: @streaming_text, else: @msg.content)}
+            {Loopyard.Markdown.to_html(
+              if @streaming_text != "", do: @streaming_text, else: @msg.content
+            )}
           </div>
         </div>
 

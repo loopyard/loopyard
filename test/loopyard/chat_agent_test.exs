@@ -793,15 +793,19 @@ defmodule Loopyard.ChatAgentTest do
       def stream(_session, _prompt), do: []
       @impl true
       def stop(session) do
-        if is_pid(session) and Process.alive?(session), do: GenServer.stop(session, :normal, 1_000)
+        if is_pid(session) and Process.alive?(session),
+          do: GenServer.stop(session, :normal, 1_000)
+
         :ok
       end
+
       @impl true
       def cancel_turn(_session) do
         # Way past @interrupt_deadline_ms — the agent should give up and hard-restart.
         Process.sleep(3_000)
         :ok
       end
+
       @impl true
       def session_alive?(session), do: is_pid(session) and Process.alive?(session)
       @impl true

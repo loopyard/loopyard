@@ -26,7 +26,9 @@ defmodule Loopyard.Harness.SecretRequestsTest do
 
   test "submit stores the value to disk and unblocks with the KEY — the value never enters the transcript",
        %{agent_id: agent_id} do
-    task = Task.async(fn -> SecretRequests.request(agent_id, "OPENAI_API_KEY", "to run tests") end)
+    task =
+      Task.async(fn -> SecretRequests.request(agent_id, "OPENAI_API_KEY", "to run tests") end)
+
     rid = wait_for_request(agent_id)
 
     # The submit returns the key, not the value.

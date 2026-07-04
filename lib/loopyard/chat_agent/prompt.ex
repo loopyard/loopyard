@@ -115,7 +115,10 @@ defmodule Loopyard.ChatAgent.Prompt do
         [body, catalog_str] |> Enum.reject(&(&1 == "")) |> Enum.join("\n\n")
 
       {:error, reason} ->
-        Logger.warning("[ChatAgent] Could not load the coding agent definition: #{inspect(reason)}")
+        Logger.warning(
+          "[ChatAgent] Could not load the coding agent definition: #{inspect(reason)}"
+        )
+
         ""
     end
   end

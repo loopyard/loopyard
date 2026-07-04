@@ -141,8 +141,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
             <span
               class={"w-1.5 h-1.5 rounded-full flex-none #{sync_dot(@sync_status)}"}
               aria-hidden="true"
-            >
-            </span>
+            ></span>
             <span class="truncate text-zinc-600 dark:text-zinc-400">Host file sync</span>
           </.row>
         </.section>
@@ -204,8 +203,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
             ]}
             aria-current={ws.id == @current_id && "page"}
           >
-            <span class={"w-1.5 h-1.5 rounded-full flex-none #{if ws.status == :running, do: "bg-emerald-500", else: "bg-zinc-400"}"}>
-            </span>
+            <span class={"w-1.5 h-1.5 rounded-full flex-none #{if ws.status == :running, do: "bg-emerald-500", else: "bg-zinc-400"}"}></span>
             <span class="truncate flex-1">{ws.name}</span>
             <span
               :if={ws[:is_main]}
@@ -350,8 +348,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
         class="focus-ring flex items-center gap-2 min-w-0 -mx-2 px-2 h-full rounded"
         aria-label={"Open #{@svc.name} service"}
       >
-        <span class={"w-1.5 h-1.5 rounded-full flex-none #{service_dot(@svc)}"} aria-hidden="true">
-        </span>
+        <span class={"w-1.5 h-1.5 rounded-full flex-none #{service_dot(@svc)}"} aria-hidden="true"></span>
         <span class="truncate text-zinc-600 dark:text-zinc-400">{@svc.name}</span>
       </.link>
       <div class="flex items-center justify-end gap-1.5">
@@ -472,8 +469,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
         phx-value-id={@agent.id}
         class="flex-1 flex items-center gap-1 px-2 py-1"
       >
-        <span class={"w-1.5 h-1.5 rounded-full flex-none #{status_dot(@display)}"} aria-hidden="true">
-        </span>
+        <span class={"w-1.5 h-1.5 rounded-full flex-none #{status_dot(@display)}"} aria-hidden="true"></span>
         <input
           type="text"
           name="name"
@@ -492,8 +488,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
         aria_label={"Open agent #{@agent.name} (#{@display})"}
         class="flex-1"
       >
-        <span class={"w-1.5 h-1.5 rounded-full flex-none #{status_dot(@display)}"} aria-hidden="true">
-        </span>
+        <span class={"w-1.5 h-1.5 rounded-full flex-none #{status_dot(@display)}"} aria-hidden="true"></span>
         <span
           class="truncate text-zinc-600 dark:text-zinc-400"
           phx-dblclick="start_rename_sidebar"

@@ -65,7 +65,9 @@ defmodule LoopyardWeb.Components.Icon do
     assigns = assign(assigns, viewbox: viewbox, body: body)
 
     ~H"""
-    <svg viewBox={@viewbox} fill="currentColor" class={@class} aria-hidden="true" {@rest}>{Phoenix.HTML.raw(@body)}</svg>
+    <svg viewBox={@viewbox} fill="currentColor" class={@class} aria-hidden="true" {@rest}>{Phoenix.HTML.raw(
+      @body
+    )}</svg>
     """
   end
 end

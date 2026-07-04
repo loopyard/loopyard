@@ -25,8 +25,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.TextViewer do
     # String.split (nil → plain-text fallback).
     lines =
       case Syntax.highlight_lines(assigns.content, language) do
-        nil -> Enum.map(raw_lines, fn "" -> Phoenix.HTML.raw("&nbsp;"); l -> l end)
-        highlighted -> highlighted
+        nil ->
+          Enum.map(raw_lines, fn
+            "" -> Phoenix.HTML.raw("&nbsp;")
+            l -> l
+          end)
+
+        highlighted ->
+          highlighted
       end
 
     assigns =
@@ -59,7 +65,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.TextViewer do
               template indentation/newlines around the content render as literal leading
               space (pushing code right) and blank lines (making every row tall). --%>
             <tr :for={{line, idx} <- Enum.with_index(@lines, 1)}>
-              <td phx-no-format class="select-none text-right pr-4 pl-4 py-0 text-zinc-400 dark:text-zinc-600 align-top w-[1%] whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800">{idx}</td>
+              <td
+                phx-no-format
+                class="select-none text-right pr-4 pl-4 py-0 text-zinc-400 dark:text-zinc-600 align-top w-[1%] whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800"
+              >{idx}</td>
               <td phx-no-format class="pr-4 pl-4 py-0 whitespace-pre-wrap break-all">{line}</td>
             </tr>
           </tbody>

@@ -246,7 +246,11 @@ defmodule Loopyard.ChatAgent.ContextWindowTest do
       send(
         pid,
         {:stream_event, id, ref,
-         %Event.SessionResult{model: "claude-opus-4-8", input_tokens: 600_000, cache_read_tokens: 0}}
+         %Event.SessionResult{
+           model: "claude-opus-4-8",
+           input_tokens: 600_000,
+           cache_read_tokens: 0
+         }}
       )
 
       _ = :sys.get_state(pid)
@@ -334,7 +338,13 @@ defmodule Loopyard.ChatAgent.ContextWindowTest do
       ref = make_ref()
 
       :sys.replace_state(pid, fn s ->
-        %{s | stream_ref: ref, status: :thinking, context_utilization: 0.95, pending_sends: ["queued"]}
+        %{
+          s
+          | stream_ref: ref,
+            status: :thinking,
+            context_utilization: 0.95,
+            pending_sends: ["queued"]
+        }
       end)
 
       send(pid, {:stream_done, id, ref})

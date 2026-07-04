@@ -19,8 +19,8 @@ jobs:
 
       - uses: erlef/setup-beam@v1
         with:
-          elixir-version: "1.18"
-          otp-version: "27"
+          elixir-version: "1.19"
+          otp-version: "28"
 
       - name: Cache deps
         uses: actions/cache@v4
@@ -55,8 +55,8 @@ jobs:
 
       - uses: erlef/setup-beam@v1
         with:
-          elixir-version: "1.18"
-          otp-version: "27"
+          elixir-version: "1.19"
+          otp-version: "28"
 
       - name: Cache deps + PLT
         uses: actions/cache@v4
@@ -84,11 +84,7 @@ jobs:
         run: mix format --check-formatted
 
       - name: Module cycle check
-        # Elixir 1.18's `mix xref --format cycles` reports the same cycle once
-        # per starting module, so a single ~6-module ChatAgent cycle expands
-        # into ~35 reported "cycles". 1.19 dedupes properly. When CI moves
-        # to 1.19, drop this back to 8.
-        run: mix xref graph --format cycles --fail-above 40
+        run: mix xref graph --format cycles --fail-above 8
 
       - name: Dependency audit
         run: mix deps.audit
@@ -118,8 +114,8 @@ jobs:
 
       - uses: erlef/setup-beam@v1
         with:
-          elixir-version: "1.18"
-          otp-version: "27"
+          elixir-version: "1.19"
+          otp-version: "28"
 
       - name: Cache deps
         uses: actions/cache@v4
