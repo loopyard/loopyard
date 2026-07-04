@@ -38,13 +38,17 @@ defmodule LoopyardWeb.SystemDockerLiveTest do
       # container_stats (docker stats --no-stream) is still async.
       assert html =~ "Containers"
       assert html =~ "Volumes"
-      # Seeded-from-cache means the sections RESOLVE on first render — to their
-      # rows, or (no loopyard containers in test) to the empty-state message —
-      # rather than a <.skeleton> loading placeholder. Assert the resolved
-      # content directly; "animate-pulse" alone is too broad a skeleton proxy
-      # (status-dot indicators pulse too), which is what made this flap.
-      assert html =~ "No loopyard-* containers running"
-      assert html =~ "No loopyard-* volumes"
+      # Seeded-from-cache means the sections RESOLVE on first render (to their
+      # rows, or an empty-state message) rather than a <.skeleton> placeholder.
+      # Assert the skeleton's own row class is absent — precise, and robust to
+      # whether loopyard-* containers happen to exist during the run (matching
+      # the empty-state text would flake in the full suite). Bare "animate-pulse"
+      # is too broad: status-dot indicators pulse too.
+      refute html =~ "bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse",
+             "Containers/volumes are showing a <.skeleton> — Observer cache not seeded?"
+      # The section headers carry a live "(N)" count only once the list is seeded.
+      assert html =~ ~r/Containers[\s\S]{0,120}\(\d+\)/
+      assert html =~ ~r/Volumes[\s\S]{0,120}\(\d+\)/
     end
   end
 
