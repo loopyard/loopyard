@@ -417,8 +417,8 @@ defmodule Loopyard.InvariantsTest do
   @size_allowlist %{
     # These are known-large and have active split plans.
     # When you split one, lower its allowance or remove it.
-    "lib/loopyard/chat_agent.ex" => 1730,
-    "lib/loopyard_web/live/workspace_live.ex" => 1780,
+    "lib/loopyard/chat_agent.ex" => 1700,
+    "lib/loopyard_web/live/workspace_live.ex" => 1760,
     "lib/loopyard/eval_runner.ex" => 1200,
     "lib/loopyard_web/live/project_live.ex" => 850
   }
