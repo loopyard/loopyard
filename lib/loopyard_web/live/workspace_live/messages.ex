@@ -26,6 +26,16 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
 
   alias LoopyardWeb.Components.ToolSummary
   alias LoopyardWeb.Live.WorkspaceLive.Messages.Cards
+  alias LoopyardWeb.Live.WorkspaceLive.Messages.Transcript
+
+  # Transcript-structure helpers live in Messages.Transcript (size-cap split);
+  # re-exposed so chat_panel + the transcript-layout tests are unchanged.
+  defdelegate transcript_groups(messages), to: Transcript
+  defdelegate transcript_sections(messages), to: Transcript
+
+  # The Copy / Open hover buttons live in Messages.Actions (size-cap split);
+  # imported so the `<.copy_btn/>` / `<.open_btn/>` chat_msg calls are unchanged.
+  import LoopyardWeb.Live.WorkspaceLive.Messages.Actions, only: [copy_btn: 1, open_btn: 1]
 
   # Tools that render their OWN interactive card (role: :approval / :question) —
   # the card IS the human-facing surface, so we suppress the raw tool-call echo
@@ -460,97 +470,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
 
   defp tool_dot(_), do: "bg-zinc-300 dark:bg-zinc-600"
 
-  @doc """
-  Group the message list into transcript segments for the run-spine layout.
-
-  Returns an ordered list of:
-    * `{:run, [{msg, idx}]}` — consecutive agent-authored messages that share
-      ONE spine + ONE "Claude" header.
-    * `{:break, {msg, idx}}` — a human-facing message (user bubble, or a
-      question/approval card) that stands alone and breaks the run.
-
-  Indices are the original positions in `messages` (so `chat_msg` look-back
-  helpers still work).
-  """
-  def transcript_groups(messages) do
-    messages
-    |> Enum.with_index()
-    |> Enum.reduce([], fn {msg, idx}, groups ->
-      cond do
-        break_msg?(msg) ->
-          [{:break, {msg, idx}} | groups]
-
-        match?([{:run, _} | _], groups) ->
-          [{:run, items} | rest] = groups
-          [{:run, [{msg, idx} | items]} | rest]
-
-        true ->
-          [{:run, [{msg, idx}]} | groups]
-      end
-    end)
-    |> Enum.map(fn
-      {:run, items} -> {:run, Enum.reverse(items)}
-      other -> other
-    end)
-    |> Enum.reverse()
-  end
-
-  # Human-facing roles break a run: the user bubble, and the ask_user /
-  # approval cards (which are answered by a human).
-  defp break_msg?(%{role: role}), do: role in [:user, :question, :approval]
-  defp break_msg?(_), do: false
-
-  @doc """
-  Group the transcript into SECTIONS for the sticky-prompt layout.
-
-  Each section is `%{prompt: {msg, idx} | nil, body: [group]}` where a new
-  section begins at every human **prompt** (`:user`) and `body` is the
-  transcript groups (runs + question/approval cards) that answer it. The leading
-  section before the first prompt has `prompt: nil`.
-
-  The point: chat_panel wraps each section in a `<section>` and makes the prompt
-  `sticky` — so the prompt that owns the response you're scrolling stays pinned
-  at the top until the next prompt's section takes over.
-  """
-  def transcript_sections(messages) do
-    messages
-    |> transcript_groups()
-    |> Enum.reduce([], fn group, sections ->
-      case group do
-        {:break, {%{role: :user}, _idx}} = prompt ->
-          {:break, p} = prompt
-
-          # A consecutive human message with NO agent response yet folds into the
-          # SAME section's body — a flurry of messages becomes ONE "You" area
-          # instead of a new chapter (and a new card) per line. Folds repeatedly
-          # (3rd, 4th, …) until the agent actually answers (a :run appears).
-          if foldable_user_section?(sections) do
-            [sec | rest] = sections
-            [%{sec | body: [prompt | sec.body]} | rest]
-          else
-            [%{prompt: p, body: []} | sections]
-          end
-
-        other ->
-          case sections do
-            [%{body: body} = sec | rest] -> [%{sec | body: [other | body]} | rest]
-            [] -> [%{prompt: nil, body: [other]}]
-          end
-      end
-    end)
-    |> Enum.map(fn %{body: body} = sec -> %{sec | body: Enum.reverse(body)} end)
-    |> Enum.reverse()
-  end
-
-  # The current (most recent) section is a human-prompt section that the agent
-  # hasn't answered yet — its body has no agent run, only earlier folded prompts.
-  # A new human message folds into it (same "You" area) rather than starting a new
-  # chapter.
-  defp foldable_user_section?([%{prompt: {%{role: :user}, _}, body: body} | _]),
-    do: not Enum.any?(body, &match?({:run, _}, &1))
-
-  defp foldable_user_section?(_), do: false
-
   # How many lines of output we keep in the inline DOM. The full text is always
   # one click away via the raw link; this just bounds a pathological 10k-line
   # dump from bloating the page. Generous so "see everything" mostly means it.
@@ -708,44 +627,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         </button>
       </div>
     </div>
-    """
-  end
-
-  # --- Icon buttons for message actions ---
-
-  defp copy_btn(assigns) do
-    extra_class = assigns[:class] || ""
-    assigns = assign(assigns, :extra_class, extra_class)
-
-    ~H"""
-    <button
-      id={"copy-#{System.unique_integer([:positive])}"}
-      phx-hook="CopySource"
-      data-source={@raw_url}
-      data-copy="fetch"
-      class={"p-1 rounded-md cursor-pointer text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 #{@extra_class}"}
-      title="Copy"
-    >
-      <.icon name={:copy} class="w-3.5 h-3.5 copy-icon" />
-      <.icon name={:check} class="w-3.5 h-3.5 check-icon hidden" />
-    </button>
-    """
-  end
-
-  defp open_btn(assigns) do
-    extra_class = assigns[:class] || ""
-    assigns = assign(assigns, :extra_class, extra_class)
-
-    ~H"""
-    <a
-      href={@url}
-      target="_blank"
-      rel="noopener"
-      class={"p-1 rounded-md text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 #{@extra_class}"}
-      title="Open"
-    >
-      <.icon name={:external} class="w-3.5 h-3.5" />
-    </a>
     """
   end
 
