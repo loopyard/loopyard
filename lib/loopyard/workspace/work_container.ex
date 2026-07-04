@@ -147,8 +147,28 @@ defmodule Loopyard.Workspace.WorkContainer do
          _ <- Loopyard.Workstation.Env.stage_tools(ws),
          # Clear any stopped container of the same name before run.
          _ <- Docker.docker(["rm", "-f", name]),
+         # `rm -f` returns before Docker finishes reaping the container; running
+         # immediately races it and hits "container is marked for removal and
+         # cannot be started". Wait for the name to actually free up first.
+         :ok <- wait_for_name_free(name),
          {:ok, _} <- run(name, volume, ws) do
       {:ok, name}
+    end
+  end
+
+  # Poll until no container holds `name` (removal completed), up to ~2s. Gives
+  # up quietly after that — run/3 will surface any genuine error.
+  defp wait_for_name_free(name, tries \\ 20) do
+    cond do
+      not Docker.container_exists?(name) ->
+        :ok
+
+      tries <= 0 ->
+        :ok
+
+      true ->
+        Process.sleep(100)
+        wait_for_name_free(name, tries - 1)
     end
   end
 

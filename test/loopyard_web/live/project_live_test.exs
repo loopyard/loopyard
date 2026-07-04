@@ -33,6 +33,11 @@ defmodule LoopyardWeb.ProjectLiveTest do
       conn: conn,
       project: project
     } do
+      # Warm up once: the first LV mount on a cold BEAM pays for code-loading
+      # (assign modules, Gettext, etc.) — not what this measures. Without this
+      # the measured mount inflates on a loaded CI runner and flakes.
+      {:ok, _, _} = live(conn, "/projects/#{project.id}")
+
       {micros, {:ok, _view, _html}} = :timer.tc(fn -> live(conn, "/projects/#{project.id}") end)
 
       assert micros < 500_000,

@@ -158,10 +158,19 @@ defmodule Loopyard.Workspace do
   exec into — or `{:error, reason}`.
   """
   def ensure_working(workspace_id) do
-    if container_running?(workspace_id) do
-      {:ok, Loopyard.Workspace.ServiceManager.service_container_name(workspace_id, "workspace")}
-    else
-      Loopyard.Workspace.WorkContainer.ensure_up(workspace_id)
+    cond do
+      container_running?(workspace_id) ->
+        {:ok, Loopyard.Workspace.ServiceManager.service_container_name(workspace_id, "workspace")}
+
+      # Never drive a Docker create/build for a workspace we don't know about.
+      # Booting a container for a phantom id otherwise blocks the caller for
+      # tens of seconds (e.g. a tool exec against a never-provisioned id). Fail
+      # fast — there's nothing to self-heal.
+      is_nil(Loopyard.ProjectRegistry.get_workspace(workspace_id)) ->
+        {:error, "workspace #{workspace_id} is not registered — nothing to start"}
+
+      true ->
+        Loopyard.Workspace.WorkContainer.ensure_up(workspace_id)
     end
   end
 

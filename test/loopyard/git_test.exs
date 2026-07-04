@@ -54,7 +54,9 @@ defmodule Loopyard.GitTest do
       assert length(worktrees) >= 1
       main = hd(worktrees)
       assert Map.has_key?(main, :path)
-      assert Map.has_key?(main, :branch)
+      # A worktree is either on a branch or detached — CI checks out a detached
+      # HEAD (the PR merge SHA), which is a valid state with no :branch.
+      assert Map.has_key?(main, :branch) or Map.has_key?(main, :detached)
     end
   end
 
