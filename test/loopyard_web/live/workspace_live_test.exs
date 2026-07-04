@@ -463,11 +463,13 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
 
       Loopyard.ChatAgent.boot_failed(id, "container exploded")
 
-      # Workspace navigation uses push_patch for intra-module routes now
-      # (see plans/livevew-flapping-audit.md). `assert_patch/2` mirrors the
-      # production transition; `assert_redirect` would fail because the LV
-      # process stays up across the hop.
-      assert_patch(view, ws_path(ws))
+      # The failed agent you were watching is removed, and navigation lands you
+      # on a LIVE agent (never a blank index, never the dead agent — the latter
+      # used to loop; see Navigation.resume_agent_live?). Workspace nav uses
+      # push_patch for intra-module routes (plans/livevew-flapping-audit.md).
+      to = assert_patch(view)
+      refute to =~ "/agents/#{id}", "must not patch back to the failed agent"
+      refute id in Enum.map(Loopyard.ChatAgent.list_agents(), & &1.id)
     end
   end
 

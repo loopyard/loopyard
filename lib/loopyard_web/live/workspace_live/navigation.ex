@@ -16,7 +16,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Navigation do
     resume = Loopyard.WindowViews.resume_path(socket.transport_pid, ws_id)
 
     target =
-      if is_binary(resume) and resume != base do
+      if is_binary(resume) and resume != base and resume_agent_live?(resume, socket.assigns.agents) do
         resume
       else
         case List.first(socket.assigns.agents) do
@@ -26,6 +26,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Navigation do
       end
 
     if target && target != base, do: target
+  end
+
+  # A resume path that points at an agent must point at a LIVE one. Otherwise a
+  # just-removed agent (e.g. one that boot-failed while you were watching it)
+  # would be re-selected here, bounce off :chat's not-found → :index, and land
+  # right back here — an infinite patch-redirect loop. Non-agent resume paths
+  # (services, volumes, files) aren't subject to agent removal, so they pass.
+  defp resume_agent_live?(resume, agents) do
+    case Regex.run(~r{/agents/([^/?#]+)}, resume) do
+      [_, id] -> Enum.any?(agents, &(&1.id == id))
+      _ -> true
+    end
   end
 
   @doc "The kick-off message for a spawn preset, or nil for the default."
