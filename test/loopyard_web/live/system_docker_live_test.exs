@@ -46,6 +46,7 @@ defmodule LoopyardWeb.SystemDockerLiveTest do
       # is too broad: status-dot indicators pulse too.
       refute html =~ "bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse",
              "Containers/volumes are showing a <.skeleton> — Observer cache not seeded?"
+
       # The section headers carry a live "(N)" count only once the list is seeded.
       assert html =~ ~r/Containers[\s\S]{0,120}\(\d+\)/
       assert html =~ ~r/Volumes[\s\S]{0,120}\(\d+\)/

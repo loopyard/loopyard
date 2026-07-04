@@ -16,7 +16,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Navigation do
     resume = Loopyard.WindowViews.resume_path(socket.transport_pid, ws_id)
 
     target =
-      if is_binary(resume) and resume != base and resume_agent_live?(resume, socket.assigns.agents) do
+      if is_binary(resume) and resume != base and
+           resume_agent_live?(resume, socket.assigns.agents) do
         resume
       else
         case List.first(socket.assigns.agents) do
