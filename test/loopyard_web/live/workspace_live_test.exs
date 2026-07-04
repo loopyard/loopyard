@@ -330,7 +330,14 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
     } do
       agent_count_before = length(Loopyard.ChatAgent.list_agents())
 
-      {:ok, _view, _html} = live(conn, ws_path(ws))
+      # :index with an existing agent lands you ON that agent ("open a live
+      # agent, never a blank workspace"), so mount may live_redirect to it.
+      # Either way the invariant under test is that NO new agent is spawned.
+      case live(conn, ws_path(ws)) do
+        {:ok, _view, _html} -> :ok
+        {:error, {:live_redirect, %{to: to}}} -> assert to =~ "/agents/"
+      end
+
       Process.sleep(200)
 
       agent_count_after = length(Loopyard.ChatAgent.list_agents())

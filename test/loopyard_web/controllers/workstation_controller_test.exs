@@ -19,15 +19,18 @@ defmodule LoopyardWeb.WorkstationControllerTest do
     :ok
   end
 
-  describe "bare URL redirects to the current workstation" do
+  describe "workstation landing URLs" do
+    # Singular /workstation is a redirect shim to your current identity.
     test "GET /workstation → /workstations/<current>", %{conn: conn} do
       conn = get(conn, "/workstation")
       assert redirected_to(conn) =~ ~r{^/workstations/[a-z0-9-]+$}
     end
 
-    test "GET /workstations → /workstations/<current>", %{conn: conn} do
+    # Plural /workstations is the LIST page (switch / create), not a redirect.
+    test "GET /workstations renders the list", %{conn: conn} do
       conn = get(conn, "/workstations")
-      assert redirected_to(conn) =~ ~r{^/workstations/[a-z0-9-]+$}
+      assert conn.status == 200
+      assert conn.resp_body =~ "Workstations"
     end
   end
 
