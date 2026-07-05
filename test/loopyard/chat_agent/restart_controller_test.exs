@@ -160,7 +160,7 @@ defmodule Loopyard.ChatAgent.RestartControllerTest do
       {:ok, _} = Loopyard.WorkspaceSupervisor.start_workspace(workspace_id, path)
 
       on_exit(fn ->
-        Loopyard.WorkspaceSupervisor.stop_workspace(workspace_id)
+        TestHelpers.destroy_workspace(workspace_id)
         Process.sleep(50)
       end)
 
@@ -271,7 +271,7 @@ defmodule Loopyard.ChatAgent.RestartControllerTest do
       {:ok, _} = Loopyard.WorkspaceSupervisor.start_workspace(workspace_id, path)
 
       on_exit(fn ->
-        Loopyard.WorkspaceSupervisor.stop_workspace(workspace_id)
+        TestHelpers.destroy_workspace(workspace_id)
         File.rm_rf(path)
         Process.sleep(50)
       end)
@@ -424,7 +424,7 @@ defmodule Loopyard.ChatAgent.RestartControllerTest do
       {:ok, _} = Loopyard.WorkspaceSupervisor.start_workspace(workspace_id, path)
 
       on_exit(fn ->
-        Loopyard.WorkspaceSupervisor.stop_workspace(workspace_id)
+        TestHelpers.destroy_workspace(workspace_id)
         Process.sleep(50)
       end)
 
@@ -547,7 +547,7 @@ defmodule Loopyard.ChatAgent.RestartControllerTest do
       {:ok, _} = Loopyard.WorkspaceSupervisor.start_workspace(workspace_id, path)
 
       on_exit(fn ->
-        Loopyard.WorkspaceSupervisor.stop_workspace(workspace_id)
+        TestHelpers.destroy_workspace(workspace_id)
         Process.sleep(50)
       end)
 

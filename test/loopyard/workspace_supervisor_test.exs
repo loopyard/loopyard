@@ -9,7 +9,7 @@ defmodule Loopyard.WorkspaceSupervisorTest do
     workspace_id = Loopyard.Workspace.workspace_id(tmp_dir)
 
     on_exit(fn ->
-      WorkspaceSupervisor.stop_workspace(workspace_id)
+      Loopyard.TestHelpers.destroy_workspace(workspace_id)
       File.rm_rf!(tmp_dir)
     end)
 

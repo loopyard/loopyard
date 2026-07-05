@@ -1,6 +1,29 @@
 defmodule Loopyard.TestHelpers do
   @moduledoc "Shared helpers for tests that need workspace/agent infrastructure."
 
+  @doc """
+  Full teardown for a test-created workspace — the cleanup tests should run in
+  `on_exit` instead of a bare `stop_workspace/1`. Stops the supervisor subtree
+  AND removes the workspace's Docker containers + volumes via the real
+  `Workspace.Destructor`, so a test doesn't leak `loopyard-<id>-*` volumes across
+  runs (which is what let the dev volume count balloon to 10k+).
+
+  SAFETY: refuses to delete volumes for the shared cwd-derived workspace — that
+  id is reused by many tests and its `loopyard-<id>-code` volume may be a real
+  one. For that id it only stops the subtree. Isolate a test on its own temp
+  dir (unique id) if it needs its volumes actually cleaned.
+  """
+  def destroy_workspace(workspace_id) do
+    if workspace_id == Loopyard.Workspace.workspace_id(File.cwd!()) do
+      Loopyard.WorkspaceSupervisor.stop_workspace(workspace_id)
+    else
+      Loopyard.WorkspaceSupervisor.stop_workspace(workspace_id)
+      Loopyard.Workspace.Destructor.destroy(workspace_id)
+    end
+
+    :ok
+  end
+
   @doc "Ensure a workspace subtree is running for a path. Returns the workspace_id."
   def ensure_workspace(path \\ File.cwd!()) do
     workspace_id = Loopyard.Workspace.workspace_id(path)

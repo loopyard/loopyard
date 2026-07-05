@@ -78,7 +78,7 @@ defmodule Loopyard.AgentBootTest do
 
       on_exit(fn ->
         ChatAgent.stop_agent(id)
-        Loopyard.WorkspaceSupervisor.stop_workspace(workspace_id)
+        Loopyard.TestHelpers.destroy_workspace(workspace_id)
         File.rm_rf!(working_dir)
       end)
 

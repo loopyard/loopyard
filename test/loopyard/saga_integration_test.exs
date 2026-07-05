@@ -69,8 +69,8 @@ defmodule Loopyard.SagaIntegrationTest do
           assert :start_fresh_group in step_names
       end
 
-      # Clean up
-      WorkspaceSupervisor.stop_workspace(workspace_id)
+      # Clean up (destroy removes the workspace's containers + volumes too).
+      Loopyard.TestHelpers.destroy_workspace(workspace_id)
       File.rm_rf!(path)
     end
   end
