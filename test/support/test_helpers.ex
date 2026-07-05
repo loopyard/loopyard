@@ -30,10 +30,10 @@ defmodule Loopyard.TestHelpers do
 
     case Loopyard.WorkspaceSupervisor.start_workspace(workspace_id, path) do
       {:ok, _} ->
-        workspace_id
+        :ok
 
       {:error, {:already_started, _}} ->
-        workspace_id
+        :ok
 
       # Nested `:already_started` arrives when the dynamic supervisor
       # itself is mid-start and a child (e.g. ServiceManager) claims
@@ -41,15 +41,65 @@ defmodule Loopyard.TestHelpers do
       # shows up when many test setups race on the same workspace_id.
       # Treat as "workspace is up, use it."
       {:error, {:shutdown, {:failed_to_start_child, _, {:already_started, _}}}} ->
-        workspace_id
+        :ok
     end
+
+    register_workspace_cleanup(workspace_id)
+    workspace_id
   end
 
-  @doc "Start an agent under the workspace for the given path."
+  # Tidy up after the test: schedule teardown (subtree + Docker containers +
+  # volumes) of any NON-cwd workspace a test spins up through here, once per id.
+  # The shared cwd workspace is never auto-destroyed — its -code volume may be a
+  # real one; see destroy_workspace/1. This is what keeps tests from leaking
+  # `loopyard-<id>-*` volumes regardless of whether they used the default or an
+  # explicit :working_dir.
+  defp register_workspace_cleanup(workspace_id) do
+    cwd_id = Loopyard.Workspace.workspace_id(File.cwd!())
+    seen = Process.get(:loopyard_test_cleanup_wids, MapSet.new())
+
+    if workspace_id != cwd_id and not MapSet.member?(seen, workspace_id) do
+      Process.put(:loopyard_test_cleanup_wids, MapSet.put(seen, workspace_id))
+      ExUnit.Callbacks.on_exit(fn -> destroy_workspace(workspace_id) end)
+    end
+
+    :ok
+  end
+
+  @doc """
+  Start an agent under a workspace. When no `:working_dir` is given, the agent
+  runs in a UNIQUE per-test temp workspace (auto-created, auto-destroyed on
+  exit) instead of the shared `File.cwd!()` one — so tests don't churn/pollute
+  each other's workspace group and don't leak volumes. Pass `:working_dir`
+  explicitly if a test needs a specific path.
+  """
   def start_agent(opts) do
-    path = Keyword.get(opts, :working_dir, File.cwd!())
+    path = Keyword.get_lazy(opts, :working_dir, &test_workspace_path/0)
+    # Thread the resolved path back so the agent and the workspace we started
+    # agree on the same dir (the agent reads working_dir from opts).
+    opts = Keyword.put(opts, :working_dir, path)
     workspace_id = ensure_workspace_ready(path)
     start_agent_with_retry(workspace_id, opts, 60)
+  end
+
+  # One isolated temp workspace DIR per TEST (memoized in the test process's
+  # dictionary). Reused by later start_agent/0 calls in the same test so agents
+  # that should share a workspace still do. Workspace/volume teardown is
+  # registered by ensure_workspace/1; here we just reap the temp dir itself.
+  defp test_workspace_path do
+    case Process.get(:loopyard_test_workspace_path) do
+      nil ->
+        path =
+          Path.join(System.tmp_dir!(), "loopyard-test-ws-#{System.unique_integer([:positive])}")
+
+        File.mkdir_p!(path)
+        Process.put(:loopyard_test_workspace_path, path)
+        ExUnit.Callbacks.on_exit(fn -> File.rm_rf(path) end)
+        path
+
+      path ->
+        path
+    end
   end
 
   # Under full-suite load many tests share the cwd-derived workspace_id
