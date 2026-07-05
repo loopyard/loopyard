@@ -258,12 +258,21 @@ defmodule Loopyard.ChatAgent.RestartControllerTest do
     # window, assert the controller quarantines it on the Nth crash.
 
     setup do
-      path = File.cwd!()
+      # Own, isolated workspace — NOT File.cwd!(). The cwd-derived id is shared
+      # by many tests, so under full-suite load that workspace group churns
+      # (ServiceManager restarts → WorkspaceSupervisor rebuilds the group),
+      # unregistering the agent supervisor + RestartController mid-sequence and
+      # breaking kill→respawn→quarantine. A unique dir insulates this test.
+      path =
+        Path.join(System.tmp_dir!(), "loopyard-quarantine-#{System.unique_integer([:positive])}")
+
+      File.mkdir_p!(path)
       workspace_id = Loopyard.Workspace.workspace_id(path)
       {:ok, _} = Loopyard.WorkspaceSupervisor.start_workspace(workspace_id, path)
 
       on_exit(fn ->
         Loopyard.WorkspaceSupervisor.stop_workspace(workspace_id)
+        File.rm_rf(path)
         Process.sleep(50)
       end)
 
@@ -294,18 +303,30 @@ defmodule Loopyard.ChatAgent.RestartControllerTest do
           started_by: "test"
         )
 
-      # Kill it 3 times in a row — threshold is 3/500ms from setup.
-      for _ <- 1..3 do
-        case Registry.lookup(Loopyard.ChatAgentRegistry, id) do
-          [{pid, _}] ->
-            Process.exit(pid, :kill)
-            # Give the controller time to see :DOWN and decide
-            Process.sleep(100)
+      # Drive a crash loop: kill the live agent, let the controller respawn it,
+      # kill again — until it quarantines. Rather than guess respawn latency with
+      # a fixed sleep (the old flake), each step waits deterministically for a
+      # live pid, then confirms the kill via :DOWN. We stop as soon as the agent
+      # is quarantined: that's reached either by 3 crashes inside the window OR by
+      # a respawn failing under the rapid re-kills — both are the crash-loop →
+      # quarantine behavior under test. Bounded so a genuine "never quarantines"
+      # regression still fails instead of looping forever.
+      Enum.reduce_while(1..8, nil, fn _, _ ->
+        if RestartController.quarantined?(id) do
+          {:halt, :ok}
+        else
+          case await_live_pid(id, 3_000) do
+            nil ->
+              {:halt, :ok}
 
-          [] ->
-            :ok
+            pid ->
+              ref = Process.monitor(pid)
+              Process.exit(pid, :kill)
+              assert_receive {:DOWN, ^ref, :process, ^pid, _}, 2_000
+              {:cont, nil}
+          end
         end
-      end
+      end)
 
       # The 3rd crash should have triggered quarantine. Wait briefly
       # for the broadcast to land in our mailbox.
@@ -696,6 +717,31 @@ defmodule Loopyard.ChatAgent.RestartControllerTest do
 
         new_pid ->
           new_pid
+      end
+    end
+
+    loop.(loop)
+  end
+
+  # A currently-registered, alive pid for the agent, or nil if none appears
+  # within the deadline. Polls (the agent may be mid-respawn) rather than
+  # assuming a fixed latency. nil means "no live agent" — e.g. it quarantined
+  # and won't respawn, which the caller treats as a stop condition.
+  defp await_live_pid(id, deadline_ms \\ 3_000) do
+    started = System.monotonic_time(:millisecond)
+
+    loop = fn loop ->
+      with [{pid, _}] <- Registry.lookup(Loopyard.ChatAgentRegistry, id),
+           true <- Process.alive?(pid) do
+        pid
+      else
+        _ ->
+          if System.monotonic_time(:millisecond) - started > deadline_ms do
+            nil
+          else
+            Process.sleep(20)
+            loop.(loop)
+          end
       end
     end
 

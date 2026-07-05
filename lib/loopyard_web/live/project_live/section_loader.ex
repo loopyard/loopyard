@@ -14,7 +14,12 @@ defmodule LoopyardWeb.ProjectLive.SectionLoader do
   alias Loopyard.ProjectRegistry
 
   def load_workspaces(project, sections, existing \\ []) do
-    ctx = %{agents: if(:agents in sections, do: ChatAgent.list_agents(), else: [])}
+    # Only the per-workspace COUNT is needed here (by working_dir / bind_mount /
+    # workspace_id — all durable summary fields), so read ETS directly. The live
+    # list_agents/0 issues a get_state GenServer.call per agent and blocked the
+    # ProjectLive mount ~600ms once agents were busy. Live status flows via the
+    # ChatAgent PubSub subscriptions this LV already holds, not this read.
+    ctx = %{agents: if(:agents in sections, do: ChatAgent.list_agent_summaries(), else: [])}
 
     ProjectRegistry.list_workspaces(project.id)
     |> Enum.map(fn workspace ->

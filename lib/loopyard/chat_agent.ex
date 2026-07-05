@@ -333,6 +333,9 @@ defmodule Loopyard.ChatAgent do
   @doc "List every agent's current summary, freshening live ones from their GenServer."
   defdelegate list_agents(), to: Lifecycle
 
+  @doc "Every agent's summary from ETS only — no GenServer calls (mount-safe)."
+  defdelegate list_agent_summaries(), to: Lifecycle
+
   def subscribe do
     Loopyard.Events.ChatAgent.subscribe()
   end

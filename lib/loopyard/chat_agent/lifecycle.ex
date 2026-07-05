@@ -240,6 +240,19 @@ defmodule Loopyard.ChatAgent.Lifecycle do
     Events.ChatAgent.publish(%Events.ChatAgent.BootFailed{id: id, reason: reason})
   end
 
+  @doc """
+  Every agent's persisted summary straight from ETS — NO GenServer round-trips.
+
+  Use this when you only need the durable summary fields (id, name, status,
+  workspace_id, working_dir, bind_mount) and not live per-turn state. Unlike
+  `list_agents/0`, it never issues one `get_state` call per live agent, so it
+  stays O(ETS) even when agents are busy/wedged — safe on a mount path. Callers
+  that render live status stay fresh via ChatAgent PubSub, not this read.
+  """
+  def list_agent_summaries do
+    :ets.tab2list(@ets_table) |> Enum.map(fn {_id, summary} -> summary end)
+  end
+
   @doc "List every agent's current summary, freshening live ones from their GenServer."
   def list_agents do
     :ets.tab2list(@ets_table)
