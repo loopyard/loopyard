@@ -147,8 +147,28 @@ defmodule Loopyard.Workspace.WorkContainer do
          _ <- Loopyard.Workstation.Env.stage_tools(ws),
          # Clear any stopped container of the same name before run.
          _ <- Docker.docker(["rm", "-f", name]),
+         # `rm -f` returns before Docker finishes reaping the container; running
+         # immediately races it and hits "container is marked for removal and
+         # cannot be started". Wait for the name to actually free up first.
+         :ok <- wait_for_name_free(name),
          {:ok, _} <- run(name, volume, ws) do
       {:ok, name}
+    end
+  end
+
+  # Poll until no container holds `name` (removal completed), up to ~2s. Gives
+  # up quietly after that — run/3 will surface any genuine error.
+  defp wait_for_name_free(name, tries \\ 20) do
+    cond do
+      not Docker.container_exists?(name) ->
+        :ok
+
+      tries <= 0 ->
+        :ok
+
+      true ->
+        Process.sleep(100)
+        wait_for_name_free(name, tries - 1)
     end
   end
 
@@ -163,26 +183,24 @@ defmodule Loopyard.Workspace.WorkContainer do
     # Env.sync_home/1 and Docker.with_login_profile/1.
     home = home_path(ws)
 
-    Docker.docker(
-      [
-        "run",
-        "-d",
-        "--name",
-        name,
-        "--init",
-        "-v",
-        "#{volume}:#{@workdir}",
-        "-v",
-        "#{Loopyard.Workstation.Container.home_volume(ws)}:#{home}",
-        "-e",
-        "HOME=#{home}",
-        "-w",
-        @workdir,
-        @image,
-        "sleep",
-        "infinity"
-      ]
-    )
+    Docker.docker([
+      "run",
+      "-d",
+      "--name",
+      name,
+      "--init",
+      "-v",
+      "#{volume}:#{@workdir}",
+      "-v",
+      "#{Loopyard.Workstation.Container.home_volume(ws)}:#{home}",
+      "-e",
+      "HOME=#{home}",
+      "-w",
+      @workdir,
+      @image,
+      "sleep",
+      "infinity"
+    ])
   end
 
   # The identity's $HOME inside the container: /home/<id>.

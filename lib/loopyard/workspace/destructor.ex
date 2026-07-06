@@ -51,6 +51,7 @@ defmodule Loopyard.Workspace.Destructor do
       cancel_setup(workspace_id)
       stop_agents(workspace_id, workspace)
       compose_down(workspace_id, workspace)
+      remove_work_container(workspace_id)
       stop_supervisor_subtree(workspace_id)
       adapter_teardown(workspace)
       remove_named_volumes(workspace_id, workspace)
@@ -119,6 +120,17 @@ defmodule Loopyard.Workspace.Destructor do
         # "no configuration file" is expected for workspaces that never booted.
         {:error, reason} -> {:soft_error, reason}
       end
+    end)
+  end
+
+  # The cheap work container (`loopyard-<ws>-work`) is a plain `docker run`,
+  # NOT part of the compose project, so `compose down` never touches it. It
+  # mounts the code volume, so if we leave it running, `remove_named_volumes/2`
+  # can't delete that volume (in use) and it leaks. Remove it before the volumes.
+  defp remove_work_container(workspace_id) do
+    step(workspace_id, "remove work container", fn ->
+      Workspace.WorkContainer.down(workspace_id)
+      :ok
     end)
   end
 

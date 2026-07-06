@@ -235,6 +235,7 @@ defmodule Loopyard.InvariantsTest do
         Path.wildcard("lib/loopyard/tools/**/*.ex")
         |> Enum.filter(fn path ->
           src = File.read!(path)
+
           Regex.match?(lifecycle_call, src) and
             not String.contains?(src, "Approvals.request")
         end)
@@ -417,9 +418,8 @@ defmodule Loopyard.InvariantsTest do
     # These are known-large and have active split plans.
     # When you split one, lower its allowance or remove it.
     "lib/loopyard/chat_agent.ex" => 1700,
-    "lib/loopyard_web/live/workspace_live.ex" => 1800,
+    "lib/loopyard_web/live/workspace_live.ex" => 1760,
     "lib/loopyard/eval_runner.ex" => 1200,
-    "lib/loopyard/chat_agent/stream_handler.ex" => 850,
     "lib/loopyard_web/live/project_live.ex" => 850
   }
 

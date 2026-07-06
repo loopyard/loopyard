@@ -109,7 +109,9 @@ defmodule Loopyard.Source.GitHub do
   @impl true
   def git_show(_project, workspace, ref, path), do: Git.show(runner(workspace), ref, path)
   @impl true
-  def git_diff_staged(_project, workspace, opts \\ []), do: Git.diff_staged(runner(workspace), opts)
+  def git_diff_staged(_project, workspace, opts \\ []),
+    do: Git.diff_staged(runner(workspace), opts)
+
   @impl true
   def git_commit_detail(_project, workspace, sha), do: Git.commit_detail(runner(workspace), sha)
   @impl true
@@ -123,7 +125,8 @@ defmodule Loopyard.Source.GitHub do
     fn args ->
       case Loopyard.Workspace.ensure_working(workspace_id) do
         {:ok, container} ->
-          cmd = "git -c safe.directory=/workspace -C /workspace " <> Enum.map_join(args, " ", &shq/1)
+          cmd =
+            "git -c safe.directory=/workspace -C /workspace " <> Enum.map_join(args, " ", &shq/1)
 
           case Loopyard.Docker.exec_in(container, cmd) do
             {:ok, output} -> {:ok, output}

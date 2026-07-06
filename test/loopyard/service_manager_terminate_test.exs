@@ -24,7 +24,7 @@ defmodule Loopyard.ServiceManagerTerminateTest do
       workspace_id = Workspace.workspace_id(tmp_dir)
 
       on_exit(fn ->
-        WorkspaceSupervisor.stop_workspace(workspace_id)
+        Loopyard.TestHelpers.destroy_workspace(workspace_id)
         Process.sleep(100)
         File.rm_rf!(tmp_dir)
       end)
@@ -79,7 +79,7 @@ defmodule Loopyard.ServiceManagerTerminateTest do
       )
 
       on_exit(fn ->
-        WorkspaceSupervisor.stop_workspace(workspace_id)
+        Loopyard.TestHelpers.destroy_workspace(workspace_id)
         Process.sleep(200)
 
         virtual_dir = Path.join([Workspace.home_dir(), "workspaces", workspace_id])

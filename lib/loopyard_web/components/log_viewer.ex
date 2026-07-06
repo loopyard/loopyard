@@ -204,7 +204,10 @@ defmodule LoopyardWeb.Components.LogViewer do
            click (LogExpand) to open the full thing. --%>
       <pre
         data-log-pre
-        class={["text-xs font-mono leading-snug text-zinc-800 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-950 whitespace-pre overflow-auto px-3 py-2", if(@status == :building, do: "max-h-64", else: "max-h-32")]}
+        class={[
+          "text-xs font-mono leading-snug text-zinc-800 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-950 whitespace-pre overflow-auto px-3 py-2",
+          if(@status == :building, do: "max-h-64", else: "max-h-32")
+        ]}
       >{Ansi.to_html(@display)}</pre>
     </div>
     """

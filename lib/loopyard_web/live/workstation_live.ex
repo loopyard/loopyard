@@ -80,7 +80,10 @@ defmodule LoopyardWeb.WorkstationLive do
     # Boot only what THIS page uses (off the LV process — these block on
     # container create). The calm hub no longer spins up the console on every
     # view/reconnect.
-    socket = if connected?(socket), do: boot_for_action(socket, socket.assigns.live_action, ws), else: socket
+    socket =
+      if connected?(socket),
+        do: boot_for_action(socket, socket.assigns.live_action, ws),
+        else: socket
 
     {:ok, socket}
   end
@@ -134,10 +137,12 @@ defmodule LoopyardWeb.WorkstationLive do
   end
 
   def handle_async(:restart_machine, {:ok, {:error, reason}}, socket),
-    do: {:noreply, socket |> assign(:restarting, false) |> assign(:console_error, inspect(reason))}
+    do:
+      {:noreply, socket |> assign(:restarting, false) |> assign(:console_error, inspect(reason))}
 
   def handle_async(:restart_machine, {:exit, reason}, socket),
-    do: {:noreply, socket |> assign(:restarting, false) |> assign(:console_error, inspect(reason))}
+    do:
+      {:noreply, socket |> assign(:restarting, false) |> assign(:console_error, inspect(reason))}
 
   # --- events ---
 
@@ -206,7 +211,12 @@ defmodule LoopyardWeb.WorkstationLive do
   # --- Index: all workstations + create one. ---
   defp index_page(assigns) do
     ~H"""
-    <.page_shell breadcrumbs={[{"Workstations", nil}]} iex_session={@iex_session} max_width={:md} flash={@flash}>
+    <.page_shell
+      breadcrumbs={[{"Workstations", nil}]}
+      iex_session={@iex_session}
+      max_width={:md}
+      flash={@flash}
+    >
       <div class="space-y-8">
         <div class="space-y-1">
           <h1 class="text-xl font-semibold tracking-tight">Workstations</h1>
@@ -221,7 +231,11 @@ defmodule LoopyardWeb.WorkstationLive do
               :for={id <- @workstation_ids}
               navigate={"/workstations/#{id}"}
               title={id}
-              desc={if id == @current_id, do: "The identity you're operating as.", else: "Open to switch to it."}
+              desc={
+                if id == @current_id,
+                  do: "The identity you're operating as.",
+                  else: "Open to switch to it."
+              }
             >
               <:trailing :if={id == @current_id}>
                 <span class="inline-flex items-center gap-1.5 text-[11px] text-sky-600 dark:text-sky-400">
@@ -232,7 +246,10 @@ defmodule LoopyardWeb.WorkstationLive do
           </.nav_list>
         </.section>
 
-        <.section title="New workstation" hint="A fresh identity — connect its own tools, set up its own creds.">
+        <.section
+          title="New workstation"
+          hint="A fresh identity — connect its own tools, set up its own creds."
+        >
           <form action="/workstations/create" method="post" class="flex items-center gap-2">
             <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
             <input
@@ -263,10 +280,16 @@ defmodule LoopyardWeb.WorkstationLive do
       <div id="ws-page" phx-hook="WsScroll" class="space-y-8">
         <div class="flex items-baseline gap-3">
           <h1 class="text-xl font-semibold tracking-tight">{@current_id}</h1>
-          <.link navigate="/workstations" class="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300">All workstations</.link>
+          <.link
+            navigate="/workstations"
+            class="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+          >All workstations</.link>
         </div>
 
-        <.section title="Connect your tools" hint="Click in to connect — the default on each is one command you run on your Mac.">
+        <.section
+          title="Connect your tools"
+          hint="Click in to connect — the default on each is one command you run on your Mac."
+        >
           <.nav_list>
             <.nav_row
               :for={ig <- @integrations}
@@ -281,8 +304,16 @@ defmodule LoopyardWeb.WorkstationLive do
 
         <.section title="Configure">
           <.nav_list>
-            <.nav_row navigate={"/workstations/#{@current_id}/console"} title="Console" desc="A shell on the workstation — log in to your tools, poke around." />
-            <.nav_row navigate={"/workstations/#{@current_id}/env"} title="Environment" desc="Transfer creds from your Mac, set env vars, push tokens." />
+            <.nav_row
+              navigate={"/workstations/#{@current_id}/console"}
+              title="Console"
+              desc="A shell on the workstation — log in to your tools, poke around."
+            />
+            <.nav_row
+              navigate={"/workstations/#{@current_id}/env"}
+              title="Environment"
+              desc="Transfer creds from your Mac, set env vars, push tokens."
+            />
           </.nav_list>
         </.section>
       </div>
@@ -294,7 +325,11 @@ defmodule LoopyardWeb.WorkstationLive do
   defp console_page(assigns) do
     ~H"""
     <.page_shell
-      breadcrumbs={[{"Workstations", "/workstations"}, {@current_id, "/workstations/#{@current_id}"}, {"Console", nil}]}
+      breadcrumbs={[
+        {"Workstations", "/workstations"},
+        {@current_id, "/workstations/#{@current_id}"},
+        {"Console", nil}
+      ]}
       iex_session={@iex_session}
       max_width={:xl}
       flash={@flash}
@@ -302,11 +337,15 @@ defmodule LoopyardWeb.WorkstationLive do
       <div id="ws-page" phx-hook="WsScroll" class="space-y-3">
         <div class="flex items-center justify-between gap-3">
           <p class="text-sm text-zinc-500 dark:text-zinc-400">
-            A shell on <span class="font-medium text-zinc-700 dark:text-zinc-200">{@current_id}</span> — logins persist in $HOME.
+            A shell on <span class="font-medium text-zinc-700 dark:text-zinc-200">{@current_id}</span>
+            — logins persist in $HOME.
           </p>
           <.restart_button restarting={@restarting} />
         </div>
-        <div id="ws-console" class="h-[72dvh] rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden p-2 bg-[#18181b]">
+        <div
+          id="ws-console"
+          class="h-[72dvh] rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden p-2 bg-[#18181b]"
+        >
           <div
             :if={@console_container}
             id={"terminal-#{@console_container}-#{@term_nonce}"}
@@ -316,12 +355,20 @@ defmodule LoopyardWeb.WorkstationLive do
             class="h-full overflow-hidden"
           >
           </div>
-          <div :if={!@console_container && !@console_error} class="h-full flex items-center justify-center text-sm text-zinc-500">
+          <div
+            :if={!@console_container && !@console_error}
+            class="h-full flex items-center justify-center text-sm text-zinc-500"
+          >
             <span class="inline-flex items-center gap-2">
-              <.spinner /> {if @restarting, do: "Restarting the machine…", else: "Starting your console…"}
+              <.spinner /> {if @restarting,
+                do: "Restarting the machine…",
+                else: "Starting your console…"}
             </span>
           </div>
-          <div :if={@console_error} class="rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-3 text-sm text-red-600 dark:text-red-400">
+          <div
+            :if={@console_error}
+            class="rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-3 text-sm text-red-600 dark:text-red-400"
+          >
             Couldn't start the workstation console: {@console_error}
           </div>
         </div>
@@ -334,7 +381,11 @@ defmodule LoopyardWeb.WorkstationLive do
   defp env_page(assigns) do
     ~H"""
     <.page_shell
-      breadcrumbs={[{"Workstations", "/workstations"}, {@current_id, "/workstations/#{@current_id}"}, {"Environment", nil}]}
+      breadcrumbs={[
+        {"Workstations", "/workstations"},
+        {@current_id, "/workstations/#{@current_id}"},
+        {"Environment", nil}
+      ]}
       iex_session={@iex_session}
       max_width={:md}
       flash={@flash}
@@ -344,20 +395,48 @@ defmodule LoopyardWeb.WorkstationLive do
           title="Transfer everything from your Mac"
           hint="One command, run where you're logged in — grabs your gh / fly / claude / codex creds and pipes them up. Files apply live; tokens need a Restart."
         >
-          <.command_box id="clip-setup" command={"curl -fsS http://localhost:#{@http_port}/workstations/#{@current_id}/setup.sh | sh"} />
+          <.command_box
+            id="clip-setup"
+            command={"curl -fsS http://localhost:#{@http_port}/workstations/#{@current_id}/setup.sh | sh"}
+          />
         </.section>
 
-        <.section title="Environment variables" hint="Delivered as files in the home volume, sourced by a login shell. Restart to apply.">
+        <.section
+          title="Environment variables"
+          hint="Delivered as files in the home volume, sourced by a login shell. Restart to apply."
+        >
           <form phx-submit="add_env" class="flex flex-col sm:flex-row gap-2">
-            <input name="name" placeholder="NAME" autocomplete="off" autocapitalize="characters" spellcheck="false" class="sm:w-56 font-mono text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400" />
-            <input name="value" type="password" placeholder="value" autocomplete="off" spellcheck="false" class="flex-1 font-mono text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400" />
+            <input
+              name="name"
+              placeholder="NAME"
+              autocomplete="off"
+              autocapitalize="characters"
+              spellcheck="false"
+              class="sm:w-56 font-mono text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+            />
+            <input
+              name="value"
+              type="password"
+              placeholder="value"
+              autocomplete="off"
+              spellcheck="false"
+              class="flex-1 font-mono text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+            />
             <.button variant={:secondary} type="submit" class="flex-none">Add</.button>
           </form>
-          <ul :if={@other_env_keys != []} class="divide-y divide-zinc-100 dark:divide-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-800 px-3">
+          <ul
+            :if={@other_env_keys != []}
+            class="divide-y divide-zinc-100 dark:divide-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-800 px-3"
+          >
             <li :for={k <- @other_env_keys} class="flex items-center gap-3 py-2">
               <span class="font-mono text-sm text-zinc-700 dark:text-zinc-300">{k}</span>
               <span class="font-mono text-xs text-zinc-400 dark:text-zinc-600 select-none">••••••••</span>
-              <button phx-click="delete_env" phx-value-key={k} data-confirm={"Remove #{k}?"} class="ml-auto text-xs text-zinc-400 hover:text-red-500 transition-colors">Remove</button>
+              <button
+                phx-click="delete_env"
+                phx-value-key={k}
+                data-confirm={"Remove #{k}?"}
+                class="ml-auto text-xs text-zinc-400 hover:text-red-500 transition-colors"
+              >Remove</button>
             </li>
           </ul>
         </.section>
@@ -368,7 +447,10 @@ defmodule LoopyardWeb.WorkstationLive do
         >
           <div id="ws-push" phx-hook="PushCmd" data-token={@push_token} class="relative">
             <pre class="overflow-x-auto rounded-lg bg-zinc-900 dark:bg-zinc-950 text-zinc-100 text-[11px] leading-relaxed font-mono p-3 pr-16 ring-1 ring-zinc-800"><code class="ws-push-cmd">{push_cmd(@push_token, @current_id)}</code></pre>
-            <button type="button" class="ws-push-copy focus-ring absolute top-2 right-2 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-2 py-1 text-[11px]">Copy</button>
+            <button
+              type="button"
+              class="ws-push-copy focus-ring absolute top-2 right-2 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-2 py-1 text-[11px]"
+            >Copy</button>
           </div>
           <p class="text-[11px] text-zinc-400 dark:text-zinc-500">
             Swap GITHUB_TOKEN for any key. On this machine you can drop the token entirely. Restart to apply — keep this command secret.
@@ -391,8 +473,14 @@ defmodule LoopyardWeb.WorkstationLive do
 
   defp spinner(assigns) do
     ~H"""
-    <svg class="w-3.5 h-3.5 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+    <svg
+      class="w-3.5 h-3.5 animate-spin"
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+    >
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
+      </circle>
       <path
         class="opacity-75"
         fill="currentColor"

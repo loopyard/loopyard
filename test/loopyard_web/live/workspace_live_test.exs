@@ -330,7 +330,14 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
     } do
       agent_count_before = length(Loopyard.ChatAgent.list_agents())
 
-      {:ok, _view, _html} = live(conn, ws_path(ws))
+      # :index with an existing agent lands you ON that agent ("open a live
+      # agent, never a blank workspace"), so mount may live_redirect to it.
+      # Either way the invariant under test is that NO new agent is spawned.
+      case live(conn, ws_path(ws)) do
+        {:ok, _view, _html} -> :ok
+        {:error, {:live_redirect, %{to: to}}} -> assert to =~ "/agents/"
+      end
+
       Process.sleep(200)
 
       agent_count_after = length(Loopyard.ChatAgent.list_agents())
@@ -456,11 +463,13 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
 
       Loopyard.ChatAgent.boot_failed(id, "container exploded")
 
-      # Workspace navigation uses push_patch for intra-module routes now
-      # (see plans/livevew-flapping-audit.md). `assert_patch/2` mirrors the
-      # production transition; `assert_redirect` would fail because the LV
-      # process stays up across the hop.
-      assert_patch(view, ws_path(ws))
+      # The failed agent you were watching is removed, and navigation lands you
+      # on a LIVE agent (never a blank index, never the dead agent — the latter
+      # used to loop; see Navigation.resume_agent_live?). Workspace nav uses
+      # push_patch for intra-module routes (plans/livevew-flapping-audit.md).
+      to = assert_patch(view)
+      refute to =~ "/agents/#{id}", "must not patch back to the failed agent"
+      refute id in Enum.map(Loopyard.ChatAgent.list_agents(), & &1.id)
     end
   end
 
@@ -490,7 +499,11 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
       %{agent_id: id}
     end
 
-    test "idle agent shows green dot and a Stop control", %{conn: conn, agent_id: id, workspace: ws} do
+    test "idle agent shows green dot and a Stop control", %{
+      conn: conn,
+      agent_id: id,
+      workspace: ws
+    } do
       {:ok, view, _html} = live(conn, ws_chat_path(ws, id))
       assert has_element?(view, "div.bg-green-500")
       # The header's "Stop" warm-cancels the turn (interrupt_agent). The

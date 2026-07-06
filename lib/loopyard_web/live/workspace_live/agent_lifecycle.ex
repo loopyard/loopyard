@@ -104,7 +104,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
     |> assign(:has_more_messages, length(messages) < total)
   end
 
-
   @doc """
   List agents belonging to the given workspace path.
 

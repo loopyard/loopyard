@@ -31,7 +31,13 @@ defmodule Loopyard.ChatAgent.WorkstationIdentityTest do
 
   test "an explicit :workstation_identity opt wins over current/0" do
     :ok = Workstation.create("jamie")
-    summary = ChatAgent.register_booting(uid(), "T", "/tmp/x", workspace_id: "ws1", workstation_identity: "jamie")
+
+    summary =
+      ChatAgent.register_booting(uid(), "T", "/tmp/x",
+        workspace_id: "ws1",
+        workstation_identity: "jamie"
+      )
+
     assert summary.workstation_identity == "jamie"
   end
 

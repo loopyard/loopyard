@@ -31,20 +31,16 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatContextBannerTest do
     })
   end
 
-  test "no banner below 85%" do
-    html = render(0.5)
-    refute html =~ "Context"
+  # Auto-compaction is house-keeping the user shouldn't have to care about:
+  # no pre-warning at all, and only a tiny muted "Compacting…" marker WHILE
+  # it's actually happening (>=92%). See the comment in Chat.chat_panel/1.
+  test "no marker below the 92% threshold" do
+    refute render(0.5) =~ "Compacting"
+    refute render(0.88) =~ "Compacting"
   end
 
-  test "warning banner between 85% and 92%" do
-    html = render(0.88)
-    assert html =~ "88% full"
-    assert html =~ "auto-compact"
-  end
-
-  test "compacting banner at/above 92%" do
+  test "compacting marker at/above 92%" do
     html = render(0.95)
-    assert html =~ "compacting"
-    refute html =~ "auto-compact soon"
+    assert html =~ "Compacting"
   end
 end

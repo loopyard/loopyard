@@ -60,7 +60,10 @@ defmodule Loopyard.ResourceCoverageTest do
     "lib/loopyard/volume_cloner.ex",
     "lib/loopyard/eval_runner.ex",
     "lib/loopyard/tools/container/docker_compose.ex",
-    "lib/loopyard/tools/container/exec.ex"
+    "lib/loopyard/tools/container/exec.ex",
+    # ACP stdio transport: the port is opened in the GenServer's init, held in
+    # its state, and closed on process stop — lifetime bounded by the owner.
+    "lib/loopyard/harness/acp/transport/port.ex"
   ]
 
   test "every Port.open/2 site is either tracked or in the allowlist" do

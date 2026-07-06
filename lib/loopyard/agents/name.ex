@@ -29,7 +29,9 @@ defmodule Loopyard.Agents.Name do
   def label_for(Harness.ACP), do: "Claude"
   def label_for(Harness.Fake), do: "Claude"
   # Any future harness module (e.g. Backend.Codex) → its last name segment.
-  def label_for(mod) when is_atom(mod) and not is_nil(mod), do: mod |> Module.split() |> List.last()
+  def label_for(mod) when is_atom(mod) and not is_nil(mod),
+    do: mod |> Module.split() |> List.last()
+
   def label_for(_), do: "Claude"
 
   @doc """

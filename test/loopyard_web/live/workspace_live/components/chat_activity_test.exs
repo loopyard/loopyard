@@ -18,7 +18,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatActivityTest do
         tool("Bash", %{"command" => "mix test"})
       ]
 
-      assert [%{summary: "Read /a.ex"}, %{summary: "$ mix test"}] = Chat.current_turn_activity(msgs)
+      assert [%{summary: "Read /a.ex"}, %{summary: "$ mix test"}] =
+               Chat.current_turn_activity(msgs)
     end
 
     test "marks the latest action active and the rest done" do

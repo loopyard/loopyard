@@ -95,13 +95,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.SyncDetail do
             <div class="px-4 py-3 flex items-center gap-3">
               <span class="text-xs text-zinc-400 dark:text-zinc-500">Connections</span>
               <span class="flex items-center gap-1.5 text-xs">
-                <span class={"w-1.5 h-1.5 rounded-full #{if details[:alpha_connected], do: "bg-green-500", else: "bg-red-500"}"}>
-                </span>
+                <span class={"w-1.5 h-1.5 rounded-full #{if details[:alpha_connected], do: "bg-green-500", else: "bg-red-500"}"}></span>
                 host
               </span>
               <span class="flex items-center gap-1.5 text-xs">
-                <span class={"w-1.5 h-1.5 rounded-full #{if details[:beta_connected], do: "bg-green-500", else: "bg-red-500"}"}>
-                </span>
+                <span class={"w-1.5 h-1.5 rounded-full #{if details[:beta_connected], do: "bg-green-500", else: "bg-red-500"}"}></span>
                 container
               </span>
             </div>

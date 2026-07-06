@@ -25,7 +25,9 @@ defmodule LoopyardWeb.WorkstationToolLive do
 
       is_nil(Integration.get(tool)) ->
         {:ok,
-         socket |> put_flash(:error, "Unknown tool: #{tool}") |> push_navigate(to: "/workstations/#{ws}")}
+         socket
+         |> put_flash(:error, "Unknown tool: #{tool}")
+         |> push_navigate(to: "/workstations/#{ws}")}
 
       true ->
         # Operating-as follows the workstation in the URL.
@@ -111,7 +113,8 @@ defmodule LoopyardWeb.WorkstationToolLive do
       token ->
         case Env.put(ig.env, token, ws) do
           :ok ->
-            {:noreply, put_flash(socket, :info, "Saved #{ig.env} — Restart the workstation to apply.")}
+            {:noreply,
+             put_flash(socket, :info, "Saved #{ig.env} — Restart the workstation to apply.")}
 
           {:error, _} ->
             {:noreply, put_flash(socket, :error, "Couldn't save #{ig.env}.")}
@@ -168,7 +171,10 @@ defmodule LoopyardWeb.WorkstationToolLive do
         >
           <.command_box id="clip-mac" command={@mac_cmd} />
           <div class="flex items-center gap-4 text-[11px] text-zinc-400 dark:text-zinc-500">
-            <button phx-click="recheck" class="focus-ring hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">
+            <button
+              phx-click="recheck"
+              class="focus-ring hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+            >
               ↻ Re-check
             </button>
             <span>Lands in {@ig.lands}</span>
@@ -176,7 +182,10 @@ defmodule LoopyardWeb.WorkstationToolLive do
         </.section>
 
         <%!-- Other ways: env token + terminal — spread out, not collapsed. --%>
-        <section :if={@ig.env || @ig.console} class="space-y-5 border-t border-zinc-100 dark:border-zinc-800 pt-6">
+        <section
+          :if={@ig.env || @ig.console}
+          class="space-y-5 border-t border-zinc-100 dark:border-zinc-800 pt-6"
+        >
           <h2 class="text-sm font-medium text-zinc-500 dark:text-zinc-400">Other ways</h2>
 
           <%!-- Set a token --%>
@@ -212,7 +221,10 @@ defmodule LoopyardWeb.WorkstationToolLive do
                 ▶ {@ig[:console_label] || @ig.console}
               </button>
             </div>
-            <div id="ws-console" class="rounded-lg overflow-hidden h-[44dvh] min-h-[280px] bg-[#18181b]">
+            <div
+              id="ws-console"
+              class="rounded-lg overflow-hidden h-[44dvh] min-h-[280px] bg-[#18181b]"
+            >
               <div
                 :if={@console_container}
                 id={"terminal-#{@console_container}-#{@term_nonce}"}
@@ -222,7 +234,10 @@ defmodule LoopyardWeb.WorkstationToolLive do
                 class="h-full p-2 overflow-hidden"
               >
               </div>
-              <div :if={!@console_container} class="h-full flex items-center justify-center text-xs text-zinc-500">
+              <div
+                :if={!@console_container}
+                class="h-full flex items-center justify-center text-xs text-zinc-500"
+              >
                 Starting console…
               </div>
             </div>
@@ -242,5 +257,4 @@ defmodule LoopyardWeb.WorkstationToolLive do
     </.page_shell>
     """
   end
-
 end

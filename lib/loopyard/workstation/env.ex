@@ -142,7 +142,16 @@ defmodule Loopyard.Workstation.Env do
         "(grep -q '.loopyard/env' /vol/.profile 2>/dev/null || " <>
         ~s|printf '\\n%s\\n' '[ -f "$HOME/.loopyard/env" ] && . "$HOME/.loopyard/env"' >> /vol/.profile)|
 
-    case Loopyard.Docker.docker(["run", "--rm", "-v", "#{vol}:/vol", "alpine", "sh", "-c", script]) do
+    case Loopyard.Docker.docker([
+           "run",
+           "--rm",
+           "-v",
+           "#{vol}:/vol",
+           "alpine",
+           "sh",
+           "-c",
+           script
+         ]) do
       {:ok, _} -> :ok
       err -> err
     end

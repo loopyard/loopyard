@@ -59,7 +59,11 @@ defmodule LoopyardWeb.SetupController do
         shell(conn, 404, "echo 'Loopyard: no such tool: #{tool}'\n")
 
       true ->
-        shell(conn, 200, tool_script_body(Integration.get(tool), base_url(conn), PushToken.get(), ws))
+        shell(
+          conn,
+          200,
+          tool_script_body(Integration.get(tool), base_url(conn), PushToken.get(), ws)
+        )
     end
   end
 
@@ -122,7 +126,8 @@ defmodule LoopyardWeb.SetupController do
     tools =
       Integration.all()
       |> Enum.map_join("\n\n", fn ig ->
-        ~s(echo "  #{ig.label}…"\n) <> Integration.mac_script(ig, "$L", "$WS", ~s(-fsS -H "$AUTH"))
+        ~s(echo "  #{ig.label}…"\n) <>
+          Integration.mac_script(ig, "$L", "$WS", ~s(-fsS -H "$AUTH"))
       end)
 
     """

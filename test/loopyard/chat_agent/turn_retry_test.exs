@@ -63,7 +63,11 @@ defmodule Loopyard.ChatAgent.TurnRetryTest do
   end
 
   defp fail_turn(pid, id, ref, subtype) do
-    send(pid, {:stream_event, id, ref, %Event.SessionResult{is_error: true, error_subtype: subtype}})
+    send(
+      pid,
+      {:stream_event, id, ref, %Event.SessionResult{is_error: true, error_subtype: subtype}}
+    )
+
     Process.sleep(20)
     send(pid, {:stream_done, id, ref})
     Process.sleep(50)

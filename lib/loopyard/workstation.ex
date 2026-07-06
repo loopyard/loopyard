@@ -41,8 +41,12 @@ defmodule Loopyard.Workstation do
   @doc "Create a workstation dir (seeds its full build context). Returns `:ok | {:error, _}`."
   def create(id) do
     cond do
-      not valid_id?(id) -> {:error, :invalid_id}
-      exists?(id) -> {:error, :exists}
+      not valid_id?(id) ->
+        {:error, :invalid_id}
+
+      exists?(id) ->
+        {:error, :exists}
+
       true ->
         File.mkdir_p!(dir(id))
         ensure_context(id)
@@ -84,9 +88,15 @@ defmodule Loopyard.Workstation do
   """
   def rename(old, new) do
     cond do
-      not exists?(old) -> {:error, :not_found}
-      not valid_id?(new) -> {:error, :invalid_id}
-      exists?(new) -> {:error, :exists}
+      not exists?(old) ->
+        {:error, :not_found}
+
+      not valid_id?(new) ->
+        {:error, :invalid_id}
+
+      exists?(new) ->
+        {:error, :exists}
+
       true ->
         File.rename!(dir(old), dir(new))
         rename_docker(old, new)
@@ -141,11 +151,17 @@ defmodule Loopyard.Workstation do
   # Ensure at least one identity exists; return the operating-as default.
   defp ensure_bootstrap do
     id = default_id()
-    existing = with {:ok, entries} <- File.ls(base_dir()), do: Enum.filter(entries, &File.dir?(dir(&1)))
+
+    existing =
+      with {:ok, entries} <- File.ls(base_dir()), do: Enum.filter(entries, &File.dir?(dir(&1)))
 
     case existing do
-      [first | _] -> first
-      _ -> create(id); id
+      [first | _] ->
+        first
+
+      _ ->
+        create(id)
+        id
     end
   end
 
@@ -170,10 +186,16 @@ defmodule Loopyard.Workstation do
 
     _ =
       Docker.docker([
-        "run", "--rm",
-        "-v", "#{from}:/from",
-        "-v", "#{to}:/to",
-        "alpine", "sh", "-c", "cp -a /from/. /to/ 2>/dev/null || true"
+        "run",
+        "--rm",
+        "-v",
+        "#{from}:/from",
+        "-v",
+        "#{to}:/to",
+        "alpine",
+        "sh",
+        "-c",
+        "cp -a /from/. /to/ 2>/dev/null || true"
       ])
 
     _ = Docker.docker(["volume", "rm", from])
@@ -203,4 +225,3 @@ defmodule Loopyard.Workstation do
     end
   end
 end
-

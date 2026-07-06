@@ -43,8 +43,11 @@ defmodule LoopyardWeb.EnvController do
 
       value ->
         case Env.put(key, value, ws) do
-          :ok -> send_resp(conn, :no_content, "")
-          {:error, :invalid_key} -> conn |> put_status(:bad_request) |> json(%{error: "invalid key"})
+          :ok ->
+            send_resp(conn, :no_content, "")
+
+          {:error, :invalid_key} ->
+            conn |> put_status(:bad_request) |> json(%{error: "invalid key"})
         end
     end
   end

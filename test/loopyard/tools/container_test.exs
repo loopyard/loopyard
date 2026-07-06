@@ -32,7 +32,8 @@ defmodule Loopyard.Tools.ContainerTest do
         ~w(exec logs inspect_env ports service_containers write_file read_file
            edit multi_edit grep glob probe_http tree inspect_service read_files
            docker_compose workspace_info volumes file_url app_url git file_info
-           ask_user propose_fork propose_integrate propose_delete_workspace)
+           ask_user propose_fork propose_integrate propose_delete_workspace
+           request_secret)
 
       assert MapSet.size(tool_names) == length(expected)
 
@@ -43,6 +44,11 @@ defmodule Loopyard.Tools.ContainerTest do
 
     test "each tool module exports the required interface" do
       for tool_mod <- Container.__tool_server__().tools do
+        # function_exported?/3 returns false for a not-yet-loaded module, so
+        # ensure it's loaded first — otherwise this flakes on lazily-loaded
+        # (newer, less-referenced) tools depending on test order.
+        Code.ensure_loaded!(tool_mod)
+
         assert function_exported?(tool_mod, :__tool_name__, 0),
                "#{tool_mod} missing __tool_name__/0"
 

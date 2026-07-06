@@ -18,17 +18,21 @@ defmodule LoopyardWeb.Live.WorkspaceLive.MessagesDetailLevelTest do
   end
 
   describe "tool call gating" do
+    # exec / docker_compose render as a console box (titled by the command) and
+    # their raw tool row is deliberately suppressed — so use a plain tool (grep)
+    # to exercise the detail-level gating itself, not the console special-case.
     setup do
-      {:ok, msg: %{role: :tool, tool: "mcp__loopyard-container__exec", input: %{"command" => "ls"}}}
+      {:ok,
+       msg: %{role: :tool, tool: "mcp__loopyard-container__grep", input: %{"pattern" => "needle"}}}
     end
 
     test "shows the tool call at :trace and :actions", %{msg: msg} do
-      assert render(msg, :trace) =~ "ls"
-      assert render(msg, :actions) =~ "ls"
+      assert render(msg, :trace) =~ "needle"
+      assert render(msg, :actions) =~ "needle"
     end
 
     test "hides the tool call at :chat", %{msg: msg} do
-      refute render(msg, :chat) =~ "ls"
+      refute render(msg, :chat) =~ "needle"
     end
   end
 

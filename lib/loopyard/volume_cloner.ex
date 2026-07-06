@@ -24,6 +24,12 @@ defmodule Loopyard.VolumeCloner do
   def clone_into_volume(volume_name, git_url, opts \\ []) do
     branch = Keyword.get(opts, :branch, "main")
     callback = Keyword.get(opts, :callback, fn _ -> :ok end)
+    token = Keyword.get(opts, :token)
+
+    # Inject the token into the clone URL for private-repo auth. We only ever
+    # pass the credentialed URL to the transient host clone — git_url stays
+    # clean for logging/persistence so the token never lands on disk.
+    clone_url = if token, do: inject_token(git_url, token), else: git_url
 
     case Loopyard.VolumeManager.create_volume(volume_name) do
       :ok ->
@@ -43,7 +49,7 @@ defmodule Loopyard.VolumeCloner do
         File.mkdir_p!(Path.dirname(tmp_dir))
 
         try do
-          case host_git_clone(git_url, branch, tmp_dir, callback) do
+          case host_git_clone(clone_url, branch, tmp_dir, callback) do
             {:ok, _} ->
               case Loopyard.VolumeIO.copy_to_volume(volume_name, tmp_dir, callback: callback) do
                 {:ok, _} ->

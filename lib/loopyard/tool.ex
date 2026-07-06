@@ -109,7 +109,9 @@ defmodule Loopyard.Tool do
   def __reply__(:ok, frame), do: {:reply, __to_response__("ok"), frame}
 
   def __reply__({:error, msg}, frame),
-    do: {:reply, Anubis.Server.Response.error(Anubis.Server.Response.tool(), __err_text__(msg)), frame}
+    do:
+      {:reply, Anubis.Server.Response.error(Anubis.Server.Response.tool(), __err_text__(msg)),
+       frame}
 
   def __reply__(other, frame), do: {:reply, __to_response__(other), frame}
 

@@ -127,6 +127,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
       status == :thinking ->
         tool = agent[:active_tool]
         detail = if tool, do: "running #{short_tool(tool)}", else: "thinking…"
+
         %{
           bg: "bg-violet-500/10",
           dot: "bg-violet-500",

@@ -34,7 +34,8 @@ defmodule Loopyard.Workstation.Integration do
       # TTY "Press Enter to open a browser" step there's no browser for — so it jumps
       # straight to the code. The login lands in the box's persistent $HOME volume
       # (~/.config/gh), so it survives Restart with no token to copy anywhere.
-      console: "gh auth login --hostname github.com --git-protocol https --web --skip-ssh-key < /dev/null",
+      console:
+        "gh auth login --hostname github.com --git-protocol https --web --skip-ssh-key < /dev/null",
       # Tidy button label — the full flag soup above would overflow on a phone.
       console_label: "gh auth login (device flow)",
       check: {:console, "gh auth status", "Logged in"},
