@@ -151,8 +151,30 @@ defmodule Loopyard.Workspace.WorkContainer do
          # immediately races it and hits "container is marked for removal and
          # cannot be started". Wait for the name to actually free up first.
          :ok <- wait_for_name_free(name),
-         {:ok, _} <- run(name, volume, ws) do
+         {:ok, _} <- run_idempotent(name, volume, ws) do
       {:ok, name}
+    end
+  end
+
+  # `docker run --name` can still lose a race and hit
+  # "Conflict. The container name ... is already in use" — a squatter appeared
+  # between our rm -f/wait and the run (a create raced in, or Docker's listing
+  # lagged behind the actual state). Force-remove the squatter and retry once so
+  # ensure_up stays idempotent against leftover state instead of failing the
+  # caller. (docker-e2e hit this on a shared canonical workspace id.)
+  defp run_idempotent(name, volume, ws) do
+    case run(name, volume, ws) do
+      {:ok, _} = ok ->
+        ok
+
+      {:error, output} = err ->
+        if output =~ "already in use" or output =~ "Conflict" do
+          _ = Docker.docker(["rm", "-f", name])
+          _ = wait_for_name_free(name)
+          run(name, volume, ws)
+        else
+          err
+        end
     end
   end
 
