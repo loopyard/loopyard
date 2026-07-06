@@ -8,6 +8,9 @@ defmodule Loopyard.MixProject do
       elixir: "~> 1.17",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
+      # Phoenix 1.8 + Elixir 1.19: the code reloader hooks into Mix's compile
+      # listeners. Without this it warns on every reloaded request in dev.
+      listeners: [Phoenix.CodeReloader],
       aliases: aliases(),
       deps: deps(),
       description:
