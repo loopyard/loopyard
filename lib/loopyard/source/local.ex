@@ -150,7 +150,8 @@ defmodule Loopyard.Source.Local do
         # Idempotent: if the worktree already exists from a previous
         # attempt (Retry, server restart mid-saga), remove it first so
         # `git worktree add` doesn't fail with "already registered."
-        Worktree.remove(workspace.id)
+        # Pass repo_path so the deregistration runs in the owning repo.
+        Worktree.remove(workspace.id, repo_path)
 
         case Worktree.create(repo_path, workspace.id, workspace.branch) do
           {:ok, ^worktree_path} ->
@@ -298,13 +299,25 @@ defmodule Loopyard.Source.Local do
   def display_name(%{name: name}) when is_binary(name) and name != "", do: name
   def display_name(_), do: ""
 
+  # Resolve against the workspace's actual checkout — `worktree_path` for a
+  # branch workspace, or the project root for the main workspace (which has
+  # no worktree under ~/.loopyard/worktrees). Mirrors the git_* callbacks so
+  # the main workspace reports real values instead of :worktree_missing.
   @impl true
-  def current_revision(%{id: id}), do: Worktree.current_revision(id)
-  def current_revision(_), do: {:error, :no_workspace}
+  def current_revision(workspace) do
+    case worktree_path_for(workspace) do
+      {:ok, path} -> Git.current_revision(path)
+      {:error, _} -> {:error, :no_workspace}
+    end
+  end
 
   @impl true
-  def dirty?(%{id: id}), do: Worktree.dirty?(id)
-  def dirty?(_), do: false
+  def dirty?(workspace) do
+    case worktree_path_for(workspace) do
+      {:ok, path} -> Git.dirty?(path)
+      {:error, _} -> false
+    end
+  end
 
   # --- Git operations ---
 

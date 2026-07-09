@@ -39,47 +39,34 @@ defmodule Loopyard.Source.Local.Worktree do
   @doc """
   Remove the worktree for a workspace. Best-effort — returns `:ok` even if
   the worktree was never created, since callers use this on teardown.
+
+  Pass `repo_path` when known (e.g. the re-create path) so the deregistration
+  `git worktree remove` + `prune` runs in the owning repo. Without it, git
+  can't clean the registration and re-adding the same branch fails with
+  "missing but already registered worktree".
   """
-  def remove(workspace_id) do
+  def remove(workspace_id, repo_path \\ nil) do
     wt_path = path_for(workspace_id)
 
     if File.dir?(wt_path) do
-      Git.worktree_remove(wt_path)
+      Git.worktree_remove(wt_path, repo_path)
     end
 
-    # Belt and suspenders: if git didn't clean it, nuke the directory.
+    # Belt and suspenders: if git didn't clean it, nuke the directory, then
+    # prune the stale registration in the repo (covers the dir-already-gone
+    # case that Git.worktree_remove can't reach once the worktree is deleted).
     File.rm_rf(wt_path)
+    if repo_path, do: Git.worktree_prune(repo_path)
     :ok
   end
 
   @doc "Current HEAD short sha for the worktree."
   def current_revision(workspace_id) do
-    wt_path = path_for(workspace_id)
-
-    case System.cmd("git", ["rev-parse", "--short", "HEAD"],
-           cd: wt_path,
-           stderr_to_stdout: true
-         ) do
-      {output, 0} -> {:ok, String.trim(output)}
-      {output, _} -> {:error, String.trim(output)}
-    end
-  rescue
-    ErlangError -> {:error, :worktree_missing}
+    Git.current_revision(path_for(workspace_id))
   end
 
   @doc "Does the worktree have uncommitted changes?"
   def dirty?(workspace_id) do
-    wt_path = path_for(workspace_id)
-
-    case System.cmd("git", ["status", "--porcelain"],
-           cd: wt_path,
-           stderr_to_stdout: true
-         ) do
-      {"", 0} -> false
-      {_output, 0} -> true
-      _ -> false
-    end
-  rescue
-    ErlangError -> false
+    Git.dirty?(path_for(workspace_id))
   end
 end

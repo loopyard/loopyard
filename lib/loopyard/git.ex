@@ -61,11 +61,58 @@ defmodule Loopyard.Git do
     end
   end
 
-  @doc "Remove a worktree."
-  def worktree_remove(worktree_path) do
-    case git(["worktree", "remove", "--force", worktree_path]) do
+  @doc """
+  Remove a worktree.
+
+  `git worktree remove` must run inside the OWNING repo — otherwise git
+  resolves it against the cwd's repo (under `mix loopyard.server`, that's the
+  Loopyard repo), fails with "is not a working tree", and leaves stale
+  registration in `.git/worktrees/` that blocks re-adding the same branch.
+
+  Pass `repo_path` when the caller knows it. If omitted, we derive the owning
+  repo from the worktree's own git metadata (works while the dir still
+  exists). Always follows with `git worktree prune` so a previously-orphaned
+  registration (dir already `rm_rf`'d) is cleared too.
+  """
+  def worktree_remove(worktree_path, repo_path \\ nil) do
+    repo = repo_path || owning_repo(worktree_path)
+
+    result =
+      if repo do
+        case git(["worktree", "remove", "--force", worktree_path], cd: repo) do
+          {:ok, _} -> :ok
+          {:error, reason} -> {:error, "Failed to remove worktree: #{reason}"}
+        end
+      else
+        # No repo context available (dir gone, no repo_path). Best-effort.
+        case git(["worktree", "remove", "--force", worktree_path]) do
+          {:ok, _} -> :ok
+          {:error, reason} -> {:error, "Failed to remove worktree: #{reason}"}
+        end
+      end
+
+    if repo, do: worktree_prune(repo)
+    result
+  end
+
+  @doc "Prune stale worktree administrative entries in `repo_path`."
+  def worktree_prune(repo_path) do
+    case git(["worktree", "prune"], cd: repo_path) do
       {:ok, _} -> :ok
-      {:error, reason} -> {:error, "Failed to remove worktree: #{reason}"}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # Derive the owning repo of a linked worktree from its own git metadata.
+  # `--git-common-dir` points at the main repo's `.git`; its parent is the repo.
+  defp owning_repo(worktree_path) do
+    case git(["rev-parse", "--path-format=absolute", "--git-common-dir"], cd: worktree_path) do
+      {:ok, output} ->
+        common_dir = output |> String.trim() |> Path.expand()
+        if common_dir == "", do: nil, else: Path.dirname(common_dir)
+
+      {:error, _} ->
+        nil
     end
   end
 
@@ -171,6 +218,23 @@ defmodule Loopyard.Git do
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  @doc "Current HEAD short sha for a repo/worktree path."
+  def current_revision(target) do
+    case run(target, ["rev-parse", "--short", "HEAD"]) do
+      {:ok, output} -> {:ok, String.trim(output)}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc "Does the repo/worktree have uncommitted changes?"
+  def dirty?(target) do
+    case run(target, ["status", "--porcelain"]) do
+      {:ok, ""} -> false
+      {:ok, _output} -> true
+      {:error, _} -> false
     end
   end
 
