@@ -126,8 +126,11 @@ defmodule Loopyard.Application do
     safe_restore("HostExposer", fn -> Loopyard.HostExposer.restore() end)
 
     # Restore persisted projects from ~/.loopyard/projects.json
-    # ServiceManager will reconnect to any running containers
-    Loopyard.ProjectRegistry.restore()
+    # ServiceManager will reconnect to any running containers. Wrapped in
+    # safe_restore so a corrupt projects.json (ProjectStore.load raises)
+    # degrades the app instead of aborting Application.start — and leaves
+    # the file untouched for recovery.
+    safe_restore("ProjectRegistry", fn -> Loopyard.ProjectRegistry.restore() end)
 
     # Restore canonical-backed projects (#19) from canonical_projects.json.
     safe_restore("CanonicalProjects", fn -> Loopyard.Onboarding.restore() end)

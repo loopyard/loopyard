@@ -15,18 +15,33 @@ defmodule Loopyard.CanonicalStore do
 
   @spec load() :: map()
   def load do
-    with {:ok, json} <- File.read(path()),
-         {:ok, %{} = map} <- Jason.decode(json) do
-      map
-    else
-      _ -> %{}
+    case File.read(path()) do
+      {:error, :enoent} ->
+        %{}
+
+      {:ok, json} ->
+        case Jason.decode(json) do
+          {:ok, %{} = map} ->
+            map
+
+          # File exists but is corrupt. Raise instead of returning %{} so the
+          # boot restore (wrapped in safe_restore) leaves the file intact for
+          # recovery rather than letting a later empty write() clobber it.
+          _ ->
+            raise "canonical_projects.json is corrupt: #{path()}"
+        end
+
+      {:error, reason} ->
+        raise "canonical_projects.json could not be read (#{inspect(reason)}): #{path()}"
     end
   end
 
   @spec write(map()) :: :ok
   def write(%{} = map) do
     File.mkdir_p!(Path.dirname(path()))
-    File.write!(path(), Jason.encode!(map, pretty: true))
+    tmp = path() <> ".tmp"
+    File.write!(tmp, Jason.encode!(map, pretty: true))
+    File.rename!(tmp, path())
     :ok
   end
 
