@@ -118,6 +118,20 @@ defmodule Loopyard.AgentLog.Checkpointer do
   end
 
   @doc """
+  Append a record to the agent log THROUGH the checkpointer, so it is the
+  single writer of the log file.
+
+  This is what makes compaction race-free: appends and `compact_keep_previous`
+  both run in this one process, so an append can never land in the window
+  where the primary log is being renamed to `.prev` and replaced — the exact
+  race that silently dropped records across restart. Returns `:ok` or
+  `{:error, reason}` (never raises; the caller decides how to surface it).
+  """
+  def append(pid, event) do
+    GenServer.call(pid, {:append, event}, 15_000)
+  end
+
+  @doc """
   Snapshot status for `/system/recovery`. Returns a map with current
   counter, last checkpoint timestamp, last compact stats, and the
   current primary log size.
@@ -209,6 +223,33 @@ defmodule Loopyard.AgentLog.Checkpointer do
   end
 
   @impl true
+  def handle_call({:append, event}, _from, state) do
+    result =
+      try do
+        Loopyard.AgentLog.append(event, log_path: state.log_path, version: state.version)
+        :ok
+      rescue
+        e -> {:error, Exception.message(e)}
+      catch
+        kind, reason -> {:error, inspect({kind, reason})}
+      end
+
+    # The append IS the record-count trigger now (it replaces notify_write on
+    # the single-writer path). Only advance the counter on a successful write.
+    state =
+      case result do
+        :ok ->
+          new_count = state.records_since_checkpoint + 1
+          state = %{state | records_since_checkpoint: new_count}
+          if new_count >= state.records_threshold, do: run_checkpoint(state), else: state
+
+        {:error, _} ->
+          state
+      end
+
+    {:reply, result, state}
+  end
+
   def handle_call(:force_checkpoint, _from, state) do
     result = attempt_checkpoint(state)
 

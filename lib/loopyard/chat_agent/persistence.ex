@@ -65,8 +65,7 @@ defmodule Loopyard.ChatAgent.Persistence do
   # See plans/agent-sanity.md #17.
   defp safe_append(event, path, agent_id, workspace_id) do
     try do
-      AgentLog.append(event, log_path: path, version: @log_version)
-      notify_checkpointer(workspace_id)
+      append_via_writer(event, path, workspace_id)
       :ok
     rescue
       e ->
@@ -98,17 +97,34 @@ defmodule Loopyard.ChatAgent.Persistence do
     end
   end
 
-  # Notify the per-workspace Checkpointer that a record was written.
-  # Soft dependency — if the Checkpointer isn't registered (e.g. in
-  # isolated tests), silently skip. Never blocks persistence.
-  defp notify_checkpointer(workspace_id) do
+  # Write a record to the agent log. When a per-workspace Checkpointer is
+  # registered (production), route the append THROUGH it so it is the single
+  # writer — appends can't interleave with compaction, which is what fixes the
+  # silent record-loss race. When there's no Checkpointer (isolated tests,
+  # not-yet-started workspace), there's also no concurrent compactor, so a
+  # direct append is race-free too. Raises on failure (caught by safe_append).
+  defp append_via_writer(event, path, workspace_id) do
+    case checkpointer_for(workspace_id) do
+      nil ->
+        AgentLog.append(event, log_path: path, version: @log_version)
+
+      pid ->
+        case Loopyard.AgentLog.Checkpointer.append(pid, event) do
+          :ok -> :ok
+          {:error, reason} -> raise "agent log append failed: #{inspect(reason)}"
+        end
+    end
+  end
+
+  defp checkpointer_for(nil), do: nil
+
+  defp checkpointer_for(workspace_id) do
     case Registry.lookup(Loopyard.AgentLog.CheckpointerRegistry, workspace_id) do
-      [{pid, _}] -> Loopyard.AgentLog.Checkpointer.notify_write(pid)
-      [] -> :ok
+      [{pid, _}] -> pid
+      [] -> nil
     end
   rescue
-    # Registry unavailable in a stripped-down test env — don't crash
-    # the GenServer over a failed observability hop.
-    _ -> :ok
+    # Registry unavailable in a stripped-down test env.
+    _ -> nil
   end
 end
