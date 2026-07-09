@@ -131,11 +131,22 @@ defmodule Loopyard.Harness.ACP.Translator do
   message is committed/persisted) and a `SessionResult` for accounting +
   session-id capture.
   """
-  @spec finish(t(), String.t() | nil) :: {t(), [Event.t()]}
-  def finish(state, _stop_reason) do
+  @spec finish(t(), nil | {:error, term()}) :: {t(), [Event.t()]}
+  def finish(state, error \\ nil) do
     full = IO.iodata_to_binary(state.text)
 
     text_events = if full == "", do: [], else: [%Event.Text{text: full}]
+
+    # Thread the turn's error status into SessionResult.is_error — that's what
+    # drives the bounded auto-retry and the WHY/CONSEQUENCE/ACTION error
+    # surface upstream. Without it a failed ACP turn looked like a clean, $0
+    # success and the user got silence.
+    {is_error, subtype} =
+      case error do
+        {:error, sub} when is_binary(sub) -> {true, sub}
+        {:error, sub} -> {true, inspect(sub)}
+        _ -> {false, nil}
+      end
 
     result = %Event.SessionResult{
       model: state.model,
@@ -144,7 +155,9 @@ defmodule Loopyard.Harness.ACP.Translator do
       cache_read_tokens: 0,
       cost_usd: 0.0,
       duration_ms: 0.0,
-      num_turns: 1
+      num_turns: 1,
+      is_error: is_error,
+      error_subtype: subtype
     }
 
     # Reset turn-scoped accumulation; keep model.

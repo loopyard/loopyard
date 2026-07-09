@@ -129,14 +129,20 @@ defmodule Loopyard.Harness.ACP.Connection do
   @impl true
   def handle_info({:acp_msg, %{"id" => id} = msg}, state) do
     cond do
+      Map.has_key?(msg, "method") ->
+        # Has both "id" and "method" → an agent-initiated REQUEST we must
+        # answer. This MUST be checked before `pending`: JSON-RPC ids are only
+        # unique per sender, so an agent request's id can collide with one of
+        # our pending outbound ids. Presence of "method" is the only correct
+        # request-vs-response discriminator; matching on id first would consume
+        # the request as a response, finalize the turn early, and hang the
+        # agent's fs-read/permission request.
+        handle_agent_request(msg["method"], id, msg["params"] || %{}, state)
+
       Map.has_key?(state.pending, id) ->
-        # Response to one of our requests.
+        # No "method" → a response (result/error) to one of our requests.
         {kind, pending} = Map.pop(state.pending, id)
         handle_response(kind, msg, %{state | pending: pending})
-
-      Map.has_key?(msg, "method") ->
-        # Agent-initiated request — we must answer.
-        handle_agent_request(msg["method"], id, msg["params"] || %{}, state)
 
       true ->
         {:noreply, state}
@@ -151,6 +157,11 @@ defmodule Loopyard.Harness.ACP.Connection do
     state = reply_waiters(state, {:error, {:closed, reason}})
 
     if state.turn do
+      # Emit an error SessionResult BEFORE acp_done so upstream sees the turn
+      # actually failed (adapter died mid-turn) instead of a clean stop with
+      # no result event.
+      {_t, events} = Translator.finish(state.turn.translator, {:error, {:closed, reason}})
+      Enum.each(events, &send(state.turn.subscriber, {:acp_event, state.turn.ref, &1}))
       send(state.turn.subscriber, {:acp_done, state.turn.ref, {:error, {:closed, reason}}})
     end
 
@@ -184,7 +195,11 @@ defmodule Loopyard.Harness.ACP.Connection do
   defp handle_response(:session_prompt, msg, state) do
     turn = state.turn
     stop_reason = get_in(msg, ["result", "stopReason"])
-    {_translator, events} = Translator.finish(turn.translator, stop_reason)
+
+    # A JSON-RPC error response means the turn failed; carry that into
+    # SessionResult so upstream auto-retry + error surfacing fire.
+    error = if match?(%{"error" => e} when not is_nil(e), msg), do: {:error, error_subtype(msg)}
+    {_translator, events} = Translator.finish(turn.translator, error)
 
     Enum.each(events, &send(turn.subscriber, {:acp_event, turn.ref, &1}))
     send(turn.subscriber, {:acp_done, turn.ref, stop_reason || prompt_error(msg)})
@@ -194,6 +209,10 @@ defmodule Loopyard.Harness.ACP.Connection do
 
   defp prompt_error(%{"error" => error}), do: {:error, error}
   defp prompt_error(_), do: :unknown
+
+  defp error_subtype(%{"error" => %{"message" => m}}) when is_binary(m), do: m
+  defp error_subtype(%{"error" => %{"code" => c}}), do: "error_#{c}"
+  defp error_subtype(_), do: "error"
 
   # ---- notifications ----
 
