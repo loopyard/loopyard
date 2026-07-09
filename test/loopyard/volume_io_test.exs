@@ -3,10 +3,33 @@ defmodule Loopyard.VolumeIOTest do
 
   alias Loopyard.VolumeIO
 
-  # These tests need Docker to run containers
-  @moduletag :docker
+  # Path validation happens BEFORE any container/Docker interaction, so these
+  # cases run without the :docker tag. They pin the #36 fix: a path that
+  # escapes /workspace or carries a null byte is rejected up front (and never
+  # shell-interpolated into a docker command).
+  describe "path validation (no Docker)" do
+    test "rejects parent-directory traversal that escapes /workspace" do
+      assert {:error, :invalid_path} = VolumeIO.read_file("loopyard-x-code", "../etc/passwd")
+      assert {:error, :invalid_path} = VolumeIO.read_file("loopyard-x-code", "a/../../etc/shadow")
+      assert {:error, :invalid_path} = VolumeIO.write_file("loopyard-x-code", "../escape", "x")
+    end
+
+    test "rejects absolute paths outside /workspace" do
+      assert {:error, :invalid_path} = VolumeIO.read_file("loopyard-x-code", "/etc/passwd")
+    end
+
+    test "rejects null bytes" do
+      assert {:error, :invalid_path} = VolumeIO.read_file("loopyard-x-code", "a\0b")
+      assert {:error, :invalid_path} = VolumeIO.write_file("loopyard-x-code", "a\0b", "x")
+    end
+
+    test "rejects non-binary paths" do
+      assert {:error, :invalid_path} = VolumeIO.read_file("loopyard-x-code", :not_a_string)
+    end
+  end
 
   describe "read_file/2" do
+    @describetag :docker
     setup :create_test_volume
 
     test "reads a file from a volume", %{volume: volume} do
@@ -21,6 +44,7 @@ defmodule Loopyard.VolumeIOTest do
   end
 
   describe "write_file/3" do
+    @describetag :docker
     setup :create_test_volume
 
     test "writes and reads back content", %{volume: volume} do

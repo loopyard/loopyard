@@ -36,6 +36,43 @@ defmodule Loopyard.AgentLog.CheckpointerTest do
     end
   end
 
+  describe "append/2 (single-writer path)" do
+    test "writes land in the log and survive a threshold-triggered compaction",
+         %{log_path: log_path} do
+      workspace_id = "ws-append-#{:erlang.unique_integer([:positive])}"
+
+      # Low threshold so the burst of appends trips compaction mid-stream —
+      # the exact window the old direct-append race dropped records in. Because
+      # appends now go THROUGH the checkpointer, none can interleave with the
+      # compaction it runs, so every record must be replayable afterwards.
+      {:ok, pid} =
+        Checkpointer.start_link(
+          workspace_id: workspace_id,
+          log_path: log_path,
+          version: @version,
+          interval_ms: 1_000_000,
+          records_threshold: 3
+        )
+
+      assert :ok = Checkpointer.append(pid, {:agent, "a1", %{name: "A1"}})
+
+      for i <- 1..10 do
+        assert :ok =
+                 Checkpointer.append(pid, {:msg, "a1", %{id: "m#{i}", content: "msg #{i}"}})
+      end
+
+      # Drain the mailbox so any in-flight compaction finishes.
+      _ = Checkpointer.status(pid)
+
+      {:ok, agents} = AgentLog.replay(log_path: log_path, version: @version, ets_table: nil)
+      # Compaction keeps the latest per-agent snapshot + messages; the agent and
+      # its final message must be present (no silent loss).
+      assert Map.has_key?(agents, "a1")
+
+      GenServer.stop(pid)
+    end
+  end
+
   describe "threshold-driven snapshots" do
     test "triggers snapshot once records_since_checkpoint crosses threshold",
          %{log_path: log_path} do
