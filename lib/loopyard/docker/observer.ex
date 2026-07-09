@@ -247,6 +247,8 @@ defmodule Loopyard.Docker.Observer do
       line_buffer: "",
       retry_attempt: 0,
       snapshot_failures: 0,
+      container_failures: 0,
+      volume_failures: 0,
       reconciles: 0
     }
 
@@ -421,84 +423,92 @@ defmodule Loopyard.Docker.Observer do
   # every sidebar empty for the 500ms until the next snapshot filled
   # it back in.
 
+  # The two fetches degrade INDEPENDENTLY. A failing `docker volume ls` must
+  # not invalidate a healthy container cache (and vice versa) — otherwise one
+  # sick source wipes both after the threshold and flashes every sidebar
+  # empty + stops all port proxies. Each source keeps its own last-known
+  # cache and its own consecutive-failure counter; only the source that
+  # crosses the threshold gets wiped.
   defp do_snapshot(state) do
-    case {fetch_containers(), fetch_volumes()} do
-      {{:ok, containers}, {:ok, volumes}} ->
-        commit_snapshot(state, containers, volumes)
+    c_result = fetch_containers()
+    v_result = fetch_volumes()
 
-      {c_result, v_result} ->
-        handle_snapshot_failure(state, c_result, v_result)
-    end
-  end
+    {state, c_wiped} = apply_source(state, :containers, c_result, :container_failures)
+    {state, v_wiped} = apply_source(state, :volumes, v_result, :volume_failures)
 
-  defp commit_snapshot(state, containers, volumes) do
-    # Volume sizes are pulled separately — they're a nice-to-have and
-    # a failure here only drops size rendering, never container truth.
-    volume_sizes =
-      fetch_volume_sizes()
-      |> case do
-        {:ok, sizes} -> sizes
-        :error -> %{}
+    # Volume sizes are display-only and only meaningful on a consistent read.
+    if match?({:ok, _}, c_result) and match?({:ok, _}, v_result) do
+      case fetch_volume_sizes() do
+        {:ok, sizes} -> :ets.insert(@table, {:volume_sizes, sizes})
+        :error -> :ok
       end
+    end
 
-    now = DateTime.utc_now()
+    # last_snapshot_at = the last time ANY cache slot was refreshed.
+    if match?({:ok, _}, c_result) or match?({:ok, _}, v_result) do
+      :ets.insert(@table, {:last_snapshot_at, DateTime.utc_now()})
+    end
 
-    :ets.insert(@table, {:containers, containers})
-    :ets.insert(@table, {:volumes, volumes})
-    :ets.insert(@table, {:volume_sizes, volume_sizes})
-    :ets.insert(@table, {:last_snapshot_at, now})
+    # Combined counter for health()/`/system` — "wiped" when either source
+    # crosses the threshold. Preserves the existing == threshold semantics.
+    combined = max(state.container_failures, state.volume_failures)
+    :ets.insert(@table, {:snapshot_failures, combined})
+    state = %{state | snapshot_failures: combined}
 
-    # `snapshot` carries only identity + functional state. Volatile
-    # metrics (container uptime strings, volume byte sizes) live in
-    # separate ETS slots and are NOT part of this comparison — otherwise
-    # every tick of uptime or every byte written to a volume would
-    # broadcast and flash the sidebar.
+    containers = cache_get(:containers, [])
+    volumes = cache_get(:volumes, [])
     snapshot = %{containers: containers, volumes: volumes}
 
-    if snapshot != state.prev do
-      # Notification-only. Subscribers re-read from the ETS cache
-      # (Observer.containers/0, .volumes/0, .services_for/1). Shipping
-      # the snapshot in the broadcast let consumers bypass the cache
-      # API and drift from what the UI actually needs — one such drift
-      # caused the sidebar-port flash.
-      Loopyard.Events.DockerObserver.publish(%Loopyard.Events.DockerObserver.Changed{})
-    end
-
-    # Mirror the success-reset into ETS so health() reads it without
-    # a GenServer round-trip. Same for snapshot_failures below.
-    :ets.insert(@table, {:snapshot_failures, 0})
-
-    %{state | prev: snapshot, snapshot_failures: 0}
-  end
-
-  defp handle_snapshot_failure(state, c_result, v_result) do
-    failures = state.snapshot_failures + 1
-    :ets.insert(@table, {:snapshot_failures, failures})
-
-    Logger.warning(
-      "[Docker.Observer] Snapshot failed (consecutive=#{failures}); " <>
-        "containers=#{inspect(c_result)} volumes=#{inspect(v_result)}"
-    )
-
     cond do
-      failures >= @stale_cache_threshold ->
-        Logger.error(
-          "[Docker.Observer] Stale-cache threshold hit (#{@stale_cache_threshold} " <>
-            "consecutive failures); wiping cache."
-        )
-
-        :ets.insert(@table, {:containers, []})
-        :ets.insert(@table, {:volumes, []})
-        :ets.insert(@table, {:volume_sizes, %{}})
+      c_wiped or v_wiped ->
         Loopyard.Events.DockerObserver.publish(%Loopyard.Events.DockerObserver.Reset{})
 
-        %{state | prev: %{containers: [], volumes: []}, snapshot_failures: failures}
+      snapshot != state.prev ->
+        # Notification-only. Subscribers re-read from the ETS cache.
+        Loopyard.Events.DockerObserver.publish(%Loopyard.Events.DockerObserver.Changed{})
 
       true ->
-        # Keep last-known cache. UI reflects :connected=false (set on
-        # port exit) so viewers know they're looking at potentially
-        # stale data.
-        %{state | snapshot_failures: failures}
+        :ok
+    end
+
+    %{state | prev: snapshot}
+  end
+
+  # Apply one fetch result to its ETS slot. On success: overwrite + reset the
+  # counter. On failure: keep last-known and bump the counter; wipe only this
+  # source once it crosses the threshold. Returns {state, wiped?}.
+  defp apply_source(state, key, {:ok, value}, fail_field) do
+    :ets.insert(@table, {key, value})
+    {Map.put(state, fail_field, 0), false}
+  end
+
+  defp apply_source(state, key, err_result, fail_field) do
+    failures = Map.get(state, fail_field, 0) + 1
+    state = Map.put(state, fail_field, failures)
+
+    Logger.warning(
+      "[Docker.Observer] #{key} fetch failed (consecutive=#{failures}): #{inspect(err_result)}"
+    )
+
+    if failures >= @stale_cache_threshold do
+      Logger.error(
+        "[Docker.Observer] #{key} stale-cache threshold hit " <>
+          "(#{@stale_cache_threshold} consecutive failures); wiping #{key}."
+      )
+
+      :ets.insert(@table, {key, []})
+      if key == :volumes, do: :ets.insert(@table, {:volume_sizes, %{}})
+      {state, true}
+    else
+      # Keep last-known cache. UI reflects :connected=false (set on port exit).
+      {state, false}
+    end
+  end
+
+  defp cache_get(key, default) do
+    case :ets.lookup(@table, key) do
+      [{^key, val}] -> val
+      _ -> default
     end
   end
 

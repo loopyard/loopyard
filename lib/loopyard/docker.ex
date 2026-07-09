@@ -250,11 +250,50 @@ defmodule Loopyard.Docker do
   end
 
   defp run_with_retry(args, cmd_opts, timeout, true = _retry?) do
+    # Idempotency-aware retry. A read-only command (ps/inspect/logs/…) can be
+    # retried on ANY transient error. A mutating command (run/create/rm/…)
+    # must NOT be retried on an *ambiguous* error (EOF, i/o timeout, request
+    # canceled) — those can arrive AFTER the daemon already executed it, so a
+    # retry would double-create the container/volume or fail on "name already
+    # in use". Mutating commands are still retried on *connection* errors,
+    # which mean the command never reached the daemon.
+    transient? =
+      if idempotent_command?(args) do
+        &transient_error?/1
+      else
+        &connection_error?/1
+      end
+
     Loopyard.Retry.run(fn -> run_once(args, cmd_opts, timeout) end,
       max_attempts: 3,
       backoff: {:custom, [100, 300, 900]},
-      transient?: &transient_error?/1
+      transient?: transient?
     )
+  end
+
+  # Docker subcommands with no side effects — safe to retry on any transient
+  # error. The subcommand is the first non-flag token in `args`. Anything not
+  # listed here is treated as potentially mutating (fail-safe default).
+  @idempotent_subcommands ~w(ps inspect logs images version info top port
+                             history events diff stats)
+  defp idempotent_command?(args) when is_list(args) do
+    case Enum.reject(args, &String.starts_with?(&1, "-")) do
+      [subcommand | rest] ->
+        cond do
+          subcommand in @idempotent_subcommands -> true
+          # `docker volume ls`, `docker network ls`, `docker system df`,
+          # `docker image ls|inspect`, `docker container inspect|ls`, etc.
+          subcommand in ~w(volume network system image container) and
+              List.first(rest) in ~w(ls inspect df) ->
+            true
+
+          true ->
+            false
+        end
+
+      [] ->
+        false
+    end
   end
 
   defp run_once(args, cmd_opts, timeout) do
@@ -278,20 +317,39 @@ defmodule Loopyard.Docker do
   # Treat as PERMANENT so the caller fails fast.
   @doc false
   def transient_error?(output) when is_binary(output) do
+    connection_error?(output) or ambiguous_error?(output)
+  end
+
+  def transient_error?(_), do: false
+
+  # Daemon-unreachable errors: the command provably never executed, so a
+  # retry is always safe (even for mutating commands). Socket-missing is
+  # excluded — the daemon isn't running and won't materialize.
+  @doc false
+  def connection_error?(output) when is_binary(output) do
     cond do
       socket_missing?(output) -> false
       String.contains?(output, "Cannot connect to the Docker daemon") -> true
       String.contains?(output, "error during connect") -> true
       String.contains?(output, "dial unix") -> true
       String.contains?(output, "connection refused") -> true
-      String.contains?(output, "i/o timeout") -> true
-      String.contains?(output, "EOF") -> true
-      String.contains?(output, "request canceled") -> true
       true -> false
     end
   end
 
-  def transient_error?(_), do: false
+  def connection_error?(_), do: false
+
+  # Errors that can occur AFTER the daemon began executing the command — a
+  # dropped response, not proof it didn't run. Safe to retry only for
+  # read-only commands.
+  @doc false
+  def ambiguous_error?(output) when is_binary(output) do
+    String.contains?(output, "i/o timeout") or
+      String.contains?(output, "EOF") or
+      String.contains?(output, "request canceled")
+  end
+
+  def ambiguous_error?(_), do: false
 
   defp socket_missing?(output) do
     String.contains?(output, "dial unix") and
