@@ -23,8 +23,6 @@ defmodule Loopyard.Harness.SecretRequests do
   tool-call result. The agent gets back a key it can later read with `get_secret`
   (the deliberate, documented boundary — see docs/SECURITY.md).
   """
-  require Logger
-
   alias Loopyard.ChatAgent
   alias Loopyard.Secrets
 

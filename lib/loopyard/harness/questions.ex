@@ -21,8 +21,6 @@ defmodule Loopyard.Harness.Questions do
   Because the call blocks, this reads like the synchronous "ask and wait for the
   callback" the harness wants: `{:ok, selections} = Questions.ask(agent_id, qs)`.
   """
-  require Logger
-
   alias Loopyard.ChatAgent
 
   @table :harness_questions

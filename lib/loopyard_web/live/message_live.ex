@@ -195,7 +195,6 @@ defmodule LoopyardWeb.MessageLive do
     """
   end
 
-  defp message_type(nil), do: "message"
   defp message_type(%{role: :assistant}), do: "assistant"
   defp message_type(%{role: :user}), do: "user"
   defp message_type(%{role: :build}), do: "build output"

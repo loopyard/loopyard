@@ -16,8 +16,6 @@ defmodule Loopyard.Workspace.Destructor do
   it on an already-destroyed workspace is a no-op.
   """
 
-  require Logger
-
   alias Loopyard.{
     Compose,
     Docker,

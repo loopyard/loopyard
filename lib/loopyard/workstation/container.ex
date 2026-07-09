@@ -14,8 +14,6 @@ defmodule Loopyard.Workstation.Container do
   Tools live in the *image* (system paths), so mounting the volume at `$HOME`
   holds only mutable state and never shadows the tools.
   """
-  require Logger
-
   alias Loopyard.{Docker, VolumeManager, Workstation}
 
   @doc "The workstation container name (what the terminal channel attaches to)."

@@ -26,8 +26,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
   defp sync_relevant?(_), do: true
 
   # Container-related sync errors are "waiting" states, not real errors
-  defp sync_waiting?(nil), do: true
-
   defp sync_waiting?(%{status: :errored, last_error: err}) when is_binary(err) do
     String.contains?(err, "container") or String.contains?(err, "No sync process")
   end

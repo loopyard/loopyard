@@ -12,8 +12,6 @@ defmodule Loopyard.ChatAgent.SessionManager do
   callers like `handle_retry/3`).
   """
 
-  require Logger
-
   alias Loopyard.Events
 
   # --- Stop backend session ---

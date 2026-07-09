@@ -495,7 +495,7 @@ defmodule Aural.Channel do
     max_abs =
       Enum.reduce(0..(n_samples - 1)//step, 0, fn i, acc ->
         offset = i * 2
-        <<_::binary-size(offset), s::16-little-signed, _::binary>> = pcm
+        <<_::binary-size(^offset), s::16-little-signed, _::binary>> = pcm
         max(acc, abs(s))
       end)
 

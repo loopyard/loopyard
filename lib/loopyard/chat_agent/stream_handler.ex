@@ -15,8 +15,6 @@ defmodule Loopyard.ChatAgent.StreamHandler do
   so the caller can dispatch accordingly.
   """
 
-  require Logger
-
   alias Loopyard.Agent.Event
   alias Loopyard.ChatAgent.{Persistence, SessionManager}
   alias Loopyard.ChatAgent.StreamHandler.RateLimit

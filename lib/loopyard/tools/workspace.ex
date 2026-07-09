@@ -68,7 +68,6 @@ defmodule Loopyard.Tools.Workspace do
         else
           {:error, :empty_name} -> {:error, "Project name can't be empty"}
           {:error, :not_found} -> {:error, "Project not found for agent #{agent_id}"}
-          {:error, reason} -> {:error, "Failed to rename project: #{inspect(reason)}"}
         end
 
       _ ->

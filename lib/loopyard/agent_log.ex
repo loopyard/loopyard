@@ -636,7 +636,7 @@ defmodule Loopyard.AgentLog do
   end
 
   defp read_meta(<<size::32, rest::binary>>) when byte_size(rest) >= size do
-    <<data::binary-size(size), remaining::binary>> = rest
+    <<data::binary-size(^size), remaining::binary>> = rest
 
     case safe_binary_to_term(data) do
       {:ok, {:log_meta, meta}} when is_map(meta) ->
@@ -666,7 +666,7 @@ defmodule Loopyard.AgentLog do
   end
 
   defp replay_entries(<<size::32, rest::binary>>, state) when byte_size(rest) >= size do
-    <<data::binary-size(size), remaining::binary>> = rest
+    <<data::binary-size(^size), remaining::binary>> = rest
 
     state =
       case safe_binary_to_term(data) do
@@ -680,7 +680,7 @@ defmodule Loopyard.AgentLog do
   defp replay_entries(_, state), do: state
 
   defp read_entries(<<size::32, rest::binary>>, acc) when byte_size(rest) >= size do
-    <<data::binary-size(size), remaining::binary>> = rest
+    <<data::binary-size(^size), remaining::binary>> = rest
 
     acc =
       case safe_binary_to_term(data) do
