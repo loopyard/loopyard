@@ -217,6 +217,10 @@ defmodule Loopyard.ChatAgent.Initializer do
         stream_ref: nil,
         active_tool: nil,
         messages: internal_messages,
+        # summary/1 exposes the FIFO queue as :pending_messages; map it back so
+        # messages queued while :thinking survive a crash-respawn instead of
+        # silently vanishing (the durable inbox is Loopyard state).
+        pending_sends: saved[:pending_messages] || [],
         tracked_cli_os_pid: nil,
         prompt_hash: new_prompt_hash,
         rate_limit_status: :ok,
@@ -245,6 +249,12 @@ defmodule Loopyard.ChatAgent.Initializer do
       "agent:#{state.name}",
       "Resumed (#{id}) with #{length(state.messages)} messages, #{context_status}"
     )
+
+    # Deliver any messages that were queued when the agent crashed. Processed
+    # after init returns (this runs in the GenServer's own process).
+    if state.pending_sends != [] do
+      send(self(), :drain_resumed_pending)
+    end
 
     if prompt_changed? do
       :telemetry.execute(

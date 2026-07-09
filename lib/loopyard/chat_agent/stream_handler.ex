@@ -242,6 +242,23 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     * Completed normally → `{:drain, list, state}` if parked sends, else
       `{:noreply, state}`.
   """
+  def on_stream_done(%{status: status} = state) when status in [:rate_limited, :auth_expired] do
+    # A degraded terminal status was set mid-turn (RateLimit rejection / auth
+    # error). The turn's stream is now closing, but we must NOT flip back to
+    # :idle or drain pending_sends into the limited/expired API — the queue
+    # stays parked until the degraded state clears (the rate_limit_retry timer
+    # re-arms the turn, or the user re-authenticates). Just preserve any
+    # partial text and keep the status.
+    state =
+      state
+      |> finalize_partial_on_stream_interrupt(state.id, :error)
+      |> Map.put(:active_tool, nil)
+
+    :ets.insert(@ets_table, {state.id, Loopyard.ChatAgent.summary(state)})
+    Persistence.persist_agent(state, &Loopyard.ChatAgent.summary/1)
+    {:noreply, state}
+  end
+
   def on_stream_done(state) do
     cond do
       state.pending_turn_error && state.turn_retry_count < max_turn_retries() &&
@@ -312,22 +329,14 @@ defmodule Loopyard.ChatAgent.StreamHandler do
 
     # Settle to idle WITHOUT draining pending — we're handing the prompt back to
     # the human, not auto-starting another turn.
-    state = %{
-      state
-      | status: :idle,
-        active_tool: nil,
-        turns: state.turns + 1,
-        turn_retry_count: 0,
-        pending_turn_error: nil,
-        current_turn_prompt: nil,
-        in_flight_partial: "",
-        context_warning_sent: false,
-        last_tool_call: nil,
-        tool_calls_this_turn: 0,
-        tool_runaway_warned: false,
-        failed_prompt: prompt,
-        errors: state.errors + 1
-    }
+    state =
+      reset_turn_state(%{
+        state
+        | status: :idle,
+          turns: state.turns + 1,
+          failed_prompt: prompt,
+          errors: state.errors + 1
+      })
 
     :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
     Persistence.persist_agent(state, &Loopyard.ChatAgent.summary/1)
@@ -336,24 +345,31 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     if is_binary(prompt), do: {:restore_input, prompt, state}, else: {:noreply, state}
   end
 
+  # The canonical transient-turn reset. Every path that returns the agent to a
+  # resting status MUST clear these, or stale turn state leaks into the next
+  # turn: a stuck spinner (active_tool), a false "didn't go through" error
+  # (pending_turn_error), premature tool-loop/runaway warnings (the tool
+  # counters), or a re-fired context warning. Does NOT set :status — the
+  # caller picks the resting status.
+  defp reset_turn_state(state) do
+    %{
+      state
+      | active_tool: nil,
+        in_flight_partial: "",
+        pending_turn_error: nil,
+        current_turn_prompt: nil,
+        turn_retry_count: 0,
+        tool_calls_this_turn: 0,
+        tool_runaway_warned: false,
+        last_tool_call: nil,
+        context_warning_sent: false
+    }
+  end
+
   defp complete_turn(state) do
     id = state.id
 
-    state = %{
-      state
-      | status: :idle,
-        active_tool: nil,
-        turns: state.turns + 1,
-        turn_retry_count: 0,
-        pending_turn_error: nil,
-        current_turn_prompt: nil,
-        in_flight_partial: "",
-        context_warning_sent: false,
-        last_tool_call: nil,
-        tool_calls_this_turn: 0,
-        tool_runaway_warned: false
-    }
-
+    state = reset_turn_state(%{state | status: :idle, turns: state.turns + 1})
     state = Map.put(state, :consecutive_crashes, 0)
 
     cond do
@@ -452,14 +468,18 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     # on browser refresh.
     state = finalize_partial_on_stream_interrupt(state, id, :error)
 
-    # Count recent crashes (within last 60 seconds)
+    # Count recent auto-restarts (within last 60 seconds) so a deterministically
+    # dying CLI doesn't hot-loop. This must match the marker actually written
+    # below ("Agent session restarted automatically…") — the previous literal
+    # ("Agent crashed — restarting...") was never emitted anywhere, so the
+    # breaker was dead and the loop ran with zero backoff.
     recent_crashes =
       state.messages
-      |> Enum.filter(fn m ->
-        m.role == :system && m.content == "Agent crashed — restarting..." &&
+      |> Enum.count(fn m ->
+        m.role == :system && is_binary(m.content) &&
+          String.starts_with?(m.content, "Agent session restarted automatically") &&
           DateTime.diff(now, m.timestamp, :second) < 60
       end)
-      |> length()
 
     if is_binary(reason) && String.contains?(reason, "CLI session exited") && recent_crashes < 2 do
       # CLI died — restart session and resume the same conversation
@@ -520,7 +540,7 @@ defmodule Loopyard.ChatAgent.StreamHandler do
           }
 
           {state, fail_msg} = append_message(state, fail_msg)
-          state = %{state | status: :idle, active_tool: nil}
+          state = reset_turn_state(%{state | status: :idle})
 
           Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
             agent_id: id,
@@ -545,13 +565,7 @@ defmodule Loopyard.ChatAgent.StreamHandler do
 
       {state, error_msg} = append_message(state, error_msg)
 
-      state = %{
-        state
-        | status: :idle,
-          active_tool: nil,
-          last_activity_at: now,
-          errors: state.errors + 1
-      }
+      state = reset_turn_state(%{state | status: :idle, last_activity_at: now, errors: state.errors + 1})
 
       Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
         agent_id: id,
@@ -584,7 +598,12 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     }
 
     {state, error_msg} = append_message(state, error_msg)
-    state = %{state | status: :idle, active_tool: nil, errors: state.errors + 1}
+
+    # Clear stream_ref along with the turn transients: the wedged stream Task
+    # may still be alive, and dropping its ref means any late events it emits
+    # are ignored instead of mutating a now-"idle" agent (matters if the
+    # reboot below fails and leaves us resting).
+    state = reset_turn_state(%{state | status: :idle, errors: state.errors + 1, stream_ref: nil})
 
     Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
       agent_id: id,
