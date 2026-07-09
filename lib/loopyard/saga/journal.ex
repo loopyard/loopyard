@@ -150,6 +150,26 @@ defmodule Loopyard.Saga.Journal do
   """
   @spec append(record()) :: :ok | {:error, term()}
   def append(record) do
+    # Route through the single-writer GenServer so appends and compaction can
+    # never interleave across the many saga-runner processes (the race that
+    # could drop a :saga_completed → spurious boot rollback, or double-write a
+    # truncating header). When the Writer isn't running (early boot / stripped
+    # test env) there's no concurrent writer either, so a direct write is safe.
+    case Process.whereis(Loopyard.Saga.Journal.Writer) do
+      nil -> do_write(record)
+      pid -> GenServer.call(pid, {:append, record}, 15_000)
+    end
+  catch
+    :exit, reason ->
+      Logger.warning("[Saga.Journal] writer unavailable: #{inspect(reason)}")
+      {:error, {:writer_down, reason}}
+  end
+
+  @doc false
+  # The actual write. Runs ONLY in the Writer process (or directly when no
+  # Writer is running). Never raises — a failing journal must not crash the
+  # saga it tracks.
+  def do_write(record) do
     path = path()
 
     try do

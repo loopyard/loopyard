@@ -73,6 +73,12 @@ defmodule Loopyard.Application do
       # workspace start / agent boot, i.e. well after app boot).
       Loopyard.Saga.Recorder,
 
+      # Single writer for the app-wide saga journal. All Journal.append/1
+      # calls route through it so appends can't interleave with compaction.
+      # Must start before the first saga runs and before boot-time saga
+      # resume (safe_restore "Saga.Journal" in start/2 below).
+      Loopyard.Saga.Journal.Writer,
+
       # Periodic reconciler: diffs :chat_agents ETS against
       # ChatAgentRegistry every 30s and corrects drift where
       # Registry is authoritative. Must start after StateKeeper
