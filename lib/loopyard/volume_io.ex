@@ -12,25 +12,29 @@ defmodule Loopyard.VolumeIO do
   Read a file from a volume. Uses running container if available, otherwise spins up temporary container.
   """
   def read_file(volume_name, path) do
-    # Try to find a running workspace container for this volume
-    case find_container_for_volume(volume_name) do
-      {:ok, container} ->
-        Loopyard.Docker.exec_in(container, "cat /workspace/#{path}")
+    with {:ok, abs} <- validate_path(path) do
+      # Try to find a running workspace container for this volume
+      case find_container_for_volume(volume_name) do
+        {:ok, container} ->
+          Loopyard.Docker.exec_in(container, "cat #{shq(abs)}")
 
-      :none ->
-        # No running container, use temporary alpine
-        case Docker.docker([
-               "run",
-               "--rm",
-               "-v",
-               "#{volume_name}:/workspace",
-               "alpine",
-               "cat",
-               "/workspace/#{path}"
-             ]) do
-          {:ok, content} -> {:ok, content}
-          {:error, _} -> {:error, :not_found}
-        end
+        :none ->
+          # No running container, use temporary alpine. `abs` is a normalized,
+          # /workspace-confined path; passed as a discrete arg (never a shell
+          # word) so metacharacters in a filename can't inject.
+          case Docker.docker([
+                 "run",
+                 "--rm",
+                 "-v",
+                 "#{volume_name}:/workspace",
+                 "alpine",
+                 "cat",
+                 abs
+               ]) do
+            {:ok, content} -> {:ok, content}
+            {:error, _} -> {:error, :not_found}
+          end
+      end
     end
   end
 
@@ -38,39 +42,41 @@ defmodule Loopyard.VolumeIO do
   Write a file to a volume. Uses running container if available, otherwise spins up temporary container.
   """
   def write_file(volume_name, path, content) do
-    dir = Path.dirname(path)
-    encoded = Base.encode64(content)
+    with {:ok, abs} <- validate_path(path) do
+      dir = Path.dirname(abs)
+      encoded = Base.encode64(content)
 
-    case find_container_for_volume(volume_name) do
-      {:ok, container} ->
-        script =
-          "mkdir -p /workspace/#{dir} && echo '#{encoded}' | base64 -d > /workspace/#{path}"
+      case find_container_for_volume(volume_name) do
+        {:ok, container} ->
+          script =
+            "mkdir -p #{shq(dir)} && echo '#{encoded}' | base64 -d > #{shq(abs)}"
 
-        case Loopyard.Docker.exec_in(container, script) do
-          {:ok, _} -> :ok
-          {:error, reason} -> {:error, reason}
-        end
+          case Loopyard.Docker.exec_in(container, script) do
+            {:ok, _} -> :ok
+            {:error, reason} -> {:error, reason}
+          end
 
-      :none ->
-        # No running container, use temporary alpine
-        script =
-          "mkdir -p /workspace/#{dir} && echo \"$FILE_CONTENT\" | base64 -d > /workspace/#{path}"
+        :none ->
+          # No running container, use temporary alpine
+          script =
+            "mkdir -p #{shq(dir)} && echo \"$FILE_CONTENT\" | base64 -d > #{shq(abs)}"
 
-        case Docker.docker([
-               "run",
-               "--rm",
-               "-e",
-               "FILE_CONTENT=#{encoded}",
-               "-v",
-               "#{volume_name}:/workspace",
-               "alpine",
-               "sh",
-               "-c",
-               script
-             ]) do
-          {:ok, _} -> :ok
-          {:error, reason} -> {:error, reason}
-        end
+          case Docker.docker([
+                 "run",
+                 "--rm",
+                 "-e",
+                 "FILE_CONTENT=#{encoded}",
+                 "-v",
+                 "#{volume_name}:/workspace",
+                 "alpine",
+                 "sh",
+                 "-c",
+                 script
+               ]) do
+            {:ok, _} -> :ok
+            {:error, reason} -> {:error, reason}
+          end
+      end
     end
   end
 
@@ -230,6 +236,30 @@ defmodule Loopyard.VolumeIO do
   rescue
     e -> {:error, Exception.message(e)}
   end
+
+  # Normalize `path` against /workspace and reject anything that escapes it
+  # (traversal, absolute paths outside the volume) or carries a null byte.
+  # Returns {:ok, absolute_path} confined to /workspace. Every command below
+  # either passes this as a discrete exec arg or shell-quotes it, so a
+  # filename containing spaces or shell metacharacters is handled literally.
+  defp validate_path(path) when is_binary(path) do
+    if String.contains?(path, <<0>>) do
+      {:error, :invalid_path}
+    else
+      abs = Path.expand(path, "/workspace")
+
+      if abs == "/workspace" or String.starts_with?(abs, "/workspace/") do
+        {:ok, abs}
+      else
+        {:error, :invalid_path}
+      end
+    end
+  end
+
+  defp validate_path(_), do: {:error, :invalid_path}
+
+  # POSIX single-quote escape: wrap in '…' and replace embedded ' with '"'"'.
+  defp shq(s) when is_binary(s), do: "'" <> String.replace(s, "'", "'\"'\"'") <> "'"
 
   # Find a running workspace container that has this volume mounted
   defp find_container_for_volume(volume_name) do
