@@ -41,10 +41,17 @@ defmodule Loopyard.WorkspaceTree do
   end
 
   defp agent_node(a) do
+    # NOTE: pass through `:status` + `:quarantined` (what the shared
+    # `Sidebar.agent_display_status/1` normalizer reads), but deliberately
+    # DO NOT set `:alive?` — a nil value there reads as "not alive" (sleeping);
+    # leaving the key absent lets the normalizer fall back to the authoritative
+    # Registry liveness lookup. Keeps the god-mode rail's dot identical to the
+    # right pane's for the same agent.
     %{
       id: a.id,
       name: Map.get(a, :name) || "Agent",
       status: Map.get(a, :status),
+      quarantined: Map.get(a, :quarantined),
       active_tool: Map.get(a, :active_tool)
     }
   end

@@ -132,12 +132,15 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:workspace_entry, extra_assigns[:workspace_entry])
      |> assign(:base_path, base_path)
      |> assign(:global_tree, Loopyard.WorkspaceTree.global())
-     # Drill-down sidebar starts zoomed into the workspace you're on (its
-     # agents), so its siblings are right there; back zooms out to workspaces /
-     # projects. nil focus (no project, e.g. legacy) shows the projects level.
+     # Expandable-tree sidebar: land with the path to THIS workspace open (its
+     # project + workspace, so its agents are right there), everything else
+     # collapsed. The user pops open other branches as they like.
      |> assign(
-       :sidebar_focus,
-       if(extra_assigns[:project], do: {:workspace, extra_assigns[:project].id, workspace.id})
+       :expanded,
+       LoopyardWeb.Components.GlobalSidebar.initial_expanded(
+         extra_assigns[:project] && extra_assigns[:project].id,
+         workspace.id
+       )
      )
      |> Switcher.attach_view_tracker()
      |> assign(:host, host)
@@ -650,27 +653,13 @@ defmodule LoopyardWeb.WorkspaceLive do
     end
   end
 
-  # --- God-mode sidebar drill-down (#55) ---
+  # --- God-mode sidebar: expandable tree (#55) ---
 
-  def handle_event("sidebar_home", _params, socket),
-    do: {:noreply, assign(socket, :sidebar_focus, nil)}
-
-  def handle_event("sidebar_open_project", %{"id" => id}, socket),
-    do: {:noreply, assign(socket, :sidebar_focus, {:project, id})}
-
-  def handle_event("sidebar_open_workspace", %{"id" => id} = params, socket) do
-    project_id = params["project"] || (socket.assigns[:project] && socket.assigns.project.id)
-    {:noreply, assign(socket, :sidebar_focus, {:workspace, project_id, id})}
-  end
-
-  def handle_event("sidebar_back", _params, socket) do
-    parent =
-      LoopyardWeb.Components.GlobalSidebar.parent_focus(
-        socket.assigns.global_tree,
-        socket.assigns.sidebar_focus
-      )
-
-    {:noreply, assign(socket, :sidebar_focus, parent)}
+  # Open/close a project or workspace branch. Several can be open at once;
+  # collapse the ones you care less about.
+  def handle_event("sidebar_toggle", %{"node" => key}, socket) do
+    expanded = LoopyardWeb.Components.GlobalSidebar.toggle(socket.assigns.expanded, key)
+    {:noreply, assign(socket, :expanded, expanded)}
   end
 
   @impl true
@@ -1760,7 +1749,7 @@ defmodule LoopyardWeb.WorkspaceLive do
              across all projects (#55). Desktop-only. --%>
         <LoopyardWeb.Components.GlobalSidebar.global_sidebar
           tree={@global_tree}
-          focus={@sidebar_focus}
+          expanded={@expanded}
           current_agent_id={@selected_id}
           class="hidden md:flex w-60 flex-none border-r border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-900/50"
         />
