@@ -85,6 +85,11 @@ defmodule Loopyard.ChatAgent.Initializer do
 
     base_opts = [
       cwd: working_dir,
+      # Which model the agent's CLI runs. A model alias ("sonnet"/"opus"/
+      # "haiku"/"fable") or a full model id ("claude-fable-5"). Defaults to the
+      # SDK default so unset behavior is unchanged; switch the whole instance
+      # with one config line + a restart:  config :loopyard, agent_model: "..."
+      model: Application.get_env(:loopyard, :agent_model, "sonnet"),
       permission_mode: :accept_edits,
       dangerously_skip_permissions: true,
       mcp_servers: ToolConfig.build_mcp_servers(tools, id),
