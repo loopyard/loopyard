@@ -132,14 +132,13 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:workspace_entry, extra_assigns[:workspace_entry])
      |> assign(:base_path, base_path)
      |> assign(:global_tree, Loopyard.WorkspaceTree.global())
-     # Expandable-tree sidebar: land with the path to THIS workspace open (its
-     # project + workspace, so its agents are right there), everything else
-     # collapsed. The user pops open other branches as they like.
+     # Expandable-tree sidebar: land with THIS project open so its workspaces
+     # are listed, everything else collapsed. The user pops open other projects
+     # as they like.
      |> assign(
        :expanded,
        LoopyardWeb.Components.GlobalSidebar.initial_expanded(
-         extra_assigns[:project] && extra_assigns[:project].id,
-         workspace.id
+         extra_assigns[:project] && extra_assigns[:project].id
        )
      )
      |> Switcher.attach_view_tracker()
@@ -1750,7 +1749,7 @@ defmodule LoopyardWeb.WorkspaceLive do
         <LoopyardWeb.Components.GlobalSidebar.global_sidebar
           tree={@global_tree}
           expanded={@expanded}
-          current_agent_id={@selected_id}
+          current_workspace_id={@workspace.id}
           class="hidden md:flex w-60 flex-none border-r border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-900/50"
         />
         <%!-- Main content: hidden on mobile when the rail is showing (index/new with no selection) --%>

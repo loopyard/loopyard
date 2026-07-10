@@ -21,7 +21,7 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
 
   attr :tree, :list, required: true
   attr :expanded, :any, default: nil
-  attr :current_agent_id, :string, default: nil
+  attr :current_workspace_id, :string, default: nil
   attr :class, :string, default: nil
 
   def global_sidebar(assigns) do
@@ -46,70 +46,40 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
           no projects yet
         </div>
 
-        <%!-- PROJECT branch --%>
+        <%!-- PROJECT branch → its WORKSPACES. Two levels, that's it: no agents,
+             no services in the rail. Each workspace is a link with a status
+             dot aggregated from its agents. --%>
         <div :for={project <- @tree} class="select-none">
           <.branch_row
             key={"p:#{project.id}"}
             expanded={MapSet.member?(@expanded, "p:#{project.id}")}
             name={project.name}
             dot={aggregate_dot(all_agents(project))}
-            count={agent_count_label(all_agents(project))}
+            count={workspace_count_label(project.workspaces)}
             depth={0}
           />
 
-          <%!-- WORKSPACE branch --%>
           <div :if={MapSet.member?(@expanded, "p:#{project.id}")}>
-            <div :for={ws <- project.workspaces}>
-              <.branch_row
-                key={"w:#{ws.id}"}
-                expanded={MapSet.member?(@expanded, "w:#{ws.id}")}
-                name={ws.name}
-                dot={aggregate_dot(ws.agents)}
-                count={agent_count_label(ws.agents)}
-                depth={1}
-              />
+            <.link
+              :for={ws <- project.workspaces}
+              navigate={"/projects/#{project.id}/workspaces/#{ws.id}"}
+              class={[
+                "flex items-center gap-2.5 pr-3 py-1.5 mx-1 rounded-md",
+                "hover:bg-zinc-200/60 dark:hover:bg-zinc-700/40",
+                ws.id == @current_workspace_id && "bg-violet-100 dark:bg-violet-500/15"
+              ]}
+              style="padding-left: 2rem"
+            >
+              <span class={["h-2 w-2 flex-none rounded-full", aggregate_dot(ws.agents)]} />
+              <span class="truncate text-sm text-zinc-700 dark:text-zinc-200">{ws.name}</span>
+            </.link>
 
-              <%!-- AGENT leaves --%>
-              <div :if={MapSet.member?(@expanded, "w:#{ws.id}")}>
-                <.link
-                  :for={agent <- ws.agents}
-                  navigate={"/projects/#{project.id}/workspaces/#{ws.id}/agents/#{agent.id}"}
-                  class={[
-                    "flex items-center gap-2.5 pr-3 py-1.5 mx-1 rounded-md",
-                    "hover:bg-zinc-200/60 dark:hover:bg-zinc-700/40",
-                    agent.id == @current_agent_id && "bg-violet-100 dark:bg-violet-500/15"
-                  ]}
-                  style="padding-left: 3.25rem"
-                >
-                  <span class={[
-                    "h-2 w-2 flex-none rounded-full",
-                    Sidebar.status_dot(Sidebar.agent_display_status(agent))
-                  ]} />
-                  <span class="truncate text-sm text-zinc-700 dark:text-zinc-200">
-                    {agent.name}
-                  </span>
-                  <span
-                    :if={agent.active_tool}
-                    class="ml-auto truncate text-xs text-zinc-400 font-mono"
-                  >
-                    {agent.active_tool}
-                  </span>
-                </.link>
-                <div
-                  :if={ws.agents == []}
-                  class="py-1.5 text-xs text-zinc-400 italic"
-                  style="padding-left: 3.25rem"
-                >
-                  no agents
-                </div>
-                <.link
-                  navigate={"/projects/#{project.id}/workspaces/#{ws.id}"}
-                  class="flex items-center py-1.5 text-xs text-zinc-400 hover:text-violet-500 dark:hover:text-violet-400"
-                  style="padding-left: 3.25rem"
-                >
-                  open workspace →
-                </.link>
-              </div>
+            <div
+              :if={project.workspaces == []}
+              class="py-1.5 text-xs text-zinc-400 italic"
+              style="padding-left: 2rem"
+            >
+              no workspaces
             </div>
 
             <.link
@@ -177,14 +147,11 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
   end
 
   @doc """
-  Default-open set for a workspace you just landed on: expand the path to it
-  (its project + the workspace) so its agents are right there, siblings a click
-  away, everything else collapsed.
+  Default-open set for a project you just landed in: expand that project so its
+  workspaces are listed, everything else collapsed.
   """
-  def initial_expanded(nil, _workspace_id), do: MapSet.new()
-
-  def initial_expanded(project_id, workspace_id),
-    do: MapSet.new(["p:#{project_id}", "w:#{workspace_id}"])
+  def initial_expanded(nil), do: MapSet.new()
+  def initial_expanded(project_id), do: MapSet.new(["p:#{project_id}"])
 
   @doc "Toggle a node key in the expanded set."
   def toggle(expanded, key) do
@@ -197,8 +164,8 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
 
   defp all_agents(project), do: Enum.flat_map(project.workspaces, & &1.agents)
 
-  defp agent_count_label([]), do: nil
-  defp agent_count_label(agents), do: "#{length(agents)}"
+  defp workspace_count_label([]), do: nil
+  defp workspace_count_label(workspaces), do: "#{length(workspaces)}"
 
   # Aggregate dot for a collapsed branch: loudest DISPLAY state wins, using the
   # exact same normalizer as each agent leaf so a parent's dot always agrees
