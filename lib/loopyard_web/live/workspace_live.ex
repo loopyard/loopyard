@@ -132,6 +132,13 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:workspace_entry, extra_assigns[:workspace_entry])
      |> assign(:base_path, base_path)
      |> assign(:global_tree, Loopyard.WorkspaceTree.global())
+     # Drill-down sidebar starts zoomed into the workspace you're on (its
+     # agents), so its siblings are right there; back zooms out to workspaces /
+     # projects. nil focus (no project, e.g. legacy) shows the projects level.
+     |> assign(
+       :sidebar_focus,
+       if(extra_assigns[:project], do: {:workspace, extra_assigns[:project].id, workspace.id})
+     )
      |> Switcher.attach_view_tracker()
      |> assign(:host, host)
      |> assign(:agents, agents)
@@ -641,6 +648,29 @@ defmodule LoopyardWeb.WorkspaceLive do
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, "Couldn't remove workspace: #{inspect(reason)}")}
     end
+  end
+
+  # --- God-mode sidebar drill-down (#55) ---
+
+  def handle_event("sidebar_home", _params, socket),
+    do: {:noreply, assign(socket, :sidebar_focus, nil)}
+
+  def handle_event("sidebar_open_project", %{"id" => id}, socket),
+    do: {:noreply, assign(socket, :sidebar_focus, {:project, id})}
+
+  def handle_event("sidebar_open_workspace", %{"id" => id} = params, socket) do
+    project_id = params["project"] || (socket.assigns[:project] && socket.assigns.project.id)
+    {:noreply, assign(socket, :sidebar_focus, {:workspace, project_id, id})}
+  end
+
+  def handle_event("sidebar_back", _params, socket) do
+    parent =
+      LoopyardWeb.Components.GlobalSidebar.parent_focus(
+        socket.assigns.global_tree,
+        socket.assigns.sidebar_focus
+      )
+
+    {:noreply, assign(socket, :sidebar_focus, parent)}
   end
 
   @impl true
@@ -1730,7 +1760,7 @@ defmodule LoopyardWeb.WorkspaceLive do
              across all projects (#55). Desktop-only. --%>
         <LoopyardWeb.Components.GlobalSidebar.global_sidebar
           tree={@global_tree}
-          current_workspace_id={@workspace.id}
+          focus={@sidebar_focus}
           current_agent_id={@selected_id}
           class="hidden md:flex w-60 flex-none border-r border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-900/50"
         />
