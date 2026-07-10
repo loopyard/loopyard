@@ -52,30 +52,35 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
              no services in the rail. Each workspace is a link with a status
              dot aggregated from its agents. --%>
         <div :for={project <- @tree} class="select-none">
-          <.branch_row
+          <.project_row
             key={"p:#{project.id}"}
             expanded={MapSet.member?(@expanded, "p:#{project.id}")}
             name={project.name}
-            dot={Birdseye.aggregate_dot(all_agents(project))}
-            count={workspace_count_label(project.workspaces)}
-            depth={0}
           />
 
           <div :if={MapSet.member?(@expanded, "p:#{project.id}")}>
-            <.link
+            <%!-- Two columns: [agent dot + workspace name] ......... [ :port ].
+                 The port chip is a SIBLING of the row link (not nested inside
+                 it) — nested <a> tags are invalid and get kicked out of the
+                 row. --%>
+            <div
               :for={ws <- project.workspaces}
-              navigate={"/projects/#{project.id}/workspaces/#{ws.id}"}
               class={[
-                "flex items-center gap-2.5 pr-3 py-1.5 mx-1 rounded-md",
+                "group flex items-center pr-2 mx-1 rounded-md",
                 "hover:bg-zinc-200/60 dark:hover:bg-zinc-700/40",
                 ws.id == @current_workspace_id && "bg-violet-100 dark:bg-violet-500/15"
               ]}
-              style="padding-left: 2rem"
             >
-              <Birdseye.dot class={Birdseye.aggregate_dot(ws.agents)} size={:sm} />
-              <span class="truncate text-sm text-zinc-700 dark:text-zinc-200">{ws.name}</span>
+              <.link
+                navigate={"/projects/#{project.id}/workspaces/#{ws.id}"}
+                class="flex-1 min-w-0 flex items-center gap-2.5 py-1.5"
+                style="padding-left: 2rem"
+              >
+                <Birdseye.dot class={Birdseye.aggregate_dot(ws.agents)} size={:sm} />
+                <span class="truncate text-sm text-zinc-700 dark:text-zinc-200">{ws.name}</span>
+              </.link>
               <Birdseye.port_chip :for={p <- ws.ports} port={p.port} url={p.url} />
-            </.link>
+            </div>
 
             <div
               :if={project.workspaces == []}
@@ -99,32 +104,28 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
     """
   end
 
-  # A collapsible project/workspace row: chevron (rotates when open) + status
-  # dot + name + agent count. `depth` sets the indent so the tree reads.
+  # A project row: a chevron (rotates when open) + the project name in bold.
+  # Deliberately NO status dot — a project has no status of its own; its
+  # workspaces do. The chevron + weight is what marks it as a project, so it
+  # never reads like a workspace.
   attr :key, :string, required: true
   attr :expanded, :boolean, required: true
   attr :name, :string, required: true
-  attr :dot, :string, default: nil
-  attr :count, :string, default: nil
-  attr :depth, :integer, required: true
 
-  defp branch_row(assigns) do
-    assigns = assign(assigns, :pad, "padding-left: #{0.75 + assigns.depth * 1.25}rem")
-
+  defp project_row(assigns) do
     ~H"""
     <button
       type="button"
       phx-click="sidebar_toggle"
       phx-value-node={@key}
-      style={@pad}
-      class="w-full flex items-center gap-2 pr-2 py-2 mx-1 rounded-md text-left hover:bg-zinc-200/60 dark:hover:bg-zinc-700/40"
+      class="w-full flex items-center gap-2 pl-2 pr-2 py-2 mx-1 rounded-md text-left hover:bg-zinc-200/60 dark:hover:bg-zinc-700/40"
       aria-expanded={to_string(@expanded)}
     >
       <svg
         viewBox="0 0 20 20"
         fill="currentColor"
         class={[
-          "w-3.5 h-3.5 flex-none text-zinc-400 transition-transform",
+          "w-4 h-4 flex-none text-zinc-400 transition-transform",
           @expanded && "rotate-90"
         ]}
       >
@@ -134,16 +135,8 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
           clip-rule="evenodd"
         />
       </svg>
-      <span :if={@dot} class={["h-2 w-2 flex-none rounded-full", @dot]} />
-      <span class={[
-        "truncate text-sm",
-        @depth == 0 && "font-semibold text-zinc-800 dark:text-zinc-100",
-        @depth > 0 && "font-medium text-zinc-700 dark:text-zinc-200"
-      ]}>
+      <span class="truncate text-sm font-semibold text-zinc-800 dark:text-zinc-100">
         {@name}
-      </span>
-      <span :if={@count} class="ml-auto text-xs text-zinc-400 tabular-nums flex-none">
-        {@count}
       </span>
     </button>
     """
@@ -162,11 +155,4 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
       do: MapSet.delete(expanded, key),
       else: MapSet.put(expanded, key)
   end
-
-  # ── Display helpers ──
-
-  defp all_agents(project), do: Enum.flat_map(project.workspaces, & &1.agents)
-
-  defp workspace_count_label([]), do: nil
-  defp workspace_count_label(workspaces), do: "#{length(workspaces)}"
 end

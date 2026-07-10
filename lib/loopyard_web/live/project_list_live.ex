@@ -189,7 +189,6 @@ defmodule LoopyardWeb.ProjectListLive do
                 navigate={"/projects/#{project.id}"}
                 class="group flex items-center gap-3 px-5 py-3.5 border-b border-zinc-100 dark:border-zinc-800/70 hover:bg-zinc-50/70 dark:hover:bg-zinc-800/30 transition-colors"
               >
-                <Birdseye.dot class={Birdseye.aggregate_dot(project_agents(project))} size={:md} />
                 <h2 class="text-base font-semibold text-zinc-900 dark:text-zinc-50 truncate">
                   {project.name}
                 </h2>

@@ -17,24 +17,32 @@ defmodule LoopyardWeb.Components.Birdseye do
 
   alias LoopyardWeb.Components.Sidebar
 
-  @doc "Dot color class for a single agent's live display status."
-  def agent_dot(agent), do: Sidebar.status_dot(Sidebar.agent_display_status(agent))
+  # Meaningful-only colors: a dot appears ONLY when there's something to know —
+  # working, needs-attention, or ready. "Asleep" / no-agent → nil (no dot), so
+  # the rail isn't a confusing sea of gray circles. `nil` renders as an aligned
+  # blank via `dot/1`.
+  defp display_color(:thinking), do: "bg-violet-500 animate-pulse"
+  defp display_color(:crashed), do: "bg-red-500"
+  defp display_color(:quarantined), do: "bg-red-500"
+  defp display_color(:ready), do: "bg-green-500"
+  defp display_color(_sleeping_or_none), do: nil
+
+  @doc "Dot color class (or nil) for a single agent's live display status."
+  def agent_dot(agent), do: display_color(Sidebar.agent_display_status(agent))
 
   @doc """
-  Dot color for a group of agents — loudest DISPLAY state wins (red > working >
-  ready > asleep). Used for a project or workspace rollup; agrees with the
-  individual agent dots it summarizes.
+  Dot color (or nil) for a group of agents — loudest state wins:
+  needs-attention > working > ready. All-asleep or no agents → nil (no dot).
+  Agrees with the individual agent dots it summarizes.
   """
-  def aggregate_dot([]), do: Sidebar.status_dot(:sleeping)
-
   def aggregate_dot(agents) do
     displays = Enum.map(agents, &Sidebar.agent_display_status/1)
 
     cond do
-      Enum.any?(displays, &(&1 in [:crashed, :quarantined])) -> Sidebar.status_dot(:crashed)
-      Enum.any?(displays, &(&1 == :thinking)) -> Sidebar.status_dot(:thinking)
-      Enum.any?(displays, &(&1 == :ready)) -> Sidebar.status_dot(:ready)
-      true -> Sidebar.status_dot(:sleeping)
+      Enum.any?(displays, &(&1 in [:crashed, :quarantined])) -> "bg-red-500"
+      Enum.any?(displays, &(&1 == :thinking)) -> "bg-violet-500 animate-pulse"
+      Enum.any?(displays, &(&1 == :ready)) -> "bg-green-500"
+      true -> nil
     end
   end
 
@@ -64,8 +72,12 @@ defmodule LoopyardWeb.Components.Birdseye do
     end
   end
 
-  @doc "A live status dot. `size` is `:sm` (rail) or `:md` (home)."
-  attr :class, :string, required: true
+  @doc """
+  A live status dot. `class` nil → an aligned blank (holds the slot so names
+  stay lined up, but shows no confusing gray circle). `size` is `:sm` (rail) or
+  `:md` (home).
+  """
+  attr :class, :string, default: nil
   attr :size, :atom, default: :sm, values: [:sm, :md]
 
   def dot(assigns) do
@@ -80,8 +92,9 @@ defmodule LoopyardWeb.Components.Birdseye do
   end
 
   @doc """
-  An openable port: `:4003 ↗`. Opens the running app in a new tab. Identical in
-  the rail and on the home page so a port is always the same recognizable chip.
+  A light, clickable port chip — `:4003` — that opens the running app in a new
+  tab. The cluster's "it's up, go look" affordance. Right-aligned in the row's
+  second column; same chip in the rail and on the home page.
   """
   attr :port, :integer, required: true
   attr :url, :string, required: true
@@ -92,12 +105,16 @@ defmodule LoopyardWeb.Components.Birdseye do
       href={@url}
       target="_blank"
       rel="noopener"
-      class="inline-flex items-center gap-1 rounded-md bg-emerald-50 dark:bg-emerald-500/10 px-1.5 py-0.5 text-[11px] font-mono font-medium text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition-colors"
-      title={"Open #{@url}"}
+      class="group/port inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-mono text-emerald-600/90 dark:text-emerald-400/90 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
+      title={"Open the running app (#{@url})"}
       onclick="event.stopPropagation()"
     >
       :{@port}
-      <svg viewBox="0 0 20 20" fill="currentColor" class="w-3 h-3"><path d="M11 3a1 1 0 1 0 0 2h2.586l-6.293 6.293a1 1 0 1 0 1.414 1.414L15 6.414V9a1 1 0 1 0 2 0V4a1 1 0 0 0-1-1h-5Z" /><path d="M5 5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-3a1 1 0 1 0-2 0v3H5V7h3a1 1 0 0 0 0-2H5Z" /></svg>
+      <svg
+        viewBox="0 0 20 20"
+        fill="currentColor"
+        class="w-2.5 h-2.5 opacity-0 group-hover/port:opacity-100 transition-opacity"
+      ><path d="M11 3a1 1 0 1 0 0 2h2.586l-6.293 6.293a1 1 0 1 0 1.414 1.414L15 6.414V9a1 1 0 1 0 2 0V4a1 1 0 0 0-1-1h-5Z" /><path d="M5 5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-3a1 1 0 1 0-2 0v3H5V7h3a1 1 0 0 0 0-2H5Z" /></svg>
     </a>
     """
   end

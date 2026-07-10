@@ -1751,7 +1751,7 @@ defmodule LoopyardWeb.WorkspaceLive do
           tree={@global_tree}
           expanded={@expanded}
           current_workspace_id={@workspace.id}
-          class="hidden md:flex w-60 flex-none border-r border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-900/50"
+          class="hidden md:flex w-72 flex-none border-r border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-900/50"
         />
         <%!-- Main content: hidden on mobile when the rail is showing (index/new with no selection) --%>
         <main

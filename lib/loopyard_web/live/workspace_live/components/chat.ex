@@ -38,25 +38,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   # volumes. On the overview itself (`live_action == :index`) the
   # path is `nil`, which the Breadcrumbs component renders as the
   # current page (no link, aria-current="page").
-  defp workspace_crumbs(assigns) do
-    label = Loopyard.Source.display_name(assigns.workspace_entry)
-    label = if label == "", do: assigns.workspace.name, else: label
-
-    on_overview? = assigns[:live_action] == :index
-    last_path = if on_overview?, do: nil, else: assigns.base_path
-
-    crumbs = [{"Loopyard", "/"}]
-
-    crumbs =
-      if assigns.project do
-        crumbs ++ [{assigns.project.name, "/projects/#{assigns.project.id}"}]
-      else
-        crumbs
-      end
-
-    crumbs ++ [{label, last_path}]
-  end
-
   def chat_header(assigns) do
     # Mobile back button has two modes:
     #   - viewing an agent/service -> patch back to the sidebar (Menu)
@@ -78,61 +59,52 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       |> assign(:back_kind, back_kind)
       |> assign(:back_target, back_target)
       |> assign(:back_label, back_label)
-      |> assign(:crumbs, workspace_crumbs(assigns))
-      |> assign(:host_exposed, Loopyard.HostExposer.exposed?())
 
-    # Delegate to the ONE canonical app header (same component every page uses),
-    # so the top nav — breadcrumbs, Remote, the workstation switcher, System — is
-    # identical app-wide. The only workspace-specific bit is the mobile back
-    # button, injected via the header's `back` slot.
+    # No top chrome on the workspace view (breadcrumb / Remote / user / System
+    # live at `/` now). The left rail's "Loopyard" wordmark is the way back to
+    # the root dashboard. On mobile the rail is hidden, so we keep a thin
+    # back-bar here for navigation; on desktop this whole bar is gone.
     ~H"""
-    <LoopyardWeb.Components.AppHeader.header
-      breadcrumbs={@crumbs}
-      iex_session={@iex_session}
-      current_path={@base_path}
-      host_exposed={@host_exposed}
-    >
-      <:back>
-        <.link
-          :if={@back_kind == :patch}
-          patch={@back_target}
-          class="md:hidden -ml-1 inline-flex items-center gap-1 px-2 py-1 rounded-md text-base font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 active:bg-violet-100 dark:active:bg-violet-500/20 transition-colors flex-none min-w-0"
+    <div class="md:hidden flex items-center h-12 px-2 flex-none border-b border-zinc-200 dark:border-zinc-700/80">
+      <.link
+        :if={@back_kind == :patch}
+        patch={@back_target}
+        class="-ml-1 inline-flex items-center gap-1 px-2 py-1 rounded-md text-base font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 active:bg-violet-100 dark:active:bg-violet-500/20 transition-colors flex-none min-w-0"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          class="w-5 h-5 flex-none"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            class="w-5 h-5 flex-none"
-          >
-            <path
-              fill-rule="evenodd"
-              d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z"
-              clip-rule="evenodd"
-            />
-          </svg>
-          <span class="truncate">{@back_label}</span>
-        </.link>
-        <.link
-          :if={@back_kind == :navigate}
-          navigate={@back_target}
-          class="md:hidden -ml-1 inline-flex items-center gap-1 px-2 py-1 rounded-md text-base font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 active:bg-violet-100 dark:active:bg-violet-500/20 transition-colors flex-none min-w-0"
+          <path
+            fill-rule="evenodd"
+            d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z"
+            clip-rule="evenodd"
+          />
+        </svg>
+        <span class="truncate">{@back_label}</span>
+      </.link>
+      <.link
+        :if={@back_kind == :navigate}
+        navigate={@back_target}
+        class="-ml-1 inline-flex items-center gap-1 px-2 py-1 rounded-md text-base font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 active:bg-violet-100 dark:active:bg-violet-500/20 transition-colors flex-none min-w-0"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          class="w-5 h-5 flex-none"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            class="w-5 h-5 flex-none"
-          >
-            <path
-              fill-rule="evenodd"
-              d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z"
-              clip-rule="evenodd"
-            />
-          </svg>
-          <span class="truncate">{@back_label}</span>
-        </.link>
-      </:back>
-    </LoopyardWeb.Components.AppHeader.header>
+          <path
+            fill-rule="evenodd"
+            d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z"
+            clip-rule="evenodd"
+          />
+        </svg>
+        <span class="truncate">{@back_label}</span>
+      </.link>
+    </div>
     """
   end
 
