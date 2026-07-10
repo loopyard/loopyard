@@ -54,10 +54,13 @@ defmodule LoopyardWeb.WorkspaceLive do
     is_local? = extra_assigns[:project] && extra_assigns[:project][:source_type] == :local
 
     if connected?(socket) do
+      # ChatAgent (chat_agents topic) delivers StatusChanged for EVERY agent —
+      # that's what keeps the god-mode rail's dots live (patched per event, no
+      # full-tree rebuild). We deliberately do NOT subscribe to the Activity
+      # stream here: it also fires on every tool call, and rebuilding the whole
+      # tree that often flickered the rail. Structural changes (agent add/remove,
+      # workspace add/remove) rebuild via their own lifecycle events instead.
       ChatAgent.subscribe()
-      # God-mode sidebar (#55): the global + per-project activity stream keeps
-      # the cross-project tree live no matter the view.
-      Loopyard.Events.Activity.subscribe_global()
       Loopyard.Workspace.ServiceManager.subscribe()
       Loopyard.Docker.Observer.subscribe()
       Loopyard.Events.WorkspaceSetup.subscribe(workspace.id)
@@ -1271,9 +1274,6 @@ defmodule LoopyardWeb.WorkspaceLive do
 
   # God-mode sidebar (#55): any agent's status/tool activity, anywhere, rebuilds
   # the cross-project tree so the left rail stays live across all projects.
-  def handle_info(%Loopyard.Events.Activity.Event{}, socket),
-    do:
-      {:noreply, assign(socket, :global_tree, Loopyard.WorkspaceTree.global(socket.assigns.host))}
 
   def handle_info(%Events.ChatAgentMessage.Message{} = e, socket), do: on_message(e, socket)
   def handle_info(%Events.ChatAgentMessage.TextDelta{} = e, socket), do: on_text_delta(e, socket)
@@ -1436,10 +1436,16 @@ defmodule LoopyardWeb.WorkspaceLive do
   alias LoopyardWeb.Live.WorkspaceLive.AgentEvents
 
   @impl Events.ChatAgent.Subscriber
-  def on_started(event, socket), do: AgentEvents.handle_started(event, socket)
+  def on_started(event, socket) do
+    {:noreply, socket} = AgentEvents.handle_started(event, socket)
+    {:noreply, rebuild_tree(socket)}
+  end
 
   @impl Events.ChatAgent.Subscriber
-  def on_resumed(event, socket), do: AgentEvents.handle_resumed(event, socket)
+  def on_resumed(event, socket) do
+    {:noreply, socket} = AgentEvents.handle_resumed(event, socket)
+    {:noreply, rebuild_tree(socket)}
+  end
 
   @impl Events.ChatAgent.Subscriber
   def on_booting(event, socket), do: AgentEvents.handle_booting(event, socket)
@@ -1452,10 +1458,16 @@ defmodule LoopyardWeb.WorkspaceLive do
     do: AgentEvents.handle_boot_failed(event, socket, &workspace_path/1)
 
   @impl Events.ChatAgent.Subscriber
-  def on_stopped(_event, socket), do: AgentEvents.handle_stopped(socket)
+  def on_stopped(_event, socket) do
+    {:noreply, socket} = AgentEvents.handle_stopped(socket)
+    {:noreply, rebuild_tree(socket)}
+  end
 
   @impl Events.ChatAgent.Subscriber
-  def on_removed(event, socket), do: AgentEvents.handle_removed(event, socket)
+  def on_removed(event, socket) do
+    {:noreply, socket} = AgentEvents.handle_removed(event, socket)
+    {:noreply, rebuild_tree(socket)}
+  end
 
   @impl Events.ChatAgent.Subscriber
   def on_renamed(event, socket), do: AgentEvents.handle_renamed(event, socket)
@@ -1500,6 +1512,13 @@ defmodule LoopyardWeb.WorkspaceLive do
   end
 
   defp patch_tree_agent_status(tree, _id, _status), do: tree
+
+  # Rebuild the whole tree from scratch — ONLY for structural changes (an agent
+  # or workspace appeared/disappeared), which are rare. Never on the hot path
+  # (tool calls / status flips): those are handled by targeted patches so the
+  # rail doesn't flicker.
+  defp rebuild_tree(socket),
+    do: assign(socket, :global_tree, Loopyard.WorkspaceTree.global(socket.assigns.host))
 
   # This window's saved sidebar collapse state, or the default (current project
   # open) when nothing's saved yet / on the dead render.

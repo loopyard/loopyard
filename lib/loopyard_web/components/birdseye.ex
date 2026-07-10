@@ -17,31 +17,37 @@ defmodule LoopyardWeb.Components.Birdseye do
 
   alias LoopyardWeb.Components.Sidebar
 
-  # Meaningful-only colors: a dot appears ONLY when there's something to know —
-  # working, needs-attention, or ready. "Asleep" / no-agent → nil (no dot), so
-  # the rail isn't a confusing sea of gray circles. `nil` renders as an aligned
-  # blank via `dot/1`.
-  defp display_color(:thinking), do: "bg-violet-500 animate-pulse"
-  defp display_color(:crashed), do: "bg-red-500"
-  defp display_color(:quarantined), do: "bg-red-500"
-  defp display_color(:ready), do: "bg-green-500"
-  defp display_color(_sleeping_or_none), do: nil
+  # Meaningful-only colors, driven by the agent's raw `:status` — which the
+  # LiveView keeps fresh by patching from StatusChanged events. This is
+  # DELIBERATELY not `agent_display_status/1`: that does a render-time Registry
+  # liveness lookup which is nondeterministic during an agent's session
+  # restarts, so the dot would blink out mid-work. A pure status→color mapping
+  # renders identically every time → visually stable. A dot appears ONLY when
+  # there's something to know (working / attention / ready); everything else →
+  # nil (an aligned blank, not a confusing gray circle).
+  @working [:thinking, :compacting, :booting, :backoff, :rate_limited]
+  @attention [:crashed, :auth_expired]
 
-  @doc "Dot color class (or nil) for a single agent's live display status."
-  def agent_dot(agent), do: display_color(Sidebar.agent_display_status(agent))
+  defp status_color(s) when s in @working, do: "bg-violet-500 animate-pulse"
+  defp status_color(s) when s in @attention, do: "bg-red-500"
+  defp status_color(:idle), do: "bg-green-500"
+  defp status_color(_), do: nil
+
+  @doc "Dot color class (or nil) for a single agent's live status."
+  def agent_dot(agent), do: status_color(Map.get(agent, :status))
 
   @doc """
   Dot color (or nil) for a group of agents — loudest state wins:
-  needs-attention > working > ready. All-asleep or no agents → nil (no dot).
+  needs-attention > working > ready. Anything else / no agents → nil (no dot).
   Agrees with the individual agent dots it summarizes.
   """
   def aggregate_dot(agents) do
-    displays = Enum.map(agents, &Sidebar.agent_display_status/1)
+    statuses = Enum.map(agents, &Map.get(&1, :status))
 
     cond do
-      Enum.any?(displays, &(&1 in [:crashed, :quarantined])) -> "bg-red-500"
-      Enum.any?(displays, &(&1 == :thinking)) -> "bg-violet-500 animate-pulse"
-      Enum.any?(displays, &(&1 == :ready)) -> "bg-green-500"
+      Enum.any?(statuses, &(&1 in @attention)) -> "bg-red-500"
+      Enum.any?(statuses, &(&1 in @working)) -> "bg-violet-500 animate-pulse"
+      Enum.any?(statuses, &(&1 == :idle)) -> "bg-green-500"
       true -> nil
     end
   end

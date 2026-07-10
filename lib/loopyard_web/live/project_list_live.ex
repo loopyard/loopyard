@@ -108,9 +108,13 @@ defmodule LoopyardWeb.ProjectListLive do
 
   def handle_info(%Loopyard.Events.Projects.Changed{} = e, socket), do: on_changed(e, socket)
 
-  # Any agent activity (status OR a tool call) → refresh the birdseye so dots +
-  # "what it's doing" lines stay live.
-  def handle_info(%Loopyard.Events.Activity.Event{}, socket), do: {:noreply, reload(socket)}
+  # Only STATUS changes refresh the birdseye — not every tool call. Reloading on
+  # each tool call rebuilt the whole page constantly and made it flicker; the
+  # home dots only track status anyway.
+  def handle_info(%Loopyard.Events.Activity.Event{kind: :status}, socket),
+    do: {:noreply, reload(socket)}
+
+  def handle_info(%Loopyard.Events.Activity.Event{}, socket), do: {:noreply, socket}
 
   # Container/port state changed → refresh so the openable :port chips are current.
   def handle_info(%Loopyard.Events.DockerObserver.Changed{}, socket),
