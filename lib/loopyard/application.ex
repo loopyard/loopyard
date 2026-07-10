@@ -315,7 +315,9 @@ defmodule Loopyard.Application do
     end
   rescue
     e ->
-      Logger.warning("[Loopyard] Auto-start of workspace #{ws_id} failed: #{Exception.message(e)}")
+      Logger.warning(
+        "[Loopyard] Auto-start of workspace #{ws_id} failed: #{Exception.message(e)}"
+      )
   end
 
   # Docker Desktop's credential helper hangs when Desktop isn't running.

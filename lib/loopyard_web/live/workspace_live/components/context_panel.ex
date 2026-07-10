@@ -97,8 +97,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     ~H"""
     <div class="px-3 py-2 border-b border-zinc-200/70 dark:border-zinc-700/50">
       <div class="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 mb-1">
-        Changes
-        <span :if={@files != []} class="text-zinc-400 font-normal">· {length(@files)}</span>
+        Changes <span :if={@files != []} class="text-zinc-400 font-normal">· {length(@files)}</span>
       </div>
 
       <div :if={@files == []} class="text-xs text-zinc-400 italic">working tree clean</div>
