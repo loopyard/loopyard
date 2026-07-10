@@ -15,8 +15,6 @@ defmodule LoopyardWeb.Components.Birdseye do
   """
   use Phoenix.Component
 
-  alias LoopyardWeb.Components.Sidebar
-
   # Meaningful-only colors, driven by the agent's raw `:status` — which the
   # LiveView keeps fresh by patching from StatusChanged events. This is
   # DELIBERATELY not `agent_display_status/1`: that does a render-time Registry
@@ -53,27 +51,28 @@ defmodule LoopyardWeb.Components.Birdseye do
   end
 
   @doc """
-  Plain-language "what's up with this agent" line — the same wording in the rail
-  tooltip and the home page row.
+  Plain-language "what's up with this agent" line, from the raw `:status` —
+  same source as the dot, so the text and the dot can never disagree (they used
+  to: the text did a render-time Registry liveness lookup that flipped to
+  "asleep" mid-work while the dot stayed "working").
   """
   def agent_activity(agent) do
-    case Sidebar.agent_display_status(agent) do
-      :thinking ->
+    status = Map.get(agent, :status)
+
+    cond do
+      status in @working ->
         case Map.get(agent, :active_tool) do
           tool when is_binary(tool) and tool != "" -> tool
           _ -> "working…"
         end
 
-      :ready ->
+      status == :idle ->
         "idle"
 
-      :crashed ->
+      status in @attention ->
         "needs attention"
 
-      :quarantined ->
-        "quarantined"
-
-      _ ->
+      true ->
         "asleep"
     end
   end

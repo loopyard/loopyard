@@ -137,8 +137,8 @@ defmodule LoopyardWeb.ProjectListLive do
     n = length(projects)
     agents = projects |> Enum.flat_map(&project_agents/1)
 
-    working =
-      Enum.count(agents, &(LoopyardWeb.Components.Sidebar.agent_display_status(&1) == :thinking))
+    # Count from raw :status (no per-agent Registry lookup) — same source as the dots.
+    working = Enum.count(agents, &(Map.get(&1, :status) in [:thinking, :compacting, :booting]))
 
     working_phrase =
       if working > 0,

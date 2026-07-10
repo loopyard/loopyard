@@ -18,8 +18,11 @@ defmodule Loopyard.WorkspaceTree do
   host the browser is on); omit it (the rail's compact use) and ports are `[]`.
   """
   def global(host \\ nil) do
+    # ETS-only read (no per-agent GenServer poll). Status in ETS is authoritative
+    # — every transition writes ETS before broadcasting — so this stays fresh
+    # without fleet-wide `get_state` round-trips on each rebuild.
     agents_by_ws =
-      Loopyard.ChatAgent.list_agents()
+      Loopyard.ChatAgent.list_agent_summaries()
       |> Enum.group_by(&Map.get(&1, :workspace_id))
 
     Loopyard.ProjectRegistry.list_projects()
