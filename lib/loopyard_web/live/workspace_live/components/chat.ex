@@ -300,12 +300,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       <%!-- scroll-smooth: the auto-tail (ScrollBottom hook nudges scrollTop as the
            agent streams) animates instead of jumping, so following the thinking
            glides. Pure CSS — honors prefers-reduced-motion automatically. --%>
-      <div id="messages" class="flex-1 overflow-y-auto flex flex-col px-4 md:px-6 pb-4 scroll-smooth">
-        <%!-- Normal flow (NOT flex-col-reverse). The ScrollBottom hook keeps you
-             pinned to the bottom on new messages and anchors on load-more; this
-             is what lets `position: sticky` on the prompt band work flush on
-             mobile (col-reverse broke sticky). --%>
-        <div class="space-y-2">
+      <div id="messages" class="flex-1 overflow-y-auto flex flex-col px-4 md:px-6 pb-4">
+        <%!-- `mt-auto` anchors the transcript to the BOTTOM: the most recent
+             message sits just above the input on first paint, so there's no
+             post-load scroll jump (that animated slide-down was the jank).
+             Older messages load in chunks as you scroll up (ScrollBottom hook →
+             load_more). Normal flow (NOT col-reverse) so the human prompts can
+             `position: sticky` to the top of their section. --%>
+        <div class="space-y-2 mt-auto">
           <p
             :if={assigns[:has_more_messages]}
             class="text-center py-2 text-xs text-zinc-400 dark:text-zinc-500"

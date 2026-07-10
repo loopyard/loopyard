@@ -29,7 +29,11 @@ Hooks.ScrollBottom = {
     this._atBottom = true
     this._prevHeight = 0
     this._bind()
-    this._toBottom()
+    // Defer to after layout is final (double rAF) so we land at the TRUE
+    // bottom, not a stale mid-scroll position — that was the "half-way
+    // scrolled" bug. With mt-auto the content is already bottom-anchored when
+    // it fits, so this is a no-op unless the transcript overflows.
+    requestAnimationFrame(() => requestAnimationFrame(() => this._toBottom()))
   },
 
   updated() {
@@ -46,9 +50,17 @@ Hooks.ScrollBottom = {
     }
   },
 
+  // Instant jump to bottom (NO smooth animation — the animated slide-down after
+  // load was the jank). Content shorter than the viewport is anchored to the
+  // bottom by CSS (mt-auto), so this is a no-op there; it only matters when the
+  // transcript overflows.
   _toBottom() {
     const el = this._el
-    if (el) el.scrollTop = el.scrollHeight
+    if (!el) return
+    const prev = el.style.scrollBehavior
+    el.style.scrollBehavior = "auto"
+    el.scrollTop = el.scrollHeight
+    el.style.scrollBehavior = prev
   },
 
   _bind() {
