@@ -130,10 +130,6 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:workspace, workspace)
      |> assign(:project, extra_assigns[:project])
      |> assign(:workspace_entry, extra_assigns[:workspace_entry])
-     |> assign(
-       :project_workspaces,
-       Switcher.list_project_workspaces(extra_assigns[:project], socket.transport_pid)
-     )
      |> assign(:base_path, base_path)
      |> assign(:global_tree, Loopyard.WorkspaceTree.global())
      |> Switcher.attach_view_tracker()
@@ -1604,16 +1600,13 @@ defmodule LoopyardWeb.WorkspaceLive do
   @impl Events.WorkspaceServices.Subscriber
   def on_services_updated(event, socket), do: DockerEvents.handle_services_updated(event, socket)
 
-  # --- Workspaces (switcher list) subscriber callback ---
+  # --- Workspaces subscriber callback ---
 
+  # A workspace added/removed/renamed → rebuild the god-mode sidebar tree so it
+  # reflects the change live (a fork someone makes appears without a reload).
   @impl Events.Workspaces.Subscriber
   def on_workspaces_changed(_event, socket) do
-    {:noreply,
-     assign(
-       socket,
-       :project_workspaces,
-       Switcher.list_project_workspaces(socket.assigns.project, socket.transport_pid)
-     )}
+    {:noreply, assign(socket, :global_tree, Loopyard.WorkspaceTree.global())}
   end
 
   # --- SourceSync subscriber callbacks ---

@@ -38,25 +38,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   # volumes. On the overview itself (`live_action == :index`) the
   # path is `nil`, which the Breadcrumbs component renders as the
   # current page (no link, aria-current="page").
-  defp workspace_crumbs(assigns) do
-    label = Loopyard.Source.display_name(assigns.workspace_entry)
-    label = if label == "", do: assigns.workspace.name, else: label
-
-    on_overview? = assigns[:live_action] == :index
-    last_path = if on_overview?, do: nil, else: assigns.base_path
-
-    crumbs = [{"Loopyard", "/"}]
-
-    crumbs =
-      if assigns.project do
-        crumbs ++ [{assigns.project.name, "/projects/#{assigns.project.id}"}]
-      else
-        crumbs
-      end
-
-    crumbs ++ [{label, last_path}]
-  end
-
   def chat_header(assigns) do
     # Mobile back button has two modes:
     #   - viewing an agent/service -> patch back to the sidebar (Menu)
@@ -73,14 +54,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           {:navigate, "/", "Projects"}
       end
 
-    crumbs = workspace_crumbs(assigns)
-
     assigns =
       assigns
       |> assign(:back_kind, back_kind)
       |> assign(:back_target, back_target)
       |> assign(:back_label, back_label)
-      |> assign(:crumbs, crumbs)
       |> assign(:host_exposed, Loopyard.HostExposer.exposed?())
 
     # Delegate to the ONE canonical app header (same component every page uses),

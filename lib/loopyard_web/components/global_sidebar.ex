@@ -53,6 +53,13 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
             no agents
           </div>
         </div>
+
+        <.link
+          navigate={"/projects/#{project.id}/new"}
+          class="px-2 py-0.5 text-xs text-zinc-400 hover:text-violet-500 dark:hover:text-violet-400"
+        >
+          + workspace
+        </.link>
       </div>
 
       <div :if={@tree == []} class="px-2 py-2 text-xs text-zinc-400 italic">
