@@ -86,7 +86,13 @@ defmodule Loopyard.Application do
       Loopyard.Agent.Reconciler,
 
       # --- Web layer (can restart independently) ---
-      LoopyardWeb.Endpoint
+      LoopyardWeb.Endpoint,
+
+      # Activity → chime bridge (#61). A web-edge SUBSCRIBER of the activity
+      # stream — decorative sound, fully rip-out-able (the core has no idea it
+      # exists; enforced by the sound boundary test). Started by module name
+      # only, so no Aural reference leaks into the core here.
+      LoopyardWeb.ActivitySound
     ]
 
     # Higher max_restarts: the child list includes modules from multiple
