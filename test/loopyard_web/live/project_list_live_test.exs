@@ -16,7 +16,7 @@ defmodule LoopyardWeb.ProjectListLiveTest do
     test "renders the home page with the projects list and New project", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/")
       assert html =~ "Loopyard"
-      assert html =~ "Projects"
+      assert html =~ "Your projects"
       assert html =~ "New project"
     end
 
