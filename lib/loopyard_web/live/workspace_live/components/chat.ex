@@ -39,36 +39,19 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   # path is `nil`, which the Breadcrumbs component renders as the
   # current page (no link, aria-current="page").
   def chat_header(assigns) do
-    # Mobile back button has two modes:
-    #   - viewing an agent/service -> patch back to the sidebar (Menu)
-    #   - viewing the sidebar/new screen -> navigate up to the project page
-    {back_kind, back_target, back_label} =
-      cond do
-        assigns.live_action in [:chat, :container, :service, :console, :services] ->
-          {:patch, assigns.base_path, "Menu"}
-
-        assigns.project ->
-          {:navigate, "/projects/#{assigns.project.id}", assigns.project.name}
-
-        true ->
-          {:navigate, "/", "Projects"}
-      end
-
-    assigns =
-      assigns
-      |> assign(:back_kind, back_kind)
-      |> assign(:back_target, back_target)
-      |> assign(:back_label, back_label)
-
     # No top chrome on the workspace view (breadcrumb / Remote / user / System
-    # live at `/` now). The left rail's "Loopyard" wordmark is the way back to
-    # the root dashboard. On mobile the rail is hidden, so we keep a thin
-    # back-bar here for navigation; on desktop this whole bar is gone.
+    # live at `/` now). On desktop the left rail's "Loopyard" wordmark is the
+    # way home; the rail is hidden on mobile, so we keep a thin back-bar here.
+    #
+    # Mobile back → the birdseye at `/`, which IS the mega switcher: bounce
+    # across every project → workspace → agent. Switching AGENTS within this
+    # workspace stays on the "Info" tab, so back is unambiguously "up and out."
+    # (Patching to the workspace :index doesn't work — its landing logic
+    # auto-redirects straight back to an agent, so the button appears dead.)
     ~H"""
     <div class="md:hidden flex items-center h-12 px-2 flex-none border-b border-zinc-200 dark:border-zinc-700/80">
       <.link
-        :if={@back_kind == :patch}
-        patch={@back_target}
+        navigate="/"
         class="-ml-1 inline-flex items-center gap-1 px-2 py-1 rounded-md text-base font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 active:bg-violet-100 dark:active:bg-violet-500/20 transition-colors flex-none min-w-0"
       >
         <svg
@@ -83,26 +66,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             clip-rule="evenodd"
           />
         </svg>
-        <span class="truncate">{@back_label}</span>
-      </.link>
-      <.link
-        :if={@back_kind == :navigate}
-        navigate={@back_target}
-        class="-ml-1 inline-flex items-center gap-1 px-2 py-1 rounded-md text-base font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 active:bg-violet-100 dark:active:bg-violet-500/20 transition-colors flex-none min-w-0"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 20 20"
-          fill="currentColor"
-          class="w-5 h-5 flex-none"
-        >
-          <path
-            fill-rule="evenodd"
-            d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z"
-            clip-rule="evenodd"
-          />
-        </svg>
-        <span class="truncate">{@back_label}</span>
+        <span class="truncate">Projects</span>
       </.link>
     </div>
     """
