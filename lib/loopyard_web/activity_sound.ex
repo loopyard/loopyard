@@ -26,7 +26,15 @@ defmodule LoopyardWeb.ActivitySound do
 
   @global_channel "activity"
 
-  def start_link(_opts), do: GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
+  def start_link(_opts) do
+    # Gated by config so tests (and anyone who wants silence) don't spin up
+    # ffmpeg/mp3 encoders. Default on for dev/prod; off in test.
+    if Application.get_env(:loopyard, :activity_sound, true) do
+      GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
+    else
+      :ignore
+    end
+  end
 
   @impl true
   def init(:ok) do

@@ -25,3 +25,4 @@ config :loopyard,
   # compaction. Tests that exercise the journal explicitly opt in via
   # `Saga.run/2` with `journal?: true` (journal_test.exs does this).
   saga_journal_default: false
+config :loopyard, activity_sound: false
