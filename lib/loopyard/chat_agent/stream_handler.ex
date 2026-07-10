@@ -241,12 +241,9 @@ defmodule Loopyard.ChatAgent.StreamHandler do
       `{:noreply, state}`.
   """
   def on_stream_done(%{status: status} = state) when status in [:rate_limited, :auth_expired] do
-    # A degraded terminal status was set mid-turn (RateLimit rejection / auth
-    # error). The turn's stream is now closing, but we must NOT flip back to
-    # :idle or drain pending_sends into the limited/expired API — the queue
-    # stays parked until the degraded state clears (the rate_limit_retry timer
-    # re-arms the turn, or the user re-authenticates). Just preserve any
-    # partial text and keep the status.
+    # Degraded status set mid-turn (rate-limit rejection / auth error): keep it
+    # and DON'T drain pending_sends into the limited/expired API. The queue
+    # stays parked until the degraded state clears; just preserve partial text.
     state =
       state
       |> finalize_partial_on_stream_interrupt(state.id, :error)
@@ -343,12 +340,10 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     if is_binary(prompt), do: {:restore_input, prompt, state}, else: {:noreply, state}
   end
 
-  # The canonical transient-turn reset. Every path that returns the agent to a
-  # resting status MUST clear these, or stale turn state leaks into the next
-  # turn: a stuck spinner (active_tool), a false "didn't go through" error
-  # (pending_turn_error), premature tool-loop/runaway warnings (the tool
-  # counters), or a re-fired context warning. Does NOT set :status — the
-  # caller picks the resting status.
+  # Canonical transient-turn reset. Every path back to a resting status MUST
+  # clear these, or stale turn state leaks into the next turn (stuck spinner,
+  # false "didn't go through" error, premature loop warnings, re-fired context
+  # warning). Does NOT set :status — the caller picks the resting status.
   defp reset_turn_state(state) do
     %{
       state
@@ -466,11 +461,10 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     # on browser refresh.
     state = finalize_partial_on_stream_interrupt(state, id, :error)
 
-    # Count recent auto-restarts (within last 60 seconds) so a deterministically
-    # dying CLI doesn't hot-loop. This must match the marker actually written
-    # below ("Agent session restarted automatically…") — the previous literal
-    # ("Agent crashed — restarting...") was never emitted anywhere, so the
-    # breaker was dead and the loop ran with zero backoff.
+    # Count recent auto-restarts (last 60s) so a deterministically dying CLI
+    # doesn't hot-loop. Must match the marker actually written below — the old
+    # literal ("Agent crashed — restarting...") was never emitted, so the
+    # breaker was dead (#42).
     recent_crashes =
       state.messages
       |> Enum.count(fn m ->
@@ -603,10 +597,9 @@ defmodule Loopyard.ChatAgent.StreamHandler do
 
     {state, error_msg} = append_message(state, error_msg)
 
-    # Clear stream_ref along with the turn transients: the wedged stream Task
-    # may still be alive, and dropping its ref means any late events it emits
-    # are ignored instead of mutating a now-"idle" agent (matters if the
-    # reboot below fails and leaves us resting).
+    # Clear stream_ref too: the wedged Task may still be alive, and dropping its
+    # ref means late events are ignored, not applied to a now-"idle" agent (if
+    # the reboot below fails and leaves us resting).
     state = reset_turn_state(%{state | status: :idle, errors: state.errors + 1, stream_ref: nil})
 
     Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
@@ -623,48 +616,14 @@ defmodule Loopyard.ChatAgent.StreamHandler do
   end
 
   @doc """
-  Finalize any partial text accumulated from TextDelta events when a
-  stream is interrupted (error, timeout, user stop). Persists the
-  partial as a truncated assistant message.
+  Finalize any partial text accumulated from TextDelta events when a stream is
+  interrupted (error, timeout, user stop). Delegates to
+  `Loopyard.ChatAgent.PartialText` — kept as a thin passthrough so existing
+  callers (StreamHandler + ChatAgent) don't need to change.
   """
-  def finalize_partial_on_stream_interrupt(%{in_flight_partial: ""} = state, _id, _reason),
-    do: state
-
-  def finalize_partial_on_stream_interrupt(%{in_flight_partial: partial} = state, id, reason)
-      when is_binary(partial) and partial != "" do
-    marker =
-      case reason do
-        :error -> "⚠ Truncated — CLI stream errored mid-response."
-        :timeout -> "⚠ Truncated — CLI stopped responding mid-stream."
-        :stopped_by_user -> "⚠ Truncated — user stopped the agent mid-response."
-        other -> "⚠ Truncated — stream ended unexpectedly (#{inspect(other)})."
-      end
-
-    partial_msg = %{
-      role: :assistant,
-      content: partial <> "\n\n" <> marker,
-      partial: true,
-      timestamp: DateTime.utc_now()
-    }
-
-    {state, partial_msg} = append_message(state, partial_msg)
-    Persistence.persist_message(state, partial_msg)
-
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-      agent_id: id,
-      msg: partial_msg
-    })
-
-    :telemetry.execute(
-      [:loopyard, :agent, :partial_finalized],
-      %{bytes: byte_size(partial)},
-      %{agent_id: id, reason: reason}
-    )
-
-    %{state | in_flight_partial: ""}
-  end
-
-  def finalize_partial_on_stream_interrupt(state, _id, _reason), do: state
+  defdelegate finalize_partial_on_stream_interrupt(state, id, reason),
+    to: Loopyard.ChatAgent.PartialText,
+    as: :finalize
 
   # --- Private helpers ---
 
