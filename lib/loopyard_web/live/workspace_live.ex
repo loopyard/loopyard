@@ -132,14 +132,12 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:workspace_entry, extra_assigns[:workspace_entry])
      |> assign(:base_path, base_path)
      |> assign(:global_tree, Loopyard.WorkspaceTree.global(host))
-     # Expandable-tree sidebar: land with THIS project open so its workspaces
-     # are listed, everything else collapsed. The user pops open other projects
-     # as they like.
+     # Expandable-tree sidebar. Restore THIS window's saved collapse state
+     # (per-window via transport_pid, survives the navigate-remount, independent
+     # across windows). Nothing saved yet → land with the current project open.
      |> assign(
        :expanded,
-       LoopyardWeb.Components.GlobalSidebar.initial_expanded(
-         extra_assigns[:project] && extra_assigns[:project].id
-       )
+       restore_expanded(socket, extra_assigns[:project] && extra_assigns[:project].id)
      )
      |> Switcher.attach_view_tracker()
      |> assign(:host, host)
@@ -654,10 +652,11 @@ defmodule LoopyardWeb.WorkspaceLive do
 
   # --- God-mode sidebar: expandable tree (#55) ---
 
-  # Open/close a project or workspace branch. Several can be open at once;
-  # collapse the ones you care less about.
+  # Open/close a project branch. Several can be open at once; collapse the ones
+  # you care less about. Persisted per-window so it survives navigation.
   def handle_event("sidebar_toggle", %{"node" => key}, socket) do
     expanded = LoopyardWeb.Components.GlobalSidebar.toggle(socket.assigns.expanded, key)
+    Loopyard.WindowViews.put_expanded(socket.transport_pid, MapSet.to_list(expanded))
     {:noreply, assign(socket, :expanded, expanded)}
   end
 
@@ -1465,6 +1464,12 @@ defmodule LoopyardWeb.WorkspaceLive do
   def on_status_changed(event, socket) do
     {:noreply, socket} = AgentEvents.handle_status_changed(event, socket)
 
+    # Keep the god-mode rail LIVE off the SAME authoritative transition the
+    # right pane uses — patch the tree agent's status straight from the event
+    # (no stale ETS re-read). Without this the rail freezes on an old frame:
+    # the right pane goes green while the rail still shows red/gray.
+    socket = update(socket, :global_tree, &patch_tree_agent_status(&1, event.id, event.status))
+
     # When the selected agent finishes a turn (→ :idle), its working-tree
     # changes have settled — refresh the right-pane "Changes" hero (#58).
     socket =
@@ -1473,6 +1478,38 @@ defmodule LoopyardWeb.WorkspaceLive do
         else: socket
 
     {:noreply, socket}
+  end
+
+  # Patch one agent's `:status` in the global tree from a StatusChanged event.
+  # The dot is computed at render time from this status + live liveness, so the
+  # rail reflects reality the instant the transition fires.
+  defp patch_tree_agent_status(tree, agent_id, status) when is_list(tree) do
+    Enum.map(tree, fn project ->
+      workspaces =
+        Enum.map(project.workspaces, fn ws ->
+          agents =
+            Enum.map(ws.agents, fn a ->
+              if a.id == agent_id, do: %{a | status: status}, else: a
+            end)
+
+          %{ws | agents: agents}
+        end)
+
+      %{project | workspaces: workspaces}
+    end)
+  end
+
+  defp patch_tree_agent_status(tree, _id, _status), do: tree
+
+  # This window's saved sidebar collapse state, or the default (current project
+  # open) when nothing's saved yet / on the dead render.
+  defp restore_expanded(socket, project_id) do
+    saved = connected?(socket) && Loopyard.WindowViews.get_expanded(socket.transport_pid)
+
+    case saved do
+      keys when is_list(keys) -> MapSet.new(keys)
+      _ -> LoopyardWeb.Components.GlobalSidebar.initial_expanded(project_id)
+    end
   end
 
   # Async-fetch the selected agent's workspace working-tree changes for the

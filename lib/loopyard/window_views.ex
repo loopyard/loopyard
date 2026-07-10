@@ -52,6 +52,42 @@ defmodule Loopyard.WindowViews do
 
   def resume_path(_, _), do: nil
 
+  # ── Sidebar collapse state (per window) ──
+  #
+  # Which projects are expanded in the god-mode rail, per WINDOW — so expanding
+  # a few projects and clicking into a workspace doesn't collapse everything on
+  # the navigate-remount, and two windows keep independent collapse states.
+  # Keyed by `{conn, :sidebar}` in the same table (so window-close cleanup via
+  # `clear/1` sweeps it too). `nil` return = nothing saved yet (caller defaults).
+
+  @doc "Save the set of expanded node keys for a window's sidebar."
+  @spec put_expanded(pid() | nil, [String.t()]) :: :ok
+  def put_expanded(conn, keys) when is_pid(conn) and is_list(keys) do
+    :ets.insert(@table, {{conn, :sidebar}, keys, now_ms()})
+    :ok
+  end
+
+  def put_expanded(_, _), do: :ok
+
+  @doc "The window's saved expanded node keys, or nil if none saved. Expires stale rows."
+  @spec get_expanded(pid() | nil) :: [String.t()] | nil
+  def get_expanded(conn) when is_pid(conn) do
+    case :ets.lookup(@table, {conn, :sidebar}) do
+      [{key, keys, ts}] when is_list(keys) ->
+        if now_ms() - ts <= @ttl_ms do
+          keys
+        else
+          :ets.delete(@table, key)
+          nil
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  def get_expanded(_), do: nil
+
   @doc """
   Delete every row for a window's connection. Called when that connection goes
   DOWN (window/tab closed, socket dropped) via `Loopyard.Resources` ownership —
