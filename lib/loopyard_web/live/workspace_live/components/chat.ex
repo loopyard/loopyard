@@ -263,7 +263,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       id="detail-level"
       phx-hook="DetailLevel"
       data-level={@level}
-      class="hidden sm:inline-flex items-center rounded-lg bg-zinc-100 dark:bg-zinc-800 p-0.5"
+      class="hidden sm:inline-flex items-center rounded-lg bg-zinc-100 dark:bg-zinc-800 p-1"
       role="group"
       aria-label="Activity detail level"
     >
@@ -274,7 +274,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
         title={hint}
         aria-pressed={@level == value}
         class={[
-          "px-2 py-0.5 text-[11px] font-medium rounded-md transition-colors",
+          "px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
           if(@level == value,
             do: "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm",
             else: "text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"

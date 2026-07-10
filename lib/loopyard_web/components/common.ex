@@ -110,7 +110,7 @@ defmodule LoopyardWeb.Components.Common do
   def control_btn(%{variant: :primary} = assigns) do
     ~H"""
     <button
-      class="px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-violet-600 dark:text-violet-400 transition-colors"
+      class="px-3.5 py-1.5 rounded-md text-sm font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-violet-600 dark:text-violet-400 transition-colors"
       {@rest}
     >
       {render_slot(@inner_block)}
@@ -121,7 +121,7 @@ defmodule LoopyardWeb.Components.Common do
   def control_btn(assigns) do
     ~H"""
     <button
-      class="px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors"
+      class="px-3.5 py-1.5 rounded-md text-sm font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors"
       {@rest}
     >
       {render_slot(@inner_block)}
