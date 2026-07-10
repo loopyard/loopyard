@@ -109,10 +109,9 @@ defmodule Loopyard.ChatAgent.Persistence do
         AgentLog.append(event, log_path: path, version: @log_version)
 
       pid ->
-        case Loopyard.AgentLog.Checkpointer.append(pid, event) do
-          :ok -> :ok
-          {:error, reason} -> raise "agent log append failed: #{inspect(reason)}"
-        end
+        # Non-blocking cast — the Checkpointer serializes the write against
+        # compaction and logs/telemetry's its own failures (it can't reply).
+        Loopyard.AgentLog.Checkpointer.append(pid, event)
     end
   end
 
