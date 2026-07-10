@@ -40,26 +40,27 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
 
   def context_sections(assigns) do
     ~H"""
+    <%!-- Operational cockpit (#57): lead with the workspace's LIVE life — what
+         the agent is doing, what it just did, what changed — not a stats ledger.
+         Raw numbers (tokens · cost · docker · tools) demote into "Details". --%>
     <.agent_name agent={@agent} editing_name={@editing_name} />
+
+    <.harness_status agent={@agent} />
+
+    <.recent_tools agent={@agent} />
 
     <.changes_summary changes={@changes} />
 
-    <%!-- HERO: the state you actually watch — harness status + model/cost.
-         Everything else (Info, Docker, context files, the 22-tool wall) is
-         demoted into a collapsed "Details" disclosure so the default view isn't
-         overwhelming (#57). Nothing removed — one click away. --%>
-    <.harness_status agent={@agent} />
-    <.claude_usage agent={@agent} />
-
     <details class="group border-t border-zinc-200/70 dark:border-zinc-700/50">
       <summary class="cursor-pointer select-none list-none px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">
-        <span class="group-open:hidden">▸ Details — info · docker · tools</span>
+        <span class="group-open:hidden">▸ Details — tokens · cost · docker · tools</span>
         <span class="hidden group-open:inline">▾ Details</span>
       </summary>
 
+      <.claude_usage agent={@agent} />
       <.context_files agent={@agent} />
 
-      <.section label="Info">
+      <.section label="Activity">
         <.info_row label="Turns" value={@agent[:turns] || 0} />
         <.info_row label="Tool calls" value={@agent.tool_calls} />
         <.info_row
@@ -81,6 +82,56 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     </details>
     """
   end
+
+  # RECENT: the last handful of tool calls — the "what did it just do" that a
+  # stats ledger can't show. Newest first, each a tool + a one-line summary of
+  # what it acted on. This is the operational pulse of the agent.
+  @recent_tool_limit 6
+
+  defp recent_tools(assigns) do
+    recent =
+      (assigns.agent[:messages] || [])
+      |> Enum.filter(&(Map.get(&1, :role) == :tool))
+      |> Enum.take(-@recent_tool_limit)
+      |> Enum.reverse()
+
+    assigns = assign(assigns, :recent, recent)
+
+    ~H"""
+    <div :if={@recent != []} class="px-3 py-2 border-b border-zinc-200/70 dark:border-zinc-700/50">
+      <div class="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 mb-1.5">
+        Recent
+      </div>
+      <div class="space-y-1">
+        <div :for={t <- @recent} class="flex items-baseline gap-2 text-xs min-w-0">
+          <span class="font-mono font-medium text-violet-600 dark:text-violet-400 flex-none">
+            {short_tool(t.tool)}
+          </span>
+          <span class="truncate text-zinc-500 dark:text-zinc-400" title={tool_summary(t)}>
+            {tool_summary(t)}
+          </span>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  # A concise one-liner for a tool call, from its most meaningful input field.
+  defp tool_summary(%{tool: tool, input: input}) when is_map(input) do
+    cond do
+      v = input["file_path"] -> Path.relative_to_cwd(to_string(v))
+      v = input["path"] -> to_string(v)
+      v = input["command"] -> to_string(v)
+      v = input["pattern"] -> to_string(v)
+      v = input["description"] -> to_string(v)
+      v = input["query"] -> to_string(v)
+      v = input["url"] -> to_string(v)
+      tool in ["TodoWrite", "Task"] -> ""
+      true -> ""
+    end
+  end
+
+  defp tool_summary(_), do: ""
 
   # The hero of the right pane (#58): what THIS agent has changed in the
   # working tree, live. Refreshed when the agent settles (→ :idle). Staged +
