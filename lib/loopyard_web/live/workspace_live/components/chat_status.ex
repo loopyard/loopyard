@@ -83,7 +83,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
     assigns =
       assigns
       |> assign(:turn_since, turn_started_unix_ms(assigns.messages))
+      |> assign_new(:streaming_text, fn -> "" end)
+      |> assign_new(:active_tool, fn -> nil end)
       |> assign_status_styles()
+
+    # Live signal so a long percolation isn't a black box (#62): an output-token
+    # estimate that ticks up as text streams (~4 chars/token), and the current
+    # tool during the silent gaps between text.
+    assigns = assign(assigns, :live_tokens, token_estimate(assigns.streaming_text))
 
     ~H"""
     <%!-- The live tip of the timeline. It FLOWS on the spine like the activity rows
@@ -114,6 +121,19 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
         data-since={@turn_since}
         class={["text-xs flex-none tabular-nums", @elapsed_class]}
       ></span>
+      <span
+        :if={@live_tokens}
+        class="text-xs flex-none tabular-nums text-zinc-400"
+        title="output tokens this turn (estimate)"
+      >
+        · ~{@live_tokens} tok
+      </span>
+      <span
+        :if={@active_tool && @streaming_text == ""}
+        class="text-xs flex-none truncate font-mono text-zinc-400"
+      >
+        · {short_tool(@active_tool)}
+      </span>
       <div class="flex-1 min-w-0"></div>
       <button
         type="button"
@@ -126,6 +146,23 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
     </div>
     """
   end
+
+  # Rough output-token estimate from streamed text (~4 chars/token). nil when
+  # there's no text yet (so the counter simply doesn't show during tool gaps).
+  defp token_estimate(text) when is_binary(text) and text != "" do
+    n = div(byte_size(text), 4)
+
+    cond do
+      n >= 1000 -> "#{Float.round(n / 1000, 1)}k"
+      n > 0 -> Integer.to_string(n)
+      true -> nil
+    end
+  end
+
+  defp token_estimate(_), do: nil
+
+  defp short_tool(tool) when is_binary(tool), do: tool |> String.split("__") |> List.last()
+  defp short_tool(tool), do: to_string(tool)
 
   # Word + colour scheme for the live bar, by what the harness is actually doing.
   # Thinking stays violet; harness maintenance (compacting, restarting a crashed

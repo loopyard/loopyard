@@ -500,6 +500,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               word={@thinking_word}
               agent_id={@agent.id}
               mode={live_status_mode(@agent)}
+              streaming_text={@streaming_text}
+              active_tool={@agent[:active_tool]}
             />
           </div>
         </div>
