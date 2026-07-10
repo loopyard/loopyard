@@ -72,7 +72,7 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
               ]}
             >
               <.link
-                navigate={"/projects/#{project.id}/workspaces/#{ws.id}"}
+                navigate={workspace_link(project.id, ws)}
                 class="flex-1 min-w-0 flex items-center gap-2.5 py-1.5"
                 style="padding-left: 2rem"
               >
@@ -154,5 +154,19 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
     if MapSet.member?(expanded, key),
       do: MapSet.delete(expanded, key),
       else: MapSet.put(expanded, key)
+  end
+
+  # Link a workspace row straight to one of its agents when it has any — so the
+  # click lands on the chat in ONE navigation. Going to the workspace :index
+  # instead renders that page and THEN auto-redirects to an agent, and that
+  # navigate-then-redirect is the visible flicker. Empty workspace → :index
+  # (which auto-spawns the first agent).
+  defp workspace_link(project_id, ws) do
+    base = "/projects/#{project_id}/workspaces/#{ws.id}"
+
+    case ws.agents do
+      [agent | _] -> "#{base}/agents/#{agent.id}"
+      _ -> base
+    end
   end
 end
