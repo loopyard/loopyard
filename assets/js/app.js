@@ -28,18 +28,17 @@ Hooks.ScrollBottom = {
     this._loading = false
     this._atBottom = true
     this._prevHeight = 0
+    this._revealed = false
     this._bind()
-    // Defer to after layout is final (double rAF) so we land at the TRUE
-    // bottom, not a stale mid-scroll position — that was the "half-way
-    // scrolled" bug. With mt-auto the content is already bottom-anchored when
-    // it fits, so this is a no-op unless the transcript overflows.
-    requestAnimationFrame(() => requestAnimationFrame(() => this._toBottom()))
+    this._initialReveal()
   },
 
   updated() {
     this._bind()
     const el = this._el
     if (!el) return
+    // First time #messages appears, reveal it (mask the scroll-into-place).
+    if (!this._revealed) { this._initialReveal(); return }
     if (this._loading && this._prevHeight) {
       // Older messages just prepended at the top — keep the reading position
       // fixed by the amount the content grew.
@@ -48,6 +47,22 @@ Hooks.ScrollBottom = {
     } else if (this._atBottom) {
       this._toBottom()
     }
+  },
+
+  // Hide #messages until it's scrolled to the bottom, THEN fade it in — so the
+  // sticky "YOU" prompt never visibly pops from its flow position up to the
+  // top. Deferred to after layout (double rAF) so the scroll lands at the true
+  // bottom. No-op for content that already fits (mt-auto anchors it).
+  _initialReveal() {
+    const el = this._el
+    if (!el || this._revealed) return
+    this._revealed = true
+    el.style.opacity = "0"
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      this._toBottom()
+      el.style.transition = "opacity 100ms ease"
+      el.style.opacity = "1"
+    }))
   },
 
   // Instant jump to bottom (NO smooth animation — the animated slide-down after

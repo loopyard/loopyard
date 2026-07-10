@@ -94,14 +94,20 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
     end
   end
 
-  @message_page_size 50
+  # Load a fat chunk from the bottom (most recent). 200 is big enough that the
+  # human "YOU" prompt owning the visible response is in the window ~90% of the
+  # time (turns rarely run 200 messages), so the sticky prompt band has its
+  # message. In the rare case a turn IS >200 messages of tool calls with no
+  # prompt in reach, the top section just renders headerless — fine, not worth
+  # the complexity of snapping. Older messages load in chunks on scroll-up.
+  #
+  # Load from the SAME live snapshot the cockpit uses (the `get_state` summary,
+  # which prefers the live GenServer), not a second ETS read: per-message stream
+  # events only write ETS at turn boundaries, so an ETS read lags the live
+  # conversation and is empty right after a resume re-stream — that was the
+  # blank chat.
+  @message_page_size 200
 
-  # Load the chat's first page from the SAME live snapshot the cockpit uses
-  # (the `get_state` summary, which prefers the live GenServer), not a second
-  # ETS read. Per-message stream events only write ETS at turn boundaries, so
-  # an ETS read lags the live conversation by up to a full turn — and is fully
-  # empty right after a resume/reconnect re-stream. That divergence was the
-  # blank chat: cockpit (live) showed messages while the chat list (ETS) was [].
   defp assign_message_page(socket, agent) do
     msgs = agent[:messages] || []
     page = Enum.take(msgs, -@message_page_size)
