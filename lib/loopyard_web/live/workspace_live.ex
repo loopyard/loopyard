@@ -1610,9 +1610,12 @@ defmodule LoopyardWeb.WorkspaceLive do
   @impl Events.ChatAgentMessage.Subscriber
   def on_text_delta(%Events.ChatAgentMessage.TextDelta{agent_id: id, text: text}, socket)
       when id == socket.assigns.selected_id do
+    # ONLY touch streaming state on a token. Do NOT rebuild @selected_agent here
+    # (that re-rendered the entire cockpit — recent tools, usage, changes — on
+    # every single token, the main flicker/CPU source). The context panel
+    # refreshes on Message / StatusChanged, which is often enough.
     {:noreply,
      socket
-     |> AgentEvents.refresh_selected_from_agents(id, socket.assigns.agents)
      |> assign(:streaming_text, socket.assigns.streaming_text <> text)
      |> assign(:streaming_thinking, "")
      |> push_event("scroll_bottom", %{})}

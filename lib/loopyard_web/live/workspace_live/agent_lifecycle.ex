@@ -84,7 +84,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
           |> assign(:agents, agents)
           |> assign(:selected_id, id)
           |> assign(:selected_agent, agent)
-          |> assign_message_page(id)
+          |> assign_message_page(agent)
           |> assign(:streaming_text, "")
           |> assign(:booting_agent_id, nil)
           |> assign(:stream_buffer, stream_buffer)
@@ -96,12 +96,19 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
 
   @message_page_size 50
 
-  defp assign_message_page(socket, agent_id) do
-    {messages, total} = Loopyard.ChatAgent.get_messages(agent_id, limit: @message_page_size)
+  # Load the chat's first page from the SAME live snapshot the cockpit uses
+  # (the `get_state` summary, which prefers the live GenServer), not a second
+  # ETS read. Per-message stream events only write ETS at turn boundaries, so
+  # an ETS read lags the live conversation by up to a full turn — and is fully
+  # empty right after a resume/reconnect re-stream. That divergence was the
+  # blank chat: cockpit (live) showed messages while the chat list (ETS) was [].
+  defp assign_message_page(socket, agent) do
+    msgs = agent[:messages] || []
+    page = Enum.take(msgs, -@message_page_size)
 
     socket
-    |> assign(:messages, messages)
-    |> assign(:has_more_messages, length(messages) < total)
+    |> assign(:messages, page)
+    |> assign(:has_more_messages, length(page) < length(msgs))
   end
 
   @doc """
