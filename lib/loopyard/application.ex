@@ -161,6 +161,12 @@ defmodule Loopyard.Application do
     # are visible immediately on boot — not lazily on first page visit.
     restore_all_agents()
 
+    # Bring back the last working state: auto-start workspaces that were used
+    # (have restored agents) but whose work container is stopped, so a restart
+    # doesn't leave you clicking Start on crashed agents in dead workspaces.
+    # Async + best-effort so container starts never block boot. (#52)
+    safe_restore("Workspace.Autostart", fn -> autostart_used_workspaces() end)
+
     # Scan the saga journal for incomplete sagas (BEAM crashed
     # mid-saga last run) and dispatch each per its declared
     # on_resume strategy — :rollback auto-reverts, :manual surfaces
@@ -249,6 +255,61 @@ defmodule Loopyard.Application do
     else
       acc
     end
+  end
+
+  # Auto-start the workspaces that were in use, so a server restart restores
+  # the last working state instead of dropping you on crashed agents in
+  # powered-down workspaces. "In use" = has restored agents. We only start a
+  # workspace whose work container ALREADY EXISTS but is STOPPED — never build
+  # or create a fresh one on boot. Each start runs in its own supervised Task
+  # so one slow/failing start neither blocks boot nor the others. (#52)
+  defp autostart_used_workspaces do
+    if Application.get_env(:loopyard, :autostart_workspaces_on_boot, true) do
+      used_workspace_ids()
+      |> Enum.each(fn ws_id ->
+        ws = Loopyard.WorkspaceRegistry.get_workspace(ws_id)
+
+        if ws && ready_workspace?(ws) && work_container_stopped?(ws_id) do
+          Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
+            autostart_one(ws_id, ws[:path])
+          end)
+        end
+      end)
+    end
+
+    :ok
+  end
+
+  # Workspace ids that have at least one restored agent (were actually used).
+  defp used_workspace_ids do
+    :ets.tab2list(:chat_agents)
+    |> Enum.map(fn {_id, summary} -> Map.get(summary, :workspace_id) end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+  end
+
+  # Same guard as restore_all_agents: skip workspaces mid-setup. Legacy
+  # workspaces (no :setup key) predate the saga and are safe.
+  defp ready_workspace?(ws) do
+    phase = get_in(ws, [:setup, :phase])
+    phase == nil or phase == :ready
+  end
+
+  # The work container exists (workspace was set up) but isn't running.
+  defp work_container_stopped?(ws_id) do
+    name = Loopyard.Workspace.WorkContainer.container_name(ws_id)
+    Loopyard.Docker.container_exists?(name) and not Loopyard.Docker.container_running?(name)
+  end
+
+  defp autostart_one(ws_id, path) do
+    if path do
+      Loopyard.WorkspaceSupervisor.start_workspace(ws_id, path)
+      Loopyard.Workspace.WorkContainer.ensure_up(ws_id)
+      Logger.info("[Loopyard] Auto-started workspace #{ws_id} on boot")
+    end
+  rescue
+    e ->
+      Logger.warning("[Loopyard] Auto-start of workspace #{ws_id} failed: #{Exception.message(e)}")
   end
 
   # Docker Desktop's credential helper hangs when Desktop isn't running.
