@@ -12,6 +12,8 @@ defmodule LoopyardWeb.ProjectListLive do
       if connected?(socket) do
         # Multiplayer: a project anyone creates/removes shows up in this list live.
         Loopyard.Events.Projects.subscribe()
+        # Live agent status on the home cards (idle/working dots update live).
+        Loopyard.Events.Activity.subscribe_global()
         subscribe_iex(socket)
       else
         assign(socket, :iex_session, %{level: nil})
@@ -92,23 +94,59 @@ defmodule LoopyardWeb.ProjectListLive do
 
   def handle_info(%Loopyard.Events.Projects.Changed{} = e, socket), do: on_changed(e, socket)
 
+  # An agent status change anywhere → refresh the home cards' live dots.
+  def handle_info(%Loopyard.Events.Activity.Event{kind: :status}, socket),
+    do: {:noreply, assign(socket, :projects, load_projects())}
+
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl Loopyard.Events.Projects.Subscriber
   def on_changed(_e, socket), do: {:noreply, assign(socket, :projects, load_projects())}
 
   defp load_projects do
+    agents_by_ws =
+      Loopyard.ChatAgent.list_agents() |> Enum.group_by(&Map.get(&1, :workspace_id))
+
     ProjectRegistry.list_projects()
     |> Enum.map(fn project ->
       workspaces = ProjectRegistry.list_workspaces(project.id)
-      Map.put(project, :workspace_count, length(workspaces))
+      agents = Enum.flat_map(workspaces, fn ws -> Map.get(agents_by_ws, ws.id, []) end)
+
+      project
+      |> Map.put(:workspace_count, length(workspaces))
+      |> Map.put(:agent_count, length(agents))
+      |> Map.put(:agent_dot, agent_dot(agents))
     end)
   end
 
+  # Aggregate live status for a project's agents (loudest state wins), or nil
+  # when it has no agents.
+  defp agent_dot([]), do: nil
+
+  defp agent_dot(agents) do
+    statuses = Enum.map(agents, &Map.get(&1, :status))
+
+    cond do
+      Enum.any?(statuses, &(&1 in [:thinking, :compacting])) -> "bg-blue-500 animate-pulse"
+      Enum.any?(statuses, &(&1 in [:rate_limited, :auth_expired, :crashed])) -> "bg-amber-500"
+      Enum.any?(statuses, &(&1 == :idle)) -> "bg-emerald-500"
+      true -> "bg-zinc-300 dark:bg-zinc-600"
+    end
+  end
+
+  defp home_subtitle([]), do: "Nothing here yet — create your first project below."
+
+  defp home_subtitle(projects) do
+    n = length(projects)
+    agents = Enum.sum(Enum.map(projects, & &1.agent_count))
+    "#{n} #{pluralize(n, "project")} · #{agents} #{pluralize(agents, "agent")}"
+  end
+
+  defp pluralize(1, word), do: word
+  defp pluralize(_, word), do: word <> "s"
+
   @impl true
   def render(assigns) do
-    assigns = assign(assigns, :has_projects, assigns.projects != [])
-
     ~H"""
     <.page_shell
       breadcrumbs={crumbs(@live_action)}
@@ -118,34 +156,69 @@ defmodule LoopyardWeb.ProjectListLive do
     >
       <%= case @live_action do %>
         <% :index -> %>
-          <.section_header title="Projects">
-            <:action>
-              <.new_button navigate="/projects/new">New project</.new_button>
-            </:action>
-          </.section_header>
+          <%!-- Home: a warm, unhurried overview. Comfortable cards, live agent
+               status, no cramming. The one place you land and see everything. --%>
+          <header class="mb-8">
+            <h1 class="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+              Your projects
+            </h1>
+            <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
+              {home_subtitle(@projects)}
+            </p>
+          </header>
 
-          <.card_grid :if={@has_projects}>
-            <.tile_card :for={project <- @projects} navigate={"/projects/#{project.id}"}>
-              <h3 class="text-base font-semibold truncate">{project.name}</h3>
-              <p class="text-xs md:text-sm font-mono text-zinc-400 dark:text-zinc-500 mt-1 truncate">
+          <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <.link
+              :for={project <- @projects}
+              navigate={"/projects/#{project.id}"}
+              class="group flex flex-col rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/60 p-5 min-h-[9rem]
+                     hover:border-violet-300 dark:hover:border-violet-500/40 hover:shadow-lg hover:shadow-zinc-900/5 dark:hover:shadow-black/20
+                     hover:-translate-y-0.5 transition-all duration-150 ease-out"
+            >
+              <div class="flex items-start justify-between gap-2">
+                <h3 class="text-base font-semibold text-zinc-900 dark:text-zinc-50 truncate">
+                  {project.name}
+                </h3>
+                <span
+                  :if={project.agent_dot}
+                  class={["mt-1.5 h-2 w-2 rounded-full flex-none", project.agent_dot]}
+                  title="agent activity"
+                />
+              </div>
+              <p class="text-xs font-mono text-zinc-400 dark:text-zinc-500 mt-1 truncate">
                 {project_location(project)}
               </p>
-              <p
-                :if={project.workspace_count > 1}
-                class="text-xs text-zinc-400 dark:text-zinc-500 mt-2"
-              >
-                {project.workspace_count} workspaces
-              </p>
-            </.tile_card>
-          </.card_grid>
+              <div class="mt-auto pt-4 flex items-center gap-2.5 text-xs text-zinc-400 dark:text-zinc-500">
+                <span>{project.workspace_count} {pluralize(project.workspace_count, "workspace")}</span>
+                <span :if={project.agent_count > 0} class="text-zinc-300 dark:text-zinc-600">·</span>
+                <span :if={project.agent_count > 0}>
+                  {project.agent_count} {pluralize(project.agent_count, "agent")}
+                </span>
+                <svg
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  class="w-4 h-4 ml-auto text-zinc-300 dark:text-zinc-600 group-hover:text-violet-400 group-hover:translate-x-0.5 transition-all"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M7.21 14.77a.75.75 0 0 1 0-1.06L10.94 10 7.21 6.29a.75.75 0 1 1 1.06-1.06l4.25 4.24a.75.75 0 0 1 0 1.06l-4.25 4.24a.75.75 0 0 1-1.06 0Z"
+                    clip-rule="evenodd"
+                  />
+                </svg>
+              </div>
+            </.link>
 
-          <div
-            :if={!@has_projects}
-            class="text-center py-16 md:py-24 text-sm text-zinc-400 dark:text-zinc-500"
-          >
-            No projects yet — hit
-            <span class="font-medium text-zinc-500 dark:text-zinc-400">New project</span>
-            to start.
+            <%!-- New project as a card, so the "+" always sits with the projects. --%>
+            <.link
+              navigate="/projects/new"
+              class="group flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-zinc-200 dark:border-zinc-800 p-5 min-h-[9rem]
+                     text-zinc-400 dark:text-zinc-500 hover:border-violet-300 dark:hover:border-violet-500/40 hover:text-violet-500 dark:hover:text-violet-400 transition-colors"
+            >
+              <span class="grid place-items-center w-9 h-9 rounded-full bg-zinc-100 dark:bg-zinc-800 group-hover:bg-violet-100 dark:group-hover:bg-violet-500/15 transition-colors">
+                <svg viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5"><path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" /></svg>
+              </span>
+              <span class="text-sm font-medium">New project</span>
+            </.link>
           </div>
         <% :new -> %>
           <div class="max-w-2xl">
