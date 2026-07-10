@@ -41,30 +41,41 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     ~H"""
     <.agent_name agent={@agent} editing_name={@editing_name} />
 
+    <%!-- HERO: the state you actually watch — harness status + model/cost.
+         Everything else (Info, Docker, context files, the 22-tool wall) is
+         demoted into a collapsed "Details" disclosure so the default view isn't
+         overwhelming (#57). Nothing removed — one click away. --%>
     <.harness_status agent={@agent} />
-
-    <.context_files agent={@agent} />
-
-    <.section label="Info">
-      <.info_row label="Turns" value={@agent[:turns] || 0} />
-      <.info_row label="Tool calls" value={@agent.tool_calls} />
-      <.info_row
-        label="Errors"
-        value={@agent.errors}
-        class={if @agent.errors > 0, do: "text-red-500 font-medium"}
-      />
-      <.info_row label="Messages" value={length(@agent.messages)} />
-      <.info_row :if={@agent[:started_at]} label="Started" value={time_ago(@agent.started_at)} />
-      <.info_row
-        :if={@agent[:last_activity_at]}
-        label="Last active"
-        value={time_ago(@agent.last_activity_at)}
-      />
-    </.section>
-
-    <.docker_context agent={@agent} />
     <.claude_usage agent={@agent} />
-    <.tool_list />
+
+    <details class="group border-t border-zinc-200/70 dark:border-zinc-700/50">
+      <summary class="cursor-pointer select-none list-none px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">
+        <span class="group-open:hidden">▸ Details — info · docker · tools</span>
+        <span class="hidden group-open:inline">▾ Details</span>
+      </summary>
+
+      <.context_files agent={@agent} />
+
+      <.section label="Info">
+        <.info_row label="Turns" value={@agent[:turns] || 0} />
+        <.info_row label="Tool calls" value={@agent.tool_calls} />
+        <.info_row
+          label="Errors"
+          value={@agent.errors}
+          class={if @agent.errors > 0, do: "text-red-500 font-medium"}
+        />
+        <.info_row label="Messages" value={length(@agent.messages)} />
+        <.info_row :if={@agent[:started_at]} label="Started" value={time_ago(@agent.started_at)} />
+        <.info_row
+          :if={@agent[:last_activity_at]}
+          label="Last active"
+          value={time_ago(@agent.last_activity_at)}
+        />
+      </.section>
+
+      <.docker_context agent={@agent} />
+      <.tool_list />
+    </details>
     """
   end
 
