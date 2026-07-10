@@ -69,22 +69,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
           >
             Stop
           </.control_btn>
-          <.link
-            :if={@running?}
-            patch={"#{@base_path}/services/#{@service_name}/console"}
-            class="inline-block px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors"
-          >
+          <.control_btn :if={@running?} patch={"#{@base_path}/services/#{@service_name}/console"}>
             Console
-          </.link>
-          <a
+          </.control_btn>
+          <.control_btn
             :if={@first_port}
             href={"http://#{@host}:#{@first_port}"}
             target="_blank"
             rel="noopener"
-            class="px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors"
           >
             Open
-          </a>
+          </.control_btn>
           <.control_btn
             :if={@exposed? && @container_port}
             phx-click="toggle_port_exposure"

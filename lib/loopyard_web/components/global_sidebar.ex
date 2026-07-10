@@ -89,14 +89,6 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
             >
               no workspaces
             </div>
-
-            <.link
-              navigate={"/projects/#{project.id}/new"}
-              class="flex items-center py-1.5 text-xs text-zinc-400 hover:text-violet-500 dark:hover:text-violet-400"
-              style="padding-left: 2rem"
-            >
-              + new workspace
-            </.link>
           </div>
         </div>
       </div>

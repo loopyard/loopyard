@@ -100,30 +100,45 @@ defmodule LoopyardWeb.Components.Common do
       <.control_btn variant={:primary}>+ Debug Agent</.control_btn>
   """
   attr :variant, :atom, default: :default, values: [:default, :primary]
+  # Optional link targets — a toolbar action is often a navigation (Console) or
+  # an external link (Open), not a phx-click. Passing any of these renders the
+  # SAME-sized control as a link instead of a <button>, so every action in a
+  # toolbar is one consistent size.
+  attr :navigate, :string, default: nil
+  attr :patch, :string, default: nil
+  attr :href, :string, default: nil
 
   attr :rest, :global,
     include:
-      ~w(phx-click phx-value-id phx-value-service_name phx-value-workspace-id phx-value-volume_name data-confirm)
+      ~w(phx-click phx-value-id phx-value-service_name phx-value-service phx-value-container_port phx-value-expose phx-value-workspace-id phx-value-volume_name target rel data-confirm)
 
   slot :inner_block, required: true
 
-  def control_btn(%{variant: :primary} = assigns) do
-    ~H"""
-    <button
-      class="px-3.5 py-1.5 rounded-md text-sm font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-violet-600 dark:text-violet-400 transition-colors"
-      {@rest}
-    >
-      {render_slot(@inner_block)}
-    </button>
-    """
-  end
+  # ONE toolbar-button size + shape everywhere. Only the text color changes by
+  # variant. Renders <button> for actions, <.link>/<a> for navigations — same
+  # box either way.
+  @control_btn_base "inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
 
   def control_btn(assigns) do
+    color =
+      case assigns.variant do
+        :primary -> "text-violet-600 dark:text-violet-400"
+        _ -> "text-zinc-600 dark:text-zinc-300"
+      end
+
+    assigns = assign(assigns, :cls, [@control_btn_base, color])
+
     ~H"""
-    <button
-      class="px-3.5 py-1.5 rounded-md text-sm font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors"
-      {@rest}
-    >
+    <.link :if={@navigate} navigate={@navigate} class={@cls} {@rest}>
+      {render_slot(@inner_block)}
+    </.link>
+    <.link :if={@patch} patch={@patch} class={@cls} {@rest}>
+      {render_slot(@inner_block)}
+    </.link>
+    <a :if={@href} href={@href} class={@cls} {@rest}>
+      {render_slot(@inner_block)}
+    </a>
+    <button :if={!@navigate && !@patch && !@href} class={@cls} {@rest}>
       {render_slot(@inner_block)}
     </button>
     """
