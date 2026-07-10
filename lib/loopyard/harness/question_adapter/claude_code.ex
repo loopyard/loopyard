@@ -61,5 +61,4 @@ defmodule Loopyard.Harness.QuestionAdapter.ClaudeCode do
 
   # First non-nil value across candidate keys (string-keyed maps).
   defp get(m, keys) when is_map(m), do: Enum.find_value(keys, fn k -> Map.get(m, k) end)
-  defp get(_, _), do: nil
 end

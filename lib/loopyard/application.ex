@@ -73,6 +73,12 @@ defmodule Loopyard.Application do
       # workspace start / agent boot, i.e. well after app boot).
       Loopyard.Saga.Recorder,
 
+      # Single writer for the app-wide saga journal. All Journal.append/1
+      # calls route through it so appends can't interleave with compaction.
+      # Must start before the first saga runs and before boot-time saga
+      # resume (safe_restore "Saga.Journal" in start/2 below).
+      Loopyard.Saga.Journal.Writer,
+
       # Periodic reconciler: diffs :chat_agents ETS against
       # ChatAgentRegistry every 30s and corrects drift where
       # Registry is authoritative. Must start after StateKeeper
@@ -126,8 +132,11 @@ defmodule Loopyard.Application do
     safe_restore("HostExposer", fn -> Loopyard.HostExposer.restore() end)
 
     # Restore persisted projects from ~/.loopyard/projects.json
-    # ServiceManager will reconnect to any running containers
-    Loopyard.ProjectRegistry.restore()
+    # ServiceManager will reconnect to any running containers. Wrapped in
+    # safe_restore so a corrupt projects.json (ProjectStore.load raises)
+    # degrades the app instead of aborting Application.start — and leaves
+    # the file untouched for recovery.
+    safe_restore("ProjectRegistry", fn -> Loopyard.ProjectRegistry.restore() end)
 
     # Restore canonical-backed projects (#19) from canonical_projects.json.
     safe_restore("CanonicalProjects", fn -> Loopyard.Onboarding.restore() end)

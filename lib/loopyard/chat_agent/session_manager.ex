@@ -12,8 +12,6 @@ defmodule Loopyard.ChatAgent.SessionManager do
   callers like `handle_retry/3`).
   """
 
-  require Logger
-
   alias Loopyard.Events
 
   # --- Stop backend session ---
@@ -295,6 +293,85 @@ defmodule Loopyard.ChatAgent.SessionManager do
 
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
         {:noreply, state}
+    end
+  end
+
+  @doc """
+  Is an `{:EXIT, pid, _}` from the process backing the CURRENT turn?
+
+  We can only PROVE an EXIT is stale when we know the current turn's
+  stream-task pid (set in `ChatAgent.start_turn`) and the dead pid is neither
+  it nor the current session — the replaced-session case #41 guards against. If
+  there's no tracked task pid, we can't prove staleness, so we react rather
+  than swallow a real crash.
+  """
+  def relevant_exit?(pid, state) do
+    if is_pid(state.stream_task_pid) do
+      pid == state.stream_task_pid or pid == state.session
+    else
+      true
+    end
+  end
+
+  @doc """
+  Handle the current turn's streaming task/session dying abnormally: append a
+  `:crashed` message after `max_consecutive_crashes`, otherwise transition to
+  `:backoff` and schedule a `:retry_session`. Returns `{:noreply, state}`.
+
+  The caller (ChatAgent's `{:EXIT}` handler) is expected to have already
+  finalized any partial text — keeping this module free of a StreamHandler
+  dependency.
+  """
+  def handle_thinking_exit(reason, state, max_consecutive_crashes) do
+    Loopyard.EventLog.warning("agent:#{state.name}", "Streaming task died: #{inspect(reason)}")
+    id = state.id
+    consecutive = Map.get(state, :consecutive_crashes, 0) + 1
+
+    if consecutive > max_consecutive_crashes do
+      error_msg = %{
+        role: :error,
+        content:
+          "Agent crashed #{consecutive} times in a row — giving up to protect the harness API from hot-loop retries. " <>
+            "WHY: the streaming task kept dying within the exponential-backoff window. Most common cause: " <>
+            "a repeatable bug in a tool the agent keeps calling. " <>
+            "CONSEQUENCE: this agent is now :crashed and won't auto-retry. Prior conversation is preserved. " <>
+            "ACTION: (1) check /system/quarantine + /system/events for the crash reason, " <>
+            "(2) fix the underlying issue (if it's a tool, run `mix test` on it), " <>
+            "(3) click Restart in the sidebar to resume the conversation.",
+        timestamp: DateTime.utc_now()
+      }
+
+      {state, error_msg} = append_message(state, error_msg)
+      state = %{state | status: :crashed, active_tool: nil, errors: state.errors + 1}
+      state = Map.put(state, :consecutive_crashes, consecutive)
+
+      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+        agent_id: id,
+        msg: error_msg
+      })
+
+      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :crashed})
+      {:noreply, state}
+    else
+      # Exponential backoff via Process.send_after (NOT a synchronous sleep).
+      # Stash the dead session pid in retry_from_session so :retry_session can
+      # detect a racing replacement (ensure_session_alive via a user send) and
+      # skip, avoiding an orphaned CLI. Audit-2 HIGH #2 + LOW #7.
+      base = Application.get_env(:loopyard, :crash_backoff_base_ms, 2_000)
+      backoff_ms = Loopyard.Retry.backoff_ms(consecutive, {:exponential, base})
+
+      Loopyard.EventLog.info(
+        "agent:#{state.name}",
+        "Backing off #{backoff_ms}ms before restart (crash ##{consecutive})"
+      )
+
+      Process.send_after(self(), {:retry_session, consecutive, state.session}, backoff_ms)
+      state = %{state | status: :backoff, active_tool: nil}
+      state = Map.put(state, :consecutive_crashes, consecutive)
+      state = Map.put(state, :retry_from_session, state.session)
+      :ets.insert(:chat_agents, {id, Loopyard.ChatAgent.summary(state)})
+      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :backoff})
+      {:noreply, state}
     end
   end
 

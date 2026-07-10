@@ -386,6 +386,21 @@ defmodule Loopyard.Resources.Janitor do
           %{count: 1},
           %{kind: kind, id: id, reason: :release_fn_error}
         )
+
+      # A throwing release_fn must not crash the Janitor mid-sweep (it would
+      # skip the owner's remaining resources) nor re-throw inside init/1 on
+      # rehydrate (restart loop → app shutdown). Contain it like exit/rescue.
+      :throw, value ->
+        Logger.warning(
+          "[Resources.Janitor] release_fn threw for #{inspect(kind)}=#{inspect(id)}: " <>
+            inspect(value)
+        )
+
+        :telemetry.execute(
+          [:loopyard, :resources, :released],
+          %{count: 1},
+          %{kind: kind, id: id, reason: :release_fn_error}
+        )
     end
   end
 

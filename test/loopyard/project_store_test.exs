@@ -36,14 +36,18 @@ defmodule Loopyard.ProjectStoreTest do
       assert ProjectStore.load() == []
     end
 
-    test "returns empty list for invalid JSON" do
+    test "raises for invalid JSON (so the corrupt file isn't overwritten empty)" do
+      # #39: load/0 raises on a corrupt (non-enoent) file rather than returning
+      # []. The boot restore is wrapped in safe_restore, so this leaves the
+      # on-disk file intact for recovery instead of letting a later empty
+      # save/1 turn a recoverable corruption into permanent registry loss.
       File.write!(ProjectStore.path(), "not json")
-      assert ProjectStore.load() == []
+      assert_raise RuntimeError, ~r/corrupt/, fn -> ProjectStore.load() end
     end
 
-    test "returns empty list for JSON without projects key" do
+    test "raises for JSON without projects key" do
       File.write!(ProjectStore.path(), Jason.encode!(%{"other" => "data"}))
-      assert ProjectStore.load() == []
+      assert_raise RuntimeError, ~r/corrupt/, fn -> ProjectStore.load() end
     end
 
     test "returns paths from valid file" do

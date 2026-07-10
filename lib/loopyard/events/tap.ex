@@ -114,7 +114,22 @@ defmodule Loopyard.Events.Tap do
       Phoenix.PubSub.subscribe(Loopyard.PubSub, topic)
     end
 
-    {:ok, %{seq: 0}}
+    # The :events_tap table is StateKeeper-owned and survives a Tap
+    # crash/restart. Resume the sequence from the highest surviving key so
+    # post-restart events sort AFTER the existing tape instead of reusing
+    # keys 1,2,3… — which would overwrite the oldest records and mis-order
+    # /system/events.
+    {:ok, %{seq: max_seq()}}
+  end
+
+  defp max_seq do
+    case :ets.last(@table) do
+      :"$end_of_table" -> 0
+      seq when is_integer(seq) -> seq
+      _ -> 0
+    end
+  rescue
+    ArgumentError -> 0
   end
 
   # Every broadcast on a subscribed topic lands here. We don't know

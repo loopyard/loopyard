@@ -250,6 +250,16 @@ defmodule Loopyard.Docker do
   end
 
   defp run_with_retry(args, cmd_opts, timeout, true = _retry?) do
+    # Retry on any transient error — safe even for mutating commands here
+    # because they're all idempotent or double-execute-guarded: `docker run
+    # --name` container creation is guarded by WorkContainer.run_idempotent (a
+    # retry that races a first-run's lost response hits "name already in use"
+    # and is handled); `docker run --rm` calls are one-shots; `volume/network
+    # create` are no-ops on an existing resource; `start`/`stop`/`rm -f`/
+    # `compose up|down` are idempotent. The resilience of retrying an ambiguous
+    # timeout (common under CI Docker load) outweighs a theoretical double-
+    # execute. connection_error?/ambiguous_error? remain available if a
+    # genuinely non-idempotent command is ever added and needs narrower retry.
     Loopyard.Retry.run(fn -> run_once(args, cmd_opts, timeout) end,
       max_attempts: 3,
       backoff: {:custom, [100, 300, 900]},
@@ -278,20 +288,39 @@ defmodule Loopyard.Docker do
   # Treat as PERMANENT so the caller fails fast.
   @doc false
   def transient_error?(output) when is_binary(output) do
+    connection_error?(output) or ambiguous_error?(output)
+  end
+
+  def transient_error?(_), do: false
+
+  # Daemon-unreachable errors: the command provably never executed, so a
+  # retry is always safe (even for mutating commands). Socket-missing is
+  # excluded — the daemon isn't running and won't materialize.
+  @doc false
+  def connection_error?(output) when is_binary(output) do
     cond do
       socket_missing?(output) -> false
       String.contains?(output, "Cannot connect to the Docker daemon") -> true
       String.contains?(output, "error during connect") -> true
       String.contains?(output, "dial unix") -> true
       String.contains?(output, "connection refused") -> true
-      String.contains?(output, "i/o timeout") -> true
-      String.contains?(output, "EOF") -> true
-      String.contains?(output, "request canceled") -> true
       true -> false
     end
   end
 
-  def transient_error?(_), do: false
+  def connection_error?(_), do: false
+
+  # Errors that can occur AFTER the daemon began executing the command — a
+  # dropped response, not proof it didn't run. Safe to retry only for
+  # read-only commands.
+  @doc false
+  def ambiguous_error?(output) when is_binary(output) do
+    String.contains?(output, "i/o timeout") or
+      String.contains?(output, "EOF") or
+      String.contains?(output, "request canceled")
+  end
+
+  def ambiguous_error?(_), do: false
 
   defp socket_missing?(output) do
     String.contains?(output, "dial unix") and

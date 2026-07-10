@@ -118,6 +118,27 @@ defmodule Loopyard.AgentLog.Checkpointer do
   end
 
   @doc """
+  Append a record to the agent log THROUGH the checkpointer, so it is the
+  single writer of the log file.
+
+  This is what makes compaction race-free: appends and `compact_keep_previous`
+  both run in this one process, so an append can never land in the window
+  where the primary log is being renamed to `.prev` and replaced — the exact
+  race that silently dropped records across restart.
+
+  A **cast**, not a call: the hot path (every message persist, several/sec per
+  streaming agent) must not block on this GenServer, or all agents in a
+  workspace serialize their boots/turns through it (that blew the CI test
+  timeouts). Casts from one agent stay FIFO-ordered, and the single process
+  still serializes across agents — so durability ordering holds. The caller
+  already tolerates persistence loss (serves from memory); a write failure is
+  logged + telemetry'd here instead of returned.
+  """
+  def append(pid, event) do
+    GenServer.cast(pid, {:append, event})
+  end
+
+  @doc """
   Snapshot status for `/system/recovery`. Returns a map with current
   counter, last checkpoint timestamp, last compact stats, and the
   current primary log size.
@@ -205,6 +226,43 @@ defmodule Loopyard.AgentLog.Checkpointer do
       {:noreply, run_checkpoint(state)}
     else
       {:noreply, state}
+    end
+  end
+
+  def handle_cast({:append, event}, state) do
+    result =
+      try do
+        Loopyard.AgentLog.append(event, log_path: state.log_path, version: state.version)
+        :ok
+      rescue
+        e -> {:error, Exception.message(e)}
+      catch
+        kind, reason -> {:error, inspect({kind, reason})}
+      end
+
+    # The append IS the record-count trigger now (it replaces notify_write on
+    # the single-writer path). Only advance the counter on a successful write.
+    # On failure, log + telemetry here (the caster can't see the result) so
+    # persistence errors stay observable at /system/events.
+    case result do
+      :ok ->
+        new_count = state.records_since_checkpoint + 1
+        state = %{state | records_since_checkpoint: new_count}
+        state = if new_count >= state.records_threshold, do: run_checkpoint(state), else: state
+        {:noreply, state}
+
+      {:error, reason} ->
+        Logger.warning(
+          "[Checkpointer] agent-log append failed for workspace #{state.workspace_id}: #{inspect(reason)}"
+        )
+
+        :telemetry.execute(
+          [:loopyard, :persistence, :error],
+          %{count: 1},
+          %{workspace_id: state.workspace_id, path: state.log_path, reason: reason}
+        )
+
+        {:noreply, state}
     end
   end
 

@@ -128,7 +128,7 @@ defmodule Loopyard.Saga.Journal do
   @type saga_id :: String.t()
 
   @typedoc "Journal record variants (see module doc)."
-  @type record ::
+  @type journal_record ::
           {:saga_started, saga_id(), atom(), map(), on_resume(), [atom()], integer()}
           | {:step_started, saga_id(), atom(), map()}
           | {:step_succeeded, saga_id(), atom(), map()}
@@ -148,8 +148,28 @@ defmodule Loopyard.Saga.Journal do
   raise — a failing journal must not crash the saga it's tracking.
   The saga still completes in-memory; only durability is lost.
   """
-  @spec append(record()) :: :ok | {:error, term()}
+  @spec append(journal_record()) :: :ok | {:error, term()}
   def append(record) do
+    # Route through the single-writer GenServer so appends and compaction can
+    # never interleave across the many saga-runner processes (the race that
+    # could drop a :saga_completed → spurious boot rollback, or double-write a
+    # truncating header). When the Writer isn't running (early boot / stripped
+    # test env) there's no concurrent writer either, so a direct write is safe.
+    case Process.whereis(Loopyard.Saga.Journal.Writer) do
+      nil -> do_write(record)
+      pid -> GenServer.call(pid, {:append, record}, 15_000)
+    end
+  catch
+    :exit, reason ->
+      Logger.warning("[Saga.Journal] writer unavailable: #{inspect(reason)}")
+      {:error, {:writer_down, reason}}
+  end
+
+  @doc false
+  # The actual write. Runs ONLY in the Writer process (or directly when no
+  # Writer is running). Never raises — a failing journal must not crash the
+  # saga it tracks.
+  def do_write(record) do
     path = path()
 
     try do
@@ -207,7 +227,7 @@ defmodule Loopyard.Saga.Journal do
   Return the full ordered record trace for a saga_id, or `[]` if
   no such saga exists in the journal.
   """
-  @spec trace(saga_id()) :: [record()]
+  @spec trace(saga_id()) :: [journal_record()]
   def trace(saga_id) do
     path()
     |> read_records()
@@ -480,7 +500,7 @@ defmodule Loopyard.Saga.Journal do
   end
 
   defp read_meta(<<size::32, rest::binary>>) when byte_size(rest) >= size do
-    <<data::binary-size(size), remaining::binary>> = rest
+    <<data::binary-size(^size), remaining::binary>> = rest
 
     case safe_decode(data) do
       {:ok, {:log_meta, meta}} when is_map(meta) -> {:ok, meta, remaining}
@@ -491,7 +511,7 @@ defmodule Loopyard.Saga.Journal do
   defp read_meta(_), do: {:error, :no_meta}
 
   defp read_entries(<<size::32, rest::binary>>, acc) when byte_size(rest) >= size do
-    <<data::binary-size(size), remaining::binary>> = rest
+    <<data::binary-size(^size), remaining::binary>> = rest
 
     acc =
       case safe_decode(data) do

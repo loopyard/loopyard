@@ -191,7 +191,6 @@ defmodule Loopyard.Workspace.Setup.ProgressParser do
   # Merge two payloads, with the newer one winning per-key. nil/missing
   # keys never overwrite a populated key.
   defp merge(nil, b), do: b
-  defp merge(a, nil), do: a
 
   defp merge(a, b) do
     Map.merge(a, b)

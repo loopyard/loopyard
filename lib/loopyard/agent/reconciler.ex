@@ -186,19 +186,28 @@ defmodule Loopyard.Agent.Reconciler do
   end
 
   defp apply_correction({:stale_alive, id, summary, old_status}) do
-    corrected = %{summary | status: :crashed}
-    :ets.insert(:chat_agents, {id, corrected})
+    # TOCTOU guard: corrections are applied AFTER the full scan, so an agent
+    # can respawn (RestartController / resume) between check_entry and here.
+    # Re-check liveness and re-read the row so we never clobber a fresh
+    # summary with the stale snapshot marked :crashed.
+    if agent_alive?(id) do
+      :ok
+    else
+      current = current_summary(id) || summary
+      corrected = %{current | status: :crashed}
+      :ets.insert(:chat_agents, {id, corrected})
 
-    Loopyard.Events.ChatAgent.publish(%Loopyard.Events.ChatAgent.StatusChanged{
-      id: id,
-      status: :crashed
-    })
+      Loopyard.Events.ChatAgent.publish(%Loopyard.Events.ChatAgent.StatusChanged{
+        id: id,
+        status: :crashed
+      })
 
-    :telemetry.execute(
-      [:loopyard, :reconcile, :drift],
-      %{count: 1},
-      %{kind: :stale_alive, agent_id: id, before: old_status, after: :crashed, corrected: true}
-    )
+      :telemetry.execute(
+        [:loopyard, :reconcile, :drift],
+        %{count: 1},
+        %{kind: :stale_alive, agent_id: id, before: old_status, after: :crashed, corrected: true}
+      )
+    end
   end
 
   defp apply_correction({:zombie, id, _summary, status}) do
@@ -222,6 +231,15 @@ defmodule Loopyard.Agent.Reconciler do
     end
   rescue
     _ -> false
+  end
+
+  defp current_summary(id) do
+    case :ets.lookup(:chat_agents, id) do
+      [{^id, summary}] -> summary
+      _ -> nil
+    end
+  rescue
+    _ -> nil
   end
 
   defp drift_ids(drifts) do

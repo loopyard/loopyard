@@ -14,8 +14,6 @@ defmodule Loopyard.Source.Local.Mutagen do
   default suite.
   """
 
-  require Logger
-
   # Files/dirs we never want to sync. Two important exclusions:
   # - `.git` — the host worktree owns git state exclusively.
   # - `.loopyard/` — agent-written Dockerfile / docker-compose.yml /

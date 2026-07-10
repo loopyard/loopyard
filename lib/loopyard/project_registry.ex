@@ -47,6 +47,13 @@ defmodule Loopyard.ProjectRegistry do
     project_id = Workspace.project_id_from_git(git_url)
     workspace_id = Workspace.workspace_id_from_git(git_url, branch)
 
+    # Capture pre-existence so a clone-failure rollback only deletes rows THIS
+    # call created. Adding a new branch to a live project (project/main already
+    # present) whose clone fails must not delete the healthy project row and
+    # orphan its sibling workspaces.
+    project_existed? = get_project(project_id) != nil
+    workspace_existed? = WorkspaceRegistry.get_workspace(workspace_id) != nil
+
     # Find or create project
     project =
       case get_project(project_id) do
@@ -155,9 +162,10 @@ defmodule Loopyard.ProjectRegistry do
         # This was the chatwoot eval bug.
         Logger.error("[ProjectRegistry] Clone failed for #{git_url}: #{reason}")
 
-        # Roll back the ETS entries we just inserted so a retry can re-create them.
-        WorkspaceRegistry.delete(workspace_id)
-        :ets.delete(@projects_table, project_id)
+        # Roll back ONLY the ETS entries this call inserted so a retry can
+        # re-create them — never a pre-existing project/workspace row.
+        unless workspace_existed?, do: WorkspaceRegistry.delete(workspace_id)
+        unless project_existed?, do: :ets.delete(@projects_table, project_id)
 
         {:error, "Clone failed: #{reason}"}
     end

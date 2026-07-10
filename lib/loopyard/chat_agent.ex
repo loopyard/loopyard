@@ -51,6 +51,11 @@ defmodule Loopyard.ChatAgent do
     tool_calls: 0,
     errors: 0,
     stream_ref: nil,
+    # Pid of the linked stream Task for the in-flight turn. Used (alongside
+    # `session`) to tell whether an incoming {:EXIT, pid, _} belongs to the
+    # CURRENT turn or to an already-replaced session/task. Runtime-only, not
+    # persisted.
+    stream_task_pid: nil,
     model: nil,
     total_input_tokens: 0,
     total_output_tokens: 0,
@@ -832,14 +837,17 @@ defmodule Loopyard.ChatAgent do
 
     case state.backend.start_session(SessionManager.start_opts(fresh)) do
       {:ok, new_session} ->
-        state = %{
-          state
-          | session: new_session,
-            claude_session_id: nil,
-            status: :idle,
-            context_utilization: 0.0,
-            context_warning_sent: false
-        }
+        # Track the NEW CLI's OS pid — like every other spawn site — so the
+        # Janitor SIGKILLs the live process (not the old, stopped one) on DOWN.
+        state =
+          SessionManager.track_os_pid(%{
+            state
+            | session: new_session,
+              claude_session_id: nil,
+              status: :idle,
+              context_utilization: 0.0,
+              context_warning_sent: false
+          })
 
         # Send the resume summary as a SILENT continuation (the user never typed
         # it — it's the compaction summary), not a visible :user turn.
@@ -855,15 +863,31 @@ defmodule Loopyard.ChatAgent do
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
         {:noreply, state}
 
-      {:error, _} ->
+      {:error, reason} ->
         err = %{
           role: :error,
-          content: "Failed to restart session. Start a new agent to continue.",
+          content:
+            "Context compaction couldn't restart the harness (#{inspect(reason)}). " <>
+              "WHY: the old session was stopped to compact context, but spawning the fresh one failed. " <>
+              "CONSEQUENCE: this turn didn't run; your conversation is preserved. " <>
+              "ACTION: send another message — the agent will spawn a new CLI and resume. " <>
+              "If it keeps failing, click Restart or check /system/events.",
           timestamp: DateTime.utc_now()
         }
 
         {state, err} = append_message(state, err)
+
+        # CRITICAL: reset out of :compacting (which isn't even a real resting
+        # state) and drop the stopped session, so the next send re-spawns a CLI
+        # instead of the UI showing "Compacting" forever. Persist both the
+        # status and the error message so a refresh doesn't lose them.
+        state = %{state | status: :idle, session: nil, active_tool: nil}
+
+        :ets.insert(@ets_table, {id, summary(state)})
+        Persistence.persist_message(state, err)
+        Persistence.persist_agent(state, &summary/1)
         Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: err})
+        Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
         {:noreply, state}
     end
   end
@@ -1117,75 +1141,28 @@ defmodule Loopyard.ChatAgent do
     end
   end
 
-  # Linked streaming task died — auto-restart session with backoff.
-  # Without backoff, a deterministic crash (e.g. tools/list serialization
-  # bug) creates a hot restart loop that hammers the Claude API until
-  # rate-limited.
+  # Linked streaming task died — SessionManager.handle_thinking_exit auto-
+  # restarts with backoff (crash-recovery lives there to keep this GenServer
+  # thin). Without backoff, a deterministic crash hot-loops the harness API.
   @max_consecutive_crashes 5
-  # Configurable via Application env for tests:
-  #   Application.put_env(:loopyard, :crash_backoff_base_ms, 0)
-  @default_crash_backoff_base_ms 2_000
 
   @impl true
-  def handle_info({:EXIT, _pid, reason}, %{status: :thinking} = state) when reason != :normal do
-    Loopyard.EventLog.warning("agent:#{state.name}", "Streaming task died: #{inspect(reason)}")
-    id = state.id
-    consecutive = Map.get(state, :consecutive_crashes, 0) + 1
-
-    if consecutive > @max_consecutive_crashes do
-      error_msg = %{
-        role: :error,
-        content:
-          "Agent crashed #{consecutive} times in a row — giving up to protect the harness API from hot-loop retries. " <>
-            "WHY: the streaming task kept dying within the exponential-backoff window. Most common cause: " <>
-            "a repeatable bug in a tool the agent keeps calling. " <>
-            "CONSEQUENCE: this agent is now :crashed and won't auto-retry. Prior conversation is preserved. " <>
-            "ACTION: (1) check /system/quarantine + /system/events for the crash reason, " <>
-            "(2) fix the underlying issue (if it's a tool, run `mix test` on it), " <>
-            "(3) click Restart in the sidebar to resume the conversation.",
-        timestamp: DateTime.utc_now()
-      }
-
-      {state, error_msg} = append_message(state, error_msg)
-      state = %{state | status: :crashed, active_tool: nil, errors: state.errors + 1}
-      state = Map.put(state, :consecutive_crashes, consecutive)
-
-      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-        agent_id: id,
-        msg: error_msg
-      })
-
-      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :crashed})
-      {:noreply, state}
+  def handle_info({:EXIT, pid, reason}, %{status: :thinking} = state)
+      when reason != :normal do
+    if SessionManager.relevant_exit?(pid, state) do
+      # Preserve any partial before backoff/restart (this crash path used to
+      # skip finalization). Done here — not in SessionManager — so the
+      # crash-recovery module doesn't depend on StreamHandler.
+      state = StreamHandler.finalize_partial_on_stream_interrupt(state, state.id, :error)
+      SessionManager.handle_thinking_exit(reason, state, @max_consecutive_crashes)
     else
-      # Exponential backoff scheduled via `Process.send_after` — NOT
-      # synchronous sleep. Audit-2 HIGH #2 note: we stash the dead
-      # session pid in state.retry_from_session so :retry_session
-      # can verify no one else (e.g. ensure_session_alive racing via
-      # a user's send_message) replaced state.session during the
-      # backoff. Without that guard, both paths would spawn a new
-      # session and orphan one CLI process per race.
-      #
-      # Audit-2 LOW #7: transition status to :backoff and broadcast
-      # so the UI stops claiming "thinking" during the (up to 32s)
-      # backoff window. :retry_session flips back to :idle on
-      # success or :crashed on failure.
-      base =
-        Application.get_env(:loopyard, :crash_backoff_base_ms, @default_crash_backoff_base_ms)
-
-      backoff_ms = Loopyard.Retry.backoff_ms(consecutive, {:exponential, base})
-
+      # EXIT from an ALREADY-REPLACED session/task, not the current turn —
+      # ignore it, or we'd replace the new healthy session and orphan a CLI.
       Loopyard.EventLog.info(
         "agent:#{state.name}",
-        "Backing off #{backoff_ms}ms before restart (crash ##{consecutive})"
+        "Ignoring EXIT (#{inspect(reason)}) from stale process #{inspect(pid)} — not the current session/task"
       )
 
-      Process.send_after(self(), {:retry_session, consecutive, state.session}, backoff_ms)
-      state = %{state | status: :backoff, active_tool: nil}
-      state = Map.put(state, :consecutive_crashes, consecutive)
-      state = Map.put(state, :retry_from_session, state.session)
-      :ets.insert(@ets_table, {id, summary(state)})
-      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :backoff})
       {:noreply, state}
     end
   end
@@ -1348,6 +1325,18 @@ defmodule Loopyard.ChatAgent do
   # fell through to the unknown-message catch-all below, spamming
   # warning logs + telemetry on every stream. See audit-2 HIGH #1.
   def handle_info({:EXIT, _pid, :normal}, state), do: {:noreply, state}
+
+  # Deliver messages that were queued (pending_sends) when the agent crashed,
+  # once it has resumed with a fresh session. Scheduled from resume_from_summary
+  # only when the restored queue is non-empty. pending_sends holds ONLY unsent
+  # messages (send_batch clears them before sending), so this can't double-send.
+  def handle_info(:drain_resumed_pending, %{pending_sends: []} = state), do: {:noreply, state}
+
+  def handle_info(:drain_resumed_pending, %{status: :idle, pending_sends: pending} = state) do
+    send_batch(%{state | pending_sends: []}, pending)
+  end
+
+  def handle_info(:drain_resumed_pending, state), do: {:noreply, state}
 
   def handle_info(msg, state) do
     Logger.warning("[ChatAgent] #{state.id} unhandled message: #{inspect(msg, limit: 200)}")
@@ -1572,30 +1561,37 @@ defmodule Loopyard.ChatAgent do
     session = state.session
     backend = state.backend
 
-    Task.start_link(fn ->
-      try do
-        backend.stream(session, prompt)
-        |> Enum.each(fn event ->
-          send(me, {:stream_event, agent_id, stream_ref, event})
-        end)
+    {:ok, task_pid} =
+      Task.start_link(fn ->
+        try do
+          backend.stream(session, prompt)
+          |> Enum.each(fn event ->
+            send(me, {:stream_event, agent_id, stream_ref, event})
+          end)
 
-        send(me, {:stream_done, agent_id, stream_ref})
-      rescue
-        e ->
-          send(me, {:stream_error, agent_id, stream_ref, Exception.message(e)})
-      catch
-        :exit, reason ->
-          send(
-            me,
-            {:stream_error, agent_id, stream_ref, "CLI session exited: #{inspect(reason)}"}
-          )
-      end
-    end)
+          send(me, {:stream_done, agent_id, stream_ref})
+        rescue
+          e ->
+            send(me, {:stream_error, agent_id, stream_ref, Exception.message(e)})
+        catch
+          :exit, reason ->
+            send(
+              me,
+              {:stream_error, agent_id, stream_ref, "CLI session exited: #{inspect(reason)}"}
+            )
+        end
+      end)
 
     Process.send_after(self(), {:stream_timeout, agent_id, stream_ref}, 600_000)
     # Stash the exact prompt so a transient-failure retry re-issues it verbatim.
     {:noreply,
-     %{state | stream_ref: stream_ref, in_flight_partial: "", current_turn_prompt: prompt}}
+     %{
+       state
+       | stream_ref: stream_ref,
+         stream_task_pid: task_pid,
+         in_flight_partial: "",
+         current_turn_prompt: prompt
+     }}
   end
 
   @max_messages 1000

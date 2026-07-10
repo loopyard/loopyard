@@ -51,6 +51,7 @@ defmodule Loopyard.ChatAgent.StateMachine do
     :idle,
     :thinking,
     :backoff,
+    :compacting,
     :rate_limited,
     :auth_expired,
     :stopped,
@@ -70,7 +71,7 @@ defmodule Loopyard.ChatAgent.StateMachine do
     # immediately surface a :rate_limit_event :rejected or
     # :auth_expired from the SDK, so :idle can pivot to those
     # degraded states without going through :thinking first.
-    idle: [:thinking, :rate_limited, :auth_expired, :stopped, :crashed, :destroying],
+    idle: [:thinking, :compacting, :rate_limited, :auth_expired, :stopped, :crashed, :destroying],
 
     # A thinking agent finishes the turn (→ :idle), times out / errors
     # (→ :crashed), enters :backoff on a mid-stream task crash, or
@@ -84,6 +85,11 @@ defmodule Loopyard.ChatAgent.StateMachine do
     # Operator stop / destroy are still legal to bail out of the
     # backoff window. Audit-2 LOW #7.
     backoff: [:idle, :crashed, :stopped, :destroying],
+
+    # :compacting swaps the session (stop old + start fresh) to shrink the
+    # context window. Success/failure both return to :idle; operator stop /
+    # destroy and a hard crash are legal escapes.
+    compacting: [:idle, :crashed, :stopped, :destroying],
 
     # Rate-limited agents auto-retry at resets_at_ms (→ :idle). User
     # can still stop / destroy to bail out of the wait, or the CLI

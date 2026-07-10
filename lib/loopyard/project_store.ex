@@ -41,14 +41,19 @@ defmodule Loopyard.ProjectStore do
             |> Enum.reject(&is_nil(&1.path))
 
           _ ->
-            []
+            # File exists but doesn't parse into the expected shape. Raising
+            # (rather than returning []) is deliberate: the boot restore is
+            # wrapped in `safe_restore`, so this leaves the on-disk file
+            # UNTOUCHED for manual recovery instead of letting a later empty
+            # save() overwrite a recoverable corruption into permanent loss.
+            raise "projects.json is corrupt (unexpected structure): #{path()}"
         end
 
       {:error, :enoent} ->
         []
 
-      {:error, _reason} ->
-        []
+      {:error, reason} ->
+        raise "projects.json could not be read (#{inspect(reason)}): #{path()}"
     end
   end
 
@@ -61,7 +66,16 @@ defmodule Loopyard.ProjectStore do
 
     file_path = path()
     File.mkdir_p!(Path.dirname(file_path))
-    File.write!(file_path, Jason.encode!(data, pretty: true))
+    atomic_write!(file_path, Jason.encode!(data, pretty: true))
+  end
+
+  # Write to a temp file in the same directory, then rename over the target.
+  # rename(2) is atomic on a single filesystem, so a crash/power-loss mid-write
+  # can't leave a half-written (corrupt) projects.json.
+  defp atomic_write!(file_path, contents) do
+    tmp = file_path <> ".tmp"
+    File.write!(tmp, contents)
+    File.rename!(tmp, file_path)
   end
 
   @doc """
