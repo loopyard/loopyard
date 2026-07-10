@@ -150,8 +150,23 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     alive? = Map.get(agent, :alive?, true)
 
     cond do
+      # Restored + resting (crashed/stopped with no live session) — the common
+      # state after a server restart. NOT broken and NOT reconnecting: it wakes
+      # on your next message. Calm zinc, not the scary red "offline" (#64).
+      status in [:crashed, :stopped] ->
+        %{
+          bg: "bg-zinc-500/10",
+          dot: "bg-zinc-400",
+          pulse: "",
+          text: "text-zinc-600 dark:text-zinc-300",
+          label: "Asleep",
+          detail: "wakes on your next message"
+        }
+
+      # Genuinely disconnected while it should be active (e.g. session died
+      # mid-recovery) — this one IS reconnecting.
       alive? == false ->
-        bad("Harness offline", "reconnecting the CLI — your messages will queue")
+        bad("Reconnecting", "the harness dropped — restarting; your messages will queue")
 
       agent[:auth_error] ->
         bad("Auth expired", "re-login required — connect Claude on /workstation")
@@ -197,16 +212,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
           text: "text-emerald-700 dark:text-emerald-400",
           label: "Ready",
           detail: "connected — safe to send"
-        }
-
-      status == :stopped ->
-        %{
-          bg: "bg-zinc-500/10",
-          dot: "bg-zinc-400",
-          pulse: "",
-          text: "text-zinc-600 dark:text-zinc-300",
-          label: "Stopped",
-          detail: "send a message to start it"
         }
 
       true ->
