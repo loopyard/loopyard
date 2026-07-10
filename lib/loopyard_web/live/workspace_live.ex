@@ -131,7 +131,7 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:project, extra_assigns[:project])
      |> assign(:workspace_entry, extra_assigns[:workspace_entry])
      |> assign(:base_path, base_path)
-     |> assign(:global_tree, Loopyard.WorkspaceTree.global())
+     |> assign(:global_tree, Loopyard.WorkspaceTree.global(host))
      # Expandable-tree sidebar: land with THIS project open so its workspaces
      # are listed, everything else collapsed. The user pops open other projects
      # as they like.
@@ -1273,7 +1273,8 @@ defmodule LoopyardWeb.WorkspaceLive do
   # God-mode sidebar (#55): any agent's status/tool activity, anywhere, rebuilds
   # the cross-project tree so the left rail stays live across all projects.
   def handle_info(%Loopyard.Events.Activity.Event{}, socket),
-    do: {:noreply, assign(socket, :global_tree, Loopyard.WorkspaceTree.global())}
+    do:
+      {:noreply, assign(socket, :global_tree, Loopyard.WorkspaceTree.global(socket.assigns.host))}
 
   def handle_info(%Events.ChatAgentMessage.Message{} = e, socket), do: on_message(e, socket)
   def handle_info(%Events.ChatAgentMessage.TextDelta{} = e, socket), do: on_text_delta(e, socket)
@@ -1624,7 +1625,7 @@ defmodule LoopyardWeb.WorkspaceLive do
   # reflects the change live (a fork someone makes appears without a reload).
   @impl Events.Workspaces.Subscriber
   def on_workspaces_changed(_event, socket) do
-    {:noreply, assign(socket, :global_tree, Loopyard.WorkspaceTree.global())}
+    {:noreply, assign(socket, :global_tree, Loopyard.WorkspaceTree.global(socket.assigns.host))}
   end
 
   # --- SourceSync subscriber callbacks ---

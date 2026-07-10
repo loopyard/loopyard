@@ -3,6 +3,7 @@ defmodule LoopyardWeb.ProjectListLive do
   use LoopyardWeb.IExAware
 
   alias Loopyard.ProjectRegistry
+  alias LoopyardWeb.Components.Birdseye
 
   @impl true
   @behaviour Loopyard.Events.Projects.Subscriber
@@ -38,7 +39,7 @@ defmodule LoopyardWeb.ProjectListLive do
     {:ok,
      socket
      |> assign(:host, host)
-     |> assign(:projects, load_birdseye(host))
+     |> assign(:projects, Loopyard.WorkspaceTree.global(host))
      |> assign(:launch_cmd, launch_cmd)
      |> assign(:creating, nil)}
   end
@@ -120,124 +121,25 @@ defmodule LoopyardWeb.ProjectListLive do
   @impl Loopyard.Events.Projects.Subscriber
   def on_changed(_e, socket), do: {:noreply, reload(socket)}
 
-  defp reload(socket), do: assign(socket, :projects, load_birdseye(socket.assigns.host))
+  defp reload(socket),
+    do: assign(socket, :projects, Loopyard.WorkspaceTree.global(socket.assigns.host))
 
-  # The birdseye: every project → its workspaces → their agents, each carrying
-  # LIVE status (via the shared normalizer, same as the sidebar + right pane) +
-  # what the agent is doing right now + any openable ports. `host` builds the
-  # port URLs from the same host the browser is on.
-  defp load_birdseye(host) do
-    agents_by_ws =
-      Loopyard.ChatAgent.list_agents() |> Enum.group_by(&Map.get(&1, :workspace_id))
-
-    ProjectRegistry.list_projects()
-    |> Enum.map(fn project ->
-      workspaces =
-        project.id
-        |> ProjectRegistry.list_workspaces()
-        |> Enum.map(fn ws ->
-          agents = agents_by_ws |> Map.get(ws.id, []) |> Enum.map(&enrich_agent/1)
-
-          %{
-            id: ws.id,
-            name: ws[:name] || ws.id,
-            agents: agents,
-            ports: ws_ports(ws.id, host)
-          }
-        end)
-
-      all_agents = Enum.flat_map(workspaces, & &1.agents)
-
-      %{
-        id: project.id,
-        name: project.name,
-        location: project_location(project),
-        dot: aggregate_dot(all_agents),
-        workspace_count: length(workspaces),
-        agent_count: length(all_agents),
-        working_count: Enum.count(all_agents, &(&1.display == :thinking)),
-        workspaces: workspaces
-      }
-    end)
-  end
-
-  # One agent, decorated for the birdseye: display status (drives the dot), a
-  # one-line "what it's doing right now", and cost so you can see spend at a
-  # glance. Status goes through the ONE canonical normalizer so this never
-  # disagrees with the sidebar or the agent's own page.
-  defp enrich_agent(a) do
-    display = LoopyardWeb.Components.Sidebar.agent_display_status(a)
-
-    %{
-      id: a.id,
-      workspace_id: a.workspace_id,
-      name: Map.get(a, :name) || "Agent",
-      display: display,
-      dot: LoopyardWeb.Components.Sidebar.status_dot(display),
-      activity: activity_label(display, a),
-      model: Map.get(a, :model),
-      cost: Map.get(a, :total_cost_usd)
-    }
-  end
-
-  # A plain-language "what's up with this agent" line.
-  defp activity_label(:thinking, a) do
-    case Map.get(a, :active_tool) do
-      tool when is_binary(tool) and tool != "" -> tool
-      _ -> "working…"
-    end
-  end
-
-  defp activity_label(:ready, _a), do: "idle"
-  defp activity_label(:crashed, _a), do: "needs attention"
-  defp activity_label(:quarantined, _a), do: "quarantined"
-  defp activity_label(_sleeping, _a), do: "asleep"
-
-  # Exposed (network-open) ports for a workspace, as clickable targets. Only
-  # exposed ports are openable from the browser, so those are the ones worth
-  # surfacing on the birdseye.
-  defp ws_ports(workspace_id, host) do
-    Loopyard.PortRegistry.list_for_workspace(workspace_id)
-    |> Enum.filter(& &1.exposed)
-    |> Enum.map(fn p -> %{port: p.host_port, url: "http://#{host}:#{p.host_port}"} end)
-    |> Enum.sort_by(& &1.port)
-  rescue
-    _ -> []
-  end
-
-  # Aggregate dot for a project (loudest DISPLAY state wins) — identical logic
-  # to the sidebar so a project reads the same in both places.
-  defp aggregate_dot([]), do: "bg-zinc-300 dark:bg-zinc-600"
-
-  defp aggregate_dot(agents) do
-    displays = Enum.map(agents, & &1.display)
-
-    cond do
-      Enum.any?(displays, &(&1 in [:crashed, :quarantined])) ->
-        LoopyardWeb.Components.Sidebar.status_dot(:crashed)
-
-      Enum.any?(displays, &(&1 == :thinking)) ->
-        LoopyardWeb.Components.Sidebar.status_dot(:thinking)
-
-      Enum.any?(displays, &(&1 == :ready)) ->
-        LoopyardWeb.Components.Sidebar.status_dot(:ready)
-
-      true ->
-        LoopyardWeb.Components.Sidebar.status_dot(:sleeping)
-    end
-  end
+  # All agents under a project, across its workspaces — for rollup dot + counts.
+  defp project_agents(project), do: Enum.flat_map(project.workspaces, & &1.agents)
 
   defp home_subtitle([]), do: "Nothing here yet — create your first project below."
 
   defp home_subtitle(projects) do
     n = length(projects)
-    working = Enum.sum(Enum.map(projects, & &1.working_count))
-    agents = Enum.sum(Enum.map(projects, & &1.agent_count))
+    agents = projects |> Enum.flat_map(&project_agents/1)
+
+    working =
+      Enum.count(agents, &(LoopyardWeb.Components.Sidebar.agent_display_status(&1) == :thinking))
 
     working_phrase =
       if working > 0,
         do: "#{working} working now",
-        else: "#{agents} #{pluralize(agents, "agent")}"
+        else: "#{length(agents)} #{pluralize(length(agents), "agent")}"
 
     "#{n} #{pluralize(n, "project")} · #{working_phrase}"
   end
@@ -287,15 +189,15 @@ defmodule LoopyardWeb.ProjectListLive do
                 navigate={"/projects/#{project.id}"}
                 class="group flex items-center gap-3 px-5 py-3.5 border-b border-zinc-100 dark:border-zinc-800/70 hover:bg-zinc-50/70 dark:hover:bg-zinc-800/30 transition-colors"
               >
-                <span class={["h-2.5 w-2.5 rounded-full flex-none", project.dot]} />
+                <Birdseye.dot class={Birdseye.aggregate_dot(project_agents(project))} size={:md} />
                 <h2 class="text-base font-semibold text-zinc-900 dark:text-zinc-50 truncate">
                   {project.name}
                 </h2>
                 <span class="text-xs font-mono text-zinc-400 dark:text-zinc-500 truncate hidden md:block">
-                  {project.location}
+                  {LoopyardWeb.Format.project_location(project)}
                 </span>
                 <span class="ml-auto text-xs text-zinc-400 dark:text-zinc-500 flex-none">
-                  {project.workspace_count} {pluralize(project.workspace_count, "workspace")}
+                  {length(project.workspaces)} {pluralize(length(project.workspaces), "workspace")}
                 </span>
               </.link>
 
@@ -306,17 +208,7 @@ defmodule LoopyardWeb.ProjectListLive do
                     <span class="text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500 truncate">
                       {ws.name}
                     </span>
-                    <a
-                      :for={p <- ws.ports}
-                      href={p.url}
-                      target="_blank"
-                      rel="noopener"
-                      class="inline-flex items-center gap-1 rounded-md bg-emerald-50 dark:bg-emerald-500/10 px-1.5 py-0.5 text-[11px] font-mono font-medium text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition-colors"
-                      title={"Open #{p.url}"}
-                    >
-                      :{p.port}
-                      <svg viewBox="0 0 20 20" fill="currentColor" class="w-3 h-3"><path d="M11 3a1 1 0 1 0 0 2h2.586l-6.293 6.293a1 1 0 1 0 1.414 1.414L15 6.414V9a1 1 0 1 0 2 0V4a1 1 0 0 0-1-1h-5Z" /><path d="M5 5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-3a1 1 0 1 0-2 0v3H5V7h3a1 1 0 0 0 0-2H5Z" /></svg>
-                    </a>
+                    <Birdseye.port_chip :for={p <- ws.ports} port={p.port} url={p.url} />
                     <.link
                       navigate={"/projects/#{project.id}/workspaces/#{ws.id}"}
                       class="ml-auto text-[11px] text-zinc-400 hover:text-violet-500 dark:hover:text-violet-400 flex-none"
@@ -331,12 +223,12 @@ defmodule LoopyardWeb.ProjectListLive do
                     navigate={"/projects/#{project.id}/workspaces/#{ws.id}/agents/#{agent.id}"}
                     class="group flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors"
                   >
-                    <span class={["h-2.5 w-2.5 rounded-full flex-none", agent.dot]} />
+                    <Birdseye.dot class={Birdseye.agent_dot(agent)} size={:md} />
                     <span class="text-sm font-medium text-zinc-800 dark:text-zinc-100 flex-none">
                       {agent.name}
                     </span>
-                    <span class="text-sm text-zinc-500 dark:text-zinc-400 truncate font-mono text-xs">
-                      {agent.activity}
+                    <span class="text-xs text-zinc-500 dark:text-zinc-400 truncate font-mono">
+                      {Birdseye.agent_activity(agent)}
                     </span>
                     <span class="ml-auto flex items-center gap-3 flex-none text-xs text-zinc-400 dark:text-zinc-500">
                       <span :if={agent.model} class="font-mono hidden sm:inline">{agent.model}</span>
@@ -350,7 +242,7 @@ defmodule LoopyardWeb.ProjectListLive do
                     :if={ws.agents == []}
                     class="flex items-center gap-2 px-2 py-2 text-sm text-zinc-400 dark:text-zinc-500"
                   >
-                    <span class="h-2.5 w-2.5 rounded-full flex-none bg-zinc-300 dark:bg-zinc-600" />
+                    <Birdseye.dot class="bg-zinc-300 dark:bg-zinc-600" size={:md} />
                     <span>no agent yet</span>
                     <.link
                       navigate={"/projects/#{project.id}/workspaces/#{ws.id}"}

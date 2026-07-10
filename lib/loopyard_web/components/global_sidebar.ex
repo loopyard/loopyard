@@ -15,9 +15,11 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
   """
   use Phoenix.Component
 
-  # Reuse the ONE canonical status normalizer + dot colors the right pane uses,
-  # so the same agent never shows two different colors in two places.
-  alias LoopyardWeb.Components.Sidebar
+  # Share the birdseye visual language with the home page: same status dots,
+  # same aggregate logic, same openable port chip — so moving between the rail
+  # and the home page feels like one system, and the same agent never shows two
+  # different colors in two places.
+  alias LoopyardWeb.Components.Birdseye
 
   attr :tree, :list, required: true
   attr :expanded, :any, default: nil
@@ -54,7 +56,7 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
             key={"p:#{project.id}"}
             expanded={MapSet.member?(@expanded, "p:#{project.id}")}
             name={project.name}
-            dot={aggregate_dot(all_agents(project))}
+            dot={Birdseye.aggregate_dot(all_agents(project))}
             count={workspace_count_label(project.workspaces)}
             depth={0}
           />
@@ -70,8 +72,9 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
               ]}
               style="padding-left: 2rem"
             >
-              <span class={["h-2 w-2 flex-none rounded-full", aggregate_dot(ws.agents)]} />
+              <Birdseye.dot class={Birdseye.aggregate_dot(ws.agents)} size={:sm} />
               <span class="truncate text-sm text-zinc-700 dark:text-zinc-200">{ws.name}</span>
+              <Birdseye.port_chip :for={p <- ws.ports} port={p.port} url={p.url} />
             </.link>
 
             <div
@@ -166,20 +169,4 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
 
   defp workspace_count_label([]), do: nil
   defp workspace_count_label(workspaces), do: "#{length(workspaces)}"
-
-  # Aggregate dot for a collapsed branch: loudest DISPLAY state wins, using the
-  # exact same normalizer as each agent leaf so a parent's dot always agrees
-  # with the children it summarizes. Red > working > ready > sleeping.
-  defp aggregate_dot([]), do: nil
-
-  defp aggregate_dot(agents) do
-    displays = Enum.map(agents, &Sidebar.agent_display_status/1)
-
-    cond do
-      Enum.any?(displays, &(&1 in [:crashed, :quarantined])) -> Sidebar.status_dot(:crashed)
-      Enum.any?(displays, &(&1 == :thinking)) -> Sidebar.status_dot(:thinking)
-      Enum.any?(displays, &(&1 == :ready)) -> Sidebar.status_dot(:ready)
-      true -> Sidebar.status_dot(:sleeping)
-    end
-  end
 end

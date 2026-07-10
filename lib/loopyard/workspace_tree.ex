@@ -10,10 +10,14 @@ defmodule Loopyard.WorkspaceTree do
   """
 
   @doc """
-  Every project, each with its workspaces, each with its agents (id, name,
-  status, active tool). Sorted by project then workspace name.
+  Every project, each with its workspaces, each with its agents. The ONE tree
+  both birdseye surfaces (sidebar + home page) render, so they can't drift.
+  Sorted by project then workspace name.
+
+  Pass `host` to include openable port URLs on each workspace (built from the
+  host the browser is on); omit it (the rail's compact use) and ports are `[]`.
   """
-  def global do
+  def global(host \\ nil) do
     agents_by_ws =
       Loopyard.ChatAgent.list_agents()
       |> Enum.group_by(&Map.get(&1, :workspace_id))
@@ -29,11 +33,18 @@ defmodule Loopyard.WorkspaceTree do
             |> Enum.map(&agent_node/1)
             |> Enum.sort_by(& &1.name)
 
-          %{id: ws.id, name: ws[:name] || ws.id, agents: agents}
+          %{id: ws.id, name: ws[:name] || ws.id, agents: agents, ports: ws_ports(ws.id, host)}
         end)
         |> Enum.sort_by(& &1.name)
 
-      %{id: project.id, name: project.name, workspaces: workspaces}
+      %{
+        id: project.id,
+        name: project.name,
+        # Raw location fields; the view formats them (Format.project_location).
+        path: project[:path],
+        git_url: project[:git_url],
+        workspaces: workspaces
+      }
     end)
     |> Enum.sort_by(& &1.name)
   rescue
@@ -49,10 +60,27 @@ defmodule Loopyard.WorkspaceTree do
     # right pane's for the same agent.
     %{
       id: a.id,
+      workspace_id: Map.get(a, :workspace_id),
       name: Map.get(a, :name) || "Agent",
       status: Map.get(a, :status),
       quarantined: Map.get(a, :quarantined),
-      active_tool: Map.get(a, :active_tool)
+      active_tool: Map.get(a, :active_tool),
+      model: Map.get(a, :model),
+      cost: Map.get(a, :total_cost_usd)
     }
+  end
+
+  # Exposed (network-open) ports for a workspace, as clickable targets. Only
+  # exposed ports are reachable from the browser. `nil` host → no URLs (the rail
+  # doesn't need them).
+  defp ws_ports(_workspace_id, nil), do: []
+
+  defp ws_ports(workspace_id, host) do
+    Loopyard.PortRegistry.list_for_workspace(workspace_id)
+    |> Enum.filter(& &1.exposed)
+    |> Enum.map(fn p -> %{port: p.host_port, url: "http://#{host}:#{p.host_port}"} end)
+    |> Enum.sort_by(& &1.port)
+  rescue
+    _ -> []
   end
 end
