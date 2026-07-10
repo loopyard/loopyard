@@ -514,6 +514,7 @@ defmodule Loopyard.ChatAgent.StreamHandler do
             msg: recovered_msg
           })
 
+          :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
           Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
 
           if is_nil(state.claude_session_id) do
@@ -542,6 +543,7 @@ defmodule Loopyard.ChatAgent.StreamHandler do
             msg: fail_msg
           })
 
+          :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
           Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
           drain_pending_sends(state)
       end
@@ -573,6 +575,7 @@ defmodule Loopyard.ChatAgent.StreamHandler do
         msg: error_msg
       })
 
+      :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
       Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
       drain_pending_sends(state)
     end
@@ -610,6 +613,7 @@ defmodule Loopyard.ChatAgent.StreamHandler do
       msg: error_msg
     })
 
+    :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
     Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
 
     # Reboot the harness (keeps history, resumes via claude_session_id). Queued

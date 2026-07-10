@@ -264,6 +264,7 @@ defmodule Loopyard.ChatAgent.SessionManager do
           msg: recovered_msg
         })
 
+        :ets.insert(:chat_agents, {id, Loopyard.ChatAgent.summary(state)})
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
         {:noreply, state}
 
@@ -291,6 +292,7 @@ defmodule Loopyard.ChatAgent.SessionManager do
           msg: error_msg
         })
 
+        :ets.insert(:chat_agents, {id, Loopyard.ChatAgent.summary(state)})
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
         {:noreply, state}
     end
@@ -350,6 +352,11 @@ defmodule Loopyard.ChatAgent.SessionManager do
         msg: error_msg
       })
 
+      # ETS-first, THEN broadcast (matching the :backoff sibling below and every
+      # happy-path transition). Skipping this left ETS at the pre-crash status,
+      # so a viewer who mounts the page from the ETS fallback saw a stuck
+      # "working" spinner on a crashed agent — never the red / Restart state.
+      :ets.insert(:chat_agents, {id, Loopyard.ChatAgent.summary(state)})
       Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :crashed})
       {:noreply, state}
     else
