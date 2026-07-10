@@ -149,6 +149,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
         <.context_sections
           :if={@selected_agent}
           agent={@selected_agent}
+          changes={@changes}
           editing_name={@editing_name}
         />
       </div>

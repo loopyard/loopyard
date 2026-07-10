@@ -173,6 +173,8 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:browse_path, ".")
      |> assign(:git_log, [])
      |> assign(:git_status, [])
+     # Live working-tree changes for the right-pane "Changes" hero (#58).
+     |> assign(:changes, %{staged: [], unstaged: []})
      |> assign(:diff_content, nil)
      |> assign(:diff_path, nil)
      |> assign(:commit_detail, nil)
@@ -241,6 +243,8 @@ defmodule LoopyardWeb.WorkspaceLive do
 
     socket = assign(socket, :tab, tab)
     socket = if tab == :container, do: DataLoader.fetch_container_data(socket), else: socket
+    # Load the agent's working-tree changes for the right-pane hero (#58).
+    socket = refresh_changes(socket)
     {:noreply, socket}
   end
 
@@ -574,6 +578,14 @@ defmodule LoopyardWeb.WorkspaceLive do
 
     {:noreply, socket |> assign(:git_log, git_log) |> assign(:git_status, git_status)}
   end
+
+  # Right-pane "Changes" hero (#58). git_status returns %{staged, unstaged};
+  # anything else (error / no git) resets to empty ("working tree clean").
+  def handle_async(:changes, {:ok, {:ok, status}}, socket) when is_map(status),
+    do: {:noreply, assign(socket, :changes, status)}
+
+  def handle_async(:changes, _other, socket),
+    do: {:noreply, assign(socket, :changes, %{staged: [], unstaged: []})}
 
   def handle_async(:git_data, {:exit, _reason}, socket) do
     {:noreply, socket}
@@ -1435,7 +1447,36 @@ defmodule LoopyardWeb.WorkspaceLive do
   def on_renamed(event, socket), do: AgentEvents.handle_renamed(event, socket)
 
   @impl Events.ChatAgent.Subscriber
-  def on_status_changed(event, socket), do: AgentEvents.handle_status_changed(event, socket)
+  def on_status_changed(event, socket) do
+    {:noreply, socket} = AgentEvents.handle_status_changed(event, socket)
+
+    # When the selected agent finishes a turn (→ :idle), its working-tree
+    # changes have settled — refresh the right-pane "Changes" hero (#58).
+    socket =
+      if event.id == socket.assigns.selected_id and event.status == :idle,
+        do: refresh_changes(socket),
+        else: socket
+
+    {:noreply, socket}
+  end
+
+  # Async-fetch the selected agent's workspace working-tree changes for the
+  # right-pane "Changes" hero (#58). No-op without a selected agent / project,
+  # or when the source doesn't support git. Dispatches through the source
+  # adapter (same path DataLoader uses).
+  defp refresh_changes(socket) do
+    project = socket.assigns[:project]
+    ws = socket.assigns[:workspace_entry]
+
+    with true <- socket.assigns[:selected_id] != nil,
+         proj when not is_nil(proj) <- project,
+         adapter <- Loopyard.Source.for_project(proj),
+         true <- Loopyard.Source.supports_git?(adapter) do
+      start_async(socket, :changes, fn -> adapter.git_status(proj, ws) end)
+    else
+      _ -> socket
+    end
+  end
 
   @impl Events.ChatAgent.Subscriber
   def on_quarantined(_event, socket), do: {:noreply, socket}
@@ -1713,6 +1754,7 @@ defmodule LoopyardWeb.WorkspaceLive do
           agents={@agents}
           selected_id={@selected_id}
           selected_agent={@selected_agent}
+          changes={@changes}
           editing_name={@editing_name}
           container_env={@container_env}
           container_logs={@container_logs}

@@ -35,11 +35,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
   Agents/Services/Volumes nav.
   """
   attr :agent, :map, required: true
+  attr :changes, :map, default: %{staged: [], unstaged: []}
   attr :editing_name, :boolean, default: false
 
   def context_sections(assigns) do
     ~H"""
     <.agent_name agent={@agent} editing_name={@editing_name} />
+
+    <.changes_summary changes={@changes} />
 
     <%!-- HERO: the state you actually watch — harness status + model/cost.
          Everything else (Info, Docker, context files, the 22-tool wall) is
@@ -78,6 +81,44 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     </details>
     """
   end
+
+  # The hero of the right pane (#58): what THIS agent has changed in the
+  # working tree, live. Refreshed when the agent settles (→ :idle). Staged +
+  # unstaged (untracked show as "??"), deduped by path, color-coded by change.
+  attr :changes, :map, required: true
+
+  defp changes_summary(assigns) do
+    files =
+      ((assigns.changes[:staged] || []) ++ (assigns.changes[:unstaged] || []))
+      |> Enum.uniq_by(& &1.path)
+
+    assigns = assign(assigns, :files, files)
+
+    ~H"""
+    <div class="px-3 py-2 border-b border-zinc-200/70 dark:border-zinc-700/50">
+      <div class="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 mb-1">
+        Changes
+        <span :if={@files != []} class="text-zinc-400 font-normal">· {length(@files)}</span>
+      </div>
+
+      <div :if={@files == []} class="text-xs text-zinc-400 italic">working tree clean</div>
+
+      <div :if={@files != []} class="space-y-0.5 max-h-48 overflow-y-auto">
+        <div :for={f <- @files} class="flex items-center gap-2 text-xs font-mono">
+          <span class={["w-4 flex-none text-center", change_color(f.status)]}>{f.status}</span>
+          <span class="truncate text-zinc-700 dark:text-zinc-300" title={f.path}>{f.path}</span>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp change_color("??"), do: "text-emerald-500"
+  defp change_color("A"), do: "text-emerald-500"
+  defp change_color("M"), do: "text-amber-500"
+  defp change_color("D"), do: "text-red-500"
+  defp change_color("R"), do: "text-blue-500"
+  defp change_color(_), do: "text-zinc-400"
 
   # Prominent, color-coded harness state — the one place to glance at to know
   # whether it's safe to send, working, waiting, or in a bad state (rate-limited,
