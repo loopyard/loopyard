@@ -20,14 +20,20 @@ defmodule LoopyardWeb.Components.Birdseye do
   # DELIBERATELY not `agent_display_status/1`: that does a render-time Registry
   # liveness lookup which is nondeterministic during an agent's session
   # restarts, so the dot would blink out mid-work. A pure status→color mapping
-  # renders identically every time → visually stable. A dot appears ONLY when
-  # there's something to know (working / attention / ready); everything else →
-  # nil (an aligned blank, not a confusing gray circle).
+  # renders identically every time → visually stable.
+  #
+  # Semantics mirror the right pane's harness_state so the rail and the pane
+  # never disagree:
+  #   • working  → violet pulse
+  #   • ready    → green
+  #   • ATTENTION (auth expired — needs you to re-login) → red
+  #   • everything else, INCLUDING :crashed / :stopped, → nil (no dot).
+  # :crashed/:stopped is "Asleep — wakes on your next message", NOT broken, so
+  # it must not scream red — clicking it just wakes it (→ working → ready).
   @working [:thinking, :compacting, :booting, :backoff, :rate_limited]
-  @attention [:crashed, :auth_expired]
 
   defp status_color(s) when s in @working, do: "bg-violet-500 animate-pulse"
-  defp status_color(s) when s in @attention, do: "bg-red-500"
+  defp status_color(:auth_expired), do: "bg-red-500"
   defp status_color(:idle), do: "bg-green-500"
   defp status_color(_), do: nil
 
@@ -43,7 +49,7 @@ defmodule LoopyardWeb.Components.Birdseye do
     statuses = Enum.map(agents, &Map.get(&1, :status))
 
     cond do
-      Enum.any?(statuses, &(&1 in @attention)) -> "bg-red-500"
+      Enum.any?(statuses, &(&1 == :auth_expired)) -> "bg-red-500"
       Enum.any?(statuses, &(&1 in @working)) -> "bg-violet-500 animate-pulse"
       Enum.any?(statuses, &(&1 == :idle)) -> "bg-green-500"
       true -> nil
@@ -69,7 +75,7 @@ defmodule LoopyardWeb.Components.Birdseye do
       status == :idle ->
         "idle"
 
-      status in @attention ->
+      status == :auth_expired ->
         "needs attention"
 
       true ->

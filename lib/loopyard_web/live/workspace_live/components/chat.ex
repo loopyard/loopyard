@@ -167,7 +167,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           </span>
         </div>
         <div class="flex items-center gap-2 flex-none">
-          <.detail_level_control level={@detail_level} />
           <%!-- Agent context — mobile/tablet only (the right rail shows it on lg+).
                Real touch target (≈40px tall), and the only control on the phone
                header so it can't be fat-fingered into a destructive action. --%>
@@ -184,8 +183,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                with the big red pill above the input; start/remove a sleeping agent
                from the agents list (Menu). On md+ there's room, so show them. --%>
           <div class="hidden md:flex items-center gap-2">
+            <%!-- Stop = interrupt the RUNNING turn. Only shown while the agent is
+                 actually working — an idle "Stop" is meaningless ("stop what?"). --%>
             <.control_btn
-              :if={agent_display_status(@agent) in [:ready, :thinking]}
+              :if={agent_display_status(@agent) == :thinking}
               phx-click="interrupt_agent"
               phx-value-id={@agent.id}
             >
