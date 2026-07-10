@@ -250,52 +250,21 @@ defmodule Loopyard.Docker do
   end
 
   defp run_with_retry(args, cmd_opts, timeout, true = _retry?) do
-    # Idempotency-aware retry. A read-only command (ps/inspect/logs/…) can be
-    # retried on ANY transient error. A mutating command (run/create/rm/…)
-    # must NOT be retried on an *ambiguous* error (EOF, i/o timeout, request
-    # canceled) — those can arrive AFTER the daemon already executed it, so a
-    # retry would double-create the container/volume or fail on "name already
-    # in use". Mutating commands are still retried on *connection* errors,
-    # which mean the command never reached the daemon.
-    transient? =
-      if idempotent_command?(args) do
-        &transient_error?/1
-      else
-        &connection_error?/1
-      end
-
+    # Retry on any transient error — safe even for mutating commands here
+    # because they're all idempotent or double-execute-guarded: `docker run
+    # --name` container creation is guarded by WorkContainer.run_idempotent (a
+    # retry that races a first-run's lost response hits "name already in use"
+    # and is handled); `docker run --rm` calls are one-shots; `volume/network
+    # create` are no-ops on an existing resource; `start`/`stop`/`rm -f`/
+    # `compose up|down` are idempotent. The resilience of retrying an ambiguous
+    # timeout (common under CI Docker load) outweighs a theoretical double-
+    # execute. connection_error?/ambiguous_error? remain available if a
+    # genuinely non-idempotent command is ever added and needs narrower retry.
     Loopyard.Retry.run(fn -> run_once(args, cmd_opts, timeout) end,
       max_attempts: 3,
       backoff: {:custom, [100, 300, 900]},
-      transient?: transient?
+      transient?: &transient_error?/1
     )
-  end
-
-  # Docker subcommands with no side effects — safe to retry on any transient
-  # error. The subcommand is the first non-flag token in `args`. Anything not
-  # listed here is treated as potentially mutating (fail-safe default).
-  @idempotent_subcommands ~w(ps inspect logs images version info top port
-                             history events diff stats)
-  defp idempotent_command?(args) when is_list(args) do
-    case Enum.reject(args, &String.starts_with?(&1, "-")) do
-      [subcommand | rest] ->
-        cond do
-          subcommand in @idempotent_subcommands ->
-            true
-
-          # `docker volume ls`, `docker network ls`, `docker system df`,
-          # `docker image ls|inspect`, `docker container inspect|ls`, etc.
-          subcommand in ~w(volume network system image container) and
-              List.first(rest) in ~w(ls inspect df) ->
-            true
-
-          true ->
-            false
-        end
-
-      [] ->
-        false
-    end
   end
 
   defp run_once(args, cmd_opts, timeout) do
