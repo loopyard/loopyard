@@ -55,6 +55,9 @@ defmodule LoopyardWeb.WorkspaceLive do
 
     if connected?(socket) do
       ChatAgent.subscribe()
+      # God-mode sidebar (#55): the global + per-project activity stream keeps
+      # the cross-project tree live no matter the view.
+      Loopyard.Events.Activity.subscribe_global()
       Loopyard.Workspace.ServiceManager.subscribe()
       Loopyard.Docker.Observer.subscribe()
       Loopyard.Events.WorkspaceSetup.subscribe(workspace.id)
@@ -132,6 +135,7 @@ defmodule LoopyardWeb.WorkspaceLive do
        Switcher.list_project_workspaces(extra_assigns[:project], socket.transport_pid)
      )
      |> assign(:base_path, base_path)
+     |> assign(:global_tree, Loopyard.WorkspaceTree.global())
      |> Switcher.attach_view_tracker()
      |> assign(:host, host)
      |> assign(:agents, agents)
@@ -1240,6 +1244,11 @@ defmodule LoopyardWeb.WorkspaceLive do
   def handle_info(%Events.ChatAgent.Quarantined{} = e, socket), do: on_quarantined(e, socket)
   def handle_info(%Events.ChatAgent.Released{} = e, socket), do: on_released(e, socket)
 
+  # God-mode sidebar (#55): any agent's status/tool activity, anywhere, rebuilds
+  # the cross-project tree so the left rail stays live across all projects.
+  def handle_info(%Loopyard.Events.Activity.Event{}, socket),
+    do: {:noreply, assign(socket, :global_tree, Loopyard.WorkspaceTree.global())}
+
   def handle_info(%Events.ChatAgentMessage.Message{} = e, socket), do: on_message(e, socket)
   def handle_info(%Events.ChatAgentMessage.TextDelta{} = e, socket), do: on_text_delta(e, socket)
 
@@ -1683,12 +1692,13 @@ defmodule LoopyardWeb.WorkspaceLive do
       />
       <.flash_banner flash={@flash} kind={:error} class="mx-4 mt-2" />
       <div class="flex-1 flex min-h-0">
-        <%!-- LEFT rail: switch between this project's workspaces (desktop-only). --%>
-        <.workspace_switcher
-          :if={@project}
-          workspaces={@project_workspaces}
-          current_id={@workspace.id}
-          project={@project}
+        <%!-- LEFT rail: god-mode tree — every project → workspace → agent, live
+             across all projects (#55). Desktop-only. --%>
+        <LoopyardWeb.Components.GlobalSidebar.global_sidebar
+          tree={@global_tree}
+          current_workspace_id={@workspace.id}
+          current_agent_id={@selected_id}
+          class="hidden md:flex w-60 flex-none border-r border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-900/50"
         />
         <%!-- Main content: hidden on mobile when the rail is showing (index/new with no selection) --%>
         <main
