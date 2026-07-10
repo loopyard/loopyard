@@ -88,8 +88,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     # identical app-wide. The only workspace-specific bit is the mobile back
     # button, injected via the header's `back` slot.
     ~H"""
+    <%!-- Breadcrumb retired here (#56): the god-mode sidebar (#55) carries the
+         project → workspace → agent hierarchy, so the top crumb is redundant.
+         Pass [] to keep the shared header (Remote / workstation / System, plus
+         the mobile back button) while dropping the crumb row. Revert = @crumbs. --%>
     <LoopyardWeb.Components.AppHeader.header
-      breadcrumbs={@crumbs}
+      breadcrumbs={[]}
       iex_session={@iex_session}
       current_path={@base_path}
       host_exposed={@host_exposed}
