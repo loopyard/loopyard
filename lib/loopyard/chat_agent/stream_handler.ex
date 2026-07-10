@@ -89,6 +89,9 @@ defmodule Loopyard.ChatAgent.StreamHandler do
 
     Persistence.persist_message(state, tool_msg)
     Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: tool_msg})
+    # Feed the global/per-project activity stream (#54): this is the "latest
+    # tool call" the god-mode sidebar surfaces across all projects.
+    Loopyard.Events.Activity.record(id, :tool, tool_name)
     state
   end
 

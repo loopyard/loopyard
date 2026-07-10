@@ -31,6 +31,6 @@ showing state of every workspace/project (replaces the top breadcrumb).
 **middle** = agent chat. **right** = the CHANGES the agent made + key state
 (status, model, cost); tools & deep detail behind a click, not always-on.
 - 🔴 **Top breadcrumb sucks** (`Loopyard > Beautiful Ruby > main`) — redundant; move hierarchy into the left sidebar.
-- 🔴 **Left sidebar only shows current project's workspaces** — should be the global nav tree (all projects → workspaces → agents) with live state dots.
+- 🔴 (backbone #54 done) **Left sidebar only shows current project's workspaces** — should be the global nav tree (all projects → workspaces → agents) with live state dots.
 - 🔴 **Right panel is overwhelming** — 8 stacked sections (Agents/Services/Volumes/Context/Info/Docker/Claude/Tools). The TOOLS wall especially. Triage: promote "Changes" to the hero, keep a compact status strip (model/status/cost), collapse the rest behind disclosures / a click.
 - 🔴 **Right panel isn't the "changes" view** — the diff/files the agent touched live in the chat middle; the right should be the persistent "what did it change" surface.
