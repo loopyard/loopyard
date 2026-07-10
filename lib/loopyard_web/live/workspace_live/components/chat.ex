@@ -38,6 +38,25 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   # volumes. On the overview itself (`live_action == :index`) the
   # path is `nil`, which the Breadcrumbs component renders as the
   # current page (no link, aria-current="page").
+  defp workspace_crumbs(assigns) do
+    label = Loopyard.Source.display_name(assigns.workspace_entry)
+    label = if label == "", do: assigns.workspace.name, else: label
+
+    on_overview? = assigns[:live_action] == :index
+    last_path = if on_overview?, do: nil, else: assigns.base_path
+
+    crumbs = [{"Loopyard", "/"}]
+
+    crumbs =
+      if assigns.project do
+        crumbs ++ [{assigns.project.name, "/projects/#{assigns.project.id}"}]
+      else
+        crumbs
+      end
+
+    crumbs ++ [{label, last_path}]
+  end
+
   def chat_header(assigns) do
     # Mobile back button has two modes:
     #   - viewing an agent/service -> patch back to the sidebar (Menu)
@@ -59,6 +78,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       |> assign(:back_kind, back_kind)
       |> assign(:back_target, back_target)
       |> assign(:back_label, back_label)
+      |> assign(:crumbs, workspace_crumbs(assigns))
       |> assign(:host_exposed, Loopyard.HostExposer.exposed?())
 
     # Delegate to the ONE canonical app header (same component every page uses),
@@ -66,12 +86,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     # identical app-wide. The only workspace-specific bit is the mobile back
     # button, injected via the header's `back` slot.
     ~H"""
-    <%!-- Breadcrumb retired here (#56): the god-mode sidebar (#55) carries the
-         project → workspace → agent hierarchy, so the top crumb is redundant.
-         Pass [] to keep the shared header (Remote / workstation / System, plus
-         the mobile back button) while dropping the crumb row. Revert = @crumbs. --%>
     <LoopyardWeb.Components.AppHeader.header
-      breadcrumbs={[]}
+      breadcrumbs={@crumbs}
       iex_session={@iex_session}
       current_path={@base_path}
       host_exposed={@host_exposed}
