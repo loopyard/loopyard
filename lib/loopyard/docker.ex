@@ -280,7 +280,9 @@ defmodule Loopyard.Docker do
     case Enum.reject(args, &String.starts_with?(&1, "-")) do
       [subcommand | rest] ->
         cond do
-          subcommand in @idempotent_subcommands -> true
+          subcommand in @idempotent_subcommands ->
+            true
+
           # `docker volume ls`, `docker network ls`, `docker system df`,
           # `docker image ls|inspect`, `docker container inspect|ls`, etc.
           subcommand in ~w(volume network system image container) and

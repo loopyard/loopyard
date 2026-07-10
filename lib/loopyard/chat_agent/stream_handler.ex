@@ -563,7 +563,13 @@ defmodule Loopyard.ChatAgent.StreamHandler do
 
       {state, error_msg} = append_message(state, error_msg)
 
-      state = reset_turn_state(%{state | status: :idle, last_activity_at: now, errors: state.errors + 1})
+      state =
+        reset_turn_state(%{
+          state
+          | status: :idle,
+            last_activity_at: now,
+            errors: state.errors + 1
+        })
 
       Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
         agent_id: id,
