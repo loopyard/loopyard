@@ -51,7 +51,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
 
     <.changes_summary changes={@changes} />
 
-    <details class="group border-t border-zinc-200/70 dark:border-zinc-700/50">
+    <details class="group mt-1">
       <summary class="cursor-pointer select-none list-none px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">
         <span class="group-open:hidden">▸ Details — tokens · cost · docker · tools</span>
         <span class="hidden group-open:inline">▾ Details</span>
@@ -60,7 +60,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
       <.claude_usage agent={@agent} />
       <.context_files agent={@agent} />
 
-      <.section label="Activity">
+      <.section variant={:sub} label="Activity">
         <.info_row label="Turns" value={@agent[:turns] || 0} />
         <.info_row label="Tool calls" value={@agent.tool_calls} />
         <.info_row
@@ -98,7 +98,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     assigns = assign(assigns, :recent, recent)
 
     ~H"""
-    <div :if={@recent != []} class="px-3 py-2 border-b border-zinc-200/70 dark:border-zinc-700/50">
+    <div :if={@recent != []} class="px-3 pt-3 pb-2">
       <div class="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 mb-1.5">
         Recent
       </div>
@@ -146,7 +146,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     assigns = assign(assigns, :files, files)
 
     ~H"""
-    <div class="px-3 py-2 border-b border-zinc-200/70 dark:border-zinc-700/50">
+    <div class="px-3 pt-3 pb-2">
       <div class="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 mb-1">
         Changes <span :if={@files != []} class="text-zinc-400 font-normal">· {length(@files)}</span>
       </div>
@@ -316,7 +316,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     assigns = assign(assigns, :ctx, ctx)
 
     ~H"""
-    <.section :if={@ctx.container} label="Docker">
+    <.section :if={@ctx.container} variant={:sub} label="Docker">
       <.info_row
         label="Container"
         value={@ctx.container}
@@ -357,7 +357,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     assigns = assign(assigns, :total_tokens, total_tokens)
 
     ~H"""
-    <.section label="Claude">
+    <.section variant={:sub} label="Usage">
       <.info_row
         :if={@agent[:model]}
         label="Model"
@@ -385,7 +385,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     assigns = assign(assigns, :tools, tools)
 
     ~H"""
-    <.section label="Tools">
+    <.section variant={:sub} label="Tools">
       <div class="flex flex-wrap gap-1 px-2">
         <span
           :for={tool <- @tools}
@@ -403,7 +403,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     assigns = assign(assigns, :files, files)
 
     ~H"""
-    <.section :if={@files != []} label="Context">
+    <.section :if={@files != []} variant={:sub} label="Context">
       <div class="space-y-0.5 px-2">
         <div :for={file <- @files} class="flex items-center gap-2 min-h-6 text-xs">
           <span class="text-zinc-500 flex-none">{file.type}</span>

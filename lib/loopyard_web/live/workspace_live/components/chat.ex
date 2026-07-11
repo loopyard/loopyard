@@ -327,12 +327,16 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
              load_more). Normal flow (NOT col-reverse) so the human prompts can
              `position: sticky` to the top of their section. --%>
         <div class="space-y-2 mt-auto">
-          <p
-            :if={assigns[:has_more_messages]}
-            class="text-center py-2 text-xs text-zinc-400 dark:text-zinc-500"
-          >
-            Loading older messages...
-          </p>
+          <%!-- Progressive loader: while there's older history above the window,
+               a soft shimmer sits at the very top. Scroll into it and load_more
+               fetches the next batch (prepended below this, so it stays put);
+               when you reach the start it disappears. Gentler than a hard
+               "Loading…" flash. --%>
+          <div :if={assigns[:has_more_messages]} class="space-y-2.5 py-3" aria-hidden="true">
+            <div class="h-3 w-20 rounded bg-zinc-200/80 dark:bg-zinc-700/50 animate-pulse"></div>
+            <div class="h-3.5 w-3/4 rounded bg-zinc-200/70 dark:bg-zinc-700/40 animate-pulse"></div>
+            <div class="h-3.5 w-1/2 rounded bg-zinc-200/70 dark:bg-zinc-700/40 animate-pulse"></div>
+          </div>
           <%!-- Split into SECTIONS: each human prompt + the response it owns. The
                prompt is `sticky top-0` WITHIN its <section>, so it pins while you
                scroll its response and then RELEASES at the section boundary as the

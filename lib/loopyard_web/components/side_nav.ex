@@ -30,19 +30,34 @@ defmodule LoopyardWeb.Components.SideNav do
   # sidebar ever feels wrong, change this one place.
   attr :label, :string, default: nil
   attr :class, :string, default: ""
+  # `:section` (L2) is a top-level group; `:sub` (L3) is a group nested inside
+  # another section (e.g. Usage/Docker/Tools inside "Details") — a quieter,
+  # lighter label so the hierarchy reads at a glance.
+  attr :variant, :atom, default: :section, values: [:section, :sub]
   slot :actions, doc: "optional trailing controls next to the section label"
   slot :inner_block, required: true
 
   def section(assigns) do
     ~H"""
-    <section class={["px-3 pt-4 pb-1 first:pt-3", @class]}>
+    <section class={[
+      @variant == :section && "pt-4 first:pt-3",
+      @variant == :sub && "pt-2.5",
+      "px-3 pb-1",
+      @class
+    ]}>
       <div
         :if={@label || @actions != []}
         class="flex items-center justify-between px-2 mb-1.5 md:mb-1 min-h-6"
       >
         <h3
           :if={@label}
-          class="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 font-semibold"
+          class={[
+            @variant == :section &&
+              "text-xs tracking-wider text-zinc-500 dark:text-zinc-400 font-semibold",
+            @variant == :sub &&
+              "text-[10.5px] tracking-wide text-zinc-400 dark:text-zinc-500 font-medium",
+            "uppercase"
+          ]}
         >
           {@label}
         </h3>
