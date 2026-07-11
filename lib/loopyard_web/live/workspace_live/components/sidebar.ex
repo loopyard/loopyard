@@ -93,16 +93,24 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
            workspace" nav, distinct from "the thing you selected". --%>
       <div class="flex-none md:max-h-[45%] overflow-y-auto bg-zinc-100 dark:bg-zinc-800/40 border-b-2 border-zinc-200 dark:border-zinc-700/70">
         <.section label="Workspace">
-          <%!-- One tight list: agents, then the services + volumes that make up
-               this workspace. Sub-labels within keep each kind legible without
-               the loose gaps three separate sections created. --%>
-          <.group_label :if={@agents != []} text="Agents" />
+          <%!-- One flat list of the workspace's resources. Each row carries a
+               quiet kind tag (agent / service / volume) on the right, so the
+               kinds read without splitting into separate labeled sections. --%>
           <.agent_list_item
             :for={agent <- @agents}
             agent={agent}
             selected={@selected_id == agent.id}
             editing={Map.get(assigns, :editing_agent_id) == agent.id}
           />
+          <.service_item
+            :for={svc <- @service_statuses}
+            svc={svc}
+            base_path={@base_path}
+            selected={@selected_service == svc.name}
+            host={@host}
+            workspace_id={@workspace_id}
+          />
+          <.volume_item :for={vol <- @volumes} vol={vol} base_path={@base_path} />
           <.row
             patch={"#{@base_path}/new"}
             class="text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10"
@@ -118,19 +126,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
             </svg>
             <span>New agent</span>
           </.row>
-
-          <.group_label :if={@service_statuses != []} text="Services" />
-          <.service_item
-            :for={svc <- @service_statuses}
-            svc={svc}
-            base_path={@base_path}
-            selected={@selected_service == svc.name}
-            host={@host}
-            workspace_id={@workspace_id}
-          />
-
-          <.group_label :if={@volumes != []} text="Volumes" />
-          <.volume_item :for={vol <- @volumes} vol={vol} base_path={@base_path} />
           <.row
             :if={@is_local_source? && sync_relevant?(@sync_status)}
             patch={"#{@base_path}/sync"}
@@ -260,19 +255,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
 
   # --- Sidebar items ---
 
-  # A quiet, tight sub-label inside the single "Workspace" list — marks the
-  # start of the Agents / Services / Volumes runs without the loose air a full
-  # section put between them.
-  attr :text, :string, required: true
-
-  def group_label(assigns) do
-    ~H"""
-    <div class="px-2 pt-2.5 pb-0.5 first:pt-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
-      {@text}
-    </div>
-    """
-  end
-
   def service_item(assigns) do
     # Prefer the registry-assigned host_port (stable) over observer's
     # svc.ports map (flaps to empty during container state transitions).
@@ -297,6 +279,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
         <span class="truncate text-zinc-600 dark:text-zinc-400">{@svc.name}</span>
       </.link>
       <div class="flex items-center justify-end gap-1.5">
+        <span class="text-[10px] uppercase tracking-wide text-zinc-400 dark:text-zinc-500 flex-none">
+          service
+        </span>
         <%!-- Open port: green pill with port number (link opens URL).
              Closed port: plain link + Open Port button.
              Close Port lives on the service detail page, not here. --%>
@@ -389,11 +374,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
     >
       <span class="w-1.5 h-1.5 rounded-full flex-none bg-blue-400" aria-hidden="true"></span>
       <span class="truncate text-zinc-600 dark:text-zinc-400 flex-1">{@description}</span>
-      <span :if={@service && @service != "workspace"} class="text-xs text-zinc-500 flex-none">
-        {@service}
-      </span>
       <span :if={@vol[:size]} class="text-xs text-zinc-500 dark:text-zinc-400 font-mono flex-none">
         {@vol.size}
+      </span>
+      <span class="text-[10px] uppercase tracking-wide text-zinc-400 dark:text-zinc-500 flex-none">
+        volume
       </span>
     </.row>
     """
@@ -449,6 +434,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
         </span>
         <span :if={@display == :crashed} class="text-xs text-red-500 dark:text-red-400 flex-none">
           Crashed
+        </span>
+        <span class="ml-auto text-[10px] uppercase tracking-wide text-zinc-400 dark:text-zinc-500 flex-none">
+          agent
         </span>
       </.row>
       <button

@@ -123,24 +123,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
              agent's DETAIL. No max-h cap here — the whole panel scrolls. --%>
         <div class="bg-zinc-100 dark:bg-zinc-800/40 border-b-2 border-zinc-200 dark:border-zinc-700/70">
           <LoopyardWeb.Components.SideNav.section label="Workspace">
-            <LoopyardWeb.Live.WorkspaceLive.Components.Sidebar.group_label
-              :if={@agents != []}
-              text="Agents"
-            />
             <LoopyardWeb.Live.WorkspaceLive.Components.Sidebar.agent_list_item
               :for={a <- @agents}
               agent={a}
               selected={@selected_id == a.id}
-            />
-            <.link
-              patch={"#{@base_path}/new"}
-              class="flex items-center gap-2 px-3 min-h-[2.75rem] text-sm font-medium text-violet-600 dark:text-violet-400 active:bg-violet-50 dark:active:bg-violet-500/10"
-            >
-              + New agent
-            </.link>
-            <LoopyardWeb.Live.WorkspaceLive.Components.Sidebar.group_label
-              :if={@service_statuses != []}
-              text="Services"
             />
             <LoopyardWeb.Live.WorkspaceLive.Components.Sidebar.service_item
               :for={svc <- @service_statuses}
@@ -150,6 +136,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               host={@host}
               workspace_id={@workspace.id}
             />
+            <.link
+              patch={"#{@base_path}/new"}
+              class="flex items-center gap-2 px-3 min-h-[2.75rem] text-sm font-medium text-violet-600 dark:text-violet-400 active:bg-violet-50 dark:active:bg-violet-500/10"
+            >
+              + New agent
+            </.link>
           </LoopyardWeb.Components.SideNav.section>
         </div>
         <.context_sections :if={@selected_agent} agent={@selected_agent} editing_name={@editing_name} />

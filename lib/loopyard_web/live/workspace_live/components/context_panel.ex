@@ -49,7 +49,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
 
     <.changes_summary changes={@changes} />
 
-    <details class="group mt-1">
+    <details class="group mt-1" open>
       <summary class="cursor-pointer select-none list-none px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">
         <span class="group-open:hidden">▸ Details — tokens · cost · docker</span>
         <span class="hidden group-open:inline">▾ Details</span>
