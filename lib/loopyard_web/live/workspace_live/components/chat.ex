@@ -121,8 +121,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
         <%!-- Same two zones as the desktop rail: a tinted SWITCHER (the
              workspace's resources) closed by the L1 divider, then the selected
              agent's DETAIL. No max-h cap here — the whole panel scrolls. --%>
-        <div class="bg-zinc-100/50 dark:bg-zinc-800/25 border-b-2 border-zinc-200 dark:border-zinc-700/70 py-1">
-          <LoopyardWeb.Components.SideNav.section label="Agents">
+        <div class="bg-zinc-100 dark:bg-zinc-800/40 border-b-2 border-zinc-200 dark:border-zinc-700/70">
+          <LoopyardWeb.Components.SideNav.section label="Workspace">
+            <LoopyardWeb.Live.WorkspaceLive.Components.Sidebar.group_label
+              :if={@agents != []}
+              text="Agents"
+            />
             <LoopyardWeb.Live.WorkspaceLive.Components.Sidebar.agent_list_item
               :for={a <- @agents}
               agent={a}
@@ -134,8 +138,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             >
               + New agent
             </.link>
-          </LoopyardWeb.Components.SideNav.section>
-          <LoopyardWeb.Components.SideNav.section :if={@service_statuses != []} label="Services">
+            <LoopyardWeb.Live.WorkspaceLive.Components.Sidebar.group_label
+              :if={@service_statuses != []}
+              text="Services"
+            />
             <LoopyardWeb.Live.WorkspaceLive.Components.Sidebar.service_item
               :for={svc <- @service_statuses}
               svc={svc}
