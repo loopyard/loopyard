@@ -51,22 +51,21 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
 
     <details class="group mt-1">
       <summary class="cursor-pointer select-none list-none px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">
-        <span class="group-open:hidden">▸ Details — tokens · cost · docker · tools</span>
+        <span class="group-open:hidden">▸ Details — tokens · cost · docker</span>
         <span class="hidden group-open:inline">▾ Details</span>
       </summary>
 
       <.claude_usage agent={@agent} />
-      <.context_files agent={@agent} />
 
+      <%!-- Only the numbers that aren't shown anywhere else: errors (a real
+           signal), and how long it's been running / idle. The chat already is
+           the record of turns / tool calls / messages — no vanity counts. --%>
       <.section variant={:sub} label="Activity">
-        <.info_row label="Turns" value={@agent[:turns] || 0} />
-        <.info_row label="Tool calls" value={@agent.tool_calls} />
         <.info_row
           label="Errors"
           value={@agent.errors}
           class={if @agent.errors > 0, do: "text-red-500 font-medium"}
         />
-        <.info_row label="Messages" value={length(@agent.messages)} />
         <.info_row :if={@agent[:started_at]} label="Started" value={time_ago(@agent.started_at)} />
         <.info_row
           :if={@agent[:last_activity_at]}
@@ -76,7 +75,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
       </.section>
 
       <.docker_context agent={@agent} />
-      <.tool_list />
     </details>
     """
   end
@@ -264,20 +262,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     assigns = assign(assigns, :ctx, ctx)
 
     ~H"""
+    <%!-- Just Mode + Container. Volume is already in the switcher's Volumes
+         list, and the Workspace id is redundant (you're in it). --%>
     <.section :if={@ctx.container} variant={:sub} label="Docker">
-      <.info_row
-        label="Container"
-        value={@ctx.container}
-        monospace
-        class="text-zinc-700 dark:text-zinc-300"
-      />
-      <.info_row
-        :if={@ctx.volume}
-        label="Volume"
-        value={@ctx.volume}
-        monospace
-        class="text-zinc-700 dark:text-zinc-300"
-      />
       <.info_row
         label="Mode"
         value={@ctx.mode}
@@ -288,9 +275,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
         }
       />
       <.info_row
-        :if={@ctx.workspace_id}
-        label="Workspace"
-        value={@ctx.workspace_id}
+        label="Container"
+        value={@ctx.container}
         monospace
         class="text-zinc-700 dark:text-zinc-300"
       />
@@ -326,118 +312,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
       <.info_row label="Cost" value={"$#{Float.round((@agent[:total_cost_usd] || 0.0) * 1.0, 4)}"} />
     </.section>
     """
-  end
-
-  defp tool_list(assigns) do
-    tools = mcp_tool_names()
-    assigns = assign(assigns, :tools, tools)
-
-    ~H"""
-    <.section variant={:sub} label="Tools">
-      <div class="flex flex-wrap gap-1 px-2">
-        <span
-          :for={tool <- @tools}
-          class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
-        >
-          {tool}
-        </span>
-      </div>
-    </.section>
-    """
-  end
-
-  defp context_files(assigns) do
-    files = discover_context_files(assigns.agent)
-    assigns = assign(assigns, :files, files)
-
-    ~H"""
-    <.section :if={@files != []} variant={:sub} label="Context">
-      <div class="space-y-0.5 px-2">
-        <div :for={file <- @files} class="flex items-center gap-2 min-h-6 text-xs">
-          <span class="text-zinc-500 flex-none">{file.type}</span>
-          <%= if file.url do %>
-            <a
-              href={file.url}
-              target="_blank"
-              rel="noopener"
-              class="font-mono text-violet-600 dark:text-violet-400 hover:underline truncate"
-            >
-              {file.name}
-            </a>
-          <% else %>
-            <span class="font-mono text-zinc-700 dark:text-zinc-300 truncate">{file.name}</span>
-          <% end %>
-        </div>
-      </div>
-    </.section>
-    """
-  end
-
-  # Discover what context files are loaded for this agent.
-  # Checks the agent's working_dir for CLAUDE.md, .claude/ configs,
-  # skills, and the system prompt.
-  defp discover_context_files(agent) do
-    working_dir = agent[:working_dir]
-    ws_id = agent[:workspace_id]
-
-    files = []
-
-    # CLAUDE.md
-    files =
-      if working_dir && File.exists?(Path.join(working_dir, "CLAUDE.md")) do
-        volume = if ws_id, do: Loopyard.Workspace.volume_name_for(ws_id)
-        url = if volume, do: file_url_path(ws_id, volume, "CLAUDE.md")
-        files ++ [%{name: "CLAUDE.md", type: "memory", url: url}]
-      else
-        files
-      end
-
-    # .claude/CLAUDE.md
-    files =
-      if working_dir && File.exists?(Path.join(working_dir, ".claude/CLAUDE.md")) do
-        files ++ [%{name: ".claude/CLAUDE.md", type: "memory", url: nil}]
-      else
-        files
-      end
-
-    # Skills — walk .claude/skills/**/ for any dir containing SKILL.md
-    skills_dir = if working_dir, do: Path.join(working_dir, ".claude/skills")
-
-    files =
-      if skills_dir && File.dir?(skills_dir) do
-        skill_files =
-          Path.join(skills_dir, "**/SKILL.md")
-          |> Path.wildcard()
-          |> Enum.map(fn skill_path ->
-            # Extract the skill name from the path relative to .claude/skills/
-            skill_path
-            |> Path.relative_to(skills_dir)
-            |> Path.dirname()
-          end)
-          |> Enum.reject(&(&1 == "."))
-
-        files ++ Enum.map(skill_files, &%{name: &1, type: "skill", url: nil})
-      else
-        files
-      end
-
-    # System prompt (always present)
-    files ++ [%{name: "system prompt", type: "prompt", url: nil}]
-  rescue
-    _ -> [%{name: "system prompt", type: "prompt", url: nil}]
-  end
-
-  defp file_url_path(ws_id, volume, path) do
-    # Find project_id for the URL
-    case Loopyard.ProjectRegistry.get_workspace(ws_id) do
-      %{project_id: pid} ->
-        "/projects/#{pid}/workspaces/#{ws_id}/volumes/#{volume}/files/#{path}"
-
-      _ ->
-        nil
-    end
-  rescue
-    _ -> nil
   end
 
   @doc "Shorten MCP tool name for display (strip server prefix)."
@@ -476,15 +350,5 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     mode = if agent[:bind_mount], do: :bind_mount, else: :container
 
     %{container: container, volume: volume, workspace_id: ws_id, mode: mode}
-  end
-
-  @doc "List all MCP tool names from the default toolkit."
-  def mcp_tool_names do
-    Loopyard.ChatAgent.ToolConfig.default_tools()
-    |> Enum.flat_map(fn mod ->
-      info = mod.__tool_server__()
-      Enum.map(info.tools, & &1.__tool_name__())
-    end)
-    |> Enum.sort()
   end
 end
