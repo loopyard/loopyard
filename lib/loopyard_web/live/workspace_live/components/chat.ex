@@ -118,30 +118,35 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
         :if={@tab == :context_panel}
         class="flex-1 lg:hidden overflow-y-auto bg-zinc-50 dark:bg-zinc-900/50"
       >
-        <LoopyardWeb.Components.SideNav.section label="Agents">
-          <LoopyardWeb.Live.WorkspaceLive.Components.Sidebar.agent_list_item
-            :for={a <- @agents}
-            agent={a}
-            selected={@selected_id == a.id}
-          />
-          <.link
-            patch={"#{@base_path}/new"}
-            class="flex items-center gap-2 px-3 min-h-[2.75rem] text-sm font-medium text-violet-600 dark:text-violet-400 active:bg-violet-50 dark:active:bg-violet-500/10"
-          >
-            + New agent
-          </.link>
-        </LoopyardWeb.Components.SideNav.section>
-        <LoopyardWeb.Components.SideNav.section :if={@service_statuses != []} label="Services">
-          <LoopyardWeb.Live.WorkspaceLive.Components.Sidebar.service_item
-            :for={svc <- @service_statuses}
-            svc={svc}
-            base_path={@base_path}
-            selected={@selected_service == svc.name}
-            host={@host}
-            workspace_id={@workspace.id}
-          />
-        </LoopyardWeb.Components.SideNav.section>
-        <.context_sections agent={@selected_agent} editing_name={@editing_name} />
+        <%!-- Same two zones as the desktop rail: a tinted SWITCHER (the
+             workspace's resources) closed by the L1 divider, then the selected
+             agent's DETAIL. No max-h cap here — the whole panel scrolls. --%>
+        <div class="bg-zinc-100/50 dark:bg-zinc-800/25 border-b-2 border-zinc-200 dark:border-zinc-700/70 py-1">
+          <LoopyardWeb.Components.SideNav.section label="Agents">
+            <LoopyardWeb.Live.WorkspaceLive.Components.Sidebar.agent_list_item
+              :for={a <- @agents}
+              agent={a}
+              selected={@selected_id == a.id}
+            />
+            <.link
+              patch={"#{@base_path}/new"}
+              class="flex items-center gap-2 px-3 min-h-[2.75rem] text-sm font-medium text-violet-600 dark:text-violet-400 active:bg-violet-50 dark:active:bg-violet-500/10"
+            >
+              + New agent
+            </.link>
+          </LoopyardWeb.Components.SideNav.section>
+          <LoopyardWeb.Components.SideNav.section :if={@service_statuses != []} label="Services">
+            <LoopyardWeb.Live.WorkspaceLive.Components.Sidebar.service_item
+              :for={svc <- @service_statuses}
+              svc={svc}
+              base_path={@base_path}
+              selected={@selected_service == svc.name}
+              host={@host}
+              workspace_id={@workspace.id}
+            />
+          </LoopyardWeb.Components.SideNav.section>
+        </div>
+        <.context_sections :if={@selected_agent} agent={@selected_agent} editing_name={@editing_name} />
       </div>
     </div>
     """
@@ -174,9 +179,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           <.link
             patch={"#{@base_path}/agents/#{@agent.id}/context"}
             class="lg:hidden inline-flex items-center min-h-[2.5rem] px-3 rounded-lg text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 active:bg-zinc-200 dark:active:bg-zinc-600 transition-colors"
-            aria-label="Agent context, services, and info"
+            aria-label="Workspace: agents, services, volumes, and the selected item"
           >
-            Info
+            Workspace
           </.link>
           <%!-- Container lifecycle is DESTRUCTIVE (Stop kills the container; Remove
                deletes the agent) — keep it off the cramped phone header, where it
@@ -236,7 +241,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           patch={"#{@base_path}/agents/#{@agent.id}/context"}
           class={"lg:hidden px-3 py-1.5 text-xs font-medium border-b-2 transition-colors #{if @tab == :context_panel, do: "border-violet-500 text-violet-600 dark:text-violet-400", else: "border-transparent text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"}"}
         >
-          Info
+          Workspace
         </.link>
       </div>
     </div>

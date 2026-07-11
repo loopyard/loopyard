@@ -91,7 +91,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
            ~45% then scrolls internally) on a faintly tinted surface, closed by
            the ONE heavy rule in the pane. This is the "what's in this
            workspace" nav, distinct from "the thing you selected". --%>
-      <div class="flex-none max-h-[45%] overflow-y-auto bg-zinc-100/50 dark:bg-zinc-800/25 border-b-2 border-zinc-200 dark:border-zinc-700/70 py-1">
+      <div class="flex-none md:max-h-[45%] overflow-y-auto bg-zinc-100/50 dark:bg-zinc-800/25 border-b-2 border-zinc-200 dark:border-zinc-700/70 py-1">
         <.section label="Agents">
           <.agent_list_item
             :for={agent <- @agents}
@@ -153,10 +153,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
 
       <%!-- ── L1 ZONE B · DETAIL ─────────────────────────────────────────────
            The selected item's detail. Leads with STATUS (no repeated name —
-           the switcher above already shows which one is selected). Scrolls. --%>
-      <div class="flex-1 overflow-y-auto">
+           the switcher above already shows which one is selected). Scrolls.
+           Rendered only when something's selected, so at the workspace index
+           (no agent) the switcher fills the panel instead of leaving a dead
+           half — matters most on mobile where the rail is full-screen. --%>
+      <div :if={@selected_agent} class="flex-1 overflow-y-auto">
         <.context_sections
-          :if={@selected_agent}
           agent={@selected_agent}
           changes={@changes}
           editing_name={@editing_name}
