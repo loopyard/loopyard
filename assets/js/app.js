@@ -107,6 +107,25 @@ Hooks.ScrollBottom = {
 // Pauses when user scrolls up; resumes when they scroll back to bottom.
 // Clip: copy this element's data-copy to the clipboard, with a brief
 // "Copied — paste on your Mac" confirmation. Used by the per-tool "Copy for Mac".
+// SidebarBranch: native <details> expand/collapse in the god-mode rail. The
+// browser toggles instantly (no server round-trip, so it never lags behind an
+// agent's streaming events). We only sync the new state to the server in the
+// background (for per-window persistence), and re-assert the user's choice
+// after a live re-render so a morphdom patch can't collapse what they opened.
+Hooks.SidebarBranch = {
+  mounted() {
+    this._open = this.el.open
+    this.el.addEventListener("toggle", () => {
+      if (this.el.open === this._open) return
+      this._open = this.el.open
+      this.pushEvent("sidebar_toggle", { node: this.el.dataset.key })
+    })
+  },
+  updated() {
+    if (this.el.open !== this._open) this.el.open = this._open
+  }
+}
+
 Hooks.Clip = {
   mounted() {
     this.el.addEventListener("click", () => {

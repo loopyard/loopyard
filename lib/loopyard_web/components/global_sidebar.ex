@@ -48,89 +48,71 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
           no projects yet
         </div>
 
-        <%!-- PROJECT branch → its WORKSPACES. Two levels, that's it: no agents,
-             no services in the rail. Each workspace is a link with a status
-             dot aggregated from its agents. --%>
-        <div :for={project <- @tree} class="select-none">
-          <.project_row
-            key={"p:#{project.id}"}
-            expanded={MapSet.member?(@expanded, "p:#{project.id}")}
-            name={project.name}
-          />
-
-          <div :if={MapSet.member?(@expanded, "p:#{project.id}")}>
-            <%!-- Two columns: [agent dot + workspace name] ......... [ :port ].
-                 The port chip is a SIBLING of the row link (not nested inside
-                 it) — nested <a> tags are invalid and get kicked out of the
-                 row. --%>
-            <div
-              :for={ws <- project.workspaces}
-              class={[
-                "group flex items-center pr-2 mx-1 rounded-md",
-                "hover:bg-zinc-200/60 dark:hover:bg-zinc-700/40",
-                ws.id == @current_workspace_id && "bg-violet-100 dark:bg-violet-500/15"
-              ]}
+        <%!-- PROJECT branch → its WORKSPACES, as a NATIVE <details> so expand /
+             collapse is instant (browser-handled) — no server round-trip that
+             would queue behind an agent's streaming events (that was the lag).
+             The SidebarBranch hook syncs the open state to the server in the
+             background (persistence per window) and re-asserts it so a live
+             re-render never collapses what you opened. Workspaces are ALWAYS in
+             the DOM (browser hides them when closed) so the toggle needs no
+             server data. --%>
+        <details
+          :for={project <- @tree}
+          id={"branch-#{project.id}"}
+          phx-hook="SidebarBranch"
+          data-key={"p:#{project.id}"}
+          open={MapSet.member?(@expanded, "p:#{project.id}")}
+          class="group/branch select-none"
+        >
+          <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer flex items-center gap-2 pl-2 pr-2 py-2 mx-1 rounded-md hover:bg-zinc-200/60 dark:hover:bg-zinc-700/40">
+            <svg
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              class="w-4 h-4 flex-none text-zinc-400 transition-transform group-open/branch:rotate-90"
             >
-              <.link
-                navigate={workspace_link(project.id, ws)}
-                class="flex-1 min-w-0 flex items-center gap-2.5 py-1.5"
-                style="padding-left: 2rem"
-              >
-                <Birdseye.dot class={Birdseye.aggregate_dot(ws.agents)} size={:sm} />
-                <span class="truncate text-sm text-zinc-700 dark:text-zinc-200">{ws.name}</span>
-              </.link>
-              <Birdseye.port_chip :for={p <- ws.ports} port={p.port} url={p.url} />
-            </div>
+              <path
+                fill-rule="evenodd"
+                d="M7.21 14.77a.75.75 0 0 1 0-1.06L10.94 10 7.21 6.29a.75.75 0 1 1 1.06-1.06l4.25 4.24a.75.75 0 0 1 0 1.06l-4.25 4.24a.75.75 0 0 1-1.06 0Z"
+                clip-rule="evenodd"
+              />
+            </svg>
+            <span class="truncate text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+              {project.name}
+            </span>
+          </summary>
 
-            <div
-              :if={project.workspaces == []}
-              class="py-1.5 text-xs text-zinc-400 italic"
+          <%!-- Two columns: [agent dot + workspace name] ......... [ :port ].
+               The port chip is a SIBLING of the row link (not nested inside it)
+               — nested <a> tags are invalid and get kicked out of the row. --%>
+          <div
+            :for={ws <- project.workspaces}
+            class={[
+              "group flex items-center pr-2 mx-1 rounded-md",
+              "hover:bg-zinc-200/60 dark:hover:bg-zinc-700/40",
+              ws.id == @current_workspace_id && "bg-violet-100 dark:bg-violet-500/15"
+            ]}
+          >
+            <.link
+              navigate={workspace_link(project.id, ws)}
+              class="flex-1 min-w-0 flex items-center gap-2.5 py-1.5"
               style="padding-left: 2rem"
             >
-              no workspaces
-            </div>
+              <Birdseye.dot class={Birdseye.aggregate_dot(ws.agents)} size={:sm} />
+              <span class="truncate text-sm text-zinc-700 dark:text-zinc-200">{ws.name}</span>
+            </.link>
+            <Birdseye.port_chip :for={p <- ws.ports} port={p.port} url={p.url} />
           </div>
-        </div>
+
+          <div
+            :if={project.workspaces == []}
+            class="py-1.5 text-xs text-zinc-400 italic"
+            style="padding-left: 2rem"
+          >
+            no workspaces
+          </div>
+        </details>
       </div>
     </nav>
-    """
-  end
-
-  # A project row: a chevron (rotates when open) + the project name in bold.
-  # Deliberately NO status dot — a project has no status of its own; its
-  # workspaces do. The chevron + weight is what marks it as a project, so it
-  # never reads like a workspace.
-  attr :key, :string, required: true
-  attr :expanded, :boolean, required: true
-  attr :name, :string, required: true
-
-  defp project_row(assigns) do
-    ~H"""
-    <button
-      type="button"
-      phx-click="sidebar_toggle"
-      phx-value-node={@key}
-      class="w-full flex items-center gap-2 pl-2 pr-2 py-2 mx-1 rounded-md text-left hover:bg-zinc-200/60 dark:hover:bg-zinc-700/40"
-      aria-expanded={to_string(@expanded)}
-    >
-      <svg
-        viewBox="0 0 20 20"
-        fill="currentColor"
-        class={[
-          "w-4 h-4 flex-none text-zinc-400 transition-transform",
-          @expanded && "rotate-90"
-        ]}
-      >
-        <path
-          fill-rule="evenodd"
-          d="M7.21 14.77a.75.75 0 0 1 0-1.06L10.94 10 7.21 6.29a.75.75 0 1 1 1.06-1.06l4.25 4.24a.75.75 0 0 1 0 1.06l-4.25 4.24a.75.75 0 0 1-1.06 0Z"
-          clip-rule="evenodd"
-        />
-      </svg>
-      <span class="truncate text-sm font-semibold text-zinc-800 dark:text-zinc-100">
-        {@name}
-      </span>
-    </button>
     """
   end
 
