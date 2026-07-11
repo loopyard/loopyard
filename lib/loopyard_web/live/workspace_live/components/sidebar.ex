@@ -85,7 +85,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
         else: "flex"
       )
     ]}>
-      <div class="flex-1 overflow-y-auto">
+      <%!-- ── L1 ZONE A · SWITCHER ──────────────────────────────────────────
+           The workspace's resources — agents / services / volumes — you pick
+           one and its detail fills the zone below. Fixed-ish height (caps at
+           ~45% then scrolls internally) on a faintly tinted surface, closed by
+           the ONE heavy rule in the pane. This is the "what's in this
+           workspace" nav, distinct from "the thing you selected". --%>
+      <div class="flex-none max-h-[45%] overflow-y-auto bg-zinc-100/50 dark:bg-zinc-800/25 border-b-2 border-zinc-200 dark:border-zinc-700/70 py-1">
         <.section label="Agents">
           <.agent_list_item
             :for={agent <- @agents}
@@ -143,9 +149,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
             <span class="truncate text-zinc-600 dark:text-zinc-400">Host file sync</span>
           </.row>
         </.section>
+      </div>
 
-        <%!-- The selected agent's context (model, tokens, cost, docker, tools)
-             folds in below the workspace nav — one combined rail. --%>
+      <%!-- ── L1 ZONE B · DETAIL ─────────────────────────────────────────────
+           The selected item's detail. Leads with STATUS (no repeated name —
+           the switcher above already shows which one is selected). Scrolls. --%>
+      <div class="flex-1 overflow-y-auto">
         <.context_sections
           :if={@selected_agent}
           agent={@selected_agent}
