@@ -99,6 +99,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           host={@host}
           thinking_word={@thinking_word}
           has_more_messages={@has_more_messages}
+          window_tail?={@window_tail?}
           detail_level={@detail_level}
         />
         <.container_panel
@@ -295,9 +296,26 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     # live activity feed (thinking_indicator) — so suppress the SAME rows here
     # to avoid double-listing. They render inline normally once the turn ends.
     assigns = assign(assigns, :live_tool_from, active_turn_cutoff(assigns))
+    assigns = assign_new(assigns, :window_tail?, fn -> true end)
 
     ~H"""
-    <div class="flex-1 flex flex-col min-h-0">
+    <div class="relative flex-1 flex flex-col min-h-0">
+      <%!-- Windowed transcript: when you've scrolled up into history, the live
+           tail isn't loaded. This snaps you back to the newest messages. --%>
+      <button
+        :if={not @window_tail?}
+        phx-click="load_latest"
+        class="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-1.5 rounded-full bg-violet-600 text-white text-xs font-medium px-3.5 py-1.5 shadow-lg shadow-violet-900/20 hover:bg-violet-700 transition-colors"
+      >
+        Jump to latest
+        <svg viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5">
+          <path
+            fill-rule="evenodd"
+            d="M10 3a.75.75 0 0 1 .75.75v9.19l3.72-3.72a.75.75 0 1 1 1.06 1.06l-5 5a.75.75 0 0 1-1.06 0l-5-5a.75.75 0 1 1 1.06-1.06l3.72 3.72V3.75A.75.75 0 0 1 10 3Z"
+            clip-rule="evenodd"
+          />
+        </svg>
+      </button>
       <%!-- scroll-smooth: the auto-tail (ScrollBottom hook nudges scrollTop as the
            agent streams) animates instead of jumping, so following the thinking
            glides. Pure CSS — honors prefers-reduced-motion automatically. --%>

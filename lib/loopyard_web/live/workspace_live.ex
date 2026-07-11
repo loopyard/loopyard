@@ -153,6 +153,8 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:selected_agent, nil)
      |> assign(:messages, [])
      |> assign(:has_more_messages, false)
+     # Windowed transcript: does the loaded window still include the live tail?
+     |> assign(:window_tail?, true)
      |> assign(:streaming_text, "")
      |> assign(:streaming_thinking, "")
      |> assign(:thinking_word, nil)
@@ -720,24 +722,62 @@ defmodule LoopyardWeb.WorkspaceLive do
       {older, total} =
         ChatAgent.get_messages(
           socket.assigns.selected_id,
-          limit: 50,
+          limit: AgentLifecycle.message_page_size(),
           before_id: oldest && oldest[:id],
           snap_to_prompt: true
         )
 
       if older != [] do
         combined = older ++ socket.assigns.messages
+        max = AgentLifecycle.message_window_max()
+
+        # Cap the DOM: if the window overflows, drop from the BOTTOM (the tail is
+        # off-screen while you're scrolled up here, so nothing shifts). Once we
+        # drop the tail, the window no longer follows the live stream.
+        {windowed, tail?} =
+          if length(combined) > max do
+            {Enum.take(combined, max), false}
+          else
+            {combined, socket.assigns.window_tail?}
+          end
+
+        # Keep offering older until a load comes back empty (the else branch);
+        # the tiny cost is one no-op load at the very top.
+        _ = total
 
         {:noreply,
          socket
-         |> assign(:messages, combined)
-         |> assign(:has_more_messages, length(combined) < total)
+         |> assign(:messages, windowed)
+         |> assign(:has_more_messages, true)
+         |> assign(:window_tail?, tail?)
          |> push_event("messages_prepended", %{})}
       else
         {:noreply, assign(socket, :has_more_messages, false)}
       end
     else
       {:noreply, socket}
+    end
+  end
+
+  # Jump back to the live tail from a scrolled-up history view: reload the last
+  # window batch from the live agent and snap to the bottom. This is how new
+  # messages (which we deliberately didn't append while you were reading history)
+  # get caught up.
+  def handle_event("load_latest", _params, socket) do
+    case socket.assigns.selected_id do
+      nil ->
+        {:noreply, socket}
+
+      id ->
+        msgs = (ChatAgent.get_state(id) || %{})[:messages] || []
+        page = Enum.take(msgs, -AgentLifecycle.message_page_size())
+
+        {:noreply,
+         socket
+         |> assign(:messages, page)
+         |> assign(:has_more_messages, length(page) < length(msgs))
+         |> assign(:window_tail?, true)
+         |> push_event("jump_bottom", %{})}
     end
   end
 
@@ -1560,48 +1600,71 @@ defmodule LoopyardWeb.WorkspaceLive do
   @impl Events.ChatAgentMessage.Subscriber
   def on_message(%Events.ChatAgentMessage.Message{agent_id: id, msg: msg}, socket)
       when id == socket.assigns.selected_id do
-    # Guard against duplicate messages (mobile reconnect can cause double PubSub subscriptions)
-    if msg[:id] && Enum.any?(socket.assigns.messages, &(&1[:id] == msg[:id])) do
-      {:noreply, socket}
-    else
-      socket =
-        if msg.role == :assistant,
-          do: socket |> assign(:streaming_text, "") |> assign(:streaming_thinking, ""),
-          else: socket
+    cond do
+      # Guard against duplicate messages (mobile reconnect → double PubSub subs).
+      msg[:id] && Enum.any?(socket.assigns.messages, &(&1[:id] == msg[:id])) ->
+        {:noreply, socket}
 
-      # If build was running and we get a post-build message, mark build as done
-      socket =
-        if socket.assigns.building && msg.role in [:system, :error] do
-          messages =
-            Enum.map(socket.assigns.messages, fn
-              %{role: :build} = m -> %{m | role: :build_done}
-              other -> other
-            end)
+      # Viewing history — the window no longer follows the live tail, so DON'T
+      # grow it (that's the whole point of windowing). The "Jump to latest" pill
+      # (shown whenever the window isn't the tail) is how you catch up. Keep the
+      # cockpit fresh so status / recent still update while you read.
+      not socket.assigns.window_tail? ->
+        {:noreply, AgentEvents.refresh_selected_from_agents(socket, id, socket.assigns.agents)}
 
-          socket |> assign(:messages, messages) |> assign(:building, false)
-        else
+      true ->
+        socket =
+          if msg.role == :assistant,
+            do: socket |> assign(:streaming_text, "") |> assign(:streaming_thinking, ""),
+            else: socket
+
+        # If build was running and we get a post-build message, mark build as done
+        socket =
+          if socket.assigns.building && msg.role in [:system, :error] do
+            messages =
+              Enum.map(socket.assigns.messages, fn
+                %{role: :build} = m -> %{m | role: :build_done}
+                other -> other
+              end)
+
+            socket |> assign(:messages, messages) |> assign(:building, false)
+          else
+            socket
+          end
+
+        # Append to the tail window, then CAP the DOM: drop from the top once we
+        # exceed the max. The dropped rows are above the viewport (you're at the
+        # bottom following the stream), so the browser's scroll anchoring keeps
+        # the visible content put — no shift. Dropping the top means older
+        # messages now live off-window, so re-enable "load older".
+        max = AgentLifecycle.message_window_max()
+        appended = socket.assigns.messages ++ [msg]
+
+        {windowed, dropped_top?} =
+          if length(appended) > max,
+            do: {Enum.take(appended, -max), true},
+            else: {appended, false}
+
+        socket =
           socket
-        end
+          |> assign(:messages, windowed)
+          |> assign(:has_more_messages, socket.assigns.has_more_messages || dropped_top?)
+          |> AgentEvents.refresh_selected_from_agents(id, socket.assigns.agents)
+          |> push_event("scroll_bottom", %{})
 
-      socket =
-        socket
-        |> assign(:messages, socket.assigns.messages ++ [msg])
-        |> AgentEvents.refresh_selected_from_agents(id, socket.assigns.agents)
-        |> push_event("scroll_bottom", %{})
+        # Update thinking word when a tool message arrives — shows the
+        # tool-specific phrase (e.g., "grepping" instead of "pondering")
+        socket =
+          if msg.role == :tool && socket.assigns.selected_agent &&
+               socket.assigns.selected_agent.status == :thinking do
+            tool = msg[:tool]
+            word = LoopyardWeb.Components.Sidebar.thinking_word(id, tool)
+            assign(socket, :thinking_word, word)
+          else
+            socket
+          end
 
-      # Update thinking word when a tool message arrives — shows the
-      # tool-specific phrase (e.g., "grepping" instead of "pondering")
-      socket =
-        if msg.role == :tool && socket.assigns.selected_agent &&
-             socket.assigns.selected_agent.status == :thinking do
-          tool = msg[:tool]
-          word = LoopyardWeb.Components.Sidebar.thinking_word(id, tool)
-          assign(socket, :thinking_word, word)
-        else
-          socket
-        end
-
-      {:noreply, socket}
+        {:noreply, socket}
     end
   end
 

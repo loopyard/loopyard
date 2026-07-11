@@ -100,6 +100,12 @@ Hooks.ScrollBottom = {
       // while you're scrolled up reading. ~120px slack.
       if (this._atBottom) this._toBottom()
     })
+
+    this.handleEvent("jump_bottom", () => {
+      // "Jump to latest" — force it, regardless of current scroll position.
+      this._atBottom = true
+      this._toBottom()
+    })
   }
 }
 

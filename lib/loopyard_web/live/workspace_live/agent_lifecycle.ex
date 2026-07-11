@@ -94,19 +94,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
     end
   end
 
-  # Load a fat chunk from the bottom (most recent). 200 is big enough that the
-  # human "YOU" prompt owning the visible response is in the window ~90% of the
-  # time (turns rarely run 200 messages), so the sticky prompt band has its
-  # message. In the rare case a turn IS >200 messages of tool calls with no
-  # prompt in reach, the top section just renders headerless — fine, not worth
-  # the complexity of snapping. Older messages load in chunks on scroll-up.
+  # WINDOWED transcript. The chat is a narrow window into a possibly-huge stream,
+  # not the whole thing — an agent with thousands of messages must not blow up
+  # the DOM (it was OOM-ing the tab). Load only a batch at the bottom; older
+  # loads lazily on scroll-up (may never load); newer drops off the top as the
+  # stream grows. `window_tail?` tracks whether the window still includes the
+  # live tail — see the load_older / on_message / load_latest handlers.
   #
-  # Load from the SAME live snapshot the cockpit uses (the `get_state` summary,
-  # which prefers the live GenServer), not a second ETS read: per-message stream
-  # events only write ETS at turn boundaries, so an ETS read lags the live
-  # conversation and is empty right after a resume re-stream — that was the
-  # blank chat.
-  @message_page_size 200
+  # Sourced from the live `get_state` snapshot (prefers the GenServer), not a
+  # second ETS read: per-message events only write ETS at turn boundaries, so an
+  # ETS read lags the live conversation and is empty right after a resume
+  # re-stream — that was the blank chat.
+  @message_page_size 60
 
   defp assign_message_page(socket, agent) do
     msgs = agent[:messages] || []
@@ -115,7 +114,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
     socket
     |> assign(:messages, page)
     |> assign(:has_more_messages, length(page) < length(msgs))
+    |> assign(:window_tail?, true)
   end
+
+  @doc "Initial window batch size + the DOM cap, shared with the window handlers."
+  def message_page_size, do: @message_page_size
+  def message_window_max, do: 160
 
   @doc """
   List agents belonging to the given workspace path.
