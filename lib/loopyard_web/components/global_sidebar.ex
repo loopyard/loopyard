@@ -1,17 +1,12 @@
 defmodule LoopyardWeb.Components.GlobalSidebar do
   @moduledoc """
-  The god-mode left rail (#55) as an **expandable tree**, not a drill-down.
+  The god-mode left rail (#55): every project → its workspaces, always
+  expanded. No collapse state — projects are **sticky headers** and their
+  workspaces scroll up under them (iOS grouped-list style), so you always see
+  the whole map and scrolling just works. The project you're currently in
+  keeps its header pinned as you scroll its workspaces.
 
-  Every project → workspace → agent is one tree. You expand the branches you
-  care about — several open at once for a god-view across projects — and
-  collapse the ones you don't. Not a flat pile of links (collapsed by default,
-  so there's hierarchy), not a one-level-at-a-time drill (you keep as many
-  branches open as you like). Which nodes are open is held in the LiveView
-  (`@expanded`, a `MapSet` of node keys) so it's server-driven and survives
-  navigation; rows fire `sidebar_toggle` to open/close, agent rows navigate.
-
-  Fed by `Loopyard.WorkspaceTree.global/0`, kept live by subscribing to
-  `Loopyard.Events.Activity` in the host LiveView.
+  Fed by `Loopyard.WorkspaceTree.global/1`, kept live via the host LiveView.
   """
   use Phoenix.Component
 
@@ -22,13 +17,10 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
   alias LoopyardWeb.Components.Birdseye
 
   attr :tree, :list, required: true
-  attr :expanded, :any, default: nil
   attr :current_workspace_id, :string, default: nil
   attr :class, :string, default: nil
 
   def global_sidebar(assigns) do
-    assigns = assign_new(assigns, :expanded, fn -> MapSet.new() end)
-
     ~H"""
     <nav class={["flex flex-col", @class]} aria-label="Navigation">
       <%!-- Persistent home: the wordmark always returns to the root screen.
@@ -43,91 +35,53 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
         <span class="font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">Loopyard</span>
       </.link>
 
-      <div class="flex-1 overflow-y-auto py-1.5">
+      <div class="flex-1 overflow-y-auto">
         <div :if={@tree == []} class="px-3 py-2 text-xs text-zinc-400 italic">
           no projects yet
         </div>
 
-        <%!-- PROJECT branch → its WORKSPACES, as a NATIVE <details> so expand /
-             collapse is instant (browser-handled) — no server round-trip that
-             would queue behind an agent's streaming events (that was the lag).
-             The SidebarBranch hook syncs the open state to the server in the
-             background (persistence per window) and re-asserts it so a live
-             re-render never collapses what you opened. Workspaces are ALWAYS in
-             the DOM (browser hides them when closed) so the toggle needs no
-             server data. --%>
-        <details
-          :for={project <- @tree}
-          id={"branch-#{project.id}"}
-          phx-hook="SidebarBranch"
-          data-key={"p:#{project.id}"}
-          open={MapSet.member?(@expanded, "p:#{project.id}")}
-          class="group/branch select-none"
-        >
-          <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer flex items-center gap-2 pl-2 pr-2 py-2 mx-1 rounded-md hover:bg-zinc-200/60 dark:hover:bg-zinc-700/40">
-            <svg
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              class="w-4 h-4 flex-none text-zinc-400 transition-transform group-open/branch:rotate-90"
-            >
-              <path
-                fill-rule="evenodd"
-                d="M7.21 14.77a.75.75 0 0 1 0-1.06L10.94 10 7.21 6.29a.75.75 0 1 1 1.06-1.06l4.25 4.24a.75.75 0 0 1 0 1.06l-4.25 4.24a.75.75 0 0 1-1.06 0Z"
-                clip-rule="evenodd"
-              />
-            </svg>
-            <span class="truncate text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+        <%!-- Each project is a STICKY header; its workspaces flow below and
+             scroll up under it. Always expanded — no collapse. --%>
+        <section :for={project <- @tree}>
+          <div class="sticky top-0 z-10 flex items-center px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200/80 dark:border-zinc-700/60">
+            <span class="truncate text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
               {project.name}
             </span>
-          </summary>
+          </div>
 
-          <%!-- Two columns: [agent dot + workspace name] ......... [ :port ].
-               The port chip is a SIBLING of the row link (not nested inside it)
-               — nested <a> tags are invalid and get kicked out of the row. --%>
-          <div
-            :for={ws <- project.workspaces}
-            class={[
-              "group flex items-center pr-2 mx-1 rounded-md",
-              "hover:bg-zinc-200/60 dark:hover:bg-zinc-700/40",
-              ws.id == @current_workspace_id && "bg-violet-100 dark:bg-violet-500/15"
-            ]}
-          >
-            <.link
-              navigate={workspace_link(project.id, ws)}
-              class="flex-1 min-w-0 flex items-center gap-2.5 py-1.5"
-              style="padding-left: 2rem"
+          <div class="py-1">
+            <%!-- Two columns: [agent dot + workspace name] ......... [ :port ].
+                 The port chip is a SIBLING of the row link (not nested inside
+                 it) — nested <a> tags are invalid and get kicked out. --%>
+            <div
+              :for={ws <- project.workspaces}
+              class={[
+                "group flex items-center pr-2 mx-1 rounded-md",
+                "hover:bg-zinc-200/60 dark:hover:bg-zinc-700/40",
+                ws.id == @current_workspace_id && "bg-violet-100 dark:bg-violet-500/15"
+              ]}
             >
-              <Birdseye.dot class={Birdseye.aggregate_dot(ws.agents)} size={:sm} />
-              <span class="truncate text-sm text-zinc-700 dark:text-zinc-200">{ws.name}</span>
-            </.link>
-            <Birdseye.port_chip :for={p <- ws.ports} port={p.port} url={p.url} />
-          </div>
+              <.link
+                navigate={workspace_link(project.id, ws)}
+                class="flex-1 min-w-0 flex items-center gap-2.5 py-1.5 pl-3"
+              >
+                <Birdseye.dot class={Birdseye.aggregate_dot(ws.agents)} size={:sm} />
+                <span class="truncate text-sm text-zinc-700 dark:text-zinc-200">{ws.name}</span>
+              </.link>
+              <Birdseye.port_chip :for={p <- ws.ports} port={p.port} url={p.url} />
+            </div>
 
-          <div
-            :if={project.workspaces == []}
-            class="py-1.5 text-xs text-zinc-400 italic"
-            style="padding-left: 2rem"
-          >
-            no workspaces
+            <div
+              :if={project.workspaces == []}
+              class="py-1.5 pl-3 text-xs text-zinc-400 italic"
+            >
+              no workspaces
+            </div>
           </div>
-        </details>
+        </section>
       </div>
     </nav>
     """
-  end
-
-  @doc """
-  Default-open set for a project you just landed in: expand that project so its
-  workspaces are listed, everything else collapsed.
-  """
-  def initial_expanded(nil), do: MapSet.new()
-  def initial_expanded(project_id), do: MapSet.new(["p:#{project_id}"])
-
-  @doc "Toggle a node key in the expanded set."
-  def toggle(expanded, key) do
-    if MapSet.member?(expanded, key),
-      do: MapSet.delete(expanded, key),
-      else: MapSet.put(expanded, key)
   end
 
   # Link a workspace row straight to one of its agents when it has any — so the

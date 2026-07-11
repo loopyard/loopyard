@@ -135,13 +135,6 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:workspace_entry, extra_assigns[:workspace_entry])
      |> assign(:base_path, base_path)
      |> assign(:global_tree, Loopyard.WorkspaceTree.global(host))
-     # Expandable-tree sidebar. Restore THIS window's saved collapse state
-     # (per-window via transport_pid, survives the navigate-remount, independent
-     # across windows). Nothing saved yet → land with the current project open.
-     |> assign(
-       :expanded,
-       restore_expanded(socket, extra_assigns[:project] && extra_assigns[:project].id)
-     )
      |> Switcher.attach_view_tracker()
      |> assign(:host, host)
      |> assign(:agents, agents)
@@ -653,16 +646,6 @@ defmodule LoopyardWeb.WorkspaceLive do
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, "Couldn't remove workspace: #{inspect(reason)}")}
     end
-  end
-
-  # --- God-mode sidebar: expandable tree (#55) ---
-
-  # Open/close a project branch. Several can be open at once; collapse the ones
-  # you care less about. Persisted per-window so it survives navigation.
-  def handle_event("sidebar_toggle", %{"node" => key}, socket) do
-    expanded = LoopyardWeb.Components.GlobalSidebar.toggle(socket.assigns.expanded, key)
-    Loopyard.WindowViews.put_expanded(socket.transport_pid, MapSet.to_list(expanded))
-    {:noreply, assign(socket, :expanded, expanded)}
   end
 
   @impl true
@@ -1560,17 +1543,6 @@ defmodule LoopyardWeb.WorkspaceLive do
   defp rebuild_tree(socket),
     do: assign(socket, :global_tree, Loopyard.WorkspaceTree.global(socket.assigns.host))
 
-  # This window's saved sidebar collapse state, or the default (current project
-  # open) when nothing's saved yet / on the dead render.
-  defp restore_expanded(socket, project_id) do
-    saved = connected?(socket) && Loopyard.WindowViews.get_expanded(socket.transport_pid)
-
-    case saved do
-      keys when is_list(keys) -> MapSet.new(keys)
-      _ -> LoopyardWeb.Components.GlobalSidebar.initial_expanded(project_id)
-    end
-  end
-
   # Async-fetch the selected agent's workspace working-tree changes for the
   # right-pane "Changes" hero (#58). No-op without a selected agent / project,
   # or when the source doesn't support git. Dispatches through the source
@@ -1871,7 +1843,6 @@ defmodule LoopyardWeb.WorkspaceLive do
              across all projects (#55). Desktop-only. --%>
         <LoopyardWeb.Components.GlobalSidebar.global_sidebar
           tree={@global_tree}
-          expanded={@expanded}
           current_workspace_id={@workspace.id}
           class="hidden md:flex w-72 flex-none border-r border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-900/50"
         />
