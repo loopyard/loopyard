@@ -145,7 +145,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     # spine; this clause just contributes flowing prose into that gutter.
     ~H"""
     <div class="group/msg" id={"msg-#{@msg[:id] || hash_content(@msg.content)}"}>
-      <div class={[gutter(), "pl-7 py-0.5"]}>
+      <div class={[gutter(), "py-0.5"]}>
         <div class="markdown-body text-[15px] leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl">
           {Loopyard.Markdown.to_html(@rendered_content)}
         </div>
@@ -404,7 +404,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
 
   def streaming_bubble(assigns) do
     ~H"""
-    <div class={[gutter(), "pl-7 py-0.5 mt-2"]} id="streaming-msg">
+    <div class={[gutter(), "py-0.5 mt-2"]} id="streaming-msg">
       <div class="markdown-body text-[15px] leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl">
         {Loopyard.Markdown.to_html(@text)}<span class="inline-block w-1.5 h-4 bg-violet-500 animate-pulse ml-0.5 align-middle"></span>
       </div>

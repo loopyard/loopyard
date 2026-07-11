@@ -351,7 +351,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                   <% {:run, items} -> %>
                     <div class="mt-3">
                       <.run_header timestamp={run_timestamp(items)} />
-                      <div class="border-l border-zinc-200/70 dark:border-zinc-800/80 ml-3">
+                      <div>
                         <.chat_msg
                           :for={{msg, idx} <- items}
                           :if={not in_live_feed?(@live_tool_from, msg, idx)}
