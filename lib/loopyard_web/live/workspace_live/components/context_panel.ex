@@ -47,35 +47,30 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
          Raw numbers (tokens · cost · docker · tools) demote into "Details". --%>
     <.harness_status agent={@agent} />
 
+    <%!-- Flat, scrollable groups — no disclosure to dig through. Each is a
+         plain labeled section; the zone scrolls when there's more than fits. --%>
     <.changes_summary changes={@changes} />
 
-    <details class="group mt-1" open>
-      <summary class="cursor-pointer select-none list-none px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">
-        <span class="group-open:hidden">▸ Details — tokens · cost · docker</span>
-        <span class="hidden group-open:inline">▾ Details</span>
-      </summary>
+    <.claude_usage agent={@agent} />
 
-      <.claude_usage agent={@agent} />
+    <%!-- Only the numbers not shown anywhere else: errors (a real signal) + how
+         long it's been running / idle. The chat is the record of turns / tool
+         calls / messages — no vanity counts. --%>
+    <.section label="Activity">
+      <.info_row
+        label="Errors"
+        value={@agent.errors}
+        class={if @agent.errors > 0, do: "text-red-500 font-medium"}
+      />
+      <.info_row :if={@agent[:started_at]} label="Started" value={time_ago(@agent.started_at)} />
+      <.info_row
+        :if={@agent[:last_activity_at]}
+        label="Last active"
+        value={time_ago(@agent.last_activity_at)}
+      />
+    </.section>
 
-      <%!-- Only the numbers that aren't shown anywhere else: errors (a real
-           signal), and how long it's been running / idle. The chat already is
-           the record of turns / tool calls / messages — no vanity counts. --%>
-      <.section variant={:sub} label="Activity">
-        <.info_row
-          label="Errors"
-          value={@agent.errors}
-          class={if @agent.errors > 0, do: "text-red-500 font-medium"}
-        />
-        <.info_row :if={@agent[:started_at]} label="Started" value={time_ago(@agent.started_at)} />
-        <.info_row
-          :if={@agent[:last_activity_at]}
-          label="Last active"
-          value={time_ago(@agent.last_activity_at)}
-        />
-      </.section>
-
-      <.docker_context agent={@agent} />
-    </details>
+    <.docker_context agent={@agent} />
     """
   end
 
@@ -264,7 +259,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     ~H"""
     <%!-- Just Mode + Container. Volume is already in the switcher's Volumes
          list, and the Workspace id is redundant (you're in it). --%>
-    <.section :if={@ctx.container} variant={:sub} label="Docker">
+    <.section :if={@ctx.container} label="Docker">
       <.info_row
         label="Mode"
         value={@ctx.mode}
@@ -291,7 +286,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     assigns = assign(assigns, :total_tokens, total_tokens)
 
     ~H"""
-    <.section variant={:sub} label="Usage">
+    <.section label="Usage">
       <.info_row
         :if={@agent[:model]}
         label="Model"

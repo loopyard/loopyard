@@ -146,7 +146,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
            Rendered only when something's selected, so at the workspace index
            (no agent) the switcher fills the panel instead of leaving a dead
            half — matters most on mobile where the rail is full-screen. --%>
-      <div :if={@selected_agent} class="flex-1 overflow-y-auto">
+      <div :if={@selected_agent} class="flex-1 min-h-0 overflow-y-auto">
         <.context_sections
           agent={@selected_agent}
           changes={@changes}
