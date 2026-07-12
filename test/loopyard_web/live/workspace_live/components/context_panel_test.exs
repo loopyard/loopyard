@@ -62,41 +62,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanelTest do
     end
   end
 
-  describe "mcp_tool_names/0" do
-    # Walks every Tools.Container.* module and calls __tool_name__/0.
-    # Under parallel test load the first call can lazy-load modules
-    # that aren't hot in the code cache yet.
-    @tag timeout: 10_000
-    test "returns sorted list of tool names" do
-      tools = ContextPanel.mcp_tool_names()
-
-      assert is_list(tools)
-      assert length(tools) > 0
-      assert "exec" in tools
-      assert "write_file" in tools
-      assert "docker_compose" in tools
-
-      # Sorted
-      assert tools == Enum.sort(tools)
-    end
-
-    @tag timeout: 10_000
-    test "includes tools from all servers" do
-      tools = ContextPanel.mcp_tool_names()
-
-      # Container tools
-      assert "exec" in tools
-      assert "read_file" in tools
-
-      # Secret tools
-      assert "list_secrets" in tools
-
-      # Agent tools are intentionally NOT present — agents cannot spawn
-      # or message each other; see ChatAgent.ToolConfig.default_tools/0.
-      refute "list_agents" in tools
-      refute "spawn_agent" in tools
-    end
-  end
+  # NOTE: `mcp_tool_names/0` and the context panel's "Tools" section were
+  # removed in the sidebar redesign — the transcript already shows every tool
+  # call, so listing the tool inventory in the detail pane was redundant noise.
+  # The tool wiring itself is covered by ChatAgent.ToolConfig tests.
 
   describe "short_tool/1" do
     test "strips MCP server prefix" do

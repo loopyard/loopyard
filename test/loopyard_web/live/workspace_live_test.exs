@@ -499,17 +499,19 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
       %{agent_id: id}
     end
 
-    test "idle agent shows green dot and a Stop control", %{
+    test "idle agent shows a green dot and no Stop control", %{
       conn: conn,
       agent_id: id,
       workspace: ws
     } do
       {:ok, view, _html} = live(conn, ws_chat_path(ws, id))
       assert has_element?(view, "div.bg-green-500")
-      # The header's "Stop" warm-cancels the turn (interrupt_agent). The
-      # destructive container lifecycle (stop/sleep, remove) moved off the
-      # header in the phone-friendly redesign — see chat.ex agent_header.
-      assert has_element?(view, "button[phx-click='interrupt_agent']")
+      # "Stop" (interrupt_agent) warm-cancels the RUNNING turn, so it only
+      # appears while the agent is :thinking — an idle "Stop" is meaningless
+      # ("stop what?"). See chat.ex agent_header. The destructive container
+      # lifecycle (stop/sleep, remove) also moved off the header in the
+      # phone-friendly redesign.
+      refute has_element?(view, "button[phx-click='interrupt_agent']")
     end
 
     # DELETED: "stopped agent shows remove button"
@@ -593,12 +595,12 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
       assert html =~ "chat-form"
     end
 
-    test "shows agent name and a Stop control", %{conn: conn, agent_id: id, workspace: ws} do
-      {:ok, view, html} = live(conn, ws_chat_path(ws, id))
+    test "header shows the agent name", %{conn: conn, agent_id: id, workspace: ws} do
+      {:ok, _view, html} = live(conn, ws_chat_path(ws, id))
 
       assert html =~ "Tab Test"
-      # Header "Stop" interrupts the turn now (see chat.ex agent_header).
-      assert has_element?(view, "button[phx-click='interrupt_agent']")
+      # The header "Stop" (interrupt_agent) only appears while the agent is
+      # :thinking — this freshly-started agent is idle, so no Stop control.
     end
   end
 
@@ -807,14 +809,14 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
     test "context panel always shows agent info", %{conn: conn, agent_id: id, workspace: ws} do
       {:ok, _view, html} = live(conn, ws_chat_path(ws, id))
 
-      # Section headers + the agent name prove the Agent Context
-      # sidebar panel rendered. "Agent Context" used to be an H2 in
-      # this panel; the current UI uses section-labeled rhythm
-      # (Info, Docker, Claude Usage, Tools) with the agent name at
-      # the top — so we pin those instead.
+      # Section headers + the agent name prove the agent-detail panel
+      # rendered. The redesigned panel uses a section-labeled rhythm
+      # (Activity, Usage, Docker) — the old "Info" / "Tool calls"
+      # sections were dropped as transcript-redundant. Pin the two
+      # sections that always render.
       assert html =~ "Context Test"
-      assert html =~ "Info"
-      assert html =~ "Tool calls"
+      assert html =~ "Activity"
+      assert html =~ "Usage"
     end
   end
 end

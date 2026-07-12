@@ -72,6 +72,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
           :chat,
           :container,
           :context_panel,
+          :info,
           :service,
           :console,
           :services,
@@ -92,60 +93,19 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
            the ONE heavy rule in the pane. This is the "what's in this
            workspace" nav, distinct from "the thing you selected". --%>
       <div class="flex-none md:max-h-[45%] overflow-y-auto bg-zinc-100 dark:bg-zinc-800/40 border-b-2 border-zinc-200 dark:border-zinc-700/70">
-        <%!-- Grouped by kind (Agents / Services / Volumes), tight. A group's
-             header shows whenever it has anything; a single item just sits
-             under its header. --%>
-        <.section>
-          <.group_label :if={@agents != []} text="Agents" />
-          <.agent_list_item
-            :for={agent <- @agents}
-            agent={agent}
-            selected={@selected_id == agent.id}
-            editing={Map.get(assigns, :editing_agent_id) == agent.id}
-          />
-          <.row
-            patch={"#{@base_path}/new"}
-            class="text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 16 16"
-              fill="currentColor"
-              class="w-3.5 h-3.5 flex-none"
-              aria-hidden="true"
-            >
-              <path d="M8.75 3.75a.75.75 0 0 0-1.5 0v3.5h-3.5a.75.75 0 0 0 0 1.5h3.5v3.5a.75.75 0 0 0 1.5 0v-3.5h3.5a.75.75 0 0 0 0-1.5h-3.5v-3.5Z" />
-            </svg>
-            <span>New agent</span>
-          </.row>
-
-          <.group_label :if={@service_statuses != []} text="Services" />
-          <.service_item
-            :for={svc <- @service_statuses}
-            svc={svc}
-            base_path={@base_path}
-            selected={@selected_service == svc.name}
-            host={@host}
-            workspace_id={@workspace_id}
-          />
-
-          <.group_label
-            :if={@volumes != [] || (@is_local_source? && sync_relevant?(@sync_status))}
-            text="Volumes"
-          />
-          <.volume_item :for={vol <- @volumes} vol={vol} base_path={@base_path} />
-          <.row
-            :if={@is_local_source? && sync_relevant?(@sync_status)}
-            patch={"#{@base_path}/sync"}
-            aria_label="Open host file sync status"
-          >
-            <span
-              class={"w-1.5 h-1.5 rounded-full flex-none #{sync_dot(@sync_status)}"}
-              aria-hidden="true"
-            ></span>
-            <span class="truncate text-zinc-600 dark:text-zinc-400">Host file sync</span>
-          </.row>
-        </.section>
+        <.workspace_switcher
+          agents={@agents}
+          service_statuses={@service_statuses}
+          volumes={@volumes}
+          selected_id={@selected_id}
+          selected_service={@selected_service}
+          editing_agent_id={Map.get(assigns, :editing_agent_id)}
+          base_path={@base_path}
+          host={@host}
+          workspace_id={@workspace_id}
+          is_local_source?={@is_local_source?}
+          sync_status={@sync_status}
+        />
       </div>
 
       <%!-- ── L1 ZONE B · DETAIL ─────────────────────────────────────────────
@@ -165,9 +125,77 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
     """
   end
 
-  # (workspace_switcher was retired when the left rail became the god-mode
-  # global tree — see LoopyardWeb.Components.GlobalSidebar / #55. The "New
-  # workspace" affordance moved into that component.)
+  # The workspace resource switcher — Agents / Services / Volumes, grouped and
+  # tight. Shared verbatim by the desktop rail (Zone A of `sidebar/1`) and the
+  # mobile "Workspace" tab, so the two never drift. A group's header shows only
+  # when it has contents; a lone item just sits under its header.
+  attr :agents, :list, required: true
+  attr :service_statuses, :list, default: []
+  attr :volumes, :list, default: []
+  attr :selected_id, :string, default: nil
+  attr :selected_service, :string, default: nil
+  attr :editing_agent_id, :string, default: nil
+  attr :base_path, :string, required: true
+  attr :host, :string, default: nil
+  attr :workspace_id, :string, required: true
+  attr :is_local_source?, :boolean, default: false
+  attr :sync_status, :any, default: nil
+
+  def workspace_switcher(assigns) do
+    ~H"""
+    <.section>
+      <.group_label :if={@agents != []} text="Agents" />
+      <.agent_list_item
+        :for={agent <- @agents}
+        agent={agent}
+        selected={@selected_id == agent.id}
+        editing={@editing_agent_id == agent.id}
+      />
+      <.row
+        patch={"#{@base_path}/new"}
+        class="text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 16 16"
+          fill="currentColor"
+          class="w-3.5 h-3.5 flex-none"
+          aria-hidden="true"
+        >
+          <path d="M8.75 3.75a.75.75 0 0 0-1.5 0v3.5h-3.5a.75.75 0 0 0 0 1.5h3.5v3.5a.75.75 0 0 0 1.5 0v-3.5h3.5a.75.75 0 0 0 0-1.5h-3.5v-3.5Z" />
+        </svg>
+        <span>New agent</span>
+      </.row>
+
+      <.group_label :if={@service_statuses != []} text="Services" />
+      <.service_item
+        :for={svc <- @service_statuses}
+        svc={svc}
+        base_path={@base_path}
+        selected={@selected_service == svc.name}
+        host={@host}
+        workspace_id={@workspace_id}
+      />
+
+      <.group_label
+        :if={@volumes != [] || (@is_local_source? && sync_relevant?(@sync_status))}
+        text="Volumes"
+      />
+      <.volume_item :for={vol <- @volumes} vol={vol} base_path={@base_path} />
+      <.row
+        :if={@is_local_source? && sync_relevant?(@sync_status)}
+        patch={"#{@base_path}/sync"}
+        aria_label="Open host file sync status"
+      >
+        <span
+          class={"w-1.5 h-1.5 rounded-full flex-none #{sync_dot(@sync_status)}"}
+          aria-hidden="true"
+        ></span>
+        <span class="truncate text-zinc-600 dark:text-zinc-400">Host file sync</span>
+      </.row>
+    </.section>
+    """
+  end
 
   # Primary sidebar header: workspace state + Start/Stop. Driven by
   # the single :workspace_state atom (:stopped | :starting | :started

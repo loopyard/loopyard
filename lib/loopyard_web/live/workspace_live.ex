@@ -216,11 +216,12 @@ defmodule LoopyardWeb.WorkspaceLive do
 
   @impl true
   def handle_params(%{"id" => id}, _uri, %{assigns: %{live_action: action}} = socket)
-      when action in [:chat, :container, :context_panel] do
+      when action in [:chat, :container, :context_panel, :info] do
     tab =
       case action do
         :container -> :container
         :context_panel -> :context_panel
+        :info -> :info
         _ -> :chat
       end
 

@@ -77,10 +77,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   def agent_view(assigns) do
     ~H"""
     <div class="flex-1 flex min-h-0">
-      <%!-- Main content: hidden on mobile when viewing context panel --%>
+      <%!-- Center pane. On desktop (lg+) it's always the chat, with the workspace
+           switcher + agent detail living in the right rail. On mobile there's no
+           rail, so the switcher (Workspace tab) and detail (Info tab) take over
+           this pane full-screen — hiding the chat until you tab back. --%>
       <div class={[
         "flex-1 flex flex-col min-w-0 min-h-0",
-        if(@tab == :context_panel, do: "hidden lg:flex", else: "flex")
+        if(@tab in [:context_panel, :info], do: "hidden lg:flex", else: "flex")
       ]}>
         <.agent_header
           agent={@selected_agent}
@@ -90,7 +93,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           detail_level={@detail_level}
         />
         <.chat_panel
-          :if={@tab in [:chat, :context_panel]}
+          :if={@tab in [:chat, :context_panel, :info]}
           messages={@messages}
           streaming_text={@streaming_text}
           streaming_thinking={@streaming_thinking}
@@ -110,49 +113,41 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           has_container={@has_container}
         />
       </div>
-      <%!-- The desktop right rail (Agents + Services + Volumes + this agent's
-           context) is hidden on phones, so the "Info" view IS that rail on
-           mobile — the whole workspace in one scrollable, touch-sized panel.
-           Tapping an agent switches to it; tapping a service opens it. --%>
+      <%!-- Mobile "Workspace" tab: JUST the switcher (agents / services /
+           volumes). The desktop rail shows this in its tinted top zone; on a
+           phone it's a full-screen, touch-sized nav. Tapping an agent switches
+           to it and drops you back on Chat; tapping a service opens it. --%>
       <div
         :if={@tab == :context_panel}
+        class="flex-1 lg:hidden overflow-y-auto bg-zinc-100 dark:bg-zinc-800/40"
+      >
+        <LoopyardWeb.Live.WorkspaceLive.Components.Sidebar.workspace_switcher
+          agents={@agents}
+          service_statuses={@service_statuses}
+          volumes={@volumes}
+          selected_id={@selected_id}
+          selected_service={@selected_service}
+          editing_agent_id={assigns[:editing_agent_id]}
+          base_path={@base_path}
+          host={@host}
+          workspace_id={@workspace.id}
+          is_local_source?={@is_local_source?}
+          sync_status={@sync_status}
+        />
+      </div>
+      <%!-- Mobile "Info" tab: the selected agent's detail (status / changes /
+           usage / docker). Same `context_sections` the desktop rail shows in
+           its lower zone — the two never drift. --%>
+      <div
+        :if={@tab == :info}
         class="flex-1 lg:hidden overflow-y-auto bg-zinc-50 dark:bg-zinc-900/50"
       >
-        <%!-- Same two zones as the desktop rail: a tinted SWITCHER (the
-             workspace's resources) closed by the L1 divider, then the selected
-             agent's DETAIL. No max-h cap here — the whole panel scrolls. --%>
-        <div class="bg-zinc-100 dark:bg-zinc-800/40 border-b-2 border-zinc-200 dark:border-zinc-700/70">
-          <LoopyardWeb.Components.SideNav.section>
-            <LoopyardWeb.Live.WorkspaceLive.Components.Sidebar.group_label
-              :if={@agents != []}
-              text="Agents"
-            />
-            <LoopyardWeb.Live.WorkspaceLive.Components.Sidebar.agent_list_item
-              :for={a <- @agents}
-              agent={a}
-              selected={@selected_id == a.id}
-            />
-            <.link
-              patch={"#{@base_path}/new"}
-              class="flex items-center gap-2 px-3 min-h-[2.75rem] text-sm font-medium text-violet-600 dark:text-violet-400 active:bg-violet-50 dark:active:bg-violet-500/10"
-            >
-              + New agent
-            </.link>
-            <LoopyardWeb.Live.WorkspaceLive.Components.Sidebar.group_label
-              :if={@service_statuses != []}
-              text="Services"
-            />
-            <LoopyardWeb.Live.WorkspaceLive.Components.Sidebar.service_item
-              :for={svc <- @service_statuses}
-              svc={svc}
-              base_path={@base_path}
-              selected={@selected_service == svc.name}
-              host={@host}
-              workspace_id={@workspace.id}
-            />
-          </LoopyardWeb.Components.SideNav.section>
-        </div>
-        <.context_sections :if={@selected_agent} agent={@selected_agent} editing_name={@editing_name} />
+        <.context_sections
+          :if={@selected_agent}
+          agent={@selected_agent}
+          changes={@changes}
+          editing_name={@editing_name}
+        />
       </div>
     </div>
     """
@@ -179,16 +174,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           </span>
         </div>
         <div class="flex items-center gap-2 flex-none">
-          <%!-- Agent context — mobile/tablet only (the right rail shows it on lg+).
-               Real touch target (≈40px tall), and the only control on the phone
-               header so it can't be fat-fingered into a destructive action. --%>
-          <.link
-            patch={"#{@base_path}/agents/#{@agent.id}/context"}
-            class="lg:hidden inline-flex items-center min-h-[2.5rem] px-3 rounded-lg text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 active:bg-zinc-200 dark:active:bg-zinc-600 transition-colors"
-            aria-label="Workspace: agents, services, volumes, and the selected item"
-          >
-            Workspace
-          </.link>
           <%!-- Container lifecycle is DESTRUCTIVE (Stop kills the container; Remove
                deletes the agent) — keep it off the cramped phone header, where it
                sat one thumb-width from Info. On phones: interrupt a running turn
@@ -228,30 +213,51 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           </div>
         </div>
       </div>
-      <div :if={@has_container} class="flex gap-0 px-4">
+      <%!-- Mobile tab bar. The phone has no rails, so these tabs are the ONLY
+           way to reach the switcher (Workspace) and the agent detail (Info) —
+           always visible below lg. Chat & Container are `switch_tab` casts
+           (they don't change the URL); Info & Workspace patch to their own
+           routes so each browser window keeps its own place. On lg+ the rail
+           shows Workspace + Info, so the whole bar is hidden. --%>
+      <div class="lg:hidden flex gap-0 px-4">
         <button
           phx-click="switch_tab"
           phx-value-tab="chat"
-          class={"px-3 py-1.5 text-xs font-medium border-b-2 transition-colors #{if @tab == :chat, do: "border-violet-500 text-violet-600 dark:text-violet-400", else: "border-transparent text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"}"}
+          class={tab_class(@tab == :chat)}
         >
           Chat
         </button>
-        <button
-          phx-click="switch_tab"
-          phx-value-tab="container"
-          class={"px-3 py-1.5 text-xs font-medium border-b-2 transition-colors #{if @tab == :container, do: "border-violet-500 text-violet-600 dark:text-violet-400", else: "border-transparent text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"}"}
-        >
-          Container
-        </button>
+        <.link patch={"#{@base_path}/agents/#{@agent.id}/info"} class={tab_class(@tab == :info)}>
+          Info
+        </.link>
         <.link
           patch={"#{@base_path}/agents/#{@agent.id}/context"}
-          class={"lg:hidden px-3 py-1.5 text-xs font-medium border-b-2 transition-colors #{if @tab == :context_panel, do: "border-violet-500 text-violet-600 dark:text-violet-400", else: "border-transparent text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"}"}
+          class={tab_class(@tab == :context_panel)}
         >
           Workspace
         </.link>
+        <button
+          :if={@has_container}
+          phx-click="switch_tab"
+          phx-value-tab="container"
+          class={tab_class(@tab == :container)}
+        >
+          Container
+        </button>
       </div>
     </div>
     """
+  end
+
+  # One mobile tab pill — active gets the violet underline, the rest are quiet.
+  defp tab_class(active?) do
+    [
+      "px-3 py-1.5 text-xs font-medium border-b-2 transition-colors",
+      if(active?,
+        do: "border-violet-500 text-violet-600 dark:text-violet-400",
+        else: "border-transparent text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+      )
+    ]
   end
 
   @detail_levels [

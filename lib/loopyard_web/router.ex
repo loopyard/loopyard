@@ -54,6 +54,10 @@ defmodule LoopyardWeb.Router do
          WorkspaceLive,
          :context_panel
 
+    live "/projects/:project_id/workspaces/:workspace_id/agents/:id/info",
+         WorkspaceLive,
+         :info
+
     live "/projects/:project_id/workspaces/:workspace_id/services", WorkspaceLive, :services
 
     live "/projects/:project_id/workspaces/:workspace_id/services/:service_name",

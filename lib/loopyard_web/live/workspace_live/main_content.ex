@@ -156,7 +156,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.MainContent do
         @live_action in [:index, :chat, :container] && !@booting_agent_id && !@selected_agent
       } />
       <.agent_view
-        :if={@live_action in [:index, :chat, :container, :context_panel] && @selected_agent}
+        :if={@live_action in [:index, :chat, :container, :context_panel, :info] && @selected_agent}
         {assigns}
       />
     <% end %>
