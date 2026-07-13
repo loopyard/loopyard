@@ -27,22 +27,28 @@ defmodule LoopyardWeb.Components.Birdseye do
   #   • working  → violet pulse
   #   • ready    → green
   #   • ATTENTION (auth expired — needs you to re-login) → red
-  #   • everything else, INCLUDING :crashed / :stopped, → nil (no dot).
+  #   • asleep (:crashed / :stopped / anything else) → muted gray.
   # :crashed/:stopped is "Asleep — wakes on your next message", NOT broken, so
-  # it must not scream red — clicking it just wakes it (→ working → ready).
+  # it must not scream red — clicking it just wakes it (→ working → ready). It
+  # gets a calm gray dot (NOT nothing): a blank slot reads as broken/empty, and
+  # you can't tell an off agent from a rendering glitch. The gray is picked for
+  # contrast on both the light and dark rail backgrounds.
   @working [:thinking, :compacting, :booting, :backoff, :rate_limited]
+  @asleep_dot "bg-zinc-400 dark:bg-zinc-500"
 
   defp status_color(s) when s in @working, do: "bg-violet-500 animate-pulse"
   defp status_color(:auth_expired), do: "bg-red-500"
   defp status_color(:idle), do: "bg-green-500"
-  defp status_color(_), do: nil
+  defp status_color(_), do: @asleep_dot
 
   @doc "Dot color class (or nil) for a single agent's live status."
   def agent_dot(agent), do: status_color(Map.get(agent, :status))
 
   @doc """
   Dot color (or nil) for a group of agents — loudest state wins:
-  needs-attention > working > ready. Anything else / no agents → nil (no dot).
+  needs-attention > working > ready > asleep. A workspace with agents that are
+  all asleep shows the muted gray dot (so you can see it HAS agents, just off);
+  only a workspace with NO agents at all gets nil (a truly blank slot).
   Agrees with the individual agent dots it summarizes.
   """
   def aggregate_dot(agents) do
@@ -52,6 +58,7 @@ defmodule LoopyardWeb.Components.Birdseye do
       Enum.any?(statuses, &(&1 == :auth_expired)) -> "bg-red-500"
       Enum.any?(statuses, &(&1 in @working)) -> "bg-violet-500 animate-pulse"
       Enum.any?(statuses, &(&1 == :idle)) -> "bg-green-500"
+      statuses != [] -> @asleep_dot
       true -> nil
     end
   end

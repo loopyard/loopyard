@@ -37,6 +37,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
   attr :agent, :map, required: true
   attr :changes, :map, default: %{staged: [], unstaged: []}
   attr :editing_name, :boolean, default: false
+  attr :base_path, :string, default: nil
 
   def context_sections(assigns) do
     ~H"""
@@ -49,7 +50,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
 
     <%!-- Flat, scrollable groups — no disclosure to dig through. Each is a
          plain labeled section; the zone scrolls when there's more than fits. --%>
-    <.changes_summary changes={@changes} />
+    <.changes_summary changes={@changes} base_path={@base_path} volume={docker_ctx(@agent).volume} />
 
     <.claude_usage agent={@agent} />
 
@@ -77,32 +78,91 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
   # The hero of the right pane (#58): what THIS agent has changed in the
   # working tree, live. Refreshed when the agent settles (→ :idle). Staged +
   # unstaged (untracked show as "??"), deduped by path, color-coded by change.
+  # Each file links to its diff in the code volume's git viewer (#65) — click a
+  # row to see exactly what changed; "View all" opens the full git view. Links
+  # need `base_path` + `volume`; without them (e.g. the standalone panel) the
+  # rows render as plain, un-clickable text.
   attr :changes, :map, required: true
+  attr :base_path, :string, default: nil
+  attr :volume, :string, default: nil
 
   defp changes_summary(assigns) do
+    # Tag each entry with its bucket so the row can pick the right diff route
+    # (working-tree vs staged), then dedup by path — unstaged first so a file
+    # that's both staged and dirty links to its live working-tree diff.
     files =
-      ((assigns.changes[:staged] || []) ++ (assigns.changes[:unstaged] || []))
+      (Enum.map(assigns.changes[:unstaged] || [], &Map.put(&1, :kind, :unstaged)) ++
+         Enum.map(assigns.changes[:staged] || [], &Map.put(&1, :kind, :staged)))
       |> Enum.uniq_by(& &1.path)
 
-    assigns = assign(assigns, :files, files)
+    linkable? = is_binary(assigns.base_path) and is_binary(assigns.volume)
+    assigns = assign(assigns, files: files, linkable?: linkable?)
 
     ~H"""
     <div class="px-3 pt-3 pb-2">
-      <div class="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 mb-1">
-        Changes <span :if={@files != []} class="text-zinc-400 font-normal">· {length(@files)}</span>
+      <div class="flex items-center justify-between mb-1">
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+          Changes <span :if={@files != []} class="text-zinc-400 font-normal">· {length(@files)}</span>
+        </div>
+        <.link
+          :if={@files != [] and @linkable?}
+          patch={"#{@base_path}/volumes/#{@volume}/git"}
+          class="text-[11px] font-medium text-violet-600 dark:text-violet-400 hover:underline"
+        >
+          View all
+        </.link>
       </div>
 
       <div :if={@files == []} class="text-xs text-zinc-400 italic">working tree clean</div>
 
       <div :if={@files != []} class="space-y-0.5 max-h-48 overflow-y-auto">
-        <div :for={f <- @files} class="flex items-center gap-2 text-xs font-mono">
-          <span class={["w-4 flex-none text-center", change_color(f.status)]}>{f.status}</span>
-          <span class="truncate text-zinc-700 dark:text-zinc-300" title={f.path}>{f.path}</span>
-        </div>
+        <.change_row
+          :for={f <- @files}
+          f={f}
+          base_path={@base_path}
+          volume={@volume}
+          linkable?={@linkable?}
+        />
       </div>
     </div>
     """
   end
+
+  # One changed-file row. When we know the volume + base path, it's a link to
+  # that file's diff; otherwise a plain, un-clickable row (same layout).
+  attr :f, :map, required: true
+  attr :base_path, :string, default: nil
+  attr :volume, :string, default: nil
+  attr :linkable?, :boolean, default: false
+
+  defp change_row(assigns) do
+    ~H"""
+    <.link
+      :if={@linkable?}
+      patch={diff_path(@base_path, @volume, @f)}
+      class="group flex items-center gap-2 text-xs font-mono rounded px-1 -mx-1 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+      title={"View diff — #{@f.path}"}
+    >
+      <span class={["w-4 flex-none text-center", change_color(@f.status)]}>{@f.status}</span>
+      <span class="truncate text-zinc-700 dark:text-zinc-300 group-hover:text-zinc-900 dark:group-hover:text-zinc-100">
+        {@f.path}
+      </span>
+    </.link>
+    <div :if={!@linkable?} class="flex items-center gap-2 text-xs font-mono">
+      <span class={["w-4 flex-none text-center", change_color(@f.status)]}>{@f.status}</span>
+      <span class="truncate text-zinc-700 dark:text-zinc-300" title={@f.path}>{@f.path}</span>
+    </div>
+    """
+  end
+
+  # Diff route for a changed file — staged files go to the staged diff, all
+  # others (modified / deleted / untracked) to the working-tree diff. Mirrors
+  # the routes the volume git viewer already links to (git_viewer.ex).
+  defp diff_path(base_path, volume, %{kind: :staged, path: path}),
+    do: "#{base_path}/volumes/#{volume}/git/staged/#{path}"
+
+  defp diff_path(base_path, volume, %{path: path}),
+    do: "#{base_path}/volumes/#{volume}/git/diff/#{path}"
 
   defp change_color("??"), do: "text-emerald-500"
   defp change_color("A"), do: "text-emerald-500"

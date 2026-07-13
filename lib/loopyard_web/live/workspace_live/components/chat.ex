@@ -147,6 +147,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           agent={@selected_agent}
           changes={@changes}
           editing_name={@editing_name}
+          base_path={@base_path}
         />
       </div>
     </div>
