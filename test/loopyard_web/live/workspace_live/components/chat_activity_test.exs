@@ -118,7 +118,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatActivityTest do
   end
 
   describe "live tail timeline (pure thinking)" do
-    test "renders the icon rail + centered continuous line + flowing bar (not a floating box)" do
+    test "renders the left-aligned Claude header + flowing bar (no rail, no floating box)" do
       agent = %{
         id: "a1",
         status: :thinking,
@@ -140,14 +140,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatActivityTest do
           detail_level: :trace
         })
 
-      # The rail is a w-5 column with a centered 1px line — so the line passes
-      # through the icon's center and extends from its bottom (no gap).
-      assert html =~ "absolute left-0 top-0 bottom-1 w-5"
-      assert html =~ "w-px flex-1"
-      # "Claude · HH:MM" at the top.
+      # No vertical rail: the live turn uses the same inline "Claude · HH:MM"
+      # header as completed turns (sparkle badge + label), left-aligned.
+      refute html =~ "absolute left-0 top-0 bottom-1 w-5"
+      refute html =~ "w-px flex-1"
       assert html =~ "Claude"
       assert html =~ "19:14"
-      # The live status FLOWS on the spine — no floating rounded-pill box.
+      # The live status flows flush-left — no floating rounded-pill box.
       assert html =~ "Riffing"
       refute html =~ "rounded-r-xl rounded-l-none"
     end

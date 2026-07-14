@@ -78,7 +78,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
            either name throws open ONE full-screen switcher of every project and
            its workspaces (pick any to jump; ✕ / backdrop to bail). No pop-overs. --%>
       <Nav.bar height="h-12" pad="px-2" gap="gap-1.5">
-        <Nav.back_button navigate="/" label="Back to projects" />
+        <Nav.back_button navigate="/workspaces" label="Back to workspaces" />
         <nav class="flex-1 min-w-0 flex items-center gap-1.5 text-lg" aria-label="Location">
           <Nav.crumb
             :if={@project}
@@ -94,23 +94,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       </Nav.bar>
 
       <Nav.switcher_sheet :if={@can_switch} id="nav-switcher" title="Switch workspace">
-        <div :for={proj <- @global_tree} class="pt-1.5 first:pt-0">
-          <.link
-            navigate={"/projects/#{proj.id}"}
-            phx-click={JS.hide(to: "#nav-switcher")}
-            class="flex items-center px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200"
-          >
-            {proj.name}
-          </.link>
-          <.link
-            :for={ws <- proj.workspaces}
-            navigate={"/projects/#{proj.id}/workspaces/#{ws.id}"}
-            phx-click={JS.hide(to: "#nav-switcher")}
-            class={Nav.sheet_row_class(ws.id == @workspace.id && @project && proj.id == @project.id)}
-          >
-            <span class="truncate">{ws.name}</span>
-          </.link>
-        </div>
+        <LoopyardWeb.Components.ProjectList.project_groups
+          projects={@global_tree}
+          current_workspace_id={@workspace.id}
+          row_click={JS.hide(to: "#nav-switcher")}
+        />
       </Nav.switcher_sheet>
 
       <%!-- Row 2: WHAT you're looking at — section tabs + the current item, which

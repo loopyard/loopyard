@@ -13,21 +13,21 @@ defmodule LoopyardWeb.ProjectListLiveTest do
   describe "mount" do
     # The home page is now a projects list + a "New project" button; the
     # creation methods (folder/scratch/github) each live on their own screen.
-    test "renders the home page with the projects list and New project", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/")
+    test "renders the workspaces page with the grouped list and New project", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/workspaces")
       assert html =~ "Loopyard"
-      assert html =~ "Your projects"
+      assert html =~ "Workspaces"
       assert html =~ "New project"
     end
 
     test "shows Remote and System links in header", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/")
+      {:ok, _view, html} = live(conn, "/workspaces")
       assert html =~ "Remote"
       assert html =~ "System"
     end
 
     test "mount returns under 500ms — pure ETS reads, no shell-outs", %{conn: conn} do
-      {micros, {:ok, _view, _html}} = :timer.tc(fn -> live(conn, "/") end)
+      {micros, {:ok, _view, _html}} = :timer.tc(fn -> live(conn, "/workspaces") end)
 
       assert micros < 500_000,
              "ProjectListLive mount took #{div(micros, 1000)}ms — slow call slipped in"

@@ -3,7 +3,7 @@ defmodule LoopyardWeb.ProjectListLive do
   use LoopyardWeb.IExAware
 
   alias Loopyard.ProjectRegistry
-  alias LoopyardWeb.Components.Birdseye
+  alias LoopyardWeb.Components.ProjectList
 
   @impl true
   @behaviour Loopyard.Events.Projects.Subscriber
@@ -168,7 +168,7 @@ defmodule LoopyardWeb.ProjectListLive do
           <header class="mb-8 flex items-end justify-between gap-4">
             <div>
               <h1 class="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-                Your projects
+                Workspaces
               </h1>
               <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
                 {home_subtitle(@projects)}
@@ -183,84 +183,17 @@ defmodule LoopyardWeb.ProjectListLive do
             </.link>
           </header>
 
-          <div class="space-y-5">
-            <section
-              :for={project <- @projects}
-              class="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 overflow-hidden"
+          <%!-- The ONE grouped project → workspace list (also loaded by the mobile
+               switcher, so there's a single visual language). --%>
+          <ProjectList.project_groups projects={@projects} />
+          <div class="mt-6 sm:hidden">
+            <.link
+              navigate="/projects/new"
+              class="flex items-center justify-center gap-1.5 w-full rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 px-3 py-3 text-sm font-medium text-zinc-500 dark:text-zinc-400 active:bg-zinc-100 dark:active:bg-zinc-800 transition-colors"
             >
-              <%!-- Project header: rollup dot + name + where it lives. --%>
-              <.link
-                navigate={"/projects/#{project.id}"}
-                class="group flex items-center gap-3 px-5 py-3.5 border-b border-zinc-100 dark:border-zinc-800/70 hover:bg-zinc-50/70 dark:hover:bg-zinc-800/30 transition-colors"
-              >
-                <h2 class="text-base font-semibold text-zinc-900 dark:text-zinc-50 truncate">
-                  {project.name}
-                </h2>
-                <span class="text-xs font-mono text-zinc-400 dark:text-zinc-500 truncate hidden md:block">
-                  {LoopyardWeb.Format.project_location(project)}
-                </span>
-                <span class="ml-auto text-xs text-zinc-400 dark:text-zinc-500 flex-none">
-                  {length(project.workspaces)} {pluralize(length(project.workspaces), "workspace")}
-                </span>
-              </.link>
-
-              <%!-- Workspaces → agents. Each row is a live status line you click into. --%>
-              <div class="divide-y divide-zinc-100 dark:divide-zinc-800/60">
-                <div :for={ws <- project.workspaces} class="px-3 py-2">
-                  <div class="flex items-center gap-2 px-2 pb-1">
-                    <span class="text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500 truncate">
-                      {ws.name}
-                    </span>
-                    <Birdseye.port_chip :for={p <- ws.ports} port={p.port} url={p.url} />
-                    <.link
-                      navigate={"/projects/#{project.id}/workspaces/#{ws.id}"}
-                      class="ml-auto text-[11px] text-zinc-400 hover:text-violet-500 dark:hover:text-violet-400 flex-none"
-                    >
-                      open →
-                    </.link>
-                  </div>
-
-                  <%!-- Agent rows: the actual "who's doing what" of the birdseye. --%>
-                  <.link
-                    :for={agent <- ws.agents}
-                    navigate={"/projects/#{project.id}/workspaces/#{ws.id}/agents/#{agent.id}"}
-                    class="group flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors"
-                  >
-                    <Birdseye.dot class={Birdseye.agent_dot(agent)} size={:md} />
-                    <span class="text-sm font-medium text-zinc-800 dark:text-zinc-100 flex-none">
-                      {agent.name}
-                    </span>
-                    <span class="text-xs text-zinc-500 dark:text-zinc-400 truncate font-mono">
-                      {Birdseye.agent_activity(agent)}
-                    </span>
-                    <span class="ml-auto flex items-center gap-3 flex-none text-xs text-zinc-400 dark:text-zinc-500">
-                      <span :if={agent.model} class="font-mono hidden sm:inline">{agent.model}</span>
-                      <span :if={agent.cost && agent.cost > 0} class="tabular-nums">
-                        ${:erlang.float_to_binary(agent.cost * 1.0, decimals: 2)}
-                      </span>
-                    </span>
-                  </.link>
-
-                  <div
-                    :if={ws.agents == []}
-                    class="flex items-center gap-2 px-2 py-2 text-sm text-zinc-400 dark:text-zinc-500"
-                  >
-                    <Birdseye.dot class="bg-zinc-300 dark:bg-zinc-600" size={:md} />
-                    <span>no agent yet</span>
-                    <.link
-                      navigate={"/projects/#{project.id}/workspaces/#{ws.id}"}
-                      class="text-violet-500 dark:text-violet-400 hover:underline"
-                    >
-                      start one →
-                    </.link>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <div :if={@projects == []} class="text-sm text-zinc-400 py-8 text-center">
-              No projects yet.
-            </div>
+              <svg viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" /></svg>
+              New project
+            </.link>
           </div>
         <% :new -> %>
           <div class="max-w-2xl">
@@ -428,8 +361,8 @@ defmodule LoopyardWeb.ProjectListLive do
     """
   end
 
-  defp crumbs(:index), do: [{"Loopyard", nil}]
-  defp crumbs(:new), do: [{"Loopyard", "/"}, {"New project", nil}]
+  defp crumbs(:index), do: [{"Loopyard", "/"}, {"Workspaces", nil}]
+  defp crumbs(:new), do: [{"Loopyard", "/"}, {"Workspaces", "/workspaces"}, {"New project", nil}]
 
   defp crumbs(:new_scratch),
     do: [{"Loopyard", "/"}, {"New project", "/projects/new"}, {"From scratch", nil}]

@@ -68,77 +68,11 @@ defmodule LoopyardWeb.Components.AppHeader do
             System
           </.link>
         </div>
-        <%!-- Mobile: one overflow menu so the header never crowds at ~375px. --%>
-        <.nav_overflow
-          current_path={@current_path}
-          host_exposed={@host_exposed}
-          current={Loopyard.Workstation.current()}
-          ids={Loopyard.Workstation.list()}
-        />
+        <%!-- No mobile overflow menu — on a phone, Remote / System / Operated
+             live as cards on the home dashboard (tap the breadcrumb home). A
+             pop-over menu here was exactly the pattern we're killing. --%>
       </:actions>
     </LoopyardWeb.Components.Nav.bar>
-    """
-  end
-
-  # Mobile-only "⋯"-style menu collapsing Remote / System / Operate-as so the
-  # header stays clean on a phone. Pure <details>/<summary> — no JS hook.
-  attr :current_path, :string, required: true
-  attr :host_exposed, :boolean, required: true
-  attr :current, :string, required: true
-  attr :ids, :list, required: true
-
-  defp nav_overflow(assigns) do
-    ~H"""
-    <details class="relative md:hidden" id="nav-overflow">
-      <summary class="list-none cursor-pointer focus-ring inline-flex items-center justify-center w-10 h-10 -mr-1.5 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800">
-        <.icon name={:menu} class="w-5 h-5" />
-      </summary>
-      <div class="absolute right-0 mt-1.5 w-56 z-50 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-lg py-1 text-sm">
-        <.link
-          navigate={Path.join("/remote", @current_path)}
-          class="flex items-center gap-2 px-3 py-2.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200"
-        >
-          <span class={[
-            "w-1.5 h-1.5 rounded-full flex-none",
-            if(@host_exposed, do: "bg-emerald-500", else: "bg-zinc-300 dark:bg-zinc-600")
-          ]}></span>
-          Remote
-          <span class="text-zinc-400 dark:text-zinc-500 text-sm">
-            {if @host_exposed, do: "exposed", else: "private"}
-          </span>
-        </.link>
-        <.link
-          navigate="/system"
-          class="block px-3 py-2.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-200"
-        >
-          System
-        </.link>
-        <div class="my-1 border-t border-zinc-100 dark:border-zinc-800"></div>
-        <div class="px-3 py-1 text-sm uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
-          Operate as
-        </div>
-        <.link
-          :for={id <- @ids}
-          href={"/workstations/#{id}"}
-          class={[
-            "flex items-center gap-2 px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800",
-            if(id == @current,
-              do: "font-medium text-zinc-900 dark:text-zinc-100",
-              else: "text-zinc-600 dark:text-zinc-300"
-            )
-          ]}
-        >
-          <span class={[
-            "w-1.5 h-1.5 rounded-full flex-none",
-            if(id == @current,
-              do: "bg-sky-500",
-              else: "bg-transparent border border-zinc-300 dark:border-zinc-600"
-            )
-          ]}></span>
-          {id}
-        </.link>
-      </div>
-    </details>
     """
   end
 

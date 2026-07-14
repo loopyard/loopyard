@@ -38,7 +38,10 @@ defmodule LoopyardWeb.Router do
     # survive navigation — the bed keeps playing as you move around — and it
     # makes cross-view navigation snappier as a bonus.
     live_session :app, root_layout: {LoopyardWeb.Layouts, :root} do
-      live "/", ProjectListLive, :index
+      # Homepage = the live status dashboard (Workspaces / Remote / System /
+      # Operated cards). The project → workspace list lives at /workspaces.
+      live "/", DashboardLive, :index
+      live "/workspaces", ProjectListLive, :index
       # Full-page ambient-sound control. In the live_session so navigating here
       # (and back) is a live patch — the root-layout audio engine keeps playing.
       live "/sound", SoundLive, :index
