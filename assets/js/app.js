@@ -165,7 +165,7 @@ Hooks.SoundPanel = {
   render({on, connecting, volume}) {
     if (this.iconOn) this.iconOn.classList.toggle("hidden", !on)
     if (this.iconOff) this.iconOff.classList.toggle("hidden", on)
-    if (this.state) this.state.textContent = connecting ? "Connecting…" : on ? "Playing" : "Muted"
+    if (this.state) this.state.textContent = connecting ? "Connecting…" : on ? "Playing" : "Paused"
     this.power.setAttribute("aria-pressed", on ? "true" : "false")
     this.power.classList.toggle("animate-pulse", !!connecting)
     this.power.classList.toggle("bg-violet-600", on)

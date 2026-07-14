@@ -80,18 +80,20 @@ defmodule LoopyardWeb.SoundLive do
             <button
               type="button"
               data-sound-power
-              aria-label="Toggle sound"
+              aria-label="Play or pause"
               aria-pressed="false"
               class="flex-none w-16 h-16 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center transition-colors"
             >
+              <%!-- Media-control semantics: PLAY (▶) when stopped, PAUSE (⏸) when
+                   playing. The hook shows `off` when paused and `on` when
+                   playing, so `off` = play icon, `on` = pause icon. --%>
               <svg
                 data-sound-icon="off"
                 viewBox="0 0 20 20"
                 fill="currentColor"
-                class="w-7 h-7"
+                class="w-7 h-7 translate-x-0.5"
               >
-                <path d="M10 3.75a.75.75 0 0 0-1.264-.546L5.203 6.5H3.667A1.667 1.667 0 0 0 2 8.167v3.666A1.667 1.667 0 0 0 3.667 13.5h1.536l3.533 3.296A.75.75 0 0 0 10 16.25V3.75Z" />
-                <path d="M14.78 7.72a.75.75 0 0 0-1.06 1.06L14.94 10l-1.22 1.22a.75.75 0 1 0 1.06 1.06L16 11.06l1.22 1.22a.75.75 0 1 0 1.06-1.06L17.06 10l1.22-1.22a.75.75 0 0 0-1.06-1.06L16 8.94l-1.22-1.22Z" />
+                <path d="M6.3 2.841A1.5 1.5 0 0 0 4 4.11v11.78a1.5 1.5 0 0 0 2.3 1.269l9.344-5.89a1.5 1.5 0 0 0 0-2.538L6.3 2.84Z" />
               </svg>
               <svg
                 data-sound-icon="on"
@@ -99,13 +101,11 @@ defmodule LoopyardWeb.SoundLive do
                 fill="currentColor"
                 class="w-7 h-7 hidden"
               >
-                <path d="M10 3.75a.75.75 0 0 0-1.264-.546L5.203 6.5H3.667A1.667 1.667 0 0 0 2 8.167v3.666A1.667 1.667 0 0 0 3.667 13.5h1.536l3.533 3.296A.75.75 0 0 0 10 16.25V3.75Z" />
-                <path d="M14.657 3.879a.75.75 0 0 0-1.06 1.06 7 7 0 0 1 0 9.9.75.75 0 0 0 1.06 1.061 8.5 8.5 0 0 0 0-12.021Z" />
-                <path d="M12.182 6.354a.75.75 0 0 0-1.06 1.06 3.5 3.5 0 0 1 0 4.95.75.75 0 0 0 1.06 1.06 5 5 0 0 0 0-7.07Z" />
+                <path d="M5.75 3a.75.75 0 0 0-.75.75v12.5c0 .414.336.75.75.75h1.5a.75.75 0 0 0 .75-.75V3.75A.75.75 0 0 0 7.25 3h-1.5ZM12.75 3a.75.75 0 0 0-.75.75v12.5c0 .414.336.75.75.75h1.5a.75.75 0 0 0 .75-.75V3.75a.75.75 0 0 0-.75-.75h-1.5Z" />
               </svg>
             </button>
             <div class="min-w-0">
-              <div data-sound-state class="text-lg font-semibold">Muted</div>
+              <div data-sound-state class="text-lg font-semibold">Paused</div>
               <div class="text-sm text-zinc-500 dark:text-zinc-400">
                 Ambient bed — plays across the whole app
               </div>
