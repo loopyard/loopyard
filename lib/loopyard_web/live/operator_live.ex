@@ -38,8 +38,12 @@ defmodule LoopyardWeb.OperatorLive do
   end
 
   @impl true
-  def handle_event("send_message", %{"message" => text}, socket) do
-    ChatAgent.send_message(socket.assigns.agent_id, text)
+  def handle_event("send_message", %{"message" => message}, socket) do
+    # Drop empty / whitespace-only sends so the operator never gets a blank prompt
+    # (which makes it reply "your message came through empty"). Still ack so the
+    # ChatForm hook clears the box.
+    message = String.trim(message)
+    if message != "", do: ChatAgent.send_message(socket.assigns.agent_id, message)
     {:reply, %{ok: true}, socket}
   end
 
