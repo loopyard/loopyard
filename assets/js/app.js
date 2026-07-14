@@ -50,8 +50,14 @@ Hooks.AmbientAudio = {
   start() {
     if (!this.audio.getAttribute("src")) this.audio.setAttribute("src", this.streamSrc)
     const p = this.audio.play()
-    return (p || Promise.resolve()).then(() => {
-      localStorage.setItem("loopyard:ambient", "on")
+    // Reflect "on" IMMEDIATELY: audio.paused flips false synchronously when
+    // play() is called, so broadcasting now updates the UI without waiting for
+    // the stream to buffer (that wait was the perceived lag). If the play
+    // promise rejects (autoplay blocked, no gesture), we revert to "off".
+    localStorage.setItem("loopyard:ambient", "on")
+    this.broadcast()
+    return (p || Promise.resolve()).catch(() => {
+      localStorage.setItem("loopyard:ambient", "off")
       this.broadcast()
     })
   },
@@ -63,7 +69,7 @@ Hooks.AmbientAudio = {
   },
 
   toggle() {
-    if (this.audio.paused) this.start().catch(() => this.broadcast())
+    if (this.audio.paused) this.start()
     else this.stop()
   },
 
