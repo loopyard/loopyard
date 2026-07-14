@@ -99,11 +99,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     assigns = assign(assigns, files: files, linkable?: linkable?)
 
     ~H"""
-    <div class="px-3 pt-3 pb-2">
-      <div class="flex items-center justify-between mb-1">
-        <div class="text-sm font-semibold uppercase tracking-wide text-zinc-500">
-          Changes <span :if={@files != []} class="text-zinc-400 font-normal">· {length(@files)}</span>
-        </div>
+    <.section label={changes_label(@files)}>
+      <:actions>
         <.link
           :if={@files != [] and @linkable?}
           patch={"#{@base_path}/volumes/#{@volume}/git"}
@@ -111,11 +108,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
         >
           View all
         </.link>
-      </div>
+      </:actions>
 
-      <div :if={@files == []} class="text-sm text-zinc-400 italic">working tree clean</div>
+      <p :if={@files == []} class="px-2 text-sm text-zinc-400 italic">working tree clean</p>
 
-      <div :if={@files != []} class="space-y-0.5 max-h-48 overflow-y-auto">
+      <div :if={@files != []} class="max-h-48 overflow-y-auto space-y-px">
         <.change_row
           :for={f <- @files}
           f={f}
@@ -124,9 +121,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
           linkable?={@linkable?}
         />
       </div>
-    </div>
+    </.section>
     """
   end
+
+  defp changes_label([]), do: "Changes"
+  defp changes_label(files), do: "Changes · #{length(files)}"
 
   # One changed-file row. When we know the volume + base path, it's a link to
   # that file's diff; otherwise a plain, un-clickable row (same layout).
@@ -140,7 +140,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     <.link
       :if={@linkable?}
       patch={diff_path(@base_path, @volume, @f)}
-      class="group flex items-center gap-2 text-sm font-mono rounded px-1 -mx-1 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+      class="group flex items-center gap-2 text-sm font-mono rounded px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
       title={"View diff — #{@f.path}"}
     >
       <span class={["w-4 flex-none text-center", change_color(@f.status)]}>{@f.status}</span>
@@ -148,7 +148,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
         {@f.path}
       </span>
     </.link>
-    <div :if={!@linkable?} class="flex items-center gap-2 text-sm font-mono">
+    <div :if={!@linkable?} class="flex items-center gap-2 px-2 py-0.5 text-sm font-mono">
       <span class={["w-4 flex-none text-center", change_color(@f.status)]}>{@f.status}</span>
       <span class="truncate text-zinc-700 dark:text-zinc-300" title={@f.path}>{@f.path}</span>
     </div>
@@ -177,11 +177,21 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
   # whole point is that "something's wrong / your message will wait" is never a
   # silent surprise.
   defp harness_status(assigns) do
-    assigns = assign(assigns, :hs, harness_state(assigns.agent))
+    assigns =
+      assigns
+      |> assign(:hs, harness_state(assigns.agent))
+      |> assign(:loud?, loud_status?(assigns.agent))
 
     ~H"""
-    <div class="px-3 pt-1 pb-2">
-      <div class={["flex items-center gap-2.5 rounded-lg px-2.5 py-2", @hs.bg]}>
+    <div class="px-3 pt-3 pb-1">
+      <%!-- Calm by default: a single subtle line ("● Ready"), aligned with the
+           section rows below. Only PROBLEM states (rate-limited, auth expired,
+           reconnecting) escalate to the loud card with a consequence line — those
+           are the ones worth a glance; "you can send" isn't. --%>
+      <div
+        :if={@loud?}
+        class={["flex items-center gap-2.5 rounded-lg px-2.5 py-2", @hs.bg]}
+      >
         <span class={["w-2 h-2 rounded-full flex-none", @hs.dot, @hs.pulse]}></span>
         <div class="min-w-0">
           <div class={["text-sm font-semibold leading-tight", @hs.text]}>{@hs.label}</div>
@@ -190,8 +200,20 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
           </div>
         </div>
       </div>
+      <div :if={!@loud?} class="flex items-center gap-2 px-2 min-h-6 text-sm">
+        <span class={["w-1.5 h-1.5 rounded-full flex-none", @hs.dot, @hs.pulse]}></span>
+        <span class={["font-medium", @hs.text]}>{@hs.label}</span>
+      </div>
     </div>
     """
+  end
+
+  # Which harness states deserve the loud card (vs a calm one-liner). Only the
+  # ones where "your message will WAIT / something's wrong" — never the happy path.
+  defp loud_status?(agent) do
+    Map.get(agent, :rate_limit_status, :ok) != :ok or
+      agent[:status] in [:rate_limited, :auth_expired, :backoff] or
+      agent[:auth_error] != nil
   end
 
   # Map agent state → display. Order matters: worst/most-actionable states win,

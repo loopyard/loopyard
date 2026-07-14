@@ -97,6 +97,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
           agents={@agents}
           service_statuses={@service_statuses}
           volumes={@volumes}
+          changes={@changes}
           selected_id={@selected_id}
           selected_service={@selected_service}
           editing_agent_id={Map.get(assigns, :editing_agent_id)}
@@ -133,6 +134,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
   attr :agents, :list, required: true
   attr :service_statuses, :list, default: []
   attr :volumes, :list, default: []
+  attr :changes, :map, default: %{staged: [], unstaged: []}
   attr :selected_id, :string, default: nil
   attr :selected_service, :string, default: nil
   attr :editing_agent_id, :string, default: nil
@@ -143,6 +145,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
   attr :sync_status, :any, default: nil
 
   def workspace_switcher(assigns) do
+    assigns = assign(assigns, :changes_count, changes_count(assigns.changes))
+
     ~H"""
     <.section>
       <.group_label :if={@agents != []} text="Agents" />
@@ -182,7 +186,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
         :if={@volumes != [] || (@is_local_source? && sync_relevant?(@sync_status))}
         text="Volumes"
       />
-      <.volume_item :for={vol <- @volumes} vol={vol} base_path={@base_path} />
+      <.volume_item
+        :for={vol <- @volumes}
+        vol={vol}
+        base_path={@base_path}
+        changes_count={@changes_count}
+      />
       <.row
         :if={@is_local_source? && sync_relevant?(@sync_status)}
         patch={"#{@base_path}/sync"}
@@ -403,15 +412,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
     """
   end
 
+  attr :vol, :map, required: true
+  attr :base_path, :string, required: true
+  attr :changes_count, :integer, default: 0
+
   def volume_item(assigns) do
     # Use description from volume_info if available, otherwise derive from name
     description = assigns.vol[:description] || derive_volume_description(assigns.vol.name)
-    service = assigns.vol[:service]
 
     assigns =
       assigns
       |> assign(:description, description)
-      |> assign(:service, service)
+      |> assign(:code?, String.contains?(assigns.vol.name || "", "code"))
 
     ~H"""
     <.row
@@ -421,12 +433,33 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
     >
       <span class="w-1.5 h-1.5 rounded-full flex-none bg-blue-400" aria-hidden="true"></span>
       <span class="truncate text-zinc-600 dark:text-zinc-400 flex-1">{@description}</span>
-      <span :if={@vol[:size]} class="text-sm text-zinc-500 dark:text-zinc-400 font-mono flex-none">
+      <%!-- The code volume is where the working-tree diff lives — surface its
+           changed-file count on the right (clean → the volume size instead). --%>
+      <span
+        :if={@code? and @changes_count > 0}
+        class="flex-none inline-flex items-center rounded px-1.5 text-sm font-mono font-medium bg-amber-500/15 text-amber-600 dark:text-amber-400"
+        title={"#{@changes_count} changed file(s)"}
+      >
+        ±{@changes_count}
+      </span>
+      <span
+        :if={!(@code? and @changes_count > 0) and @vol[:size]}
+        class="text-sm text-zinc-500 dark:text-zinc-400 font-mono flex-none"
+      >
         {@vol.size}
       </span>
     </.row>
     """
   end
+
+  # Changed-file count for a working tree (staged + unstaged, deduped by path).
+  defp changes_count(%{} = changes) do
+    ((Map.get(changes, :staged) || []) ++ (Map.get(changes, :unstaged) || []))
+    |> Enum.uniq_by(& &1.path)
+    |> length()
+  end
+
+  defp changes_count(_), do: 0
 
   def agent_list_item(assigns) do
     display = agent_display_status(assigns.agent)
@@ -464,15 +497,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
       >
         <span class={"w-1.5 h-1.5 rounded-full flex-none #{status_dot(@display)}"} aria-hidden="true"></span>
         <span
-          class="truncate text-zinc-600 dark:text-zinc-400"
+          class="flex-1 min-w-0 truncate text-zinc-600 dark:text-zinc-400"
           phx-dblclick="start_rename_sidebar"
           phx-value-id={@agent.id}
         >
           {@agent.name}
         </span>
+        <%!-- Rough additional status, RIGHT-aligned: dot + name on the left, what
+             it's doing on the right. --%>
         <span
           :if={@display == :thinking}
-          class="text-sm text-violet-500 dark:text-violet-400 flex-none"
+          class="text-sm text-violet-500 dark:text-violet-400 flex-none truncate max-w-[9rem]"
         >
           {@agent[:thinking_word] || thinking_word(@agent.id, @agent[:active_tool])}
         </span>
