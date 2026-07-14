@@ -27,6 +27,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   alias LoopyardWeb.Components.ToolSummary
   alias LoopyardWeb.Live.WorkspaceLive.Messages.Cards
   alias LoopyardWeb.Live.WorkspaceLive.Messages.Transcript
+  alias LoopyardWeb.Live.WorkspaceLive.Components.Viewers.{FileType, Syntax}
 
   # Transcript-structure helpers live in Messages.Transcript (size-cap split);
   # re-exposed so chat_panel + the transcript-layout tests are unchanged.
@@ -241,7 +242,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         chat_msg_port_closed(assigns)
 
       true ->
-        chat_msg_tool_result(assigns)
+        # Rich cards for the tools whose output has an obvious shape: a file read
+        # becomes syntax-highlighted code with a filename header; a grep becomes
+        # a match list with dimmed file:line prefixes. Everything else keeps the
+        # plain collapsible <pre>. Classified off the matching :tool call.
+        case tool_result_kind(assigns) do
+          :read -> chat_msg_file_result(assigns)
+          :grep -> chat_msg_grep_result(assigns)
+          _ -> chat_msg_tool_result(assigns)
+        end
     end
   end
 
@@ -521,6 +530,164 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     </details>
     """
   end
+
+  # Classify a tool_result by the tool that produced it, so the dispatcher can
+  # pick a rich renderer. Only the shapes we have a card for; everything else is
+  # `:generic` and keeps the plain <pre>.
+  defp tool_result_kind(assigns) do
+    case matching_tool_call(assigns) do
+      %{role: :tool, tool: tool} when is_binary(tool) ->
+        cond do
+          String.ends_with?(tool, "__read_file") -> :read
+          String.ends_with?(tool, "__grep") -> :grep
+          true -> :generic
+        end
+
+      _ ->
+        :generic
+    end
+  end
+
+  # Cost guards for inline syntax highlighting — highlighting is a synchronous
+  # Rust NIF pass, and the transcript re-renders, so a huge file read must fall
+  # back to plain text instead of re-tokenizing on every render.
+  @highlight_max_lines 500
+  @highlight_max_bytes 80_000
+
+  # read_file → a syntax-highlighted code card with a filename header and a link
+  # into the file viewer. Same collapsible affordance as the plain result, but
+  # the body is highlighted code with line numbers.
+  defp chat_msg_file_result(assigns) do
+    call = matching_tool_call(assigns)
+    path = call && (call.input["path"] || call.input["file_path"])
+    content = format_tool_result(assigns.msg.content)
+    raw_lines = String.split(content, "\n")
+    line_count = length(raw_lines)
+    language = path && FileType.language(path)
+
+    highlight? =
+      is_binary(language) and line_count <= @highlight_max_lines and
+        byte_size(content) <= @highlight_max_bytes
+
+    lines =
+      if highlight? do
+        case Syntax.highlight_lines(content, language) do
+          nil -> Enum.map(raw_lines, &blank_to_nbsp/1)
+          hl -> hl
+        end
+      else
+        Enum.map(raw_lines, &blank_to_nbsp/1)
+      end
+      |> Enum.take(@result_line_cap)
+      |> Enum.with_index(1)
+
+    assigns =
+      assign(assigns,
+        path: path,
+        language: language,
+        line_count: line_count,
+        lines: lines,
+        truncated: line_count > @result_line_cap,
+        cap: @result_line_cap,
+        file_link: build_file_link(path, assigns[:workspace_id])
+      )
+
+    ~H"""
+    <details class={[gutter(), "pl-5 py-0.5 group/file"]} open={@detail_level == :trace}>
+      <summary class="text-[11px] text-zinc-400 dark:text-zinc-500 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5">
+        <span class="transition-transform group-open/file:rotate-90">▸</span>
+        <span class="font-mono text-zinc-500 dark:text-zinc-400 truncate">{@path || "file"}</span>
+        <span :if={@language} class="text-zinc-400 dark:text-zinc-600">· {@language}</span>
+        <span class="text-zinc-400 dark:text-zinc-600">· {@line_count} lines</span>
+      </summary>
+      <div class="mt-1 rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800">
+        <div class="max-h-96 overflow-auto text-xs font-mono leading-relaxed">
+          <div :for={{line, i} <- @lines} class="flex">
+            <span class="flex-none w-10 pr-3 text-right text-zinc-400 dark:text-zinc-600 select-none tabular-nums">
+              {i}
+            </span>
+            <code class="whitespace-pre text-zinc-800 dark:text-zinc-200">{line}</code>
+          </div>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 mt-1 h-5">
+        <p :if={@truncated} class="text-[10px] text-zinc-400 dark:text-zinc-500">
+          ... {@line_count - @cap} more lines
+        </p>
+        <a
+          :if={@file_link}
+          href={@file_link}
+          class="text-[11px] text-blue-600 dark:text-blue-400 hover:underline"
+        >
+          Open in file viewer →
+        </a>
+      </div>
+    </details>
+    """
+  end
+
+  # grep → a match list: each row shows the file:line prefix dimmed and the
+  # matched text readable. Non-matching lines (headers, "No matches") pass
+  # through as plain rows.
+  defp chat_msg_grep_result(assigns) do
+    content = format_tool_result(assigns.msg.content)
+
+    rows =
+      content
+      |> String.split("\n")
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.map(&parse_grep_line/1)
+
+    match_count = Enum.count(rows, &match?({:match, _, _, _}, &1))
+
+    assigns =
+      assign(assigns,
+        rows: Enum.take(rows, @result_line_cap),
+        match_count: match_count,
+        truncated: length(rows) > @result_line_cap,
+        total: length(rows),
+        cap: @result_line_cap
+      )
+
+    ~H"""
+    <details class={[gutter(), "pl-5 py-0.5 group/grep"]} open={@detail_level == :trace}>
+      <summary class="text-[11px] text-zinc-400 dark:text-zinc-500 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5">
+        <span class="transition-transform group-open/grep:rotate-90">▸</span>
+        <span>{@match_count} {if @match_count == 1, do: "match", else: "matches"}</span>
+      </summary>
+      <div class="mt-1 rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800">
+        <div class="max-h-96 overflow-auto text-xs font-mono leading-relaxed py-1">
+          <div :for={row <- @rows} class="flex gap-2 px-3 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50">
+            <%= case row do %>
+              <% {:match, path, lno, text} -> %>
+                <span class="flex-none text-zinc-400 dark:text-zinc-600 select-none">
+                  {path}<span class="text-violet-500 dark:text-violet-400">:{lno}</span>
+                </span>
+                <span class="whitespace-pre text-zinc-800 dark:text-zinc-200 truncate">{text}</span>
+              <% {:plain, line} -> %>
+                <span class="text-zinc-500 dark:text-zinc-400">{line}</span>
+            <% end %>
+          </div>
+        </div>
+      </div>
+      <p :if={@truncated} class="text-[10px] text-zinc-400 dark:text-zinc-500 mt-1">
+        ... {@total - @cap} more lines
+      </p>
+    </details>
+    """
+  end
+
+  # A grep output line "path:lineno: content" → structured; anything else plain.
+  defp parse_grep_line(line) do
+    case Regex.run(~r/^(.+?):(\d+):\s?(.*)$/, line) do
+      [_, path, lno, text] -> {:match, path, lno, text}
+      _ -> {:plain, line}
+    end
+  end
+
+  # Keep blank source lines from collapsing to zero height in the code card.
+  defp blank_to_nbsp(""), do: Phoenix.HTML.raw("&nbsp;")
+  defp blank_to_nbsp(line), do: line
 
   defp miniapp_tool?(tool) when is_binary(tool),
     do: Enum.any?(@miniapp_tools, &String.ends_with?(tool, &1))
