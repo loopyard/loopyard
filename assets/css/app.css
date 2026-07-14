@@ -186,6 +186,11 @@
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
   }
+  /* Directional insets for the 3-column layout: the rail BACKGROUND reaches the
+     screen edge, but its CONTENT is padded off the notch / dynamic island. Put
+     these on the rail element itself (padding is inside its background box). */
+  .safe-pl { padding-left: env(safe-area-inset-left); }
+  .safe-pr { padding-right: env(safe-area-inset-right); }
 }
 refresh your browser when you save files and it does not affect production.
 .highlight .hll {background-color: #49483e}

@@ -412,8 +412,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   attr :text, :string, required: true
 
   def streaming_bubble(assigns) do
+    # Flush-left (no rail, no indent) so the live prose lines up with completed
+    # assistant messages and everything else in the transcript.
     ~H"""
-    <div class={[gutter(), "py-0.5 mt-2"]} id="streaming-msg">
+    <div class="py-0.5 mt-2" id="streaming-msg">
       <div class="markdown-body text-[15px] leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl">
         {Loopyard.Markdown.to_html(@text)}<span class="inline-block w-1.5 h-4 bg-violet-500 animate-pulse ml-0.5 align-middle"></span>
       </div>
@@ -425,7 +427,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     # The agent's live reasoning — flows on the spine, not a bubble. Quietly set
     # apart (muted, italic-feel via the label) since it's inner monologue.
     ~H"""
-    <div class="pl-7 py-1">
+    <div class="py-1">
       <p class="text-sm text-zinc-400 dark:text-zinc-500 mb-1 font-medium uppercase tracking-wide">
         Thinking
       </p>

@@ -11,6 +11,8 @@ defmodule LoopyardWeb.SoundLive do
   """
   use LoopyardWeb, :live_view
 
+  alias LoopyardWeb.Components.Nav
+
   @channel "activity"
 
   # The baseline roster (mirrors the aural package's proven set). Kept here so a
@@ -53,24 +55,11 @@ defmodule LoopyardWeb.SoundLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="min-h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
-      <div class="flex-none flex items-center gap-1 h-14 px-2 border-b border-zinc-200 dark:border-zinc-700/80">
-        <button
-          type="button"
-          onclick="history.back()"
-          aria-label="Back"
-          class="flex-none inline-flex items-center justify-center w-11 h-11 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors"
-        >
-          <svg viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
-            <path
-              fill-rule="evenodd"
-              d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z"
-              clip-rule="evenodd"
-            />
-          </svg>
-        </button>
-        <h1 class="text-base font-semibold">Sound</h1>
-      </div>
+    <div class="min-h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 safe-area-x">
+      <Nav.bar pad="px-2">
+        <Nav.back_button onclick="history.back()" />
+        <h1 class="text-lg font-semibold">Sound</h1>
+      </Nav.bar>
 
       <div id="sound-panel" phx-hook="SoundPanel" class="flex-1 overflow-y-auto">
         <%!-- Playback: the big power button toggles the persistent engine; the

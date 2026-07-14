@@ -1,5 +1,9 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full bg-white dark:bg-zinc-900 safe-area-x">
+<%!-- No safe-area-x on <html> — that would inset the WHOLE app so the 3-column
+     rails couldn't reach the screen edge. Safe insets live on the rail content
+     (safe-pl / safe-pr) and on full-bleed single-column page roots instead, so
+     backgrounds go edge-to-edge while content clears the notch / dynamic island. --%>
+<html lang="en" class="h-full bg-white dark:bg-zinc-900">
   <head>
     <meta charset="utf-8" />
     <%!-- Base viewport. JS below adds maximum-scale=1 on iOS only to

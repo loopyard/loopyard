@@ -34,7 +34,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
     <%!-- Live tool feed only. The status header (word + elapsed + Stop) is
          docked at the bottom in the Reasoning Bar so it never scrolls off the
          top, no matter how long the work runs. --%>
-    <div :if={@activity != [] || @stall_hint} class="pl-7 py-1.5">
+    <div :if={@activity != [] || @stall_hint} class="py-1.5">
       <ul :if={@activity != []} class="space-y-1.5">
         <li :for={a <- @activity} class="flex items-start gap-2 text-sm leading-relaxed">
           <span class={[
@@ -93,11 +93,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
     assigns = assign(assigns, :live_tokens, token_estimate(assigns.streaming_text))
 
     ~H"""
-    <%!-- The live tip of the timeline. It FLOWS on the spine like the activity rows
-         above it — same pl-7 gutter, NO box, NO gap — so the faint vertical line
-         runs straight down into it as one continuous timeline (not a floating
-         widget). dots + word + elapsed on the left, Stop docked right. --%>
-    <div class="flex items-center gap-2.5 pl-7 pr-1 py-1.5">
+    <%!-- The live tip of the turn: dots + word + elapsed on the left, Stop docked
+         right. Flush-left (no rail/indent) so it lines up with the streaming prose
+         and completed messages above it. --%>
+    <div class="flex items-center gap-2.5 pr-1 py-1.5">
       <div class="flex gap-1.5 flex-none" aria-hidden="true">
         <div class={["w-2 h-2 rounded-full animate-bounce", @dot_class]} style="animation-delay: 0ms">
         </div>

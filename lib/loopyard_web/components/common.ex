@@ -85,9 +85,9 @@ defmodule LoopyardWeb.Components.Common do
   def detail_panel(assigns) do
     ~H"""
     <div class="flex-1 flex flex-col min-h-0">
-      <div class="flex-none border-b border-zinc-200 dark:border-zinc-700/80 px-4 md:px-5 h-12 flex items-center gap-3">
+      <LoopyardWeb.Components.Nav.bar height="h-12" gap="gap-3">
         {render_slot(@header)}
-      </div>
+      </LoopyardWeb.Components.Nav.bar>
       {render_slot(@inner_block)}
     </div>
     """
@@ -316,7 +316,7 @@ defmodule LoopyardWeb.Components.Common do
     assigns = assign(assigns, :width_class, width_class)
 
     ~H"""
-    <div class="min-h-screen bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
+    <div class="min-h-screen bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 safe-area-x">
       <.header
         breadcrumbs={@breadcrumbs}
         iex_session={@iex_session}

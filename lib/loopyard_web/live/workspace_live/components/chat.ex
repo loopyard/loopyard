@@ -3,6 +3,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   use Phoenix.Component
 
   alias Phoenix.LiveView.JS
+  alias LoopyardWeb.Components.Nav
 
   import LoopyardWeb.Components.Common, only: [dot: 1, control_btn: 1, sound_control: 1]
   import LoopyardWeb.Components.Sidebar, only: [status_dot: 1, agent_display_status: 1]
@@ -63,159 +64,133 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       |> assign(:current, current_item(assigns))
       |> assign(:ws_name, (assigns[:workspace_entry] || %{})[:name] || assigns.workspace.id)
 
+    assigns =
+      assigns
+      |> assign(:section_tabs, section_tabs(assigns))
+      |> assign(:project_items, project_items(assigns))
+      |> assign(:workspace_items, workspace_items(assigns))
+
+    assigns = assign(assigns, :can_switch, length(assigns.project_items) > 1 || length(assigns.workspace_items) > 1)
+
     ~H"""
-    <div class="md:hidden flex-none border-b border-zinc-200 dark:border-zinc-700/80">
-      <%!-- Row 1: WHERE you are — back out + Project / Workspace + sound. --%>
-      <div class="flex items-center gap-2 h-12 px-2">
-        <.link
-          navigate="/"
-          aria-label="Back to projects"
-          class="flex-none inline-flex items-center justify-center w-11 h-11 -ml-1.5 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors"
-        >
-          <svg viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
-            <path
-              fill-rule="evenodd"
-              d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z"
-              clip-rule="evenodd"
-            />
-          </svg>
-        </.link>
-        <nav class="flex-1 min-w-0 flex items-center gap-1.5 text-base" aria-label="Location">
-          <.link
+    <div class="md:hidden">
+      <%!-- Row 1: WHERE you are — back out + Project / Workspace + sound. Tapping
+           either name throws open ONE full-screen switcher of every project and
+           its workspaces (pick any to jump; ✕ / backdrop to bail). No pop-overs. --%>
+      <Nav.bar height="h-12" pad="px-2" gap="gap-1.5">
+        <Nav.back_button navigate="/" label="Back to projects" />
+        <nav class="flex-1 min-w-0 flex items-center gap-1.5 text-lg" aria-label="Location">
+          <Nav.crumb
             :if={@project}
-            navigate={"/projects/#{@project.id}"}
-            class="truncate text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100"
-          >
-            {@project.name}
-          </.link>
+            id="nav-switcher"
+            label={@project.name}
+            switch?={@can_switch}
+            href={"/projects/#{@project.id}"}
+          />
           <span :if={@project} class="text-zinc-300 dark:text-zinc-600 flex-none">/</span>
-          <span class="truncate font-semibold text-zinc-900 dark:text-zinc-100">{@ws_name}</span>
+          <Nav.crumb id="nav-switcher" label={@ws_name} current switch?={@can_switch} />
         </nav>
-        <.sound_control id="sound-workspace" />
-      </div>
+        <:actions><.sound_control id="sound-workspace" /></:actions>
+      </Nav.bar>
 
-      <%!-- Row 2: WHAT you're looking at — category tabs + the current item. --%>
-      <div class="flex items-center gap-2 px-2 h-16 border-t border-zinc-200/70 dark:border-zinc-700/50">
-        <nav
-          :if={@live_action != :new && (@agents != [] || @service_statuses != [] || @volumes != [])}
-          class="inline-flex items-center rounded-xl bg-zinc-100 dark:bg-zinc-800 p-0.5 flex-none"
-          aria-label="Workspace section"
-        >
-          <.link patch={@agents_href} class={seg_tab_class(@active == :agents)}>Agents</.link>
+      <Nav.switcher_sheet :if={@can_switch} id="nav-switcher" title="Switch workspace">
+        <div :for={proj <- @global_tree} class="pt-1.5 first:pt-0">
           <.link
-            :if={@service_statuses != []}
-            patch={@services_href}
-            class={seg_tab_class(@active == :services)}
+            navigate={"/projects/#{proj.id}"}
+            phx-click={JS.hide(to: "#nav-switcher")}
+            class="flex items-center px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200"
           >
-            Services
+            {proj.name}
           </.link>
           <.link
-            :if={@volumes != []}
-            patch={@volumes_href}
-            class={seg_tab_class(@active == :volumes)}
+            :for={ws <- proj.workspaces}
+            navigate={"/projects/#{proj.id}/workspaces/#{ws.id}"}
+            phx-click={JS.hide(to: "#nav-switcher")}
+            class={Nav.sheet_row_class(ws.id == @workspace.id && @project && proj.id == @project.id)}
           >
-            Repo
+            <span class="truncate">{ws.name}</span>
           </.link>
-        </nav>
-        <%!-- The current item + tap-to-switch: shows the selected agent / service
-             / volume and its details; tapping zooms the switcher open. --%>
-        <button
-          :if={@current}
-          type="button"
-          phx-click={toggle_switcher()}
-          aria-controls="item-switcher"
-          class="flex-1 min-w-0 flex items-center gap-2 min-h-[2.75rem] px-3 rounded-lg text-left hover:bg-zinc-100 dark:hover:bg-zinc-800/60 active:bg-zinc-200 dark:active:bg-zinc-700/60 transition-colors"
-        >
-          <span class={["w-2 h-2 rounded-full flex-none", @current.dot]}></span>
-          <span class="font-semibold text-zinc-900 dark:text-zinc-100 truncate">
-            {@current.label}
-          </span>
-          <span :if={@current.detail} class={["text-sm truncate", @current.tone]}>
-            {@current.detail}
-          </span>
-          <span
-            :if={@current.badge}
-            class="inline-flex items-center gap-1 text-sm text-zinc-400 dark:text-zinc-500 flex-none"
-          >
-            <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>{@current.badge}
-          </span>
-          <span class="flex-1"></span>
-          <%!-- Obvious switch affordance ONLY when there's more than one to pick:
-             a violet "Switch ⌄" pill. With a single item it's just a quiet
-             chevron (nothing to switch to). --%>
-          <span
-            :if={length(@items) > 1}
-            class="inline-flex items-center gap-1 flex-none rounded-md px-2 py-1 text-sm font-medium text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-500/10"
-          >
-            Switch
-            <svg viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
-              <path
-                fill-rule="evenodd"
-                d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"
-                clip-rule="evenodd"
-              />
-            </svg>
-          </span>
-          <svg
-            :if={length(@items) <= 1}
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            class="w-4 h-4 text-zinc-300 dark:text-zinc-600 flex-none"
-          >
-            <path
-              fill-rule="evenodd"
-              d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"
-              clip-rule="evenodd"
-            />
-          </svg>
-        </button>
-      </div>
+        </div>
+      </Nav.switcher_sheet>
 
-      <%!-- Switcher: zoom out to the other items in this category, pick to zoom
-           back in. Hidden until Row 2 is tapped; toggled client-side (JS) with a
-           scale/fade so it feels like a page transition, no server round-trip. --%>
-      <div
+      <%!-- Row 2: WHAT you're looking at — section tabs + the current item, which
+           taps open a full-screen switcher of siblings. --%>
+      <Nav.section_switcher
         id="item-switcher"
-        class="hidden border-t border-zinc-200 dark:border-zinc-700/60 bg-zinc-50 dark:bg-zinc-900/60 px-2 py-2 space-y-0.5 origin-top"
-        phx-click-away={JS.hide(to: "#item-switcher")}
+        title={section_title(@active)}
+        current={@current}
+        items={@items}
       >
-        <.link
-          :for={item <- @items}
-          patch={item.href}
-          phx-click={JS.hide(to: "#item-switcher")}
-          class={switcher_row_class(item.active?)}
-        >
-          <span class={["w-2 h-2 rounded-full flex-none", item.dot]}></span>
-          <span class="truncate">{item.label}</span>
-          <span :if={item.detail} class="text-sm text-zinc-400 dark:text-zinc-500 truncate">
-            {item.detail}
-          </span>
-        </.link>
-        <.link
-          :if={@active == :agents}
-          patch={"#{@base_path}/new"}
-          phx-click={JS.hide(to: "#item-switcher")}
-          class="flex items-center gap-2 px-3 min-h-[2.75rem] rounded-lg text-sm font-medium text-violet-600 dark:text-violet-400 active:bg-violet-50 dark:active:bg-violet-500/10"
-        >
-          + New agent
-        </.link>
-      </div>
+        <:tabs>
+          <Nav.segmented items={@section_tabs} label="Workspace section" />
+        </:tabs>
+        <:extra>
+          <.link
+            :if={@active == :agents}
+            patch={"#{@base_path}/new"}
+            phx-click={JS.hide(to: "#item-switcher")}
+            class="flex items-center gap-2 px-3 min-h-[2.75rem] rounded-lg text-sm font-medium text-violet-600 dark:text-violet-400 active:bg-violet-50 dark:active:bg-violet-500/10"
+          >
+            + New agent
+          </.link>
+        </:extra>
+      </Nav.section_switcher>
     </div>
     """
   end
 
-  # Client-side toggle for the item switcher, with a scale/fade so opening reads
-  # as "zoom out to the list" and closing as "zoom back into the selection".
-  defp toggle_switcher do
-    JS.toggle(
-      to: "#item-switcher",
-      in:
-        {"transition ease-out duration-200", "opacity-0 -translate-y-1 scale-[0.98]",
-         "opacity-100 translate-y-0 scale-100"},
-      out:
-        {"transition ease-in duration-150", "opacity-100 translate-y-0 scale-100",
-         "opacity-0 -translate-y-1 scale-[0.98]"}
-    )
+  # All projects, for the project crumb switcher (tap the project name). Sourced
+  # from the same @global_tree the left rail uses, so it's already in the socket.
+  defp project_items(%{global_tree: tree, project: project}) when is_list(tree) do
+    Enum.map(tree, fn p ->
+      %{label: p.name, href: "/projects/#{p.id}", active?: project && p.id == project.id}
+    end)
+  end
+
+  defp project_items(_), do: []
+
+  # Sibling workspaces within the current project, for the workspace crumb
+  # switcher (tap the workspace name). Empty (→ plain text, no switcher) when the
+  # project has only this one.
+  defp workspace_items(%{global_tree: tree, project: project, workspace: workspace})
+       when is_list(tree) and not is_nil(project) do
+    case Enum.find(tree, &(&1.id == project.id)) do
+      %{workspaces: wss} ->
+        Enum.map(wss, fn ws ->
+          %{
+            label: ws.name,
+            href: "/projects/#{project.id}/workspaces/#{ws.id}",
+            active?: ws.id == workspace.id
+          }
+        end)
+
+      _ ->
+        []
+    end
+  end
+
+  defp workspace_items(_), do: []
+
+  # Title for the full-screen item switcher, by active category.
+  defp section_title(:services), do: "Switch service"
+  defp section_title(:volumes), do: "Switch repo"
+  defp section_title(_), do: "Switch agent"
+
+  # The section tabs for Row 2 — Agents is always present, Services / Repo only
+  # when the workspace actually has them. Empty on the "new agent" route (nothing
+  # to switch between yet). `Nav.segmented` hides itself when the list is empty.
+  defp section_tabs(%{live_action: :new}), do: []
+
+  defp section_tabs(a) do
+    [%{label: "Agents", active?: a.active == :agents, patch: a.agents_href}] ++
+      if(a.service_statuses != [],
+        do: [%{label: "Services", active?: a.active == :services, patch: a.services_href}],
+        else: []
+      ) ++
+      if(a.volumes != [],
+        do: [%{label: "Repo", active?: a.active == :volumes, patch: a.volumes_href}],
+        else: []
+      )
   end
 
   # Which workspace category the current route belongs to — drives the active
@@ -317,25 +292,21 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
 
   # The single currently-selected item of the active category, for Row 2. nil →
   # nothing is selected in this category yet (e.g. on a list), so Row 2 hides.
-  defp current_item(%{active: :agents, agents: agents, nav_agent_id: id} = a) do
+  defp current_item(%{active: :agents, agents: agents, nav_agent_id: id}) do
     case Enum.find(agents, &(&1.id == id)) do
       nil ->
         nil
 
       ag ->
-        changes = a[:changes] || %{staged: [], unstaged: []}
-
-        count =
-          ((changes[:staged] || []) ++ (changes[:unstaged] || []))
-          |> Enum.uniq_by(& &1.path)
-          |> length()
-
+        # No changed-files badge here — a bare "● 25" in the header read as a
+        # mystery. The agent's live status (Ready / Working / Thinking) is the
+        # useful signal; the changes count lives in the right-rail "Changes".
         %{
           label: Map.get(ag, :name) || ag.id,
           dot: status_dot(ag.status),
           detail: status_word(ag),
           tone: status_tone(ag),
-          badge: if(count > 0, do: count, else: nil)
+          badge: nil
         }
     end
   end
@@ -380,17 +351,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     do: s |> to_string() |> String.capitalize()
 
   defp svc_word(_), do: nil
-
-  # One row in the switcher list — active is a violet highlight.
-  defp switcher_row_class(active?) do
-    [
-      "flex items-center gap-2 px-3 min-h-[2.75rem] rounded-lg text-sm transition-colors",
-      if(active?,
-        do: "bg-violet-100 dark:bg-violet-500/15 text-zinc-900 dark:text-zinc-100 font-medium",
-        else: "text-zinc-700 dark:text-zinc-300 active:bg-zinc-100 dark:active:bg-zinc-800"
-      )
-    ]
-  end
 
   # --- Agent View ---
 
@@ -513,18 +473,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     end
   end
 
-  # One segment of the mobile view switcher — a real segmented control: the
-  # active view is a raised white/dark pill, the rest are quiet labels.
-  defp seg_tab_class(active?) do
-    [
-      "inline-flex items-center justify-center min-h-[2.5rem] px-3 rounded-lg text-sm font-medium leading-none transition-colors whitespace-nowrap",
-      if(active?,
-        do: "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm",
-        else: "text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-      )
-    ]
-  end
-
   @detail_levels [
     {:trace, "All", "Reasoning + tool calls + full output"},
     {:actions, "Actions", "Reasoning + tool calls; output one click away"},
@@ -557,13 +505,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
         phx-value-level={value}
         title={hint}
         aria-pressed={@level == value}
-        class={[
-          "px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
-          if(@level == value,
-            do: "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm",
-            else: "text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-          )
-        ]}
+        class={Nav.seg_item_class(@level == value)}
       >
         {label}
       </button>
@@ -686,32 +628,16 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                 (@agent.status == :thinking && not awaiting_answer?(@messages) &&
                    not awaiting_approval?(@messages) && not building?(@messages))
             }
-            class="relative mt-3"
+            class=""
           >
-            <%!-- The rail: icon on top, then a 1px line filling the rest of the
-                 height. `items-center` centers the line in the w-5 column so it
-                 passes straight through the icon's center and extends from its
-                 bottom with no gap. --%>
-            <div class="absolute left-0 top-0 bottom-1 w-5 flex flex-col items-center">
-              <span
-                :if={not turn_started_rendering?(@messages)}
-                class="w-5 h-5 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center flex-none"
-              >
-                <.icon name={:sparkle} class="w-3 h-3 text-violet-600 dark:text-violet-400" />
-              </span>
-              <div class="w-px flex-1 bg-zinc-200 dark:bg-zinc-700/60"></div>
-            </div>
-
-            <%!-- "Claude · HH:MM", vertically centered with the icon — top only. --%>
-            <div :if={not turn_started_rendering?(@messages)} class="pl-7 h-5 flex items-center">
-              <span class="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Claude</span>
-              <span
-                :if={current_turn_timestamp(@messages)}
-                class="ml-2 text-sm text-zinc-400 dark:text-zinc-500"
-              >
-                · {Calendar.strftime(current_turn_timestamp(@messages), "%H:%M")}
-              </span>
-            </div>
+            <%!-- No timeline rail — the live turn uses the SAME left-aligned header
+                 (inline sparkle + "Claude · HH:MM") as completed turns and lets its
+                 content sit flush at the gutter, so nothing is indented under a
+                 vertical line. Header shows only at the top of the response. --%>
+            <.run_header
+              :if={not turn_started_rendering?(@messages)}
+              timestamp={current_turn_timestamp(@messages)}
+            />
 
             <.streaming_thinking
               :if={

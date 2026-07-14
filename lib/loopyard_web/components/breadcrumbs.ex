@@ -33,19 +33,7 @@ defmodule LoopyardWeb.Components.Breadcrumbs do
     <nav aria-label="Breadcrumb" class={["flex items-center min-w-0", @class]}>
       <ol class="flex items-center gap-1.5 min-w-0 list-none p-0 m-0">
         <li :if={@parent_path} class="flex sm:hidden flex-none">
-          <.link
-            navigate={@parent_path}
-            aria-label="Back"
-            class="focus-ring inline-flex items-center justify-center w-9 h-9 -ml-2 rounded-md text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-          >
-            <svg viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
-              <path
-                fill-rule="evenodd"
-                d="M11.78 5.22a.75.75 0 0 1 0 1.06L8.06 10l3.72 3.72a.75.75 0 1 1-1.06 1.06l-4.25-4.25a.75.75 0 0 1 0-1.06l4.25-4.25a.75.75 0 0 1 1.06 0Z"
-                clip-rule="evenodd"
-              />
-            </svg>
-          </.link>
+          <LoopyardWeb.Components.Nav.back_button size={:sm} navigate={@parent_path} />
         </li>
         <%= for {{label, path}, idx} <- Enum.with_index(@crumbs) do %>
           <%!-- On mobile show only the current page; the full trail returns at sm+
@@ -59,14 +47,14 @@ defmodule LoopyardWeb.Components.Breadcrumbs do
             <%= if path do %>
               <.link
                 navigate={path}
-                class="focus-ring text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors truncate rounded"
+                class="focus-ring text-lg md:text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors truncate rounded"
               >
                 {label}
               </.link>
             <% else %>
               <span
                 aria-current={if idx == length(@crumbs) - 1, do: "page"}
-                class="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate"
+                class="text-lg md:text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate"
               >
                 {label}
               </span>

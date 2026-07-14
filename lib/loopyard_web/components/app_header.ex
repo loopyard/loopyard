@@ -26,13 +26,11 @@ defmodule LoopyardWeb.Components.AppHeader do
 
   def header(assigns) do
     ~H"""
-    <header class="flex-none h-14 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center justify-between px-4 md:px-5">
-      <div class="flex items-center gap-3 min-w-0">
-        {render_slot(@back)}
-        <.breadcrumbs crumbs={@breadcrumbs} />
-        <.iex_indicator :if={@iex_session.level} session={@iex_session} />
-      </div>
-      <div class="flex items-center gap-3 md:gap-4">
+    <LoopyardWeb.Components.Nav.bar height="h-14" gap="gap-3">
+      {render_slot(@back)}
+      <.breadcrumbs crumbs={@breadcrumbs} />
+      <.iex_indicator :if={@iex_session.level} session={@iex_session} />
+      <:actions>
         {render_slot(@inner_block)}
         <LoopyardWeb.Components.Common.sound_control id="sound-app" />
         <%!-- Desktop: nav inline. --%>
@@ -77,8 +75,8 @@ defmodule LoopyardWeb.Components.AppHeader do
           current={Loopyard.Workstation.current()}
           ids={Loopyard.Workstation.list()}
         />
-      </div>
-    </header>
+      </:actions>
+    </LoopyardWeb.Components.Nav.bar>
     """
   end
 

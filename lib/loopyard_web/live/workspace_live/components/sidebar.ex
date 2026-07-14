@@ -64,7 +64,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
          (index/context), hidden when an agent/service is selected. On md+:
          always visible as a fixed-width rail. --%>
     <aside class={[
-      "flex-none border-l border-zinc-200 dark:border-zinc-700/80 flex flex-col bg-zinc-50 dark:bg-zinc-900/50",
+      "flex-none border-l border-zinc-200 dark:border-zinc-700/80 flex flex-col bg-zinc-50 dark:bg-zinc-900/50 safe-pr",
       "w-full md:w-80",
       if(
         @live_action in [

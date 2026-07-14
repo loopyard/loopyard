@@ -8,6 +8,7 @@ defmodule LoopyardWeb.MessageLive do
   import LoopyardWeb.Components.LogViewer
 
   alias Loopyard.Events
+  alias LoopyardWeb.Components.Nav
 
   @behaviour Loopyard.Events.ChatAgentMessage.Subscriber
 
@@ -128,25 +129,25 @@ defmodule LoopyardWeb.MessageLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="min-h-screen bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
-      <header class="h-12 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center justify-between px-4">
-        <div class="flex items-center gap-2">
-          <span :if={@msg} class="text-sm font-medium text-zinc-500 dark:text-zinc-400">
-            {@msg[:title] || message_type(@msg)}
-          </span>
-          <span :if={@streaming} class="flex items-center gap-1.5 text-xs text-amber-500">
-            <div class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></div>
-            live
-          </span>
-        </div>
-        <a
-          :if={@raw_url}
-          href={@raw_url}
-          class="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
-        >
-          raw text
-        </a>
-      </header>
+    <div class="min-h-screen bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 safe-area-x">
+      <Nav.bar height="h-12" pad="px-4">
+        <span :if={@msg} class="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+          {@msg[:title] || message_type(@msg)}
+        </span>
+        <span :if={@streaming} class="flex items-center gap-1.5 text-xs text-amber-500">
+          <div class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></div>
+          live
+        </span>
+        <:actions>
+          <a
+            :if={@raw_url}
+            href={@raw_url}
+            class="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+          >
+            raw text
+          </a>
+        </:actions>
+      </Nav.bar>
 
       <div :if={@msg} class="p-4">
         <.log_panel
