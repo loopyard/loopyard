@@ -42,12 +42,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     # Two rows that mirror the hierarchy Root → Project → Workspace →
     # { Agents · Services · Repo }:
     #
-    #   Row 1  ← Projects .......... [ Agents · Services · Repo ]   (category)
-    #   Row 2  ● my-agent · Ready · 2 ⌄   — the current item, tap to switch
+    #   Row 1  ←  Loopyard / uncringe .................... 🔊   (WHERE you are)
+    #   Row 2  [ Agents · Services · Repo ]  ● my-agent · Ready  Switch ⌄  (WHAT)
     #
-    # Row 1 switches CATEGORY (content-first: jump to your last item there).
-    # Row 2 names the current ITEM and its details; tapping it zooms OUT to a
-    # switcher of the other items in that category — pick one to zoom back in.
+    # Row 1 is the location breadcrumb (project / workspace) + back-out + sound.
+    # Row 2 switches CATEGORY (content-first: jump to your last item there) and
+    # names the current ITEM; tapping the item zooms OUT to a switcher of the
+    # other items in that category — pick one to zoom back in.
     # Set :active first, on its own, so the item/current helpers below (which
     # match on :active) see it — inside a single pipe, `assigns` in each arg
     # still refers to the pre-pipe value.
@@ -60,30 +61,41 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       |> assign(:volumes_href, category_href(:volumes, assigns))
       |> assign(:items, category_items(assigns))
       |> assign(:current, current_item(assigns))
+      |> assign(:ws_name, (assigns[:workspace_entry] || %{})[:name] || assigns.workspace.id)
 
     ~H"""
     <div class="md:hidden flex-none border-b border-zinc-200 dark:border-zinc-700/80">
-      <%!-- Row 1: back · category tabs · (sound lands here next). --%>
-      <div class="flex items-center gap-2 h-14 px-2">
+      <%!-- Row 1: WHERE you are — back out + Project / Workspace + sound. --%>
+      <div class="flex items-center gap-2 h-12 px-2">
         <.link
           navigate="/"
-          class="-ml-1 inline-flex items-center gap-1 px-2 py-1 rounded-md text-base font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 active:bg-violet-100 dark:active:bg-violet-500/20 transition-colors min-w-0"
+          aria-label="Back to projects"
+          class="flex-none inline-flex items-center justify-center w-8 h-8 -ml-0.5 rounded-md text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            class="w-5 h-5 flex-none"
-          >
+          <svg viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
             <path
               fill-rule="evenodd"
               d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z"
               clip-rule="evenodd"
             />
           </svg>
-          <span class="truncate">Projects</span>
         </.link>
-        <div class="flex-1"></div>
+        <nav class="flex-1 min-w-0 flex items-center gap-1.5 text-sm" aria-label="Location">
+          <.link
+            :if={@project}
+            navigate={"/projects/#{@project.id}"}
+            class="truncate text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100"
+          >
+            {@project.name}
+          </.link>
+          <span :if={@project} class="text-zinc-300 dark:text-zinc-600 flex-none">/</span>
+          <span class="truncate font-semibold text-zinc-900 dark:text-zinc-100">{@ws_name}</span>
+        </nav>
+        <.sound_control id="sound-workspace" />
+      </div>
+
+      <%!-- Row 2: WHAT you're looking at — category tabs + the current item. --%>
+      <div class="flex items-center gap-2 px-2 h-12 border-t border-zinc-200/70 dark:border-zinc-700/50">
         <nav
           :if={@live_action != :new && (@agents != [] || @service_statuses != [] || @volumes != [])}
           class="inline-flex items-center rounded-xl bg-zinc-100 dark:bg-zinc-800 p-0.5 flex-none"
@@ -105,61 +117,59 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             Repo
           </.link>
         </nav>
-        <.sound_control id="sound-workspace" />
-      </div>
-
-      <%!-- Row 2: the current item + tap-to-switch. Shows the selected agent /
-           service / volume and its details; tapping zooms the switcher open. --%>
-      <button
-        :if={@current}
-        type="button"
-        phx-click={toggle_switcher()}
-        aria-controls="item-switcher"
-        class="w-full flex items-center gap-2 px-3 h-11 border-t border-zinc-200/70 dark:border-zinc-700/50 text-left active:bg-zinc-100 dark:active:bg-zinc-800/60 transition-colors"
-      >
-        <span class={["w-2 h-2 rounded-full flex-none", @current.dot]}></span>
-        <span class="font-semibold text-zinc-900 dark:text-zinc-100 truncate">
-          {@current.label}
-        </span>
-        <span :if={@current.detail} class={["text-sm truncate", @current.tone]}>
-          {@current.detail}
-        </span>
-        <span
-          :if={@current.badge}
-          class="inline-flex items-center gap-1 text-sm text-zinc-400 dark:text-zinc-500 flex-none"
+        <%!-- The current item + tap-to-switch: shows the selected agent / service
+             / volume and its details; tapping zooms the switcher open. --%>
+        <button
+          :if={@current}
+          type="button"
+          phx-click={toggle_switcher()}
+          aria-controls="item-switcher"
+          class="flex-1 min-w-0 flex items-center gap-2 h-9 px-2.5 rounded-lg text-left hover:bg-zinc-100 dark:hover:bg-zinc-800/60 active:bg-zinc-200 dark:active:bg-zinc-700/60 transition-colors"
         >
-          <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>{@current.badge}
-        </span>
-        <span class="flex-1"></span>
-        <%!-- Obvious switch affordance ONLY when there's more than one to pick:
+          <span class={["w-2 h-2 rounded-full flex-none", @current.dot]}></span>
+          <span class="font-semibold text-zinc-900 dark:text-zinc-100 truncate">
+            {@current.label}
+          </span>
+          <span :if={@current.detail} class={["text-sm truncate", @current.tone]}>
+            {@current.detail}
+          </span>
+          <span
+            :if={@current.badge}
+            class="inline-flex items-center gap-1 text-sm text-zinc-400 dark:text-zinc-500 flex-none"
+          >
+            <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>{@current.badge}
+          </span>
+          <span class="flex-1"></span>
+          <%!-- Obvious switch affordance ONLY when there's more than one to pick:
              a violet "Switch ⌄" pill. With a single item it's just a quiet
              chevron (nothing to switch to). --%>
-        <span
-          :if={length(@items) > 1}
-          class="inline-flex items-center gap-1 flex-none rounded-md px-2 py-1 text-sm font-medium text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-500/10"
-        >
-          Switch
-          <svg viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
+          <span
+            :if={length(@items) > 1}
+            class="inline-flex items-center gap-1 flex-none rounded-md px-2 py-1 text-sm font-medium text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-500/10"
+          >
+            Switch
+            <svg viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
+              <path
+                fill-rule="evenodd"
+                d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"
+                clip-rule="evenodd"
+              />
+            </svg>
+          </span>
+          <svg
+            :if={length(@items) <= 1}
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            class="w-4 h-4 text-zinc-300 dark:text-zinc-600 flex-none"
+          >
             <path
               fill-rule="evenodd"
               d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"
               clip-rule="evenodd"
             />
           </svg>
-        </span>
-        <svg
-          :if={length(@items) <= 1}
-          viewBox="0 0 20 20"
-          fill="currentColor"
-          class="w-4 h-4 text-zinc-300 dark:text-zinc-600 flex-none"
-        >
-          <path
-            fill-rule="evenodd"
-            d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"
-            clip-rule="evenodd"
-          />
-        </svg>
-      </button>
+        </button>
+      </div>
 
       <%!-- Switcher: zoom out to the other items in this category, pick to zoom
            back in. Hidden until Row 2 is tapped; toggled client-side (JS) with a
