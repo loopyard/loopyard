@@ -334,10 +334,11 @@ defmodule LoopyardWeb.Components.Common do
   end
 
   @doc """
-  The header ambient-sound control: a speaker icon that LINKS to the full
-  `/sound` page (audio + tracks). Navigation is live (same live_session), so the
-  bed never cuts. The `SoundIcon` JS hook only mirrors the engine's on/off onto
-  the icon. Give each placement a unique `id`.
+  The header ambient-sound control: a scaled-down copy of the /sound play/pause
+  button so you can READ the music state at a glance — a play triangle (▶) when
+  paused, pause bars (⏸) when playing, pulsing while it connects. It LINKS to the
+  full `/sound` page (live nav, so the bed never cuts). The `SoundIcon` JS hook
+  mirrors the engine's state onto the icon. Give each placement a unique `id`.
   """
   attr :id, :string, default: "sound-control"
   attr :class, :string, default: nil
@@ -350,30 +351,29 @@ defmodule LoopyardWeb.Components.Common do
       phx-hook="SoundIcon"
       aria-label="Sound"
       class={[
-        "flex-none inline-flex items-center justify-center w-11 h-11 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors",
+        "flex-none inline-flex items-center justify-center w-11 h-11 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors",
         @class
       ]}
     >
+      <%!-- off = play (▶, shown when paused), on = pause (⏸, shown when playing)
+           — same icons as the big /sound button, just smaller. --%>
       <svg
         data-sound-icon="off"
         xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 20 20"
         fill="currentColor"
-        class="w-5 h-5"
+        class="w-4 h-4 translate-x-px"
       >
-        <path d="M10 3.75a.75.75 0 0 0-1.264-.546L5.203 6.5H3.667A1.667 1.667 0 0 0 2 8.167v3.666A1.667 1.667 0 0 0 3.667 13.5h1.536l3.533 3.296A.75.75 0 0 0 10 16.25V3.75Z" />
-        <path d="M14.78 7.72a.75.75 0 0 0-1.06 1.06L14.94 10l-1.22 1.22a.75.75 0 1 0 1.06 1.06L16 11.06l1.22 1.22a.75.75 0 1 0 1.06-1.06L17.06 10l1.22-1.22a.75.75 0 0 0-1.06-1.06L16 8.94l-1.22-1.22Z" />
+        <path d="M6.3 2.841A1.5 1.5 0 0 0 4 4.11v11.78a1.5 1.5 0 0 0 2.3 1.269l9.344-5.89a1.5 1.5 0 0 0 0-2.538L6.3 2.84Z" />
       </svg>
       <svg
         data-sound-icon="on"
         xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 20 20"
         fill="currentColor"
-        class="w-5 h-5 hidden"
+        class="w-4 h-4 hidden"
       >
-        <path d="M10 3.75a.75.75 0 0 0-1.264-.546L5.203 6.5H3.667A1.667 1.667 0 0 0 2 8.167v3.666A1.667 1.667 0 0 0 3.667 13.5h1.536l3.533 3.296A.75.75 0 0 0 10 16.25V3.75Z" />
-        <path d="M14.657 3.879a.75.75 0 0 0-1.06 1.06 7 7 0 0 1 0 9.9.75.75 0 0 0 1.06 1.061 8.5 8.5 0 0 0 0-12.021Z" />
-        <path d="M12.182 6.354a.75.75 0 0 0-1.06 1.06 3.5 3.5 0 0 1 0 4.95.75.75 0 0 0 1.06 1.06 5 5 0 0 0 0-7.07Z" />
+        <path d="M5.75 3a.75.75 0 0 0-.75.75v12.5c0 .414.336.75.75.75h1.5a.75.75 0 0 0 .75-.75V3.75A.75.75 0 0 0 7.25 3h-1.5ZM12.75 3a.75.75 0 0 0-.75.75v12.5c0 .414.336.75.75.75h1.5a.75.75 0 0 0 .75-.75V3.75a.75.75 0 0 0-.75-.75h-1.5Z" />
       </svg>
     </.link>
     """

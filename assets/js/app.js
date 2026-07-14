@@ -110,17 +110,24 @@ Hooks.SoundIcon = {
   mounted() {
     this.iconOn = this.el.querySelector('[data-sound-icon="on"]')
     this.iconOff = this.el.querySelector('[data-sound-icon="off"]')
-    this._onChanged = (e) => this.render(e.detail.on)
+    this._onChanged = (e) => this.render(e.detail)
     window.addEventListener("ambient:changed", this._onChanged)
-    this.render(document.documentElement.dataset.ambientOn === "1")
+    this.render({on: document.documentElement.dataset.ambientOn === "1", connecting: false})
     window.dispatchEvent(new CustomEvent("ambient:query"))
   },
   destroyed() {
     window.removeEventListener("ambient:changed", this._onChanged)
   },
-  render(on) {
+  render({on, connecting}) {
     if (this.iconOn) this.iconOn.classList.toggle("hidden", !on)
     if (this.iconOff) this.iconOff.classList.toggle("hidden", on)
+    // While playing, a subtle slow "breathe" glow so you can tell at a glance
+    // the music is on. A cheap CSS animation (.sound-pulse) — not amplitude-
+    // driven; true intensity would need Web Audio and isn't worth the risk.
+    this.el.classList.toggle("sound-pulse", on && !connecting)
+    this.el.classList.toggle("animate-pulse", connecting)
+    this.el.classList.toggle("text-violet-600", on)
+    this.el.classList.toggle("dark:text-violet-400", on)
   }
 }
 
