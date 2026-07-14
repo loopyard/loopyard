@@ -76,9 +76,10 @@ defmodule Loopyard.Operator do
       # Host-side Claude CLI loop (uses the host's Claude auth), NOT ACP-in-a-
       # container. This is why the operator needs no container/workspace.
       backend: Loopyard.Harness.Claude,
-      # Its own disjoint toolkit + a focused prompt.
+      # Its own disjoint toolkit + a focused prompt (with its agent_id, so tool
+      # calls don't mismatch — a custom system_prompt skips the auto-injected id).
       tools: [Loopyard.Tools.ControlPlane],
-      system_prompt: prompt()
+      system_prompt: prompt(id)
     ]
 
     {:ok, _pid} = DynamicSupervisor.start_child(Loopyard.AgentSupervisor, {Loopyard.ChatAgent, opts})
@@ -120,11 +121,14 @@ defmodule Loopyard.Operator do
 
   # ── prompt ──────────────────────────────────────────────────────────────────
 
-  defp prompt do
+  defp prompt(agent_id) do
     """
     You are the Operator — the user's personal control-plane agent for Loopyard.
     You do NOT write code or set up dev environments; you help the user CREATE and
     keep track of projects, then hand the actual work to a workspace agent.
+
+    YOUR AGENT ID: #{agent_id} — pass this EXACT string as the `agent_id` argument
+    to every tool call. Do not use "operator" or any other value.
 
     Your tools:
     - create_project_from_scratch — a brand-new empty project.

@@ -10,6 +10,7 @@ defmodule LoopyardWeb.OperatorLive do
 
   alias Loopyard.{ChatAgent, Operator}
   alias LoopyardWeb.Components.Nav
+  import LoopyardWeb.Components.Breadcrumbs, only: [breadcrumbs: 1]
   import LoopyardWeb.Live.WorkspaceLive.Components.Chat, only: [chat_panel: 1]
 
   @impl true
@@ -118,10 +119,8 @@ defmodule LoopyardWeb.OperatorLive do
   def render(assigns) do
     ~H"""
     <div class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 safe-area-x">
-      <Nav.bar pad="px-4">
-        <span class="w-2 h-2 rounded-full flex-none bg-sky-500"></span>
-        <h1 class="text-lg font-semibold">Operator</h1>
-        <span class="text-sm text-zinc-400 dark:text-zinc-500">· {@agent.status}</span>
+      <Nav.bar height="h-14" gap="gap-3">
+        <.breadcrumbs crumbs={[{"Loopyard", "/"}, {"Operator", nil}]} />
         <:actions>
           <button
             :if={@agent.status == :thinking}
@@ -132,7 +131,6 @@ defmodule LoopyardWeb.OperatorLive do
           >
             <span class="w-2 h-2 rounded-sm bg-red-500"></span> Stop
           </button>
-          <Nav.back_button navigate="/" label="Home" />
         </:actions>
       </Nav.bar>
 
