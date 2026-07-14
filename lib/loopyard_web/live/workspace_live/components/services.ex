@@ -148,10 +148,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
         </a>
       </div>
 
+      <%!-- overscroll-contain: overscrolling the log must NOT rubber-band the
+           whole page (the iOS "bounces all over" bug). `LogTail` owns the
+           auto-tail and is momentum-aware so it doesn't fight touch scrolling. --%>
       <div
         id="service-logs"
         phx-hook="LogTail"
-        class="flex-1 min-h-0 overflow-y-auto bg-zinc-100 dark:bg-zinc-950 p-2 space-y-2 font-mono text-xs leading-relaxed"
+        class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain bg-zinc-100 dark:bg-zinc-950 p-2 space-y-2 font-mono text-xs leading-relaxed"
       >
         <%!-- Each run is its own bordered GROUP wrapping its log lines, with a
               STICKY header that pins to the top while you scroll through that
@@ -162,7 +165,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
         >
           <div
             id={"run-#{group.run}"}
-            class="sticky top-0 z-10 flex items-center gap-2 px-3 h-8 rounded-t-lg border-b border-zinc-200 dark:border-zinc-700/60 bg-zinc-100/95 dark:bg-zinc-800/95 backdrop-blur text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-300"
+            class="sticky top-0 z-10 flex items-center gap-2 px-3 h-8 rounded-t-lg border-b border-zinc-200 dark:border-zinc-700/60 bg-zinc-100 dark:bg-zinc-800 text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-300"
           >
             <span class={[
               "w-2 h-2 rounded-full flex-none",
@@ -179,7 +182,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
           <div class="py-1.5">
             <div
               :for={f <- group.frames}
-              class="flex gap-2 px-3 whitespace-pre-wrap break-words text-zinc-700 dark:text-zinc-300"
+              class="flex gap-2 px-3 text-zinc-700 dark:text-zinc-300"
             >
               <span
                 :if={f.ts}
@@ -187,7 +190,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
               >
                 {short_ts(f.ts)}
               </span>
-              <span>{f.text}</span>
+              <%!-- min-w-0 lets this flex item shrink below its content width, so
+                   whitespace-pre-wrap + break-words actually wrap long/unbreakable
+                   tokens instead of overflowing the row (the horizontal
+                   rubber-band). --%>
+              <span class="min-w-0 flex-1 whitespace-pre-wrap break-words">{f.text}</span>
             </div>
           </div>
         </div>

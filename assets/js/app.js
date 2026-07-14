@@ -621,27 +621,52 @@ Hooks.CopySource = {
 Hooks.LogTail = {
   mounted() {
     this._pinned = true
+    // iOS momentum-scroll fight: setting scrollTop mid-gesture (finger down OR
+    // the momentum that continues after lift-off) cancels the fling and reads as
+    // a "bounce". So we track touch and suppress auto-tail during a gesture and
+    // for a short cooldown after it, letting the fling settle. scroll events
+    // still fire throughout, so `_pinned` re-evaluates from the real position.
+    this._touching = false
+    this._lastTouch = 0
     this._onScroll = () => {
       const gap = this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight
       this._pinned = gap < 48
     }
+    this._onTouchStart = () => { this._touching = true }
+    this._onTouchEnd = () => { this._touching = false; this._lastTouch = Date.now() }
     this.el.addEventListener("scroll", this._onScroll, {passive: true})
-    // Pin to the newest line. Re-nudge across a few frames because a big log's
-    // real scrollHeight isn't known until it lays out — a single scroll can land
-    // short. The nudges no-op the instant you scroll up (unpin).
-    this.tail()
-    requestAnimationFrame(() => this.tail())
-    setTimeout(() => this.tail(), 80)
-    setTimeout(() => this.tail(), 300)
+    this.el.addEventListener("touchstart", this._onTouchStart, {passive: true})
+    this.el.addEventListener("touchend", this._onTouchEnd, {passive: true})
+    this.el.addEventListener("touchcancel", this._onTouchEnd, {passive: true})
+    // Pin to the newest line on mount. Re-nudge across a few frames because a big
+    // log's real scrollHeight isn't known until it lays out — a single scroll can
+    // land short. `force` bypasses the pin/touch guards (mount always tails).
+    this.tail(true)
+    requestAnimationFrame(() => this.tail(true))
+    setTimeout(() => this.tail(true), 80)
+    setTimeout(() => this.tail(true), 300)
   },
   updated() {
     this.tail()
   },
   destroyed() {
     this.el.removeEventListener("scroll", this._onScroll)
+    this.el.removeEventListener("touchstart", this._onTouchStart)
+    this.el.removeEventListener("touchend", this._onTouchEnd)
+    this.el.removeEventListener("touchcancel", this._onTouchEnd)
   },
-  tail() {
-    if (this._pinned) this.el.scrollTop = this.el.scrollHeight
+  tail(force) {
+    if (!force) {
+      if (!this._pinned) return
+      // Don't yank while the user is touching or a fling is still settling.
+      if (this._touching || Date.now() - this._lastTouch < 400) return
+    }
+    const el = this.el
+    const target = el.scrollHeight - el.clientHeight
+    // Already at the bottom (within a couple px) → no-op. Re-setting an
+    // unchanged scrollTop is what triggers the iOS rubber-band jitter.
+    if (Math.abs(el.scrollTop - target) < 2) return
+    el.scrollTop = target
   }
 }
 
