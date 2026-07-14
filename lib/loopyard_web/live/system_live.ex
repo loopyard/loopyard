@@ -513,6 +513,14 @@ defmodule LoopyardWeb.SystemLive do
               <span class="text-zinc-400">loading…</span>
           <% end %>
         </.drilldown_card>
+
+        <.drilldown_card
+          href="/system/secrets"
+          title="Secrets"
+          subtitle="Named credentials agents fetch at runtime"
+        >
+          <span class="text-zinc-400">view · add · rotate</span>
+        </.drilldown_card>
       </div>
     </section>
     """
