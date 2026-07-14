@@ -203,10 +203,21 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           {case @action.verb do
             :integrate -> "Merge proposal — needs your OK"
             :delete_workspace -> "Delete workspace — needs your OK"
+            :create_project -> "New project — needs your OK"
             _ -> "Branch proposal — needs your OK"
           end}
         </div>
 
+        <div
+          :if={@action.verb == :create_project}
+          class="text-sm text-zinc-800 dark:text-zinc-200 mb-1"
+        >
+          Create project
+          <code class="text-sm bg-violet-200/70 dark:bg-violet-800/50 rounded px-1 py-0.5">
+            {@action.name}
+          </code>
+          <span class="text-zinc-400">— {@action.detail}</span>
+        </div>
         <div :if={@action.verb == :integrate} class="text-sm text-zinc-800 dark:text-zinc-200 mb-1">
           Merge
           <code class="text-sm bg-violet-200/70 dark:bg-violet-800/50 rounded px-1 py-0.5">
@@ -294,9 +305,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                 </path>
               </svg>
               <span class="font-medium">
-                {if @msg.status == :integrating,
-                  do: "Merging into main",
-                  else: "Creating the branch workspace"}
+                {cond do
+                  @msg.status == :integrating -> "Merging into main"
+                  @action.verb == :create_project -> "Creating the project"
+                  true -> "Creating the branch workspace"
+                end}
               </span>
               <span :if={@msg[:detail]} class="text-zinc-400 animate-pulse truncate">
                 · {@msg.detail}
@@ -307,7 +320,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
               navigate={approved_link(@msg)}
               class="focus-ring inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
             >
-              Ready — open <code class="text-sm">{@action.branch}</code> →
+              Ready — open <code class="text-sm">{@action[:name] || @action[:branch]}</code> →
             </.link>
           <% :integrated -> %>
             <span class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400">
@@ -317,9 +330,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
             <span class="text-sm text-zinc-400 dark:text-zinc-500">Declined.</span>
           <% :failed -> %>
             <span class="text-sm text-red-500">
-              {if @action.verb == :integrate, do: "Merge failed", else: "Couldn't create the branch"}: {@msg[
-                :error
-              ]}
+              {case @action.verb do
+                :integrate -> "Merge failed"
+                :create_project -> "Couldn't create the project"
+                _ -> "Couldn't create the branch"
+              end}: {@msg[:error]}
             </span>
           <% _ -> %>
             <span></span>

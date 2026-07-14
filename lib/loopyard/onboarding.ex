@@ -178,6 +178,18 @@ defmodule Loopyard.Onboarding do
         agent_opts =
           if service_name, do: agent_opts ++ [service_name: service_name], else: agent_opts
 
+        # Pass through a custom toolkit + system prompt for special agents (the
+        # operator). These thread straight to Initializer.start_session, which
+        # already honors :tools / :system_prompt. nil → default agent, unchanged.
+        agent_opts =
+          [:tools, :system_prompt]
+          |> Enum.reduce(agent_opts, fn key, acc ->
+            case Keyword.get(opts, key) do
+              nil -> acc
+              val -> acc ++ [{key, val}]
+            end
+          end)
+
         boot_opts =
           cond do
             service_name -> [service_name: service_name]

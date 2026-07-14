@@ -126,18 +126,21 @@ defmodule LoopyardWeb.DashboardLive do
           <div class="text-zinc-700 dark:text-zinc-200">{health_line(@health)}</div>
         </.dashboard_card>
 
-        <%!-- Operated --%>
+        <%!-- Operated — opens the operator agent for the current identity --%>
         <.dashboard_card
-          navigate="/workstations"
+          navigate="/operator"
           title="Operated"
           tone={:neutral}
           status={@operator}
         >
           <div class="text-zinc-700 dark:text-zinc-200">
-            Operating as <span class="font-medium">{@operator}</span>
+            Talk to your operator agent
           </div>
           <div class="mt-0.5">
-            {@operator_count} {plural(@operator_count, "workstation")}
+            as <span class="font-medium">{@operator}</span> · {@operator_count} {plural(
+              @operator_count,
+              "workstation"
+            )}
           </div>
         </.dashboard_card>
       </.dashboard_grid>

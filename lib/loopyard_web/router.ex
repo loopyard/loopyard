@@ -42,6 +42,8 @@ defmodule LoopyardWeb.Router do
       # Operated cards). The project → workspace list lives at /workspaces.
       live "/", DashboardLive, :index
       live "/workspaces", ProjectListLive, :index
+      # Opens (creating on first visit) the operating identity's operator agent.
+      live "/operator", OperatorLive, :index
       # Full-page ambient-sound control. In the live_session so navigating here
       # (and back) is a live patch — the root-layout audio engine keeps playing.
       live "/sound", SoundLive, :index
