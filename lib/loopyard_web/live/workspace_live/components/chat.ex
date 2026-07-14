@@ -161,8 +161,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
 
     ~H"""
     <div class="flex-none border-b border-zinc-200 dark:border-zinc-700/80">
-      <div class="flex items-center justify-between px-3 md:px-5 h-12 gap-2">
-        <div class="flex items-center gap-2 md:gap-3 min-w-0">
+      <div class="flex items-center justify-between px-3 md:px-5 h-14 gap-3">
+        <div class="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
           <.dot color={status_dot(@agent.status)} />
           <span class="text-base font-semibold text-zinc-900 dark:text-zinc-100 truncate">
             {@agent.name}
@@ -175,12 +175,48 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           </span>
         </div>
         <div class="flex items-center gap-2 flex-none">
+          <%!-- Mobile view switcher, top-right. On desktop these are three
+               side-by-side columns (chat · agent detail · workspace switcher);
+               on a phone there's no room for all three, so this segmented bar
+               flips between them. A prominent pill group, not tiny tab text —
+               it's the primary navigation on mobile. Chat & Container are
+               `switch_tab` casts; Info & Workspace patch to their own routes so
+               each window keeps its place. Hidden on lg+ where the columns show
+               together. --%>
+          <nav
+            class="lg:hidden inline-flex items-center rounded-xl bg-zinc-100 dark:bg-zinc-800 p-0.5"
+            aria-label="View"
+          >
+            <button phx-click="switch_tab" phx-value-tab="chat" class={seg_tab_class(@tab == :chat)}>
+              Chat
+            </button>
+            <.link
+              patch={"#{@base_path}/agents/#{@agent.id}/info"}
+              class={seg_tab_class(@tab == :info)}
+            >
+              Info
+            </.link>
+            <.link
+              patch={"#{@base_path}/agents/#{@agent.id}/context"}
+              class={seg_tab_class(@tab == :context_panel)}
+            >
+              Workspace
+            </.link>
+            <button
+              :if={@has_container}
+              phx-click="switch_tab"
+              phx-value-tab="container"
+              class={seg_tab_class(@tab == :container)}
+            >
+              Container
+            </button>
+          </nav>
           <%!-- Container lifecycle is DESTRUCTIVE (Stop kills the container; Remove
-               deletes the agent) — keep it off the cramped phone header, where it
-               sat one thumb-width from Info. On phones: interrupt a running turn
-               with the big red pill above the input; start/remove a sleeping agent
-               from the agents list (Menu). On md+ there's room, so show them. --%>
-          <div class="hidden md:flex items-center gap-2">
+               deletes the agent) — keep it off the mobile/tablet header, where it
+               sits by the tab bar. On phones: interrupt a running turn with the
+               big red pill above the input; start/remove a sleeping agent from the
+               agents list. On lg+ (where the tab bar is gone) there's room. --%>
+          <div class="hidden lg:flex items-center gap-2">
             <%!-- Stop = interrupt the RUNNING turn. Only shown while the agent is
                  actually working — an idle "Stop" is meaningless ("stop what?"). --%>
             <.control_btn
@@ -214,49 +250,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           </div>
         </div>
       </div>
-      <%!-- Mobile tab bar. The phone has no rails, so these tabs are the ONLY
-           way to reach the switcher (Workspace) and the agent detail (Info) —
-           always visible below lg. Chat & Container are `switch_tab` casts
-           (they don't change the URL); Info & Workspace patch to their own
-           routes so each browser window keeps its own place. On lg+ the rail
-           shows Workspace + Info, so the whole bar is hidden. --%>
-      <div class="lg:hidden flex gap-0 px-4">
-        <button
-          phx-click="switch_tab"
-          phx-value-tab="chat"
-          class={tab_class(@tab == :chat)}
-        >
-          Chat
-        </button>
-        <.link patch={"#{@base_path}/agents/#{@agent.id}/info"} class={tab_class(@tab == :info)}>
-          Info
-        </.link>
-        <.link
-          patch={"#{@base_path}/agents/#{@agent.id}/context"}
-          class={tab_class(@tab == :context_panel)}
-        >
-          Workspace
-        </.link>
-        <button
-          :if={@has_container}
-          phx-click="switch_tab"
-          phx-value-tab="container"
-          class={tab_class(@tab == :container)}
-        >
-          Container
-        </button>
-      </div>
     </div>
     """
   end
 
-  # One mobile tab pill — active gets the violet underline, the rest are quiet.
-  defp tab_class(active?) do
+  # One segment of the mobile view switcher — a real segmented control: the
+  # active view is a raised white/dark pill, the rest are quiet labels.
+  defp seg_tab_class(active?) do
     [
-      "px-3 py-1.5 text-xs font-medium border-b-2 transition-colors",
+      "px-2.5 py-1.5 rounded-lg text-[13px] font-medium leading-none transition-colors whitespace-nowrap",
       if(active?,
-        do: "border-violet-500 text-violet-600 dark:text-violet-400",
-        else: "border-transparent text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+        do: "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm",
+        else: "text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
       )
     ]
   end
