@@ -80,7 +80,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             />
           </svg>
         </.link>
-        <nav class="flex-1 min-w-0 flex items-center gap-1.5 text-sm" aria-label="Location">
+        <nav class="flex-1 min-w-0 flex items-center gap-1.5 text-base" aria-label="Location">
           <.link
             :if={@project}
             navigate={"/projects/#{@project.id}"}
