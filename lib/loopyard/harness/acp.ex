@@ -14,7 +14,9 @@ defmodule Loopyard.Harness.ACP do
   Status: handshake + streamed prompt turns + permission/fs round-trips,
   `session/cancel` interrupt, `session/load` resume, and in-container mode are
   implemented and tested (fake transport + verified against the real adapter).
-  Not yet wired as the default backend.
+  **This is now the default backend** (`config :loopyard, :default_harness`);
+  `Harness.Claude` stays selectable per-agent via the `backend:` opt and is one
+  config line away.
 
   System prompt: there is no ACP `append_system_prompt` — the harness reads
   `CLAUDE.md`/`CLAUDE.local.md` from the session cwd (validated). Loopyard's

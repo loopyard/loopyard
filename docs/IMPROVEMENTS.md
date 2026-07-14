@@ -41,9 +41,9 @@ A prioritized list of known, scoped improvements for Loopyard. Ordered within ea
 
 11. **Migrate the ACP adapter off the deprecated package.** The work-container base image (`priv/workspace-base/Dockerfile`) pins `@zed-industries/claude-code-acp@0.16.2`, which npm reports as renamed to `@agentclientprotocol/claude-agent-acp` (bin `claude-agent-acp`). Validated working at 0.16.2, but migrate before it stops receiving updates: bump the package + bin name in the Dockerfile, update the `claude-code-acp` references in `work_container_test.exs` and (when wired) the ACP backend's `docker_exec_cmd`. Pin the new version deliberately; re-run the in-container handshake test.
 
-## ACP backend gaps (before it becomes the default)
+## ACP backend caveats (ACP is now the default)
 
-These are the concrete gaps between `Harness.ACP` (`lib/loopyard/harness/acp/`) and the parity it needs to replace `Harness.Claude`. None block the spike; all block making ACP the default. Grouped because they share a context — pick them up together when ACP gets promoted.
+`Harness.ACP` is now the default backend (`config :loopyard, :default_harness: Loopyard.Harness.ACP`; test.exs stays on `Harness.Fake`, and `Harness.Claude` is selectable per-agent via `backend:` and one config line away). Cancel (#14), resume (#15), and system-prompt threading (#17 partial) landed. The remaining items below are now **known caveats of the default**, not blockers — the two that matter most for parity are #13 (human-gated permissions) and the #17 tool-policy/mcp_servers threading.
 
 13. **Plumb `session/request_permission` through to a real decision.** `Connection.handle_agent_request("session/request_permission", …)` surfaces a `%Event.PermissionRequest{}` but `StreamHandler.process_event/2` has no clause for it — it falls through `process_event(_other, state)` and is **dropped**, so the UI never sees it. Meanwhile `ACP.acp_permission_mode/1` hardcodes `:auto_allow` (Connection picks the first `allow*` option). Wire the event into StreamHandler → an approval card (reuse the `Harness.Approvals` broker), and add the `:ask` permission mode (#7) so a human gates the call instead of auto-allowing. Until then, an ACP agent is bounded only by the container sandbox, not per-tool policy (see SECURITY.md → ACP adapter trust boundary).
 
