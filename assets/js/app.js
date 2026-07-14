@@ -8,35 +8,43 @@ let Hooks = {}
 Hooks.Terminal = createTerminalHook()
 Hooks.Aural = createAuralHook()
 
-// AmbientAudio: the app-wide "room tone". Lives on #ambient in the root layout
-// (outside {@inner_content}), and the whole app runs in one live_session, so it
-// mounts ONCE and survives live navigation — the bed keeps playing as you move
-// around. Off by default (browsers block autoplay without a user gesture); the
-// corner toggle starts/stops it and the choice persists in localStorage. Audio
-// is a plain HTTP MP3 stream of an aural channel (no websocket channel join).
+// AmbientAudio — the ENGINE. Lives on #ambient in the root layout (outside
+// {@inner_content}); the whole app runs in one live_session, so it mounts ONCE
+// and the bed keeps playing across navigation. It has no visible control: the
+// speaker button/panel live in the page headers (SoundControl) and drive this
+// via window events, so the control can be anywhere and re-render freely while
+// the audio stays put. Off by default (autoplay needs a gesture). State is
+// mirrored to <html data-ambient-*> + broadcast as `ambient:changed` so a
+// freshly-mounted control can sync its icon/slider.
 Hooks.AmbientAudio = {
   mounted() {
     this.audio = this.el.querySelector("#ambient-el")
-    this.btn = this.el.querySelector("#ambient-toggle")
-    this.iconOff = this.el.querySelector('[data-ambient-icon="off"]')
-    this.iconOn = this.el.querySelector('[data-ambient-icon="on"]')
     const channel = this.el.dataset.channel || "activity"
     this.streamSrc = `/aural/${channel}/stream.mp3`
 
     const vol = parseFloat(localStorage.getItem("loopyard:ambient:vol"))
     this.audio.volume = isNaN(vol) ? 0.35 : Math.min(1, Math.max(0, vol))
 
-    this.btn.addEventListener("click", () => this.toggle())
+    this._onToggle = () => this.toggle()
+    this._onSetVol = (e) => this.setVolume(e.detail)
+    this._onQuery = () => this.broadcast()
+    window.addEventListener("ambient:toggle", this._onToggle)
+    window.addEventListener("ambient:set-volume", this._onSetVol)
+    window.addEventListener("ambient:query", this._onQuery)
 
-    // Restore the saved intent. On a fresh load autoplay is blocked without a
-    // gesture, so if play() rejects we fall back to the off state — one click
-    // re-arms it, and because navigation stays on the socket (no reload) it
-    // won't get re-blocked as you move around.
+    // Restore intent. Autoplay is blocked without a gesture on a fresh load, so
+    // if play() rejects we just reflect "off" — a tap on the control re-arms it.
     if (localStorage.getItem("loopyard:ambient") === "on") {
-      this.start().catch(() => this.render(false))
+      this.start().catch(() => this.broadcast())
     } else {
-      this.render(false)
+      this.broadcast()
     }
+  },
+
+  destroyed() {
+    window.removeEventListener("ambient:toggle", this._onToggle)
+    window.removeEventListener("ambient:set-volume", this._onSetVol)
+    window.removeEventListener("ambient:query", this._onQuery)
   },
 
   start() {
@@ -44,26 +52,92 @@ Hooks.AmbientAudio = {
     const p = this.audio.play()
     return (p || Promise.resolve()).then(() => {
       localStorage.setItem("loopyard:ambient", "on")
-      this.render(true)
+      this.broadcast()
     })
   },
 
   stop() {
     this.audio.pause()
     localStorage.setItem("loopyard:ambient", "off")
-    this.render(false)
+    this.broadcast()
   },
 
   toggle() {
-    if (this.audio.paused) this.start().catch(() => this.render(false))
+    if (this.audio.paused) this.start().catch(() => this.broadcast())
     else this.stop()
   },
 
-  render(on) {
-    this.btn.setAttribute("aria-pressed", on ? "true" : "false")
+  setVolume(v) {
+    const vol = Math.min(1, Math.max(0, Number(v)))
+    if (Number.isNaN(vol)) return
+    this.audio.volume = vol
+    localStorage.setItem("loopyard:ambient:vol", String(vol))
+    this.broadcast()
+  },
+
+  broadcast() {
+    const on = !this.audio.paused
+    document.documentElement.dataset.ambientOn = on ? "1" : "0"
+    window.dispatchEvent(
+      new CustomEvent("ambient:changed", {detail: {on, volume: this.audio.volume}})
+    )
+  }
+}
+
+// SoundControl — the speaker button + settings popover that live in the page
+// headers. Commands the AmbientAudio engine over window events (so it works no
+// matter where it's mounted) and mirrors the engine's state onto its icon +
+// slider. Re-mounts freely on navigation; re-syncs from <html data-ambient-*>
+// and by querying the engine on mount.
+Hooks.SoundControl = {
+  mounted() {
+    this.btn = this.el.querySelector("[data-sound-btn]")
+    this.panel = this.el.querySelector("[data-sound-panel]")
+    this.iconOn = this.el.querySelector('[data-sound-icon="on"]')
+    this.iconOff = this.el.querySelector('[data-sound-icon="off"]')
+    this.power = this.el.querySelector("[data-sound-power]")
+    this.slider = this.el.querySelector("[data-sound-volume]")
+
+    this.btn.addEventListener("click", (e) => {
+      e.stopPropagation()
+      this.panel.classList.toggle("hidden")
+    })
+    this.power.addEventListener("click", () =>
+      window.dispatchEvent(new CustomEvent("ambient:toggle"))
+    )
+    this.slider.addEventListener("input", (e) =>
+      window.dispatchEvent(new CustomEvent("ambient:set-volume", {detail: parseFloat(e.target.value)}))
+    )
+
+    this._away = (e) => {
+      if (!this.el.contains(e.target)) this.panel.classList.add("hidden")
+    }
+    document.addEventListener("click", this._away)
+
+    this._onChanged = (e) => this.sync(e.detail)
+    window.addEventListener("ambient:changed", this._onChanged)
+
+    // Initial paint from mirrored state, then ask the engine to confirm.
+    const on = document.documentElement.dataset.ambientOn === "1"
+    const vol = parseFloat(localStorage.getItem("loopyard:ambient:vol"))
+    this.sync({on, volume: Number.isNaN(vol) ? 0.35 : vol})
+    window.dispatchEvent(new CustomEvent("ambient:query"))
+  },
+
+  destroyed() {
+    document.removeEventListener("click", this._away)
+    window.removeEventListener("ambient:changed", this._onChanged)
+  },
+
+  sync({on, volume}) {
     this.iconOn.classList.toggle("hidden", !on)
     this.iconOff.classList.toggle("hidden", on)
-    this.btn.classList.toggle("text-violet-300", on)
+    this.btn.setAttribute("aria-pressed", on ? "true" : "false")
+    this.power.textContent = on ? "On" : "Off"
+    this.power.classList.toggle("text-violet-600", on)
+    this.power.classList.toggle("dark:text-violet-400", on)
+    this.power.classList.toggle("text-zinc-400", !on)
+    if (volume != null && document.activeElement !== this.slider) this.slider.value = volume
   }
 }
 

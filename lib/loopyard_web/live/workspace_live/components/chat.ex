@@ -4,7 +4,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
 
   alias Phoenix.LiveView.JS
 
-  import LoopyardWeb.Components.Common, only: [dot: 1, control_btn: 1]
+  import LoopyardWeb.Components.Common, only: [dot: 1, control_btn: 1, sound_control: 1]
   import LoopyardWeb.Components.Sidebar, only: [status_dot: 1, agent_display_status: 1]
 
   import LoopyardWeb.Live.WorkspaceLive.Messages,
@@ -105,6 +105,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             Repo
           </.link>
         </nav>
+        <.sound_control id="sound-workspace" />
       </div>
 
       <%!-- Row 2: the current item + tap-to-switch. Shows the selected agent /

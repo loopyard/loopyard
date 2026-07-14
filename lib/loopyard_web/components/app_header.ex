@@ -34,6 +34,7 @@ defmodule LoopyardWeb.Components.AppHeader do
       </div>
       <div class="flex items-center gap-3 md:gap-4">
         {render_slot(@inner_block)}
+        <LoopyardWeb.Components.Common.sound_control id="sound-app" />
         <%!-- Desktop: nav inline. --%>
         <div class="hidden md:flex items-center gap-4">
           <.link
