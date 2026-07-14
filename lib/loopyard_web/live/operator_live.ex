@@ -1,32 +1,90 @@
 defmodule LoopyardWeb.OperatorLive do
   @moduledoc """
-  `/operator` — opens the operating identity's operator agent, creating it on
-  first visit. A thin redirect: ensure the agent (`Loopyard.Operator.ensure_agent/0`),
-  then live-navigate to its chat (the normal agent view). The agent lives in a
-  hidden reserved workspace, so this route is the door to it.
+  `/operator` — the operator agent's own chat, standalone (no workspace chrome).
+  The operator is a host-side `Harness.Claude` agent with no workspace/project, so
+  it can't render through the workspace view — it gets its own focused screen:
+  a header + the shared `chat_panel`. Created on first visit
+  (`Loopyard.Operator.ensure_agent/0`).
   """
   use LoopyardWeb, :live_view
 
+  alias Loopyard.{ChatAgent, Operator}
+  alias LoopyardWeb.Components.Nav
+  import LoopyardWeb.Live.WorkspaceLive.Components.Chat, only: [chat_panel: 1]
+
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket) do
-      case Loopyard.Operator.ensure_agent() do
-        {:ok, %{project_id: pid, workspace_id: ws_id, agent_id: aid}} ->
-          {:ok, push_navigate(socket, to: "/projects/#{pid}/workspaces/#{ws_id}/agents/#{aid}")}
+    {:ok, %{agent_id: agent_id}} = Operator.ensure_agent()
 
-        _ ->
-          {:ok, socket |> put_flash(:error, "Couldn't start the operator agent.") |> push_navigate(to: "/")}
+    if connected?(socket) do
+      Loopyard.Events.ChatAgentMessage.subscribe(agent_id)
+      Loopyard.Events.ChatAgent.subscribe()
+    end
+
+    host =
+      case socket.host_uri do
+        %URI{host: h} when is_binary(h) and h != "" -> h
+        _ -> "localhost"
       end
-    else
-      {:ok, socket}
+
+    {:ok, socket |> assign(:agent_id, agent_id) |> assign(:host, host) |> load()}
+  end
+
+  defp load(socket) do
+    case ChatAgent.get_state(socket.assigns.agent_id) do
+      %{} = st -> assign(socket, agent: st, messages: st.messages)
+      _ -> assign(socket, agent: %{id: socket.assigns.agent_id, status: :idle}, messages: [])
     end
   end
 
   @impl true
+  def handle_event("send_message", %{"message" => text}, socket) do
+    ChatAgent.send_message(socket.assigns.agent_id, text)
+    {:reply, %{ok: true}, socket}
+  end
+
+  # The composer's queue controls (reused from chat_panel).
+  def handle_event("clear_pending", _p, socket) do
+    ChatAgent.clear_pending(socket.assigns.agent_id)
+    {:noreply, socket}
+  end
+
+  def handle_event(_evt, _params, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_info(%Loopyard.Events.ChatAgentMessage.Message{agent_id: id}, socket)
+      when id == socket.assigns.agent_id,
+      do: {:noreply, load(socket)}
+
+  def handle_info(%Loopyard.Events.ChatAgent.StatusChanged{id: id}, socket)
+      when id == socket.assigns.agent_id,
+      do: {:noreply, load(socket)}
+
+  def handle_info(_msg, socket), do: {:noreply, socket}
+
+  @impl true
   def render(assigns) do
     ~H"""
-    <div class="min-h-screen flex items-center justify-center text-sm text-zinc-400 dark:text-zinc-500">
-      Opening the operator…
+    <div class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 safe-area-x">
+      <Nav.bar pad="px-4">
+        <span class="w-2 h-2 rounded-full flex-none bg-sky-500"></span>
+        <h1 class="text-lg font-semibold">Operator</h1>
+        <span class="text-sm text-zinc-400 dark:text-zinc-500">· {@agent.status}</span>
+        <:actions><Nav.back_button navigate="/" label="Home" /></:actions>
+      </Nav.bar>
+
+      <.chat_panel
+        messages={@messages}
+        streaming_text=""
+        streaming_thinking=""
+        agent={@agent}
+        workspace_id={nil}
+        host={@host}
+        thinking_word="Thinking"
+        has_more_messages={false}
+        window_tail?={true}
+        detail_level={:trace}
+      />
     </div>
     """
   end

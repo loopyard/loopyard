@@ -48,6 +48,20 @@ operator toolkit must add no host-read tool.
    standard "avoid docker-in-docker" pattern. gbrain drives the same daemon
    Loopyard uses. The existing Colima is never touched or restarted.
 
+## Operator hosting (FINAL — sunk-cost-corrected)
+The operator is NOT a workspace/project. It's a **host-side `Harness.Claude`
+agent** (the Claude CLI on the host, using the Mac's Claude + GitHub auth), with
+`workspace_id: nil` and the `Tools.ControlPlane` toolkit. So: **no container, no
+workspace, no project, no code volume, no git repo** — none of the workspace
+apparatus. The harness seam is doing its job: workspace agents run ACP +
+Claude Code in-container (they write code); the operator runs a lighter host-side
+loop (it creates + delegates). `init_fresh` + persistence already no-op on a nil
+workspace_id, so this needed ~zero ChatAgent surgery — the container was the only
+thing forcing the workspace/project cascade, and it was self-inflicted by
+defaulting to ACP. `Loopyard.Operator.ensure_agent/1` spawns it directly under
+`AgentSupervisor` (lazy, idempotent, per-workstation); `LoopyardWeb.OperatorLive`
+renders its chat standalone (no workspace chrome).
+
 ## Separation of duties (core principle — enforced by disjoint toolkits)
 Two agents, non-overlapping jobs. The separation is enforced structurally: their
 MCP toolkits share **no tool**, so neither can do the other's job even if it

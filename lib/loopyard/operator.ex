@@ -1,119 +1,103 @@
 defmodule Loopyard.Operator do
   @moduledoc """
-  The **operator agent** — a per-workstation (per-user) control-plane agent. It
-  is a completely normal `ChatAgent` under the covers: same GenServer, same work
-  container (mounting the workstation's `$HOME` for GH/Claude creds), same boot
-  path. The only differences, per the design in [plans/gbrain-onboarding.md]:
+  The **operator agent** — a per-workstation (per-user) control-plane agent. It is
+  a normal `ChatAgent`, but hosted the RIGHT way for what it is: a **host-side
+  `Harness.Claude` loop** (the Claude CLI on the host, using your Mac's Claude +
+  GitHub auth directly) with the `Tools.ControlPlane` MCP toolkit. That means:
 
-    * its toolkit is `Tools.ControlPlane` (create projects, gated) instead of the
-      container toolkit — so it structurally cannot set up code itself;
-    * a focused system prompt;
-    * it lives in a reserved, hidden "Operator" workspace (blank repo) that's
-      filtered out of the normal project/workspace lists.
+    * **no container** — a control agent orchestrates the plane; it doesn't need
+      Claude Code's in-container fs sandbox that workspace (ACP) agents use;
+    * **no workspace, no project, no code volume, no git repo** — none of the
+      workspace apparatus. It's just an agent bound to your identity.
 
-  `ensure_agent/1` is the single entry point: idempotently ensures the reserved
-  workspace + a live operator agent for a workstation, returning the ids so the
-  UI can open its chat. Singleton per workstation.
+  This is the harness seam working as intended: workspace agents run ACP +
+  Claude Code in-container (they write code); the operator runs a lighter
+  host-side loop (it creates + delegates). See [plans/gbrain-onboarding.md].
+
+  `ensure_agent/1` idempotently ensures a live operator for a workstation. It's
+  lazily (re)spawned on demand (e.g. opening `/operator`), so it needs no
+  durable log/replay — `init_fresh` + persistence already no-op on a nil
+  workspace_id.
   """
 
-  alias Loopyard.{Onboarding, ProjectRegistry, WorkspaceRegistry, Workstation, ChatAgent}
+  alias Loopyard.Workstation
 
   @doc """
-  Ensure the operator agent exists and is running for `workstation_id`
-  (defaults to the operated identity). Returns
-  `{:ok, %{project_id, workspace_id, agent_id}}`.
+  Ensure the operator agent exists + is running for `workstation_id` (defaults to
+  the operated identity). Returns `{:ok, %{agent_id: id}}`.
   """
   def ensure_agent(workstation_id \\ nil) do
-    ws_identity = workstation_id || Workstation.current()
+    identity = workstation_id || Workstation.current()
+    agent_id = ensure_running_agent(identity, load(identity)["agent_id"])
+    save(identity, %{"agent_id" => agent_id})
+    {:ok, %{agent_id: agent_id}}
+  end
 
-    with {:ok, %{project_id: pid, workspace_id: ws_id}} <- ensure_workspace(ws_identity) do
-      agent_id = ensure_running_agent(ws_id, load(ws_identity)["agent_id"])
-      save(ws_identity, %{project_id: pid, workspace_id: ws_id, agent_id: agent_id})
-      {:ok, %{project_id: pid, workspace_id: ws_id, agent_id: agent_id}}
+  @doc "The current operator agent id for an identity, or nil (no spawn)."
+  def agent_id(workstation_id \\ nil) do
+    identity = workstation_id || Workstation.current()
+
+    case load(identity)["agent_id"] do
+      id when is_binary(id) -> if agent_alive?(id), do: id, else: nil
+      _ -> nil
     end
   end
 
-  @doc "Is this project the (hidden) operator project? Used to filter the normal lists."
-  def operator_project?(%{operator: true}), do: true
-  def operator_project?(_), do: false
+  # ── agent lifecycle ─────────────────────────────────────────────────────────
 
-  # ── workspace ──────────────────────────────────────────────────────────────
-
-  defp ensure_workspace(ws_identity) do
-    case load(ws_identity) do
-      %{"project_id" => pid, "workspace_id" => ws_id}
-      when is_binary(pid) and is_binary(ws_id) ->
-        if WorkspaceRegistry.get_workspace(ws_id),
-          do: {:ok, %{project_id: pid, workspace_id: ws_id}},
-          else: create_workspace()
-
-      _ ->
-        create_workspace()
+  defp ensure_running_agent(identity, saved_agent_id) do
+    if is_binary(saved_agent_id) and agent_alive?(saved_agent_id) do
+      saved_agent_id
+    else
+      spawn_operator(identity)
     end
   end
 
-  defp create_workspace do
-    case Onboarding.create_project("Operator") do
-      {:ok, project, ws} ->
-        # Re-register with the operator flag so it's hidden from the normal
-        # project/workspace lists (see WorkspaceTree.global filter).
-        ProjectRegistry.register(Map.put(project, :operator, true))
-        {:ok, %{project_id: project.id, workspace_id: ws.id}}
+  defp spawn_operator(identity) do
+    id = :crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)
+    dir = operator_dir(identity)
+    File.mkdir_p!(dir)
 
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
+    opts = [
+      id: id,
+      name: "Operator",
+      working_dir: dir,
+      # bind_mount (non-nil) → the agent runs HOST-SIDE, not container-only.
+      bind_mount: dir,
+      # No workspace / project / code volume — it's not that kind of agent.
+      workspace_id: nil,
+      started_by: "operator",
+      workstation_identity: identity,
+      # Host-side Claude CLI loop (uses the host's Claude auth), NOT ACP-in-a-
+      # container. This is why the operator needs no container/workspace.
+      backend: Loopyard.Harness.Claude,
+      # Its own disjoint toolkit + a focused prompt.
+      tools: [Loopyard.Tools.ControlPlane],
+      system_prompt: prompt()
+    ]
 
-  # ── agent ────────────────────────────────────────────────────────────────
-
-  defp ensure_running_agent(ws_id, saved_agent_id) do
-    cond do
-      is_binary(saved_agent_id) and agent_alive?(saved_agent_id) ->
-        saved_agent_id
-
-      existing = first_agent(ws_id) ->
-        existing
-
-      true ->
-        {:ok, id} =
-          Onboarding.spawn_agent(ws_id,
-            name: "Operator",
-            started_by: "operator",
-            tools: [Loopyard.Tools.ControlPlane],
-            system_prompt: prompt()
-          )
-
-        id
-    end
+    {:ok, _pid} = DynamicSupervisor.start_child(Loopyard.AgentSupervisor, {Loopyard.ChatAgent, opts})
+    id
   end
 
   defp agent_alive?(id) do
-    case ChatAgent.get_state(id) do
-      %{} -> true
-      _ -> false
-    end
+    match?(%{}, Loopyard.ChatAgent.get_state(id))
   rescue
     _ -> false
+  catch
+    _, _ -> false
   end
 
-  defp first_agent(ws_id) do
-    ChatAgent.list_agent_summaries()
-    |> Enum.find(&(Map.get(&1, :workspace_id) == ws_id))
-    |> case do
-      %{id: id} -> id
-      _ -> nil
-    end
-  rescue
-    _ -> nil
-  end
+  # ── paths / persistence (per-workstation marker) ────────────────────────────
 
-  # ── persistence (per-workstation marker) ───────────────────────────────────
+  # A scratch host cwd for the operator's CLI loop — empty; the real work is the
+  # host-side ControlPlane tools, not files here.
+  defp operator_dir(identity), do: Path.join([Workstation.dir(identity), "operator"])
 
-  defp marker_path(ws_identity), do: Path.join(Workstation.dir(ws_identity), "operator.json")
+  defp marker_path(identity), do: Path.join(Workstation.dir(identity), "operator.json")
 
-  defp load(ws_identity) do
-    case File.read(marker_path(ws_identity)) do
+  defp load(identity) do
+    case File.read(marker_path(identity)) do
       {:ok, raw} -> Jason.decode!(raw)
       _ -> %{}
     end
@@ -121,15 +105,15 @@ defmodule Loopyard.Operator do
     _ -> %{}
   end
 
-  defp save(ws_identity, map) do
-    path = marker_path(ws_identity)
+  defp save(identity, map) do
+    path = marker_path(identity)
     File.mkdir_p!(Path.dirname(path))
     File.write(path, Jason.encode!(map))
   rescue
     _ -> :ok
   end
 
-  # ── prompt ─────────────────────────────────────────────────────────────────
+  # ── prompt ──────────────────────────────────────────────────────────────────
 
   defp prompt do
     """

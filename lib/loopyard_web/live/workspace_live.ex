@@ -132,9 +132,6 @@ defmodule LoopyardWeb.WorkspaceLive do
      socket
      |> assign(:workspace, workspace)
      |> assign(:project, extra_assigns[:project])
-     # The operator agent's workspace gets a FOCUSED view — it never runs services,
-     # so the Services/Repo nav is hidden (Loopyard.Operator).
-     |> assign(:operator?, Loopyard.Operator.operator_project?(extra_assigns[:project] || %{}))
      |> assign(:workspace_entry, extra_assigns[:workspace_entry])
      |> assign(:base_path, base_path)
      |> assign(:global_tree, Loopyard.WorkspaceTree.global(host))
@@ -1849,7 +1846,6 @@ defmodule LoopyardWeb.WorkspaceLive do
         project={@project}
         workspace_entry={@workspace_entry}
         global_tree={@global_tree}
-        operator?={@operator?}
         live_action={@live_action}
         base_path={@base_path}
         iex_session={@iex_session}

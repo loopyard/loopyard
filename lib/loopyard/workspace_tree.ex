@@ -26,9 +26,6 @@ defmodule Loopyard.WorkspaceTree do
       |> Enum.group_by(&Map.get(&1, :workspace_id))
 
     Loopyard.ProjectRegistry.list_projects()
-    # Hide the per-workstation operator project — it's the operator agent's home,
-    # not a user project (Loopyard.Operator).
-    |> Enum.reject(&Loopyard.Operator.operator_project?/1)
     |> Enum.map(fn project ->
       workspaces =
         Loopyard.WorkspaceRegistry.list_workspaces(project.id)

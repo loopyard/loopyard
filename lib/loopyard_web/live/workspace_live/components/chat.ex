@@ -102,10 +102,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       </Nav.switcher_sheet>
 
       <%!-- Row 2: WHAT you're looking at — section tabs + the current item, which
-           taps open a full-screen switcher of siblings. Hidden for the operator
-           (one agent, no services) — its view is just the crumb bar + chat. --%>
+           taps open a full-screen switcher of siblings. --%>
       <Nav.section_switcher
-        :if={!@operator?}
         id="item-switcher"
         title={section_title(@active)}
         current={@current}
@@ -169,8 +167,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   # The section tabs for Row 2 — Agents is always present, Services / Repo only
   # when the workspace actually has them. Empty on the "new agent" route (nothing
   # to switch between yet). `Nav.segmented` hides itself when the list is empty.
-  # Operator agent: focused chat-only view — no Services/Repo/Agents section tabs.
-  defp section_tabs(%{operator?: true}), do: []
   defp section_tabs(%{live_action: :new}), do: []
 
   defp section_tabs(a) do
