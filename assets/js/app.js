@@ -84,24 +84,40 @@ Hooks.AmbientAudio = {
   }
 }
 
-// SoundControl — the speaker button + settings popover that live in the page
-// headers. Commands the AmbientAudio engine over window events (so it works no
-// matter where it's mounted) and mirrors the engine's state onto its icon +
-// slider. Re-mounts freely on navigation; re-syncs from <html data-ambient-*>
-// and by querying the engine on mount.
-Hooks.SoundControl = {
+// SoundIcon — the header speaker. It's just a LINK to the full /sound page (no
+// popover); this hook only mirrors the engine's on/off onto the icon so you can
+// see at a glance whether the bed is playing. Navigating to /sound is live (same
+// live_session), so the engine — and the audio — never cut.
+Hooks.SoundIcon = {
   mounted() {
-    this.btn = this.el.querySelector("[data-sound-btn]")
-    this.panel = this.el.querySelector("[data-sound-panel]")
     this.iconOn = this.el.querySelector('[data-sound-icon="on"]')
     this.iconOff = this.el.querySelector('[data-sound-icon="off"]')
+    this._onChanged = (e) => this.render(e.detail.on)
+    window.addEventListener("ambient:changed", this._onChanged)
+    this.render(document.documentElement.dataset.ambientOn === "1")
+    window.dispatchEvent(new CustomEvent("ambient:query"))
+  },
+  destroyed() {
+    window.removeEventListener("ambient:changed", this._onChanged)
+  },
+  render(on) {
+    if (this.iconOn) this.iconOn.classList.toggle("hidden", !on)
+    if (this.iconOff) this.iconOff.classList.toggle("hidden", on)
+  }
+}
+
+// SoundPanel — the /sound page's ENGINE controls (on/off + volume). Commands the
+// persistent AmbientAudio engine over window events and mirrors its state back;
+// track picking is separate (server-side LiveView → Aural.Channel, which
+// crossfades the same stream so nothing cuts).
+Hooks.SoundPanel = {
+  mounted() {
     this.power = this.el.querySelector("[data-sound-power]")
     this.slider = this.el.querySelector("[data-sound-volume]")
+    this.iconOn = this.el.querySelector('[data-sound-icon="on"]')
+    this.iconOff = this.el.querySelector('[data-sound-icon="off"]')
+    this.state = this.el.querySelector("[data-sound-state]")
 
-    this.btn.addEventListener("click", (e) => {
-      e.stopPropagation()
-      this.panel.classList.toggle("hidden")
-    })
     this.power.addEventListener("click", () =>
       window.dispatchEvent(new CustomEvent("ambient:toggle"))
     )
@@ -109,34 +125,26 @@ Hooks.SoundControl = {
       window.dispatchEvent(new CustomEvent("ambient:set-volume", {detail: parseFloat(e.target.value)}))
     )
 
-    this._away = (e) => {
-      if (!this.el.contains(e.target)) this.panel.classList.add("hidden")
-    }
-    document.addEventListener("click", this._away)
-
-    this._onChanged = (e) => this.sync(e.detail)
+    this._onChanged = (e) => this.render(e.detail)
     window.addEventListener("ambient:changed", this._onChanged)
 
-    // Initial paint from mirrored state, then ask the engine to confirm.
     const on = document.documentElement.dataset.ambientOn === "1"
     const vol = parseFloat(localStorage.getItem("loopyard:ambient:vol"))
-    this.sync({on, volume: Number.isNaN(vol) ? 0.35 : vol})
+    this.render({on, volume: Number.isNaN(vol) ? 0.35 : vol})
     window.dispatchEvent(new CustomEvent("ambient:query"))
   },
-
   destroyed() {
-    document.removeEventListener("click", this._away)
     window.removeEventListener("ambient:changed", this._onChanged)
   },
-
-  sync({on, volume}) {
-    this.iconOn.classList.toggle("hidden", !on)
-    this.iconOff.classList.toggle("hidden", on)
-    this.btn.setAttribute("aria-pressed", on ? "true" : "false")
-    this.power.textContent = on ? "On" : "Off"
-    this.power.classList.toggle("text-violet-600", on)
-    this.power.classList.toggle("dark:text-violet-400", on)
-    this.power.classList.toggle("text-zinc-400", !on)
+  render({on, volume}) {
+    if (this.iconOn) this.iconOn.classList.toggle("hidden", !on)
+    if (this.iconOff) this.iconOff.classList.toggle("hidden", on)
+    if (this.state) this.state.textContent = on ? "Playing" : "Muted"
+    this.power.setAttribute("aria-pressed", on ? "true" : "false")
+    this.power.classList.toggle("bg-violet-600", on)
+    this.power.classList.toggle("text-white", on)
+    this.power.classList.toggle("bg-zinc-200", !on)
+    this.power.classList.toggle("dark:bg-zinc-700", !on)
     if (volume != null && document.activeElement !== this.slider) this.slider.value = volume
   }
 }

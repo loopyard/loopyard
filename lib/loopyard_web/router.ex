@@ -39,6 +39,9 @@ defmodule LoopyardWeb.Router do
     # makes cross-view navigation snappier as a bonus.
     live_session :app, root_layout: {LoopyardWeb.Layouts, :root} do
       live "/", ProjectListLive, :index
+      # Full-page ambient-sound control. In the live_session so navigating here
+      # (and back) is a live patch — the root-layout audio engine keeps playing.
+      live "/sound", SoundLive, :index
       # New-project flow — its own screens (static, must precede /projects/:project_id).
       live "/projects/new", ProjectListLive, :new
       live "/projects/new/scratch", ProjectListLive, :new_scratch
