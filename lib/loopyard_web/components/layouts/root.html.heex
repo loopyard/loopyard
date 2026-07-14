@@ -48,7 +48,13 @@
          panel live in the page headers (`<.sound_control>`) and drive this engine
          over window events. Streams the `activity` channel, which ActivitySound
          drives from live agent events. --%>
-    <div id="ambient" phx-hook="AmbientAudio" data-channel="activity">
+    <%!-- phx-update="ignore": the engine sets the <audio> `src` in JS, so
+         LiveView must NEVER diff this subtree — otherwise morphdom compares
+         against the server markup (which has no src), strips the src, and the
+         audio stops mid-play (looked like a cutoff + flipped to "muted" when
+         switching tracks). Ignoring it keeps the stream alive across every
+         render and navigation. --%>
+    <div id="ambient" phx-hook="AmbientAudio" phx-update="ignore" data-channel="activity">
       <audio id="ambient-el" preload="none"></audio>
     </div>
     {@inner_content}

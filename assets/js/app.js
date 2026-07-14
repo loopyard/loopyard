@@ -49,20 +49,31 @@ Hooks.AmbientAudio = {
 
   start() {
     if (!this.audio.getAttribute("src")) this.audio.setAttribute("src", this.streamSrc)
+    // "connecting" until the stream actually reaches the device (the `playing`
+    // event) — so the control shows a transitional state instead of looking
+    // dead while the MP3 buffers, and you don't tap it five more times.
+    this._connecting = true
+    const onPlaying = () => {
+      this._connecting = false
+      this.broadcast()
+    }
+    this.audio.addEventListener("playing", onPlaying, {once: true})
+
     const p = this.audio.play()
-    // Reflect "on" IMMEDIATELY: audio.paused flips false synchronously when
-    // play() is called, so broadcasting now updates the UI without waiting for
-    // the stream to buffer (that wait was the perceived lag). If the play
-    // promise rejects (autoplay blocked, no gesture), we revert to "off".
+    // Reflect "on" immediately (audio.paused flips false synchronously on
+    // play()), with connecting=true, so the UI responds on tap.
     localStorage.setItem("loopyard:ambient", "on")
     this.broadcast()
     return (p || Promise.resolve()).catch(() => {
+      this._connecting = false
+      this.audio.removeEventListener("playing", onPlaying)
       localStorage.setItem("loopyard:ambient", "off")
       this.broadcast()
     })
   },
 
   stop() {
+    this._connecting = false
     this.audio.pause()
     localStorage.setItem("loopyard:ambient", "off")
     this.broadcast()
@@ -83,9 +94,10 @@ Hooks.AmbientAudio = {
 
   broadcast() {
     const on = !this.audio.paused
+    const connecting = on && !!this._connecting
     document.documentElement.dataset.ambientOn = on ? "1" : "0"
     window.dispatchEvent(
-      new CustomEvent("ambient:changed", {detail: {on, volume: this.audio.volume}})
+      new CustomEvent("ambient:changed", {detail: {on, connecting, volume: this.audio.volume}})
     )
   }
 }
@@ -139,14 +151,23 @@ Hooks.SoundPanel = {
     this.render({on, volume: Number.isNaN(vol) ? 0.35 : vol})
     window.dispatchEvent(new CustomEvent("ambient:query"))
   },
+  updated() {
+    // A LiveView patch (e.g. picking a track re-renders this panel) can reset
+    // the controls to their server markup — re-apply the engine's real state.
+    const on = document.documentElement.dataset.ambientOn === "1"
+    const vol = parseFloat(localStorage.getItem("loopyard:ambient:vol"))
+    this.render({on, connecting: false, volume: Number.isNaN(vol) ? 0.35 : vol})
+    window.dispatchEvent(new CustomEvent("ambient:query"))
+  },
   destroyed() {
     window.removeEventListener("ambient:changed", this._onChanged)
   },
-  render({on, volume}) {
+  render({on, connecting, volume}) {
     if (this.iconOn) this.iconOn.classList.toggle("hidden", !on)
     if (this.iconOff) this.iconOff.classList.toggle("hidden", on)
-    if (this.state) this.state.textContent = on ? "Playing" : "Muted"
+    if (this.state) this.state.textContent = connecting ? "Connecting…" : on ? "Playing" : "Muted"
     this.power.setAttribute("aria-pressed", on ? "true" : "false")
+    this.power.classList.toggle("animate-pulse", !!connecting)
     this.power.classList.toggle("bg-violet-600", on)
     this.power.classList.toggle("text-white", on)
     this.power.classList.toggle("bg-zinc-200", !on)
