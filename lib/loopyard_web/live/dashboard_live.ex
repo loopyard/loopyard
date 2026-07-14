@@ -126,10 +126,10 @@ defmodule LoopyardWeb.DashboardLive do
           <div class="text-zinc-700 dark:text-zinc-200">{health_line(@health)}</div>
         </.dashboard_card>
 
-        <%!-- Operated — opens the operator agent for the current identity --%>
+        <%!-- Operator — opens the operator agent for the current identity --%>
         <.dashboard_card
           navigate="/operator"
-          title="Operated"
+          title="Operator"
           tone={:neutral}
           status={@operator}
         >
