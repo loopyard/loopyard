@@ -62,8 +62,13 @@ defmodule Loopyard.Operator do
       id: id,
       name: "Operator",
       working_dir: dir,
-      # bind_mount (non-nil) → the agent runs HOST-SIDE, not container-only.
-      bind_mount: dir,
+      # SECURITY: bind_mount nil → the container-only TOOL policy (native
+      # Bash/Read/Write/Edit/Glob/Grep are DENIED). The operator runs host-side
+      # (Harness.Claude, below) but must NOT get Claude Code's native HOST
+      # filesystem tools — that'd be a sandbox escape (read any file on the Mac)
+      # and would break the create_project_from_path boundary (it passes a path
+      # string, never reads the FS). Its ONLY tools are Tools.ControlPlane (+ web).
+      bind_mount: nil,
       # No workspace / project / code volume — it's not that kind of agent.
       workspace_id: nil,
       started_by: "operator",

@@ -43,9 +43,28 @@ defmodule LoopyardWeb.OperatorLive do
     {:reply, %{ok: true}, socket}
   end
 
-  # The composer's queue controls (reused from chat_panel).
+  # Composer/queue controls (chat_panel emits these) — wired so no button is dead.
   def handle_event("clear_pending", _p, socket) do
     ChatAgent.clear_pending(socket.assigns.agent_id)
+    {:noreply, socket}
+  end
+
+  def handle_event("remove_pending", %{"id" => id, "index" => index}, socket) do
+    ChatAgent.remove_pending(id, String.to_integer(index))
+    {:noreply, socket}
+  end
+
+  def handle_event("edit_pending", %{"id" => id, "index" => index}, socket) do
+    index = String.to_integer(index)
+    text = Enum.at(socket.assigns.agent[:pending_messages] || [], index)
+    ChatAgent.remove_pending(id, index)
+    if is_binary(text),
+      do: {:noreply, push_event(socket, "fill_input", %{text: text})},
+      else: {:noreply, socket}
+  end
+
+  def handle_event("interrupt_agent", %{"id" => id}, socket) do
+    ChatAgent.interrupt(id)
     {:noreply, socket}
   end
 
@@ -70,7 +89,18 @@ defmodule LoopyardWeb.OperatorLive do
         <span class="w-2 h-2 rounded-full flex-none bg-sky-500"></span>
         <h1 class="text-lg font-semibold">Operator</h1>
         <span class="text-sm text-zinc-400 dark:text-zinc-500">· {@agent.status}</span>
-        <:actions><Nav.back_button navigate="/" label="Home" /></:actions>
+        <:actions>
+          <button
+            :if={@agent.status == :thinking}
+            type="button"
+            phx-click="interrupt_agent"
+            phx-value-id={@agent_id}
+            class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500/20 transition-colors"
+          >
+            <span class="w-2 h-2 rounded-sm bg-red-500"></span> Stop
+          </button>
+          <Nav.back_button navigate="/" label="Home" />
+        </:actions>
       </Nav.bar>
 
       <.chat_panel
