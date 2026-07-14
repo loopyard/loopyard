@@ -315,14 +315,3 @@ refresh your browser when you save files and it does not affect production.
   .highlight .gi                                                       { color: #22863a; }
   .highlight .gd                                                       { color: #b31d28; }
 }
-
-/* Ambient sound "playing" indicator: a subtle, slow breathing glow on the
-   header sound button while the bed is playing. Cheap, honors reduced-motion. */
-@keyframes sound-breathe {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0); }
-  50%      { box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.28); }
-}
-.sound-pulse { animation: sound-breathe 2.6s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) {
-  .sound-pulse { animation: none; box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.28); }
-}

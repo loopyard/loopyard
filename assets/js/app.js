@@ -118,16 +118,14 @@ Hooks.SoundIcon = {
   destroyed() {
     window.removeEventListener("ambient:changed", this._onChanged)
   },
-  render({on, connecting}) {
+  render({on}) {
     if (this.iconOn) this.iconOn.classList.toggle("hidden", !on)
     if (this.iconOff) this.iconOff.classList.toggle("hidden", on)
-    // While playing, a subtle slow "breathe" glow so you can tell at a glance
-    // the music is on. A cheap CSS animation (.sound-pulse) — not amplitude-
-    // driven; true intensity would need Web Audio and isn't worth the risk.
-    this.el.classList.toggle("sound-pulse", on && !connecting)
-    this.el.classList.toggle("animate-pulse", connecting)
+    // A quiet static tint so you can see it's on — no pulse (that was annoying).
     this.el.classList.toggle("text-violet-600", on)
     this.el.classList.toggle("dark:text-violet-400", on)
+    this.el.classList.toggle("text-zinc-400", !on)
+    this.el.classList.toggle("dark:text-zinc-500", !on)
   }
 }
 
