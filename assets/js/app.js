@@ -614,6 +614,32 @@ Hooks.CopySource = {
   }
 }
 
+// LogTail: keep the service-log panel pinned to the newest line (bottom). On
+// mount it jumps to the bottom; as new frames stream in it stays there — UNLESS
+// you scroll up (e.g. to read an earlier run or jump via the Runs strip), in
+// which case it leaves you be until you scroll back down.
+Hooks.LogTail = {
+  mounted() {
+    this._atBottom = true
+    this._onScroll = () => {
+      const gap = this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight
+      this._atBottom = gap < 48
+    }
+    this.el.addEventListener("scroll", this._onScroll, {passive: true})
+    this.toBottom()
+    requestAnimationFrame(() => this.toBottom())
+  },
+  updated() {
+    if (this._atBottom) this.toBottom()
+  },
+  destroyed() {
+    this.el.removeEventListener("scroll", this._onScroll)
+  },
+  toBottom() {
+    this.el.scrollTop = this.el.scrollHeight
+  }
+}
+
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 let liveSocket = new LiveSocket("/live", Socket, {
   hooks: Hooks,

@@ -126,34 +126,79 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
   attr :frames, :list, required: true
 
   defp service_frames_panel(assigns) do
+    assigns = assign(assigns, :last_i, length(assigns.frames) - 1)
+
     ~H"""
-    <div
-      id="service-logs"
-      class="flex-1 min-h-0 overflow-y-auto bg-zinc-100 dark:bg-zinc-950 px-3 py-2 font-mono text-xs leading-relaxed"
-    >
-      <div :for={{group, gi} <- Enum.with_index(@frames)} class="mb-1.5">
-        <div class="flex items-center gap-2 my-2 text-xs font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
-          <div class="h-px flex-1 bg-zinc-200 dark:bg-zinc-800"></div>
-          <span>
-            run {group.run}<span
-              :if={gi < length(@frames) - 1}
-              class="text-zinc-400 dark:text-zinc-600"
-            > · ended</span>
-          </span>
-          <div class="h-px flex-1 bg-zinc-200 dark:bg-zinc-800"></div>
-        </div>
-        <div
-          :for={f <- group.frames}
-          class="flex gap-2 whitespace-pre-wrap break-words text-zinc-700 dark:text-zinc-300"
+    <div class="flex-1 flex flex-col min-h-0">
+      <%!-- Jump strip: tap a run to scroll to its boundary. Only when there's
+           more than one run to jump between. --%>
+      <div
+        :if={length(@frames) > 1}
+        class="flex-none flex items-center gap-1.5 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/60 overflow-x-auto"
+      >
+        <span class="text-xs font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500 flex-none mr-0.5">
+          Runs
+        </span>
+        <a
+          :for={{g, gi} <- Enum.with_index(@frames)}
+          href={"#run-#{g.run}"}
+          class={run_chip(gi == @last_i)}
         >
-          <span :if={f.ts} class="flex-none text-zinc-400 dark:text-zinc-600 tabular-nums select-none">
-            {short_ts(f.ts)}
-          </span>
-          <span>{f.text}</span>
+          {g.run}
+        </a>
+      </div>
+
+      <div
+        id="service-logs"
+        phx-hook="LogTail"
+        class="flex-1 min-h-0 overflow-y-auto bg-zinc-100 dark:bg-zinc-950 font-mono text-xs leading-relaxed"
+      >
+        <div :for={{group, gi} <- Enum.with_index(@frames)}>
+          <%!-- Visual run divider — a sticky band so you always see which run
+                you're scrolling through, and an anchor target for the jump strip. --%>
+          <div
+            id={"run-#{group.run}"}
+            class="sticky top-0 z-10 flex items-center gap-2 px-3 h-8 border-y border-zinc-300 dark:border-zinc-700/70 bg-zinc-200/95 dark:bg-zinc-800/95 backdrop-blur text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-300 scroll-mt-0"
+          >
+            <span class={[
+              "w-2 h-2 rounded-full flex-none",
+              if(gi == @last_i, do: "bg-emerald-500", else: "bg-zinc-400 dark:bg-zinc-600")
+            ]}></span>
+            Run {group.run}
+            <span
+              :if={gi < @last_i}
+              class="font-normal normal-case text-zinc-400 dark:text-zinc-500"
+            >
+              · ended
+            </span>
+          </div>
+          <div
+            :for={f <- group.frames}
+            class="flex gap-2 px-3 whitespace-pre-wrap break-words text-zinc-700 dark:text-zinc-300"
+          >
+            <span
+              :if={f.ts}
+              class="flex-none text-zinc-400 dark:text-zinc-600 tabular-nums select-none"
+            >
+              {short_ts(f.ts)}
+            </span>
+            <span>{f.text}</span>
+          </div>
         </div>
       </div>
     </div>
     """
+  end
+
+  defp run_chip(current?) do
+    [
+      "inline-flex items-center justify-center min-w-[1.9rem] h-7 px-2 rounded-md text-xs font-semibold flex-none transition-colors",
+      if(current?,
+        do: "bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+        else:
+          "bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-300 dark:hover:bg-zinc-700"
+      )
+    ]
   end
 
   defp service_waiting_panel(assigns) do
