@@ -151,14 +151,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
       <div
         id="service-logs"
         phx-hook="LogTail"
-        class="flex-1 min-h-0 overflow-y-auto bg-zinc-100 dark:bg-zinc-950 font-mono text-xs leading-relaxed"
+        class="flex-1 min-h-0 overflow-y-auto bg-zinc-100 dark:bg-zinc-950 p-2 space-y-2 font-mono text-xs leading-relaxed"
       >
-        <div :for={{group, gi} <- Enum.with_index(@frames)}>
-          <%!-- Visual run divider — a sticky band so you always see which run
-                you're scrolling through, and an anchor target for the jump strip. --%>
+        <%!-- Each run is its own bordered GROUP wrapping its log lines, with a
+              STICKY header that pins to the top while you scroll through that
+              run. The header is also the anchor target for the Runs jump strip. --%>
+        <div
+          :for={{group, gi} <- Enum.with_index(@frames)}
+          class="rounded-lg border border-zinc-200 dark:border-zinc-700/60 bg-white dark:bg-zinc-900/50"
+        >
           <div
             id={"run-#{group.run}"}
-            class="sticky top-0 z-10 flex items-center gap-2 px-3 h-8 border-y border-zinc-300 dark:border-zinc-700/70 bg-zinc-200/95 dark:bg-zinc-800/95 backdrop-blur text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-300 scroll-mt-0"
+            class="sticky top-0 z-10 flex items-center gap-2 px-3 h-8 rounded-t-lg border-b border-zinc-200 dark:border-zinc-700/60 bg-zinc-100/95 dark:bg-zinc-800/95 backdrop-blur text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-300"
           >
             <span class={[
               "w-2 h-2 rounded-full flex-none",
@@ -172,17 +176,19 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
               · ended
             </span>
           </div>
-          <div
-            :for={f <- group.frames}
-            class="flex gap-2 px-3 whitespace-pre-wrap break-words text-zinc-700 dark:text-zinc-300"
-          >
-            <span
-              :if={f.ts}
-              class="flex-none text-zinc-400 dark:text-zinc-600 tabular-nums select-none"
+          <div class="py-1.5">
+            <div
+              :for={f <- group.frames}
+              class="flex gap-2 px-3 whitespace-pre-wrap break-words text-zinc-700 dark:text-zinc-300"
             >
-              {short_ts(f.ts)}
-            </span>
-            <span>{f.text}</span>
+              <span
+                :if={f.ts}
+                class="flex-none text-zinc-400 dark:text-zinc-600 tabular-nums select-none"
+              >
+                {short_ts(f.ts)}
+              </span>
+              <span>{f.text}</span>
+            </div>
           </div>
         </div>
       </div>
