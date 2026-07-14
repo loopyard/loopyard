@@ -6,7 +6,6 @@ defmodule LoopyardWeb.Components.AppHeader do
   use Phoenix.Component
 
   import LoopyardWeb.Components.Breadcrumbs, only: [breadcrumbs: 1]
-  import LoopyardWeb.Components.Icon
 
   @doc """
   Renders the app header bar.
@@ -57,10 +56,15 @@ defmodule LoopyardWeb.Components.AppHeader do
             ></span>
             Remote
           </.link>
-          <.workstation_switcher
-            current={Loopyard.Workstation.current()}
-            ids={Loopyard.Workstation.list()}
-          />
+          <%!-- Plain link, not a dropdown — the identity switcher lives on the
+               dashboard's Operated card + /workstations. No pop-over menus. --%>
+          <.link
+            navigate="/workstations"
+            class="focus-ring inline-flex items-center gap-1.5 px-2 py-1 text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 transition-colors rounded"
+          >
+            <span class="w-1.5 h-1.5 rounded-full bg-sky-500 flex-none" aria-hidden="true"></span>
+            {Loopyard.Workstation.current()}
+          </.link>
           <.link
             navigate="/system"
             class="focus-ring inline-flex items-center px-2 py-1 text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 transition-colors rounded"
@@ -73,65 +77,6 @@ defmodule LoopyardWeb.Components.AppHeader do
              pop-over menu here was exactly the pattern we're killing. --%>
       </:actions>
     </LoopyardWeb.Components.Nav.bar>
-    """
-  end
-
-  @doc """
-  The primary-nav **identity switcher**. Shows who you're operating as
-  (`Loopyard.Workstation.current/0`) and drops down to switch — each row links to
-  that workstation's page (`/workstations/:id`). *Visiting* a workstation makes it
-  the one you're operating as, so the nav, agents, and URL stay in sync.
-
-  Pure `<details>`/`<summary>` — no JS hook, closes on outside click via the
-  invisible backdrop label.
-  """
-  attr :current, :string, required: true
-  attr :ids, :list, required: true
-
-  def workstation_switcher(assigns) do
-    ~H"""
-    <details class="relative group" id="ws-switcher">
-      <summary class="list-none cursor-pointer focus-ring inline-flex items-center gap-1.5 px-2 min-h-11 md:min-h-0 md:py-1 text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 transition-colors rounded">
-        <span class="w-1.5 h-1.5 rounded-full bg-sky-500 flex-none" aria-hidden="true"></span>
-        <span class="text-zinc-700 dark:text-zinc-200">{@current}</span>
-        <.icon
-          name={:chevron_down}
-          class="w-3.5 h-3.5 opacity-50 group-open:rotate-180 transition-transform"
-        />
-      </summary>
-      <div class="absolute right-0 mt-1.5 w-52 z-50 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-lg py-1 text-sm">
-        <div class="px-3 py-1 text-sm uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
-          Operate as
-        </div>
-        <.link
-          :for={id <- @ids}
-          href={"/workstations/#{id}"}
-          class={[
-            "flex items-center gap-2 px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800",
-            if(id == @current,
-              do: "text-zinc-900 dark:text-zinc-100 font-medium",
-              else: "text-zinc-600 dark:text-zinc-300"
-            )
-          ]}
-        >
-          <span class={[
-            "w-1.5 h-1.5 rounded-full flex-none",
-            if(id == @current,
-              do: "bg-sky-500",
-              else: "bg-transparent border border-zinc-300 dark:border-zinc-600"
-            )
-          ]}></span>
-          {id}
-        </.link>
-        <div class="my-1 border-t border-zinc-100 dark:border-zinc-800"></div>
-        <.link
-          href="/workstations"
-          class="block px-3 py-1.5 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-        >
-          Manage workstations →
-        </.link>
-      </div>
-    </details>
     """
   end
 

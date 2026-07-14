@@ -102,8 +102,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       </Nav.switcher_sheet>
 
       <%!-- Row 2: WHAT you're looking at — section tabs + the current item, which
-           taps open a full-screen switcher of siblings. --%>
+           taps open a full-screen switcher of siblings. Hidden for the operator
+           (one agent, no services) — its view is just the crumb bar + chat. --%>
       <Nav.section_switcher
+        :if={!@operator?}
         id="item-switcher"
         title={section_title(@active)}
         current={@current}
