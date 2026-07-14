@@ -32,101 +32,109 @@ defmodule LoopyardWeb.Router do
   scope "/", LoopyardWeb do
     pipe_through :browser
 
-    live "/", ProjectListLive, :index
-    # New-project flow — its own screens (static, must precede /projects/:project_id).
-    live "/projects/new", ProjectListLive, :new
-    live "/projects/new/scratch", ProjectListLive, :new_scratch
-    live "/projects/new/folder", ProjectListLive, :new_folder
-    live "/projects/new/github", ProjectListLive, :new_github
-    live "/projects/:project_id", ProjectLive, :index
-    # New-workspace flow gets its own screen too.
-    live "/projects/:project_id/new", ProjectLive, :new_workspace
-    live "/projects/:project_id/settings", ProjectLive, :settings
-    live "/projects/:project_id/workspaces/:workspace_id", WorkspaceLive, :index
-    live "/projects/:project_id/workspaces/:workspace_id/new", WorkspaceLive, :new
-    live "/projects/:project_id/workspaces/:workspace_id/agents/:id", WorkspaceLive, :chat
+    # One live_session over the whole app so `<.link navigate>` between
+    # LiveViews stays on the websocket (no full page reload). That's what lets
+    # the ambient-audio layer in the root layout (and the connection socket)
+    # survive navigation — the bed keeps playing as you move around — and it
+    # makes cross-view navigation snappier as a bonus.
+    live_session :app, root_layout: {LoopyardWeb.Layouts, :root} do
+      live "/", ProjectListLive, :index
+      # New-project flow — its own screens (static, must precede /projects/:project_id).
+      live "/projects/new", ProjectListLive, :new
+      live "/projects/new/scratch", ProjectListLive, :new_scratch
+      live "/projects/new/folder", ProjectListLive, :new_folder
+      live "/projects/new/github", ProjectListLive, :new_github
+      live "/projects/:project_id", ProjectLive, :index
+      # New-workspace flow gets its own screen too.
+      live "/projects/:project_id/new", ProjectLive, :new_workspace
+      live "/projects/:project_id/settings", ProjectLive, :settings
+      live "/projects/:project_id/workspaces/:workspace_id", WorkspaceLive, :index
+      live "/projects/:project_id/workspaces/:workspace_id/new", WorkspaceLive, :new
+      live "/projects/:project_id/workspaces/:workspace_id/agents/:id", WorkspaceLive, :chat
 
-    live "/projects/:project_id/workspaces/:workspace_id/agents/:id/container",
-         WorkspaceLive,
-         :container
+      live "/projects/:project_id/workspaces/:workspace_id/agents/:id/container",
+           WorkspaceLive,
+           :container
 
-    live "/projects/:project_id/workspaces/:workspace_id/agents/:id/context",
-         WorkspaceLive,
-         :context_panel
+      live "/projects/:project_id/workspaces/:workspace_id/agents/:id/context",
+           WorkspaceLive,
+           :context_panel
 
-    live "/projects/:project_id/workspaces/:workspace_id/agents/:id/info",
-         WorkspaceLive,
-         :info
+      live "/projects/:project_id/workspaces/:workspace_id/agents/:id/info",
+           WorkspaceLive,
+           :info
 
-    live "/projects/:project_id/workspaces/:workspace_id/services", WorkspaceLive, :services
+      live "/projects/:project_id/workspaces/:workspace_id/services", WorkspaceLive, :services
 
-    live "/projects/:project_id/workspaces/:workspace_id/services/:service_name",
-         WorkspaceLive,
-         :service
+      live "/projects/:project_id/workspaces/:workspace_id/services/:service_name",
+           WorkspaceLive,
+           :service
 
-    live "/projects/:project_id/workspaces/:workspace_id/services/:service_name/console",
-         WorkspaceLive,
-         :console
+      live "/projects/:project_id/workspaces/:workspace_id/services/:service_name/console",
+           WorkspaceLive,
+           :console
 
-    live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name",
-         WorkspaceLive,
-         :volume
+      live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name",
+           WorkspaceLive,
+           :volume
 
-    live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/files",
-         WorkspaceLive,
-         :volume_files_root
+      live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/files",
+           WorkspaceLive,
+           :volume_files_root
 
-    live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/files/*path",
-         WorkspaceLive,
-         :volume_file
+      live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/files/*path",
+           WorkspaceLive,
+           :volume_file
 
-    live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/git",
-         WorkspaceLive,
-         :volume_git
+      live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/git",
+           WorkspaceLive,
+           :volume_git
 
-    live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/git/diff/*path",
-         WorkspaceLive,
-         :git_diff
+      live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/git/diff/*path",
+           WorkspaceLive,
+           :git_diff
 
-    live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/git/staged/*path",
-         WorkspaceLive,
-         :git_staged_diff
+      live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/git/staged/*path",
+           WorkspaceLive,
+           :git_staged_diff
 
-    live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/git/commits/:sha",
-         WorkspaceLive,
-         :git_commit
+      live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/git/commits/:sha",
+           WorkspaceLive,
+           :git_commit
 
-    live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/git/commits/:sha/diff/*path",
-         WorkspaceLive,
-         :git_commit_file
+      live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/git/commits/:sha/diff/*path",
+           WorkspaceLive,
+           :git_commit_file
 
-    live "/projects/:project_id/workspaces/:workspace_id/sync", WorkspaceLive, :sync
+      live "/projects/:project_id/workspaces/:workspace_id/sync", WorkspaceLive, :sync
 
-    # Workstations — each identity has its own URL. Visiting one makes it the one
-    # you're operating as. /workstations is the list (switch / create); bare
-    # singular /workstation → your current id.
-    get "/workstation", WorkstationController, :index
-    post "/workstations/create", WorkstationController, :create
-    live "/workstations", WorkstationLive, :index
-    live "/workstations/:id", WorkstationLive, :show
-    # Sub-pages of a workstation (own URL each, not collapsibles). Literal segments
-    # so they win over the `/workstations/:id/:tool` integration route below.
-    live "/workstations/:id/console", WorkstationLive, :console
-    live "/workstations/:id/env", WorkstationLive, :env
+      # Workstations — each identity has its own URL. Visiting one makes it the one
+      # you're operating as. /workstations is the list (switch / create); bare
+      # singular /workstation → your current id.
+      get "/workstation", WorkstationController, :index
+      post "/workstations/create", WorkstationController, :create
+      live "/workstations", WorkstationLive, :index
+      live "/workstations/:id", WorkstationLive, :show
+      # Sub-pages of a workstation (own URL each, not collapsibles). Literal segments
+      # so they win over the `/workstations/:id/:tool` integration route below.
+      live "/workstations/:id/console", WorkstationLive, :console
+      live "/workstations/:id/env", WorkstationLive, :env
 
-    live "/system", SystemLive, :index
-    live "/system/workspaces", SystemWorkspacesLive, :index
-    live "/system/docker", SystemDockerLive, :index
-    live "/system/ports", SystemPortsLive, :index
-    live "/system/quarantine", SystemQuarantineLive, :index
-    live "/system/events", SystemEventsLive, :index
-    live "/system/sagas", SystemSagasLive, :index
-    live "/system/orphans", SystemOrphansLive, :index
-    live "/system/recovery", SystemRecoveryLive, :index
-    live "/system/secrets", SystemSecretsLive, :index
-    live "/remote/*path", ConnectLive, :index
+      live "/system", SystemLive, :index
+      live "/system/workspaces", SystemWorkspacesLive, :index
+      live "/system/docker", SystemDockerLive, :index
+      live "/system/ports", SystemPortsLive, :index
+      live "/system/quarantine", SystemQuarantineLive, :index
+      live "/system/events", SystemEventsLive, :index
+      live "/system/sagas", SystemSagasLive, :index
+      live "/system/orphans", SystemOrphansLive, :index
+      live "/system/recovery", SystemRecoveryLive, :index
+      live "/system/secrets", SystemSecretsLive, :index
+      live "/remote/*path", ConnectLive, :index
 
-    live "/messages/:agent_id/:msg_id", MessageLive, :show
+      live "/messages/:agent_id/:msg_id", MessageLive, :show
+    end
+
     get "/messages/:agent_id/:msg_id/raw", OutputController, :show
 
     get "/raw/:volume_name/*path", RawFileController, :show

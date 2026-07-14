@@ -8,6 +8,65 @@ let Hooks = {}
 Hooks.Terminal = createTerminalHook()
 Hooks.Aural = createAuralHook()
 
+// AmbientAudio: the app-wide "room tone". Lives on #ambient in the root layout
+// (outside {@inner_content}), and the whole app runs in one live_session, so it
+// mounts ONCE and survives live navigation — the bed keeps playing as you move
+// around. Off by default (browsers block autoplay without a user gesture); the
+// corner toggle starts/stops it and the choice persists in localStorage. Audio
+// is a plain HTTP MP3 stream of an aural channel (no websocket channel join).
+Hooks.AmbientAudio = {
+  mounted() {
+    this.audio = this.el.querySelector("#ambient-el")
+    this.btn = this.el.querySelector("#ambient-toggle")
+    this.iconOff = this.el.querySelector('[data-ambient-icon="off"]')
+    this.iconOn = this.el.querySelector('[data-ambient-icon="on"]')
+    const channel = this.el.dataset.channel || "activity"
+    this.streamSrc = `/aural/${channel}/stream.mp3`
+
+    const vol = parseFloat(localStorage.getItem("loopyard:ambient:vol"))
+    this.audio.volume = isNaN(vol) ? 0.35 : Math.min(1, Math.max(0, vol))
+
+    this.btn.addEventListener("click", () => this.toggle())
+
+    // Restore the saved intent. On a fresh load autoplay is blocked without a
+    // gesture, so if play() rejects we fall back to the off state — one click
+    // re-arms it, and because navigation stays on the socket (no reload) it
+    // won't get re-blocked as you move around.
+    if (localStorage.getItem("loopyard:ambient") === "on") {
+      this.start().catch(() => this.render(false))
+    } else {
+      this.render(false)
+    }
+  },
+
+  start() {
+    if (!this.audio.getAttribute("src")) this.audio.setAttribute("src", this.streamSrc)
+    const p = this.audio.play()
+    return (p || Promise.resolve()).then(() => {
+      localStorage.setItem("loopyard:ambient", "on")
+      this.render(true)
+    })
+  },
+
+  stop() {
+    this.audio.pause()
+    localStorage.setItem("loopyard:ambient", "off")
+    this.render(false)
+  },
+
+  toggle() {
+    if (this.audio.paused) this.start().catch(() => this.render(false))
+    else this.stop()
+  },
+
+  render(on) {
+    this.btn.setAttribute("aria-pressed", on ? "true" : "false")
+    this.iconOn.classList.toggle("hidden", !on)
+    this.iconOff.classList.toggle("hidden", on)
+    this.btn.classList.toggle("text-violet-300", on)
+  }
+}
+
 // ScrollBottom: lives on #chat-page (ancestor), scrolls #messages
 // (descendant). Hooks on deeply nested elements (inside function
 // components with phx-id) don't mount in LiveView — so the hook
