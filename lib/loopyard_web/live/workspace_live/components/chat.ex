@@ -70,7 +70,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
         <.link
           navigate="/"
           aria-label="Back to projects"
-          class="flex-none inline-flex items-center justify-center w-8 h-8 -ml-0.5 rounded-md text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors"
+          class="flex-none inline-flex items-center justify-center w-11 h-11 -ml-1.5 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors"
         >
           <svg viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
             <path
@@ -95,7 +95,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       </div>
 
       <%!-- Row 2: WHAT you're looking at — category tabs + the current item. --%>
-      <div class="flex items-center gap-2 px-2 h-12 border-t border-zinc-200/70 dark:border-zinc-700/50">
+      <div class="flex items-center gap-2 px-2 h-16 border-t border-zinc-200/70 dark:border-zinc-700/50">
         <nav
           :if={@live_action != :new && (@agents != [] || @service_statuses != [] || @volumes != [])}
           class="inline-flex items-center rounded-xl bg-zinc-100 dark:bg-zinc-800 p-0.5 flex-none"
@@ -124,7 +124,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           type="button"
           phx-click={toggle_switcher()}
           aria-controls="item-switcher"
-          class="flex-1 min-w-0 flex items-center gap-2 h-9 px-2.5 rounded-lg text-left hover:bg-zinc-100 dark:hover:bg-zinc-800/60 active:bg-zinc-200 dark:active:bg-zinc-700/60 transition-colors"
+          class="flex-1 min-w-0 flex items-center gap-2 min-h-[2.75rem] px-3 rounded-lg text-left hover:bg-zinc-100 dark:hover:bg-zinc-800/60 active:bg-zinc-200 dark:active:bg-zinc-700/60 transition-colors"
         >
           <span class={["w-2 h-2 rounded-full flex-none", @current.dot]}></span>
           <span class="font-semibold text-zinc-900 dark:text-zinc-100 truncate">
@@ -517,7 +517,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   # active view is a raised white/dark pill, the rest are quiet labels.
   defp seg_tab_class(active?) do
     [
-      "px-2.5 py-1.5 rounded-lg text-sm font-medium leading-none transition-colors whitespace-nowrap",
+      "inline-flex items-center justify-center min-h-[2.5rem] px-3 rounded-lg text-sm font-medium leading-none transition-colors whitespace-nowrap",
       if(active?,
         do: "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm",
         else: "text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"

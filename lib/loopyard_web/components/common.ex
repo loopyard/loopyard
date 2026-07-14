@@ -351,7 +351,7 @@ defmodule LoopyardWeb.Components.Common do
         data-sound-btn
         aria-label="Ambient sound"
         aria-pressed="false"
-        class="inline-flex items-center justify-center w-9 h-9 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+        class="inline-flex items-center justify-center w-11 h-11 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
       >
         <svg
           data-sound-icon="off"
