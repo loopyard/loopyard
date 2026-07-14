@@ -33,6 +33,9 @@ defmodule Loopyard.Harness.ACP.Connection do
   def prompt(pid, text, subscriber, ref),
     do: GenServer.cast(pid, {:prompt, text, subscriber, ref})
 
+  @doc "Cancel the in-flight turn (ACP `session/cancel`) while keeping the session warm."
+  def cancel(pid), do: GenServer.cast(pid, :cancel)
+
   def session_id(pid) do
     GenServer.call(pid, :session_id, 1_000)
   catch
@@ -124,6 +127,23 @@ defmodule Loopyard.Harness.ACP.Connection do
     {:noreply, %{state | turn: turn}}
   end
 
+  # session/cancel is a NOTIFICATION (no id, no response). The adapter finishes
+  # the in-flight session/prompt with stopReason "cancelled", which flows through
+  # handle_response(:session_prompt) and finalizes the turn cleanly. The
+  # connection stays warm — this interrupts the turn, it doesn't tear down the
+  # session. No-op when there's no session yet.
+  def handle_cast(:cancel, %{session_id: sid} = state) when is_binary(sid) do
+    send_msg(state, %{
+      "jsonrpc" => "2.0",
+      "method" => "session/cancel",
+      "params" => %{"sessionId" => sid}
+    })
+
+    {:noreply, state}
+  end
+
+  def handle_cast(:cancel, state), do: {:noreply, state}
+
   # ---- inbound messages ----
 
   @impl true
@@ -172,11 +192,44 @@ defmodule Loopyard.Harness.ACP.Connection do
 
   # ---- response routing ----
 
-  defp handle_response(:initialize, _msg, state) do
-    {state, _} =
-      request(state, "session/new", %{"cwd" => state.cwd, "mcpServers" => state.mcp_servers})
+  defp handle_response(:initialize, msg, %{resume: sid} = state)
+       when is_binary(sid) and sid != "" do
+    # Resume: replay the saved conversation via session/load instead of booting
+    # a fresh (amnesic) session/new — this is what makes ACP honor the
+    # conversation-continuity invariant across restarts. Only if the adapter
+    # advertises the capability; otherwise fall back to a new session so we
+    # still boot.
+    if load_supported?(msg) do
+      {state, _} =
+        request(state, "session/load", %{
+          "sessionId" => sid,
+          "cwd" => state.cwd,
+          "mcpServers" => state.mcp_servers
+        })
 
-    {:noreply, state}
+      {:noreply, state}
+    else
+      {:noreply, elem(new_session(state), 0)}
+    end
+  end
+
+  defp handle_response(:initialize, _msg, state) do
+    {:noreply, elem(new_session(state), 0)}
+  end
+
+  defp handle_response(:session_load, %{"result" => result}, state) do
+    # session/load loads the session we named, so its id is our resume id (the
+    # adapter may omit it from the result). Any replayed history arrives as
+    # session/update notifications with turn == nil first — safely ignored.
+    sid = (is_map(result) && result["sessionId"]) || state.resume
+    model = get_in(result, ["models", "currentModelId"]) || state.model
+    {:noreply, reply_waiters(%{state | session_id: sid, model: model, status: :ready}, :ok)}
+  end
+
+  defp handle_response(:session_load, %{"error" => _error}, state) do
+    # Saved session unknown/expired — boot a fresh one so the agent still comes
+    # up (as a new conversation) rather than failing to start.
+    {:noreply, elem(new_session(state), 0)}
   end
 
   defp handle_response(:session_new, %{"result" => result}, state) do
@@ -206,6 +259,9 @@ defmodule Loopyard.Harness.ACP.Connection do
 
     {:noreply, %{state | turn: nil}}
   end
+
+  defp new_session(state),
+    do: request(state, "session/new", %{"cwd" => state.cwd, "mcpServers" => state.mcp_servers})
 
   defp prompt_error(%{"error" => error}), do: {:error, error}
   defp prompt_error(_), do: :unknown
@@ -348,8 +404,17 @@ defmodule Loopyard.Harness.ACP.Connection do
 
   defp method_kind("initialize"), do: :initialize
   defp method_kind("session/new"), do: :session_new
+  defp method_kind("session/load"), do: :session_load
   defp method_kind("session/prompt"), do: :session_prompt
   defp method_kind(other), do: other
+
+  # Whether the adapter advertised it can replay a saved session (session/load).
+  # Absent → false → we use session/new. Guards against booting session/load
+  # against an adapter that doesn't support it.
+  defp load_supported?(msg) do
+    caps = get_in(msg, ["result", "agentCapabilities"]) || %{}
+    caps["loadSession"] == true
+  end
 
   defp reply_waiters(state, reply) do
     Enum.each(state.waiters, &GenServer.reply(&1, reply))

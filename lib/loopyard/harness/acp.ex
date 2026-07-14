@@ -11,17 +11,22 @@ defmodule Loopyard.Harness.ACP do
   (`docker exec -i <container> <adapter>`), so the harness runs where the code
   lives and native tools work without the MCP filesystem proxy.
 
-  Status: handshake + streamed prompt turns + permission/fs round-trips and
-  in-container mode are implemented and tested (fake transport + verified
-  against the real adapter). Not yet wired as the default backend.
+  Status: handshake + streamed prompt turns + permission/fs round-trips,
+  `session/cancel` interrupt, `session/load` resume, and in-container mode are
+  implemented and tested (fake transport + verified against the real adapter).
+  Not yet wired as the default backend.
 
   System prompt: there is no ACP `append_system_prompt` — the harness reads
-  `CLAUDE.md` from the session cwd (validated), so `ChatAgent.ClaudeContext.mirror/2`
-  is the mechanism; wiring writes Loopyard's agent prompt into that file.
+  `CLAUDE.md`/`CLAUDE.local.md` from the session cwd (validated). Loopyard's
+  agent prompt arrives as the `append_system_prompt` opt, which
+  `maybe_install_system_prompt/2` writes into that file.
 
-  Known gaps (tracked on #3/#6): mapping Loopyard's tool *policy* onto ACP,
-  token-usage surfacing (claude-code-acp doesn't expose it — see cost-visibility
-  decision), and the `:ask` permission mode (#7).
+  Known gaps (tracked on #3/#6): mapping Loopyard's tool *policy* (allowed/
+  disallowed tools) and MCP servers onto ACP; token-usage surfacing
+  (claude-code-acp doesn't expose it, so cost reads $0 — see cost-visibility
+  decision); and the human-gated `:ask` permission mode (#7) — today permissions
+  are `:auto_allow`, which is *parity* with the ClaudeCode path (it runs with
+  `dangerously_skip_permissions`, trusting the container sandbox as the boundary).
   """
   @behaviour Loopyard.Harness
 
@@ -56,7 +61,11 @@ defmodule Loopyard.Harness.ACP do
   # directly; in-container mode must write the same file into the code volume
   # (deferred until that path can be validated end to end).
   defp maybe_install_system_prompt(opts, runtime) do
-    prompt = Keyword.get(opts, :system_prompt)
+    # Initializer passes Loopyard's agent prompt as `append_system_prompt` (the
+    # ClaudeCode/SDK key). ACP has no such option, so install it as CLAUDE.local.md
+    # in the cwd. Read either key so the prompt actually reaches the harness —
+    # reading only `:system_prompt` silently dropped it (gap #17).
+    prompt = Keyword.get(opts, :system_prompt) || Keyword.get(opts, :append_system_prompt)
     cwd = Keyword.get(runtime, :cwd)
     container? = not is_nil(Keyword.get(opts, :container))
 
@@ -139,12 +148,14 @@ defmodule Loopyard.Harness.ACP do
   end
 
   @impl true
-  def cancel_turn(_conn) do
-    # TODO: send ACP `session/cancel` to interrupt the turn while keeping the
-    # connection warm (Connection has no cancel path yet — plans/turn-taking.md
-    # step 2). Until then, the ChatAgent invalidates the turn on its side; the
-    # session stays up. No-op rather than tearing the connection down.
+  def cancel_turn(conn) do
+    # Send ACP `session/cancel` to interrupt the in-flight turn while keeping the
+    # connection warm. Exit-safe (mirrors Harness.Claude): warm_interrupt treats
+    # a non-:ok/timeout as "wedged → hard restart", so a dead conn must not raise.
+    if is_pid(conn) and Process.alive?(conn), do: Connection.cancel(conn)
     :ok
+  catch
+    :exit, _ -> :ok
   end
 
   @impl true
