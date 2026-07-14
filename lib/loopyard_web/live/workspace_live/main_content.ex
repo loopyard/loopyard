@@ -55,6 +55,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.MainContent do
         service_name={@selected_service}
         service_statuses={@service_statuses}
         logs={@service_logs}
+        frames={@service_frames}
         base_path={@base_path}
         host={@host}
         workspace_state={@workspace_state}

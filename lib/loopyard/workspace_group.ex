@@ -27,6 +27,11 @@ defmodule Loopyard.WorkspaceGroup do
       # (doesn't matter but keeps related things adjacent).
       {Loopyard.ChatAgent.RestartController, workspace_id: workspace_id},
       {Loopyard.ContainerMonitor, project_dir: project_dir, workspace_id: workspace_id},
+      # Streams each service's `docker logs -f` into a persistent ETS ring buffer
+      # so crash output survives the container dying (the old poll-the-current-
+      # container approach blanked on crash). Hardened against crashing so it
+      # can't cascade through this :one_for_all group.
+      {Loopyard.Workspace.LogBuffer, workspace_id: workspace_id},
       # Checkpointer owns the agent-log snapshot schedule. One per
       # workspace so a broken snapshot on workspace A can't block
       # snapshots on workspace B. Move #8.

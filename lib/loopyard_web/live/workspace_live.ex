@@ -144,6 +144,7 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:volumes, volumes)
      |> assign(:selected_id, nil)
      |> assign(:selected_agent, nil)
+     |> assign(:service_frames, [])
      # Last-viewed item PER CATEGORY for the mobile category tab bar (Agents ·
      # Services · Volumes). The :selected_* assigns are mutually exclusive (they
      # null out when you switch categories), but these REMEMBER the last thing
@@ -296,6 +297,10 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:selected_service, service_name)
      |> assign(:nav_service, service_name)
      |> assign(:service_logs, "Loading logs...")
+     |> assign(
+       :service_frames,
+       Loopyard.Workspace.LogBuffer.grouped(ws_id_for(socket), service_name)
+     )
      |> assign(:all_service_logs, [])}
   end
 
@@ -1391,7 +1396,10 @@ defmodule LoopyardWeb.WorkspaceLive do
       (socket.assigns.workspace_entry && socket.assigns.workspace_entry.id) ||
         socket.assigns.workspace.id
 
-    {:noreply, ServiceLogs.start_service_logs_fetch(socket, ws_id, service_name)}
+    # Read the persistent LogBuffer (survives container crashes) instead of
+    # polling the current container's `docker logs`.
+    {:noreply,
+     assign(socket, :service_frames, Loopyard.Workspace.LogBuffer.grouped(ws_id, service_name))}
   end
 
   def handle_info(:fetch_all_service_logs, socket) do
@@ -1412,7 +1420,11 @@ defmodule LoopyardWeb.WorkspaceLive do
         ServiceLogs.schedule_log_refresh()
 
         {:noreply,
-         ServiceLogs.start_service_logs_fetch(socket, ws_id, socket.assigns.selected_service)}
+         assign(
+           socket,
+           :service_frames,
+           Loopyard.Workspace.LogBuffer.grouped(ws_id, socket.assigns.selected_service)
+         )}
 
       :services ->
         ServiceLogs.schedule_log_refresh()
@@ -1541,6 +1553,11 @@ defmodule LoopyardWeb.WorkspaceLive do
   # right-pane "Changes" hero (#58). No-op without a selected agent / project,
   # or when the source doesn't support git. Dispatches through the source
   # adapter (same path DataLoader uses).
+  defp ws_id_for(socket) do
+    (socket.assigns[:workspace_entry] && socket.assigns.workspace_entry.id) ||
+      socket.assigns.workspace.id
+  end
+
   defp refresh_changes(socket) do
     project = socket.assigns[:project]
     ws = socket.assigns[:workspace_entry]

@@ -29,6 +29,11 @@ defmodule Loopyard.StateKeeper do
     {:workspace_registry, [:named_table, :public, :set]},
     {:event_log, [:named_table, :public, :ordered_set]},
     {:service_status_cache, [:named_table, :public, :set, {:read_concurrency, true}]},
+    # Loopyard.Workspace.LogBuffer — a persistent ring buffer of streamed service
+    # log frames, keyed by {workspace_id, service_name}. Survives the container
+    # dying, so a crashed service's output is still readable. Written by the
+    # per-workspace LogBuffer GenServer; the UI reads direct.
+    {:service_log_frames, [:named_table, :public, :set, {:read_concurrency, true}]},
     {:docker_observer, [:named_table, :public, :set, {:read_concurrency, true}]},
     {:loopyard_evals, [:named_table, :public, :set]},
     # Loopyard.PortRegistry entries keyed by {workspace_id, service, container_port}.

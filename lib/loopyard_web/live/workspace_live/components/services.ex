@@ -100,17 +100,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
           </.control_btn>
         </div>
       </:header>
-      <%!-- Service is up → show logs. Service is stopped/missing →
-           show a clear empty state pointing the user at Start,
-           rather than the confusing "(could not fetch logs)" that
-           used to render a blank log panel. --%>
-      <.log_panel :if={@running?} id="service-logs" content={@logs} />
+      <%!-- Buffered frames (from LogBuffer) whenever there are ANY — including
+           after a crash, so the output that killed it is still on screen. Only
+           when the buffer is truly empty do we fall back to the starting /
+           stopped empty states. --%>
+      <.service_frames_panel :if={@frames != []} frames={@frames} />
+      <.service_waiting_panel :if={@frames == [] && @running?} />
       <.service_starting_panel
-        :if={!@running? && @svc && @svc.status == :starting}
+        :if={@frames == [] && !@running? && @svc && @svc.status == :starting}
         service_name={@service_name}
       />
       <.service_stopped_panel
-        :if={!@running? && (!@svc || @svc.status != :starting)}
+        :if={@frames == [] && !@running? && (!@svc || @svc.status != :starting)}
         service_name={@service_name}
         svc={@svc}
         workspace_state={@workspace_state}
@@ -118,6 +119,60 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
     </.detail_panel>
     """
   end
+
+  # Streamed service logs, grouped by run so crash/restart boundaries are
+  # visible. The last group is the current run; earlier ones ended (crashed or
+  # stopped) — their output stays put because the buffer outlives the container.
+  attr :frames, :list, required: true
+
+  defp service_frames_panel(assigns) do
+    ~H"""
+    <div
+      id="service-logs"
+      class="flex-1 min-h-0 overflow-y-auto bg-zinc-100 dark:bg-zinc-950 px-3 py-2 font-mono text-xs leading-relaxed"
+    >
+      <div :for={{group, gi} <- Enum.with_index(@frames)} class="mb-1.5">
+        <div class="flex items-center gap-2 my-2 text-xs font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+          <div class="h-px flex-1 bg-zinc-200 dark:bg-zinc-800"></div>
+          <span>
+            run {group.run}<span
+              :if={gi < length(@frames) - 1}
+              class="text-zinc-400 dark:text-zinc-600"
+            > · ended</span>
+          </span>
+          <div class="h-px flex-1 bg-zinc-200 dark:bg-zinc-800"></div>
+        </div>
+        <div
+          :for={f <- group.frames}
+          class="flex gap-2 whitespace-pre-wrap break-words text-zinc-700 dark:text-zinc-300"
+        >
+          <span :if={f.ts} class="flex-none text-zinc-400 dark:text-zinc-600 tabular-nums select-none">
+            {short_ts(f.ts)}
+          </span>
+          <span>{f.text}</span>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp service_waiting_panel(assigns) do
+    ~H"""
+    <div class="flex-1 flex items-center justify-center">
+      <p class="text-sm text-zinc-400 dark:text-zinc-500">Waiting for output…</p>
+    </div>
+    """
+  end
+
+  # "2026-07-14T06:38:07.123456789Z" → "06:38:07"
+  defp short_ts(ts) when is_binary(ts) do
+    case String.split(ts, "T") do
+      [_, time] -> time |> String.split(".") |> hd() |> String.slice(0, 8)
+      _ -> ts
+    end
+  end
+
+  defp short_ts(_), do: ""
 
   defp service_starting_panel(assigns) do
     ~H"""
