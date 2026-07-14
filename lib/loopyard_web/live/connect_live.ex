@@ -123,6 +123,34 @@ defmodule LoopyardWeb.ConnectLive do
               >
                 {@path}
               </p>
+
+              <%!-- SSH into a running container over the same LAN binding. The
+                   username IS the container name (SSHServer authenticates by
+                   name, no password) — swap CONTAINER for the one you want, e.g.
+                   the name shown on a service's console page. --%>
+              <div :if={@ssh_cmd} class="mb-6 border-t border-zinc-200 dark:border-zinc-700/60 pt-5">
+                <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-2">
+                  SSH access
+                </p>
+                <div class="flex items-center justify-center gap-2">
+                  <code class="text-sm font-mono text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 rounded-lg px-3 py-2 select-all">
+                    {@ssh_cmd}
+                  </code>
+                  <button
+                    id="copy-ssh"
+                    phx-hook="CopySource"
+                    data-source={@ssh_cmd}
+                    class="text-xs text-violet-600 dark:text-violet-400 hover:text-violet-500 font-medium"
+                  >
+                    Copy
+                  </button>
+                </div>
+                <p class="text-xs text-zinc-400 dark:text-zinc-500 mt-2 leading-relaxed">
+                  Replace <code class="bg-zinc-100 dark:bg-zinc-800 rounded px-1 py-0.5">CONTAINER</code>
+                  with a running container's name (shown on any service's console page).
+                </p>
+              </div>
+
               <button
                 phx-click="unexpose"
                 data-confirm="This will disconnect any remote sessions (including this one if you're connected remotely). Continue?"

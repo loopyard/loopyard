@@ -543,12 +543,34 @@ defmodule LoopyardWeb.ProjectLive do
                   {project_location(@project)}
                 </p>
               </div>
-              <button
-                phx-click="confirm_remove"
-                class="text-xs font-medium text-zinc-400 dark:text-zinc-500 hover:text-red-500 dark:hover:text-red-400 transition-colors flex-none"
-              >
-                Remove project
-              </button>
+              <div class="flex items-center gap-3 flex-none">
+                <.link
+                  navigate={"/projects/#{@project.id}/settings"}
+                  class="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-400 dark:text-zinc-500 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
+                  title="Project settings"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    class="w-3.5 h-3.5"
+                    aria-hidden="true"
+                  >
+                    <path
+                      fill-rule="evenodd"
+                      d="M8.34 1.804A1 1 0 019.32 1h1.36a1 1 0 01.98.804l.295 1.473c.497.144.97.342 1.416.587l1.25-.834a1 1 0 011.294.116l.962.962a1 1 0 01.116 1.294l-.834 1.25c.245.446.443.919.587 1.416l1.473.294a1 1 0 01.804.98v1.361a1 1 0 01-.804.98l-1.473.295a6.95 6.95 0 01-.587 1.416l.834 1.25a1 1 0 01-.116 1.294l-.962.962a1 1 0 01-1.294.116l-1.25-.834c-.446.245-.919.443-1.416.587l-.294 1.473a1 1 0 01-.98.804H9.32a1 1 0 01-.98-.804l-.295-1.473a6.95 6.95 0 01-1.416-.587l-1.25.834a1 1 0 01-1.294-.116l-.962-.962a1 1 0 01-.116-1.294l.834-1.25a6.95 6.95 0 01-.587-1.416l-1.473-.294A1 1 0 011 10.68V9.32a1 1 0 01.804-.98l1.473-.295c.144-.497.342-.97.587-1.416l-.834-1.25a1 1 0 01.116-1.294l.962-.962a1 1 0 011.294-.116l1.25.834c.446-.245.919-.443 1.416-.587l.294-1.473zM10 13a3 3 0 100-6 3 3 0 000 6z"
+                      clip-rule="evenodd"
+                    />
+                  </svg>
+                  Settings
+                </.link>
+                <button
+                  phx-click="confirm_remove"
+                  class="text-xs font-medium text-zinc-400 dark:text-zinc-500 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                >
+                  Remove project
+                </button>
+              </div>
             </div>
 
             <.section_header title="Workspaces">
