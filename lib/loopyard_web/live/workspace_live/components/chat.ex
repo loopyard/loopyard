@@ -49,10 +49,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     # (Patching to the workspace :index doesn't work — its landing logic
     # auto-redirects straight back to an agent, so the button appears dead.)
     ~H"""
-    <div class="md:hidden flex items-center h-12 px-2 flex-none border-b border-zinc-200 dark:border-zinc-700/80">
+    <div class="md:hidden flex items-center justify-between h-14 px-2 flex-none border-b border-zinc-200 dark:border-zinc-700/80 gap-2">
       <.link
         navigate="/"
-        class="-ml-1 inline-flex items-center gap-1 px-2 py-1 rounded-md text-base font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 active:bg-violet-100 dark:active:bg-violet-500/20 transition-colors flex-none min-w-0"
+        class="-ml-1 inline-flex items-center gap-1 px-2 py-1 rounded-md text-base font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 active:bg-violet-100 dark:active:bg-violet-500/20 transition-colors min-w-0"
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -68,6 +68,41 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
         </svg>
         <span class="truncate">Projects</span>
       </.link>
+      <%!-- Mobile view switcher, top-right in the back bar. On desktop these are
+           three side-by-side columns (chat · agent detail · workspace switcher);
+           on a phone this segmented control flips between them. Only shown in an
+           agent view. Chat & Container are `switch_tab` casts; Info & Workspace
+           patch to their own routes. Phone-only (this bar is md:hidden) — on
+           tablet+ the right rail shows the columns. --%>
+      <nav
+        :if={@selected_agent && @live_action in [:index, :chat, :container, :context_panel, :info]}
+        class="inline-flex items-center rounded-xl bg-zinc-100 dark:bg-zinc-800 p-0.5 flex-none"
+        aria-label="View"
+      >
+        <button phx-click="switch_tab" phx-value-tab="chat" class={seg_tab_class(@tab == :chat)}>
+          Chat
+        </button>
+        <.link
+          patch={"#{@base_path}/agents/#{@selected_agent.id}/info"}
+          class={seg_tab_class(@tab == :info)}
+        >
+          Info
+        </.link>
+        <.link
+          patch={"#{@base_path}/agents/#{@selected_agent.id}/context"}
+          class={seg_tab_class(@tab == :context_panel)}
+        >
+          Workspace
+        </.link>
+        <button
+          :if={@has_container}
+          phx-click="switch_tab"
+          phx-value-tab="container"
+          class={seg_tab_class(@tab == :container)}
+        >
+          Container
+        </button>
+      </nav>
     </div>
     """
   end
@@ -161,7 +196,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
 
     ~H"""
     <div class="flex-none border-b border-zinc-200 dark:border-zinc-700/80">
-      <div class="flex items-center justify-between px-3 md:px-5 h-14 gap-3">
+      <div class="flex items-center justify-between px-3 md:px-5 h-12 gap-3">
         <div class="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
           <.dot color={status_dot(@agent.status)} />
           <span class="text-base font-semibold text-zinc-900 dark:text-zinc-100 truncate">
@@ -175,47 +210,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           </span>
         </div>
         <div class="flex items-center gap-2 flex-none">
-          <%!-- Mobile view switcher, top-right. On desktop these are three
-               side-by-side columns (chat · agent detail · workspace switcher);
-               on a phone there's no room for all three, so this segmented bar
-               flips between them. A prominent pill group, not tiny tab text —
-               it's the primary navigation on mobile. Chat & Container are
-               `switch_tab` casts; Info & Workspace patch to their own routes so
-               each window keeps its place. Hidden on lg+ where the columns show
-               together. --%>
-          <nav
-            class="lg:hidden inline-flex items-center rounded-xl bg-zinc-100 dark:bg-zinc-800 p-0.5"
-            aria-label="View"
-          >
-            <button phx-click="switch_tab" phx-value-tab="chat" class={seg_tab_class(@tab == :chat)}>
-              Chat
-            </button>
-            <.link
-              patch={"#{@base_path}/agents/#{@agent.id}/info"}
-              class={seg_tab_class(@tab == :info)}
-            >
-              Info
-            </.link>
-            <.link
-              patch={"#{@base_path}/agents/#{@agent.id}/context"}
-              class={seg_tab_class(@tab == :context_panel)}
-            >
-              Workspace
-            </.link>
-            <button
-              :if={@has_container}
-              phx-click="switch_tab"
-              phx-value-tab="container"
-              class={seg_tab_class(@tab == :container)}
-            >
-              Container
-            </button>
-          </nav>
-          <%!-- Container lifecycle is DESTRUCTIVE (Stop kills the container; Remove
-               deletes the agent) — keep it off the mobile/tablet header, where it
-               sits by the tab bar. On phones: interrupt a running turn with the
-               big red pill above the input; start/remove a sleeping agent from the
-               agents list. On lg+ (where the tab bar is gone) there's room. --%>
+          <%!-- The mobile view switcher (Chat · Info · Workspace) lives up in the
+               back bar (chat_header), top-right. This header keeps just the agent
+               identity + the desktop lifecycle controls.
+
+               Container lifecycle is DESTRUCTIVE (Stop kills the container; Remove
+               deletes the agent) — keep it off mobile/tablet. On phones: interrupt
+               a running turn with the big red pill above the input; start/remove a
+               sleeping agent from the agents list. On lg+ there's room. --%>
           <div class="hidden lg:flex items-center gap-2">
             <%!-- Stop = interrupt the RUNNING turn. Only shown while the agent is
                  actually working — an idle "Stop" is meaningless ("stop what?"). --%>

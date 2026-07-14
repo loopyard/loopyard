@@ -1837,6 +1837,9 @@ defmodule LoopyardWeb.WorkspaceLive do
         live_action={@live_action}
         base_path={@base_path}
         iex_session={@iex_session}
+        selected_agent={@selected_agent}
+        tab={@tab}
+        has_container={@has_container}
       />
       <.flash_banner flash={@flash} kind={:error} class="mx-4 mt-2" />
       <div class="flex-1 flex min-h-0">
