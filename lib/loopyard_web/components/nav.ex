@@ -126,6 +126,33 @@ defmodule LoopyardWeb.Components.Nav do
     """
   end
 
+  @doc """
+  A close (✕) affordance for full-screen overlays / global pop-up pages (the
+  `/sound` page, the `switcher_sheet/1`). Reads as "dismiss this thing," not
+  "navigate back" — the right signal for something that floats over the app.
+  Pass `phx-click` (client dismiss) or `onclick="history.back()"` (page-level).
+
+      <.close_button onclick="history.back()" />
+      <.close_button phx-click={JS.hide(to: "#sheet")} />
+  """
+  attr :label, :string, default: "Close"
+  attr :rest, :global, include: ~w(onclick)
+
+  def close_button(assigns) do
+    ~H"""
+    <button
+      type="button"
+      aria-label={@label}
+      class="flex-none inline-flex items-center justify-center w-11 h-11 -mr-1.5 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors"
+      {@rest}
+    >
+      <svg viewBox="0 0 20 20" fill="currentColor" class="w-6 h-6">
+        <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+      </svg>
+    </button>
+    """
+  end
+
   # ── segmented ────────────────────────────────────────────────────────────
 
   @doc """
@@ -349,16 +376,7 @@ defmodule LoopyardWeb.Components.Nav do
       <div class="absolute inset-0 flex flex-col bg-white dark:bg-zinc-900 safe-area-x">
         <div class="flex-none flex items-center justify-between h-14 px-4 border-b border-zinc-200 dark:border-zinc-700/80">
           <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-100 truncate">{@title}</h2>
-          <button
-            type="button"
-            phx-click={JS.hide(to: "##{@id}")}
-            aria-label="Close"
-            class="flex-none inline-flex items-center justify-center w-11 h-11 -mr-1.5 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors"
-          >
-            <svg viewBox="0 0 20 20" fill="currentColor" class="w-6 h-6">
-              <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
-            </svg>
-          </button>
+          <.close_button phx-click={JS.hide(to: "##{@id}")} />
         </div>
         <div class="flex-1 overflow-y-auto overscroll-contain p-2 space-y-0.5">
           {render_slot(@inner_block)}
