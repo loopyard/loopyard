@@ -68,6 +68,35 @@ defmodule LoopyardWeb.OperatorLive do
     {:noreply, socket}
   end
 
+  # Approve/Deny on the approval "chat mini app" — the interactive half of the
+  # create-project flow. Delivers the decision to the blocked ControlPlane tool
+  # (which then fires Onboarding + spawns the workspace agent). Operator cards are
+  # only create_project (no delete/navigation), so this stays simple.
+  def handle_event("decide_approval", %{"approval_id" => id, "decision" => decision}, socket) do
+    decision = if decision == "approve", do: :approve, else: :deny
+    agent_id = socket.assigns.agent_id
+    card = Enum.find(socket.assigns.messages, &(&1[:approval_id] == id))
+
+    # Optimistic flip so the buttons don't sit unclicked while the project builds.
+    if decision == :approve and card do
+      ChatAgent.update_message(agent_id, card.id, &Map.put(&1, :status, :creating))
+    end
+
+    case Loopyard.Harness.Approvals.decide(id, decision) do
+      :ok ->
+        :ok
+
+      {:error, :not_found} ->
+        if card do
+          ChatAgent.update_message(agent_id, card.id, fn m ->
+            Map.merge(m, %{status: :failed, error: "this proposal expired — ask again"})
+          end)
+        end
+    end
+
+    {:noreply, load(socket)}
+  end
+
   def handle_event(_evt, _params, socket), do: {:noreply, socket}
 
   @impl true
