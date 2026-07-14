@@ -12,9 +12,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
 
   import LoopyardWeb.Live.WorkspaceLive.Components.Formatters, only: [time_ago: 1]
 
-  import LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel,
-    only: [context_sections: 1]
-
   alias LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus
 
   # The live-status presentation (thinking feed, live tail, Reasoning Bar) lives
@@ -210,23 +207,20 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   def agent_view(assigns) do
     ~H"""
     <div class="flex-1 flex min-h-0">
-      <%!-- Center pane. On desktop (lg+) it's always the chat, with the workspace
-           switcher + agent detail living in the right rail. On mobile there's no
-           rail, so the switcher (Workspace tab) and detail (Info tab) take over
-           this pane full-screen — hiding the chat until you tab back. --%>
-      <div class={[
-        "flex-1 flex flex-col min-w-0 min-h-0",
-        if(@tab in [:context_panel, :info], do: "hidden lg:flex", else: "flex")
-      ]}>
+      <%!-- Center pane. The mobile category switcher lives in the top back bar
+           now; the agent's Info folds into the header — so this pane is just the
+           chat (or the container view). Agents / Services / Volumes are reached
+           by the tab bar, which routes services/volumes to their own screens. --%>
+      <div class="flex-1 flex flex-col min-w-0 min-h-0">
         <.agent_header
           agent={@selected_agent}
-          tab={@tab}
           has_container={@has_container}
           base_path={@base_path}
+          changes={@changes}
           detail_level={@detail_level}
         />
         <.chat_panel
-          :if={@tab in [:chat, :context_panel, :info]}
+          :if={@tab != :container}
           messages={@messages}
           streaming_text={@streaming_text}
           streaming_thinking={@streaming_thinking}
@@ -246,51 +240,29 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           has_container={@has_container}
         />
       </div>
-      <%!-- Mobile "Workspace" tab: JUST the switcher (agents / services /
-           volumes). The desktop rail shows this in its tinted top zone; on a
-           phone it's a full-screen, touch-sized nav. Tapping an agent switches
-           to it and drops you back on Chat; tapping a service opens it. --%>
-      <div
-        :if={@tab == :context_panel}
-        class="flex-1 lg:hidden overflow-y-auto bg-zinc-100 dark:bg-zinc-800/40"
-      >
-        <LoopyardWeb.Live.WorkspaceLive.Components.Sidebar.workspace_switcher
-          agents={@agents}
-          service_statuses={@service_statuses}
-          volumes={@volumes}
-          selected_id={@selected_id}
-          selected_service={@selected_service}
-          editing_agent_id={assigns[:editing_agent_id]}
-          base_path={@base_path}
-          host={@host}
-          workspace_id={@workspace.id}
-          is_local_source?={@is_local_source?}
-          sync_status={@sync_status}
-        />
-      </div>
-      <%!-- Mobile "Info" tab: the selected agent's detail (status / changes /
-           usage / docker). Same `context_sections` the desktop rail shows in
-           its lower zone — the two never drift. --%>
-      <div
-        :if={@tab == :info}
-        class="flex-1 lg:hidden overflow-y-auto bg-zinc-50 dark:bg-zinc-900/50"
-      >
-        <.context_sections
-          :if={@selected_agent}
-          agent={@selected_agent}
-          changes={@changes}
-          editing_name={@editing_name}
-          base_path={@base_path}
-        />
-      </div>
     </div>
     """
   end
 
   def agent_header(assigns) do
-    # Ports are now shown per-process in the sidebar, not per-agent
-    port = nil
-    assigns = assign(assigns, :container_port, port)
+    # The agent's "Info" (status · changes · cost) folds into this header on
+    # mobile — there's no right rail there, and a whole tab for it was overkill.
+    # The desktop rail still shows the full context_sections.
+    changes = assigns[:changes] || %{staged: [], unstaged: []}
+
+    change_count =
+      ((changes[:staged] || []) ++ (changes[:unstaged] || []))
+      |> Enum.uniq_by(& &1.path)
+      |> length()
+
+    cost = (assigns.agent[:total_cost_usd] || 0.0) * 1.0
+
+    assigns =
+      assigns
+      |> assign(:change_count, change_count)
+      |> assign(:cost, cost)
+      |> assign(:cost_str, :erlang.float_to_binary(cost, decimals: 2))
+      |> assign(:code_volume, "loopyard-#{assigns.agent[:workspace_id]}-code")
 
     ~H"""
     <div class="flex-none border-b border-zinc-200 dark:border-zinc-700/80">
@@ -308,9 +280,26 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           </span>
         </div>
         <div class="flex items-center gap-2 flex-none">
-          <%!-- The mobile view switcher (Chat · Info · Workspace) lives up in the
-               back bar (chat_header), top-right. This header keeps just the agent
-               identity + the desktop lifecycle controls.
+          <%!-- Folded "Info" — mobile only (the desktop rail shows the full
+               detail). Status word + a changes badge that links to the diffs +
+               cost (hidden when $0, e.g. under the ACP harness). --%>
+          <div class="flex lg:hidden items-center gap-2.5 flex-none text-sm">
+            <span class={["font-medium", status_tone(@agent)]}>{status_word(@agent)}</span>
+            <.link
+              :if={@change_count > 0}
+              patch={"#{@base_path}/volumes/#{@code_volume}/git"}
+              class="inline-flex items-center gap-1 text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400"
+            >
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-500 flex-none"></span>
+              {@change_count}
+            </.link>
+            <span :if={@cost > 0.0} class="text-zinc-500 dark:text-zinc-400 tabular-nums">
+              ${@cost_str}
+            </span>
+          </div>
+          <%!-- The workspace category switcher (Agents · Services · Volumes) lives
+               up in the back bar (chat_header). This header keeps agent identity +
+               the folded Info, plus the desktop lifecycle controls.
 
                Container lifecycle is DESTRUCTIVE (Stop kills the container; Remove
                deletes the agent) — keep it off mobile/tablet. On phones: interrupt
@@ -352,6 +341,24 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       </div>
     </div>
     """
+  end
+
+  # Plain-language status word + tone for the folded mobile Info summary.
+  defp status_word(agent) do
+    case agent_display_status(agent) do
+      :thinking -> "Working"
+      :idle -> "Ready"
+      s when s in [:sleeping, :crashed] -> "Asleep"
+      other -> other |> to_string() |> String.capitalize()
+    end
+  end
+
+  defp status_tone(agent) do
+    case agent_display_status(agent) do
+      :thinking -> "text-violet-600 dark:text-violet-400"
+      :idle -> "text-emerald-600 dark:text-emerald-400"
+      _ -> "text-zinc-500 dark:text-zinc-400"
+    end
   end
 
   # One segment of the mobile view switcher — a real segmented control: the
