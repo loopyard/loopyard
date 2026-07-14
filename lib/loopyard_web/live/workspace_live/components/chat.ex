@@ -131,14 +131,31 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>{@current.badge}
         </span>
         <span class="flex-1"></span>
+        <%!-- Obvious switch affordance ONLY when there's more than one to pick:
+             a violet "Switch ⌄" pill. With a single item it's just a quiet
+             chevron (nothing to switch to). --%>
+        <span
+          :if={length(@items) > 1}
+          class="inline-flex items-center gap-1 flex-none rounded-md px-2 py-1 text-sm font-medium text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-500/10"
+        >
+          Switch
+          <svg viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
+            <path
+              fill-rule="evenodd"
+              d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"
+              clip-rule="evenodd"
+            />
+          </svg>
+        </span>
         <svg
+          :if={length(@items) <= 1}
           viewBox="0 0 20 20"
           fill="currentColor"
-          class="w-4 h-4 text-zinc-400 dark:text-zinc-500 flex-none"
+          class="w-4 h-4 text-zinc-300 dark:text-zinc-600 flex-none"
         >
           <path
             fill-rule="evenodd"
-            d="M10 3a.75.75 0 0 1 .55.24l3.25 3.5a.75.75 0 1 1-1.1 1.02L10 4.852 7.3 7.76a.75.75 0 0 1-1.1-1.02l3.25-3.5A.75.75 0 0 1 10 3Zm-3.8 9.24a.75.75 0 0 1 1.06-.04l2.74 2.908 2.7-2.908a.75.75 0 1 1 1.1 1.02l-3.25 3.5a.75.75 0 0 1-1.1 0l-3.25-3.5a.75.75 0 0 1 .04-1.06Z"
+            d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"
             clip-rule="evenodd"
           />
         </svg>
@@ -219,10 +236,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   defp category_href(:agents, %{nav_agent_id: id, base_path: bp}) when is_binary(id),
     do: "#{bp}/agents/#{id}"
 
+  defp category_href(:agents, %{agents: [a | _], base_path: bp}), do: "#{bp}/agents/#{a.id}"
+
   defp category_href(:agents, %{base_path: bp}), do: bp
 
   defp category_href(:services, %{nav_service: s, base_path: bp}) when is_binary(s),
     do: "#{bp}/services/#{s}"
+
+  defp category_href(:services, %{service_statuses: [s | _], base_path: bp}),
+    do: "#{bp}/services/#{s.name}"
 
   defp category_href(:services, %{base_path: bp}), do: "#{bp}/services"
 
