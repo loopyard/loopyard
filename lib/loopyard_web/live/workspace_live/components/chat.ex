@@ -2,6 +2,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   @moduledoc "Chat panel components: agent_view, agent_header, chat_panel, thinking_indicator, container_panel."
   use Phoenix.Component
 
+  alias Phoenix.LiveView.JS
+
   import LoopyardWeb.Components.Common, only: [dot: 1, control_btn: 1]
   import LoopyardWeb.Components.Sidebar, only: [status_dot: 1, agent_display_status: 1]
 
@@ -36,31 +38,33 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   # path is `nil`, which the Breadcrumbs component renders as the
   # current page (no link, aria-current="page").
   def chat_header(assigns) do
-    # Thin mobile back-bar (phone-only; desktop navigates from the left rail).
-    # Left: "← Projects" out to the birdseye home. Right: the WORKSPACE CATEGORY
-    # switcher — Agents · Services · Volumes — the mobile embodiment of the
-    # hierarchy Root → Project → Workspace → { Agents | Services | Volumes }.
+    # The mobile workspace header (phone-only; desktop navigates from the rails).
+    # Two rows that mirror the hierarchy Root → Project → Workspace →
+    # { Agents · Services · Repo }:
     #
-    # It's content-first: each tab jumps to the LAST item you had open in that
-    # category (nav_agent_id / nav_service / nav_volume), so flipping between
-    # "my agent" and "the web service" is one tap and never a dead end. First
-    # visit to a category with no remembered item falls back to its list. The
-    # active pill is derived from the current route's category.
+    #   Row 1  ← Projects .......... [ Agents · Services · Repo ]   (category)
+    #   Row 2  ● my-agent · Ready · 2 ⌄   — the current item, tap to switch
+    #
+    # Row 1 switches CATEGORY (content-first: jump to your last item there).
+    # Row 2 names the current ITEM and its details; tapping it zooms OUT to a
+    # switcher of the other items in that category — pick one to zoom back in.
+    # Set :active first, on its own, so the item/current helpers below (which
+    # match on :active) see it — inside a single pipe, `assigns` in each arg
+    # still refers to the pre-pipe value.
+    assigns = assign(assigns, :active, active_category(assigns.live_action))
+
     assigns =
       assigns
-      |> assign(:active, active_category(assigns.live_action))
       |> assign(:agents_href, category_href(:agents, assigns))
       |> assign(:services_href, category_href(:services, assigns))
       |> assign(:volumes_href, category_href(:volumes, assigns))
-
-    # The item switcher for the active category (the second row). >= 2 so a
-    # single-item category doesn't waste a row on a switcher with nothing to
-    # switch to.
-    assigns = assign(assigns, :items, category_items(assigns))
+      |> assign(:items, category_items(assigns))
+      |> assign(:current, current_item(assigns))
 
     ~H"""
     <div class="md:hidden flex-none border-b border-zinc-200 dark:border-zinc-700/80">
-      <div class="flex items-center justify-between h-14 px-2 gap-2">
+      <%!-- Row 1: back · category tabs · (sound lands here next). --%>
+      <div class="flex items-center gap-2 h-14 px-2">
         <.link
           navigate="/"
           class="-ml-1 inline-flex items-center gap-1 px-2 py-1 rounded-md text-base font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 active:bg-violet-100 dark:active:bg-violet-500/20 transition-colors min-w-0"
@@ -79,6 +83,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           </svg>
           <span class="truncate">Projects</span>
         </.link>
+        <div class="flex-1"></div>
         <nav
           :if={@live_action != :new && (@agents != [] || @service_statuses != [] || @volumes != [])}
           class="inline-flex items-center rounded-xl bg-zinc-100 dark:bg-zinc-800 p-0.5 flex-none"
@@ -97,20 +102,92 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             patch={@volumes_href}
             class={seg_tab_class(@active == :volumes)}
           >
-            Volumes
+            Repo
           </.link>
         </nav>
       </div>
-      <%!-- Second row: which item within the active category. Only when there's
-           more than one to choose from — this is how you switch between two
-           services, or between agents, without leaving the category. --%>
-      <div :if={length(@items) >= 2} class="flex gap-1.5 px-2 pb-2 overflow-x-auto">
-        <.link :for={item <- @items} patch={item.href} class={chip_class(item.active?)}>
-          {item.label}
+
+      <%!-- Row 2: the current item + tap-to-switch. Shows the selected agent /
+           service / volume and its details; tapping zooms the switcher open. --%>
+      <button
+        :if={@current}
+        type="button"
+        phx-click={toggle_switcher()}
+        aria-controls="item-switcher"
+        class="w-full flex items-center gap-2 px-3 h-11 border-t border-zinc-200/70 dark:border-zinc-700/50 text-left active:bg-zinc-100 dark:active:bg-zinc-800/60 transition-colors"
+      >
+        <span class={["w-2 h-2 rounded-full flex-none", @current.dot]}></span>
+        <span class="font-semibold text-zinc-900 dark:text-zinc-100 truncate">
+          {@current.label}
+        </span>
+        <span :if={@current.detail} class={["text-sm truncate", @current.tone]}>
+          {@current.detail}
+        </span>
+        <span
+          :if={@current.badge}
+          class="inline-flex items-center gap-1 text-sm text-zinc-400 dark:text-zinc-500 flex-none"
+        >
+          <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>{@current.badge}
+        </span>
+        <span class="flex-1"></span>
+        <svg
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          class="w-4 h-4 text-zinc-400 dark:text-zinc-500 flex-none"
+        >
+          <path
+            fill-rule="evenodd"
+            d="M10 3a.75.75 0 0 1 .55.24l3.25 3.5a.75.75 0 1 1-1.1 1.02L10 4.852 7.3 7.76a.75.75 0 0 1-1.1-1.02l3.25-3.5A.75.75 0 0 1 10 3Zm-3.8 9.24a.75.75 0 0 1 1.06-.04l2.74 2.908 2.7-2.908a.75.75 0 1 1 1.1 1.02l-3.25 3.5a.75.75 0 0 1-1.1 0l-3.25-3.5a.75.75 0 0 1 .04-1.06Z"
+            clip-rule="evenodd"
+          />
+        </svg>
+      </button>
+
+      <%!-- Switcher: zoom out to the other items in this category, pick to zoom
+           back in. Hidden until Row 2 is tapped; toggled client-side (JS) with a
+           scale/fade so it feels like a page transition, no server round-trip. --%>
+      <div
+        id="item-switcher"
+        class="hidden border-t border-zinc-200 dark:border-zinc-700/60 bg-zinc-50 dark:bg-zinc-900/60 px-2 py-2 space-y-0.5 origin-top"
+        phx-click-away={JS.hide(to: "#item-switcher")}
+      >
+        <.link
+          :for={item <- @items}
+          patch={item.href}
+          phx-click={JS.hide(to: "#item-switcher")}
+          class={switcher_row_class(item.active?)}
+        >
+          <span class={["w-2 h-2 rounded-full flex-none", item.dot]}></span>
+          <span class="truncate">{item.label}</span>
+          <span :if={item.detail} class="text-sm text-zinc-400 dark:text-zinc-500 truncate">
+            {item.detail}
+          </span>
+        </.link>
+        <.link
+          :if={@active == :agents}
+          patch={"#{@base_path}/new"}
+          phx-click={JS.hide(to: "#item-switcher")}
+          class="flex items-center gap-2 px-3 min-h-[2.75rem] rounded-lg text-sm font-medium text-violet-600 dark:text-violet-400 active:bg-violet-50 dark:active:bg-violet-500/10"
+        >
+          + New agent
         </.link>
       </div>
     </div>
     """
+  end
+
+  # Client-side toggle for the item switcher, with a scale/fade so opening reads
+  # as "zoom out to the list" and closing as "zoom back into the selection".
+  defp toggle_switcher do
+    JS.toggle(
+      to: "#item-switcher",
+      in:
+        {"transition ease-out duration-200", "opacity-0 -translate-y-1 scale-[0.98]",
+         "opacity-100 translate-y-0 scale-100"},
+      out:
+        {"transition ease-in duration-150", "opacity-100 translate-y-0 scale-100",
+         "opacity-0 -translate-y-1 scale-[0.98]"}
+    )
   end
 
   # Which workspace category the current route belongs to — drives the active
@@ -158,11 +235,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
 
   defp vol_name(vol), do: Map.get(vol, :name) || Map.get(vol, "name")
 
-  # Items of the active category for the second-row switcher, each with a label,
-  # a route, and whether it's the one currently open.
+  # Items of the active category for the switcher, each with a label, route,
+  # status dot, one-word detail, and whether it's the one currently open.
   defp category_items(%{active: :agents, agents: agents, base_path: bp, nav_agent_id: cur}) do
     Enum.map(agents, fn a ->
-      %{label: Map.get(a, :name) || a.id, href: "#{bp}/agents/#{a.id}", active?: a.id == cur}
+      %{
+        label: Map.get(a, :name) || a.id,
+        href: "#{bp}/agents/#{a.id}",
+        active?: a.id == cur,
+        dot: status_dot(a.status),
+        detail: status_word(a)
+      }
     end)
   end
 
@@ -173,31 +256,105 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
          nav_service: cur
        }) do
     Enum.map(svcs, fn s ->
-      %{label: s.name, href: "#{bp}/services/#{s.name}", active?: s.name == cur}
+      %{
+        label: s.name,
+        href: "#{bp}/services/#{s.name}",
+        active?: s.name == cur,
+        dot: svc_dot(s),
+        detail: svc_word(s)
+      }
     end)
   end
 
   defp category_items(%{active: :volumes, volumes: vols, base_path: bp, nav_volume: cur}) do
     Enum.map(vols, fn v ->
       n = vol_name(v)
-      %{label: vol_label(n), href: "#{bp}/volumes/#{n}", active?: n == cur}
+
+      %{
+        label: vol_label(n),
+        href: "#{bp}/volumes/#{n}",
+        active?: n == cur,
+        dot: "bg-blue-400",
+        detail: nil
+      }
     end)
   end
 
   defp category_items(_), do: []
 
+  # The single currently-selected item of the active category, for Row 2. nil →
+  # nothing is selected in this category yet (e.g. on a list), so Row 2 hides.
+  defp current_item(%{active: :agents, agents: agents, nav_agent_id: id} = a) do
+    case Enum.find(agents, &(&1.id == id)) do
+      nil ->
+        nil
+
+      ag ->
+        changes = a[:changes] || %{staged: [], unstaged: []}
+
+        count =
+          ((changes[:staged] || []) ++ (changes[:unstaged] || []))
+          |> Enum.uniq_by(& &1.path)
+          |> length()
+
+        %{
+          label: Map.get(ag, :name) || ag.id,
+          dot: status_dot(ag.status),
+          detail: status_word(ag),
+          tone: status_tone(ag),
+          badge: if(count > 0, do: count, else: nil)
+        }
+    end
+  end
+
+  defp current_item(%{active: :services, service_statuses: svcs, nav_service: name}) do
+    case Enum.find(svcs, &(&1.name == name)) do
+      nil ->
+        nil
+
+      s ->
+        %{
+          label: s.name,
+          dot: svc_dot(s),
+          detail: svc_word(s),
+          tone: "text-zinc-400 dark:text-zinc-500",
+          badge: nil
+        }
+    end
+  end
+
+  defp current_item(%{active: :volumes, volumes: vols, nav_volume: name}) do
+    case Enum.find(vols, &(vol_name(&1) == name)) do
+      nil ->
+        nil
+
+      v ->
+        %{label: vol_label(vol_name(v)), dot: "bg-blue-400", detail: nil, tone: nil, badge: nil}
+    end
+  end
+
+  defp current_item(_), do: nil
+
   # A code-volume name like "loopyard-abcd-code" → its meaningful tail ("code").
   defp vol_label(name) when is_binary(name), do: name |> String.split("-") |> List.last()
   defp vol_label(name), do: to_string(name)
 
-  # One item chip in the second-row switcher — active is a filled violet pill.
-  defp chip_class(active?) do
+  defp svc_dot(%{status: :running}), do: "bg-emerald-500"
+  defp svc_dot(%{status: s}) when s in [:restarting, :starting], do: "bg-amber-500 animate-pulse"
+  defp svc_dot(_), do: "bg-zinc-400"
+
+  defp svc_word(%{status: s}) when is_atom(s) and not is_nil(s),
+    do: s |> to_string() |> String.capitalize()
+
+  defp svc_word(_), do: nil
+
+  # One row in the switcher list — active is a violet highlight.
+  defp switcher_row_class(active?) do
     [
-      "inline-flex items-center px-3 py-1 rounded-full text-sm font-medium whitespace-nowrap flex-none transition-colors",
+      "flex items-center gap-2 px-3 min-h-[2.75rem] rounded-lg text-sm transition-colors",
       if(active?,
-        do: "bg-violet-600 text-white",
-        else:
-          "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+        do: "bg-violet-100 dark:bg-violet-500/15 text-zinc-900 dark:text-zinc-100 font-medium",
+        else: "text-zinc-700 dark:text-zinc-300 active:bg-zinc-100 dark:active:bg-zinc-800"
       )
     ]
   end
@@ -245,67 +402,29 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   end
 
   def agent_header(assigns) do
-    # The agent's "Info" (status · changes · cost) folds into this header on
-    # mobile — there's no right rail there, and a whole tab for it was overkill.
-    # The desktop rail still shows the full context_sections.
-    changes = assigns[:changes] || %{staged: [], unstaged: []}
-
-    change_count =
-      ((changes[:staged] || []) ++ (changes[:unstaged] || []))
-      |> Enum.uniq_by(& &1.path)
-      |> length()
-
-    cost = (assigns.agent[:total_cost_usd] || 0.0) * 1.0
-
-    assigns =
-      assigns
-      |> assign(:change_count, change_count)
-      |> assign(:cost, cost)
-      |> assign(:cost_str, :erlang.float_to_binary(cost, decimals: 2))
-      |> assign(:code_volume, "loopyard-#{assigns.agent[:workspace_id]}-code")
-
+    # Desktop-only. On mobile the agent's identity + Info live in Row 2 of the
+    # chat_header (the current-item bar) and the full detail is in the right rail
+    # on lg+ — so this header is just the name + lifecycle controls at lg+.
     ~H"""
-    <div class="flex-none border-b border-zinc-200 dark:border-zinc-700/80">
-      <div class="flex items-center justify-between px-3 md:px-5 h-12 gap-3">
-        <div class="flex items-center gap-2 md:gap-3 min-w-0 flex-1">
+    <div class="hidden lg:block flex-none border-b border-zinc-200 dark:border-zinc-700/80">
+      <div class="flex items-center justify-between px-5 h-12 gap-3">
+        <div class="flex items-center gap-3 min-w-0 flex-1">
           <.dot color={status_dot(@agent.status)} />
           <span class="text-base font-semibold text-zinc-900 dark:text-zinc-100 truncate">
             {@agent.name}
           </span>
           <span
             :if={@agent[:last_activity_at]}
-            class="text-sm text-zinc-400 dark:text-zinc-500 hidden sm:block flex-none"
+            class="text-sm text-zinc-400 dark:text-zinc-500 flex-none"
           >
             {time_ago(@agent[:last_activity_at])}
           </span>
         </div>
         <div class="flex items-center gap-2 flex-none">
-          <%!-- Folded "Info" — mobile only (the desktop rail shows the full
-               detail). Status word + a changes badge that links to the diffs +
-               cost (hidden when $0, e.g. under the ACP harness). --%>
-          <div class="flex lg:hidden items-center gap-2.5 flex-none text-sm">
-            <span class={["font-medium", status_tone(@agent)]}>{status_word(@agent)}</span>
-            <.link
-              :if={@change_count > 0}
-              patch={"#{@base_path}/volumes/#{@code_volume}/git"}
-              class="inline-flex items-center gap-1 text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400"
-            >
-              <span class="w-1.5 h-1.5 rounded-full bg-amber-500 flex-none"></span>
-              {@change_count}
-            </.link>
-            <span :if={@cost > 0.0} class="text-zinc-500 dark:text-zinc-400 tabular-nums">
-              ${@cost_str}
-            </span>
-          </div>
-          <%!-- The workspace category switcher (Agents · Services · Volumes) lives
-               up in the back bar (chat_header). This header keeps agent identity +
-               the folded Info, plus the desktop lifecycle controls.
-
-               Container lifecycle is DESTRUCTIVE (Stop kills the container; Remove
-               deletes the agent) — keep it off mobile/tablet. On phones: interrupt
-               a running turn with the big red pill above the input; start/remove a
-               sleeping agent from the agents list. On lg+ there's room. --%>
-          <div class="hidden lg:flex items-center gap-2">
+          <%!-- Container lifecycle is DESTRUCTIVE (Stop kills the container; Remove
+               deletes the agent). On phones you interrupt with the red pill above
+               the input and start/remove from the agents switcher. --%>
+          <div class="flex items-center gap-2">
             <%!-- Stop = interrupt the RUNNING turn. Only shown while the agent is
                  actually working — an idle "Stop" is meaningless ("stop what?"). --%>
             <.control_btn

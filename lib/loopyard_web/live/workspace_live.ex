@@ -1838,6 +1838,7 @@ defmodule LoopyardWeb.WorkspaceLive do
         agents={@agents}
         service_statuses={@service_statuses}
         volumes={@volumes}
+        changes={@changes}
         tab={@tab}
         has_container={@has_container}
       />
