@@ -44,10 +44,18 @@ defmodule LoopyardWeb.ActivitySound do
 
   @impl true
   def handle_info(%Loopyard.Events.Activity.Event{kind: :status} = e, state) do
-    kind = chime_kind(e.summary)
-    Aural.Channel.fire(@global_channel, kind)
-    if e.project_id, do: Aural.Channel.fire(project_channel(e.project_id), kind)
-    {:noreply, state}
+    # Only chime on the moments that matter TO A HUMAN: a turn finishing, the
+    # agent needing an answer, or a failure. In-progress transitions (thinking,
+    # compacting) are silent — chiming when a turn STARTS was the annoying beep.
+    case chime_kind(e.summary) do
+      nil ->
+        {:noreply, state}
+
+      kind ->
+        Aural.Channel.fire(@global_channel, kind)
+        if e.project_id, do: Aural.Channel.fire(project_channel(e.project_id), kind)
+        {:noreply, state}
+    end
   rescue
     # Sound is decorative — never let a chime failure disturb anything.
     _ -> {:noreply, state}
@@ -63,8 +71,14 @@ defmodule LoopyardWeb.ActivitySound do
 
   defp sanitize(id), do: id |> to_string() |> String.replace(~r/[^A-Za-z0-9_-]/, "")
 
-  # Map status → chime kind (Aural: "done" | "attention" | "alert").
+  # Map status → chime kind (Aural: "done" | "attention" | "alert"), or nil for
+  # "stay silent". The agent's turn-start/compacting churn maps to nil so the
+  # only sounds a human hears are: finished, needs-you, or something-broke.
   defp chime_kind(s) when s in ["rate_limited", "auth_expired", "crashed"], do: "alert"
+  # The agent posted a question / is waiting on the user — a distinct sound from
+  # "done" so "it needs me" and "it's finished" are audibly different.
+  defp chime_kind("awaiting"), do: "attention"
   defp chime_kind("idle"), do: "done"
-  defp chime_kind(_), do: "attention"
+  # thinking / compacting / anything mid-flight → no chime.
+  defp chime_kind(_), do: nil
 end
