@@ -620,23 +620,28 @@ Hooks.CopySource = {
 // which case it leaves you be until you scroll back down.
 Hooks.LogTail = {
   mounted() {
-    this._atBottom = true
+    this._pinned = true
     this._onScroll = () => {
       const gap = this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight
-      this._atBottom = gap < 48
+      this._pinned = gap < 48
     }
     this.el.addEventListener("scroll", this._onScroll, {passive: true})
-    this.toBottom()
-    requestAnimationFrame(() => this.toBottom())
+    // Pin to the newest line. Re-nudge across a few frames because a big log's
+    // real scrollHeight isn't known until it lays out — a single scroll can land
+    // short. The nudges no-op the instant you scroll up (unpin).
+    this.tail()
+    requestAnimationFrame(() => this.tail())
+    setTimeout(() => this.tail(), 80)
+    setTimeout(() => this.tail(), 300)
   },
   updated() {
-    if (this._atBottom) this.toBottom()
+    this.tail()
   },
   destroyed() {
     this.el.removeEventListener("scroll", this._onScroll)
   },
-  toBottom() {
-    this.el.scrollTop = this.el.scrollHeight
+  tail() {
+    if (this._pinned) this.el.scrollTop = this.el.scrollHeight
   }
 }
 
