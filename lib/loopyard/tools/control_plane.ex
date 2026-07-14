@@ -59,6 +59,20 @@ defmodule Loopyard.Tools.ControlPlane do
                 _ -> nil
               end
 
+            # Post a live "quote" of the workspace agent into the operator's own
+            # chat — the chat-in-chat mini-app, so the user watches the setup from
+            # here (Cards.agent_embed). Reference only; interaction opens it.
+            if agent_id do
+              Loopyard.ChatAgent.append_message_ets(operator_id, %{
+                role: :embed,
+                agent_id: agent_id,
+                workspace_id: ws.id,
+                project_id: project.id,
+                label: project.name,
+                timestamp: DateTime.utc_now()
+              })
+            end
+
             Approvals.resolve(operator_id, msg_id, %{
               status: :approved,
               verb: :create_project,

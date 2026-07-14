@@ -199,6 +199,28 @@ operator agent is the **conversational path** and is what finally implements the
 GitHub "Soon" stub. The `+ New project` affordance can offer both: "quick form"
 or "ask the operator." Not redundant — a form vs a dialogue.
 
+### The control-plane MCP — internal now, external-ready
+`Tools.ControlPlane` is already an **MCP server** (`__tool_server__/0` →
+`"loopyard-control-plane"`), consumed in-process by the operator agent's Claude
+session via `ToolConfig.build_mcp_servers`. So "an MCP into Loopyard that this
+agent uses" already exists — and any Loopyard agent can be given it by passing
+`tools: [Loopyard.Tools.ControlPlane]`.
+
+**External-harness seam (NOT exposed — noted for later).** To let an *external*
+harness (another Claude Code, Codex, a remote agent) drive Loopyard's control
+plane, mount the same toolkit over HTTP the way Tidewave is mounted in
+`LoopyardWeb.Endpoint` (a `/mcp/control-plane` plug, dev-gated / auth-gated).
+Two things to resolve before exposing it:
+  1. **Identity/approval routing.** The gated tools key `Approvals` by
+     `agent_id`; an external caller has no Loopyard agent. Give external sessions
+     a synthetic operator identity (per workstation) so approval cards still land
+     in *a* human's stream.
+  2. **Auth.** External exposure is a real network surface — must be
+     authenticated (unlike the internal in-process wiring). Ties into the
+     deferred front-door auth plug.
+Deliberately not built now; the toolkit is structured so this is an additive
+HTTP mount, not a rewrite.
+
 ### Phase 4 (future) — the operator agent keeps tabs on running projects
 The same operator agent is the natural home for read-only monitoring: which
 projects/workspaces are up, agent status, failing services, drift. Read-only

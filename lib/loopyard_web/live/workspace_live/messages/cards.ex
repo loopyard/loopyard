@@ -360,4 +360,69 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
   end
 
   defp answer_for(_msg, _q), do: "✓ answered"
+
+  @doc """
+  An embedded LIVE "quote" of ANOTHER agent's chat — the chat-in-chat mini-app.
+  Reads the referenced agent's current status (ETS-backed `get_state`) and renders
+  a compact card: name + status dot + what it's doing + open link. It's a curated
+  slice, one level deep — never a recursive transcript — so it can't spiral.
+  Reusable in any chat stream (the operator embeds the workspace agents it spawns).
+  Liveness comes from the host LiveView subscribing to the referenced agent's
+  status topic and re-rendering (see WorkspaceLive).
+  """
+  def agent_embed(assigns) do
+    assigns = assign(assigns, :st, embed_state(assigns.msg[:agent_id]))
+
+    ~H"""
+    <div class="pl-7 py-2">
+      <.link
+        navigate={embed_link(@msg)}
+        class="group block rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50/60 dark:bg-zinc-800/30 p-3 hover:border-violet-300 dark:hover:border-violet-500/40 transition-colors"
+      >
+        <div class="flex items-center gap-2">
+          <span class={["w-2 h-2 rounded-full flex-none", embed_dot(@st)]}></span>
+          <span class="text-sm font-semibold text-zinc-800 dark:text-zinc-100 truncate">
+            {@msg[:label] || "workspace"}
+          </span>
+          <span class="text-xs text-zinc-400 dark:text-zinc-500 flex-none">· {embed_word(@st)}</span>
+          <span class="ml-auto text-xs text-violet-500 group-hover:text-violet-600 flex-none">
+            open →
+          </span>
+        </div>
+        <div :if={embed_detail(@st)} class="mt-1 text-xs text-zinc-500 dark:text-zinc-400 truncate">
+          {embed_detail(@st)}
+        </div>
+      </.link>
+    </div>
+    """
+  end
+
+  defp embed_state(id) when is_binary(id) do
+    Loopyard.ChatAgent.get_state(id)
+  rescue
+    _ -> nil
+  catch
+    _, _ -> nil
+  end
+
+  defp embed_state(_), do: nil
+
+  defp embed_dot(%{status: :thinking}), do: "bg-violet-500 animate-pulse"
+  defp embed_dot(%{status: :idle}), do: "bg-emerald-500"
+  defp embed_dot(%{status: s}) when s in [:crashed, :stopped], do: "bg-zinc-400"
+  defp embed_dot(_), do: "bg-zinc-300 dark:bg-zinc-600"
+
+  defp embed_word(%{status: :thinking}), do: "working"
+  defp embed_word(%{status: :idle}), do: "ready"
+  defp embed_word(%{status: s}) when is_atom(s) and not is_nil(s), do: to_string(s)
+  defp embed_word(_), do: "starting…"
+
+  defp embed_detail(%{active_tool: t}) when is_binary(t) and t != "", do: "running #{t}"
+  defp embed_detail(%{status: :idle}), do: "set up — open to see what it built"
+  defp embed_detail(_), do: nil
+
+  defp embed_link(msg) do
+    base = "/projects/#{msg[:project_id]}/workspaces/#{msg[:workspace_id]}"
+    if msg[:agent_id], do: "#{base}/agents/#{msg[:agent_id]}", else: base
+  end
 end

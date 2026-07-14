@@ -61,6 +61,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   def chat_msg(%{msg: %{role: :question}} = assigns), do: Cards.question_card(assigns)
   def chat_msg(%{msg: %{role: :approval}} = assigns), do: Cards.approval_card(assigns)
   def chat_msg(%{msg: %{role: :secret_request}} = assigns), do: Cards.secret_card(assigns)
+  # A live "quote" of ANOTHER agent's chat — the chat-in-chat mini-app.
+  def chat_msg(%{msg: %{role: :embed}} = assigns), do: Cards.agent_embed(assigns)
 
   def chat_msg(%{msg: %{role: :user}} = assigns) do
     assigns = assign(assigns, :url, msg_url(assigns))
