@@ -36,7 +36,7 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
       </.link>
 
       <div class="flex-1 overflow-y-auto">
-        <div :if={@tree == []} class="px-3 py-2 text-xs text-zinc-400 italic">
+        <div :if={@tree == []} class="px-3 py-2 text-sm text-zinc-400 italic">
           no projects yet
         </div>
 
@@ -44,7 +44,7 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
              scroll up under it. Always expanded — no collapse. --%>
         <section :for={project <- @tree}>
           <div class="sticky top-0 z-10 flex items-center px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200/80 dark:border-zinc-700/60">
-            <span class="truncate text-[11px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+            <span class="truncate text-sm font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
               {project.name}
             </span>
           </div>
@@ -73,7 +73,7 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
 
             <div
               :if={project.workspaces == []}
-              class="py-1.5 pl-3 text-xs text-zinc-400 italic"
+              class="py-1.5 pl-3 text-sm text-zinc-400 italic"
             >
               no workspaces
             </div>

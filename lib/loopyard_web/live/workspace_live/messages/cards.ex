@@ -20,7 +20,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
     ~H"""
     <div class="pl-7 py-2">
       <div class="rounded-xl border border-violet-200 dark:border-violet-800/60 bg-violet-50/50 dark:bg-violet-900/10 p-4">
-        <div class="flex items-center gap-1.5 text-xs font-medium text-violet-600 dark:text-violet-400 mb-3">
+        <div class="flex items-center gap-1.5 text-sm font-medium text-violet-600 dark:text-violet-400 mb-3">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 16 16"
@@ -39,7 +39,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
         <div :for={q <- @msg.questions} class="mb-3 last:mb-0">
           <div
             :if={q.header != ""}
-            class="text-[11px] uppercase tracking-wide text-zinc-400 dark:text-zinc-500 mb-1"
+            class="text-sm uppercase tracking-wide text-zinc-400 dark:text-zinc-500 mb-1"
           >
             {q.header}
           </div>
@@ -65,7 +65,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
               <div class="text-sm font-medium text-violet-700 dark:text-violet-300">{o.label}</div>
               <div
                 :if={o.description not in [nil, ""]}
-                class="mt-0.5 text-xs leading-relaxed text-zinc-500 dark:text-zinc-400"
+                class="mt-0.5 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400"
               >
                 {o.description}
               </div>
@@ -79,7 +79,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           </div>
         </div>
 
-        <div :if={@msg.status == :timeout} class="text-xs text-zinc-400 dark:text-zinc-500">
+        <div :if={@msg.status == :timeout} class="text-sm text-zinc-400 dark:text-zinc-500">
           No answer — the agent moved on.
         </div>
       </div>
@@ -97,7 +97,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
     ~H"""
     <div class="pl-7 py-2">
       <div class="rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50/50 dark:bg-amber-900/10 p-4">
-        <div class="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 mb-2">
+        <div class="flex items-center gap-1.5 text-sm font-medium text-amber-700 dark:text-amber-400 mb-2">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 16 16"
@@ -116,7 +116,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
         <div class="text-[15px] font-medium leading-snug text-zinc-800 dark:text-zinc-200">
           <span class="font-mono">{@msg.name}</span>
         </div>
-        <div :if={@msg[:why] not in [nil, ""]} class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+        <div :if={@msg[:why] not in [nil, ""]} class="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
           {@msg.why}
         </div>
 
@@ -148,7 +148,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
             type="button"
             phx-click="cancel_secret"
             phx-value-request_id={@msg.request_id}
-            class="focus-ring mt-2 text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+            class="focus-ring mt-2 text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
           >
             I don't have it — skip
           </button>
@@ -156,7 +156,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
 
         <div
           :if={@msg.status == :declined}
-          class="mt-3 text-xs text-zinc-400 dark:text-zinc-500"
+          class="mt-3 text-sm text-zinc-400 dark:text-zinc-500"
         >
           Declined — the agent will proceed without it.
         </div>
@@ -171,7 +171,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
             else: "Submitted by #{@msg.submitted_by} — kept out of chat."}
         </div>
 
-        <div :if={@msg.status == :timeout} class="mt-3 text-xs text-zinc-400 dark:text-zinc-500">
+        <div :if={@msg.status == :timeout} class="mt-3 text-sm text-zinc-400 dark:text-zinc-500">
           No secret submitted — the agent moved on.
         </div>
       </div>
@@ -191,7 +191,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
     ~H"""
     <div class="pl-7 py-2">
       <div class="rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50/50 dark:bg-amber-900/10 p-4">
-        <div class="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 mb-2">
+        <div class="flex items-center gap-1.5 text-sm font-medium text-amber-700 dark:text-amber-400 mb-2">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 16 16"
@@ -209,10 +209,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
 
         <div :if={@action.verb == :integrate} class="text-sm text-zinc-800 dark:text-zinc-200 mb-1">
           Merge
-          <code class="text-xs bg-violet-200/70 dark:bg-violet-800/50 rounded px-1 py-0.5">
+          <code class="text-sm bg-violet-200/70 dark:bg-violet-800/50 rounded px-1 py-0.5">
             {@action.branch}
           </code>
-          → <code class="text-xs bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">main</code>
+          → <code class="text-sm bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">main</code>
           <span class="text-zinc-400">(rebase + merge into the green main)</span>
         </div>
         <div
@@ -220,23 +220,23 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           class="text-sm text-zinc-800 dark:text-zinc-200 mb-1"
         >
           Delete workspace
-          <code class="text-xs bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">
+          <code class="text-sm bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">
             {@action.branch}
           </code>
           <span class="text-zinc-400">— removes its env + containers (the code stays in main)</span>
         </div>
         <div :if={@action.verb == :fork} class="text-sm text-zinc-800 dark:text-zinc-200 mb-1">
           Fork
-          <code class="text-xs bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">
+          <code class="text-sm bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">
             {@action.base}
           </code>
           → new branch
-          <code class="text-xs bg-violet-200/70 dark:bg-violet-800/50 rounded px-1 py-0.5">
+          <code class="text-sm bg-violet-200/70 dark:bg-violet-800/50 rounded px-1 py-0.5">
             {@action.branch}
           </code>
           <span class="text-zinc-400">(its own isolated workspace)</span>
         </div>
-        <div :if={@action[:reason]} class="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
+        <div :if={@action[:reason]} class="text-sm text-zinc-500 dark:text-zinc-400 mb-3">
           {@action.reason}
         </div>
         <div :if={!@action[:reason]} class="mb-3"></div>
@@ -307,11 +307,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
               navigate={approved_link(@msg)}
               class="focus-ring inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
             >
-              Ready — open <code class="text-xs">{@action.branch}</code> →
+              Ready — open <code class="text-sm">{@action.branch}</code> →
             </.link>
           <% :integrated -> %>
             <span class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400">
-              Merged <code class="text-xs">{@action.branch}</code> → main ✓
+              Merged <code class="text-sm">{@action.branch}</code> → main ✓
             </span>
           <% :denied -> %>
             <span class="text-sm text-zinc-400 dark:text-zinc-500">Declined.</span>

@@ -104,7 +104,7 @@ defmodule LoopyardWeb.Components.AppHeader do
             if(@host_exposed, do: "bg-emerald-500", else: "bg-zinc-300 dark:bg-zinc-600")
           ]}></span>
           Remote
-          <span class="text-zinc-400 dark:text-zinc-500 text-xs">
+          <span class="text-zinc-400 dark:text-zinc-500 text-sm">
             {if @host_exposed, do: "exposed", else: "private"}
           </span>
         </.link>
@@ -115,7 +115,7 @@ defmodule LoopyardWeb.Components.AppHeader do
           System
         </.link>
         <div class="my-1 border-t border-zinc-100 dark:border-zinc-800"></div>
-        <div class="px-3 py-1 text-[11px] uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+        <div class="px-3 py-1 text-sm uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
           Operate as
         </div>
         <.link
@@ -167,7 +167,7 @@ defmodule LoopyardWeb.Components.AppHeader do
         />
       </summary>
       <div class="absolute right-0 mt-1.5 w-52 z-50 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-lg py-1 text-sm">
-        <div class="px-3 py-1 text-[11px] uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+        <div class="px-3 py-1 text-sm uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
           Operate as
         </div>
         <.link
@@ -225,7 +225,7 @@ defmodule LoopyardWeb.Components.AppHeader do
       |> assign(:time_ago, relative_time(assigns.session.at))
 
     ~H"""
-    <div class={"flex items-center gap-2 px-3 py-1 rounded-full text-xs #{@bg_color}"}>
+    <div class={"flex items-center gap-2 px-3 py-1 rounded-full text-sm #{@bg_color}"}>
       <span class={"w-2 h-2 rounded-full flex-none #{@dot_color}"}></span>
       <span class="font-medium">IEx</span>
       <span class="opacity-75">{@session.label}</span>

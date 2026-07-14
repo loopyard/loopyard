@@ -119,18 +119,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
         phx-hook="Elapsed"
         phx-update="ignore"
         data-since={@turn_since}
-        class={["text-xs flex-none tabular-nums", @elapsed_class]}
+        class={["text-sm flex-none tabular-nums", @elapsed_class]}
       ></span>
       <span
         :if={@live_tokens}
-        class="text-xs flex-none tabular-nums text-zinc-400"
+        class="text-sm flex-none tabular-nums text-zinc-400"
         title="output tokens this turn (estimate)"
       >
         · ~{@live_tokens} tok
       </span>
       <span
         :if={@active_tool && @streaming_text == ""}
-        class="text-xs flex-none truncate font-mono text-zinc-400"
+        class="text-sm flex-none truncate font-mono text-zinc-400"
       >
         · {short_tool(@active_tool)}
       </span>
@@ -242,11 +242,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
         phx-hook="Elapsed"
         phx-update="ignore"
         data-since={@turn_since}
-        class="text-xs text-zinc-400 dark:text-zinc-500 flex-none tabular-nums"
+        class="text-sm text-zinc-400 dark:text-zinc-500 flex-none tabular-nums"
       ></span>
       <span
         :if={@current_action}
-        class="hidden sm:block text-xs text-zinc-500 dark:text-zinc-400 truncate min-w-0"
+        class="hidden sm:block text-sm text-zinc-500 dark:text-zinc-400 truncate min-w-0"
       >
         · {@current_action}
       </span>
@@ -255,7 +255,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
         type="button"
         phx-click="interrupt_agent"
         phx-value-id={@agent_id}
-        class="focus-ring inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 transition-colors flex-none"
+        class="focus-ring inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 transition-colors flex-none"
       >
         <span class="w-2 h-2 rounded-[2px] bg-red-500"></span> Stop
       </button>

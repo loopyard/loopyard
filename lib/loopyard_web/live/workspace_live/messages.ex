@@ -101,7 +101,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         <div class="min-w-0">
           <div
             :if={@show_user_label}
-            class="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300 mb-1.5"
+            class="flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300 mb-1.5"
           >
             <.icon name={:user} class="w-3.5 h-3.5 flex-none" /> You
           </div>
@@ -152,24 +152,24 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         </div>
         <div :if={@port_info && !@port_info.exposed} class="mt-1.5 flex items-center gap-2 py-1">
           <div class="w-1.5 h-1.5 rounded-full flex-none bg-amber-400"></div>
-          <span class="text-xs text-zinc-500 dark:text-zinc-400">{@port_info.service} port closed</span>
+          <span class="text-sm text-zinc-500 dark:text-zinc-400">{@port_info.service} port closed</span>
           <button
             phx-click="open_port_from_chat"
             phx-value-service={@port_info.service}
             phx-value-container_port={@port_info.container_port}
-            class="inline-flex items-center px-1.5 rounded text-[10px] font-medium text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+            class="inline-flex items-center px-1.5 rounded text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
           >
             Open Port
           </button>
         </div>
         <div :if={@port_info && @port_info.exposed} class="mt-1.5 flex items-center gap-2 py-1">
           <div class="w-1.5 h-1.5 rounded-full flex-none bg-emerald-500"></div>
-          <span class="text-xs text-zinc-500 dark:text-zinc-400">{@port_info.service}</span>
+          <span class="text-sm text-zinc-500 dark:text-zinc-400">{@port_info.service}</span>
           <a
             href={"http://#{assigns[:host] || "localhost"}:#{@port_info.host_port}"}
             target="_blank"
             rel="noopener noreferrer"
-            class="inline-flex items-center px-2 rounded text-xs font-mono font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
+            class="inline-flex items-center px-2 rounded text-sm font-mono font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
           >
             :{@port_info.host_port}
           </a>
@@ -204,10 +204,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   def chat_msg(%{msg: %{role: :thinking}} = assigns) do
     ~H"""
     <details class={[gutter(), "pl-5 my-1 group"]} open={@detail_level == :trace}>
-      <summary class="text-xs text-zinc-400 dark:text-zinc-500 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none">
+      <summary class="text-sm text-zinc-400 dark:text-zinc-500 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none">
         💭 Reasoning
       </summary>
-      <pre class="mt-1 p-3 rounded-lg text-xs font-mono bg-zinc-50 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 whitespace-pre-wrap max-h-60 overflow-y-auto">{@msg.content}</pre>
+      <pre class="mt-1 p-3 rounded-lg text-sm font-mono bg-zinc-50 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 whitespace-pre-wrap max-h-60 overflow-y-auto">{@msg.content}</pre>
     </details>
     """
   end
@@ -258,10 +258,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     ~H"""
     <div class={[gutter(), "flex items-start gap-2 py-1 pl-5"]}>
       <div class="w-4 h-4 rounded bg-red-100 dark:bg-red-900/30 flex items-center justify-center flex-none mt-0.5">
-        <span class="text-[10px] font-bold text-red-500">!</span>
+        <span class="text-xs font-bold text-red-500">!</span>
       </div>
-      <span class="text-xs text-red-600 dark:text-red-400">{Ansi.to_html(@msg.content)}</span>
-      <span class="text-[10px] text-zinc-300 dark:text-zinc-600 flex-none">
+      <span class="text-sm text-red-600 dark:text-red-400">{Ansi.to_html(@msg.content)}</span>
+      <span class="text-xs text-zinc-300 dark:text-zinc-600 flex-none">
         {Calendar.strftime(@msg.timestamp, "%H:%M:%S")}
       </span>
     </div>
@@ -322,7 +322,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       ]}>
         <span aria-hidden="true" class="flex-none select-none leading-none">·</span>
         <span
-          class="text-[11px] italic leading-relaxed"
+          class="text-sm italic leading-relaxed"
           id={"system-msg-#{@msg[:id] || hash_content(@msg.content)}"}
         >
           {@msg.content}
@@ -348,7 +348,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         <.icon name={:sparkle} class="w-3 h-3 text-violet-600 dark:text-violet-400" />
       </span>
       <span class="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Claude</span>
-      <span :if={@timestamp} class="text-xs text-zinc-400 dark:text-zinc-500">
+      <span :if={@timestamp} class="text-sm text-zinc-400 dark:text-zinc-500">
         · {Calendar.strftime(@timestamp, "%H:%M")}
       </span>
     </div>
@@ -426,7 +426,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     # apart (muted, italic-feel via the label) since it's inner monologue.
     ~H"""
     <div class="pl-7 py-1">
-      <p class="text-[11px] text-zinc-400 dark:text-zinc-500 mb-1 font-medium uppercase tracking-wide">
+      <p class="text-sm text-zinc-400 dark:text-zinc-500 mb-1 font-medium uppercase tracking-wide">
         Thinking
       </p>
       <pre class="text-sm text-zinc-500 dark:text-zinc-400 whitespace-pre-wrap leading-relaxed max-h-56 overflow-y-auto">{@text}</pre>
@@ -512,16 +512,16 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       class={[gutter(), "pl-5 py-0.5 group/result"]}
       open={@detail_level == :trace || @is_error}
     >
-      <summary class="text-[11px] text-zinc-400 dark:text-zinc-500 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5">
+      <summary class="text-sm text-zinc-400 dark:text-zinc-500 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5">
         <span class="transition-transform group-open/result:rotate-90">▸</span>
         <span>{if @is_error, do: "error output", else: "output"} · {@line_count} {if @line_count == 1,
           do: "line",
           else: "lines"}</span>
       </summary>
-      <pre class={"mt-1 p-3 rounded-lg text-xs font-mono overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap
+      <pre class={"mt-1 p-3 rounded-lg text-sm font-mono overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap
                    #{if @is_error, do: "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300", else: "bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-zinc-300"}"}>{Ansi.to_html(@display)}</pre>
       <div class="flex items-center gap-2 mt-1 h-5">
-        <p :if={@truncated} class="text-[10px] text-zinc-400 dark:text-zinc-500">
+        <p :if={@truncated} class="text-xs text-zinc-400 dark:text-zinc-500">
           ... {@line_count - @cap} more lines — open raw to see all
         </p>
         <.copy_btn :if={@raw} raw_url={@raw} />
@@ -594,14 +594,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
 
     ~H"""
     <details class={[gutter(), "pl-5 py-0.5 group/file"]} open={@detail_level == :trace}>
-      <summary class="text-[11px] text-zinc-400 dark:text-zinc-500 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5">
+      <summary class="text-sm text-zinc-400 dark:text-zinc-500 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5">
         <span class="transition-transform group-open/file:rotate-90">▸</span>
         <span class="font-mono text-zinc-500 dark:text-zinc-400 truncate">{@path || "file"}</span>
         <span :if={@language} class="text-zinc-400 dark:text-zinc-600">· {@language}</span>
         <span class="text-zinc-400 dark:text-zinc-600">· {@line_count} lines</span>
       </summary>
       <div class="mt-1 rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800">
-        <div class="max-h-96 overflow-auto text-xs font-mono leading-relaxed">
+        <div class="max-h-96 overflow-auto text-sm font-mono leading-relaxed">
           <div :for={{line, i} <- @lines} class="flex">
             <span class="flex-none w-10 pr-3 text-right text-zinc-400 dark:text-zinc-600 select-none tabular-nums">
               {i}
@@ -611,13 +611,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         </div>
       </div>
       <div class="flex items-center gap-2 mt-1 h-5">
-        <p :if={@truncated} class="text-[10px] text-zinc-400 dark:text-zinc-500">
+        <p :if={@truncated} class="text-xs text-zinc-400 dark:text-zinc-500">
           ... {@line_count - @cap} more lines
         </p>
         <a
           :if={@file_link}
           href={@file_link}
-          class="text-[11px] text-blue-600 dark:text-blue-400 hover:underline"
+          class="text-sm text-blue-600 dark:text-blue-400 hover:underline"
         >
           Open in file viewer →
         </a>
@@ -651,13 +651,16 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
 
     ~H"""
     <details class={[gutter(), "pl-5 py-0.5 group/grep"]} open={@detail_level == :trace}>
-      <summary class="text-[11px] text-zinc-400 dark:text-zinc-500 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5">
+      <summary class="text-sm text-zinc-400 dark:text-zinc-500 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5">
         <span class="transition-transform group-open/grep:rotate-90">▸</span>
         <span>{@match_count} {if @match_count == 1, do: "match", else: "matches"}</span>
       </summary>
       <div class="mt-1 rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800">
-        <div class="max-h-96 overflow-auto text-xs font-mono leading-relaxed py-1">
-          <div :for={row <- @rows} class="flex gap-2 px-3 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50">
+        <div class="max-h-96 overflow-auto text-sm font-mono leading-relaxed py-1">
+          <div
+            :for={row <- @rows}
+            class="flex gap-2 px-3 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50"
+          >
             <%= case row do %>
               <% {:match, path, lno, text} -> %>
                 <span class="flex-none text-zinc-400 dark:text-zinc-600 select-none">
@@ -670,7 +673,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
           </div>
         </div>
       </div>
-      <p :if={@truncated} class="text-[10px] text-zinc-400 dark:text-zinc-500 mt-1">
+      <p :if={@truncated} class="text-xs text-zinc-400 dark:text-zinc-500 mt-1">
         ... {@total - @cap} more lines
       </p>
     </details>
@@ -779,7 +782,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
           phx-click="open_port_from_chat"
           phx-value-service={@service}
           phx-value-container_port={@container_port}
-          class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-violet-600 hover:bg-violet-700 text-white transition-colors flex-none"
+          class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium bg-violet-600 hover:bg-violet-700 text-white transition-colors flex-none"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"

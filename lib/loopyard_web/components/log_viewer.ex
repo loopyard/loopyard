@@ -40,7 +40,7 @@ defmodule LoopyardWeb.Components.LogViewer do
     <pre
       id={@id}
       phx-hook="TailScroll"
-      class={"flex-1 px-4 py-3 text-xs font-mono overflow-auto whitespace-pre-wrap bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-zinc-300 #{@class}"}
+      class={"flex-1 px-4 py-3 text-sm font-mono overflow-auto whitespace-pre-wrap bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-zinc-300 #{@class}"}
     >{@ansi_html}</pre>
     """
   end
@@ -105,7 +105,7 @@ defmodule LoopyardWeb.Components.LogViewer do
         <div class={"w-1.5 h-1.5 rounded-full flex-none #{@dot_class}"}></div>
         <span
           title={@command}
-          class="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 truncate min-w-0 flex-1"
+          class="text-sm font-mono text-zinc-500 dark:text-zinc-400 truncate min-w-0 flex-1"
         >
           {@command || @status_label}
         </span>
@@ -115,14 +115,14 @@ defmodule LoopyardWeb.Components.LogViewer do
           phx-hook="Elapsed"
           phx-update="ignore"
           data-since={elapsed_since(@started)}
-          class="text-[10px] tabular-nums text-amber-500 dark:text-amber-400 flex-none"
+          class="text-xs tabular-nums text-amber-500 dark:text-amber-400 flex-none"
         >
           0s
         </span>
         <span
           :if={@status != :building}
           class={[
-            "text-[10px] font-semibold tabular-nums flex-none",
+            "text-xs font-semibold tabular-nums flex-none",
             if(@status == :done,
               do: "text-green-600 dark:text-green-400",
               else: "text-red-500 dark:text-red-400"
@@ -131,7 +131,7 @@ defmodule LoopyardWeb.Components.LogViewer do
         >
           {exit_label(@status, @exit_code)}
         </span>
-        <span :if={@truncated} class="text-[10px] text-zinc-400 flex-none">… truncated</span>
+        <span :if={@truncated} class="text-xs text-zinc-400 flex-none">… truncated</span>
         <div class="flex items-center gap-1 flex-none">
           <button
             type="button"
@@ -205,7 +205,7 @@ defmodule LoopyardWeb.Components.LogViewer do
       <pre
         data-log-pre
         class={[
-          "text-xs font-mono leading-snug text-zinc-800 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-950 whitespace-pre overflow-auto px-3 py-2",
+          "text-sm font-mono leading-snug text-zinc-800 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-950 whitespace-pre overflow-auto px-3 py-2",
           if(@status == :building, do: "max-h-64", else: "max-h-32")
         ]}
       >{Ansi.to_html(@display)}</pre>
@@ -252,7 +252,7 @@ defmodule LoopyardWeb.Components.LogViewer do
     assigns = assign(assigns, lines: lines, padded_name: padded_name)
 
     ~H"""
-    <div :for={line <- @lines} class="flex text-xs font-mono leading-relaxed">
+    <div :for={line <- @lines} class="flex text-sm font-mono leading-relaxed">
       <span class={"#{@color} w-36 text-right flex-none select-none"}>{@padded_name} |</span>
       <span class="text-zinc-300 ml-2 whitespace-pre-wrap break-all">{Ansi.to_html(line)}</span>
     </div>

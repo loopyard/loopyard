@@ -234,7 +234,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
         </form>
 
         <div class="mt-6 pt-6 border-t border-zinc-200 dark:border-zinc-700/80">
-          <div class="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 font-semibold mb-3">
+          <div class="text-sm uppercase tracking-wider text-zinc-500 dark:text-zinc-400 font-semibold mb-3">
             Presets
           </div>
           <div class="space-y-2">
@@ -246,7 +246,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
               <div class="text-base font-medium text-zinc-900 dark:text-zinc-100">
                 Set up dev environment
               </div>
-              <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+              <div class="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
                 Write Dockerfile + docker-compose.yml, start services, install deps.
               </div>
             </button>
@@ -258,7 +258,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
               <div class="text-base font-medium text-zinc-900 dark:text-zinc-100">
                 Debug failing services
               </div>
-              <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+              <div class="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
                 Check service logs, diagnose errors, fix configuration.
               </div>
             </button>
@@ -270,7 +270,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
               <div class="text-base font-medium text-zinc-900 dark:text-zinc-100">
                 Explore the codebase
               </div>
-              <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+              <div class="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
                 Read files, search code, understand the project structure.
               </div>
             </button>
@@ -299,7 +299,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
 
   def group_label(assigns) do
     ~H"""
-    <div class="px-2 pt-3 pb-1 first:pt-1.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+    <div class="px-2 pt-3 pb-1 first:pt-1.5 text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
       {@text}
     </div>
     """
@@ -338,7 +338,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
             target="_blank"
             rel="noopener noreferrer"
             aria-label={"Open http://#{@host}:#{@first_port}"}
-            class="focus-ring inline-flex items-center min-h-8 md:min-h-6 px-2 rounded text-xs font-mono font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
+            class="focus-ring inline-flex items-center min-h-8 md:min-h-6 px-2 rounded text-sm font-mono font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
           >
             :{@first_port}
           </a>
@@ -350,19 +350,19 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
         <% end %>
         <span
           :if={!@first_port && service_status_text(@svc)}
-          class="text-xs text-blue-500 dark:text-blue-400"
+          class="text-sm text-blue-500 dark:text-blue-400"
         >
           {service_status_text(@svc)}
         </span>
         <span
           :if={!@first_port && !service_status_text(@svc) && @svc.status == :running}
-          class="text-xs text-zinc-500 dark:text-zinc-400 font-mono truncate max-w-[88px]"
+          class="text-sm text-zinc-500 dark:text-zinc-400 font-mono truncate max-w-[88px]"
         >
           {service_detail(@svc)}
         </span>
         <span
           :if={@svc.status == :crashed && @svc.exit_info}
-          class="text-xs text-red-500 truncate max-w-[88px]"
+          class="text-sm text-red-500 truncate max-w-[88px]"
         >
           {exit_reason(@svc.exit_info)}
         </span>
@@ -391,7 +391,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
           else: "Open port — share on network"
       }
       class={[
-        "focus-ring inline-flex items-center min-h-8 md:min-h-6 px-1.5 rounded text-[10px] font-medium transition-colors",
+        "focus-ring inline-flex items-center min-h-8 md:min-h-6 px-1.5 rounded text-xs font-medium transition-colors",
         if(@exposed?,
           do: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25",
           else: "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700"
@@ -421,7 +421,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
     >
       <span class="w-1.5 h-1.5 rounded-full flex-none bg-blue-400" aria-hidden="true"></span>
       <span class="truncate text-zinc-600 dark:text-zinc-400 flex-1">{@description}</span>
-      <span :if={@vol[:size]} class="text-xs text-zinc-500 dark:text-zinc-400 font-mono flex-none">
+      <span :if={@vol[:size]} class="text-sm text-zinc-500 dark:text-zinc-400 font-mono flex-none">
         {@vol.size}
       </span>
     </.row>
@@ -472,11 +472,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
         </span>
         <span
           :if={@display == :thinking}
-          class="text-xs text-violet-500 dark:text-violet-400 flex-none"
+          class="text-sm text-violet-500 dark:text-violet-400 flex-none"
         >
           {@agent[:thinking_word] || thinking_word(@agent.id, @agent[:active_tool])}
         </span>
-        <span :if={@display == :crashed} class="text-xs text-red-500 dark:text-red-400 flex-none">
+        <span :if={@display == :crashed} class="text-sm text-red-500 dark:text-red-400 flex-none">
           Crashed
         </span>
       </.row>

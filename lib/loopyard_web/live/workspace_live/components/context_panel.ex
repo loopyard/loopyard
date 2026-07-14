@@ -101,19 +101,19 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     ~H"""
     <div class="px-3 pt-3 pb-2">
       <div class="flex items-center justify-between mb-1">
-        <div class="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+        <div class="text-sm font-semibold uppercase tracking-wide text-zinc-500">
           Changes <span :if={@files != []} class="text-zinc-400 font-normal">· {length(@files)}</span>
         </div>
         <.link
           :if={@files != [] and @linkable?}
           patch={"#{@base_path}/volumes/#{@volume}/git"}
-          class="text-[11px] font-medium text-violet-600 dark:text-violet-400 hover:underline"
+          class="text-sm font-medium text-violet-600 dark:text-violet-400 hover:underline"
         >
           View all
         </.link>
       </div>
 
-      <div :if={@files == []} class="text-xs text-zinc-400 italic">working tree clean</div>
+      <div :if={@files == []} class="text-sm text-zinc-400 italic">working tree clean</div>
 
       <div :if={@files != []} class="space-y-0.5 max-h-48 overflow-y-auto">
         <.change_row
@@ -140,7 +140,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     <.link
       :if={@linkable?}
       patch={diff_path(@base_path, @volume, @f)}
-      class="group flex items-center gap-2 text-xs font-mono rounded px-1 -mx-1 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+      class="group flex items-center gap-2 text-sm font-mono rounded px-1 -mx-1 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
       title={"View diff — #{@f.path}"}
     >
       <span class={["w-4 flex-none text-center", change_color(@f.status)]}>{@f.status}</span>
@@ -148,7 +148,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
         {@f.path}
       </span>
     </.link>
-    <div :if={!@linkable?} class="flex items-center gap-2 text-xs font-mono">
+    <div :if={!@linkable?} class="flex items-center gap-2 text-sm font-mono">
       <span class={["w-4 flex-none text-center", change_color(@f.status)]}>{@f.status}</span>
       <span class="truncate text-zinc-700 dark:text-zinc-300" title={@f.path}>{@f.path}</span>
     </div>
@@ -184,8 +184,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
       <div class={["flex items-center gap-2.5 rounded-lg px-2.5 py-2", @hs.bg]}>
         <span class={["w-2 h-2 rounded-full flex-none", @hs.dot, @hs.pulse]}></span>
         <div class="min-w-0">
-          <div class={["text-xs font-semibold leading-tight", @hs.text]}>{@hs.label}</div>
-          <div :if={@hs.detail} class="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">
+          <div class={["text-sm font-semibold leading-tight", @hs.text]}>{@hs.label}</div>
+          <div :if={@hs.detail} class="text-sm text-zinc-500 dark:text-zinc-400 truncate">
             {@hs.detail}
           </div>
         </div>
