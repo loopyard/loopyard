@@ -144,6 +144,14 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:volumes, volumes)
      |> assign(:selected_id, nil)
      |> assign(:selected_agent, nil)
+     # Last-viewed item PER CATEGORY for the mobile category tab bar (Agents ·
+     # Services · Volumes). The :selected_* assigns are mutually exclusive (they
+     # null out when you switch categories), but these REMEMBER the last thing
+     # you looked at in each category so tapping a tab jumps straight back to it
+     # (content-first). Cleared to nil = "never opened one; show the list."
+     |> assign(:nav_agent_id, nil)
+     |> assign(:nav_service, nil)
+     |> assign(:nav_volume, nil)
      |> assign(:messages, [])
      |> assign(:has_more_messages, false)
      # Windowed transcript: does the loaded window still include the live tail?
@@ -244,6 +252,9 @@ defmodule LoopyardWeb.WorkspaceLive do
       end
 
     socket = assign(socket, :tab, tab)
+    # Remember this agent so the mobile tab bar can return here from anywhere in
+    # the workspace (service/volume views null out :selected_agent, not this).
+    socket = assign(socket, :nav_agent_id, id)
     socket = if tab == :container, do: DataLoader.fetch_container_data(socket), else: socket
     # Load the agent's working-tree changes for the right-pane hero (#58).
     socket = refresh_changes(socket)
@@ -283,6 +294,7 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:selected_id, nil)
      |> assign(:selected_agent, nil)
      |> assign(:selected_service, service_name)
+     |> assign(:nav_service, service_name)
      |> assign(:service_logs, "Loading logs...")
      |> assign(:all_service_logs, [])}
   end
@@ -315,6 +327,7 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:selected_id, nil)
      |> assign(:selected_agent, nil)
      |> assign(:selected_service, service_name)
+     |> assign(:nav_service, service_name)
      |> assign(:console_container, container)}
   end
 
@@ -1061,26 +1074,6 @@ defmodule LoopyardWeb.WorkspaceLive do
   @impl true
   # --- UI state events ---
 
-  def handle_event("switch_tab", %{"tab" => tab}, socket) do
-    tab =
-      case tab do
-        "chat" -> :chat
-        "container" -> :container
-        _ -> :chat
-      end
-
-    bp = workspace_path(socket)
-
-    path =
-      case {socket.assigns.selected_id, tab} do
-        {nil, _} -> bp
-        {id, :container} -> "#{bp}/agents/#{id}/container"
-        {id, _} -> "#{bp}/agents/#{id}"
-      end
-
-    {:noreply, push_patch(socket, to: path)}
-  end
-
   @impl true
   # --- Source-adapter sync events (Local/Mutagen) ---
 
@@ -1808,6 +1801,7 @@ defmodule LoopyardWeb.WorkspaceLive do
         |> assign(:selected_agent, nil)
         |> assign(:selected_service, nil)
         |> assign(:selected_volume, name)
+        |> assign(:nav_volume, name)
         |> FileBrowser.reset()
         |> assign(:git_log, [])
         |> assign(:git_status, [])
@@ -1838,6 +1832,12 @@ defmodule LoopyardWeb.WorkspaceLive do
         base_path={@base_path}
         iex_session={@iex_session}
         selected_agent={@selected_agent}
+        nav_agent_id={@nav_agent_id}
+        nav_service={@nav_service}
+        nav_volume={@nav_volume}
+        agents={@agents}
+        service_statuses={@service_statuses}
+        volumes={@volumes}
         tab={@tab}
         has_container={@has_container}
       />

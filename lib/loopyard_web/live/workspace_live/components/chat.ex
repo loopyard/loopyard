@@ -39,72 +39,170 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   # path is `nil`, which the Breadcrumbs component renders as the
   # current page (no link, aria-current="page").
   def chat_header(assigns) do
-    # No top chrome on the workspace view (breadcrumb / Remote / user / System
-    # live at `/` now). On desktop the left rail's "Loopyard" wordmark is the
-    # way home; the rail is hidden on mobile, so we keep a thin back-bar here.
+    # Thin mobile back-bar (phone-only; desktop navigates from the left rail).
+    # Left: "← Projects" out to the birdseye home. Right: the WORKSPACE CATEGORY
+    # switcher — Agents · Services · Volumes — the mobile embodiment of the
+    # hierarchy Root → Project → Workspace → { Agents | Services | Volumes }.
     #
-    # Mobile back → the birdseye at `/`, which IS the mega switcher: bounce
-    # across every project → workspace → agent. Switching AGENTS within this
-    # workspace stays on the "Info" tab, so back is unambiguously "up and out."
-    # (Patching to the workspace :index doesn't work — its landing logic
-    # auto-redirects straight back to an agent, so the button appears dead.)
+    # It's content-first: each tab jumps to the LAST item you had open in that
+    # category (nav_agent_id / nav_service / nav_volume), so flipping between
+    # "my agent" and "the web service" is one tap and never a dead end. First
+    # visit to a category with no remembered item falls back to its list. The
+    # active pill is derived from the current route's category.
+    assigns =
+      assigns
+      |> assign(:active, active_category(assigns.live_action))
+      |> assign(:agents_href, category_href(:agents, assigns))
+      |> assign(:services_href, category_href(:services, assigns))
+      |> assign(:volumes_href, category_href(:volumes, assigns))
+
+    # The item switcher for the active category (the second row). >= 2 so a
+    # single-item category doesn't waste a row on a switcher with nothing to
+    # switch to.
+    assigns = assign(assigns, :items, category_items(assigns))
+
     ~H"""
-    <div class="md:hidden flex items-center justify-between h-14 px-2 flex-none border-b border-zinc-200 dark:border-zinc-700/80 gap-2">
-      <.link
-        navigate="/"
-        class="-ml-1 inline-flex items-center gap-1 px-2 py-1 rounded-md text-base font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 active:bg-violet-100 dark:active:bg-violet-500/20 transition-colors min-w-0"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 20 20"
-          fill="currentColor"
-          class="w-5 h-5 flex-none"
-        >
-          <path
-            fill-rule="evenodd"
-            d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z"
-            clip-rule="evenodd"
-          />
-        </svg>
-        <span class="truncate">Projects</span>
-      </.link>
-      <%!-- Mobile view switcher, top-right in the back bar. On desktop these are
-           three side-by-side columns (chat · agent detail · workspace switcher);
-           on a phone this segmented control flips between them. Only shown in an
-           agent view. Chat & Container are `switch_tab` casts; Info & Workspace
-           patch to their own routes. Phone-only (this bar is md:hidden) — on
-           tablet+ the right rail shows the columns. --%>
-      <nav
-        :if={@selected_agent && @live_action in [:index, :chat, :container, :context_panel, :info]}
-        class="inline-flex items-center rounded-xl bg-zinc-100 dark:bg-zinc-800 p-0.5 flex-none"
-        aria-label="View"
-      >
-        <button phx-click="switch_tab" phx-value-tab="chat" class={seg_tab_class(@tab == :chat)}>
-          Chat
-        </button>
+    <div class="md:hidden flex-none border-b border-zinc-200 dark:border-zinc-700/80">
+      <div class="flex items-center justify-between h-14 px-2 gap-2">
         <.link
-          patch={"#{@base_path}/agents/#{@selected_agent.id}/info"}
-          class={seg_tab_class(@tab == :info)}
+          navigate="/"
+          class="-ml-1 inline-flex items-center gap-1 px-2 py-1 rounded-md text-base font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 active:bg-violet-100 dark:active:bg-violet-500/20 transition-colors min-w-0"
         >
-          Info
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            class="w-5 h-5 flex-none"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z"
+              clip-rule="evenodd"
+            />
+          </svg>
+          <span class="truncate">Projects</span>
         </.link>
-        <.link
-          patch={"#{@base_path}/agents/#{@selected_agent.id}/context"}
-          class={seg_tab_class(@tab == :context_panel)}
+        <nav
+          :if={@live_action != :new && (@agents != [] || @service_statuses != [] || @volumes != [])}
+          class="inline-flex items-center rounded-xl bg-zinc-100 dark:bg-zinc-800 p-0.5 flex-none"
+          aria-label="Workspace section"
         >
-          Workspace
+          <.link patch={@agents_href} class={seg_tab_class(@active == :agents)}>Agents</.link>
+          <.link
+            :if={@service_statuses != []}
+            patch={@services_href}
+            class={seg_tab_class(@active == :services)}
+          >
+            Services
+          </.link>
+          <.link
+            :if={@volumes != []}
+            patch={@volumes_href}
+            class={seg_tab_class(@active == :volumes)}
+          >
+            Volumes
+          </.link>
+        </nav>
+      </div>
+      <%!-- Second row: which item within the active category. Only when there's
+           more than one to choose from — this is how you switch between two
+           services, or between agents, without leaving the category. --%>
+      <div :if={length(@items) >= 2} class="flex gap-1.5 px-2 pb-2 overflow-x-auto">
+        <.link :for={item <- @items} patch={item.href} class={chip_class(item.active?)}>
+          {item.label}
         </.link>
-        <button
-          :if={@has_container}
-          phx-click="switch_tab"
-          phx-value-tab="container"
-          class={seg_tab_class(@tab == :container)}
-        >
-          Container
-        </button>
-      </nav>
+      </div>
     </div>
     """
+  end
+
+  # Which workspace category the current route belongs to — drives the active
+  # pill. Every agent sub-view (chat/container/info/context) is "Agents"; every
+  # service/console route is "Services"; every volume/git/sync route is "Volumes".
+  defp active_category(action)
+       when action in [:service, :services, :console],
+       do: :services
+
+  defp active_category(action)
+       when action in [
+              :volume,
+              :volume_files_root,
+              :volume_file,
+              :volume_git,
+              :git_diff,
+              :git_staged_diff,
+              :git_commit,
+              :git_commit_file,
+              :sync
+            ],
+       do: :volumes
+
+  defp active_category(_), do: :agents
+
+  # Content-first target for a category tab: the last item you had open there,
+  # else that category's list (or its first item when there's no list route).
+  defp category_href(:agents, %{nav_agent_id: id, base_path: bp}) when is_binary(id),
+    do: "#{bp}/agents/#{id}"
+
+  defp category_href(:agents, %{base_path: bp}), do: bp
+
+  defp category_href(:services, %{nav_service: s, base_path: bp}) when is_binary(s),
+    do: "#{bp}/services/#{s}"
+
+  defp category_href(:services, %{base_path: bp}), do: "#{bp}/services"
+
+  defp category_href(:volumes, %{nav_volume: v, base_path: bp}) when is_binary(v),
+    do: "#{bp}/volumes/#{v}"
+
+  defp category_href(:volumes, %{volumes: [vol | _], base_path: bp}),
+    do: "#{bp}/volumes/#{vol_name(vol)}"
+
+  defp category_href(:volumes, %{base_path: bp}), do: bp
+
+  defp vol_name(vol), do: Map.get(vol, :name) || Map.get(vol, "name")
+
+  # Items of the active category for the second-row switcher, each with a label,
+  # a route, and whether it's the one currently open.
+  defp category_items(%{active: :agents, agents: agents, base_path: bp, nav_agent_id: cur}) do
+    Enum.map(agents, fn a ->
+      %{label: Map.get(a, :name) || a.id, href: "#{bp}/agents/#{a.id}", active?: a.id == cur}
+    end)
+  end
+
+  defp category_items(%{
+         active: :services,
+         service_statuses: svcs,
+         base_path: bp,
+         nav_service: cur
+       }) do
+    Enum.map(svcs, fn s ->
+      %{label: s.name, href: "#{bp}/services/#{s.name}", active?: s.name == cur}
+    end)
+  end
+
+  defp category_items(%{active: :volumes, volumes: vols, base_path: bp, nav_volume: cur}) do
+    Enum.map(vols, fn v ->
+      n = vol_name(v)
+      %{label: vol_label(n), href: "#{bp}/volumes/#{n}", active?: n == cur}
+    end)
+  end
+
+  defp category_items(_), do: []
+
+  # A code-volume name like "loopyard-abcd-code" → its meaningful tail ("code").
+  defp vol_label(name) when is_binary(name), do: name |> String.split("-") |> List.last()
+  defp vol_label(name), do: to_string(name)
+
+  # One item chip in the second-row switcher — active is a filled violet pill.
+  defp chip_class(active?) do
+    [
+      "inline-flex items-center px-3 py-1 rounded-full text-sm font-medium whitespace-nowrap flex-none transition-colors",
+      if(active?,
+        do: "bg-violet-600 text-white",
+        else:
+          "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+      )
+    ]
   end
 
   # --- Agent View ---
