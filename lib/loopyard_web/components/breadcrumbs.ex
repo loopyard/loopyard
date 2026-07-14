@@ -18,9 +18,35 @@ defmodule LoopyardWeb.Components.Breadcrumbs do
   attr :class, :string, default: ""
 
   def breadcrumbs(assigns) do
+    # Below sm we hide the trail and show only the current page — so there's no
+    # visible way UP. Add a back arrow to the parent (the crumb right before the
+    # current one, if it links somewhere) that shows on mobile only.
+    parent_path =
+      case Enum.reverse(assigns.crumbs) do
+        [_current, {_label, path} | _] when is_binary(path) -> path
+        _ -> nil
+      end
+
+    assigns = assign(assigns, :parent_path, parent_path)
+
     ~H"""
     <nav aria-label="Breadcrumb" class={["flex items-center min-w-0", @class]}>
       <ol class="flex items-center gap-1.5 min-w-0 list-none p-0 m-0">
+        <li :if={@parent_path} class="flex sm:hidden flex-none">
+          <.link
+            navigate={@parent_path}
+            aria-label="Back"
+            class="focus-ring inline-flex items-center justify-center w-9 h-9 -ml-2 rounded-md text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+          >
+            <svg viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+              <path
+                fill-rule="evenodd"
+                d="M11.78 5.22a.75.75 0 0 1 0 1.06L8.06 10l3.72 3.72a.75.75 0 1 1-1.06 1.06l-4.25-4.25a.75.75 0 0 1 0-1.06l4.25-4.25a.75.75 0 0 1 1.06 0Z"
+                clip-rule="evenodd"
+              />
+            </svg>
+          </.link>
+        </li>
         <%= for {{label, path}, idx} <- Enum.with_index(@crumbs) do %>
           <%!-- On mobile show only the current page; the full trail returns at sm+
                so it stops truncating into ellipsis soup against the nav. Hierarchy
