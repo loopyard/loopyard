@@ -33,8 +33,9 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
           aria-label="loopyard home"
           class="flex-1 min-w-0 flex items-center h-full px-4 text-zinc-900 dark:text-zinc-50 hover:opacity-70 transition-opacity"
         >
-          <%!-- Official trefoil mark + lowercase wordmark (loopyard.ai/branding). --%>
-          <LoopyardWeb.Components.Brand.logo mark_class="w-6 h-6 flex-none" wordmark_class="text-base tracking-tight" />
+          <%!-- Official trefoil mark + lowercase wordmark (loopyard.ai/branding).
+               Mark sized w-5 to match the breadcrumb logo exactly. --%>
+          <LoopyardWeb.Components.Brand.logo mark_class="w-5 h-5 flex-none" wordmark_class="text-base tracking-tight" />
         </.link>
         <LoopyardWeb.Components.Common.sound_control id="sound-global" class="mr-1.5" />
       </div>

@@ -37,50 +37,12 @@ defmodule LoopyardWeb.Components.AppHeader do
       <.iex_indicator :if={@iex_session.level} session={@iex_session} />
       <:actions>
         {render_slot(@inner_block)}
+        <%!-- Sound stays — it's a global control (mute anywhere) and the only
+             entry to /sound. The Remote / workstation / System nav links used to
+             sit here, but they just duplicated the dashboard cards; the brand
+             logo (left) links to the dashboard, which is the one place to
+             navigate from. No redundant top-right menu. --%>
         <LoopyardWeb.Components.Common.sound_control id="sound-app" />
-        <%!-- Desktop: nav inline. --%>
-        <div class="hidden md:flex items-center gap-4">
-          <.link
-            navigate={Path.join("/remote", @current_path)}
-            aria-label={
-              if @host_exposed,
-                do: "Remote access — exposed. Open connect page.",
-                else: "Remote access — private. Open connect page."
-            }
-            class={[
-              "focus-ring inline-flex items-center gap-1.5 px-2 py-1 text-sm font-medium transition-colors rounded",
-              if(@host_exposed,
-                do: "text-emerald-600 dark:text-emerald-400 hover:text-emerald-500",
-                else: "text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100"
-              )
-            ]}
-          >
-            <span
-              :if={@host_exposed}
-              class="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-none"
-              aria-hidden="true"
-            ></span>
-            Remote
-          </.link>
-          <%!-- Plain link, not a dropdown — the identity switcher lives on the
-               dashboard's Operated card + /workstations. No pop-over menus. --%>
-          <.link
-            navigate="/workstations"
-            class="focus-ring inline-flex items-center gap-1.5 px-2 py-1 text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 transition-colors rounded"
-          >
-            <span class="w-1.5 h-1.5 rounded-full bg-sky-500 flex-none" aria-hidden="true"></span>
-            {Loopyard.Workstation.current()}
-          </.link>
-          <.link
-            navigate="/system"
-            class="focus-ring inline-flex items-center px-2 py-1 text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 transition-colors rounded"
-          >
-            System
-          </.link>
-        </div>
-        <%!-- No mobile overflow menu — on a phone, Remote / System / Operated
-             live as cards on the home dashboard (tap the breadcrumb home). A
-             pop-over menu here was exactly the pattern we're killing. --%>
       </:actions>
     </LoopyardWeb.Components.Nav.bar>
     """
