@@ -208,7 +208,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
 
   def chat_msg(%{msg: %{role: :thinking}} = assigns) do
     ~H"""
-    <details class={[gutter(), "pl-5 my-1 group"]} open={@detail_level == :trace}>
+    <details class={[gutter(), "my-1 group"]} open={@detail_level == :trace}>
       <summary class="text-sm text-zinc-400 dark:text-zinc-500 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none">
         💭 Reasoning
       </summary>
@@ -261,7 +261,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
 
   def chat_msg(%{msg: %{role: :error}} = assigns) do
     ~H"""
-    <div class={[gutter(), "flex items-start gap-2 py-1 pl-5"]}>
+    <div class={[gutter(), "flex items-start gap-2 py-1"]}>
       <div class="w-4 h-4 rounded bg-red-100 dark:bg-red-900/30 flex items-center justify-center flex-none mt-0.5">
         <span class="text-xs font-bold text-red-500">!</span>
       </div>
@@ -323,7 +323,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
            competing with what the agent actually said. --%>
       <div class={[
         gutter(),
-        "py-1 pl-7 flex items-baseline gap-1.5 text-zinc-400/70 dark:text-zinc-600"
+        "py-1 flex items-baseline gap-1.5 text-zinc-400/70 dark:text-zinc-600"
       ]}>
         <span aria-hidden="true" class="flex-none select-none leading-none">·</span>
         <span
@@ -391,7 +391,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     # Color is reserved for SIGNAL — the dot's category and the blue of a
     # clickable file link. A plain summary stays muted, not blue.
     ~H"""
-    <div class={[gutter(), "py-1 pl-5"]}>
+    <div class={[gutter(), "py-1"]}>
       <div class="flex items-center gap-2">
         <span class={["w-1.5 h-1.5 rounded-full flex-none", tool_dot(@tool_name)]}></span>
         <a
@@ -444,10 +444,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
 
   # --- Internal helpers ---
 
-  # Left padding alignment for agent rows. The faint spine itself now lives on
-  # the RUN WRAPPER (chat_panel), so a run reads as one unbroken line; rows just
-  # keep their content inset (action icons hang at `pl-5`, just left of the
-  # `pl-7` prose). Kept as a seam in case rows ever need a shared base class.
+  # Left edge for agent rows. Every row — prose, tool calls, tool results,
+  # logs, system lines — sits FLUSH against this same gutter so the whole
+  # transcript reads as one clean left column (no per-row indentation; rows
+  # stay distinct via their markers/color, not by hanging in from the edge).
+  # Kept as a seam in case rows ever need a shared base class.
   defp gutter, do: ""
 
   # Role of the message immediately before/after this one — used to keep the big
@@ -516,7 +517,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
 
     ~H"""
     <details
-      class={[gutter(), "pl-5 py-0.5 group/result"]}
+      class={[gutter(), "py-0.5 group/result"]}
       open={@detail_level == :trace || @is_error}
     >
       <summary class="text-sm text-zinc-400 dark:text-zinc-500 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5">
@@ -600,7 +601,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       )
 
     ~H"""
-    <details class={[gutter(), "pl-5 py-0.5 group/file"]} open={@detail_level == :trace}>
+    <details class={[gutter(), "py-0.5 group/file"]} open={@detail_level == :trace}>
       <summary class="text-sm text-zinc-400 dark:text-zinc-500 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5">
         <span class="transition-transform group-open/file:rotate-90">▸</span>
         <span class="font-mono text-zinc-500 dark:text-zinc-400 truncate">{@path || "file"}</span>
@@ -657,7 +658,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       )
 
     ~H"""
-    <details class={[gutter(), "pl-5 py-0.5 group/grep"]} open={@detail_level == :trace}>
+    <details class={[gutter(), "py-0.5 group/grep"]} open={@detail_level == :trace}>
       <summary class="text-sm text-zinc-400 dark:text-zinc-500 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5">
         <span class="transition-transform group-open/grep:rotate-90">▸</span>
         <span>{@match_count} {if @match_count == 1, do: "match", else: "matches"}</span>
@@ -774,7 +775,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     assigns = assign(assigns, url: url, service: service, container_port: container_port)
 
     ~H"""
-    <div class={[gutter(), "pl-5 py-1"]}>
+    <div class={[gutter(), "py-1"]}>
       <div class="inline-flex items-center gap-3 rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 py-2.5">
         <a
           :if={@url}

@@ -18,7 +18,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
   """
   def question_card(assigns) do
     ~H"""
-    <div class="pl-7 py-2">
+    <div class="py-2">
       <div class="rounded-xl border border-violet-200 dark:border-violet-800/60 bg-violet-50/50 dark:bg-violet-900/10 p-4">
         <div class="flex items-center gap-1.5 text-sm font-medium text-violet-600 dark:text-violet-400 mb-3">
           <svg
@@ -95,7 +95,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
   """
   def secret_card(assigns) do
     ~H"""
-    <div class="pl-7 py-2">
+    <div class="py-2">
       <div class="rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50/50 dark:bg-amber-900/10 p-4">
         <div class="flex items-center gap-1.5 text-sm font-medium text-amber-700 dark:text-amber-400 mb-2">
           <svg
@@ -189,7 +189,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
     assigns = assign(assigns, :action, assigns.msg.action)
 
     ~H"""
-    <div class="pl-7 py-2">
+    <div class="py-2">
       <div class="rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50/50 dark:bg-amber-900/10 p-4">
         <div class="flex items-center gap-1.5 text-sm font-medium text-amber-700 dark:text-amber-400 mb-2">
           <svg
@@ -374,7 +374,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
     assigns = assign(assigns, :st, embed_state(assigns.msg[:agent_id]))
 
     ~H"""
-    <div class="pl-7 py-2">
+    <div class="py-2">
       <.link
         navigate={embed_link(@msg)}
         class="group block rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50/60 dark:bg-zinc-800/30 p-3 hover:border-violet-300 dark:hover:border-violet-500/40 transition-colors"
