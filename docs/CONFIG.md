@@ -13,6 +13,8 @@ Read at runtime, overriding defaults baked into code.
 | `SSH_PORT` | `0` (random) | Port for the built-in SSH server (`Loopyard.SSHServer`). `0` picks a free port. |
 | `LOOPYARD_DEV_SECRET_KEY_BASE` | required in dev/prod | Phoenix secret (see `config/runtime.exs`). |
 | `ANTHROPIC_API_KEY` / Claude Code auth token | — | Consumed by the Claude Code SDK subprocess. Not read directly by Loopyard. |
+| `LOOPYARD_MCP_PORT` | `4030` | Port for the dedicated ACP MCP bridge listener (`LoopyardWeb.MCP.Listener`) — a separate `0.0.0.0` Bandit endpoint so in-container ACP harnesses can reach Loopyard's control-plane tools via `host.docker.internal`. |
+| `LOOPYARD_MCP_URL` | derived | Override the base URL a container uses to reach the MCP bridge (default `http://host.docker.internal:<LOOPYARD_MCP_PORT>`). Set this when the Docker-host alias isn't `host.docker.internal`. |
 
 ## Application config (`config/*.exs`)
 
@@ -31,6 +33,8 @@ Read via `Application.get_env(:loopyard, key)`. Overridable at runtime in `confi
 | `Loopyard.PortRegistry, :port_range` | `4000..9999` | Host port range used by `PortRegistry.assign/3`. Exhaustion returns `{:error, :port_pool_exhausted}`. Keep it outside the ephemeral port range to avoid collisions with transient outbound connections. |
 | `LoopyardWeb.Endpoint, :http, :port` | `4000` | HTTP port. Env-overridable via `PORT` in `runtime.exs`. |
 | `:phoenix, :filter_parameters` | `["password", "secret"]` | Param keys redacted from request/event logs. `"secret"` covers the `request_secret` masked field so a submitted key never lands in the log. Setting this overrides Phoenix's `["password"]` default — keep both. |
+| `:acp_mcp_listener` | `[enabled: true, port: 4030, ip: {0,0,0,0}]` | The dedicated ACP MCP bridge listener (`LoopyardWeb.MCP.Listener`). `enabled: false` (test env) skips it entirely. Bound to `0.0.0.0` so workspace containers can reach it; every request is bearer-authed + agent-scoped (`Loopyard.MCP.Token`). |
+| `:acp_mcp_url` | `nil` | Base-URL override for the MCP bridge (same as `LOOPYARD_MCP_URL`). `nil` → `http://host.docker.internal:<listener port>`. |
 
 ### `:aural` (extracted Mix package — `packages/aural`)
 

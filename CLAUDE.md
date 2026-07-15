@@ -178,6 +178,24 @@ The harness (whichever Backend) owns only **turn execution** — taking a
 prompt and streaming a response. This split is why a harness restart
 doesn't lose messages: the inbox is Loopyard state, not harness state.
 
+**ACP MCP bridge — Loopyard's control-plane tools in-container.** The
+in-container ACP harness can't use the in-process Elixir MCP servers the
+ClaudeCode backend uses, so it reaches Loopyard's *control-plane* tools
+(ports, service lifecycle, the approval-gated fork/integrate/delete flows,
+ask/secret round-trips) over HTTP. `Loopyard.MCP.acp_mcp_servers/2` builds
+the ACP `session/new` `mcpServers` spec (Initializer injects it as
+`:acp_mcp_servers` for ACP agents); `LoopyardWeb.MCP.Listener` is a
+**dedicated Bandit endpoint on `0.0.0.0:<LOOPYARD_MCP_PORT>`** (default 4030,
+separate from the loopback-only main endpoint) so a workspace container can
+reach it via `host.docker.internal`. Every call is bearer-authed
+(`Loopyard.MCP.Token`, per-agent scoped) and dispatched by
+`Loopyard.MCP.ToolRouter` to the *same* `Loopyard.Tool` `execute/2` the
+in-process path calls — the identity comes from the token, never the payload.
+Only the control-plane subset is exposed (`ToolConfig.acp_control_plane_tools/0`);
+fs/exec tools are omitted (the container has native Read/Write/Bash). This is
+the one Loopyard surface reachable from inside a container — read
+docs/SECURITY.md → "ACP MCP bridge" before touching it.
+
 ## Fork readiness (provision-before-available)
 
 A fork is fully provisioned **before** it becomes available — "Open"
@@ -318,6 +336,10 @@ Two ways in:
 | `Tools.Container` | MCP toolkit — lists 22 tool modules |
 | `Tools.Container.Helpers` | Shared tool helpers (resolve_container, validate_path) |
 | `Loopyard.Tool` | Macro for defining tool modules |
+| `Loopyard.MCP` | ACP MCP bridge entry — builds the `mcpServers` spec + container-reachable base URL |
+| `Loopyard.MCP.Token` | Per-agent scoped bearer tokens (`Phoenix.Token`) for the MCP bridge |
+| `Loopyard.MCP.ToolRouter` | Pure MCP `tools/list` + `tools/call` dispatch → `Loopyard.Tool.execute/2` |
+| `LoopyardWeb.MCP.Server` | MCP-over-HTTP JSON-RPC plug (bearer-authed); `LoopyardWeb.MCP.Listener` is its dedicated `0.0.0.0` Bandit endpoint |
 | `Aural.Channel` (`packages/aural`) | Per-channel ambient audio engine — synth + ffmpeg + PubSub fan-out. Lazy-spawned multi-tenant. See [packages/aural/README.md](packages/aural/README.md). |
 
 ## packages/

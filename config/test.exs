@@ -27,3 +27,7 @@ config :loopyard,
   saga_journal_default: false
 
 config :loopyard, activity_sound: false
+
+# No dedicated MCP listener in tests — the plug is exercised directly, and a
+# real 0.0.0.0 Bandit listener would race across async runs on a fixed port.
+config :loopyard, :acp_mcp_listener, enabled: false

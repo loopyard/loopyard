@@ -23,8 +23,13 @@ defmodule Loopyard.Harness.ACP do
   agent prompt arrives as the `append_system_prompt` opt, which
   `maybe_install_system_prompt/2` writes into that file.
 
+  MCP servers: Loopyard's control-plane tools reach the in-container harness as
+  an HTTP MCP server (`Loopyard.MCP` / `LoopyardWeb.MCP.Server`) — the
+  Initializer builds the spec and passes it as `:acp_mcp_servers`, which
+  `start_session/1` forwards to the Connection's `session/new` `mcpServers`.
+
   Known gaps (tracked on #3/#6): mapping Loopyard's tool *policy* (allowed/
-  disallowed tools) and MCP servers onto ACP; token-usage surfacing
+  disallowed tools) onto ACP; token-usage surfacing
   (claude-code-acp doesn't expose it, so cost reads $0 — see cost-visibility
   decision); and the human-gated `:ask` permission mode (#7) — today permissions
   are `:auto_allow`, which is *parity* with the ClaudeCode path (it runs with
@@ -45,7 +50,11 @@ defmodule Loopyard.Harness.ACP do
     conn_opts =
       [
         resume: Keyword.get(opts, :resume),
-        permission_mode: acp_permission_mode(opts)
+        permission_mode: acp_permission_mode(opts),
+        # Loopyard's control-plane tools reach the in-container harness as an
+        # HTTP MCP server (the Initializer builds this spec for ACP agents). The
+        # Connection forwards it verbatim as `session/new`'s `mcpServers`.
+        mcp_servers: Keyword.get(opts, :acp_mcp_servers, [])
       ]
       |> Keyword.merge(runtime)
       |> maybe_put(:model, Keyword.get(opts, :model))

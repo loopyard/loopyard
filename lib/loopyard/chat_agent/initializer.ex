@@ -125,6 +125,18 @@ defmodule Loopyard.ChatAgent.Initializer do
         session_opts
       end
 
+    # The ACP backend runs a real harness in-container, so it can't use the
+    # in-process Elixir MCP servers above (`mcp_servers:`). Hand it an HTTP MCP
+    # spec instead — Loopyard's control-plane tools, reachable over the token-
+    # authed bridge. Only for a workspace-scoped agent (the tools resolve the
+    # container from workspace_id); the ClaudeCode backend ignores this key.
+    session_opts =
+      if backend == Loopyard.Harness.ACP and is_binary(workspace_id) do
+        Keyword.put(session_opts, :acp_mcp_servers, ToolConfig.acp_mcp_servers(id, workspace_id))
+      else
+        session_opts
+      end
+
     case backend.start_session(session_opts) do
       {:ok, session} ->
         prompt_hash = :crypto.hash(:sha256, system_prompt || "") |> Base.encode16(case: :lower)

@@ -88,12 +88,22 @@ defmodule Loopyard.Application do
       # --- Web layer (can restart independently) ---
       LoopyardWeb.Endpoint,
 
+      # Dedicated MCP-over-HTTP listener for in-container ACP harnesses. Its own
+      # Bandit endpoint on 0.0.0.0:<port> (separate from the loopback-only main
+      # endpoint) so a workspace container can reach Loopyard's control-plane
+      # tools via host.docker.internal — every call bearer-authed + agent-scoped.
+      # nil (disabled, e.g. in test) is filtered out of the child list below.
+      LoopyardWeb.MCP.Listener.child_spec_or_nil(),
+
       # Activity → chime bridge (#61). A web-edge SUBSCRIBER of the activity
       # stream — decorative sound, fully rip-out-able (the core has no idea it
       # exists; enforced by the sound boundary test). Started by module name
       # only, so no Aural reference leaks into the core here.
       LoopyardWeb.ActivitySound
     ]
+
+    # Drop any nil children (e.g. the MCP listener when disabled in test).
+    children = Enum.reject(children, &is_nil/1)
 
     # Higher max_restarts: the child list includes modules from multiple
     # development branches. A crashing child shouldn't kill the entire

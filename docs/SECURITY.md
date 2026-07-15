@@ -142,6 +142,20 @@ Loopyard is moving to run a **real** coding harness (Claude Code today, Codex ne
 
 **Rule of thumb for the ACP seam:** the in-container variant is the safe target precisely because it collapses the trust question into the *existing* container/volume sandbox — the harness can only touch `/workspace` because that's all its container can see. Host mode (no fs clamp, auto-allow permissions) is a spike convenience, not a security posture. Do not enable host mode against real user projects, and do not add new client capabilities (fs or otherwise) to the host-mode handshake without a path-validation + policy story. Every ACP gap above is tracked in `docs/IMPROVEMENTS.md`.
 
+### ACP MCP bridge — the network edge of the sandbox
+
+An in-container ACP harness can't use the in-process Elixir MCP servers the ClaudeCode backend uses (those live in the BEAM; the harness is a subprocess in a container). To give it Loopyard's **control-plane** tools (ports, service lifecycle, the approval-gated fork/integrate/delete flows, ask/secret round-trips) it reaches back over HTTP: `LoopyardWeb.MCP.Server` speaks MCP JSON-RPC, and `Loopyard.MCP.acp_mcp_servers/2` hands the adapter a `session/new` `mcpServers` spec pointing at it.
+
+This is the **one Loopyard surface reachable from inside a container**, so it's built fail-closed:
+
+- **Dedicated listener, not the main endpoint.** `LoopyardWeb.MCP.Listener` is a *separate* Bandit endpoint bound to `0.0.0.0:<LOOPYARD_MCP_PORT>` (default 4030). The main web UI stays loopback-only (`127.0.0.1`) — exposing the whole app on `0.0.0.0` just so containers can call back would be a far bigger surface. Only the tool bridge is network-reachable.
+- **Bearer token, no anonymous access.** Every request MUST carry `Authorization: Bearer <token>`; no token / bad token → `401`, before any dispatch. The token is a `Phoenix.Token` signed with `secret_key_base` (`Loopyard.MCP.Token`) — unforgeable without the secret, minted per-agent at session start.
+- **Agent-scoped, identity from the token — never the payload.** The token encodes exactly `{agent_id, workspace_id}`. `ToolRouter.call_tool/4` **forces** `agent_id` from the verified token into the params, discarding whatever the model sent — so `authorize_agent/2` (§2) always sees a matching id and a leaked token is scoped to exactly one agent's own workspace. Passing a foreign `agent_id` in the JSON arguments is inert.
+- **Same tools, same gates.** The bridge dispatches to the *same* `Loopyard.Tool` `execute/2` the in-process path calls — so workspace-scoping, path validation, and the approval cards for boundary-crossing tools (`propose_fork` / `propose_integrate` / `propose_delete_workspace`, §1) all apply unchanged. The transport is new; the authority model is not.
+- **Curated surface.** `ToolConfig.acp_control_plane_tools/0` exposes only the control-plane subset — NOT the fs/exec tools (`exec`, `read_file`, `write_file`, `edit`, `grep`, …). An in-container agent has native Read/Write/Bash against `/workspace`; re-exposing those over the bridge would add surface for no gain.
+
+**Accepted limits:** the token has a long max-age and is not revoked on agent death (a leaked token stays valid until expiry, still scoped to one workspace) — consistent with the local-first threat model; per-agent revocation is a future improvement. And the listener is reachable from the whole LAN, not just Docker containers — but it is token-gated, so LAN reach without the signed secret is inert.
+
 ## Notes on the BEAM-side Docker plane
 
 The Loopyard BEAM makes Docker CLI calls of its own (not through agent tools). These calls are the control plane and are intentionally trusted:
