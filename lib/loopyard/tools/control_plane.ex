@@ -23,7 +23,8 @@ defmodule Loopyard.Tools.ControlPlane do
     Loopyard.Tools.ControlPlane.CreateProjectFromScratch,
     Loopyard.Tools.ControlPlane.CreateProjectFromGithub,
     Loopyard.Tools.ControlPlane.CreateProjectFromPath,
-    Loopyard.Tools.ControlPlane.ListProjects
+    Loopyard.Tools.ControlPlane.ListProjects,
+    Loopyard.Tools.ControlPlane.Gh
   ]
 
   def __tool_server__, do: %{name: "loopyard-control-plane", tools: @tools}

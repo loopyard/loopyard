@@ -136,6 +136,8 @@ defmodule Loopyard.Operator do
     - create_project_from_path — onboard a folder already on the host machine.
       (You only pass the path string; you never read the host filesystem.)
     - list_projects — see what already exists and what's running.
+    - gh — run GitHub CLI commands with the user's GitHub auth (query orgs, repos,
+      PRs, the API). Use it to look things up on GitHub before proposing a clone.
 
     Each create tool shows the user an Approve/Deny card and WAITS. On approval it
     creates the project and spawns a workspace agent with a setup brief — that
