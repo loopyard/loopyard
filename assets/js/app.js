@@ -284,12 +284,36 @@ Hooks.ScrollBottom = {
 
 // Auto-scroll element to bottom on every update (tail mode).
 // Pauses when user scrolls up; resumes when they scroll back to bottom.
+// Clipboard that also works OUTSIDE a secure context. `navigator.clipboard` is
+// undefined on plain-HTTP LAN origins (e.g. http://10.0.1.129:4000), so every
+// copy button silently failed there — and Loopyard is meant to be reached over
+// the LAN. Use the async API when it's actually available (secure context),
+// otherwise fall back to a hidden-textarea + execCommand. Always resolves.
+function copyToClipboard(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text).catch(() => legacyCopy(text))
+  }
+  return Promise.resolve(legacyCopy(text))
+}
+function legacyCopy(text) {
+  const ta = document.createElement("textarea")
+  ta.value = text
+  ta.setAttribute("readonly", "")
+  ta.style.position = "fixed"
+  ta.style.top = "-1000px"
+  ta.style.opacity = "0"
+  document.body.appendChild(ta)
+  ta.select()
+  try { document.execCommand("copy") } catch (_) {}
+  document.body.removeChild(ta)
+}
+
 // Clip: copy this element's data-copy to the clipboard, with a brief
 // "Copied — paste on your Mac" confirmation. Used by the per-tool "Copy for Mac".
 Hooks.Clip = {
   mounted() {
     this.el.addEventListener("click", () => {
-      navigator.clipboard?.writeText(this.el.dataset.copy || "")
+      copyToClipboard(this.el.dataset.copy || "")
       const label = this.el.dataset.label || this.el.textContent
       this.el.textContent = "✓ Copied — paste on your Mac"
       setTimeout(() => { this.el.textContent = label }, 1600)
@@ -306,7 +330,7 @@ Hooks.PushCmd = {
     const btn = this.el.querySelector(".ws-push-copy")
     if (btn && code) {
       btn.addEventListener("click", () => {
-        navigator.clipboard?.writeText(code.textContent)
+        copyToClipboard(code.textContent)
         const prev = btn.textContent
         btn.textContent = "Copied"
         setTimeout(() => { btn.textContent = prev }, 1200)
@@ -579,7 +603,7 @@ Hooks.CopySource = {
       if (!source) return
 
       const copyText = (text) => {
-        navigator.clipboard.writeText(text).then(() => {
+        copyToClipboard(text).then(() => {
           const icon = this.el.querySelector(".copy-icon")
           const check = this.el.querySelector(".check-icon")
           if (icon && check) {
