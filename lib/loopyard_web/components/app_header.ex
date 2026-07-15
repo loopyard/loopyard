@@ -24,6 +24,12 @@ defmodule LoopyardWeb.Components.AppHeader do
   slot :inner_block
 
   def header(assigns) do
+    # Every top-level screen pops back to root by clicking "Loopyard". Guarantee
+    # the trail leads with a clickable Loopyard→/ crumb here, in the one shared
+    # header, so no page can forget it (workstations did). Idempotent: pages that
+    # already lead with Loopyard (or the root "/") are left as-is — no double crumb.
+    assigns = assign(assigns, :breadcrumbs, with_root(assigns.breadcrumbs))
+
     ~H"""
     <LoopyardWeb.Components.Nav.bar height="h-14" gap="gap-3">
       {render_slot(@back)}
@@ -79,6 +85,13 @@ defmodule LoopyardWeb.Components.AppHeader do
     </LoopyardWeb.Components.Nav.bar>
     """
   end
+
+  # Prepend the Loopyard→/ root crumb unless the trail already leads with it
+  # (label "Loopyard") or with a link to "/" — so it's safe to call on every page.
+  defp with_root([{"Loopyard", _} | _] = crumbs), do: crumbs
+  defp with_root([{_, "/"} | _] = crumbs), do: crumbs
+  defp with_root(crumbs) when is_list(crumbs), do: [{"Loopyard", "/"} | crumbs]
+  defp with_root(_), do: [{"Loopyard", "/"}]
 
   def iex_indicator(assigns) do
     {dot_color, bg_color} =
