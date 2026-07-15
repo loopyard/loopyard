@@ -36,6 +36,12 @@ defmodule Loopyard.ChatAgent do
     :backend,
     :working_dir,
     :bind_mount,
+    # Host access is OPT-IN and explicit — NEVER a fallback. `host_access: true`
+    # is the sole thing that grants a `bind_mount` (native host tools). Default
+    # false → container-only. Persisted so a DELIBERATE opt-in survives resume,
+    # while a stray/legacy bind_mount does not (resume keys off this, not
+    # bind_mount). See docs/SECURITY.md.
+    :host_access,
     :workspace_id,
     # An explicit container this agent's tools run inside, INSTEAD of a
     # workspace-derived work container. Set for the operator agent, which has no
@@ -1625,6 +1631,7 @@ defmodule Loopyard.ChatAgent do
       name: state.name,
       working_dir: state.working_dir,
       bind_mount: state.bind_mount,
+      host_access: state.host_access,
       workspace_id: state.workspace_id,
       container: state.container,
       workstation_identity: state.workstation_identity,

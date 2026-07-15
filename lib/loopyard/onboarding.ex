@@ -186,10 +186,11 @@ defmodule Loopyard.Onboarding do
           if service_name, do: agent_opts ++ [service_name: service_name], else: agent_opts
 
         # Pass through a custom toolkit + system prompt for special agents (the
-        # operator). These thread straight to Initializer.start_session, which
-        # already honors :tools / :system_prompt. nil → default agent, unchanged.
+        # operator), and an EXPLICIT `host_access: true` opt-in (never a fallback —
+        # absent ⇒ container-only). These thread straight to Initializer, which
+        # honors :tools / :system_prompt / :host_access. nil → default agent.
         agent_opts =
-          [:tools, :system_prompt]
+          [:tools, :system_prompt, :host_access]
           |> Enum.reduce(agent_opts, fn key, acc ->
             case Keyword.get(opts, key) do
               nil -> acc

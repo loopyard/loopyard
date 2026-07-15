@@ -194,11 +194,12 @@ defmodule Loopyard.ChatAgent.Initializer do
     {session, session_opts, backend, new_prompt_hash} =
       start_session(id, opts,
         working_dir: saved.working_dir,
-        # SECURITY: force container-only on resume, even if a bind_mount was
-        # persisted. Without this, an agent that was (wrongly) spawned with host
-        # access before the fix would get it BACK on the next restart/replay,
-        # re-opening the escape. bind_mount is gone for good; see docs/SECURITY.md.
-        bind_mount: nil,
+        # SECURITY: on resume, host access is granted ONLY if the agent was
+        # DELIBERATELY opted in (`host_access: true`) — never from a stray/legacy
+        # `saved.bind_mount`. An agent wrongly spawned with a bind_mount before the
+        # opt-in model (host_access absent/false) resumes container-only, closing
+        # the escape. See docs/SECURITY.md.
+        bind_mount: if(saved[:host_access] == true, do: saved.working_dir),
         workspace_id: saved.workspace_id,
         service_name: saved[:service_name],
         claude_session_id: saved[:claude_session_id]
@@ -289,7 +290,12 @@ defmodule Loopyard.ChatAgent.Initializer do
     name = Keyword.get(opts, :name, "Chat #{id |> String.slice(0..7)}")
     working_dir = Keyword.get(opts, :working_dir, File.cwd!())
     started_by = Keyword.get(opts, :started_by, "anonymous")
-    bind_mount = Keyword.get(opts, :bind_mount)
+    # Host access is OPT-IN and explicit — never a fallback. A `bind_mount` (native
+    # host tools) is granted ONLY when `host_access: true` is passed deliberately;
+    # otherwise the agent is container-only. `container: <name>` agents (the
+    # operator) keep their own container and never take a bind_mount.
+    host_access = Keyword.get(opts, :host_access, false) == true
+    bind_mount = if host_access, do: Keyword.get(opts, :bind_mount) || working_dir, else: nil
     workspace_id = Keyword.get(opts, :workspace_id)
     service_name = Keyword.get(opts, :service_name)
     # Restored chat history + Claude session for a re-spawned agent that has no
@@ -317,6 +323,7 @@ defmodule Loopyard.ChatAgent.Initializer do
       backend: backend,
       working_dir: working_dir,
       bind_mount: bind_mount,
+      host_access: host_access,
       workspace_id: workspace_id,
       container: Keyword.get(opts, :container),
       workstation_identity:
