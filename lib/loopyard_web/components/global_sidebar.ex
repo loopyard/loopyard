@@ -30,12 +30,11 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
       <div class="flex items-center h-14 flex-none border-b border-zinc-200/70 dark:border-zinc-800">
         <.link
           navigate="/"
-          class="flex-1 min-w-0 flex items-center gap-2.5 h-full px-4 hover:bg-zinc-100/60 dark:hover:bg-zinc-800/40 transition-colors group"
+          aria-label="loopyard home"
+          class="flex-1 min-w-0 flex items-center h-full px-4 text-zinc-900 dark:text-zinc-50 hover:opacity-70 transition-opacity"
         >
-          <span class="grid place-items-center w-7 h-7 rounded-lg bg-violet-600 text-white shadow-sm shadow-violet-600/30 group-hover:scale-105 transition-transform">
-            <svg viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path d="M10 2.5 3 6v8l7 3.5L17 14V6l-7-3.5Zm0 1.9 4.7 2.35L10 9.1 5.3 6.75 10 4.4Z" /></svg>
-          </span>
-          <span class="font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">Loopyard</span>
+          <%!-- Official trefoil mark + lowercase wordmark (loopyard.ai/branding). --%>
+          <LoopyardWeb.Components.Brand.logo mark_class="w-6 h-6 flex-none" wordmark_class="text-base tracking-tight" />
         </.link>
         <LoopyardWeb.Components.Common.sound_control id="sound-global" class="mr-1.5" />
       </div>
