@@ -381,8 +381,17 @@ defmodule LoopyardWeb.WorkspaceLive do
     cond do
       live_agents != [] ->
         case Navigation.landing_target(socket) do
-          nil -> {:noreply, socket}
-          path -> {:noreply, push_patch(socket, to: path)}
+          nil ->
+            {:noreply, socket}
+
+          path ->
+            # REPLACE, don't push: the bare workspace URL (:index) is a transient
+            # hop that immediately resolves to an agent. If it stayed in history,
+            # swiping back would land on :index, which re-fires this and bounces
+            # you FORWARD to the agent again — so "back" looked dead. Replacing it
+            # means back skips :index straight to the project/prior page. Same
+            # visible result (you land on the agent), correct history.
+            {:noreply, push_patch(socket, to: path, replace: true)}
         end
 
       connected?(socket) and !socket.assigns[:auto_spawned] ->
