@@ -23,17 +23,22 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
   def global_sidebar(assigns) do
     ~H"""
     <nav class={["flex flex-col", @class]} aria-label="Navigation">
-      <%!-- Persistent home: the wordmark always returns to the root screen.
-           Fixed height so nothing shifts. --%>
-      <.link
-        navigate="/"
-        class="flex items-center gap-2.5 h-14 px-4 flex-none border-b border-zinc-200/70 dark:border-zinc-800 hover:bg-zinc-100/60 dark:hover:bg-zinc-800/40 transition-colors group"
-      >
-        <span class="grid place-items-center w-7 h-7 rounded-lg bg-violet-600 text-white shadow-sm shadow-violet-600/30 group-hover:scale-105 transition-transform">
-          <svg viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path d="M10 2.5 3 6v8l7 3.5L17 14V6l-7-3.5Zm0 1.9 4.7 2.35L10 9.1 5.3 6.75 10 4.4Z" /></svg>
-        </span>
-        <span class="font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">Loopyard</span>
-      </.link>
+      <%!-- Persistent home + sound: the wordmark always returns to the root
+           screen; the speaker (desktop's only always-visible header, since the
+           mobile chat_header is md:hidden) toggles/opens ambient sound. Fixed
+           height so nothing shifts. --%>
+      <div class="flex items-center h-14 flex-none border-b border-zinc-200/70 dark:border-zinc-800">
+        <.link
+          navigate="/"
+          class="flex-1 min-w-0 flex items-center gap-2.5 h-full px-4 hover:bg-zinc-100/60 dark:hover:bg-zinc-800/40 transition-colors group"
+        >
+          <span class="grid place-items-center w-7 h-7 rounded-lg bg-violet-600 text-white shadow-sm shadow-violet-600/30 group-hover:scale-105 transition-transform">
+            <svg viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path d="M10 2.5 3 6v8l7 3.5L17 14V6l-7-3.5Zm0 1.9 4.7 2.35L10 9.1 5.3 6.75 10 4.4Z" /></svg>
+          </span>
+          <span class="font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">Loopyard</span>
+        </.link>
+        <LoopyardWeb.Components.Common.sound_control id="sound-global" class="mr-1.5" />
+      </div>
 
       <div class="flex-1 overflow-y-auto">
         <div :if={@tree == []} class="px-3 py-2 text-sm text-zinc-400 italic">
