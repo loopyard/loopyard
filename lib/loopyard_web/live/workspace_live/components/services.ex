@@ -90,8 +90,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
           <button
             :if={@running?}
             type="button"
-            phx-click={LoopyardWeb.Components.Nav.toggle_panel("service-actions")}
-            aria-label="More actions"
+            phx-click={LoopyardWeb.Components.Nav.open_sheet("service-actions")}
+            aria-label="Service actions"
             class="md:hidden focus-ring inline-flex items-center justify-center min-h-8 min-w-8 rounded-md text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
           >
             <svg viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
@@ -118,10 +118,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
       />
     </.detail_panel>
 
-    <%!-- MOBILE actions sheet: the secondary actions, opened by the ⋯ button.
-         Reuses the switcher sheet — same slide-in + sticky tap-to-close header
-         (the service, tap it to go back). --%>
-    <LoopyardWeb.Components.Nav.switcher_sheet
+    <%!-- MOBILE actions: a bottom share-sheet — slides up, swipe the handle down
+         to dismiss. Opened by the ⋯ button. --%>
+    <LoopyardWeb.Components.Nav.bottom_sheet
       :if={@running?}
       id="service-actions"
       title={@service_name}
@@ -133,7 +132,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
         </span>
         <span class="flex-none text-zinc-400 dark:text-zinc-500">Running</span>
       </:current>
-      <div class="p-2 space-y-3">
+      <div class="space-y-3">
         <%!-- The reachable URL, front and center — so you can SEE the open port
              (and tap it) on a phone, not just launch it. --%>
         <a
@@ -156,7 +155,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
           />
         </div>
       </div>
-    </LoopyardWeb.Components.Nav.switcher_sheet>
+    </LoopyardWeb.Components.Nav.bottom_sheet>
     """
   end
 

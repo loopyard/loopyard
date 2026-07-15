@@ -308,16 +308,104 @@ function legacyCopy(text) {
   document.body.removeChild(ta)
 }
 
+// BottomSheet — a mobile "share sheet". The server renders it hidden with the
+// panel translated fully down; opening (a `sheet:open` event, via Nav.open_sheet)
+// un-hides the container and slides the panel up, closing reverses it. Swiping
+// DOWN on the grab handle drags the panel with your finger and dismisses past a
+// threshold (snaps back otherwise) — the body scrolls independently.
+Hooks.BottomSheet = {
+  mounted() {
+    this.panel = this.el
+    this.container = document.querySelector(this.panel.dataset.sheet)
+    this.dragZone = this.panel.querySelector("[data-sheet-drag]")
+
+    this._open = () => this.show()
+    this._close = () => this.hide()
+    this.panel.addEventListener("sheet:open", this._open)
+    this.panel.addEventListener("sheet:close", this._close)
+
+    let startY = 0, dy = 0, dragging = false
+    this._onStart = (e) => {
+      startY = e.touches[0].clientY; dy = 0; dragging = true
+      this.panel.style.transition = "none"
+    }
+    this._onMove = (e) => {
+      if (!dragging) return
+      dy = Math.max(0, e.touches[0].clientY - startY)
+      this.panel.style.transform = `translateY(${dy}px)`
+    }
+    this._onEnd = () => {
+      if (!dragging) return
+      dragging = false
+      this.panel.style.transition = ""
+      if (dy > 90) this.hide()
+      else this.panel.style.transform = ""
+    }
+    if (this.dragZone) {
+      this.dragZone.addEventListener("touchstart", this._onStart, {passive: true})
+      this.dragZone.addEventListener("touchmove", this._onMove, {passive: true})
+      this.dragZone.addEventListener("touchend", this._onEnd)
+    }
+  },
+  destroyed() {
+    this.panel.removeEventListener("sheet:open", this._open)
+    this.panel.removeEventListener("sheet:close", this._close)
+  },
+  show() {
+    if (!this.container) return
+    this.container.classList.remove("hidden")
+    this.panel.style.transform = ""
+    void this.panel.offsetHeight // reflow so the slide runs from translate-y-full
+    requestAnimationFrame(() => this.panel.classList.remove("translate-y-full"))
+  },
+  hide() {
+    if (!this.container) return
+    this.panel.style.transform = ""
+    this.panel.classList.add("translate-y-full")
+    const done = () => {
+      this.container.classList.add("hidden")
+      this.panel.removeEventListener("transitionend", done)
+    }
+    this.panel.addEventListener("transitionend", done)
+    setTimeout(() => this.container && this.container.classList.add("hidden"), 350)
+  }
+}
+
 // Clip: copy this element's data-copy to the clipboard, with a brief
 // "Copied — paste on your Mac" confirmation. Used by the per-tool "Copy for Mac".
 Hooks.Clip = {
   mounted() {
+    // Fill the real browser origin into any __ORIGIN__ placeholder — the command
+    // must target the host the user actually reached (LAN IP, Teleport tunnel),
+    // which the server can't reliably know behind a proxy. Both the copied text
+    // (data-copy) and the visible command (sibling <pre>) get substituted.
+    const origin = window.location.origin
+    if (this.el.dataset.copy) {
+      this.el.dataset.copy = this.el.dataset.copy.replaceAll("__ORIGIN__", origin)
+    }
+    const box = this.el.closest("div")
+    const pre = box && box.querySelector("pre")
+    if (pre && pre.textContent.includes("__ORIGIN__")) {
+      pre.textContent = pre.textContent.replaceAll("__ORIGIN__", origin)
+    }
     this.el.addEventListener("click", () => {
       copyToClipboard(this.el.dataset.copy || "")
       const label = this.el.dataset.label || this.el.textContent
       this.el.textContent = "✓ Copied — paste on your Mac"
       setTimeout(() => { this.el.textContent = label }, 1600)
     })
+  }
+}
+
+// OriginText: swap __ORIGIN__ for the real browser origin in rendered text (the
+// tool reference doc's curl examples). Runs on mount + after LiveView updates.
+Hooks.OriginText = {
+  mounted() { this.sub() },
+  updated() { this.sub() },
+  sub() {
+    if (this.el.innerHTML.includes("__ORIGIN__")) {
+      this.el.innerHTML = this.el.innerHTML.replaceAll("__ORIGIN__", window.location.origin)
+    }
   }
 }
 
