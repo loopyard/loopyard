@@ -253,17 +253,20 @@ defmodule LoopyardWeb.Components.Nav do
         class="flex-1 min-w-0 flex items-center gap-2 min-h-[2.75rem] px-3 rounded-lg text-left hover:bg-zinc-100 dark:hover:bg-zinc-800/60 active:bg-zinc-200 dark:active:bg-zinc-700/60 transition-colors"
       >
         <span class={["w-2 h-2 rounded-full flex-none", @current.dot]}></span>
-        <span class="font-semibold text-zinc-900 dark:text-zinc-100 truncate">{@current.label}</span>
-        <span :if={@current[:detail]} class={["text-sm truncate", @current[:tone]]}>
+        <span class="flex-1 min-w-0 truncate font-semibold text-zinc-900 dark:text-zinc-100">
+          {@current.label}
+        </span>
+        <%!-- Status: SAME font size as the name (no text-sm), just muted + right
+             aligned — the label takes flex-1 above, pushing this to the edge. --%>
+        <span :if={@current[:detail]} class={["flex-none truncate", @current[:tone]]}>
           {@current.detail}
         </span>
         <span
           :if={@current[:badge]}
-          class="inline-flex items-center gap-1 text-sm text-zinc-400 dark:text-zinc-500 flex-none"
+          class="inline-flex items-center gap-1 flex-none text-zinc-400 dark:text-zinc-500"
         >
           <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>{@current.badge}
         </span>
-        <span class="flex-1"></span>
         <%!-- Switch pill only when there's somewhere to switch to; a lone item
              gets a quiet chevron. --%>
         <span
@@ -287,11 +290,12 @@ defmodule LoopyardWeb.Components.Nav do
         class={sheet_row_class(item[:active?])}
       >
         <span class={["w-2.5 h-2.5 rounded-full flex-none", item.dot]}></span>
-        <span class="truncate">{item.label}</span>
-        <span :if={item[:detail]} class="text-sm text-zinc-400 dark:text-zinc-500 truncate">
+        <span class="flex-1 min-w-0 truncate">{item.label}</span>
+        <%!-- Status same size as the name, muted + right-aligned (matches the
+             switcher trigger above). --%>
+        <span :if={item[:detail]} class="flex-none truncate text-zinc-400 dark:text-zinc-500">
           {item.detail}
         </span>
-        <span class="flex-1"></span>
         <.check :if={item[:active?]} />
       </.link>
       {render_slot(@extra)}
