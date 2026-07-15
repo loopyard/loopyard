@@ -73,6 +73,7 @@ defmodule LoopyardWeb.ConnectLive do
     |> assign(:url, url)
     |> assign(:qr_svg, qr_svg)
     |> assign(:ssh_cmd, ssh_cmd)
+    |> assign(:lan_ip, lan_ip)
   end
 
   defp maybe_assign_qr(socket, false, _path) do
@@ -80,106 +81,130 @@ defmodule LoopyardWeb.ConnectLive do
     |> assign(:url, nil)
     |> assign(:qr_svg, nil)
     |> assign(:ssh_cmd, nil)
+    |> assign(:lan_ip, nil)
   end
 
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
-      <.header
-        breadcrumbs={[{"Loopyard", "/"}, {"Remote", nil}]}
-        iex_session={@iex_session}
-        host_exposed={@exposed}
-      />
+    <.page_shell
+      breadcrumbs={[{"Loopyard", "/"}, {"Remote", nil}]}
+      iex_session={@iex_session}
+      max_width={:lg}
+      flash={@flash}
+    >
+      <:header_actions>
+        <button
+          :if={@exposed && !@toggling}
+          phx-click="unexpose"
+          data-confirm="This disconnects any remote sessions (including this one, if you're connected remotely). Continue?"
+          class="focus-ring inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+        >
+          Stop exposing
+        </button>
+      </:header_actions>
 
-      <div class="flex-1 flex items-center justify-center">
-        <div class="text-center px-4 max-w-md">
-          <%= if @toggling do %>
-            <div class="text-sm text-zinc-500 animate-pulse py-8">Restarting endpoint...</div>
-          <% else %>
-            <%= if @exposed do %>
-              <div class="bg-white p-5 rounded-2xl shadow-sm inline-block mb-6">
-                {raw(@qr_svg)}
-              </div>
-              <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-2">
-                Scan to open on your phone or another device
+      <div :if={@toggling} class="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400 py-16">
+        <span class="w-2 h-2 rounded-full bg-violet-500 animate-pulse flex-none"></span>
+        Restarting the endpoint…
+      </div>
+
+      <div :if={!@toggling && @exposed} class="space-y-6">
+        <%!-- Status: exposed, and the address it's on. --%>
+        <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 flex-none"></span>
+          <span class="font-medium text-emerald-600 dark:text-emerald-400">Exposed</span>
+          <span class="text-zinc-500 dark:text-zinc-400">
+            — reachable on your network at
+            <code class="font-mono text-zinc-700 dark:text-zinc-300">{@lan_ip}</code>
+          </span>
+        </div>
+
+        <%!-- QR hero (scan target) + connection details. Stacks on phone, sits
+             side-by-side on desktop with the QR as a fixed-width anchor. --%>
+        <div class="grid gap-6 md:grid-cols-[auto_minmax(0,1fr)] md:items-start">
+          <div class="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 p-4 w-max mx-auto md:mx-0">
+            <div class="bg-white rounded-xl p-2.5 w-max">{raw(@qr_svg)}</div>
+            <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-3 max-w-[240px] text-center">
+              Scan to open on your phone or another device.
+            </p>
+          </div>
+
+          <div class="space-y-6 min-w-0">
+            <section class="space-y-2">
+              <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                Open in a browser
+              </h2>
+              <.copy_line id="copy-url" value={@url} />
+              <p :if={@path != "/"} class="text-xs text-zinc-400 dark:text-zinc-500 font-mono truncate">
+                deep link: {@path}
               </p>
-              <div class="flex items-center justify-center gap-2 mb-6">
-                <code class="text-sm font-mono text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 rounded-lg px-3 py-2 select-all">
-                  {@url}
-                </code>
-                <button
-                  id="copy-url"
-                  phx-hook="CopySource"
-                  data-source={@url}
-                  class="text-xs text-violet-600 dark:text-violet-400 hover:text-violet-500 font-medium"
-                >
-                  Copy
-                </button>
-              </div>
-              <p
-                :if={@path != "/"}
-                class="text-xs text-zinc-400 dark:text-zinc-500 mb-4 font-mono truncate"
-              >
-                {@path}
+            </section>
+
+            <%!-- SSH by container name (SSHServer authenticates by name, no
+                 password) — swap CONTAINER for the one you want. --%>
+            <section :if={@ssh_cmd} class="space-y-2">
+              <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                SSH into a container
+              </h2>
+              <.copy_line id="copy-ssh" value={@ssh_cmd} />
+              <p class="text-xs text-zinc-400 dark:text-zinc-500 leading-relaxed">
+                Replace
+                <code class="bg-zinc-100 dark:bg-zinc-800 rounded px-1 py-0.5 font-mono">CONTAINER</code>
+                with a running container's name (shown on any service's console page).
               </p>
-
-              <%!-- SSH into a running container over the same LAN binding. The
-                   username IS the container name (SSHServer authenticates by
-                   name, no password) — swap CONTAINER for the one you want, e.g.
-                   the name shown on a service's console page. --%>
-              <div :if={@ssh_cmd} class="mb-6 border-t border-zinc-200 dark:border-zinc-700/60 pt-5">
-                <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-2">
-                  SSH access
-                </p>
-                <div class="flex items-center justify-center gap-2">
-                  <code class="text-sm font-mono text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 rounded-lg px-3 py-2 select-all">
-                    {@ssh_cmd}
-                  </code>
-                  <button
-                    id="copy-ssh"
-                    phx-hook="CopySource"
-                    data-source={@ssh_cmd}
-                    class="text-xs text-violet-600 dark:text-violet-400 hover:text-violet-500 font-medium"
-                  >
-                    Copy
-                  </button>
-                </div>
-                <p class="text-xs text-zinc-400 dark:text-zinc-500 mt-2 leading-relaxed">
-                  Replace <code class="bg-zinc-100 dark:bg-zinc-800 rounded px-1 py-0.5">CONTAINER</code>
-                  with a running container's name (shown on any service's console page).
-                </p>
-              </div>
-
-              <button
-                phx-click="unexpose"
-                data-confirm="This will disconnect any remote sessions (including this one if you're connected remotely). Continue?"
-                class="text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg px-4 py-2 transition-colors"
-              >
-                Stop exposing
-              </button>
-            <% else %>
-              <div class="space-y-4">
-                <h2 class="text-lg font-semibold">Remote access</h2>
-                <p class="text-sm text-zinc-500 dark:text-zinc-400 leading-relaxed">
-                  Loopyard is currently bound to
-                  <code class="bg-zinc-100 dark:bg-zinc-800 rounded px-1.5 py-0.5">127.0.0.1</code>
-                  — only this machine can reach it.
-                  Exposing binds to
-                  <code class="bg-zinc-100 dark:bg-zinc-800 rounded px-1.5 py-0.5">0.0.0.0</code>
-                  so any device that can route to this host (same Wi-Fi, VPN, tunnel) can access it.
-                </p>
-                <button
-                  phx-click="expose"
-                  class="inline-flex items-center gap-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white px-5 py-2.5 text-sm font-medium transition-colors"
-                >
-                  Expose endpoint
-                </button>
-              </div>
-            <% end %>
-          <% end %>
+            </section>
+          </div>
         </div>
       </div>
+
+      <%!-- Private: a single explanatory card + the one CTA. --%>
+      <div
+        :if={!@toggling && !@exposed}
+        class="max-w-xl space-y-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 p-6"
+      >
+        <div class="flex items-center gap-2 text-sm">
+          <span class="w-2 h-2 rounded-full bg-zinc-400 flex-none"></span>
+          <span class="font-medium">Private</span>
+          <span class="text-zinc-500 dark:text-zinc-400">— only this machine can reach Loopyard.</span>
+        </div>
+        <p class="text-sm text-zinc-500 dark:text-zinc-400 leading-relaxed">
+          Loopyard is bound to
+          <code class="bg-zinc-100 dark:bg-zinc-800 rounded px-1.5 py-0.5 font-mono">127.0.0.1</code>.
+          Exposing binds it to
+          <code class="bg-zinc-100 dark:bg-zinc-800 rounded px-1.5 py-0.5 font-mono">0.0.0.0</code>
+          so any device that can route to this host — same Wi-Fi, VPN, tunnel — can reach it, with a
+          QR code and SSH details to connect.
+        </p>
+        <button
+          phx-click="expose"
+          class="focus-ring inline-flex items-center gap-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white px-5 py-2.5 text-sm font-medium transition-colors"
+        >
+          Expose endpoint
+        </button>
+      </div>
+    </.page_shell>
+    """
+  end
+
+  # A monospace value + a Copy button, matching our command-box rhythm. Uses the
+  # CopySource hook (works over plain-HTTP LAN via the execCommand fallback).
+  attr :id, :string, required: true
+  attr :value, :string, required: true
+
+  defp copy_line(assigns) do
+    ~H"""
+    <div class="flex items-stretch gap-2">
+      <code class="flex-1 min-w-0 overflow-x-auto rounded-lg bg-zinc-100 dark:bg-zinc-800/80 ring-1 ring-inset ring-zinc-200 dark:ring-zinc-700/60 text-zinc-700 dark:text-zinc-200 text-sm font-mono px-3 py-2 select-all whitespace-nowrap">{@value}</code>
+      <button
+        id={@id}
+        phx-hook="CopySource"
+        data-source={@value}
+        class="focus-ring flex-none rounded-lg bg-zinc-900 hover:bg-zinc-700 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white px-3.5 py-2 text-xs font-medium transition-colors"
+      >
+        <span class="copy-icon">Copy</span>
+        <span class="check-icon hidden">Copied</span>
+      </button>
     </div>
     """
   end
