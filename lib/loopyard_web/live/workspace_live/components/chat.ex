@@ -95,6 +95,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       </Nav.bar>
 
       <Nav.switcher_sheet :if={@can_switch} id="nav-switcher" title="Switch workspace">
+        <:current>
+          <span :if={@project} class="flex-none text-zinc-400 dark:text-zinc-500 truncate">
+            {@project.name} /
+          </span>
+          <span class="flex-1 min-w-0 truncate font-semibold text-zinc-900 dark:text-zinc-100">
+            {@ws_name}
+          </span>
+        </:current>
         <LoopyardWeb.Components.ProjectList.project_groups
           projects={@global_tree}
           current_workspace_id={@workspace.id}

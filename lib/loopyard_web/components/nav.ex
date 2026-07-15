@@ -283,6 +283,15 @@ defmodule LoopyardWeb.Components.Nav do
     </div>
 
     <.switcher_sheet id={@id} title={@title}>
+      <:current :if={@current}>
+        <span class={["w-2 h-2 rounded-full flex-none", @current.dot]}></span>
+        <span class="flex-1 min-w-0 truncate font-semibold text-zinc-900 dark:text-zinc-100">
+          {@current.label}
+        </span>
+        <span :if={@current[:detail]} class={["flex-none truncate", @current[:tone]]}>
+          {@current.detail}
+        </span>
+      </:current>
       <.link
         :for={item <- @items}
         patch={item.href}
@@ -368,6 +377,12 @@ defmodule LoopyardWeb.Components.Nav do
   """
   attr :id, :string, required: true
   attr :title, :string, required: true
+
+  slot :current,
+    doc:
+      "The currently-selected item. Rendered as the sticky tap-to-close header so " <>
+        "the switcher toggles: tap the same thing to go back. Falls back to the title."
+
   slot :inner_block, required: true
 
   def switcher_sheet(assigns) do
@@ -379,13 +394,32 @@ defmodule LoopyardWeb.Components.Nav do
       aria-modal="true"
       aria-label={@title}
     >
-      <div class="absolute inset-0 bg-zinc-900/50 backdrop-blur-sm" phx-click={JS.hide(to: "##{@id}")}>
+      <div class="absolute inset-0 bg-zinc-900/50 backdrop-blur-sm" phx-click={toggle_panel(@id)}>
       </div>
       <div class="absolute inset-0 flex flex-col bg-white dark:bg-zinc-900 safe-area-x">
-        <div class="flex-none flex items-center justify-between h-14 px-4 border-b border-zinc-200 dark:border-zinc-700/80">
-          <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-100 truncate">{@title}</h2>
-          <.close_button phx-click={JS.hide(to: "##{@id}")} />
-        </div>
+        <%!-- The current selection AS a tap-to-close header: tapping it (or the
+             backdrop) toggles the sheet shut — so open-then-tap-the-same-thing
+             "goes back", like a toggle. It's flex-none at the top, so it stays put
+             while the selectable options scroll beneath. The up-chevron mirrors the
+             trigger's down-chevron: down to open, up to collapse. Falls back to the
+             plain title when no :current is given. --%>
+        <button
+          type="button"
+          phx-click={toggle_panel(@id)}
+          aria-label={"Close #{@title}"}
+          class="flex-none flex items-center gap-2 h-14 px-4 w-full text-left border-b border-zinc-200 dark:border-zinc-700/80"
+        >
+          <div :if={@current != []} class="flex-1 min-w-0 flex items-center gap-2">
+            {render_slot(@current)}
+          </div>
+          <h2
+            :if={@current == []}
+            class="flex-1 min-w-0 text-lg font-semibold text-zinc-900 dark:text-zinc-100 truncate"
+          >
+            {@title}
+          </h2>
+          <.chevron_down class="w-5 h-5 flex-none text-zinc-400 dark:text-zinc-500 rotate-180" />
+        </button>
         <div class="flex-1 overflow-y-auto overscroll-contain p-2 space-y-0.5">
           {render_slot(@inner_block)}
         </div>
