@@ -133,8 +133,16 @@ defmodule Loopyard.Operator do
     _ -> {[], nil}
   end
 
+  # Liveness = a LIVE GenServer process, not just an ETS row. `get_state/1`
+  # returns the persisted summary even for a crashed/killed agent (status
+  # :crashed lingers in ETS), so checking that would report a dead operator as
+  # alive — and `ensure_agent` would refuse to respawn it, so every send hits a
+  # dead process and silently vanishes. Check the Registry for a real pid.
   defp agent_alive?(id) do
-    match?(%{}, Loopyard.ChatAgent.get_state(id))
+    case Registry.lookup(Loopyard.ChatAgentRegistry, id) do
+      [{pid, _}] -> Process.alive?(pid)
+      _ -> false
+    end
   rescue
     _ -> false
   catch
