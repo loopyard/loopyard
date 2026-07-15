@@ -91,7 +91,24 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           <span :if={@project} class="text-zinc-300 dark:text-zinc-600 flex-none">/</span>
           <Nav.crumb id="nav-switcher" label={@ws_name} current switch?={@can_switch} />
         </nav>
-        <:actions><.sound_control id="sound-workspace" /></:actions>
+        <:actions>
+          <%!-- Agent details: opens the context panel (usage / changes / status)
+               as a bottom sheet, since the right rail is desktop-only. Only when
+               an agent is selected. --%>
+          <button
+            :if={@selected_agent}
+            type="button"
+            phx-click={Nav.open_sheet("agent-context")}
+            aria-label="Agent details"
+            class="focus-ring inline-flex items-center justify-center w-11 h-11 rounded-lg text-zinc-400 dark:text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5">
+              <rect x="3" y="4" width="18" height="16" rx="2" />
+              <line x1="15" y1="4" x2="15" y2="20" />
+            </svg>
+          </button>
+          <.sound_control id="sound-workspace" />
+        </:actions>
       </Nav.bar>
 
       <Nav.switcher_sheet :if={@can_switch} id="nav-switcher" title="Switch workspace">

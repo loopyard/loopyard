@@ -1913,6 +1913,29 @@ defmodule LoopyardWeb.WorkspaceLive do
           docker_connected?={@docker_connected?}
         />
       </div>
+
+      <%!-- MOBILE: the selected agent's context (usage / changes / harness status)
+           as a bottom sheet — the right rail is desktop-only, so this is how you
+           reach it on a phone. Opened by the details button in the chat header;
+           swipe the handle down to dismiss. --%>
+      <LoopyardWeb.Components.Nav.bottom_sheet
+        :if={@selected_agent}
+        id="agent-context"
+        title={@selected_agent[:name] || "Agent"}
+      >
+        <:current>
+          <span class={"w-2 h-2 rounded-full flex-none #{LoopyardWeb.Components.Sidebar.status_dot(LoopyardWeb.Components.Sidebar.agent_display_status(@selected_agent))}"}></span>
+          <span class="flex-1 min-w-0 truncate font-semibold text-zinc-900 dark:text-zinc-100">
+            {@selected_agent[:name] || "Agent"}
+          </span>
+        </:current>
+        <LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel.context_sections
+          agent={@selected_agent}
+          changes={@changes}
+          editing_name={@editing_name}
+          base_path={@base_path}
+        />
+      </LoopyardWeb.Components.Nav.bottom_sheet>
     </div>
     """
   end
