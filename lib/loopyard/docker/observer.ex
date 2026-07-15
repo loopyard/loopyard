@@ -132,7 +132,7 @@ defmodule Loopyard.Docker.Observer do
           struct!(svc, %{
             status: :running,
             container: container_name,
-            ports: container[:host_ports] || %{}
+            ports: managed_ports(workspace_id, svc.name, container[:host_ports] || %{})
           })
         else
           struct!(svc, %{status: :stopped, container: container_name})
@@ -153,11 +153,27 @@ defmodule Loopyard.Docker.Observer do
           type: :process,
           status: if(c.running, do: :running, else: :stopped),
           container: c.name,
-          ports: c[:host_ports] || %{}
+          ports: managed_ports(workspace_id, service_name, c[:host_ports] || %{})
         }
       end)
     end
   end
+
+  # Prefer the Loopyard-managed STICKY host port (from PortRegistry) over Docker's
+  # raw ephemeral one, so the UI shows the stable, proxied, exposable URL instead
+  # of a port that changes on every restart. Falls back to the Docker port for any
+  # container port the manager hasn't adopted yet. Direct ETS read — no GenServer
+  # call, safe from this query path.
+  defp managed_ports(workspace_id, service, docker_ports) when is_map(docker_ports) do
+    Map.new(docker_ports, fn {cport, dport} ->
+      case Loopyard.PortRegistry.get(workspace_id, service, cport) do
+        {:ok, %{host_port: host}} when is_integer(host) -> {cport, host}
+        _ -> {cport, dport}
+      end
+    end)
+  end
+
+  defp managed_ports(_workspace_id, _service, _), do: %{}
 
   @doc "Full snapshot: containers + volumes + timestamp."
   def snapshot do

@@ -122,53 +122,13 @@ defmodule Loopyard.PortRegistry do
 
   @impl true
   def handle_call({:assign, ws, svc, cport}, _from, state) do
-    key = {ws, svc, cport}
-
-    case :ets.lookup(@table, key) do
-      [{^key, entry}] ->
-        # Re-track on existing entries too — the workspace supervisor pid
-        # may have changed (restart) since the original assign. Resources
-        # is idempotent under the same {kind, id} + same owner; under a
-        # new owner it returns {:error, :already_tracked} which we ignore
-        # because the original owner's release would still fire.
-        track_binding(ws, svc, cport)
+    case get_or_create_entry({ws, svc, cport}, state) do
+      {:ok, entry} ->
         {:reply, {:ok, entry.host_port}, state}
 
-      [] ->
-        # Check persisted file first — if the port was saved (e.g. with
-        # exposed: true), we must recover it rather than creating a fresh
-        # entry with exposed: false. This makes assign idempotent
-        # regardless of the order of restore() vs assign() at boot.
-        case recover_from_store(key) do
-          {:ok, recovered} ->
-            :ets.insert(@table, {key, recovered})
-            track_binding(ws, svc, cport)
-            {:reply, {:ok, recovered.host_port}, state}
-
-          :not_found ->
-            case find_free_port(state.port_range) do
-              {:ok, host_port} ->
-                entry = %{
-                  workspace_id: ws,
-                  service: svc,
-                  container_port: cport,
-                  host_port: host_port,
-                  docker_port: nil,
-                  exposed: false,
-                  allocated_at: DateTime.utc_now()
-                }
-
-                :ets.insert(@table, {key, entry})
-                persist(state)
-                track_binding(ws, svc, cport)
-                EventLog.info("ports", "Assigned #{ws}/#{svc}/#{cport} → host #{host_port}")
-                {:reply, {:ok, host_port}, state}
-
-              {:error, :port_pool_exhausted} = err ->
-                EventLog.error("ports", "Port pool exhausted for #{ws}/#{svc}/#{cport}")
-                {:reply, err, state}
-            end
-        end
+      {:error, :port_pool_exhausted} = err ->
+        EventLog.error("ports", "Port pool exhausted for #{ws}/#{svc}/#{cport}")
+        {:reply, err, state}
     end
   end
 
@@ -342,6 +302,96 @@ defmodule Loopyard.PortRegistry do
 
   # --- Private ---
 
+  # Fetch the entry for a key, creating a fresh sticky assignment if absent
+  # (checking the persisted store first, exactly like assign/3 used to). Safe to
+  # call from INSIDE the GenServer — no self-call — so both the `:assign`
+  # handle_call and the Observer-driven discovery pass share one code path.
+  defp get_or_create_entry({ws, svc, cport} = key, state) do
+    case :ets.lookup(@table, key) do
+      [{^key, entry}] ->
+        # Re-track on existing entries too — the workspace supervisor pid may
+        # have changed (restart) since the original assign.
+        track_binding(ws, svc, cport)
+        {:ok, entry}
+
+      [] ->
+        # Check the persisted file first — if the port was saved (e.g. exposed:
+        # true), recover it rather than creating a fresh exposed:false entry.
+        case recover_from_store(key) do
+          {:ok, recovered} ->
+            :ets.insert(@table, {key, recovered})
+            track_binding(ws, svc, cport)
+            {:ok, recovered}
+
+          :not_found ->
+            case find_free_port(state.port_range) do
+              {:ok, host_port} ->
+                entry = %{
+                  workspace_id: ws,
+                  service: svc,
+                  container_port: cport,
+                  host_port: host_port,
+                  docker_port: nil,
+                  exposed: false,
+                  allocated_at: DateTime.utc_now()
+                }
+
+                :ets.insert(@table, {key, entry})
+                persist(state)
+                track_binding(ws, svc, cport)
+                EventLog.info("ports", "Assigned #{ws}/#{svc}/#{cport} → host #{host_port}")
+                {:ok, entry}
+
+              {:error, _} = err ->
+                err
+            end
+        end
+    end
+  end
+
+  # DISCOVERY — the port manager as the source of truth. However a container's
+  # port got published (compose-assigned, a raw `docker compose up`, an agent
+  # exec, a nested DinD), the Observer reports the host mapping. Here we ADOPT any
+  # host-published port that has no registry entry yet: create a sticky
+  # user-facing port for it, so the reconcile pass below starts a proxy and the
+  # UI can show a stable URL. Ports that are only *exposed* (no host binding —
+  # e.g. DinD's 2375-2376) never appear in `host_ports`, so they're skipped for
+  # free. Adopted ports default to PRIVATE (127.0.0.1); exposure stays a
+  # deliberate, separate toggle — discovery grants no LAN reach.
+  defp discover_published_ports(state) do
+    for c <- Loopyard.Docker.Observer.containers(),
+        Map.get(c, :running),
+        is_binary(c[:workspace_id]),
+        {cport, _hport} <- c[:host_ports] || %{},
+        is_integer(cport) do
+      svc = service_from_name(c.name, c.workspace_id)
+      key = {c.workspace_id, svc, cport}
+
+      if svc && :ets.lookup(@table, key) == [] do
+        get_or_create_entry(key, state)
+      end
+    end
+
+    :ok
+  rescue
+    e ->
+      require Logger
+      Logger.warning("[PortRegistry] discover_published_ports failed: #{Exception.message(e)}")
+      :ok
+  end
+
+  # Container name → compose service, given the known workspace (so the project
+  # prefix is exact — no guessing where the id ends). `loopyard-<ws>-dev-1` → "dev",
+  # `loopyard-<ws>-work` → "work". Returns nil if the name doesn't match.
+  defp service_from_name(name, ws) do
+    prefix = Loopyard.Compose.project_name(ws) <> "-"
+
+    case String.replace_prefix(name, prefix, "") do
+      ^name -> nil
+      rest -> Regex.replace(~r/-\d+$/, rest, "")
+    end
+  end
+
   # Track this binding under the workspace-supervisor pid so the
   # Resources janitor releases it when the supervisor goes DOWN. No-op
   # if no group is registered (typical during early-boot reconnect).
@@ -389,6 +439,11 @@ defmodule Loopyard.PortRegistry do
   # - Container up + proxy not running → start proxy
   # - Container down + proxy running → stop proxy
   defp reconcile_proxies(state) do
+    # First adopt any newly-published ports (creates their sticky entries), then
+    # reconcile proxies over the full entry set — so a just-discovered port gets
+    # its proxy started in the same pass.
+    discover_published_ports(state)
+
     entries = :ets.tab2list(@table) |> Enum.map(fn {_, e} -> e end)
     # Group by workspace to minimize Observer lookups
     by_ws = Enum.group_by(entries, & &1.workspace_id)
