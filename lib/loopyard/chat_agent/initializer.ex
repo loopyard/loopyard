@@ -194,7 +194,11 @@ defmodule Loopyard.ChatAgent.Initializer do
     {session, session_opts, backend, new_prompt_hash} =
       start_session(id, opts,
         working_dir: saved.working_dir,
-        bind_mount: saved.bind_mount,
+        # SECURITY: force container-only on resume, even if a bind_mount was
+        # persisted. Without this, an agent that was (wrongly) spawned with host
+        # access before the fix would get it BACK on the next restart/replay,
+        # re-opening the escape. bind_mount is gone for good; see docs/SECURITY.md.
+        bind_mount: nil,
         workspace_id: saved.workspace_id,
         service_name: saved[:service_name],
         claude_session_id: saved[:claude_session_id]
