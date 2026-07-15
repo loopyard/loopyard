@@ -216,6 +216,7 @@ defmodule LoopyardWeb.OperatorLive do
           >
             <span class="w-2 h-2 rounded-sm bg-red-500"></span> Stop
           </button>
+          <LoopyardWeb.Components.Common.sound_control id="sound-operator" />
         </:actions>
       </Nav.bar>
 
