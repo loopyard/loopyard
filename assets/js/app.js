@@ -308,6 +308,25 @@ function legacyCopy(text) {
   document.body.removeChild(ta)
 }
 
+// StickyShadow — put on a scroll container; toggles `data-stuck` on each
+// `[data-sticky-header]` inside it the moment that header pins to the top (i.e.
+// rows begin sliding UNDER it). Paired with a `data-[stuck]:shadow-…` class so the
+// shadow appears ONLY while a header is actually stuck, never at rest.
+Hooks.StickyShadow = {
+  mounted() {
+    this.update = () => {
+      const top = this.el.getBoundingClientRect().top
+      this.el.querySelectorAll("[data-sticky-header]").forEach((h) => {
+        h.toggleAttribute("data-stuck", h.getBoundingClientRect().top <= top + 0.5)
+      })
+    }
+    this.el.addEventListener("scroll", this.update, {passive: true})
+    this.update()
+  },
+  updated() { if (this.update) this.update() },
+  destroyed() { this.el.removeEventListener("scroll", this.update) }
+}
+
 // BottomSheet — a mobile "share sheet". The server renders it hidden with the
 // panel translated fully down; opening (a `sheet:open` event, via Nav.open_sheet)
 // un-hides the container and slides the panel up, closing reverses it. Swiping

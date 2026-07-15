@@ -29,21 +29,35 @@ defmodule LoopyardWeb.Components.ProjectList do
   attr :projects, :list, required: true
   attr :current_workspace_id, :string, default: nil
   attr :row_click, :any, default: nil
+  # Compact tightens fonts + spacing for the narrow desktop rail; the /workspaces
+  # page and the mobile sheet use the roomier default.
+  attr :compact, :boolean, default: false
 
   def project_groups(assigns) do
+    assigns =
+      assign(assigns,
+        name_class: if(assigns.compact, do: "text-base", else: "text-xl"),
+        ws_name_class: if(assigns.compact, do: "text-sm", else: "text-base"),
+        outer_gap: if(assigns.compact, do: "space-y-3.5", else: "space-y-5")
+      )
+
     ~H"""
-    <div class="space-y-5">
+    <div class={@outer_gap}>
       <section :for={project <- @projects}>
         <%!-- Project header: large name, count on the right. STICKY so it pins
-             while its workspaces scroll beneath it — a solid (opaque) bg + a soft
-             bottom shadow make rows read as sliding UNDER it, not merging. Works
-             in every scroll context (rail, sheet, page). --%>
+             while its workspaces scroll beneath it — the solid (opaque) bg alone
+             covers rows sliding UNDER it; no shadow (that read as a stray line
+             when nothing was scrolled). Works in every scroll context. --%>
         <.link
           navigate={"/projects/#{project.id}"}
           phx-click={@row_click}
-          class="group sticky top-0 z-10 flex items-baseline gap-2 bg-white dark:bg-zinc-900 pt-1 pb-1.5 shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]"
+          data-sticky-header
+          class="group sticky top-0 z-10 flex items-baseline gap-2 bg-white dark:bg-zinc-900 pt-1 pb-1.5 transition-shadow data-[stuck]:shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]"
         >
-          <h2 class="text-xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 truncate group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors">
+          <h2 class={[
+            @name_class,
+            "font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 truncate group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors"
+          ]}>
             {project.name}
           </h2>
           <span class="ml-auto flex-none text-xs text-zinc-400 dark:text-zinc-500">
@@ -61,11 +75,10 @@ defmodule LoopyardWeb.Components.ProjectList do
             phx-click={@row_click}
             aria-current={ws.id == @current_workspace_id && "true"}
             class={[
-              "flex items-center gap-2.5 -mx-2 px-2 py-2 rounded-lg transition-colors",
-              if(ws.id == @current_workspace_id,
-                do: "bg-violet-100 dark:bg-violet-500/15",
-                else: "hover:bg-zinc-100 dark:hover:bg-zinc-800/60 active:bg-zinc-200 dark:active:bg-zinc-700/50"
-              )
+              "group/ws flex items-center gap-2.5 -mx-2 px-2 py-2 rounded-lg transition-colors",
+              # No hover box. The current workspace (switcher/rail only — never on
+              # /workspaces) gets a quiet violet tint; hover is a name-color cue.
+              ws.id == @current_workspace_id && "bg-violet-100 dark:bg-violet-500/15"
             ]}
           >
             <%!-- aggregate_dot is nil for a no-agent workspace — neutral gray
@@ -77,7 +90,10 @@ defmodule LoopyardWeb.Components.ProjectList do
             />
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-2">
-                <span class="font-medium text-zinc-900 dark:text-zinc-100 truncate">{ws.name}</span>
+                <span class={[
+                  @ws_name_class,
+                  "font-medium text-zinc-900 dark:text-zinc-100 truncate group-hover/ws:text-violet-600 dark:group-hover/ws:text-violet-400 transition-colors"
+                ]}>{ws.name}</span>
                 <span
                   :for={p <- ws.ports}
                   class="flex-none font-mono text-xs text-emerald-600 dark:text-emerald-400"

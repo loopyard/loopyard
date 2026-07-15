@@ -41,10 +41,17 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
       <%!-- The SAME grouped list the /workspaces page and the mobile switcher use,
            so the switch gesture is identical everywhere. White scroll surface so
            the component's sticky project headers (solid bg) blend cleanly. --%>
-      <div class="flex-1 overflow-y-auto bg-white dark:bg-zinc-900 px-3 py-2">
+      <%!-- StickyShadow: only THIS scrolling (compact) rail gets the pinned-header
+           shadow — it turns on per header when rows start sliding under it. --%>
+      <div
+        id="rail-scroll"
+        phx-hook="StickyShadow"
+        class="flex-1 overflow-y-auto bg-white dark:bg-zinc-900 px-3 py-2"
+      >
         <LoopyardWeb.Components.ProjectList.project_groups
           projects={@tree}
           current_workspace_id={@current_workspace_id}
+          compact
         />
       </div>
     </nav>
