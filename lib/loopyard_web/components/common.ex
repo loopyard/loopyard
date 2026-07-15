@@ -23,19 +23,36 @@ defmodule LoopyardWeb.Components.Common do
   attr :class, :string, default: "mb-4"
 
   def flash_banner(assigns) do
+    # A FLOATING toast, not an in-flow banner: it used to be a full-width <p> that
+    # shoved the entire page down when it appeared (jarring, and loud). Now it's
+    # fixed-position + compact + centered, so it overlays without shifting layout,
+    # and tapping it dismisses (lv:clear-flash). `@class` is ignored for layout —
+    # positioning is intrinsic to the toast — but kept for call-site compat.
     ~H"""
-    <p :if={Phoenix.Flash.get(@flash, @kind)} class={[@class, banner_class(@kind)]}>
-      {Phoenix.Flash.get(@flash, @kind)}
-    </p>
+    <div
+      :if={Phoenix.Flash.get(@flash, @kind)}
+      class={[
+        "fixed top-3 left-1/2 -translate-x-1/2 z-[60] w-[min(92vw,34rem)] flex items-start gap-2",
+        "rounded-xl px-4 py-2.5 text-sm shadow-lg shadow-black/10 cursor-pointer",
+        banner_class(@kind)
+      ]}
+      role="alert"
+      phx-click="lv:clear-flash"
+      phx-value-key={@kind}
+      title="Dismiss"
+    >
+      <span class="flex-1 min-w-0">{Phoenix.Flash.get(@flash, @kind)}</span>
+      <span aria-hidden="true" class="flex-none opacity-40 leading-none text-base">&times;</span>
+    </div>
     """
   end
 
   defp banner_class(:info) do
-    "rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 px-4 py-3 text-sm text-green-700 dark:text-green-300"
+    "bg-green-50 dark:bg-green-950/80 border border-green-200 dark:border-green-800/70 text-green-800 dark:text-green-300 backdrop-blur"
   end
 
   defp banner_class(:error) do
-    "rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300"
+    "bg-red-50 dark:bg-red-950/80 border border-red-200 dark:border-red-800/70 text-red-800 dark:text-red-300 backdrop-blur"
   end
 
   @doc """
