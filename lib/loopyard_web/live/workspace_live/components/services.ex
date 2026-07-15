@@ -28,31 +28,42 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
     <.detail_panel>
       <:header>
         <.dot :if={@svc} color={service_dot(@svc)} />
-        <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{@service_name}</span>
-        <span :if={@svc} class="text-xs text-zinc-400 dark:text-zinc-500 font-mono">
+        <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate">
+          {@service_name}
+        </span>
+        <span :if={@svc} class="hidden sm:inline text-xs text-zinc-400 dark:text-zinc-500 font-mono truncate">
           {service_detail(@svc)}
         </span>
         <a
           :if={@first_port}
           href={"http://#{@host}:#{@first_port}"}
           target="_blank"
-          class="text-xs font-mono text-violet-500 hover:text-violet-400 transition-colors"
+          class="hidden sm:inline text-xs font-mono text-violet-500 hover:text-violet-400 transition-colors truncate"
         >
           {@host}:{@first_port}
         </a>
-        <div class="ml-auto flex items-center gap-2">
-          <%!--
-            Running → Restart + Stop. Stopped/crashed → Start (compose
-            up -d brings it back; `restart` on a stopped container is
-            a no-op). When we can't identify the service yet, show
-            Start so the button always points at a useful action.
-          --%>
+        <div class="ml-auto flex items-center gap-2 flex-none">
+          <%!-- PRIMARY action, inline on every size: launch the preview (Open), or
+               get a port (Open Port), or bring it back (Start). One tap, always
+               visible — even on a phone. --%>
           <.control_btn
-            :if={@running?}
-            phx-click="restart_service"
-            phx-value-service_name={@service_name}
+            :if={@first_port}
+            variant={:primary}
+            href={"http://#{@host}:#{@first_port}"}
+            target="_blank"
+            rel="noopener"
           >
-            Restart
+            Open
+          </.control_btn>
+          <.control_btn
+            :if={!@first_port && !@exposed? && @container_port && @running?}
+            variant={:primary}
+            phx-click="toggle_port_exposure"
+            phx-value-service={@service_name}
+            phx-value-container_port={@container_port}
+            phx-value-expose="true"
+          >
+            Open Port
           </.control_btn>
           <.control_btn
             :if={!@running?}
@@ -62,42 +73,31 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
           >
             Start
           </.control_btn>
-          <.control_btn
+
+          <%!-- DESKTOP: the rest inline (as before). --%>
+          <div class="hidden md:flex items-center gap-2">
+            <.service_actions
+              running?={@running?}
+              service_name={@service_name}
+              base_path={@base_path}
+              exposed?={@exposed?}
+              container_port={@container_port}
+            />
+          </div>
+
+          <%!-- MOBILE: the rest live in a sheet so the bar stays uncrowded. Only
+               when there ARE secondary actions (i.e. the service is running). --%>
+          <button
             :if={@running?}
-            phx-click="stop_service"
-            phx-value-service_name={@service_name}
+            type="button"
+            phx-click={LoopyardWeb.Components.Nav.toggle_panel("service-actions")}
+            aria-label="More actions"
+            class="md:hidden focus-ring inline-flex items-center justify-center min-h-8 min-w-8 rounded-md text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
           >
-            Stop
-          </.control_btn>
-          <.control_btn :if={@running?} patch={"#{@base_path}/services/#{@service_name}/console"}>
-            Console
-          </.control_btn>
-          <.control_btn
-            :if={@first_port}
-            href={"http://#{@host}:#{@first_port}"}
-            target="_blank"
-            rel="noopener"
-          >
-            Open
-          </.control_btn>
-          <.control_btn
-            :if={@exposed? && @container_port}
-            phx-click="toggle_port_exposure"
-            phx-value-service={@service_name}
-            phx-value-container_port={@container_port}
-            phx-value-expose="false"
-          >
-            Close Port
-          </.control_btn>
-          <.control_btn
-            :if={!@exposed? && @container_port && @running?}
-            phx-click="toggle_port_exposure"
-            phx-value-service={@service_name}
-            phx-value-container_port={@container_port}
-            phx-value-expose="true"
-          >
-            Open Port
-          </.control_btn>
+            <svg viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+              <path d="M6 10a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm5.5 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM17 10a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" />
+            </svg>
+          </button>
         </div>
       </:header>
       <%!-- Buffered frames (from LogBuffer) whenever there are ANY — including
@@ -117,6 +117,78 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
         workspace_state={@workspace_state}
       />
     </.detail_panel>
+
+    <%!-- MOBILE actions sheet: the secondary actions, opened by the ⋯ button.
+         Reuses the switcher sheet — same slide-in + sticky tap-to-close header
+         (the service, tap it to go back). --%>
+    <LoopyardWeb.Components.Nav.switcher_sheet
+      :if={@running?}
+      id="service-actions"
+      title={@service_name}
+    >
+      <:current>
+        <.dot :if={@svc} color={service_dot(@svc)} />
+        <span class="flex-1 min-w-0 truncate font-semibold text-zinc-900 dark:text-zinc-100">
+          {@service_name}
+        </span>
+        <span class="flex-none text-zinc-400 dark:text-zinc-500">Running</span>
+      </:current>
+      <div class="p-2 space-y-3">
+        <%!-- The reachable URL, front and center — so you can SEE the open port
+             (and tap it) on a phone, not just launch it. --%>
+        <a
+          :if={@first_port}
+          href={"http://#{@host}:#{@first_port}"}
+          target="_blank"
+          rel="noopener"
+          class="flex items-center justify-between gap-2 rounded-lg bg-emerald-500/10 px-3 min-h-[3rem] text-emerald-600 dark:text-emerald-400 font-mono text-sm active:bg-emerald-500/20"
+        >
+          <span class="truncate">{@host}:{@first_port}</span>
+          <span class="flex-none text-xs opacity-70">Open ↗</span>
+        </a>
+        <div class="grid grid-cols-2 gap-2">
+          <.service_actions
+            running?={@running?}
+            service_name={@service_name}
+            base_path={@base_path}
+            exposed?={@exposed?}
+            container_port={@container_port}
+          />
+        </div>
+      </div>
+    </LoopyardWeb.Components.Nav.switcher_sheet>
+    """
+  end
+
+  # The SECONDARY service actions (everything but the primary launch button):
+  # rendered inline on desktop and inside the mobile actions sheet, so the button
+  # set is defined once.
+  attr :running?, :boolean, required: true
+  attr :service_name, :string, required: true
+  attr :base_path, :string, required: true
+  attr :exposed?, :boolean, default: false
+  attr :container_port, :any, default: nil
+
+  defp service_actions(assigns) do
+    ~H"""
+    <.control_btn :if={@running?} phx-click="restart_service" phx-value-service_name={@service_name}>
+      Restart
+    </.control_btn>
+    <.control_btn :if={@running?} phx-click="stop_service" phx-value-service_name={@service_name}>
+      Stop
+    </.control_btn>
+    <.control_btn :if={@running?} patch={"#{@base_path}/services/#{@service_name}/console"}>
+      Console
+    </.control_btn>
+    <.control_btn
+      :if={@exposed? && @container_port}
+      phx-click="toggle_port_exposure"
+      phx-value-service={@service_name}
+      phx-value-container_port={@container_port}
+      phx-value-expose="false"
+    >
+      Close Port
+    </.control_btn>
     """
   end
 
