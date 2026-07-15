@@ -515,15 +515,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
           Crashed
         </span>
       </.row>
-      <button
-        :if={!@editing && @display in [:sleeping, :crashed]}
-        phx-click="remove_agent"
-        phx-value-id={@agent.id}
-        aria-label={"Remove agent #{@agent.name}"}
-        class="focus-ring inline-flex items-center justify-center min-w-11 min-h-11 md:min-w-8 md:min-h-8 text-zinc-400 hover:text-red-500 dark:hover:text-red-400 rounded transition-colors"
-      >
-        <span aria-hidden="true">&times;</span>
-      </button>
+      <%!-- No inline destroy control. The row is a single target: click to open
+           the agent, and remove/destroy lives in its detail view. Keeps the list
+           calm (no controls appearing as agents boot) and makes destruction a
+           deliberate, one-place action. --%>
     </div>
     """
   end
