@@ -11,10 +11,8 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
   use Phoenix.Component
 
   # Share the birdseye visual language with the home page: same status dots,
-  # same aggregate logic, same openable port chip — so moving between the rail
-  # and the home page feels like one system, and the same agent never shows two
-  # different colors in two places.
-  alias LoopyardWeb.Components.Birdseye
+  # same aggregate logic — so moving between the rail and the home page feels like
+  # one system, and the same agent never shows two different colors in two places.
 
   attr :tree, :list, required: true
   attr :current_workspace_id, :string, default: nil
@@ -40,66 +38,17 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
         <LoopyardWeb.Components.Common.sound_control id="sound-global" class="mr-1.5" />
       </div>
 
-      <div class="flex-1 overflow-y-auto">
-        <div :if={@tree == []} class="px-3 py-2 text-sm text-zinc-400 italic">
-          no projects yet
-        </div>
-
-        <%!-- Each project is a STICKY header; its workspaces flow below and
-             scroll up under it. Always expanded — no collapse. --%>
-        <section :for={project <- @tree}>
-          <div class="sticky top-0 z-10 flex items-center px-3 py-1.5 bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200/80 dark:border-zinc-700/60">
-            <span class="truncate text-sm font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-              {project.name}
-            </span>
-          </div>
-
-          <div class="py-1">
-            <%!-- Two columns: [agent dot + workspace name] ......... [ :port ].
-                 The port chip is a SIBLING of the row link (not nested inside
-                 it) — nested <a> tags are invalid and get kicked out. --%>
-            <div
-              :for={ws <- project.workspaces}
-              class={[
-                "group flex items-center pr-2 mx-1 rounded-md",
-                "hover:bg-zinc-200/60 dark:hover:bg-zinc-700/40",
-                ws.id == @current_workspace_id && "bg-violet-100 dark:bg-violet-500/15"
-              ]}
-            >
-              <.link
-                navigate={workspace_link(project.id, ws)}
-                class="flex-1 min-w-0 flex items-center gap-2.5 py-1.5 pl-3"
-              >
-                <Birdseye.dot class={Birdseye.aggregate_dot(ws.agents)} size={:sm} />
-                <span class="truncate text-sm text-zinc-700 dark:text-zinc-200">{ws.name}</span>
-              </.link>
-              <Birdseye.port_chip :for={p <- ws.ports} port={p.port} url={p.url} />
-            </div>
-
-            <div
-              :if={project.workspaces == []}
-              class="py-1.5 pl-3 text-sm text-zinc-400 italic"
-            >
-              no workspaces
-            </div>
-          </div>
-        </section>
+      <%!-- The SAME grouped list the /workspaces page and the mobile switcher use,
+           so the switch gesture is identical everywhere. White scroll surface so
+           the component's sticky project headers (solid bg) blend cleanly. --%>
+      <div class="flex-1 overflow-y-auto bg-white dark:bg-zinc-900 px-3 py-2">
+        <LoopyardWeb.Components.ProjectList.project_groups
+          projects={@tree}
+          current_workspace_id={@current_workspace_id}
+        />
       </div>
     </nav>
     """
   end
 
-  # Link a workspace row straight to one of its agents when it has any — so the
-  # click lands on the chat in ONE navigation. Going to the workspace :index
-  # instead renders that page and THEN auto-redirects to an agent, and that
-  # navigate-then-redirect is the visible flicker. Empty workspace → :index
-  # (which auto-spawns the first agent).
-  defp workspace_link(project_id, ws) do
-    base = "/projects/#{project_id}/workspaces/#{ws.id}"
-
-    case ws.agents do
-      [agent | _] -> "#{base}/agents/#{agent.id}"
-      _ -> base
-    end
-  end
 end
