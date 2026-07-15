@@ -167,13 +167,20 @@ defmodule Loopyard.Onboarding do
             workspace_id: ws_id
           ]
 
-        # Volume-backed workspaces run container-only (cheap work container); only
-        # legacy host bind-mount projects get a bind_mount.
-        container_only? =
-          Loopyard.Workspace.container_running?(ws_id) or agent_volume_based?(ws_id)
-
-        agent_opts =
-          if container_only?, do: agent_opts, else: agent_opts ++ [bind_mount: working_dir]
+        # SECURITY BOUNDARY — workspace agents are ALWAYS container-only. They act
+        # on their code volume through the sandboxed `loopyard-container` MCP
+        # (`exec` runs INSIDE the container); native host tools (Bash/Read/Write,
+        # `docker`, `mix loopyard.rpc`) are NEVER exposed. We do not add a
+        # `bind_mount` here, ever.
+        #
+        # Host `bind_mount` used to grant an agent direct host access, decided by
+        # transient runtime state (`container_running?` / a `volume_based` flag).
+        # A freshly-provisioned agent hit that fallback BEFORE its container was up
+        # and got host `Bash` — which it used to `mix loopyard.rpc` and forge a
+        # workspace behind the app's back. That escape hatch is removed. Local-source
+        # projects sync host↔volume via Mutagen, so no agent needs host access.
+        #
+        # Do NOT reintroduce a per-agent bind_mount. See docs/SECURITY.md.
 
         agent_opts =
           if service_name, do: agent_opts ++ [service_name: service_name], else: agent_opts
@@ -201,13 +208,6 @@ defmodule Loopyard.Onboarding do
         ChatAgent.register_booting(id, name, working_dir, register_opts)
         Loopyard.AgentBoot.start_monitored(id, agent_opts, boot_opts)
         {:ok, id}
-    end
-  end
-
-  defp agent_volume_based?(ws_id) do
-    case WorkspaceRegistry.get_workspace(ws_id) do
-      %{volume_based: true} -> true
-      _ -> false
     end
   end
 
