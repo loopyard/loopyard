@@ -45,6 +45,22 @@ Agents see exactly two MCP servers: `loopyard-container` (file/exec/docker_compo
 | `Tools.Agents` (spawn_agent, send_message_to_agent, list_agents, stop_agent, rename_agent, read_agent_chat) | Zero workspace scoping; `spawn_agent` accepted arbitrary `working_dir`; `list_agents` enumerated every workspace. This was the root cause of the "agent spawned siblings and reached into other projects" incident. |
 | `Tools.Container.Docker` (raw `docker` CLI) | Let agents run `docker exec <other-ws-container>`, `docker volume inspect <other-vol>`, `docker run -v <other-vol>:/mnt …`. Every legitimate need is covered by scoped tools. |
 
+**No host tools — workspace agents are container-only.** A workspace agent NEVER
+gets native host tools (`Bash`, `Read`/`Write`/`Edit`, `docker`, `mix
+loopyard.rpc`). It acts on its code volume exclusively through the sandboxed
+`loopyard-container` MCP, whose `exec` runs *inside* the container. Enforcement:
+`Onboarding.spawn_agent/2` — the single spawn path — never sets a per-agent
+`bind_mount`, so `Initializer` always builds the agent with `container_only? =
+true` and adds the native-tool denylist. **Do not reintroduce an automatic
+`bind_mount`.** It once existed for host-worktree dev; a provisioned agent hit
+that fallback before its container was up, got host `Bash`, and used `mix
+loopyard.rpc` to forge a workspace behind the approval gate — a full control-plane
+escape. Local-source projects sync host↔volume via Mutagen, so no agent needs
+host access. Corollary: because agents have no host reach, workspace
+create/remove/integrate can happen ONLY through the approval-gated MCP tools
+(`propose_fork` / `propose_delete_workspace` / `propose_integrate`), each of which
+shows a human Approve/Deny card before acting.
+
 ### 2. Session-bound `agent_id`
 
 The `agent_id` JSON parameter every tool accepts is **advisory**. Each ChatAgent spawns its own MCP server configured with `assigns = %{agent_id: <its own id>}`. `Loopyard.Tool.authorize_agent/2` runs before every tool and rejects any call where `params.agent_id` differs from `assigns.agent_id`.
