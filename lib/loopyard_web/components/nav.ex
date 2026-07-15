@@ -317,6 +317,10 @@ defmodule LoopyardWeb.Components.Nav do
   attr :current, :boolean, default: false, doc: "styled solid (current page) vs muted (ancestor)"
   attr :switch?, :boolean, default: false
   attr :href, :string, default: nil
+  # A trail of switch crumbs (project / workspace) all open the SAME switcher, so
+  # only ONE needs the chevron — set `chevron={false}` on the leading crumbs.
+  # They stay tappable; the single chevron on the last crumb is the affordance.
+  attr :chevron, :boolean, default: true
 
   def crumb(assigns) do
     ~H"""
@@ -329,7 +333,7 @@ defmodule LoopyardWeb.Components.Nav do
       class={["min-w-0 inline-flex items-center gap-0.5 rounded", crumb_label_class(@current)]}
     >
       <span class="truncate">{@label}</span>
-      <.chevron_down class="w-3.5 h-3.5 flex-none opacity-60" />
+      <.chevron_down :if={@chevron} class="w-4 h-4 flex-none opacity-60" />
     </button>
     <.link :if={!@switch? && @href} navigate={@href} class={crumb_label_class(@current)}>
       {@label}

@@ -85,6 +85,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             id="nav-switcher"
             label={@project.name}
             switch?={@can_switch}
+            chevron={false}
             href={"/projects/#{@project.id}"}
           />
           <span :if={@project} class="text-zinc-300 dark:text-zinc-600 flex-none">/</span>
