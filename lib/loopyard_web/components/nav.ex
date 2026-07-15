@@ -406,18 +406,21 @@ defmodule LoopyardWeb.Components.Nav do
   end
 
   @doc """
-  Client-side toggle for a switcher panel, with a scale/fade so opening reads as
-  "zoom out to the list" and closing as "zoom back into the selection".
+  Client-side toggle for a switcher panel: a SLIDE-DOWN + fade, so the list drops
+  in from the top ("here's everything, in place") and retracts upward on close.
+  A pure CSS/JS transition — no navigation — so it never touches server/client
+  state; opening a switcher can't lose your place. `motion-reduce` honors
+  prefers-reduced-motion (the classes collapse to an instant show/hide).
   """
   def toggle_panel(id \\ "item-switcher") do
     JS.toggle(
       to: "##{id}",
       in:
-        {"transition ease-out duration-200", "opacity-0 -translate-y-1 scale-[0.98]",
-         "opacity-100 translate-y-0 scale-100"},
+        {"transition ease-out duration-300 motion-reduce:transition-none",
+         "opacity-0 -translate-y-6", "opacity-100 translate-y-0"},
       out:
-        {"transition ease-in duration-150", "opacity-100 translate-y-0 scale-100",
-         "opacity-0 -translate-y-1 scale-[0.98]"}
+        {"transition ease-in duration-200 motion-reduce:transition-none",
+         "opacity-100 translate-y-0", "opacity-0 -translate-y-6"}
     )
   end
 
