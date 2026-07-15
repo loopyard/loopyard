@@ -142,24 +142,6 @@ defmodule LoopyardWeb.SystemLive do
      assign(socket, key, AsyncResult.failed(socket.assigns[key] || AsyncResult.loading(), reason))}
   end
 
-  # --- Events ---
-
-  @impl true
-  def handle_event("reboot", _params, socket) do
-    for agent <- Loopyard.ChatAgent.list_agents() do
-      Loopyard.ChatAgent.stop_agent(agent.id)
-      Loopyard.ChatAgent.remove_agent(agent.id)
-    end
-
-    Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
-      Application.stop(:loopyard)
-      Process.sleep(500)
-      Application.ensure_all_started(:loopyard)
-    end)
-
-    {:noreply, put_flash(socket, :info, "Rebooting...")}
-  end
-
   # =============================================
   # Render
   # =============================================
@@ -173,15 +155,6 @@ defmodule LoopyardWeb.SystemLive do
       max_width={:lg}
       flash={@flash}
     >
-      <:header_actions>
-        <button
-          phx-click="reboot"
-          data-confirm="This will stop all agents and restart the app. Continue?"
-          class="text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded px-2 py-1 transition-colors"
-        >
-          Reboot
-        </button>
-      </:header_actions>
       <div class="space-y-8">
         <.health_section health={@health} />
         <.host_section
