@@ -33,16 +33,24 @@ defmodule LoopyardWeb.Components.Common do
       :if={Phoenix.Flash.get(@flash, @kind)}
       class={[
         "fixed top-3 left-1/2 -translate-x-1/2 z-[60] w-[min(92vw,34rem)] flex items-start gap-2",
-        "rounded-xl px-4 py-2.5 text-sm shadow-lg shadow-black/10 cursor-pointer",
+        "rounded-xl px-4 py-2.5 text-sm shadow-lg shadow-black/10",
         banner_class(@kind)
       ]}
       role="alert"
-      phx-click="lv:clear-flash"
-      phx-value-key={@kind}
-      title="Dismiss"
     >
-      <span class="flex-1 min-w-0">{Phoenix.Flash.get(@flash, @kind)}</span>
-      <span aria-hidden="true" class="flex-none opacity-40 leading-none text-base">&times;</span>
+      <%!-- Text is selectable (select-text) so you can copy the error to paste at
+           an agent. ONLY the ✕ dismisses — clicking the body must not clear it out
+           from under a copy. --%>
+      <span class="flex-1 min-w-0 select-text">{Phoenix.Flash.get(@flash, @kind)}</span>
+      <button
+        type="button"
+        phx-click="lv:clear-flash"
+        phx-value-key={@kind}
+        aria-label="Dismiss"
+        class="flex-none -mr-1 -mt-0.5 px-1 opacity-50 hover:opacity-100 leading-none text-base cursor-pointer"
+      >
+        &times;
+      </button>
     </div>
     """
   end
