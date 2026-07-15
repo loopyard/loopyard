@@ -73,6 +73,20 @@ defmodule Loopyard.Tools.Container.Helpers do
   """
   def resolve_container(agent_id) do
     case Loopyard.ChatAgent.get_state(agent_id) do
+      # An agent bound directly to a container (the operator, in its workstation
+      # image) — its tools run inside THAT container, not a workspace work
+      # container. Ensure it's up so tools self-heal.
+      %{container: container} when is_binary(container) ->
+        if Docker.container_running?(container) do
+          {:ok, container}
+        else
+          # Self-heal: the operator's workstation container stopped — bring it up.
+          case Loopyard.Workstation.Container.ensure_up(container_identity(container)) do
+            {:ok, c} -> {:ok, c}
+            _ -> {:error, "Operator container #{container} is not running"}
+          end
+        end
+
       %{workspace_id: workspace_id} when is_binary(workspace_id) ->
         # "Working is the default" (north-star D10): prefer whatever code-mounted
         # container is up — the full compose `workspace` service if the preview
@@ -117,6 +131,9 @@ defmodule Loopyard.Tools.Container.Helpers do
       _ -> {:error, "Agent #{agent_id} has no workspace"}
     end
   end
+
+  # Workstation identity from its container name (`loopyard-ws-<id>` → `<id>`).
+  defp container_identity(container), do: String.replace_prefix(container, "loopyard-ws-", "")
 
   def normalize_search_path("."), do: "."
   def normalize_search_path(""), do: "."

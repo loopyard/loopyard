@@ -24,7 +24,14 @@ defmodule Loopyard.Tools.ControlPlane do
     Loopyard.Tools.ControlPlane.CreateProjectFromGithub,
     Loopyard.Tools.ControlPlane.CreateProjectFromPath,
     Loopyard.Tools.ControlPlane.ListProjects,
-    Loopyard.Tools.ControlPlane.Gh
+    Loopyard.Tools.ControlPlane.Gh,
+    # A real shell inside the operator's OWN container image — resolve_container
+    # targets its workstation container. This is "the same tools + do whatever in
+    # your image": exec covers cat/edit/git/docker/gh/install, all sandboxed to
+    # the container. (The workspace-scoped container tools — git/docker_compose/
+    # logs/propose_* — don't fit a container-bound, workspace-less agent, so we
+    # deliberately don't hand it a pile of tools that would just error.)
+    Loopyard.Tools.Container.Exec
   ]
 
   def __tool_server__, do: %{name: "loopyard-control-plane", tools: @tools}

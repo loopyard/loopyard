@@ -5,11 +5,23 @@ defmodule LoopyardWeb.OperatorLive do
   it can't render through the workspace view — it gets its own focused screen:
   a header + the shared `chat_panel`. Created on first visit
   (`Loopyard.Operator.ensure_agent/0`).
+
+  **Same rendering mechanisms as the workspace chat.** We deliberately reuse the
+  extracted handlers (`AgentEvents.handle_message/handle_text_delta/
+  handle_status_changed`) and the shared `StreamBuffer` rather than re-fetching
+  the whole transcript on every event. That means: incremental append + dedup on
+  new messages, live token streaming, and streamed tool/exec output — the exact
+  efficient path the workspace built. To use those handlers we adopt their assign
+  contract (`selected_id`, `agents`, `selected_agent`, `messages`,
+  `streaming_text`, `streaming_thinking`, `stream_buffer`, …), flattening the
+  operator's single agent into the same shape as a one-agent workspace.
   """
   use LoopyardWeb, :live_view
 
-  alias Loopyard.{ChatAgent, Operator}
+  alias Loopyard.{ChatAgent, Operator, StreamBuffer}
+  alias Loopyard.Events
   alias LoopyardWeb.Components.Nav
+  alias LoopyardWeb.Live.WorkspaceLive.AgentEvents
   import LoopyardWeb.Components.Breadcrumbs, only: [breadcrumbs: 1]
   import LoopyardWeb.Live.WorkspaceLive.Components.Chat, only: [chat_panel: 1]
 
@@ -18,8 +30,8 @@ defmodule LoopyardWeb.OperatorLive do
     {:ok, %{agent_id: agent_id}} = Operator.ensure_agent()
 
     if connected?(socket) do
-      Loopyard.Events.ChatAgentMessage.subscribe(agent_id)
-      Loopyard.Events.ChatAgent.subscribe()
+      Events.ChatAgentMessage.subscribe(agent_id)
+      Events.ChatAgent.subscribe()
     end
 
     host =
@@ -28,13 +40,43 @@ defmodule LoopyardWeb.OperatorLive do
         _ -> "localhost"
       end
 
-    {:ok, socket |> assign(:agent_id, agent_id) |> assign(:host, host) |> load()}
+    socket =
+      socket
+      |> assign(:agent_id, agent_id)
+      # The shared chat handlers key everything off :selected_id — the operator's
+      # single agent IS the selection.
+      |> assign(:selected_id, agent_id)
+      |> assign(:host, host)
+      |> assign(:streaming_text, "")
+      |> assign(:streaming_thinking, "")
+      |> assign(:stream_buffer, StreamBuffer.new())
+      |> assign(:building, false)
+      |> assign(:thinking_word, nil)
+      |> assign(:restored_failed_prompt, nil)
+      # No windowing for the operator's short chats — the whole transcript is the
+      # tail. (chat_panel still reads these two.)
+      |> assign(:has_more_messages, false)
+      |> assign(:window_tail?, true)
+      |> load_agent()
+
+    {:ok, socket}
   end
 
-  defp load(socket) do
+  # Load the agent summary + transcript into the workspace-chat assign shape:
+  # `agents` is a one-element list so `AgentEvents.refresh_selected_from_agents`
+  # (ETS-counter merge) finds it. Used at mount + after an approval decision (the
+  # one message-*update* path with no incremental event to ride).
+  defp load_agent(socket) do
     case ChatAgent.get_state(socket.assigns.agent_id) do
-      %{} = st -> assign(socket, agent: st, messages: st.messages)
-      _ -> assign(socket, agent: %{id: socket.assigns.agent_id, status: :idle}, messages: [])
+      %{} = st ->
+        socket
+        |> assign(:selected_agent, st)
+        |> assign(:agents, [st])
+        |> assign(:messages, st.messages)
+
+      _ ->
+        stub = %{id: socket.assigns.agent_id, status: :idle}
+        socket |> assign(:selected_agent, stub) |> assign(:agents, [stub]) |> assign(:messages, [])
     end
   end
 
@@ -61,8 +103,9 @@ defmodule LoopyardWeb.OperatorLive do
 
   def handle_event("edit_pending", %{"id" => id, "index" => index}, socket) do
     index = String.to_integer(index)
-    text = Enum.at(socket.assigns.agent[:pending_messages] || [], index)
+    text = Enum.at(socket.assigns.selected_agent[:pending_messages] || [], index)
     ChatAgent.remove_pending(id, index)
+
     if is_binary(text),
       do: {:noreply, push_event(socket, "fill_input", %{text: text})},
       else: {:noreply, socket}
@@ -99,31 +142,73 @@ defmodule LoopyardWeb.OperatorLive do
         end
     end
 
-    {:noreply, load(socket)}
+    # A message *field* update (not a new message) has no incremental event to
+    # ride, so re-sync the transcript here. Rare (a button click), unlike the
+    # streaming hot path which stays incremental.
+    {:noreply, load_agent(socket)}
   end
 
   def handle_event(_evt, _params, socket), do: {:noreply, socket}
 
-  @impl true
-  def handle_info(%Loopyard.Events.ChatAgentMessage.Message{agent_id: id}, socket)
-      when id == socket.assigns.agent_id,
-      do: {:noreply, load(socket)}
+  # --- Message + streaming events: delegate to the SAME handlers the workspace
+  # chat uses, so the operator gets incremental append + live streaming. ---
 
-  def handle_info(%Loopyard.Events.ChatAgent.StatusChanged{id: id}, socket)
-      when id == socket.assigns.agent_id,
-      do: {:noreply, load(socket)}
+  @impl true
+  def handle_info(%Events.ChatAgentMessage.Message{} = e, socket),
+    do: AgentEvents.handle_message(e, socket)
+
+  def handle_info(%Events.ChatAgentMessage.TextDelta{} = e, socket),
+    do: AgentEvents.handle_text_delta(e, socket)
+
+  # Streamed model reasoning → the thinking bubble.
+  def handle_info(
+        %Events.ChatAgentMessage.StreamOutput{agent_id: id, data: data, title: "__thinking__"},
+        socket
+      )
+      when id == socket.assigns.selected_id do
+    {:noreply,
+     socket
+     |> assign(:streaming_thinking, (socket.assigns[:streaming_thinking] || "") <> data)
+     |> push_event("scroll_bottom", %{})}
+  end
+
+  # Streamed tool/exec output → upsert one build message via the shared StreamBuffer.
+  def handle_info(
+        %Events.ChatAgentMessage.StreamOutput{agent_id: id, data: data, title: title, msg_id: msg_id},
+        socket
+      )
+      when id == socket.assigns.selected_id do
+    stream_buffer = StreamBuffer.append(socket.assigns.stream_buffer, data, title: title, msg_id: msg_id)
+    messages = StreamBuffer.upsert_message(stream_buffer, socket.assigns.messages)
+
+    {:noreply,
+     socket
+     |> assign(:messages, messages)
+     |> assign(:stream_buffer, stream_buffer)
+     |> assign(:building, true)
+     |> push_event("scroll_bottom", %{})}
+  end
+
+  def handle_info(%Events.ChatAgentMessage.StreamOutput{}, socket), do: {:noreply, socket}
+
+  def handle_info(%Events.ChatAgent.StatusChanged{} = e, socket),
+    do: AgentEvents.handle_status_changed(e, socket)
 
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 safe-area-x">
+    <div
+      id="operator-page"
+      phx-hook="ScrollBottom"
+      class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 safe-area-x"
+    >
       <Nav.bar height="h-14" gap="gap-3">
         <.breadcrumbs crumbs={[{"Loopyard", "/"}, {"Operator", nil}]} />
         <:actions>
           <button
-            :if={@agent.status == :thinking}
+            :if={@selected_agent.status == :thinking}
             type="button"
             phx-click="interrupt_agent"
             phx-value-id={@agent_id}
@@ -136,14 +221,14 @@ defmodule LoopyardWeb.OperatorLive do
 
       <.chat_panel
         messages={@messages}
-        streaming_text=""
-        streaming_thinking=""
-        agent={@agent}
+        streaming_text={@streaming_text}
+        streaming_thinking={@streaming_thinking}
+        agent={@selected_agent}
         workspace_id={nil}
         host={@host}
-        thinking_word="Thinking"
-        has_more_messages={false}
-        window_tail?={true}
+        thinking_word={@thinking_word || "Thinking"}
+        has_more_messages={@has_more_messages}
+        window_tail?={@window_tail?}
         detail_level={:trace}
       />
     </div>

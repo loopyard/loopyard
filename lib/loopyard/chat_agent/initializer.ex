@@ -288,6 +288,10 @@ defmodule Loopyard.ChatAgent.Initializer do
     bind_mount = Keyword.get(opts, :bind_mount)
     workspace_id = Keyword.get(opts, :workspace_id)
     service_name = Keyword.get(opts, :service_name)
+    # Restored chat history + Claude session for a re-spawned agent that has no
+    # ETS summary to resume from (the operator, respawned lazily after a restart).
+    initial_messages = Keyword.get(opts, :initial_messages, [])
+    resumed_session_id = Keyword.get(opts, :claude_session_id)
 
     {session, session_opts, backend, prompt_hash} =
       start_session(id, opts,
@@ -295,6 +299,7 @@ defmodule Loopyard.ChatAgent.Initializer do
         bind_mount: bind_mount,
         workspace_id: workspace_id,
         service_name: service_name,
+        claude_session_id: resumed_session_id,
         max_turns: 50
       )
 
@@ -309,13 +314,16 @@ defmodule Loopyard.ChatAgent.Initializer do
       working_dir: working_dir,
       bind_mount: bind_mount,
       workspace_id: workspace_id,
+      container: Keyword.get(opts, :container),
       workstation_identity:
         Keyword.get(opts, :workstation_identity) || Loopyard.Workstation.current(),
       started_at: now,
       started_by: started_by,
       last_activity_at: now,
       status: :idle,
-      messages: [],
+      # Restored history (internal list is reversed; summary reverses back).
+      messages: Enum.reverse(initial_messages),
+      claude_session_id: resumed_session_id,
       service_name: service_name,
       prompt_hash: prompt_hash
     }
