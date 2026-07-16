@@ -99,6 +99,12 @@ defmodule Loopyard.Workstation.Env do
 
     if Regex.match?(@key_re, key) do
       all(id) |> Map.put(key, value) |> save(id)
+      # Materialize into the identity's home volume NOW. A running container
+      # already mounts that volume, so the new value (e.g. a fresh
+      # CLAUDE_CODE_OAUTH_TOKEN) is visible to the next in-container harness
+      # session immediately — without restarting the container. Best-effort:
+      # a docker hiccup mustn't lose the saved value.
+      sync_home(id)
       :ok
     else
       {:error, :invalid_key}
@@ -109,6 +115,7 @@ defmodule Loopyard.Workstation.Env do
   @spec delete(String.t(), String.t()) :: :ok
   def delete(key, id) do
     all(id) |> Map.delete(key) |> save(id)
+    sync_home(id)
     :ok
   end
 

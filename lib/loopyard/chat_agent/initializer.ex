@@ -137,6 +137,28 @@ defmodule Loopyard.ChatAgent.Initializer do
         session_opts
       end
 
+    # CONTAINMENT: run the ACP harness INSIDE the workspace container, not as a
+    # host process. Setting `:container` makes Harness.ACP launch via
+    # `docker exec -i <work> claude-code-acp` with cwd `/workspace` — so the whole
+    # runtime (node, browser, /tmp, native Bash/Read/Write) lives in the sealed
+    # container. The agent's commands then run NATIVELY against /workspace (no
+    # per-command `docker exec` wrapper, no host access). Only for container-only
+    # workspace agents; an explicit host-access agent (bind_mount) stays on the
+    # host, and the operator brings its own `:container` upstream.
+    session_opts =
+      if backend == Loopyard.Harness.ACP and container_only? and is_binary(workspace_id) do
+        # The brief must live where the in-container harness reads it: /workspace
+        # in the volume (claude-code-acp reads CLAUDE.local.md from cwd). Host-cwd
+        # install doesn't reach the container.
+        install_brief_into_volume(workspace_id, system_prompt)
+
+        session_opts
+        |> Keyword.put(:container, Loopyard.Workspace.WorkContainer.container_name(workspace_id))
+        |> Keyword.put(:cwd, "/workspace")
+      else
+        session_opts
+      end
+
     case backend.start_session(session_opts) do
       {:ok, session} ->
         prompt_hash = :crypto.hash(:sha256, system_prompt || "") |> Base.encode16(case: :lower)
@@ -153,6 +175,38 @@ defmodule Loopyard.ChatAgent.Initializer do
   end
 
   # --- Private helpers ---
+
+  # Write Loopyard's managed brief into the code volume's CLAUDE.local.md, where
+  # the in-container ACP harness reads it (its cwd is /workspace). The host-cwd
+  # install path (Harness.ACP.SystemPrompt) can't reach the container's fs, so
+  # in-container mode installs here via VolumeIO. Idempotent — replaces only the
+  # managed block, preserving any project CLAUDE.local.md content. Best-effort:
+  # a volume-write hiccup must not block the agent from starting.
+  defp install_brief_into_volume(_workspace_id, prompt) when prompt in [nil, ""], do: :ok
+
+  defp install_brief_into_volume(workspace_id, prompt) do
+    volume = Loopyard.Workspace.volume_name_for(workspace_id)
+
+    existing =
+      case Loopyard.VolumeIO.read_file(volume, "CLAUDE.local.md") do
+        {:ok, content} -> content
+        _ -> ""
+      end
+
+    content = Loopyard.Harness.ACP.SystemPrompt.render_file(existing, prompt)
+    Loopyard.VolumeIO.write_file(volume, "CLAUDE.local.md", content)
+    :ok
+  rescue
+    e ->
+      require Logger
+
+      Logger.warning(
+        "[Initializer] couldn't install the agent brief into volume for " <>
+          "#{workspace_id}: #{Exception.message(e)}"
+      )
+
+      :ok
+  end
 
   # Resume an agent from persisted state (after server restart).
   defp init_resume(id, opts) do
