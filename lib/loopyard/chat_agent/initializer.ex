@@ -318,6 +318,14 @@ defmodule Loopyard.ChatAgent.Initializer do
         session: session,
         session_opts: session_opts,
         backend: backend,
+        # CONTAINMENT: the initial `struct(saved)` above copies EVERY saved field,
+        # including a possibly-stale `bind_mount`/`host_access` from before this
+        # invariant existed. The actual session above is already forced
+        # container-only (bind_mount: nil was passed to start_session); force the
+        # STATE to agree, so a stale host path never lingers in state/summary/UI
+        # even though it was never actually granted to the running session.
+        bind_mount: nil,
+        host_access: false,
         last_activity_at: DateTime.utc_now(),
         status: :idle,
         stream_ref: nil,
