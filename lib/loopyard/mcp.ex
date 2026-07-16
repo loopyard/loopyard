@@ -25,13 +25,13 @@ defmodule Loopyard.MCP do
   URL isn't configured/derivable, so a missing setting degrades to "no Loopyard
   tools" rather than a broken session.
   """
-  def acp_mcp_servers(agent_id, workspace_id) when is_binary(agent_id) do
+  def acp_mcp_servers(agent_id, workspace_id, scope \\ :workspace) when is_binary(agent_id) do
     case base_url() do
       nil ->
         []
 
       base ->
-        token = Token.sign(agent_id, workspace_id)
+        token = Token.sign(agent_id, workspace_id, scope)
 
         [
           %{

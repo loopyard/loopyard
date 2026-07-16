@@ -118,11 +118,11 @@ defmodule LoopyardWeb.MCP.Server do
 
   defp handle_method("ping", _params, _identity), do: %{}
 
-  defp handle_method("tools/list", _params, _identity) do
-    %{"tools" => ToolRouter.list_tools()}
+  defp handle_method("tools/list", _params, identity) do
+    %{"tools" => ToolRouter.list_tools(ToolRouter.tool_modules(scope(identity)))}
   end
 
-  defp handle_method("tools/call", params, %{agent_id: agent_id}) do
+  defp handle_method("tools/call", params, %{agent_id: agent_id} = identity) do
     name = params["name"]
     args = params["arguments"] || %{}
 
@@ -134,7 +134,7 @@ defmodule LoopyardWeb.MCP.Server do
         {:error, -32602, "arguments must be an object"}
 
       true ->
-        case ToolRouter.call_tool(name, args, agent_id) do
+        case ToolRouter.call_tool(name, args, agent_id, ToolRouter.tool_modules(scope(identity))) do
           {:error, :unknown_tool} -> {:error, -32602, "unknown tool: #{name}"}
           result -> result
         end
@@ -145,6 +145,10 @@ defmodule LoopyardWeb.MCP.Server do
   # for a notification the caller drops the result; for a request it's method-not-found.
   defp handle_method("notifications/" <> _rest, _params, _identity), do: %{}
   defp handle_method(method, _params, _identity), do: {:error, -32601, "method not found: #{method}"}
+
+  # The token's scope selects which toolset this session sees (workspace vs
+  # operator). Defaults to :workspace for older tokens.
+  defp scope(identity), do: Map.get(identity, :scope, :workspace)
 
   # --- JSON-RPC envelopes ---
 

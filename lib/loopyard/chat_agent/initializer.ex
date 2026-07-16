@@ -125,39 +125,46 @@ defmodule Loopyard.ChatAgent.Initializer do
         session_opts
       end
 
-    # The ACP backend runs a real harness in-container, so it can't use the
-    # in-process Elixir MCP servers above (`mcp_servers:`). Hand it an HTTP MCP
-    # spec instead — Loopyard's control-plane tools, reachable over the token-
-    # authed bridge. Only for a workspace-scoped agent (the tools resolve the
-    # container from workspace_id); the ClaudeCode backend ignores this key.
+    # CONTAINMENT: an ACP harness MUST run inside a container. Setting `:container`
+    # makes Harness.ACP launch via `docker exec -i <container> claude-code-acp` —
+    # so the whole runtime (node, browser, /tmp, native Bash/Read/Write) lives in
+    # the sealed container and commands run NATIVELY against the code (no
+    # per-command `docker exec` wrapper, no host access). The ACP backend can't
+    # use the in-process Elixir MCP servers (`mcp_servers:`), so we also hand it an
+    # HTTP MCP `:acp_mcp_servers` spec — its tools over the token-authed bridge.
+    # Two shapes:
+    #   * workspace agent → work container, code volume, /workspace, workspace tools
+    #   * operator (explicit :container, no workspace) → its workstation container,
+    #     home volume, $HOME, operator tools
     session_opts =
-      if backend == Loopyard.Harness.ACP and is_binary(workspace_id) do
-        Keyword.put(session_opts, :acp_mcp_servers, ToolConfig.acp_mcp_servers(id, workspace_id))
-      else
-        session_opts
+      cond do
+        backend != Loopyard.Harness.ACP ->
+          session_opts
+
+        container_only? and is_binary(workspace_id) ->
+          install_brief(Loopyard.Workspace.volume_name_for(workspace_id), system_prompt)
+
+          session_opts
+          |> Keyword.put(:acp_mcp_servers, ToolConfig.acp_mcp_servers(id, workspace_id, :workspace))
+          |> Keyword.put(:container, Loopyard.Workspace.WorkContainer.container_name(workspace_id))
+          |> Keyword.put(:cwd, "/workspace")
+
+        container_only? and is_binary(Keyword.get(opts, :container)) ->
+          identity = Keyword.get(opts, :workstation_identity) || "operator"
+          install_brief(Loopyard.Workstation.home_volume(identity), system_prompt)
+
+          session_opts
+          |> Keyword.put(:acp_mcp_servers, ToolConfig.acp_mcp_servers(id, nil, :operator))
+          |> Keyword.put(:container, Keyword.get(opts, :container))
+          |> Keyword.put(:cwd, "/home/#{identity}")
+
+        true ->
+          session_opts
       end
 
-    # CONTAINMENT: run the ACP harness INSIDE the workspace container, not as a
-    # host process. Setting `:container` makes Harness.ACP launch via
-    # `docker exec -i <work> claude-code-acp` with cwd `/workspace` — so the whole
-    # runtime (node, browser, /tmp, native Bash/Read/Write) lives in the sealed
-    # container. The agent's commands then run NATIVELY against /workspace (no
-    # per-command `docker exec` wrapper, no host access). Only for container-only
-    # workspace agents; an explicit host-access agent (bind_mount) stays on the
-    # host, and the operator brings its own `:container` upstream.
-    session_opts =
-      if backend == Loopyard.Harness.ACP and container_only? and is_binary(workspace_id) do
-        # The brief must live where the in-container harness reads it: /workspace
-        # in the volume (claude-code-acp reads CLAUDE.local.md from cwd). Host-cwd
-        # install doesn't reach the container.
-        install_brief_into_volume(workspace_id, system_prompt)
-
-        session_opts
-        |> Keyword.put(:container, Loopyard.Workspace.WorkContainer.container_name(workspace_id))
-        |> Keyword.put(:cwd, "/workspace")
-      else
-        session_opts
-      end
+    # Fail closed: never start a runtime on the host. Raises if the resolved
+    # backend/opts would run the harness process outside a container.
+    assert_runtime_contained!(backend, session_opts, id)
 
     case backend.start_session(session_opts) do
       {:ok, session} ->
@@ -176,17 +183,16 @@ defmodule Loopyard.ChatAgent.Initializer do
 
   # --- Private helpers ---
 
-  # Write Loopyard's managed brief into the code volume's CLAUDE.local.md, where
-  # the in-container ACP harness reads it (its cwd is /workspace). The host-cwd
-  # install path (Harness.ACP.SystemPrompt) can't reach the container's fs, so
-  # in-container mode installs here via VolumeIO. Idempotent — replaces only the
-  # managed block, preserving any project CLAUDE.local.md content. Best-effort:
-  # a volume-write hiccup must not block the agent from starting.
-  defp install_brief_into_volume(_workspace_id, prompt) when prompt in [nil, ""], do: :ok
+  # Write Loopyard's managed brief into `volume`'s CLAUDE.local.md, where the
+  # in-container ACP harness reads it (its cwd is /workspace for a workspace agent,
+  # $HOME for the operator — both are the volume root). The host-cwd install path
+  # (Harness.ACP.SystemPrompt) can't reach the container's fs, so in-container mode
+  # installs here via VolumeIO. Idempotent — replaces only the managed block,
+  # preserving any project CLAUDE.local.md content. Best-effort: a volume-write
+  # hiccup must not block the agent from starting.
+  defp install_brief(_volume, prompt) when prompt in [nil, ""], do: :ok
 
-  defp install_brief_into_volume(workspace_id, prompt) do
-    volume = Loopyard.Workspace.volume_name_for(workspace_id)
-
+  defp install_brief(volume, prompt) do
     existing =
       case Loopyard.VolumeIO.read_file(volume, "CLAUDE.local.md") do
         {:ok, content} -> content
@@ -201,12 +207,38 @@ defmodule Loopyard.ChatAgent.Initializer do
       require Logger
 
       Logger.warning(
-        "[Initializer] couldn't install the agent brief into volume for " <>
-          "#{workspace_id}: #{Exception.message(e)}"
+        "[Initializer] couldn't install the agent brief into volume #{volume}: " <>
+          Exception.message(e)
       )
 
       :ok
   end
+
+  # CONTAINMENT INVARIANT (docs/SECURITY.md): every agent's harness runtime runs
+  # inside a Docker container — never on the host. Fail closed: raise rather than
+  # silently start a host-side process.
+  #
+  #   * `Harness.Claude` runs the `claude` CLI as a HOST subprocess → refused.
+  #   * `Harness.ACP` runs on the host UNLESS `:container` is set → require it.
+  #   * anything else (Fake + test doubles like RecordingBackend) spawns no host
+  #     runtime → allowed. IMPORTANT: if a NEW backend that can spawn a host
+  #     process is added, it MUST be refused here (add a clause).
+  defp assert_runtime_contained!(Loopyard.Harness.Claude, _session_opts, id) do
+    raise "CONTAINMENT: Harness.Claude runs the CLI on the HOST (agent #{id}). Refused — " <>
+            "agents must run in-container (Harness.ACP with :container). See docs/SECURITY.md."
+  end
+
+  defp assert_runtime_contained!(Loopyard.Harness.ACP, session_opts, id) do
+    if is_nil(Keyword.get(session_opts, :container)) do
+      raise "CONTAINMENT: ACP agent #{id} has no :container — it would run the harness " <>
+              "on the HOST. Refused. A workspace agent needs a workspace_id (→ work " <>
+              "container); an operator needs an explicit :container. See docs/SECURITY.md."
+    end
+
+    :ok
+  end
+
+  defp assert_runtime_contained!(_test_or_neutral_backend, _session_opts, _id), do: :ok
 
   # Resume an agent from persisted state (after server restart).
   defp init_resume(id, opts) do
@@ -260,12 +292,10 @@ defmodule Loopyard.ChatAgent.Initializer do
     {session, session_opts, backend, new_prompt_hash} =
       start_session(id, opts,
         working_dir: saved.working_dir,
-        # SECURITY: on resume, host access is granted ONLY if the agent was
-        # DELIBERATELY opted in (`host_access: true`) — never from a stray/legacy
-        # `saved.bind_mount`. An agent wrongly spawned with a bind_mount before the
-        # opt-in model (host_access absent/false) resumes container-only, closing
-        # the escape. See docs/SECURITY.md.
-        bind_mount: if(saved[:host_access] == true, do: saved.working_dir),
+        # CONTAINMENT: on resume, NEVER grant a host bind_mount — not even from a
+        # saved `host_access: true`. Host access is disabled everywhere now, so a
+        # restored agent always comes back container-only. See docs/SECURITY.md.
+        bind_mount: nil,
         workspace_id: saved.workspace_id,
         service_name: saved[:service_name],
         claude_session_id: saved[:claude_session_id]
@@ -356,12 +386,21 @@ defmodule Loopyard.ChatAgent.Initializer do
     name = Keyword.get(opts, :name, "Chat #{id |> String.slice(0..7)}")
     working_dir = Keyword.get(opts, :working_dir, File.cwd!())
     started_by = Keyword.get(opts, :started_by, "anonymous")
-    # Host access is OPT-IN and explicit — never a fallback. A `bind_mount` (native
-    # host tools) is granted ONLY when `host_access: true` is passed deliberately;
-    # otherwise the agent is container-only. `container: <name>` agents (the
-    # operator) keep their own container and never take a bind_mount.
-    host_access = Keyword.get(opts, :host_access, false) == true
-    bind_mount = if host_access, do: Keyword.get(opts, :bind_mount) || working_dir, else: nil
+    # CONTAINMENT: host access is DISABLED. Every agent runs its harness inside a
+    # container — no exceptions. A `host_access: true` opt (which used to grant a
+    # host `bind_mount` + native host tools) is now IGNORED and logged, never
+    # honored, so no runtime can escape to the host. See docs/SECURITY.md.
+    if Keyword.get(opts, :host_access, false) == true do
+      require Logger
+
+      Logger.warning(
+        "[Initializer] host_access requested for agent #{id} but is DISABLED — " <>
+          "all agents run in-container. Ignoring."
+      )
+    end
+
+    host_access = false
+    bind_mount = nil
     workspace_id = Keyword.get(opts, :workspace_id)
     service_name = Keyword.get(opts, :service_name)
     # Restored chat history + Claude session for a re-spawned agent that has no

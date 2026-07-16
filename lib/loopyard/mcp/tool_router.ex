@@ -34,8 +34,15 @@ defmodule Loopyard.MCP.ToolRouter do
   """
   def server_name, do: "loopyard-container"
 
-  @doc "Tool modules exposed over the ACP MCP bridge (the control-plane subset)."
-  def tool_modules, do: ToolConfig.acp_control_plane_tools()
+  @doc """
+  Tool modules exposed over the ACP MCP bridge for a token `scope`:
+
+    * `:workspace` — the container/service control-plane subset (default).
+    * `:operator` — the operator's project/identity control-plane toolkit.
+  """
+  def tool_modules(scope \\ :workspace)
+  def tool_modules(:operator), do: ToolConfig.acp_operator_tools()
+  def tool_modules(_workspace), do: ToolConfig.acp_control_plane_tools()
 
   @doc """
   MCP `tools/list` payload — one entry per exposed tool, bare-named.

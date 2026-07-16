@@ -34,6 +34,16 @@ We do **not** defend against:
 
 Every boundary below is a **runtime check**, not a rule the model is asked to follow. Prompt-level guidance is a courtesy to the agent, never a security control.
 
+### 0. The harness runtime runs inside a container — fail closed
+
+The most fundamental boundary: **every agent's harness process runs inside a Docker container, never on the host.** The container *is* the sandbox — the node/CLI runtime, its native `Bash`/`Read`/`Write`, any browser/skill subprocess, and its `/tmp` all live inside the container and cannot touch the host.
+
+- **ACP in-container.** `Harness.ACP` launches the harness via `docker exec -i <container> claude-code-acp` whenever a `:container` opt is set (`Initializer.start_session`). Workspace agents run in their work container (`cwd=/workspace`); the operator runs in its workstation container (`loopyard-ws-<identity>`, `cwd=$HOME`). Without `:container`, ACP would run a host `node` process — so we never leave it unset for a real agent. (One `docker exec` to enter; commands then run natively inside — no per-command `docker exec` wrapper, which was the old host-mode tell.)
+- **Fail-closed gate.** `Initializer.assert_runtime_contained!/3` runs before every `backend.start_session` and **raises** rather than start a host runtime: `Harness.Claude` (spawns the `claude` CLI on the host) is refused outright; `Harness.ACP` without a `:container` is refused; test doubles (Fake/RecordingBackend, which spawn nothing) pass. A new backend that can spawn a host process MUST add a refusing clause. Tested in `test/loopyard/chat_agent/containment_test.exs`.
+- **`host_access` is disabled.** The former opt-in `host_access: true` → host `bind_mount` + native host tools is now **ignored and logged**, never honored (`init_fresh`), and never re-derived on resume (`resume_from_summary` forces `bind_mount: nil`). There is no supported way to run an agent runtime on the host.
+- **The operator is contained too.** It used to run a host-side `Harness.Claude` loop; it now runs ACP inside its workstation container, reaching its `Tools.ControlPlane` toolkit over an **operator-scoped** MCP bridge token (`Loopyard.MCP.Token` `scope: :operator` → `ToolRouter` serves the operator toolset). The workstation container mounts the same `loopyard-ws-<id>-home` volume, so it shares the identity's credential.
+- **Known host-side diagnostic (not an agent):** `mix loopyard.harness_check` (`HarnessCheck.probe`) spawns a transient host `npx claude-code-acp` to check the adapter — it does not go through the Initializer and serves no user. It is a manual dev probe, not an agent runtime; treat it as such.
+
 ### 1. Tool surface is minimal and workspace-scoped
 
 Agents see exactly two MCP servers: `loopyard-container` (file/exec/docker_compose/inspect tools) and `loopyard-secrets`. Every tool that touches infrastructure derives the target container, volume, and compose project from the agent's own session state via `Helpers.resolve_container/1`, `resolve_service_container/2`, or `agent_workspace_id/1`. Tools do not accept a `workspace_id` parameter.

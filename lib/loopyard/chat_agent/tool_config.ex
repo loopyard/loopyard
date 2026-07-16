@@ -120,12 +120,21 @@ defmodule Loopyard.ChatAgent.ToolConfig do
   def acp_control_plane_tools, do: @acp_control_plane_tools
 
   @doc """
-  The ACP `mcpServers` spec for one agent (delegates to `Loopyard.MCP`). Injected
-  into the ACP backend's session opts by the Initializer; ignored by the
-  in-process ClaudeCode backend.
+  Tool modules for the OPERATOR agent over the bridge — its project/identity
+  control-plane toolkit (`Tools.ControlPlane`: create/list projects, gh, exec in
+  its workstation container). The operator runs in-container too, so it reaches
+  these over the same bridge, scoped by an `:operator` token.
   """
-  def acp_mcp_servers(agent_id, workspace_id),
-    do: Loopyard.MCP.acp_mcp_servers(agent_id, workspace_id)
+  def acp_operator_tools, do: Loopyard.Tools.ControlPlane.__tool_server__().tools
+
+  @doc """
+  The ACP `mcpServers` spec for one agent (delegates to `Loopyard.MCP`). `scope`
+  selects the toolset (`:workspace` default, or `:operator`). Injected into the
+  ACP backend's session opts by the Initializer; ignored by the in-process
+  ClaudeCode backend.
+  """
+  def acp_mcp_servers(agent_id, workspace_id, scope \\ :workspace),
+    do: Loopyard.MCP.acp_mcp_servers(agent_id, workspace_id, scope)
 
   @doc """
   Builds the MCP server map from tool modules.

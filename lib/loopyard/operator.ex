@@ -1,18 +1,20 @@
 defmodule Loopyard.Operator do
   @moduledoc """
   The **operator agent** — a per-workstation (per-user) control-plane agent. It is
-  a normal `ChatAgent`, but hosted the RIGHT way for what it is: a **host-side
-  `Harness.Claude` loop** (the Claude CLI on the host, using your Mac's Claude +
-  GitHub auth directly) with the `Tools.ControlPlane` MCP toolkit. That means:
+  a normal `ChatAgent` that runs its harness **inside its own workstation
+  container** (`loopyard-ws-<identity>`) via ACP — like every other agent, no
+  runtime on the host (docs/SECURITY.md). Its toolkit is `Tools.ControlPlane`
+  (create/list projects, gh, exec), reached over the operator-scoped MCP bridge.
 
-    * **no container** — a control agent orchestrates the plane; it doesn't need
-      Claude Code's in-container fs sandbox that workspace (ACP) agents use;
+    * **its own workstation container** — a control agent orchestrates the plane;
+      it doesn't touch a code volume, but its harness is still contained;
     * **no workspace, no project, no code volume, no git repo** — none of the
-      workspace apparatus. It's just an agent bound to your identity.
+      workspace apparatus. It's just an agent bound to your identity, running in
+      that identity's container with its mounted `$HOME` (gh/Claude creds).
 
-  This is the harness seam working as intended: workspace agents run ACP +
-  Claude Code in-container (they write code); the operator runs a lighter
-  host-side loop (it creates + delegates). See [plans/gbrain-onboarding.md].
+  The harness seam: every agent runs ACP + Claude Code in-container. Workspace
+  agents run in their work container against `/workspace`; the operator runs in
+  its workstation container against `$HOME`. See [plans/gbrain-onboarding.md].
 
   `ensure_agent/1` idempotently ensures a live operator for a workstation. It's
   lazily (re)spawned on demand (e.g. opening `/operator`).
@@ -97,7 +99,11 @@ defmodule Loopyard.Operator do
       container: container,
       started_by: "operator",
       workstation_identity: identity,
-      backend: Loopyard.Harness.Claude,
+      # CONTAINMENT: the operator runs its harness INSIDE its workstation container
+      # (via ACP `docker exec -i <container> claude-code-acp`), not as a host CLI.
+      # The Initializer wires :container + cwd=$HOME + its operator-scoped MCP tool
+      # bridge. See docs/SECURITY.md.
+      backend: Loopyard.Harness.ACP,
       # A shell in its image (Tools.Container.Exec, via ControlPlane) + the
       # control-plane create/manage tools + gh. Same creds as any agent (mounted
       # $HOME), sandboxed to the container.
