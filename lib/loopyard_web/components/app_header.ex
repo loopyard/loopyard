@@ -29,7 +29,6 @@ defmodule LoopyardWeb.Components.AppHeader do
     # header, so no page can forget it (workstations did). Idempotent: pages that
     # already lead with Loopyard (or the root "/") are left as-is — no double crumb.
     assigns = assign(assigns, :breadcrumbs, with_root(assigns.breadcrumbs))
-    assigns = assign(assigns, :workstation, Loopyard.Workstation.current())
 
     ~H"""
     <LoopyardWeb.Components.Nav.bar height="h-14" gap="gap-3">
@@ -38,21 +37,9 @@ defmodule LoopyardWeb.Components.AppHeader do
       <.iex_indicator :if={@iex_session.level} session={@iex_session} />
       <:actions>
         {render_slot(@inner_block)}
-        <%!-- Workstation is where you configure the identity that runs inside the
-             containers — credentials (CLAUDE_CODE_OAUTH_TOKEN, GH_TOKEN, …) that
-             Loopyard injects into every agent container. NOT a dashboard-card
-             duplicate: it's a settings surface, so it needs its own always-present
-             entry point (it was wrongly stripped in the nav declutter). --%>
-        <.link
-          :if={@workstation}
-          navigate={"/workstations/#{@workstation}"}
-          title="Workstation — identity & credentials injected into containers"
-          class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-sm text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-        >
-          <LoopyardWeb.Components.Icon.icon name={:user} class="w-4 h-4 flex-none" />
-          <span class="hidden sm:inline">{@workstation}</span>
-        </.link>
-        <%!-- Sound stays — global control (mute anywhere) and the only entry to /sound. --%>
+        <%!-- Deliberately minimal: only the global sound control lives here. The
+             Workstations surface is reached from the root DASHBOARD, not a
+             top-right menu (which would become a catch-all mess). --%>
         <LoopyardWeb.Components.Common.sound_control id="sound-app" />
       </:actions>
     </LoopyardWeb.Components.Nav.bar>

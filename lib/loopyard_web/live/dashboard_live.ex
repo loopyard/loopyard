@@ -137,10 +137,24 @@ defmodule LoopyardWeb.DashboardLive do
             Talk to your operator agent
           </div>
           <div class="mt-0.5">
-            as <span class="font-medium">{@operator}</span> · {@operator_count} {plural(
-              @operator_count,
-              "workstation"
-            )}
+            as <span class="font-medium">{@operator}</span>
+          </div>
+        </.dashboard_card>
+
+        <%!-- Workstations — the identities (users) that run inside the containers:
+             their creds, image, and env. The home for setting up + switching
+             identities (reached from here, not a top-right menu). --%>
+        <.dashboard_card
+          navigate="/workstations"
+          title="Workstations"
+          tone={:neutral}
+          status={"#{@operator_count} #{plural(@operator_count, "workstation")}"}
+        >
+          <div class="text-zinc-700 dark:text-zinc-200">
+            Identities that run in the containers — creds, image, env
+          </div>
+          <div class="mt-0.5">
+            operating as <span class="font-medium">{@operator}</span>
           </div>
         </.dashboard_card>
       </.dashboard_grid>
