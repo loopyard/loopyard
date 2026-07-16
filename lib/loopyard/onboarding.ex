@@ -116,16 +116,18 @@ defmodule Loopyard.Onboarding do
       progress.("Starting the environment…")
       start_work_async(ws_id)
 
-      # Replicate the source's RUNNING state: if its preview cluster (services)
-      # was up, bring the fork's up too — "branch this and keep working" means the
-      # dev server should be running, not a dead sidebar. Async + best-effort:
-      # the fork is usable immediately; services come up in the background and the
-      # sidebar goes green via the Observer. Safe now that code-volume names are
-      # normalized to THIS workspace (see Compose.normalize_code_volume_names).
-      if preview_running?(source_ws_id) do
-        progress.("Starting services…")
-        start_preview_async(ws_id)
-      end
+      # Boot the fork's preview cluster from the `.loopyard` config it carries —
+      # "branch this and keep working" means the dev server should come up, not a
+      # dead sidebar. Async + best-effort: the fork is usable immediately; services
+      # come up in the background and the sidebar goes green via the Observer.
+      # Safe now that code-volume names are normalized to THIS workspace
+      # (see Compose.normalize_code_volume_names); no-ops if there's no compose.
+      # (Previously gated on `preview_running?(source)`, which checked for a
+      # compose service literally named "workspace" — real compose files name
+      # their services dev/postgres/etc, so it was always false and forks never
+      # booted their services.)
+      progress.("Starting services…")
+      start_preview_async(ws_id)
 
       {:ok, ws}
     end
@@ -212,11 +214,17 @@ defmodule Loopyard.Onboarding do
     end
   end
 
-  # True when the workspace's preview cluster (the compose `workspace` service) is
-  # up — i.e. the source had its services running and the fork should too.
-  defp preview_running?(ws_id), do: Loopyard.Workspace.container_running?(ws_id)
-
-  defp start_preview_async(ws_id) do
+  @doc """
+  Bring the workspace's preview cluster up in the BACKGROUND — best-effort, so a
+  freshly-cloned workspace is browsable immediately and its services come up
+  behind it (the sidebar goes green via the Observer). Called at the end of every
+  provisioning path (fork here, `Workspace.Setup` for UI-created workspaces) so a
+  cloned workspace boots the `.loopyard` config it came with, instead of landing
+  with a dead service sidebar. Safe when there's no compose: `start_preview/1`
+  no-ops with a logged error rather than crashing.
+  """
+  @spec start_preview_async(String.t()) :: :ok
+  def start_preview_async(ws_id) do
     Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn -> start_preview(ws_id) end)
     :ok
   end

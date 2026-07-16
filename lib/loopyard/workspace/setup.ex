@@ -478,6 +478,14 @@ defmodule Loopyard.Workspace.Setup do
       total_duration_ms: total_duration_ms,
       finished_at: finished_at
     })
+
+    # Clone done → boot the `.loopyard` config the workspace came with. The saga
+    # copies `.loopyard/workspace/docker-compose.yml` (worktree phase) but the
+    # phases never brought the cluster up, so a UI-created workspace landed
+    # :ready with a dead service sidebar and no port. Boot it now — async +
+    # best-effort (no-ops if there's no compose), so :ready stays fast and the
+    # services come up behind it.
+    Loopyard.Onboarding.start_preview_async(workspace_id)
   end
 
   defp finalize_saga({:error, {:step_failed, step, reason}, _rb}, workspace_id, _started_mono) do

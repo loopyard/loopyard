@@ -207,13 +207,24 @@ lands you on a live agent, never a blank scrambling workspace. The flow
 2. Normalize the compose code-volume names to the fork's own volume
    (`Compose.normalize_code_volume_names`) — fork-safety: the fork must
    never mount the source's volume.
-3. If the source's preview cluster (services) was running, start the
-   fork's too (async, best-effort).
+3. Boot the fork's preview cluster from the `.loopyard` config it carries
+   (`Onboarding.start_preview_async/1`, async + best-effort) — a cloned
+   workspace comes up **running** with a live dev server + port, not a
+   dead sidebar. No-ops when there's no compose. (This used to be gated on
+   the source's cluster running, via a `container_running?` check for a
+   compose service literally named "workspace" — which real compose files
+   never have, so the gate was always false and forks never booted.)
 4. Spawn the branch's agent via the unified `Onboarding.spawn_agent/2`
    (the single backend-spawn path shared by the LiveView "New agent"
    and provisioning flows).
 Each phase streams into the approval card via the `progress` callback;
 the card resolves to "Ready — open `<branch>` →".
+
+**UI-created workspaces (non-canonical Local projects) take a different
+path** — `add_workspace` → the `Workspace.Setup` saga (`:worktree` copies
+`.loopyard`, `:volume`, `:seeding`). On success (`finalize_saga`) it too
+calls `Onboarding.start_preview_async/1`, so *every* provisioning path
+boots the cloned config once cloning is done — not just forks.
 
 ## Send reliability (no silent loss)
 
