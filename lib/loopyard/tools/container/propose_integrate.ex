@@ -14,7 +14,7 @@ defmodule Loopyard.Tools.Container.ProposeIntegrate do
     ]
 
   alias Loopyard.Harness.Approvals
-  alias Loopyard.{CanonicalRepo, WorkspaceRegistry, ChatAgent}
+  alias Loopyard.{WorkspaceRegistry, ChatAgent}
 
   def execute(%{agent_id: agent_id}, _assigns) do
     with %{workspace_id: ws_id} when is_binary(ws_id) <- ChatAgent.get_state(agent_id),
@@ -23,30 +23,16 @@ defmodule Loopyard.Tools.Container.ProposeIntegrate do
            WorkspaceRegistry.get_workspace(ws_id) do
       action = %{verb: :integrate, project_id: project_id, workspace_id: ws_id, branch: branch}
 
-      case Approvals.request(agent_id, action) do
-        {:approve, msg_id} ->
-          Approvals.resolve(agent_id, msg_id, %{status: :integrating})
+      # Queued approval (no blocking, no TTL): post the card and return. On
+      # approve, the LiveView runs `Approvals.run/3`, which rebases + merges this
+      # branch into main and streams the outcome into the card.
+      Approvals.post(agent_id, action)
 
-          case CanonicalRepo.integrate(project_id, ws_id, branch) do
-            {:ok, _} ->
-              Approvals.resolve(agent_id, msg_id, %{status: :integrated})
-              {:ok, "Approved. Merged '#{branch}' into main."}
-
-            {:error, reason} ->
-              Approvals.resolve(agent_id, msg_id, %{status: :failed, error: inspect(reason)})
-
-              {:error,
-               "Merge failed — likely conflicts to resolve on this branch first " <>
-                 "(rebase on main, fix, then propose again): #{inspect(reason)}"}
-          end
-
-        {:deny, msg_id} ->
-          Approvals.resolve(agent_id, msg_id, %{status: :denied})
-          {:ok, "The user declined to merge '#{branch}' into main."}
-
-        {:timeout, _} ->
-          {:ok, "No response on the merge proposal — not merged."}
-      end
+      {:ok,
+       "I've proposed merging '#{branch}' into main. Approve the card whenever " <>
+         "you're ready — no time limit — and I'll rebase + merge it. If it hits " <>
+         "conflicts it fails cleanly and you can resolve them on this branch, then " <>
+         "propose again."}
     else
       _ -> {:error, "Couldn't resolve the project/branch for this workspace."}
     end

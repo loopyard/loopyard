@@ -1,22 +1,126 @@
 defmodule Loopyard.Harness.Approvals do
   @moduledoc """
-  The human-approval broker for boundary-crossing actions (creating a branch
-  workspace = the "agent spawned a shitload of workspaces" guardrail).
+  The human-approval broker for boundary-crossing actions (fork / integrate /
+  delete a workspace, create a project — the "agent spawned a shitload of
+  workspaces" guardrail).
 
-  Same blocking-waiter pattern as `Loopyard.Harness.Questions`: the agent calls
-  a tool (`propose_fork`) which calls `request/2` with an `action` map; the
-  broker appends a `role: :approval` message (persisted + broadcast → the whole
-  room sees the Approve/Deny card) and blocks until a human decides. `decide/2`
-  (from the LiveView) delivers the decision to the blocked caller.
+  Two modes, both post a `role: :approval` message (persisted + broadcast → the
+  whole room sees the Approve/Deny card):
 
-  The tool owns the card's lifecycle after the decision — call `resolve/3` to
-  flip it to `:approved` (with the new workspace) / `:denied` / `:failed`, which
-  persists + broadcasts to everyone.
+  ## Queued (default — `post/2` + `run/3`)
+
+  The agent calls a tool (`propose_fork`) which calls `post/2` and returns
+  **immediately** — the agent's turn ends with "proposed X, awaiting your
+  approval." The card carries the full `action` map, so it's durable: it stays
+  `:pending` with **no TTL** and survives restarts. Whenever a human clicks
+  Approve, the LiveView runs `run/3`, which executes the action from the
+  persisted card and `resolve/3`s it (progress → terminal status). Nothing
+  blocks a turn, so a slow human can't trip the stream safety timer and no
+  approval ever silently "times out." This is the path for every workspace
+  action (fork / integrate / delete).
+
+  ## Blocking (legacy — `request/2` + `decide/2`)
+
+  Same blocking-waiter pattern as `Loopyard.Harness.Questions`: `request/2`
+  BLOCKS the tool call until `decide/2` delivers the human's choice (30-min TTL).
+  Still used by the operator's `create_project` flow (`Tools.ControlPlane`),
+  whose creation is a runtime closure that can't live in a persisted card.
+  Migrating it to the queued model (serialize the project spec) is a follow-up.
+
+  Either way, `resolve/3` flips the card to its outcome (`:approved` /
+  `:integrated` / `:denied` / `:failed`), persisted + broadcast to everyone.
   """
   alias Loopyard.ChatAgent
 
   @table :harness_approvals
   @timeout_ms 30 * 60 * 1000
+
+  # --- Queued model (post + run) — no TTL, no blocked turn ---
+
+  @doc """
+  Post an approval card for `action` and return immediately (the queued model).
+  The card is `:pending` with the full `action` embedded, so the decision can be
+  acted on later via `run/3` — there's no waiter and no TTL. Returns `:ok`.
+  """
+  @spec post(String.t(), map()) :: :ok
+  def post(agent_id, action) when is_binary(agent_id) and is_map(action) do
+    ChatAgent.append_message_ets(agent_id, %{
+      role: :approval,
+      approval_id: gen_id(),
+      action: action,
+      status: :pending,
+      timestamp: DateTime.utc_now()
+    })
+
+    :ok
+  end
+
+  @doc """
+  Execute an approved action from its persisted card. Called from the LiveView's
+  approve handler (off the socket, in a Task) — NOT from the agent's turn. Runs
+  the fork/integrate/delete, streaming progress into the card via `resolve/3` and
+  flipping it to its terminal status. Safe to run detached: it needs only the
+  `action` map (durable in the card) and `msg_id` (the card's message id).
+  """
+  @spec run(String.t(), String.t() | nil, map()) :: :ok
+  def run(agent_id, msg_id, %{verb: :fork} = action) do
+    resolve(agent_id, msg_id, %{status: :creating, detail: "Starting…"})
+    progress = fn step -> resolve(agent_id, msg_id, %{status: :creating, detail: step}) end
+
+    # Copy THIS workspace (working tree + .loopyard infra), forked onto the new
+    # branch — the source ws id rides in the action so this runs without the
+    # proposing agent's live state. `base` is just the card label.
+    case Loopyard.Onboarding.fork_from_workspace(
+           action.project_id,
+           action.workspace_id,
+           action.branch,
+           progress
+         ) do
+      {:ok, new_ws} ->
+        progress.("Starting the agent…")
+
+        new_agent_id =
+          case Loopyard.Onboarding.spawn_agent(new_ws.id, started_by: "fork") do
+            {:ok, aid} -> aid
+            _ -> nil
+          end
+
+        resolve(agent_id, msg_id, %{
+          status: :approved,
+          workspace_id: new_ws.id,
+          project_id: action.project_id,
+          agent_id: new_agent_id
+        })
+
+      {:error, reason} ->
+        resolve(agent_id, msg_id, %{status: :failed, error: inspect(reason)})
+    end
+
+    :ok
+  end
+
+  def run(agent_id, msg_id, %{verb: :integrate} = action) do
+    resolve(agent_id, msg_id, %{status: :integrating})
+
+    case Loopyard.CanonicalRepo.integrate(action.project_id, action.workspace_id, action.branch) do
+      {:ok, _} -> resolve(agent_id, msg_id, %{status: :integrated})
+      {:error, reason} -> resolve(agent_id, msg_id, %{status: :failed, error: inspect(reason)})
+    end
+
+    :ok
+  end
+
+  def run(_agent_id, _msg_id, %{verb: :delete_workspace} = action) do
+    # Deleting the workspace destroys this agent (and its message log), so there's
+    # no card left to resolve — the LiveView has already navigated the human away.
+    # Just do the teardown.
+    Loopyard.Workspace.Destructor.destroy(action.workspace_id)
+    :ok
+  end
+
+  def run(_agent_id, _msg_id, _action), do: :ok
+
+  # --- Blocking model (request + decide) — operator create_project only ---
 
   @doc """
   Post an approval card for `action` and BLOCK until a human decides. Returns

@@ -861,59 +861,42 @@ defmodule LoopyardWeb.WorkspaceLive do
     decision = if decision == "approve", do: :approve, else: :deny
     agent_id = socket.assigns.selected_id
 
-    # The approval card message carries both the action and its msg id.
-    card =
-      Enum.find(socket.assigns.messages, fn m -> m[:approval_id] == id end)
-
+    # The approval card message carries the full action + its msg id — the card
+    # is durable (queued model), so the decision runs entirely from it. No blocked
+    # tool waiter to deliver to, no TTL to have expired.
+    card = Enum.find(socket.assigns.messages, fn m -> m[:approval_id] == id end)
     action = card && card[:action]
 
-    # Optimistically flip the card to its working state the instant the human
-    # clicks — fork/integrate can take a few seconds, and we don't want the
-    # buttons to sit there looking unclicked. Persisted + broadcast, so every
-    # viewer sees "Creating…/Merging…" immediately. The tool's own resolve/3
-    # calls that follow are idempotent.
-    if decision == :approve && agent_id && card && action[:verb] != :delete_workspace do
-      transient = if action[:verb] == :integrate, do: :integrating, else: :creating
-      ChatAgent.update_message(agent_id, card.id, fn m -> Map.put(m, :status, transient) end)
-    end
-
-    # Deliver to the blocked propose_* tool. For fork/integrate the tool runs the
-    # action; for delete_workspace the agent would be killed by its own
-    # deletion, so the LiveView runs the destroy + navigates away.
-    case Loopyard.Harness.Approvals.decide(id, decision) do
-      :ok ->
-        :ok
-
-      {:error, :not_found} ->
-        # The propose_* tool that posted this card is gone (session restart,
-        # crash, or the 30-min timeout) — nothing is listening, so the decision
-        # would vanish and the card (already flipped to :creating above) would
-        # spin forever. Flip it to a terminal state so the human isn't stuck.
-        if agent_id && card do
-          ChatAgent.update_message(agent_id, card.id, fn m ->
-            Map.merge(m, %{
-              status: :failed,
-              error: "this proposal expired — ask the agent to create the branch again"
-            })
-          end)
-        end
-    end
-
     cond do
-      decision == :approve && action && action[:verb] == :delete_workspace ->
-        ws_id = action.workspace_id
+      is_nil(card) || is_nil(action) || is_nil(agent_id) ->
+        {:noreply, socket}
 
+      decision == :deny ->
+        Loopyard.Harness.Approvals.resolve(agent_id, card.id, %{status: :denied})
+        {:noreply, socket}
+
+      # Run the approved action OFF the socket so the click returns instantly and
+      # a slow action (fork can take seconds) never blocks the LiveView. run/3
+      # streams progress into the card + resolves it to its terminal status.
+      decision == :approve ->
         Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
-          Loopyard.Workspace.Destructor.destroy(ws_id)
+          Loopyard.Harness.Approvals.run(agent_id, card.id, action)
         end)
 
-        {:noreply,
-         socket
-         |> put_flash(:info, "Workspace deleted.")
-         |> push_navigate(to: "/projects/#{action.project_id}")}
-
-      true ->
-        {:noreply, socket}
+        if action[:verb] == :delete_workspace do
+          # Deleting the workspace destroys this agent — leave the chat now.
+          {:noreply,
+           socket
+           |> put_flash(:info, "Workspace deleted.")
+           |> push_navigate(to: "/projects/#{action.project_id}")}
+        else
+          # Optimistically flip the card to its working state so the buttons don't
+          # sit there looking unclicked while run/3 spins up. run/3's own resolve/3
+          # calls overwrite this; both are idempotent.
+          transient = if action[:verb] == :integrate, do: :integrating, else: :creating
+          ChatAgent.update_message(agent_id, card.id, fn m -> Map.put(m, :status, transient) end)
+          {:noreply, socket}
+        end
     end
   end
 

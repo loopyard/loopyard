@@ -71,6 +71,27 @@ defmodule Loopyard.Harness.ApprovalsTest do
     end
   end
 
+  describe "queued model (post + run)" do
+    test "post/2 returns immediately and registers NO blocking waiter (no TTL)" do
+      agent = "appr-queued-#{System.unique_integer([:positive])}"
+      action = %{verb: :delete_workspace, workspace_id: "w1", project_id: "p1"}
+
+      before = length(:ets.tab2list(:harness_approvals))
+
+      # Unlike request/2, post/2 does not block — it returns right away.
+      assert :ok = Approvals.post(agent, action)
+
+      # ...and it registers NO waiter, so there's nothing that can time out. This
+      # is the whole point of the queued model: the decision lives in the durable
+      # card, not a blocked process on a 30-min clock.
+      assert length(:ets.tab2list(:harness_approvals)) == before
+    end
+
+    test "run/3 with an unknown verb is a clean no-op" do
+      assert :ok = Approvals.run("a", "m", %{verb: :bogus})
+    end
+  end
+
   defp wait_for_pending(tries \\ 50) do
     case :ets.tab2list(:harness_approvals) do
       [{id, _} | _] ->
