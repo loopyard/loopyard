@@ -128,13 +128,12 @@ defmodule Loopyard.Workspace.WorkContainer do
   defp recreate(workspace_id, name) do
     volume = VolumeManager.code_volume_name(workspace_id)
 
-    # The work container is stamped with an identity at creation: the workstation
-    # you're operating as (its customized image + $HOME logins), not the stock
-    # base. We resolve `current/0` ONCE here, explicitly — the one sanctioned
-    # "current identity" read on the boot path. (A future refinement stamps the
-    # identity onto the workspace at create time so even headless boots are
-    # deterministic; until then, first boot follows the current driver.)
-    ws = Loopyard.Workstation.current()
+    # The work container mounts its workspace's WORKSTATION identity home volume
+    # (its $HOME logins/creds). Resolved from the workspace's recorded
+    # `:workstation_id` — so the container is deterministic per-workspace, even on
+    # a headless boot, and a workspace attached to another identity uses that
+    # identity's creds. Legacy workspaces (no field) fall back to `current/0`.
+    ws = Loopyard.Workspace.workstation_id(workspace_id)
 
     # Toolchain = the shared stock base image (identity-agnostic). Identity is the
     # home volume mounted below, NOT a per-identity image.

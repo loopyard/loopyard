@@ -229,6 +229,21 @@ defmodule Loopyard.Workspace do
     end
   end
 
+  @doc """
+  The workstation (identity) a workspace belongs to — the creds/home its agents
+  inherit. Reads the workspace's recorded `:workstation_id`; falls back to the
+  current identity for legacy workspaces created before the field existed. Accepts
+  a workspace map or a workspace id.
+  """
+  def workstation_id(%{} = ws), do: ws[:workstation_id] || Loopyard.Workstation.current()
+
+  def workstation_id(ws_id) when is_binary(ws_id) do
+    case Loopyard.WorkspaceRegistry.get_workspace(ws_id) do
+      %{} = ws -> workstation_id(ws)
+      _ -> Loopyard.Workstation.current()
+    end
+  end
+
   @doc "Generate a hash-based workspace ID (for bind-mount projects only)"
   def hash_workspace_id(project_dir) do
     project_dir

@@ -166,7 +166,11 @@ defmodule Loopyard.Onboarding do
             name: name,
             working_dir: working_dir,
             started_by: Keyword.get(opts, :started_by, "system"),
-            workspace_id: ws_id
+            workspace_id: ws_id,
+            # Inherit THIS workspace's workstation identity (its creds/home), not
+            # the global `current` — so agents in a workspace attached to another
+            # workstation follow that identity.
+            workstation_identity: Loopyard.Workspace.workstation_id(ws)
           ]
 
         # SECURITY BOUNDARY — workspace agents are ALWAYS container-only. They act
@@ -427,6 +431,11 @@ defmodule Loopyard.Onboarding do
       path: Workspace.compose_dir(ws_id),
       is_main: Keyword.get(opts, :is_main, false),
       status: :stopped,
+      # The workstation (identity) this workspace belongs to — its creds/home the
+      # agents here inherit. Recorded at creation (the operating identity), so a
+      # workspace can be attached to a specific workstation instead of always
+      # following the global `current`. Multi-workstation foundation.
+      workstation_id: Keyword.get(opts, :workstation_id) || Loopyard.Workstation.current(),
       # The fork/checkout already materialized the volume — no saga needed.
       setup: Loopyard.Workspace.Setup.ready_setup_field(),
       added_at: DateTime.utc_now()
