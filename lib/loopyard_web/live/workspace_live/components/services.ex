@@ -201,24 +201,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
 
     ~H"""
     <div class="flex-1 flex flex-col min-h-0">
-      <%!-- Jump strip: tap a run to scroll to its boundary. Only when there's
-           more than one run to jump between. --%>
-      <div
-        :if={length(@frames) > 1}
-        class="flex-none flex items-center gap-1.5 px-3 py-1.5 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/60 overflow-x-auto"
-      >
-        <span class="text-xs font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500 flex-none mr-0.5">
-          Runs
-        </span>
-        <a
-          :for={{g, gi} <- Enum.with_index(@frames)}
-          href={"#run-#{g.run}"}
-          class={run_chip(gi == @last_i)}
-        >
-          {g.run}
-        </a>
-      </div>
-
+      <%!-- No "Runs" jump strip — the per-run sticky "Run N" divider headers
+           below are enough to tell runs apart, and the strip just added a bar +
+           gap above the logs. --%>
       <%!-- overscroll-contain: overscrolling the log must NOT rubber-band the
            whole page (the iOS "bounces all over" bug). `LogTail` owns the
            auto-tail and is momentum-aware so it doesn't fight touch scrolling. --%>
@@ -272,17 +257,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
       </div>
     </div>
     """
-  end
-
-  defp run_chip(current?) do
-    [
-      "inline-flex items-center justify-center min-w-[1.9rem] h-7 px-2 rounded-md text-xs font-semibold flex-none transition-colors",
-      if(current?,
-        do: "bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
-        else:
-          "bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-300 dark:hover:bg-zinc-700"
-      )
-    ]
   end
 
   defp service_waiting_panel(assigns) do

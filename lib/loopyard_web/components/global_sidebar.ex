@@ -26,10 +26,14 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
            mobile chat_header is md:hidden) toggles/opens ambient sound. Fixed
            height so nothing shifts. --%>
       <div class="flex items-center h-14 flex-none border-b border-zinc-200/70 dark:border-zinc-800">
+        <%!-- Left inset matches the app header's Nav.bar pad (`px-4 md:px-5`)
+             EXACTLY, so the loopyard mark sits at the same x whether you're on
+             a header page (dashboard/list) or the 3-pane rail — it never jumps
+             on navigation. --%>
         <.link
           navigate="/"
           aria-label="loopyard home"
-          class="flex-1 min-w-0 flex items-center h-full px-4 text-zinc-900 dark:text-zinc-50 hover:opacity-70 transition-opacity"
+          class="flex-1 min-w-0 flex items-center h-full px-4 md:px-5 text-zinc-900 dark:text-zinc-50 hover:opacity-70 transition-opacity"
         >
           <%!-- Official trefoil mark + lowercase wordmark (loopyard.ai/branding).
                Mark sized w-5 to match the breadcrumb logo exactly. --%>
