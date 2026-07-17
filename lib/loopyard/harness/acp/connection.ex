@@ -42,6 +42,21 @@ defmodule Loopyard.Harness.ACP.Connection do
     :exit, _ -> nil
   end
 
+  @doc """
+  Protocol-level liveness probe: round-trips a `session/list` request through
+  the adapter and returns `:pong` iff its event loop answered. This is the
+  difference between "our local GenServer/exec client is alive" and "the
+  harness in the container actually responds" — the exec client can outlive a
+  dead or wedged in-container adapter (daemon hiccup, EMFILE storm), and a
+  pid check alone reported those sessions alive while every turn timed out.
+  Any response (result or error) counts: it proves the loop is serving.
+  """
+  def ping(pid, timeout \\ 2_000) do
+    GenServer.call(pid, :ping, timeout)
+  catch
+    :exit, _ -> {:error, :unresponsive}
+  end
+
   def stop(pid), do: GenServer.stop(pid, :normal)
 
   # ---- init / handshake ----
@@ -51,11 +66,27 @@ defmodule Loopyard.Harness.ACP.Connection do
     transport_mod = Keyword.get(opts, :transport, Loopyard.Harness.ACP.Transport.Port)
     transport_opts = Keyword.get(opts, :transport_opts, [])
 
+    # Capture the adapter's stderr to a per-session file instead of the old
+    # /dev/null default. When the adapter dies or wedges, its dying words are
+    # the diagnosis (an EMFILE watcher storm hid here for hours once) — on
+    # abnormal close we read the tail back and log it loudly. Cheap: the file
+    # is empty in the happy path and removed on clean shutdown.
+    stderr_log =
+      Keyword.get_lazy(transport_opts, :stderr_log, fn ->
+        Path.join(
+          System.tmp_dir!(),
+          "loopyard-acp-#{:erlang.unique_integer([:positive])}.stderr"
+        )
+      end)
+
+    transport_opts = Keyword.put(transport_opts, :stderr_log, stderr_log)
+
     case transport_mod.start_link([owner: self()] ++ transport_opts) do
       {:ok, transport} ->
         state = %{
           transport_mod: transport_mod,
           transport: transport,
+          stderr_log: stderr_log,
           next_id: 1,
           pending: %{},
           session_id: nil,
@@ -106,6 +137,17 @@ defmodule Loopyard.Harness.ACP.Connection do
     do: {:noreply, %{state | waiters: [from | state.waiters]}}
 
   def handle_call(:session_id, _from, state), do: {:reply, state.session_id, state}
+
+  # Liveness probe. Only a :ready session gets the wire round-trip; anything
+  # else answers its status immediately (starting up ≠ dead — the caller
+  # decides). The waiter rides in `pending` next to the request id and is
+  # replied to when ANY response for that id lands (see handle_response).
+  def handle_call(:ping, from, %{status: :ready} = state) do
+    {state, id} = request(state, "session/list", %{})
+    {:noreply, %{state | pending: Map.put(state.pending, id, {:ping, from})}}
+  end
+
+  def handle_call(:ping, _from, state), do: {:reply, {:error, state.status}, state}
 
   # ---- casts ----
 
@@ -174,6 +216,11 @@ defmodule Loopyard.Harness.ACP.Connection do
   end
 
   def handle_info({:acp_closed, reason}, state) do
+    # The adapter died — its stderr is the diagnosis. Read the tail back and
+    # log it LOUDLY (server log + /system/events); without this, failures like
+    # the inotify EMFILE storm are invisible ("session/new never answered").
+    surface_dying_words(state, reason)
+
     state = reply_waiters(state, {:error, {:closed, reason}})
 
     if state.turn do
@@ -241,6 +288,13 @@ defmodule Loopyard.Harness.ACP.Connection do
 
   defp handle_response(:session_new, %{"error" => error}, state) do
     {:noreply, reply_waiters(%{state | status: :closed}, {:error, error})}
+  end
+
+  # Ping response — result OR error both prove the adapter's event loop is
+  # alive and serving; reply :pong either way.
+  defp handle_response({:ping, from}, _msg, state) do
+    GenServer.reply(from, :pong)
+    {:noreply, state}
   end
 
   defp handle_response(:session_prompt, _msg, %{turn: nil} = state), do: {:noreply, state}
@@ -419,5 +473,55 @@ defmodule Loopyard.Harness.ACP.Connection do
   defp reply_waiters(state, reply) do
     Enum.each(state.waiters, &GenServer.reply(&1, reply))
     %{state | waiters: []}
+  end
+
+  # On abnormal close, read the adapter's captured stderr tail and log it —
+  # then keep the file for post-mortem. On clean shutdown, remove it.
+  @stderr_tail_bytes 2_000
+
+  defp surface_dying_words(%{stderr_log: path}, reason) when is_binary(path) do
+    tail =
+      case File.read(path) do
+        {:ok, ""} ->
+          nil
+
+        {:ok, out} ->
+          binary_part(
+            out,
+            max(byte_size(out) - @stderr_tail_bytes, 0),
+            min(byte_size(out), @stderr_tail_bytes)
+          )
+
+        _ ->
+          nil
+      end
+
+    if tail do
+      Logger.warning(
+        "[ACP] adapter closed (#{inspect(reason)}); stderr tail (full: #{path}):\n#{tail}"
+      )
+
+      short = binary_part(tail, max(byte_size(tail) - 400, 0), min(byte_size(tail), 400))
+
+      Loopyard.EventLog.error(
+        "harness:acp",
+        "Adapter closed (#{inspect(reason)}). Stderr: #{short}"
+      )
+    end
+
+    :ok
+  end
+
+  defp surface_dying_words(_state, _reason), do: :ok
+
+  @impl true
+  def terminate(reason, state) do
+    # Clean stop → the stderr capture served its purpose; don't litter tmp.
+    # Abnormal → keep it (surface_dying_words already pointed at the path).
+    if reason == :normal and state.status != :closed and is_binary(state[:stderr_log]) do
+      _ = File.rm(state.stderr_log)
+    end
+
+    :ok
   end
 end

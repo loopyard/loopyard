@@ -210,6 +210,19 @@ defmodule Loopyard.ChatAgent.StreamHandler.RateLimit do
     end
   end
 
+  # Base + cap for the auth self-heal backoff. Auth failures are NOT terminal:
+  # we keep re-sourcing credentials on a growing-but-capped interval so the agent
+  # recovers the moment a valid token lands (pushed via the env endpoint, or
+  # refreshed some other way) WITHOUT anyone clicking Restart. Capped at 2 min so
+  # a persistently-bad token isn't a hot loop.
+  @auth_retry_base_ms 10_000
+  @auth_retry_max_ms 120_000
+
+  @doc false
+  def auth_retry_backoff_ms(attempt) when is_integer(attempt) and attempt > 0 do
+    min(Loopyard.Retry.backoff_ms(attempt, {:exponential, @auth_retry_base_ms}), @auth_retry_max_ms)
+  end
+
   @doc """
   Handle a `%Event.AuthStatus{}` from the Claude CLI. Returns state.
   """
@@ -219,37 +232,62 @@ defmodule Loopyard.ChatAgent.StreamHandler.RateLimit do
 
   def handle_auth_status_event(state, %Event.AuthStatus{error: error}) when is_binary(error) do
     id = state.id
+    # Only announce the failure on the FIRST transition into auth_expired — a
+    # retry that re-fails would otherwise re-spam the chat every backoff.
+    first? = state.status != :auth_expired
+    attempt = Map.get(state, :auth_retry_count, 0) + 1
 
     :telemetry.execute(
       [:loopyard, :agent, :auth_expired],
-      %{count: 1},
+      %{count: 1, attempt: attempt},
       %{agent_id: id, error: error}
     )
 
     Loopyard.EventLog.error("agent:#{state.name}", "Claude auth failed: #{error}")
 
-    auth_msg = %{
-      role: :error,
-      content:
-        "Claude authentication failed: #{error}. Re-authenticate the CLI and restart this agent.",
-      timestamp: DateTime.utc_now()
-    }
+    state =
+      %{
+        state
+        | status: :auth_expired,
+          active_tool: nil,
+          auth_error: error,
+          errors: state.errors + 1
+      }
+      |> Map.put(:auth_retry_count, attempt)
 
-    {state, auth_msg} =
-      append_message(
-        %{
-          state
-          | status: :auth_expired,
-            active_tool: nil,
-            auth_error: error,
-            errors: state.errors + 1
-        },
-        auth_msg
-      )
+    # Schedule the self-heal retry (re-sources credentials + resumes). Fires in
+    # THIS GenServer, so send_after(self()) is correct.
+    Process.send_after(self(), {:auth_retry, attempt}, auth_retry_backoff_ms(attempt))
 
-    Persistence.persist_message(state, auth_msg)
+    state =
+      if first? do
+        auth_msg = %{
+          role: :error,
+          content:
+            "Claude authentication failed: #{error}. " <>
+              "WHY: the harness couldn't authenticate — usually an expired or rotated " <>
+              "CLAUDE_CODE_OAUTH_TOKEN in this workstation. " <>
+              "CONSEQUENCE: this turn was dropped; your conversation is preserved. " <>
+              "ACTION: none required — I'll keep re-sourcing credentials automatically " <>
+              "and resume as soon as a valid token is present. To recover instantly, push " <>
+              "a fresh token to this workstation (Workstation → env, or the setup curl).",
+          timestamp: DateTime.utc_now()
+        }
+
+        {state, auth_msg} = append_message(state, auth_msg)
+        Persistence.persist_message(state, auth_msg)
+
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+          agent_id: id,
+          msg: auth_msg
+        })
+
+        state
+      else
+        state
+      end
+
     :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: auth_msg})
     Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :auth_expired})
     state
   end

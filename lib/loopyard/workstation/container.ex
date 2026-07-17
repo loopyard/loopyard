@@ -115,6 +115,11 @@ defmodule Loopyard.Workstation.Container do
          # Materialize identity env into the home volume's ~/.profile (files-in-
          # $HOME) instead of injecting secrets via `docker run -e`.
          _ <- Workstation.Env.sync_home(id),
+         # Carry the driver's Claude identity (skills/commands/agents/CLAUDE.md)
+         # into the home volume so the in-container harness isn't a blank slate,
+         # and pre-trust its cwds so project CLAUDE.md/.claude actually load.
+         _ <- Workstation.Env.sync_claude(id),
+         _ <- Workstation.Env.trust_projects(id),
          _ <- Docker.docker(["rm", "-f", n]),
          {:ok, _} <- run(id) do
       {:ok, n}

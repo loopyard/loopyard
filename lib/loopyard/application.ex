@@ -9,6 +9,15 @@ defmodule Loopyard.Application do
     secret = :crypto.strong_rand_bytes(16) |> Base.url_encode64(padding: false)
     Application.put_env(:loopyard, :launch_secret, secret)
 
+    # Reap ACP exec clients orphaned by a previous VM. `docker exec -i …
+    # claude-code-acp` clients survive BEAM death (quiet pipes never EPIPE),
+    # pile up across restarts, and hold kernel resources (they saturated the
+    # Colima VM's inotify budget once — every session then hung at
+    # session/new). At this point in boot NO supervisor has spawned a session
+    # yet, so every matching client on the host is ours and stale. Silent
+    # no-op when there are none (pkill exit 1).
+    _ = System.cmd("pkill", ["-f", "exec claude-code-acp"], stderr_to_stdout: true)
+
     children = [
       # --- Infrastructure layer (survives web reloads) ---
       # StateKeeper owns ALL ETS tables — must start first.
@@ -173,6 +182,21 @@ defmodule Loopyard.Application do
       end
     end)
 
+    # EAGERLY LOAD every app module before replaying agent logs. The log
+    # decoder uses `binary_to_term(:safe)`, which REJECTS any record holding
+    # an atom not yet in the atom table — and under the VM's lazy module
+    # loading, early boot hasn't loaded the modules whose atoms the rich
+    # `{:agent, …}` records carry (:workstation_identity, :prompt_hash, …).
+    # Those records then silently decoded to :error and were skipped while
+    # the simple `{:msg, …}` records survived — producing identity-less
+    # agents in ETS, which broke autostart, resume, and the UI fleet-wide.
+    # Loading all modules makes the decoder's "every persisted atom is
+    # module-defined and pre-exists" assumption actually TRUE.
+    safe_restore("EagerModules", fn ->
+      {:ok, mods} = :application.get_key(:loopyard, :modules)
+      Enum.each(mods, &Code.ensure_loaded/1)
+    end)
+
     # Pre-populate agent ETS from all workspace agent logs so agents
     # are visible immediately on boot — not lazily on first page visit.
     restore_all_agents()
@@ -285,10 +309,29 @@ defmodule Loopyard.Application do
       |> Enum.each(fn ws_id ->
         ws = Loopyard.WorkspaceRegistry.get_workspace(ws_id)
 
-        if ws && ready_workspace?(ws) && work_container_stopped?(ws_id) do
-          Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
-            autostart_one(ws_id, ws[:path])
-          end)
+        cond do
+          is_nil(ws) or not ready_workspace?(ws) ->
+            :ok
+
+          # Container ALREADY RUNNING: the workspace group (ServiceManager /
+          # AgentSupervisor / agent resume) must still start — before this,
+          # a running workspace stayed headless until someone happened to
+          # visit its page, and agents couldn't restart ("noproc" on the
+          # workspace's AgentSupervisor). Group only — no container ops.
+          work_container_running?(ws_id) ->
+            Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
+              autostart_group(ws_id, ws[:path])
+            end)
+
+          # Container exists but stopped: bring the whole workspace back
+          # (group + container). Never build/create fresh on boot.
+          work_container_stopped?(ws_id) ->
+            Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
+              autostart_one(ws_id, ws[:path])
+            end)
+
+          true ->
+            :ok
         end
       end)
     end
@@ -317,6 +360,10 @@ defmodule Loopyard.Application do
     Loopyard.Docker.container_exists?(name) and not Loopyard.Docker.container_running?(name)
   end
 
+  defp work_container_running?(ws_id) do
+    Loopyard.Docker.container_running?(Loopyard.Workspace.WorkContainer.container_name(ws_id))
+  end
+
   defp autostart_one(ws_id, path) do
     if path do
       Loopyard.WorkspaceSupervisor.start_workspace(ws_id, path)
@@ -327,6 +374,20 @@ defmodule Loopyard.Application do
     e ->
       Logger.warning(
         "[Loopyard] Auto-start of workspace #{ws_id} failed: #{Exception.message(e)}"
+      )
+  end
+
+  # Container already running — start ONLY the supervision group; its
+  # ServiceManager reconnects to the live containers and resumes agents.
+  defp autostart_group(ws_id, path) do
+    if path do
+      Loopyard.WorkspaceSupervisor.start_workspace(ws_id, path)
+      Logger.info("[Loopyard] Attached workspace group #{ws_id} to running container on boot")
+    end
+  rescue
+    e ->
+      Logger.warning(
+        "[Loopyard] Group attach of workspace #{ws_id} failed: #{Exception.message(e)}"
       )
   end
 

@@ -267,63 +267,11 @@ defmodule Loopyard.ChatAgent do
   """
   def get_messages(agent_id, opts \\ []), do: MessageWindow.get_messages(agent_id, opts)
 
-  @doc "Append a message to an agent's message list (for stream messages created outside the GenServer).
-  Goes through the GenServer if alive, falls back to direct ETS write."
-  def append_message_ets(agent_id, msg) do
-    msg = Map.put_new_lazy(msg, :id, fn -> generate_msg_id() end)
+  @doc "Append a message from outside the GenServer (see MessageWindow.append_message_ets/2)."
+  defdelegate append_message_ets(agent_id, msg), to: MessageWindow
 
-    case Registry.lookup(Loopyard.ChatAgentRegistry, agent_id) do
-      [{pid, _}] ->
-        GenServer.cast(pid, {:append_external_message, msg})
-        msg
-
-      [] ->
-        # No GenServer running — direct ETS write
-        case :ets.lookup(@ets_table, agent_id) do
-          [{^agent_id, summary}] ->
-            :ets.insert(@ets_table, {agent_id, %{summary | messages: summary.messages ++ [msg]}})
-            msg
-
-          [] ->
-            nil
-        end
-    end
-  end
-
-  @doc "Update a message by ID. Goes through GenServer if alive, falls back to direct ETS."
-  def update_message(agent_id, msg_id, update_fn) do
-    case Registry.lookup(Loopyard.ChatAgentRegistry, agent_id) do
-      [{pid, _}] ->
-        GenServer.cast(pid, {:update_message, msg_id, update_fn})
-        :ok
-
-      [] ->
-        case :ets.lookup(@ets_table, agent_id) do
-          [{^agent_id, summary}] ->
-            try do
-              messages =
-                Enum.map(summary.messages, fn msg ->
-                  if msg[:id] == msg_id, do: update_fn.(msg), else: msg
-                end)
-
-              :ets.insert(@ets_table, {agent_id, %{summary | messages: messages}})
-              :ok
-            rescue
-              e ->
-                :telemetry.execute(
-                  [:loopyard, :agent, :update_message_failed],
-                  %{count: 1},
-                  %{agent_id: agent_id, msg_id: msg_id, reason: Exception.message(e)}
-                )
-
-                :error
-            end
-
-          [] ->
-            :error
-        end
-    end
-  end
+  @doc "Update a message by ID; GenServer if alive, ETS fallback (see MessageWindow.update_message/3)."
+  defdelegate update_message(agent_id, msg_id, update_fn), to: MessageWindow
 
   @doc "Restart the Claude CLI session without losing the agent or its messages"
   def restart_session(id) do
@@ -643,7 +591,12 @@ defmodule Loopyard.ChatAgent do
               tool_calls_this_turn: 0,
               tool_runaway_warned: false,
               last_tool_call: nil,
-              context_warning_sent: false
+              context_warning_sent: false,
+              # A fresh session re-sourced credentials — clear the auth block so
+              # the UI leaves the red auth_expired state. The retry counter is
+              # kept (only a genuinely successful turn resets it) so a still-bad
+              # token keeps its growing backoff instead of hot-looping.
+              auth_error: nil
           })
 
         :ets.insert(@ets_table, {state.id, summary(state)})
@@ -701,26 +654,42 @@ defmodule Loopyard.ChatAgent do
         {:noreply, state}
 
       {:error, reason} ->
+        # DON'T give up — a spawn failure is often transient (docker exec racing
+        # a container restart, a config file mid-rewrite, a momentary API blip).
+        # Schedule a backoff retry through the existing :retry_session machinery;
+        # the crash-loop breaker (@max_consecutive_crashes) still bounds it.
+        consecutive = Map.get(state, :consecutive_crashes, 0) + 1
+        base = Application.get_env(:loopyard, :crash_backoff_base_ms, 2_000)
+        backoff_ms = Loopyard.Retry.backoff_ms(consecutive, {:exponential, base})
+        Process.send_after(self(), {:retry_session, consecutive, state.session}, backoff_ms)
+
         error_msg = %{
           role: :error,
           content:
             "Failed to restart the agent session: #{inspect(reason)}. " <>
-              "WHY: the agent harness failed to start — usually auth, " <>
-              "the harness not being installed in the container, or a bad working directory. " <>
-              "CONSEQUENCE: this agent can't accept new messages. " <>
-              "ACTION: check the harness is installed in the container, " <>
-              "then click Restart in the sidebar. If restart keeps failing, " <>
-              "remove the agent and create a new one.",
+              "WHY: the agent harness failed to start — usually a transient spawn race, " <>
+              "auth, or the harness missing in the container. " <>
+              "CONSEQUENCE: no turn is running right now; your messages are preserved. " <>
+              "ACTION: none — retrying automatically in #{div(backoff_ms, 1000)}s. " <>
+              "If it keeps failing, check the harness in the container, then click Restart.",
           timestamp: DateTime.utc_now()
         }
 
         {state, error_msg} = append_message(state, error_msg)
-        state = %{state | errors: state.errors + 1}
+
+        state =
+          %{state | errors: state.errors + 1, status: :backoff}
+          |> Map.put(:consecutive_crashes, consecutive)
+          |> Map.put(:retry_from_session, state.session)
+
+        :ets.insert(@ets_table, {state.id, summary(state)})
 
         Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
           agent_id: state.id,
           msg: error_msg
         })
+
+        Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :backoff})
 
         {:noreply, state}
     end
@@ -805,6 +774,15 @@ defmodule Loopyard.ChatAgent do
     if old_msg && new_msg && new_msg != old_msg do
       changes = Map.drop(new_msg, [:id])
       Persistence.persist_message_update(state, msg_id, changes)
+
+      # Broadcast the in-place change so every connected viewer patches the
+      # message live. Without this, a question card flipping :pending →
+      # :answered only reached ETS + the log — the click gave no visual
+      # feedback until a full reload.
+      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.MessageUpdated{
+        agent_id: state.id,
+        msg: new_msg
+      })
     end
 
     {:noreply, state}
@@ -1212,6 +1190,28 @@ defmodule Loopyard.ChatAgent do
   @impl true
   def handle_info({:retry_session, consecutive}, state) do
     SessionManager.handle_retry(state, consecutive, @max_consecutive_crashes)
+  end
+
+  # Auth self-heal tick. An auth failure is NOT terminal: re-source credentials
+  # by restarting the session (which re-reads the workstation env / home volume
+  # and resumes the conversation). If the token is now valid the agent recovers;
+  # if it's still bad, the next turn re-enters auth_expired and reschedules with
+  # a longer backoff. Stale ticks (already recovered via a token-push reload, or
+  # any other path) are dropped by the status guard.
+  @impl true
+  def handle_info({:auth_retry, _attempt}, %{status: status} = state)
+      when status != :auth_expired do
+    {:noreply, state}
+  end
+
+  def handle_info({:auth_retry, attempt}, state) do
+    Loopyard.EventLog.info(
+      "agent:#{state.name}",
+      "Auth recovery retry ##{attempt} — re-sourcing credentials"
+    )
+
+    GenServer.cast(self(), :restart_session)
+    {:noreply, state}
   end
 
   # Fired by handle_rate_limit_event. Don't optimistically attempt every interval

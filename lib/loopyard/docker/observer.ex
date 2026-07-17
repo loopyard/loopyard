@@ -403,15 +403,21 @@ defmodule Loopyard.Docker.Observer do
   end
 
   defp start_event_stream(state) do
-    case Loopyard.Docker.open_port([
-           "events",
-           "--filter",
-           "type=container",
-           "--filter",
-           "type=volume",
-           "--format",
-           "{{json .}}"
-         ]) do
+    # :watchdog — `docker events` is quiet between events, so like `logs -f`
+    # it outlives its port silently (see Docker.open_port). One leaked
+    # follower per Observer restart / VM reboot adds up.
+    case Loopyard.Docker.open_port(
+           [
+             "events",
+             "--filter",
+             "type=container",
+             "--filter",
+             "type=volume",
+             "--format",
+             "{{json .}}"
+           ],
+           watchdog: true
+         ) do
       {:error, reason} ->
         delay = backoff_delay(state.retry_attempt)
         Logger.error("[Docker.Observer] #{reason}; retry in #{delay}ms")

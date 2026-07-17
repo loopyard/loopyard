@@ -624,6 +624,8 @@ defmodule Loopyard.Compose do
       identity = Loopyard.Workstation.current()
       _ = Loopyard.Workstation.Env.sync_home(identity)
       _ = Loopyard.Workstation.Env.stage_tools(identity)
+      _ = Loopyard.Workstation.Env.sync_claude(identity)
+      _ = Loopyard.Workstation.Env.trust_projects(identity)
 
       result = compose(project_dir, workspace_id, ["up", "-d", "--build"], timeout: 600_000)
       {result, %{}}

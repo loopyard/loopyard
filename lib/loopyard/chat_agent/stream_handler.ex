@@ -367,6 +367,9 @@ defmodule Loopyard.ChatAgent.StreamHandler do
 
     state = reset_turn_state(%{state | status: :idle, turns: state.turns + 1})
     state = Map.put(state, :consecutive_crashes, 0)
+    # A turn completed cleanly → credentials are valid; clear the auth backoff so
+    # the next failure (if any) starts fresh rather than at a capped interval.
+    state = Map.put(state, :auth_retry_count, 0)
 
     cond do
       # Proactive compaction: turn finished but we're deep into the window. Compact

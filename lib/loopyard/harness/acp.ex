@@ -170,7 +170,21 @@ defmodule Loopyard.Harness.ACP do
   end
 
   @impl true
-  def session_alive?(conn), do: is_pid(conn) and Process.alive?(conn)
+  # Liveness = the HARNESS answers, not merely "our local GenServer exists".
+  # The exec client can outlive a dead/wedged in-container adapter (docker
+  # daemon hiccup, fd-exhaustion storm) — a bare Process.alive? reported those
+  # sessions healthy while every turn timed out, so nothing auto-respawned.
+  # Connection.ping round-trips the adapter's event loop; :initializing counts
+  # as alive (still booting ≠ dead — don't let a caller double-spawn mid-
+  # handshake).
+  def session_alive?(conn) do
+    is_pid(conn) and Process.alive?(conn) and
+      case Connection.ping(conn) do
+        :pong -> true
+        {:error, :initializing} -> true
+        _ -> false
+      end
+  end
 
   @impl true
   def session_id(conn) do

@@ -755,17 +755,44 @@ defmodule Loopyard.AgentLog do
 
   defp populate_ets(table, state) do
     for {agent_id, agent_data} <- state do
-      # Ensure :id is always present (it's the ETS key but code expects it in the map too).
-      # Mark alive?: false — these agents were restored from disk, no GenServer
-      # is running yet. The UI uses alive? to decide whether to show the agent
-      # as active or stopped. Without this, status: :idle + alive?: nil causes
-      # inconsistent indicators (green dot but grayed-out controls).
-      agent_data =
-        agent_data
-        |> Map.put_new(:id, agent_id)
-        |> Map.put(:alive?, false)
+      cond do
+        # IDENTITY GUARD: a log can hold `{:msg, id, …}` records for an agent
+        # whose `{:agent, id, …}` identity record it never saw — the replayed
+        # map is then just `%{messages: […]}`. Inserting that CLOBBERS a good
+        # ETS entry (populate is a blind insert) and downstream code crashes on
+        # the missing :name/:status (this bricked the whole fleet once: bare
+        # entries → no workspace_id → autostart skipped → resume badkey).
+        # Messages without an identity aren't an agent — skip, loudly.
+        not Map.has_key?(agent_data, :name) ->
+          :telemetry.execute(
+            [:loopyard, :agent_log, :identity_less_agent_skipped],
+            %{count: 1},
+            %{agent_id: agent_id}
+          )
 
-      :ets.insert(table, {agent_id, agent_data})
+          require Logger
+
+          Logger.warning(
+            "[AgentLog] replay found #{length(Map.get(agent_data, :messages, []))} message(s) " <>
+              "for agent #{agent_id} but no {:agent, …} identity record — NOT inserting into ETS"
+          )
+
+          :ok
+
+        true ->
+          # Ensure :id is always present (it's the ETS key but code expects it in
+          # the map too). Mark alive?: false — these agents were restored from
+          # disk, no GenServer is running yet. The UI uses alive? to decide
+          # whether to show the agent as active or stopped. Without this,
+          # status: :idle + alive?: nil causes inconsistent indicators (green
+          # dot but grayed-out controls).
+          agent_data =
+            agent_data
+            |> Map.put_new(:id, agent_id)
+            |> Map.put(:alive?, false)
+
+          :ets.insert(table, {agent_id, agent_data})
+      end
     end
 
     :ok

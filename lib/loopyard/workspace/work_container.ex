@@ -144,6 +144,11 @@ defmodule Loopyard.Workspace.WorkContainer do
          # CLIs into the volume too so they travel to any container mounting it.
          _ <- Loopyard.Workstation.Env.sync_home(ws),
          _ <- Loopyard.Workstation.Env.stage_tools(ws),
+         # Carry the driver's Claude identity (skills/commands/agents/CLAUDE.md)
+         # into the home volume so the in-container harness isn't a blank slate,
+         # and pre-trust its cwds so project CLAUDE.md/.claude actually load.
+         _ <- Loopyard.Workstation.Env.sync_claude(ws),
+         _ <- Loopyard.Workstation.Env.trust_projects(ws),
          # Clear any stopped container of the same name before run.
          _ <- Docker.docker(["rm", "-f", name]),
          # `rm -f` returns before Docker finishes reaping the container; running

@@ -43,7 +43,7 @@ defmodule Loopyard.Harness.ACP.Transport.Port do
     stderr = Keyword.get(opts, :stderr_log, "/dev/null")
 
     shell =
-      "unset CLAUDECODE CLAUDE_CODE_SSE_PORT CLAUDE_CODE_ENTRYPOINT; exec #{cmd} 2>#{stderr}"
+      ~s(unset CLAUDECODE CLAUDE_CODE_SSE_PORT CLAUDE_CODE_ENTRYPOINT; exec #{cmd} 2>"#{stderr}")
 
     port =
       Port.open({:spawn_executable, "/bin/sh"}, [

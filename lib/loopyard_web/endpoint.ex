@@ -20,7 +20,7 @@ defmodule LoopyardWeb.Endpoint do
   # mobile browsers keep a stale copy — so a hot-rebuilt CSS/JS never arrives and
   # a refresh "does nothing". Prod keeps the default (assets are digested +
   # immutable there).
-  @static_cache_control (if Mix.env() == :prod, do: "public", else: "no-cache")
+  @static_cache_control if Mix.env() == :prod, do: "public", else: "no-cache"
 
   plug Plug.Static,
     at: "/",

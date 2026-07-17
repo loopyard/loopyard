@@ -129,7 +129,10 @@ defmodule Loopyard.Workspace.LogBuffer do
   defp start_tail(state, svc) do
     args = ["logs", "-f", "--timestamps", "--tail", to_string(@tail), svc.container]
 
-    case Docker.open_port(args) do
+    # :watchdog — a quiet `docker logs -f` never notices its port dying and
+    # leaks forever (see Docker.open_port). This tailer was the source of the
+    # 148 orphaned followers that wedged the docker socket.
+    case Docker.open_port(args, watchdog: true) do
       {:error, _} ->
         state
 
