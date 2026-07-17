@@ -202,7 +202,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
         else: []
       ) ++
       if(a.volumes != [],
-        do: [%{label: "Repo", active?: a.active == :volumes, patch: a.volumes_href}],
+        # "Files" (not "Repo" — too narrow): this surface is heading toward the
+        # code's current state + changes + the files in the container, not just a
+        # git repo. See the Files-unification follow-up.
+        do: [%{label: "Files", active?: a.active == :volumes, patch: a.volumes_href}],
         else: []
       )
   end
