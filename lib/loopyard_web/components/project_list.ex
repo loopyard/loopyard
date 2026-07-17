@@ -52,7 +52,7 @@ defmodule LoopyardWeb.Components.ProjectList do
           navigate={"/projects/#{project.id}"}
           phx-click={@row_click}
           data-sticky-header
-          class="group sticky top-0 z-10 flex items-baseline gap-2 bg-white dark:bg-zinc-900 pt-1 pb-1.5 transition-shadow data-[stuck]:shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]"
+          class="group sticky top-0 z-10 flex items-baseline gap-2 bg-white dark:bg-zinc-900 pt-1 pb-0.5 transition-shadow data-[stuck]:shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]"
         >
           <h2 class={[
             @name_class,
@@ -68,7 +68,7 @@ defmodule LoopyardWeb.Components.ProjectList do
         <%!-- Workspaces: NO boxes. The status dot left-aligns to the project name;
              a subtle gap between rows; just a quiet highlight on the current/hover
              row. --%>
-        <div class="space-y-0.5 pt-1.5">
+        <div class="space-y-0.5 pt-0.5">
           <.link
             :for={ws <- project.workspaces}
             navigate={workspace_href(project.id, ws)}
