@@ -983,6 +983,19 @@ defmodule LoopyardWeb.WorkspaceLive do
   end
 
   @impl true
+  def handle_event("set_agent_model", %{"model" => model} = params, socket) do
+    # Model switcher in the Usage panel. Applies live (ACP session/set_model)
+    # + persists in session_opts; the StatusChanged broadcast refreshes the row.
+    agent_id = params["id"] || socket.assigns.selected_id
+
+    if agent_id && model not in [nil, ""] do
+      ChatAgent.set_model(agent_id, model)
+    end
+
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_event("rename_agent", %{"name" => name} = params, socket) do
     # Sidebar rename passes agent id explicitly; context panel uses selected_id
     agent_id = params["id"] || socket.assigns.selected_id

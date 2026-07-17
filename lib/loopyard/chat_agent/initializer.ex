@@ -136,6 +136,17 @@ defmodule Loopyard.ChatAgent.Initializer do
     #   * workspace agent → work container, code volume, /workspace, workspace tools
     #   * operator (explicit :container, no workspace) → its workstation container,
     #     home volume, $HOME, operator tools
+    # The model ACP sessions run on. The adapter boots on the CLI's "default"
+    # alias (Sonnet 4.5) unless told otherwise — we want the STRONGEST model on
+    # agent work. The in-container CLI's `session/set_model` passes FULL model
+    # ids through (verified: `claude-opus-4-8` runs), so default to Opus 4.8
+    # rather than the adapter's stale "opus" alias (4.6). Applied via
+    # session/set_model once the session is ready. Overridable per-agent (opts)
+    # or globally (config :loopyard, :acp_model).
+    acp_model =
+      Keyword.get(opts, :model) ||
+        Application.get_env(:loopyard, :acp_model, "claude-opus-4-8")
+
     session_opts =
       cond do
         backend != Loopyard.Harness.ACP ->
@@ -148,6 +159,7 @@ defmodule Loopyard.ChatAgent.Initializer do
           |> Keyword.put(:acp_mcp_servers, ToolConfig.acp_mcp_servers(id, workspace_id, :workspace))
           |> Keyword.put(:container, Loopyard.Workspace.WorkContainer.container_name(workspace_id))
           |> Keyword.put(:cwd, "/workspace")
+          |> Keyword.put(:model, acp_model)
 
         container_only? and is_binary(Keyword.get(opts, :container)) ->
           identity = Keyword.get(opts, :workstation_identity) || "operator"
@@ -157,6 +169,7 @@ defmodule Loopyard.ChatAgent.Initializer do
           |> Keyword.put(:acp_mcp_servers, ToolConfig.acp_mcp_servers(id, nil, :operator))
           |> Keyword.put(:container, Keyword.get(opts, :container))
           |> Keyword.put(:cwd, "/home/#{identity}")
+          |> Keyword.put(:model, acp_model)
 
         true ->
           session_opts

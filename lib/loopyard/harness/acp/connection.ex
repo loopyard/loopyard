@@ -57,6 +57,17 @@ defmodule Loopyard.Harness.ACP.Connection do
     :exit, _ -> {:error, :unresponsive}
   end
 
+  @doc "Switch the live session's model (`session/set_model`). Async; display updates optimistically."
+  def set_model(pid, model_id) when is_binary(model_id),
+    do: GenServer.cast(pid, {:set_model, model_id})
+
+  @doc "The adapter's model list for this session: `[%{id, name, description}]`."
+  def available_models(pid) do
+    GenServer.call(pid, :available_models, 1_000)
+  catch
+    :exit, _ -> []
+  end
+
   def stop(pid), do: GenServer.stop(pid, :normal)
 
   # ---- init / handshake ----
@@ -91,7 +102,16 @@ defmodule Loopyard.Harness.ACP.Connection do
           pending: %{},
           session_id: nil,
           status: :initializing,
+          # What the caller WANTS the session to run on (a model id/alias like
+          # "opus") — requested via session/set_model once the session is ready.
+          # `model` is the resolved human-readable name for display (seeded with
+          # the requested id until the adapter's model list resolves it);
+          # `available_models` is the adapter's id→name list (drives the UI
+          # switcher); `fallback_model` restores display if set_model errors.
+          desired_model: Keyword.get(opts, :model),
           model: Keyword.get(opts, :model),
+          available_models: [],
+          fallback_model: nil,
           cwd: Keyword.get(opts, :cwd) || File.cwd!(),
           resume: Keyword.get(opts, :resume),
           mcp_servers: Keyword.get(opts, :mcp_servers, []),
@@ -149,6 +169,15 @@ defmodule Loopyard.Harness.ACP.Connection do
 
   def handle_call(:ping, _from, state), do: {:reply, {:error, state.status}, state}
 
+  def handle_call(:available_models, _from, state) do
+    models =
+      Enum.map(state.available_models, fn m ->
+        %{id: m["modelId"], name: m["name"], description: m["description"]}
+      end)
+
+    {:reply, models, state}
+  end
+
   # ---- casts ----
 
   @impl true
@@ -185,6 +214,22 @@ defmodule Loopyard.Harness.ACP.Connection do
   end
 
   def handle_cast(:cancel, state), do: {:noreply, state}
+
+  # Live model switch (UI-driven). Optimistic display; :set_model error reverts.
+  def handle_cast({:set_model, model_id}, %{session_id: sid} = state) when is_binary(sid) do
+    {state, id} =
+      request(state, "session/set_model", %{"sessionId" => sid, "modelId" => model_id})
+
+    {:noreply,
+     %{
+       state
+       | pending: Map.put(state.pending, id, :set_model),
+         fallback_model: state.model,
+         model: model_name(state.available_models, model_id) || model_id
+     }}
+  end
+
+  def handle_cast({:set_model, _model_id}, state), do: {:noreply, state}
 
   # ---- inbound messages ----
 
@@ -269,8 +314,13 @@ defmodule Loopyard.Harness.ACP.Connection do
     # adapter may omit it from the result). Any replayed history arrives as
     # session/update notifications with turn == nil first — safely ignored.
     sid = (is_map(result) && result["sessionId"]) || state.resume
-    model = resolve_model(result, state.model)
-    {:noreply, reply_waiters(%{state | session_id: sid, model: model, status: :ready}, :ok)}
+
+    state =
+      state
+      |> session_ready(sid, result)
+      |> maybe_set_model(result)
+
+    {:noreply, reply_waiters(state, :ok)}
   end
 
   defp handle_response(:session_load, %{"error" => _error}, state) do
@@ -280,9 +330,11 @@ defmodule Loopyard.Harness.ACP.Connection do
   end
 
   defp handle_response(:session_new, %{"result" => result}, state) do
-    sid = result["sessionId"]
-    model = resolve_model(result, state.model)
-    state = %{state | session_id: sid, model: model, status: :ready}
+    state =
+      state
+      |> session_ready(result["sessionId"], result)
+      |> maybe_set_model(result)
+
     {:noreply, reply_waiters(state, :ok)}
   end
 
@@ -295,6 +347,46 @@ defmodule Loopyard.Harness.ACP.Connection do
   defp handle_response({:ping, from}, _msg, state) do
     GenServer.reply(from, :pong)
     {:noreply, state}
+  end
+
+  # session/set_model outcome. Success needs nothing (we already display the
+  # requested model's name); on error, log + fall back to what the session
+  # actually runs on — never fail the session over a model preference.
+  defp handle_response(:set_model, %{"error" => error}, state) do
+    Logger.warning("ACP: session/set_model failed (#{inspect(error)}); staying on adapter default")
+    {:noreply, %{state | model: state.fallback_model || state.model}}
+  end
+
+  defp handle_response(:set_model, _msg, state), do: {:noreply, state}
+
+  # Request the DESIRED model when it differs from what the session booted on.
+  # The adapter starts every session on the CLI "default" alias (Sonnet); this
+  # is what actually puts Opus on the case. Display flips to the desired
+  # model's human name immediately; the :set_model error path reverts it.
+  defp maybe_set_model(state, result) do
+    desired = state.desired_model
+    current = is_map(result) && get_in(result, ["models", "currentModelId"])
+
+    # Only when the adapter TOLD us the current model (is_binary current) and it
+    # differs — otherwise we can't confirm a switch is needed, and firing blind
+    # would emit a spurious request (and break callers that don't expect one).
+    if is_binary(desired) and desired != "" and is_binary(current) and desired != current and
+         is_binary(state.session_id) do
+      {state, id} =
+        request(state, "session/set_model", %{
+          "sessionId" => state.session_id,
+          "modelId" => desired
+        })
+
+      %{
+        state
+        | pending: Map.put(state.pending, id, :set_model),
+          fallback_model: state.model,
+          model: model_name(state.available_models, desired) || desired
+      }
+    else
+      state
+    end
   end
 
   defp handle_response(:session_prompt, _msg, %{turn: nil} = state), do: {:noreply, state}
@@ -470,15 +562,23 @@ defmodule Loopyard.Harness.ACP.Connection do
     caps["loadSession"] == true
   end
 
-  # Resolve the session's model id to a HUMAN name. The adapter reports
-  # currentModelId "default" (useless in the UI); its availableModels list
-  # carries the real mapping — e.g. default → description "Sonnet 4.5 · Best
-  # for everyday tasks", whose leading segment is the model name we show.
-  defp resolve_model(result, fallback) when is_map(result) do
-    current = get_in(result, ["models", "currentModelId"])
-    models = get_in(result, ["models", "availableModels"]) || []
+  # Session became ready: capture the id, the adapter's model list (drives the
+  # UI switcher + name resolution), and the current model's HUMAN name — the
+  # adapter reports currentModelId "default" (useless in the UI); its
+  # availableModels descriptions carry the real mapping, e.g. default →
+  # "Sonnet 4.5 · Best for everyday tasks" → "Sonnet 4.5".
+  defp session_ready(state, sid, result) do
+    models = (is_map(result) && get_in(result, ["models", "availableModels"])) || []
+    current = is_map(result) && get_in(result, ["models", "currentModelId"])
+    name = model_name(models, current) || current || state.model
 
-    case Enum.find(models, &(&1["modelId"] == current)) do
+    %{state | session_id: sid, status: :ready, available_models: models, model: name}
+  end
+
+  # id → human name from the adapter's model list (description's leading
+  # segment before "·", else the entry's name). nil when unknown.
+  defp model_name(models, id) when is_list(models) and is_binary(id) do
+    case Enum.find(models, &(&1["modelId"] == id)) do
       %{"description" => d} when is_binary(d) and d != "" ->
         d |> String.split("·") |> hd() |> String.trim()
 
@@ -486,11 +586,11 @@ defmodule Loopyard.Harness.ACP.Connection do
         n
 
       _ ->
-        current || fallback
+        nil
     end
   end
 
-  defp resolve_model(_result, fallback), do: fallback
+  defp model_name(_models, _id), do: nil
 
   defp reply_waiters(state, reply) do
     Enum.each(state.waiters, &GenServer.reply(&1, reply))

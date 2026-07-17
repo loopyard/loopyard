@@ -170,6 +170,14 @@ defmodule Loopyard.Harness.ACP do
   end
 
   @impl true
+  @doc "Switch the live session's model (ACP session/set_model). Async."
+  def set_model(conn, model_id) when is_pid(conn), do: Connection.set_model(conn, model_id)
+  def set_model(_conn, _model_id), do: :ok
+
+  @doc "The adapter's model list for a live session: `[%{id, name, description}]`."
+  def available_models(conn) when is_pid(conn), do: Connection.available_models(conn)
+  def available_models(_conn), do: []
+
   # Liveness = the HARNESS answers, not merely "our local GenServer exists".
   # The exec client can outlive a dead/wedged in-container adapter (docker
   # daemon hiccup, fd-exhaustion storm) — a bare Process.alive? reported those

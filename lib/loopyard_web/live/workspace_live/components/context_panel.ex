@@ -308,19 +308,32 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
 
     ~H"""
     <.section label="Usage">
-      <.info_row
-        :if={@agent[:model]}
-        label="Model"
-        value={short_model(@agent.model)}
-        monospace
-        class="text-zinc-700 dark:text-zinc-300"
-      />
-      <.info_row
-        :if={!@agent[:model]}
-        label="Model"
-        value="awaiting first response"
-        class="text-zinc-500 italic"
-      />
+      <%!-- Model is a SWITCHER, not a label: pick the CLI alias here and the
+           live session flips via ACP session/set_model (persisted for future
+           restarts). Options are the CLI's stable aliases; the row shows the
+           resolved human name as the current selection. --%>
+      <div class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-6 text-sm">
+        <span class="text-zinc-500 dark:text-zinc-500 flex-none">Model</span>
+        <form phx-change="set_agent_model" class="flex-none">
+          <input type="hidden" name="id" value={@agent.id} />
+          <select
+            name="model"
+            class="focus-ring rounded-md border-0 bg-transparent py-0 pl-1 pr-6 text-sm font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer hover:text-violet-600 dark:hover:text-violet-400"
+          >
+            <%!-- The container CLI's set_model passes FULL model ids through, so
+                 we offer the latest frontier models by id — not just the
+                 adapter's stale default/opus/haiku aliases. --%>
+            <option value="" disabled selected={true}>
+              {short_model(@agent[:model]) || "default"}
+            </option>
+            <option value="claude-opus-4-8">Opus 4.8</option>
+            <option value="claude-fable-5">Fable 5</option>
+            <option value="claude-sonnet-5">Sonnet 5</option>
+            <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
+            <option value="default">Adapter default</option>
+          </select>
+        </form>
+      </div>
       <.info_row
         label="Total tokens"
         value={"#{if @estimating?, do: "~"}#{compact_number(@total_tokens)}"}
@@ -343,8 +356,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
 
   def short_tool(name), do: name
 
-  @doc "Shorten model name for display."
+  @doc "Human display name for a model id/name."
   def short_model(nil), do: nil
+
+  # Known frontier ids → their marketing names (the adapter's list doesn't
+  # carry these full ids, so map them ourselves). Anything already resolved to
+  # a human name upstream (e.g. "Sonnet 4.5" from the adapter) passes through.
+  def short_model("claude-opus-4-8"), do: "Opus 4.8"
+  def short_model("claude-fable-5"), do: "Fable 5"
+  def short_model("claude-sonnet-5"), do: "Sonnet 5"
+  def short_model("claude-haiku-4-5" <> _), do: "Haiku 4.5"
+  def short_model("default"), do: "Adapter default"
 
   def short_model(model) when is_binary(model) do
     model

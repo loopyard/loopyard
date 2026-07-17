@@ -80,10 +80,16 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanelTest do
   end
 
   describe "short_model/1" do
-    test "shortens Claude model names" do
+    test "known frontier ids map to marketing names" do
+      assert ContextPanel.short_model("claude-opus-4-8") == "Opus 4.8"
+      assert ContextPanel.short_model("claude-fable-5") == "Fable 5"
+      assert ContextPanel.short_model("claude-sonnet-5") == "Sonnet 5"
+      assert ContextPanel.short_model("claude-haiku-4-5-20251001") == "Haiku 4.5"
+    end
+
+    test "unmapped dated ids fall back to a shortened form" do
       assert ContextPanel.short_model("claude-sonnet-4-20250514") == "sonnet-4"
       assert ContextPanel.short_model("claude-opus-4-6-20250605") == "opus-4-6"
-      assert ContextPanel.short_model("claude-haiku-4-5-20251001") == "haiku-4-5"
     end
 
     test "handles nil" do
