@@ -41,11 +41,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
 
   def context_sections(assigns) do
     ~H"""
-    <%!-- Operational cockpit (#57): lead with the workspace's LIVE life — what
-         the agent is doing, what it just did, what changed — not a stats ledger.
-         No name header: the switcher above already shows which agent is
-         selected, so the detail leads straight with STATUS (no duplication).
-         Raw numbers (tokens · cost · docker · tools) demote into "Details". --%>
+    <%!-- Titled header so this pane reads as "the SELECTED agent's detail",
+         clearly separated from the workspace nav (Agents/Services/Volumes) that
+         sits directly above it in the shared right rail — otherwise the status
+         line butts straight into that list with no divider. --%>
+    <div class="flex items-baseline gap-2 border-t border-zinc-200 dark:border-zinc-700/80 pt-3 pb-1">
+      <h3 class="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate">{@agent.name}</h3>
+      <span class="text-xs uppercase tracking-wide text-zinc-400 dark:text-zinc-500">agent</span>
+    </div>
+
     <.harness_status agent={@agent} />
 
     <%!-- Flat, scrollable groups — no disclosure to dig through. Each is a
@@ -72,6 +76,22 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     </.section>
 
     <.docker_context agent={@agent} />
+
+    <%!-- Danger zone: remove THIS agent. Destructive + confirmed. Stops the
+         session and removes the agent from the workspace; the code volume is
+         untouched. Lives at the bottom, quiet, so it's reachable but not a
+         fat-finger target. --%>
+    <div class="border-t border-zinc-100 dark:border-zinc-800 mt-3 pt-2 pb-3">
+      <button
+        type="button"
+        phx-click="remove_agent"
+        phx-value-id={@agent.id}
+        data-confirm={"Remove agent \"#{@agent.name}\"? Its session stops and it's removed from this workspace. The code in the volume is not touched."}
+        class="w-full text-left text-sm text-zinc-400 hover:text-red-600 dark:text-zinc-500 dark:hover:text-red-400 px-2 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
+      >
+        Remove agent
+      </button>
+    </div>
     """
   end
 

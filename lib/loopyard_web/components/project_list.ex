@@ -38,7 +38,7 @@ defmodule LoopyardWeb.Components.ProjectList do
       assign(assigns,
         name_class: if(assigns.compact, do: "text-base", else: "text-xl"),
         ws_name_class: if(assigns.compact, do: "text-sm", else: "text-base"),
-        outer_gap: if(assigns.compact, do: "space-y-3.5", else: "space-y-5")
+        outer_gap: if(assigns.compact, do: "space-y-6", else: "space-y-9")
       )
 
     ~H"""
