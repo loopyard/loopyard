@@ -72,6 +72,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
 
     assigns = assign(assigns, :can_switch, length(assigns.project_items) > 1 || length(assigns.workspace_items) > 1)
 
+    # The workspace's primary reachable app port (exposed → has a URL), so the
+    # phone header can offer a one-tap "open the running app" — otherwise ports
+    # are buried in the Services tab on mobile.
+    assigns = assign(assigns, :app_port, current_ws_port(assigns[:global_tree], assigns.workspace.id))
+
     ~H"""
     <div class="md:hidden">
       <%!-- Row 1: WHERE you are — back out + Project / Workspace + sound. Tapping
@@ -107,6 +112,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               <line x1="15" y1="4" x2="15" y2="20" />
             </svg>
           </button>
+          <%!-- One-tap open the running app: the workspace's exposed port URL,
+               reachable from this phone (only shows when a port is network-open). --%>
+          <.link
+            :if={@app_port}
+            href={@app_port.url}
+            target="_blank"
+            rel="noopener"
+            aria-label={"Open app on port #{@app_port.port}"}
+            class="focus-ring inline-flex items-center justify-center gap-0.5 h-11 px-2.5 rounded-lg font-mono text-sm text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 active:bg-emerald-500/20 transition-colors flex-none"
+          >
+            :{@app_port.port} <span class="text-xs opacity-70">↗</span>
+          </.link>
           <.sound_control id="sound-workspace" />
         </:actions>
       </Nav.bar>
@@ -194,6 +211,20 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   # when the workspace actually has them. Empty on the "new agent" route (nothing
   # to switch between yet). `Nav.segmented` hides itself when the list is empty.
   defp section_tabs(%{live_action: :new}), do: []
+
+  # The workspace's first reachable (network-exposed) app port from the global
+  # tree — `%{port, url}` or nil. Used for the phone header's open-app button.
+  defp current_ws_port(nil, _ws_id), do: nil
+
+  defp current_ws_port(tree, ws_id) do
+    tree
+    |> Enum.flat_map(& &1.workspaces)
+    |> Enum.find(&(&1.id == ws_id))
+    |> case do
+      %{ports: [p | _]} -> p
+      _ -> nil
+    end
+  end
 
   defp section_tabs(a) do
     [%{label: "Agents", active?: a.active == :agents, patch: a.agents_href}] ++
