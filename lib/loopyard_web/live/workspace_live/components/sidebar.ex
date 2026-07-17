@@ -428,8 +428,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
     ~H"""
     <.row
       id={"volume-row-#{@vol.name}"}
-      patch={"#{@base_path}/volumes/#{@vol.name}"}
-      aria_label={"Open #{@description} volume"}
+      patch={
+        if(@code? and @changes_count > 0,
+          do: "#{@base_path}/volumes/#{@vol.name}/git",
+          else: "#{@base_path}/volumes/#{@vol.name}"
+        )
+      }
+      aria_label={"Open #{@description} files"}
     >
       <span class="w-1.5 h-1.5 rounded-full flex-none bg-blue-400" aria-hidden="true"></span>
       <span class="truncate text-zinc-600 dark:text-zinc-400 flex-1">{@description}</span>

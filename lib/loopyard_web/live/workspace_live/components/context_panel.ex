@@ -60,9 +60,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
 
     <.harness_status agent={@agent} />
 
-    <%!-- Flat, scrollable groups — no disclosure to dig through. Each is a
-         plain labeled section; the zone scrolls when there's more than fits. --%>
-    <.changes_summary changes={@changes} base_path={@base_path} volume={docker_ctx(@agent).volume} />
+    <%!-- Changes moved OUT of the agent panel into the "Files" surface (the
+         volume's Git tab), where they live with the file browser. The workspace
+         nav's volume row still shows the ±N change badge for at-a-glance, and
+         one click on it opens Files → changes. --%>
 
     <.claude_usage agent={@agent} />
 
@@ -103,101 +104,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     """
   end
 
-  # The hero of the right pane (#58): what THIS agent has changed in the
-  # working tree, live. Refreshed when the agent settles (→ :idle). Staged +
-  # unstaged (untracked show as "??"), deduped by path, color-coded by change.
-  # Each file links to its diff in the code volume's git viewer (#65) — click a
-  # row to see exactly what changed; "View all" opens the full git view. Links
-  # need `base_path` + `volume`; without them (e.g. the standalone panel) the
-  # rows render as plain, un-clickable text.
-  attr :changes, :map, required: true
-  attr :base_path, :string, default: nil
-  attr :volume, :string, default: nil
-
-  defp changes_summary(assigns) do
-    # Tag each entry with its bucket so the row can pick the right diff route
-    # (working-tree vs staged), then dedup by path — unstaged first so a file
-    # that's both staged and dirty links to its live working-tree diff.
-    files =
-      (Enum.map(assigns.changes[:unstaged] || [], &Map.put(&1, :kind, :unstaged)) ++
-         Enum.map(assigns.changes[:staged] || [], &Map.put(&1, :kind, :staged)))
-      |> Enum.uniq_by(& &1.path)
-
-    linkable? = is_binary(assigns.base_path) and is_binary(assigns.volume)
-    assigns = assign(assigns, files: files, linkable?: linkable?)
-
-    ~H"""
-    <.section label={changes_label(@files)}>
-      <:actions>
-        <.link
-          :if={@files != [] and @linkable?}
-          patch={"#{@base_path}/volumes/#{@volume}/git"}
-          class="text-sm font-medium text-violet-600 dark:text-violet-400 hover:underline"
-        >
-          View all
-        </.link>
-      </:actions>
-
-      <p :if={@files == []} class="px-2 text-sm text-zinc-400 italic">working tree clean</p>
-
-      <div :if={@files != []} class="max-h-48 overflow-y-auto space-y-px">
-        <.change_row
-          :for={f <- @files}
-          f={f}
-          base_path={@base_path}
-          volume={@volume}
-          linkable?={@linkable?}
-        />
-      </div>
-    </.section>
-    """
-  end
-
-  defp changes_label([]), do: "Changes"
-  defp changes_label(files), do: "Changes · #{length(files)}"
-
-  # One changed-file row. When we know the volume + base path, it's a link to
-  # that file's diff; otherwise a plain, un-clickable row (same layout).
-  attr :f, :map, required: true
-  attr :base_path, :string, default: nil
-  attr :volume, :string, default: nil
-  attr :linkable?, :boolean, default: false
-
-  defp change_row(assigns) do
-    ~H"""
-    <.link
-      :if={@linkable?}
-      patch={diff_path(@base_path, @volume, @f)}
-      class="group flex items-center gap-2 text-sm font-mono rounded px-2 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-      title={"View diff — #{@f.path}"}
-    >
-      <span class={["w-4 flex-none text-center", change_color(@f.status)]}>{@f.status}</span>
-      <span class="truncate text-zinc-700 dark:text-zinc-300 group-hover:text-zinc-900 dark:group-hover:text-zinc-100">
-        {@f.path}
-      </span>
-    </.link>
-    <div :if={!@linkable?} class="flex items-center gap-2 px-2 py-0.5 text-sm font-mono">
-      <span class={["w-4 flex-none text-center", change_color(@f.status)]}>{@f.status}</span>
-      <span class="truncate text-zinc-700 dark:text-zinc-300" title={@f.path}>{@f.path}</span>
-    </div>
-    """
-  end
-
-  # Diff route for a changed file — staged files go to the staged diff, all
-  # others (modified / deleted / untracked) to the working-tree diff. Mirrors
-  # the routes the volume git viewer already links to (git_viewer.ex).
-  defp diff_path(base_path, volume, %{kind: :staged, path: path}),
-    do: "#{base_path}/volumes/#{volume}/git/staged/#{path}"
-
-  defp diff_path(base_path, volume, %{path: path}),
-    do: "#{base_path}/volumes/#{volume}/git/diff/#{path}"
-
-  defp change_color("??"), do: "text-emerald-500"
-  defp change_color("A"), do: "text-emerald-500"
-  defp change_color("M"), do: "text-amber-500"
-  defp change_color("D"), do: "text-red-500"
-  defp change_color("R"), do: "text-blue-500"
-  defp change_color(_), do: "text-zinc-400"
 
   # Prominent, color-coded harness state — the one place to glance at to know
   # whether it's safe to send, working, waiting, or in a bad state (rate-limited,
