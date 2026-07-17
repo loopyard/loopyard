@@ -125,23 +125,18 @@ defmodule LoopyardWeb.SystemLive do
   end
 
   def handle_event("reboot", _params, socket) do
-    # Real reboot: restart the whole Loopyard supervision tree — endpoint, agents,
-    # everything — which re-runs Application.start/2 (restore projects, reconnect
-    # to the running containers, re-spawn agents). We do it from a DETACHED bare
-    # process (not `spawn_link`, not under the app's Task.Supervisor) so it
-    # survives `Application.stop/1` tearing down the tree that this LiveView lives
-    # in. The short sleep lets this reply + flash flush to the browser first; the
-    # LiveView reconnects on its own once the endpoint is back. serve_endpoints
-    # (:phoenix env) is untouched, so it serves again — unlike System.restart/0,
-    # which would reset it and stop listening.
-    spawn(fn ->
-      Process.sleep(400)
-      _ = Application.stop(:loopyard)
-      _ = Application.start(:loopyard)
-    end)
+    case Loopyard.Reboot.trigger() do
+      :ok ->
+        {:noreply,
+         put_flash(
+           socket,
+           :info,
+           "Rebooting the server — the runtime is restarting; the page reconnects in ~10s."
+         )}
 
-    {:noreply,
-     put_flash(socket, :info, "Rebooting the server — the page will reconnect in a few seconds…")}
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Couldn't launch the reboot: #{inspect(reason)}")}
+    end
   end
 
   def handle_info(:refresh_slow, socket) do

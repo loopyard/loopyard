@@ -50,12 +50,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
          sits directly above it in the shared right rail — otherwise the status
          line butts straight into that list with no divider. Hidden in the mobile
          sheet, which supplies its own title. --%>
-    <div
-      :if={!@in_sheet}
-      class="flex items-baseline gap-2 border-t border-zinc-200 dark:border-zinc-700/80 pt-3 pb-1"
-    >
-      <h3 class="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate">{@agent.name}</h3>
-      <span class="text-xs uppercase tracking-wide text-zinc-400 dark:text-zinc-500">agent</span>
+    <div :if={!@in_sheet} class="border-t border-zinc-200 dark:border-zinc-700/80 pt-3 pb-2 mb-1">
+      <div class="text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+        Agent
+      </div>
+      <h3 class="text-base font-semibold text-zinc-900 dark:text-zinc-100 truncate mt-0.5">
+        {@agent.name}
+      </h3>
     </div>
 
     <.harness_status agent={@agent} />
