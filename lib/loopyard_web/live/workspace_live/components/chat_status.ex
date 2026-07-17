@@ -74,6 +74,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
   attr :word, :string, required: true
   attr :agent_id, :string, required: true
   attr :mode, :atom, default: :thinking
+  # Cumulative tokens this agent has used (real usage, updated when each turn
+  # settles). Shown live so utilization visibly racks up turn over turn — the
+  # `~N` estimate below is this turn's streamed output on top of it.
+  attr :tokens, :integer, default: 0
 
   def live_status(assigns) do
     # The bar shows the WORK BEING DONE — not all of it is thinking. Harness
@@ -120,12 +124,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
         data-since={@turn_since}
         class={["text-sm flex-none tabular-nums", @elapsed_class]}
       ></span>
+      <%!-- Token utilization, live. Leads with the agent's cumulative REAL total
+           (so it visibly racks up each turn), then this turn's streamed-output
+           estimate as a `+~N` delta while prose is streaming. --%>
       <span
-        :if={@live_tokens}
+        :if={@tokens > 0 or @live_tokens}
         class="text-sm flex-none tabular-nums text-zinc-400"
-        title="output tokens this turn (estimate)"
+        title="tokens used by this agent (cumulative real total + this turn's streamed estimate)"
       >
-        · ~{@live_tokens} tok
+        · {fmt_tokens(@tokens)}<span :if={@live_tokens} class="text-zinc-400/80"> +~{@live_tokens}</span> tok
       </span>
       <span
         :if={@active_tool && @streaming_text == ""}
@@ -145,6 +152,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
     </div>
     """
   end
+
+  # Compact integer token count for the live status line (26543 → "26.5k").
+  defp fmt_tokens(n) when is_integer(n) and n >= 1000, do: "#{Float.round(n / 1000, 1)}k"
+  defp fmt_tokens(n) when is_integer(n), do: Integer.to_string(n)
+  defp fmt_tokens(_), do: "0"
 
   # Rough output-token estimate from streamed text (~4 chars/token). nil when
   # there's no text yet (so the counter simply doesn't show during tool gaps).
