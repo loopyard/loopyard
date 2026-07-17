@@ -164,10 +164,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
   defp fmt_tokens(n) when is_integer(n), do: Integer.to_string(n)
   defp fmt_tokens(_), do: "0"
 
-  # Rough output-token estimate from streamed text (~4 chars/token), as an
-  # integer so it SUMS with the cumulative total into one ticking counter.
-  defp token_estimate(text) when is_binary(text), do: div(byte_size(text), 4)
-  defp token_estimate(_), do: 0
+  @doc """
+  Rough output-token estimate from streamed text (~4 chars/token), as an
+  integer so it SUMS with the cumulative total into one ticking counter.
+  Public: the sidebar Usage panel adds the SAME estimate to its Total so the
+  status line and sidebar always show the same number.
+  """
+  def token_estimate(text) when is_binary(text), do: div(byte_size(text), 4)
+  def token_estimate(_), do: 0
 
   defp short_tool(tool) when is_binary(tool), do: tool |> String.split("__") |> List.last()
   defp short_tool(tool), do: to_string(tool)

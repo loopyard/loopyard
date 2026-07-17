@@ -1676,6 +1676,9 @@ defmodule LoopyardWeb.WorkspaceLive do
           workspace_state={@workspace_state}
           workspace_state_since={@workspace_state_since}
           docker_connected?={@docker_connected?}
+          live_token_est={
+            LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus.token_estimate(@streaming_text)
+          }
         />
       </div>
 
@@ -1700,6 +1703,9 @@ defmodule LoopyardWeb.WorkspaceLive do
           editing_name={@editing_name}
           base_path={@base_path}
           in_sheet
+          live_token_est={
+            LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus.token_estimate(@streaming_text)
+          }
         />
       </LoopyardWeb.Components.Nav.bottom_sheet>
 

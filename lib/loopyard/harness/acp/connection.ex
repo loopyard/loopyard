@@ -269,7 +269,7 @@ defmodule Loopyard.Harness.ACP.Connection do
     # adapter may omit it from the result). Any replayed history arrives as
     # session/update notifications with turn == nil first — safely ignored.
     sid = (is_map(result) && result["sessionId"]) || state.resume
-    model = get_in(result, ["models", "currentModelId"]) || state.model
+    model = resolve_model(result, state.model)
     {:noreply, reply_waiters(%{state | session_id: sid, model: model, status: :ready}, :ok)}
   end
 
@@ -281,7 +281,7 @@ defmodule Loopyard.Harness.ACP.Connection do
 
   defp handle_response(:session_new, %{"result" => result}, state) do
     sid = result["sessionId"]
-    model = get_in(result, ["models", "currentModelId"]) || state.model
+    model = resolve_model(result, state.model)
     state = %{state | session_id: sid, model: model, status: :ready}
     {:noreply, reply_waiters(state, :ok)}
   end
@@ -469,6 +469,28 @@ defmodule Loopyard.Harness.ACP.Connection do
     caps = get_in(msg, ["result", "agentCapabilities"]) || %{}
     caps["loadSession"] == true
   end
+
+  # Resolve the session's model id to a HUMAN name. The adapter reports
+  # currentModelId "default" (useless in the UI); its availableModels list
+  # carries the real mapping — e.g. default → description "Sonnet 4.5 · Best
+  # for everyday tasks", whose leading segment is the model name we show.
+  defp resolve_model(result, fallback) when is_map(result) do
+    current = get_in(result, ["models", "currentModelId"])
+    models = get_in(result, ["models", "availableModels"]) || []
+
+    case Enum.find(models, &(&1["modelId"] == current)) do
+      %{"description" => d} when is_binary(d) and d != "" ->
+        d |> String.split("·") |> hd() |> String.trim()
+
+      %{"name" => n} when is_binary(n) and n != "" ->
+        n
+
+      _ ->
+        current || fallback
+    end
+  end
+
+  defp resolve_model(_result, fallback), do: fallback
 
   defp reply_waiters(state, reply) do
     Enum.each(state.waiters, &GenServer.reply(&1, reply))

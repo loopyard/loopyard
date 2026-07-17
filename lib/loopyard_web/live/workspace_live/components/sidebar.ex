@@ -133,6 +133,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
           changes={@changes}
           editing_name={@editing_name}
           base_path={@base_path}
+          live_token_est={Map.get(assigns, :live_token_est, 0)}
         />
         <.service_context
           :if={detail_kind(@live_action, @selected_agent) == :service}

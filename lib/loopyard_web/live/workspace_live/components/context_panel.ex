@@ -42,6 +42,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
   # title, so we suppress this in-panel header there to avoid a duplicate. On
   # desktop (embedded in the right rail) it's the ONLY title, so it shows.
   attr :in_sheet, :boolean, default: false
+  # This turn's streamed-output token estimate (integer) — added to the Usage
+  # Total so the sidebar matches the live status line mid-turn.
+  attr :live_token_est, :integer, default: 0
 
   def context_sections(assigns) do
     ~H"""
@@ -59,7 +62,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
          nav's volume row still shows the ±N change badge for at-a-glance, and
          one click on it opens Files → changes. --%>
 
-    <.claude_usage agent={@agent} />
+    <.claude_usage agent={@agent} live_token_est={@live_token_est} />
 
     <%!-- Only the numbers not shown anywhere else: errors (a real signal) + how
          long it's been running / idle. The chat is the record of turns / tool
@@ -290,10 +293,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
   end
 
   defp claude_usage(assigns) do
-    total_tokens =
-      (assigns.agent[:total_input_tokens] || 0) + (assigns.agent[:total_output_tokens] || 0)
+    # Total = settled cumulative + this turn's streamed estimate — the SAME sum
+    # the live status line shows, so the two never disagree mid-turn. The `~`
+    # marks it as estimating; on turn settle the real total absorbs it.
+    est = assigns[:live_token_est] || 0
 
-    assigns = assign(assigns, :total_tokens, total_tokens)
+    total_tokens =
+      (assigns.agent[:total_input_tokens] || 0) + (assigns.agent[:total_output_tokens] || 0) + est
+
+    assigns =
+      assigns
+      |> assign(:total_tokens, total_tokens)
+      |> assign(:estimating?, est > 0)
 
     ~H"""
     <.section label="Usage">
@@ -310,7 +321,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
         value="awaiting first response"
         class="text-zinc-500 italic"
       />
-      <.info_row label="Total tokens" value={compact_number(@total_tokens)} />
+      <.info_row
+        label="Total tokens"
+        value={"#{if @estimating?, do: "~"}#{compact_number(@total_tokens)}"}
+      />
       <.info_row label="Input" value={compact_number(@agent[:total_input_tokens] || 0)} />
       <.info_row label="Output" value={compact_number(@agent[:total_output_tokens] || 0)} />
       <.info_row label="Cache hits" value={compact_number(@agent[:total_cache_read_tokens] || 0)} />
