@@ -626,6 +626,19 @@ Hooks.ChatForm = {
           ta.value = ""
           ta.style.height = "auto"
           clearDraft()
+          // iOS: tapping Send keeps focus in the field (touchend preventDefault),
+          // and a pending autocorrect can COMMIT the just-cleared text right back
+          // into it — which our input listener then dutifully re-saves as a
+          // draft. Clear again next frame, and fire a synthetic input so the
+          // resize + draft listeners see the truly-empty state.
+          requestAnimationFrame(() => {
+            if (!sending) {
+              ta.value = ""
+              ta.style.height = "auto"
+              clearDraft()
+              ta.dispatchEvent(new Event("input", { bubbles: true }))
+            }
+          })
           if (status) status.classList.add("hidden")
         } else {
           // Text is still in the box — flag it AND say why, so a failed send is
@@ -650,11 +663,25 @@ Hooks.ChatForm = {
       })
     }
 
-    // Enter inserts a newline; you submit with the Send button (or, for
-    // keyboard users, Cmd/Ctrl+Enter). Much friendlier on mobile — the return
-    // key composes text instead of firing off a half-written message.
+    // Submit semantics differ by input device:
+    //   DESKTOP (fine pointer / hardware keyboard): Enter sends, Shift+Enter
+    //   inserts a newline — the convention every chat app trained us on.
+    //   MOBILE (coarse pointer): the return key composes text; you send with
+    //   the arrow button or Cmd/Ctrl+Enter (external keyboard on a tablet).
+    // Cmd/Ctrl+Enter always sends, everywhere. `isComposing` guards IME users
+    // (Japanese/Chinese/Korean): Enter during composition picks a candidate,
+    // never fires the message.
+    // PRIMARY pointer only — `any-pointer` goes coarse the moment any touch
+    // device is attached (touchscreen monitor, tablet), which would silently
+    // flip a desktop back to enter-doesn't-send. A phone/tablet's primary
+    // pointer is coarse; a Mac's is fine, trackpad or not.
+    const coarse = window.matchMedia("(pointer: coarse)").matches
     ta.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send() }
+      if (e.key !== "Enter" || e.isComposing) return
+      if (e.metaKey || e.ctrlKey) { e.preventDefault(); send(); return }
+      if (coarse) return                                  // mobile: Enter = newline
+      if (e.shiftKey) return                              // desktop: Shift+Enter = newline
+      e.preventDefault(); send()                          // desktop: Enter = send
     })
 
     // Auto-resize textarea + clear any stale "send failed" notice as you edit

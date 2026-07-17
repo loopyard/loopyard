@@ -15,6 +15,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
   import LoopyardWeb.Components.SideNav, only: [section: 1, row: 1]
   import LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel, only: [context_sections: 1]
 
+  import LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts,
+    only: [service_context: 1, volume_context: 1]
+
   import LoopyardWeb.Live.WorkspaceLive.Components.Formatters,
     only: [
       service_status_text: 1,
@@ -80,6 +83,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
           :volume_files_root,
           :volume_file,
           :volume_git,
+          :volume_history,
           :sync
         ] || @selected_id || @selected_service,
         do: "hidden md:flex",
@@ -100,6 +104,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
           changes={@changes}
           selected_id={@selected_id}
           selected_service={@selected_service}
+          selected_volume={Map.get(assigns, :selected_volume)}
+          live_action={@live_action}
           editing_agent_id={Map.get(assigns, :editing_agent_id)}
           base_path={@base_path}
           host={@host}
@@ -110,22 +116,66 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
       </div>
 
       <%!-- ── L1 ZONE B · DETAIL ─────────────────────────────────────────────
-           The selected item's detail. Leads with STATUS (no repeated name —
-           the switcher above already shows which one is selected). Scrolls.
-           Rendered only when something's selected, so at the workspace index
-           (no agent) the switcher fills the panel instead of leaving a dead
-           half — matters most on mobile where the rail is full-screen. --%>
-      <div :if={@selected_agent} class="flex-1 min-h-0 overflow-y-auto">
+           The SELECTED item's detail — polymorphic by kind so the IA is
+           identical whatever you picked: an agent, a service, or a volume each
+           render the SAME shape (divider + eyebrow + name title, then Actions +
+           status sections). This is the ONE place all the buttons + LiveView
+           status for the selected thing live, instead of being scattered into
+           the center pane's top toolbar. Driven by `live_action` (unambiguous)
+           rather than which "selected_*" happens to be set. --%>
+      <div
+        :if={detail_kind(@live_action, @selected_agent) != nil}
+        class="flex-1 min-h-0 overflow-y-auto"
+      >
         <.context_sections
+          :if={detail_kind(@live_action, @selected_agent) == :agent}
           agent={@selected_agent}
           changes={@changes}
           editing_name={@editing_name}
           base_path={@base_path}
         />
+        <.service_context
+          :if={detail_kind(@live_action, @selected_agent) == :service}
+          svc={Enum.find(@service_statuses, &(&1.name == @selected_service))}
+          service_name={@selected_service}
+          base_path={@base_path}
+          host={@host}
+        />
+        <.volume_context
+          :if={detail_kind(@live_action, @selected_agent) == :volume}
+          vol={Enum.find(@volumes, &(&1.name == @selected_volume))}
+          volume_name={@selected_volume}
+          base_path={@base_path}
+          changes={@changes}
+        />
       </div>
     </aside>
     """
   end
+
+  # Which detail panel Zone B shows. Service + volume routes win over a
+  # lingering selected_agent so opening a service from an agent chat swaps the
+  # detail to that service. Agent is the fallback whenever one is selected.
+  defp detail_kind(action, _selected_agent)
+       when action in [:service, :console],
+       do: :service
+
+  defp detail_kind(action, _selected_agent)
+       when action in [
+              :volume,
+              :volume_files_root,
+              :volume_file,
+              :volume_git,
+              :volume_history,
+              :git_diff,
+              :git_staged_diff,
+              :git_commit,
+              :git_commit_file
+            ],
+       do: :volume
+
+  defp detail_kind(_action, selected_agent) when not is_nil(selected_agent), do: :agent
+  defp detail_kind(_action, _selected_agent), do: nil
 
   # The workspace resource switcher — Agents / Services / Volumes, grouped and
   # tight. Shared verbatim by the desktop rail (Zone A of `sidebar/1`) and the
@@ -137,6 +187,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
   attr :changes, :map, default: %{staged: [], unstaged: []}
   attr :selected_id, :string, default: nil
   attr :selected_service, :string, default: nil
+  attr :selected_volume, :string, default: nil
+  attr :live_action, :atom, default: :index
   attr :editing_agent_id, :string, default: nil
   attr :base_path, :string, required: true
   attr :host, :string, default: nil
@@ -184,13 +236,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
 
       <.group_label
         :if={@volumes != [] || (@is_local_source? && sync_relevant?(@sync_status))}
-        text="Volumes"
+        text="Files"
       />
-      <.volume_item
+      <.volume_items
         :for={vol <- @volumes}
         vol={vol}
         base_path={@base_path}
         changes_count={@changes_count}
+        live_action={@live_action}
+        selected_volume={@selected_volume}
       />
       <.row
         :if={@is_local_source? && sync_relevant?(@sync_status)}
@@ -412,48 +466,91 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
     """
   end
 
+  # One volume's switcher rows. The CODE volume is the standard-switcher way in:
+  # Files / Changes / History are each their OWN row (no tab bar inside the
+  # detail view). Other volumes (pgdata, caches) get a single row into their
+  # file browser. Info for any volume lives in the detail rail / mobile sheet.
   attr :vol, :map, required: true
   attr :base_path, :string, required: true
   attr :changes_count, :integer, default: 0
+  attr :live_action, :atom, default: :index
+  attr :selected_volume, :string, default: nil
 
-  def volume_item(assigns) do
-    # Use description from volume_info if available, otherwise derive from name
+  def volume_items(assigns) do
     description = assigns.vol[:description] || derive_volume_description(assigns.vol.name)
+    code? = String.contains?(assigns.vol.name || "", "code")
+    mine? = assigns.selected_volume == assigns.vol.name
 
     assigns =
       assigns
       |> assign(:description, description)
-      |> assign(:code?, String.contains?(assigns.vol.name || "", "code"))
+      |> assign(:code?, code?)
+      |> assign(
+        :files_selected,
+        mine? && assigns.live_action in [:volume, :volume_files_root, :volume_file]
+      )
+      |> assign(
+        :changes_selected,
+        mine? && assigns.live_action in [:volume_git, :git_diff, :git_staged_diff]
+      )
+      |> assign(
+        :history_selected,
+        mine? && assigns.live_action in [:volume_history, :git_commit, :git_commit_file]
+      )
 
     ~H"""
-    <.row
-      id={"volume-row-#{@vol.name}"}
-      patch={
-        if(@code? and @changes_count > 0,
-          do: "#{@base_path}/volumes/#{@vol.name}/git",
-          else: "#{@base_path}/volumes/#{@vol.name}"
-        )
-      }
-      aria_label={"Open #{@description} files"}
-    >
-      <span class="w-1.5 h-1.5 rounded-full flex-none bg-blue-400" aria-hidden="true"></span>
-      <span class="truncate text-zinc-600 dark:text-zinc-400 flex-1">{@description}</span>
-      <%!-- The code volume is where the working-tree diff lives — surface its
-           changed-file count on the right (clean → the volume size instead). --%>
-      <span
-        :if={@code? and @changes_count > 0}
-        class="flex-none inline-flex items-center rounded px-1.5 text-sm font-mono font-medium bg-amber-500/15 text-amber-600 dark:text-amber-400"
-        title={"#{@changes_count} changed file(s)"}
+    <%= if @code? do %>
+      <.row
+        id={"volume-row-#{@vol.name}-files"}
+        patch={"#{@base_path}/volumes/#{@vol.name}/files"}
+        selected={@files_selected}
+        aria_label="Browse project files"
       >
-        ±{@changes_count}
-      </span>
-      <span
-        :if={!(@code? and @changes_count > 0) and @vol[:size]}
-        class="text-sm text-zinc-500 dark:text-zinc-400 font-mono flex-none"
+        <span class="w-1.5 h-1.5 rounded-full flex-none bg-blue-400" aria-hidden="true"></span>
+        <span class="truncate text-zinc-600 dark:text-zinc-400 flex-1">Files</span>
+        <span :if={@vol[:size]} class="text-sm text-zinc-500 dark:text-zinc-400 font-mono flex-none">
+          {@vol.size}
+        </span>
+      </.row>
+      <.row
+        id={"volume-row-#{@vol.name}-changes"}
+        patch={"#{@base_path}/volumes/#{@vol.name}/git"}
+        selected={@changes_selected}
+        aria_label="View working-tree changes"
       >
-        {@vol.size}
-      </span>
-    </.row>
+        <span class="w-1.5 h-1.5 rounded-full flex-none bg-amber-400" aria-hidden="true"></span>
+        <span class="truncate text-zinc-600 dark:text-zinc-400 flex-1">Changes</span>
+        <span
+          :if={@changes_count > 0}
+          class="flex-none inline-flex items-center rounded px-1.5 text-sm font-mono font-medium bg-amber-500/15 text-amber-600 dark:text-amber-400"
+          title={"#{@changes_count} changed file(s)"}
+        >
+          ±{@changes_count}
+        </span>
+      </.row>
+      <.row
+        id={"volume-row-#{@vol.name}-history"}
+        patch={"#{@base_path}/volumes/#{@vol.name}/history"}
+        selected={@history_selected}
+        aria_label="View commit history"
+      >
+        <span class="w-1.5 h-1.5 rounded-full flex-none bg-zinc-400" aria-hidden="true"></span>
+        <span class="truncate text-zinc-600 dark:text-zinc-400 flex-1">History</span>
+      </.row>
+    <% else %>
+      <.row
+        id={"volume-row-#{@vol.name}"}
+        patch={"#{@base_path}/volumes/#{@vol.name}/files"}
+        selected={@files_selected}
+        aria_label={"Open #{@description} files"}
+      >
+        <span class="w-1.5 h-1.5 rounded-full flex-none bg-blue-400" aria-hidden="true"></span>
+        <span class="truncate text-zinc-600 dark:text-zinc-400 flex-1">{@description}</span>
+        <span :if={@vol[:size]} class="text-sm text-zinc-500 dark:text-zinc-400 font-mono flex-none">
+          {@vol.size}
+        </span>
+      </.row>
+    <% end %>
     """
   end
 

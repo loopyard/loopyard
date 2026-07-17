@@ -10,6 +10,7 @@ defmodule LoopyardWeb.WorkspaceLive do
   import LoopyardWeb.Live.WorkspaceLive.MainContent
 
   alias LoopyardWeb.Live.WorkspaceLive.{
+    AgentEvents,
     AgentLifecycle,
     DataLoader,
     DiffLoader,
@@ -17,7 +18,8 @@ defmodule LoopyardWeb.WorkspaceLive do
     FileBrowser,
     Navigation,
     ServiceLogs,
-    Switcher
+    Switcher,
+    VolumeRoutes
   }
 
   # Move #3 strict subscriber behaviours — compile-time enforcement that
@@ -402,129 +404,56 @@ defmodule LoopyardWeb.WorkspaceLive do
     end
   end
 
-  # Volume info page
-  def handle_params(%{"volume_name" => name}, _uri, %{assigns: %{live_action: :volume}} = socket) do
-    # Default to files view — more useful than info
-    {:noreply, push_patch(socket, to: "#{socket.assigns.base_path}/volumes/#{name}/files")}
-  end
+  # --- Volume routes: bodies live in VolumeRoutes (module-size invariant) ---
 
-  # File browser root: /volumes/:name/files
+  def handle_params(%{"volume_name" => n}, _uri, %{assigns: %{live_action: :volume}} = socket),
+    do: VolumeRoutes.volume_redirect(socket, n)
+
   def handle_params(
-        %{"volume_name" => name},
+        %{"volume_name" => n},
         _uri,
         %{assigns: %{live_action: :volume_files_root}} = socket
-      ) do
-    socket = setup_volume(socket, name, :files)
-    {:noreply, FileBrowser.enter_root(socket, name)}
-  end
+      ),
+      do: VolumeRoutes.files_root(socket, n)
 
-  # File browser: /volumes/:name/files/path/to/thing
-  # Could be a file or a directory — FileBrowser probes both and the
-  # :file_content handle_async dispatches on the returned shape.
   def handle_params(
-        %{"volume_name" => name, "path" => path_parts},
+        %{"volume_name" => n, "path" => p},
         _uri,
         %{assigns: %{live_action: :volume_file}} = socket
-      ) do
-    file_path = Path.join(path_parts)
-    socket = setup_volume(socket, name, :files)
-    {:noreply, FileBrowser.enter_path(socket, name, file_path)}
-  end
+      ),
+      do: VolumeRoutes.file(socket, n, p)
 
-  # Git view
+  def handle_params(%{"volume_name" => n}, _uri, %{assigns: %{live_action: a}} = socket)
+      when a in [:volume_git, :volume_history],
+      do: VolumeRoutes.git_or_history(socket, n, a)
+
   def handle_params(
-        %{"volume_name" => name},
-        _uri,
-        %{assigns: %{live_action: :volume_git}} = socket
-      ) do
-    socket = setup_volume(socket, name, :git)
-
-    socket =
-      if socket.assigns.git_log == [] do
-        git_assigns = Map.take(socket.assigns, [:project, :workspace_entry])
-        start_async(socket, :git_data, fn -> DataLoader.load_git_data(git_assigns) end)
-      else
-        socket
-      end
-
-    {:noreply, socket}
-  end
-
-  # Git diff for unstaged file
-  def handle_params(
-        %{"volume_name" => name, "path" => path_parts},
+        %{"volume_name" => n, "path" => p},
         _uri,
         %{assigns: %{live_action: :git_diff}} = socket
-      ) do
-    file_path = Path.join(path_parts)
-    socket = setup_volume(socket, name, :git)
-    %{project: project, workspace_entry: workspace_entry} = socket.assigns
+      ),
+      do: VolumeRoutes.diff(socket, n, p, :unstaged)
 
-    {:noreply,
-     socket
-     |> assign(:diff_content, :loading)
-     |> assign(:diff_path, file_path)
-     |> start_async(:git_file_diff, fn ->
-       DiffLoader.file_diff(project, workspace_entry, file_path, :unstaged)
-     end)}
-  end
-
-  # Git diff for staged file
   def handle_params(
-        %{"volume_name" => name, "path" => path_parts},
+        %{"volume_name" => n, "path" => p},
         _uri,
         %{assigns: %{live_action: :git_staged_diff}} = socket
-      ) do
-    file_path = Path.join(path_parts)
-    socket = setup_volume(socket, name, :git)
-    %{project: project, workspace_entry: workspace_entry} = socket.assigns
+      ),
+      do: VolumeRoutes.diff(socket, n, p, :staged)
 
-    {:noreply,
-     socket
-     |> assign(:diff_content, :loading)
-     |> assign(:diff_path, file_path)
-     |> start_async(:git_file_diff, fn ->
-       DiffLoader.file_diff(project, workspace_entry, file_path, :staged)
-     end)}
-  end
-
-  # Git commit detail
   def handle_params(
-        %{"volume_name" => name, "sha" => sha},
+        %{"volume_name" => n, "sha" => sha},
         _uri,
         %{assigns: %{live_action: :git_commit}} = socket
-      ) do
-    socket = setup_volume(socket, name, :git)
-    %{project: project, workspace_entry: workspace_entry} = socket.assigns
+      ),
+      do: VolumeRoutes.commit(socket, n, sha)
 
-    {:noreply,
-     socket
-     |> assign(:commit_detail, :loading)
-     |> assign(:commit_sha, sha)
-     |> start_async(:git_commit_detail, fn ->
-       DiffLoader.commit_detail(project, workspace_entry, sha)
-     end)}
-  end
-
-  # Git commit file diff
   def handle_params(
-        %{"volume_name" => name, "sha" => sha, "path" => path_parts},
+        %{"volume_name" => n, "sha" => sha, "path" => p},
         _uri,
         %{assigns: %{live_action: :git_commit_file}} = socket
-      ) do
-    file_path = Path.join(path_parts)
-    socket = setup_volume(socket, name, :git)
-    %{project: project, workspace_entry: workspace_entry} = socket.assigns
-
-    {:noreply,
-     socket
-     |> assign(:diff_content, :loading)
-     |> assign(:diff_path, file_path)
-     |> assign(:commit_sha, sha)
-     |> start_async(:git_file_diff, fn ->
-       DiffLoader.commit_file_diff(project, workspace_entry, sha, file_path)
-     end)}
-  end
+      ),
+      do: VolumeRoutes.commit_file(socket, n, sha, p)
 
   def handle_params(_params, _uri, %{assigns: %{live_action: :sync}} = socket) do
     {:noreply,
@@ -1290,6 +1219,10 @@ defmodule LoopyardWeb.WorkspaceLive do
   # the cross-project tree so the left rail stays live across all projects.
 
   def handle_info(%Events.ChatAgentMessage.Message{} = e, socket), do: on_message(e, socket)
+
+  def handle_info(%Events.ChatAgentMessage.MessageUpdated{} = e, socket),
+    do: on_message_updated(e, socket)
+
   def handle_info(%Events.ChatAgentMessage.TextDelta{} = e, socket), do: on_text_delta(e, socket)
 
   def handle_info(%Events.ChatAgentMessage.StreamOutput{} = e, socket),
@@ -1380,7 +1313,7 @@ defmodule LoopyardWeb.WorkspaceLive do
   end
 
   def handle_info({:build_output, id, data}, socket) when id == socket.assigns.selected_id do
-    upsert_stream_message(socket, data, "Building Docker image...", nil)
+    AgentEvents.upsert_stream_message(socket, data, "Building Docker image...", nil)
   end
 
   def handle_info({:fetch_service_logs, service_name}, socket) do
@@ -1453,8 +1386,6 @@ defmodule LoopyardWeb.WorkspaceLive do
 
   # --- ChatAgent subscriber callbacks ---
   # Logic extracted to AgentEvents — callbacks delegate there.
-
-  alias LoopyardWeb.Live.WorkspaceLive.AgentEvents
 
   @impl Events.ChatAgent.Subscriber
   def on_started(event, socket) do
@@ -1573,124 +1504,16 @@ defmodule LoopyardWeb.WorkspaceLive do
   # --- ChatAgentMessage subscriber callbacks ---
 
   @impl Events.ChatAgentMessage.Subscriber
-  def on_message(%Events.ChatAgentMessage.Message{agent_id: id, msg: msg}, socket)
-      when id == socket.assigns.selected_id do
-    cond do
-      # Guard against duplicate messages (mobile reconnect → double PubSub subs).
-      msg[:id] && Enum.any?(socket.assigns.messages, &(&1[:id] == msg[:id])) ->
-        {:noreply, socket}
-
-      # Viewing history — the window no longer follows the live tail, so DON'T
-      # grow it (that's the whole point of windowing). The "Jump to latest" pill
-      # (shown whenever the window isn't the tail) is how you catch up. Keep the
-      # cockpit fresh so status / recent still update while you read.
-      not socket.assigns.window_tail? ->
-        {:noreply, AgentEvents.refresh_selected_from_agents(socket, id, socket.assigns.agents)}
-
-      true ->
-        socket =
-          if msg.role == :assistant,
-            do: socket |> assign(:streaming_text, "") |> assign(:streaming_thinking, ""),
-            else: socket
-
-        # If build was running and we get a post-build message, mark build as done
-        socket =
-          if socket.assigns.building && msg.role in [:system, :error] do
-            messages =
-              Enum.map(socket.assigns.messages, fn
-                %{role: :build} = m -> %{m | role: :build_done}
-                other -> other
-              end)
-
-            socket |> assign(:messages, messages) |> assign(:building, false)
-          else
-            socket
-          end
-
-        # Append to the tail window, then CAP the DOM: drop from the top once we
-        # exceed the max. The dropped rows are above the viewport (you're at the
-        # bottom following the stream), so the browser's scroll anchoring keeps
-        # the visible content put — no shift. Dropping the top means older
-        # messages now live off-window, so re-enable "load older".
-        max = AgentLifecycle.message_window_max()
-        appended = socket.assigns.messages ++ [msg]
-
-        {windowed, dropped_top?} =
-          if length(appended) > max,
-            do: {Enum.take(appended, -max), true},
-            else: {appended, false}
-
-        socket =
-          socket
-          |> assign(:messages, windowed)
-          |> assign(:has_more_messages, socket.assigns.has_more_messages || dropped_top?)
-          |> AgentEvents.refresh_selected_from_agents(id, socket.assigns.agents)
-          |> push_event("scroll_bottom", %{})
-
-        # Update thinking word when a tool message arrives — shows the
-        # tool-specific phrase (e.g., "grepping" instead of "pondering")
-        socket =
-          if msg.role == :tool && socket.assigns.selected_agent &&
-               socket.assigns.selected_agent.status == :thinking do
-            tool = msg[:tool]
-            word = LoopyardWeb.Components.Sidebar.thinking_word(id, tool)
-            assign(socket, :thinking_word, word)
-          else
-            socket
-          end
-
-        {:noreply, socket}
-    end
-  end
-
-  def on_message(%Events.ChatAgentMessage.Message{}, socket), do: {:noreply, socket}
+  def on_message(e, socket), do: AgentEvents.on_message(e, socket)
 
   @impl Events.ChatAgentMessage.Subscriber
-  def on_text_delta(%Events.ChatAgentMessage.TextDelta{agent_id: id, text: text}, socket)
-      when id == socket.assigns.selected_id do
-    # ONLY touch streaming state on a token. Do NOT rebuild @selected_agent here
-    # (that re-rendered the entire cockpit — recent tools, usage, changes — on
-    # every single token, the main flicker/CPU source). The context panel
-    # refreshes on Message / StatusChanged, which is often enough.
-    {:noreply,
-     socket
-     |> assign(:streaming_text, socket.assigns.streaming_text <> text)
-     |> assign(:streaming_thinking, "")
-     |> push_event("scroll_bottom", %{})}
-  end
-
-  def on_text_delta(%Events.ChatAgentMessage.TextDelta{}, socket), do: {:noreply, socket}
+  def on_message_updated(e, socket), do: AgentEvents.on_message_updated(e, socket)
 
   @impl Events.ChatAgentMessage.Subscriber
-  def on_stream_output(
-        %Events.ChatAgentMessage.StreamOutput{
-          agent_id: id,
-          data: data,
-          title: "__thinking__"
-        },
-        socket
-      )
-      when id == socket.assigns.selected_id do
-    {:noreply,
-     socket
-     |> assign(:streaming_thinking, (socket.assigns[:streaming_thinking] || "") <> data)
-     |> push_event("scroll_bottom", %{})}
-  end
+  def on_text_delta(e, socket), do: AgentEvents.on_text_delta(e, socket)
 
-  def on_stream_output(
-        %Events.ChatAgentMessage.StreamOutput{
-          agent_id: id,
-          data: data,
-          title: title,
-          msg_id: msg_id
-        },
-        socket
-      )
-      when id == socket.assigns.selected_id do
-    upsert_stream_message(socket, data, title, msg_id)
-  end
-
-  def on_stream_output(%Events.ChatAgentMessage.StreamOutput{}, socket), do: {:noreply, socket}
+  @impl Events.ChatAgentMessage.Subscriber
+  def on_stream_output(e, socket), do: AgentEvents.on_stream_output(e, socket)
 
   # --- DockerObserver subscriber callbacks ---
   # Logic extracted to DockerEvents — callbacks delegate there.
@@ -1779,49 +1602,7 @@ defmodule LoopyardWeb.WorkspaceLive do
 
   # --- Private ---
 
-  defp upsert_stream_message(socket, data, title, msg_id) do
-    stream_buffer =
-      socket.assigns.stream_buffer
-      |> StreamBuffer.append(data, title: title, msg_id: msg_id)
-
-    messages = StreamBuffer.upsert_message(stream_buffer, socket.assigns.messages)
-
-    {:noreply,
-     socket
-     |> assign(:messages, messages)
-     |> assign(:stream_buffer, stream_buffer)
-     |> assign(:building, true)}
-  end
-
   defp workspace_path(socket), do: socket.assigns.base_path
-
-  defp setup_volume(socket, name, tab) do
-    is_code = String.contains?(name, "code")
-
-    adapter =
-      if socket.assigns[:project], do: Loopyard.Source.for_project(socket.assigns.project)
-
-    supports_git = is_code && adapter && Loopyard.Source.supports_git?(adapter)
-
-    socket =
-      if socket.assigns[:selected_volume] != name do
-        socket
-        |> assign(:selected_id, nil)
-        |> assign(:selected_agent, nil)
-        |> assign(:selected_service, nil)
-        |> assign(:selected_volume, name)
-        |> assign(:nav_volume, name)
-        |> FileBrowser.reset()
-        |> assign(:git_log, [])
-        |> assign(:git_status, [])
-        |> assign(:diff_content, nil)
-        |> assign(:supports_git, supports_git)
-      else
-        socket
-      end
-
-    assign(socket, :volume_tab, tab)
-  end
 
   # --- Render ---
 
@@ -1883,6 +1664,7 @@ defmodule LoopyardWeb.WorkspaceLive do
           workspace_entry={@workspace_entry}
           service_statuses={@service_statuses}
           selected_service={@selected_service}
+          selected_volume={@selected_volume}
           services_loaded={@services_loaded}
           volumes_loaded={@volumes_loaded}
           live_action={@live_action}
@@ -1918,6 +1700,35 @@ defmodule LoopyardWeb.WorkspaceLive do
           editing_name={@editing_name}
           base_path={@base_path}
           in_sheet
+        />
+      </LoopyardWeb.Components.Nav.bottom_sheet>
+
+      <%!-- MOBILE: the selected volume's Info (type/size/service + delete) as a
+           pull-up sheet — same content as the desktop right rail. Opened by the
+           ⓘ button in the volume view's header. --%>
+      <LoopyardWeb.Components.Nav.bottom_sheet
+        :if={
+          @selected_volume &&
+            @live_action in [
+              :volume,
+              :volume_files_root,
+              :volume_file,
+              :volume_git,
+              :volume_history,
+              :git_diff,
+              :git_staged_diff,
+              :git_commit,
+              :git_commit_file
+            ]
+        }
+        id="volume-context"
+        title="Volume info"
+      >
+        <LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts.volume_context
+          vol={Enum.find(@volumes, &(&1.name == @selected_volume))}
+          volume_name={@selected_volume}
+          base_path={@base_path}
+          changes={@changes}
         />
       </LoopyardWeb.Components.Nav.bottom_sheet>
     </div>

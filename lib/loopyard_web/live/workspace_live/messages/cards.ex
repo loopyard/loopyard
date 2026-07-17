@@ -72,7 +72,48 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
             </button>
           </div>
 
-          <div :if={@msg.status != :pending} class="flex flex-wrap items-center gap-2 text-sm">
+          <%!-- ANSWERED: keep the SAME option list (same height → no layout
+               jump on click), chosen one lit emerald with a check, the rest
+               dimmed. Durable visual receipt of what was picked — survives
+               refresh/restart via the persisted :selections. --%>
+          <div :if={@msg.status == :answered} class="flex flex-col gap-2.5">
+            <div
+              :for={o <- q.options}
+              class={[
+                "block w-full text-left rounded-lg border px-3.5 py-2.5",
+                if(chosen?(@msg, q, o.label),
+                  do:
+                    "border-emerald-400/70 dark:border-emerald-600/60 bg-emerald-50/70 dark:bg-emerald-900/15",
+                  else:
+                    "border-zinc-200/60 dark:border-zinc-800/60 bg-white/40 dark:bg-zinc-900/20 opacity-50"
+                )
+              ]}
+            >
+              <div class={[
+                "flex items-center gap-1.5 text-sm font-medium",
+                if(chosen?(@msg, q, o.label),
+                  do: "text-emerald-700 dark:text-emerald-300",
+                  else: "text-zinc-500 dark:text-zinc-400"
+                )
+              ]}>
+                <span :if={chosen?(@msg, q, o.label)} aria-hidden="true">✓</span>
+                {o.label}
+              </div>
+              <div
+                :if={o.description not in [nil, ""]}
+                class="mt-0.5 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400"
+              >
+                {o.description}
+              </div>
+            </div>
+          </div>
+
+          <%!-- Free-text answer (typed in chat instead of clicking) — no option
+               row matches, so show the text itself as the receipt. --%>
+          <div
+            :if={@msg.status == :answered && !any_option_chosen?(@msg, q)}
+            class="mt-2 flex flex-wrap items-center gap-2 text-sm"
+          >
             <span class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 font-medium text-emerald-600 dark:text-emerald-400">
               {answer_for(@msg, q)}
             </span>
@@ -360,6 +401,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
   end
 
   defp answer_for(_msg, _q), do: "✓ answered"
+
+  # Was this option's label among the persisted selections for question q?
+  defp chosen?(%{selections: sel}, q, label) when is_map(sel),
+    do: label in Map.get(sel, q.id, [])
+
+  defp chosen?(_msg, _q, _label), do: false
+
+  # Did ANY listed option match the selections? False for free-text answers
+  # (typed in chat), which need the text chip fallback instead.
+  defp any_option_chosen?(msg, q),
+    do: Enum.any?(q.options, &chosen?(msg, q, &1.label))
 
   @doc """
   An embedded LIVE "quote" of ANOTHER agent's chat — the chat-in-chat mini-app.

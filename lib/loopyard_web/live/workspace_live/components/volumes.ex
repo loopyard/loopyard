@@ -50,52 +50,30 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Volumes do
         <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
           {@description || @volume_name}
         </span>
-        <span
-          :if={@vol_type}
-          class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400"
-        >
-          {@vol_type}
+        <span class="text-xs text-zinc-400 dark:text-zinc-500">
+          {section_label(@volume_tab)}
         </span>
+        <%!-- MOBILE: volume info lives in the pull-up sheet (desktop: right rail).
+             This is the trigger. --%>
+        <button
+          type="button"
+          phx-click={LoopyardWeb.Components.Nav.open_sheet("volume-context")}
+          aria-label="Volume details"
+          class="md:hidden ml-auto focus-ring inline-flex items-center justify-center min-h-8 min-w-8 rounded-md text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+        >
+          <svg viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+            <path
+              fill-rule="evenodd"
+              d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-7-4a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM9 9a.75.75 0 0 0 0 1.5h.253a.25.25 0 0 1 .244.304l-.459 2.066A1.75 1.75 0 0 0 10.747 15H11a.75.75 0 0 0 0-1.5h-.253a.25.25 0 0 1-.244-.304l.459-2.066A1.75 1.75 0 0 0 9.253 9H9Z"
+              clip-rule="evenodd"
+            />
+          </svg>
+        </button>
       </:header>
       <div class="flex-1 overflow-y-auto">
-        <%!-- Tab bar - only show Files/Git for code volumes --%>
-        <div :if={@is_code} class="border-b border-zinc-200 dark:border-zinc-700/80 px-4">
-          <nav class="flex gap-4 -mb-px">
-            <.tab_button
-              label="Info"
-              tab={:info}
-              current={@volume_tab}
-              href={"#{@base_path}/volumes/#{@volume_name}"}
-            />
-            <.tab_button
-              label="Files"
-              tab={:files}
-              current={@volume_tab}
-              href={"#{@base_path}/volumes/#{@volume_name}/files"}
-            />
-            <.tab_button
-              :if={@supports_git}
-              label="Git"
-              tab={:git}
-              current={@volume_tab}
-              href={"#{@base_path}/volumes/#{@volume_name}/git"}
-            />
-          </nav>
-        </div>
-
-        <%!-- Info tab --%>
-        <div :if={@volume_tab == :info} class="p-6 md:p-8">
-          <.info_tab
-            vol={@vol}
-            vol_type={@vol_type}
-            description={@description}
-            volume_name={@volume_name}
-            workspace_id={@workspace_id}
-            is_code={@is_code}
-          />
-        </div>
-
-        <%!-- Files tab --%>
+        <%!-- No tab bar: Files / Changes / History are their own SWITCHER items
+             in the workspace rail (the standard nav), and Info lives in the
+             right rail (desktop) / pull-up sheet (mobile). One view per route. --%>
         <div :if={@volume_tab == :files}>
           <.files_tab
             file_tree={@file_tree}
@@ -107,13 +85,23 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Volumes do
           />
         </div>
 
-        <%!-- Git tab --%>
         <div :if={@volume_tab == :git}>
           <LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer.git_overview
             git_status={@git_status}
             git_log={@git_log}
             base_path={@base_path}
             volume_name={@volume_name}
+            mode={:changes}
+          />
+        </div>
+
+        <div :if={@volume_tab == :history}>
+          <LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer.git_overview
+            git_status={@git_status}
+            git_log={@git_log}
+            base_path={@base_path}
+            volume_name={@volume_name}
+            mode={:history}
           />
         </div>
       </div>
@@ -121,78 +109,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Volumes do
     """
   end
 
-  defp tab_button(assigns) do
-    active = assigns.tab == assigns.current
-
-    classes =
-      if active do
-        "py-2.5 text-xs font-medium border-b-2 border-violet-500 text-violet-600 dark:text-violet-400"
-      else
-        "py-2.5 text-xs font-medium border-b-2 border-transparent text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300"
-      end
-
-    assigns = assign(assigns, :classes, classes)
-
-    ~H"""
-    <.link patch={@href} class={@classes}>{@label}</.link>
-    """
-  end
-
-  attr :vol, :map, default: nil
-  attr :vol_type, :atom, default: nil
-  attr :description, :string, default: nil
-  attr :volume_name, :string, required: true
-  attr :workspace_id, :string, required: true
-  attr :is_code, :boolean, default: false
-
-  defp info_tab(assigns) do
-    ~H"""
-    <div :if={@vol} class="max-w-lg space-y-4">
-      <div class="rounded-lg border border-zinc-200 dark:border-zinc-700/80 divide-y divide-zinc-200 dark:divide-zinc-700/80">
-        <div class="px-4 py-3 flex items-center justify-between">
-          <span class="text-xs text-zinc-400 dark:text-zinc-500">Name</span>
-          <span class="text-sm font-mono text-zinc-700 dark:text-zinc-300">{@volume_name}</span>
-        </div>
-        <div :if={@vol_type} class="px-4 py-3 flex items-center justify-between">
-          <span class="text-xs text-zinc-400 dark:text-zinc-500">Type</span>
-          <span class="text-sm text-zinc-700 dark:text-zinc-300">{@vol_type}</span>
-        </div>
-        <div :if={@description} class="px-4 py-3 flex items-center justify-between">
-          <span class="text-xs text-zinc-400 dark:text-zinc-500">Description</span>
-          <span class="text-sm text-zinc-700 dark:text-zinc-300">{@description}</span>
-        </div>
-        <div
-          :if={@vol[:service] && @vol.service != "workspace"}
-          class="px-4 py-3 flex items-center justify-between"
-        >
-          <span class="text-xs text-zinc-400 dark:text-zinc-500">Service</span>
-          <span class="text-sm text-zinc-700 dark:text-zinc-300">{@vol.service}</span>
-        </div>
-        <div class="px-4 py-3 flex items-center justify-between">
-          <span class="text-xs text-zinc-400 dark:text-zinc-500">Workspace</span>
-          <span class="text-sm font-mono text-zinc-700 dark:text-zinc-300">{@workspace_id}</span>
-        </div>
-      </div>
-
-      <p :if={@is_code} class="text-xs text-zinc-400 dark:text-zinc-500">
-        This is the main project source volume. It contains the codebase that agents and services share.
-      </p>
-
-      <button
-        :if={!@is_code}
-        phx-click="delete_volume"
-        phx-value-volume_name={@volume_name}
-        data-confirm="Delete this volume? All data will be lost."
-        class="px-2.5 py-1 rounded-md text-xs font-medium bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 transition-colors"
-      >
-        Delete Volume
-      </button>
-    </div>
-    <div :if={!@vol} class="text-sm text-zinc-400 dark:text-zinc-500">
-      Volume not found.
-    </div>
-    """
-  end
+  defp section_label(:git), do: "changes"
+  defp section_label(:history), do: "history"
+  defp section_label(_), do: "files"
 
   attr :file_tree, :any, default: nil
   attr :file_content, :any, default: nil

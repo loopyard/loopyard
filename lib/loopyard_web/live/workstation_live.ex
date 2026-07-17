@@ -72,7 +72,6 @@ defmodule LoopyardWeb.WorkstationLive do
       |> assign(:term_nonce, 0)
       |> assign(:restarting, false)
       |> assign(:push_token, Loopyard.PushToken.get())
-      |> assign(:http_port, LoopyardWeb.Endpoint.config(:http)[:port] || 4000)
       |> assign(:integrations, Integration.all())
       |> assign(:integration_status, Map.new(Integration.all(), &{&1.id, :checking}))
       |> assign_env()
@@ -283,7 +282,9 @@ defmodule LoopyardWeb.WorkstationLive do
           <.link
             navigate="/workstations"
             class="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-          >All workstations</.link>
+          >
+            All workstations
+          </.link>
         </div>
 
         <.section
@@ -397,7 +398,7 @@ defmodule LoopyardWeb.WorkstationLive do
         >
           <.command_box
             id="clip-setup"
-            command={"curl -fsS http://localhost:#{@http_port}/workstations/#{@current_id}/setup.sh | sh"}
+            command={"curl -fsS __ORIGIN__/workstations/#{@current_id}/setup.sh | sh"}
           />
         </.section>
 
@@ -430,13 +431,17 @@ defmodule LoopyardWeb.WorkstationLive do
           >
             <li :for={k <- @other_env_keys} class="flex items-center gap-3 py-2">
               <span class="font-mono text-sm text-zinc-700 dark:text-zinc-300">{k}</span>
-              <span class="font-mono text-xs text-zinc-400 dark:text-zinc-600 select-none">••••••••</span>
+              <span class="font-mono text-xs text-zinc-400 dark:text-zinc-600 select-none">
+                ••••••••
+              </span>
               <button
                 phx-click="delete_env"
                 phx-value-key={k}
                 data-confirm={"Remove #{k}?"}
                 class="ml-auto text-xs text-zinc-400 hover:text-red-500 transition-colors"
-              >Remove</button>
+              >
+                Remove
+              </button>
             </li>
           </ul>
         </.section>
@@ -450,7 +455,9 @@ defmodule LoopyardWeb.WorkstationLive do
             <button
               type="button"
               class="ws-push-copy focus-ring absolute top-2 right-2 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-2 py-1 text-[11px]"
-            >Copy</button>
+            >
+              Copy
+            </button>
           </div>
           <p class="text-[11px] text-zinc-400 dark:text-zinc-500">
             Swap GITHUB_TOKEN for any key. On this machine you can drop the token entirely. Restart to apply — keep this command secret.

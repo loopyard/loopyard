@@ -98,6 +98,10 @@ defmodule LoopyardWeb.Router do
            WorkspaceLive,
            :volume_git
 
+      live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/history",
+           WorkspaceLive,
+           :volume_history
+
       live "/projects/:project_id/workspaces/:workspace_id/volumes/:volume_name/git/diff/*path",
            WorkspaceLive,
            :git_diff

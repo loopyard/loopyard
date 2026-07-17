@@ -15,6 +15,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
   attr :git_log, :list, default: []
   attr :base_path, :string, required: true
   attr :volume_name, :string, required: true
+  # :changes → staged + unstaged only (the /git switcher item); :history →
+  # commit log only (/history); :all → the old combined page (legacy callers).
+  attr :mode, :atom, default: :all, values: [:all, :changes, :history]
 
   def git_overview(assigns) do
     staged = if is_map(assigns.git_status), do: assigns.git_status[:staged] || [], else: []
@@ -24,6 +27,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
       assigns
       |> assign(:staged, staged)
       |> assign(:unstaged, unstaged)
+      |> assign(:show_changes, assigns.mode in [:all, :changes])
+      |> assign(:show_history, assigns.mode in [:all, :history])
 
     ~H"""
     <div class="divide-y divide-zinc-200 dark:divide-zinc-700/80">
@@ -37,7 +42,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
       </div>
 
       <%!-- Staged changes --%>
-      <div :if={@staged != []}>
+      <div :if={@show_changes && @staged != []}>
         <div class="text-[10px] font-semibold uppercase tracking-wider text-green-600 dark:text-green-400 px-4 py-2 bg-green-50 dark:bg-green-900/10">
           Staged — ready to commit ({length(@staged)} file{if length(@staged) != 1, do: "s"})
         </div>
@@ -49,7 +54,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
       </div>
 
       <%!-- Unstaged changes --%>
-      <div :if={@unstaged != []}>
+      <div :if={@show_changes && @unstaged != []}>
         <div class="text-[10px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400 px-4 py-2 bg-amber-50 dark:bg-amber-900/10">
           Unstaged changes ({length(@unstaged)} file{if length(@unstaged) != 1, do: "s"})
         </div>
@@ -62,16 +67,16 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
 
       <%!-- Clean state --%>
       <div
-        :if={@staged == [] && @unstaged == [] && is_map(@git_status)}
+        :if={@show_changes && @staged == [] && @unstaged == [] && is_map(@git_status)}
         class="px-4 py-3 text-sm text-zinc-400 dark:text-zinc-500"
       >
         Working tree clean
       </div>
 
-      <%!-- Recent commits --%>
-      <div :if={is_list(@git_log) && @git_log != []}>
+      <%!-- Commit history --%>
+      <div :if={@show_history && is_list(@git_log) && @git_log != []}>
         <div class="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50">
-          Recent commits
+          {if @mode == :history, do: "Commits", else: "Recent commits"}
         </div>
         <.link
           :for={commit <- @git_log}
@@ -93,8 +98,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
       <%!-- Empty --%>
       <div
         :if={
-          is_list(@git_log) && @git_log == [] && is_map(@git_status) && @staged == [] &&
-            @unstaged == []
+          @show_history && is_list(@git_log) && @git_log == [] &&
+            (@mode == :history || (is_map(@git_status) && @staged == [] && @unstaged == []))
         }
         class="px-4 py-8 text-sm text-zinc-400 dark:text-zinc-500 text-center"
       >

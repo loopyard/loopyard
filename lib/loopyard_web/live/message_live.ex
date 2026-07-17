@@ -51,6 +51,10 @@ defmodule LoopyardWeb.MessageLive do
 
   @impl true
   def handle_info(%Events.ChatAgentMessage.Message{} = e, socket), do: on_message(e, socket)
+
+  def handle_info(%Events.ChatAgentMessage.MessageUpdated{} = e, socket),
+    do: on_message_updated(e, socket)
+
   def handle_info(%Events.ChatAgentMessage.TextDelta{} = e, socket), do: on_text_delta(e, socket)
 
   def handle_info(%Events.ChatAgentMessage.StreamOutput{} = e, socket),
@@ -111,6 +115,19 @@ defmodule LoopyardWeb.MessageLive do
   end
 
   def on_message(_e, socket), do: {:noreply, socket}
+
+  # In-place change to the message this view shows (question answered, approval
+  # resolved) — swap it in directly.
+  @impl Events.ChatAgentMessage.Subscriber
+  def on_message_updated(
+        %Events.ChatAgentMessage.MessageUpdated{agent_id: id, msg: %{id: msg_id} = msg},
+        socket
+      )
+      when id == socket.assigns.agent_id and msg_id == socket.assigns.msg_id do
+    {:noreply, assign(socket, :msg, msg)}
+  end
+
+  def on_message_updated(_e, socket), do: {:noreply, socket}
 
   defp refresh_message(socket) do
     msg = Loopyard.ChatAgent.get_message(socket.assigns.agent_id, socket.assigns.msg_id)

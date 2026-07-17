@@ -132,6 +132,11 @@ defmodule LoopyardWeb.Components.Common do
   attr :navigate, :string, default: nil
   attr :patch, :string, default: nil
   attr :href, :string, default: nil
+  # Extra layout classes (e.g. "w-full justify-center" for a stacked sidebar
+  # button). Appended AFTER the base + color so callers can stretch/center the
+  # control without redefining its look. Kept out of `@rest` so it never
+  # produces a duplicate `class` attribute alongside the base.
+  attr :class, :string, default: ""
 
   attr :rest, :global,
     include:
@@ -151,7 +156,7 @@ defmodule LoopyardWeb.Components.Common do
         _ -> "text-zinc-600 dark:text-zinc-300"
       end
 
-    assigns = assign(assigns, :cls, [@control_btn_base, color])
+    assigns = assign(assigns, :cls, [@control_btn_base, color, assigns.class])
 
     ~H"""
     <.link :if={@navigate} navigate={@navigate} class={@cls} {@rest}>

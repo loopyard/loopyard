@@ -42,10 +42,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
         >
           {@host}:{@first_port}
         </a>
-        <div class="ml-auto flex items-center gap-2 flex-none">
-          <%!-- PRIMARY action, inline on every size: launch the preview (Open), or
-               get a port (Open Port), or bring it back (Start). One tap, always
-               visible — even on a phone. --%>
+        <%!-- Actions on DESKTOP live in the right sidebar (service_context) — one
+             consistent home with agents + volumes. On MOBILE the sidebar is
+             hidden while you're reading logs, so surface the primary action + a
+             ⋯ sheet here (md:hidden). --%>
+        <div class="ml-auto flex items-center gap-2 flex-none md:hidden">
           <.control_btn
             :if={@first_port}
             variant={:primary}
@@ -73,26 +74,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
           >
             Start
           </.control_btn>
-
-          <%!-- DESKTOP: the rest inline (as before). --%>
-          <div class="hidden md:flex items-center gap-2">
-            <.service_actions
-              running?={@running?}
-              service_name={@service_name}
-              base_path={@base_path}
-              exposed?={@exposed?}
-              container_port={@container_port}
-            />
-          </div>
-
-          <%!-- MOBILE: the rest live in a sheet so the bar stays uncrowded. Only
-               when there ARE secondary actions (i.e. the service is running). --%>
           <button
             :if={@running?}
             type="button"
             phx-click={LoopyardWeb.Components.Nav.open_sheet("service-actions")}
             aria-label="Service actions"
-            class="md:hidden focus-ring inline-flex items-center justify-center min-h-8 min-w-8 rounded-md text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+            class="focus-ring inline-flex items-center justify-center min-h-8 min-w-8 rounded-md text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
           >
             <svg viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
               <path d="M6 10a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm5.5 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM17 10a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" />
@@ -201,57 +188,50 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
 
     ~H"""
     <div class="flex-1 flex flex-col min-h-0">
-      <%!-- No "Runs" jump strip — the per-run sticky "Run N" divider headers
-           below are enough to tell runs apart, and the strip just added a bar +
-           gap above the logs. --%>
-      <%!-- overscroll-contain: overscrolling the log must NOT rubber-band the
-           whole page (the iOS "bounces all over" bug). `LogTail` owns the
-           auto-tail and is momentum-aware so it doesn't fight touch scrolling. --%>
+      <%!-- ONE continuous log — no boxed groups, no inter-run gaps, no outer
+           padding. Runs are separated ONLY by a thin full-bleed sticky divider
+           line; content scrolls cleanly beneath it (opaque bg, so nothing peeks
+           out clipped above the divider — the old p-2 gap did that).
+           overscroll-contain keeps the iOS rubber-band from bouncing the page;
+           `LogTail` owns the momentum-aware auto-tail. --%>
       <div
         id="service-logs"
         phx-hook="LogTail"
-        class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain bg-zinc-100 dark:bg-zinc-950 p-2 space-y-2 font-mono text-xs leading-relaxed"
+        class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain bg-zinc-100 dark:bg-zinc-950 font-mono text-xs leading-relaxed"
       >
-        <%!-- Each run is its own bordered GROUP wrapping its log lines, with a
-              STICKY header that pins to the top while you scroll through that
-              run. The header is also the anchor target for the Runs jump strip. --%>
-        <div
-          :for={{group, gi} <- Enum.with_index(@frames)}
-          class="rounded-lg border border-zinc-200 dark:border-zinc-700/60 bg-white dark:bg-zinc-900/50"
-        >
+        <div :for={{group, gi} <- Enum.with_index(@frames)}>
+          <%!-- Run boundary: a thin sticky rule, not a chunky boxed header. --%>
           <div
             id={"run-#{group.run}"}
-            class="sticky top-0 z-10 flex items-center gap-2 px-3 h-8 rounded-t-lg border-b border-zinc-200 dark:border-zinc-700/60 bg-zinc-100 dark:bg-zinc-800 text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-300"
+            class="sticky top-0 z-10 flex items-center gap-2 px-3 h-7 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-100/95 dark:bg-zinc-950/95 backdrop-blur text-[11px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
           >
             <span class={[
-              "w-2 h-2 rounded-full flex-none",
+              "w-1.5 h-1.5 rounded-full flex-none",
               if(gi == @last_i, do: "bg-emerald-500", else: "bg-zinc-400 dark:bg-zinc-600")
             ]}></span>
             Run {group.run}
             <span
               :if={gi < @last_i}
-              class="font-normal normal-case text-zinc-400 dark:text-zinc-500"
+              class="font-normal normal-case text-zinc-400 dark:text-zinc-600"
             >
               · ended
             </span>
           </div>
-          <div class="py-1.5">
-            <div
-              :for={f <- group.frames}
-              class="flex gap-2 px-3 text-zinc-700 dark:text-zinc-300"
+          <div
+            :for={f <- group.frames}
+            class="flex gap-3 px-3 py-px text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200/40 dark:hover:bg-zinc-900/40"
+          >
+            <span
+              :if={f.ts}
+              class="flex-none text-zinc-400 dark:text-zinc-600 tabular-nums select-none"
             >
-              <span
-                :if={f.ts}
-                class="flex-none text-zinc-400 dark:text-zinc-600 tabular-nums select-none"
-              >
-                {short_ts(f.ts)}
-              </span>
-              <%!-- min-w-0 lets this flex item shrink below its content width, so
-                   whitespace-pre-wrap + break-words actually wrap long/unbreakable
-                   tokens instead of overflowing the row (the horizontal
-                   rubber-band). --%>
-              <span class="min-w-0 flex-1 whitespace-pre-wrap break-words">{f.text}</span>
-            </div>
+              {short_ts(f.ts)}
+            </span>
+            <%!-- min-w-0 lets this flex item shrink below its content width, so
+                 whitespace-pre-wrap + break-words actually wrap long/unbreakable
+                 tokens instead of overflowing the row (the horizontal
+                 rubber-band). --%>
+            <span class="min-w-0 flex-1 whitespace-pre-wrap break-words">{f.text}</span>
           </div>
         </div>
       </div>

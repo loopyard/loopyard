@@ -7,7 +7,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
   """
   use Phoenix.Component
 
-  import LoopyardWeb.Components.SideNav, only: [section: 1, info_row: 1]
+  import LoopyardWeb.Components.SideNav, only: [section: 1, info_row: 1, detail_title: 1]
   import LoopyardWeb.Live.WorkspaceLive.Components.Formatters, only: [time_ago: 1]
 
   attr :agent, :map, required: true
@@ -50,14 +50,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
          sits directly above it in the shared right rail — otherwise the status
          line butts straight into that list with no divider. Hidden in the mobile
          sheet, which supplies its own title. --%>
-    <div :if={!@in_sheet} class="border-t border-zinc-200 dark:border-zinc-700/80 pt-3 pb-2 mb-1">
-      <div class="text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
-        Agent
-      </div>
-      <h3 class="text-base font-semibold text-zinc-900 dark:text-zinc-100 truncate mt-0.5">
-        {@agent.name}
-      </h3>
-    </div>
+    <.detail_title :if={!@in_sheet} eyebrow="Agent" name={@agent.name} />
 
     <.harness_status agent={@agent} />
 

@@ -33,9 +33,11 @@ defmodule LoopyardWeb.WorkstationToolLive do
         # Operating-as follows the workstation in the URL.
         _ = Workstation.set_current(ws)
         ig = Integration.get(tool)
-        # A clean one-liner that pulls the per-tool script and runs it, instead of
-        # pasting a giant blob. (Claude's script mints the durable setup-token.)
-        mac = "curl -fsS #{base_url()}/workstations/#{ws}/#{tool}/setup.sh | sh"
+        # `__ORIGIN__` is swapped for `window.location.origin` client-side (see the
+        # Clip / OriginText hooks in app.js) so the command targets the host the
+        # user actually reached this server through — LAN IP, Teleport tunnel — not
+        # a hardcoded localhost the server can't reliably know behind a proxy.
+        mac = "curl -fsS __ORIGIN__/workstations/#{ws}/#{tool}/setup.sh | sh"
 
         doc =
           case Integration.doc(tool) do
@@ -131,15 +133,13 @@ defmodule LoopyardWeb.WorkstationToolLive do
      |> start_async(:status, fn -> Integration.connected?(ig, ws) end)}
   end
 
-  # Fill doc placeholders: $LOOPYARD → this server, $WS → the workstation.
+  # Fill doc placeholders: $LOOPYARD → `__ORIGIN__` (swapped for the real browser
+  # origin client-side by the OriginText hook), $WS → the workstation.
   defp fill(md, ws) do
     md
-    |> String.replace("$LOOPYARD", base_url())
+    |> String.replace("$LOOPYARD", "__ORIGIN__")
     |> String.replace("$WS", ws)
   end
-
-  defp base_url, do: "http://localhost:#{port()}"
-  defp port, do: LoopyardWeb.Endpoint.config(:http)[:port] || 4000
 
   @impl true
   def render(assigns) do
@@ -247,7 +247,7 @@ defmodule LoopyardWeb.WorkstationToolLive do
         <%!-- Reference doc — inline; child .markdown-body is where the hook renders. --%>
         <section class="space-y-2 border-t border-zinc-100 dark:border-zinc-800 pt-6">
           <h2 class="text-sm font-medium text-zinc-500 dark:text-zinc-400">Reference</h2>
-          <div id="ws-tool-doc">
+          <div id="ws-tool-doc" phx-hook="OriginText" phx-update="ignore">
             <div class="markdown-body text-sm text-zinc-700 dark:text-zinc-300">
               {Loopyard.Markdown.to_html(@doc)}
             </div>
