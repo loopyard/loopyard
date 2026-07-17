@@ -38,14 +38,22 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
   attr :changes, :map, default: %{staged: [], unstaged: []}
   attr :editing_name, :boolean, default: false
   attr :base_path, :string, default: nil
+  # In the mobile bottom-sheet the sheet already shows the agent name as its
+  # title, so we suppress this in-panel header there to avoid a duplicate. On
+  # desktop (embedded in the right rail) it's the ONLY title, so it shows.
+  attr :in_sheet, :boolean, default: false
 
   def context_sections(assigns) do
     ~H"""
     <%!-- Titled header so this pane reads as "the SELECTED agent's detail",
          clearly separated from the workspace nav (Agents/Services/Volumes) that
          sits directly above it in the shared right rail — otherwise the status
-         line butts straight into that list with no divider. --%>
-    <div class="flex items-baseline gap-2 border-t border-zinc-200 dark:border-zinc-700/80 pt-3 pb-1">
+         line butts straight into that list with no divider. Hidden in the mobile
+         sheet, which supplies its own title. --%>
+    <div
+      :if={!@in_sheet}
+      class="flex items-baseline gap-2 border-t border-zinc-200 dark:border-zinc-700/80 pt-3 pb-1"
+    >
       <h3 class="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate">{@agent.name}</h3>
       <span class="text-xs uppercase tracking-wide text-zinc-400 dark:text-zinc-500">agent</span>
     </div>

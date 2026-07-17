@@ -1917,6 +1917,7 @@ defmodule LoopyardWeb.WorkspaceLive do
           changes={@changes}
           editing_name={@editing_name}
           base_path={@base_path}
+          in_sheet
         />
       </LoopyardWeb.Components.Nav.bottom_sheet>
     </div>
