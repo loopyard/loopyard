@@ -148,10 +148,15 @@ defmodule Loopyard.Harness.ACP.Translator do
         _ -> {false, nil}
       end
 
+    # claude-code-acp surfaces no usage numbers (#11), which froze the UI's
+    # token counter at 0 forever. Until the adapter reports real usage,
+    # ESTIMATE output from the turn's assembled text (~4 chars/token) so the
+    # cumulative counter genuinely racks up turn over turn. Input stays 0 —
+    # we have nothing honest to estimate it from.
     result = %Event.SessionResult{
       model: state.model,
       input_tokens: 0,
-      output_tokens: 0,
+      output_tokens: div(byte_size(full), 4),
       cache_read_tokens: 0,
       cost_usd: 0.0,
       duration_ms: 0.0,

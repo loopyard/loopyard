@@ -91,10 +91,16 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
       |> assign_new(:active_tool, fn -> nil end)
       |> assign_status_styles()
 
-    # Live signal so a long percolation isn't a black box (#62): an output-token
-    # estimate that ticks up as text streams (~4 chars/token), and the current
-    # tool during the silent gaps between text.
-    assigns = assign(assigns, :live_tokens, token_estimate(assigns.streaming_text))
+    # Live signal so a long percolation isn't a black box (#62): ONE counter =
+    # cumulative real total + this turn's streamed-output estimate (~4 chars/
+    # token), so the number visibly TICKS UP while prose streams. `~` marks it
+    # as estimating mid-stream; on turn settle the real total absorbs it.
+    est = token_estimate(assigns.streaming_text)
+
+    assigns =
+      assigns
+      |> assign(:shown_tokens, assigns.tokens + est)
+      |> assign(:estimating?, est > 0)
 
     ~H"""
     <%!-- The live tip of the turn: dots + word + elapsed on the left, Stop docked
@@ -124,15 +130,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
         data-since={@turn_since}
         class={["text-sm flex-none tabular-nums", @elapsed_class]}
       ></span>
-      <%!-- Token utilization, live. Leads with the agent's cumulative REAL total
-           (so it visibly racks up each turn), then this turn's streamed-output
-           estimate as a `+~N` delta while prose is streaming. --%>
+      <%!-- ONE incrementing token counter: cumulative real total + this turn's
+           streamed estimate, summed — it visibly ticks up as text streams instead
+           of a static total with a separate "+~N" bolted on. --%>
       <span
-        :if={@tokens > 0 or @live_tokens}
+        :if={@shown_tokens > 0}
         class="text-sm flex-none tabular-nums text-zinc-400"
         title="tokens used by this agent (cumulative real total + this turn's streamed estimate)"
       >
-        · {fmt_tokens(@tokens)}<span :if={@live_tokens} class="text-zinc-400/80"> +~{@live_tokens}</span> tok
+        · {if @estimating?, do: "~"}{fmt_tokens(@shown_tokens)} tok
       </span>
       <span
         :if={@active_tool && @streaming_text == ""}
@@ -158,19 +164,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
   defp fmt_tokens(n) when is_integer(n), do: Integer.to_string(n)
   defp fmt_tokens(_), do: "0"
 
-  # Rough output-token estimate from streamed text (~4 chars/token). nil when
-  # there's no text yet (so the counter simply doesn't show during tool gaps).
-  defp token_estimate(text) when is_binary(text) and text != "" do
-    n = div(byte_size(text), 4)
-
-    cond do
-      n >= 1000 -> "#{Float.round(n / 1000, 1)}k"
-      n > 0 -> Integer.to_string(n)
-      true -> nil
-    end
-  end
-
-  defp token_estimate(_), do: nil
+  # Rough output-token estimate from streamed text (~4 chars/token), as an
+  # integer so it SUMS with the cumulative total into one ticking counter.
+  defp token_estimate(text) when is_binary(text), do: div(byte_size(text), 4)
+  defp token_estimate(_), do: 0
 
   defp short_tool(tool) when is_binary(tool), do: tool |> String.split("__") |> List.last()
   defp short_tool(tool), do: to_string(tool)
