@@ -58,7 +58,12 @@
          audio stops mid-play (looked like a cutoff + flipped to "muted" when
          switching tracks). Ignoring it keeps the stream alive across every
          render and navigation. --%>
-    <div id="ambient" phx-hook="AmbientAudio" phx-update="ignore" data-channel="activity">
+    <%!-- `hidden`: this is the audio ENGINE, never a visible control. Without it,
+         the <audio> (no `controls`) can still render a small replaced-element
+         sliver in some browsers — a block in the body flow ABOVE the app, which
+         showed as a white gap at the top of every page. Audio plays fine while
+         display:none, so hiding it costs nothing and reclaims the space. --%>
+    <div id="ambient" phx-hook="AmbientAudio" phx-update="ignore" data-channel="activity" class="hidden">
       <audio id="ambient-el" preload="none"></audio>
     </div>
     {@inner_content}
