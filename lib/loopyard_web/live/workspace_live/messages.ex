@@ -166,7 +166,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     ~H"""
     <div class="group/msg" id={"msg-#{@msg[:id] || hash_content(@msg.content)}"}>
       <div class={[gutter(), "py-0.5"]}>
-        <div class="markdown-body text-[15px] leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl">
+        <div class="markdown-body text-base md:text-[15px] leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl">
           {Loopyard.Markdown.to_html(@rendered_content)}
         </div>
         <div :if={@port_info && !@port_info.exposed} class="mt-1.5 flex items-center gap-2 py-1">
@@ -446,7 +446,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
          already signals "streaming", and the cursor rendered as a weird floating
          purple rectangle whenever the text ended on a block boundary. --%>
     <div class="py-0.5 mt-2" id="streaming-msg">
-      <div class="markdown-body text-[15px] leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl">
+      <div class="markdown-body text-base md:text-[15px] leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl">
         {Loopyard.Markdown.to_html(@text)}
       </div>
     </div>
