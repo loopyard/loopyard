@@ -21,20 +21,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatNav do
   # to switch between yet). `Nav.segmented` hides itself when the list is empty.
   def section_tabs(%{live_action: :new}), do: []
 
-  # The workspace's first reachable (network-exposed) app port from the global
-  # tree — `%{port, url}` or nil. Used for the phone header's open-app button.
-  def current_ws_port(nil, _ws_id), do: nil
-
-  def current_ws_port(tree, ws_id) do
-    tree
-    |> Enum.flat_map(& &1.workspaces)
-    |> Enum.find(&(&1.id == ws_id))
-    |> case do
-      %{ports: [p | _]} -> p
-      _ -> nil
-    end
-  end
-
   def section_tabs(a) do
     [%{label: "Agents", active?: a.active == :agents, patch: a.agents_href}] ++
       if(a.service_statuses != [],
@@ -48,6 +34,20 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatNav do
         do: [%{label: "Files", active?: a.active == :volumes, patch: a.volumes_href}],
         else: []
       )
+  end
+
+  # The workspace's first reachable (network-exposed) app port from the global
+  # tree — `%{port, url}` or nil. Used for the phone header's open-app button.
+  def current_ws_port(nil, _ws_id), do: nil
+
+  def current_ws_port(tree, ws_id) do
+    tree
+    |> Enum.flat_map(& &1.workspaces)
+    |> Enum.find(&(&1.id == ws_id))
+    |> case do
+      %{ports: [p | _]} -> p
+      _ -> nil
+    end
   end
 
   # Which workspace category the current route belongs to — drives the active

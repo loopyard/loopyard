@@ -278,14 +278,9 @@ defmodule Loopyard.ChatAgent do
     GenServer.cast(via(id), :restart_session)
   end
 
-  @doc """
-  Switch the agent's model (UI: the Model row in the Usage panel). Applies to
-  the LIVE session via the backend (ACP session/set_model) and is persisted
-  into session_opts so restarts/resumes keep the choice.
-  """
-  def set_model(id, model_id) when is_binary(model_id) do
-    GenServer.cast(via(id), {:set_model, model_id})
-  end
+  @doc "Switch the agent's model (Usage-panel Model row); see ChatAgent.ModelControl."
+  def set_model(id, model_id) when is_binary(model_id),
+    do: GenServer.cast(via(id), {:set_model, model_id})
 
   @doc "Start a stopped/crashed agent — starts a new GenServer and resumes from saved state"
   defdelegate start_agent(id), to: Lifecycle
@@ -571,25 +566,7 @@ defmodule Loopyard.ChatAgent do
 
   @impl true
   def handle_cast({:set_model, model_id}, state) do
-    # Live switch on the running session (backends without set_model no-op),
-    # persisted into session_opts so every future spawn/resume keeps it.
-    if state.session && function_exported?(state.backend, :set_model, 2) do
-      state.backend.set_model(state.session, model_id)
-    end
-
-    label = model_label(state, model_id)
-
-    state = %{
-      state
-      | model: label,
-        session_opts: Keyword.put(state.session_opts || [], :model, model_id)
-    }
-
-    :ets.insert(@ets_table, {state.id, summary(state)})
-    Persistence.persist_agent(state, &summary/1)
-    Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: state.status})
-    Loopyard.EventLog.info("agent:#{state.name}", "Model switched to #{label}")
-    {:noreply, state}
+    {:noreply, Loopyard.ChatAgent.ModelControl.switch(state, model_id)}
   end
 
   @impl true
@@ -1638,23 +1615,6 @@ defmodule Loopyard.ChatAgent do
   end
 
   @max_messages 1000
-
-  # Display value for a model id. When the backend's model list carries a
-  # description (adapter aliases like "opus" → "Opus 4.6"), use it. Otherwise
-  # return the id VERBATIM — full frontier ids ("claude-opus-4-8") aren't in the
-  # adapter list, and the UI's short_model/1 maps them to "Opus 4.8". Do NOT
-  # capitalize (that produced the ugly "Claude-opus-4-8").
-  defp model_label(state, model_id) do
-    with true <- state.session != nil,
-         true <- function_exported?(state.backend, :available_models, 1),
-         models when is_list(models) <- state.backend.available_models(state.session),
-         %{description: d} when is_binary(d) and d != "" <-
-           Enum.find(models, &(&1.id == model_id)) do
-      d |> String.split("·") |> hd() |> String.trim()
-    else
-      _ -> model_id
-    end
-  end
 
   defp append_message(state, msg) do
     msg = Map.put_new_lazy(msg, :id, fn -> generate_msg_id() end)

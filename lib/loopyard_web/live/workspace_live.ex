@@ -15,7 +15,6 @@ defmodule LoopyardWeb.WorkspaceLive do
     DataLoader,
     DiffLoader,
     DockerEvents,
-    FileBrowser,
     Navigation,
     ServiceLogs,
     Switcher,
@@ -1695,61 +1694,23 @@ defmodule LoopyardWeb.WorkspaceLive do
         />
       </div>
 
-      <%!-- MOBILE: the selected agent's context (usage / changes / harness status)
-           as a bottom sheet — the right rail is desktop-only, so this is how you
-           reach it on a phone. Opened by the details button in the chat header;
-           swipe the handle down to dismiss. --%>
-      <LoopyardWeb.Components.Nav.bottom_sheet
-        :if={@selected_agent}
-        id="agent-context"
-        title={@selected_agent[:name] || "Agent"}
-      >
-        <:current>
-          <span class={"w-2 h-2 rounded-full flex-none #{LoopyardWeb.Components.Sidebar.status_dot(LoopyardWeb.Components.Sidebar.agent_display_status(@selected_agent))}"}></span>
-          <span class="flex-1 min-w-0 truncate font-semibold text-zinc-900 dark:text-zinc-100">
-            {@selected_agent[:name] || "Agent"}
-          </span>
-        </:current>
-        <LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel.context_sections
-          agent={@selected_agent}
-          changes={@changes}
-          editing_name={@editing_name}
-          base_path={@base_path}
-          in_sheet
-          live_token_est={
-            LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus.token_estimate(@streaming_text)
-          }
-        />
-      </LoopyardWeb.Components.Nav.bottom_sheet>
-
-      <%!-- MOBILE: the selected volume's Info (type/size/service + delete) as a
-           pull-up sheet — same content as the desktop right rail. Opened by the
-           ⓘ button in the volume view's header. --%>
-      <LoopyardWeb.Components.Nav.bottom_sheet
-        :if={
-          @selected_volume &&
-            @live_action in [
-              :volume,
-              :volume_files_root,
-              :volume_file,
-              :volume_git,
-              :volume_history,
-              :git_diff,
-              :git_staged_diff,
-              :git_commit,
-              :git_commit_file
-            ]
-        }
-        id="volume-context"
-        title="Volume info"
-      >
-        <LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts.volume_context
-          vol={Enum.find(@volumes, &(&1.name == @selected_volume))}
-          volume_name={@selected_volume}
-          base_path={@base_path}
-          changes={@changes}
-        />
-      </LoopyardWeb.Components.Nav.bottom_sheet>
+      <%!-- MOBILE: agent / service / volume detail bottom-sheets — the right rail
+           is desktop-only, so this is how a phone reaches every detail. Opened by
+           the section switcher's details button. Same content as the desktop
+           rail; extracted to DetailContexts for the module-size invariant. --%>
+      <LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts.mobile_detail_sheets
+        selected_agent={@selected_agent}
+        selected_service={@selected_service}
+        selected_volume={@selected_volume}
+        service_statuses={@service_statuses}
+        volumes={@volumes}
+        changes={@changes}
+        editing_name={@editing_name}
+        base_path={@base_path}
+        host={@host}
+        live_action={@live_action}
+        streaming_text={@streaming_text}
+      />
     </div>
     """
   end

@@ -238,6 +238,10 @@ defmodule LoopyardWeb.Components.Nav do
   attr :title, :string, default: "Switch"
   attr :current, :map, default: nil
   attr :items, :list, default: []
+  # When set, a consistent "details" button trailing the switcher opens this
+  # bottom sheet (by id) — the ONE affordance for "more about this thing",
+  # identical across agents / services / files.
+  attr :details_sheet, :string, default: nil
   slot :tabs
   slot :extra
 
@@ -245,6 +249,9 @@ defmodule LoopyardWeb.Components.Nav do
     ~H"""
     <div class="flex items-center gap-2 px-2 h-16 border-t border-zinc-200/70 dark:border-zinc-700/50">
       {render_slot(@tabs)}
+      <%!-- The current item, minimalist: a status dot (colour IS the state, no
+           "Running" text), the name, and a chevron as the sole "tap to switch"
+           affordance. No purple Switch pill — the chevron carries it. --%>
       <button
         :if={@current}
         type="button"
@@ -256,29 +263,20 @@ defmodule LoopyardWeb.Components.Nav do
         <span class="flex-1 min-w-0 truncate font-semibold text-zinc-900 dark:text-zinc-100">
           {@current.label}
         </span>
-        <%!-- Status: SAME font size as the name (no text-sm), just muted + right
-             aligned — the label takes flex-1 above, pushing this to the edge. --%>
-        <span :if={@current[:detail]} class={["flex-none truncate", @current[:tone]]}>
-          {@current.detail}
-        </span>
-        <span
-          :if={@current[:badge]}
-          class="inline-flex items-center gap-1 flex-none text-zinc-400 dark:text-zinc-500"
-        >
-          <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>{@current.badge}
-        </span>
-        <%!-- Switch pill only when there's somewhere to switch to; a lone item
-             gets a quiet chevron. --%>
-        <span
-          :if={length(@items) > 1}
-          class="inline-flex items-center gap-1 flex-none rounded-md px-2 py-1 text-sm font-medium text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-500/10"
-        >
-          Switch <.chevron_down class="w-4 h-4" />
-        </span>
-        <.chevron_down
-          :if={length(@items) <= 1}
-          class="w-4 h-4 text-zinc-300 dark:text-zinc-600 flex-none"
-        />
+        <.chevron_down class="w-4 h-4 text-zinc-400 dark:text-zinc-500 flex-none" />
+      </button>
+      <%!-- Details: the consistent slide-up-panel affordance for the selected
+           thing (agent usage / service actions / volume info). Same icon
+           everywhere, sits with the switcher because it expands what the
+           switcher names. --%>
+      <button
+        :if={@current && @details_sheet}
+        type="button"
+        phx-click={open_sheet(@details_sheet)}
+        aria-label="Details"
+        class="flex-none inline-flex items-center justify-center w-11 h-11 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors"
+      >
+        <.details_icon class="w-5 h-5" />
       </button>
     </div>
 
@@ -532,6 +530,18 @@ defmodule LoopyardWeb.Components.Nav do
         d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"
         clip-rule="evenodd"
       />
+    </svg>
+    """
+  end
+
+  @doc "The ONE 'open the detail panel' icon — a side panel — used everywhere."
+  attr :class, :string, default: "w-5 h-5"
+
+  def details_icon(assigns) do
+    ~H"""
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class={@class}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <line x1="15" y1="4" x2="15" y2="20" />
     </svg>
     """
   end

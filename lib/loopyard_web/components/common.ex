@@ -110,7 +110,10 @@ defmodule LoopyardWeb.Components.Common do
   def detail_panel(assigns) do
     ~H"""
     <div class="flex-1 flex flex-col min-h-0">
-      <LoopyardWeb.Components.Nav.bar height="h-12" gap="gap-3">
+      <%!-- Desktop-only header. On mobile the section switcher already names the
+           selected thing and its details button opens the actions sheet, so this
+           bar (name + actions) is redundant chrome — hide it. --%>
+      <LoopyardWeb.Components.Nav.bar height="h-12" gap="gap-3" class="hidden md:flex">
         {render_slot(@header)}
       </LoopyardWeb.Components.Nav.bar>
       {render_slot(@inner_block)}

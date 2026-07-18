@@ -75,6 +75,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       |> assign(:volumes_href, category_href(:volumes, assigns))
       |> assign(:items, category_items(assigns))
       |> assign(:current, current_item(assigns))
+      |> assign(:details_sheet, details_sheet_for(assigns.active))
       |> assign(:ws_name, (assigns[:workspace_entry] || %{})[:name] || assigns.workspace.id)
 
     assigns =
@@ -116,29 +117,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           <Nav.crumb id="nav-switcher" label={@ws_name} current switch?={@can_switch} />
         </nav>
         <:actions>
-          <%!-- Agent details: opens the context panel (usage / changes / status)
-               as a bottom sheet, since the right rail is desktop-only. Only when
-               an agent is selected. --%>
-          <button
-            :if={@selected_agent}
-            type="button"
-            phx-click={Nav.open_sheet("agent-context")}
-            aria-label="Agent details"
-            class="focus-ring inline-flex items-center justify-center w-11 h-11 rounded-lg text-zinc-400 dark:text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              class="w-5 h-5"
-            >
-              <rect x="3" y="4" width="18" height="16" rx="2" />
-              <line x1="15" y1="4" x2="15" y2="20" />
-            </svg>
-          </button>
+          <%!-- Details (agent/service/volume) moved to the section switcher row
+               below — one consistent affordance, next to the thing it expands. --%>
           <%!-- One-tap open the running app: the workspace's exposed port URL,
                reachable from this phone (only shows when a port is network-open). --%>
           <.link
@@ -178,6 +158,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
         title={section_title(@active)}
         current={@current}
         items={@items}
+        details_sheet={@details_sheet}
       >
         <:tabs>
           <Nav.segmented items={@section_tabs} label="Workspace section" />
@@ -199,6 +180,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
 
   # All projects, for the project crumb switcher (tap the project name). Sourced
   # from the same @global_tree the left rail uses, so it's already in the socket.
+  # The bottom-sheet id whose "details" the switcher's details button expands,
+  # per active section. Each has a matching bottom_sheet in workspace_live's
+  # render — the ONE consistent detail affordance for agents / services / files.
+  defp details_sheet_for(:agents), do: "agent-context"
+  defp details_sheet_for(:services), do: "service-context"
+  defp details_sheet_for(:volumes), do: "volume-context"
+  defp details_sheet_for(_), do: nil
+
   defp project_items(%{global_tree: tree, project: project}) when is_list(tree) do
     Enum.map(tree, fn p ->
       %{label: p.name, href: "/projects/#{p.id}", active?: project && p.id == project.id}

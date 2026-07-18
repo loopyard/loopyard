@@ -359,6 +359,23 @@ defmodule Loopyard.Harness.ACP.Connection do
 
   defp handle_response(:set_model, _msg, state), do: {:noreply, state}
 
+  defp handle_response(:session_prompt, _msg, %{turn: nil} = state), do: {:noreply, state}
+
+  defp handle_response(:session_prompt, msg, state) do
+    turn = state.turn
+    stop_reason = get_in(msg, ["result", "stopReason"])
+
+    # A JSON-RPC error response means the turn failed; carry that into
+    # SessionResult so upstream auto-retry + error surfacing fire.
+    error = if match?(%{"error" => e} when not is_nil(e), msg), do: {:error, error_subtype(msg)}
+    {_translator, events} = Translator.finish(turn.translator, error)
+
+    Enum.each(events, &send(turn.subscriber, {:acp_event, turn.ref, &1}))
+    send(turn.subscriber, {:acp_done, turn.ref, stop_reason || prompt_error(msg)})
+
+    {:noreply, %{state | turn: nil}}
+  end
+
   # Request the DESIRED model when it differs from what the session booted on.
   # The adapter starts every session on the CLI "default" alias (Sonnet); this
   # is what actually puts Opus on the case. Display flips to the desired
@@ -387,23 +404,6 @@ defmodule Loopyard.Harness.ACP.Connection do
     else
       state
     end
-  end
-
-  defp handle_response(:session_prompt, _msg, %{turn: nil} = state), do: {:noreply, state}
-
-  defp handle_response(:session_prompt, msg, state) do
-    turn = state.turn
-    stop_reason = get_in(msg, ["result", "stopReason"])
-
-    # A JSON-RPC error response means the turn failed; carry that into
-    # SessionResult so upstream auto-retry + error surfacing fire.
-    error = if match?(%{"error" => e} when not is_nil(e), msg), do: {:error, error_subtype(msg)}
-    {_translator, events} = Translator.finish(turn.translator, error)
-
-    Enum.each(events, &send(turn.subscriber, {:acp_event, turn.ref, &1}))
-    send(turn.subscriber, {:acp_done, turn.ref, stop_reason || prompt_error(msg)})
-
-    {:noreply, %{state | turn: nil}}
   end
 
   defp new_session(state),

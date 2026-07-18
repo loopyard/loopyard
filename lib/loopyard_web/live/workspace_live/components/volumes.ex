@@ -53,22 +53,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Volumes do
         <span class="text-xs text-zinc-400 dark:text-zinc-500">
           {section_label(@volume_tab)}
         </span>
-        <%!-- MOBILE: volume info lives in the pull-up sheet (desktop: right rail).
-             This is the trigger. --%>
-        <button
-          type="button"
-          phx-click={LoopyardWeb.Components.Nav.open_sheet("volume-context")}
-          aria-label="Volume details"
-          class="md:hidden ml-auto focus-ring inline-flex items-center justify-center min-h-8 min-w-8 rounded-md text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-        >
-          <svg viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
-            <path
-              fill-rule="evenodd"
-              d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-7-4a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM9 9a.75.75 0 0 0 0 1.5h.253a.25.25 0 0 1 .244.304l-.459 2.066A1.75 1.75 0 0 0 10.747 15H11a.75.75 0 0 0 0-1.5h-.253a.25.25 0 0 1-.244-.304l.459-2.066A1.75 1.75 0 0 0 9.253 9H9Z"
-              clip-rule="evenodd"
-            />
-          </svg>
-        </button>
+        <%!-- Volume info: desktop right rail + mobile "volume-context" sheet,
+             opened by the section switcher's details button (consistent with
+             agents + services). No per-view trigger here. --%>
       </:header>
       <div class="flex-1 overflow-y-auto">
         <%!-- No tab bar: Files / Changes / History are their own SWITCHER items
