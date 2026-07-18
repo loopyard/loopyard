@@ -177,6 +177,7 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:editing_agent_id, nil)
      |> assign(:selected_service, nil)
      |> assign(:selected_volume, nil)
+     |> assign(:mobile_detail_open, false)
      |> assign(:volume_tab, :info)
      |> assign(:file_tree, nil)
      |> assign(:file_content, nil)
@@ -982,6 +983,14 @@ defmodule LoopyardWeb.WorkspaceLive do
   end
 
   @impl true
+  def handle_event("toggle_mobile_detail", _params, socket) do
+    # Server-side toggle so the state SURVIVES navigation: with it open, using
+    # the switchers keeps showing detail for the newly-selected thing until you
+    # toggle back to the content.
+    {:noreply, assign(socket, :mobile_detail_open, !socket.assigns.mobile_detail_open)}
+  end
+
+  @impl true
   def handle_event("set_agent_model", %{"model" => model} = params, socket) do
     # Model switcher in the Usage panel. Applies live (ACP session/set_model)
     # + persists in session_opts; the StatusChanged broadcast refreshes the row.
@@ -1620,6 +1629,17 @@ defmodule LoopyardWeb.WorkspaceLive do
 
   @impl true
   def render(assigns) do
+    # Show the mobile detail only when it's toggled open AND there's actually a
+    # selected thing to detail — so switching to a detail-less surface (or the
+    # index) falls back to the content instead of a blank panel.
+    assigns =
+      assign(
+        assigns,
+        :show_mobile_detail,
+        assigns.mobile_detail_open &&
+          (assigns.selected_agent || assigns.selected_service || assigns.selected_volume) != nil
+      )
+
     ~H"""
     <div
       id="chat-page"
@@ -1644,6 +1664,7 @@ defmodule LoopyardWeb.WorkspaceLive do
         changes={@changes}
         tab={@tab}
         has_container={@has_container}
+        mobile_detail_open={@mobile_detail_open}
       />
       <.flash_banner flash={@flash} kind={:error} class="mx-4 mt-2" />
       <div class="flex-1 flex min-h-0">
@@ -1660,10 +1681,18 @@ defmodule LoopyardWeb.WorkspaceLive do
           class={"flex-1 flex flex-col min-w-0 #{if @live_action == :index && !@selected_id && !@selected_service, do: "hidden md:flex", else: "flex"}"}
         >
           <%!-- MOBILE inline detail: flat, in the surface's own scroll flow.
-               Nav.toggle_details/0 swaps this ⇄ #surface in place (tap the info
-               button to open, tap again to close). `md:!hidden` pins it off on
-               desktop (the right rail owns detail there); starts hidden. --%>
-          <div id="mobile-detail" class="hidden md:!hidden flex-1 min-h-0 overflow-y-auto">
+               The `toggle_mobile_detail` event flips @mobile_detail_open — a
+               SERVER assign so the state survives LiveView patches: switch the
+               agent/service/file while it's open and it keeps showing detail for
+               the newly-selected thing until you toggle back. `md:!hidden` pins
+               it off on desktop (the right rail owns detail there). --%>
+          <div
+            id="mobile-detail"
+            class={[
+              "md:!hidden flex-1 min-h-0 overflow-y-auto",
+              if(@show_mobile_detail, do: "block", else: "hidden")
+            ]}
+          >
             <LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts.mobile_detail_inline
               selected_agent={@selected_agent}
               selected_service={@selected_service}
@@ -1678,9 +1707,15 @@ defmodule LoopyardWeb.WorkspaceLive do
               streaming_text={@streaming_text}
             />
           </div>
-          <%!-- The surface content. `md:!flex` keeps it visible on desktop even
-               if the mobile toggle left `display:none` on it. --%>
-          <div id="surface" class="flex-1 flex flex-col min-h-0 md:!flex">
+          <%!-- The surface content. `md:!flex` keeps it visible on desktop
+               regardless of the mobile detail state. --%>
+          <div
+            id="surface"
+            class={[
+              "flex-1 flex-col min-h-0 md:!flex",
+              if(@show_mobile_detail, do: "hidden", else: "flex")
+            ]}
+          >
             <.main_content {assigns} />
           </div>
         </main>

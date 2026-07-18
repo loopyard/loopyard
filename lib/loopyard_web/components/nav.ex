@@ -240,10 +240,12 @@ defmodule LoopyardWeb.Components.Nav do
   attr :items, :list, default: []
   # When true, a consistent "details" TOGGLE trails the switcher — the ONE
   # affordance for "more about this thing", identical across agents / services /
-  # files. It flips the surface content for the detail panel IN PLACE (flat,
-  # in-flow, scrolls with the viewport); tap again to flip back. See
-  # `toggle_details/0` + the `#surface` / `#mobile-detail` container ids.
+  # files. It fires `toggle_mobile_detail` (a SERVER assign) which swaps the
+  # surface content for the detail panel IN PLACE (flat, in-flow); the state
+  # survives navigation, so switching items keeps showing detail until toggled
+  # back. `details_open` lights the button while open.
   attr :has_details, :boolean, default: false
+  attr :details_open, :boolean, default: false
   slot :tabs
   slot :extra
 
@@ -275,9 +277,17 @@ defmodule LoopyardWeb.Components.Nav do
         :if={@current && @has_details}
         id="section-details-toggle"
         type="button"
-        phx-click={toggle_details()}
+        phx-click="toggle_mobile_detail"
         aria-label="Toggle details"
-        class="flex-none inline-flex items-center justify-center w-11 h-11 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors"
+        aria-pressed={to_string(@details_open)}
+        class={[
+          "flex-none inline-flex items-center justify-center w-11 h-11 rounded-lg transition-colors",
+          if(@details_open,
+            do: "bg-violet-100 dark:bg-violet-500/15 text-violet-600 dark:text-violet-400",
+            else:
+              "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700"
+          )
+        ]}
       >
         <.details_icon class="w-5 h-5" />
       </button>
@@ -475,22 +485,6 @@ defmodule LoopyardWeb.Components.Nav do
 
   @doc "Close a `bottom_sheet/1` (slide it down, then hide)."
   def close_sheet(id), do: JS.dispatch("sheet:close", to: "##{id}-panel")
-
-  @doc """
-  Toggle the FLAT inline detail panel against the surface content (mobile). The
-  detail (`#mobile-detail`) and surface (`#surface`) swap display in place — no
-  overlay, no separate scroll container, so it scrolls with the surface
-  viewport. `md:!` classes on the containers pin the desktop layout so this
-  mobile toggle never affects it. The toggle button lights up while open.
-  """
-  def toggle_details do
-    JS.toggle(to: "#mobile-detail", display: "block")
-    |> JS.toggle(to: "#surface", display: "flex")
-    |> JS.toggle_class(
-      "!bg-violet-100 dark:!bg-violet-500/15 !text-violet-600 dark:!text-violet-400",
-      to: "#section-details-toggle"
-    )
-  end
 
   @doc """
   Classes for a big-tap-target row inside a `switcher_sheet/1`. Active row is a

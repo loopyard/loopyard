@@ -746,6 +746,33 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
     end
   end
 
+  describe "mobile detail toggle" do
+    test "toggle_mobile_detail flips state and PERSISTS across navigation", %{
+      conn: conn,
+      workspace: ws,
+      setup_agent_id: agent_id
+    } do
+      base = "/projects/#{ws.project_id}/workspaces/#{ws.id}"
+      {:ok, view, html} = live(conn, "#{base}/agents/#{agent_id}")
+
+      # Closed by default.
+      assert html =~ ~s(aria-pressed="false")
+
+      # Toggle on → button pressed + the inline detail panel shows (block).
+      html = render_click(view, "toggle_mobile_detail")
+      assert html =~ ~s(aria-pressed="true")
+
+      # Navigate to the Files surface WHILE open (same LiveView, patch). The
+      # toggle is a server assign, so it SURVIVES the navigation — still open.
+      html = render_patch(view, "#{base}/volumes/loopyard-#{ws.id}-code/files")
+      assert html =~ ~s(aria-pressed="true")
+
+      # Toggle off → back to the surface.
+      html = render_click(view, "toggle_mobile_detail")
+      assert html =~ ~s(aria-pressed="false")
+    end
+  end
+
   describe "service log views" do
     test "services view renders All Services heading", %{
       conn: conn,
