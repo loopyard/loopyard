@@ -835,6 +835,16 @@ let liveSocket = new LiveSocket("/live", Socket, {
 liveSocket.connect()
 window.liveSocket = liveSocket
 
+// PWA: register the (network-only) service worker so the app is installable and
+// launches standalone from the home screen / dock. Best-effort — a failure here
+// must never affect the app. iOS doesn't require the SW for add-to-home-screen
+// (the manifest + apple meta cover that), but it enables install elsewhere.
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {})
+  })
+}
+
 // Connection-lost banner: reveal #conn-banner when the websocket has been down
 // past a short grace period (so a quick reconnect — live reload, blip — doesn't
 // flash it), hide it the moment we're back. This is the "is it safe to type"

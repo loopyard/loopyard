@@ -17,8 +17,18 @@
           'width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover');
       }
     </script>
+    <%!-- PWA / add-to-home-screen. `standalone` (manifest + apple meta) launches
+         chromeless like a native app; the apple-touch-icon is the home-screen
+         icon on iOS (which ignores manifest icons); the title is the label under
+         it. theme-color tints the status bar / title bar to match the shell. --%>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#18181b" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="loopyard" />
+    <link rel="apple-touch-icon" href="/icons/icon-180.png" />
+    <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
     <meta name="csrf-token" content={get_csrf_token()} />
     <title>
       Loopyard - An open-source multiplayer software factory where humans and AI ship code together.
