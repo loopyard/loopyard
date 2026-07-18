@@ -380,8 +380,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
 
   # Tools whose command+output render as a console box (log_inline), so the raw
   # "verb summary" tool-call row is suppressed — the console box IS the single
-  # representation of the command. git joins exec/docker_compose so every CLI
-  # source looks the same (command title + output + exit status).
+  # representation of the command. Every CLI source looks the same (command
+  # title + output + exit status), whether it's the in-container ACP harness's
+  # NATIVE "Bash" tool or the loopyard MCP exec/docker_compose/git tools.
+  defp console_command_tool?("Bash"), do: true
+
   defp console_command_tool?(tool) when is_binary(tool),
     do:
       String.ends_with?(tool, "__exec") or String.ends_with?(tool, "__docker_compose") or
@@ -389,12 +392,20 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
 
   defp console_command_tool?(_), do: false
 
+  # An edit tool — native ACP ("Edit"/"MultiEdit") or loopyard MCP
+  # ("__edit"/"__multi_edit") — whose diff renders inline on the tool call.
+  defp edit_tool?(tool) when is_binary(tool),
+    do:
+      tool in ["Edit", "MultiEdit"] or String.ends_with?(tool, "__edit") or
+        String.ends_with?(tool, "__multi_edit")
+
+  defp edit_tool?(_), do: false
+
   defp render_tool_call(assigns) do
     tool_name = assigns.msg[:tool] || ""
     input = assigns.msg.input || %{}
 
-    is_edit =
-      String.ends_with?(tool_name, "__edit") || String.ends_with?(tool_name, "__multi_edit")
+    is_edit = edit_tool?(tool_name)
 
     old_str = if is_edit, do: input["old_string"]
     new_str = if is_edit, do: input["new_string"]
@@ -494,8 +505,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   # without reading the text. Tint = signal, kept muted.
   defp tool_dot(tool) when is_binary(tool) do
     cond do
-      String.ends_with?(tool, "__edit") or String.ends_with?(tool, "__multi_edit") or
-          String.ends_with?(tool, "__write_file") ->
+      edit_tool?(tool) or tool == "Write" or String.ends_with?(tool, "__write_file") ->
         "bg-violet-400"
 
       String.ends_with?(tool, "__exec") or String.ends_with?(tool, "__docker_compose") ->
@@ -594,7 +604,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       |> Enum.find(fn m -> m.role not in [:build, :build_done, :build_failed] end)
       |> case do
         %{role: :tool, tool: tool} when is_binary(tool) ->
-          String.ends_with?(tool, "__edit") || String.ends_with?(tool, "__multi_edit")
+          edit_tool?(tool)
 
         _ ->
           false

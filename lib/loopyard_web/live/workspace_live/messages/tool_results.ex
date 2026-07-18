@@ -80,6 +80,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
   """
   def console_command_result?(assigns) do
     case matching_tool_call(assigns) do
+      %{role: :tool, tool: "Bash"} -> true
       %{role: :tool, tool: tool} when is_binary(tool) -> String.ends_with?(tool, "__git")
       _ -> false
     end
@@ -104,7 +105,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
   end
 
   # The "$"-style command line for the console title bar, reconstructed from the
-  # matching tool call. git input carries the subcommand ("status", "diff main").
+  # matching tool call. Native "Bash" carries the FULL command; the loopyard git
+  # MCP tool carries just the subcommand ("status", "diff main"), so prefix it.
+  defp console_command_label(%{tool: "Bash", input: input}),
+    do: to_string(input["command"] || "")
+
   defp console_command_label(%{tool: tool, input: input}) when is_binary(tool) do
     cond do
       String.ends_with?(tool, "__git") -> "git " <> to_string(input["command"] || "")
@@ -119,10 +124,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
   # `:generic` and keeps the plain <pre>.
   def tool_result_kind(assigns) do
     case matching_tool_call(assigns) do
+      # Native ACP tools ("Read"/"Grep") + loopyard MCP tools ("__read_file"/
+      # "__grep") both get the rich cards, so the in-container harness reads the
+      # same as the MCP path.
       %{role: :tool, tool: tool} when is_binary(tool) ->
         cond do
-          String.ends_with?(tool, "__read_file") -> :read
-          String.ends_with?(tool, "__grep") -> :grep
+          tool == "Read" or String.ends_with?(tool, "__read_file") -> :read
+          tool == "Grep" or String.ends_with?(tool, "__grep") -> :grep
           true -> :generic
         end
 
