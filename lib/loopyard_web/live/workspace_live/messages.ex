@@ -22,6 +22,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   import LoopyardWeb.Components.DiffView, only: [diff: 1]
   import LoopyardWeb.Components.Icon
 
+  alias Loopyard.Agent.ToolKind
   alias LoopyardWeb.Components.Ansi
 
   alias LoopyardWeb.Components.ToolSummary
@@ -210,7 +211,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       # exec / docker_compose render as a console box whose TITLE is the command —
       # the raw "$ cmd" tool row would just show the command a second time. Suppress
       # it so the console window is the single representation of the command.
-      console_command_tool?(assigns.msg[:tool]) -> ~H"<div></div>"
+      msg_kind(assigns.msg) == :command -> ~H"<div></div>"
       true -> render_tool_call(assigns)
     end
   end
@@ -378,34 +379,20 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     """
   end
 
-  # Tools whose command+output render as a console box (log_inline), so the raw
-  # "verb summary" tool-call row is suppressed — the console box IS the single
-  # representation of the command. Every CLI source looks the same (command
-  # title + output + exit status), whether it's the in-container ACP harness's
-  # NATIVE "Bash" tool or the loopyard MCP exec/docker_compose/git tools.
-  defp console_command_tool?("Bash"), do: true
-
-  defp console_command_tool?(tool) when is_binary(tool),
-    do:
-      String.ends_with?(tool, "__exec") or String.ends_with?(tool, "__docker_compose") or
-        String.ends_with?(tool, "__git")
-
-  defp console_command_tool?(_), do: false
-
-  # An edit tool — native ACP ("Edit"/"MultiEdit") or loopyard MCP
-  # ("__edit"/"__multi_edit") — whose diff renders inline on the tool call.
-  defp edit_tool?(tool) when is_binary(tool),
-    do:
-      tool in ["Edit", "MultiEdit"] or String.ends_with?(tool, "__edit") or
-        String.ends_with?(tool, "__multi_edit")
-
-  defp edit_tool?(_), do: false
+  # Neutral kind for a :tool message. Prefer the kind the harness stamped on the
+  # message via the ToolKind seam; fall back to classifying the raw name for
+  # messages persisted before kinds were threaded through. The UI classifies by
+  # KIND, never by matching raw tool names — that's what keeps a new harness's
+  # tool vocabulary rendering correctly without touching this module.
+  defp msg_kind(%{tool_kind: kind}) when not is_nil(kind), do: kind
+  defp msg_kind(%{tool: tool}) when is_binary(tool), do: ToolKind.classify(tool)
+  defp msg_kind(_), do: :generic
 
   defp render_tool_call(assigns) do
     tool_name = assigns.msg[:tool] || ""
     input = assigns.msg.input || %{}
 
-    is_edit = edit_tool?(tool_name)
+    is_edit = msg_kind(assigns.msg) == :edit
 
     old_str = if is_edit, do: input["old_string"]
     new_str = if is_edit, do: input["new_string"]
@@ -505,10 +492,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   # without reading the text. Tint = signal, kept muted.
   defp tool_dot(tool) when is_binary(tool) do
     cond do
-      edit_tool?(tool) or tool == "Write" or String.ends_with?(tool, "__write_file") ->
+      ToolKind.classify(tool) in [:edit, :write] ->
         "bg-violet-400"
 
-      String.ends_with?(tool, "__exec") or String.ends_with?(tool, "__docker_compose") ->
+      ToolKind.command?(tool) ->
         "bg-emerald-400"
 
       String.contains?(tool, "read") or String.contains?(tool, "tree") or
@@ -603,8 +590,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       |> Enum.reverse()
       |> Enum.find(fn m -> m.role not in [:build, :build_done, :build_failed] end)
       |> case do
-        %{role: :tool, tool: tool} when is_binary(tool) ->
-          edit_tool?(tool)
+        %{role: :tool} = m ->
+          msg_kind(m) == :edit
 
         _ ->
           false

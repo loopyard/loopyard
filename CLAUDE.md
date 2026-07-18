@@ -171,6 +171,22 @@ implemented + tested but not yet the default backend — see
 `docs/IMPROVEMENTS.md` for the open ACP gaps (permission round-trip,
 cancel/interrupt, resume, token cost, session_opts shape).
 
+**Tool rendering is harness-agnostic — classify by KIND, never by
+name.** Different backends emit different tool *names* for the same
+act (the in-container ACP harness uses Claude Code's NATIVE tools —
+`Bash`/`Read`/`Grep`/`Edit`/`Write` — while the in-process path uses
+loopyard MCP names like `mcp__loopyard-container__exec`). The UI must
+never match those raw names; it renders off a neutral
+`t:Loopyard.Agent.ToolKind.t/0` (`:command | :read | :grep | :edit |
+:write | :generic`). `Loopyard.Agent.ToolKind` is the ONE place tool
+vocabulary is known; `%Event.ToolCall{}` carries an optional `kind` a
+backend may stamp itself, and `StreamHandler` falls back to
+`ToolKind.classify(name)`, storing the result as `tool_kind` on the
+message. A NEW harness plugs into the UI without touching it — name
+your tools recognizably, or stamp `kind` on the event. Adding a UI
+tool-name string-match anywhere else re-couples the presentation layer
+to a backend's vocabulary — extend `ToolKind` instead.
+
 **Inbox vs. turn execution — the durability boundary.** Loopyard owns
 the **durable message inbox**: ordering, the persisted message log, the
 `pending_sends` FIFO queue, and the rate-limit/auth/backoff gating.

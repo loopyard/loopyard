@@ -66,10 +66,21 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     state
   end
 
-  def process_event(%Event.ToolCall{name: tool_name, input: tool_input}, state) do
+  def process_event(%Event.ToolCall{name: tool_name, input: tool_input} = ev, state) do
     now = DateTime.utc_now()
     id = state.id
-    tool_msg = %{role: :tool, tool: tool_name, input: tool_input, timestamp: now}
+    # Neutral tool kind travels ON the message so the UI classifies by kind,
+    # never by matching raw tool names. A backend may set ev.kind itself; else
+    # we derive it from the name via the single ToolKind seam.
+    tool_kind = ev.kind || Loopyard.Agent.ToolKind.classify(tool_name)
+
+    tool_msg = %{
+      role: :tool,
+      tool: tool_name,
+      tool_kind: tool_kind,
+      input: tool_input,
+      timestamp: now
+    }
     {state, tool_msg} = append_message(state, tool_msg)
 
     state = %{

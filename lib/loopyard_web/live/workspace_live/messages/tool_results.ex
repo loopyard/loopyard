@@ -9,6 +9,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
   """
   use Phoenix.Component
 
+  alias Loopyard.Agent.ToolKind
   alias LoopyardWeb.Components.Ansi
   alias LoopyardWeb.Live.WorkspaceLive.Messages
   alias LoopyardWeb.Live.WorkspaceLive.Components.Viewers.{FileType, Syntax}
@@ -79,11 +80,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
   Exec/docker already stream that way; this brings git in line.
   """
   def console_command_result?(assigns) do
-    case matching_tool_call(assigns) do
-      %{role: :tool, tool: "Bash"} -> true
-      %{role: :tool, tool: tool} when is_binary(tool) -> String.ends_with?(tool, "__git")
-      _ -> false
-    end
+    # Any command-kind tool whose result reaches here (exec/docker were already
+    # hidden as streamed builds by the dispatcher) → render its result as the
+    # console box. Classified by the neutral ToolKind seam, not by tool name.
+    call_kind(matching_tool_call(assigns)) == :command
   end
 
   @doc "Render a CLI-command tool_result as the shared console box (see console_command_result?/1)."
@@ -123,21 +123,22 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
   # pick a rich renderer. Only the shapes we have a card for; everything else is
   # `:generic` and keeps the plain <pre>.
   def tool_result_kind(assigns) do
-    case matching_tool_call(assigns) do
-      # Native ACP tools ("Read"/"Grep") + loopyard MCP tools ("__read_file"/
-      # "__grep") both get the rich cards, so the in-container harness reads the
-      # same as the MCP path.
-      %{role: :tool, tool: tool} when is_binary(tool) ->
-        cond do
-          tool == "Read" or String.ends_with?(tool, "__read_file") -> :read
-          tool == "Grep" or String.ends_with?(tool, "__grep") -> :grep
-          true -> :generic
-        end
-
-      _ ->
-        :generic
+    # Rich result cards are keyed off the neutral tool KIND, so native ACP tools
+    # ("Read"/"Grep") and loopyard MCP tools ("__read_file"/"__grep") — and any
+    # future harness that stamps the same kind — read identically. Only :read and
+    # :grep have result cards; everything else keeps the plain <pre>.
+    case call_kind(matching_tool_call(assigns)) do
+      :read -> :read
+      :grep -> :grep
+      _ -> :generic
     end
   end
+
+  # Neutral kind of the tool CALL that produced this result — prefer the kind the
+  # harness stamped on the message, fall back to classifying the raw name.
+  defp call_kind(%{tool_kind: kind}) when not is_nil(kind), do: kind
+  defp call_kind(%{tool: tool}) when is_binary(tool), do: ToolKind.classify(tool)
+  defp call_kind(_), do: :generic
 
   # Cost guards for inline syntax highlighting — highlighting is a synchronous
   # Rust NIF pass, and the transcript re-renders, so a huge file read must fall
