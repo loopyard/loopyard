@@ -143,8 +143,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
     # path → id is a pure ETS lookup; cheap.
     workspace_id = Loopyard.Workspace.workspace_id(workspace_path)
 
-    ChatAgent.list_agents()
-    |> Enum.filter(fn a -> a[:workspace_id] == workspace_id end)
+    # Scoped ETS query — filters by workspace_id BEFORE touching any GenServer,
+    # so the sidebar load costs one workspace's worth of agents, not a global
+    # scan of a table that can hold thousands of rows. This runs on the mount
+    # hot path (see the :chat mount budget test).
+    ChatAgent.list_agents_for_workspace(workspace_id)
     |> Enum.map(&annotate_liveness/1)
   end
 
