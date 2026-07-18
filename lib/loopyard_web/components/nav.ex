@@ -97,7 +97,7 @@ defmodule LoopyardWeb.Components.Nav do
   def back_button(assigns) do
     assigns =
       assign(assigns, :cls, [
-        "flex-none inline-flex items-center justify-center rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors",
+        "focus-ring flex-none inline-flex items-center justify-center rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors",
         if(assigns.size == :sm, do: "w-9 h-9 -ml-1", else: "w-11 h-11 -ml-1.5")
       ])
 
@@ -116,7 +116,7 @@ defmodule LoopyardWeb.Components.Nav do
 
   defp back_arrow(assigns) do
     ~H"""
-    <svg viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+    <svg viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5" aria-hidden="true">
       <path
         fill-rule="evenodd"
         d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z"
@@ -143,10 +143,10 @@ defmodule LoopyardWeb.Components.Nav do
     <button
       type="button"
       aria-label={@label}
-      class="flex-none inline-flex items-center justify-center w-11 h-11 -mr-1.5 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors"
+      class="focus-ring flex-none inline-flex items-center justify-center w-11 h-11 -mr-1.5 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors"
       {@rest}
     >
-      <svg viewBox="0 0 20 20" fill="currentColor" class="w-6 h-6">
+      <svg viewBox="0 0 20 20" fill="currentColor" class="w-6 h-6" aria-hidden="true">
         <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
       </svg>
     </button>
@@ -207,7 +207,7 @@ defmodule LoopyardWeb.Components.Nav do
   """
   def seg_item_class(active?) do
     [
-      "inline-flex items-center justify-center min-h-[2.5rem] px-3 rounded-lg text-sm font-medium leading-none transition-colors whitespace-nowrap",
+      "focus-ring inline-flex items-center justify-center min-h-[2.5rem] px-3 rounded-lg text-sm font-medium leading-none transition-colors whitespace-nowrap",
       if(active?,
         do: "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm",
         else: "text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
@@ -261,7 +261,9 @@ defmodule LoopyardWeb.Components.Nav do
         type="button"
         phx-click={toggle_panel(@id)}
         aria-controls={@id}
-        class="flex-1 min-w-0 flex items-center gap-2 min-h-[2.75rem] px-3 rounded-lg text-left hover:bg-zinc-100 dark:hover:bg-zinc-800/60 active:bg-zinc-200 dark:active:bg-zinc-700/60 transition-colors"
+        aria-haspopup="dialog"
+        aria-label={"Switch #{@title} — currently #{@current.label}"}
+        class="focus-ring flex-1 min-w-0 flex items-center gap-2 min-h-[2.75rem] px-3 rounded-lg text-left hover:bg-zinc-100 dark:hover:bg-zinc-800/60 active:bg-zinc-200 dark:active:bg-zinc-700/60 transition-colors"
       >
         <span class={["w-2 h-2 rounded-full flex-none", @current.dot]}></span>
         <span class="flex-1 min-w-0 truncate font-semibold text-zinc-900 dark:text-zinc-100">
@@ -281,7 +283,7 @@ defmodule LoopyardWeb.Components.Nav do
         aria-label="Toggle details"
         aria-pressed={to_string(@details_open)}
         class={[
-          "flex-none inline-flex items-center justify-center w-11 h-11 rounded-lg transition-colors",
+          "focus-ring flex-none inline-flex items-center justify-center w-11 h-11 rounded-lg transition-colors",
           if(@details_open,
             do: "bg-violet-100 dark:bg-violet-500/15 text-violet-600 dark:text-violet-400",
             else:
@@ -357,10 +359,11 @@ defmodule LoopyardWeb.Components.Nav do
       phx-click={toggle_panel(@id)}
       aria-controls={@id}
       aria-haspopup="dialog"
-      class={["min-w-0 inline-flex items-center gap-0.5 rounded", crumb_label_class(@current)]}
+      aria-label={"Switch — currently #{@label}"}
+      class={["focus-ring min-w-0 inline-flex items-center gap-0.5 rounded", crumb_label_class(@current)]}
     >
       <span class="truncate">{@label}</span>
-      <.chevron_down :if={@chevron} class="w-4 h-4 flex-none opacity-60" />
+      <.chevron_down :if={@chevron} class="w-4 h-4 flex-none opacity-60" aria-hidden="true" />
     </button>
     <.link :if={!@switch? && @href} navigate={@href} class={crumb_label_class(@current)}>
       {@label}
@@ -408,7 +411,11 @@ defmodule LoopyardWeb.Components.Nav do
       aria-modal="true"
       aria-label={@title}
     >
-      <div class="absolute inset-0 bg-zinc-900/50 backdrop-blur-sm" phx-click={toggle_panel(@id)}>
+      <div
+        class="absolute inset-0 bg-zinc-900/50 backdrop-blur-sm"
+        phx-click={toggle_panel(@id)}
+        aria-hidden="true"
+      >
       </div>
       <div class="absolute inset-0 flex flex-col bg-white dark:bg-zinc-900 safe-area-x">
         <%!-- The current selection AS a tap-to-close header: tapping it (or the
@@ -458,7 +465,12 @@ defmodule LoopyardWeb.Components.Nav do
   def bottom_sheet(assigns) do
     ~H"""
     <div id={@id} class="hidden fixed inset-0 z-[60]" role="dialog" aria-modal="true" aria-label={@title}>
-      <div class="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm" phx-click={close_sheet(@id)}></div>
+      <div
+        class="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm"
+        phx-click={close_sheet(@id)}
+        aria-hidden="true"
+      >
+      </div>
       <div
         id={"#{@id}-panel"}
         phx-hook="BottomSheet"
@@ -495,7 +507,7 @@ defmodule LoopyardWeb.Components.Nav do
   """
   def sheet_row_class(active?) do
     [
-      "flex items-center gap-3 min-h-[3.25rem] px-3 rounded-xl text-base transition-colors",
+      "focus-ring flex items-center gap-3 min-h-[3.25rem] px-3 rounded-xl text-base transition-colors",
       if(active?,
         do: "bg-violet-100 dark:bg-violet-500/15 text-zinc-900 dark:text-zinc-100 font-semibold",
         else:
@@ -526,7 +538,7 @@ defmodule LoopyardWeb.Components.Nav do
   # A violet check for the active row in a switcher sheet.
   defp check(assigns) do
     ~H"""
-    <svg viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 flex-none text-violet-600 dark:text-violet-400">
+    <svg viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 flex-none text-violet-600 dark:text-violet-400" aria-hidden="true">
       <path
         fill-rule="evenodd"
         d="M16.7 5.3a1 1 0 0 1 0 1.4l-7.5 7.5a1 1 0 0 1-1.4 0l-3.5-3.5a1 1 0 1 1 1.4-1.4l2.8 2.79 6.8-6.79a1 1 0 0 1 1.4 0Z"
@@ -540,7 +552,7 @@ defmodule LoopyardWeb.Components.Nav do
 
   defp chevron_down(assigns) do
     ~H"""
-    <svg viewBox="0 0 20 20" fill="currentColor" class={@class}>
+    <svg viewBox="0 0 20 20" fill="currentColor" class={@class} aria-hidden="true">
       <path
         fill-rule="evenodd"
         d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"
@@ -555,7 +567,7 @@ defmodule LoopyardWeb.Components.Nav do
 
   def details_icon(assigns) do
     ~H"""
-    <svg viewBox="0 0 20 20" fill="currentColor" class={@class}>
+    <svg viewBox="0 0 20 20" fill="currentColor" class={@class} aria-hidden="true">
       <path
         fill-rule="evenodd"
         d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-7-4a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM9 9a.75.75 0 0 0 0 1.5h.253a.25.25 0 0 1 .244.304l-.459 2.066A1.75 1.75 0 0 0 10.747 15H11a.75.75 0 0 0 0-1.5h-.253a.25.25 0 0 1-.244-.304l.459-2.066A1.75 1.75 0 0 0 9.253 9H9Z"

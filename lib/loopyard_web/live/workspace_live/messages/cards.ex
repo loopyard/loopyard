@@ -174,6 +174,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
               autocomplete="off"
               spellcheck="false"
               placeholder={"Paste #{@msg.name}…"}
+              aria-label={"Secret value for #{@msg.name}"}
               class="flex-1 min-w-0 rounded-lg border border-amber-300 dark:border-amber-700/60 bg-white dark:bg-zinc-900 px-3 py-2 text-sm font-mono text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
             />
             <button

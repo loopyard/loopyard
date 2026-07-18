@@ -98,7 +98,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       assign(assigns, :app_port, current_ws_port(assigns[:global_tree], assigns.workspace.id))
 
     ~H"""
-    <div class="md:hidden">
+    <%!-- safe-area-top: in a standalone PWA the header sits under the Dynamic
+         Island / notch without it. No-op in the browser (inset is 0). --%>
+    <div class="md:hidden safe-area-top">
       <%!-- Row 1: WHERE you are — back out + Project / Workspace + sound. Tapping
            either name throws open ONE full-screen switcher of every project and
            its workspaces (pick any to jump; ✕ / backdrop to bail). No pop-overs. --%>
@@ -525,7 +527,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             patches). The queue and the always-visible Reasoning Bar sit above it,
             LiveView-updated, so you can keep queuing and watch progress while the
             agent works. --%>
-      <div class="flex-none border-t border-zinc-200 dark:border-zinc-700/80 p-3 md:p-4 space-y-2">
+      <%!-- pb-safe: the composer clears the home indicator in a standalone PWA
+           while keeping its normal padding in the browser. --%>
+      <div class="flex-none border-t border-zinc-200 dark:border-zinc-700/80 px-3 pt-3 pb-safe md:px-4 md:pt-4 space-y-2">
         <%!-- The queue is a quiet, COMPACT list waiting for the agent to pick up
               next — kept dense (small text, tight rows, no card chrome) so a few
               stacked don't dominate the composer. Tap a row to pull it back into
@@ -596,8 +600,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               id="chat-input"
               rows="1"
               placeholder="Type a message..."
+              aria-label="Message"
               autocomplete="off"
-              class="flex-1 bg-transparent border-0 rounded-lg px-1 py-2.5 text-base
+              class="focus-ring flex-1 bg-transparent border-0 rounded-lg px-1 py-2.5 text-base
                    text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 resize-none
                    focus:outline-none focus:ring-0"
             ></textarea>
@@ -751,6 +756,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               name="service"
               value={@log_service || ""}
               placeholder="Filter service..."
+              aria-label="Filter logs by service"
               class="text-sm rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-1 w-28
                      focus:outline-none focus:ring-1 focus:ring-violet-500/30"
             />

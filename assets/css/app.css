@@ -191,6 +191,16 @@
      these on the rail element itself (padding is inside its background box). */
   .safe-pl { padding-left: env(safe-area-inset-left); }
   .safe-pr { padding-right: env(safe-area-inset-right); }
+  .safe-pt { padding-top: env(safe-area-inset-top); }
+  .safe-pb { padding-bottom: env(safe-area-inset-bottom); }
+  /* Bottom padding that's AT LEAST the given base and grows for the home
+     indicator — for the composer / any fixed-ish bottom bar. Base is 0.75rem
+     (mobile); md bumps to 1rem. Combines instead of overriding, unlike
+     .safe-pb, so content never loses its normal breathing room. */
+  .pb-safe { padding-bottom: max(0.75rem, env(safe-area-inset-bottom)); }
+  @media (min-width: 768px) {
+    .pb-safe { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+  }
 }
 refresh your browser when you save files and it does not affect production.
 .highlight .hll {background-color: #49483e}

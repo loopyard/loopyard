@@ -284,6 +284,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
             id="new-agent-input"
             rows="3"
             placeholder="What should this agent work on? (leave blank to start empty)"
+            aria-label="What should this agent work on?"
             class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-3 text-base
                    text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 resize-none
                    focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
@@ -584,6 +585,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
           type="text"
           name="name"
           value={@agent.name}
+          aria-label="Agent name"
           autofocus
           class="flex-1 min-w-0 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-0.5 text-sm
                  text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-violet-500/30"
