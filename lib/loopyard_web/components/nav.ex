@@ -311,12 +311,15 @@ defmodule LoopyardWeb.Components.Nav do
       >
         <span class={["w-2.5 h-2.5 rounded-full flex-none", item.dot]}></span>
         <span class="flex-1 min-w-0 truncate">{item.label}</span>
+        <%!-- Check BEFORE the status so the status stays flush-right on every
+             row — a trailing check shifted the active row's status left and
+             broke alignment with the others. --%>
+        <.check :if={item[:active?]} />
         <%!-- Status same size as the name, muted + right-aligned (matches the
              switcher trigger above). --%>
         <span :if={item[:detail]} class="flex-none truncate text-zinc-400 dark:text-zinc-500">
           {item.detail}
         </span>
-        <.check :if={item[:active?]} />
       </.link>
       {render_slot(@extra)}
     </.switcher_sheet>
