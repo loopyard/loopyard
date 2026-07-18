@@ -190,7 +190,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
         :if={@first_port}
         class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-6 text-sm"
       >
-        <span class="text-zinc-500 dark:text-zinc-500 flex-none">URL</span>
+        <span class="text-zinc-500 dark:text-zinc-400 flex-none">URL</span>
         <a
           href={"http://#{@host}:#{@first_port}"}
           target="_blank"
@@ -281,7 +281,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
         monospace
         class="font-mono text-zinc-500 dark:text-zinc-400 text-xs"
       />
-      <p :if={@code?} class="px-2 pt-1 text-xs text-zinc-400 dark:text-zinc-500">
+      <p :if={@code?} class="px-2 pt-1 text-xs text-zinc-500 dark:text-zinc-400">
         The main project source volume — the codebase agents and services share.
       </p>
     </.section>

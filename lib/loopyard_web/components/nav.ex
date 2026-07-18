@@ -269,7 +269,7 @@ defmodule LoopyardWeb.Components.Nav do
         <span class="flex-1 min-w-0 truncate font-semibold text-zinc-900 dark:text-zinc-100">
           {@current.label}
         </span>
-        <.chevron_down class="w-4 h-4 text-zinc-400 dark:text-zinc-500 flex-none" />
+        <.chevron_down class="w-4 h-4 text-zinc-500 dark:text-zinc-400 flex-none" />
       </button>
       <%!-- Details TOGGLE for the selected thing (agent usage / service actions /
            volume info). Same icon + behaviour everywhere; sits with the switcher
@@ -319,7 +319,7 @@ defmodule LoopyardWeb.Components.Nav do
         <.check :if={item[:active?]} />
         <%!-- Status same size as the name, muted + right-aligned (matches the
              switcher trigger above). --%>
-        <span :if={item[:detail]} class="flex-none truncate text-zinc-400 dark:text-zinc-500">
+        <span :if={item[:detail]} class="flex-none truncate text-zinc-500 dark:text-zinc-400">
           {item.detail}
         </span>
       </.link>
@@ -439,7 +439,7 @@ defmodule LoopyardWeb.Components.Nav do
           >
             {@title}
           </h2>
-          <.chevron_down class="w-5 h-5 flex-none text-zinc-400 dark:text-zinc-500 rotate-180" />
+          <.chevron_down class="w-5 h-5 flex-none text-zinc-500 dark:text-zinc-400 rotate-180" />
         </button>
         <div class="flex-1 overflow-y-auto overscroll-contain p-2 space-y-0.5">
           {render_slot(@inner_block)}

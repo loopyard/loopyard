@@ -136,7 +136,7 @@ defmodule LoopyardWeb.ConnectLive do
                 Open in a browser
               </h2>
               <.copy_line id="copy-url" value={@url} />
-              <p :if={@path != "/"} class="text-xs text-zinc-400 dark:text-zinc-500 font-mono truncate">
+              <p :if={@path != "/"} class="text-xs text-zinc-500 dark:text-zinc-400 font-mono truncate">
                 deep link: {@path}
               </p>
             </section>
@@ -148,7 +148,7 @@ defmodule LoopyardWeb.ConnectLive do
                 SSH into a container
               </h2>
               <.copy_line id="copy-ssh" value={@ssh_cmd} />
-              <p class="text-xs text-zinc-400 dark:text-zinc-500 leading-relaxed">
+              <p class="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
                 Replace
                 <code class="bg-zinc-100 dark:bg-zinc-800 rounded px-1 py-0.5 font-mono">CONTAINER</code>
                 with a running container's name (shown on any service's console page).

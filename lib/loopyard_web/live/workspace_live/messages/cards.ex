@@ -39,7 +39,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
         <div :for={q <- @msg.questions} class="mb-3 last:mb-0">
           <div
             :if={q.header != ""}
-            class="text-sm uppercase tracking-wide text-zinc-400 dark:text-zinc-500 mb-1"
+            class="text-sm uppercase tracking-wide text-zinc-500 dark:text-zinc-400 mb-1"
           >
             {q.header}
           </div>
@@ -120,7 +120,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           </div>
         </div>
 
-        <div :if={@msg.status == :timeout} class="text-sm text-zinc-400 dark:text-zinc-500">
+        <div :if={@msg.status == :timeout} class="text-sm text-zinc-500 dark:text-zinc-400">
           No answer — the agent moved on.
         </div>
       </div>
@@ -198,7 +198,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
 
         <div
           :if={@msg.status == :declined}
-          class="mt-3 text-sm text-zinc-400 dark:text-zinc-500"
+          class="mt-3 text-sm text-zinc-500 dark:text-zinc-400"
         >
           Declined — the agent will proceed without it.
         </div>
@@ -213,7 +213,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
             else: "Submitted by #{@msg.submitted_by} — kept out of chat."}
         </div>
 
-        <div :if={@msg.status == :timeout} class="mt-3 text-sm text-zinc-400 dark:text-zinc-500">
+        <div :if={@msg.status == :timeout} class="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
           No secret submitted — the agent moved on.
         </div>
       </div>
@@ -369,7 +369,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
               Merged <code class="text-sm">{@action.branch}</code> → main ✓
             </span>
           <% :denied -> %>
-            <span class="text-sm text-zinc-400 dark:text-zinc-500">Declined.</span>
+            <span class="text-sm text-zinc-500 dark:text-zinc-400">Declined.</span>
           <% :failed -> %>
             <span class="text-sm text-red-500">
               {case @action.verb do
@@ -437,7 +437,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           <span class="text-sm font-semibold text-zinc-800 dark:text-zinc-100 truncate">
             {@msg[:label] || "workspace"}
           </span>
-          <span class="text-xs text-zinc-400 dark:text-zinc-500 flex-none">· {embed_word(@st)}</span>
+          <span class="text-xs text-zinc-500 dark:text-zinc-400 flex-none">· {embed_word(@st)}</span>
           <span class="ml-auto text-xs text-violet-500 group-hover:text-violet-600 flex-none">
             open →
           </span>

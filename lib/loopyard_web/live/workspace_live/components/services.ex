@@ -31,7 +31,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
         <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate">
           {@service_name}
         </span>
-        <span :if={@svc} class="hidden sm:inline text-xs text-zinc-400 dark:text-zinc-500 font-mono truncate">
+        <span :if={@svc} class="hidden sm:inline text-xs text-zinc-500 dark:text-zinc-400 font-mono truncate">
           {service_detail(@svc)}
         </span>
         <a
@@ -103,7 +103,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
             Run {group.run}
             <span
               :if={gi < @last_i}
-              class="font-normal normal-case text-zinc-400 dark:text-zinc-600"
+              class="font-normal normal-case text-zinc-500 dark:text-zinc-400"
             >
               · ended
             </span>
@@ -114,7 +114,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
           >
             <span
               :if={f.ts}
-              class="flex-none text-zinc-400 dark:text-zinc-600 tabular-nums select-none"
+              class="flex-none text-zinc-500 dark:text-zinc-400 tabular-nums select-none"
             >
               {short_ts(f.ts)}
             </span>
@@ -133,7 +133,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
   defp service_waiting_panel(assigns) do
     ~H"""
     <div class="flex-1 flex items-center justify-center">
-      <p class="text-sm text-zinc-400 dark:text-zinc-500">Waiting for output…</p>
+      <p class="text-sm text-zinc-500 dark:text-zinc-400">Waiting for output…</p>
     </div>
     """
   end
@@ -239,7 +239,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
     <.detail_panel>
       <:header>
         <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{@service_name}</span>
-        <span class="text-xs text-zinc-400 dark:text-zinc-500">console</span>
+        <span class="text-xs text-zinc-500 dark:text-zinc-400">console</span>
         <div :if={@ssh_cmd} class="ml-auto">
           <button
             id="copy-ssh"

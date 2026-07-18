@@ -98,7 +98,7 @@ defmodule LoopyardWeb.Components.Sidebar do
         </span>
         <span
           :if={!service_status_text(@svc) && !@first_port && @svc.status == :running}
-          class="text-xs text-zinc-400 dark:text-zinc-500 ml-auto font-mono truncate max-w-[100px]"
+          class="text-xs text-zinc-500 dark:text-zinc-400 ml-auto font-mono truncate max-w-[100px]"
         >
           {service_detail(@svc)}
         </span>

@@ -129,7 +129,7 @@ defmodule LoopyardWeb.SystemQuarantineLive do
           </p>
 
           <%= if @quarantined == [] do %>
-            <div class="text-sm text-zinc-400 dark:text-zinc-500 italic">
+            <div class="text-sm text-zinc-500 dark:text-zinc-400 italic">
               No agents are currently quarantined.
             </div>
           <% else %>

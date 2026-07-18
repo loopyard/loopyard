@@ -47,7 +47,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
           <span class={[
             "min-w-0 break-words font-mono",
             a.active && "text-zinc-700 dark:text-zinc-200",
-            !a.active && "text-zinc-400 dark:text-zinc-500"
+            !a.active && "text-zinc-500 dark:text-zinc-400"
           ]}>
             {a.summary}
           </span>
@@ -254,7 +254,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
         phx-hook="Elapsed"
         phx-update="ignore"
         data-since={@turn_since}
-        class="text-sm text-zinc-400 dark:text-zinc-500 flex-none tabular-nums"
+        class="text-sm text-zinc-500 dark:text-zinc-400 flex-none tabular-nums"
       ></span>
       <span
         :if={@current_action}

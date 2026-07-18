@@ -50,7 +50,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Volumes do
         <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
           {@description || @volume_name}
         </span>
-        <span class="text-xs text-zinc-400 dark:text-zinc-500">
+        <span class="text-xs text-zinc-500 dark:text-zinc-400">
           {section_label(@volume_tab)}
         </span>
         <%!-- Volume info: desktop right rail + mobile "volume-context" sheet,
@@ -176,7 +176,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Volumes do
       <%!-- Breadcrumb --%>
       <div
         :if={@browse_path != "."}
-        class="px-4 py-2 flex items-center gap-1 text-xs text-zinc-400 dark:text-zinc-500 border-b border-zinc-200 dark:border-zinc-700/80"
+        class="px-4 py-2 flex items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400 border-b border-zinc-200 dark:border-zinc-700/80"
       >
         <.link
           patch={"#{@base_path}/volumes/#{@volume_name}/files"}
@@ -218,7 +218,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Volumes do
           <span class="flex items-center gap-2">
             <span
               :if={entry.type == :dir}
-              class="text-zinc-400 dark:text-zinc-500 text-xs w-4 text-center"
+              class="text-zinc-500 dark:text-zinc-400 text-xs w-4 text-center"
             >
               &#x25B8;
             </span>
@@ -238,7 +238,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Volumes do
           </span>
           <span
             :if={entry.type == :file}
-            class="text-xs text-zinc-400 dark:text-zinc-500 tabular-nums"
+            class="text-xs text-zinc-500 dark:text-zinc-400 tabular-nums"
           >
             {format_bytes(entry.size)}
           </span>
@@ -246,7 +246,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Volumes do
 
         <div
           :if={@file_tree == []}
-          class="px-4 py-6 text-sm text-zinc-400 dark:text-zinc-500 text-center"
+          class="px-4 py-6 text-sm text-zinc-500 dark:text-zinc-400 text-center"
         >
           Empty directory
         </div>

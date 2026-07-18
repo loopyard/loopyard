@@ -93,7 +93,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
         phx-click="remove_agent"
         phx-value-id={@agent.id}
         data-confirm={"Remove agent \"#{@agent.name}\"? Its session stops and it's removed from this workspace. The code in the volume is not touched."}
-        class="w-full text-left text-sm text-zinc-400 hover:text-red-600 dark:text-zinc-500 dark:hover:text-red-400 px-2 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
+        class="w-full text-left text-sm text-zinc-500 hover:text-red-600 dark:text-zinc-400 dark:hover:text-red-400 px-2 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
       >
         Remove agent
       </button>
@@ -313,7 +313,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
            restarts). Options are the CLI's stable aliases; the row shows the
            resolved human name as the current selection. --%>
       <div class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-6 text-sm">
-        <span class="text-zinc-500 dark:text-zinc-500 flex-none">Model</span>
+        <span class="text-zinc-500 dark:text-zinc-400 flex-none">Model</span>
         <form phx-change="set_agent_model" class="flex-none">
           <input type="hidden" name="id" value={@agent.id} />
           <select

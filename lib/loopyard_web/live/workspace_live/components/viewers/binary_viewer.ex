@@ -21,10 +21,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.BinaryViewer do
         </svg>
       </div>
       <div class="text-sm font-medium text-zinc-700 dark:text-zinc-300">{Path.basename(@path)}</div>
-      <div class="text-xs text-zinc-400 dark:text-zinc-500 mt-1">
+      <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
         Binary file — no preview available
       </div>
-      <div :if={@size} class="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">
+      <div :if={@size} class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
         {format_bytes(@size)}
       </div>
     </div>

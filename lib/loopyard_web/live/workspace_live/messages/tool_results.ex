@@ -51,7 +51,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
       class={[gutter(), "py-0.5 group/result"]}
       open={@detail_level == :trace || @is_error}
     >
-      <summary class="text-sm text-zinc-400 dark:text-zinc-500 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5">
+      <summary class="text-sm text-zinc-500 dark:text-zinc-400 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5">
         <span class="transition-transform group-open/result:rotate-90">▸</span>
         <span>{if @is_error, do: "error output", else: "output"} · {@line_count} {if @line_count == 1,
           do: "line",
@@ -60,7 +60,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
       <pre class={"mt-1 p-3 rounded-lg text-sm font-mono overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap
                    #{if @is_error, do: "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300", else: "bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-zinc-300"}"}>{Ansi.to_html(@display)}</pre>
       <div class="flex items-center gap-2 mt-1 h-5">
-        <p :if={@truncated} class="text-xs text-zinc-400 dark:text-zinc-500">
+        <p :if={@truncated} class="text-xs text-zinc-500 dark:text-zinc-400">
           ... {@line_count - @cap} more lines — open raw to see all
         </p>
         <.copy_btn :if={@raw} raw_url={@raw} />
@@ -133,16 +133,16 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
 
     ~H"""
     <details class={[gutter(), "py-0.5 group/file"]} open={@detail_level == :trace}>
-      <summary class="text-sm text-zinc-400 dark:text-zinc-500 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5">
+      <summary class="text-sm text-zinc-500 dark:text-zinc-400 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5">
         <span class="transition-transform group-open/file:rotate-90">▸</span>
         <span class="font-mono text-zinc-500 dark:text-zinc-400 truncate">{@path || "file"}</span>
-        <span :if={@language} class="text-zinc-400 dark:text-zinc-600">· {@language}</span>
-        <span class="text-zinc-400 dark:text-zinc-600">· {@line_count} lines</span>
+        <span :if={@language} class="text-zinc-500 dark:text-zinc-400">· {@language}</span>
+        <span class="text-zinc-500 dark:text-zinc-400">· {@line_count} lines</span>
       </summary>
       <div class="mt-1 rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800">
         <div class="max-h-96 overflow-auto text-sm font-mono leading-relaxed">
           <div :for={{line, i} <- @lines} class="flex">
-            <span class="flex-none w-10 pr-3 text-right text-zinc-400 dark:text-zinc-600 select-none tabular-nums">
+            <span class="flex-none w-10 pr-3 text-right text-zinc-500 dark:text-zinc-400 select-none tabular-nums">
               {i}
             </span>
             <code class="whitespace-pre text-zinc-800 dark:text-zinc-200">{line}</code>
@@ -150,7 +150,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
         </div>
       </div>
       <div class="flex items-center gap-2 mt-1 h-5">
-        <p :if={@truncated} class="text-xs text-zinc-400 dark:text-zinc-500">
+        <p :if={@truncated} class="text-xs text-zinc-500 dark:text-zinc-400">
           ... {@line_count - @cap} more lines
         </p>
         <a
@@ -190,7 +190,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
 
     ~H"""
     <details class={[gutter(), "py-0.5 group/grep"]} open={@detail_level == :trace}>
-      <summary class="text-sm text-zinc-400 dark:text-zinc-500 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5">
+      <summary class="text-sm text-zinc-500 dark:text-zinc-400 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5">
         <span class="transition-transform group-open/grep:rotate-90">▸</span>
         <span>{@match_count} {if @match_count == 1, do: "match", else: "matches"}</span>
       </summary>
@@ -202,7 +202,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
           >
             <%= case row do %>
               <% {:match, path, lno, text} -> %>
-                <span class="flex-none text-zinc-400 dark:text-zinc-600 select-none">
+                <span class="flex-none text-zinc-500 dark:text-zinc-400 select-none">
                   {path}<span class="text-violet-500 dark:text-violet-400">:{lno}</span>
                 </span>
                 <span class="whitespace-pre text-zinc-800 dark:text-zinc-200 truncate">{text}</span>
@@ -212,7 +212,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
           </div>
         </div>
       </div>
-      <p :if={@truncated} class="text-xs text-zinc-400 dark:text-zinc-500 mt-1">
+      <p :if={@truncated} class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
         ... {@total - @cap} more lines
       </p>
     </details>

@@ -55,7 +55,7 @@ defmodule LoopyardWeb.Components.SideNav do
             @variant == :section &&
               "text-sm tracking-wider text-zinc-500 dark:text-zinc-400 font-semibold",
             @variant == :sub &&
-              "text-xs tracking-wide text-zinc-400 dark:text-zinc-500 font-medium",
+              "text-xs tracking-wide text-zinc-500 dark:text-zinc-400 font-medium",
             "uppercase"
           ]}
         >
@@ -87,7 +87,7 @@ defmodule LoopyardWeb.Components.SideNav do
     ~H"""
     <div class="border-t border-zinc-200 dark:border-zinc-700/80 pt-3 pb-2 mb-1">
       <div class="px-5">
-        <div class="text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+        <div class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
           {@eyebrow}
         </div>
         <div class="flex items-center gap-2 mt-0.5">
@@ -212,7 +212,7 @@ defmodule LoopyardWeb.Components.SideNav do
   def info_row(assigns) do
     ~H"""
     <div class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-6 text-sm">
-      <span class="text-zinc-500 dark:text-zinc-500 flex-none">{@label}</span>
+      <span class="text-zinc-500 dark:text-zinc-400 flex-none">{@label}</span>
       <span class={[
         "truncate",
         if(@monospace, do: "font-mono"),
@@ -229,7 +229,7 @@ defmodule LoopyardWeb.Components.SideNav do
 
   def empty(assigns) do
     ~H"""
-    <p class="px-2 py-1 text-sm text-zinc-400 dark:text-zinc-500">{@text}</p>
+    <p class="px-2 py-1 text-sm text-zinc-500 dark:text-zinc-400">{@text}</p>
     """
   end
 end

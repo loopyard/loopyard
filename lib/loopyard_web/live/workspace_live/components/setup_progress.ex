@@ -132,7 +132,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.SetupProgress do
         <span class={[
           "text-sm",
           case @status do
-            :pending -> "text-zinc-400 dark:text-zinc-500"
+            :pending -> "text-zinc-500 dark:text-zinc-400"
             :running -> "text-zinc-900 dark:text-zinc-100"
             :complete -> "text-zinc-700 dark:text-zinc-300"
             :failed -> "text-red-600 dark:text-red-400"
@@ -171,7 +171,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.SetupProgress do
       </div>
       <p
         :if={Map.get(@progress, :current_file)}
-        class="text-xs text-zinc-400 dark:text-zinc-500 font-mono truncate"
+        class="text-xs text-zinc-500 dark:text-zinc-400 font-mono truncate"
       >
         {@progress.current_file}
       </p>

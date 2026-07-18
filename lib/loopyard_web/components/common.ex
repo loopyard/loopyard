@@ -385,7 +385,7 @@ defmodule LoopyardWeb.Components.Common do
       phx-hook="SoundIcon"
       aria-label="Sound"
       class={[
-        "flex-none inline-flex items-center justify-center w-11 h-11 rounded-lg text-zinc-400 dark:text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors",
+        "flex-none inline-flex items-center justify-center w-11 h-11 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors",
         @class
       ]}
     >

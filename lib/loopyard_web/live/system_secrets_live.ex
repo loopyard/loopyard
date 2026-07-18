@@ -125,7 +125,7 @@ defmodule LoopyardWeb.SystemSecretsLive do
             visible to the workspace or project IDs listed.
           </p>
 
-          <div :if={@secrets == []} class="text-sm text-zinc-400 dark:text-zinc-500 italic">
+          <div :if={@secrets == []} class="text-sm text-zinc-500 dark:text-zinc-400 italic">
             No secrets stored yet. Add one below, or an agent will prompt for one when it needs it.
           </div>
 
@@ -171,7 +171,7 @@ defmodule LoopyardWeb.SystemSecretsLive do
                     <span :if={@revealed[s.key]} class="text-zinc-800 dark:text-zinc-200 break-all">
                       {@revealed[s.key]}
                     </span>
-                    <span :if={!@revealed[s.key]} class="text-zinc-400 dark:text-zinc-600 select-none">
+                    <span :if={!@revealed[s.key]} class="text-zinc-500 dark:text-zinc-400 select-none">
                       ••••••••
                     </span>
                   </td>
@@ -262,7 +262,7 @@ defmodule LoopyardWeb.SystemSecretsLive do
                 autocomplete="off"
                 class="mt-1 w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
               />
-              <span class="text-[11px] text-zinc-400 dark:text-zinc-500 mt-1 block">
+              <span class="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 block">
                 Restrict which workspaces / projects can read this secret. Leave blank so every
                 agent can use it.
               </span>

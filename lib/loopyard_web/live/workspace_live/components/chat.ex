@@ -139,7 +139,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
 
       <Nav.switcher_sheet :if={@can_switch} id="nav-switcher" title="Switch workspace">
         <:current>
-          <span :if={@project} class="flex-none text-zinc-400 dark:text-zinc-500 truncate">
+          <span :if={@project} class="flex-none text-zinc-500 dark:text-zinc-400 truncate">
             {@project.name} /
           </span>
           <span class="flex-1 min-w-0 truncate font-semibold text-zinc-900 dark:text-zinc-100">
@@ -277,7 +277,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           </span>
           <span
             :if={@agent[:last_activity_at]}
-            class="text-sm text-zinc-400 dark:text-zinc-500 flex-none"
+            class="text-sm text-zinc-500 dark:text-zinc-400 flex-none"
           >
             {time_ago(@agent[:last_activity_at])}
           </span>
@@ -580,7 +580,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
            so it never needs a sentence or an alarm. --%>
         <div
           :if={(@agent[:context_utilization] || 0.0) >= 0.92}
-          class="flex items-center gap-1.5 text-sm text-zinc-400 dark:text-zinc-500"
+          class="flex items-center gap-1.5 text-sm text-zinc-500 dark:text-zinc-400"
         >
           <span class="flex-none">🗜</span>
           <span class="min-w-0">Compacting…</span>
@@ -725,7 +725,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   def container_panel(%{has_container: false} = assigns) do
     ~H"""
     <div class="flex-1 flex items-center justify-center">
-      <p class="text-base text-zinc-400 dark:text-zinc-500">No container running</p>
+      <p class="text-base text-zinc-500 dark:text-zinc-400">No container running</p>
     </div>
     """
   end

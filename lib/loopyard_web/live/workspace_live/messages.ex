@@ -220,7 +220,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   def chat_msg(%{msg: %{role: :thinking}} = assigns) do
     ~H"""
     <details class={[gutter(), "my-1 group"]} open={@detail_level == :trace}>
-      <summary class="text-sm text-zinc-400 dark:text-zinc-500 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none">
+      <summary class="text-sm text-zinc-500 dark:text-zinc-400 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none">
         💭 Reasoning
       </summary>
       <pre class="mt-1 p-3 rounded-lg text-sm font-mono bg-zinc-50 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 whitespace-pre-wrap max-h-60 overflow-y-auto">{@msg.content}</pre>
@@ -364,7 +364,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         <.icon name={:sparkle} class="w-3 h-3 text-violet-600 dark:text-violet-400" />
       </span>
       <span class="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Claude</span>
-      <span :if={@timestamp} class="text-sm text-zinc-400 dark:text-zinc-500">
+      <span :if={@timestamp} class="text-sm text-zinc-500 dark:text-zinc-400">
         · {Calendar.strftime(@timestamp, "%H:%M")}
       </span>
     </div>
@@ -447,7 +447,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     # apart (muted, italic-feel via the label) since it's inner monologue.
     ~H"""
     <div class="py-1">
-      <p class="text-sm text-zinc-400 dark:text-zinc-500 mb-1 font-medium uppercase tracking-wide">
+      <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-1 font-medium uppercase tracking-wide">
         Thinking
       </p>
       <pre class="text-sm text-zinc-500 dark:text-zinc-400 whitespace-pre-wrap leading-relaxed max-h-56 overflow-y-auto">{@text}</pre>

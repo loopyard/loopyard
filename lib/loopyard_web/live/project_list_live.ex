@@ -294,7 +294,7 @@ defmodule LoopyardWeb.ProjectListLive do
               </button>
             </form>
             <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 p-4">
-              <p class="text-[11px] text-zinc-400 dark:text-zinc-500 mb-1.5">
+              <p class="text-[11px] text-zinc-500 dark:text-zinc-400 mb-1.5">
                 Or run this from that folder in your terminal:
               </p>
               <div class="flex items-center gap-2">
@@ -323,7 +323,7 @@ defmodule LoopyardWeb.ProjectListLive do
             <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-5">
               Clone a repo to start, and sync back as it matures. The engine's built — the UI is next.
             </p>
-            <div class="rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 p-8 text-center text-sm text-zinc-400 dark:text-zinc-500">
+            <div class="rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 p-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
               Coming soon.
             </div>
           </div>

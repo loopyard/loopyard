@@ -211,7 +211,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatNav do
           label: s.name,
           dot: svc_dot(s),
           detail: svc_word(s),
-          tone: "text-zinc-400 dark:text-zinc-500",
+          tone: "text-zinc-500 dark:text-zinc-400",
           badge: nil
         }
     end

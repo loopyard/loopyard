@@ -170,7 +170,7 @@ defmodule LoopyardWeb.WorkstationToolLive do
           hint="On the machine where you're already logged in — it pipes the credential into this workstation."
         >
           <.command_box id="clip-mac" command={@mac_cmd} />
-          <div class="flex items-center gap-4 text-[11px] text-zinc-400 dark:text-zinc-500">
+          <div class="flex items-center gap-4 text-[11px] text-zinc-500 dark:text-zinc-400">
             <button
               phx-click="recheck"
               class="focus-ring hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
@@ -192,7 +192,7 @@ defmodule LoopyardWeb.WorkstationToolLive do
           <form :if={@ig.env} phx-submit="save_env" class="space-y-2">
             <div>
               <h3 class="text-xs font-medium text-zinc-700 dark:text-zinc-200">Set a token</h3>
-              <p class="text-[11px] text-zinc-400 dark:text-zinc-500">
+              <p class="text-[11px] text-zinc-500 dark:text-zinc-400">
                 Paste <span class="font-mono">{@ig.env}</span> — Restart to apply.
               </p>
             </div>

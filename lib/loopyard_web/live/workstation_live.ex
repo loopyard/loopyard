@@ -431,7 +431,7 @@ defmodule LoopyardWeb.WorkstationLive do
           >
             <li :for={k <- @other_env_keys} class="flex items-center gap-3 py-2">
               <span class="font-mono text-sm text-zinc-700 dark:text-zinc-300">{k}</span>
-              <span class="font-mono text-xs text-zinc-400 dark:text-zinc-600 select-none">
+              <span class="font-mono text-xs text-zinc-500 dark:text-zinc-400 select-none">
                 ••••••••
               </span>
               <button
@@ -459,7 +459,7 @@ defmodule LoopyardWeb.WorkstationLive do
               Copy
             </button>
           </div>
-          <p class="text-[11px] text-zinc-400 dark:text-zinc-500">
+          <p class="text-[11px] text-zinc-500 dark:text-zinc-400">
             Swap GITHUB_TOKEN for any key. On this machine you can drop the token entirely. Restart to apply — keep this command secret.
           </p>
         </.section>

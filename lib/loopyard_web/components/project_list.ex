@@ -60,7 +60,7 @@ defmodule LoopyardWeb.Components.ProjectList do
           ]}>
             {project.name}
           </h2>
-          <span class="ml-auto flex-none text-xs text-zinc-400 dark:text-zinc-500">
+          <span class="ml-auto flex-none text-xs text-zinc-500 dark:text-zinc-400">
             {length(project.workspaces)} {ws_word(length(project.workspaces))}
           </span>
         </.link>
@@ -107,7 +107,7 @@ defmodule LoopyardWeb.Components.ProjectList do
 
           <div
             :if={project.workspaces == []}
-            class="px-2 py-2 text-sm text-zinc-400 dark:text-zinc-500 italic"
+            class="px-2 py-2 text-sm text-zinc-500 dark:text-zinc-400 italic"
           >
             no workspaces
           </div>

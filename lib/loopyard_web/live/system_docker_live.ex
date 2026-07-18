@@ -151,7 +151,7 @@ defmodule LoopyardWeb.SystemDockerLive do
         <% !is_list(@containers) -> %>
           <.skeleton rows={4} />
         <% @containers == [] -> %>
-          <div class="text-sm text-zinc-400 dark:text-zinc-500">No loopyard-* containers running</div>
+          <div class="text-sm text-zinc-500 dark:text-zinc-400">No loopyard-* containers running</div>
         <% true -> %>
           <div class="rounded-lg border border-zinc-200 dark:border-zinc-700/80 overflow-hidden">
             <table class="w-full text-xs">
@@ -211,7 +211,7 @@ defmodule LoopyardWeb.SystemDockerLive do
         <% !is_list(@volumes) -> %>
           <.skeleton rows={4} />
         <% @volumes == [] -> %>
-          <div class="text-sm text-zinc-400 dark:text-zinc-500">No loopyard-* volumes</div>
+          <div class="text-sm text-zinc-500 dark:text-zinc-400">No loopyard-* volumes</div>
         <% true -> %>
           <div class="rounded-lg border border-zinc-200 dark:border-zinc-700/80 overflow-hidden">
             <table class="w-full text-xs">

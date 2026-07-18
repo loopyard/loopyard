@@ -476,7 +476,7 @@ defmodule LoopyardWeb.ProjectLive do
           <h2 class="text-lg font-semibold text-zinc-600 dark:text-zinc-300">
             Removing {@project.name}...
           </h2>
-          <p class="text-sm text-zinc-400 dark:text-zinc-500 mt-1">
+          <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
             Stopping containers and cleaning up volumes
           </p>
         </div>
@@ -494,7 +494,7 @@ defmodule LoopyardWeb.ProjectLive do
                 <h2 class="text-2xl font-semibold truncate text-zinc-900 dark:text-zinc-100">
                   {@project.name}
                 </h2>
-                <p class="text-xs md:text-sm font-mono text-zinc-400 dark:text-zinc-500 mt-1 truncate">
+                <p class="text-xs md:text-sm font-mono text-zinc-500 dark:text-zinc-400 mt-1 truncate">
                   {project_location(@project)}
                 </p>
               </div>
@@ -551,7 +551,7 @@ defmodule LoopyardWeb.ProjectLive do
                   </span>
                   <span
                     :if={workspace[:is_main]}
-                    class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 flex-none"
+                    class="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 flex-none"
                   >
                     default
                   </span>
@@ -593,7 +593,7 @@ defmodule LoopyardWeb.ProjectLive do
                 </p>
                 <p
                   :if={setup_phase in [:ready, nil] && workspace.status != :running}
-                  class="text-xs md:text-sm text-zinc-400 dark:text-zinc-500 mt-1.5"
+                  class="text-xs md:text-sm text-zinc-500 dark:text-zinc-400 mt-1.5"
                 >
                   Stopped
                 </p>
@@ -755,14 +755,14 @@ defmodule LoopyardWeb.ProjectLive do
 
       <div class="rounded-lg border border-zinc-200 dark:border-zinc-700 divide-y divide-zinc-200 dark:divide-zinc-700">
         <div class="px-4 py-3">
-          <div class="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-2">
+          <div class="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
             Directory to delete
           </div>
           <p class="text-sm font-mono text-zinc-600 dark:text-zinc-400">{@details.loopyard_dir}/</p>
           <ul :if={@details.generated_files != []} class="mt-1.5 space-y-0.5">
             <li
               :for={file <- @details.generated_files}
-              class="text-xs font-mono text-zinc-400 dark:text-zinc-500 pl-4"
+              class="text-xs font-mono text-zinc-500 dark:text-zinc-400 pl-4"
             >
               {file}
             </li>
@@ -773,7 +773,7 @@ defmodule LoopyardWeb.ProjectLive do
         </div>
 
         <div class="px-4 py-3">
-          <div class="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-2">
+          <div class="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
             Docker containers to stop
           </div>
           <%= if @details.containers != [] do %>
@@ -786,7 +786,7 @@ defmodule LoopyardWeb.ProjectLive do
               </li>
             </ul>
           <% else %>
-            <p class="text-sm text-zinc-400 dark:text-zinc-500">No running containers</p>
+            <p class="text-sm text-zinc-500 dark:text-zinc-400">No running containers</p>
           <% end %>
         </div>
       </div>
