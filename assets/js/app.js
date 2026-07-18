@@ -663,25 +663,22 @@ Hooks.ChatForm = {
       })
     }
 
-    // Submit semantics differ by input device:
-    //   DESKTOP (fine pointer / hardware keyboard): Enter sends, Shift+Enter
-    //   inserts a newline — the convention every chat app trained us on.
-    //   MOBILE (coarse pointer): the return key composes text; you send with
-    //   the arrow button or Cmd/Ctrl+Enter (external keyboard on a tablet).
-    // Cmd/Ctrl+Enter always sends, everywhere. `isComposing` guards IME users
-    // (Japanese/Chinese/Korean): Enter during composition picks a candidate,
-    // never fires the message.
-    // PRIMARY pointer only — `any-pointer` goes coarse the moment any touch
-    // device is attached (touchscreen monitor, tablet), which would silently
-    // flip a desktop back to enter-doesn't-send. A phone/tablet's primary
-    // pointer is coarse; a Mac's is fine, trackpad or not.
-    const coarse = window.matchMedia("(pointer: coarse)").matches
+    // Submit semantics, keyed to the LAYOUT (Tailwind's md breakpoint, 768px) —
+    // NOT pointer type. A desktop narrowed to a mobile viewport should behave
+    // like mobile (you're testing the mobile layout), and a real phone is
+    // always below the breakpoint, so this is right for both:
+    //   DESKTOP (≥768px): Enter sends · Shift+Enter newline
+    //   MOBILE  (<768px):  Enter newlines · you send with the button
+    // Cmd/Ctrl+Enter ALWAYS sends, everywhere. Evaluated live on each keydown
+    // so resizing the window flips behavior without a remount. `isComposing`
+    // guards IME users (CJK): Enter during composition picks a candidate.
+    const isDesktop = () => window.matchMedia("(min-width: 768px)").matches
     ta.addEventListener("keydown", (e) => {
       if (e.key !== "Enter" || e.isComposing) return
-      if (e.metaKey || e.ctrlKey) { e.preventDefault(); send(); return }
-      if (coarse) return                                  // mobile: Enter = newline
-      if (e.shiftKey) return                              // desktop: Shift+Enter = newline
-      e.preventDefault(); send()                          // desktop: Enter = send
+      if (e.metaKey || e.ctrlKey) { e.preventDefault(); send(); return }  // ⌘/⌃+Enter: always send
+      if (!isDesktop()) return                                            // mobile: Enter = newline
+      if (e.shiftKey) return                                              // desktop: Shift+Enter = newline
+      e.preventDefault(); send()                                          // desktop: Enter = send
     })
 
     // Auto-resize textarea + clear any stale "send failed" notice as you edit
