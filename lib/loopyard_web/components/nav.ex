@@ -238,10 +238,12 @@ defmodule LoopyardWeb.Components.Nav do
   attr :title, :string, default: "Switch"
   attr :current, :map, default: nil
   attr :items, :list, default: []
-  # When set, a consistent "details" button trailing the switcher opens this
-  # bottom sheet (by id) — the ONE affordance for "more about this thing",
-  # identical across agents / services / files.
-  attr :details_sheet, :string, default: nil
+  # When true, a consistent "details" TOGGLE trails the switcher — the ONE
+  # affordance for "more about this thing", identical across agents / services /
+  # files. It flips the surface content for the detail panel IN PLACE (flat,
+  # in-flow, scrolls with the viewport); tap again to flip back. See
+  # `toggle_details/0` + the `#surface` / `#mobile-detail` container ids.
+  attr :has_details, :boolean, default: false
   slot :tabs
   slot :extra
 
@@ -265,15 +267,16 @@ defmodule LoopyardWeb.Components.Nav do
         </span>
         <.chevron_down class="w-4 h-4 text-zinc-400 dark:text-zinc-500 flex-none" />
       </button>
-      <%!-- Details: the consistent slide-up-panel affordance for the selected
-           thing (agent usage / service actions / volume info). Same icon
-           everywhere, sits with the switcher because it expands what the
-           switcher names. --%>
+      <%!-- Details TOGGLE for the selected thing (agent usage / service actions /
+           volume info). Same icon + behaviour everywhere; sits with the switcher
+           because it expands what the switcher names. Tap → the detail replaces
+           the surface in place (flat, scrolls with the viewport); tap → back. --%>
       <button
-        :if={@current && @details_sheet}
+        :if={@current && @has_details}
+        id="section-details-toggle"
         type="button"
-        phx-click={open_sheet(@details_sheet)}
-        aria-label="Details"
+        phx-click={toggle_details()}
+        aria-label="Toggle details"
         class="flex-none inline-flex items-center justify-center w-11 h-11 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors"
       >
         <.details_icon class="w-5 h-5" />
@@ -474,6 +477,22 @@ defmodule LoopyardWeb.Components.Nav do
   def close_sheet(id), do: JS.dispatch("sheet:close", to: "##{id}-panel")
 
   @doc """
+  Toggle the FLAT inline detail panel against the surface content (mobile). The
+  detail (`#mobile-detail`) and surface (`#surface`) swap display in place — no
+  overlay, no separate scroll container, so it scrolls with the surface
+  viewport. `md:!` classes on the containers pin the desktop layout so this
+  mobile toggle never affects it. The toggle button lights up while open.
+  """
+  def toggle_details do
+    JS.toggle(to: "#mobile-detail", display: "block")
+    |> JS.toggle(to: "#surface", display: "flex")
+    |> JS.toggle_class(
+      "!bg-violet-100 dark:!bg-violet-500/15 !text-violet-600 dark:!text-violet-400",
+      to: "#section-details-toggle"
+    )
+  end
+
+  @doc """
   Classes for a big-tap-target row inside a `switcher_sheet/1`. Active row is a
   violet highlight; comfortable 3.25rem height for a thumb.
   """
@@ -534,14 +553,17 @@ defmodule LoopyardWeb.Components.Nav do
     """
   end
 
-  @doc "The ONE 'open the detail panel' icon — a side panel — used everywhere."
+  @doc "The ONE 'toggle details' icon — an info glyph — used everywhere."
   attr :class, :string, default: "w-5 h-5"
 
   def details_icon(assigns) do
     ~H"""
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class={@class}>
-      <rect x="3" y="4" width="18" height="16" rx="2" />
-      <line x1="15" y1="4" x2="15" y2="20" />
+    <svg viewBox="0 0 20 20" fill="currentColor" class={@class}>
+      <path
+        fill-rule="evenodd"
+        d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-7-4a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM9 9a.75.75 0 0 0 0 1.5h.253a.25.25 0 0 1 .244.304l-.459 2.066A1.75 1.75 0 0 0 10.747 15H11a.75.75 0 0 0 0-1.5h-.253a.25.25 0 0 1-.244-.304l.459-2.066A1.75 1.75 0 0 0 9.253 9H9Z"
+        clip-rule="evenodd"
+      />
     </svg>
     """
   end

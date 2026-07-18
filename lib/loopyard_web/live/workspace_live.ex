@@ -1659,7 +1659,30 @@ defmodule LoopyardWeb.WorkspaceLive do
           id="main-content"
           class={"flex-1 flex flex-col min-w-0 #{if @live_action == :index && !@selected_id && !@selected_service, do: "hidden md:flex", else: "flex"}"}
         >
-          <.main_content {assigns} />
+          <%!-- MOBILE inline detail: flat, in the surface's own scroll flow.
+               Nav.toggle_details/0 swaps this ⇄ #surface in place (tap the info
+               button to open, tap again to close). `md:!hidden` pins it off on
+               desktop (the right rail owns detail there); starts hidden. --%>
+          <div id="mobile-detail" class="hidden md:!hidden flex-1 min-h-0 overflow-y-auto">
+            <LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts.mobile_detail_inline
+              selected_agent={@selected_agent}
+              selected_service={@selected_service}
+              selected_volume={@selected_volume}
+              service_statuses={@service_statuses}
+              volumes={@volumes}
+              changes={@changes}
+              editing_name={@editing_name}
+              base_path={@base_path}
+              host={@host}
+              live_action={@live_action}
+              streaming_text={@streaming_text}
+            />
+          </div>
+          <%!-- The surface content. `md:!flex` keeps it visible on desktop even
+               if the mobile toggle left `display:none` on it. --%>
+          <div id="surface" class="flex-1 flex flex-col min-h-0 md:!flex">
+            <.main_content {assigns} />
+          </div>
         </main>
         <%!-- RIGHT rail: Agents/Services/Volumes nav + the selected agent's
              context (model, tokens, cost). The old left sidebar, flipped. --%>
@@ -1693,24 +1716,8 @@ defmodule LoopyardWeb.WorkspaceLive do
           }
         />
       </div>
-
-      <%!-- MOBILE: agent / service / volume detail bottom-sheets — the right rail
-           is desktop-only, so this is how a phone reaches every detail. Opened by
-           the section switcher's details button. Same content as the desktop
-           rail; extracted to DetailContexts for the module-size invariant. --%>
-      <LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts.mobile_detail_sheets
-        selected_agent={@selected_agent}
-        selected_service={@selected_service}
-        selected_volume={@selected_volume}
-        service_statuses={@service_statuses}
-        volumes={@volumes}
-        changes={@changes}
-        editing_name={@editing_name}
-        base_path={@base_path}
-        host={@host}
-        live_action={@live_action}
-        streaming_text={@streaming_text}
-      />
+      <%!-- The mobile detail lives INLINE in #main-content now (flat, toggled by
+           Nav.toggle_details/0) — no bottom sheets. --%>
     </div>
     """
   end

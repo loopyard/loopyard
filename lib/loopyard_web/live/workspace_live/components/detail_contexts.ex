@@ -15,13 +15,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
   import LoopyardWeb.Components.SideNav, only: [section: 1, info_row: 1, detail_title: 1]
   import LoopyardWeb.Components.Common, only: [control_btn: 1]
 
-  import LoopyardWeb.Components.Sidebar,
-    only: [service_dot: 1, first_host_port: 1, status_dot: 1, agent_display_status: 1]
+  import LoopyardWeb.Components.Sidebar, only: [service_dot: 1, first_host_port: 1]
 
   import LoopyardWeb.Live.WorkspaceLive.Components.Formatters,
     only: [derive_volume_description: 1]
 
-  alias LoopyardWeb.Components.Nav
   alias LoopyardWeb.Live.WorkspaceLive.Components.{ChatStatus, ContextPanel}
 
   @volume_actions [
@@ -37,10 +35,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
   ]
 
   @doc """
-  The three MOBILE detail bottom-sheets — agent / service / volume — opened by
-  the section switcher's details button (`Nav.open_sheet/1`). Each renders the
-  SAME content as the desktop right rail, so the phone reaches every detail the
-  desktop does. Extracted from WorkspaceLive's render for the size invariant.
+  The MOBILE detail panel — agent / service / volume — rendered FLAT and inline
+  (no sheet, no overlay), so `Nav.toggle_details/0` can swap it for the surface
+  content in place and it scrolls with the viewport. Same content as the desktop
+  right rail, so the phone reaches every detail the desktop does. Lives in the
+  `#mobile-detail` container (hidden until toggled).
   """
   attr :selected_agent, :map, default: nil
   attr :selected_service, :string, default: nil
@@ -54,74 +53,41 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
   attr :live_action, :atom, default: :index
   attr :streaming_text, :string, default: ""
 
-  def mobile_detail_sheets(assigns) do
+  def mobile_detail_inline(assigns) do
     # @volume_actions is a MODULE attribute — resolve it here (in the function
     # body) into an assign; inside ~H, `@volume_actions` would read as a
     # (missing) assign and `@live_action in nil` crashes.
     assigns = assign(assigns, :volume_route?, assigns.live_action in @volume_actions)
 
     ~H"""
-    <Nav.bottom_sheet
-      :if={@selected_agent}
-      id="agent-context"
-      title={@selected_agent[:name] || "Agent"}
-    >
-      <:current>
-        <span class={"w-2 h-2 rounded-full flex-none #{status_dot(agent_display_status(@selected_agent))}"}>
-        </span>
-        <span class="flex-1 min-w-0 truncate font-semibold text-zinc-900 dark:text-zinc-100">
-          {@selected_agent[:name] || "Agent"}
-        </span>
-      </:current>
+    <div class="pb-6">
       <ContextPanel.context_sections
+        :if={@selected_agent}
         agent={@selected_agent}
         changes={@changes}
         editing_name={@editing_name}
         base_path={@base_path}
-        in_sheet
         live_token_est={ChatStatus.token_estimate(@streaming_text)}
       />
-    </Nav.bottom_sheet>
-
-    <Nav.bottom_sheet
-      :if={@selected_service && @live_action in [:service, :console]}
-      id="service-context"
-      title={@selected_service || "Service"}
-    >
-      <:current>
-        <span class={"w-2 h-2 rounded-full flex-none #{service_dot(find_service(@service_statuses, @selected_service))}"}>
-        </span>
-        <span class="flex-1 min-w-0 truncate font-semibold text-zinc-900 dark:text-zinc-100">
-          {@selected_service}
-        </span>
-      </:current>
-      <%!-- nil (not the status-only fallback) so service_context's `svc && …`
-           short-circuits — the fallback map has no :ports and would KeyError. --%>
+      <%!-- nil (not a status-only fallback) so service_context's `svc && …`
+           short-circuits — a fallback map has no :ports and would KeyError. --%>
       <.service_context
+        :if={@selected_service && @live_action in [:service, :console]}
         svc={Enum.find(@service_statuses, &(&1.name == @selected_service))}
         service_name={@selected_service}
         base_path={@base_path}
         host={@host}
       />
-    </Nav.bottom_sheet>
-
-    <Nav.bottom_sheet
-      :if={@selected_volume && @volume_route?}
-      id="volume-context"
-      title="Volume info"
-    >
       <.volume_context
+        :if={@selected_volume && @volume_route?}
         vol={Enum.find(@volumes, &(&1.name == @selected_volume))}
         volume_name={@selected_volume}
         base_path={@base_path}
         changes={@changes}
       />
-    </Nav.bottom_sheet>
+    </div>
     """
   end
-
-  defp find_service(statuses, name),
-    do: Enum.find(statuses, &(&1.name == name)) || %{status: :unknown}
 
   # --- Zone B detail: SERVICE ---
   # The selected service's detail: status/URL/connection + EVERY action

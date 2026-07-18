@@ -158,7 +158,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
         title={section_title(@active)}
         current={@current}
         items={@items}
-        details_sheet={@details_sheet}
+        has_details={@details_sheet != nil}
       >
         <:tabs>
           <Nav.segmented items={@section_tabs} label="Workspace section" />
