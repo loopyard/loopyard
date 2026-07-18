@@ -14,6 +14,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
   alias LoopyardWeb.Live.WorkspaceLive.Components.Viewers.{FileType, Syntax}
 
   import LoopyardWeb.Live.WorkspaceLive.Messages.Actions, only: [copy_btn: 1, open_btn: 1]
+  import LoopyardWeb.Components.LogViewer, only: [log_inline: 1]
 
   # Same flush-left gutter seam as Messages (returns "" today).
   defp gutter, do: ""
@@ -69,6 +70,49 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
     </details>
     """
   end
+
+  @doc """
+  True when this tool_result came from a CLI-COMMAND tool that ran a shell
+  command but did NOT stream (git today) — so its output should render as the
+  SAME console box as exec / docker builds (`log_inline`): the command as the
+  title bar, the output in the body, a green `exit 0` / red `exit ✗` status.
+  Exec/docker already stream that way; this brings git in line.
+  """
+  def console_command_result?(assigns) do
+    case matching_tool_call(assigns) do
+      %{role: :tool, tool: tool} when is_binary(tool) -> String.ends_with?(tool, "__git")
+      _ -> false
+    end
+  end
+
+  @doc "Render a CLI-command tool_result as the shared console box (see console_command_result?/1)."
+  def chat_msg_console_result(assigns) do
+    call = matching_tool_call(assigns)
+
+    assigns =
+      assign(assigns,
+        command: console_command_label(call),
+        cli_status: if(assigns.msg.is_error, do: :failed, else: :done),
+        link: Messages.msg_url(assigns)
+      )
+
+    ~H"""
+    <div class={gutter()}>
+      <.log_inline content={@msg.content} status={@cli_status} title={@command} raw_url={@link} />
+    </div>
+    """
+  end
+
+  # The "$"-style command line for the console title bar, reconstructed from the
+  # matching tool call. git input carries the subcommand ("status", "diff main").
+  defp console_command_label(%{tool: tool, input: input}) when is_binary(tool) do
+    cond do
+      String.ends_with?(tool, "__git") -> "git " <> to_string(input["command"] || "")
+      true -> to_string(input["command"] || tool)
+    end
+  end
+
+  defp console_command_label(_), do: nil
 
   # Classify a tool_result by the tool that produced it, so the dispatcher can
   # pick a rich renderer. Only the shapes we have a card for; everything else is

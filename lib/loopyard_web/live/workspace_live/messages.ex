@@ -46,6 +46,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       chat_msg_file_result: 1,
       chat_msg_grep_result: 1,
       chat_msg_port_closed: 1,
+      console_command_result?: 1,
+      chat_msg_console_result: 1,
       miniapp_tool?: 1,
       miniapp_tool_result?: 1,
       streamed_exec_result?: 1
@@ -257,6 +259,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       is_binary(content) && String.contains?(content, "port is local-only") ->
         chat_msg_port_closed(assigns)
 
+      # CLI-command tool (git) that didn't stream — render it as the SAME
+      # console box as exec / docker builds: command + output + exit status.
+      console_command_result?(assigns) ->
+        chat_msg_console_result(assigns)
+
       true ->
         # Rich cards for the tools whose output has an obvious shape: a file read
         # becomes syntax-highlighted code with a filename header; a grep becomes
@@ -371,8 +378,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     """
   end
 
+  # Tools whose command+output render as a console box (log_inline), so the raw
+  # "verb summary" tool-call row is suppressed — the console box IS the single
+  # representation of the command. git joins exec/docker_compose so every CLI
+  # source looks the same (command title + output + exit status).
   defp console_command_tool?(tool) when is_binary(tool),
-    do: String.ends_with?(tool, "__exec") or String.ends_with?(tool, "__docker_compose")
+    do:
+      String.ends_with?(tool, "__exec") or String.ends_with?(tool, "__docker_compose") or
+        String.ends_with?(tool, "__git")
 
   defp console_command_tool?(_), do: false
 

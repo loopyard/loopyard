@@ -363,7 +363,7 @@ defmodule LoopyardWeb.Components.Nav do
       class={["focus-ring min-w-0 inline-flex items-center gap-0.5 rounded", crumb_label_class(@current)]}
     >
       <span class="truncate">{@label}</span>
-      <.chevron_down :if={@chevron} class="w-4 h-4 flex-none opacity-60" aria-hidden="true" />
+      <.chevron_down :if={@chevron} class="w-4 h-4 flex-none opacity-60" />
     </button>
     <.link :if={!@switch? && @href} navigate={@href} class={crumb_label_class(@current)}>
       {@label}

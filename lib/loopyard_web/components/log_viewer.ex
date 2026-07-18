@@ -95,7 +95,7 @@ defmodule LoopyardWeb.Components.LogViewer do
     <div
       id={"log-wrap-#{System.unique_integer([:positive])}"}
       phx-hook="LogExpand"
-      class="mt-2 mb-1 ml-5 rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden bg-zinc-100 dark:bg-zinc-950"
+      class="mt-2 mb-1 rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden bg-zinc-100 dark:bg-zinc-950"
     >
       <%!-- Terminal title bar: the COMMAND is the title (one line, truncated — long
            commands don't wrap and wreck the layout; hover for the full text). It
