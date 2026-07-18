@@ -20,8 +20,10 @@ defmodule LoopyardWeb.ProjectListLiveTest do
       assert html =~ "New project"
     end
 
-    test "shows Remote and System links in header", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/workspaces")
+    test "home dashboard surfaces Remote and System", %{conn: conn} do
+      # The Remote/System chrome moved off the workspaces list onto the home
+      # dashboard (commit 6450c3d dropped the top nav; they're cards on "/" now).
+      {:ok, _view, html} = live(conn, "/")
       assert html =~ "Remote"
       assert html =~ "System"
     end

@@ -626,7 +626,13 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
       end)
 
       state = Loopyard.ChatAgent.get_state(id)
-      assert state.bind_mount == ws.path
+      # The agent is bound to the workspace via working_dir. bind_mount is
+      # ALWAYS nil now — CONTAINMENT: every agent runs its harness in-container
+      # with no host bind-mount, even when one is passed (see SECURITY.md /
+      # init_fresh). Asserting host bind_mount == ws.path would assert the
+      # host-access behavior we deliberately removed.
+      assert state.working_dir == ws.path
+      assert state.bind_mount == nil
     end
   end
 
@@ -753,23 +759,34 @@ defmodule LoopyardWeb.WorkspaceLiveTest do
       setup_agent_id: agent_id
     } do
       base = "/projects/#{ws.project_id}/workspaces/#{ws.id}"
-      {:ok, view, html} = live(conn, "#{base}/agents/#{agent_id}")
+      {:ok, view, _html} = live(conn, "#{base}/agents/#{agent_id}")
+      # Wait for the mount's async agent selection to settle — otherwise the
+      # details toggle button (:if={@current …}) isn't in the render yet and the
+      # DOM assertions race the settle (this test was order-dependent-flaky).
+      wait_for_assign(view, :selected_agent, &(&1 != nil))
 
-      # Closed by default.
-      assert html =~ ~s(aria-pressed="false")
+      # Closed by default. The details toggle (nav.ex) is the only element that
+      # renders a literal aria-pressed="…" (the detail-level control renders a
+      # bare boolean attribute), so =~ targets it unambiguously.
+      assert render(view) =~ ~s(aria-pressed="false")
 
-      # Toggle on → button pressed + the inline detail panel shows (block).
-      html = render_click(view, "toggle_mobile_detail")
-      assert html =~ ~s(aria-pressed="true")
+      # Toggle on → server assign flips; the DOM reflects it.
+      render_click(view, "toggle_mobile_detail")
+      wait_for_assign(view, :mobile_detail_open, & &1)
+      assert render(view) =~ ~s(aria-pressed="true")
 
       # Navigate to the Files surface WHILE open (same LiveView, patch). The
-      # toggle is a server assign, so it SURVIVES the navigation — still open.
-      html = render_patch(view, "#{base}/volumes/loopyard-#{ws.id}-code/files")
-      assert html =~ ~s(aria-pressed="true")
+      # toggle is a SERVER assign, so it SURVIVES the navigation — still open.
+      render_patch(view, "#{base}/volumes/loopyard-#{ws.id}-code/files")
+      assert :sys.get_state(view.pid).socket.assigns.mobile_detail_open
 
-      # Toggle off → back to the surface.
-      html = render_click(view, "toggle_mobile_detail")
-      assert html =~ ~s(aria-pressed="false")
+      # Toggle off → back to the surface. Assert the server assign (the DOM
+      # reflection was already verified on the agent route above; the details
+      # button's presence on the files surface depends on a selected volume,
+      # which isn't what this assertion is about).
+      render_click(view, "toggle_mobile_detail")
+      wait_for_assign(view, :mobile_detail_open, &(&1 == false))
+      refute :sys.get_state(view.pid).socket.assigns.mobile_detail_open
     end
   end
 
