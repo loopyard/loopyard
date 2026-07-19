@@ -44,26 +44,35 @@ defmodule LoopyardWeb.Components.ProjectList do
     ~H"""
     <div class={@outer_gap}>
       <section :for={project <- @projects}>
-        <%!-- Project header: large name, count on the right. STICKY so it pins
-             while its workspaces scroll beneath it — the solid (opaque) bg alone
-             covers rows sliding UNDER it; no shadow (that read as a stray line
-             when nothing was scrolled). Works in every scroll context. --%>
-        <.link
-          navigate={"/projects/#{project.id}"}
-          phx-click={@row_click}
+        <%!-- Project header: large name (link) + a quiet "new workspace" + on the
+             right. The workspace COUNT is gone — most projects have one, so the
+             number was just noise; the + is a useful action instead. STICKY so it
+             pins while its workspaces scroll beneath it; opaque bg covers rows
+             sliding under; shadow only when actually stuck. --%>
+        <div
           data-sticky-header
-          class="group sticky top-0 z-10 flex items-baseline gap-2 bg-white dark:bg-zinc-900 pt-1 pb-0.5 transition-shadow data-[stuck]:shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]"
+          class="sticky top-0 z-10 flex items-center gap-1 bg-white dark:bg-zinc-900 pt-1 pb-1 transition-shadow data-[stuck]:shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]"
         >
-          <h2 class={[
-            @name_class,
-            "font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 truncate group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors"
-          ]}>
-            {project.name}
-          </h2>
-          <span class="ml-auto flex-none text-xs text-zinc-500 dark:text-zinc-400">
-            {length(project.workspaces)} {ws_word(length(project.workspaces))}
-          </span>
-        </.link>
+          <.link navigate={"/projects/#{project.id}"} phx-click={@row_click} class="group min-w-0 flex-1">
+            <h2 class={[
+              @name_class,
+              "font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 truncate group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors"
+            ]}>
+              {project.name}
+            </h2>
+          </.link>
+          <.link
+            navigate={"/projects/#{project.id}/new"}
+            phx-click={@row_click}
+            aria-label={"New workspace in #{project.name}"}
+            title="New workspace"
+            class="focus-ring flex-none inline-flex items-center justify-center w-7 h-7 -my-0.5 rounded-md text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-colors"
+          >
+            <svg viewBox="0 0 16 16" fill="currentColor" class="w-4 h-4" aria-hidden="true">
+              <path d="M8.75 3.75a.75.75 0 0 0-1.5 0v3.5h-3.5a.75.75 0 0 0 0 1.5h3.5v3.5a.75.75 0 0 0 1.5 0v-3.5h3.5a.75.75 0 0 0 0-1.5h-3.5v-3.5Z" />
+            </svg>
+          </.link>
+        </div>
 
         <%!-- Workspaces: NO boxes. The status dot left-aligns to the project name;
              a subtle gap between rows; just a quiet highlight on the current/hover
@@ -81,28 +90,25 @@ defmodule LoopyardWeb.Components.ProjectList do
               ws.id == @current_workspace_id && "bg-violet-100 dark:bg-violet-500/15"
             ]}
           >
-            <%!-- aggregate_dot is nil for a no-agent workspace — neutral gray
-                 fallback so every row has a status bubble. Left-aligned with the
-                 project name above. --%>
+            <%!-- ONE clean line, mirroring the Agents/Services/Files bar: dot +
+                 name on the left; the right cluster carries the public port and a
+                 concise agent-status word. aggregate_dot is nil for a no-agent
+                 workspace → neutral gray so every row still has a status bubble. --%>
             <Birdseye.dot
               class={Birdseye.aggregate_dot(ws.agents) || "bg-zinc-300 dark:bg-zinc-600"}
               size={:md}
             />
-            <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-2">
-                <span class={[
-                  @ws_name_class,
-                  "font-medium text-zinc-900 dark:text-zinc-100 truncate group-hover/ws:text-violet-600 dark:group-hover/ws:text-violet-400 transition-colors"
-                ]}>{ws.name}</span>
-                <span
-                  :for={p <- ws.ports}
-                  class="flex-none font-mono text-xs text-emerald-600 dark:text-emerald-400"
-                >
-                  :{p.port}
-                </span>
-              </div>
-              <div class="text-xs text-zinc-500 dark:text-zinc-400 truncate">{ws_summary(ws)}</div>
-            </div>
+            <span class={[
+              @ws_name_class,
+              "min-w-0 flex-1 truncate font-medium text-zinc-900 dark:text-zinc-100 group-hover/ws:text-violet-600 dark:group-hover/ws:text-violet-400 transition-colors"
+            ]}>{ws.name}</span>
+            <span
+              :for={p <- ws.ports}
+              class="flex-none font-mono text-xs text-emerald-600 dark:text-emerald-400"
+            >
+              :{p.port}
+            </span>
+            <span class="flex-none text-xs text-zinc-500 dark:text-zinc-400">{ws_status(ws)}</span>
           </.link>
 
           <div
@@ -121,9 +127,6 @@ defmodule LoopyardWeb.Components.ProjectList do
     """
   end
 
-  defp ws_word(1), do: "workspace"
-  defp ws_word(_), do: "workspaces"
-
   # Link straight to an agent when the workspace has one — one navigation lands on
   # the chat, avoiding the workspace :index render-then-redirect flicker. Empty
   # workspace → its :index (which spawns an agent).
@@ -133,15 +136,14 @@ defmodule LoopyardWeb.Components.ProjectList do
 
   defp workspace_href(project_id, ws), do: "/projects/#{project_id}/workspaces/#{ws.id}"
 
-  # One compact line under the workspace name: who's here + what they're doing.
-  defp ws_summary(%{agents: []}), do: "no agent yet"
+  # Right-aligned agent-status word for a workspace row. The dot already carries
+  # the color; this is the concise word (idle / crashed / working). A single
+  # agent shows its state; multiple show the count; none shows "no agent".
+  defp ws_status(%{agents: []}), do: "no agent"
+  defp ws_status(%{agents: [agent]}), do: status_word(agent[:status])
 
-  defp ws_summary(%{agents: [agent]}) do
-    "#{agent.name} · #{status_word(agent[:status])}"
-  end
-
-  defp ws_summary(%{agents: agents}) do
-    working = Enum.count(agents, &(&1.status == :thinking))
+  defp ws_status(%{agents: agents}) do
+    working = Enum.count(agents, &(&1[:status] == :thinking))
     base = "#{length(agents)} agents"
     if working > 0, do: "#{base} · #{working} working", else: base
   end
