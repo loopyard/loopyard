@@ -126,7 +126,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
           </div>
           <%!-- Clamp to a few lines: the prompt is a sticky HEADER, so a long
                paste must stay header-sized (full text via the ↗ link). --%>
-          <div class="markdown-body text-sm md:text-base leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-3xl line-clamp-3">
+          <div class="markdown-body text-lg md:text-base leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-3xl line-clamp-3">
             {Loopyard.Markdown.to_html(@msg.content)}
           </div>
         </div>
