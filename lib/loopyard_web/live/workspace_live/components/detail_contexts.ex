@@ -121,12 +121,25 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
       name={@service_name}
       dot={@svc && service_dot(@svc)}
       status={svc_status_label(@svc)}
-      status_class={svc_status_color(@svc)}
+      status_class={svc_status_pill(@svc)}
     >
       <:facts :if={@first_port}>
         :{@first_port} · {if @exposed?, do: "Network", else: "Local only"}
       </:facts>
     </.detail_hero>
+
+    <%!-- What the service IS — image + type. Always present (every service has an
+         image), so it also gives a portless service real middle content. --%>
+    <.section :if={@svc && (svc_image(@svc) || svc_type(@svc))} label="Service">
+      <.info_row
+        :if={svc_image(@svc)}
+        label="Image"
+        value={svc_image(@svc)}
+        monospace
+        class="text-zinc-700 dark:text-zinc-300"
+      />
+      <.info_row :if={svc_type(@svc)} label="Kind" value={svc_kind_label(svc_type(@svc))} />
+    </.section>
 
     <%!-- Connection details only when there ARE any (a port or container port).
          A portless service (e.g. `work`) has none — status lives in the hero —
@@ -194,8 +207,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
           Start
         </.control_btn>
 
-        <%!-- SECONDARY: 2-up grid, only while running. --%>
-        <div :if={@running?} class="grid grid-cols-2 gap-1.5">
+        <%!-- SECONDARY: full-width single column on mobile (big tap targets),
+             2-up grid on the desktop rail where space is tight. --%>
+        <div :if={@running?} class="grid grid-cols-1 md:grid-cols-2 gap-1.5">
           <.control_btn
             phx-click="restart_service"
             phx-value-service_name={@service_name}
@@ -232,6 +246,28 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
     """
   end
 
+  # Pill classes (bg + text) for the hero status badge — mirrors service_dot/1.
+  defp svc_status_pill(%{status: :running}),
+    do: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+
+  defp svc_status_pill(%{status: :crashed}), do: "bg-red-500/15 text-red-600 dark:text-red-400"
+
+  defp svc_status_pill(%{status: :starting}),
+    do: "bg-blue-500/15 text-blue-700 dark:text-blue-400"
+
+  defp svc_status_pill(_), do: "bg-zinc-500/15 text-zinc-600 dark:text-zinc-300"
+
+  # Safe field access — @svc is a %Service{} struct (no Access protocol), so
+  # `svc[:image]` would crash at render; Map.get works on struct AND plain map.
+  defp svc_image(svc), do: Map.get(svc, :image)
+  defp svc_type(svc), do: Map.get(svc, :type)
+
+  # Human label for a service's inferred kind.
+  defp svc_kind_label(:stock), do: "Stock service"
+  defp svc_kind_label(:process), do: "App process"
+  defp svc_kind_label(:code), do: "Code volume"
+  defp svc_kind_label(other), do: other |> to_string() |> String.capitalize()
+
   # Human status word for a service, and its text color — mirrors service_dot/1.
   defp svc_status_label(nil), do: "—"
   defp svc_status_label(%{status: :running}), do: "Running"
@@ -239,13 +275,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
   defp svc_status_label(%{status: :crashed}), do: "Crashed"
   defp svc_status_label(%{status: :stopped}), do: "Stopped"
   defp svc_status_label(%{status: s}), do: s |> to_string() |> String.capitalize()
-
-  defp svc_status_color(%{status: :running}),
-    do: "font-medium text-emerald-600 dark:text-emerald-400"
-
-  defp svc_status_color(%{status: :crashed}), do: "font-medium text-red-500"
-  defp svc_status_color(%{status: :starting}), do: "font-medium text-blue-500 dark:text-blue-400"
-  defp svc_status_color(_), do: "font-medium text-zinc-500 dark:text-zinc-400"
 
   # --- Zone B detail: VOLUME (the "Info" home) ---
   # Files / Changes / History are switcher items; what remains here is the

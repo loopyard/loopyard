@@ -62,7 +62,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     <%!-- STICKY HERO: the selected agent's identity + LIVE state, pinned to the
          top of the detail zone so scrolling the sections below never loses which
          agent you're on. Status word flush-right; model · tokens · cost inline. --%>
-    <.detail_hero eyebrow="Agent" name={@agent.name} dot={@hs.dot} status={@hs.label} status_class={@hs.text}>
+    <.detail_hero
+      eyebrow="Agent"
+      name={@agent.name}
+      dot={@hs.dot}
+      status={@hs.label}
+      status_class={"#{@hs.bg} #{@hs.text}"}
+    >
       <:facts>
         {short_model(@agent[:model]) || "default"}
         · {if @estimating?, do: "~"}{compact_number(@total_tokens)} tok

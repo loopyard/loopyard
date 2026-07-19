@@ -112,22 +112,35 @@ defmodule LoopyardWeb.Components.SideNav do
   attr :eyebrow, :string, required: true
   attr :name, :string, required: true
   attr :dot, :string, default: nil, doc: "dot color class (e.g. \"bg-emerald-500\"), or nil"
-  attr :status, :string, default: nil, doc: "status word shown flush-right (e.g. \"Running\")"
-  attr :status_class, :string, default: "text-zinc-500 dark:text-zinc-400"
+  attr :status, :string, default: nil, doc: "status word shown as a pill (e.g. \"Running\")"
+
+  attr :status_class, :string,
+    default: "bg-zinc-500/10 text-zinc-600 dark:text-zinc-300",
+    doc: "pill classes (bg + text) for the status badge"
+
   slot :facts, doc: "a compact live-facts line under the name"
 
   def detail_hero(assigns) do
     ~H"""
-    <div class="sticky top-0 z-10 bg-zinc-50/95 dark:bg-zinc-900/95 backdrop-blur-sm border-b border-zinc-200 dark:border-zinc-700/80 px-5 pt-3 pb-2.5">
-      <div class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+    <div class="sticky top-0 z-10 bg-zinc-100/95 dark:bg-zinc-900/95 backdrop-blur-sm border-b border-zinc-200 dark:border-zinc-700/70 px-4 pt-3.5 pb-3">
+      <%!-- Tiny quiet eyebrow (the KIND) — deliberately smaller/lighter than the
+           section labels below, so it never competes with the title. --%>
+      <div class="text-[11px] font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500 mb-1">
         {@eyebrow}
       </div>
-      <div class="flex items-center gap-2 mt-0.5">
-        <span :if={@dot} class={"w-2 h-2 rounded-full flex-none #{@dot}"} aria-hidden="true"></span>
-        <h3 class="flex-1 min-w-0 text-base font-semibold text-zinc-900 dark:text-zinc-100 truncate">
+      <%!-- The TITLE row: a big, bold name that clearly dominates everything the
+           card shows/controls, with the status as a colored pill flush-right. --%>
+      <div class="flex items-center gap-2">
+        <span :if={@dot} class={"w-2.5 h-2.5 rounded-full flex-none #{@dot}"} aria-hidden="true"></span>
+        <h2 class="flex-1 min-w-0 text-lg font-semibold leading-tight text-zinc-900 dark:text-zinc-100 truncate">
           {@name}
-        </h3>
-        <span :if={@status} class={["flex-none text-sm font-medium", @status_class]}>{@status}</span>
+        </h2>
+        <span
+          :if={@status}
+          class={["flex-none text-xs font-semibold px-2 py-0.5 rounded-full", @status_class]}
+        >
+          {@status}
+        </span>
       </div>
       <div :if={@facts != []} class="mt-1 text-sm text-zinc-500 dark:text-zinc-400 truncate">
         {render_slot(@facts)}

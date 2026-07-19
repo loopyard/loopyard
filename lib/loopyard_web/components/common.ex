@@ -150,7 +150,10 @@ defmodule LoopyardWeb.Components.Common do
   # ONE toolbar-button size + shape everywhere. Only the text color changes by
   # variant. Renders <button> for actions, <.link>/<a> for navigations — same
   # box either way.
-  @control_btn_base "inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+  # min-h-11 (44px) is the WCAG/HIG touch-target floor on mobile; md:min-h-8
+  # (~32px) keeps the dense desktop toolbar size. So every action button is
+  # comfortably tappable on a phone without bloating the desktop rail.
+  @control_btn_base "inline-flex items-center min-h-11 md:min-h-8 px-3 py-1.5 rounded-md text-sm font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
 
   def control_btn(assigns) do
     color =
