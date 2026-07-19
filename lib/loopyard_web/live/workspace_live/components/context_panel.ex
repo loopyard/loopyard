@@ -7,7 +7,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
   """
   use Phoenix.Component
 
-  import LoopyardWeb.Components.SideNav, only: [section: 1, info_row: 1, detail_title: 1]
+  import LoopyardWeb.Components.SideNav,
+    only: [section: 1, info_row: 1, detail_hero: 1, action_bar: 1]
+
+  import LoopyardWeb.Components.Common, only: [control_btn: 1]
   import LoopyardWeb.Live.WorkspaceLive.Components.Formatters, only: [time_ago: 1]
 
   attr :agent, :map, required: true
@@ -47,20 +50,29 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
   attr :live_token_est, :integer, default: 0
 
   def context_sections(assigns) do
+    hs = harness_state(assigns.agent)
+    est = assigns[:live_token_est] || 0
+
+    total_tokens =
+      (assigns.agent[:total_input_tokens] || 0) + (assigns.agent[:total_output_tokens] || 0) + est
+
+    assigns = assign(assigns, hs: hs, total_tokens: total_tokens, estimating?: est > 0)
+
     ~H"""
-    <%!-- Titled header so this pane reads as "the SELECTED agent's detail",
-         clearly separated from the workspace nav (Agents/Services/Volumes) that
-         sits directly above it in the shared right rail — otherwise the status
-         line butts straight into that list with no divider. Hidden in the mobile
-         sheet, which supplies its own title. --%>
-    <.detail_title :if={!@in_sheet} eyebrow="Agent" name={@agent.name} />
+    <%!-- STICKY HERO: the selected agent's identity + LIVE state, pinned to the
+         top of the detail zone so scrolling the sections below never loses which
+         agent you're on. Status word flush-right; model · tokens · cost inline. --%>
+    <.detail_hero eyebrow="Agent" name={@agent.name} dot={@hs.dot} status={@hs.label} status_class={@hs.text}>
+      <:facts>
+        {short_model(@agent[:model]) || "default"}
+        · {if @estimating?, do: "~"}{compact_number(@total_tokens)} tok
+        · ${Float.round((@agent[:total_cost_usd] || 0.0) * 1.0, 2)}
+      </:facts>
+    </.detail_hero>
 
+    <%!-- Loud consequence card ONLY for problem states (rate-limit / auth /
+         reconnecting) — the calm "Ready/Asleep" status now lives in the hero. --%>
     <.harness_status agent={@agent} />
-
-    <%!-- Changes moved OUT of the agent panel into the "Files" surface (the
-         volume's Git tab), where they live with the file browser. The workspace
-         nav's volume row still shows the ±N change badge for at-a-glance, and
-         one click on it opens Files → changes. --%>
 
     <.claude_usage agent={@agent} live_token_est={@live_token_est} />
 
@@ -83,21 +95,21 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
 
     <.docker_context agent={@agent} />
 
-    <%!-- Danger zone: remove THIS agent. Destructive + confirmed. Stops the
-         session and removes the agent from the workspace; the code volume is
-         untouched. Lives at the bottom, quiet, so it's reachable but not a
-         fat-finger target. --%>
-    <div class="border-t border-zinc-100 dark:border-zinc-800 mt-3 pt-2 pb-3">
-      <button
-        type="button"
-        phx-click="remove_agent"
-        phx-value-id={@agent.id}
-        data-confirm={"Remove agent \"#{@agent.name}\"? Its session stops and it's removed from this workspace. The code in the volume is not touched."}
-        class="w-full text-left text-sm text-zinc-500 hover:text-red-600 dark:text-zinc-400 dark:hover:text-red-400 px-2 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
-      >
-        Remove agent
-      </button>
-    </div>
+    <%!-- STICKY FOOTER: destructive "Remove agent", set apart. Stops the session
+         and removes the agent from the workspace; the code volume is untouched. --%>
+    <.action_bar>
+      <:danger>
+        <.control_btn
+          variant={:danger}
+          phx-click="remove_agent"
+          phx-value-id={@agent.id}
+          data-confirm={"Remove agent \"#{@agent.name}\"? Its session stops and it's removed from this workspace. The code in the volume is not touched."}
+          class="w-full justify-center"
+        >
+          Remove agent
+        </.control_btn>
+      </:danger>
+    </.action_bar>
     """
   end
 
@@ -114,15 +126,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
       |> assign(:loud?, loud_status?(assigns.agent))
 
     ~H"""
-    <div class="px-3 pt-3 pb-1">
-      <%!-- Calm by default: a single subtle line ("● Ready"), aligned with the
-           section rows below. Only PROBLEM states (rate-limited, auth expired,
-           reconnecting) escalate to the loud card with a consequence line — those
-           are the ones worth a glance; "you can send" isn't. --%>
-      <div
-        :if={@loud?}
-        class={["flex items-center gap-2.5 rounded-lg px-2.5 py-2", @hs.bg]}
-      >
+    <%!-- ONLY the loud consequence card, for problem states (rate-limited, auth
+         expired, reconnecting) — the calm "Ready/Asleep/Working" status now lives
+         in the sticky hero, so there's no redundant one-liner here anymore. --%>
+    <div :if={@loud?} class="px-3 pt-3 pb-1">
+      <div class={["flex items-center gap-2.5 rounded-lg px-2.5 py-2", @hs.bg]}>
         <span class={["w-2 h-2 rounded-full flex-none", @hs.dot, @hs.pulse]}></span>
         <div class="min-w-0">
           <div class={["text-sm font-semibold leading-tight", @hs.text]}>{@hs.label}</div>
@@ -130,10 +138,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
             {@hs.detail}
           </div>
         </div>
-      </div>
-      <div :if={!@loud?} class="flex items-center gap-2 px-2 min-h-6 text-sm">
-        <span class={["w-1.5 h-1.5 rounded-full flex-none", @hs.dot, @hs.pulse]}></span>
-        <span class={["font-medium", @hs.text]}>{@hs.label}</span>
       </div>
     </div>
     """

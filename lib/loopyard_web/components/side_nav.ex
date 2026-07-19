@@ -102,6 +102,68 @@ defmodule LoopyardWeb.Components.SideNav do
     """
   end
 
+  # --- Detail hero: the sticky, expanded header for a selected entity ---
+  #
+  # The top of the detail zone (Zone B). `sticky top-0` so it PINS while the
+  # detail scrolls — you never lose which agent/service/volume you're looking at
+  # or its live status. Mirrors the nav row above (dot + name) but bigger, and
+  # carries a `:facts` slot for the live numbers (model · tokens · port · size…).
+  # Opaque + blurred bg so scrolling content passes cleanly underneath.
+  attr :eyebrow, :string, required: true
+  attr :name, :string, required: true
+  attr :dot, :string, default: nil, doc: "dot color class (e.g. \"bg-emerald-500\"), or nil"
+  attr :status, :string, default: nil, doc: "status word shown flush-right (e.g. \"Running\")"
+  attr :status_class, :string, default: "text-zinc-500 dark:text-zinc-400"
+  slot :facts, doc: "a compact live-facts line under the name"
+
+  def detail_hero(assigns) do
+    ~H"""
+    <div class="sticky top-0 z-10 bg-zinc-50/95 dark:bg-zinc-900/95 backdrop-blur-sm border-b border-zinc-200 dark:border-zinc-700/80 px-5 pt-3 pb-2.5">
+      <div class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+        {@eyebrow}
+      </div>
+      <div class="flex items-center gap-2 mt-0.5">
+        <span :if={@dot} class={"w-2 h-2 rounded-full flex-none #{@dot}"} aria-hidden="true"></span>
+        <h3 class="flex-1 min-w-0 text-base font-semibold text-zinc-900 dark:text-zinc-100 truncate">
+          {@name}
+        </h3>
+        <span :if={@status} class={["flex-none text-sm font-medium", @status_class]}>{@status}</span>
+      </div>
+      <div :if={@facts != []} class="mt-1 text-sm text-zinc-500 dark:text-zinc-400 truncate">
+        {render_slot(@facts)}
+      </div>
+    </div>
+    """
+  end
+
+  # --- Action bar: the sticky footer where a panel's buttons live ---
+  #
+  # `sticky bottom-0` so the actions PIN to the bottom of the detail zone. The
+  # `:main` slot holds operational buttons (control_btn), the optional `:danger`
+  # slot holds a destructive action rendered BELOW a hairline divider — reachable
+  # but set apart. Renders nothing when both slots are empty (e.g. code volume).
+  # Sticky (not a flex-locked footer) so on a too-short viewport it just scrolls
+  # into view with the content instead of eating the whole panel.
+  slot :main, doc: "operational buttons"
+  slot :danger, doc: "a destructive action, set apart below a divider"
+
+  def action_bar(assigns) do
+    ~H"""
+    <div
+      :if={@main != [] || @danger != []}
+      class="sticky bottom-0 z-10 bg-zinc-50/95 dark:bg-zinc-900/95 backdrop-blur-sm border-t border-zinc-200 dark:border-zinc-700/80 px-3 py-2.5"
+    >
+      <div :if={@main != []} class="space-y-1.5">{render_slot(@main)}</div>
+      <div
+        :if={@danger != []}
+        class={["mt-2 pt-2 border-t border-zinc-100 dark:border-zinc-800", @main == [] && "!mt-0 !pt-0 !border-t-0"]}
+      >
+        {render_slot(@danger)}
+      </div>
+    </div>
+    """
+  end
+
   # --- Row: the one and only list-item shape ---
   #
   # Every interactive item in any sidebar goes through this. Fixed

@@ -202,28 +202,34 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
 
     ~H"""
     <.section>
-      <.group_label :if={@agents != []} text="Agents" />
+      <%!-- Agents header ALWAYS shows (even with zero agents) because it now
+           carries the + affordance to add one — the old standalone "New agent"
+           row is gone; the + in the header replaces it. --%>
+      <.group_label text="Agents">
+        <:action>
+          <.link
+            patch={"#{@base_path}/new"}
+            aria-label="New agent"
+            class="focus-ring inline-flex items-center justify-center w-7 h-7 rounded-md text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-colors"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 16 16"
+              fill="currentColor"
+              class="w-4 h-4"
+              aria-hidden="true"
+            >
+              <path d="M8.75 3.75a.75.75 0 0 0-1.5 0v3.5h-3.5a.75.75 0 0 0 0 1.5h3.5v3.5a.75.75 0 0 0 1.5 0v-3.5h3.5a.75.75 0 0 0 0-1.5h-3.5v-3.5Z" />
+            </svg>
+          </.link>
+        </:action>
+      </.group_label>
       <.agent_list_item
         :for={agent <- @agents}
         agent={agent}
         selected={@selected_id == agent.id}
         editing={@editing_agent_id == agent.id}
       />
-      <.row
-        patch={"#{@base_path}/new"}
-        class="text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 16 16"
-          fill="currentColor"
-          class="w-3.5 h-3.5 flex-none"
-          aria-hidden="true"
-        >
-          <path d="M8.75 3.75a.75.75 0 0 0-1.5 0v3.5h-3.5a.75.75 0 0 0 0 1.5h3.5v3.5a.75.75 0 0 0 1.5 0v-3.5h3.5a.75.75 0 0 0 0-1.5h-3.5v-3.5Z" />
-        </svg>
-        <span>New agent</span>
-      </.row>
 
       <.group_label :if={@service_statuses != []} text="Services" />
       <.service_item
@@ -361,11 +367,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
   # Tight (small top gap) so the groups don't sprawl like three separate
   # sections did, but readable enough to scan.
   attr :text, :string, required: true
+  slot :action, doc: "optional right-aligned control in the header (e.g. a + button)"
 
   def group_label(assigns) do
     ~H"""
-    <div class="px-2 pt-3 pb-1 first:pt-1.5 text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-      {@text}
+    <div class="flex items-center justify-between gap-2 px-2 pt-3 pb-1 first:pt-1.5">
+      <span class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+        {@text}
+      </span>
+      <div :if={@action != []} class="flex-none -my-1">{render_slot(@action)}</div>
     </div>
     """
   end

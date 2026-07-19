@@ -127,7 +127,7 @@ defmodule LoopyardWeb.Components.Common do
       <.control_btn>Restart</.control_btn>
       <.control_btn variant={:primary}>+ Debug Agent</.control_btn>
   """
-  attr :variant, :atom, default: :default, values: [:default, :primary]
+  attr :variant, :atom, default: :default, values: [:default, :primary, :danger]
   # Optional link targets — a toolbar action is often a navigation (Console) or
   # an external link (Open), not a phx-click. Passing any of these renders the
   # SAME-sized control as a link instead of a <button>, so every action in a
@@ -155,8 +155,17 @@ defmodule LoopyardWeb.Components.Common do
   def control_btn(assigns) do
     color =
       case assigns.variant do
-        :primary -> "text-violet-600 dark:text-violet-400"
-        _ -> "text-zinc-600 dark:text-zinc-300"
+        :primary ->
+          "text-violet-600 dark:text-violet-400"
+
+        # Destructive: red text on a transparent box (set apart from the zinc
+        # operational buttons), red-tinted hover. `!` overrides the base zinc
+        # bg/hover so a Remove/Delete never looks like a neutral action.
+        :danger ->
+          "text-red-600 dark:text-red-400 !bg-transparent hover:!bg-red-50 dark:hover:!bg-red-900/20"
+
+        _ ->
+          "text-zinc-600 dark:text-zinc-300"
       end
 
     assigns = assign(assigns, :cls, [@control_btn_base, color, assigns.class])

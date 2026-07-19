@@ -12,7 +12,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
   """
   use Phoenix.Component
 
-  import LoopyardWeb.Components.SideNav, only: [section: 1, info_row: 1, detail_title: 1]
+  import LoopyardWeb.Components.SideNav,
+    only: [section: 1, info_row: 1, detail_hero: 1, action_bar: 1]
+
   import LoopyardWeb.Components.Common, only: [control_btn: 1]
 
   import LoopyardWeb.Components.Sidebar, only: [service_dot: 1, first_host_port: 1]
@@ -112,10 +114,51 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
       )
 
     ~H"""
-    <.detail_title eyebrow="Service" name={@service_name} dot={@svc && service_dot(@svc)} />
+    <%!-- STICKY HERO: service name + live status (Running/Stopped…) flush-right,
+         port · exposure inline. --%>
+    <.detail_hero
+      eyebrow="Service"
+      name={@service_name}
+      dot={@svc && service_dot(@svc)}
+      status={svc_status_label(@svc)}
+      status_class={svc_status_color(@svc)}
+    >
+      <:facts :if={@first_port}>
+        :{@first_port} · {if @exposed?, do: "Network", else: "Local only"}
+      </:facts>
+    </.detail_hero>
 
-    <.section label="Actions">
-      <div class="px-2 space-y-1.5">
+    <.section label="Connection">
+      <div
+        :if={@first_port}
+        class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-6 text-sm"
+      >
+        <span class="text-zinc-500 dark:text-zinc-400 flex-none">URL</span>
+        <a
+          href={"http://#{@host}:#{@first_port}"}
+          target="_blank"
+          rel="noopener"
+          class="truncate font-mono text-violet-500 hover:text-violet-400 transition-colors"
+        >
+          {@host}:{@first_port}
+        </a>
+      </div>
+      <.info_row
+        :if={@container_port}
+        label="Container port"
+        value={@container_port}
+        monospace
+      />
+      <.info_row
+        :if={@first_port}
+        label="Exposure"
+        value={if @exposed?, do: "Network", else: "Local only"}
+      />
+    </.section>
+
+    <%!-- STICKY FOOTER: every service action, one consistent home. --%>
+    <.action_bar>
+      <:main>
         <%!-- PRIMARY: open the running app, expose a port, or start it. --%>
         <.control_btn
           :if={@first_port}
@@ -181,37 +224,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
             Close Port
           </.control_btn>
         </div>
-      </div>
-    </.section>
-
-    <.section label="Connection">
-      <.info_row label="Status" value={svc_status_label(@svc)} class={svc_status_color(@svc)} />
-      <div
-        :if={@first_port}
-        class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-6 text-sm"
-      >
-        <span class="text-zinc-500 dark:text-zinc-400 flex-none">URL</span>
-        <a
-          href={"http://#{@host}:#{@first_port}"}
-          target="_blank"
-          rel="noopener"
-          class="truncate font-mono text-violet-500 hover:text-violet-400 transition-colors"
-        >
-          {@host}:{@first_port}
-        </a>
-      </div>
-      <.info_row
-        :if={@container_port}
-        label="Container port"
-        value={@container_port}
-        monospace
-      />
-      <.info_row
-        :if={@first_port}
-        label="Exposure"
-        value={if @exposed?, do: "Network", else: "Local only"}
-      />
-    </.section>
+      </:main>
+    </.action_bar>
     """
   end
 
@@ -264,7 +278,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
       )
 
     ~H"""
-    <.detail_title eyebrow="Volume" name={@description} dot="bg-blue-400" />
+    <%!-- STICKY HERO: volume name + type · size inline. --%>
+    <.detail_hero eyebrow="Volume" name={@description} dot="bg-blue-400">
+      <:facts>
+        {@vol_type}{if @vol && @vol[:size], do: " · #{@vol.size}"}
+      </:facts>
+    </.detail_hero>
 
     <.section label="Info">
       <.info_row label="Type" value={@vol_type} />
@@ -286,18 +305,21 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
       </p>
     </.section>
 
-    <.section :if={!@code?} label="Danger zone">
-      <div class="px-2">
-        <button
+    <%!-- STICKY FOOTER: destructive delete (non-code volumes only), set apart.
+         Code volume → no footer at all. --%>
+    <.action_bar>
+      <:danger :if={!@code?}>
+        <.control_btn
+          variant={:danger}
           phx-click="delete_volume"
           phx-value-volume_name={@volume_name}
           data-confirm="Delete this volume? All data will be lost."
-          class="focus-ring w-full justify-center inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 transition-colors"
+          class="w-full justify-center"
         >
           Delete volume
-        </button>
-      </div>
-    </.section>
+        </.control_btn>
+      </:danger>
+    </.action_bar>
     """
   end
 
