@@ -182,6 +182,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
   Only if all of that fails does the caller show an error.
   """
   def wake_and_enqueue(id, text) do
+    # Config-gated (off in test): the wake is a LIVE-system feature — it boots
+    # real supervisors/agents (and possibly compose). In tests those side
+    # effects wedge the shared WorkspaceSupervisor + slow teardowns; sends to
+    # dead agents there get the old instant :unavailable instead.
+    if Application.get_env(:loopyard, :send_wakes_agent?, true) do
+      do_wake_and_enqueue(id, text)
+    else
+      {:error, :unavailable}
+    end
+  end
+
+  defp do_wake_and_enqueue(id, text) do
     case ChatAgent.get_state(id) do
       %{workspace_id: ws_id} when is_binary(ws_id) ->
         case ensure_workspace_group(ws_id) do
@@ -257,10 +269,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
         :ok
 
       %{workspace_id: workspace_id} when is_binary(workspace_id) ->
-        # The whole workspace GROUP may be down too (server restart, crash) —
-        # an agent can't start under a dead supervisor. Bring the group up
-        # first (bounded), then the agent. Guarded: a wake never crashes the LV.
-        ensure_workspace_group(workspace_id)
+        # SELECT-path wake: instant, best-effort. Do NOT ensure the workspace
+        # group here — that carries a bounded (8s) boot wait that belongs only
+        # in the SEND path (wake_and_enqueue); on select it blocked every
+        # mount/select for dead-group workspaces (test timeouts, sluggish UI).
+        # If the group is down, mount's own async {:start_workspace} handles it.
         start_agent_quiet(workspace_id, id)
 
       _ ->

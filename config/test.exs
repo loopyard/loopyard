@@ -31,3 +31,10 @@ config :loopyard, activity_sound: false
 # No dedicated MCP listener in tests — the plug is exercised directly, and a
 # real 0.0.0.0 Bandit listener would race across async runs on a fixed port.
 config :loopyard, :acp_mcp_listener, enabled: false
+
+# The send-path wake (wake_and_enqueue) is a LIVE-system feature: it boots
+# real supervisors/agents (and possibly docker compose). In tests those side
+# effects wedge the shared WorkspaceSupervisor and slow every teardown, so a
+# send to a dead agent gets the instant :unavailable instead. Tests exercising
+# the wake explicitly can flip this on.
+config :loopyard, send_wakes_agent?: false

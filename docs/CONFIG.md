@@ -35,6 +35,7 @@ Read via `Application.get_env(:loopyard, key)`. Overridable at runtime in `confi
 | `:phoenix, :filter_parameters` | `["password", "secret"]` | Param keys redacted from request/event logs. `"secret"` covers the `request_secret` masked field so a submitted key never lands in the log. Setting this overrides Phoenix's `["password"]` default — keep both. |
 | `:acp_mcp_listener` | `[enabled: true, port: 4030, ip: {0,0,0,0}]` | The dedicated ACP MCP bridge listener (`LoopyardWeb.MCP.Listener`). `enabled: false` (test env) skips it entirely. Bound to `0.0.0.0` so workspace containers can reach it; every request is bearer-authed + agent-scoped (`Loopyard.MCP.Token`). |
 | `:acp_mcp_url` | `nil` | Base-URL override for the MCP bridge (same as `LOOPYARD_MCP_URL`). `nil` → `http://host.docker.internal:<listener port>`. |
+| `:send_wakes_agent?` | `true` | Whether sending a message to a dead/asleep agent WAKES it (boots its workspace group if needed, resumes the agent, then delivers) — the "wakes on your next message" contract. `false` in test env: the wake boots real supervisors (and possibly compose), which wedges the shared WorkspaceSupervisor in tests; sends there get an instant `:unavailable` instead. |
 
 ### `:aural` (extracted Mix package — `packages/aural`)
 
