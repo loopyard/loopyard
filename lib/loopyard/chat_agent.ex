@@ -199,6 +199,24 @@ defmodule Loopyard.ChatAgent do
     GenServer.cast(via(id), {:send_message, text})
   end
 
+  @doc """
+  Durability-confirmed send for the interactive UI. Unlike `send_message/2`
+  (fire-and-forget cast — fine for internal/eval callers), this is a **call**
+  that returns `:ok` only AFTER the agent has actually received and processed
+  the message (appended + persisted, or durably queued in `pending_sends`).
+
+  Returns `{:error, :unavailable}` when the agent's GenServer is down or dies
+  mid-handling. The LiveView send path keys the input-clear on this: no `:ok`,
+  no clear — so a message sent into a crashed/reloading agent is NEVER silently
+  lost with the box wiped. This closes the "acked before it was safe" gap.
+  """
+  @spec enqueue_message(String.t(), String.t()) :: :ok | {:error, :unavailable}
+  def enqueue_message(id, text) do
+    GenServer.call(via(id), {:send_message, text}, 15_000)
+  catch
+    :exit, _ -> {:error, :unavailable}
+  end
+
   def get_state(id) do
     # Try live GenServer first, fall back to ETS. Short timeout (500ms)
     # because this is a read path from the UI: a wedged agent doesn't
@@ -996,6 +1014,16 @@ defmodule Loopyard.ChatAgent do
   @impl true
   def handle_call(:get_state, _from, state) do
     {:reply, summary(state), state}
+  end
+
+  # Synchronous confirm for enqueue_message/2 — runs the EXACT same enqueue logic
+  # as the cast (append + persist / queue), then replies :ok. The reply is the
+  # durability signal the UI waits on before clearing the input. If this process
+  # crashes while handling it, the caller's GenServer.call gets an :exit and
+  # treats the send as failed (input preserved) — never a silent loss.
+  def handle_call({:send_message, text}, _from, state) do
+    {:noreply, new_state} = handle_cast({:send_message, text}, state)
+    {:reply, :ok, new_state}
   end
 
   # Catchall for unknown calls. Returns an error reply instead of

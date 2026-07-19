@@ -643,12 +643,27 @@ defmodule LoopyardWeb.WorkspaceLive do
       # Don't add optimistically — let PubSub broadcast handle it for ALL viewers.
       # This ensures multiplayer: every viewer (including the sender) sees the
       # message via the same path.
-      ChatAgent.send_message(socket.assigns.selected_id, message)
-      # Reply so the client's ChatForm hook knows the send LANDED and can clear
-      # the input. Without an ack, a send fired into a momentarily-disconnected
-      # socket (live-reload, reconnect, flaky link) clears the box and vanishes
-      # silently. The hook keeps the text until this reply arrives.
-      {:reply, %{ok: true}, socket}
+      #
+      # DURABILITY-CONFIRMED: use enqueue_message (a call), not send_message (a
+      # cast). We only reply ok: true — the signal the ChatForm hook waits on
+      # before clearing the box — once the agent has actually RECEIVED and stored
+      # the message. If the agent is crashed/down/reloading, the call fails and
+      # we reply ok: false so the hook KEEPS the typed text and we tell the user.
+      # (The old code cast-and-acked unconditionally, so a send into a crashed
+      # agent wiped the box and vanished the message — real lost work.)
+      case ChatAgent.enqueue_message(socket.assigns.selected_id, message) do
+        :ok ->
+          {:reply, %{ok: true}, socket}
+
+        {:error, :unavailable} ->
+          {:reply, %{ok: false},
+           put_flash(
+             socket,
+             :error,
+             "Message NOT sent — the agent is down or restarting. Your text is kept in the box; " <>
+               "restart the agent (or wait for it to reconnect), then press Send again."
+           )}
+      end
     else
       {:reply, %{ok: false}, socket}
     end
