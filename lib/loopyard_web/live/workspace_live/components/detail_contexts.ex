@@ -4,9 +4,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
   `service_context/1` (status + URL + every service action) and
   `volume_context/1` (the volume "Info" home + danger-zone delete).
 
-  The agent detail lives in `ContextPanel.context_sections/1`; these two share
-  its exact shape (`SideNav.detail_title` + sections) so the rail reads
-  identically whatever kind of thing is selected. Split out of
+  The agent detail lives in `ContextPanel.context_sections/1`; all three share
+  the same 3-zone shape (`SideNav.detail_hero` sticky header + scrolling sections
+  + `SideNav.action_bar` sticky footer) so the rail reads identically whatever
+  kind of thing is selected. Split out of
   `Components.Sidebar` for the module-size invariant — the switcher (what's in
   the workspace) stays there; the selected thing's detail lives here.
   """

@@ -562,16 +562,22 @@ defmodule LoopyardWeb.Components.Nav do
     """
   end
 
-  @doc "The ONE 'toggle details' icon — an info glyph — used everywhere."
+  @doc """
+  The 'toggle details' icon — a panel docked at the bottom of a screen. The
+  button it marks pulls up the selected item's full panel (status + info +
+  its controls), so it's NOT an (i) info glyph and NOT a generic menu/overflow:
+  it literally shows a bottom panel appearing. Reads at a glance as "bring up
+  the panel for this."
+  """
   attr :class, :string, default: "w-5 h-5"
 
   def details_icon(assigns) do
     ~H"""
-    <svg viewBox="0 0 20 20" fill="currentColor" class={@class} aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" class={@class} aria-hidden="true">
+      <rect x="3.25" y="4.75" width="17.5" height="14.5" rx="3" stroke="currentColor" stroke-width="1.7" />
       <path
-        fill-rule="evenodd"
-        d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-7-4a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM9 9a.75.75 0 0 0 0 1.5h.253a.25.25 0 0 1 .244.304l-.459 2.066A1.75 1.75 0 0 0 10.747 15H11a.75.75 0 0 0 0-1.5h-.253a.25.25 0 0 1-.244-.304l.459-2.066A1.75 1.75 0 0 0 9.253 9H9Z"
-        clip-rule="evenodd"
+        d="M3.25 14.25h17.5v2a3 3 0 0 1-3 3H6.25a3 3 0 0 1-3-3z"
+        fill="currentColor"
       />
     </svg>
     """

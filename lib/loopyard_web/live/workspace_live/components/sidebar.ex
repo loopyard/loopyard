@@ -118,11 +118,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
       <%!-- ── L1 ZONE B · DETAIL ─────────────────────────────────────────────
            The SELECTED item's detail — polymorphic by kind so the IA is
            identical whatever you picked: an agent, a service, or a volume each
-           render the SAME shape (divider + eyebrow + name title, then Actions +
-           status sections). This is the ONE place all the buttons + LiveView
-           status for the selected thing live, instead of being scattered into
-           the center pane's top toolbar. Driven by `live_action` (unambiguous)
-           rather than which "selected_*" happens to be set. --%>
+           render the SAME 3-zone shape (sticky `detail_hero` + scrolling sections
+           + sticky `action_bar` of buttons). This is the ONE place all the
+           buttons + LiveView status for the selected thing live, instead of being
+           scattered into the center pane's top toolbar. Driven by `live_action`
+           (unambiguous) rather than which "selected_*" happens to be set. --%>
       <%!-- Detail is ANCHORED TO THE BOTTOM at content height, capped at 50% of
            the rail (the nav above takes the rest via flex-1). Content-height
            (not flex-1) so a short/detail-less panel doesn't stretch and leave

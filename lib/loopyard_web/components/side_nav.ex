@@ -70,38 +70,6 @@ defmodule LoopyardWeb.Components.SideNav do
     """
   end
 
-  # --- Detail title: the ONE header shape for a selected entity's detail pane ---
-  #
-  # Shared by the agent / service / volume detail panels (Zone B of the workspace
-  # rail) so all three read identically: a full-bleed top divider from the nav
-  # above, an uppercase eyebrow naming the KIND, then the entity name (with an
-  # optional status dot). The px-5 inset == the section gutter (`section` px-3 +
-  # its header px-2 = 20px), so the eyebrow + name line up EXACTLY with every
-  # section label and info row below. Change the gutter in one place: here.
-  attr :eyebrow, :string, required: true
-  attr :name, :string, required: true
-  attr :dot, :string, default: nil, doc: "dot color class (e.g. \"bg-emerald-500\"), or nil"
-  slot :trailing, doc: "optional controls aligned to the right of the name row"
-
-  def detail_title(assigns) do
-    ~H"""
-    <div class="border-t border-zinc-200 dark:border-zinc-700/80 pt-3 pb-2 mb-1">
-      <div class="px-5">
-        <div class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-          {@eyebrow}
-        </div>
-        <div class="flex items-center gap-2 mt-0.5">
-          <span :if={@dot} class={"w-2 h-2 rounded-full flex-none #{@dot}"} aria-hidden="true"></span>
-          <h3 class="flex-1 min-w-0 text-base font-semibold text-zinc-900 dark:text-zinc-100 truncate">
-            {@name}
-          </h3>
-          <div :if={@trailing != []} class="flex-none">{render_slot(@trailing)}</div>
-        </div>
-      </div>
-    </div>
-    """
-  end
-
   # --- Detail hero: the sticky, expanded header for a selected entity ---
   #
   # The top of the detail zone (Zone B). `sticky top-0` so it PINS while the
