@@ -2,6 +2,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
   @moduledoc "Service-related views: service_log_view, console_view, all_services_view."
   use Phoenix.Component
 
+  alias LoopyardWeb.Components.Ansi
+
   import LoopyardWeb.Components.Common, only: [detail_panel: 1, dot: 1]
   import LoopyardWeb.Components.LogViewer
 
@@ -88,7 +90,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
       <div
         id="service-logs"
         phx-hook="LogTail"
-        class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain bg-zinc-100 dark:bg-zinc-950 font-mono text-sm leading-relaxed"
+        class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain bg-zinc-100 dark:bg-zinc-950 font-mono text-xs leading-snug text-zinc-800 dark:text-zinc-300"
       >
         <div :for={{group, gi} <- Enum.with_index(@frames)}>
           <%!-- Run boundary: a thin sticky rule, not a chunky boxed header. --%>
@@ -110,7 +112,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
           </div>
           <div
             :for={f <- group.frames}
-            class="flex gap-3 px-3 py-px text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200/40 dark:hover:bg-zinc-900/40"
+            class="flex gap-3 px-3 py-px hover:bg-zinc-200/40 dark:hover:bg-zinc-900/40"
           >
             <span
               :if={f.ts}
@@ -122,7 +124,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
                  whitespace-pre-wrap + break-words actually wrap long/unbreakable
                  tokens instead of overflowing the row (the horizontal
                  rubber-band). --%>
-            <span class="min-w-0 flex-1 whitespace-pre-wrap break-words">{f.text}</span>
+            <%!-- ANSI → colored spans, same converter the chat CLI console uses, so
+                 every console surface reads identically (color, not raw \e[..m). --%>
+            <span class="min-w-0 flex-1 whitespace-pre-wrap break-words">{Ansi.to_html(f.text)}</span>
           </div>
         </div>
       </div>
