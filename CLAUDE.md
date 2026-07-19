@@ -356,6 +356,8 @@ Two ways in:
 | `AgentLog.Checkpointer` | Periodic snapshot + log truncation (bounded boot replay) |
 | `Agent.Reconciler` | ETS-vs-registry drift detection every 30s |
 | `Health` | Aggregated subsystem health map for `/system` |
+| `WorkspaceTree` | The projects→workspaces→agents overview tree (pure ETS) + per-workspace derived signals (`needs_you`/`broken`/`changes`) |
+| `ChangeCounts` | Event-driven cache of per-workspace changed-file counts (±N badge) — async git_status on agent idle + sweep, `:ws_change_counts` ETS |
 | `Events.Tap` | Ring buffer of broadcasts for `/system/events` |
 | `PortRegistry` | Global port pool, proxy lifecycle, Observer reconciliation |
 | `PortExposer` | Per-port TCP proxy GenServer (loopback ↔ network toggle) |
