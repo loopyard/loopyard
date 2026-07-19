@@ -30,13 +30,26 @@ defmodule Loopyard.WorkspaceTree do
       workspaces =
         Loopyard.WorkspaceRegistry.list_workspaces(project.id)
         |> Enum.map(fn ws ->
+          summaries = Map.get(agents_by_ws, ws.id, [])
+
           agents =
-            agents_by_ws
-            |> Map.get(ws.id, [])
+            summaries
             |> Enum.map(&agent_node/1)
             |> Enum.sort_by(& &1.name)
 
-          %{id: ws.id, name: ws[:name] || ws.id, agents: agents, ports: ws_ports(ws.id, host)}
+          %{
+            id: ws.id,
+            name: ws[:name] || ws.id,
+            agents: agents,
+            ports: ws_ports(ws.id, host),
+            # WORKSPACE-level derived signals for the overview surfaces (#55).
+            # Computed from the RAW summaries (which still carry :messages)
+            # before agent_node strips them down. All ETS-cheap — the
+            # /workspaces mount-budget test holds.
+            needs_you: needs_you(summaries),
+            broken: broken(summaries),
+            last_activity_at: last_activity(summaries)
+          }
         end)
         |> Enum.sort_by(& &1.name)
 
@@ -69,8 +82,57 @@ defmodule Loopyard.WorkspaceTree do
       quarantined: Map.get(a, :quarantined),
       active_tool: Map.get(a, :active_tool),
       model: Map.get(a, :model),
-      cost: Map.get(a, :total_cost_usd)
+      cost: Map.get(a, :total_cost_usd),
+      last_activity_at: Map.get(a, :last_activity_at)
     }
+  end
+
+  # --- Workspace-level signal derivation (the overview's four human questions) ---
+
+  # Is any agent here WAITING ON THE HUMAN? Returns what it's waiting for
+  # (:question | :approval | :secret) or nil. Questions/Secrets are tiny-ETS
+  # scans with waiter-liveness reaping; queued approvals live only in the
+  # message stream, so those are found via pending_in_messages?/1 (the blocking
+  # legacy path via pending_for_agent?). First match wins, question loudest.
+  defp needs_you(summaries) do
+    Enum.find_value(summaries, fn a ->
+      id = a.id
+
+      cond do
+        Loopyard.Harness.Questions.pending_for_agent?(id) -> :question
+        Loopyard.Harness.Approvals.pending_for_agent?(id) -> :approval
+        Loopyard.Harness.Approvals.pending_in_messages?(Map.get(a, :messages) || []) -> :approval
+        Loopyard.Harness.SecretRequests.pending_for_agent?(id) -> :secret
+        true -> nil
+      end
+    end)
+  rescue
+    _ -> nil
+  end
+
+  # Genuinely BROKEN — needs human intervention, never wakes on its own:
+  # auth expired (re-login) or quarantined (crash-looping, held by the
+  # RestartController). A merely :crashed/:stopped agent is NOT broken — it's
+  # asleep and wakes on the next message (#64) — so it stays out of here.
+  # Service-crashed (nonzero exit) joins in a follow-up once Docker.Observer
+  # retains exit codes; a cleanly-stopped cluster must never read as broken.
+  defp broken(summaries) do
+    Enum.find_value(summaries, fn a ->
+      cond do
+        Map.get(a, :status) == :auth_expired -> :auth_expired
+        Map.get(a, :quarantined) -> :quarantined
+        true -> nil
+      end
+    end)
+  end
+
+  # Most recent agent activity in the workspace (or nil) — the "active 5m ago"
+  # fact on the roomier overview sizes.
+  defp last_activity(summaries) do
+    summaries
+    |> Enum.map(&Map.get(&1, :last_activity_at))
+    |> Enum.filter(&match?(%DateTime{}, &1))
+    |> Enum.max(DateTime, fn -> nil end)
   end
 
   # Exposed (network-open) ports for a workspace, as clickable targets. Only

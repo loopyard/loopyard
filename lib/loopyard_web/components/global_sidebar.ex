@@ -55,7 +55,7 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
         <LoopyardWeb.Components.ProjectList.project_groups
           projects={@tree}
           current_workspace_id={@current_workspace_id}
-          compact
+          size={:sm}
         />
       </div>
     </nav>

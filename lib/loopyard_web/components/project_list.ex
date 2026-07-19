@@ -1,54 +1,48 @@
 defmodule LoopyardWeb.Components.ProjectList do
   @moduledoc """
-  The ONE grouped project → workspace list. Deliberately the SAME familiar UI in
-  every place a project/workspace is picked, so the gesture is learned once:
+  The ONE grouped project → workspace overview, rendered at three sizes so the
+  gesture is learned once and the SAME status model shows everywhere:
 
-    * `/workspaces` — the full list.
-    * the mobile switcher sheet — the crumb opens this same list, current
-      workspace highlighted, `row_click` closing the sheet on selection.
-    * the desktop rail (`GlobalSidebar`) — the persistent left nav.
+    * `size={:xs}` — the mobile switcher sheet: dot + name, needs-you badge
+      only. Picking fast; no port/status noise.
+    * `size={:sm}` — the desktop rail: one aligned line per workspace —
+      dot + name … headline word + port chip.
+    * `size={:full}` — /workspaces: responsive. Small screens get two-line
+      rows; md+ gets a GRID OF CARDS per project with the full story (agent +
+      activity, port, last active), needs-you/broken tinting the card.
 
-  Visual language: a large project name, its workspaces listed beneath with the
-  status dot left-aligned to the name, a subtle gap between rows, and NO boxes —
-  just a quiet highlight on the current/hovered row. Data is
-  `Loopyard.WorkspaceTree.global/1` (projects with `:workspaces`, each with
-  `:agents` and `:ports`).
+  All sizes derive from `Birdseye.ws_dot/1` + `Birdseye.headline/1` — the
+  priority-ordered status model (needs-you > broken > working > quiet). The dot
+  carries the STATE; the text always carries NEW information (what it wants,
+  what broke, what it's doing) — never a redundant color-word like "idle".
+  Data is `Loopyard.WorkspaceTree.global/1`.
   """
   use Phoenix.Component
 
   alias LoopyardWeb.Components.Birdseye
 
+  import LoopyardWeb.Live.WorkspaceLive.Components.Formatters, only: [time_ago: 1]
+
   @doc """
-  Renders the grouped list.
+  Renders the grouped overview.
 
     * `projects` — `WorkspaceTree.global` list.
-    * `current_workspace_id` — highlight this workspace's row (switcher context).
-    * `row_click` — optional `JS` to also run when a workspace row is tapped
-      (e.g. `JS.hide(to: "#nav-switcher")` so the switcher closes on selection).
+    * `current_workspace_id` — highlight this workspace's row (switcher/rail).
+    * `row_click` — optional `JS` run when a row is tapped (e.g. close sheet).
+    * `size` — `:xs` | `:sm` | `:full` (see moduledoc).
   """
   attr :projects, :list, required: true
   attr :current_workspace_id, :string, default: nil
   attr :row_click, :any, default: nil
-  # Compact tightens fonts + spacing for the narrow desktop rail; the /workspaces
-  # page and the mobile sheet use the roomier default.
-  attr :compact, :boolean, default: false
+  attr :size, :atom, default: :full, values: [:xs, :sm, :full]
 
   def project_groups(assigns) do
-    assigns =
-      assign(assigns,
-        name_class: if(assigns.compact, do: "text-base", else: "text-xl"),
-        ws_name_class: if(assigns.compact, do: "text-sm", else: "text-base"),
-        outer_gap: if(assigns.compact, do: "space-y-6", else: "space-y-9")
-      )
-
     ~H"""
-    <div class={@outer_gap}>
+    <div class={if @size == :full, do: "space-y-9", else: "space-y-6"}>
       <section :for={project <- @projects}>
         <%!-- Project header: just the name (→ the project page, where "New
-             workspace" lives). No count (noise — most have one), no + (adding a
-             workspace from the project page is enough). STICKY so it pins while
-             its workspaces scroll; opaque bg covers rows sliding under; shadow
-             only when actually stuck. --%>
+             workspace" lives). STICKY so it pins while its workspaces scroll;
+             opaque bg covers rows sliding under; shadow only when stuck. --%>
         <.link
           navigate={"/projects/#{project.id}"}
           phx-click={@row_click}
@@ -56,64 +50,52 @@ defmodule LoopyardWeb.Components.ProjectList do
           class="group sticky top-0 z-10 block bg-white dark:bg-zinc-900 pt-1 pb-1 transition-shadow data-[stuck]:shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]"
         >
           <h2 class={[
-            @name_class,
+            if(@size == :full, do: "text-xl", else: "text-base"),
             "font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 truncate group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors"
           ]}>
             {project.name}
           </h2>
         </.link>
 
-        <%!-- Workspaces: NO boxes. The status dot left-aligns to the project name;
-             a subtle gap between rows; just a quiet highlight on the current/hover
-             row. --%>
-        <div class="space-y-0.5 pt-0.5">
-          <.link
-            :for={ws <- project.workspaces}
-            navigate={workspace_href(project.id, ws)}
-            phx-click={@row_click}
-            aria-current={ws.id == @current_workspace_id && "true"}
-            class={[
-              "group/ws flex items-center gap-2.5 -mx-2 px-2 py-2 rounded-lg transition-colors",
-              # No hover box. The current workspace (switcher/rail only — never on
-              # /workspaces) gets a quiet violet tint; hover is a name-color cue.
-              ws.id == @current_workspace_id && "bg-violet-100 dark:bg-violet-500/15"
-            ]}
-          >
-            <%!-- ONE clean line, mirroring the Agents/Services/Files bar: dot +
-                 name on the left; the right cluster carries the public port and a
-                 concise agent-status word. aggregate_dot is nil for a no-agent
-                 workspace → neutral gray so every row still has a status bubble. --%>
-            <Birdseye.dot
-              class={Birdseye.aggregate_dot(ws.agents) || "bg-zinc-300 dark:bg-zinc-600"}
-              size={:md}
+        <%!-- :full renders two-line rows on small screens and the card grid on
+             md+ — one render, responsive, no UA sniffing. :xs/:sm are single
+             compact rows. --%>
+        <div :if={@size == :full} class="pt-1">
+          <div class="md:hidden space-y-0.5">
+            <.ws_row_md
+              :for={ws <- project.workspaces}
+              ws={ws}
+              project_id={project.id}
+              current={ws.id == @current_workspace_id}
+              row_click={@row_click}
             />
-            <span class={[
-              @ws_name_class,
-              "min-w-0 flex-1 truncate font-medium text-zinc-900 dark:text-zinc-100 group-hover/ws:text-violet-600 dark:group-hover/ws:text-violet-400 transition-colors"
-            ]}>{ws.name}</span>
-            <%!-- Right cluster: FIXED-width columns so the port + status stack in
-                 straight columns down the list (scannable) regardless of which
-                 rows have a port. Boxed green port chip = same as the Services
-                 bar. --%>
-            <div class="flex-none w-[4.5rem] flex justify-end">
-              <span
-                :if={ws_port(ws)}
-                class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-              >
-                :{ws_port(ws)}
-              </span>
-            </div>
-            <span class="flex-none w-16 text-right text-xs text-zinc-500 dark:text-zinc-400 truncate">
-              {ws_status(ws)}
-            </span>
-          </.link>
-
-          <div
-            :if={project.workspaces == []}
-            class="px-2 py-2 text-sm text-zinc-500 dark:text-zinc-400 italic"
-          >
-            no workspaces
           </div>
+          <div class="hidden md:grid md:grid-cols-2 xl:grid-cols-3 gap-3">
+            <.ws_card
+              :for={ws <- project.workspaces}
+              ws={ws}
+              project_id={project.id}
+              row_click={@row_click}
+            />
+          </div>
+        </div>
+
+        <div :if={@size != :full} class="space-y-0.5 pt-0.5">
+          <.ws_row_compact
+            :for={ws <- project.workspaces}
+            ws={ws}
+            project_id={project.id}
+            current={ws.id == @current_workspace_id}
+            row_click={@row_click}
+            size={@size}
+          />
+        </div>
+
+        <div
+          :if={project.workspaces == []}
+          class="px-2 py-2 text-sm text-zinc-500 dark:text-zinc-400 italic"
+        >
+          no workspaces
         </div>
       </section>
 
@@ -124,30 +106,173 @@ defmodule LoopyardWeb.Components.ProjectList do
     """
   end
 
-  # Link straight to an agent when the workspace has one — one navigation lands on
-  # the chat, avoiding the workspace :index render-then-redirect flicker. Empty
-  # workspace → its :index (which spawns an agent).
+  # --- XS (switcher) + SM (rail): one compact line ------------------------------
+
+  attr :ws, :map, required: true
+  attr :project_id, :string, required: true
+  attr :current, :boolean, default: false
+  attr :row_click, :any, default: nil
+  attr :size, :atom, required: true
+
+  defp ws_row_compact(assigns) do
+    assigns = assign(assigns, :headline, Birdseye.headline(assigns.ws))
+
+    ~H"""
+    <.link
+      navigate={workspace_href(@project_id, @ws)}
+      phx-click={@row_click}
+      aria-current={@current && "true"}
+      class={[
+        "group/ws flex items-center gap-2.5 -mx-2 px-2 py-2 rounded-lg transition-colors",
+        @current && "bg-violet-100 dark:bg-violet-500/15"
+      ]}
+    >
+      <Birdseye.dot class={Birdseye.ws_dot(@ws)} size={:md} />
+      <span class="min-w-0 flex-1 truncate text-sm font-medium text-zinc-900 dark:text-zinc-100 group-hover/ws:text-violet-600 dark:group-hover/ws:text-violet-400 transition-colors">
+        {@ws.name}
+      </span>
+      <%!-- XS: ONLY the needs-you signal (picking fast). SM: the full headline
+           word + the port chip in a fixed column so the rail scans straight. --%>
+      <span
+        :if={@headline && (@size == :sm || @headline.kind == :needs_you)}
+        class={["flex-none text-xs truncate max-w-[9rem]", @headline.class]}
+      >
+        {@headline.text}
+      </span>
+      <div :if={@size == :sm} class="flex-none w-[4.25rem] flex justify-end">
+        <span
+          :if={ws_port(@ws)}
+          class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+        >
+          :{ws_port(@ws)}
+        </span>
+      </div>
+    </.link>
+    """
+  end
+
+  # --- MD (/workspaces on small screens): two-line row --------------------------
+
+  attr :ws, :map, required: true
+  attr :project_id, :string, required: true
+  attr :current, :boolean, default: false
+  attr :row_click, :any, default: nil
+
+  defp ws_row_md(assigns) do
+    assigns = assign(assigns, :headline, Birdseye.headline(assigns.ws))
+
+    ~H"""
+    <.link
+      navigate={workspace_href(@project_id, @ws)}
+      phx-click={@row_click}
+      aria-current={@current && "true"}
+      class={[
+        "group/ws flex items-start gap-2.5 -mx-2 px-2 py-2 rounded-lg transition-colors",
+        @current && "bg-violet-100 dark:bg-violet-500/15"
+      ]}
+    >
+      <Birdseye.dot class={"mt-1.5 #{Birdseye.ws_dot(@ws)}"} size={:md} />
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center gap-2">
+          <span class="min-w-0 flex-1 truncate text-base font-medium text-zinc-900 dark:text-zinc-100 group-hover/ws:text-violet-600 dark:group-hover/ws:text-violet-400 transition-colors">
+            {@ws.name}
+          </span>
+          <span
+            :if={ws_port(@ws)}
+            class="flex-none inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+          >
+            :{ws_port(@ws)}
+          </span>
+        </div>
+        <div class={["text-sm truncate", (@headline && @headline.class) || "text-zinc-500 dark:text-zinc-400"]}>
+          {(@headline && @headline.text) || quiet_line(@ws)}
+        </div>
+      </div>
+    </.link>
+    """
+  end
+
+  # --- L (/workspaces on md+): the full-detail card -----------------------------
+
+  attr :ws, :map, required: true
+  attr :project_id, :string, required: true
+  attr :row_click, :any, default: nil
+
+  defp ws_card(assigns) do
+    assigns = assign(assigns, :headline, Birdseye.headline(assigns.ws))
+
+    ~H"""
+    <div class={[
+      "relative rounded-xl border p-4 transition-colors",
+      card_tint(@headline)
+    ]}>
+      <%!-- Stretched link covers the card (→ the agent chat) WITHOUT nesting
+           anchors; the port chip sits above it (z-10) as its own link. --%>
+      <.link
+        navigate={workspace_href(@project_id, @ws)}
+        phx-click={@row_click}
+        class="absolute inset-0 rounded-xl focus-ring"
+        aria-label={"Open workspace #{@ws.name}"}
+      >
+      </.link>
+      <div class="flex items-center gap-2">
+        <Birdseye.dot class={Birdseye.ws_dot(@ws)} size={:md} />
+        <span class="min-w-0 flex-1 truncate text-base font-semibold text-zinc-900 dark:text-zinc-100">
+          {@ws.name}
+        </span>
+        <span :if={ws_port_entry(@ws)} class="relative z-10 flex-none">
+          <Birdseye.port_chip port={ws_port_entry(@ws).port} url={ws_port_entry(@ws).url} />
+        </span>
+      </div>
+      <%!-- The story line: what it needs / what broke / what it's doing —
+           or, quietly, who's here. --%>
+      <div class={[
+        "mt-2 text-sm truncate",
+        (@headline && @headline.class) || "text-zinc-500 dark:text-zinc-400"
+      ]}>
+        {(@headline && agent_prefixed(@ws, @headline.text)) || quiet_line(@ws)}
+      </div>
+      <div :if={@ws[:last_activity_at]} class="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
+        active {time_ago(@ws.last_activity_at)}
+      </div>
+    </div>
+    """
+  end
+
+  # needs-you/broken tint the whole card edge; everything else stays quiet.
+  defp card_tint(%{kind: :needs_you}),
+    do: "border-amber-300 dark:border-amber-500/40 bg-amber-50/40 dark:bg-amber-500/5"
+
+  defp card_tint(%{kind: :broken}),
+    do: "border-red-300 dark:border-red-500/40 bg-red-50/40 dark:bg-red-500/5"
+
+  defp card_tint(_),
+    do:
+      "border-zinc-200 dark:border-zinc-800 hover:border-violet-300 dark:hover:border-violet-500/40"
+
+  # "Claude · editing files" — the card has room for WHO before the what.
+  defp agent_prefixed(%{agents: [%{name: name} | _]}, text) when is_binary(name),
+    do: "#{name} · #{text}"
+
+  defp agent_prefixed(_, text), do: text
+
+  # Quiet fallback line: who's here (the dot already says ready/asleep — no
+  # status words), or that nobody is.
+  defp quiet_line(%{agents: []}), do: "no agent yet"
+  defp quiet_line(%{agents: [%{name: name}]}), do: name
+  defp quiet_line(%{agents: agents}), do: "#{length(agents)} agents"
+
+  defp ws_port(%{ports: [%{port: p} | _]}), do: p
+  defp ws_port(_), do: nil
+
+  defp ws_port_entry(%{ports: [entry | _]}), do: entry
+  defp ws_port_entry(_), do: nil
+
+  # Link straight to an agent when the workspace has one — one navigation lands
+  # on the chat. Empty workspace → its :index (which spawns an agent).
   defp workspace_href(project_id, %{agents: [agent | _]} = ws) when is_map(agent) do
     "/projects/#{project_id}/workspaces/#{ws.id}/agents/#{agent.id}"
   end
 
   defp workspace_href(project_id, ws), do: "/projects/#{project_id}/workspaces/#{ws.id}"
-
-  # The workspace's public port (first one), or nil. Boxed as a chip in its own
-  # right-aligned column so ports line up down the list.
-  defp ws_port(%{ports: [%{port: p} | _]}), do: p
-  defp ws_port(_), do: nil
-
-  # Right-aligned agent-status word for a workspace row. The dot carries the
-  # color; this is the concise word (idle / crashed / working). Kept short so it
-  # fits its fixed column: a single agent shows its state, multiple show the
-  # count, none shows "no agent".
-  defp ws_status(%{agents: []}), do: "no agent"
-  defp ws_status(%{agents: [agent]}), do: status_word(agent[:status])
-  defp ws_status(%{agents: agents}), do: "#{length(agents)} agents"
-
-  defp status_word(:thinking), do: "working"
-  defp status_word(:idle), do: "idle"
-  defp status_word(status) when is_atom(status) and not is_nil(status), do: to_string(status)
-  defp status_word(_), do: "idle"
 end

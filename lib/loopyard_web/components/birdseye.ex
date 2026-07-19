@@ -91,6 +91,70 @@ defmodule LoopyardWeb.Components.Birdseye do
   end
 
   @doc """
+  The ONE workspace dot color — same priority order as `headline/1` so the
+  light and the words can never disagree: needs-you (amber pulse) > broken
+  (red) > the agent aggregate (working violet / ready green / asleep gray).
+  """
+  def ws_dot(ws) do
+    cond do
+      ws[:needs_you] -> "bg-amber-400 animate-pulse"
+      ws[:broken] -> "bg-red-500"
+      true -> aggregate_dot(ws[:agents] || []) || "bg-zinc-300 dark:bg-zinc-600"
+    end
+  end
+
+  @doc """
+  ONE priority-ordered headline for a workspace — the overview's answer to
+  "what does this need from me / what's happening": needs-you > broken >
+  working > quiet. Returns `%{kind, text, class}` or nil for quiet (ready /
+  asleep — the DOT carries those; no redundant status words). The text always
+  says something NEW (what it wants, what broke, what it's doing) — never the
+  color-word.
+  """
+  def headline(ws) do
+    agents = ws[:agents] || []
+
+    cond do
+      kind = ws[:needs_you] ->
+        %{kind: :needs_you, text: needs_you_text(kind), class: "text-amber-600 dark:text-amber-400"}
+
+      kind = ws[:broken] ->
+        %{kind: :broken, text: broken_text(kind), class: "text-red-500 dark:text-red-400"}
+
+      working = Enum.find(agents, &(Map.get(&1, :status) in @working)) ->
+        %{
+          kind: :working,
+          text: working_text(working),
+          class: "text-violet-600 dark:text-violet-400"
+        }
+
+      true ->
+        nil
+    end
+  end
+
+  defp needs_you_text(:question), do: "asked a question"
+  defp needs_you_text(:approval), do: "wants approval"
+  defp needs_you_text(:secret), do: "needs a secret"
+  defp needs_you_text(_), do: "needs you"
+
+  defp broken_text(:auth_expired), do: "sign in again"
+  defp broken_text(:quarantined), do: "crash-looping"
+  defp broken_text(_), do: "broken"
+
+  # What the working agent is doing — its tool (server prefix stripped) or a
+  # generic verb. Mirrors agent_activity/1 but names the agent's ACT, short.
+  defp working_text(agent) do
+    case Map.get(agent, :active_tool) do
+      tool when is_binary(tool) and tool != "" ->
+        LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel.short_tool(tool)
+
+      _ ->
+        "working…"
+    end
+  end
+
+  @doc """
   A live status dot. `class` nil → an aligned blank (holds the slot so names
   stay lined up, but shows no confusing gray circle). `size` is `:sm` (rail) or
   `:md` (home).

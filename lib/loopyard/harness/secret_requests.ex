@@ -141,6 +141,29 @@ defmodule Loopyard.Harness.SecretRequests do
   @spec pending?(String.t()) :: boolean()
   def pending?(rid), do: :ets.member(@table, rid)
 
+  @doc """
+  Is any secret request pending for this agent? Mirrors
+  `Harness.Questions.pending_for_agent?/1`: a request only counts while its
+  waiter (the blocked harness tool process) is alive — dead entries (session
+  restart, CLI crash) are reaped here and their card flipped to :timeout, so a
+  leaked row can't show "needs a secret" forever. ETS scan of a tiny table;
+  cheap enough for overview/tree reads.
+  """
+  @spec pending_for_agent?(String.t()) :: boolean()
+  def pending_for_agent?(agent_id) when is_binary(agent_id) do
+    :ets.tab2list(@table)
+    |> Enum.filter(fn {_rid, entry} -> entry.agent_id == agent_id end)
+    |> Enum.any?(fn {rid, entry} ->
+      if Process.alive?(entry.waiter) do
+        true
+      else
+        :ets.delete(@table, rid)
+        update_msg(entry.agent_id, entry.msg_id, %{status: :timeout})
+        false
+      end
+    end)
+  end
+
   # --- internals ---
 
   defp update_msg(_agent_id, nil, _changes), do: :ok

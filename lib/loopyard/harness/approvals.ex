@@ -202,6 +202,25 @@ defmodule Loopyard.Harness.Approvals do
   @spec pending_for_agent?(String.t()) :: boolean()
   def pending_for_agent?(agent_id), do: pending_for_agent(agent_id) != nil
 
+  @doc """
+  Whether a message list carries an unresolved approval card. The QUEUED path
+  (`post/2` — every workspace fork/integrate/delete) deliberately does NOT
+  insert into this module's ETS table (nothing blocks on it), so
+  `pending_for_agent?/1` can't see those; the pending card lives only in the
+  agent's message stream. Overview surfaces (WorkspaceTree) scan the summary's
+  message list with this instead — an in-memory `any?` over ≤1000 small maps
+  (resolved cards get `status` rewritten in place, so :pending means live).
+  """
+  @spec pending_in_messages?(list()) :: boolean()
+  def pending_in_messages?(messages) when is_list(messages) do
+    Enum.any?(messages, fn
+      %{role: :approval, status: :pending} -> true
+      _ -> false
+    end)
+  end
+
+  def pending_in_messages?(_), do: false
+
   @doc "Update the approval card with the outcome (persisted + broadcast)."
   @spec resolve(String.t(), String.t() | nil, map()) :: :ok
   def resolve(_agent_id, nil, _changes), do: :ok
