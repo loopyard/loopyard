@@ -44,35 +44,24 @@ defmodule LoopyardWeb.Components.ProjectList do
     ~H"""
     <div class={@outer_gap}>
       <section :for={project <- @projects}>
-        <%!-- Project header: large name (link) + a quiet "new workspace" + on the
-             right. The workspace COUNT is gone — most projects have one, so the
-             number was just noise; the + is a useful action instead. STICKY so it
-             pins while its workspaces scroll beneath it; opaque bg covers rows
-             sliding under; shadow only when actually stuck. --%>
-        <div
+        <%!-- Project header: just the name (→ the project page, where "New
+             workspace" lives). No count (noise — most have one), no + (adding a
+             workspace from the project page is enough). STICKY so it pins while
+             its workspaces scroll; opaque bg covers rows sliding under; shadow
+             only when actually stuck. --%>
+        <.link
+          navigate={"/projects/#{project.id}"}
+          phx-click={@row_click}
           data-sticky-header
-          class="sticky top-0 z-10 flex items-center gap-1 bg-white dark:bg-zinc-900 pt-1 pb-1 transition-shadow data-[stuck]:shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]"
+          class="group sticky top-0 z-10 block bg-white dark:bg-zinc-900 pt-1 pb-1 transition-shadow data-[stuck]:shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]"
         >
-          <.link navigate={"/projects/#{project.id}"} phx-click={@row_click} class="group min-w-0 flex-1">
-            <h2 class={[
-              @name_class,
-              "font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 truncate group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors"
-            ]}>
-              {project.name}
-            </h2>
-          </.link>
-          <.link
-            navigate={"/projects/#{project.id}/new"}
-            phx-click={@row_click}
-            aria-label={"New workspace in #{project.name}"}
-            title="New workspace"
-            class="focus-ring flex-none inline-flex items-center justify-center w-7 h-7 -my-0.5 rounded-md text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-colors"
-          >
-            <svg viewBox="0 0 16 16" fill="currentColor" class="w-4 h-4" aria-hidden="true">
-              <path d="M8.75 3.75a.75.75 0 0 0-1.5 0v3.5h-3.5a.75.75 0 0 0 0 1.5h3.5v3.5a.75.75 0 0 0 1.5 0v-3.5h3.5a.75.75 0 0 0 0-1.5h-3.5v-3.5Z" />
-            </svg>
-          </.link>
-        </div>
+          <h2 class={[
+            @name_class,
+            "font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 truncate group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors"
+          ]}>
+            {project.name}
+          </h2>
+        </.link>
 
         <%!-- Workspaces: NO boxes. The status dot left-aligns to the project name;
              a subtle gap between rows; just a quiet highlight on the current/hover
@@ -102,13 +91,21 @@ defmodule LoopyardWeb.Components.ProjectList do
               @ws_name_class,
               "min-w-0 flex-1 truncate font-medium text-zinc-900 dark:text-zinc-100 group-hover/ws:text-violet-600 dark:group-hover/ws:text-violet-400 transition-colors"
             ]}>{ws.name}</span>
-            <span
-              :for={p <- ws.ports}
-              class="flex-none font-mono text-xs text-emerald-600 dark:text-emerald-400"
-            >
-              :{p.port}
+            <%!-- Right cluster: FIXED-width columns so the port + status stack in
+                 straight columns down the list (scannable) regardless of which
+                 rows have a port. Boxed green port chip = same as the Services
+                 bar. --%>
+            <div class="flex-none w-[4.5rem] flex justify-end">
+              <span
+                :if={ws_port(ws)}
+                class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+              >
+                :{ws_port(ws)}
+              </span>
+            </div>
+            <span class="flex-none w-16 text-right text-xs text-zinc-500 dark:text-zinc-400 truncate">
+              {ws_status(ws)}
             </span>
-            <span class="flex-none text-xs text-zinc-500 dark:text-zinc-400">{ws_status(ws)}</span>
           </.link>
 
           <div
@@ -136,17 +133,18 @@ defmodule LoopyardWeb.Components.ProjectList do
 
   defp workspace_href(project_id, ws), do: "/projects/#{project_id}/workspaces/#{ws.id}"
 
-  # Right-aligned agent-status word for a workspace row. The dot already carries
-  # the color; this is the concise word (idle / crashed / working). A single
-  # agent shows its state; multiple show the count; none shows "no agent".
+  # The workspace's public port (first one), or nil. Boxed as a chip in its own
+  # right-aligned column so ports line up down the list.
+  defp ws_port(%{ports: [%{port: p} | _]}), do: p
+  defp ws_port(_), do: nil
+
+  # Right-aligned agent-status word for a workspace row. The dot carries the
+  # color; this is the concise word (idle / crashed / working). Kept short so it
+  # fits its fixed column: a single agent shows its state, multiple show the
+  # count, none shows "no agent".
   defp ws_status(%{agents: []}), do: "no agent"
   defp ws_status(%{agents: [agent]}), do: status_word(agent[:status])
-
-  defp ws_status(%{agents: agents}) do
-    working = Enum.count(agents, &(&1[:status] == :thinking))
-    base = "#{length(agents)} agents"
-    if working > 0, do: "#{base} · #{working} working", else: base
-  end
+  defp ws_status(%{agents: agents}), do: "#{length(agents)} agents"
 
   defp status_word(:thinking), do: "working"
   defp status_word(:idle), do: "idle"
