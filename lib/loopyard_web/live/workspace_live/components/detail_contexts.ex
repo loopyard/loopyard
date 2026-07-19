@@ -128,7 +128,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
       </:facts>
     </.detail_hero>
 
-    <.section label="Connection">
+    <%!-- Connection details only when there ARE any (a port or container port).
+         A portless service (e.g. `work`) has none — status lives in the hero —
+         so we skip the section entirely rather than render an empty header. --%>
+    <.section :if={@first_port || @container_port} label="Connection">
       <div
         :if={@first_port}
         class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-6 text-sm"

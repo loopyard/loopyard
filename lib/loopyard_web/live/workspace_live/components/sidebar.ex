@@ -96,7 +96,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
            ~45% then scrolls internally) on a faintly tinted surface, closed by
            the ONE heavy rule in the pane. This is the "what's in this
            workspace" nav, distinct from "the thing you selected". --%>
-      <div class="flex-none md:max-h-[45%] overflow-y-auto bg-zinc-100 dark:bg-zinc-800/40 border-b-2 border-zinc-200 dark:border-zinc-700/70">
+      <div class="flex-1 min-h-0 overflow-y-auto bg-zinc-100 dark:bg-zinc-800/40 border-b-2 border-zinc-200 dark:border-zinc-700/70">
         <.workspace_switcher
           agents={@agents}
           service_statuses={@service_statuses}
@@ -123,9 +123,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
            status for the selected thing live, instead of being scattered into
            the center pane's top toolbar. Driven by `live_action` (unambiguous)
            rather than which "selected_*" happens to be set. --%>
+      <%!-- Detail is ANCHORED TO THE BOTTOM at content height, capped at 50% of
+           the rail (the nav above takes the rest via flex-1). Content-height
+           (not flex-1) so a short/detail-less panel doesn't stretch and leave
+           the sticky footer floating mid-rail — hero + footer stay compact and
+           pinned to the bottom. Caps at 50% then scrolls internally. --%>
       <div
         :if={detail_kind(@live_action, @selected_agent) != nil}
-        class="flex-1 min-h-0 overflow-y-auto"
+        class="flex-none md:max-h-[50%] overflow-y-auto"
       >
         <.context_sections
           :if={detail_kind(@live_action, @selected_agent) == :agent}
