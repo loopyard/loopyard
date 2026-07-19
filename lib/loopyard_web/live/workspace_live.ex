@@ -647,22 +647,37 @@ defmodule LoopyardWeb.WorkspaceLive do
       # DURABILITY-CONFIRMED: use enqueue_message (a call), not send_message (a
       # cast). We only reply ok: true — the signal the ChatForm hook waits on
       # before clearing the box — once the agent has actually RECEIVED and stored
-      # the message. If the agent is crashed/down/reloading, the call fails and
-      # we reply ok: false so the hook KEEPS the typed text and we tell the user.
-      # (The old code cast-and-acked unconditionally, so a send into a crashed
-      # agent wiped the box and vanished the message — real lost work.)
-      case ChatAgent.enqueue_message(socket.assigns.selected_id, message) do
+      # the message. If its GenServer is down, DON'T bounce an error at the user:
+      # the asleep contract is "wakes on your next message", so WAKE it and
+      # deliver (wake_and_enqueue). Only if that also fails does the hook keep
+      # the text and a short flash explain — the error is the last resort, never
+      # the first response.
+      id = socket.assigns.selected_id
+
+      result =
+        case ChatAgent.enqueue_message(id, message) do
+          :ok -> :ok
+          {:error, :unavailable} -> AgentLifecycle.wake_and_enqueue(id, message)
+        end
+
+      # ONE message channel: the reply's `note` renders inline under the
+      # composer (the ChatForm hook). No flash — an error toast AND an inline
+      # note competing to explain the same thing was noise.
+      case result do
         :ok ->
           {:reply, %{ok: true}, socket}
 
+        {:error, :waking} ->
+          # The workspace is booting in the background — a retry in a few
+          # seconds lands on a live group. Calm, actionable, no drama.
+          {:reply,
+           %{ok: false, note: "Waking the workspace… press Send again in a few seconds."},
+           socket}
+
         {:error, :unavailable} ->
-          {:reply, %{ok: false},
-           put_flash(
-             socket,
-             :error,
-             "Message NOT sent — the agent is down or restarting. Your text is kept in the box; " <>
-               "restart the agent (or wait for it to reconnect), then press Send again."
-           )}
+          {:reply,
+           %{ok: false, note: "⚠ Couldn't wake the agent — your text is kept; try Send again."},
+           socket}
       end
     else
       {:reply, %{ok: false}, socket}

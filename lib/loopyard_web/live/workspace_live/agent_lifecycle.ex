@@ -172,6 +172,65 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
 
   def annotate_liveness(other), do: other
 
+  @doc """
+  Wake a sleeping agent and deliver a message to it — the SEND path's version
+  of the "wakes on your next message" contract. The status card literally
+  promises that an asleep (:crashed/:stopped) agent wakes when you message it;
+  bouncing an error toast at the user instead (making THEM the retry loop) was
+  a contract violation. Wake (resume-spawn from ETS), wait briefly for the
+  GenServer to register, then enqueue with the same durability-confirmed call.
+  Only if all of that fails does the caller show an error.
+  """
+  def wake_and_enqueue(id, text) do
+    case ChatAgent.get_state(id) do
+      %{workspace_id: ws_id} when is_binary(ws_id) ->
+        case ensure_workspace_group(ws_id) do
+          :ok ->
+            start_agent_quiet(ws_id, id)
+            wait_alive(id, 40)
+            ChatAgent.enqueue_message(id, text)
+
+          :waking ->
+            # Group boot was kicked off but didn't finish inside the budget —
+            # it CONTINUES in the background, so the user's retry in a few
+            # seconds lands on a live group and succeeds.
+            {:error, :waking}
+
+          :error ->
+            {:error, :unavailable}
+        end
+
+      _ ->
+        {:error, :unavailable}
+    end
+  end
+
+  # Start the agent under its (now live) group. The supervisor call can time
+  # out while ChatAgent.init resumes state — registration happens at
+  # start_link BEFORE init, so wait_alive + the enqueue call still land; the
+  # enqueue rides the mailbox behind init. Never let the exit crash the LV.
+  defp start_agent_quiet(ws_id, id) do
+    Loopyard.WorkspaceGroup.start_agent(ws_id, id: id, resume: true)
+  catch
+    :exit, _ -> :ok
+  end
+
+  # Bounded wait (40 × 50ms = 2s max) for the woken agent's Registry entry.
+  # Registration happens at start_link, so this typically returns on the first
+  # check; the loop is a belt for supervisor scheduling under load.
+  defp wait_alive(_id, 0), do: :ok
+
+  defp wait_alive(id, n) do
+    case Registry.lookup(Loopyard.ChatAgentRegistry, id) do
+      [{pid, _}] when is_pid(pid) ->
+        :ok
+
+      _ ->
+        Process.sleep(50)
+        wait_alive(id, n - 1)
+    end
+  end
+
   # Wake a sleeping agent — agent exists in ETS but its GenServer is gone
   # (server restart without ServiceManager replay, user stopped it, crash).
   # Spawns a new ChatAgent with resume: true; init_resume pulls the rest
@@ -198,10 +257,54 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
         :ok
 
       %{workspace_id: workspace_id} when is_binary(workspace_id) ->
-        Loopyard.WorkspaceGroup.start_agent(workspace_id, id: id, resume: true)
+        # The whole workspace GROUP may be down too (server restart, crash) —
+        # an agent can't start under a dead supervisor. Bring the group up
+        # first (bounded), then the agent. Guarded: a wake never crashes the LV.
+        ensure_workspace_group(workspace_id)
+        start_agent_quiet(workspace_id, id)
 
       _ ->
         :ok
     end
+  end
+
+  # Make sure the workspace's supervisor GROUP exists (`whereis`, not
+  # `workspace_healthy?` — that also demands a live ServiceManager, which an
+  # agent doesn't need just to accept a message). If it's down, kick
+  # start_workspace with a bounded wait: normally it returns within the budget;
+  # if compose drags past it, the start CONTINUES in the background
+  # (async_nolink + ignore) and we report :waking so the caller can tell the
+  # user to retry in a moment instead of blocking the LiveView for minutes.
+  defp ensure_workspace_group(workspace_id) do
+    case Loopyard.WorkspaceGroup.whereis(workspace_id) do
+      pid when is_pid(pid) ->
+        :ok
+
+      nil ->
+        ws = Loopyard.WorkspaceRegistry.get_workspace(workspace_id)
+
+        if ws && ws[:path] do
+          task =
+            Task.Supervisor.async_nolink(Loopyard.TaskSupervisor, fn ->
+              Loopyard.WorkspaceSupervisor.start_workspace(workspace_id, ws.path)
+            end)
+
+          case Task.yield(task, 8_000) do
+            {:ok, _} ->
+              :ok
+
+            nil ->
+              Task.ignore(task)
+              :waking
+
+            {:exit, _} ->
+              :error
+          end
+        else
+          :error
+        end
+    end
+  rescue
+    _ -> :error
   end
 end

@@ -681,13 +681,20 @@ Hooks.ChatForm = {
         }
       }
 
+      // 25s: a send into an ASLEEP agent can legitimately take a while — the
+      // server wakes the workspace + agent and delivers (wait ~2s + enqueue
+      // call ≤15s). A short timer here mislabeled those as failures while the
+      // message actually landed → confusing double-sends. Genuinely-dead
+      // sockets are reported separately (and faster) by the conn-banner.
       const timer = setTimeout(() =>
-        settle(false, "⚠ Couldn't reach the server — connection blip or the page is reloading. Your text is safe; press Send to retry."),
-      6000)
+        settle(false, "⚠ Couldn't reach the server — your text is safe; press Send to retry."),
+      25000)
       this.pushEvent("send_message", { message: text }, (reply) => {
         clearTimeout(timer)
         if (reply && reply.ok) settle(true)
-        else settle(false, "⚠ The server rejected the send — make sure an agent is selected, then try again.")
+        // The server's note is THE message (calm "waking…" vs real failure) —
+        // one channel, no generic guess, no competing toast.
+        else settle(false, (reply && reply.note) || "⚠ Send didn't land — your text is kept; try again.")
       })
     }
 
