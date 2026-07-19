@@ -15,6 +15,16 @@ module.exports = {
   ],
   theme: {
     extend: {
+      // Raise the FLOOR of the type scale app-wide. Overriding these steps here
+      // re-sizes every `text-xs`/`text-sm`/`text-base` in one place — no more
+      // 12px chrome, and the small end is compressed toward base so the UI reads
+      // uniformly instead of a jumble of tiny sizes. `[size, lineHeight]` tuples.
+      fontSize: {
+        xs: ['0.875rem', '1.25rem'],    // 14px (was 12) — the smallest text allowed
+        sm: ['0.9375rem', '1.375rem'],  // 15px (was 14)
+        base: ['1rem', '1.5rem'],        // 16px — the anchor
+        lg: ['1.125rem', '1.75rem'],     // 18px — chat prose
+      },
       fontFamily: {
         // System stacks only — no custom font downloads. Serif is the
         // primary family (applied via <body class="font-serif">); mono
