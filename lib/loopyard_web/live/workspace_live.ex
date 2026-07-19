@@ -1703,6 +1703,7 @@ defmodule LoopyardWeb.WorkspaceLive do
                it off on desktop (the right rail owns detail there). --%>
           <div
             id="mobile-detail"
+            phx-hook="StickyEdge"
             class={[
               "md:!hidden flex-1 min-h-0 overflow-y-auto",
               if(@show_mobile_detail, do: "block", else: "hidden")

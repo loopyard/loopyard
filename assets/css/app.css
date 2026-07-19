@@ -30,6 +30,28 @@
   border-radius: 6px;
 }
 
+/* Scroll-aware divider for sticky detail-panel bands (hero/footer). No border by
+ * default — the StickyEdge JS hook sets [data-stuck] only while content is
+ * actually scrolling under the band, and THEN this soft shadow appears. A short,
+ * non-scrolling panel stays lineless and cohesive. */
+[data-sticky-edge][data-stuck] {
+  transition: box-shadow 150ms ease;
+}
+[data-sticky-edge="top"][data-stuck] {
+  box-shadow: 0 8px 8px -8px rgba(0, 0, 0, 0.18);
+}
+[data-sticky-edge="bottom"][data-stuck] {
+  box-shadow: 0 -8px 8px -8px rgba(0, 0, 0, 0.18);
+}
+@media (prefers-color-scheme: dark) {
+  [data-sticky-edge="top"][data-stuck] {
+    box-shadow: 0 8px 10px -8px rgba(0, 0, 0, 0.6);
+  }
+  [data-sticky-edge="bottom"][data-stuck] {
+    box-shadow: 0 -8px 10px -8px rgba(0, 0, 0, 0.6);
+  }
+}
+
 /* On touch devices, shrink-wrapped links/buttons need a hit area
  * expansion even when the visible element is smaller. This preserves
  * compact visual density while giving fingers 44×44 to land on. */

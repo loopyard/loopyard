@@ -122,7 +122,15 @@ defmodule LoopyardWeb.Components.SideNav do
 
   def detail_hero(assigns) do
     ~H"""
-    <div class="sticky top-0 z-10 bg-zinc-100/95 dark:bg-zinc-900/95 backdrop-blur-sm border-b border-zinc-200 dark:border-zinc-700/70 px-4 pt-3.5 pb-3">
+    <%!-- NO border by default — a sticky element only needs a divider when content
+         is actually scrolling under it. The opaque (/95) blurred bg covers any
+         scrolling content; the `StickyEdge` hook adds a subtle shadow ONLY while
+         there's content scrolled under it, so a short (non-scrolling) panel reads
+         as one cohesive card with no lines. --%>
+    <div
+      data-sticky-edge="top"
+      class="sticky top-0 z-10 bg-zinc-50/95 dark:bg-zinc-900/95 backdrop-blur-sm px-4 pt-3.5 pb-2.5"
+    >
       <%!-- Tiny quiet eyebrow (the KIND) — deliberately smaller/lighter than the
            section labels below, so it never competes with the title. --%>
       <div class="text-[11px] font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500 mb-1">
@@ -164,7 +172,8 @@ defmodule LoopyardWeb.Components.SideNav do
     ~H"""
     <div
       :if={@main != [] || @danger != []}
-      class="sticky bottom-0 z-10 bg-zinc-50/95 dark:bg-zinc-900/95 backdrop-blur-sm border-t border-zinc-200 dark:border-zinc-700/80 px-3 py-2.5"
+      data-sticky-edge="bottom"
+      class="sticky bottom-0 z-10 bg-zinc-50/95 dark:bg-zinc-900/95 backdrop-blur-sm px-3 pt-2 pb-2.5"
     >
       <div :if={@main != []} class="space-y-1.5">{render_slot(@main)}</div>
       <div

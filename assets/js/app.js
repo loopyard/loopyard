@@ -327,6 +327,34 @@ Hooks.StickyShadow = {
   destroyed() { this.el.removeEventListener("scroll", this.update) }
 }
 
+// StickyEdge — on a scroll container with sticky top/bottom bands (the detail
+// panel's hero + action footer), show a SOFT shadow on a band ONLY while there's
+// content scrolled under it. So a short panel that doesn't scroll has no lines at
+// all (one cohesive card); the divider appears exactly when it's earning its
+// keep. Toggles [data-stuck] on [data-sticky-edge="top"|"bottom"]; CSS draws it.
+Hooks.StickyEdge = {
+  mounted() {
+    this.update = () => {
+      const el = this.el
+      const atTop = el.scrollTop <= 0.5
+      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 0.5
+      el.querySelectorAll('[data-sticky-edge="top"]').forEach((h) =>
+        h.toggleAttribute("data-stuck", !atTop))
+      el.querySelectorAll('[data-sticky-edge="bottom"]').forEach((f) =>
+        f.toggleAttribute("data-stuck", !atBottom))
+    }
+    this.el.addEventListener("scroll", this.update, {passive: true})
+    this.ro = new ResizeObserver(this.update)
+    this.ro.observe(this.el)
+    this.update()
+  },
+  updated() { if (this.update) this.update() },
+  destroyed() {
+    this.el.removeEventListener("scroll", this.update)
+    if (this.ro) this.ro.disconnect()
+  }
+}
+
 // BottomSheet — a mobile "share sheet". The server renders it hidden with the
 // panel translated fully down; opening (a `sheet:open` event, via Nav.open_sheet)
 // un-hides the container and slides the panel up, closing reverses it. Swiping

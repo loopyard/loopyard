@@ -130,6 +130,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
            pinned to the bottom. Caps at 50% then scrolls internally. --%>
       <div
         :if={detail_kind(@live_action, @selected_agent) != nil}
+        id="rail-detail-scroll"
+        phx-hook="StickyEdge"
         class="flex-none md:max-h-[50%] overflow-y-auto"
       >
         <.context_sections

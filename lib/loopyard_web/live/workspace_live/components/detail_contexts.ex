@@ -123,23 +123,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
       status={svc_status_label(@svc)}
       status_class={svc_status_pill(@svc)}
     >
-      <:facts :if={@first_port}>
-        :{@first_port} · {if @exposed?, do: "Network", else: "Local only"}
+      <:facts :if={service_facts(@svc, @first_port, @exposed?)}>
+        {service_facts(@svc, @first_port, @exposed?)}
       </:facts>
     </.detail_hero>
-
-    <%!-- What the service IS — image + type. Always present (every service has an
-         image), so it also gives a portless service real middle content. --%>
-    <.section :if={@svc && (svc_image(@svc) || svc_type(@svc))} label="Service">
-      <.info_row
-        :if={svc_image(@svc)}
-        label="Image"
-        value={svc_image(@svc)}
-        monospace
-        class="text-zinc-700 dark:text-zinc-300"
-      />
-      <.info_row :if={svc_type(@svc)} label="Kind" value={svc_kind_label(svc_type(@svc))} />
-    </.section>
 
     <%!-- Connection details only when there ARE any (a port or container port).
          A portless service (e.g. `work`) has none — status lives in the hero —
@@ -257,10 +244,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
 
   defp svc_status_pill(_), do: "bg-zinc-500/15 text-zinc-600 dark:text-zinc-300"
 
-  # Safe field access — @svc is a %Service{} struct (no Access protocol), so
-  # `svc[:image]` would crash at render; Map.get works on struct AND plain map.
-  defp svc_image(svc), do: Map.get(svc, :image)
-  defp svc_type(svc), do: Map.get(svc, :type)
+  # The hero subtitle: port · exposure when it's networked, else the service kind
+  # (so a portless service like postgres/work still gets a meaningful subtitle).
+  # @svc is a %Service{} struct (no Access), so read fields with Map.get.
+  defp service_facts(_svc, first_port, exposed?) when not is_nil(first_port),
+    do: ":#{first_port} · #{if exposed?, do: "Network", else: "Local only"}"
+
+  defp service_facts(svc, _first_port, _exposed?) do
+    case Map.get(svc || %{}, :type) do
+      nil -> nil
+      type -> svc_kind_label(type)
+    end
+  end
 
   # Human label for a service's inferred kind.
   defp svc_kind_label(:stock), do: "Stock service"
