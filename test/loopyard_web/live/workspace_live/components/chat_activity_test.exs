@@ -118,7 +118,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatActivityTest do
   end
 
   describe "live tail timeline (pure thinking)" do
-    test "renders the left-aligned Claude header + flowing bar (no rail, no floating box)" do
+    test "flows flush-left under the You prompt — no Claude marker, no rail, no floating box" do
       agent = %{
         id: "a1",
         status: :thinking,
@@ -140,12 +140,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatActivityTest do
           detail_level: :trace
         })
 
-      # No vertical rail: the live turn uses the same inline "Claude · HH:MM"
-      # header as completed turns (sparkle badge + label), left-aligned.
+      # No vertical rail and no "Claude" marker — the live turn flows flush-left
+      # directly under its "You" prompt, which carries the dated timestamp.
       refute html =~ "absolute left-0 top-0 bottom-1 w-5"
       refute html =~ "w-px flex-1"
-      assert html =~ "Claude"
-      assert html =~ "19:14"
+      refute html =~ "Claude"
+      assert html =~ "You"
+      assert html =~ "Jun 23, 7:14 PM"
       # The live status flows flush-left — no floating rounded-pill box.
       assert html =~ "Riffing"
       refute html =~ "rounded-r-xl rounded-l-none"

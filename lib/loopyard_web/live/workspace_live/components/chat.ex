@@ -9,7 +9,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   import LoopyardWeb.Components.Sidebar, only: [status_dot: 1, agent_display_status: 1]
 
   import LoopyardWeb.Live.WorkspaceLive.Messages,
-    only: [chat_msg: 1, streaming_bubble: 1, streaming_thinking: 1, run_header: 1]
+    only: [chat_msg: 1, streaming_bubble: 1, streaming_thinking: 1]
 
   import LoopyardWeb.Components.Icon
 
@@ -446,8 +446,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                       detail_level={@detail_level}
                     />
                   <% {:run, items} -> %>
-                    <div class="mt-3">
-                      <.run_header timestamp={run_timestamp(items)} />
+                    <%!-- The response flows directly under its "You" prompt (which
+                         carries the dated timestamp) — no "Claude" marker. --%>
+                    <div class="mt-2">
                       <div>
                         <.chat_msg
                           :for={{msg, idx} <- items}
@@ -481,15 +482,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             }
             class=""
           >
-            <%!-- No timeline rail — the live turn uses the SAME left-aligned header
-                 (inline sparkle + "Claude · HH:MM") as completed turns and lets its
-                 content sit flush at the gutter, so nothing is indented under a
-                 vertical line. Header shows only at the top of the response. --%>
-            <.run_header
-              :if={not turn_started_rendering?(@messages)}
-              timestamp={current_turn_timestamp(@messages)}
-            />
-
+            <%!-- No "Claude" marker and no timeline rail — the live turn's content
+                 sits flush at the gutter, directly under its "You" prompt. --%>
             <.streaming_thinking
               :if={
                 @detail_level != :chat && assigns[:streaming_thinking] != "" &&
@@ -671,27 +665,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     end
   end
 
-  # The current turn's start time (the last human message) — for the live tail's
-  # "Claude · HH:MM" header so it reads the same as a finished run.
-  defp current_turn_timestamp(messages) do
-    case Enum.reverse(messages) |> Enum.find(&(&1.role == :user)) do
-      %{timestamp: %DateTime{} = ts} -> ts
-      _ -> nil
-    end
-  end
-
-  # True once the current turn has produced ANY message after the prompt — at which
-  # point the section above renders the "Claude" header for that content, so the
-  # live tail must NOT render its own (that's the duplicate). False during a pure
-  # prefill/think with nothing rendered yet, where the live tail IS the top of the
-  # response and owns the header.
-  defp turn_started_rendering?(messages) do
-    messages
-    |> Enum.reverse()
-    |> Enum.take_while(&(&1.role != :user))
-    |> Enum.any?()
-  end
-
   # Index of the last human message — tools after it belong to the active
   # turn and live in the feed. Returns nil (suppress nothing) unless the
   # feed is actually on screen, so a tool row is never hidden with no home.
@@ -715,10 +688,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
 
   defp in_live_feed?(nil, _msg, _idx), do: false
   defp in_live_feed?(from, msg, idx), do: idx > from and msg.role in [:tool, :tool_result]
-
-  # The "Claude · HH:MM" header timestamp for a run = the first message in it.
-  defp run_timestamp([{%{timestamp: ts}, _idx} | _]), do: ts
-  defp run_timestamp(_), do: nil
 
   # --- Container Panel ---
 

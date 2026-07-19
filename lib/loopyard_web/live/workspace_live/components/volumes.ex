@@ -47,7 +47,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Volumes do
     <.detail_panel>
       <:header>
         <.dot color="bg-blue-400" />
-        <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+        <span class="text-base font-semibold text-zinc-900 dark:text-zinc-100">
           {@description || @volume_name}
         </span>
         <span class="text-xs text-zinc-500 dark:text-zinc-400">

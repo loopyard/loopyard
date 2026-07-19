@@ -28,7 +28,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
     <.detail_panel>
       <:header>
         <.dot :if={@svc} color={service_dot(@svc)} />
-        <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate">
+        <span class="text-base font-semibold text-zinc-900 dark:text-zinc-100 truncate">
           {@service_name}
         </span>
         <span :if={@svc} class="hidden sm:inline text-xs text-zinc-500 dark:text-zinc-400 font-mono truncate">
@@ -88,7 +88,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
       <div
         id="service-logs"
         phx-hook="LogTail"
-        class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain bg-zinc-100 dark:bg-zinc-950 font-mono text-xs leading-relaxed"
+        class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain bg-zinc-100 dark:bg-zinc-950 font-mono text-sm leading-relaxed"
       >
         <div :for={{group, gi} <- Enum.with_index(@frames)}>
           <%!-- Run boundary: a thin sticky rule, not a chunky boxed header. --%>
@@ -162,7 +162,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
             <path d="M6.3 2.84A1.5 1.5 0 0 0 4 4.11v11.78a1.5 1.5 0 0 0 2.3 1.27l9.344-5.891a1.5 1.5 0 0 0 0-2.538L6.3 2.841Z" />
           </svg>
         </div>
-        <h3 class="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-1">
+        <h3 class="text-base font-semibold text-zinc-900 dark:text-zinc-100 mb-1">
           Starting {@service_name}...
         </h3>
       </div>
@@ -190,18 +190,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
             />
           </svg>
         </div>
-        <h3 class="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-1">
+        <h3 class="text-base font-semibold text-zinc-900 dark:text-zinc-100 mb-1">
           {@service_name} is stopped
         </h3>
         <p
           :if={@workspace_state in [:stopped, :starting]}
-          class="text-xs text-zinc-500 dark:text-zinc-400 mb-4"
+          class="text-sm text-zinc-500 dark:text-zinc-400 mb-4"
         >
           The workspace is {@workspace_state}. Start it from the sidebar to bring services up.
         </p>
         <p
           :if={@workspace_state not in [:stopped, :starting]}
-          class="text-xs text-zinc-500 dark:text-zinc-400 mb-4"
+          class="text-sm text-zinc-500 dark:text-zinc-400 mb-4"
         >
           Start it to see live logs.
         </p>
@@ -238,7 +238,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
     ~H"""
     <.detail_panel>
       <:header>
-        <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{@service_name}</span>
+        <span class="text-base font-semibold text-zinc-900 dark:text-zinc-100">{@service_name}</span>
         <span class="text-xs text-zinc-500 dark:text-zinc-400">console</span>
         <div :if={@ssh_cmd} class="ml-auto">
           <button
@@ -292,7 +292,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
     ~H"""
     <.detail_panel>
       <:header>
-        <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">All Services</span>
+        <span class="text-base font-semibold text-zinc-900 dark:text-zinc-100">All Services</span>
       </:header>
       <.log_multi_service logs={@all_service_logs} />
     </.detail_panel>

@@ -120,9 +120,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         <div class="min-w-0">
           <div
             :if={@show_user_label}
-            class="flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300 mb-1.5"
+            class="flex items-baseline gap-2 mb-1.5"
           >
-            <.icon name={:user} class="w-3.5 h-3.5 flex-none" /> You
+            <span class="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300">
+              <.icon name={:user} class="w-3.5 h-3.5 flex-none self-center" /> You
+            </span>
+            <span
+              :if={@msg[:timestamp]}
+              class="text-sm text-violet-500/80 dark:text-violet-300/60"
+            >
+              {Calendar.strftime(@msg.timestamp, "%b %-d, %-I:%M %p")}
+            </span>
           </div>
           <%!-- Clamp to a few lines: the prompt is a sticky HEADER, so a long
                paste must stay header-sized (full text via the ↗ link). --%>
@@ -359,23 +367,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   def chat_msg(assigns) do
     ~H"""
     <div></div>
-    """
-  end
-
-  @doc "The agent's identity marker — rendered once at the top of each run."
-  attr :timestamp, :any, default: nil
-
-  def run_header(assigns) do
-    ~H"""
-    <div class="flex items-center gap-2 mt-3 mb-1.5">
-      <span class="flex-none w-5 h-5 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center">
-        <.icon name={:sparkle} class="w-3 h-3 text-violet-600 dark:text-violet-400" />
-      </span>
-      <span class="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Claude</span>
-      <span :if={@timestamp} class="text-sm text-zinc-500 dark:text-zinc-400">
-        · {Calendar.strftime(@timestamp, "%H:%M")}
-      </span>
-    </div>
     """
   end
 
