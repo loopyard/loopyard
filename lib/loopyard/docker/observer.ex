@@ -568,15 +568,27 @@ defmodule Loopyard.Docker.Observer do
         # make every snapshot compare unequal, triggering a broadcast
         # and a sidebar re-render on every tick. Keep only the identity +
         # functional state; UI derives what it needs from `running`.
+        #
+        # The EXIT CODE from "Exited (N) …" IS kept — it's stable (no tick)
+        # and it's what lets the overview tell a CRASHED container (nonzero
+        # exit) from a deliberately stopped one without a docker-inspect
+        # shell-out.
         running = String.starts_with?(status, "Up")
         workspace_id = extract_workspace_id(name)
         host_ports = parse_host_ports(ports_str)
+
+        exit_code =
+          case Regex.run(~r/^Exited \((\d+)\)/, status) do
+            [_, code] -> String.to_integer(code)
+            _ -> nil
+          end
 
         %{
           name: name,
           running: running,
           workspace_id: workspace_id,
-          host_ports: host_ports
+          host_ports: host_ports,
+          exit_code: exit_code
         }
 
       _ ->

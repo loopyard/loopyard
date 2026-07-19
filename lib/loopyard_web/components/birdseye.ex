@@ -147,6 +147,7 @@ defmodule LoopyardWeb.Components.Birdseye do
 
   defp broken_text(:auth_expired), do: "sign in again"
   defp broken_text(:quarantined), do: "crash-looping"
+  defp broken_text(:service_crashed), do: "service crashed"
   defp broken_text(_), do: "broken"
 
   # What the working agent is doing — its tool (server prefix stripped) or a

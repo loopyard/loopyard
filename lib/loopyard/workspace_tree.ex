@@ -47,7 +47,7 @@ defmodule Loopyard.WorkspaceTree do
             # before agent_node strips them down. All ETS-cheap — the
             # /workspaces mount-budget test holds.
             needs_you: needs_you(summaries),
-            broken: broken(summaries),
+            broken: broken(summaries, ws.id),
             last_activity_at: last_activity(summaries),
             # Cached ±N (event-driven, Loopyard.ChangeCounts) — nil = unknown
             # (no running work container / not computed yet), never a fake 0.
@@ -114,19 +114,40 @@ defmodule Loopyard.WorkspaceTree do
   end
 
   # Genuinely BROKEN — needs human intervention, never wakes on its own:
-  # auth expired (re-login) or quarantined (crash-looping, held by the
-  # RestartController). A merely :crashed/:stopped agent is NOT broken — it's
-  # asleep and wakes on the next message (#64) — so it stays out of here.
-  # Service-crashed (nonzero exit) joins in a follow-up once Docker.Observer
-  # retains exit codes; a cleanly-stopped cluster must never read as broken.
-  defp broken(summaries) do
-    Enum.find_value(summaries, fn a ->
-      cond do
-        Map.get(a, :status) == :auth_expired -> :auth_expired
-        Map.get(a, :quarantined) -> :quarantined
-        true -> nil
+  # auth expired (re-login), quarantined (crash-looping, held by the
+  # RestartController), or a workspace container that EXITED NONZERO (a real
+  # crash). A merely :crashed/:stopped agent is NOT broken — it's asleep and
+  # wakes on the next message (#64).
+  defp broken(summaries, ws_id) do
+    agent_broken =
+      Enum.find_value(summaries, fn a ->
+        cond do
+          Map.get(a, :status) == :auth_expired -> :auth_expired
+          Map.get(a, :quarantined) -> :quarantined
+          true -> nil
+        end
+      end)
+
+    agent_broken || service_crashed(ws_id)
+  end
+
+  # A container that exited with a REAL failure code (from Docker.Observer's
+  # ETS cache — no shell-out). Signal exits 130/137/143 (SIGINT/SIGKILL/
+  # SIGTERM) are what a deliberate `docker stop`/Ctrl-C produces, so they do
+  # NOT count — a cleanly-stopped cluster must never read as broken.
+  @benign_exits [0, 130, 137, 143]
+
+  defp service_crashed(ws_id) do
+    Loopyard.Docker.Observer.containers_for(ws_id)
+    |> Enum.any?(fn c ->
+      case Map.get(c, :exit_code) do
+        code when is_integer(code) and code not in @benign_exits -> true
+        _ -> false
       end
     end)
+    |> if(do: :service_crashed, else: nil)
+  rescue
+    _ -> nil
   end
 
   # Most recent agent activity in the workspace (or nil) — the "active 5m ago"
