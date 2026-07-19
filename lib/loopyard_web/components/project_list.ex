@@ -232,8 +232,18 @@ defmodule LoopyardWeb.Components.ProjectList do
       ]}>
         {(@headline && agent_prefixed(@ws, @headline.text)) || quiet_line(@ws)}
       </div>
-      <div :if={@ws[:last_activity_at]} class="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
-        active {time_ago(@ws.last_activity_at)}
+      <%!-- Footer facts: changes (when known+nonzero) · last activity. The ±N
+           shows here even when a louder headline (needs-you/working) owns the
+           story line — the card has room for both. --%>
+      <div
+        :if={card_changes(@ws) || @ws[:last_activity_at]}
+        class="mt-1 text-xs text-zinc-400 dark:text-zinc-500"
+      >
+        <span :if={card_changes(@ws)} class="text-emerald-600/80 dark:text-emerald-400/80">
+          ±{card_changes(@ws)} changes
+        </span>
+        <span :if={card_changes(@ws) && @ws[:last_activity_at]}> · </span>
+        <span :if={@ws[:last_activity_at]}>active {time_ago(@ws.last_activity_at)}</span>
       </div>
     </div>
     """
@@ -264,6 +274,14 @@ defmodule LoopyardWeb.Components.ProjectList do
 
   defp ws_port(%{ports: [%{port: p} | _]}), do: p
   defp ws_port(_), do: nil
+
+  # ±N for the card footer — only when known and nonzero (nil = unknown, 0 = clean).
+  defp card_changes(ws) do
+    case ws[:changes] do
+      n when is_integer(n) and n > 0 -> n
+      _ -> nil
+    end
+  end
 
   defp ws_port_entry(%{ports: [entry | _]}), do: entry
   defp ws_port_entry(_), do: nil

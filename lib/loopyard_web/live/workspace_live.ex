@@ -32,6 +32,7 @@ defmodule LoopyardWeb.WorkspaceLive do
   @behaviour Loopyard.Events.SourceSync.Subscriber
   @behaviour Loopyard.Events.WorkspaceSetup.Subscriber
   @behaviour Loopyard.Events.Workspaces.Subscriber
+  @behaviour Loopyard.Events.ChangeCounts.Subscriber
 
   @impl true
   def mount(%{"project_id" => project_id, "workspace_id" => workspace_id}, _session, socket) do
@@ -65,6 +66,8 @@ defmodule LoopyardWeb.WorkspaceLive do
       Loopyard.Workspace.ServiceManager.subscribe()
       Loopyard.Docker.Observer.subscribe()
       Loopyard.Events.WorkspaceSetup.subscribe(workspace.id)
+      # Live ±N change badges in the god-mode rail.
+      Loopyard.Events.ChangeCounts.subscribe()
 
       # A workspace added/removed/status-changed in this project → refresh the
       # left switcher live (a fork someone makes appears without a reload).
@@ -1316,6 +1319,9 @@ defmodule LoopyardWeb.WorkspaceLive do
 
   def handle_info(%Events.Workspaces.Changed{} = e, socket), do: on_workspaces_changed(e, socket)
 
+  def handle_info(%Events.ChangeCounts.Updated{} = e, socket),
+    do: on_change_counts_updated(e, socket)
+
   # Non-PubSub internal messages (send/2 self-dispatches, async task
   # replies). These aren't subject to the publisher-module boundary
   # because they never leave this process.
@@ -1596,6 +1602,13 @@ defmodule LoopyardWeb.WorkspaceLive do
   # reflects the change live (a fork someone makes appears without a reload).
   @impl Events.Workspaces.Subscriber
   def on_workspaces_changed(_event, socket) do
+    {:noreply, assign(socket, :global_tree, Loopyard.WorkspaceTree.global(socket.assigns.host))}
+  end
+
+  # A workspace's ±N change count moved → rebuild the rail tree so the badge is
+  # live. Fires only on actual count changes (ChangeCounts publishes on delta).
+  @impl Events.ChangeCounts.Subscriber
+  def on_change_counts_updated(_event, socket) do
     {:noreply, assign(socket, :global_tree, Loopyard.WorkspaceTree.global(socket.assigns.host))}
   end
 

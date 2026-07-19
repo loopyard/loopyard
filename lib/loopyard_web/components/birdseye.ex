@@ -128,6 +128,13 @@ defmodule LoopyardWeb.Components.Birdseye do
           class: "text-violet-600 dark:text-violet-400"
         }
 
+      is_integer(ws[:changes]) and ws[:changes] > 0 ->
+        %{
+          kind: :changed,
+          text: "±#{ws[:changes]} changes",
+          class: "text-emerald-600 dark:text-emerald-400"
+        }
+
       true ->
         nil
     end

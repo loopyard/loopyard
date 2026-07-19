@@ -48,7 +48,10 @@ defmodule Loopyard.WorkspaceTree do
             # /workspaces mount-budget test holds.
             needs_you: needs_you(summaries),
             broken: broken(summaries),
-            last_activity_at: last_activity(summaries)
+            last_activity_at: last_activity(summaries),
+            # Cached ±N (event-driven, Loopyard.ChangeCounts) — nil = unknown
+            # (no running work container / not computed yet), never a fake 0.
+            changes: Loopyard.ChangeCounts.get(ws.id)
           }
         end)
         |> Enum.sort_by(& &1.name)

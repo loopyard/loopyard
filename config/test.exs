@@ -38,3 +38,8 @@ config :loopyard, :acp_mcp_listener, enabled: false
 # send to a dead agent gets the instant :unavailable instead. Tests exercising
 # the wake explicitly can flip this on.
 config :loopyard, send_wakes_agent?: false
+
+# ChangeCounts recomputes run real git shell-outs against workspaces on agent
+# StatusChanged events — meaningless churn against synthetic test workspaces.
+# The GenServer starts but stays inert (no subscription, no sweep, no tasks).
+config :loopyard, change_counts_enabled?: false

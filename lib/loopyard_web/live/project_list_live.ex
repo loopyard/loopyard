@@ -7,6 +7,7 @@ defmodule LoopyardWeb.ProjectListLive do
 
   @impl true
   @behaviour Loopyard.Events.Projects.Subscriber
+  @behaviour Loopyard.Events.ChangeCounts.Subscriber
 
   def mount(_params, _session, socket) do
     socket =
@@ -19,6 +20,8 @@ defmodule LoopyardWeb.ProjectListLive do
         # Live ports: a service coming up / port being exposed refreshes the
         # openable :port chips without a reload.
         Loopyard.Events.DockerObserver.subscribe()
+        # Live ±N change badges on the workspace cards.
+        Loopyard.Events.ChangeCounts.subscribe()
         subscribe_iex(socket)
       else
         assign(socket, :iex_session, %{level: nil})
@@ -120,10 +123,16 @@ defmodule LoopyardWeb.ProjectListLive do
   def handle_info(%Loopyard.Events.DockerObserver.Changed{}, socket),
     do: {:noreply, reload(socket)}
 
+  def handle_info(%Loopyard.Events.ChangeCounts.Updated{} = e, socket),
+    do: on_change_counts_updated(e, socket)
+
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl Loopyard.Events.Projects.Subscriber
   def on_changed(_e, socket), do: {:noreply, reload(socket)}
+
+  @impl Loopyard.Events.ChangeCounts.Subscriber
+  def on_change_counts_updated(_e, socket), do: {:noreply, reload(socket)}
 
   defp reload(socket),
     do: assign(socket, :projects, Loopyard.WorkspaceTree.global(socket.assigns.host))

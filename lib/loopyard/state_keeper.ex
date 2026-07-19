@@ -52,6 +52,11 @@ defmodule Loopyard.StateKeeper do
     # :harness_questions; the secret VALUE is never stored here (it goes straight
     # to the on-disk secret store from the LiveView).
     {:secret_requests, [:named_table, :public, :set, {:read_concurrency, true}]},
+    # Loopyard.ChangeCounts — cached per-workspace changed-file counts
+    # ({workspace_id, count, computed_at}) so overview surfaces show ±N with
+    # zero render-time git shell-outs. Written by ChangeCounts' async
+    # recomputes; WorkspaceTree reads direct.
+    {:ws_change_counts, [:named_table, :public, :set, {:read_concurrency, true}]},
     # Ring buffer for Loopyard.Events.Tap — every broadcast on every
     # known topic. ordered_set keyed by a monotonic counter so the
     # newest records come out with a single :ets.select_reverse.

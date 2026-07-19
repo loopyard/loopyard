@@ -94,6 +94,12 @@ defmodule Loopyard.Application do
       # (reads ETS) and ChatAgentRegistry (looks up pids).
       Loopyard.Agent.Reconciler,
 
+      # Event-driven per-workspace changed-file counts (overview ±N badge).
+      # Subscribes to agent StatusChanged; recomputes async; ETS via
+      # StateKeeper's :ws_change_counts. Inert when :change_counts_enabled?
+      # is false (test env).
+      Loopyard.ChangeCounts,
+
       # --- Web layer (can restart independently) ---
       LoopyardWeb.Endpoint,
 
