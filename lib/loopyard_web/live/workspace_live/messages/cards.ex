@@ -43,7 +43,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           >
             {q.header}
           </div>
-          <div class="text-[15px] font-medium leading-snug text-zinc-800 dark:text-zinc-200 mb-3">
+          <div class="text-base font-medium leading-snug text-zinc-800 dark:text-zinc-200 mb-3">
             {q.prompt}
           </div>
 
@@ -154,7 +154,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           The agent needs a secret
         </div>
 
-        <div class="text-[15px] font-medium leading-snug text-zinc-800 dark:text-zinc-200">
+        <div class="text-base font-medium leading-snug text-zinc-800 dark:text-zinc-200">
           <span class="font-mono">{@msg.name}</span>
         </div>
         <div :if={@msg[:why] not in [nil, ""]} class="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
