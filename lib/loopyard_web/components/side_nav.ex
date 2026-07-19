@@ -183,6 +183,10 @@ defmodule LoopyardWeb.Components.SideNav do
         {render_slot(@danger)}
       </div>
     </div>
+    <%!-- No buttons at all (e.g. the code volume) → there's no footer to supply
+         bottom breathing room, so the last content would butt against the panel
+         edge. A small breather fixes the abrupt cut-off. --%>
+    <div :if={@main == [] && @danger == []} class="h-4" aria-hidden="true"></div>
     """
   end
 
