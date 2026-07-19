@@ -141,7 +141,7 @@ defmodule LoopyardWeb.Components.SideNav do
     <div
       :if={@main != [] || @danger != []}
       data-sticky-edge="bottom"
-      class="sticky bottom-0 z-10 bg-zinc-50/95 dark:bg-zinc-900/95 backdrop-blur-sm px-3 pt-2 pb-2.5"
+      class="sticky bottom-0 z-10 bg-zinc-50/95 dark:bg-zinc-900/95 backdrop-blur-sm px-3 pt-4 pb-3"
     >
       <div :if={@main != []} class="space-y-1.5">{render_slot(@main)}</div>
       <div
