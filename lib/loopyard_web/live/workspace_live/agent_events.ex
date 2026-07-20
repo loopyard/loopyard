@@ -382,10 +382,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentEvents do
     # (that re-rendered the entire cockpit — recent tools, usage, changes — on
     # every single token, the main flicker/CPU source). The context panel
     # refreshes on Message / StatusChanged, which is often enough.
+    #
+    # The chunk reaches the DOM via "stream_delta" → the StreamAppend hook
+    # appends a text node — O(chunk) on the wire. The accumulated assign is
+    # kept ONLY for the live token counter and the bubble's :if visibility;
+    # nothing renders the full text anymore (that re-shipped the whole reply
+    # every flush).
     {:noreply,
      socket
      |> assign(:streaming_text, socket.assigns.streaming_text <> text)
      |> assign(:streaming_thinking, "")
+     |> push_event("stream_delta", %{text: text})
      |> push_event("scroll_bottom", %{})}
   end
 
@@ -403,6 +410,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentEvents do
     {:noreply,
      socket
      |> assign(:streaming_thinking, (socket.assigns[:streaming_thinking] || "") <> data)
+     |> push_event("stream_thinking_delta", %{text: data})
      |> push_event("scroll_bottom", %{})}
   end
 

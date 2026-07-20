@@ -487,14 +487,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           >
             <%!-- No "Claude" marker and no timeline rail — the live turn's content
                  sits flush at the gutter, directly under its "You" prompt. --%>
-            <.streaming_thinking
-              :if={
-                @detail_level != :chat && assigns[:streaming_thinking] != "" &&
-                  assigns[:streaming_thinking] != nil
-              }
-              text={@streaming_thinking}
-            />
-            <.streaming_bubble :if={@streaming_text != ""} text={@streaming_text} />
+            <.streaming_thinking :if={
+              @detail_level != :chat && assigns[:streaming_thinking] != "" &&
+                assigns[:streaming_thinking] != nil
+            } />
+            <.streaming_bubble :if={@streaming_text != ""} />
             <.thinking_indicator
               :if={
                 @agent.status == :thinking && @streaming_text == "" &&

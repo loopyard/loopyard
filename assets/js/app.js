@@ -196,6 +196,23 @@ Hooks.SoundPanel = {
 //    messages prepend above the viewport; browser overflow-anchor (default)
 //    keeps the visible content from jumping, and we also pin scrollTop by the
 //    height delta as a belt-and-suspenders.
+// StreamAppend — client-side accumulation for live streaming text (the
+// in-progress assistant reply and thinking blocks). The server pushes each
+// delta CHUNK (event name from data-stream-event) and this appends it as a
+// text node inside [data-stream-target] — O(chunk) per update. The container
+// is phx-update="ignore", so LiveView never re-ships or re-patches the
+// accumulated text; the finalized message replaces the whole element. If the
+// target scrolls (thinking's max-h pre), keep it tailed.
+Hooks.StreamAppend = {
+  mounted() {
+    const target = this.el.querySelector("[data-stream-target]") || this.el
+    this.handleEvent(this.el.dataset.streamEvent, ({text}) => {
+      target.appendChild(document.createTextNode(text))
+      if (target.scrollHeight > target.clientHeight) target.scrollTop = target.scrollHeight
+    })
+  }
+}
+
 Hooks.ScrollBottom = {
   mounted() {
     this._loading = false

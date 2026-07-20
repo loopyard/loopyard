@@ -426,18 +426,30 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     """
   end
 
-  attr :text, :string, required: true
-
   def streaming_bubble(assigns) do
     # Flush-left (no rail, no indent) so the live prose lines up with completed
     # assistant messages and everything else in the transcript.
+    #
+    # CLIENT-APPENDED: the body is phx-update="ignore" and the StreamAppend
+    # hook appends each delta chunk as a text node (pushed via "stream_delta").
+    # Rendering the accumulated text server-side re-shipped and re-patched the
+    # ENTIRE reply on every flush — O(reply) wire + DOM churn 10×/s was the
+    # residual typing lag and a Safari memory firehose. Live text is plain
+    # (whitespace-pre-wrap); markdown renders once when the finalized assistant
+    # Message replaces this element. The `:if` at the call site removes the
+    # element between turns, so each stream starts from an empty node.
     ~H"""
-    <%!-- No blinking block-cursor after the text — the live status bubble below
-         already signals "streaming", and the cursor rendered as a weird floating
-         purple rectangle whenever the text ended on a block boundary. --%>
-    <div class="py-0.5 mt-2" id="streaming-msg">
-      <div class="markdown-body text-lg md:text-base leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl">
-        {Loopyard.Markdown.to_html(@text)}
+    <div
+      class="py-0.5 mt-2"
+      id="streaming-msg"
+      phx-update="ignore"
+      phx-hook="StreamAppend"
+      data-stream-event="stream_delta"
+    >
+      <div
+        data-stream-target
+        class="markdown-body text-lg md:text-base leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl whitespace-pre-wrap"
+      >
       </div>
     </div>
     """
@@ -446,12 +458,22 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   def streaming_thinking(assigns) do
     # The agent's live reasoning — flows on the spine, not a bubble. Quietly set
     # apart (muted, italic-feel via the label) since it's inner monologue.
+    # Client-appended like streaming_bubble (event "stream_thinking_delta").
     ~H"""
-    <div class="py-1">
+    <div
+      class="py-1"
+      id="streaming-thinking"
+      phx-update="ignore"
+      phx-hook="StreamAppend"
+      data-stream-event="stream_thinking_delta"
+    >
       <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-1 font-medium uppercase tracking-wide">
         Thinking
       </p>
-      <pre class="text-sm text-zinc-500 dark:text-zinc-400 whitespace-pre-wrap leading-relaxed max-h-56 overflow-y-auto">{@text}</pre>
+      <pre
+        data-stream-target
+        class="text-sm text-zinc-500 dark:text-zinc-400 whitespace-pre-wrap leading-relaxed max-h-56 overflow-y-auto"
+      ></pre>
     </div>
     """
   end
