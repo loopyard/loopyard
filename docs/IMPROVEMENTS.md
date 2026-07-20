@@ -8,6 +8,15 @@ A prioritized list of known, scoped improvements for Loopyard. Ordered within ea
 
 ## Robustness (handles edge cases gracefully)
 
+000. **Upstream: claude-code-acp "ProcessTransport is not ready for writing" race.**
+     (0.16.2) Prompting immediately after `session/load` of a large session dies
+     with that error — the SDK's resumed CLI subprocess isn't writable yet when
+     the prompt arrives. Loopyard mitigates with a 4s delayed drain after
+     restart (`:drain_resumed_pending` in chat_agent.ex). File upstream; drop
+     the delay when fixed. Also worth upstreaming: a failed `session/load`
+     appears to leave the adapter unable to serve a subsequent `session/new`
+     ("Query closed before response received" on both).
+
 00. **"Unread response" / read-tracking for the overview's needs-you signal.** The
     workspace overview answers "is it waiting for me?" via pending question /
     approval / secret — but "the agent replied and you haven't read it" has NO

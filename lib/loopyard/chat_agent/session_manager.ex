@@ -166,7 +166,7 @@ defmodule Loopyard.ChatAgent.SessionManager do
         msg: restart_msg
       })
 
-      case state.backend.start_session(start_opts(state)) do
+      case start_session_safe(state) do
         {:ok, new_session} ->
           Loopyard.EventLog.info("agent:#{state.name}", "CLI session restarted")
 
@@ -229,7 +229,7 @@ defmodule Loopyard.ChatAgent.SessionManager do
   def handle_retry(state, consecutive, max_consecutive_crashes) do
     id = state.id
 
-    case state.backend.start_session(start_opts(state)) do
+    case start_session_safe(state) do
       {:ok, new_session} ->
         content =
           if is_binary(state.claude_session_id) do
@@ -401,5 +401,14 @@ defmodule Loopyard.ChatAgent.SessionManager do
 
   defp generate_msg_id do
     :crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false)
+  end
+  # backend.start_session guarded against EXITS (call timeouts, dead pids) —
+  # a harness that fails to come up is an expected condition; an exit here
+  # crashed the ChatAgent out of its own recovery path, converting a retryable
+  # failure into an abnormal crash (and feeding the restart cascade).
+  def start_session_safe(state) do
+    state.backend.start_session(start_opts(state))
+  catch
+    :exit, reason -> {:error, {:start_exit, reason}}
   end
 end

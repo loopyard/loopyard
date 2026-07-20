@@ -674,15 +674,17 @@ defmodule Loopyard.ChatAgent do
         # fresh CLI (one at a time — the rest pop on turn completion, which
         # batches). NOT batched here: if the backend is permanently dead, this
         # recovery path loops, and batching would nest the queue exponentially.
-        state =
-          case state.pending_sends do
-            [next | rest] ->
-              GenServer.cast(self(), {:send_message, next})
-              %{state | pending_sends: rest}
-
-            [] ->
-              state
-          end
+        #
+        # DELAYED, not immediate: right after session/load the adapter's
+        # underlying CLI subprocess can still be spinning up — prompting in
+        # that window dies with "ProcessTransport is not ready for writing"
+        # (observed with claude-code-acp 0.16.2 on large-session resumes). A
+        # few seconds of settle time lets the resumed subprocess become
+        # writable before the queued send hits it. Reuses the existing
+        # :drain_resumed_pending handler (batch-drains only when :idle).
+        if state.pending_sends != [] do
+          Process.send_after(self(), :drain_resumed_pending, 4_000)
+        end
 
         {:noreply, state}
 
@@ -1016,14 +1018,28 @@ defmodule Loopyard.ChatAgent do
     {:reply, summary(state), state}
   end
 
-  # Synchronous confirm for enqueue_message/2 — runs the EXACT same enqueue logic
-  # as the cast (append + persist / queue), then replies :ok. The reply is the
-  # durability signal the UI waits on before clearing the input. If this process
-  # crashes while handling it, the caller's GenServer.call gets an :exit and
-  # treats the send as failed (input preserved) — never a silent loss.
+  # Synchronous confirm for enqueue_message/2. The reply is the durability
+  # signal the UI waits on before clearing the input — so it must come back
+  # FAST and truthfully. Two regimes:
+  #
+  # - Session alive (the overwhelmingly common case): run the exact cast logic
+  #   inline — append + persist + start the turn — milliseconds — reply :ok.
+  # - Session DEAD: do NOT revive it inside the ack window (a resumed ACP
+  #   session can take 45s+ to load — the caller's 15s timeout fired first,
+  #   reporting "unavailable" for a send that would eventually land, and every
+  #   retry stacked another synchronous revival). Instead: QUEUE the text
+  #   (pending_sends — drained FIFO when the session comes up), kick the
+  #   existing async :restart_session recovery, and reply :ok immediately.
+  #   The inbox owns durability; the harness owns turn execution.
   def handle_call({:send_message, text}, _from, state) do
-    {:noreply, new_state} = handle_cast({:send_message, text}, state)
-    {:reply, :ok, new_state}
+    if session_alive_quick?(state) do
+      {:noreply, new_state} = handle_cast({:send_message, text}, state)
+      {:reply, :ok, new_state}
+    else
+      state = %{state | pending_sends: state.pending_sends ++ [text]}
+      GenServer.cast(self(), :restart_session)
+      {:reply, :ok, state}
+    end
   end
 
   # Catchall for unknown calls. Returns an error reply instead of
@@ -1041,6 +1057,20 @@ defmodule Loopyard.ChatAgent do
 
     {:reply, {:error, :unknown_call}, state}
   end
+
+  # Bounded liveness check for the send-ack fast path: nil session or a
+  # backend probe that errors/exits reads as dead. ACP's session_alive? is a
+  # real ping with its own short timeout; never let a probe blow up the ack.
+  defp session_alive_quick?(%{session: nil}), do: false
+
+  defp session_alive_quick?(state) do
+    state.backend.session_alive?(state.session)
+  rescue
+    _ -> false
+  catch
+    :exit, _ -> false
+  end
+
 
   @impl true
   # --- Stream event handling ---
