@@ -14,9 +14,11 @@ defmodule Loopyard.Harness.ACP do
   Status: handshake + streamed prompt turns + permission/fs round-trips,
   `session/cancel` interrupt, `session/load` resume, and in-container mode are
   implemented and tested (fake transport + verified against the real adapter).
-  **This is now the default backend** (`config :loopyard, :default_harness`);
-  `Harness.Claude` stays selectable per-agent via the `backend:` opt and is one
-  config line away.
+  **This is the only production backend** (`config :loopyard, :default_harness`).
+  Every harness runs inside its container — the container IS the security
+  boundary. There is deliberately no host-execution backend: `Harness.Claude`
+  (which ran the `claude` CLI as a host subprocess) was deleted. The one
+  alternative is `Harness.Fake` for tests.
 
   System prompt: there is no ACP `append_system_prompt` — the harness reads
   `CLAUDE.md`/`CLAUDE.local.md` from the session cwd (validated). Loopyard's
@@ -121,6 +123,12 @@ defmodule Loopyard.Harness.ACP do
   the in-container variant of the transport (#5). Only this string differs from
   host mode; the protocol/connection layer is identical.
   """
+  # Handshake budget (must stay in sync with @resume_ready_timeout above): the
+  # longest a legitimate in-flight adapter can still be handshaking. The orphan
+  # reaper NEVER touches a process younger than this, so it can't kill a live
+  # adapter mid-handshake.
+  @reap_min_age_s 150
+
   def docker_exec_cmd(container, adapter \\ "claude-code-acp") do
     # Launch the adapter through an in-container shell that sources ~/.profile, so
     # the identity env (CLAUDE_CODE_OAUTH_TOKEN, written to ~/.loopyard/env and
@@ -128,32 +136,27 @@ defmodule Loopyard.Harness.ACP do
     # `docker exec ... claude-code-acp` would NOT source it → the harness 401s.
     # Single-quoted so $HOME/$$ expand in the CONTAINER, not on the host.
     #
-    # ZOMBIE REAPING: killing the host-side `docker exec` CLIENT (which is all
-    # the Port can do on teardown) does NOT kill the adapter INSIDE the
-    # container — every crash/timeout used to leave an orphaned adapter
-    # accumulating fds/memory in the container, making the next handshake
-    # slower (a positive-feedback loop under crash-restart). So each launch
-    # first sweeps prior adapters via their pid files, then records its own
-    # pid. One live adapter per work container is the operating model (one
-    # agent per workspace), so sweeping siblings is correct.
-    # ORPHAN REAP — the core leak fix. Killing the host-side `docker exec`
+    # ORPHAN REAP — bounded, AGE-GUARDED. Killing the host-side `docker exec`
     # client on teardown never kills the process tree INSIDE the container, and
-    # killing only the node adapter leaves its `claude` CHILD reparented to
-    # init and ALIVE (~186MB each). Across a crash loop these piled up to dozens
-    # of orphaned `claude` processes — GBs of anon memory — which starved the
-    # VM and got the ACTIVE session OOM-killed (SIGKILL / exit 137) mid-turn.
+    # killing only the node adapter leaves its `claude` CHILD reparented to init
+    # and ALIVE (~186MB each) — across a crash loop these pile up into GBs of
+    # anon memory. So each launch sweeps prior claude/adapter processes.
     #
-    # One agent runs per work container, and a given agent serializes its own
-    # (re)starts (start_session blocks the GenServer), so ANY claude /
-    # claude-code-acp process already running when we launch is an orphan from a
-    # dead/replaced session. Sweep the whole /proc table and SIGKILL every such
-    # process (adapter AND reparented children alike — matching by cmdline, not
-    # parentage, is what reaps the orphans), skipping only our own shell ($$).
-    # Then exec the fresh adapter.
+    # But the sweep must NEVER kill a legitimately in-flight adapter, or two
+    # overlapping (re)starts murder each other (the exit-137 loop). The guard is
+    # AGE: only processes older than @reap_min_age_s (> the handshake budget)
+    # are reaped. A live handshake is always younger, so it is untouchable; a
+    # genuine orphan from a prior turn is always older, so it gets reaped. Age
+    # comes from field 22 (starttime, in USER_HZ=100 ticks) of /proc/PID/stat vs
+    # /proc/uptime — read with `cut` (comm has no spaces for node/claude, so
+    # field indexing is stable). No `||` in the script: it must not contain the
+    # sigil delimiter `|`.
     reap =
-      ~S|for d in /proc/[0-9]*; do pid=${d##*/}; [ "$pid" = "$$" ] && continue; | <>
-        ~S|grep -qa claude "$d/cmdline" 2>/dev/null && kill -9 "$pid" 2>/dev/null; done; | <>
-        ~S|rm -f /tmp/.loopyard-acp.*.pid; echo $$ > /tmp/.loopyard-acp.$$.pid; |
+      ~S|now=$(cut -d. -f1 /proc/uptime); for d in /proc/[0-9]*; do pid=${d##*/}; | <>
+        ~S|if [ "$pid" != "$$" ] && grep -qa claude "$d/cmdline" 2>/dev/null; then | <>
+        ~S|st=$(cut -d" " -f22 "$d/stat" 2>/dev/null); if [ -n "$st" ]; then | <>
+        "age=$(( now - st/100 )); if [ \"$age\" -gt #{@reap_min_age_s} ]; then " <>
+        ~S|kill -9 "$pid" 2>/dev/null; fi; fi; fi; done; |
 
     inner = reap <> ~S|. "$HOME/.profile" 2>/dev/null; exec | <> adapter
 
@@ -168,9 +171,21 @@ defmodule Loopyard.Harness.ACP do
   defp runtime_opts(opts) do
     case Keyword.get(opts, :container) do
       nil ->
-        [cwd: Keyword.get(opts, :cwd), client_fs: true]
-        |> maybe_put(:transport, Keyword.get(opts, :transport))
-        |> maybe_put(:transport_opts, Keyword.get(opts, :transport_opts))
+        # NO CONTAINER = NO LAUNCH. Loopyard runs every harness inside a
+        # container — that IS the security boundary. A nil-container path used
+        # to spawn `claude-code-acp` on the HOST; that possibility is deleted.
+        # The only legitimate nil-container caller is a test injecting a fake
+        # :transport (no real process). Anything else is refused, loudly.
+        case Keyword.get(opts, :transport) do
+          nil ->
+            raise "CONTAINMENT: Harness.ACP requires :container. Running the adapter on " <>
+                    "the HOST is not permitted — every harness runs inside its container. " <>
+                    "(Tests may inject a fake :transport instead.) See docs/SECURITY.md."
+
+          transport ->
+            [cwd: Keyword.get(opts, :cwd), client_fs: true, transport: transport]
+            |> maybe_put(:transport_opts, Keyword.get(opts, :transport_opts))
+        end
 
       container ->
         base = [cwd: Keyword.get(opts, :cwd, "/workspace"), client_fs: false]

@@ -25,22 +25,25 @@ defmodule Loopyard.ChatAgent.ContainmentTest do
     :exit, _ -> :error
   end
 
-  test "an agent on Harness.Claude (host-side CLI) refuses to start" do
-    id = "containment-claude-#{:rand.uniform(1_000_000)}"
+  test "an ACP agent with no :container refuses to start (would run on the host)" do
+    id = "containment-acp-nohost-#{:rand.uniform(1_000_000)}"
 
+    # ACP with no workspace_id and no explicit :container → the harness would
+    # launch on the HOST. The containment gate must refuse it. (There is no
+    # host-execution backend anymore — Harness.Claude was deleted — so this
+    # ACP-without-container path is the only remaining way to reach the host.)
     try_start(
       id: id,
       name: "c",
       working_dir: File.cwd!(),
       started_by: "test",
-      backend: Loopyard.Harness.Claude
+      backend: Loopyard.Harness.ACP
     )
 
     Process.sleep(50)
     on_exit(fn -> ChatAgent.stop_agent(id) end)
 
-    # The containment gate raised in init → the agent is not live on the host.
-    refute alive?(id), "a Harness.Claude agent must be refused (it runs on the host)"
+    refute alive?(id), "an ACP agent without a container must be refused (it runs on the host)"
   end
 
   test "a Fake/neutral backend (no host runtime) is allowed" do

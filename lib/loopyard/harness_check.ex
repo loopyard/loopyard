@@ -135,6 +135,6 @@ defmodule Loopyard.HarnessCheck do
   end
 
   defp default_backend do
-    Application.get_env(:loopyard, :default_harness, Loopyard.Harness.Claude)
+    Application.get_env(:loopyard, :default_harness, Loopyard.Harness.ACP)
   end
 end

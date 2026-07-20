@@ -25,7 +25,6 @@ defmodule Loopyard.Agents.Name do
 
   @doc "The human harness label for a backend module."
   @spec label_for(module() | nil) :: String.t()
-  def label_for(Harness.Claude), do: "Claude"
   def label_for(Harness.ACP), do: "Claude"
   def label_for(Harness.Fake), do: "Claude"
   # Any future harness module (e.g. Backend.Codex) → its last name segment.

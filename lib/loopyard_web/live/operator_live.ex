@@ -1,8 +1,9 @@
 defmodule LoopyardWeb.OperatorLive do
   @moduledoc """
   `/operator` — the operator agent's own chat, standalone (no workspace chrome).
-  The operator is a host-side `Harness.Claude` agent with no workspace/project, so
-  it can't render through the workspace view — it gets its own focused screen:
+  The operator is an in-container ACP agent (its own workstation container) with
+  no workspace/project, so it can't render through the workspace view — it gets
+  its own focused screen:
   a header + the shared `chat_panel`. Created on first visit
   (`Loopyard.Operator.ensure_agent/0`).
 

@@ -71,12 +71,12 @@ defmodule Loopyard.ChatAgent.Initializer do
 
     tools = Keyword.get(opts, :tools, ToolConfig.default_tools())
 
-    default_backend =
-      Application.get_env(
-        :loopyard,
-        :default_harness,
-        Loopyard.Harness.Claude
-      )
+    # ACP is the ONLY production backend — every harness runs inside a
+    # container (the security boundary). There is no host-execution backend
+    # anymore (Harness.Claude, which ran the CLI on the host, was deleted). The
+    # config key stays overridable for tests (Harness.Fake), but the default is
+    # ACP, never a host runtime.
+    default_backend = Application.get_env(:loopyard, :default_harness, Loopyard.Harness.ACP)
 
     backend = Keyword.get(opts, :backend, default_backend)
     workspace = if workspace_id, do: load_workspace_config(workspace_id), else: nil
@@ -253,16 +253,11 @@ defmodule Loopyard.ChatAgent.Initializer do
   # inside a Docker container — never on the host. Fail closed: raise rather than
   # silently start a host-side process.
   #
-  #   * `Harness.Claude` runs the `claude` CLI as a HOST subprocess → refused.
   #   * `Harness.ACP` runs on the host UNLESS `:container` is set → require it.
   #   * anything else (Fake + test doubles like RecordingBackend) spawns no host
   #     runtime → allowed. IMPORTANT: if a NEW backend that can spawn a host
-  #     process is added, it MUST be refused here (add a clause).
-  defp assert_runtime_contained!(Loopyard.Harness.Claude, _session_opts, id) do
-    raise "CONTAINMENT: Harness.Claude runs the CLI on the HOST (agent #{id}). Refused — " <>
-            "agents must run in-container (Harness.ACP with :container). See docs/SECURITY.md."
-  end
-
+  #     process is EVER added, it MUST be refused here (add a clause). There is
+  #     deliberately no host-execution backend — Harness.Claude was deleted.
   defp assert_runtime_contained!(Loopyard.Harness.ACP, session_opts, id) do
     if is_nil(Keyword.get(session_opts, :container)) do
       raise "CONTAINMENT: ACP agent #{id} has no :container — it would run the harness " <>
