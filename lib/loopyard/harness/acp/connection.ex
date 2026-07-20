@@ -90,6 +90,11 @@ defmodule Loopyard.Harness.ACP.Connection do
         )
       end)
 
+    # Abnormal closes deliberately KEEP their stderr file (it's the diagnosis),
+    # which under a crash loop accumulated hundreds of them. Sweep old ones
+    # here — by the time a new session boots, day-old dying words are stale.
+    sweep_stale_stderr_logs()
+
     transport_opts = Keyword.put(transport_opts, :stderr_log, stderr_log)
 
     case transport_mod.start_link([owner: self()] ++ transport_opts) do
@@ -137,6 +142,16 @@ defmodule Loopyard.Harness.ACP.Connection do
             "clientCapabilities" => client_caps
           })
           |> elem(0)
+
+        # HANDSHAKE DEADLINE: if the adapter never gets us to :ready (wedged
+        # session/new, MCP connect hanging, slow session/load replay past
+        # budget), give up ORDERLY — reply waiters {:error, :handshake_timeout}
+        # and stop — instead of sitting in :initializing forever and letting
+        # the CALLER's GenServer.call timeout raise an exit through the whole
+        # supervision chain. Kept just under the caller's budget (ACP module:
+        # 30s fresh / 120s resume) so the connection always answers first.
+        deadline = if state.resume, do: 115_000, else: 25_000
+        Process.send_after(self(), :handshake_deadline, deadline)
 
         {:ok, state}
 
@@ -260,6 +275,26 @@ defmodule Loopyard.Harness.ACP.Connection do
     handle_notification(method, msg["params"] || %{}, state)
   end
 
+  def handle_info(:handshake_deadline, %{status: :ready} = state), do: {:noreply, state}
+  def handle_info(:handshake_deadline, %{status: :closed} = state), do: {:noreply, state}
+
+  def handle_info(:handshake_deadline, state) do
+    # Still :initializing past the deadline — the handshake wedged (adapter
+    # hung on session/new, MCP connect stuck, or a session/load replay slower
+    # than even the resume budget). Fail ORDERLY: answer every waiter with an
+    # error (so the caller's start_session returns {:error, _} instead of its
+    # call raising an exit) and stop, which closes the port + sweeps the
+    # in-container adapter on the next launch.
+    Logger.warning(
+      "ACP: handshake deadline hit while #{inspect(state.status)} " <>
+        "(resume=#{inspect(state.resume != nil)}); closing connection"
+    )
+
+    surface_dying_words(state, :handshake_timeout)
+    state = reply_waiters(state, {:error, :handshake_timeout})
+    {:stop, :normal, %{state | status: :closed}}
+  end
+
   def handle_info({:acp_closed, reason}, state) do
     # The adapter died — its stderr is the diagnosis. Read the tail back and
     # log it LOUDLY (server log + /system/events); without this, failures like
@@ -323,9 +358,21 @@ defmodule Loopyard.Harness.ACP.Connection do
     {:noreply, reply_waiters(state, :ok)}
   end
 
-  defp handle_response(:session_load, %{"error" => _error}, state) do
+  defp handle_response(:session_load, %{"error" => error}, state) do
     # Saved session unknown/expired — boot a fresh one so the agent still comes
-    # up (as a new conversation) rather than failing to start.
+    # up (as a new conversation) rather than failing to start. LOUD on purpose:
+    # this silently drops harness-side conversation continuity (Loopyard's own
+    # message history survives in ETS), so it must be visible when it happens.
+    Logger.warning(
+      "ACP: session/load for #{inspect(state.resume)} failed (#{inspect(error)}); " <>
+        "falling back to a FRESH session — harness-side history not restored"
+    )
+
+    Loopyard.EventLog.error(
+      "harness:acp",
+      "Resume failed for session #{inspect(state.resume)} — started fresh instead"
+    )
+
     {:noreply, elem(new_session(state), 0)}
   end
 
@@ -629,12 +676,40 @@ defmodule Loopyard.Harness.ACP.Connection do
         "harness:acp",
         "Adapter closed (#{inspect(reason)}). Stderr: #{short}"
       )
+    else
+      # An EMPTY stderr on abnormal close is itself a diagnosis: the shell
+      # inside the container never ran — the container is likely down or
+      # restarting (docker exec failed before the redirect existed). Without
+      # this line that failure mode was completely silent.
+      Loopyard.EventLog.error(
+        "harness:acp",
+        "Adapter closed (#{inspect(reason)}) with NO stderr captured — " <>
+          "the workspace container may be down or restarting."
+      )
     end
 
     :ok
   end
 
   defp surface_dying_words(_state, _reason), do: :ok
+
+  # Delete stderr capture files older than a day — abnormal closes keep theirs
+  # for diagnosis, and a crash loop used to accumulate hundreds. Best-effort.
+  defp sweep_stale_stderr_logs do
+    cutoff = System.os_time(:second) - 24 * 3600
+
+    System.tmp_dir!()
+    |> Path.join("loopyard-acp-*.stderr")
+    |> Path.wildcard()
+    |> Enum.each(fn f ->
+      case File.stat(f, time: :posix) do
+        {:ok, %{mtime: m}} when m < cutoff -> File.rm(f)
+        _ -> :ok
+      end
+    end)
+  rescue
+    _ -> :ok
+  end
 
   @impl true
   def terminate(reason, state) do

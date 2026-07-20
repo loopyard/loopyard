@@ -40,6 +40,12 @@ defmodule Loopyard.Harness.ACP do
   alias Loopyard.Harness.ACP.{Connection, SystemPrompt}
 
   @ready_timeout 30_000
+  # session/load REPLAYS the whole saved conversation (plus MCP connects)
+  # before answering — a long session under machine load takes well past 30s.
+  # A flat 30s here was the root of a crash loop: the timeout killed the
+  # connection mid-load ("context canceled" in the adapter's stderr), the
+  # restart re-attempted the same slow load, forever.
+  @resume_ready_timeout 120_000
   @turn_timeout 600_000
 
   @impl true
@@ -59,12 +65,35 @@ defmodule Loopyard.Harness.ACP do
       |> Keyword.merge(runtime)
       |> maybe_put(:model, Keyword.get(opts, :model))
 
+    ready_timeout =
+      if Keyword.get(opts, :resume), do: @resume_ready_timeout, else: @ready_timeout
+
     with {:ok, conn} <- Connection.start_link(conn_opts),
-         :ok <- Connection.await_ready(conn, @ready_timeout) do
+         :ok <- await_ready_safe(conn, ready_timeout) do
       {:ok, conn}
     else
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  # await_ready that can NEVER blow up the caller: a call timeout or a
+  # connection that died mid-handshake used to raise an exit that propagated
+  # through ChatAgent.init → RestartController → ServiceManager, cascading the
+  # whole workspace subtree. A failed handshake is an EXPECTED condition —
+  # return {:error, _} and tear the connection (and its in-container adapter)
+  # down so nothing lingers.
+  defp await_ready_safe(conn, timeout) do
+    Connection.await_ready(conn, timeout)
+  catch
+    :exit, _ ->
+      stop_quiet(conn)
+      {:error, :handshake_timeout}
+  end
+
+  defp stop_quiet(conn) do
+    if Process.alive?(conn), do: GenServer.stop(conn, :shutdown, 2_000)
+  catch
+    :exit, _ -> :ok
   end
 
   # Loopyard's agent system prompt reaches the harness via CLAUDE.local.md in
@@ -97,8 +126,27 @@ defmodule Loopyard.Harness.ACP do
     # the identity env (CLAUDE_CODE_OAUTH_TOKEN, written to ~/.loopyard/env and
     # sourced from ~/.profile by Env.sync_home/1) is in scope. A bare
     # `docker exec ... claude-code-acp` would NOT source it → the harness 401s.
-    # Single-quoted so $HOME expands in the CONTAINER, not on the host.
-    ~s(docker exec -i #{container} sh -c '. "$HOME/.profile" 2>/dev/null; exec #{adapter}')
+    # Single-quoted so $HOME/$$ expand in the CONTAINER, not on the host.
+    #
+    # ZOMBIE REAPING: killing the host-side `docker exec` CLIENT (which is all
+    # the Port can do on teardown) does NOT kill the adapter INSIDE the
+    # container — every crash/timeout used to leave an orphaned adapter
+    # accumulating fds/memory in the container, making the next handshake
+    # slower (a positive-feedback loop under crash-restart). So each launch
+    # first sweeps prior adapters via their pid files, then records its own
+    # pid. One live adapter per work container is the operating model (one
+    # agent per workspace), so sweeping siblings is correct.
+    # STALE-ONLY (-mmin +10): restart/retry paths can briefly overlap — a new
+    # spawn must never kill a sibling mid-handshake (an unconditional sweep did
+    # exactly that: exit 137 mutual murder between racing restarts). Ten
+    # minutes comfortably exceeds any handshake budget, so only true orphans
+    # (whose host client died without cleanup) get reaped.
+    inner =
+      ~S{for f in $(find /tmp -maxdepth 1 -name ".loopyard-acp.*.pid" -mmin +10 2>/dev/null); do kill -9 "$(cat "$f")" 2>/dev/null; rm -f "$f"; done; } <>
+        ~S{echo $$ > /tmp/.loopyard-acp.$$.pid; . "$HOME/.profile" 2>/dev/null; exec } <>
+        adapter
+
+    "docker exec -i #{container} sh -c '#{inner}'"
   end
 
   # Host mode vs in-container mode (#5). In-container: the adapter runs via
