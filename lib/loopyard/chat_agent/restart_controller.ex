@@ -278,9 +278,40 @@ defmodule Loopyard.ChatAgent.RestartController do
 
         {:reply, {:ok, pid}, state}
 
+      {:error, {:already_started, pid}} ->
+        {:reply, {:ok, pid}, state}
+
       {:error, reason} = err ->
         Logger.warning("[RestartController] #{id} start failed: #{inspect(reason)}")
+
+        # BOOT failures count toward quarantine too. An agent whose init fails
+        # cleanly ({:stop, {:harness_start_failed, _}} → start_child {:error})
+        # is never monitored, so it never accrued crash history — log-replay
+        # re-attempted it on every workspace reconnect, FOREVER, with no
+        # terminal state. Same ETS-backed history + threshold as monitored
+        # crashes: repeated boot failures now land in /system/quarantine as a
+        # visible "needs attention" instead of an invisible retry loop.
+        state = record_boot_failure(state, id, reason)
         {:reply, err, state}
+    end
+  end
+
+  defp record_boot_failure(state, agent_id, reason) do
+    now = System.monotonic_time(:millisecond)
+    {count, window_ms} = threshold()
+
+    history =
+      read_history(state.workspace_id, agent_id)
+      |> Enum.filter(&(now - &1 <= window_ms))
+
+    history = [now | history]
+    write_history(state.workspace_id, agent_id, history)
+
+    if length(history) >= count do
+      {:noreply, state} = quarantine(state, agent_id, {:boot_failed, reason})
+      state
+    else
+      state
     end
   end
 
@@ -452,7 +483,11 @@ defmodule Loopyard.ChatAgent.RestartController do
         # rebuilt first (cold workspace / after a crash), 10s was too tight — the
         # agent booted fine a few seconds later but the saga had already reported
         # failure. 30s covers rebuild + CLI start. (Async init is the real fix; later.)
-        GenServer.call(pid, {:start_agent, agent_opts}, 30_000)
+        # 150s (was 30s): a RESUMED agent's init replays its whole harness
+        # session (ACP session/load budget: 120s) — this outer call must
+        # exceed the inner budget or it times out first, killing the caller
+        # while the boot actually succeeds underneath (the crash-loop shape).
+        GenServer.call(pid, {:start_agent, agent_opts}, 150_000)
 
       [] ->
         {:error, :workspace_not_running}

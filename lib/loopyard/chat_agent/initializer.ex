@@ -1,3 +1,14 @@
+defmodule Loopyard.ChatAgent.HarnessStartError do
+  @moduledoc """
+  Raised when the agent harness fails to boot (container down, auth expired,
+  handshake timeout). Deliberately a DEDICATED exception so
+  `Initializer.build_state/2` can rescue exactly this at its boundary and turn
+  it into a clean `{:stop, {:harness_start_failed, reason}}` — an expected
+  failure, never an abnormal init crash that cascades supervision trees.
+  """
+  defexception [:reason, :message]
+end
+
 defmodule Loopyard.ChatAgent.Initializer do
   @moduledoc """
   Extracts the init/resume/startup logic from ChatAgent.
@@ -34,6 +45,14 @@ defmodule Loopyard.ChatAgent.Initializer do
     else
       init_fresh(id, opts)
     end
+  rescue
+    # A harness that fails to boot is an EXPECTED condition (container down,
+    # auth expired, handshake timeout) — return a clean {:stop, _} so
+    # ChatAgent.init stops normally and DynamicSupervisor.start_child reports
+    # {:error, _}. It used to escape as an abnormal init crash, which cascaded
+    # through RestartController → ServiceManager → the whole workspace group.
+    e in Loopyard.ChatAgent.HarnessStartError ->
+      {:stop, {:harness_start_failed, e.reason}}
   end
 
   @doc """
@@ -185,7 +204,10 @@ defmodule Loopyard.ChatAgent.Initializer do
         {session, session_opts, backend, prompt_hash}
 
       {:error, reason} ->
-        raise RuntimeError,
+        # Tagged exception, RESCUED at the build_state boundary into a clean
+        # {:stop, {:harness_start_failed, reason}} — never an abnormal crash.
+        raise Loopyard.ChatAgent.HarnessStartError,
+          reason: reason,
           message:
             "Failed to start the agent harness for agent #{id}: #{inspect(reason)}. " <>
               "Usually this means: the harness isn't installed in the container, the workspace volume " <>
