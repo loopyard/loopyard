@@ -329,6 +329,91 @@ defmodule Loopyard.Harness.ACP.ConnectionTest do
     end
   end
 
+  describe "rate-limit classification" do
+    # The claude-code-acp adapter doesn't surface an upstream rate-limit
+    # rejection as a status — it errors the session/prompt request (and often
+    # exits) with "API Error: Rate limit reached". Pre-fix, both read as
+    # generic crashes: ChatAgent restart-with-resume looped straight back
+    # into the hard limit (the death spiral). The Connection must classify
+    # them and emit %Event.RateLimitStatus{status: :rejected} so the agent
+    # parks in :rate_limited with a timed retry instead.
+
+    test "session/prompt error mentioning a rate limit emits RateLimitStatus :rejected" do
+      {conn, _transport} = start_conn()
+      handshake(conn)
+      ref = make_ref()
+      Connection.prompt(conn, "go", self(), ref)
+      assert_receive {:sent, %{"method" => "session/prompt", "id" => prompt_id}}
+
+      send(
+        conn,
+        {:acp_msg,
+         %{
+           "id" => prompt_id,
+           "error" => %{
+             "code" => -32603,
+             "message" => "Internal error: API Error: Rate limit reached"
+           }
+         }}
+      )
+
+      assert_receive {:acp_event, ^ref, %Event.RateLimitStatus{status: :rejected}}
+      assert_receive {:acp_event, ^ref, %Event.SessionResult{}}
+      assert_receive {:acp_done, ^ref, {:error, _}}
+    end
+
+    test "adapter death with rate-limit stderr emits RateLimitStatus before the error result" do
+      stderr =
+        Path.join(
+          System.tmp_dir!(),
+          "loopyard-acp-test-#{System.unique_integer([:positive])}.stderr"
+        )
+
+      File.write!(
+        stderr,
+        "Error handling request { method: 'session/prompt' } " <>
+          "{ message: 'Internal error: API Error: Rate limit reached' }\ncontext canceled\n"
+      )
+
+      on_exit(fn -> File.rm(stderr) end)
+
+      {conn, _transport} = start_conn(transport_opts: [test: self(), stderr_log: stderr])
+      handshake(conn)
+      ref = make_ref()
+      Connection.prompt(conn, "go", self(), ref)
+      assert_receive {:sent, %{"method" => "session/prompt"}}
+
+      Process.flag(:trap_exit, true)
+      send(conn, {:acp_closed, {:exit_status, 1}})
+
+      assert_receive {:acp_event, ^ref, %Event.RateLimitStatus{status: :rejected}}
+      assert_receive {:acp_done, ^ref, {:error, {:closed, {:exit_status, 1}}}}
+    end
+
+    test "adapter death with unrelated stderr does NOT emit RateLimitStatus" do
+      stderr =
+        Path.join(
+          System.tmp_dir!(),
+          "loopyard-acp-test-#{System.unique_integer([:positive])}.stderr"
+        )
+
+      File.write!(stderr, "context canceled\n")
+      on_exit(fn -> File.rm(stderr) end)
+
+      {conn, _transport} = start_conn(transport_opts: [test: self(), stderr_log: stderr])
+      handshake(conn)
+      ref = make_ref()
+      Connection.prompt(conn, "go", self(), ref)
+      assert_receive {:sent, %{"method" => "session/prompt"}}
+
+      Process.flag(:trap_exit, true)
+      send(conn, {:acp_closed, {:exit_status, 1}})
+
+      assert_receive {:acp_done, ^ref, {:error, {:closed, {:exit_status, 1}}}}
+      refute_received {:acp_event, ^ref, %Event.RateLimitStatus{}}
+    end
+  end
+
   describe "cancel (session/cancel)" do
     test "sends a session/cancel notification for the live session, keeping it warm" do
       {conn, _transport} = start_conn()

@@ -299,11 +299,24 @@ defmodule Loopyard.Harness.ACP.Connection do
     # The adapter died — its stderr is the diagnosis. Read the tail back and
     # log it LOUDLY (server log + /system/events); without this, failures like
     # the inotify EMFILE storm are invisible ("session/new never answered").
-    surface_dying_words(state, reason)
+    stderr_tail = surface_dying_words(state, reason)
 
     state = reply_waiters(state, {:error, {:closed, reason}})
 
     if state.turn do
+      # The adapter EXITS on an upstream rate-limit rejection instead of
+      # surfacing it ("Internal error: API Error: Rate limit reached" on
+      # stderr, then exit 1). Without classification, upstream treats that
+      # as a generic crash and restart-with-resume loops straight back into
+      # the limit — the death spiral. Emit RateLimitStatus first so the
+      # ChatAgent parks in :rate_limited (timed retry, queue held) instead.
+      if rate_limited_error?(stderr_tail) do
+        send(
+          state.turn.subscriber,
+          {:acp_event, state.turn.ref, %Event.RateLimitStatus{status: :rejected}}
+        )
+      end
+
       # Emit an error SessionResult BEFORE acp_done so upstream sees the turn
       # actually failed (adapter died mid-turn) instead of a clean stop with
       # no result event.
@@ -415,6 +428,14 @@ defmodule Loopyard.Harness.ACP.Connection do
     # A JSON-RPC error response means the turn failed; carry that into
     # SessionResult so upstream auto-retry + error surfacing fire.
     error = if match?(%{"error" => e} when not is_nil(e), msg), do: {:error, error_subtype(msg)}
+
+    # A rate-limit rejection ("Internal error: API Error: Rate limit reached")
+    # must park the agent in :rate_limited, not read as a retryable turn error
+    # — retrying into a hard limit is the death spiral.
+    if match?({:error, _}, error) and rate_limited_error?(error_subtype(msg)) do
+      send(turn.subscriber, {:acp_event, turn.ref, %Event.RateLimitStatus{status: :rejected}})
+    end
+
     {_translator, events} = Translator.finish(turn.translator, error)
 
     Enum.each(events, &send(turn.subscriber, {:acp_event, turn.ref, &1}))
@@ -458,6 +479,15 @@ defmodule Loopyard.Harness.ACP.Connection do
 
   defp prompt_error(%{"error" => error}), do: {:error, error}
   defp prompt_error(_), do: :unknown
+
+  # Does adapter stderr / an error message describe an upstream API
+  # rate-limit rejection? The adapter phrases it "API Error: Rate limit
+  # reached"; match loosely — only adapter/API errors reach these strings,
+  # never agent output.
+  defp rate_limited_error?(text) when is_binary(text),
+    do: text =~ ~r/rate limit/i
+
+  defp rate_limited_error?(_), do: false
 
   defp error_subtype(%{"error" => %{"message" => m}}) when is_binary(m), do: m
   defp error_subtype(%{"error" => %{"code" => c}}), do: "error_#{c}"
@@ -646,6 +676,8 @@ defmodule Loopyard.Harness.ACP.Connection do
 
   # On abnormal close, read the adapter's captured stderr tail and log it —
   # then keep the file for post-mortem. On clean shutdown, remove it.
+  # Returns the tail (or nil) so the caller can classify the death — e.g.
+  # a rate-limit rejection that killed the adapter.
   @stderr_tail_bytes 2_000
 
   defp surface_dying_words(%{stderr_log: path}, reason) when is_binary(path) do
@@ -688,10 +720,10 @@ defmodule Loopyard.Harness.ACP.Connection do
       )
     end
 
-    :ok
+    tail
   end
 
-  defp surface_dying_words(_state, _reason), do: :ok
+  defp surface_dying_words(_state, _reason), do: nil
 
   # Delete stderr capture files older than a day — abnormal closes keep theirs
   # for diagnosis, and a crash loop used to accumulate hundreds. Best-effort.
