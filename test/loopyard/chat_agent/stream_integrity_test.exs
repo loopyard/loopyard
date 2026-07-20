@@ -185,6 +185,77 @@ defmodule Loopyard.ChatAgent.StreamIntegrityTest do
     end
   end
 
+  describe "delta publish coalescing" do
+    # Raw token deltas must NOT publish 1:1 — each publish makes every viewer
+    # re-ship + re-patch the whole accumulated text, which lags typing during
+    # heavy streams. Deltas queue and flush as one combined event per tick.
+    test "token deltas publish as one combined TextDelta per flush tick", %{id: id} do
+      pid = agent_pid(id)
+
+      ref = make_ref()
+
+      :sys.replace_state(pid, fn s ->
+        %{s | stream_ref: ref, status: :thinking, in_flight_partial: ""}
+      end)
+
+      send(pid, {:stream_event, id, ref, %Event.TextDelta{text: "Hel"}})
+      send(pid, {:stream_event, id, ref, %Event.TextDelta{text: "lo, "}})
+      send(pid, {:stream_event, id, ref, %Event.TextDelta{text: "world"}})
+
+      # Nothing publishes per token (flush interval is 100ms)…
+      refute_receive %Loopyard.Events.ChatAgentMessage.TextDelta{}, 40
+
+      # …then the flush tick delivers one combined chunk.
+      assert_receive %Loopyard.Events.ChatAgentMessage.TextDelta{
+                       agent_id: ^id,
+                       text: "Hello, world"
+                     },
+                     500
+
+      refute_receive %Loopyard.Events.ChatAgentMessage.TextDelta{}, 150
+    end
+
+    test "thinking deltas coalesce on their own channel", %{id: id} do
+      pid = agent_pid(id)
+
+      ref = make_ref()
+      :sys.replace_state(pid, fn s -> %{s | stream_ref: ref, status: :thinking} end)
+
+      send(pid, {:stream_event, id, ref, %Event.ThinkingDelta{thinking: "hmm "}})
+      send(pid, {:stream_event, id, ref, %Event.ThinkingDelta{thinking: "okay"}})
+
+      assert_receive %Loopyard.Events.ChatAgentMessage.StreamOutput{
+                       agent_id: ^id,
+                       title: "__thinking__",
+                       data: "hmm okay"
+                     },
+                     500
+    end
+
+    test "final Event.Text drops queued chunks — no delta after the Message", %{id: id} do
+      pid = agent_pid(id)
+
+      ref = make_ref()
+
+      :sys.replace_state(pid, fn s ->
+        %{s | stream_ref: ref, status: :thinking, in_flight_partial: ""}
+      end)
+
+      send(pid, {:stream_event, id, ref, %Event.TextDelta{text: "Hel"}})
+      send(pid, {:stream_event, id, ref, %Event.Text{text: "Hello!"}})
+
+      assert_receive %Loopyard.Events.ChatAgentMessage.Message{
+                       agent_id: ^id,
+                       msg: %{role: :assistant, content: "Hello!"}
+                     },
+                     500
+
+      # A flush after the finalized Message would resurrect a ghost
+      # streaming bubble in the UI — queued chunks must be dropped.
+      refute_receive %Loopyard.Events.ChatAgentMessage.TextDelta{}, 200
+    end
+  end
+
   describe "surface #16: stale stream event drop" do
     test "stream event with mismatched ref does not mutate state", %{id: id} do
       pid = agent_pid(id)

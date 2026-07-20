@@ -43,6 +43,13 @@ defmodule Loopyard.ChatAgent.StreamHandler do
   # Max in-memory messages (matching ChatAgent's cap).
   @max_messages 1000
 
+  # Streaming-delta publish cadence. Raw token deltas queue in
+  # state.stream_pub_buffer and one combined publish per channel goes out
+  # each tick — 10 DOM patches/s per viewer instead of one per token.
+  # 100ms is imperceptible for reading a live stream but keeps heavy
+  # streams from monopolizing the browser main thread (typing lag).
+  @delta_flush_ms 100
+
   # --- Public API ---
 
   @doc """
@@ -54,8 +61,10 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     assistant_msg = %{role: :assistant, content: content, timestamp: now}
     {state, assistant_msg} = append_message(state, assistant_msg)
     # Full text arrived — clear any accumulated partial so a
-    # subsequent stream_error/timeout doesn't re-emit it.
-    state = %{state | last_activity_at: now, in_flight_partial: ""}
+    # subsequent stream_error/timeout doesn't re-emit it. Unflushed delta
+    # chunks are dropped too: the Message below supersedes them, and a
+    # late flush after it would resurrect a ghost streaming bubble.
+    state = drop_stream_deltas(%{state | last_activity_at: now, in_flight_partial: ""})
     Persistence.persist_message(state, assistant_msg)
 
     Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
@@ -123,13 +132,18 @@ defmodule Loopyard.ChatAgent.StreamHandler do
   end
 
   def process_event(%Event.TextDelta{text: text}, state) do
-    id = state.id
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.TextDelta{agent_id: id, text: text})
-    %{state | in_flight_partial: state.in_flight_partial <> (text || "")}
+    # Don't publish per token — queue the chunk; the :flush_stream_deltas
+    # timer publishes one combined TextDelta per @delta_flush_ms. Per-token
+    # publishes made every viewer re-patch the whole streamed text 30–60×/s,
+    # lagging keyboard input browser-side.
+    state = %{state | in_flight_partial: state.in_flight_partial <> (text || "")}
+    buffer_stream_delta(state, :text, text || "")
   end
 
   def process_event(%Event.Thinking{thinking: thinking}, state) do
     now = DateTime.utc_now()
+    # Finalized thinking block supersedes any queued thinking chunks.
+    state = drop_stream_deltas(state)
     msg = %{role: :thinking, content: thinking, timestamp: now}
     {state, msg} = append_message(state, msg)
     Persistence.persist_message(state, msg)
@@ -143,16 +157,9 @@ defmodule Loopyard.ChatAgent.StreamHandler do
   end
 
   def process_event(%Event.ThinkingDelta{thinking: thinking}, state) do
-    # Broadcast on a separate channel so the LV can stream thinking
-    # into its own assign without mixing with the response text.
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.StreamOutput{
-      agent_id: state.id,
-      data: thinking || "",
-      title: "__thinking__",
-      msg_id: "__thinking__"
-    })
-
-    state
+    # Separate channel from response text (LV streams it into its own
+    # assign); same coalescing as TextDelta — see buffer_stream_delta/3.
+    buffer_stream_delta(state, :thinking, thinking || "")
   end
 
   def process_event(%Event.ServerTool{name: name, input: input}, state) do
@@ -287,7 +294,7 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     attempt = state.turn_retry_count + 1
 
     state = %{
-      state
+      drop_stream_deltas(state)
       | turn_retry_count: attempt,
         pending_turn_error: nil,
         active_tool: nil,
@@ -359,7 +366,7 @@ defmodule Loopyard.ChatAgent.StreamHandler do
   # warning). Does NOT set :status — the caller picks the resting status.
   defp reset_turn_state(state) do
     %{
-      state
+      drop_stream_deltas(state)
       | active_tool: nil,
         in_flight_partial: "",
         pending_turn_error: nil,
@@ -643,13 +650,88 @@ defmodule Loopyard.ChatAgent.StreamHandler do
   Finalize any partial text accumulated from TextDelta events when a stream is
   interrupted (error, timeout, user stop). Delegates to
   `Loopyard.ChatAgent.PartialText` — kept as a thin passthrough so existing
-  callers (StreamHandler + ChatAgent) don't need to change.
+  callers (StreamHandler + ChatAgent) don't need to change. Queued delta
+  chunks are dropped first: the finalized partial Message carries the full
+  accumulated text, and a flush landing after it would ghost a stale
+  streaming bubble in every viewer.
   """
-  defdelegate finalize_partial_on_stream_interrupt(state, id, reason),
-    to: Loopyard.ChatAgent.PartialText,
-    as: :finalize
+  def finalize_partial_on_stream_interrupt(state, id, reason) do
+    state
+    |> drop_stream_deltas()
+    |> Loopyard.ChatAgent.PartialText.finalize(id, reason)
+  end
+
+  @doc """
+  Publish everything queued in `state.stream_pub_buffer` — one combined
+  event per channel run, in arrival order — and rearm for the next tick.
+  Called from ChatAgent's `:flush_stream_deltas` timer. No-op (beyond
+  clearing the timer ref) when the buffer is empty or the turn is no
+  longer streaming.
+  """
+  # These three helpers use Map.get/Map.put (not strict struct access) on the
+  # two coalescing fields: agents live through hot code reloads on a running
+  # dev server, and a GenServer holding a pre-reload struct (without the new
+  # keys) must not KeyError mid-stream.
+  def flush_stream_deltas(state) do
+    buffer = Map.get(state, :stream_pub_buffer, [])
+    id = state.id
+
+    # Publish only while the turn is still streaming — after an interrupt
+    # that raced the timer, the finalized Message already superseded these
+    # chunks, and publishing them would corrupt the next turn's assigns.
+    if buffer != [] and state.status == :thinking do
+      buffer
+      |> Enum.reverse()
+      |> Enum.each(fn
+        {:text, text} ->
+          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.TextDelta{
+            agent_id: id,
+            text: text
+          })
+
+        {:thinking, data} ->
+          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.StreamOutput{
+            agent_id: id,
+            data: data,
+            title: "__thinking__",
+            msg_id: "__thinking__"
+          })
+      end)
+    end
+
+    state |> Map.put(:stream_pub_buffer, []) |> Map.put(:stream_pub_timer, nil)
+  end
+
+  @doc """
+  Discard queued delta chunks and cancel the pending flush tick. Every path
+  that finalizes or resets a turn goes through this — see the struct docs
+  on `stream_pub_buffer`.
+  """
+  def drop_stream_deltas(state) do
+    if timer = Map.get(state, :stream_pub_timer), do: Process.cancel_timer(timer)
+    state |> Map.put(:stream_pub_buffer, []) |> Map.put(:stream_pub_timer, nil)
+  end
 
   # --- Private helpers ---
+
+  # Queue a streaming chunk for the next flush tick, coalescing onto the
+  # newest chunk when the channel matches (buffer is stored reversed).
+  # Arms the flush timer if idle.
+  defp buffer_stream_delta(state, _channel, ""), do: state
+
+  defp buffer_stream_delta(state, channel, text) do
+    buffer =
+      case Map.get(state, :stream_pub_buffer, []) do
+        [{^channel, acc} | rest] -> [{channel, acc <> text} | rest]
+        other -> [{channel, text} | other]
+      end
+
+    timer =
+      Map.get(state, :stream_pub_timer) ||
+        Process.send_after(self(), :flush_stream_deltas, @delta_flush_ms)
+
+    state |> Map.put(:stream_pub_buffer, buffer) |> Map.put(:stream_pub_timer, timer)
+  end
 
   # Fingerprint a tool call for loop detection.
   defp tool_call_hash(tool_name, tool_input) do

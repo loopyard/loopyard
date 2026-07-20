@@ -167,7 +167,17 @@ defmodule Loopyard.ChatAgent do
     # lose the partial response after a browser refresh. Transient;
     # NOT included in summary/1 — lives only in the live GenServer.
     # See plans/agent-sanity.md #3.
-    in_flight_partial: ""
+    in_flight_partial: "",
+    # Publish coalescing for streaming deltas. Raw SDK token events arrive
+    # 30–60×/s; publishing each one made every viewer's LiveView re-ship and
+    # re-patch the whole accumulated text per token, saturating the browser
+    # main thread (typing lagged during heavy streams). Instead deltas queue
+    # here ({:text | :thinking, chunk}, reversed) and a timer flushes one
+    # combined publish per channel every @delta_flush_ms. Dropped (never
+    # flushed) on turn reset/interrupt — the finalized Message supersedes.
+    # Transient; NOT in summary/1.
+    stream_pub_buffer: [],
+    stream_pub_timer: nil
   ]
 
   @ets_table :chat_agents
@@ -1093,6 +1103,13 @@ defmodule Loopyard.ChatAgent do
   # agent-sanity #16.
   def handle_info({:stream_event, id, ref, event}, %{id: id, stream_ref: ref} = state) do
     {:noreply, StreamHandler.process_event(event, state)}
+  end
+
+  # Coalesced-delta flush tick: publish whatever streaming chunks queued up
+  # since the last tick (see stream_pub_buffer on the struct). Empty-buffer
+  # firings (drop already happened) are a no-op inside the flush.
+  def handle_info(:flush_stream_deltas, state) do
+    {:noreply, StreamHandler.flush_stream_deltas(state)}
   end
 
   # Stale stream event — ref doesn't match the current stream. The Task
