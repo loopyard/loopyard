@@ -214,7 +214,15 @@ defmodule Loopyard.Workstation.Env do
         "done && " <>
         "touch /vol/.profile && " <>
         "(grep -q '.local/bin' /vol/.profile 2>/dev/null || " <>
-        ~s|printf '\\n%s\\n' 'export PATH="$HOME/.local/bin:$PATH"' >> /vol/.profile)|
+        ~s|printf '\\n%s\\n' 'export PATH="$HOME/.local/bin:$PATH"' >> /vol/.profile)| <>
+        # Make git authenticate to GitHub over https via gh's token-backed
+        # credential helper. gh reads GH_TOKEN/GITHUB_TOKEN (which ~/.profile
+        # exports) — so `git push`/`pull` just work with the identity's token,
+        # and the token NEVER lands in any repo's `.git/config`. Written to the
+        # home volume's global gitconfig (HOME=/vol here). Idempotent: only set
+        # if unset, so we never clobber a helper the user configured themselves.
+        " && (HOME=/vol git config --global --get 'credential.https://github.com.helper' >/dev/null 2>&1 || " <>
+        "HOME=/vol git config --global 'credential.https://github.com.helper' '!gh auth git-credential')"
 
     case Loopyard.Docker.docker(["run", "--rm", "-v", "#{vol}:/vol", image, "sh", "-c", script]) do
       {:ok, _} -> :ok

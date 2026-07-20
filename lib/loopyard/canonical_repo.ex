@@ -80,15 +80,16 @@ defmodule Loopyard.CanonicalRepo do
   `origin` is the canonical (reachable when Loopyard mounts both, e.g. at
   `integrate/4`). Returns the workspace code-volume name.
   """
-  @spec fork(String.t(), String.t(), String.t(), String.t()) ::
+  @spec fork(String.t(), String.t(), String.t(), String.t(), String.t() | nil) ::
           {:ok, String.t()} | {:error, term()}
-  def fork(project_id, workspace_id, base, new_branch) do
+  def fork(project_id, workspace_id, base, new_branch, github_url \\ nil) do
     canon = volume_name(project_id)
     ws = VolumeManager.code_volume_name(workspace_id)
 
     cmd =
       "git clone /canonical /workspace && cd /workspace && " <>
-        "git checkout -b #{shq(new_branch)} #{shq("origin/" <> base)}"
+        "git checkout -b #{shq(new_branch)} #{shq("origin/" <> base)}" <>
+        origin_repoint(github_url)
 
     with :ok <- VolumeManager.create_volume(ws),
          {:ok, _} <- git([{canon, "/canonical"}, {ws, "/workspace"}], cmd) do
@@ -108,9 +109,9 @@ defmodule Loopyard.CanonicalRepo do
   bare repo instead — committed state only, no infra — for "new branch from
   main" when there's no live workspace to copy.) Returns the new volume name.
   """
-  @spec fork_from_workspace(String.t(), String.t(), String.t()) ::
+  @spec fork_from_workspace(String.t(), String.t(), String.t(), String.t() | nil) ::
           {:ok, String.t()} | {:error, term()}
-  def fork_from_workspace(source_ws_id, new_ws_id, new_branch) do
+  def fork_from_workspace(source_ws_id, new_ws_id, new_branch, github_url \\ nil) do
     src = VolumeManager.code_volume_name(source_ws_id)
     dst = VolumeManager.code_volume_name(new_ws_id)
 
@@ -119,12 +120,15 @@ defmodule Loopyard.CanonicalRepo do
     # Then scrub stale runtime cruft that would break the fork's own services:
     # server PID files (Rails `tmp/pids/server.pid` makes Puma exit with "a server
     # is already running") and unix sockets. Best-effort (`;`), never blocks.
+    # The copied `.git` inherits the source origin; repoint to the clean GitHub
+    # URL defensively (a first fork off a legacy `/canonical`-origin workspace).
     cmd =
       "cp -a /src/. /workspace/ && cd /workspace && " <>
         "rm -f tmp/pids/*.pid 2>/dev/null; find tmp -name '*.sock' -delete 2>/dev/null; " <>
         "#{@identity} && " <>
         "git config --global --add safe.directory /workspace && " <>
-        "git checkout -b #{shq(new_branch)}"
+        "git checkout -b #{shq(new_branch)}" <>
+        origin_repoint(github_url)
 
     with :ok <- VolumeManager.create_volume(dst),
          {:ok, _} <- git([{src, "/src"}, {dst, "/workspace"}], cmd, timeout: 300_000) do
@@ -137,12 +141,15 @@ defmodule Loopyard.CanonicalRepo do
   branch (e.g. "main" for the project's main workspace). Unlike `fork/4`, no
   new branch is created. Returns the workspace code-volume name.
   """
-  @spec checkout(String.t(), String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
-  def checkout(project_id, workspace_id, branch) do
+  @spec checkout(String.t(), String.t(), String.t(), String.t() | nil) ::
+          {:ok, String.t()} | {:error, term()}
+  def checkout(project_id, workspace_id, branch, github_url \\ nil) do
     canon = volume_name(project_id)
     ws = VolumeManager.code_volume_name(workspace_id)
 
-    cmd = "git clone /canonical /workspace && cd /workspace && git checkout #{shq(branch)}"
+    cmd =
+      "git clone /canonical /workspace && cd /workspace && git checkout #{shq(branch)}" <>
+        origin_repoint(github_url)
 
     with :ok <- VolumeManager.create_volume(ws),
          {:ok, _} <- git([{canon, "/canonical"}, {ws, "/workspace"}], cmd) do
@@ -151,26 +158,48 @@ defmodule Loopyard.CanonicalRepo do
   end
 
   @doc """
-  Integrate a workspace's branch back into canonical `main`: rebase the branch
-  onto the latest canonical `main`, then fast-forward `main` to it. Returns
-  `{:error, ...}` if the rebase hits conflicts (in production the workspace
-  agent resolves those in its own env first; this is the final merge gate).
+  Integrate a workspace's branch back into `main` — the real, human-approved
+  landing path. Rebases the branch onto the latest `main` and pushes it there.
+  Returns `{:error, ...}` on rebase conflicts (the agent resolves those in its
+  own env first; this is the final merge gate).
+
+  GitHub-backed (`github_url` given): fetch/rebase/push against **GitHub main**,
+  authenticated with a THROWAWAY token-injected URL (`opts[:token]`) that never
+  touches persisted config. Runs host-side in a transient container the agent
+  can't influence — so unlike the git-tool guardrail, this IS a real gate.
+  Local-only (`github_url` nil): the legacy canonical-main path.
   """
-  @spec integrate(String.t(), String.t(), String.t(), keyword()) ::
+  @spec integrate(String.t(), String.t(), String.t(), String.t() | nil, keyword()) ::
           {:ok, String.t()} | {:error, term()}
-  def integrate(project_id, workspace_id, branch, opts \\ []) do
-    canon = volume_name(project_id)
+  def integrate(project_id, workspace_id, branch, github_url \\ nil, opts \\ []) do
     ws = VolumeManager.code_volume_name(workspace_id)
 
-    cmd = """
-    #{@identity} && cd /workspace && \
-    git checkout #{shq(branch)} && \
-    git fetch /canonical main && \
-    git rebase FETCH_HEAD && \
-    git push /canonical HEAD:main
-    """
+    if is_binary(github_url) and github_url != "" do
+      {extra_mounts, url} = remote_spec(github_url, opts[:token])
 
-    git([{canon, "/canonical"}, {ws, "/workspace"}], cmd, opts)
+      cmd = """
+      export GIT_TERMINAL_PROMPT=0
+      #{@identity} && cd /workspace && \
+      git checkout #{shq(branch)} && \
+      git fetch #{shq(url)} main && \
+      git rebase FETCH_HEAD && \
+      git push #{shq(url)} HEAD:main
+      """
+
+      git([{ws, "/workspace"} | extra_mounts], cmd, opts)
+    else
+      canon = volume_name(project_id)
+
+      cmd = """
+      #{@identity} && cd /workspace && \
+      git checkout #{shq(branch)} && \
+      git fetch /canonical main && \
+      git rebase FETCH_HEAD && \
+      git push /canonical HEAD:main
+      """
+
+      git([{canon, "/canonical"}, {ws, "/workspace"}], cmd, opts)
+    end
   end
 
   @doc """
@@ -201,6 +230,17 @@ defmodule Loopyard.CanonicalRepo do
     args = ["run", "--rm", "--entrypoint", "sh"] ++ vol_args ++ [@git_image, "-c", cmd]
     Docker.docker(args, timeout: Keyword.get(opts, :timeout, 120_000))
   end
+
+  # Shell fragment that repoints a freshly-cloned workspace's `origin` at the
+  # real GitHub remote. The clone above still runs from the LOCAL canonical
+  # (fast, token-free); this just swaps the persisted origin URL to the CLEAN
+  # `https://github.com/owner/repo.git` — NO token in the URL (auth is supplied
+  # at push time by the gh credential helper, never baked into `.git/config`).
+  # Empty (no-op) for local-only projects with no remote.
+  defp origin_repoint(url) when is_binary(url) and url != "",
+    do: " && git remote set-url origin #{shq(url)}"
+
+  defp origin_repoint(_), do: ""
 
   # Normalize a remote into {extra_mounts, git_url_inside_container}.
   defp remote_spec({:volume, vol}, _token), do: {[{vol, "/remote"}], "/remote"}

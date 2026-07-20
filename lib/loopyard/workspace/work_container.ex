@@ -102,9 +102,61 @@ defmodule Loopyard.Workspace.WorkContainer do
     # without a recreate, so no long-lived container stays unbounded.
     with {:ok, up_name} <- result do
       enforce_memory_limit(up_name)
+      reconcile_git_origin(workspace_id, up_name)
       {:ok, up_name}
     end
   end
+
+  # MIGRATION: workspaces materialized before the git-host change have
+  # `origin = /canonical`. Repoint to the CLEAN GitHub URL (no token) so plain
+  # git reaches GitHub. Guarded to run at most ONCE per workspace per boot (a
+  # persistent_term flag) — `ensure_up` is on the tool hot path, so we don't
+  # want a docker exec every call. The first git use reconciles; the rest skip.
+  # Idempotent, best-effort, never touches local-only projects, never blocks.
+  defp reconcile_git_origin(workspace_id, name) do
+    flag = {__MODULE__, :origin_reconciled, workspace_id}
+
+    if :persistent_term.get(flag, false) do
+      :ok
+    else
+      case project_remote(workspace_id) do
+        url when is_binary(url) and url != "" ->
+          # Only repoint when origin isn't already a github URL (the /canonical
+          # legacy case) so we never clobber a deliberately-set remote.
+          sh =
+            "cur=$(git -C /workspace remote get-url origin 2>/dev/null); " <>
+              "case \"$cur\" in *github.com*) : ;; *) " <>
+              "git -C /workspace remote set-url origin #{shq(url)} 2>/dev/null || true ;; esac"
+
+          _ = Docker.exec_in(name, sh)
+          :persistent_term.put(flag, true)
+          :ok
+
+        _ ->
+          # Local-only (or unknown) — mark done so we don't re-check every call.
+          :persistent_term.put(flag, true)
+          :ok
+      end
+    end
+  rescue
+    _ -> :ok
+  end
+
+  defp project_remote(workspace_id) do
+    case Loopyard.ProjectRegistry.get_workspace(workspace_id) do
+      %{project_id: pid} when is_binary(pid) ->
+        case Loopyard.ProjectRegistry.get_project(pid) do
+          %{source_config: %{remote: remote}} -> remote
+          _ -> nil
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  # Single-quote an arg for safe interpolation into the container shell command.
+  defp shq(s), do: "'" <> String.replace(to_string(s), "'", "'\\''") <> "'"
 
   @doc """
   Apply the configured memory cap to an already-running container (no recreate).

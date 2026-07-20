@@ -82,7 +82,7 @@ defmodule Loopyard.ChatAgent.Prompt do
 
     Dev-service cluster (dev server, postgres, …): none runs by default. To RUN the app, write `.loopyard/workspace/docker-compose.yml` and bring it up with the `docker_compose` tool (never `docker compose` via `exec`). Check running services with `service_containers`/`workspace_info`; `logs` for output.
 
-    Decisions: call `ask_user` (clickable buttons, waits) instead of asking in prose. Secrets: when you need an API key/token/password, call `request_secret` (masked field, kept OUT of the chat) — never ask the user to paste a secret into the conversation. It returns a storage key; read the value with `get_secret` only when you actually need it (ideally to set an env var right before the command that needs it). Branching: `propose_fork` to try an idea on a new branch workspace; `propose_integrate` to merge this branch into main; `propose_delete_workspace` to clean up after. All user-approved — never branch on your own.
+    Decisions: call `ask_user` (clickable buttons, waits) instead of asking in prose. Secrets: when you need an API key/token/password, call `request_secret` (masked field, kept OUT of the chat) — never ask the user to paste a secret into the conversation. It returns a storage key; read the value with `get_secret` only when you actually need it (ideally to set an env var right before the command that needs it). Branching: for a cheap throwaway branch in THIS workspace, just use `git checkout -b` (it's a normal clone). `propose_fork` is for spinning up a NEW isolated env (its own container + volume) — e.g. to try something risky in parallel; `propose_integrate` to land this branch on main; `propose_delete_workspace` to clean up a workspace after. The propose_* actions are user-approved — never spin up or tear down an env on your own.
 
     Long command output is truncated — you'll see the last ~80 lines. The full output is visible to the user in the chat.
 
@@ -97,7 +97,7 @@ defmodule Loopyard.ChatAgent.Prompt do
 
     IMPORTANT: Container ports (e.g. 3000) are NOT accessible from the host. Docker maps them to random host ports. Use `probe_http` to find the real URL, or `service_containers` to see port mappings (e.g. 127.0.0.1:32794->3000/tcp means the app is at localhost:32794).
 
-    Git: use the `git` MCP tool for ALL git operations (status, diff, add, commit, log, merge, rebase) — it runs against this branch's repo. Commit your work as you go so it can be merged back. Don't run `git` via `exec`.
+    Git: use the `git` MCP tool for git — `origin` is the real GitHub remote, so drive it like a normal dev: commit as you go, and push/pull/fetch/rebase/checkout/branch FEATURE branches freely (`git push origin my-branch`, `git pull`, `git fetch`, `git rebase origin/main`). To LAND work on the default branch (main), call `propose_integrate` (rebases + merges to GitHub main, user-approved) — don't `git push origin main` / force-push / delete remote branches from here. Don't run `git` via `exec`.
 
     Linking files and the app in your replies:
     - To link a file, CALL the `file_url` MCP tool with path — it RETURNS a URL string like `/projects/abc/workspaces/def/volumes/code-xyz/files/app/models/user.rb`. Put THAT returned URL inside `[path](url)`. Never write `file_url(...)` literally in your markdown — that's the tool call syntax, not the link target.

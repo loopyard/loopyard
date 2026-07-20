@@ -102,7 +102,23 @@ defmodule Loopyard.Harness.Approvals do
   def run(agent_id, msg_id, %{verb: :integrate} = action) do
     resolve(agent_id, msg_id, %{status: :integrating})
 
-    case Loopyard.CanonicalRepo.integrate(action.project_id, action.workspace_id, action.branch) do
+    # Resolve the GitHub URL + token HERE (approve time), not in the durable
+    # card — so the token never lands in the persisted approval message. A
+    # GitHub-backed project lands on GitHub main; a local-only one (nil url)
+    # falls back to the legacy canonical path inside integrate/5.
+    github_url = integrate_remote(action.project_id)
+    token = integrate_token(action.workspace_id)
+
+    result =
+      Loopyard.CanonicalRepo.integrate(
+        action.project_id,
+        action.workspace_id,
+        action.branch,
+        github_url,
+        token: token
+      )
+
+    case result do
       {:ok, _} -> resolve(agent_id, msg_id, %{status: :integrated})
       {:error, reason} -> resolve(agent_id, msg_id, %{status: :failed, error: inspect(reason)})
     end
@@ -234,6 +250,27 @@ defmodule Loopyard.Harness.Approvals do
   def pending?(id), do: :ets.member(@table, id)
 
   # --- internals ---
+
+  # The project's GitHub remote (or nil for local-only).
+  defp integrate_remote(project_id) do
+    case Loopyard.ProjectRegistry.get_project(project_id) do
+      %{source_config: %{remote: remote}} when is_binary(remote) and remote != "" -> remote
+      _ -> nil
+    end
+  end
+
+  # A token that can push to the project's GitHub repo: the workspace identity's
+  # GITHUB_TOKEN first, else the host `gh auth token` (same source the initial
+  # clone uses). Injected host-side into a throwaway URL; never persisted.
+  defp integrate_token(workspace_id) do
+    identity_token =
+      case Loopyard.Workspace.workstation_id(workspace_id) do
+        id when is_binary(id) -> Loopyard.Workstation.Env.all(id)["GITHUB_TOKEN"]
+        _ -> nil
+      end
+
+    identity_token || Loopyard.Tools.ControlPlane.github_token()
+  end
 
   # Reap a leaked entry (waiter dead): drop it from ETS and flip the card off
   # "Pending…" so it can't spin forever.
