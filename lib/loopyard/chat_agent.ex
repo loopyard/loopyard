@@ -748,7 +748,8 @@ defmodule Loopyard.ChatAgent do
         # writable before the queued send hits it. Reuses the existing
         # :drain_resumed_pending handler (batch-drains only when :idle).
         if state.pending_sends != [] do
-          Process.send_after(self(), :drain_resumed_pending, 4_000)
+          settle_ms = Application.get_env(:loopyard, :pending_drain_settle_ms, 4_000)
+          Process.send_after(self(), :drain_resumed_pending, settle_ms)
         end
 
         {:noreply, state}
