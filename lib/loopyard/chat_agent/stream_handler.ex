@@ -384,6 +384,9 @@ defmodule Loopyard.ChatAgent.StreamHandler do
 
     state = reset_turn_state(%{state | status: :idle, turns: state.turns + 1})
     state = Map.put(state, :consecutive_crashes, 0)
+    # Clean completion → the harness survived this conversation size; the
+    # compact-instead-of-resume breaker starts over.
+    state = Map.put(state, :midturn_crashes, 0)
     # A turn completed cleanly → credentials are valid; clear the auth backoff so
     # the next failure (if any) starts fresh rather than at a capped interval.
     state = Map.put(state, :auth_retry_count, 0)
@@ -498,8 +501,24 @@ defmodule Loopyard.ChatAgent.StreamHandler do
 
     if is_binary(reason) && String.contains?(reason, "CLI session exited") && recent_crashes < 2 do
       # CLI died — restart session and resume the same conversation
-      state = %{state | last_activity_at: now, errors: state.errors + 1}
+      state = SessionManager.note_cli_death(%{state | last_activity_at: now, errors: state.errors + 1})
 
+      restart_or_compact(state, id)
+    else
+      stream_error_no_restart(state, id, reason, now)
+    end
+  end
+
+  # Breaker tripped → don't resume the session that keeps killing its harness;
+  # funnel through :restart_session, whose gate compacts (summarize → fresh
+  # session). Otherwise: spawn a new CLI resuming the same conversation.
+  defp restart_or_compact(state, id) do
+    if Loopyard.ChatAgent.compaction_breaker_tripped?(state) do
+      GenServer.cast(self(), :restart_session)
+      state = Map.put(state, :active_tool, nil)
+      :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
+      {:noreply, state}
+    else
       case SessionManager.start_session_safe(state) do
         {:ok, new_session, live_id} ->
           recovered_msg =
@@ -571,8 +590,13 @@ defmodule Loopyard.ChatAgent.StreamHandler do
           Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
           drain_pending_sends(state)
       end
-    else
-      error_msg = %{
+    end
+  end
+
+  # Unrecoverable stream error: drop the turn, surface the
+  # WHY/CONSEQUENCE/ACTION error, settle to idle.
+  defp stream_error_no_restart(state, id, reason, now) do
+    error_msg = %{
         role: :error,
         content:
           "Stream error: #{reason}. " <>
@@ -602,7 +626,6 @@ defmodule Loopyard.ChatAgent.StreamHandler do
       :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
       Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
       drain_pending_sends(state)
-    end
   end
 
   @doc """

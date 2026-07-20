@@ -185,6 +185,76 @@ defmodule Loopyard.ChatAgent.StreamIntegrityTest do
     end
   end
 
+  describe "compact-instead-of-resume breaker (IMPROVEMENTS #20)" do
+    # A session whose harness keeps dying mid-turn has outgrown its memory —
+    # resuming it re-feeds the harness the history that killed it. At the
+    # second unexpected death, recovery must compact (summarize → fresh
+    # session, claude_session_id cleared) instead of resuming.
+    test "first CLI-exit crash still resumes the conversation", %{id: id} do
+      pid = agent_pid(id)
+      ref = make_ref()
+
+      :sys.replace_state(pid, fn s ->
+        %{s | stream_ref: ref, status: :thinking, in_flight_partial: "part", claude_session_id: "sid-1"}
+        |> Map.put(:midturn_crashes, 0)
+      end)
+
+      send(pid, {:stream_error, id, ref, "CLI session exited: {:port_exit, 1}"})
+
+      assert_receive %Loopyard.Events.ChatAgentMessage.Message{
+                       agent_id: ^id,
+                       msg: %{role: :system, content: "Agent session restarted" <> _}
+                     },
+                     500
+
+      state = :sys.get_state(pid)
+      assert Map.get(state, :midturn_crashes) == 1
+    end
+
+    test "second CLI-exit crash compacts: fresh session, counter reset", %{id: id} do
+      pid = agent_pid(id)
+      ref = make_ref()
+
+      :sys.replace_state(pid, fn s ->
+        %{s | stream_ref: ref, status: :thinking, in_flight_partial: "part", claude_session_id: "sid-1"}
+        |> Map.put(:midturn_crashes, 1)
+      end)
+
+      send(pid, {:stream_error, id, ref, "CLI session exited: {:port_exit, 1}"})
+
+      assert_receive %Loopyard.Events.ChatAgentMessage.Message{
+                       agent_id: ^id,
+                       msg: %{role: :system, content: "The harness died mid-conversation" <> _}
+                     },
+                     1_000
+
+      # Wait for the compaction cast to finish (status broadcast lands after).
+      assert_receive %Loopyard.Events.ChatAgent.StatusChanged{id: ^id, status: :idle}, 1_000
+
+      state = :sys.get_state(pid)
+      # Fresh session — resume id dropped so the new CLI does NOT reload the
+      # bloated history; breaker re-armed.
+      assert state.claude_session_id == nil
+      assert Map.get(state, :midturn_crashes) == 0
+    end
+
+    test "clean turn completion re-arms the breaker", %{id: id} do
+      pid = agent_pid(id)
+      ref = make_ref()
+
+      :sys.replace_state(pid, fn s ->
+        %{s | stream_ref: ref, status: :thinking}
+        |> Map.put(:midturn_crashes, 1)
+      end)
+
+      send(pid, {:stream_event, id, ref, %Event.Text{text: "done"}})
+      send(pid, {:stream_done, id, ref})
+      assert_receive %Loopyard.Events.ChatAgent.StatusChanged{id: ^id, status: :idle}, 500
+
+      assert Map.get(:sys.get_state(pid), :midturn_crashes) == 0
+    end
+  end
+
   describe "delta publish coalescing" do
     # Raw token deltas must NOT publish 1:1 — each publish makes every viewer
     # re-ship + re-patch the whole accumulated text, which lags typing during

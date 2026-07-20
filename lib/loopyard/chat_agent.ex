@@ -177,7 +177,18 @@ defmodule Loopyard.ChatAgent do
     # flushed) on turn reset/interrupt — the finalized Message supersedes.
     # Transient; NOT in summary/1.
     stream_pub_buffer: [],
-    stream_pub_timer: nil
+    stream_pub_timer: nil,
+    # Unexpected CLI deaths since the last CLEAN turn completion (or last
+    # fresh/compacted session). This is the compact-instead-of-resume breaker
+    # signal: a session whose harness keeps dying mid-conversation has almost
+    # certainly outgrown the work container's memory cap (ACP reports no token
+    # usage, so the utilization-based compaction can't see it — see
+    # IMPROVEMENTS #20), and `resume:`-ing it just reloads the bloat that
+    # killed it. At @compact_after_midturn_crashes the recovery paths route
+    # through {:auto_restart_context, nil} (summarize → fresh session)
+    # instead of resuming. NOT reset by reset_turn_state — this is session
+    # health, not turn state. Incremented via SessionManager.note_cli_death/1.
+    midturn_crashes: 0
   ]
 
   @ets_table :chat_agents
@@ -190,6 +201,22 @@ defmodule Loopyard.ChatAgent do
   # the Claude API bill. Configurable via Application env for tests
   # that want to exercise the reject path with smaller inputs.
   @max_message_bytes Application.compile_env(:loopyard, :max_message_bytes, 1_048_576)
+
+  # Compact-instead-of-resume breaker: after this many unexpected CLI deaths
+  # since the last clean turn (see midturn_crashes on the struct), recovery
+  # compacts (summarize → fresh session) rather than resuming the session
+  # that keeps killing its harness.
+  @compact_after_midturn_crashes 2
+
+  @doc """
+  True when this agent's session has died mid-conversation enough times that
+  resuming it again is just reloading the bloat that killed it — recovery
+  paths (`:restart_session`, `ensure_alive`, stream-error restart) consult
+  this and route to compaction instead. Map.get: agents live through hot
+  reloads holding pre-upgrade structs.
+  """
+  def compaction_breaker_tripped?(state),
+    do: Map.get(state, :midturn_crashes, 0) >= @compact_after_midturn_crashes
 
   # Warm-interrupt deadline. The SDK's interrupt only blocks when the CLI is
   # wedged (stdin pipe full); a healthy interrupt acks in microseconds. If the
@@ -605,6 +632,32 @@ defmodule Loopyard.ChatAgent do
 
   @impl true
   def handle_cast(:restart_session, state) do
+    # Breaker gate: a session whose harness keeps dying mid-conversation has
+    # outgrown its memory — resuming it re-feeds the harness the exact history
+    # that OOM-killed it, forever. Compact instead: summarize → fresh session
+    # (Loopyard keeps the full chat log either way). See midturn_crashes.
+    if compaction_breaker_tripped?(state) and state.messages != [] do
+      note = %{
+        role: :system,
+        content:
+          "The harness died mid-conversation again — this session has outgrown " <>
+            "the workspace's memory, and resuming it would just crash it again. " <>
+            "Compacting instead: summarizing the conversation into a fresh session. " <>
+            "Your full chat history stays right here.",
+        timestamp: DateTime.utc_now()
+      }
+
+      {state, note} = append_message(state, note)
+      Persistence.persist_message(state, note)
+      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: note})
+
+      handle_cast({:auto_restart_context, nil}, Map.put(state, :midturn_crashes, 0))
+    else
+      restart_session_now(state)
+    end
+  end
+
+  defp restart_session_now(state) do
     # Stop the current session
     if state.session do
       # Wrap backend.stop in a Task + Task.yield with timeout so a
@@ -887,6 +940,10 @@ defmodule Loopyard.ChatAgent do
               context_utilization: 0.0,
               context_warning_sent: false
           })
+
+        # Fresh session → the harness's memory baseline resets with it; the
+        # compact-instead-of-resume breaker starts over.
+        state = Map.put(state, :midturn_crashes, 0)
 
         # Send the resume summary as a SILENT continuation (the user never typed
         # it — it's the compaction summary), not a visible :user turn.
@@ -1179,7 +1236,9 @@ defmodule Loopyard.ChatAgent do
       {:reboot, state} ->
         # Reboot the CLI with resume — clears the wedge, keeps the full chat
         # history, continues the conversation. Queued messages drain onto the
-        # fresh CLI inside the restart path.
+        # fresh CLI inside the restart path. A wedge counts toward the
+        # compact-instead-of-resume breaker (restart_session's gate).
+        state = SessionManager.note_cli_death(state)
         GenServer.cast(self(), :restart_session)
         {:noreply, state}
     end
@@ -1238,6 +1297,7 @@ defmodule Loopyard.ChatAgent do
       # skip finalization). Done here — not in SessionManager — so the
       # crash-recovery module doesn't depend on StreamHandler.
       state = StreamHandler.finalize_partial_on_stream_interrupt(state, state.id, :error)
+      state = SessionManager.note_cli_death(state)
       SessionManager.handle_thinking_exit(reason, state, @max_consecutive_crashes)
     else
       # EXIT from an ALREADY-REPLACED session/task, not the current turn —
@@ -1273,6 +1333,13 @@ defmodule Loopyard.ChatAgent do
         )
 
         state = Map.delete(state, :retry_from_session)
+        {:noreply, state}
+
+      compaction_breaker_tripped?(state) ->
+        # The session this retry would resume keeps killing its harness —
+        # route through :restart_session, whose breaker gate compacts
+        # (summarize → fresh session) instead of resuming.
+        GenServer.cast(self(), :restart_session)
         {:noreply, state}
 
       true ->

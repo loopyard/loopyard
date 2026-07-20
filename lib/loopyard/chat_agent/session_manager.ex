@@ -133,10 +133,25 @@ defmodule Loopyard.ChatAgent.SessionManager do
   # --- Ensure session alive ---
 
   @doc """
+  Record an unexpected CLI death for the compact-instead-of-resume breaker
+  (see `midturn_crashes` on the ChatAgent struct and
+  `Loopyard.ChatAgent.compaction_breaker_tripped?/1`). Map.get/put: agents
+  live through hot reloads holding pre-upgrade structs. Reset by a clean
+  turn completion and by every fresh/compacted session.
+  """
+  def note_cli_death(state),
+    do: Map.put(state, :midturn_crashes, Map.get(state, :midturn_crashes, 0) + 1)
+
+  @doc """
   Check if the CLI session is alive; auto-restart if not.
 
   Takes state, returns state with session alive (or error message
   appended if restart failed).
+
+  When the compaction breaker is tripped, a DEAD session is deliberately
+  left dead: respawning here would resume the history that keeps
+  OOM-killing the harness. The caller's dead-session check then casts
+  `:restart_session`, whose breaker gate compacts instead.
   """
   def ensure_alive(state) do
     alive =
@@ -151,7 +166,21 @@ defmodule Loopyard.ChatAgent.SessionManager do
     if alive do
       state
     else
-      Loopyard.EventLog.warning("agent:#{state.name}", "CLI session dead, auto-restarting")
+      # Only a session that EXISTED and died counts as a crash — the idle
+      # reaper stops the CLI intentionally and clears state.session, and
+      # that must not trip the breaker.
+      state = if state.session, do: note_cli_death(state), else: state
+
+      if Loopyard.ChatAgent.compaction_breaker_tripped?(state) do
+        state
+      else
+        ensure_alive_respawn(state)
+      end
+    end
+  end
+
+  defp ensure_alive_respawn(state) do
+    Loopyard.EventLog.warning("agent:#{state.name}", "CLI session dead, auto-restarting")
 
       restart_msg = %{
         role: :system,
@@ -220,7 +249,6 @@ defmodule Loopyard.ChatAgent.SessionManager do
 
           state
       end
-    end
   end
 
   # --- Retry session after crash ---
