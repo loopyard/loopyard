@@ -8,6 +8,24 @@ A prioritized list of known, scoped improvements for Loopyard. Ordered within ea
 
 ## Robustness (handles edge cases gracefully)
 
+0000. **claude-code-acp large-session + subprocess-death limits (upstream, worked around).**
+      Confirmed against the ACP docs + upstream issues: `session/load` does a
+      FULL-JSONL replay of the whole conversation, so a large session is slow to
+      load and eventually hits token bounds ([discussion #871](https://github.com/orgs/agentclientprotocol/discussions/871));
+      and when the underlying `claude` CLI subprocess dies, the ACP session is
+      left permanently broken with no recovery — subsequent `session/prompt`
+      fails with "ProcessTransport is not ready for writing"
+      ([claude-agent-acp #338](https://github.com/agentclientprotocol/claude-agent-acp/issues/338)).
+      Loopyard mitigates: the durable message inbox lives in ETS (not the
+      harness), the reaper is age-guarded so it never kills an in-flight load,
+      and a failed `session/load` falls back to a fresh `session/new`. Still
+      worth doing: after N resume failures, permanently drop the poisoned
+      session_id + surface "started a fresh conversation (previous one was too
+      large to restore)" instead of retrying the monster each restart. The
+      lighter `resumeSession` (restores SDK state WITHOUT replaying history) may
+      be the better resume primitive than `session/load` for large sessions —
+      investigate whether claude-code-acp exposes it over ACP.
+
 000. **Upstream: claude-code-acp "ProcessTransport is not ready for writing" race.**
      (0.16.2) Prompting immediately after `session/load` of a large session dies
      with that error — the SDK's resumed CLI subprocess isn't writable yet when

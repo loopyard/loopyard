@@ -2,12 +2,12 @@ defmodule Loopyard.HarnessCheck do
   @moduledoc """
   Self-validation that Loopyard can actually drive a frontier harness end to end.
 
-  `probe/1` is the cheap one: it spawns a real `Loopyard.Harness.*` session
-  (Claude Code by default), streams ONE probe prompt, and confirms the expected
-  token comes back through the neutral `Loopyard.Agent.Event` stream. That
-  exercises the whole harness path — CLI present + authed, the adapter, the
-  Event translation, the stream lifecycle — without needing a workspace,
-  container, or ChatAgent.
+  `probe/1` spawns a real `Loopyard.Harness.ACP` session against a work
+  container, streams ONE probe prompt, and confirms the expected token comes
+  back through the neutral `Loopyard.Agent.Event` stream. That exercises the
+  whole harness path — the in-container adapter, the Event translation, the
+  stream lifecycle — without needing a workspace or ChatAgent. It REQUIRES a
+  `:container` (every harness runs in-container; there is no host probe path).
 
   `agent_turn/2` is the full path: it drives a live `ChatAgent` (the durable
   inbox + turn execution) and confirms the response lands in the message log.
@@ -35,18 +35,37 @@ defmodule Loopyard.HarnessCheck do
     backend = Keyword.get(opts, :backend, default_backend())
     token = "LOOPYARD-OK-" <> Integer.to_string(:erlang.unique_integer([:positive]))
 
-    session_opts = [
-      cwd: System.tmp_dir!(),
-      permission_mode: :accept_edits,
-      dangerously_skip_permissions: true,
-      append_system_prompt:
-        "You are a connectivity probe. Reply with ONLY what the user asks, verbatim, nothing else.",
-      allowed_tools: [],
-      thinking: :disabled
-    ]
+    # A container is REQUIRED — the harness runs in-container, never on the host.
+    # Refuse cleanly (not a raise from the containment gate) when none is given.
+    container = Keyword.get(opts, :container)
+
+    session_opts =
+      [
+        cwd: "/workspace",
+        permission_mode: :accept_edits,
+        dangerously_skip_permissions: true,
+        append_system_prompt:
+          "You are a connectivity probe. Reply with ONLY what the user asks, verbatim, nothing else.",
+        allowed_tools: [],
+        thinking: :disabled
+      ]
+      |> then(fn o -> if container, do: Keyword.put(o, :container, container), else: o end)
 
     t0 = System.monotonic_time(:millisecond)
 
+    if backend == Loopyard.Harness.ACP and is_nil(container) do
+      {:error,
+       %{
+         reason: :container_required,
+         detail: "probe/1 needs a :container (e.g. a work container name) — harnesses run in-container, never on the host",
+         backend: backend
+       }}
+    else
+      do_probe(backend, session_opts, token, t0)
+    end
+  end
+
+  defp do_probe(backend, session_opts, token, t0) do
     case backend.start_session(session_opts) do
       {:ok, session} ->
         try do
