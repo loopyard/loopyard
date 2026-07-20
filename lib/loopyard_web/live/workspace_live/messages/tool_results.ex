@@ -59,7 +59,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
           do: "line",
           else: "lines"}</span>
       </summary>
-      <pre class={"mt-1 p-3 rounded-lg text-sm font-mono overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap
+      <pre class={"mt-1 p-3 rounded-lg text-sm md:text-[13px] font-mono leading-snug overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap
                    #{if @is_error, do: "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300", else: "bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-zinc-300"}"}>{Ansi.to_html(@display)}</pre>
       <div class="flex items-center gap-2 mt-1 h-5">
         <p :if={@truncated} class="text-xs text-zinc-500 dark:text-zinc-400">
@@ -153,25 +153,31 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
     call = matching_tool_call(assigns)
     path = call && (call.input["path"] || call.input["file_path"])
     content = Messages.format_tool_result(assigns.msg.content)
-    raw_lines = String.split(content, "\n")
+    # Native harness Read results arrive pre-numbered ("   156→<div…"). Strip
+    # that prefix and reuse the REAL file line numbers in the gutter — before
+    # this, the card numbered the excerpt 1..N on top of the embedded numbers
+    # (double gutter) and fed the arrows to the syntax highlighter.
+    {raw_lines, native_nos} = split_read_lines(content)
     line_count = length(raw_lines)
     language = path && FileType.language(path)
+    stripped = if native_nos, do: Enum.join(raw_lines, "\n"), else: content
 
     highlight? =
       is_binary(language) and line_count <= @highlight_max_lines and
-        byte_size(content) <= @highlight_max_bytes
+        byte_size(stripped) <= @highlight_max_bytes
 
-    lines =
+    rendered =
       if highlight? do
-        case Syntax.highlight_lines(content, language) do
+        case Syntax.highlight_lines(stripped, language) do
           nil -> Enum.map(raw_lines, &blank_to_nbsp/1)
           hl -> hl
         end
       else
         Enum.map(raw_lines, &blank_to_nbsp/1)
       end
-      |> Enum.take(@result_line_cap)
-      |> Enum.with_index(1)
+
+    numbers = native_nos || (line_count > 0 && Enum.to_list(1..line_count)) || []
+    lines = rendered |> Enum.zip(numbers) |> Enum.take(@result_line_cap)
 
     assigns =
       assign(assigns,
@@ -193,9 +199,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
         <span class="text-zinc-500 dark:text-zinc-400">· {@line_count} lines</span>
       </summary>
       <div class="mt-1 rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800">
-        <div class="max-h-96 overflow-auto text-sm font-mono leading-relaxed">
+        <div class="max-h-96 overflow-auto text-sm md:text-[13px] font-mono leading-snug">
           <div :for={{line, i} <- @lines} class="flex">
-            <span class="flex-none w-10 pr-3 text-right text-zinc-500 dark:text-zinc-400 select-none tabular-nums">
+            <span class="flex-none w-12 pr-3 text-right text-zinc-500 dark:text-zinc-400 select-none tabular-nums">
               {i}
             </span>
             <code class="whitespace-pre text-zinc-800 dark:text-zinc-200">{line}</code>
@@ -248,7 +254,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
         <span>{@match_count} {if @match_count == 1, do: "match", else: "matches"}</span>
       </summary>
       <div class="mt-1 rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800">
-        <div class="max-h-96 overflow-auto text-sm font-mono leading-relaxed py-1">
+        <div class="max-h-96 overflow-auto text-sm md:text-[13px] font-mono leading-snug py-1">
           <div
             :for={row <- @rows}
             class="flex gap-2 px-3 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50"
@@ -283,6 +289,28 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
   # Keep blank source lines from collapsing to zero height in the code card.
   defp blank_to_nbsp(""), do: Phoenix.HTML.raw("&nbsp;")
   defp blank_to_nbsp(line), do: line
+
+  # Detect the native Read result format — every line "   <no>→<text>" — and
+  # split it into {stripped_lines, line_numbers}. Anything that doesn't match
+  # wholesale (MCP read_file results are plain text) returns {lines, nil} and
+  # the caller numbers sequentially from 1.
+  defp split_read_lines(content) do
+    lines =
+      content
+      |> String.split("\n")
+      |> Enum.reverse()
+      |> Enum.drop_while(&(&1 == ""))
+      |> Enum.reverse()
+
+    parsed = Enum.map(lines, &Regex.run(~r/^\s*(\d+)→(.*)$/, &1))
+
+    if lines != [] and Enum.all?(parsed, & &1) do
+      {Enum.map(parsed, fn [_, _, text] -> text end),
+       Enum.map(parsed, fn [_, no, _] -> String.to_integer(no) end)}
+    else
+      {lines, nil}
+    end
+  end
 
   # Mini-app tools (fork/integrate/delete proposals, ask_user) render their
   # outcome in their own interactive card. Public: Messages' :tool clause also
@@ -371,7 +399,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
           href={@url}
           target="_blank"
           rel="noopener"
-          class="text-base text-violet-600 dark:text-violet-400 hover:underline truncate"
+          class="text-lg md:text-base text-violet-600 dark:text-violet-400 hover:underline truncate"
         >
           {@url}
         </a>

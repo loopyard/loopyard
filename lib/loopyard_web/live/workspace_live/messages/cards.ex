@@ -43,7 +43,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           >
             {q.header}
           </div>
-          <div class="text-base font-medium leading-snug text-zinc-800 dark:text-zinc-200 mb-3">
+          <div class="text-lg md:text-base font-medium leading-snug text-zinc-800 dark:text-zinc-200 mb-3">
             {q.prompt}
           </div>
 
@@ -62,7 +62,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
               phx-value-option={o.label}
               class="focus-ring group/opt block w-full text-left rounded-lg border border-violet-200/70 dark:border-violet-800/50 bg-white/70 dark:bg-zinc-900/40 px-3.5 py-2.5 hover:border-violet-400 hover:bg-violet-50 dark:hover:border-violet-600/80 dark:hover:bg-violet-900/20 transition-colors"
             >
-              <div class="text-base font-medium text-violet-700 dark:text-violet-300">{o.label}</div>
+              <div class="text-lg md:text-base font-medium text-violet-700 dark:text-violet-300">{o.label}</div>
               <div
                 :if={o.description not in [nil, ""]}
                 class="mt-0.5 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400"
@@ -90,7 +90,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
               ]}
             >
               <div class={[
-                "flex items-center gap-1.5 text-base font-medium",
+                "flex items-center gap-1.5 text-lg md:text-base font-medium",
                 if(chosen?(@msg, q, o.label),
                   do: "text-emerald-700 dark:text-emerald-300",
                   else: "text-zinc-500 dark:text-zinc-400"
@@ -154,7 +154,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           The agent needs a secret
         </div>
 
-        <div class="text-base font-medium leading-snug text-zinc-800 dark:text-zinc-200">
+        <div class="text-lg md:text-base font-medium leading-snug text-zinc-800 dark:text-zinc-200">
           <span class="font-mono">{@msg.name}</span>
         </div>
         <div :if={@msg[:why] not in [nil, ""]} class="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
@@ -252,7 +252,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
 
         <div
           :if={@action.verb == :create_project}
-          class="text-base text-zinc-800 dark:text-zinc-200 mb-1"
+          class="text-lg md:text-base text-zinc-800 dark:text-zinc-200 mb-1"
         >
           Create project
           <code class="text-sm bg-violet-200/70 dark:bg-violet-800/50 rounded px-1 py-0.5">
@@ -260,7 +260,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           </code>
           <span class="text-zinc-400">— {@action.detail}</span>
         </div>
-        <div :if={@action.verb == :integrate} class="text-base text-zinc-800 dark:text-zinc-200 mb-1">
+        <div :if={@action.verb == :integrate} class="text-lg md:text-base text-zinc-800 dark:text-zinc-200 mb-1">
           Merge
           <code class="text-sm bg-violet-200/70 dark:bg-violet-800/50 rounded px-1 py-0.5">
             {@action.branch}
@@ -270,7 +270,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
         </div>
         <div
           :if={@action.verb == :delete_workspace}
-          class="text-base text-zinc-800 dark:text-zinc-200 mb-1"
+          class="text-lg md:text-base text-zinc-800 dark:text-zinc-200 mb-1"
         >
           Delete workspace
           <code class="text-sm bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">
@@ -278,7 +278,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           </code>
           <span class="text-zinc-400">— removes its env + containers (the code stays in main)</span>
         </div>
-        <div :if={@action.verb == :fork} class="text-base text-zinc-800 dark:text-zinc-200 mb-1">
+        <div :if={@action.verb == :fork} class="text-lg md:text-base text-zinc-800 dark:text-zinc-200 mb-1">
           Fork
           <code class="text-sm bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">
             {@action.base}
