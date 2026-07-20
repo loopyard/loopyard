@@ -379,7 +379,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
   def group_label(assigns) do
     ~H"""
     <div class="flex items-center justify-between gap-2 px-2 pt-3 pb-1 first:pt-1.5">
-      <span class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+      <span class="text-sm md:text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
         {@text}
       </span>
       <div :if={@action != []} class="flex-none -my-1">{render_slot(@action)}</div>

@@ -40,7 +40,7 @@ defmodule LoopyardWeb.Components.LogViewer do
     <pre
       id={@id}
       phx-hook="TailScroll"
-      class={"flex-1 px-4 py-3 text-xs font-mono leading-snug overflow-auto whitespace-pre-wrap bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-zinc-300 #{@class}"}
+      class={"flex-1 px-4 py-3 text-xs md:text-[13px] font-mono leading-snug overflow-auto whitespace-pre-wrap bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-zinc-300 #{@class}"}
     >{@ansi_html}</pre>
     """
   end
@@ -105,7 +105,7 @@ defmodule LoopyardWeb.Components.LogViewer do
         <div class={"w-1.5 h-1.5 rounded-full flex-none #{@dot_class}"}></div>
         <span
           title={@command}
-          class="text-sm font-mono text-zinc-500 dark:text-zinc-400 truncate min-w-0 flex-1"
+          class="text-sm md:text-[13px] font-mono text-zinc-500 dark:text-zinc-400 truncate min-w-0 flex-1"
         >
           {@command || @status_label}
         </span>
@@ -136,16 +136,19 @@ defmodule LoopyardWeb.Components.LogViewer do
           <button
             type="button"
             data-expand
-            class="p-1 text-zinc-400 hover:text-zinc-300 transition-colors hidden"
-            title="Expand"
+            class="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors hidden"
+            title="Show full output"
           >
+            <%!-- Chevron-down = "show more". Was a ✗ (close) glyph, which read as
+                 an error/cancel right next to the exit status — this is an
+                 expand affordance, not a dismiss. --%>
             <svg
-              class="w-3 h-3"
+              class="w-3.5 h-3.5"
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 16 16"
               fill="currentColor"
             >
-              <path d="M5.28 4.22a.75.75 0 0 0-1.06 1.06L6.94 8l-2.72 2.72a.75.75 0 1 0 1.06 1.06L8 9.06l2.72 2.72a.75.75 0 1 0 1.06-1.06L9.06 8l2.72-2.72a.75.75 0 0 0-1.06-1.06L8 6.94 5.28 4.22Z" />
+              <path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" />
             </svg>
           </button>
           <button
@@ -205,7 +208,7 @@ defmodule LoopyardWeb.Components.LogViewer do
       <pre
         data-log-pre
         class={[
-          "text-xs font-mono leading-snug text-zinc-800 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-950 whitespace-pre overflow-auto px-3 py-2",
+          "text-xs md:text-[13px] font-mono leading-snug text-zinc-800 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-950 whitespace-pre overflow-auto px-3 py-2",
           if(@status == :building, do: "max-h-64", else: "max-h-32")
         ]}
       >{Ansi.to_html(@display)}</pre>
@@ -265,10 +268,12 @@ defmodule LoopyardWeb.Components.LogViewer do
   defp elapsed_since(%DateTime{} = dt), do: DateTime.to_unix(dt, :millisecond)
   defp elapsed_since(_), do: nil
 
-  # The finalized status badge: green `exit 0` on success, red `exit N` on failure
-  # (or `exit ✗` when the numeric code wasn't captured).
+  # The finalized status badge: green `exit 0` on success, red `exit N` when we
+  # captured the code (streamed exec/build path), else a plain red `failed`. The
+  # ACP tool-result path only reports pass/fail (no numeric code), so `failed`
+  # is the honest label there — never a cryptic `✗` that reads like a close icon.
   defp exit_label(:done, _), do: "exit 0"
   defp exit_label(:failed, code) when is_integer(code), do: "exit #{code}"
-  defp exit_label(:failed, _), do: "exit ✗"
+  defp exit_label(:failed, _), do: "failed"
   defp exit_label(_, _), do: ""
 end

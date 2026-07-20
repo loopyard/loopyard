@@ -345,14 +345,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     else
       ~H"""
       <%!-- Meta notes (compaction, CLI crash/restart, context refresh) are
-           house-keeping, not conversation — keep them a quiet aside: tiny, muted,
-           a small dot in the gutter, so you can SEE them happen without them
-           competing with what the agent actually said. --%>
-      <div class={[
-        gutter(),
-        "py-1 flex items-baseline gap-1.5 text-zinc-400/70 dark:text-zinc-600"
-      ]}>
-        <span aria-hidden="true" class="flex-none select-none leading-none">·</span>
+           house-keeping, not conversation — keep them a quiet aside: tiny, muted
+           italic, no bullet, so you can SEE them happen without them competing
+           with what the agent actually said. --%>
+      <div class={[gutter(), "py-1 text-zinc-400/70 dark:text-zinc-600"]}>
         <span
           class="text-sm italic leading-relaxed"
           id={"system-msg-#{@msg[:id] || hash_content(@msg.content)}"}

@@ -53,7 +53,7 @@ defmodule LoopyardWeb.Components.SideNav do
           :if={@label}
           class={[
             @variant == :section &&
-              "text-sm tracking-wider text-zinc-500 dark:text-zinc-400 font-semibold",
+              "text-sm md:text-xs tracking-wider text-zinc-500 dark:text-zinc-400 font-semibold",
             @variant == :sub &&
               "text-xs tracking-wide text-zinc-500 dark:text-zinc-400 font-medium",
             "uppercase"
@@ -267,7 +267,7 @@ defmodule LoopyardWeb.Components.SideNav do
 
   def info_row(assigns) do
     ~H"""
-    <div class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-6 text-sm">
+    <div class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-6 text-sm md:text-[13px]">
       <span class="text-zinc-500 dark:text-zinc-400 flex-none">{@label}</span>
       <span class={[
         "truncate",

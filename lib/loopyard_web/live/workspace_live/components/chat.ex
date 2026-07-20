@@ -402,7 +402,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
              Older messages load in chunks as you scroll up (ScrollBottom hook →
              load_more). Normal flow (NOT col-reverse) so the human prompts can
              `position: sticky` to the top of their section. --%>
-        <div class="space-y-2 mt-auto">
+        <div class="space-y-3 mt-auto">
           <%!-- Progressive loader: while there's older history above the window,
                a soft shimmer sits at the very top. Scroll into it and load_more
                fetches the next batch (prepended below this, so it stays put);
@@ -448,9 +448,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                     />
                   <% {:run, items} -> %>
                     <%!-- The response flows directly under its "You" prompt (which
-                         carries the dated timestamp) — no "Claude" marker. --%>
+                         carries the dated timestamp) — no "Claude" marker. The
+                         `space-y` gives each step (text, tool call, result) room to
+                         breathe instead of packing them edge-to-edge. --%>
                     <div class="mt-2">
-                      <div>
+                      <div class="space-y-2.5">
                         <.chat_msg
                           :for={{msg, idx} <- items}
                           :if={not in_live_feed?(@live_tool_from, msg, idx)}

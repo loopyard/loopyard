@@ -47,7 +47,13 @@ defmodule LoopyardWeb.Components.ProjectList do
           navigate={"/projects/#{project.id}"}
           phx-click={@row_click}
           data-sticky-header
-          class="group sticky top-0 z-10 block bg-white dark:bg-zinc-900 pt-1 pb-1 transition-shadow data-[stuck]:shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]"
+          class={[
+            "group sticky top-0 z-10 block pt-1 pb-1 transition-shadow data-[stuck]:shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]",
+            # Match the container: the compact rail sits on a tinted (zinc-50)
+            # surface; /workspaces + the switcher sheet sit on white.
+            if(@size == :sm, do: "bg-zinc-50", else: "bg-white"),
+            "dark:bg-zinc-900"
+          ]}
         >
           <h2 class={[
             if(@size == :full, do: "text-xl", else: "text-base"),
