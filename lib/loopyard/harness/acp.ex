@@ -136,15 +136,26 @@ defmodule Loopyard.Harness.ACP do
     # first sweeps prior adapters via their pid files, then records its own
     # pid. One live adapter per work container is the operating model (one
     # agent per workspace), so sweeping siblings is correct.
-    # STALE-ONLY (-mmin +10): restart/retry paths can briefly overlap — a new
-    # spawn must never kill a sibling mid-handshake (an unconditional sweep did
-    # exactly that: exit 137 mutual murder between racing restarts). Ten
-    # minutes comfortably exceeds any handshake budget, so only true orphans
-    # (whose host client died without cleanup) get reaped.
-    inner =
-      ~S{for f in $(find /tmp -maxdepth 1 -name ".loopyard-acp.*.pid" -mmin +10 2>/dev/null); do kill -9 "$(cat "$f")" 2>/dev/null; rm -f "$f"; done; } <>
-        ~S{echo $$ > /tmp/.loopyard-acp.$$.pid; . "$HOME/.profile" 2>/dev/null; exec } <>
-        adapter
+    # ORPHAN REAP — the core leak fix. Killing the host-side `docker exec`
+    # client on teardown never kills the process tree INSIDE the container, and
+    # killing only the node adapter leaves its `claude` CHILD reparented to
+    # init and ALIVE (~186MB each). Across a crash loop these piled up to dozens
+    # of orphaned `claude` processes — GBs of anon memory — which starved the
+    # VM and got the ACTIVE session OOM-killed (SIGKILL / exit 137) mid-turn.
+    #
+    # One agent runs per work container, and a given agent serializes its own
+    # (re)starts (start_session blocks the GenServer), so ANY claude /
+    # claude-code-acp process already running when we launch is an orphan from a
+    # dead/replaced session. Sweep the whole /proc table and SIGKILL every such
+    # process (adapter AND reparented children alike — matching by cmdline, not
+    # parentage, is what reaps the orphans), skipping only our own shell ($$).
+    # Then exec the fresh adapter.
+    reap =
+      ~S|for d in /proc/[0-9]*; do pid=${d##*/}; [ "$pid" = "$$" ] && continue; | <>
+        ~S|grep -qa claude "$d/cmdline" 2>/dev/null && kill -9 "$pid" 2>/dev/null; done; | <>
+        ~S|rm -f /tmp/.loopyard-acp.*.pid; echo $$ > /tmp/.loopyard-acp.$$.pid; |
+
+    inner = reap <> ~S|. "$HOME/.profile" 2>/dev/null; exec | <> adapter
 
     "docker exec -i #{container} sh -c '#{inner}'"
   end

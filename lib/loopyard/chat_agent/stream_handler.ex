@@ -322,13 +322,12 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     id = state.id
     prompt = state.current_turn_prompt
 
+    # Terse on purpose: the input box already has the text back (the UI restores
+    # it), so DON'T narrate "we kept your text" — the user can see it. Just say
+    # it failed and how to retry.
     err = %{
       role: :error,
-      content:
-        "Your message didn't go through — Anthropic's API returned an error " <>
-          "(their servers, not your code or your message).\n\n" <>
-          "Nothing was lost: your text is back in the message box. Hit Send to try " <>
-          "again (Anthropic blips are usually brief — status: https://status.claude.com).",
+      content: "Turn failed — tap Send to retry.",
       timestamp: DateTime.utc_now()
     }
 
