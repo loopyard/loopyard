@@ -89,22 +89,22 @@ defmodule LoopyardWeb.Components.Sidebar do
           :if={@first_port && @svc.status == :running}
           href={"http://localhost:#{@first_port}"}
           target="_blank"
-          class="text-[10px] text-violet-500 hover:text-violet-400 font-mono ml-auto flex-none transition-colors"
+          class="text-xs text-violet-500 hover:text-violet-400 font-mono ml-auto flex-none transition-colors"
         >
           :{@first_port}
         </a>
-        <span :if={service_status_text(@svc)} class="text-[10px] text-blue-400 ml-auto flex-none">
+        <span :if={service_status_text(@svc)} class="text-xs text-blue-400 ml-auto flex-none">
           {service_status_text(@svc)}
         </span>
         <span
           :if={!service_status_text(@svc) && !@first_port && @svc.status == :running}
-          class="text-[10px] text-zinc-400 dark:text-zinc-500 ml-auto font-mono truncate max-w-[100px]"
+          class="text-xs text-zinc-500 dark:text-zinc-400 ml-auto font-mono truncate max-w-[100px]"
         >
           {service_detail(@svc)}
         </span>
         <span
           :if={@svc.status == :crashed && @svc.exit_info}
-          class="text-[10px] text-red-500 ml-auto truncate max-w-[140px]"
+          class="text-xs text-red-500 ml-auto truncate max-w-[140px]"
         >
           {exit_reason(@svc.exit_info)}
         </span>

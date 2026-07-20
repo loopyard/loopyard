@@ -1,7 +1,7 @@
 defmodule LoopyardWeb do
   @moduledoc false
 
-  def static_paths, do: ~w(assets favicon.ico robots.txt)
+  def static_paths, do: ~w(assets favicon.ico robots.txt icons manifest.webmanifest sw.js)
 
   def router do
     quote do

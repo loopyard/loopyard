@@ -33,9 +33,19 @@ defmodule Loopyard.Harness.ACP.Translator do
 
   alias Loopyard.Agent.Event
 
-  defstruct text: [], model: nil, tools: %{}
+  # `break_pending`: a tool call surfaced since the last text chunk, so the next
+  # text chunk opens a NEW block and must be separated with a paragraph break.
+  # Without it, the assistant's text block BEFORE a tool call and the one AFTER
+  # were concatenated with no separator — "…and main." + "No — not merged" came
+  # out as "…and main.No — not merged".
+  defstruct text: [], model: nil, tools: %{}, break_pending: false
 
-  @type t :: %__MODULE__{text: iodata(), model: String.t() | nil, tools: map()}
+  @type t :: %__MODULE__{
+          text: iodata(),
+          model: String.t() | nil,
+          tools: map(),
+          break_pending: boolean()
+        }
 
   @spec new(keyword()) :: t()
   def new(opts \\ []) do
@@ -50,13 +60,20 @@ defmodule Loopyard.Harness.ACP.Translator do
   def step(state, _other), do: {state, []}
 
   # Streaming assistant text — accumulate for the final Text, emit a live delta.
+  # A paragraph break is prepended when this chunk opens a new block after a
+  # tool call (break_pending) so the break lands in BOTH the live delta stream
+  # and the committed text — the browser and the persisted message match.
   defp do_step(state, "agent_message_chunk", update) do
     text = dig_text(update["content"])
 
     if text == "" do
       {state, []}
     else
-      {%{state | text: [state.text, text]}, [%Event.TextDelta{text: text}]}
+      sep = if state.break_pending and state.text != [], do: "\n\n", else: ""
+      chunk = sep <> text
+
+      {%{state | text: [state.text, chunk], break_pending: false},
+       [%Event.TextDelta{text: chunk}]}
     end
   end
 
@@ -74,7 +91,10 @@ defmodule Loopyard.Harness.ACP.Translator do
   defp do_step(state, "tool_call", update) do
     id = update["toolCallId"]
     {state, entry} = buffer_tool(state, id, update)
-    maybe_emit_call(state, id, entry)
+    {state, events} = maybe_emit_call(state, id, entry)
+    # Tool activity now sits between any prior text and the next — the next
+    # text chunk opens a fresh block (see break_pending).
+    {%{state | break_pending: true}, events}
   end
 
   defp do_step(state, "tool_call_update", update) do
@@ -93,20 +113,21 @@ defmodule Loopyard.Harness.ACP.Translator do
       end
 
     entry = state.tools[id]
-    result_text = dig_text(update["content"])
+    raw = dig_text(update["content"])
 
     {state, result_events} =
-      if not entry.result and result_text != "" do
+      if not entry.result and raw != "" do
         entry = %{entry | result: true}
-        is_error = update["status"] in ["failed", "error"]
+        {content, wrapped_error?} = clean_result(raw)
+        is_error = update["status"] in ["failed", "error"] or wrapped_error?
 
         {put_tool(state, id, entry),
-         [%Event.ToolResult{id: id, content: result_text, is_error: is_error}]}
+         [%Event.ToolResult{id: id, content: content, is_error: is_error}]}
       else
         {state, []}
       end
 
-    {state, call_events ++ result_events}
+    {%{state | break_pending: true}, call_events ++ result_events}
   end
 
   # Slash commands / skills available this session (surface for #8); not chat noise.
@@ -148,10 +169,15 @@ defmodule Loopyard.Harness.ACP.Translator do
         _ -> {false, nil}
       end
 
+    # claude-code-acp surfaces no usage numbers (#11), which froze the UI's
+    # token counter at 0 forever. Until the adapter reports real usage,
+    # ESTIMATE output from the turn's assembled text (~4 chars/token) so the
+    # cumulative counter genuinely racks up turn over turn. Input stays 0 —
+    # we have nothing honest to estimate it from.
     result = %Event.SessionResult{
       model: state.model,
       input_tokens: 0,
-      output_tokens: 0,
+      output_tokens: div(byte_size(full), 4),
       cache_read_tokens: 0,
       cost_usd: 0.0,
       duration_ms: 0.0,
@@ -161,10 +187,35 @@ defmodule Loopyard.Harness.ACP.Translator do
     }
 
     # Reset turn-scoped accumulation; keep model.
-    {%{state | text: [], tools: %{}}, text_events ++ [result]}
+    {%{state | text: [], tools: %{}, break_pending: false}, text_events ++ [result]}
   end
 
   # --- helpers ---
+
+  # claude-code-acp wraps EVERY tool result for display: the whole thing in a
+  # markdown code fence (```…```), and errors additionally in
+  # <tool_use_error>…</tool_use_error>. Loopyard renders tool output RAW (it's a
+  # console card, not prose), so those wrappers showed up literally — and when
+  # the card tail-truncates, the opening ``` scrolled off and left a dangling
+  # ```. Strip the OUTER wrapper (only when it wraps the entire content, never a
+  # fence that's part of the real output) so the card shows the actual command
+  # output. Returns {clean_content, wrapped_in_tool_error?} — the wrapper is
+  # itself an error signal, folded into is_error.
+  @fence ~r/\A```[^\n]*\n(.*)\n```\z/s
+  @tool_err ~r/\A<tool_use_error>\s*(.*?)\s*<\/tool_use_error>\z/s
+
+  defp clean_result(text) do
+    unfenced =
+      case Regex.run(@fence, String.trim(text)) do
+        [_, inner] -> inner
+        _ -> text
+      end
+
+    case Regex.run(@tool_err, String.trim(unfenced)) do
+      [_, inner] -> {inner, true}
+      _ -> {unfenced, false}
+    end
+  end
 
   # Merge the latest name/input for a tool id, preferring non-empty input.
   defp buffer_tool(state, id, update) do

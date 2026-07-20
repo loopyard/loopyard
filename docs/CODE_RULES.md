@@ -250,6 +250,18 @@ Views read from ETS/GenServers. They never create or modify infrastructure state
 
 Use `StreamBuffer` for all "show existing content + stream new data" patterns. It handles rolling byte windows, message upsert, and page-reload restoration. Don't reinvent this in LiveView assigns.
 
+## Never publish streaming deltas per token
+
+Raw token deltas arrive 30–60×/s. Publishing each one makes every connected
+LiveView re-ship and morphdom-patch the entire accumulated text per token —
+the browser main thread saturates and typing lags for everyone watching.
+Delta events queue on `state.stream_pub_buffer` in the ChatAgent and flush
+as one combined publish per 100ms tick (`StreamHandler.flush_stream_deltas/1`).
+A new delta-shaped event goes through `buffer_stream_delta/3`, never straight
+to `Events.ChatAgentMessage.publish/1`; every turn-reset/interrupt path must
+drop the buffer (`drop_stream_deltas/1`) so a late flush can't ghost a stale
+streaming bubble.
+
 ## Operations must be idempotent
 
 Check if running before starting. Never `docker rm -f` then `docker run` unconditionally.

@@ -166,6 +166,45 @@ defmodule Loopyard.ChatAgent.SessionResumeTest do
       assert Keyword.get(opts, :resume) == "sess-manual-9"
     end
 
+    # RULE 1 — adopt the harness's LIVE session id after start. If a stale/huge
+    # resume id fails to load and the connection falls back to a fresh
+    # session/new internally, session_id/1 reports the NEW id; Loopyard must
+    # adopt it and stop clinging to the dead one (else it re-resumes it forever).
+    test "restart adopts the backend's live session id (a fallback sticks)", %{id: id} do
+      pid = agent_pid(id)
+
+      :sys.replace_state(pid, fn s -> Map.put(s, :claude_session_id, "old-dead-id") end)
+
+      RecordingBackend.reset()
+      # The backend reports a DIFFERENT id than we tried to resume — as if the
+      # connection fell back to a fresh session.
+      RecordingBackend.set_session_id("fresh-live-999")
+
+      GenServer.cast(pid, :restart_session)
+      Process.sleep(100)
+
+      assert :sys.get_state(pid).claude_session_id == "fresh-live-999",
+             "Loopyard must track the harness's actual live session id, not the dead resume id"
+    end
+
+    # RULE 2 — one-strike resume. A resume hint that FAILS to start is poison;
+    # drop it to nil so the next start is a guaranteed-fresh session/new instead
+    # of an infinite retry of the dead session.
+    test "a resume that fails to start drops the poisoned id", %{id: id} do
+      pid = agent_pid(id)
+
+      :sys.replace_state(pid, fn s -> Map.put(s, :claude_session_id, "poison-xyz") end)
+
+      RecordingBackend.reset()
+      RecordingBackend.fail_next(:load_failed)
+
+      GenServer.cast(pid, :restart_session)
+      Process.sleep(100)
+
+      assert :sys.get_state(pid).claude_session_id == nil,
+             "a failed resume hint must be dropped so the next start is fresh"
+    end
+
     test "no claude_session_id → no resume option injected", %{id: id} do
       pid = agent_pid(id)
 

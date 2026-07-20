@@ -34,6 +34,18 @@ We do **not** defend against:
 
 Every boundary below is a **runtime check**, not a rule the model is asked to follow. Prompt-level guidance is a courtesy to the agent, never a security control.
 
+### 0. The harness runtime runs inside a container — fail closed
+
+The most fundamental boundary: **every agent's harness process runs inside a Docker container, never on the host.** The container *is* the sandbox — the node/CLI runtime, its native `Bash`/`Read`/`Write`, any browser/skill subprocess, and its `/tmp` all live inside the container and cannot touch the host.
+
+- **ACP in-container.** `Harness.ACP` launches the harness via `docker exec -i <container> claude-code-acp` whenever a `:container` opt is set (`Initializer.start_session`). Workspace agents run in their work container (`cwd=/workspace`); the operator runs in its workstation container (`loopyard-ws-<identity>`, `cwd=$HOME`). Without `:container`, ACP would run a host `node` process — so we never leave it unset for a real agent. (One `docker exec` to enter; commands then run natively inside — no per-command `docker exec` wrapper, which was the old host-mode tell.)
+- **No host-execution backend exists.** `Harness.Claude` — which ran the `claude` CLI as a host subprocess via the SDK — was **deleted**. `Harness.ACP` (in-container) is the only production backend; `Harness.Fake` is the test double. There is simply no code left that launches a harness on the host.
+- **Fail-closed gate, in depth.** `Initializer.assert_runtime_contained!/3` runs before every `backend.start_session` and **raises** rather than start a host runtime: `Harness.ACP` without a `:container` is refused; test doubles (Fake/RecordingBackend, which spawn nothing) pass. A second guard sits lower: `Harness.ACP.runtime_opts` itself **raises** on a nil container with no injected transport, so even a caller that bypassed the Initializer can't reach a host launch. A new backend that can spawn a host process MUST add a refusing clause. Tested in `test/loopyard/chat_agent/containment_test.exs`.
+- **`host_access` is disabled.** The former opt-in `host_access: true` → host `bind_mount` + native host tools is now **ignored and logged**, never honored (`init_fresh`), and never re-derived on resume (`resume_from_summary` forces `bind_mount: nil`). There is no supported way to run an agent runtime on the host.
+- **Resource containment (the harness can't take the host down).** Containment isn't only about the filesystem — the Claude Code harness is a resource hog that leaks (tens of GB observed). Every work container runs with a hard `--memory` cap (`WorkContainer.memory_limit/0`, default 8 GB, `:work_container_memory`), so a bloated harness is OOM-killed *inside* its container and the host stays responsive; Loopyard's crash recovery then restarts the session. A second layer (`Harness.MemoryMonitor`) proactively restarts a bloated-but-idle harness before the hard cap fires. So a runaway harness degrades to a contained restart, never a wedged machine.
+- **The operator is contained too.** It runs ACP inside its workstation container, reaching its `Tools.ControlPlane` toolkit over an **operator-scoped** MCP bridge token (`Loopyard.MCP.Token` `scope: :operator` → `ToolRouter` serves the operator toolset). The workstation container mounts the same `loopyard-ws-<id>-home` volume, so it shares the identity's credential.
+- **The self-check probe is contained too.** `mix loopyard.harness_check` (`HarnessCheck.probe`) now REQUIRES a `:container` and runs the adapter in-container like everything else; called without one it returns `{:error, :container_required}` rather than launching anything on the host.
+
 ### 1. Tool surface is minimal and workspace-scoped
 
 Agents see exactly two MCP servers: `loopyard-container` (file/exec/docker_compose/inspect tools) and `loopyard-secrets`. Every tool that touches infrastructure derives the target container, volume, and compose project from the agent's own session state via `Helpers.resolve_container/1`, `resolve_service_container/2`, or `agent_workspace_id/1`. Tools do not accept a `workspace_id` parameter.
@@ -44,6 +56,22 @@ Agents see exactly two MCP servers: `loopyard-container` (file/exec/docker_compo
 |---|---|
 | `Tools.Agents` (spawn_agent, send_message_to_agent, list_agents, stop_agent, rename_agent, read_agent_chat) | Zero workspace scoping; `spawn_agent` accepted arbitrary `working_dir`; `list_agents` enumerated every workspace. This was the root cause of the "agent spawned siblings and reached into other projects" incident. |
 | `Tools.Container.Docker` (raw `docker` CLI) | Let agents run `docker exec <other-ws-container>`, `docker volume inspect <other-vol>`, `docker run -v <other-vol>:/mnt …`. Every legitimate need is covered by scoped tools. |
+
+**No host tools — workspace agents are container-only.** A workspace agent NEVER
+gets native host tools (`Bash`, `Read`/`Write`/`Edit`, `docker`, `mix
+loopyard.rpc`). It acts on its code volume exclusively through the sandboxed
+`loopyard-container` MCP, whose `exec` runs *inside* the container. Enforcement:
+`Onboarding.spawn_agent/2` — the single spawn path — never sets a per-agent
+`bind_mount`, so `Initializer` always builds the agent with `container_only? =
+true` and adds the native-tool denylist. **Do not reintroduce an automatic
+`bind_mount`.** It once existed for host-worktree dev; a provisioned agent hit
+that fallback before its container was up, got host `Bash`, and used `mix
+loopyard.rpc` to forge a workspace behind the approval gate — a full control-plane
+escape. Local-source projects sync host↔volume via Mutagen, so no agent needs
+host access. Corollary: because agents have no host reach, workspace
+create/remove/integrate can happen ONLY through the approval-gated MCP tools
+(`propose_fork` / `propose_delete_workspace` / `propose_integrate`), each of which
+shows a human Approve/Deny card before acting.
 
 ### 2. Session-bound `agent_id`
 
@@ -125,6 +153,20 @@ Loopyard is moving to run a **real** coding harness (Claude Code today, Codex ne
 - **Frame size / hung harness.** The transport reads newline-delimited JSON with an 8MB per-line buffer cap (`{:line, 8_000_000}`); a continuation (`:noeol`) chunk stream is accumulated in `state.buf` with no hard ceiling, so a pathological adapter could grow that buffer — a bounded-buffer cap is **planned, not enforced**. Unparseable frames are skipped (`Jason.decode` failure → drop), but there is **no JSON-RPC schema validation** of well-formed-but-unexpected frames. A hung harness is bounded by `@turn_timeout` (10 min) and `@ready_timeout` (30 s); there is no `session/cancel` interrupt yet (#3 gap).
 
 **Rule of thumb for the ACP seam:** the in-container variant is the safe target precisely because it collapses the trust question into the *existing* container/volume sandbox — the harness can only touch `/workspace` because that's all its container can see. Host mode (no fs clamp, auto-allow permissions) is a spike convenience, not a security posture. Do not enable host mode against real user projects, and do not add new client capabilities (fs or otherwise) to the host-mode handshake without a path-validation + policy story. Every ACP gap above is tracked in `docs/IMPROVEMENTS.md`.
+
+### ACP MCP bridge — the network edge of the sandbox
+
+An in-container ACP harness can't use the in-process Elixir MCP servers the ClaudeCode backend uses (those live in the BEAM; the harness is a subprocess in a container). To give it Loopyard's **control-plane** tools (ports, service lifecycle, the approval-gated fork/integrate/delete flows, ask/secret round-trips) it reaches back over HTTP: `LoopyardWeb.MCP.Server` speaks MCP JSON-RPC, and `Loopyard.MCP.acp_mcp_servers/2` hands the adapter a `session/new` `mcpServers` spec pointing at it.
+
+This is the **one Loopyard surface reachable from inside a container**, so it's built fail-closed:
+
+- **Dedicated listener, not the main endpoint.** `LoopyardWeb.MCP.Listener` is a *separate* Bandit endpoint bound to `0.0.0.0:<LOOPYARD_MCP_PORT>` (default 4030). The main web UI stays loopback-only (`127.0.0.1`) — exposing the whole app on `0.0.0.0` just so containers can call back would be a far bigger surface. Only the tool bridge is network-reachable.
+- **Bearer token, no anonymous access.** Every request MUST carry `Authorization: Bearer <token>`; no token / bad token → `401`, before any dispatch. The token is a `Phoenix.Token` signed with `secret_key_base` (`Loopyard.MCP.Token`) — unforgeable without the secret, minted per-agent at session start.
+- **Agent-scoped, identity from the token — never the payload.** The token encodes exactly `{agent_id, workspace_id}`. `ToolRouter.call_tool/4` **forces** `agent_id` from the verified token into the params, discarding whatever the model sent — so `authorize_agent/2` (§2) always sees a matching id and a leaked token is scoped to exactly one agent's own workspace. Passing a foreign `agent_id` in the JSON arguments is inert.
+- **Same tools, same gates.** The bridge dispatches to the *same* `Loopyard.Tool` `execute/2` the in-process path calls — so workspace-scoping, path validation, and the approval cards for boundary-crossing tools (`propose_fork` / `propose_integrate` / `propose_delete_workspace`, §1) all apply unchanged. The transport is new; the authority model is not.
+- **Curated surface.** `ToolConfig.acp_control_plane_tools/0` exposes only the control-plane subset — NOT the fs/exec tools (`exec`, `read_file`, `write_file`, `edit`, `grep`, …). An in-container agent has native Read/Write/Bash against `/workspace`; re-exposing those over the bridge would add surface for no gain.
+
+**Accepted limits:** the token has a long max-age and is not revoked on agent death (a leaked token stays valid until expiry, still scoped to one workspace) — consistent with the local-first threat model; per-agent revocation is a future improvement. And the listener is reachable from the whole LAN, not just Docker containers — but it is token-gated, so LAN reach without the signed secret is inert.
 
 ## Notes on the BEAM-side Docker plane
 

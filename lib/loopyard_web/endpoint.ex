@@ -14,10 +14,19 @@ defmodule LoopyardWeb.Endpoint do
     websocket: [connect_info: [session: @session_options]],
     longpoll: [connect_info: [session: @session_options]]
 
+  # In dev, force the browser to REVALIDATE non-digested assets (app.css/app.js)
+  # against their etag on every load instead of heuristically serving a cached
+  # copy. Without this, `cache-control: public` (no max-age / last-modified) lets
+  # mobile browsers keep a stale copy — so a hot-rebuilt CSS/JS never arrives and
+  # a refresh "does nothing". Prod keeps the default (assets are digested +
+  # immutable there).
+  @static_cache_control if Mix.env() == :prod, do: "public", else: "no-cache"
+
   plug Plug.Static,
     at: "/",
     from: :loopyard,
     gzip: false,
+    cache_control_for_etags: @static_cache_control,
     only: LoopyardWeb.static_paths()
 
   # Chimes used to ship as static WAVs served from {:aural,

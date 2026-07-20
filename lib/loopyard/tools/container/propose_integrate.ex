@@ -14,41 +14,45 @@ defmodule Loopyard.Tools.Container.ProposeIntegrate do
     ]
 
   alias Loopyard.Harness.Approvals
-  alias Loopyard.{CanonicalRepo, WorkspaceRegistry, ChatAgent}
+  alias Loopyard.{WorkspaceRegistry, ChatAgent}
+
+  # Integration merges the workspace's branch INTO canonical `main`
+  # (CanonicalRepo.integrate). Proposing to integrate `main` itself is a
+  # self-merge that can never validly complete — it just leaves a "wants
+  # approval" card stuck forever. Refuse at the source.
+  @integration_target "main"
 
   def execute(%{agent_id: agent_id}, _assigns) do
     with %{workspace_id: ws_id} when is_binary(ws_id) <- ChatAgent.get_state(agent_id),
          %{project_id: project_id, branch: branch}
          when is_binary(project_id) and is_binary(branch) <-
-           WorkspaceRegistry.get_workspace(ws_id) do
+           WorkspaceRegistry.get_workspace(ws_id),
+         :ok <- refuse_self_merge(branch) do
       action = %{verb: :integrate, project_id: project_id, workspace_id: ws_id, branch: branch}
 
-      case Approvals.request(agent_id, action) do
-        {:approve, msg_id} ->
-          Approvals.resolve(agent_id, msg_id, %{status: :integrating})
+      # Queued approval (no blocking, no TTL): post the card and return. On
+      # approve, the LiveView runs `Approvals.run/3`, which rebases + merges this
+      # branch into main and streams the outcome into the card.
+      Approvals.post(agent_id, action)
 
-          case CanonicalRepo.integrate(project_id, ws_id, branch) do
-            {:ok, _} ->
-              Approvals.resolve(agent_id, msg_id, %{status: :integrated})
-              {:ok, "Approved. Merged '#{branch}' into main."}
-
-            {:error, reason} ->
-              Approvals.resolve(agent_id, msg_id, %{status: :failed, error: inspect(reason)})
-
-              {:error,
-               "Merge failed — likely conflicts to resolve on this branch first " <>
-                 "(rebase on main, fix, then propose again): #{inspect(reason)}"}
-          end
-
-        {:deny, msg_id} ->
-          Approvals.resolve(agent_id, msg_id, %{status: :denied})
-          {:ok, "The user declined to merge '#{branch}' into main."}
-
-        {:timeout, _} ->
-          {:ok, "No response on the merge proposal — not merged."}
-      end
+      {:ok,
+       "I've proposed merging '#{branch}' into main. Approve the card whenever " <>
+         "you're ready — no time limit — and I'll rebase + merge it. If it hits " <>
+         "conflicts it fails cleanly and you can resolve them on this branch, then " <>
+         "propose again."}
     else
-      _ -> {:error, "Couldn't resolve the project/branch for this workspace."}
+      {:error, :self_merge} ->
+        {:error,
+         "This workspace is already on '#{@integration_target}' — there's nothing to integrate " <>
+           "(you'd be merging main into itself). Integration is for landing a BRANCH's work " <>
+           "into main; create a fork/branch workspace, do the work there, then propose from it."}
+
+      _ ->
+        {:error, "Couldn't resolve the project/branch for this workspace."}
     end
+  end
+
+  defp refuse_self_merge(branch) do
+    if branch == @integration_target, do: {:error, :self_merge}, else: :ok
   end
 end

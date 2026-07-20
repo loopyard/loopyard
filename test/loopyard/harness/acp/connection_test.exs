@@ -329,6 +329,93 @@ defmodule Loopyard.Harness.ACP.ConnectionTest do
     end
   end
 
+  describe "cancel (session/cancel)" do
+    test "sends a session/cancel notification for the live session, keeping it warm" do
+      {conn, _transport} = start_conn()
+      sid = handshake(conn)
+
+      Connection.cancel(conn)
+
+      # A notification: has method + params, NO id (not a request).
+      assert_receive {:sent, frame}
+      assert frame["method"] == "session/cancel"
+      assert frame["params"]["sessionId"] == sid
+      refute Map.has_key?(frame, "id")
+
+      # Connection is still alive and reports the same session.
+      assert Connection.session_id(conn) == sid
+    end
+
+    test "no-op before a session exists" do
+      {conn, _transport} = start_conn()
+      # Still initializing — no session id yet.
+      Connection.cancel(conn)
+      refute_receive {:sent, %{"method" => "session/cancel"}}
+    end
+  end
+
+  describe "resume (session/load)" do
+    # Drive init, replying with the given agentCapabilities.
+    defp init_with_caps(conn, caps) do
+      assert_receive {:sent, %{"method" => "initialize", "id" => init_id}}
+      send(conn, {:acp_msg, %{"id" => init_id, "result" => %{"agentCapabilities" => caps}}})
+    end
+
+    test "issues session/load with the saved id when the adapter supports it" do
+      {conn, _transport} = start_conn(resume: "sess-prev")
+      init_with_caps(conn, %{"loadSession" => true})
+
+      assert_receive {:sent, %{"method" => "session/load", "id" => load_id} = frame}
+      assert frame["params"]["sessionId"] == "sess-prev"
+      refute_received {:sent, %{"method" => "session/new"}}
+
+      send(conn, {:acp_msg, %{"id" => load_id, "result" => %{}}})
+      assert Connection.await_ready(conn, 1_000) == :ok
+      # Session id is the resumed one (load result omits it).
+      assert Connection.session_id(conn) == "sess-prev"
+    end
+
+    test "falls back to session/new when the adapter can't load sessions" do
+      {conn, _transport} = start_conn(resume: "sess-prev")
+      init_with_caps(conn, %{"loadSession" => false})
+
+      assert_receive {:sent, %{"method" => "session/new"}}
+      refute_received {:sent, %{"method" => "session/load"}}
+    end
+
+    test "falls back to session/new when session/load errors (expired id)" do
+      {conn, _transport} = start_conn(resume: "sess-gone")
+      init_with_caps(conn, %{"loadSession" => true})
+
+      assert_receive {:sent, %{"method" => "session/load", "id" => load_id}}
+
+      send(
+        conn,
+        {:acp_msg,
+         %{"id" => load_id, "error" => %{"code" => -32_000, "message" => "unknown session"}}}
+      )
+
+      assert_receive {:sent, %{"method" => "session/new", "id" => new_id}}
+      send(conn, {:acp_msg, %{"id" => new_id, "result" => %{"sessionId" => "sess-fresh"}}})
+      assert Connection.await_ready(conn, 1_000) == :ok
+      assert Connection.session_id(conn) == "sess-fresh"
+    end
+
+    test "no resume id → plain session/new (unchanged path)" do
+      {conn, _transport} = start_conn()
+      assert_receive {:sent, %{"method" => "initialize", "id" => init_id}}
+
+      send(
+        conn,
+        {:acp_msg,
+         %{"id" => init_id, "result" => %{"agentCapabilities" => %{"loadSession" => true}}}}
+      )
+
+      assert_receive {:sent, %{"method" => "session/new"}}
+      refute_received {:sent, %{"method" => "session/load"}}
+    end
+  end
+
   # ---- helpers ----
 
   defp notif(kind, extra) do

@@ -29,19 +29,16 @@ defmodule Loopyard.Tools.Container.ProposeDeleteWorkspace do
         reason: Map.get(params, :reason)
       }
 
-      case Approvals.request(agent_id, action) do
-        # On approve, the LiveView runs the destroy (deleting this workspace
-        # kills this agent, so the agent can't do it itself). We just acknowledge.
-        {:approve, _msg_id} ->
-          {:ok, "Deletion approved — this workspace is being removed."}
+      # Queued approval (no blocking, no TTL): post the card and return. The
+      # human can approve whenever — on approve the LiveView runs the teardown
+      # (deleting this workspace kills this agent, so the agent can't do it
+      # itself). The card carries everything the teardown needs.
+      Approvals.post(agent_id, action)
 
-        {:deny, msg_id} ->
-          Approvals.resolve(agent_id, msg_id, %{status: :denied})
-          {:ok, "The user declined to delete this workspace."}
-
-        {:timeout, _} ->
-          {:ok, "No response on the delete proposal — not deleted."}
-      end
+      {:ok,
+       "I've proposed deleting this workspace — approve the card whenever you're " <>
+         "ready (there's no time limit) and it'll be removed. The code stays safe " <>
+         "in main; only this branch's env goes away."}
     else
       _ -> {:error, "Couldn't resolve this workspace."}
     end

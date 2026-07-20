@@ -2,14 +2,12 @@ defmodule Loopyard.Harness.Fake do
   @moduledoc """
   No-op Agent.Backend for tests.
 
-  The real backend (`Loopyard.Harness.Claude`) spawns the
-  Node.js Claude CLI subprocess via a Port. With real API auth it
-  works; without it the subprocess exits immediately and the stream
-  surfaces `{:error, {:provisioning_failed, {:cli_exit, 1}}}` after
-  a multi-second retry window. That timing is why `mix test` hangs
-  when the dev server isn't configured for the CLI or when tests
-  forget to override the backend — every test that happens to boot
-  a ChatAgent pays the full timeout.
+  The real backend (`Loopyard.Harness.ACP`) launches the
+  `claude-code-acp` adapter inside a container via `docker exec`.
+  With real API auth it works; without it (or without Docker) the
+  handshake fails after a multi-second retry window. That timing is
+  why `mix test` hangs when tests forget to override the backend —
+  every test that happens to boot a ChatAgent pays the full timeout.
 
   This backend:
 

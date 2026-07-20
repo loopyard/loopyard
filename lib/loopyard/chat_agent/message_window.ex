@@ -80,4 +80,88 @@ defmodule Loopyard.ChatAgent.MessageWindow do
       rev_i -> start - rev_i
     end
   end
+
+  # ---- ETS-path message WRITES (callers outside the GenServer) ----
+  # Moved from ChatAgent (module-size invariant); ChatAgent defdelegates here.
+
+  @doc """
+  Append a message to an agent's message list (for stream messages created
+  outside the GenServer). Goes through the GenServer if alive, falls back to
+  direct ETS write.
+  """
+  def append_message_ets(agent_id, msg) do
+    msg = Map.put_new_lazy(msg, :id, fn -> generate_msg_id() end)
+
+    case Registry.lookup(Loopyard.ChatAgentRegistry, agent_id) do
+      [{pid, _}] ->
+        GenServer.cast(pid, {:append_external_message, msg})
+        msg
+
+      [] ->
+        # No GenServer running — direct ETS write
+        case :ets.lookup(@ets_table, agent_id) do
+          [{^agent_id, summary}] ->
+            :ets.insert(@ets_table, {agent_id, %{summary | messages: summary.messages ++ [msg]}})
+            msg
+
+          [] ->
+            nil
+        end
+    end
+  end
+
+  @doc "Update a message by ID. Goes through GenServer if alive, falls back to direct ETS."
+  def update_message(agent_id, msg_id, update_fn) do
+    case Registry.lookup(Loopyard.ChatAgentRegistry, agent_id) do
+      [{pid, _}] ->
+        GenServer.cast(pid, {:update_message, msg_id, update_fn})
+        :ok
+
+      [] ->
+        case :ets.lookup(@ets_table, agent_id) do
+          [{^agent_id, summary}] ->
+            try do
+              messages =
+                Enum.map(summary.messages, fn msg ->
+                  if msg[:id] == msg_id, do: update_fn.(msg), else: msg
+                end)
+
+              :ets.insert(@ets_table, {agent_id, %{summary | messages: messages}})
+
+              # Same live-patch broadcast as the GenServer path — a viewer
+              # watching a stopped agent's transcript still sees the update.
+              case Enum.find(messages, &(&1[:id] == msg_id)) do
+                nil ->
+                  :ok
+
+                new_msg ->
+                  Loopyard.Events.ChatAgentMessage.publish(
+                    %Loopyard.Events.ChatAgentMessage.MessageUpdated{
+                      agent_id: agent_id,
+                      msg: new_msg
+                    }
+                  )
+              end
+
+              :ok
+            rescue
+              e ->
+                :telemetry.execute(
+                  [:loopyard, :agent, :update_message_failed],
+                  %{count: 1},
+                  %{agent_id: agent_id, msg_id: msg_id, reason: Exception.message(e)}
+                )
+
+                :error
+            end
+
+          [] ->
+            :error
+        end
+    end
+  end
+
+  defp generate_msg_id do
+    :crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false)
+  end
 end

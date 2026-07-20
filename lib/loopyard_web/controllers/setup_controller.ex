@@ -81,13 +81,24 @@ defmodule LoopyardWeb.SetupController do
     # Loopyard — mint a long-lived Claude token and push it into workstation '#{ws}'.
     command -v claude >/dev/null 2>&1 || { echo "Install Claude Code on your Mac first."; exit 1; }
     echo "Authorizing Claude — a browser will open; approve it to mint a 1-year token."
-    t=$(claude setup-token 2>/dev/null | grep -oE 'sk-ant-oat[A-Za-z0-9_-]+' | head -1)
+    # `claude setup-token` is INTERACTIVE (prints a URL, then wants a code pasted
+    # back). Under `curl | sh`, stdin is the script and a bare pipe both hides
+    # its prompts and starves it of input — the old capture silently got nothing.
+    # So: feed it the real terminal (< /dev/tty) and tee output back to the
+    # terminal while capturing it for token extraction.
+    if [ -r /dev/tty ]; then
+      out=$(claude setup-token < /dev/tty 2>&1 | tee /dev/tty)
+    else
+      out=$(claude setup-token 2>&1)
+    fi
+    t=$(printf '%s' "$out" | grep -oE 'sk-ant-oat[A-Za-z0-9_-]+' | tail -1)
     if [ -n "$t" ]; then
       printf '%s' "$t" | curl -fsS -H "Authorization: Bearer #{token}" -T - "#{env_url}"
       echo
-      echo "Pushed CLAUDE_CODE_OAUTH_TOKEN to '#{ws}'. Restart the box to apply."
+      echo "Pushed a 1-year CLAUDE_CODE_OAUTH_TOKEN to '#{ws}'. Agents reload themselves — nothing else to do."
     else
       echo "Couldn't capture a token. Run 'claude setup-token' yourself, then paste it on the Claude page."
+      exit 1
     fi
     """
   end

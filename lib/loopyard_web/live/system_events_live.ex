@@ -137,7 +137,7 @@ defmodule LoopyardWeb.SystemEventsLive do
   defp event_table(assigns) do
     ~H"""
     <%= if @events == [] do %>
-      <div class="text-sm text-zinc-400 dark:text-zinc-500 italic py-8 text-center">
+      <div class="text-sm text-zinc-500 dark:text-zinc-400 italic py-8 text-center">
         No events captured yet. Broadcasts will appear here in real time.
       </div>
     <% else %>

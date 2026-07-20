@@ -188,7 +188,7 @@ defmodule LoopyardWeb.SystemWorkspacesLive do
         Workspaces <span class="text-zinc-400 font-normal">({length(@workspaces)})</span>
       </h2>
 
-      <div :if={@workspaces == []} class="text-sm text-zinc-400 dark:text-zinc-500">
+      <div :if={@workspaces == []} class="text-sm text-zinc-500 dark:text-zinc-400">
         No workspaces registered
       </div>
 

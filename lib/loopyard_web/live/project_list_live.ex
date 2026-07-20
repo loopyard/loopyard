@@ -3,18 +3,36 @@ defmodule LoopyardWeb.ProjectListLive do
   use LoopyardWeb.IExAware
 
   alias Loopyard.ProjectRegistry
+  alias LoopyardWeb.Components.ProjectList
 
   @impl true
   @behaviour Loopyard.Events.Projects.Subscriber
+  @behaviour Loopyard.Events.ChangeCounts.Subscriber
 
   def mount(_params, _session, socket) do
     socket =
       if connected?(socket) do
         # Multiplayer: a project anyone creates/removes shows up in this list live.
         Loopyard.Events.Projects.subscribe()
+        # Live agent status + current activity on the birdseye (dots + "editing…"
+        # update live as agents work).
+        Loopyard.Events.Activity.subscribe_global()
+        # Live ports: a service coming up / port being exposed refreshes the
+        # openable :port chips without a reload.
+        Loopyard.Events.DockerObserver.subscribe()
+        # Live ±N change badges on the workspace cards.
+        Loopyard.Events.ChangeCounts.subscribe()
         subscribe_iex(socket)
       else
         assign(socket, :iex_session, %{level: nil})
+      end
+
+    # Build openable port URLs from the same host the browser is on (LAN IP or
+    # localhost), so the :port chips work wherever Loopyard is reached from.
+    host =
+      case socket.host_uri do
+        %URI{host: h} when is_binary(h) and h != "" -> h
+        _ -> "localhost"
       end
 
     secret = Application.get_env(:loopyard, :launch_secret, "")
@@ -23,7 +41,8 @@ defmodule LoopyardWeb.ProjectListLive do
 
     {:ok,
      socket
-     |> assign(:projects, load_projects())
+     |> assign(:host, host)
+     |> assign(:projects, Loopyard.WorkspaceTree.global(host))
      |> assign(:launch_cmd, launch_cmd)
      |> assign(:creating, nil)}
   end
@@ -75,7 +94,7 @@ defmodule LoopyardWeb.ProjectListLive do
   @impl true
   def handle_event("remove_project", %{"id" => id}, socket) do
     ProjectRegistry.remove_project(id)
-    {:noreply, assign(socket, :projects, load_projects())}
+    {:noreply, reload(socket)}
   end
 
   @impl true
@@ -92,23 +111,57 @@ defmodule LoopyardWeb.ProjectListLive do
 
   def handle_info(%Loopyard.Events.Projects.Changed{} = e, socket), do: on_changed(e, socket)
 
+  # Only STATUS changes refresh the birdseye — not every tool call. Reloading on
+  # each tool call rebuilt the whole page constantly and made it flicker; the
+  # home dots only track status anyway.
+  def handle_info(%Loopyard.Events.Activity.Event{kind: :status}, socket),
+    do: {:noreply, reload(socket)}
+
+  def handle_info(%Loopyard.Events.Activity.Event{}, socket), do: {:noreply, socket}
+
+  # Container/port state changed → refresh so the openable :port chips are current.
+  def handle_info(%Loopyard.Events.DockerObserver.Changed{}, socket),
+    do: {:noreply, reload(socket)}
+
+  def handle_info(%Loopyard.Events.ChangeCounts.Updated{} = e, socket),
+    do: on_change_counts_updated(e, socket)
+
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl Loopyard.Events.Projects.Subscriber
-  def on_changed(_e, socket), do: {:noreply, assign(socket, :projects, load_projects())}
+  def on_changed(_e, socket), do: {:noreply, reload(socket)}
 
-  defp load_projects do
-    ProjectRegistry.list_projects()
-    |> Enum.map(fn project ->
-      workspaces = ProjectRegistry.list_workspaces(project.id)
-      Map.put(project, :workspace_count, length(workspaces))
-    end)
+  @impl Loopyard.Events.ChangeCounts.Subscriber
+  def on_change_counts_updated(_e, socket), do: {:noreply, reload(socket)}
+
+  defp reload(socket),
+    do: assign(socket, :projects, Loopyard.WorkspaceTree.global(socket.assigns.host))
+
+  # All agents under a project, across its workspaces — for rollup dot + counts.
+  defp project_agents(project), do: Enum.flat_map(project.workspaces, & &1.agents)
+
+  defp home_subtitle([]), do: "Nothing here yet — create your first project below."
+
+  defp home_subtitle(projects) do
+    n = length(projects)
+    agents = projects |> Enum.flat_map(&project_agents/1)
+
+    # Count from raw :status (no per-agent Registry lookup) — same source as the dots.
+    working = Enum.count(agents, &(Map.get(&1, :status) in [:thinking, :compacting, :booting]))
+
+    working_phrase =
+      if working > 0,
+        do: "#{working} working now",
+        else: "#{length(agents)} #{pluralize(length(agents), "agent")}"
+
+    "#{n} #{pluralize(n, "project")} · #{working_phrase}"
   end
+
+  defp pluralize(1, word), do: word
+  defp pluralize(_, word), do: word <> "s"
 
   @impl true
   def render(assigns) do
-    assigns = assign(assigns, :has_projects, assigns.projects != [])
-
     ~H"""
     <.page_shell
       breadcrumbs={crumbs(@live_action)}
@@ -118,34 +171,38 @@ defmodule LoopyardWeb.ProjectListLive do
     >
       <%= case @live_action do %>
         <% :index -> %>
-          <.section_header title="Projects">
-            <:action>
-              <.new_button navigate="/projects/new">New project</.new_button>
-            </:action>
-          </.section_header>
-
-          <.card_grid :if={@has_projects}>
-            <.tile_card :for={project <- @projects} navigate={"/projects/#{project.id}"}>
-              <h3 class="text-base font-semibold truncate">{project.name}</h3>
-              <p class="text-xs md:text-sm font-mono text-zinc-400 dark:text-zinc-500 mt-1 truncate">
-                {project_location(project)}
+          <%!-- The birdseye: every project → workspace → agent, expanded, with
+               live status + what each agent is doing + openable ports. The big
+               mission-control twin of the sidebar. --%>
+          <header class="mb-8 flex items-end justify-between gap-4">
+            <div>
+              <h1 class="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+                Workspaces
+              </h1>
+              <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
+                {home_subtitle(@projects)}
               </p>
-              <p
-                :if={project.workspace_count > 1}
-                class="text-xs text-zinc-400 dark:text-zinc-500 mt-2"
-              >
-                {project.workspace_count} workspaces
-              </p>
-            </.tile_card>
-          </.card_grid>
+            </div>
+            <.link
+              navigate="/projects/new"
+              class="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:border-violet-300 dark:hover:border-violet-500/40 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
+            >
+              <svg viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" /></svg>
+              New project
+            </.link>
+          </header>
 
-          <div
-            :if={!@has_projects}
-            class="text-center py-16 md:py-24 text-sm text-zinc-400 dark:text-zinc-500"
-          >
-            No projects yet — hit
-            <span class="font-medium text-zinc-500 dark:text-zinc-400">New project</span>
-            to start.
+          <%!-- The ONE grouped project → workspace list (also loaded by the mobile
+               switcher, so there's a single visual language). --%>
+          <ProjectList.project_groups projects={@projects} />
+          <div class="mt-6 sm:hidden">
+            <.link
+              navigate="/projects/new"
+              class="flex items-center justify-center gap-1.5 w-full rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 px-3 py-3 text-sm font-medium text-zinc-500 dark:text-zinc-400 active:bg-zinc-100 dark:active:bg-zinc-800 transition-colors"
+            >
+              <svg viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" /></svg>
+              New project
+            </.link>
           </div>
         <% :new -> %>
           <div class="max-w-2xl">
@@ -246,7 +303,7 @@ defmodule LoopyardWeb.ProjectListLive do
               </button>
             </form>
             <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 p-4">
-              <p class="text-[11px] text-zinc-400 dark:text-zinc-500 mb-1.5">
+              <p class="text-[11px] text-zinc-500 dark:text-zinc-400 mb-1.5">
                 Or run this from that folder in your terminal:
               </p>
               <div class="flex items-center gap-2">
@@ -275,7 +332,7 @@ defmodule LoopyardWeb.ProjectListLive do
             <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-5">
               Clone a repo to start, and sync back as it matures. The engine's built — the UI is next.
             </p>
-            <div class="rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 p-8 text-center text-sm text-zinc-400 dark:text-zinc-500">
+            <div class="rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 p-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
               Coming soon.
             </div>
           </div>
@@ -313,8 +370,8 @@ defmodule LoopyardWeb.ProjectListLive do
     """
   end
 
-  defp crumbs(:index), do: [{"Loopyard", nil}]
-  defp crumbs(:new), do: [{"Loopyard", "/"}, {"New project", nil}]
+  defp crumbs(:index), do: [{"Loopyard", "/"}, {"Workspaces", nil}]
+  defp crumbs(:new), do: [{"Loopyard", "/"}, {"Workspaces", "/workspaces"}, {"New project", nil}]
 
   defp crumbs(:new_scratch),
     do: [{"Loopyard", "/"}, {"New project", "/projects/new"}, {"From scratch", nil}]

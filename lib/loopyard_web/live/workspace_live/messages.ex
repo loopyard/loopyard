@@ -22,6 +22,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   import LoopyardWeb.Components.DiffView, only: [diff: 1]
   import LoopyardWeb.Components.Icon
 
+  alias Loopyard.Agent.ToolKind
   alias LoopyardWeb.Components.Ansi
 
   alias LoopyardWeb.Components.ToolSummary
@@ -37,11 +38,25 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   # imported so the `<.copy_btn/>` / `<.open_btn/>` chat_msg calls are unchanged.
   import LoopyardWeb.Live.WorkspaceLive.Messages.Actions, only: [copy_btn: 1, open_btn: 1]
 
+  # Tool-result renderers + suppress-echo predicates — split out for the
+  # module-size invariant; the :tool_result dispatcher below stays here.
+  import LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults,
+    only: [
+      chat_msg_tool_result: 1,
+      tool_result_kind: 1,
+      chat_msg_file_result: 1,
+      chat_msg_grep_result: 1,
+      chat_msg_port_closed: 1,
+      console_command_result?: 1,
+      chat_msg_console_result: 1,
+      miniapp_tool?: 1,
+      miniapp_tool_result?: 1,
+      streamed_exec_result?: 1
+    ]
+
   # Tools that render their OWN interactive card (role: :approval / :question) —
   # the card IS the human-facing surface, so we suppress the raw tool-call echo
-  # and the tool-result echo for them. Matched by suffix against the fully
-  # qualified MCP tool name (e.g. "mcp__loopyard-container__propose_fork").
-  @miniapp_tools ~w(propose_fork propose_integrate propose_delete_workspace ask_user)
+  # and the tool-result echo for them (list + predicate live in ToolResults).
 
   attr :msg, :map, required: true
   attr :idx, :integer, required: true
@@ -60,6 +75,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   def chat_msg(%{msg: %{role: :question}} = assigns), do: Cards.question_card(assigns)
   def chat_msg(%{msg: %{role: :approval}} = assigns), do: Cards.approval_card(assigns)
   def chat_msg(%{msg: %{role: :secret_request}} = assigns), do: Cards.secret_card(assigns)
+  # A live "quote" of ANOTHER agent's chat — the chat-in-chat mini-app.
+  def chat_msg(%{msg: %{role: :embed}} = assigns), do: Cards.agent_embed(assigns)
 
   def chat_msg(%{msg: %{role: :user}} = assigns) do
     assigns = assign(assigns, :url, msg_url(assigns))
@@ -76,8 +93,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       assign(assigns,
         show_user_label: first?,
         sticky_class: if(first?, do: "sticky top-0 z-20", else: ""),
-        band_top: if(first?, do: "mt-16 md:mt-24 pt-4", else: "mt-0 pt-1"),
-        band_bottom: if(next_role(assigns) == :user, do: "mb-0 pb-1", else: "mb-10 md:mb-14 pb-4")
+        # Keep the chapter-break air TIGHT: a large top margin on the next prompt
+        # meant the previous (sticky) prompt hung over a big empty gap before the
+        # next one pushed it up. Small, even spacing → prompts hand off flush.
+        band_top: if(first?, do: "mt-5 md:mt-6 pt-3", else: "mt-0 pt-1"),
+        band_bottom: if(next_role(assigns) == :user, do: "mb-0 pb-1", else: "mb-4 md:mb-5 pb-3")
       )
 
     # The human prompt is a full-bleed purple band, not a bubble. It's `sticky`
@@ -100,13 +120,21 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         <div class="min-w-0">
           <div
             :if={@show_user_label}
-            class="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300 mb-1.5"
+            class="flex items-baseline gap-2 mb-1.5"
           >
-            <.icon name={:user} class="w-3.5 h-3.5 flex-none" /> You
+            <span class="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300">
+              <.icon name={:user} class="w-3.5 h-3.5 flex-none self-center" /> You
+            </span>
+            <span
+              :if={@msg[:timestamp]}
+              class="text-sm text-violet-500/80 dark:text-violet-300/60"
+            >
+              {Calendar.strftime(@msg.timestamp, "%b %-d, %-I:%M %p")}
+            </span>
           </div>
           <%!-- Clamp to a few lines: the prompt is a sticky HEADER, so a long
                paste must stay header-sized (full text via the ↗ link). --%>
-          <div class="markdown-body text-sm md:text-base leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-3xl line-clamp-3">
+          <div class="markdown-body text-lg md:text-base leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-3xl line-clamp-3">
             {Loopyard.Markdown.to_html(@msg.content)}
           </div>
         </div>
@@ -145,30 +173,30 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     # spine; this clause just contributes flowing prose into that gutter.
     ~H"""
     <div class="group/msg" id={"msg-#{@msg[:id] || hash_content(@msg.content)}"}>
-      <div class={[gutter(), "pl-7 py-0.5"]}>
-        <div class="markdown-body text-[15px] leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl">
+      <div class={[gutter(), "py-0.5"]}>
+        <div class="markdown-body text-lg md:text-base leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl">
           {Loopyard.Markdown.to_html(@rendered_content)}
         </div>
         <div :if={@port_info && !@port_info.exposed} class="mt-1.5 flex items-center gap-2 py-1">
           <div class="w-1.5 h-1.5 rounded-full flex-none bg-amber-400"></div>
-          <span class="text-xs text-zinc-500 dark:text-zinc-400">{@port_info.service} port closed</span>
+          <span class="text-sm text-zinc-500 dark:text-zinc-400">{@port_info.service} port closed</span>
           <button
             phx-click="open_port_from_chat"
             phx-value-service={@port_info.service}
             phx-value-container_port={@port_info.container_port}
-            class="inline-flex items-center px-1.5 rounded text-[10px] font-medium text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+            class="inline-flex items-center px-1.5 rounded text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
           >
             Open Port
           </button>
         </div>
         <div :if={@port_info && @port_info.exposed} class="mt-1.5 flex items-center gap-2 py-1">
           <div class="w-1.5 h-1.5 rounded-full flex-none bg-emerald-500"></div>
-          <span class="text-xs text-zinc-500 dark:text-zinc-400">{@port_info.service}</span>
+          <span class="text-sm text-zinc-500 dark:text-zinc-400">{@port_info.service}</span>
           <a
             href={"http://#{assigns[:host] || "localhost"}:#{@port_info.host_port}"}
             target="_blank"
             rel="noopener noreferrer"
-            class="inline-flex items-center px-2 rounded text-xs font-mono font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
+            class="inline-flex items-center px-2 rounded text-sm font-mono font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
           >
             :{@port_info.host_port}
           </a>
@@ -191,7 +219,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       # exec / docker_compose render as a console box whose TITLE is the command —
       # the raw "$ cmd" tool row would just show the command a second time. Suppress
       # it so the console window is the single representation of the command.
-      console_command_tool?(assigns.msg[:tool]) -> ~H"<div></div>"
+      msg_kind(assigns.msg) == :command -> ~H"<div></div>"
       true -> render_tool_call(assigns)
     end
   end
@@ -202,11 +230,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
 
   def chat_msg(%{msg: %{role: :thinking}} = assigns) do
     ~H"""
-    <details class={[gutter(), "pl-5 my-1 group"]} open={@detail_level == :trace}>
-      <summary class="text-xs text-zinc-400 dark:text-zinc-500 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none">
+    <details class={[gutter(), "my-1 group"]} open={@detail_level == :trace}>
+      <summary class="text-sm text-zinc-500 dark:text-zinc-400 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none">
         💭 Reasoning
       </summary>
-      <pre class="mt-1 p-3 rounded-lg text-xs font-mono bg-zinc-50 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 whitespace-pre-wrap max-h-60 overflow-y-auto">{@msg.content}</pre>
+      <%!-- Prose thinking, not machine output — matches the live streaming_thinking
+           pre (text-sm, no mono) so the block doesn't change typeface when the
+           turn finalizes. --%>
+      <pre class="mt-1 p-3 rounded-lg text-sm bg-zinc-50 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto">{@msg.content}</pre>
     </details>
     """
   end
@@ -240,19 +271,32 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       is_binary(content) && String.contains?(content, "port is local-only") ->
         chat_msg_port_closed(assigns)
 
+      # CLI-command tool (git) that didn't stream — render it as the SAME
+      # console box as exec / docker builds: command + output + exit status.
+      console_command_result?(assigns) ->
+        chat_msg_console_result(assigns)
+
       true ->
-        chat_msg_tool_result(assigns)
+        # Rich cards for the tools whose output has an obvious shape: a file read
+        # becomes syntax-highlighted code with a filename header; a grep becomes
+        # a match list with dimmed file:line prefixes. Everything else keeps the
+        # plain collapsible <pre>. Classified off the matching :tool call.
+        case tool_result_kind(assigns) do
+          :read -> chat_msg_file_result(assigns)
+          :grep -> chat_msg_grep_result(assigns)
+          _ -> chat_msg_tool_result(assigns)
+        end
     end
   end
 
   def chat_msg(%{msg: %{role: :error}} = assigns) do
     ~H"""
-    <div class={[gutter(), "flex items-start gap-2 py-1 pl-5"]}>
+    <div class={[gutter(), "flex items-start gap-2 py-1"]}>
       <div class="w-4 h-4 rounded bg-red-100 dark:bg-red-900/30 flex items-center justify-center flex-none mt-0.5">
-        <span class="text-[10px] font-bold text-red-500">!</span>
+        <span class="text-xs font-bold text-red-500">!</span>
       </div>
-      <span class="text-xs text-red-600 dark:text-red-400">{Ansi.to_html(@msg.content)}</span>
-      <span class="text-[10px] text-zinc-300 dark:text-zinc-600 flex-none">
+      <span class="text-sm text-red-600 dark:text-red-400">{Ansi.to_html(@msg.content)}</span>
+      <span class="text-xs text-zinc-300 dark:text-zinc-600 flex-none">
         {Calendar.strftime(@msg.timestamp, "%H:%M:%S")}
       </span>
     </div>
@@ -304,16 +348,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     else
       ~H"""
       <%!-- Meta notes (compaction, CLI crash/restart, context refresh) are
-           house-keeping, not conversation — keep them a quiet aside: tiny, muted,
-           a small dot in the gutter, so you can SEE them happen without them
-           competing with what the agent actually said. --%>
-      <div class={[
-        gutter(),
-        "py-1 pl-7 flex items-baseline gap-1.5 text-zinc-400/70 dark:text-zinc-600"
-      ]}>
-        <span aria-hidden="true" class="flex-none select-none leading-none">·</span>
+           house-keeping, not conversation — keep them a quiet aside: tiny, muted
+           italic, no bullet, so you can SEE them happen without them competing
+           with what the agent actually said. --%>
+      <div class={[gutter(), "py-1 text-zinc-400/70 dark:text-zinc-600"]}>
         <span
-          class="text-[11px] italic leading-relaxed"
+          class="text-sm italic leading-relaxed"
           id={"system-msg-#{@msg[:id] || hash_content(@msg.content)}"}
         >
           {@msg.content}
@@ -329,34 +369,20 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     """
   end
 
-  @doc "The agent's identity marker — rendered once at the top of each run."
-  attr :timestamp, :any, default: nil
-
-  def run_header(assigns) do
-    ~H"""
-    <div class="flex items-center gap-2 mt-3 mb-1.5">
-      <span class="flex-none w-5 h-5 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center">
-        <.icon name={:sparkle} class="w-3 h-3 text-violet-600 dark:text-violet-400" />
-      </span>
-      <span class="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Claude</span>
-      <span :if={@timestamp} class="text-xs text-zinc-400 dark:text-zinc-500">
-        · {Calendar.strftime(@timestamp, "%H:%M")}
-      </span>
-    </div>
-    """
-  end
-
-  defp console_command_tool?(tool) when is_binary(tool),
-    do: String.ends_with?(tool, "__exec") or String.ends_with?(tool, "__docker_compose")
-
-  defp console_command_tool?(_), do: false
+  # Neutral kind for a :tool message. Prefer the kind the harness stamped on the
+  # message via the ToolKind seam; fall back to classifying the raw name for
+  # messages persisted before kinds were threaded through. The UI classifies by
+  # KIND, never by matching raw tool names — that's what keeps a new harness's
+  # tool vocabulary rendering correctly without touching this module.
+  defp msg_kind(%{tool_kind: kind}) when not is_nil(kind), do: kind
+  defp msg_kind(%{tool: tool}) when is_binary(tool), do: ToolKind.classify(tool)
+  defp msg_kind(_), do: :generic
 
   defp render_tool_call(assigns) do
     tool_name = assigns.msg[:tool] || ""
     input = assigns.msg.input || %{}
 
-    is_edit =
-      String.ends_with?(tool_name, "__edit") || String.ends_with?(tool_name, "__multi_edit")
+    is_edit = msg_kind(assigns.msg) == :edit
 
     old_str = if is_edit, do: input["old_string"]
     new_str = if is_edit, do: input["new_string"]
@@ -377,7 +403,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     # Color is reserved for SIGNAL — the dot's category and the blue of a
     # clickable file link. A plain summary stays muted, not blue.
     ~H"""
-    <div class={[gutter(), "py-1 pl-5"]}>
+    <div class={[gutter(), "py-1"]}>
       <div class="flex items-center gap-2">
         <span class={["w-1.5 h-1.5 rounded-full flex-none", tool_dot(@tool_name)]}></span>
         <a
@@ -400,13 +426,30 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     """
   end
 
-  attr :text, :string, required: true
-
   def streaming_bubble(assigns) do
+    # Flush-left (no rail, no indent) so the live prose lines up with completed
+    # assistant messages and everything else in the transcript.
+    #
+    # CLIENT-APPENDED: the body is phx-update="ignore" and the StreamAppend
+    # hook appends each delta chunk as a text node (pushed via "stream_delta").
+    # Rendering the accumulated text server-side re-shipped and re-patched the
+    # ENTIRE reply on every flush — O(reply) wire + DOM churn 10×/s was the
+    # residual typing lag and a Safari memory firehose. Live text is plain
+    # (whitespace-pre-wrap); markdown renders once when the finalized assistant
+    # Message replaces this element. The `:if` at the call site removes the
+    # element between turns, so each stream starts from an empty node.
     ~H"""
-    <div class={[gutter(), "pl-7 py-0.5 mt-2"]} id="streaming-msg">
-      <div class="markdown-body text-[15px] leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl">
-        {Loopyard.Markdown.to_html(@text)}<span class="inline-block w-1.5 h-4 bg-violet-500 animate-pulse ml-0.5 align-middle"></span>
+    <div
+      class="py-0.5 mt-2"
+      id="streaming-msg"
+      phx-update="ignore"
+      phx-hook="StreamAppend"
+      data-stream-event="stream_delta"
+    >
+      <div
+        data-stream-target
+        class="markdown-body text-lg md:text-base leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl whitespace-pre-wrap"
+      >
       </div>
     </div>
     """
@@ -415,23 +458,33 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   def streaming_thinking(assigns) do
     # The agent's live reasoning — flows on the spine, not a bubble. Quietly set
     # apart (muted, italic-feel via the label) since it's inner monologue.
+    # Client-appended like streaming_bubble (event "stream_thinking_delta").
     ~H"""
-    <div class="pl-7 py-1">
-      <p class="text-[11px] text-zinc-400 dark:text-zinc-500 mb-1 font-medium uppercase tracking-wide">
+    <div
+      class="py-1"
+      id="streaming-thinking"
+      phx-update="ignore"
+      phx-hook="StreamAppend"
+      data-stream-event="stream_thinking_delta"
+    >
+      <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-1 font-medium uppercase tracking-wide">
         Thinking
       </p>
-      <pre class="text-sm text-zinc-500 dark:text-zinc-400 whitespace-pre-wrap leading-relaxed max-h-56 overflow-y-auto">{@text}</pre>
-      <span class="inline-block w-1.5 h-3.5 bg-zinc-400 animate-pulse ml-0.5 align-middle"></span>
+      <pre
+        data-stream-target
+        class="text-sm text-zinc-500 dark:text-zinc-400 whitespace-pre-wrap leading-relaxed max-h-56 overflow-y-auto"
+      ></pre>
     </div>
     """
   end
 
   # --- Internal helpers ---
 
-  # Left padding alignment for agent rows. The faint spine itself now lives on
-  # the RUN WRAPPER (chat_panel), so a run reads as one unbroken line; rows just
-  # keep their content inset (action icons hang at `pl-5`, just left of the
-  # `pl-7` prose). Kept as a seam in case rows ever need a shared base class.
+  # Left edge for agent rows. Every row — prose, tool calls, tool results,
+  # logs, system lines — sits FLUSH against this same gutter so the whole
+  # transcript reads as one clean left column (no per-row indentation; rows
+  # stay distinct via their markers/color, not by hanging in from the edge).
+  # Kept as a seam in case rows ever need a shared base class.
   defp gutter, do: ""
 
   # Role of the message immediately before/after this one — used to keep the big
@@ -451,11 +504,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   # without reading the text. Tint = signal, kept muted.
   defp tool_dot(tool) when is_binary(tool) do
     cond do
-      String.ends_with?(tool, "__edit") or String.ends_with?(tool, "__multi_edit") or
-          String.ends_with?(tool, "__write_file") ->
+      ToolKind.classify(tool) in [:edit, :write] ->
         "bg-violet-400"
 
-      String.ends_with?(tool, "__exec") or String.ends_with?(tool, "__docker_compose") ->
+      ToolKind.command?(tool) ->
         "bg-emerald-400"
 
       String.contains?(tool, "read") or String.contains?(tool, "tree") or
@@ -469,166 +521,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   end
 
   defp tool_dot(_), do: "bg-zinc-300 dark:bg-zinc-600"
-
-  # How many lines of output we keep in the inline DOM. The full text is always
-  # one click away via the raw link; this just bounds a pathological 10k-line
-  # dump from bloating the page. Generous so "see everything" mostly means it.
-  @result_line_cap 300
-
-  defp chat_msg_tool_result(assigns) do
-    content = assigns.msg.content
-    display = format_tool_result(content)
-    lines = String.split(display, "\n")
-    truncated = length(lines) > @result_line_cap
-
-    display =
-      if truncated, do: Enum.take(lines, @result_line_cap) |> Enum.join("\n"), else: display
-
-    url = msg_url(assigns)
-    raw = raw_url(assigns)
-
-    assigns =
-      assign(assigns,
-        display: display,
-        truncated: truncated,
-        is_error: assigns.msg.is_error,
-        line_count: length(lines),
-        cap: @result_line_cap,
-        url: url,
-        raw: raw
-      )
-
-    ~H"""
-    <details
-      class={[gutter(), "pl-5 py-0.5 group/result"]}
-      open={@detail_level == :trace || @is_error}
-    >
-      <summary class="text-[11px] text-zinc-400 dark:text-zinc-500 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5">
-        <span class="transition-transform group-open/result:rotate-90">▸</span>
-        <span>{if @is_error, do: "error output", else: "output"} · {@line_count} {if @line_count == 1,
-          do: "line",
-          else: "lines"}</span>
-      </summary>
-      <pre class={"mt-1 p-3 rounded-lg text-xs font-mono overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap
-                   #{if @is_error, do: "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300", else: "bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-zinc-300"}"}>{Ansi.to_html(@display)}</pre>
-      <div class="flex items-center gap-2 mt-1 h-5">
-        <p :if={@truncated} class="text-[10px] text-zinc-400 dark:text-zinc-500">
-          ... {@line_count - @cap} more lines — open raw to see all
-        </p>
-        <.copy_btn :if={@raw} raw_url={@raw} />
-        <.open_btn :if={@url} url={@url} />
-      </div>
-    </details>
-    """
-  end
-
-  defp miniapp_tool?(tool) when is_binary(tool),
-    do: Enum.any?(@miniapp_tools, &String.ends_with?(tool, &1))
-
-  defp miniapp_tool?(_), do: false
-
-  # A tool_result whose matching :tool call is a mini-app tool — its outcome
-  # already lives in the approval/question card, so suppress the echo.
-  defp miniapp_tool_result?(assigns) do
-    case matching_tool_call(assigns) do
-      %{role: :tool, tool: tool} when is_binary(tool) -> miniapp_tool?(tool)
-      _ -> false
-    end
-  end
-
-  # Walk backwards from a tool_result to the :tool call it belongs to, skipping
-  # any streamed build messages in between.
-  defp matching_tool_call(assigns) do
-    idx = assigns[:idx]
-    messages = assigns[:messages]
-
-    if idx && messages && idx > 0 do
-      messages
-      |> Enum.slice(0, idx)
-      |> Enum.reverse()
-      |> Enum.find(fn m -> m.role not in [:build, :build_done, :build_failed] end)
-    end
-  end
-
-  # Check if this tool_result has a streamed build message above it —
-  # the output was already shown live, so rendering it again is redundant.
-  # Message order is: :tool (exec) → :build_done (streamed output) → :tool_result
-  defp streamed_exec_result?(assigns) do
-    idx = assigns[:idx]
-    messages = assigns[:messages]
-
-    if idx && messages && idx > 0 do
-      # Walk backwards from this tool_result to find the matching :tool call,
-      # skipping any build/build_done/build_failed messages in between.
-      messages
-      |> Enum.slice(0, idx)
-      |> Enum.reverse()
-      |> Enum.find(fn m -> m.role not in [:build, :build_done, :build_failed] end)
-      |> case do
-        %{role: :tool, tool: tool} when is_binary(tool) ->
-          String.ends_with?(tool, "__exec")
-
-        _ ->
-          false
-      end
-    else
-      false
-    end
-  end
-
-  # URL tool result with a closed port — show a clickable link + Open Port button.
-  defp chat_msg_port_closed(assigns) do
-    content = assigns.msg.content
-
-    # Extract URL and service/container_port from the tool result
-    url =
-      case Regex.run(~r{(https?://\S+)}, content) do
-        [_, u] -> u
-        _ -> nil
-      end
-
-    # Tool embeds "open port service/container_port" in the message
-    {service, container_port} =
-      case Regex.run(~r{open port (\w+)/(\d+)}, content) do
-        [_, s, p] -> {s, p}
-        _ -> {"dev", "3000"}
-      end
-
-    assigns = assign(assigns, url: url, service: service, container_port: container_port)
-
-    ~H"""
-    <div class={[gutter(), "pl-5 py-1"]}>
-      <div class="inline-flex items-center gap-3 rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 py-2.5">
-        <a
-          :if={@url}
-          href={@url}
-          target="_blank"
-          rel="noopener"
-          class="text-base text-violet-600 dark:text-violet-400 hover:underline truncate"
-        >
-          {@url}
-        </a>
-        <button
-          phx-click="open_port_from_chat"
-          phx-value-service={@service}
-          phx-value-container_port={@container_port}
-          class="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-violet-600 hover:bg-violet-700 text-white transition-colors flex-none"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 16 16"
-            fill="currentColor"
-            class="w-3 h-3"
-          >
-            <path d="M6.22 8.72a.75.75 0 0 0 1.06 1.06l5.22-5.22v1.69a.75.75 0 0 0 1.5 0v-3.5a.75.75 0 0 0-.75-.75h-3.5a.75.75 0 0 0 0 1.5h1.69L6.22 8.72Z" />
-            <path d="M3.5 6.75c0-.69.56-1.25 1.25-1.25H7A.75.75 0 0 0 7 4H4.75A2.75 2.75 0 0 0 2 6.75v4.5A2.75 2.75 0 0 0 4.75 14h4.5A2.75 2.75 0 0 0 12 11.25V9a.75.75 0 0 0-1.5 0v2.25c0 .69-.56 1.25-1.25 1.25h-4.5c-.69 0-1.25-.56-1.25-1.25v-4.5Z" />
-          </svg>
-          Open Port
-        </button>
-      </div>
-    </div>
-    """
-  end
 
   # Detect if an assistant message contains a localhost URL with a
   # registered port. Returns %{service, container_port, host_port, exposed}
@@ -657,10 +549,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
 
   defp detect_port_info(_, _), do: nil
 
-  defp build_file_link(nil, _workspace_id), do: nil
-  defp build_file_link(_path, nil), do: nil
+  def build_file_link(nil, _workspace_id), do: nil
+  def build_file_link(_path, nil), do: nil
 
-  defp build_file_link(path, workspace_id) when is_binary(path) do
+  def build_file_link(path, workspace_id) when is_binary(path) do
     # Path comes from agent tool input — strip the workspace prefix, reject
     # traversal segments, and URL-encode each remaining segment so `?`, `#`,
     # `&`, spaces etc. can't smuggle a query string into the link.
@@ -698,7 +590,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     _ -> nil
   end
 
-  defp build_file_link(_, _), do: nil
+  def build_file_link(_, _), do: nil
 
   defp preceded_by_edit?(assigns) do
     idx = assigns[:idx]
@@ -710,8 +602,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       |> Enum.reverse()
       |> Enum.find(fn m -> m.role not in [:build, :build_done, :build_failed] end)
       |> case do
-        %{role: :tool, tool: tool} when is_binary(tool) ->
-          String.ends_with?(tool, "__edit") || String.ends_with?(tool, "__multi_edit")
+        %{role: :tool} = m ->
+          msg_kind(m) == :edit
 
         _ ->
           false
@@ -721,7 +613,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     end
   end
 
-  defp msg_url(assigns) do
+  def msg_url(assigns) do
     msg_id = assigns.msg[:id]
 
     if msg_id do
@@ -729,7 +621,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     end
   end
 
-  defp raw_url(assigns) do
+  def raw_url(assigns) do
     msg_id = assigns.msg[:id]
 
     if msg_id do
@@ -741,7 +633,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     :erlang.phash2(content, 0xFFFFFF) |> Integer.to_string(16)
   end
 
-  defp format_tool_result(content) do
+  def format_tool_result(content) do
     case Jason.decode(content) do
       {:ok, parsed} when is_map(parsed) ->
         Jason.encode!(parsed, pretty: true)

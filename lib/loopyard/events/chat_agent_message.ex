@@ -10,9 +10,9 @@ defmodule Loopyard.Events.ChatAgentMessage do
 
   @telemetry [:loopyard, :events, :publish]
 
-  alias Loopyard.Events.ChatAgentMessage.{Message, TextDelta, StreamOutput}
+  alias Loopyard.Events.ChatAgentMessage.{Message, MessageUpdated, TextDelta, StreamOutput}
 
-  @events [Message, TextDelta, StreamOutput]
+  @events [Message, MessageUpdated, TextDelta, StreamOutput]
 
   @doc "List of every event module published on this topic."
   def events, do: @events
@@ -32,6 +32,7 @@ defmodule Loopyard.Events.ChatAgentMessage do
   can still validate. Topic is derived from the struct's id.
   """
   def publish(%Message{agent_id: id} = e) when is_binary(id), do: bcast(id, e)
+  def publish(%MessageUpdated{agent_id: id} = e) when is_binary(id), do: bcast(id, e)
   def publish(%TextDelta{agent_id: id} = e) when is_binary(id), do: bcast(id, e)
   def publish(%StreamOutput{agent_id: id} = e) when is_binary(id), do: bcast(id, e)
 
@@ -53,6 +54,7 @@ defmodule Loopyard.Events.ChatAgentMessage.Subscriber do
   @type result :: {:noreply, socket} | {:reply, map, socket}
 
   @callback on_message(ChatAgentMessage.Message.t(), socket) :: result
+  @callback on_message_updated(ChatAgentMessage.MessageUpdated.t(), socket) :: result
   @callback on_text_delta(ChatAgentMessage.TextDelta.t(), socket) :: result
   @callback on_stream_output(ChatAgentMessage.StreamOutput.t(), socket) :: result
 

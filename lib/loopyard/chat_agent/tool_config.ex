@@ -75,6 +75,67 @@ defmodule Loopyard.ChatAgent.ToolConfig do
     [Loopyard.Tools.Container, Loopyard.Tools.Secrets, Loopyard.Tools.AgentFiles]
   end
 
+  # Control-plane tools exposed to an in-container ACP harness over HTTP MCP
+  # (`Loopyard.MCP.ToolRouter`). Deliberately a SUBSET of the full toolkit: an
+  # in-container ACP agent already has native Read/Write/Edit/Bash against the
+  # mounted code volume, so the filesystem/exec tools (Exec, ReadFile, WriteFile,
+  # Edit, Grep, Glob, Tree, …) would be redundant — worse, two ways to edit the
+  # same tree. What native tools CAN'T reach is Loopyard's control plane: ports,
+  # service lifecycle, the approval-gated fork/integrate/delete flows, the
+  # human-in-the-loop ask/secret round-trips, and the URL helpers. That's this
+  # list. Adding a tool here exposes it over the network bridge — it must be
+  # workspace-scoped and, for anything boundary-crossing, approval-gated.
+  alias Loopyard.Tools.Container
+  alias Loopyard.Tools.Secrets
+  alias Loopyard.Tools.AgentFiles
+
+  @acp_control_plane_tools [
+    # Container / service control plane
+    Container.Ports,
+    Container.WorkspaceInfo,
+    Container.ServiceContainers,
+    Container.InspectService,
+    Container.InspectEnv,
+    Container.DockerCompose,
+    Container.Logs,
+    Container.ProbeHttp,
+    Container.Git,
+    # Linking helpers (return URLs the agent embeds in replies)
+    Container.AppUrl,
+    Container.FileUrl,
+    # Human-in-the-loop round-trips (native equivalents can't reach the UI)
+    Container.AskUser,
+    Container.RequestSecret,
+    Secrets.ListSecrets,
+    Secrets.GetSecret,
+    # Approval-gated boundary crossings
+    Container.ProposeFork,
+    Container.ProposeIntegrate,
+    Container.ProposeDeleteWorkspace,
+    # Agent playbooks (setup guides live host-side in priv/, not in the volume)
+    AgentFiles.ReadAgentFile
+  ]
+
+  @doc "Tool modules exposed to an in-container ACP harness over the HTTP MCP bridge."
+  def acp_control_plane_tools, do: @acp_control_plane_tools
+
+  @doc """
+  Tool modules for the OPERATOR agent over the bridge — its project/identity
+  control-plane toolkit (`Tools.ControlPlane`: create/list projects, gh, exec in
+  its workstation container). The operator runs in-container too, so it reaches
+  these over the same bridge, scoped by an `:operator` token.
+  """
+  def acp_operator_tools, do: Loopyard.Tools.ControlPlane.__tool_server__().tools
+
+  @doc """
+  The ACP `mcpServers` spec for one agent (delegates to `Loopyard.MCP`). `scope`
+  selects the toolset (`:workspace` default, or `:operator`). Injected into the
+  ACP backend's session opts by the Initializer; ignored by the in-process
+  ClaudeCode backend.
+  """
+  def acp_mcp_servers(agent_id, workspace_id, scope \\ :workspace),
+    do: Loopyard.MCP.acp_mcp_servers(agent_id, workspace_id, scope)
+
   @doc """
   Builds the MCP server map from tool modules.
 

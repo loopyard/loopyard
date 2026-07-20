@@ -171,12 +171,46 @@ implemented + tested but not yet the default backend — see
 `docs/IMPROVEMENTS.md` for the open ACP gaps (permission round-trip,
 cancel/interrupt, resume, token cost, session_opts shape).
 
+**Tool rendering is harness-agnostic — classify by KIND, never by
+name.** Different backends emit different tool *names* for the same
+act (the in-container ACP harness uses Claude Code's NATIVE tools —
+`Bash`/`Read`/`Grep`/`Edit`/`Write` — while the in-process path uses
+loopyard MCP names like `mcp__loopyard-container__exec`). The UI must
+never match those raw names; it renders off a neutral
+`t:Loopyard.Agent.ToolKind.t/0` (`:command | :read | :grep | :edit |
+:write | :generic`). `Loopyard.Agent.ToolKind` is the ONE place tool
+vocabulary is known; `%Event.ToolCall{}` carries an optional `kind` a
+backend may stamp itself, and `StreamHandler` falls back to
+`ToolKind.classify(name)`, storing the result as `tool_kind` on the
+message. A NEW harness plugs into the UI without touching it — name
+your tools recognizably, or stamp `kind` on the event. Adding a UI
+tool-name string-match anywhere else re-couples the presentation layer
+to a backend's vocabulary — extend `ToolKind` instead.
+
 **Inbox vs. turn execution — the durability boundary.** Loopyard owns
 the **durable message inbox**: ordering, the persisted message log, the
 `pending_sends` FIFO queue, and the rate-limit/auth/backoff gating.
 The harness (whichever Backend) owns only **turn execution** — taking a
 prompt and streaming a response. This split is why a harness restart
 doesn't lose messages: the inbox is Loopyard state, not harness state.
+
+**ACP MCP bridge — Loopyard's control-plane tools in-container.** The
+in-container ACP harness can't use the in-process Elixir MCP servers the
+ClaudeCode backend uses, so it reaches Loopyard's *control-plane* tools
+(ports, service lifecycle, the approval-gated fork/integrate/delete flows,
+ask/secret round-trips) over HTTP. `Loopyard.MCP.acp_mcp_servers/2` builds
+the ACP `session/new` `mcpServers` spec (Initializer injects it as
+`:acp_mcp_servers` for ACP agents); `LoopyardWeb.MCP.Listener` is a
+**dedicated Bandit endpoint on `0.0.0.0:<LOOPYARD_MCP_PORT>`** (default 4030,
+separate from the loopback-only main endpoint) so a workspace container can
+reach it via `host.docker.internal`. Every call is bearer-authed
+(`Loopyard.MCP.Token`, per-agent scoped) and dispatched by
+`Loopyard.MCP.ToolRouter` to the *same* `Loopyard.Tool` `execute/2` the
+in-process path calls — the identity comes from the token, never the payload.
+Only the control-plane subset is exposed (`ToolConfig.acp_control_plane_tools/0`);
+fs/exec tools are omitted (the container has native Read/Write/Bash). This is
+the one Loopyard surface reachable from inside a container — read
+docs/SECURITY.md → "ACP MCP bridge" before touching it.
 
 ## Fork readiness (provision-before-available)
 
@@ -189,13 +223,24 @@ lands you on a live agent, never a blank scrambling workspace. The flow
 2. Normalize the compose code-volume names to the fork's own volume
    (`Compose.normalize_code_volume_names`) — fork-safety: the fork must
    never mount the source's volume.
-3. If the source's preview cluster (services) was running, start the
-   fork's too (async, best-effort).
+3. Boot the fork's preview cluster from the `.loopyard` config it carries
+   (`Onboarding.start_preview_async/1`, async + best-effort) — a cloned
+   workspace comes up **running** with a live dev server + port, not a
+   dead sidebar. No-ops when there's no compose. (This used to be gated on
+   the source's cluster running, via a `container_running?` check for a
+   compose service literally named "workspace" — which real compose files
+   never have, so the gate was always false and forks never booted.)
 4. Spawn the branch's agent via the unified `Onboarding.spawn_agent/2`
    (the single backend-spawn path shared by the LiveView "New agent"
    and provisioning flows).
 Each phase streams into the approval card via the `progress` callback;
 the card resolves to "Ready — open `<branch>` →".
+
+**UI-created workspaces (non-canonical Local projects) take a different
+path** — `add_workspace` → the `Workspace.Setup` saga (`:worktree` copies
+`.loopyard`, `:volume`, `:seeding`). On success (`finalize_saga`) it too
+calls `Onboarding.start_preview_async/1`, so *every* provisioning path
+boots the cloned config once cloning is done — not just forks.
 
 ## Send reliability (no silent loss)
 
@@ -311,6 +356,9 @@ Two ways in:
 | `AgentLog.Checkpointer` | Periodic snapshot + log truncation (bounded boot replay) |
 | `Agent.Reconciler` | ETS-vs-registry drift detection every 30s |
 | `Health` | Aggregated subsystem health map for `/system` |
+| `WorkspaceTree` | The projects→workspaces→agents overview tree (pure ETS) + per-workspace derived signals (`needs_you`/`broken`/`changes`) |
+| `ChangeCounts` | Event-driven cache of per-workspace changed-file counts (±N badge) — async git_status on agent idle + sweep, `:ws_change_counts` ETS |
+| `Harness.MemoryMonitor` | Proactive harness memory reclaim (Layer 2) — sweeps `docker stats`, restarts a bloated-but-idle agent before the work container's hard `--memory` cap (Layer 1, `WorkContainer`) OOM-kills it |
 | `Events.Tap` | Ring buffer of broadcasts for `/system/events` |
 | `PortRegistry` | Global port pool, proxy lifecycle, Observer reconciliation |
 | `PortExposer` | Per-port TCP proxy GenServer (loopback ↔ network toggle) |
@@ -318,6 +366,10 @@ Two ways in:
 | `Tools.Container` | MCP toolkit — lists 22 tool modules |
 | `Tools.Container.Helpers` | Shared tool helpers (resolve_container, validate_path) |
 | `Loopyard.Tool` | Macro for defining tool modules |
+| `Loopyard.MCP` | ACP MCP bridge entry — builds the `mcpServers` spec + container-reachable base URL |
+| `Loopyard.MCP.Token` | Per-agent scoped bearer tokens (`Phoenix.Token`) for the MCP bridge |
+| `Loopyard.MCP.ToolRouter` | Pure MCP `tools/list` + `tools/call` dispatch → `Loopyard.Tool.execute/2` |
+| `LoopyardWeb.MCP.Server` | MCP-over-HTTP JSON-RPC plug (bearer-authed); `LoopyardWeb.MCP.Listener` is its dedicated `0.0.0.0` Bandit endpoint |
 | `Aural.Channel` (`packages/aural`) | Per-channel ambient audio engine — synth + ffmpeg + PubSub fan-out. Lazy-spawned multi-tenant. See [packages/aural/README.md](packages/aural/README.md). |
 
 ## packages/

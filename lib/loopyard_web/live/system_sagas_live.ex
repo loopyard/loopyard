@@ -242,7 +242,7 @@ defmodule LoopyardWeb.SystemSagasLive do
   defp saga_table(assigns) do
     ~H"""
     <%= if @sagas == [] do %>
-      <div class="text-sm text-zinc-400 dark:text-zinc-500 italic py-8 text-center">
+      <div class="text-sm text-zinc-500 dark:text-zinc-400 italic py-8 text-center">
         No sagas recorded yet. Start a workspace or boot an agent to populate this page.
       </div>
     <% else %>

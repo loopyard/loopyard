@@ -124,6 +124,21 @@ defmodule LoopyardWeb.SystemLive do
      |> kick_fast_slices()}
   end
 
+  def handle_event("reboot", _params, socket) do
+    case Loopyard.Reboot.trigger() do
+      :ok ->
+        {:noreply,
+         put_flash(
+           socket,
+           :info,
+           "Rebooting the server — the runtime is restarting; the page reconnects in ~10s."
+         )}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Couldn't launch the reboot: #{inspect(reason)}")}
+    end
+  end
+
   def handle_info(:refresh_slow, socket) do
     schedule_refresh(:slow)
     {:noreply, kick_slow_slices(socket)}
@@ -142,24 +157,6 @@ defmodule LoopyardWeb.SystemLive do
      assign(socket, key, AsyncResult.failed(socket.assigns[key] || AsyncResult.loading(), reason))}
   end
 
-  # --- Events ---
-
-  @impl true
-  def handle_event("reboot", _params, socket) do
-    for agent <- Loopyard.ChatAgent.list_agents() do
-      Loopyard.ChatAgent.stop_agent(agent.id)
-      Loopyard.ChatAgent.remove_agent(agent.id)
-    end
-
-    Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
-      Application.stop(:loopyard)
-      Process.sleep(500)
-      Application.ensure_all_started(:loopyard)
-    end)
-
-    {:noreply, put_flash(socket, :info, "Rebooting...")}
-  end
-
   # =============================================
   # Render
   # =============================================
@@ -173,15 +170,6 @@ defmodule LoopyardWeb.SystemLive do
       max_width={:lg}
       flash={@flash}
     >
-      <:header_actions>
-        <button
-          phx-click="reboot"
-          data-confirm="This will stop all agents and restart the app. Continue?"
-          class="text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded px-2 py-1 transition-colors"
-        >
-          Reboot
-        </button>
-      </:header_actions>
       <div class="space-y-8">
         <.health_section health={@health} />
         <.host_section
@@ -193,6 +181,7 @@ defmodule LoopyardWeb.SystemLive do
         <.beam_section beam={@beam} />
         <.drilldown_section counts={@counts} />
         <.log_section logs={@logs} />
+        <.reboot_section />
       </div>
     </.page_shell>
     """
@@ -201,6 +190,38 @@ defmodule LoopyardWeb.SystemLive do
   # --- Host System ---
 
   # --- Health (component status) ---
+
+  # The one deliberate destructive control on /system: reboot the whole runtime.
+  # Lives at the BOTTOM as a confirmed danger-zone card (NOT a scary top-right
+  # button) — you have to scroll past everything and confirm to hit it.
+  defp reboot_section(assigns) do
+    ~H"""
+    <section class="space-y-3">
+      <h2 class="text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+        Server
+      </h2>
+      <div class="rounded-xl border border-red-200 dark:border-red-900/40 bg-red-50/40 dark:bg-red-900/10 p-4 flex items-start justify-between gap-4">
+        <div class="min-w-0">
+          <div class="text-sm font-medium text-zinc-800 dark:text-zinc-200">Reboot the server</div>
+          <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5 max-w-prose">
+            Tears the Loopyard runtime down and restarts it in place: every agent
+            session stops and re-spawns (reconnecting to the running containers),
+            and boot recovery re-runs. Docker containers keep running. The page
+            reconnects on its own once it's back — a few seconds.
+          </p>
+        </div>
+        <button
+          type="button"
+          phx-click="reboot"
+          data-confirm="Reboot the server? Every agent session stops and re-spawns (containers keep running). The page reconnects when it's back up."
+          class="focus-ring flex-none inline-flex items-center rounded-lg bg-red-600 hover:bg-red-700 px-4 py-2 text-sm font-medium text-white transition-colors"
+        >
+          Reboot
+        </button>
+      </div>
+    </section>
+    """
+  end
 
   defp health_section(assigns) do
     ~H"""
@@ -305,7 +326,7 @@ defmodule LoopyardWeb.SystemLive do
           </div>
         </.host_card>
       </div>
-      <div class="mt-2 text-xs text-zinc-400 dark:text-zinc-500 font-mono min-h-[1em]">
+      <div class="mt-2 text-xs text-zinc-500 dark:text-zinc-400 font-mono min-h-[1em]">
         <%= case @host_uptime do %>
           <% %{ok?: true, result: uptime} -> %>
             {uptime}
@@ -327,7 +348,7 @@ defmodule LoopyardWeb.SystemLive do
   defp host_card(assigns) do
     ~H"""
     <div class="rounded-lg border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 p-4 min-h-[6rem]">
-      <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-2">
+      <div class="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
         {@label}
       </div>
       <%= case @async do %>
@@ -366,7 +387,7 @@ defmodule LoopyardWeb.SystemLive do
   defp stat_card(assigns) do
     ~H"""
     <div class="rounded-lg border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 px-3 py-2">
-      <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+      <div class="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
         {@label}
       </div>
       <div class="text-sm font-semibold font-mono mt-0.5">{@value}</div>
@@ -512,6 +533,14 @@ defmodule LoopyardWeb.SystemLive do
             <% _ -> %>
               <span class="text-zinc-400">loading…</span>
           <% end %>
+        </.drilldown_card>
+
+        <.drilldown_card
+          href="/system/secrets"
+          title="Secrets"
+          subtitle="Named credentials agents fetch at runtime"
+        >
+          <span class="text-zinc-400">view · add · rotate</span>
         </.drilldown_card>
       </div>
     </section>

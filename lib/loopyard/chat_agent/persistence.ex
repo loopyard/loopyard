@@ -19,9 +19,27 @@ defmodule Loopyard.ChatAgent.Persistence do
     Path.join([virtual_dir, ".loopyard", "workspace", "agents.log"])
   end
 
+  @doc """
+  The operator agent's log — per workstation identity (it has no workspace).
+  Same ETF-log format, so its chat persists + replays like any other.
+  """
+  def operator_log_path(identity),
+    do: Path.join(Loopyard.Workstation.dir(identity), "operator-agent.log")
+
+  # Where THIS agent's log lives: a workspace agent → its workspace log; the
+  # operator (no workspace, but bound to a container + identity) → its
+  # per-workstation operator log; otherwise no persistence.
+  defp state_log_path(%{workspace_id: ws}) when is_binary(ws), do: log_path(ws)
+
+  defp state_log_path(%{workstation_identity: id, container: c})
+       when is_binary(id) and is_binary(c),
+       do: operator_log_path(id)
+
+  defp state_log_path(_), do: nil
+
   @doc "Persist a new agent entry to the log."
   def persist_agent(state, summary_fn) do
-    case log_path(state.workspace_id) do
+    case state_log_path(state) do
       nil ->
         :ok
 
@@ -34,7 +52,7 @@ defmodule Loopyard.ChatAgent.Persistence do
 
   @doc "Persist a message to the log."
   def persist_message(state, msg) do
-    case log_path(state.workspace_id) do
+    case state_log_path(state) do
       nil -> :ok
       path -> safe_append({:msg, state.id, msg}, path, state.id, state.workspace_id)
     end
@@ -42,7 +60,7 @@ defmodule Loopyard.ChatAgent.Persistence do
 
   @doc "Persist a message update (partial changes) to the log."
   def persist_message_update(state, msg_id, changes) do
-    case log_path(state.workspace_id) do
+    case state_log_path(state) do
       nil ->
         :ok
 

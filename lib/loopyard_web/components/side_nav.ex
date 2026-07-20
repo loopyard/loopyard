@@ -30,19 +30,34 @@ defmodule LoopyardWeb.Components.SideNav do
   # sidebar ever feels wrong, change this one place.
   attr :label, :string, default: nil
   attr :class, :string, default: ""
+  # `:section` (L2) is a top-level group; `:sub` (L3) is a group nested inside
+  # another section (e.g. Usage/Docker/Tools inside "Details") — a quieter,
+  # lighter label so the hierarchy reads at a glance.
+  attr :variant, :atom, default: :section, values: [:section, :sub]
   slot :actions, doc: "optional trailing controls next to the section label"
   slot :inner_block, required: true
 
   def section(assigns) do
     ~H"""
-    <section class={["px-3 pt-4 pb-1 first:pt-3", @class]}>
+    <section class={[
+      @variant == :section && "pt-4 first:pt-3",
+      @variant == :sub && "pt-2.5",
+      "px-3 pb-1",
+      @class
+    ]}>
       <div
         :if={@label || @actions != []}
         class="flex items-center justify-between px-2 mb-1.5 md:mb-1 min-h-6"
       >
         <h3
           :if={@label}
-          class="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 font-semibold"
+          class={[
+            @variant == :section &&
+              "text-sm md:text-xs tracking-wider text-zinc-500 dark:text-zinc-400 font-semibold",
+            @variant == :sub &&
+              "text-xs tracking-wide text-zinc-500 dark:text-zinc-400 font-medium",
+            "uppercase"
+          ]}
         >
           {@label}
         </h3>
@@ -52,6 +67,94 @@ defmodule LoopyardWeb.Components.SideNav do
         {render_slot(@inner_block)}
       </div>
     </section>
+    """
+  end
+
+  # --- Detail hero: the sticky, expanded header for a selected entity ---
+  #
+  # The top of the detail zone (Zone B). `sticky top-0` so it PINS while the
+  # detail scrolls — you never lose which agent/service/volume you're looking at
+  # or its live status. Mirrors the nav row above (dot + name) but bigger, and
+  # carries a `:facts` slot for the live numbers (model · tokens · port · size…).
+  # Opaque + blurred bg so scrolling content passes cleanly underneath.
+  attr :eyebrow, :string, required: true
+  attr :name, :string, required: true
+  attr :dot, :string, default: nil, doc: "dot color class (e.g. \"bg-emerald-500\"), or nil"
+  attr :status, :string, default: nil, doc: "status word shown as a pill (e.g. \"Running\")"
+
+  attr :status_class, :string,
+    default: "bg-zinc-500/10 text-zinc-600 dark:text-zinc-300",
+    doc: "pill classes (bg + text) for the status badge"
+
+  slot :facts, doc: "a compact live-facts line under the name"
+
+  def detail_hero(assigns) do
+    ~H"""
+    <%!-- NO border by default — a sticky element only needs a divider when content
+         is actually scrolling under it. The opaque (/95) blurred bg covers any
+         scrolling content; the `StickyEdge` hook adds a subtle shadow ONLY while
+         there's content scrolled under it, so a short (non-scrolling) panel reads
+         as one cohesive card with no lines. --%>
+    <div
+      data-sticky-edge="top"
+      class="sticky top-0 z-10 bg-zinc-50/95 dark:bg-zinc-900/95 backdrop-blur-sm px-4 pt-3.5 pb-2.5"
+    >
+      <%!-- Tiny quiet eyebrow (the KIND) — deliberately smaller/lighter than the
+           section labels below, so it never competes with the title. --%>
+      <div class="text-[11px] font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500 mb-1">
+        {@eyebrow}
+      </div>
+      <%!-- The TITLE row: a big, bold name that clearly dominates everything the
+           card shows/controls, with the status as a colored pill flush-right. --%>
+      <div class="flex items-center gap-2">
+        <span :if={@dot} class={"w-2.5 h-2.5 rounded-full flex-none #{@dot}"} aria-hidden="true"></span>
+        <h2 class="flex-1 min-w-0 text-lg font-semibold leading-tight text-zinc-900 dark:text-zinc-100 truncate">
+          {@name}
+        </h2>
+        <span
+          :if={@status}
+          class={["flex-none text-xs font-semibold px-2 py-0.5 rounded-full", @status_class]}
+        >
+          {@status}
+        </span>
+      </div>
+      <div :if={@facts != []} class="mt-1 text-sm text-zinc-500 dark:text-zinc-400 truncate">
+        {render_slot(@facts)}
+      </div>
+    </div>
+    """
+  end
+
+  # --- Action bar: the sticky footer where a panel's buttons live ---
+  #
+  # `sticky bottom-0` so the actions PIN to the bottom of the detail zone. The
+  # `:main` slot holds operational buttons (control_btn), the optional `:danger`
+  # slot holds a destructive action rendered BELOW a hairline divider — reachable
+  # but set apart. Renders nothing when both slots are empty (e.g. code volume).
+  # Sticky (not a flex-locked footer) so on a too-short viewport it just scrolls
+  # into view with the content instead of eating the whole panel.
+  slot :main, doc: "operational buttons"
+  slot :danger, doc: "a destructive action, set apart below a divider"
+
+  def action_bar(assigns) do
+    ~H"""
+    <div
+      :if={@main != [] || @danger != []}
+      data-sticky-edge="bottom"
+      class="sticky bottom-0 z-10 bg-zinc-50/95 dark:bg-zinc-900/95 backdrop-blur-sm px-3 pt-4 pb-3"
+    >
+      <div :if={@main != []} class="space-y-1.5">{render_slot(@main)}</div>
+      <div
+        :if={@danger != []}
+        class={["mt-2 pt-2 border-t border-zinc-100 dark:border-zinc-800", @main == [] && "!mt-0 !pt-0 !border-t-0"]}
+      >
+        {render_slot(@danger)}
+      </div>
+    </div>
+    <%!-- No buttons at all (e.g. the code volume) → there's no footer to supply
+         bottom breathing room, so the last content would butt against the panel
+         edge. A small breather fixes the abrupt cut-off. --%>
+    <div :if={@main == [] && @danger == []} class="h-4" aria-hidden="true"></div>
     """
   end
 
@@ -164,8 +267,8 @@ defmodule LoopyardWeb.Components.SideNav do
 
   def info_row(assigns) do
     ~H"""
-    <div class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-6 text-xs">
-      <span class="text-zinc-500 dark:text-zinc-500 flex-none">{@label}</span>
+    <div class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-6 text-sm md:text-[13px]">
+      <span class="text-zinc-500 dark:text-zinc-400 flex-none">{@label}</span>
       <span class={[
         "truncate",
         if(@monospace, do: "font-mono"),
@@ -182,7 +285,7 @@ defmodule LoopyardWeb.Components.SideNav do
 
   def empty(assigns) do
     ~H"""
-    <p class="px-2 py-1 text-xs text-zinc-400 dark:text-zinc-500">{@text}</p>
+    <p class="px-2 py-1 text-sm text-zinc-500 dark:text-zinc-400">{@text}</p>
     """
   end
 end

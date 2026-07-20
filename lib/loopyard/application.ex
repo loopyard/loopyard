@@ -9,6 +9,15 @@ defmodule Loopyard.Application do
     secret = :crypto.strong_rand_bytes(16) |> Base.url_encode64(padding: false)
     Application.put_env(:loopyard, :launch_secret, secret)
 
+    # Reap ACP exec clients orphaned by a previous VM. `docker exec -i …
+    # claude-code-acp` clients survive BEAM death (quiet pipes never EPIPE),
+    # pile up across restarts, and hold kernel resources (they saturated the
+    # Colima VM's inotify budget once — every session then hung at
+    # session/new). At this point in boot NO supervisor has spawned a session
+    # yet, so every matching client on the host is ours and stale. Silent
+    # no-op when there are none (pkill exit 1).
+    _ = System.cmd("pkill", ["-f", "exec claude-code-acp"], stderr_to_stdout: true)
+
     children = [
       # --- Infrastructure layer (survives web reloads) ---
       # StateKeeper owns ALL ETS tables — must start first.
@@ -85,9 +94,37 @@ defmodule Loopyard.Application do
       # (reads ETS) and ChatAgentRegistry (looks up pids).
       Loopyard.Agent.Reconciler,
 
+      # Event-driven per-workspace changed-file counts (overview ±N badge).
+      # Subscribes to agent StatusChanged; recomputes async; ETS via
+      # StateKeeper's :ws_change_counts. Inert when :change_counts_enabled?
+      # is false (test env).
+      Loopyard.ChangeCounts,
+
+      # Proactive harness memory management (Layer 2). Periodically reclaims a
+      # bloated-but-idle harness by restarting its session BEFORE the work
+      # container's hard `--memory` cap (Layer 1) OOM-kills it mid-turn. :ignore
+      # (no child) when :harness_memory_monitor_enabled? is false (test env).
+      Loopyard.Harness.MemoryMonitor,
+
       # --- Web layer (can restart independently) ---
-      LoopyardWeb.Endpoint
+      LoopyardWeb.Endpoint,
+
+      # Dedicated MCP-over-HTTP listener for in-container ACP harnesses. Its own
+      # Bandit endpoint on 0.0.0.0:<port> (separate from the loopback-only main
+      # endpoint) so a workspace container can reach Loopyard's control-plane
+      # tools via host.docker.internal — every call bearer-authed + agent-scoped.
+      # nil (disabled, e.g. in test) is filtered out of the child list below.
+      LoopyardWeb.MCP.Listener.child_spec_or_nil(),
+
+      # Activity → chime bridge (#61). A web-edge SUBSCRIBER of the activity
+      # stream — decorative sound, fully rip-out-able (the core has no idea it
+      # exists; enforced by the sound boundary test). Started by module name
+      # only, so no Aural reference leaks into the core here.
+      LoopyardWeb.ActivitySound
     ]
+
+    # Drop any nil children (e.g. the MCP listener when disabled in test).
+    children = Enum.reject(children, &is_nil/1)
 
     # Higher max_restarts: the child list includes modules from multiple
     # development branches. A crashing child shouldn't kill the entire
@@ -157,9 +194,30 @@ defmodule Loopyard.Application do
       end
     end)
 
+    # EAGERLY LOAD every app module before replaying agent logs. The log
+    # decoder uses `binary_to_term(:safe)`, which REJECTS any record holding
+    # an atom not yet in the atom table — and under the VM's lazy module
+    # loading, early boot hasn't loaded the modules whose atoms the rich
+    # `{:agent, …}` records carry (:workstation_identity, :prompt_hash, …).
+    # Those records then silently decoded to :error and were skipped while
+    # the simple `{:msg, …}` records survived — producing identity-less
+    # agents in ETS, which broke autostart, resume, and the UI fleet-wide.
+    # Loading all modules makes the decoder's "every persisted atom is
+    # module-defined and pre-exists" assumption actually TRUE.
+    safe_restore("EagerModules", fn ->
+      {:ok, mods} = :application.get_key(:loopyard, :modules)
+      Enum.each(mods, &Code.ensure_loaded/1)
+    end)
+
     # Pre-populate agent ETS from all workspace agent logs so agents
     # are visible immediately on boot — not lazily on first page visit.
     restore_all_agents()
+
+    # Bring back the last working state: auto-start workspaces that were used
+    # (have restored agents) but whose work container is stopped, so a restart
+    # doesn't leave you clicking Start on crashed agents in dead workspaces.
+    # Async + best-effort so container starts never block boot. (#52)
+    safe_restore("Workspace.Autostart", fn -> autostart_used_workspaces() end)
 
     # Scan the saga journal for incomplete sagas (BEAM crashed
     # mid-saga last run) and dispatch each per its declared
@@ -249,6 +307,100 @@ defmodule Loopyard.Application do
     else
       acc
     end
+  end
+
+  # Auto-start the workspaces that were in use, so a server restart restores
+  # the last working state instead of dropping you on crashed agents in
+  # powered-down workspaces. "In use" = has restored agents. We only start a
+  # workspace whose work container ALREADY EXISTS but is STOPPED — never build
+  # or create a fresh one on boot. Each start runs in its own supervised Task
+  # so one slow/failing start neither blocks boot nor the others. (#52)
+  defp autostart_used_workspaces do
+    if Application.get_env(:loopyard, :autostart_workspaces_on_boot, true) do
+      used_workspace_ids()
+      |> Enum.each(fn ws_id ->
+        ws = Loopyard.WorkspaceRegistry.get_workspace(ws_id)
+
+        cond do
+          is_nil(ws) or not ready_workspace?(ws) ->
+            :ok
+
+          # Container ALREADY RUNNING: the workspace group (ServiceManager /
+          # AgentSupervisor / agent resume) must still start — before this,
+          # a running workspace stayed headless until someone happened to
+          # visit its page, and agents couldn't restart ("noproc" on the
+          # workspace's AgentSupervisor). Group only — no container ops.
+          work_container_running?(ws_id) ->
+            Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
+              autostart_group(ws_id, ws[:path])
+            end)
+
+          # Container exists but stopped: bring the whole workspace back
+          # (group + container). Never build/create fresh on boot.
+          work_container_stopped?(ws_id) ->
+            Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
+              autostart_one(ws_id, ws[:path])
+            end)
+
+          true ->
+            :ok
+        end
+      end)
+    end
+
+    :ok
+  end
+
+  # Workspace ids that have at least one restored agent (were actually used).
+  defp used_workspace_ids do
+    :ets.tab2list(:chat_agents)
+    |> Enum.map(fn {_id, summary} -> Map.get(summary, :workspace_id) end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+  end
+
+  # Same guard as restore_all_agents: skip workspaces mid-setup. Legacy
+  # workspaces (no :setup key) predate the saga and are safe.
+  defp ready_workspace?(ws) do
+    phase = get_in(ws, [:setup, :phase])
+    phase == nil or phase == :ready
+  end
+
+  # The work container exists (workspace was set up) but isn't running.
+  defp work_container_stopped?(ws_id) do
+    name = Loopyard.Workspace.WorkContainer.container_name(ws_id)
+    Loopyard.Docker.container_exists?(name) and not Loopyard.Docker.container_running?(name)
+  end
+
+  defp work_container_running?(ws_id) do
+    Loopyard.Docker.container_running?(Loopyard.Workspace.WorkContainer.container_name(ws_id))
+  end
+
+  defp autostart_one(ws_id, path) do
+    if path do
+      Loopyard.WorkspaceSupervisor.start_workspace(ws_id, path)
+      Loopyard.Workspace.WorkContainer.ensure_up(ws_id)
+      Logger.info("[Loopyard] Auto-started workspace #{ws_id} on boot")
+    end
+  rescue
+    e ->
+      Logger.warning(
+        "[Loopyard] Auto-start of workspace #{ws_id} failed: #{Exception.message(e)}"
+      )
+  end
+
+  # Container already running — start ONLY the supervision group; its
+  # ServiceManager reconnects to the live containers and resumes agents.
+  defp autostart_group(ws_id, path) do
+    if path do
+      Loopyard.WorkspaceSupervisor.start_workspace(ws_id, path)
+      Logger.info("[Loopyard] Attached workspace group #{ws_id} to running container on boot")
+    end
+  rescue
+    e ->
+      Logger.warning(
+        "[Loopyard] Group attach of workspace #{ws_id} failed: #{Exception.message(e)}"
+      )
   end
 
   # Docker Desktop's credential helper hangs when Desktop isn't running.

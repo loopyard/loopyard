@@ -18,6 +18,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentEvents do
 
   alias LoopyardWeb.Live.WorkspaceLive.AgentLifecycle
   alias LoopyardWeb.Components.Sidebar
+  alias Loopyard.Events
+  alias Loopyard.StreamBuffer
 
   @doc """
   Merge ETS data with event-driven assigns for the selected agent.
@@ -278,4 +280,167 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentEvents do
   end
 
   def handle_text_delta(_event, socket), do: {:noreply, socket}
+
+  # --- ChatAgentMessage subscriber bodies (WorkspaceLive delegates here) ---
+
+  def on_message(%Events.ChatAgentMessage.Message{agent_id: id, msg: msg}, socket)
+      when id == socket.assigns.selected_id do
+    cond do
+      # Guard against duplicate messages (mobile reconnect → double PubSub subs).
+      msg[:id] && Enum.any?(socket.assigns.messages, &(&1[:id] == msg[:id])) ->
+        {:noreply, socket}
+
+      # Viewing history — the window no longer follows the live tail, so DON'T
+      # grow it (that's the whole point of windowing). The "Jump to latest" pill
+      # (shown whenever the window isn't the tail) is how you catch up. Keep the
+      # cockpit fresh so status / recent still update while you read.
+      not socket.assigns.window_tail? ->
+        {:noreply, refresh_selected_from_agents(socket, id, socket.assigns.agents)}
+
+      true ->
+        socket =
+          if msg.role == :assistant,
+            do: socket |> assign(:streaming_text, "") |> assign(:streaming_thinking, ""),
+            else: socket
+
+        # If build was running and we get a post-build message, mark build as done
+        socket =
+          if socket.assigns.building && msg.role in [:system, :error] do
+            messages =
+              Enum.map(socket.assigns.messages, fn
+                %{role: :build} = m -> %{m | role: :build_done}
+                other -> other
+              end)
+
+            socket |> assign(:messages, messages) |> assign(:building, false)
+          else
+            socket
+          end
+
+        # Append to the tail window, then CAP the DOM: drop from the top once we
+        # exceed the max. The dropped rows are above the viewport (you're at the
+        # bottom following the stream), so the browser's scroll anchoring keeps
+        # the visible content put — no shift. Dropping the top means older
+        # messages now live off-window, so re-enable "load older".
+        max = AgentLifecycle.message_window_max()
+        appended = socket.assigns.messages ++ [msg]
+
+        {windowed, dropped_top?} =
+          if length(appended) > max,
+            do: {Enum.take(appended, -max), true},
+            else: {appended, false}
+
+        socket =
+          socket
+          |> assign(:messages, windowed)
+          |> assign(:has_more_messages, socket.assigns.has_more_messages || dropped_top?)
+          |> refresh_selected_from_agents(id, socket.assigns.agents)
+          |> push_event("scroll_bottom", %{})
+
+        # Update thinking word when a tool message arrives — shows the
+        # tool-specific phrase (e.g., "grepping" instead of "pondering")
+        socket =
+          if msg.role == :tool && socket.assigns.selected_agent &&
+               socket.assigns.selected_agent.status == :thinking do
+            tool = msg[:tool]
+            word = LoopyardWeb.Components.Sidebar.thinking_word(id, tool)
+            assign(socket, :thinking_word, word)
+          else
+            socket
+          end
+
+        {:noreply, socket}
+    end
+  end
+
+  def on_message(%Events.ChatAgentMessage.Message{}, socket), do: {:noreply, socket}
+
+  # An existing message changed in place (question answered, approval resolved,
+  # partial finalized). Replace it by id — no append, no scroll, no window
+  # growth. If the message is above the window (older than the tail) this is a
+  # no-op; a reload shows the persisted state.
+  def on_message_updated(%Events.ChatAgentMessage.MessageUpdated{agent_id: id, msg: msg}, socket)
+      when id == socket.assigns.selected_id do
+    if msg[:id] && Enum.any?(socket.assigns.messages, &(&1[:id] == msg[:id])) do
+      messages =
+        Enum.map(socket.assigns.messages, fn m ->
+          if m[:id] == msg[:id], do: msg, else: m
+        end)
+
+      {:noreply, assign(socket, :messages, messages)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def on_message_updated(%Events.ChatAgentMessage.MessageUpdated{}, socket),
+    do: {:noreply, socket}
+
+  def on_text_delta(%Events.ChatAgentMessage.TextDelta{agent_id: id, text: text}, socket)
+      when id == socket.assigns.selected_id do
+    # ONLY touch streaming state on a token. Do NOT rebuild @selected_agent here
+    # (that re-rendered the entire cockpit — recent tools, usage, changes — on
+    # every single token, the main flicker/CPU source). The context panel
+    # refreshes on Message / StatusChanged, which is often enough.
+    #
+    # The chunk reaches the DOM via "stream_delta" → the StreamAppend hook
+    # appends a text node — O(chunk) on the wire. The accumulated assign is
+    # kept ONLY for the live token counter and the bubble's :if visibility;
+    # nothing renders the full text anymore (that re-shipped the whole reply
+    # every flush).
+    {:noreply,
+     socket
+     |> assign(:streaming_text, socket.assigns.streaming_text <> text)
+     |> assign(:streaming_thinking, "")
+     |> push_event("stream_delta", %{text: text})
+     |> push_event("scroll_bottom", %{})}
+  end
+
+  def on_text_delta(%Events.ChatAgentMessage.TextDelta{}, socket), do: {:noreply, socket}
+
+  def on_stream_output(
+        %Events.ChatAgentMessage.StreamOutput{
+          agent_id: id,
+          data: data,
+          title: "__thinking__"
+        },
+        socket
+      )
+      when id == socket.assigns.selected_id do
+    {:noreply,
+     socket
+     |> assign(:streaming_thinking, (socket.assigns[:streaming_thinking] || "") <> data)
+     |> push_event("stream_thinking_delta", %{text: data})
+     |> push_event("scroll_bottom", %{})}
+  end
+
+  def on_stream_output(
+        %Events.ChatAgentMessage.StreamOutput{
+          agent_id: id,
+          data: data,
+          title: title,
+          msg_id: msg_id
+        },
+        socket
+      )
+      when id == socket.assigns.selected_id do
+    upsert_stream_message(socket, data, title, msg_id)
+  end
+
+  def on_stream_output(%Events.ChatAgentMessage.StreamOutput{}, socket), do: {:noreply, socket}
+
+  # Shared by on_stream_output AND WorkspaceLive's docker-build stream path.
+  def upsert_stream_message(socket, data, title, msg_id) do
+    stream_buffer =
+      socket.assigns.stream_buffer
+      |> StreamBuffer.append(data, title: title, msg_id: msg_id)
+
+    messages = StreamBuffer.upsert_message(stream_buffer, socket.assigns.messages)
+
+    {:noreply,
+     socket
+     |> assign(:messages, messages)
+     |> assign(:stream_buffer, stream_buffer)
+     |> assign(:building, true)}
+  end
 end

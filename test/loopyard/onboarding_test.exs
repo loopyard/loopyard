@@ -78,6 +78,17 @@ defmodule Loopyard.OnboardingTest do
     # The gitignored .loopyard infra came along too — so the fork boots ready.
     assert {:ok, compose} = git_in(fork.volume, "cat .loopyard/workspace/docker-compose.yml")
     assert compose =~ "nginx:alpine"
+
+    # ...AND the fork auto-boots that config: the copied compose comes up on its
+    # own (no opt-in), so a cloned workspace lands with a live service, not a
+    # dead sidebar. Regression guard: the boot used to be gated on a
+    # `container_running?` check for a compose service literally named
+    # "workspace" — real compose files name their services web/dev/postgres/etc,
+    # so it was ALWAYS false and forks never booted their services. We assert on
+    # the actual Docker container (start_preview runs `Compose.up` directly; the
+    # ServiceManager's status cache only fills once the workspace is opened).
+    web_container = Loopyard.Workspace.ServiceManager.service_container_name(fork.id, "web")
+    assert eventually(fn -> Loopyard.Docker.container_running?(web_container) end, 120_000)
   end
 
   test "working is the default: start_working boots a cheap agent container, no compose cluster" do
@@ -244,6 +255,22 @@ defmodule Loopyard.OnboardingTest do
 
   defp uid, do: :crypto.strong_rand_bytes(3) |> Base.encode16(case: :lower)
 
+  # Poll `fun` until it returns truthy or the timeout elapses. Used for the
+  # async, best-effort preview boot (fork returns immediately; services come up
+  # behind it via a background Task).
+  defp eventually(fun, timeout_ms) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    do_eventually(fun, deadline)
+  end
+
+  defp do_eventually(fun, deadline) do
+    cond do
+      fun.() -> true
+      System.monotonic_time(:millisecond) >= deadline -> false
+      true -> Process.sleep(500) && do_eventually(fun, deadline)
+    end
+  end
+
   defp empty_bare(volume) do
     :ok = VolumeManager.create_volume(volume)
 
@@ -284,6 +311,9 @@ defmodule Loopyard.OnboardingTest do
   # plus the canonical, regardless of how many forks the test made.
   defp cleanup(project) do
     for ws <- WorkspaceRegistry.list_workspaces(project.id) do
+      # Tear down any auto-booted preview cluster first — a running container
+      # holds the code volume open and blocks its deletion below.
+      Onboarding.stop_preview(ws.id)
       VolumeManager.delete_volume(ws.volume)
       WorkspaceRegistry.delete(ws.id)
     end

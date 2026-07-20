@@ -148,5 +148,68 @@ defmodule Loopyard.ChatAgent.ResumeValidationTest do
           flunk("agent didn't resume")
       end
     end
+
+    test "resuming from a summary with a stale host bind_mount/host_access comes back clean (CONTAINMENT)" do
+      # Regression: `resume_from_summary` does `struct(saved)` first, copying
+      # EVERY saved field verbatim — including a bind_mount/host_access left
+      # over from before the containment invariant existed. A later `struct/2`
+      # call only overrides a specific field list; if bind_mount/host_access
+      # aren't in it, the stale host path survives into the live state even
+      # though the actual session was correctly forced container-only. This
+      # proves the state agrees with the (safe) session: both come back nil/false.
+      id = "stale-bind-#{:rand.uniform(100_000)}"
+      now = DateTime.utc_now()
+
+      tmp_dir =
+        Path.join(System.tmp_dir!(), "resume-stale-#{:erlang.unique_integer([:positive])}")
+
+      File.mkdir_p!(tmp_dir)
+
+      summary = %{
+        id: id,
+        name: "stale",
+        working_dir: tmp_dir,
+        # Stale host access from before the containment fix — must NOT survive.
+        bind_mount: "/Users/someone/some-host-project",
+        host_access: true,
+        workspace_id: nil,
+        started_at: now,
+        last_activity_at: now,
+        status: :stopped,
+        messages: []
+      }
+
+      :ets.insert(:chat_agents, {id, summary})
+
+      on_exit(fn ->
+        try do
+          ChatAgent.stop_agent(id)
+        catch
+          :exit, _ -> :ok
+        end
+
+        :ets.delete(:chat_agents, id)
+        File.rm_rf!(tmp_dir)
+      end)
+
+      {:ok, _pid} =
+        Loopyard.TestHelpers.start_agent(
+          id: id,
+          name: "stale",
+          working_dir: tmp_dir,
+          backend: RecordingBackend,
+          resume: true
+        )
+
+      case Registry.lookup(Loopyard.ChatAgentRegistry, id) do
+        [{pid, _}] ->
+          state = :sys.get_state(pid)
+          assert state.bind_mount == nil
+          assert state.host_access == false
+
+        [] ->
+          flunk("agent didn't resume")
+      end
+    end
   end
 end

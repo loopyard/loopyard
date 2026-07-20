@@ -84,7 +84,7 @@ defmodule Loopyard.ChatAgent.TurnRetryTest do
   end
 
   describe "default (no auto-retry): preserve + hand back the text" do
-    test "a transient failure goes idle, preserves the prompt, says it didn't go through",
+    test "a transient failure goes idle, preserves the prompt, surfaces a retry error",
          %{id: id, pid: pid} do
       ref = in_turn(pid)
       fail_turn(pid, id, ref, "error_during_execution")
@@ -94,8 +94,10 @@ defmodule Loopyard.ChatAgent.TurnRetryTest do
       assert state.turn_retry_count == 0
       assert state.failed_prompt == "make the thing"
 
+      # Terse copy — the UI already shows the restored text; the error just needs
+      # to say it failed and how to retry (no "we kept your text" narration).
       assert Enum.any?(state.messages, fn m ->
-               m.role == :error and String.contains?(m.content, "back in the message box")
+               m.role == :error and String.contains?(m.content, "tap Send to retry")
              end)
     end
 

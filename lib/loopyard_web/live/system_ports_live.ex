@@ -124,11 +124,11 @@ defmodule LoopyardWeb.SystemPortsLive do
         so anything that can route to this host (LAN, tunnel, VPN, public IP) can reach it.
       </p>
 
-      <div :if={@rows == []} class="text-sm text-zinc-400 dark:text-zinc-500">No ports assigned</div>
+      <div :if={@rows == []} class="text-sm text-zinc-500 dark:text-zinc-400">No ports assigned</div>
 
       <div :if={@rows != []} class="overflow-x-auto">
         <table class="w-full text-sm">
-          <thead class="text-xs uppercase tracking-wider text-zinc-400 dark:text-zinc-500 border-b border-zinc-200 dark:border-zinc-700">
+          <thead class="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 border-b border-zinc-200 dark:border-zinc-700">
             <tr>
               <th class="text-left font-semibold py-2 px-2">Workspace</th>
               <th class="text-left font-semibold py-2 px-2">Service</th>

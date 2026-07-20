@@ -3,6 +3,17 @@ import Config
 config :loopyard,
   generators: [timestamp_type: :utc_datetime]
 
+# Agent harness: drive the REAL Claude Code harness IN-CONTAINER over ACP. This
+# is the ONLY production backend — the container is the security boundary, so a
+# harness never runs on the host. The host-execution backend (Harness.Claude,
+# SDK/CLI-on-host) was deleted; test.exs overrides this to `Harness.Fake`.
+#
+# Trade-off to know: claude-code-acp does not yet surface token usage, so cost
+# telemetry reads $0 for ACP agents (IMPROVEMENTS.md #16). Permissions are
+# :auto_allow — the container sandbox is trusted as the boundary, so the agent
+# runs with dangerously_skip_permissions inside it.
+config :loopyard, default_harness: Loopyard.Harness.ACP
+
 # Harness model context-window sizes (tokens). Keys double as
 # `String.starts_with?` prefixes, so dated variants match the base entry. This
 # lives in config (not a compiled module attribute) so a new frontier-model

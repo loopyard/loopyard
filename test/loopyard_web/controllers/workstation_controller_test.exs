@@ -60,15 +60,26 @@ defmodule LoopyardWeb.WorkstationControllerTest do
     end
 
     test "env push stores the value for an existing workstation", %{conn: conn} do
-      :ok = Workstation.create("brad")
+      # NEVER the real identity ("brad"): LOOPYARD_HOME is isolated to a tmp
+      # dir above, but Docker VOLUME names are identity-derived — Env.put →
+      # sync_home("brad") materializes into the REAL loopyard-ws-brad-home
+      # volume. This test once clobbered the operator's live
+      # CLAUDE_CODE_OAUTH_TOKEN with 's3cr3t' and 401'd every in-container
+      # agent. Scratch identity → scratch volume, removed after.
+      ws = "envtest-#{System.unique_integer([:positive])}"
+      :ok = Workstation.create(ws)
+
+      on_exit(fn ->
+        _ = Loopyard.Docker.docker(["volume", "rm", "-f", Workstation.home_volume(ws)])
+      end)
 
       conn =
         conn
         |> put_req_header("content-type", "application/octet-stream")
-        |> put("/workstations/brad/env/MY_TOKEN", "s3cr3t")
+        |> put("/workstations/#{ws}/env/MY_TOKEN", "s3cr3t")
 
       assert conn.status == 204
-      assert Loopyard.Workstation.Env.all("brad")["MY_TOKEN"] == "s3cr3t"
+      assert Loopyard.Workstation.Env.all(ws)["MY_TOKEN"] == "s3cr3t"
     end
   end
 end

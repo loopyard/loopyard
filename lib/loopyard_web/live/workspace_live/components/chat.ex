@@ -2,18 +2,31 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   @moduledoc "Chat panel components: agent_view, agent_header, chat_panel, thinking_indicator, container_panel."
   use Phoenix.Component
 
-  import LoopyardWeb.Components.Common, only: [dot: 1, control_btn: 1]
+  alias Phoenix.LiveView.JS
+  alias LoopyardWeb.Components.Nav
+
+  import LoopyardWeb.Components.Common, only: [dot: 1, control_btn: 1, sound_control: 1]
   import LoopyardWeb.Components.Sidebar, only: [status_dot: 1, agent_display_status: 1]
 
   import LoopyardWeb.Live.WorkspaceLive.Messages,
-    only: [chat_msg: 1, streaming_bubble: 1, streaming_thinking: 1, run_header: 1]
+    only: [chat_msg: 1, streaming_bubble: 1, streaming_thinking: 1]
 
   import LoopyardWeb.Components.Icon
 
   import LoopyardWeb.Live.WorkspaceLive.Components.Formatters, only: [time_ago: 1]
 
-  import LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel,
-    only: [context_sections: 1]
+  # Section-switcher model (categories / items / hrefs) — split out for the
+  # module-size invariant. Chat renders; ChatNav decides what to render.
+  import LoopyardWeb.Live.WorkspaceLive.Components.ChatNav,
+    only: [
+      section_title: 1,
+      section_tabs: 1,
+      active_category: 1,
+      category_href: 2,
+      category_items: 1,
+      current_item: 1,
+      current_ws_port: 2
+    ]
 
   alias LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus
 
@@ -38,125 +51,196 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   # volumes. On the overview itself (`live_action == :index`) the
   # path is `nil`, which the Breadcrumbs component renders as the
   # current page (no link, aria-current="page").
-  defp workspace_crumbs(assigns) do
-    label = Loopyard.Source.display_name(assigns.workspace_entry)
-    label = if label == "", do: assigns.workspace.name, else: label
-
-    on_overview? = assigns[:live_action] == :index
-    last_path = if on_overview?, do: nil, else: assigns.base_path
-
-    crumbs = [{"Loopyard", "/"}]
-
-    crumbs =
-      if assigns.project do
-        crumbs ++ [{assigns.project.name, "/projects/#{assigns.project.id}"}]
-      else
-        crumbs
-      end
-
-    crumbs ++ [{label, last_path}]
-  end
-
   def chat_header(assigns) do
-    # Mobile back button has two modes:
-    #   - viewing an agent/service -> patch back to the sidebar (Menu)
-    #   - viewing the sidebar/new screen -> navigate up to the project page
-    {back_kind, back_target, back_label} =
-      cond do
-        assigns.live_action in [:chat, :container, :service, :console, :services] ->
-          {:patch, assigns.base_path, "Menu"}
-
-        assigns.project ->
-          {:navigate, "/projects/#{assigns.project.id}", assigns.project.name}
-
-        true ->
-          {:navigate, "/", "Projects"}
-      end
-
-    crumbs = workspace_crumbs(assigns)
+    # The mobile workspace header (phone-only; desktop navigates from the rails).
+    # Two rows that mirror the hierarchy Root → Project → Workspace →
+    # { Agents · Services · Repo }:
+    #
+    #   Row 1  ←  Loopyard / uncringe .................... 🔊   (WHERE you are)
+    #   Row 2  [ Agents · Services · Repo ]  ● my-agent · Ready  Switch ⌄  (WHAT)
+    #
+    # Row 1 is the location breadcrumb (project / workspace) + back-out + sound.
+    # Row 2 switches CATEGORY (content-first: jump to your last item there) and
+    # names the current ITEM; tapping the item zooms OUT to a switcher of the
+    # other items in that category — pick one to zoom back in.
+    # Set :active first, on its own, so the item/current helpers below (which
+    # match on :active) see it — inside a single pipe, `assigns` in each arg
+    # still refers to the pre-pipe value.
+    assigns = assign(assigns, :active, active_category(assigns.live_action))
 
     assigns =
       assigns
-      |> assign(:back_kind, back_kind)
-      |> assign(:back_target, back_target)
-      |> assign(:back_label, back_label)
-      |> assign(:crumbs, crumbs)
-      |> assign(:host_exposed, Loopyard.HostExposer.exposed?())
+      |> assign(:agents_href, category_href(:agents, assigns))
+      |> assign(:services_href, category_href(:services, assigns))
+      |> assign(:volumes_href, category_href(:volumes, assigns))
+      |> assign(:items, category_items(assigns))
+      |> assign(:current, current_item(assigns))
+      |> assign(:details_sheet, details_sheet_for(assigns.active))
+      |> assign(:ws_name, (assigns[:workspace_entry] || %{})[:name] || assigns.workspace.id)
 
-    # Delegate to the ONE canonical app header (same component every page uses),
-    # so the top nav — breadcrumbs, Remote, the workstation switcher, System — is
-    # identical app-wide. The only workspace-specific bit is the mobile back
-    # button, injected via the header's `back` slot.
+    assigns =
+      assigns
+      |> assign(:section_tabs, section_tabs(assigns))
+      |> assign(:project_items, project_items(assigns))
+      |> assign(:workspace_items, workspace_items(assigns))
+
+    assigns =
+      assign(
+        assigns,
+        :can_switch,
+        length(assigns.project_items) > 1 || length(assigns.workspace_items) > 1
+      )
+
+    # The workspace's primary reachable app port (exposed → has a URL), so the
+    # phone header can offer a one-tap "open the running app" — otherwise ports
+    # are buried in the Services tab on mobile.
+    assigns =
+      assign(assigns, :app_port, current_ws_port(assigns[:global_tree], assigns.workspace.id))
+
     ~H"""
-    <LoopyardWeb.Components.AppHeader.header
-      breadcrumbs={@crumbs}
-      iex_session={@iex_session}
-      current_path={@base_path}
-      host_exposed={@host_exposed}
-    >
-      <:back>
-        <.link
-          :if={@back_kind == :patch}
-          patch={@back_target}
-          class="md:hidden -ml-1 inline-flex items-center gap-1 px-2 py-1 rounded-md text-base font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 active:bg-violet-100 dark:active:bg-violet-500/20 transition-colors flex-none min-w-0"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            class="w-5 h-5 flex-none"
+    <%!-- safe-area-top: in a standalone PWA the header sits under the Dynamic
+         Island / notch without it. No-op in the browser (inset is 0). --%>
+    <div class="md:hidden safe-area-top">
+      <%!-- Row 1: WHERE you are — back out + Project / Workspace + sound. Tapping
+           either name throws open ONE full-screen switcher of every project and
+           its workspaces (pick any to jump; ✕ / backdrop to bail). No pop-overs. --%>
+      <Nav.bar height="h-12" pad="px-2" gap="gap-1.5">
+        <Nav.back_button navigate="/workspaces" label="Back to workspaces" />
+        <nav class="flex-1 min-w-0 flex items-center gap-1.5 text-lg" aria-label="Location">
+          <Nav.crumb
+            :if={@project}
+            id="nav-switcher"
+            label={@project.name}
+            switch?={@can_switch}
+            chevron={false}
+            href={"/projects/#{@project.id}"}
+          />
+          <span :if={@project} class="text-zinc-300 dark:text-zinc-600 flex-none">/</span>
+          <Nav.crumb id="nav-switcher" label={@ws_name} current switch?={@can_switch} />
+        </nav>
+        <:actions>
+          <%!-- Details (agent/service/volume) moved to the section switcher row
+               below — one consistent affordance, next to the thing it expands. --%>
+          <%!-- One-tap open the running app: the workspace's exposed port URL,
+               reachable from this phone (only shows when a port is network-open). --%>
+          <.link
+            :if={@app_port}
+            href={@app_port.url}
+            target="_blank"
+            rel="noopener"
+            aria-label={"Open app on port #{@app_port.port}"}
+            class="focus-ring inline-flex items-center justify-center gap-0.5 h-11 px-2.5 rounded-lg font-mono text-sm text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 active:bg-emerald-500/20 transition-colors flex-none"
           >
-            <path
-              fill-rule="evenodd"
-              d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z"
-              clip-rule="evenodd"
-            />
-          </svg>
-          <span class="truncate">{@back_label}</span>
-        </.link>
-        <.link
-          :if={@back_kind == :navigate}
-          navigate={@back_target}
-          class="md:hidden -ml-1 inline-flex items-center gap-1 px-2 py-1 rounded-md text-base font-medium text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 active:bg-violet-100 dark:active:bg-violet-500/20 transition-colors flex-none min-w-0"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-            class="w-5 h-5 flex-none"
+            :{@app_port.port} <span class="text-xs opacity-70">↗</span>
+          </.link>
+          <.sound_control id="sound-workspace" />
+        </:actions>
+      </Nav.bar>
+
+      <Nav.switcher_sheet :if={@can_switch} id="nav-switcher" title="Switch workspace">
+        <:current>
+          <span :if={@project} class="flex-none text-zinc-500 dark:text-zinc-400 truncate">
+            {@project.name} /
+          </span>
+          <span class="flex-1 min-w-0 truncate font-semibold text-zinc-900 dark:text-zinc-100">
+            {@ws_name}
+          </span>
+        </:current>
+        <LoopyardWeb.Components.ProjectList.project_groups
+          projects={@global_tree}
+          current_workspace_id={@workspace.id}
+          row_click={JS.hide(to: "#nav-switcher")}
+          size={:xs}
+        />
+      </Nav.switcher_sheet>
+
+      <%!-- Row 2: WHAT you're looking at — section tabs + the current item, which
+           taps open a full-screen switcher of siblings. --%>
+      <Nav.section_switcher
+        id="item-switcher"
+        title={section_title(@active)}
+        current={@current}
+        items={@items}
+        has_details={@details_sheet != nil}
+        details_open={@mobile_detail_open}
+      >
+        <:tabs>
+          <Nav.segmented items={@section_tabs} label="Workspace section" />
+        </:tabs>
+        <:extra>
+          <.link
+            :if={@active == :agents}
+            patch={"#{@base_path}/new"}
+            phx-click={JS.hide(to: "#item-switcher")}
+            class="flex items-center gap-2 px-3 min-h-[2.75rem] rounded-lg text-sm font-medium text-violet-600 dark:text-violet-400 active:bg-violet-50 dark:active:bg-violet-500/10"
           >
-            <path
-              fill-rule="evenodd"
-              d="M17 10a.75.75 0 0 1-.75.75H5.612l4.158 3.96a.75.75 0 1 1-1.04 1.08l-5.5-5.25a.75.75 0 0 1 0-1.08l5.5-5.25a.75.75 0 1 1 1.04 1.08L5.612 9.25H16.25A.75.75 0 0 1 17 10Z"
-              clip-rule="evenodd"
-            />
-          </svg>
-          <span class="truncate">{@back_label}</span>
-        </.link>
-      </:back>
-    </LoopyardWeb.Components.AppHeader.header>
+            + New agent
+          </.link>
+        </:extra>
+      </Nav.section_switcher>
+    </div>
     """
   end
+
+  # All projects, for the project crumb switcher (tap the project name). Sourced
+  # from the same @global_tree the left rail uses, so it's already in the socket.
+  # The bottom-sheet id whose "details" the switcher's details button expands,
+  # per active section. Each has a matching bottom_sheet in workspace_live's
+  # render — the ONE consistent detail affordance for agents / services / files.
+  defp details_sheet_for(:agents), do: "agent-context"
+  defp details_sheet_for(:services), do: "service-context"
+  defp details_sheet_for(:volumes), do: "volume-context"
+  defp details_sheet_for(_), do: nil
+
+  defp project_items(%{global_tree: tree, project: project}) when is_list(tree) do
+    Enum.map(tree, fn p ->
+      %{label: p.name, href: "/projects/#{p.id}", active?: project && p.id == project.id}
+    end)
+  end
+
+  defp project_items(_), do: []
+
+  # Sibling workspaces within the current project, for the workspace crumb
+  # switcher (tap the workspace name). Empty (→ plain text, no switcher) when the
+  # project has only this one.
+  defp workspace_items(%{global_tree: tree, project: project, workspace: workspace})
+       when is_list(tree) and not is_nil(project) do
+    case Enum.find(tree, &(&1.id == project.id)) do
+      %{workspaces: wss} ->
+        Enum.map(wss, fn ws ->
+          %{
+            label: ws.name,
+            href: "/projects/#{project.id}/workspaces/#{ws.id}",
+            active?: ws.id == workspace.id
+          }
+        end)
+
+      _ ->
+        []
+    end
+  end
+
+  defp workspace_items(_), do: []
 
   # --- Agent View ---
 
   def agent_view(assigns) do
     ~H"""
     <div class="flex-1 flex min-h-0">
-      <%!-- Main content: hidden on mobile when viewing context panel --%>
-      <div class={[
-        "flex-1 flex flex-col min-w-0 min-h-0",
-        if(@tab == :context_panel, do: "hidden lg:flex", else: "flex")
-      ]}>
+      <%!-- Center pane. The mobile category switcher lives in the top back bar
+           now; the agent's Info folds into the header — so this pane is just the
+           chat (or the container view). Agents / Services / Volumes are reached
+           by the tab bar, which routes services/volumes to their own screens. --%>
+      <div class="flex-1 flex flex-col min-w-0 min-h-0">
         <.agent_header
           agent={@selected_agent}
-          tab={@tab}
           has_container={@has_container}
           base_path={@base_path}
+          changes={@changes}
           detail_level={@detail_level}
         />
         <.chat_panel
-          :if={@tab in [:chat, :context_panel]}
+          :if={@tab != :container}
           messages={@messages}
           streaming_text={@streaming_text}
           streaming_thinking={@streaming_thinking}
@@ -165,6 +249,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           host={@host}
           thinking_word={@thinking_word}
           has_more_messages={@has_more_messages}
+          window_tail?={@window_tail?}
           detail_level={@detail_level}
         />
         <.container_panel
@@ -175,83 +260,38 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           has_container={@has_container}
         />
       </div>
-      <%!-- The desktop right rail (Agents + Services + Volumes + this agent's
-           context) is hidden on phones, so the "Info" view IS that rail on
-           mobile — the whole workspace in one scrollable, touch-sized panel.
-           Tapping an agent switches to it; tapping a service opens it. --%>
-      <div
-        :if={@tab == :context_panel}
-        class="flex-1 lg:hidden overflow-y-auto bg-zinc-50 dark:bg-zinc-900/50"
-      >
-        <LoopyardWeb.Components.SideNav.section label="Agents">
-          <LoopyardWeb.Live.WorkspaceLive.Components.Sidebar.agent_list_item
-            :for={a <- @agents}
-            agent={a}
-            selected={@selected_id == a.id}
-          />
-          <.link
-            patch={"#{@base_path}/new"}
-            class="flex items-center gap-2 px-3 min-h-[2.75rem] text-sm font-medium text-violet-600 dark:text-violet-400 active:bg-violet-50 dark:active:bg-violet-500/10"
-          >
-            + New agent
-          </.link>
-        </LoopyardWeb.Components.SideNav.section>
-        <LoopyardWeb.Components.SideNav.section :if={@service_statuses != []} label="Services">
-          <LoopyardWeb.Live.WorkspaceLive.Components.Sidebar.service_item
-            :for={svc <- @service_statuses}
-            svc={svc}
-            base_path={@base_path}
-            selected={@selected_service == svc.name}
-            host={@host}
-            workspace_id={@workspace.id}
-          />
-        </LoopyardWeb.Components.SideNav.section>
-        <.context_sections agent={@selected_agent} editing_name={@editing_name} />
-      </div>
     </div>
     """
   end
 
   def agent_header(assigns) do
-    # Ports are now shown per-process in the sidebar, not per-agent
-    port = nil
-    assigns = assign(assigns, :container_port, port)
-
+    # Desktop-only. On mobile the agent's identity + Info live in Row 2 of the
+    # chat_header (the current-item bar) and the full detail is in the right rail
+    # on lg+ — so this header is just the name + lifecycle controls at lg+.
     ~H"""
-    <div class="flex-none border-b border-zinc-200 dark:border-zinc-700/80">
-      <div class="flex items-center justify-between px-3 md:px-5 h-12 gap-2">
-        <div class="flex items-center gap-2 md:gap-3 min-w-0">
+    <div class="hidden lg:block flex-none border-b border-zinc-200 dark:border-zinc-700/80">
+      <div class="flex items-center justify-between px-5 h-12 gap-3">
+        <div class="flex items-center gap-3 min-w-0 flex-1">
           <.dot color={status_dot(@agent.status)} />
           <span class="text-base font-semibold text-zinc-900 dark:text-zinc-100 truncate">
             {@agent.name}
           </span>
           <span
             :if={@agent[:last_activity_at]}
-            class="text-xs text-zinc-400 dark:text-zinc-500 hidden sm:block flex-none"
+            class="text-sm text-zinc-500 dark:text-zinc-400 flex-none"
           >
             {time_ago(@agent[:last_activity_at])}
           </span>
         </div>
         <div class="flex items-center gap-2 flex-none">
-          <.detail_level_control level={@detail_level} />
-          <%!-- Agent context — mobile/tablet only (the right rail shows it on lg+).
-               Real touch target (≈40px tall), and the only control on the phone
-               header so it can't be fat-fingered into a destructive action. --%>
-          <.link
-            patch={"#{@base_path}/agents/#{@agent.id}/context"}
-            class="lg:hidden inline-flex items-center min-h-[2.5rem] px-3 rounded-lg text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 active:bg-zinc-200 dark:active:bg-zinc-600 transition-colors"
-            aria-label="Agent context, services, and info"
-          >
-            Info
-          </.link>
           <%!-- Container lifecycle is DESTRUCTIVE (Stop kills the container; Remove
-               deletes the agent) — keep it off the cramped phone header, where it
-               sat one thumb-width from Info. On phones: interrupt a running turn
-               with the big red pill above the input; start/remove a sleeping agent
-               from the agents list (Menu). On md+ there's room, so show them. --%>
-          <div class="hidden md:flex items-center gap-2">
+               deletes the agent). On phones you interrupt with the red pill above
+               the input and start/remove from the agents switcher. --%>
+          <div class="flex items-center gap-2">
+            <%!-- Stop = interrupt the RUNNING turn. Only shown while the agent is
+                 actually working — an idle "Stop" is meaningless ("stop what?"). --%>
             <.control_btn
-              :if={agent_display_status(@agent) in [:ready, :thinking]}
+              :if={agent_display_status(@agent) == :thinking}
               phx-click="interrupt_agent"
               phx-value-id={@agent.id}
             >
@@ -274,34 +314,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             </.control_btn>
             <span
               :if={@agent.status == :destroying}
-              class="text-xs font-medium text-red-400 px-2 py-1"
+              class="text-sm font-medium text-red-400 px-2 py-1"
             >
               Destroying...
             </span>
           </div>
         </div>
-      </div>
-      <div :if={@has_container} class="flex gap-0 px-4">
-        <button
-          phx-click="switch_tab"
-          phx-value-tab="chat"
-          class={"px-3 py-1.5 text-xs font-medium border-b-2 transition-colors #{if @tab == :chat, do: "border-violet-500 text-violet-600 dark:text-violet-400", else: "border-transparent text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"}"}
-        >
-          Chat
-        </button>
-        <button
-          phx-click="switch_tab"
-          phx-value-tab="container"
-          class={"px-3 py-1.5 text-xs font-medium border-b-2 transition-colors #{if @tab == :container, do: "border-violet-500 text-violet-600 dark:text-violet-400", else: "border-transparent text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"}"}
-        >
-          Container
-        </button>
-        <.link
-          patch={"#{@base_path}/agents/#{@agent.id}/context"}
-          class={"lg:hidden px-3 py-1.5 text-xs font-medium border-b-2 transition-colors #{if @tab == :context_panel, do: "border-violet-500 text-violet-600 dark:text-violet-400", else: "border-transparent text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"}"}
-        >
-          Info
-        </.link>
       </div>
     </div>
     """
@@ -329,7 +347,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       id="detail-level"
       phx-hook="DetailLevel"
       data-level={@level}
-      class="hidden sm:inline-flex items-center rounded-lg bg-zinc-100 dark:bg-zinc-800 p-0.5"
+      class="hidden sm:inline-flex items-center rounded-lg bg-zinc-100 dark:bg-zinc-800 p-1"
       role="group"
       aria-label="Activity detail level"
     >
@@ -339,13 +357,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
         phx-value-level={value}
         title={hint}
         aria-pressed={@level == value}
-        class={[
-          "px-2 py-0.5 text-[11px] font-medium rounded-md transition-colors",
-          if(@level == value,
-            do: "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm",
-            else: "text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-          )
-        ]}
+        class={Nav.seg_item_class(@level == value)}
       >
         {label}
       </button>
@@ -360,24 +372,47 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     # live activity feed (thinking_indicator) — so suppress the SAME rows here
     # to avoid double-listing. They render inline normally once the turn ends.
     assigns = assign(assigns, :live_tool_from, active_turn_cutoff(assigns))
+    assigns = assign_new(assigns, :window_tail?, fn -> true end)
 
     ~H"""
-    <div class="flex-1 flex flex-col min-h-0">
+    <div class="relative flex-1 flex flex-col min-h-0">
+      <%!-- Windowed transcript: when you've scrolled up into history, the live
+           tail isn't loaded. This snaps you back to the newest messages. --%>
+      <button
+        :if={not @window_tail?}
+        phx-click="load_latest"
+        class="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-1.5 rounded-full bg-violet-600 text-white text-sm font-medium px-3.5 py-1.5 shadow-lg shadow-violet-900/20 hover:bg-violet-700 transition-colors"
+      >
+        Jump to latest
+        <svg viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5">
+          <path
+            fill-rule="evenodd"
+            d="M10 3a.75.75 0 0 1 .75.75v9.19l3.72-3.72a.75.75 0 1 1 1.06 1.06l-5 5a.75.75 0 0 1-1.06 0l-5-5a.75.75 0 1 1 1.06-1.06l3.72 3.72V3.75A.75.75 0 0 1 10 3Z"
+            clip-rule="evenodd"
+          />
+        </svg>
+      </button>
       <%!-- scroll-smooth: the auto-tail (ScrollBottom hook nudges scrollTop as the
            agent streams) animates instead of jumping, so following the thinking
            glides. Pure CSS — honors prefers-reduced-motion automatically. --%>
-      <div id="messages" class="flex-1 overflow-y-auto flex flex-col px-4 md:px-6 pb-4 scroll-smooth">
-        <%!-- Normal flow (NOT flex-col-reverse). The ScrollBottom hook keeps you
-             pinned to the bottom on new messages and anchors on load-more; this
-             is what lets `position: sticky` on the prompt band work flush on
-             mobile (col-reverse broke sticky). --%>
-        <div class="space-y-2">
-          <p
-            :if={assigns[:has_more_messages]}
-            class="text-center py-2 text-xs text-zinc-400 dark:text-zinc-500"
-          >
-            Loading older messages...
-          </p>
+      <div id="messages" class="flex-1 overflow-y-auto flex flex-col px-4 md:px-6 pb-4">
+        <%!-- `mt-auto` anchors the transcript to the BOTTOM: the most recent
+             message sits just above the input on first paint, so there's no
+             post-load scroll jump (that animated slide-down was the jank).
+             Older messages load in chunks as you scroll up (ScrollBottom hook →
+             load_more). Normal flow (NOT col-reverse) so the human prompts can
+             `position: sticky` to the top of their section. --%>
+        <div class="space-y-3 mt-auto">
+          <%!-- Progressive loader: while there's older history above the window,
+               a soft shimmer sits at the very top. Scroll into it and load_more
+               fetches the next batch (prepended below this, so it stays put);
+               when you reach the start it disappears. Gentler than a hard
+               "Loading…" flash. --%>
+          <div :if={assigns[:has_more_messages]} class="space-y-2.5 py-3" aria-hidden="true">
+            <div class="h-3 w-20 rounded bg-zinc-200/80 dark:bg-zinc-700/50 animate-pulse"></div>
+            <div class="h-3.5 w-3/4 rounded bg-zinc-200/70 dark:bg-zinc-700/40 animate-pulse"></div>
+            <div class="h-3.5 w-1/2 rounded bg-zinc-200/70 dark:bg-zinc-700/40 animate-pulse"></div>
+          </div>
           <%!-- Split into SECTIONS: each human prompt + the response it owns. The
                prompt is `sticky top-0` WITHIN its <section>, so it pins while you
                scroll its response and then RELEASES at the section boundary as the
@@ -412,9 +447,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                       detail_level={@detail_level}
                     />
                   <% {:run, items} -> %>
-                    <div class="mt-3">
-                      <.run_header timestamp={run_timestamp(items)} />
-                      <div class="border-l border-zinc-200/70 dark:border-zinc-800/80 ml-3">
+                    <%!-- The response flows directly under its "You" prompt (which
+                         carries the dated timestamp) — no "Claude" marker. The
+                         `space-y` gives each step (text, tool call, result) room to
+                         breathe instead of packing them edge-to-edge. --%>
+                    <div class="mt-2">
+                      <div class="space-y-2.5">
                         <.chat_msg
                           :for={{msg, idx} <- items}
                           :if={not in_live_feed?(@live_tool_from, msg, idx)}
@@ -445,41 +483,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                 (@agent.status == :thinking && not awaiting_answer?(@messages) &&
                    not awaiting_approval?(@messages) && not building?(@messages))
             }
-            class="relative mt-3"
+            class=""
           >
-            <%!-- The rail: icon on top, then a 1px line filling the rest of the
-                 height. `items-center` centers the line in the w-5 column so it
-                 passes straight through the icon's center and extends from its
-                 bottom with no gap. --%>
-            <div class="absolute left-0 top-0 bottom-1 w-5 flex flex-col items-center">
-              <span
-                :if={not turn_started_rendering?(@messages)}
-                class="w-5 h-5 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center flex-none"
-              >
-                <.icon name={:sparkle} class="w-3 h-3 text-violet-600 dark:text-violet-400" />
-              </span>
-              <div class="w-px flex-1 bg-zinc-200 dark:bg-zinc-700/60"></div>
-            </div>
-
-            <%!-- "Claude · HH:MM", vertically centered with the icon — top only. --%>
-            <div :if={not turn_started_rendering?(@messages)} class="pl-7 h-5 flex items-center">
-              <span class="text-sm font-semibold text-zinc-700 dark:text-zinc-200">Claude</span>
-              <span
-                :if={current_turn_timestamp(@messages)}
-                class="ml-2 text-xs text-zinc-400 dark:text-zinc-500"
-              >
-                · {Calendar.strftime(current_turn_timestamp(@messages), "%H:%M")}
-              </span>
-            </div>
-
-            <.streaming_thinking
-              :if={
-                @detail_level != :chat && assigns[:streaming_thinking] != "" &&
-                  assigns[:streaming_thinking] != nil
-              }
-              text={@streaming_thinking}
-            />
-            <.streaming_bubble :if={@streaming_text != ""} text={@streaming_text} />
+            <%!-- No "Claude" marker and no timeline rail — the live turn's content
+                 sits flush at the gutter, directly under its "You" prompt. --%>
+            <.streaming_thinking :if={
+              @detail_level != :chat && assigns[:streaming_thinking] != "" &&
+                assigns[:streaming_thinking] != nil
+            } />
+            <.streaming_bubble :if={@streaming_text != ""} />
             <.thinking_indicator
               :if={
                 @agent.status == :thinking && @streaming_text == "" &&
@@ -496,6 +508,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               word={@thinking_word}
               agent_id={@agent.id}
               mode={live_status_mode(@agent)}
+              streaming_text={@streaming_text}
+              active_tool={@agent[:active_tool]}
+              tokens={(@agent[:total_input_tokens] || 0) + (@agent[:total_output_tokens] || 0)}
             />
           </div>
         </div>
@@ -506,21 +521,23 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             patches). The queue and the always-visible Reasoning Bar sit above it,
             LiveView-updated, so you can keep queuing and watch progress while the
             agent works. --%>
-      <div class="flex-none border-t border-zinc-200 dark:border-zinc-700/80 p-3 md:p-4 space-y-2">
+      <%!-- pb-safe: the composer clears the home indicator in a standalone PWA
+           while keeping its normal padding in the browser. --%>
+      <div class="flex-none border-t border-zinc-200 dark:border-zinc-700/80 px-3 pt-3 pb-safe md:px-4 md:pt-4 space-y-2">
         <%!-- The queue is a quiet, COMPACT list waiting for the agent to pick up
               next — kept dense (small text, tight rows, no card chrome) so a few
               stacked don't dominate the composer. Tap a row to pull it back into
               the box and edit it. --%>
         <div :if={(@agent[:pending_count] || 0) > 0} class="space-y-0.5">
           <div class="flex items-center justify-between px-0.5">
-            <span class="text-[10px] font-medium uppercase tracking-wide text-violet-500/80 dark:text-violet-400/80">
+            <span class="text-xs font-medium uppercase tracking-wide text-violet-500/80 dark:text-violet-400/80">
               Queued · sends when the agent finishes
             </span>
             <button
               type="button"
               phx-click="clear_pending"
               phx-value-id={@agent.id}
-              class="focus-ring text-[10px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+              class="focus-ring text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
             >
               Clear all
             </button>
@@ -535,7 +552,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               phx-value-id={@agent.id}
               phx-value-index={i}
               title="Edit — pull back into the message box"
-              class="focus-ring flex-1 min-w-0 text-left truncate text-xs text-zinc-600 dark:text-zinc-300"
+              class="focus-ring flex-1 min-w-0 text-left truncate text-sm text-zinc-600 dark:text-zinc-300"
             >
               {text}
             </button>
@@ -557,11 +574,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
            so it never needs a sentence or an alarm. --%>
         <div
           :if={(@agent[:context_utilization] || 0.0) >= 0.92}
-          class="flex items-center gap-1.5 text-[11px] text-zinc-400 dark:text-zinc-500"
+          class="flex items-center gap-1.5 text-sm text-zinc-500 dark:text-zinc-400"
         >
           <span class="flex-none">🗜</span>
           <span class="min-w-0">Compacting…</span>
         </div>
+        <%!-- The composer IS the input: the whole bottom bar (border-t above)
+             reads as one big submission unit — no inner boxed textarea, no big
+             filled button. Just the caret and a quiet violet arrow. --%>
         <div id="chat-form-wrapper" phx-update="ignore">
           <form
             id="chat-form"
@@ -574,22 +594,24 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               id="chat-input"
               rows="1"
               placeholder="Type a message..."
+              aria-label="Message"
               autocomplete="off"
-              class="flex-1 rounded-xl border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-2.5 text-base
+              class="focus-ring flex-1 bg-transparent border-0 rounded-lg px-1 py-2.5 text-lg md:text-base
                    text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 resize-none
-                   focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+                   focus:outline-none focus:ring-0"
             ></textarea>
             <button
               type="submit"
               aria-label="Send"
-              class="focus-ring flex-none flex items-center justify-center rounded-xl bg-violet-600 hover:bg-violet-700 w-11 h-11 text-white transition-colors"
+              class="focus-ring flex-none flex items-center justify-center rounded-full w-10 h-10 text-violet-600 dark:text-violet-400
+                   hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-colors"
             >
-              <.icon name={:arrow_up} class="w-5 h-5" />
+              <.icon name={:arrow_up} class="w-6 h-6" />
             </button>
           </form>
           <%!-- Why a send failed — the ChatForm hook fills + reveals this so a
               rejected send is never just a silent red flash. --%>
-          <p id="send-status" class="hidden mt-1.5 text-xs text-red-500 dark:text-red-400"></p>
+          <p id="send-status" class="hidden mt-1.5 text-sm text-red-500 dark:text-red-400"></p>
         </div>
       </div>
     </div>
@@ -643,27 +665,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     end
   end
 
-  # The current turn's start time (the last human message) — for the live tail's
-  # "Claude · HH:MM" header so it reads the same as a finished run.
-  defp current_turn_timestamp(messages) do
-    case Enum.reverse(messages) |> Enum.find(&(&1.role == :user)) do
-      %{timestamp: %DateTime{} = ts} -> ts
-      _ -> nil
-    end
-  end
-
-  # True once the current turn has produced ANY message after the prompt — at which
-  # point the section above renders the "Claude" header for that content, so the
-  # live tail must NOT render its own (that's the duplicate). False during a pure
-  # prefill/think with nothing rendered yet, where the live tail IS the top of the
-  # response and owns the header.
-  defp turn_started_rendering?(messages) do
-    messages
-    |> Enum.reverse()
-    |> Enum.take_while(&(&1.role != :user))
-    |> Enum.any?()
-  end
-
   # Index of the last human message — tools after it belong to the active
   # turn and live in the feed. Returns nil (suppress nothing) unless the
   # feed is actually on screen, so a tool row is never hidden with no home.
@@ -688,16 +689,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   defp in_live_feed?(nil, _msg, _idx), do: false
   defp in_live_feed?(from, msg, idx), do: idx > from and msg.role in [:tool, :tool_result]
 
-  # The "Claude · HH:MM" header timestamp for a run = the first message in it.
-  defp run_timestamp([{%{timestamp: ts}, _idx} | _]), do: ts
-  defp run_timestamp(_), do: nil
-
   # --- Container Panel ---
 
   def container_panel(%{has_container: false} = assigns) do
     ~H"""
     <div class="flex-1 flex items-center justify-center">
-      <p class="text-base text-zinc-400 dark:text-zinc-500">No container running</p>
+      <p class="text-base text-zinc-500 dark:text-zinc-400">No container running</p>
     </div>
     """
   end
@@ -708,32 +705,33 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       <div class="flex items-center justify-end px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
         <button
           phx-click="refresh_container"
-          class="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+          class="text-sm text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
         >
           Refresh
         </button>
       </div>
       <div :if={@env} class="border-b border-zinc-200 dark:border-zinc-700/80">
         <div class="px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50">
-          <h3 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Environment</h3>
+          <h3 class="text-sm font-semibold uppercase tracking-wider text-zinc-500">Environment</h3>
         </div>
-        <pre class="px-4 py-3 text-xs font-mono text-zinc-600 dark:text-zinc-400 overflow-x-auto whitespace-pre-wrap max-h-48 overflow-y-auto">{@env}</pre>
+        <pre class="px-4 py-3 text-sm md:text-[13px] font-mono leading-snug text-zinc-600 dark:text-zinc-400 overflow-x-auto whitespace-pre-wrap max-h-48 overflow-y-auto">{@env}</pre>
       </div>
       <div class="flex-1 flex flex-col min-h-0">
         <div class="flex items-center justify-between px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80">
-          <h3 class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Logs</h3>
+          <h3 class="text-sm font-semibold uppercase tracking-wider text-zinc-500">Logs</h3>
           <form phx-change="filter_container_service" class="inline">
             <input
               type="text"
               name="service"
               value={@log_service || ""}
               placeholder="Filter service..."
-              class="text-xs rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-1 w-28
+              aria-label="Filter logs by service"
+              class="text-sm rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-1 w-28
                      focus:outline-none focus:ring-1 focus:ring-violet-500/30"
             />
           </form>
         </div>
-        <pre class="flex-1 px-4 py-3 text-xs font-mono overflow-auto whitespace-pre-wrap bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-green-400 min-h-[200px]">{@logs}</pre>
+        <pre class="flex-1 px-4 py-3 text-sm md:text-[13px] font-mono leading-snug overflow-auto whitespace-pre-wrap bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-green-400 min-h-[200px]">{@logs}</pre>
       </div>
     </div>
     """

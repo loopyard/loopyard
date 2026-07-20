@@ -56,7 +56,7 @@ defmodule LoopyardWeb.ProjectLiveTest do
 
   describe "remove project" do
     test "shows confirmation screen before removing", %{conn: conn, project: project} do
-      {:ok, view, html} = live(conn, "/projects/#{project.id}")
+      {:ok, view, html} = live(conn, "/projects/#{project.id}/settings")
       assert html =~ "Remove project"
 
       # Click Remove project — shows confirmation, doesn't delete yet
@@ -68,7 +68,7 @@ defmodule LoopyardWeb.ProjectLiveTest do
 
     @tag timeout: 5_000
     test "cancel returns to project view", %{conn: conn, project: project} do
-      {:ok, view, _html} = live(conn, "/projects/#{project.id}")
+      {:ok, view, _html} = live(conn, "/projects/#{project.id}/settings")
       view |> element("button", "Remove project") |> render_click()
 
       html = view |> element("button", "Cancel") |> render_click()
@@ -80,7 +80,7 @@ defmodule LoopyardWeb.ProjectLiveTest do
     @tag :docker
     @tag timeout: 30_000
     test "confirming removes project and redirects home", %{conn: conn, project: project} do
-      {:ok, view, _html} = live(conn, "/projects/#{project.id}")
+      {:ok, view, _html} = live(conn, "/projects/#{project.id}/settings")
       view |> element("button", "Remove project") |> render_click()
 
       # `remove_project` now uses start_async, so render_click returns
@@ -106,7 +106,7 @@ defmodule LoopyardWeb.ProjectLiveTest do
       {:ok, project, _} = ProjectRegistry.add(tmp_dir)
 
       conn = build_conn()
-      {:ok, view, _html} = live(conn, "/projects/#{project.id}")
+      {:ok, view, _html} = live(conn, "/projects/#{project.id}/settings")
       view |> element("button", "Remove project") |> render_click()
       view |> element("button", "Remove project") |> render_click()
 

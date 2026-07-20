@@ -55,6 +55,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.MainContent do
         service_name={@selected_service}
         service_statuses={@service_statuses}
         logs={@service_logs}
+        frames={@service_frames}
         base_path={@base_path}
         host={@host}
         workspace_state={@workspace_state}
@@ -66,7 +67,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.MainContent do
       />
       <.all_services_view :if={@live_action == :services} all_service_logs={@all_service_logs} />
       <.volume_detail
-        :if={@live_action in [:volume, :volume_files_root, :volume_file, :volume_git]}
+        :if={@live_action in [:volume, :volume_files_root, :volume_file, :volume_git, :volume_history]}
         volume_name={@selected_volume}
         volumes={@volumes}
         workspace_id={@workspace.id}
@@ -88,7 +89,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.MainContent do
               patch={"#{@base_path}/volumes/#{@selected_volume}/git"}
               class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
             >
-              ← Git
+              ← Changes
             </.link>
             <span class="text-zinc-300 dark:text-zinc-600">·</span>
             <span class="font-mono text-zinc-600 dark:text-zinc-400">{@diff_path}</span>
@@ -109,10 +110,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.MainContent do
         <div class="flex flex-col h-full">
           <div class="flex-none px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80 text-xs">
             <.link
-              patch={"#{@base_path}/volumes/#{@selected_volume}/git"}
+              patch={"#{@base_path}/volumes/#{@selected_volume}/history"}
               class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
             >
-              ← Git
+              ← History
             </.link>
           </div>
           <LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer.commit_detail
@@ -156,7 +157,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.MainContent do
         @live_action in [:index, :chat, :container] && !@booting_agent_id && !@selected_agent
       } />
       <.agent_view
-        :if={@live_action in [:index, :chat, :container, :context_panel] && @selected_agent}
+        :if={@live_action in [:index, :chat, :container, :context_panel, :info] && @selected_agent}
         {assigns}
       />
     <% end %>

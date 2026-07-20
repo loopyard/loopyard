@@ -27,6 +27,10 @@ defmodule LoopyardWeb.Components.Ansi do
     "97" => "ansi-bright-white"
   }
 
+  # The color class names — used to REPLACE (not stack) the color when a new
+  # color code arrives, while attributes like bold/underline accumulate.
+  @color_classes @colors |> Map.values() |> MapSet.new()
+
   @doc """
   Convert ANSI-colored text to HTML. Returns a Phoenix.HTML safe string.
 
@@ -47,50 +51,53 @@ defmodule LoopyardWeb.Components.Ansi do
   end
 
   defp convert_ansi(escaped_html) do
-    # The HTML is already escaped, but ANSI codes got escaped too:
-    # \x1b became &#x1b; or was preserved. We need to work on the
-    # raw bytes. Since Phoenix html_escape doesn't touch \x1b (it's
-    # not <, >, &, or "), the escape bytes are still literal \x1b.
-    parts = Regex.split(@ansi_pattern, escaped_html, include_captures: true)
+    # The HTML is already escaped, but ANSI codes are not (\x1b isn't <, >, &, or
+    # "), so the escape bytes are still literal. Split into code sequences and
+    # text runs, ACCUMULATING the active SGR state across codes, and wrap each
+    # text run in a span carrying the full state. This is what makes `\e[1m\e[36m`
+    # (Rails' bold-cyan) render bold AND cyan — folding, not reset-on-each-code —
+    # and it emits no empty spans.
+    @ansi_pattern
+    |> Regex.split(escaped_html, include_captures: true)
+    |> Enum.reduce({[], []}, fn part, {acc, active} ->
+      case Regex.run(@ansi_pattern, part) do
+        [_, codes_str] ->
+          {acc, apply_codes(active, String.split(codes_str, ";", trim: true))}
 
-    {html, open?} =
-      Enum.reduce(parts, {"", false}, fn part, {acc, in_span} ->
-        case Regex.run(@ansi_pattern, part) do
-          [_, codes_str] ->
-            codes = String.split(codes_str, ";", trim: true)
-            classes = codes_to_classes(codes)
+        nil ->
+          run =
+            if part == "" or active == [],
+              do: part,
+              else: [~s(<span class="), Enum.join(active, " "), ~s(">), part, "</span>"]
 
-            close = if in_span, do: "</span>", else: ""
-
-            if classes == "" do
-              # Reset — just close
-              {acc <> close, false}
-            else
-              {acc <> close <> "<span class=\"#{classes}\">", true}
-            end
-
-          nil ->
-            {acc <> part, in_span}
-        end
-      end)
-
-    if open?, do: html <> "</span>", else: html
-  end
-
-  defp codes_to_classes(codes) do
-    codes
-    |> Enum.map(fn code ->
-      cond do
-        code == "0" -> nil
-        code == "1" -> "ansi-bold"
-        code == "2" -> "ansi-dim"
-        code == "3" -> "ansi-italic"
-        code == "4" -> "ansi-underline"
-        Map.has_key?(@colors, code) -> @colors[code]
-        true -> nil
+          {[acc | run], active}
       end
     end)
-    |> Enum.reject(&is_nil/1)
-    |> Enum.join(" ")
+    |> elem(0)
+    |> IO.iodata_to_binary()
   end
+
+  # Fold SGR codes into the active class list. Reset (0, or an empty `\e[m`)
+  # clears everything; a new COLOR replaces any prior color; attributes
+  # (bold/dim/italic/underline) accumulate on top.
+  defp apply_codes(_active, []), do: []
+
+  defp apply_codes(active, codes) do
+    Enum.reduce(codes, active, fn code, acc ->
+      cond do
+        code == "0" -> []
+        code == "1" -> add_once(acc, "ansi-bold")
+        code == "2" -> add_once(acc, "ansi-dim")
+        code == "3" -> add_once(acc, "ansi-italic")
+        code == "4" -> add_once(acc, "ansi-underline")
+        Map.has_key?(@colors, code) -> put_color(acc, @colors[code])
+        true -> acc
+      end
+    end)
+  end
+
+  defp add_once(list, cls), do: if(cls in list, do: list, else: list ++ [cls])
+
+  defp put_color(list, color),
+    do: Enum.reject(list, &MapSet.member?(@color_classes, &1)) ++ [color]
 end

@@ -116,16 +116,18 @@ defmodule Loopyard.Onboarding do
       progress.("Starting the environment…")
       start_work_async(ws_id)
 
-      # Replicate the source's RUNNING state: if its preview cluster (services)
-      # was up, bring the fork's up too — "branch this and keep working" means the
-      # dev server should be running, not a dead sidebar. Async + best-effort:
-      # the fork is usable immediately; services come up in the background and the
-      # sidebar goes green via the Observer. Safe now that code-volume names are
-      # normalized to THIS workspace (see Compose.normalize_code_volume_names).
-      if preview_running?(source_ws_id) do
-        progress.("Starting services…")
-        start_preview_async(ws_id)
-      end
+      # Boot the fork's preview cluster from the `.loopyard` config it carries —
+      # "branch this and keep working" means the dev server should come up, not a
+      # dead sidebar. Async + best-effort: the fork is usable immediately; services
+      # come up in the background and the sidebar goes green via the Observer.
+      # Safe now that code-volume names are normalized to THIS workspace
+      # (see Compose.normalize_code_volume_names); no-ops if there's no compose.
+      # (Previously gated on `preview_running?(source)`, which checked for a
+      # compose service literally named "workspace" — real compose files name
+      # their services dev/postgres/etc, so it was always false and forks never
+      # booted their services.)
+      progress.("Starting services…")
+      start_preview_async(ws_id)
 
       {:ok, ws}
     end
@@ -164,19 +166,43 @@ defmodule Loopyard.Onboarding do
             name: name,
             working_dir: working_dir,
             started_by: Keyword.get(opts, :started_by, "system"),
-            workspace_id: ws_id
+            workspace_id: ws_id,
+            # Inherit THIS workspace's workstation identity (its creds/home), not
+            # the global `current` — so agents in a workspace attached to another
+            # workstation follow that identity.
+            workstation_identity: Loopyard.Workspace.workstation_id(ws)
           ]
 
-        # Volume-backed workspaces run container-only (cheap work container); only
-        # legacy host bind-mount projects get a bind_mount.
-        container_only? =
-          Loopyard.Workspace.container_running?(ws_id) or agent_volume_based?(ws_id)
-
-        agent_opts =
-          if container_only?, do: agent_opts, else: agent_opts ++ [bind_mount: working_dir]
+        # SECURITY BOUNDARY — workspace agents are ALWAYS container-only. They act
+        # on their code volume through the sandboxed `loopyard-container` MCP
+        # (`exec` runs INSIDE the container); native host tools (Bash/Read/Write,
+        # `docker`, `mix loopyard.rpc`) are NEVER exposed. We do not add a
+        # `bind_mount` here, ever.
+        #
+        # Host `bind_mount` used to grant an agent direct host access, decided by
+        # transient runtime state (`container_running?` / a `volume_based` flag).
+        # A freshly-provisioned agent hit that fallback BEFORE its container was up
+        # and got host `Bash` — which it used to `mix loopyard.rpc` and forge a
+        # workspace behind the app's back. That escape hatch is removed. Local-source
+        # projects sync host↔volume via Mutagen, so no agent needs host access.
+        #
+        # Do NOT reintroduce a per-agent bind_mount. See docs/SECURITY.md.
 
         agent_opts =
           if service_name, do: agent_opts ++ [service_name: service_name], else: agent_opts
+
+        # Pass through a custom toolkit + system prompt for special agents (the
+        # operator), and an EXPLICIT `host_access: true` opt-in (never a fallback —
+        # absent ⇒ container-only). These thread straight to Initializer, which
+        # honors :tools / :system_prompt / :host_access. nil → default agent.
+        agent_opts =
+          [:tools, :system_prompt, :host_access]
+          |> Enum.reduce(agent_opts, fn key, acc ->
+            case Keyword.get(opts, key) do
+              nil -> acc
+              val -> acc ++ [{key, val}]
+            end
+          end)
 
         boot_opts =
           cond do
@@ -192,18 +218,17 @@ defmodule Loopyard.Onboarding do
     end
   end
 
-  defp agent_volume_based?(ws_id) do
-    case WorkspaceRegistry.get_workspace(ws_id) do
-      %{volume_based: true} -> true
-      _ -> false
-    end
-  end
-
-  # True when the workspace's preview cluster (the compose `workspace` service) is
-  # up — i.e. the source had its services running and the fork should too.
-  defp preview_running?(ws_id), do: Loopyard.Workspace.container_running?(ws_id)
-
-  defp start_preview_async(ws_id) do
+  @doc """
+  Bring the workspace's preview cluster up in the BACKGROUND — best-effort, so a
+  freshly-cloned workspace is browsable immediately and its services come up
+  behind it (the sidebar goes green via the Observer). Called at the end of every
+  provisioning path (fork here, `Workspace.Setup` for UI-created workspaces) so a
+  cloned workspace boots the `.loopyard` config it came with, instead of landing
+  with a dead service sidebar. Safe when there's no compose: `start_preview/1`
+  no-ops with a logged error rather than crashing.
+  """
+  @spec start_preview_async(String.t()) :: :ok
+  def start_preview_async(ws_id) do
     Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn -> start_preview(ws_id) end)
     :ok
   end
@@ -406,6 +431,11 @@ defmodule Loopyard.Onboarding do
       path: Workspace.compose_dir(ws_id),
       is_main: Keyword.get(opts, :is_main, false),
       status: :stopped,
+      # The workstation (identity) this workspace belongs to — its creds/home the
+      # agents here inherit. Recorded at creation (the operating identity), so a
+      # workspace can be attached to a specific workstation instead of always
+      # following the global `current`. Multi-workstation foundation.
+      workstation_id: Keyword.get(opts, :workstation_id) || Loopyard.Workstation.current(),
       # The fork/checkout already materialized the volume — no saga needed.
       setup: Loopyard.Workspace.Setup.ready_setup_field(),
       added_at: DateTime.utc_now()

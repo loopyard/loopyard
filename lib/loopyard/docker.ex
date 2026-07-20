@@ -350,6 +350,21 @@ defmodule Loopyard.Docker do
 
   Options:
     * `:env` — list of `{name, value}` tuples passed to the child process
+    * `:watchdog` — spawn via a stdin-watchdog shell that KILLS the docker
+      client when the port goes away (default `false`).
+
+  ## Why `:watchdog` exists (the 148-orphan incident)
+
+  Closing an Erlang port only closes the child's stdio pipes — it does NOT
+  kill the process. A read-only follower like `docker logs -f` on a QUIET
+  container never writes, so it never hits EPIPE and lives forever: every
+  LogBuffer/owner restart, and every full-VM reboot, orphaned one follower
+  per service until the accumulated clients exhausted Colima's docker socket
+  (EOF on every new connection). With `:watchdog`, the wrapper's `cat` sees
+  stdin EOF the moment the port dies — owner crash, Port.close, or whole-BEAM
+  death alike — and kills the docker client. Use it for every follower that
+  doesn't need stdin (`logs -f`, `events`); NOT for interactive ports (the
+  terminal writes keystrokes through stdin, which the watchdog would eat).
   """
   def open_port(args, opts \\ []) do
     case System.find_executable("docker") do
@@ -360,8 +375,7 @@ defmodule Loopyard.Docker do
         port_opts = [
           :binary,
           :exit_status,
-          :stderr_to_stdout,
-          {:args, args}
+          :stderr_to_stdout
         ]
 
         port_opts =
@@ -374,7 +388,20 @@ defmodule Loopyard.Docker do
                 [{:env, Enum.map(env, fn {k, v} -> {to_charlist(k), to_charlist(v)} end)}]
           end
 
-        Port.open({:spawn_executable, docker_path}, port_opts)
+        if Keyword.get(opts, :watchdog, false) do
+          # `$0` is the docker path, `"$@"` the args; docker's stdout/stderr
+          # inherit the shell's, so output flows to the port unchanged. `cat`
+          # holds the shell on stdin until the port dies, then the client is
+          # killed — no orphan survives its port.
+          script = ~S("$0" "$@" & p=$!; cat >/dev/null 2>&1; kill "$p" 2>/dev/null; wait "$p" 2>/dev/null)
+
+          Port.open(
+            {:spawn_executable, System.find_executable("sh")},
+            port_opts ++ [{:args, ["-c", script, docker_path | args]}]
+          )
+        else
+          Port.open({:spawn_executable, docker_path}, port_opts ++ [{:args, args}])
+        end
     end
   end
 

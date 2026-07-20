@@ -13,6 +13,8 @@ Read at runtime, overriding defaults baked into code.
 | `SSH_PORT` | `0` (random) | Port for the built-in SSH server (`Loopyard.SSHServer`). `0` picks a free port. |
 | `LOOPYARD_DEV_SECRET_KEY_BASE` | required in dev/prod | Phoenix secret (see `config/runtime.exs`). |
 | `ANTHROPIC_API_KEY` / Claude Code auth token | — | Consumed by the Claude Code SDK subprocess. Not read directly by Loopyard. |
+| `LOOPYARD_MCP_PORT` | `4030` | Port for the dedicated ACP MCP bridge listener (`LoopyardWeb.MCP.Listener`) — a separate `0.0.0.0` Bandit endpoint so in-container ACP harnesses can reach Loopyard's control-plane tools via `host.docker.internal`. |
+| `LOOPYARD_MCP_URL` | derived | Override the base URL a container uses to reach the MCP bridge (default `http://host.docker.internal:<LOOPYARD_MCP_PORT>`). Set this when the Docker-host alias isn't `host.docker.internal`. |
 
 ## Application config (`config/*.exs`)
 
@@ -25,12 +27,20 @@ Read via `Application.get_env(:loopyard, key)`. Overridable at runtime in `confi
 | `:container_ready_check` | `nil` | Injection seam for SyncMonitor's "is the destination container up" probe. Tests override; production uses the real Docker check. |
 | `:crash_backoff_base_ms` | `1_000` | Base backoff for the CLI auto-restart loop in `ChatAgent`. Exponential from here up to a cap. |
 | `:agent_thinking` | `:adaptive` | Extended-thinking config passed to the harness per session. `:adaptive` lets the model scale reasoning to the turn (streams into the chat's thinking bubble before tool calls); `:disabled` turns it off; `{:enabled, budget_tokens: N}` caps it. Applies on the next session start. |
-| `:default_harness` | `Loopyard.Harness.Claude` | Which harness adapter a new agent uses (`Loopyard.Harness.{Claude,ACP,Fake}`). Test env uses `Fake`. The agent stores the module, so a change applies to newly-spawned agents (existing ones on the next replay). |
+| `:default_harness` | `Loopyard.Harness.ACP` | Which harness adapter a new agent uses (`Loopyard.Harness.{Claude,ACP,Fake}`). ACP drives the real Claude Code harness in-container over the Agent Client Protocol; `Claude` is the SDK path (set `backend:` per-agent or flip this to switch back). Test env uses `Fake`. The agent stores the module, so a change applies to newly-spawned agents (existing ones on the next replay). **Caveat:** ACP doesn't surface token usage yet, so the cost panel reads $0 for ACP agents (IMPROVEMENTS.md #16). |
 | `:model_windows` | map (see `config.exs`) | Per-model context-window sizes in tokens; keys are `String.starts_with?` prefixes so dated variants match. **Add a row when a new frontier model ships** — an unlisted model logs loudly + assumes `:model_window_default`. |
 | `:model_window_default` | `200_000` | Fallback window for a model not in `:model_windows`. Conservative on purpose. |
 | `Loopyard.PortRegistry, :port_range` | `4000..9999` | Host port range used by `PortRegistry.assign/3`. Exhaustion returns `{:error, :port_pool_exhausted}`. Keep it outside the ephemeral port range to avoid collisions with transient outbound connections. |
 | `LoopyardWeb.Endpoint, :http, :port` | `4000` | HTTP port. Env-overridable via `PORT` in `runtime.exs`. |
 | `:phoenix, :filter_parameters` | `["password", "secret"]` | Param keys redacted from request/event logs. `"secret"` covers the `request_secret` masked field so a submitted key never lands in the log. Setting this overrides Phoenix's `["password"]` default — keep both. |
+| `:acp_mcp_listener` | `[enabled: true, port: 4030, ip: {0,0,0,0}]` | The dedicated ACP MCP bridge listener (`LoopyardWeb.MCP.Listener`). `enabled: false` (test env) skips it entirely. Bound to `0.0.0.0` so workspace containers can reach it; every request is bearer-authed + agent-scoped (`Loopyard.MCP.Token`). |
+| `:acp_mcp_url` | `nil` | Base-URL override for the MCP bridge (same as `LOOPYARD_MCP_URL`). `nil` → `http://host.docker.internal:<listener port>`. |
+| `:send_wakes_agent?` | `true` | Whether sending a message to a dead/asleep agent WAKES it (boots its workspace group if needed, resumes the agent, then delivers) — the "wakes on your next message" contract. `false` in test env: the wake boots real supervisors (and possibly compose), which wedges the shared WorkspaceSupervisor in tests; sends there get an instant `:unavailable` instead. |
+| `:change_counts_enabled?` | `true` | Whether `Loopyard.ChangeCounts` computes per-workspace changed-file counts (the overview's ±N badge): async `git_status` on agent idle + a ~5-min sweep, cached in the `:ws_change_counts` ETS table, published via `Events.ChangeCounts` on delta. `false` in test env — the recomputes are real git shell-outs. |
+| `:work_container_memory` | `"8g"` | **Hard memory cap on every work container** (`docker run --memory`/`--memory-swap`). The Claude Code harness runs inside and can leak into tens of GB; this ceiling means the kernel OOM-kills the bloated process INSIDE the container (contained) instead of the pressure hitting the host. Applied at create AND retro-applied to existing containers via `docker update` on `ensure_up`. Set `nil`/`""` to disable (unbounded — not recommended). |
+| `:harness_memory_monitor_enabled?` | `true` | Whether `Loopyard.Harness.MemoryMonitor` runs (Layer 2 — proactive reclaim). Sweeps `docker stats`, cleanly restarts an **idle** agent whose work container crossed `:harness_memory_soft_limit_bytes`, reclaiming a leak before the hard cap OOM-kills it mid-turn. `:ignore` (no child) when `false` (test env). |
+| `:harness_memory_soft_limit_bytes` | `4 GiB` | Soft threshold for the monitor above — an idle agent's container over this is proactively restarted. Keep it comfortably under `:work_container_memory` so reclaim happens before the hard cap. |
+| `:harness_memory_sweep_ms` | `60_000` | How often the memory monitor samples the fleet. |
 
 ### `:aural` (extracted Mix package — `packages/aural`)
 

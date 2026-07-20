@@ -130,6 +130,39 @@ defmodule Loopyard.Workstation do
     end
   end
 
+  @doc """
+  Restart the harness session of every agent bound to this workstation — every
+  workspace agent whose workspace resolves to `id`, plus the operator agent for
+  `id`. Use this after pushing a fresh credential (e.g. a new
+  `CLAUDE_CODE_OAUTH_TOKEN`) into the identity env: a *running* ACP/CLI session
+  sourced its env at launch and holds the OLD token until it is restarted, so
+  the volume-level `Env.sync_home` alone doesn't rescue an already-live session.
+  `restart_session` passes `resume:`, so each conversation continues — the user
+  sees a "Reconnected" marker, not a fresh agent. Best-effort per agent.
+  """
+  @spec reload_agents(String.t()) :: :ok
+  def reload_agents(id) when is_binary(id) do
+    operator_id = Loopyard.Operator.agent_id(id)
+
+    Loopyard.ChatAgent.list_agents()
+    |> Enum.filter(fn a ->
+      a.id == operator_id or
+        (is_binary(a[:workspace_id]) and agent_workstation(a[:workspace_id]) == id)
+    end)
+    |> Enum.each(fn a -> Loopyard.ChatAgent.restart_session(a.id) end)
+
+    :ok
+  rescue
+    _ -> :ok
+  end
+
+  # workstation_id/1 raises on unknown/malformed ids; never let that abort a reload.
+  defp agent_workstation(ws_id) do
+    Workspace.workstation_id(ws_id)
+  rescue
+    _ -> nil
+  end
+
   # --- Docker naming (per identity) ---
   # Identity is the home volume; the toolchain is the shared base image, so there
   # is no per-identity image tag.

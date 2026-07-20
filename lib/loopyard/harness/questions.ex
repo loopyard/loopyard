@@ -55,6 +55,11 @@ defmodule Loopyard.Harness.Questions do
       {qid, %{agent_id: agent_id, msg_id: msg_id, waiter: self(), questions: questions}}
     )
 
+    # Signal "the agent needs YOU" so the chime bridge can play its distinct
+    # attention sound (vs the turn-finished "done" chime). Observability only —
+    # crash-safe, no-op if activity/sound is off.
+    Loopyard.Events.Activity.record(agent_id, :status, :awaiting)
+
     receive do
       {:answered, ^qid, selections} ->
         :ets.delete(@table, qid)

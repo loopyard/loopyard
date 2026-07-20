@@ -15,6 +15,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
   attr :git_log, :list, default: []
   attr :base_path, :string, required: true
   attr :volume_name, :string, required: true
+  # :changes → staged + unstaged only (the /git switcher item); :history →
+  # commit log only (/history); :all → the old combined page (legacy callers).
+  attr :mode, :atom, default: :all, values: [:all, :changes, :history]
 
   def git_overview(assigns) do
     staged = if is_map(assigns.git_status), do: assigns.git_status[:staged] || [], else: []
@@ -24,6 +27,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
       assigns
       |> assign(:staged, staged)
       |> assign(:unstaged, unstaged)
+      |> assign(:show_changes, assigns.mode in [:all, :changes])
+      |> assign(:show_history, assigns.mode in [:all, :history])
 
     ~H"""
     <div class="divide-y divide-zinc-200 dark:divide-zinc-700/80">
@@ -37,7 +42,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
       </div>
 
       <%!-- Staged changes --%>
-      <div :if={@staged != []}>
+      <div :if={@show_changes && @staged != []}>
         <div class="text-[10px] font-semibold uppercase tracking-wider text-green-600 dark:text-green-400 px-4 py-2 bg-green-50 dark:bg-green-900/10">
           Staged — ready to commit ({length(@staged)} file{if length(@staged) != 1, do: "s"})
         </div>
@@ -49,7 +54,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
       </div>
 
       <%!-- Unstaged changes --%>
-      <div :if={@unstaged != []}>
+      <div :if={@show_changes && @unstaged != []}>
         <div class="text-[10px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400 px-4 py-2 bg-amber-50 dark:bg-amber-900/10">
           Unstaged changes ({length(@unstaged)} file{if length(@unstaged) != 1, do: "s"})
         </div>
@@ -62,16 +67,16 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
 
       <%!-- Clean state --%>
       <div
-        :if={@staged == [] && @unstaged == [] && is_map(@git_status)}
-        class="px-4 py-3 text-sm text-zinc-400 dark:text-zinc-500"
+        :if={@show_changes && @staged == [] && @unstaged == [] && is_map(@git_status)}
+        class="px-4 py-3 text-sm text-zinc-500 dark:text-zinc-400"
       >
         Working tree clean
       </div>
 
-      <%!-- Recent commits --%>
-      <div :if={is_list(@git_log) && @git_log != []}>
-        <div class="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50">
-          Recent commits
+      <%!-- Commit history --%>
+      <div :if={@show_history && is_list(@git_log) && @git_log != []}>
+        <div class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50">
+          {if @mode == :history, do: "Commits", else: "Recent commits"}
         </div>
         <.link
           :for={commit <- @git_log}
@@ -83,7 +88,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
           </span>
           <div class="min-w-0 flex-1">
             <div class="text-zinc-700 dark:text-zinc-300 truncate">{commit.message}</div>
-            <div class="text-xs text-zinc-400 dark:text-zinc-500">
+            <div class="text-xs text-zinc-500 dark:text-zinc-400">
               {commit.author} · {format_date(commit.date)}
             </div>
           </div>
@@ -93,10 +98,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
       <%!-- Empty --%>
       <div
         :if={
-          is_list(@git_log) && @git_log == [] && is_map(@git_status) && @staged == [] &&
-            @unstaged == []
+          @show_history && is_list(@git_log) && @git_log == [] &&
+            (@mode == :history || (is_map(@git_status) && @staged == [] && @unstaged == []))
         }
-        class="px-4 py-8 text-sm text-zinc-400 dark:text-zinc-500 text-center"
+        class="px-4 py-8 text-sm text-zinc-500 dark:text-zinc-400 text-center"
       >
         No git history
       </div>
@@ -123,7 +128,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
           </span>
           <div class="min-w-0">
             <div class="text-sm font-medium text-zinc-800 dark:text-zinc-200">{@commit.message}</div>
-            <div class="text-xs text-zinc-400 dark:text-zinc-500 mt-1">
+            <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
               {@commit.author} · {format_date(@commit.date)}
             </div>
           </div>
@@ -132,7 +137,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
 
       <%!-- Files changed --%>
       <div>
-        <div class="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50">
+        <div class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 px-4 py-2 bg-zinc-50 dark:bg-zinc-800/50">
           {length(@commit.files)} file{if length(@commit.files) != 1, do: "s"} changed
         </div>
         <.link
@@ -194,7 +199,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
             <tr :for={{line, idx} <- Enum.with_index(@lines, 1)} class={diff_line_bg(line)}>
               <td
                 phx-no-format
-                class="select-none text-right pr-2 pl-3 py-0 text-zinc-400 dark:text-zinc-600 align-top w-[1%] whitespace-nowrap opacity-50"
+                class="select-none text-right pr-2 pl-3 py-0 text-zinc-500 dark:text-zinc-400 align-top w-[1%] whitespace-nowrap opacity-50"
               >{idx}</td>
               <td
                 phx-no-format
@@ -261,7 +266,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
         "text-violet-600 dark:text-violet-400"
 
       String.starts_with?(line, "diff ") or String.starts_with?(line, "index ") ->
-        "text-zinc-400 dark:text-zinc-600"
+        "text-zinc-500 dark:text-zinc-400"
 
       true ->
         "text-zinc-700 dark:text-zinc-300"

@@ -99,16 +99,39 @@ defmodule Loopyard.Workstation.Env do
 
     if Regex.match?(@key_re, key) do
       all(id) |> Map.put(key, value) |> save(id)
+      # Materialize into the identity's home volume NOW. A running container
+      # already mounts that volume, so the new value (e.g. a fresh
+      # CLAUDE_CODE_OAUTH_TOKEN) is visible to the next in-container harness
+      # session immediately — without restarting the container. Best-effort:
+      # a docker hiccup mustn't lose the saved value.
+      sync_home(id)
+      # sync_home only rescues the NEXT session; a session that's already live
+      # holds the token it sourced at launch. When the pushed key is a harness
+      # credential, restart the workstation's running agents so they re-source
+      # it (each resumes its conversation). This is how "push a fresh token"
+      # auto-recovers stranded agents without any manual Restart click.
+      maybe_reload_agents(key, id)
       :ok
     else
       {:error, :invalid_key}
     end
   end
 
+  # Credentials the in-container harness authenticates with. Pushing a new value
+  # for one of these should reload running sessions; other env vars (build flags,
+  # feature toggles) don't need to interrupt an in-flight turn.
+  @credential_keys ~w(CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_API_KEY)
+
+  defp maybe_reload_agents(key, id) do
+    if key in @credential_keys, do: Loopyard.Workstation.reload_agents(id)
+    :ok
+  end
+
   @doc "Remove an env var."
   @spec delete(String.t(), String.t()) :: :ok
   def delete(key, id) do
     all(id) |> Map.delete(key) |> save(id)
+    sync_home(id)
     :ok
   end
 
@@ -196,6 +219,126 @@ defmodule Loopyard.Workstation.Env do
     case Loopyard.Docker.docker(["run", "--rm", "-v", "#{vol}:/vol", image, "sh", "-c", script]) do
       {:ok, _} -> :ok
       err -> err
+    end
+  end
+
+  # The parts of the driver's host `~/.claude` that make Claude *theirs* —
+  # skills, slash commands, custom subagents, and the user-level CLAUDE.md.
+  # WITHOUT these the in-container ACP harness is the real Claude Code but
+  # with a blank identity: `/frontend-design` → "Unknown skill", no house
+  # rules, no presets. An explicit ALLOWLIST — never the whole dir, which
+  # can hold credentials (.credentials.json), session logs, and caches that
+  # must not leak into (or bloat) the volume.
+  @claude_identity_dirs ~w(skills commands agents)
+  @claude_identity_files ~w(CLAUDE.md)
+
+  @doc """
+  Sync the driver's Claude identity (#{Enum.join(@claude_identity_dirs, "/, ")}/,
+  #{Enum.join(@claude_identity_files, ", ")}) from the host `~/.claude` into the
+  identity's home volume, so the in-container harness has the same skills +
+  prompts as Claude on the host. Replace-on-sync (host is the source of truth);
+  container-generated state (sessions, projects, settings.json, todos) is
+  untouched. Idempotent, cheap, best-effort — callers ignore the result. No-op
+  when the host has no `~/.claude`.
+  """
+  @spec sync_claude(String.t()) :: :ok | {:error, term()}
+  def sync_claude(id) do
+    host_claude = Path.expand("~/.claude")
+
+    if File.dir?(host_claude) do
+      vol = Workstation.home_volume(id)
+
+      dirs =
+        Enum.map_join(@claude_identity_dirs, " ", fn d ->
+          "if [ -d /host/#{d} ]; then rm -rf /vol/.claude/#{d} && cp -R /host/#{d} /vol/.claude/#{d}; fi;"
+        end)
+
+      files =
+        Enum.map_join(@claude_identity_files, " ", fn f ->
+          "if [ -f /host/#{f} ]; then cp /host/#{f} /vol/.claude/#{f}; fi;"
+        end)
+
+      script = "mkdir -p /vol/.claude && #{dirs} #{files} true"
+
+      case Loopyard.Docker.docker([
+             "run",
+             "--rm",
+             "-v",
+             "#{host_claude}:/host:ro",
+             "-v",
+             "#{vol}:/vol",
+             "alpine",
+             "sh",
+             "-c",
+             script
+           ]) do
+        {:ok, _} -> :ok
+        err -> err
+      end
+    else
+      :ok
+    end
+  end
+
+  @doc """
+  Pre-accept Claude Code's folder-trust dialog for the dirs an in-container
+  harness runs in: `/workspace` (every workspace agent's cwd) and `/home/<id>`
+  (the operator's cwd). Claude Code REFUSES to load project `CLAUDE.md`,
+  `.claude/settings.json`, hooks, and skills from an untrusted directory — and
+  in a headless ACP container there is no human to click the dialog, so
+  project-level config was silently ignored every session. Loopyard is the one
+  that put the code in the volume; trust is its call to make at boot.
+
+  Merges `projects.<dir>.hasTrustDialogAccepted = true` into the identity's
+  `~/.claude.json` (the exact key the CLI itself writes), preserving everything
+  else in the file. Idempotent, best-effort — callers ignore the result.
+  """
+  @spec trust_projects(String.t()) :: :ok | {:error, term()}
+  def trust_projects(id) do
+    vol = Workstation.home_volume(id)
+
+    with {:ok, out} <-
+           Loopyard.Docker.docker([
+             "run",
+             "--rm",
+             "-v",
+             "#{vol}:/vol",
+             "alpine",
+             "sh",
+             "-c",
+             "cat /vol/.claude.json 2>/dev/null || echo {}"
+           ]) do
+      current =
+        case Jason.decode(out) do
+          {:ok, m} when is_map(m) -> m
+          _ -> %{}
+        end
+
+      projects =
+        Enum.reduce(["/workspace", "/home/#{id}"], Map.get(current, "projects", %{}), fn dir,
+                                                                                         acc ->
+          Map.update(
+            acc,
+            dir,
+            %{"hasTrustDialogAccepted" => true},
+            &Map.put(&1, "hasTrustDialogAccepted", true)
+          )
+        end)
+
+      b64 = current |> Map.put("projects", projects) |> Jason.encode!() |> Base.encode64()
+
+      # ATOMIC replace (tmp + mv). A plain `>` truncates first, and a harness
+      # process starting concurrently can read the half-written file and die
+      # with exit 1 — which is exactly how the fleet-wide session reload
+      # produced "Failed to restart the agent session: {:closed, {:exit_status, 1}}".
+      script =
+        "printf '%s' '#{b64}' | base64 -d > /vol/.claude.json.tmp && " <>
+          "chmod 600 /vol/.claude.json.tmp && mv /vol/.claude.json.tmp /vol/.claude.json"
+
+      case Loopyard.Docker.docker(["run", "--rm", "-v", "#{vol}:/vol", "alpine", "sh", "-c", script]) do
+        {:ok, _} -> :ok
+        err -> err
+      end
     end
   end
 

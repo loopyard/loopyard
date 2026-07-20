@@ -24,10 +24,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.States do
           </svg>
         </div>
         <h3 class="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-1">Starting agent</h3>
-        <p class="text-xs text-zinc-400 dark:text-zinc-500 font-mono mb-3">{@agent_id}</p>
+        <p class="text-xs text-zinc-500 dark:text-zinc-400 font-mono mb-3">{@agent_id}</p>
         <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-4">{@status}</p>
         <details :if={@boot_log != []} class="text-left">
-          <summary class="text-xs text-zinc-400 dark:text-zinc-500 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-300">
+          <summary class="text-xs text-zinc-500 dark:text-zinc-400 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-300">
             Boot log
           </summary>
           <div class="mt-2 bg-zinc-50 dark:bg-zinc-800 rounded-lg p-3 text-xs font-mono text-zinc-500 dark:text-zinc-400 space-y-0.5 max-h-48 overflow-y-auto">
@@ -88,7 +88,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.States do
           New agent
         </.link>
 
-        <div class="mt-6 text-xs text-zinc-400 dark:text-zinc-500">
+        <div class="mt-6 text-xs text-zinc-500 dark:text-zinc-400">
           <%= if @workspace_state == :starting do %>
             <span class="inline-flex items-center gap-2 animate-pulse">
               <svg
@@ -253,7 +253,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.States do
             />
           </svg>
         </div>
-        <p class="text-sm text-zinc-400 dark:text-zinc-500">
+        <p class="text-sm text-zinc-500 dark:text-zinc-400">
           Create or select an agent to start chatting
         </p>
       </div>
