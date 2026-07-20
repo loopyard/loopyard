@@ -494,19 +494,19 @@ defmodule Loopyard.ChatAgent.StreamHandler do
       state = %{state | last_activity_at: now, errors: state.errors + 1}
 
       case SessionManager.start_session_safe(state) do
-        {:ok, new_session} ->
+        {:ok, new_session, live_id} ->
           recovered_msg =
-            if is_binary(state.claude_session_id) do
+            if is_binary(live_id) do
               %{
                 role: :system,
                 content:
-                  "Agent session restarted automatically (resumed conversation #{String.slice(state.claude_session_id, 0..7)}…).",
+                  "Agent session restarted automatically (resumed conversation #{String.slice(live_id, 0..7)}…).",
                 timestamp: DateTime.utc_now()
               }
             else
               %{
                 role: :system,
-                content: "Agent session restarted automatically.",
+                content: "Agent session restarted automatically (fresh conversation).",
                 timestamp: DateTime.utc_now()
               }
             end
@@ -516,6 +516,7 @@ defmodule Loopyard.ChatAgent.StreamHandler do
               SessionManager.track_os_pid(%{
                 state
                 | session: new_session,
+                  claude_session_id: live_id,
                   status: :idle,
                   active_tool: nil
               }),
@@ -530,13 +531,16 @@ defmodule Loopyard.ChatAgent.StreamHandler do
           :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
           Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
 
-          if is_nil(state.claude_session_id) do
+          # A fresh session (no live id) needs its prior context replayed;
+          # a resumed one already has it.
+          if is_nil(live_id) do
             {:build_resume, state}
           else
             drain_pending_sends(state)
           end
 
-        {:error, reason} ->
+        {:error, reason, next_hint} ->
+          state = %{state | claude_session_id: next_hint}
           fail_msg = %{
             role: :error,
             content:

@@ -167,18 +167,23 @@ defmodule Loopyard.ChatAgent.SessionManager do
       })
 
       case start_session_safe(state) do
-        {:ok, new_session} ->
+        {:ok, new_session, live_id} ->
           Loopyard.EventLog.info("agent:#{state.name}", "CLI session restarted")
 
           ok_content =
-            if is_binary(state.claude_session_id) do
-              "Reconnected (resumed conversation #{String.slice(state.claude_session_id, 0..7)}…)."
+            if is_binary(live_id) do
+              "Reconnected (resumed conversation #{String.slice(live_id, 0..7)}…)."
             else
-              "Reconnected."
+              "Reconnected (fresh conversation)."
             end
 
           ok_msg = %{role: :system, content: ok_content, timestamp: DateTime.utc_now()}
-          {state, ok_msg} = append_message(track_os_pid(%{state | session: new_session}), ok_msg)
+
+          {state, ok_msg} =
+            append_message(
+              track_os_pid(%{state | session: new_session, claude_session_id: live_id}),
+              ok_msg
+            )
 
           Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
             agent_id: state.id,
@@ -187,7 +192,8 @@ defmodule Loopyard.ChatAgent.SessionManager do
 
           state
 
-        {:error, reason} ->
+        {:error, reason, next_hint} ->
+          state = %{state | claude_session_id: next_hint}
           Loopyard.EventLog.error(
             "agent:#{state.name}",
             "Failed to restart CLI: #{inspect(reason)}"
@@ -230,12 +236,12 @@ defmodule Loopyard.ChatAgent.SessionManager do
     id = state.id
 
     case start_session_safe(state) do
-      {:ok, new_session} ->
+      {:ok, new_session, live_id} ->
         content =
-          if is_binary(state.claude_session_id) do
-            "Session crashed — restarted automatically (attempt #{consecutive}, resumed conversation #{String.slice(state.claude_session_id, 0..7)}…)."
+          if is_binary(live_id) do
+            "Session crashed — restarted automatically (attempt #{consecutive}, resumed conversation #{String.slice(live_id, 0..7)}…)."
           else
-            "Session crashed — restarted automatically (attempt #{consecutive})."
+            "Session crashed — restarted automatically (attempt #{consecutive}, fresh conversation)."
           end
 
         recovered_msg = %{
@@ -249,6 +255,7 @@ defmodule Loopyard.ChatAgent.SessionManager do
             track_os_pid(%{
               state
               | session: new_session,
+                claude_session_id: live_id,
                 status: :idle,
                 active_tool: nil,
                 errors: state.errors + 1
@@ -268,7 +275,7 @@ defmodule Loopyard.ChatAgent.SessionManager do
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
         {:noreply, state}
 
-      {:error, reason} ->
+      {:error, reason, next_hint} ->
         error_msg = %{
           role: :error,
           content:
@@ -283,7 +290,14 @@ defmodule Loopyard.ChatAgent.SessionManager do
         }
 
         {state, error_msg} = append_message(state, error_msg)
-        state = %{state | status: :idle, active_tool: nil, errors: state.errors + 1}
+
+        state = %{
+          state
+          | claude_session_id: next_hint,
+            status: :idle,
+            active_tool: nil,
+            errors: state.errors + 1
+        }
         state = Map.put(state, :consecutive_crashes, consecutive)
         state = Map.delete(state, :retry_from_session)
 
@@ -402,13 +416,63 @@ defmodule Loopyard.ChatAgent.SessionManager do
   defp generate_msg_id do
     :crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false)
   end
-  # backend.start_session guarded against EXITS (call timeouts, dead pids) —
-  # a harness that fails to come up is an expected condition; an exit here
-  # crashed the ChatAgent out of its own recovery path, converting a retryable
-  # failure into an abnormal crash (and feeding the restart cascade).
+  @doc """
+  Start the harness session and apply the two resume-reliability rules, returning
+  the session id Loopyard should track next:
+
+    * `{:ok, session, live_id}` — RULE 1 (adopt the live id). Read the harness's
+      ACTUAL current session id back. If a stale/oversized `resume:` id failed to
+      load and the connection fell back to a fresh `session/new` internally,
+      `live_id` is the NEW id — so Loopyard stops clinging to the dead one. This
+      is what makes the fallback STICK instead of re-resuming the monster every
+      restart.
+    * `{:error, reason, next_hint}` — RULE 2 (one-strike resume). A resume hint
+      that failed to start is poison. `next_hint` is `nil` when we WERE resuming
+      (drop it so the retry is a guaranteed-fresh `session/new`), otherwise the
+      unchanged hint.
+
+  Guarded against EXITs (call timeouts, dead pids): a harness that fails to come
+  up is an expected `{:error, ...}`, never an abnormal crash.
+
+  DESIGN: harness sessions are ephemeral; Loopyard's durable inbox (ETS) owns
+  history. Resume is a best-effort hint, never a dependency — `session/new`
+  always works, so the agent stays usable no matter how badly a resume fails.
+  """
   def start_session_safe(state) do
-    state.backend.start_session(start_opts(state))
+    resuming? = is_binary(state.claude_session_id) and state.claude_session_id != ""
+
+    case state.backend.start_session(start_opts(state)) do
+      {:ok, session} ->
+        {:ok, session, safe_session_id(state.backend, session) || state.claude_session_id}
+
+      {:error, reason} ->
+        {:error, reason, drop_hint_on_resume(state, resuming?, reason)}
+    end
   catch
-    :exit, reason -> {:error, {:start_exit, reason}}
+    :exit, reason ->
+      {:error, {:start_exit, reason},
+       drop_hint_on_resume(state, is_binary(state.claude_session_id), reason)}
+  end
+
+  # Read the harness's live session id without ever letting a probe crash the
+  # caller (a wedged connection's session_id/1 could time out).
+  defp safe_session_id(backend, session) do
+    backend.session_id(session)
+  rescue
+    _ -> nil
+  catch
+    :exit, _ -> nil
+  end
+
+  defp drop_hint_on_resume(_state, false, _reason), do: nil
+
+  defp drop_hint_on_resume(state, true, reason) do
+    Loopyard.EventLog.warning(
+      "agent:#{state.name}",
+      "Resume of #{String.slice(to_string(state.claude_session_id), 0, 8)}… failed " <>
+        "(#{inspect(reason, limit: 4)}); dropping it — the next start is a fresh conversation."
+    )
+
+    nil
   end
 end

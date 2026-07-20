@@ -318,6 +318,16 @@ defmodule Loopyard.ChatAgent.Initializer do
     end
   end
 
+  # Read the harness's live session id after start (never let a probe crash
+  # init); fall back to the id we tried to resume if the backend can't report.
+  defp capture_live_session_id(backend, session, fallback) do
+    backend.session_id(session) || fallback
+  rescue
+    _ -> fallback
+  catch
+    :exit, _ -> fallback
+  end
+
   defp resume_from_summary(id, opts, saved) do
     {session, session_opts, backend, new_prompt_hash} =
       start_session(id, opts,
@@ -356,6 +366,11 @@ defmodule Loopyard.ChatAgent.Initializer do
         # even though it was never actually granted to the running session.
         bind_mount: nil,
         host_access: false,
+        # ADOPT the harness's ACTUAL live session id. If the saved id was too
+        # large / stale and session/load failed, the connection fell back to a
+        # fresh session/new — capture THAT id so the restored agent tracks the
+        # live session, not the dead one it tried to resume.
+        claude_session_id: capture_live_session_id(backend, session, saved[:claude_session_id]),
         last_activity_at: DateTime.utc_now(),
         status: :idle,
         stream_ref: nil,

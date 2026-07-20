@@ -608,15 +608,19 @@ defmodule Loopyard.ChatAgent do
     # Start a fresh session with the same opts. When we have a Claude
     # session_id captured from prior turns, pass it as `resume:` so the
     # CLI picks up the same conversation.
-    case state.backend.start_session(SessionManager.start_opts(state)) do
-      {:ok, new_session} ->
+    case SessionManager.start_session_safe(state) do
+      {:ok, new_session, live_id} ->
         # A reboot is a full reset-to-idle — clear EVERY piece of transient turn
         # state, or the agent looks idle while the stream machinery thinks a turn
         # is live (stale stream_ref), and the next send is silently swallowed.
+        # `claude_session_id: live_id` ADOPTS the harness's real current id — if a
+        # stale/oversized resume failed and the connection fell back to a fresh
+        # session/new, we track the new id instead of re-resuming the dead one.
         state =
           SessionManager.track_os_pid(%{
             state
             | session: new_session,
+              claude_session_id: live_id,
               status: :idle,
               stream_ref: nil,
               active_tool: nil,
@@ -636,17 +640,17 @@ defmodule Loopyard.ChatAgent do
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :idle})
 
         restart_msg =
-          if is_binary(state.claude_session_id) do
+          if is_binary(live_id) do
             %{
               role: :system,
               content:
-                "CLI crashed — restarting and resuming where it left off (#{String.slice(state.claude_session_id, 0..7)}…).",
+                "CLI crashed — restarting and resuming where it left off (#{String.slice(live_id, 0..7)}…).",
               timestamp: DateTime.utc_now()
             }
           else
             %{
               role: :system,
-              content: "CLI crashed — restarting and replaying recent context.",
+              content: "CLI crashed — restarting with a fresh conversation.",
               timestamp: DateTime.utc_now()
             }
           end
@@ -658,11 +662,9 @@ defmodule Loopyard.ChatAgent do
           msg: restart_msg
         })
 
-        # Fallback when we don't have a CLI session_id yet (e.g. the
-        # agent was restarted before its first ResultMessage landed).
-        # With a session_id, `resume:` already restored the full
-        # conversation — no need to pollute it with a summary prompt.
-        if is_nil(state.claude_session_id) do
+        # Fresh session (no live id) → replay recent context so the model isn't
+        # amnesic. A resumed one already has its history.
+        if is_nil(live_id) do
           resume_msg = Loopyard.ChatAgent.ResumeMessage.build(state.messages)
 
           if resume_msg do
@@ -688,11 +690,14 @@ defmodule Loopyard.ChatAgent do
 
         {:noreply, state}
 
-      {:error, reason} ->
+      {:error, reason, next_hint} ->
         # DON'T give up — a spawn failure is often transient (docker exec racing
         # a container restart, a config file mid-rewrite, a momentary API blip).
         # Schedule a backoff retry through the existing :retry_session machinery;
         # the crash-loop breaker (@max_consecutive_crashes) still bounds it.
+        # ADOPT next_hint: one-strike resume — if this failure was a resume, the
+        # hint is now nil so the retry is a guaranteed-fresh session/new.
+        state = %{state | claude_session_id: next_hint}
         consecutive = Map.get(state, :consecutive_crashes, 0) + 1
         base = Application.get_env(:loopyard, :crash_backoff_base_ms, 2_000)
         backoff_ms = Loopyard.Retry.backoff_ms(consecutive, {:exponential, base})
