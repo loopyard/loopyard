@@ -36,6 +36,20 @@ defmodule Loopyard.Workspace.WorkContainer do
   @image "loopyard-workspace-base:latest"
   @workdir "/workspace"
 
+  # CONTAINMENT: hard memory ceiling on the work container. The Claude Code
+  # harness (claude-code-acp + the `claude` CLI) runs INSIDE here and is a known
+  # resource hog — it can leak into tens of GB. Without a cap that pressure hits
+  # the whole host/VM and the user's machine becomes unresponsive. With it, the
+  # kernel OOM-kills the bloated process INSIDE the container (contained) and
+  # Loopyard's crash recovery restarts the session — the host never feels it.
+  # Normal harness use is well under 1GB, so this only ever bites pathological
+  # bloat. `--memory-swap` == `--memory` disables extra swap (no swap thrash).
+  # Tunable: `config :loopyard, :work_container_memory, "8g"` (nil = no cap).
+  @default_memory "8g"
+
+  @doc "The configured hard memory cap for a work container (nil = unlimited)."
+  def memory_limit, do: Application.get_env(:loopyard, :work_container_memory, @default_memory)
+
   @doc "Container name for a workspace's cheap work container."
   @spec container_name(String.t()) :: String.t()
   def container_name(workspace_id), do: "loopyard-#{workspace_id}-work"
@@ -63,19 +77,44 @@ defmodule Loopyard.Workspace.WorkContainer do
   def ensure_up(workspace_id) do
     name = container_name(workspace_id)
 
-    cond do
-      Docker.container_running?(name) ->
-        {:ok, name}
+    result =
+      cond do
+        Docker.container_running?(name) ->
+          {:ok, name}
 
-      Docker.container_exists?(name) ->
-        # Stopped leftover (e.g. across a daemon restart) — start it back up.
-        case Docker.docker(["start", name]) do
-          {:ok, _} -> {:ok, name}
-          {:error, _} -> recreate(workspace_id, name)
-        end
+        Docker.container_exists?(name) ->
+          # Stopped leftover (e.g. across a daemon restart) — start it back up.
+          case Docker.docker(["start", name]) do
+            {:ok, _} -> {:ok, name}
+            {:error, _} -> recreate(workspace_id, name)
+          end
 
-      true ->
-        recreate(workspace_id, name)
+        true ->
+          recreate(workspace_id, name)
+      end
+
+    # Enforce the memory cap on EVERY up-path — a container created before this
+    # cap existed (or `docker start`ed from such a state) is retro-capped here
+    # without a recreate, so no long-lived container stays unbounded.
+    with {:ok, up_name} <- result do
+      enforce_memory_limit(up_name)
+      {:ok, up_name}
+    end
+  end
+
+  @doc """
+  Apply the configured memory cap to an already-running container (no recreate).
+  `docker update` adjusts the cgroup live. Best-effort + idempotent — a no-op
+  when uncapped or already at the target.
+  """
+  def enforce_memory_limit(name) do
+    case memory_limit() do
+      cap when is_binary(cap) and cap != "" ->
+        _ = Docker.docker(["update", "--memory", cap, "--memory-swap", cap, name])
+        :ok
+
+      _ ->
+        :ok
     end
   end
 
@@ -209,24 +248,39 @@ defmodule Loopyard.Workspace.WorkContainer do
     # Env.sync_home/1 and Docker.with_login_profile/1.
     home = home_path(ws)
 
-    Docker.docker([
-      "run",
-      "-d",
-      "--name",
-      name,
-      "--init",
-      "-v",
-      "#{volume}:#{@workdir}",
-      "-v",
-      "#{Loopyard.Workstation.Container.home_volume(ws)}:#{home}",
-      "-e",
-      "HOME=#{home}",
-      "-w",
-      @workdir,
-      @image,
-      "sleep",
-      "infinity"
-    ])
+    Docker.docker(
+      [
+        "run",
+        "-d",
+        "--name",
+        name,
+        "--init"
+      ] ++
+        memory_args() ++
+        [
+          "-v",
+          "#{volume}:#{@workdir}",
+          "-v",
+          "#{Loopyard.Workstation.Container.home_volume(ws)}:#{home}",
+          "-e",
+          "HOME=#{home}",
+          "-w",
+          @workdir,
+          @image,
+          "sleep",
+          "infinity"
+        ]
+    )
+  end
+
+  # --memory + --memory-swap (swap == memory disables extra swap). Omitted
+  # entirely when the cap is configured to nil, so opting out is clean.
+  defp memory_args do
+    case memory_limit() do
+      nil -> []
+      "" -> []
+      mem -> ["--memory", to_string(mem), "--memory-swap", to_string(mem)]
+    end
   end
 
   # The identity's $HOME inside the container: /home/<id>.

@@ -43,3 +43,7 @@ config :loopyard, send_wakes_agent?: false
 # StatusChanged events — meaningless churn against synthetic test workspaces.
 # The GenServer starts but stays inert (no subscription, no sweep, no tasks).
 config :loopyard, change_counts_enabled?: false
+
+# Harness memory monitor runs `docker stats` sweeps + restarts bloated agents —
+# meaningless (and Docker-dependent) in tests. :ignore so no child even starts.
+config :loopyard, harness_memory_monitor_enabled?: false

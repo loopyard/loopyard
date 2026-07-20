@@ -100,6 +100,12 @@ defmodule Loopyard.Application do
       # is false (test env).
       Loopyard.ChangeCounts,
 
+      # Proactive harness memory management (Layer 2). Periodically reclaims a
+      # bloated-but-idle harness by restarting its session BEFORE the work
+      # container's hard `--memory` cap (Layer 1) OOM-kills it mid-turn. :ignore
+      # (no child) when :harness_memory_monitor_enabled? is false (test env).
+      Loopyard.Harness.MemoryMonitor,
+
       # --- Web layer (can restart independently) ---
       LoopyardWeb.Endpoint,
 
