@@ -25,25 +25,28 @@ defmodule Loopyard.ChatAgent.ContainmentTest do
     :exit, _ -> :error
   end
 
-  test "an ACP agent with no :container refuses to start (would run on the host)" do
+  test "the containment gate refuses an ACP session with no :container (would run on the host)" do
     id = "containment-acp-nohost-#{:rand.uniform(1_000_000)}"
 
     # ACP with no workspace_id and no explicit :container → the harness would
-    # launch on the HOST. The containment gate must refuse it. (There is no
-    # host-execution backend anymore — Harness.Claude was deleted — so this
-    # ACP-without-container path is the only remaining way to reach the host.)
-    try_start(
-      id: id,
-      name: "c",
-      working_dir: File.cwd!(),
-      started_by: "test",
-      backend: Loopyard.Harness.ACP
-    )
+    # launch on the HOST. The gate must refuse it. (There is no host-execution
+    # backend anymore — Harness.Claude was deleted — so this ACP-without-
+    # container path is the only remaining way to reach the host.) Exercised at
+    # the gate directly: TestHelpers.start_agent injects a workspace_id (→ a
+    # container), which would DEFEAT the very thing under test.
+    err =
+      assert_raise RuntimeError, ~r/CONTAINMENT.*no :container/s, fn ->
+        Loopyard.ChatAgent.Initializer.build_state(id,
+          id: id,
+          name: "c",
+          working_dir: File.cwd!(),
+          started_by: "test",
+          backend: Loopyard.Harness.ACP
+        )
+      end
 
-    Process.sleep(50)
-    on_exit(fn -> ChatAgent.stop_agent(id) end)
-
-    refute alive?(id), "an ACP agent without a container must be refused (it runs on the host)"
+    assert err.message =~ "run the harness"
+    refute alive?(id), "the refused ACP agent must never be live on the host"
   end
 
   test "a Fake/neutral backend (no host runtime) is allowed" do
