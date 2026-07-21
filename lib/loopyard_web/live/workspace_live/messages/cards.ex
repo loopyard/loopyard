@@ -25,8 +25,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
   def question_card(assigns) do
     ~H"""
     <div class="py-2">
-      <div class="rounded-xl border border-violet-200 dark:border-violet-800/60 bg-violet-50/50 dark:bg-violet-900/10 p-4">
-        <div class="flex items-center gap-1.5 text-sm font-medium text-violet-600 dark:text-violet-400 mb-3">
+      <div class="rounded-xl border border-amber-200 dark:border-amber-800/50 bg-amber-50/60 dark:bg-amber-900/10 p-4">
+        <div class="flex items-center gap-1.5 text-sm font-semibold text-amber-700 dark:text-amber-400 mb-3">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 16 16"
@@ -42,7 +42,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           The agent needs your input
           <span
             :if={length(@msg.questions) > 1}
-            class="ml-auto text-xs font-normal tabular-nums text-violet-500/80 dark:text-violet-400/70"
+            class="ml-auto text-xs font-medium tabular-nums text-amber-600/90 dark:text-amber-400/70"
           >
             {Enum.count(@msg.questions, &locked?(@msg, &1))}/{length(@msg.questions)} answered
           </span>
@@ -76,15 +76,16 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
               class={[
                 "focus-ring group/opt block w-full text-left rounded-lg px-3 py-2 transition-colors",
                 if(q[:multi] && drafted?(@msg, q, o.label),
-                  do: "bg-violet-100/70 dark:bg-violet-900/30",
-                  else: "hover:bg-violet-100/50 dark:hover:bg-violet-900/20"
+                  do: "bg-amber-100/80 dark:bg-amber-900/30 ring-1 ring-amber-500/60 dark:ring-amber-500/50",
+                  else:
+                    "bg-white/70 dark:bg-zinc-800/50 hover:bg-amber-100/70 dark:hover:bg-amber-900/20"
                 )
               ]}
             >
               <div class="flex items-center gap-1.5 text-sm font-medium text-zinc-800 dark:text-zinc-100">
                 <span
                   :if={q[:multi] && drafted?(@msg, q, o.label)}
-                  class="text-violet-600 dark:text-violet-400"
+                  class="text-amber-600 dark:text-amber-400"
                   aria-hidden="true"
                 >
                   ✓
@@ -109,14 +110,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                 phx-click="confirm_question"
                 phx-value-question_id={@msg.question_id}
                 phx-value-q={q.id}
-                class="focus-ring inline-flex items-center rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium px-3.5 py-1.5 transition-colors"
+                class="focus-ring inline-flex items-center rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-sm font-medium px-3.5 py-1.5 transition-colors"
               >
                 {if draft_count(@msg, q) > 0,
                   do: "Done (#{draft_count(@msg, q)} selected)",
                   else: "None of these"}
               </button>
               <details class="group/other min-w-0">
-                <summary class="text-sm text-violet-600/80 dark:text-violet-400/80 hover:text-violet-700 dark:hover:text-violet-300 cursor-pointer select-none list-none">
+                <summary class="text-sm text-amber-700/90 dark:text-amber-400/80 hover:text-amber-800 dark:hover:text-amber-300 cursor-pointer select-none list-none">
                   Other…
                 </summary>
                 <form
@@ -130,11 +131,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                     name="text"
                     autocomplete="off"
                     placeholder="Type your own answer…"
-                    class="focus-ring flex-1 min-w-0 rounded-lg border border-violet-200/70 dark:border-violet-800/50 bg-white/70 dark:bg-zinc-900/40 px-3 py-1.5 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400"
+                    class="focus-ring flex-1 min-w-0 rounded-lg border border-amber-200/70 dark:border-amber-800/50 bg-white/70 dark:bg-zinc-900/40 px-3 py-1.5 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400"
                   />
                   <button
                     type="submit"
-                    class="focus-ring inline-flex items-center rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium px-3 py-1.5 transition-colors flex-none"
+                    class="focus-ring inline-flex items-center rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-sm font-medium px-3 py-1.5 transition-colors flex-none"
                   >
                     Answer
                   </button>
@@ -165,7 +166,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                 "block w-full text-left rounded-lg px-3 py-2",
                 if(chosen?(@msg, q, o.label),
                   do: "bg-emerald-50/70 dark:bg-emerald-900/15",
-                  else: "opacity-45"
+                  else: "opacity-70"
                 )
               ]}
             >
@@ -208,7 +209,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
 
         <div
           :if={@msg.status == :pending}
-          class="mt-3 pt-3 border-t border-violet-200/60 dark:border-violet-800/40 text-sm text-zinc-500 dark:text-zinc-400"
+          class="mt-3 pt-3 border-t border-amber-200/60 dark:border-amber-800/40 text-sm text-zinc-500 dark:text-zinc-400"
         >
           …or just reply in the chat — your message is sent to the agent as the answer.
         </div>
