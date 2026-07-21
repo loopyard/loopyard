@@ -66,8 +66,8 @@ defmodule Loopyard.Workspace.WorkContainerTest do
     assert {:ok, name} = WorkContainer.ensure_up(ws)
 
     # The harness toolchain is present in the box.
-    assert {:ok, tools} = Docker.exec_in(name, "node --version && which claude-code-acp")
-    assert tools =~ "claude-code-acp"
+    assert {:ok, tools} = Docker.exec_in(name, "node --version && which claude-agent-acp")
+    assert tools =~ "claude-agent-acp"
 
     # Boot the REAL harness inside the container and speak ACP to it. The adapter
     # is a stdio JSON-RPC server; we pipe one `initialize` request and read the
@@ -78,15 +78,18 @@ defmodule Loopyard.Workspace.WorkContainerTest do
         ~s("params":{"protocolVersion":1,"clientCapabilities":) <>
         ~s({"fs":{"readTextFile":true,"writeTextFile":true}}}})
 
+    # `timeout` runs INSIDE the container (Debian coreutils) — macOS hosts
+    # don't ship a `timeout` binary, so a host-side one breaks on darwin.
     cmd =
-      "printf '%s\\n' '#{req}' | timeout 25 docker exec -i #{name} " <>
-        "sh -c 'unset CLAUDECODE; claude-code-acp'"
+      "printf '%s\\n' '#{req}' | docker exec -i #{name} " <>
+        "sh -c 'unset CLAUDECODE; timeout 25 claude-agent-acp'"
 
     {resp, _status} = System.cmd("sh", ["-c", cmd], stderr_to_stdout: true)
 
-    # A valid ACP initialize result from the real Claude Code harness.
+    # A valid ACP initialize result from the real Claude harness (the adapter
+    # identifies as agentInfo.name "@agentclientprotocol/claude-agent-acp").
     assert resp =~ ~s("protocolVersion":1)
-    assert resp =~ "Claude Code"
+    assert resp =~ "claude-agent-acp"
     assert resp =~ "authMethods"
   end
 

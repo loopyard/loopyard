@@ -33,7 +33,11 @@ defmodule Loopyard.Workspace.WorkContainer do
 
   alias Loopyard.{Docker, VolumeManager}
 
-  @image "loopyard-workspace-base:latest"
+  # Version-tagged, NOT :latest — ensure_image only builds when the tag is
+  # absent, so bumping this tag is what makes an existing install rebuild after
+  # a Dockerfile change (e.g. an adapter bump). Old containers keep their old
+  # image until re-stamped (recreate/up).
+  @image "loopyard-workspace-base:v2"
   @workdir "/workspace"
 
   # CONTAINMENT: hard memory ceiling on the work container. The Claude Code
