@@ -1245,18 +1245,26 @@ defmodule Loopyard.ChatAgent do
         %{id: id, status: :thinking, stream_ref: ref} = state
       ) do
     # STALL watchdog, not a duration ceiling. The timer is armed once per turn;
-    # when it fires we check whether the stream has produced ANY event within
-    # the window. Busy → slide the deadline (re-arm for the remaining silence
-    # budget) and leave the harness alone — a legitimate long-running task can
-    # run for hours as long as it keeps talking. Only a genuinely silent
-    # (wedged) stream gets the reboot. No last_stream_event_at (pre-hot-reload
-    # struct, or nothing ever arrived) → treat as stalled, the old behavior.
+    # when it fires we check whether the harness is legitimately busy:
+    #
+    #   * stream produced an event within the window → busy, slide the deadline
+    #   * a TOOL CALL is in flight (active_tool set, no result yet) → busy:
+    #     the ACP stream is EXPECTED to be silent while a long command runs
+    #     (a multi-hour build streams nothing until it returns — observed live
+    #     as hours-long turns killed mid-task). A dead adapter during a tool is
+    #     caught by the port monitor (Adapter closed → stream_error), so the
+    #     watchdog doesn't need to guess about process death — only about
+    #     zombie streams, which don't hold a tool open.
+    #
+    # Only a stream that is silent AND idle-handed gets the reboot. No
+    # last_stream_event_at (pre-hot-reload struct) → treat as stalled.
     now = System.monotonic_time(:millisecond)
     last = Map.get(state, :last_stream_event_at)
     silent_for = if is_integer(last), do: now - last, else: @stream_stall_ms
+    busy? = silent_for < @stream_stall_ms or state.active_tool != nil
 
-    if silent_for < @stream_stall_ms do
-      Process.send_after(self(), {:stream_timeout, id, ref}, @stream_stall_ms - silent_for)
+    if busy? do
+      Process.send_after(self(), {:stream_timeout, id, ref}, @stream_stall_ms)
       {:noreply, state}
     else
       case StreamHandler.on_stream_timeout(state) do

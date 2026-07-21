@@ -209,12 +209,33 @@ defmodule Loopyard.ChatAgent.StreamIntegrityTest do
       refute Enum.any?(state.messages, &(&1.role == :system and &1.content =~ "unresponsive"))
     end
 
-    test "timeout after a silent window reboots (the wedge case)", %{id: id} do
+    test "timeout during a long-running TOOL does not reboot — quiet is expected", %{id: id} do
+      pid = agent_pid(id)
+      ref = make_ref()
+
+      # Stream silent for far past the window, but a tool call is in flight
+      # (long build) — the harness is busy waiting, not wedged.
+      :sys.replace_state(pid, fn s ->
+        %{s | stream_ref: ref, status: :thinking, active_tool: "Bash"}
+        |> Map.put(:last_stream_event_at, System.monotonic_time(:millisecond) - 700_000)
+      end)
+
+      send(pid, {:stream_timeout, id, ref})
+      _ = :sys.get_state(pid)
+
+      state = :sys.get_state(pid)
+      assert state.status == :thinking
+      assert Map.get(state, :midturn_crashes, 0) == 0
+    end
+
+    test "timeout after a silent window with no tool in flight reboots (the wedge case)", %{
+      id: id
+    } do
       pid = agent_pid(id)
       ref = make_ref()
 
       :sys.replace_state(pid, fn s ->
-        %{s | stream_ref: ref, status: :thinking}
+        %{s | stream_ref: ref, status: :thinking, active_tool: nil}
         |> Map.put(:last_stream_event_at, System.monotonic_time(:millisecond) - 700_000)
       end)
 
