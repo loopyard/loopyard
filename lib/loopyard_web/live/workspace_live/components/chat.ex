@@ -451,7 +451,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           <section :for={section <- @transcript_sections} :key={Messages.section_key(section)}>
             <%= if section.prompt do %>
               <% {pmsg, pidx, pctx} = section.prompt %>
-              <.chat_msg
+              <.live_component
+                module={LoopyardWeb.Live.WorkspaceLive.MessageRowComponent}
+                id={"mr-#{pmsg[:id] || pidx}"}
                 msg={pmsg}
                 idx={pidx}
                 ctx={pctx}
@@ -464,7 +466,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             <%= for group <- section.body do %>
               <%= case group do %>
                 <% {:break, {msg, idx, ctx}} -> %>
-                  <.chat_msg
+                  <.live_component
+                    module={LoopyardWeb.Live.WorkspaceLive.MessageRowComponent}
+                    id={"mr-#{msg[:id] || idx}"}
                     msg={msg}
                     idx={idx}
                     ctx={ctx}
@@ -480,9 +484,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                          breathe instead of packing them edge-to-edge. --%>
                   <div class="mt-2">
                     <div class="space-y-2.5">
-                      <.chat_msg
+                      <.live_component
                         :for={{msg, idx, ctx} <- items}
-                        :key={msg[:id] || idx}
+                        module={LoopyardWeb.Live.WorkspaceLive.MessageRowComponent}
+                        id={"mr-#{msg[:id] || idx}"}
                         msg={msg}
                         idx={idx}
                         ctx={ctx}
