@@ -1192,13 +1192,26 @@ defmodule Loopyard.ChatAgent do
   #   existing async :restart_session recovery, and reply :ok immediately.
   #   The inbox owns durability; the harness owns turn execution.
   def handle_call({:send_message, text}, _from, state) do
-    if session_alive_quick?(state) do
-      {:noreply, new_state} = handle_cast({:send_message, text}, state)
-      {:reply, :ok, new_state}
-    else
-      state = %{state | pending_sends: state.pending_sends ++ [text]}
-      GenServer.cast(self(), :restart_session)
-      {:reply, :ok, state}
+    cond do
+      # Busy statuses: the text is heading to pending_sends — a pure state
+      # append + broadcast. Do NOT put a harness liveness probe in front of
+      # it: ACP's session_alive? round-trips a real JSON-RPC ping through the
+      # in-container adapter (up to 2s), and mid-turn that adapter is the
+      # BUSIEST it ever gets — the user felt every send take forever when
+      # "queued" should be instant. Liveness only matters when we're about to
+      # START a turn, and these statuses never do.
+      state.status in [:thinking, :backoff, :compacting, :rate_limited, :auth_expired] ->
+        {:noreply, new_state} = handle_cast({:send_message, text}, state)
+        {:reply, :ok, new_state}
+
+      session_alive_quick?(state) ->
+        {:noreply, new_state} = handle_cast({:send_message, text}, state)
+        {:reply, :ok, new_state}
+
+      true ->
+        state = %{state | pending_sends: state.pending_sends ++ [text]}
+        GenServer.cast(self(), :restart_session)
+        {:reply, :ok, state}
     end
   end
 
