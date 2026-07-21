@@ -339,9 +339,24 @@ defmodule Loopyard.ChatAgent do
   @doc "Update a message by ID; GenServer if alive, ETS fallback (see MessageWindow.update_message/3)."
   defdelegate update_message(agent_id, msg_id, update_fn), to: MessageWindow
 
-  @doc "Restart the Claude CLI session without losing the agent or its messages"
-  def restart_session(id) do
-    GenServer.cast(via(id), :restart_session)
+  @doc """
+  Restart the CLI session without losing the agent or its messages.
+
+  `reason` decides what the CHAT says about it — a real crash recovery is
+  worth a marker; deliberate maintenance is not (the user asked why their
+  healthy idle agent kept announcing "CLI crashed" — it was credential
+  reloads):
+
+    * `:user` — someone clicked Restart; confirm with a quiet marker.
+    * `:credentials` — token pushed (`Workstation.reload_agents`); silent.
+    * `:memory_reclaim` — MemoryMonitor reclaiming an idle bloated harness;
+      silent (it already EventLogs the why).
+    * `:recovery` — actual crash recovery (internal casts); keeps the loud
+      marker.
+  """
+  def restart_session(id, reason \\ :user)
+      when reason in [:user, :credentials, :memory_reclaim, :recovery] do
+    GenServer.cast(via(id), {:restart_session, reason})
   end
 
   @doc "Switch the agent's model (Usage-panel Model row); see ChatAgent.ModelControl."
@@ -642,7 +657,10 @@ defmodule Loopyard.ChatAgent do
   end
 
   @impl true
-  def handle_cast(:restart_session, state) do
+  # Internal recovery paths cast the bare atom — they ARE crash recoveries.
+  def handle_cast(:restart_session, state), do: handle_cast({:restart_session, :recovery}, state)
+
+  def handle_cast({:restart_session, reason}, state) do
     # Breaker gate: a session whose harness keeps dying mid-conversation has
     # outgrown its memory — resuming it re-feeds the harness the exact history
     # that OOM-killed it, forever. Compact instead: summarize → fresh session
@@ -672,9 +690,23 @@ defmodule Loopyard.ChatAgent do
         Map.put(state, :midturn_crashes, 0)
       )
     else
-      restart_session_now(state)
+      restart_session_now(state, reason)
     end
   end
+
+  # The chat marker for a session restart, or nil for silence. Only events the
+  # user should KNOW about earn a line: a real crash recovery, or their own
+  # Restart click (confirmation). Maintenance reasons are EventLog-only.
+  defp restart_note(:recovery, live_id) when is_binary(live_id),
+    do: "Session crashed — restarted and resumed where it left off (#{String.slice(live_id, 0..7)}…)."
+
+  defp restart_note(:recovery, _), do: "Session crashed — restarted with a fresh conversation."
+
+  defp restart_note(:user, live_id) when is_binary(live_id),
+    do: "Session restarted (conversation resumed)."
+
+  defp restart_note(:user, _), do: "Session restarted (fresh conversation)."
+  defp restart_note(_maintenance, _), do: nil
 
   # The user's last message with NO assistant reply after it — the in-flight
   # turn a mid-turn crash interrupted. nil when the last turn already completed
@@ -707,7 +739,7 @@ defmodule Loopyard.ChatAgent do
     end) >= 3
   end
 
-  defp restart_session_now(state) do
+  defp restart_session_now(state, reason) do
     # Stop the current session
     if state.session do
       # Wrap backend.stop in a Task + Task.yield with timeout so a
@@ -752,28 +784,33 @@ defmodule Loopyard.ChatAgent do
         :ets.insert(@ets_table, {state.id, summary(state)})
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :idle})
 
-        restart_msg =
-          if is_binary(live_id) do
-            %{
-              role: :system,
-              content:
-                "CLI crashed — restarting and resuming where it left off (#{String.slice(live_id, 0..7)}…).",
-              timestamp: DateTime.utc_now()
-            }
-          else
-            %{
-              role: :system,
-              content: "CLI crashed — restarting with a fresh conversation.",
-              timestamp: DateTime.utc_now()
-            }
+        # What the CHAT says depends on WHY we restarted. Deliberate
+        # maintenance (credential reload, memory reclaim) on a healthy agent
+        # is SILENT — announcing "CLI crashed" for every token push made an
+        # idle agent look broken. Those reasons go to the EventLog only; the
+        # harness-status sidebar block already covers the in-between state.
+        state =
+          case restart_note(reason, live_id) do
+            nil ->
+              Loopyard.EventLog.info(
+                "agent:#{state.name}",
+                "Session restarted (#{reason}), " <>
+                  if(is_binary(live_id), do: "resumed #{String.slice(live_id, 0..7)}…", else: "fresh conversation")
+              )
+
+              state
+
+            note ->
+              restart_msg = %{role: :system, content: note, timestamp: DateTime.utc_now()}
+              {state, restart_msg} = append_message(state, restart_msg)
+
+              Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+                agent_id: state.id,
+                msg: restart_msg
+              })
+
+              state
           end
-
-        {state, restart_msg} = append_message(state, restart_msg)
-
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-          agent_id: state.id,
-          msg: restart_msg
-        })
 
         # Fresh session (no live id) → replay recent context so the model isn't
         # amnesic. A resumed one already has its history.

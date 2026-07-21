@@ -149,7 +149,7 @@ defmodule Loopyard.Workstation do
       a.id == operator_id or
         (is_binary(a[:workspace_id]) and agent_workstation(a[:workspace_id]) == id)
     end)
-    |> Enum.each(fn a -> Loopyard.ChatAgent.restart_session(a.id) end)
+    |> Enum.each(fn a -> Loopyard.ChatAgent.restart_session(a.id, :credentials) end)
 
     :ok
   rescue
