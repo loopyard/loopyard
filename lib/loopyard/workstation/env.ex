@@ -76,15 +76,52 @@ defmodule Loopyard.Workstation.Env do
   @doc "The full env map, `%{\"KEY\" => \"value\"}`."
   @spec all(String.t()) :: %{optional(String.t()) => String.t()}
   def all(id) do
+    case read_map(id) do
+      {:ok, m} -> m
+      _ -> %{}
+    end
+  end
+
+  # Read the store, distinguishing THREE outcomes so a writer never clobbers:
+  #   {:ok, map}       — parsed fine
+  #   :absent          — file genuinely doesn't exist yet (an empty store IS the
+  #                      correct starting point)
+  #   {:error, reason} — file EXISTS but is unreadable / corrupt / truncated.
+  #
+  # This distinction is load-bearing. The old `all/1` collapsed every failure to
+  # `%{}`, so a `put` that read during a truncated write merged its one key onto
+  # an assumed-empty map and PERMANENTLY dropped every other token. That is
+  # exactly how the identity store decayed to a single key and 401'd the
+  # in-container harness (every turn crashed until CLAUDE_CODE_OAUTH_TOKEN was
+  # restored). Writers now refuse the `{:error, _}` case instead of clobbering.
+  @doc false
+  @spec read_map(String.t()) :: {:ok, map()} | :absent | {:error, term()}
+  def read_map(id) do
     case File.read(path(id)) do
       {:ok, body} ->
         case Jason.decode(body) do
-          {:ok, m} when is_map(m) -> m
-          _ -> %{}
+          {:ok, m} when is_map(m) -> {:ok, m}
+          {:ok, _} -> {:error, :not_a_map}
+          {:error, reason} -> {:error, {:decode, reason}}
         end
 
-      _ ->
-        %{}
+      {:error, :enoent} ->
+        :absent
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # The current store for a read-modify-write. Absent → start from empty. A
+  # genuine read/parse error → REFUSE (never merge onto an assumed-empty map,
+  # which would silently drop the tokens we just failed to read).
+  @doc false
+  def current_for_write(id) do
+    case read_map(id) do
+      {:ok, m} -> {:ok, m}
+      :absent -> {:ok, %{}}
+      {:error, reason} -> {:error, {:store_unreadable, reason}}
     end
   end
 
@@ -98,20 +135,24 @@ defmodule Loopyard.Workstation.Env do
     key = String.trim(key)
 
     if Regex.match?(@key_re, key) do
-      all(id) |> Map.put(key, value) |> save(id)
-      # Materialize into the identity's home volume NOW. A running container
-      # already mounts that volume, so the new value (e.g. a fresh
-      # CLAUDE_CODE_OAUTH_TOKEN) is visible to the next in-container harness
-      # session immediately — without restarting the container. Best-effort:
-      # a docker hiccup mustn't lose the saved value.
-      sync_home(id)
-      # sync_home only rescues the NEXT session; a session that's already live
-      # holds the token it sourced at launch. When the pushed key is a harness
-      # credential, restart the workstation's running agents so they re-source
-      # it (each resumes its conversation). This is how "push a fresh token"
-      # auto-recovers stranded agents without any manual Restart click.
-      maybe_reload_agents(key, id)
-      :ok
+      # Read-modify-write via current_for_write/1 so a transient unreadable store
+      # can NEVER be treated as empty and clobber the other tokens.
+      with {:ok, current} <- current_for_write(id),
+           :ok <- save(Map.put(current, key, value), id) do
+        # Materialize into the identity's home volume NOW. A running container
+        # already mounts that volume, so the new value (e.g. a fresh
+        # CLAUDE_CODE_OAUTH_TOKEN) is visible to the next in-container harness
+        # session immediately — without restarting the container. Best-effort:
+        # a docker hiccup mustn't lose the saved value.
+        sync_home(id)
+        # sync_home only rescues the NEXT session; a session that's already live
+        # holds the token it sourced at launch. When the pushed key is a harness
+        # credential, restart the workstation's running agents so they re-source
+        # it (each resumes its conversation). This is how "push a fresh token"
+        # auto-recovers stranded agents without any manual Restart click.
+        maybe_reload_agents(key, id)
+        :ok
+      end
     else
       {:error, :invalid_key}
     end
@@ -130,9 +171,11 @@ defmodule Loopyard.Workstation.Env do
   @doc "Remove an env var."
   @spec delete(String.t(), String.t()) :: :ok
   def delete(key, id) do
-    all(id) |> Map.delete(key) |> save(id)
-    sync_home(id)
-    :ok
+    with {:ok, current} <- current_for_write(id),
+         :ok <- save(Map.delete(current, key), id) do
+      sync_home(id)
+      :ok
+    end
   end
 
   @doc "`docker run` args injecting every env var: `[\"-e\", \"K=V\", ...]`."
@@ -154,8 +197,19 @@ defmodule Loopyard.Workstation.Env do
   """
   @spec sync_home(String.t()) :: :ok | {:error, term()}
   def sync_home(id) do
+    case read_map(id) do
+      # NEVER overwrite the container's env with an empty file just because we
+      # momentarily couldn't read the store — that would strip a live harness of
+      # CLAUDE_CODE_OAUTH_TOKEN and 401 it. Bail, keep the container's good env.
+      {:error, reason} -> {:error, {:store_unreadable, reason}}
+      :absent -> materialize_home(id, %{})
+      {:ok, map} -> materialize_home(id, map)
+    end
+  end
+
+  defp materialize_home(id, map) do
     vol = Workstation.home_volume(id)
-    b64 = id |> env_file_body() |> Base.encode64()
+    b64 = map |> env_file_body() |> Base.encode64()
 
     script =
       "mkdir -p /vol/.loopyard && " <>
@@ -351,17 +405,27 @@ defmodule Loopyard.Workstation.Env do
   end
 
   # The body of ~/.loopyard/env: `export K='V'` lines, single-quote-escaped so a
-  # value containing `'` survives (`'` → `'\''`).
-  defp env_file_body(id) do
-    all(id)
+  # value containing `'` survives (`'` → `'\''`). Takes the already-read map (not
+  # an id) so sync_home materializes the EXACT map it validated — no second read
+  # that could race to a different (or empty) state.
+  defp env_file_body(map) do
+    map
     |> Enum.sort()
     |> Enum.map_join("\n", fn {k, v} -> "export #{k}='#{String.replace(v, "'", "'\\''")}'" end)
   end
 
+  # ATOMIC write: encode to a temp file, then rename over the target. A plain
+  # File.write! truncates the target FIRST, so a concurrent reader (another put,
+  # or sync_home) can observe a half-written / empty file, decode `{}`, and drop
+  # keys. tmp + rename means every reader sees either the whole old file or the
+  # whole new one — never a torn state.
   defp save(map, id) do
-    File.mkdir_p!(Path.dirname(path(id)))
-    File.write!(path(id), Jason.encode!(map))
-    _ = File.chmod(path(id), 0o600)
+    p = path(id)
+    File.mkdir_p!(Path.dirname(p))
+    tmp = p <> ".tmp"
+    File.write!(tmp, Jason.encode!(map))
+    _ = File.chmod(tmp, 0o600)
+    File.rename!(tmp, p)
     :ok
   end
 
