@@ -338,12 +338,33 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
   end
 
   defp current_turn_tools(messages) do
-    messages
-    |> Enum.reverse()
-    |> Enum.take_while(&(&1.role != :user))
-    |> Enum.reverse()
+    turn =
+      messages
+      |> Enum.reverse()
+      |> Enum.take_while(&(&1.role != :user))
+      |> Enum.reverse()
+
+    # tool_ids whose result already landed — a COMPLETED command has left the
+    # feed: its console box (command + output + exit) renders inline in the
+    # transcript mid-turn (chat_panel's in_live_feed? exception). The chip here
+    # covers only the window while it RUNS.
+    done_ids =
+      for %{role: :tool_result} = r <- turn,
+          is_binary(r[:tool_id]),
+          into: MapSet.new(),
+          do: r.tool_id
+
+    turn
     |> Enum.filter(&(&1.role == :tool and not own_surface_tool?(&1[:tool])))
+    |> Enum.reject(&(command_kind?(&1) and completed_tool?(&1, done_ids)))
   end
+
+  defp command_kind?(m) do
+    (m[:tool_kind] || Loopyard.Agent.ToolKind.classify(m[:tool] || "")) == :command
+  end
+
+  defp completed_tool?(m, done_ids),
+    do: is_binary(m[:tool_id]) and MapSet.member?(done_ids, m[:tool_id])
 
   # Tools that render their OWN prominent surface — exec/docker_compose as a
   # console box, and ask_user/request_secret/propose_* as an interactive card — so

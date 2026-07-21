@@ -45,6 +45,28 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatActivityTest do
     test "is empty when no tools have run yet this turn" do
       assert Chat.current_turn_activity([%{role: :user, content: "go"}]) == []
     end
+
+    test "a COMPLETED command leaves the feed (its console box renders inline)" do
+      msgs = [
+        %{role: :user, content: "go"},
+        %{role: :tool, tool: "Bash", input: %{"command" => "gh pr checks 1"}, tool_id: "t1"},
+        %{role: :tool_result, content: "all green", tool_id: "t1"},
+        %{role: :tool, tool: "Bash", input: %{"command" => "gh pr merge 1"}, tool_id: "t2"}
+      ]
+
+      # t1 finished → console box owns it; only the still-running t2 chips here.
+      assert [%{summary: "$ gh pr merge 1", active: true}] = Chat.current_turn_activity(msgs)
+    end
+
+    test "a completed NON-command keeps its chip (no console box to hand off to)" do
+      msgs = [
+        %{role: :user, content: "go"},
+        %{role: :tool, tool: "Read", input: %{"file_path" => "/a.ex"}, tool_id: "t1"},
+        %{role: :tool_result, content: "defmodule A do", tool_id: "t1"}
+      ]
+
+      assert [%{summary: "Read /a.ex"}] = Chat.current_turn_activity(msgs)
+    end
   end
 
   describe "thinking_indicator/1 renders the live feed" do

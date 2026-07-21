@@ -29,6 +29,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     ]
 
   alias LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus
+  alias LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults
 
   # The live-status presentation (thinking feed, live tail, Reasoning Bar) lives
   # in the ChatStatus sub-module to keep this file under its size cap. Re-expose
@@ -437,7 +438,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                 <%= case group do %>
                   <% {:break, {msg, idx}} -> %>
                     <.chat_msg
-                      :if={not in_live_feed?(@live_tool_from, msg, idx)}
+                      :if={not in_live_feed?(@live_tool_from, msg, idx, @messages)}
                       msg={msg}
                       idx={idx}
                       messages={@messages}
@@ -457,7 +458,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                       <div class="space-y-4">
                         <.chat_msg
                           :for={{msg, idx} <- items}
-                          :if={not in_live_feed?(@live_tool_from, msg, idx)}
+                          :if={not in_live_feed?(@live_tool_from, msg, idx, @messages)}
                           msg={msg}
                           idx={idx}
                           messages={@messages}
@@ -688,8 +689,25 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       not building?(assigns.messages)
   end
 
-  defp in_live_feed?(nil, _msg, _idx), do: false
-  defp in_live_feed?(from, msg, idx), do: idx > from and msg.role in [:tool, :tool_result]
+  defp in_live_feed?(nil, _msg, _idx, _messages), do: false
+
+  # A COMMAND's result is the exception: it renders inline as the console box
+  # (command title + output + exit) the moment it lands — mid-turn, exactly like
+  # watching a terminal — instead of hiding behind a ✓ chip until the turn ends.
+  # Everything else in the active turn stays in the compact live feed.
+  defp in_live_feed?(from, msg, idx, messages) do
+    idx > from and
+      case msg.role do
+        :tool ->
+          true
+
+        :tool_result ->
+          not ToolResults.console_command_result?(%{msg: msg, idx: idx, messages: messages})
+
+        _ ->
+          false
+      end
+  end
 
   # --- Container Panel ---
 
