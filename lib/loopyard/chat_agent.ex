@@ -218,6 +218,12 @@ defmodule Loopyard.ChatAgent do
   def compaction_breaker_tripped?(state),
     do: Map.get(state, :midturn_crashes, 0) >= @compact_after_midturn_crashes
 
+  # Stream STALL budget: how long a turn's stream may be SILENT (no events at
+  # all) before the CLI is presumed wedged and rebooted. This is deliberately
+  # not a turn-duration cap — a busy long-running task streams tool calls and
+  # text the whole way through and must never be killed for taking its time.
+  @stream_stall_ms 600_000
+
   # Warm-interrupt deadline. The SDK's interrupt only blocks when the CLI is
   # wedged (stdin pipe full); a healthy interrupt acks in microseconds. If the
   # warm interrupt doesn't land within this window the CLI is wedged, so we
@@ -1160,6 +1166,11 @@ defmodule Loopyard.ChatAgent do
   # new state. Events with a ref != state.stream_ref are dropped. See
   # agent-sanity #16.
   def handle_info({:stream_event, id, ref, event}, %{id: id, stream_ref: ref} = state) do
+    # Feed the stall watchdog: the stream timeout fires only after a window of
+    # SILENCE, so a long-running turn that's actively producing events is never
+    # rebooted mid-work (that killed legitimately busy harnesses — "context
+    # canceled" mid-task). Map.put: hot-reload tolerance for old structs.
+    state = Map.put(state, :last_stream_event_at, System.monotonic_time(:millisecond))
     {:noreply, StreamHandler.process_event(event, state)}
   end
 
@@ -1233,15 +1244,31 @@ defmodule Loopyard.ChatAgent do
         {:stream_timeout, id, ref},
         %{id: id, status: :thinking, stream_ref: ref} = state
       ) do
-    case StreamHandler.on_stream_timeout(state) do
-      {:reboot, state} ->
-        # Reboot the CLI with resume — clears the wedge, keeps the full chat
-        # history, continues the conversation. Queued messages drain onto the
-        # fresh CLI inside the restart path. A wedge counts toward the
-        # compact-instead-of-resume breaker (restart_session's gate).
-        state = SessionManager.note_cli_death(state)
-        GenServer.cast(self(), :restart_session)
-        {:noreply, state}
+    # STALL watchdog, not a duration ceiling. The timer is armed once per turn;
+    # when it fires we check whether the stream has produced ANY event within
+    # the window. Busy → slide the deadline (re-arm for the remaining silence
+    # budget) and leave the harness alone — a legitimate long-running task can
+    # run for hours as long as it keeps talking. Only a genuinely silent
+    # (wedged) stream gets the reboot. No last_stream_event_at (pre-hot-reload
+    # struct, or nothing ever arrived) → treat as stalled, the old behavior.
+    now = System.monotonic_time(:millisecond)
+    last = Map.get(state, :last_stream_event_at)
+    silent_for = if is_integer(last), do: now - last, else: @stream_stall_ms
+
+    if silent_for < @stream_stall_ms do
+      Process.send_after(self(), {:stream_timeout, id, ref}, @stream_stall_ms - silent_for)
+      {:noreply, state}
+    else
+      case StreamHandler.on_stream_timeout(state) do
+        {:reboot, state} ->
+          # Reboot the CLI with resume — clears the wedge, keeps the full chat
+          # history, continues the conversation. Queued messages drain onto the
+          # fresh CLI inside the restart path. A wedge counts toward the
+          # compact-instead-of-resume breaker (restart_session's gate).
+          state = SessionManager.note_cli_death(state)
+          GenServer.cast(self(), :restart_session)
+          {:noreply, state}
+      end
     end
   end
 
@@ -1756,7 +1783,7 @@ defmodule Loopyard.ChatAgent do
         end
       end)
 
-    Process.send_after(self(), {:stream_timeout, agent_id, stream_ref}, 600_000)
+    Process.send_after(self(), {:stream_timeout, agent_id, stream_ref}, @stream_stall_ms)
     # Stash the exact prompt so a transient-failure retry re-issues it verbatim.
     {:noreply,
      %{
@@ -1765,7 +1792,8 @@ defmodule Loopyard.ChatAgent do
          stream_task_pid: task_pid,
          in_flight_partial: "",
          current_turn_prompt: prompt
-     }}
+     }
+     |> Map.put(:last_stream_event_at, System.monotonic_time(:millisecond))}
   end
 
   @max_messages 1000

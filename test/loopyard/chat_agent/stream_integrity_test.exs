@@ -185,6 +185,47 @@ defmodule Loopyard.ChatAgent.StreamIntegrityTest do
     end
   end
 
+  describe "stream stall watchdog (busy harnesses are never TTL'd)" do
+    # The stream timeout is an UNRESPONSIVENESS check, not a duration cap. A
+    # long-running turn that's actively streaming must survive the timer
+    # firing; only a silent (wedged) stream reboots. Killed a real user's
+    # hours-long task before this ("context canceled" mid-work).
+    test "timeout with RECENT stream activity does not reboot — deadline slides", %{id: id} do
+      pid = agent_pid(id)
+      ref = make_ref()
+
+      :sys.replace_state(pid, fn s ->
+        %{s | stream_ref: ref, status: :thinking}
+        |> Map.put(:last_stream_event_at, System.monotonic_time(:millisecond))
+      end)
+
+      send(pid, {:stream_timeout, id, ref})
+      _ = :sys.get_state(pid)
+
+      # Still thinking, no restart message, no CLI-death note.
+      state = :sys.get_state(pid)
+      assert state.status == :thinking
+      assert Map.get(state, :midturn_crashes, 0) == 0
+      refute Enum.any?(state.messages, &(&1.role == :system and &1.content =~ "unresponsive"))
+    end
+
+    test "timeout after a silent window reboots (the wedge case)", %{id: id} do
+      pid = agent_pid(id)
+      ref = make_ref()
+
+      :sys.replace_state(pid, fn s ->
+        %{s | stream_ref: ref, status: :thinking}
+        |> Map.put(:last_stream_event_at, System.monotonic_time(:millisecond) - 700_000)
+      end)
+
+      send(pid, {:stream_timeout, id, ref})
+      assert_receive %Loopyard.Events.ChatAgent.StatusChanged{id: ^id}, 1_000
+
+      state = :sys.get_state(pid)
+      assert Map.get(state, :midturn_crashes, 0) >= 1
+    end
+  end
+
   describe "compact-instead-of-resume breaker (IMPROVEMENTS #20)" do
     # A session whose harness keeps dying mid-turn has outgrown its memory —
     # resuming it re-feeds the harness the history that killed it. At the
