@@ -139,17 +139,34 @@ defmodule Loopyard.ChatAgent.RestartStateTest do
   end
 
   describe "surface #4: active_tool cleared on every reset path" do
-    test "stream_timeout clears active_tool", %{id: id} do
+    # Stall-watchdog semantics: a timeout with a TOOL IN FLIGHT is a busy
+    # harness (long command, quiet stream) — it must NOT reboot or clear
+    # anything. The reboot-and-clear contract applies to the wedge case:
+    # silent past the window with no tool open.
+    test "stream_timeout with a tool in flight leaves the turn alone", %{id: id} do
       pid = agent_pid(id)
-      stream_ref = :sys.get_state(pid).stream_ref
 
       :sys.replace_state(pid, fn s ->
-        %{
-          s
-          | status: :thinking,
-            active_tool: "docker_compose",
-            stream_ref: stream_ref || make_ref()
-        }
+        %{s | status: :thinking, active_tool: "docker_compose", stream_ref: make_ref()}
+        |> Map.put(:last_stream_event_at, System.monotonic_time(:millisecond) - 700_000)
+      end)
+
+      ref = :sys.get_state(pid).stream_ref
+      send(pid, {:stream_timeout, id, ref})
+      Process.sleep(50)
+
+      state = :sys.get_state(pid)
+      assert state.status == :thinking
+      assert state.active_tool == "docker_compose"
+    end
+
+    test "stream_timeout on a silent, idle-handed stream reboots and clears transient state",
+         %{id: id} do
+      pid = agent_pid(id)
+
+      :sys.replace_state(pid, fn s ->
+        %{s | status: :thinking, active_tool: nil, stream_ref: make_ref()}
+        |> Map.put(:last_stream_event_at, System.monotonic_time(:millisecond) - 700_000)
       end)
 
       ref = :sys.get_state(pid).stream_ref
