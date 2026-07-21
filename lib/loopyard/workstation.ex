@@ -137,8 +137,13 @@ defmodule Loopyard.Workstation do
   `CLAUDE_CODE_OAUTH_TOKEN`) into the identity env: a *running* ACP/CLI session
   sourced its env at launch and holds the OLD token until it is restarted, so
   the volume-level `Env.sync_home` alone doesn't rescue an already-live session.
-  `restart_session` passes `resume:`, so each conversation continues — the user
-  sees a "Reconnected" marker, not a fresh agent. Best-effort per agent.
+
+  Uses the `:credentials` reason: a token change can mean a DIFFERENT account,
+  whose session store can't resume the old native session id — so the restart
+  drops it and reconstructs the conversation from Loopyard's durable log (verbatim
+  seed + the `recall_conversation` tool) rather than a doomed resume that boots
+  the agent amnesic. History survives the switch; the restart is silent in chat
+  (the harness-status sidebar covers the transient state). Best-effort per agent.
   """
   @spec reload_agents(String.t()) :: :ok
   def reload_agents(id) when is_binary(id) do

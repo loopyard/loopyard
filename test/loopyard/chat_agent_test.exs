@@ -113,15 +113,16 @@ defmodule Loopyard.ChatAgentTest do
 
       ChatAgent.restart_session(id)
 
-      # Should receive a system message about the restart (recovery note —
-      # wording names the crash + that it's resuming/replaying).
+      # Should receive a system message about the restart. Exact wording depends
+      # on whether the session resumed or was rebuilt from history — both are a
+      # "restart", so match the stable substring.
       assert_receive %Loopyard.Events.ChatAgentMessage.Message{
                        agent_id: ^id,
                        msg: %{role: :system, content: restart_note}
                      },
                      5000
 
-      assert restart_note =~ "restarting"
+      assert restart_note =~ "restart"
 
       # Agent should still be idle after restart
       state_after = ChatAgent.get_state(id)
@@ -863,7 +864,7 @@ defmodule Loopyard.ChatAgentTest do
                      },
                      5_000
 
-      assert note =~ "restarting"
+      assert note =~ "restart"
 
       Process.sleep(200)
       %{status: status, session: session_after} = :sys.get_state(pid, 1_000)

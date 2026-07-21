@@ -702,16 +702,18 @@ defmodule Loopyard.ChatAgent do
   # The chat marker for a session restart, or nil for silence. Only events the
   # user should KNOW about earn a line: a real crash recovery, or their own
   # Restart click (confirmation). Maintenance reasons are EventLog-only.
-  defp restart_note(:recovery, live_id) when is_binary(live_id),
+  # `resumed?` — did we actually resume the prior harness session, or start fresh
+  # and rebuild context from Loopyard's durable log? A non-nil live_id does NOT
+  # mean "resumed" (session/new returns a fresh id too), so the copy keys off
+  # resumed?, never off the id.
+  defp restart_note(:recovery, true, live_id),
     do: "Session crashed — restarted and resumed where it left off (#{String.slice(live_id, 0..7)}…)."
 
-  defp restart_note(:recovery, _), do: "Session crashed — restarted with a fresh conversation."
+  defp restart_note(:recovery, false, _), do: "Session crashed — restarted; rebuilding context from history."
 
-  defp restart_note(:user, live_id) when is_binary(live_id),
-    do: "Session restarted (conversation resumed)."
-
-  defp restart_note(:user, _), do: "Session restarted (fresh conversation)."
-  defp restart_note(_maintenance, _), do: nil
+  defp restart_note(:user, true, _), do: "Session restarted (conversation resumed)."
+  defp restart_note(:user, false, _), do: "Session restarted; rebuilding context from history."
+  defp restart_note(_maintenance, _resumed?, _live_id), do: nil
 
   # The user's last message with NO assistant reply after it — the in-flight
   # turn a mid-turn crash interrupted. nil when the last turn already completed
@@ -745,6 +747,13 @@ defmodule Loopyard.ChatAgent do
   end
 
   defp restart_session_now(state, reason) do
+    # A credential/account switch invalidates the native session id — the NEW
+    # account can't resume the old session, so resuming would boot the agent
+    # amnesic ("switched accounts and it forgot everything"). Drop it → start
+    # fresh and reconstruct from Loopyard's durable log (the seed below + the
+    # recall_conversation tool). Every other reason keeps the id and resumes.
+    state = if reason == :credentials, do: %{state | claude_session_id: nil}, else: state
+
     # Stop the current session
     if state.session do
       # Wrap backend.stop in a Task + Task.yield with timeout so a
@@ -758,8 +767,19 @@ defmodule Loopyard.ChatAgent do
     # Start a fresh session with the same opts. When we have a Claude
     # session_id captured from prior turns, pass it as `resume:` so the
     # CLI picks up the same conversation.
+    prior_sid = state.claude_session_id
+
     case SessionManager.start_session_safe(state) do
       {:ok, new_session, live_id} ->
+        # Did we actually RESUME prior context, or start fresh? Fresh = we passed
+        # no resume id (a credential switch nulled it above, or first boot) OR we
+        # passed one but the adapter fell back to session/new (oversized/expired
+        # resume). Either way the session's context is EMPTY and must be re-seeded;
+        # a non-nil live_id does NOT imply "has history" (session/new returns a
+        # fresh id too — that was the amnesia bug: the old gate seeded only when
+        # live_id was nil, so a fresh-but-id'd session booted empty).
+        resumed? = is_binary(prior_sid) and live_id == prior_sid
+
         # A reboot is a full reset-to-idle — clear EVERY piece of transient turn
         # state, or the agent looks idle while the stream machinery thinks a turn
         # is live (stale stream_ref), and the next send is silently swallowed.
@@ -795,12 +815,12 @@ defmodule Loopyard.ChatAgent do
         # idle agent look broken. Those reasons go to the EventLog only; the
         # harness-status sidebar block already covers the in-between state.
         state =
-          case restart_note(reason, live_id) do
+          case restart_note(reason, resumed?, live_id) do
             nil ->
               Loopyard.EventLog.info(
                 "agent:#{state.name}",
                 "Session restarted (#{reason}), " <>
-                  if(is_binary(live_id), do: "resumed #{String.slice(live_id, 0..7)}…", else: "fresh conversation")
+                  if(resumed?, do: "resumed #{String.slice(live_id, 0..7)}…", else: "rebuilt context from history")
               )
 
               state
@@ -817,13 +837,13 @@ defmodule Loopyard.ChatAgent do
               state
           end
 
-        # Fresh session (no live id) → replay recent context so the model isn't
-        # amnesic. A resumed one already has its history.
-        if is_nil(live_id) do
-          resume_msg = Loopyard.ChatAgent.ResumeMessage.build(state.messages)
-
-          if resume_msg do
-            GenServer.cast(self(), {:resume_prompt, resume_msg})
+        # Started fresh (switch, first boot, or a resume that fell back to
+        # session/new) → seed the empty session with recent context verbatim so
+        # the model isn't amnesic; the rest is a recall_conversation call away.
+        # A genuinely resumed session already has its history.
+        unless resumed? do
+          if seed = Loopyard.ChatAgent.ResumeMessage.build(state.messages) do
+            GenServer.cast(self(), {:resume_prompt, seed})
           end
         end
 

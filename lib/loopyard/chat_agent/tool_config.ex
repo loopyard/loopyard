@@ -113,7 +113,11 @@ defmodule Loopyard.ChatAgent.ToolConfig do
     Container.ProposeIntegrate,
     Container.ProposeDeleteWorkspace,
     # Agent playbooks (setup guides live host-side in priv/, not in the volume)
-    AgentFiles.ReadAgentFile
+    AgentFiles.ReadAgentFile,
+    # Durable memory: read your own conversation history (harness-portable — the
+    # conversation lives in Loopyard, not the harness session). Read-only,
+    # token-scoped to the calling agent's own transcript.
+    Container.RecallConversation
   ]
 
   @doc "Tool modules exposed to an in-container ACP harness over the HTTP MCP bridge."

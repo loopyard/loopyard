@@ -61,7 +61,8 @@ defmodule Loopyard.Tools.Container do
     Container.RequestSecret,
     Container.ProposeFork,
     Container.ProposeIntegrate,
-    Container.ProposeDeleteWorkspace
+    Container.ProposeDeleteWorkspace,
+    Container.RecallConversation
   ]
 
   def __tool_server__ do

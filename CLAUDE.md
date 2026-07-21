@@ -224,6 +224,27 @@ The harness (whichever Backend) owns only **turn execution** — taking a
 prompt and streaming a response. This split is why a harness restart
 doesn't lose messages: the inbox is Loopyard state, not harness state.
 
+**Harness-portable conversation memory (switch Claude→Codex, keep history).**
+The corollary of the durability boundary: the agent's MEMORY of the
+conversation must also live in Loopyard, not the harness session. Native
+`resume: claude_session_id` is a Claude-account-scoped optimization — it CANNOT
+survive an account/model/harness switch (the new one can't see the old session),
+so it is never the mechanism, only a fast path when the live session's identity
+is unchanged. Two harness-agnostic pieces make memory portable: (1) the
+`recall_conversation` MCP tool (`Tools.Container.RecallConversation`) lets the
+agent read its OWN durable history (last N / before_id / query) under ANY harness
+that speaks MCP — token-scoped, ETS-backed, read-only; (2) a freshly started
+session is SEEDED with the recent turns verbatim + a pointer to
+`recall_conversation` (`ChatAgent.ResumeMessage.build/1` → `{:resume_prompt, …}`
+silent continuation). The seed fires whenever a session started WITHOUT resuming
+prior context — the gate is `resumed? = live_id == prior_sid`, NOT `is_nil(live_id)`
+(a fresh `session/new` returns a new id too, so "got an id" ≠ "has history"; the
+old gate is what let a switched agent boot amnesic). A credential switch
+(`Workstation.reload_agents` → `restart_session(id, :credentials)`) DROPS the
+session id so it reconstructs instead of resuming a session the new account
+can't see. Adding a new harness (Codex) inherits all of this for free — it lives
+in ChatAgent/MCP, above the `Harness` behaviour.
+
 **ACP MCP bridge — Loopyard's control-plane tools in-container.** The
 in-container ACP harness can't use the in-process Elixir MCP servers the
 ClaudeCode backend uses, so it reaches Loopyard's *control-plane* tools
