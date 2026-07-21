@@ -49,6 +49,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       chat_msg_port_closed: 1,
       console_command_result?: 1,
       chat_msg_console_result: 1,
+      matching_tool_call: 1,
       miniapp_tool?: 1,
       miniapp_tool_result?: 1,
       streamed_exec_result?: 1
@@ -275,6 +276,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       # console box as exec / docker builds: command + output + exit status.
       console_command_result?(assigns) ->
         chat_msg_console_result(assigns)
+
+      # A FAILED result is an error message, not content — never dress it as a
+      # file/grep card (a failed Read's "File does not exist." is not ruby).
+      assigns.msg.is_error ->
+        chat_msg_tool_result(assigns)
 
       true ->
         # Rich cards for the tools whose output has an obvious shape: a file read
@@ -593,23 +599,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   def build_file_link(_, _), do: nil
 
   defp preceded_by_edit?(assigns) do
-    idx = assigns[:idx]
-    messages = assigns[:messages]
-
-    if idx && messages && idx > 0 do
-      messages
-      |> Enum.slice(0, idx)
-      |> Enum.reverse()
-      |> Enum.find(fn m -> m.role not in [:build, :build_done, :build_failed] end)
-      |> case do
-        %{role: :tool} = m ->
-          msg_kind(m) == :edit
-
-        _ ->
-          false
-      end
-    else
-      false
+    case matching_tool_call(assigns) do
+      %{role: :tool} = m -> msg_kind(m) == :edit
+      _ -> false
     end
   end
 

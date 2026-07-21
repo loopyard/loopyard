@@ -450,9 +450,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                     <%!-- The response flows directly under its "You" prompt (which
                          carries the dated timestamp) — no "Claude" marker. The
                          `space-y` gives each step (text, tool call, result) room to
-                         breathe instead of packing them edge-to-edge. --%>
+                         breathe instead of packing them edge-to-edge; the console
+                         boxes and file cards especially need the air to read as
+                         separate acts, not one dense wall. --%>
                     <div class="mt-2">
-                      <div class="space-y-2.5">
+                      <div class="space-y-4">
                         <.chat_msg
                           :for={{msg, idx} <- items}
                           :if={not in_live_feed?(@live_tool_from, msg, idx)}

@@ -16,6 +16,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
 
   import LoopyardWeb.Live.WorkspaceLive.Messages.Actions, only: [copy_btn: 1, open_btn: 1]
   import LoopyardWeb.Components.LogViewer, only: [log_inline: 1]
+  import LoopyardWeb.Components.Icon
 
   # Same flush-left gutter seam as Messages (returns "" today).
   defp gutter, do: ""
@@ -48,6 +49,28 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
         raw: raw
       )
 
+    # A one-or-two-line error ("File does not exist.") doesn't need the
+    # "error output · 1 line" disclosure ceremony — render it as the same
+    # inline red row the :error role uses, so errors read as errors everywhere.
+    if assigns.is_error and assigns.line_count <= 2 do
+      compact_error(assigns)
+    else
+      full_result(assigns)
+    end
+  end
+
+  defp compact_error(assigns) do
+    ~H"""
+    <div class={[gutter(), "flex items-start gap-2 py-1"]}>
+      <div class="w-4 h-4 rounded bg-red-100 dark:bg-red-900/30 flex items-center justify-center flex-none mt-0.5">
+        <span class="text-xs font-bold text-red-500">!</span>
+      </div>
+      <span class="text-sm font-mono text-red-600 dark:text-red-400 whitespace-pre-wrap min-w-0">{@display}</span>
+    </div>
+    """
+  end
+
+  defp full_result(assigns) do
     ~H"""
     <details
       class={[gutter(), "py-0.5 group/result"]}
@@ -146,12 +169,16 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
   @highlight_max_lines 500
   @highlight_max_bytes 80_000
 
-  # read_file → a syntax-highlighted code card with a filename header and a link
-  # into the file viewer. Same collapsible affordance as the plain result, but
-  # the body is highlighted code with line numbers.
+  # read_file → the FILE CARD: a bordered paper card that reads as "a document",
+  # deliberately distinct from the terminal console box (dark body, status dot,
+  # command title). Header bar = document icon + basename (emphasized) + its
+  # directory (dimmed, truncates first) + language/line-count meta pinned
+  # no-wrap on the right. Body = syntax-highlighted code (the `highlight` CSS
+  # scope is what activates the makeup token colors) with a sticky line-number
+  # gutter, so the numbers hold while long lines scroll horizontally.
   def chat_msg_file_result(assigns) do
     call = matching_tool_call(assigns)
-    path = call && (call.input["path"] || call.input["file_path"])
+    path = call && (call[:input]["path"] || call[:input]["file_path"])
     content = Messages.format_tool_result(assigns.msg.content)
     # Native harness Read results arrive pre-numbered ("   156→<div…"). Strip
     # that prefix and reuse the REAL file line numbers in the gutter — before
@@ -178,10 +205,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
 
     numbers = native_nos || (line_count > 0 && Enum.to_list(1..line_count)) || []
     lines = rendered |> Enum.zip(numbers) |> Enum.take(@result_line_cap)
+    display_path = path && String.trim_leading(path, "/workspace/")
 
     assigns =
       assign(assigns,
-        path: path,
+        basename: (display_path && Path.basename(display_path)) || "file",
+        dir: display_path && dirname_or_nil(display_path),
         language: language,
         line_count: line_count,
         lines: lines,
@@ -191,37 +220,67 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
       )
 
     ~H"""
-    <details class={[gutter(), "py-0.5 group/file"]} open={@detail_level == :trace}>
-      <summary class="text-sm text-zinc-500 dark:text-zinc-400 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5">
-        <span class="transition-transform group-open/file:rotate-90">▸</span>
-        <span class="font-mono text-zinc-500 dark:text-zinc-400 truncate">{@path || "file"}</span>
-        <span :if={@language} class="text-zinc-500 dark:text-zinc-400">· {@language}</span>
-        <span class="text-zinc-500 dark:text-zinc-400">· {@line_count} lines</span>
+    <details
+      class={[
+        gutter(),
+        "my-1 group/file rounded-lg border border-zinc-200 dark:border-zinc-800",
+        "overflow-hidden bg-white dark:bg-zinc-900"
+      ]}
+      open={@detail_level == :trace}
+    >
+      <summary class="flex items-center gap-2 px-3 py-1.5 cursor-pointer select-none list-none bg-zinc-50 dark:bg-zinc-900/60 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors">
+        <.icon name={:document} class="w-3.5 h-3.5 flex-none text-sky-500 dark:text-sky-400" />
+        <span class="min-w-0 flex-1 flex items-baseline gap-1.5 font-mono text-sm md:text-[13px]">
+          <span class="flex-none text-zinc-700 dark:text-zinc-200 font-medium">{@basename}</span>
+          <span :if={@dir} class="min-w-0 truncate text-zinc-400 dark:text-zinc-500">{@dir}</span>
+        </span>
+        <span
+          :if={@language}
+          class="flex-none whitespace-nowrap text-xs px-1.5 py-px rounded bg-sky-500/10 text-sky-600 dark:text-sky-400"
+        >
+          {@language}
+        </span>
+        <span class="flex-none whitespace-nowrap text-xs tabular-nums text-zinc-400 dark:text-zinc-500">
+          {@line_count} {if @line_count == 1, do: "line", else: "lines"}
+        </span>
+        <span class="flex-none text-xs text-zinc-400 dark:text-zinc-500 transition-transform group-open/file:rotate-90">
+          ▸
+        </span>
       </summary>
-      <div class="mt-1 rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800">
-        <div class="max-h-96 overflow-auto text-sm md:text-[13px] font-mono leading-snug">
-          <div :for={{line, i} <- @lines} class="flex">
-            <span class="flex-none w-12 pr-3 text-right text-zinc-500 dark:text-zinc-400 select-none tabular-nums">
-              {i}
-            </span>
-            <code class="whitespace-pre text-zinc-800 dark:text-zinc-200">{line}</code>
-          </div>
+      <div class="highlight border-t border-zinc-200 dark:border-zinc-800 max-h-96 overflow-auto text-sm md:text-[13px] font-mono leading-relaxed">
+        <div :for={{line, i} <- @lines} class="flex min-w-max">
+          <span class="flex-none sticky left-0 w-12 pr-3 text-right select-none tabular-nums bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-100 dark:border-zinc-800 text-zinc-400 dark:text-zinc-600">
+            {i}
+          </span>
+          <code class="whitespace-pre pl-3 pr-3 text-zinc-800 dark:text-zinc-200">{line}</code>
         </div>
       </div>
-      <div class="flex items-center gap-2 mt-1 h-5">
-        <p :if={@truncated} class="text-xs text-zinc-500 dark:text-zinc-400">
-          ... {@line_count - @cap} more lines
-        </p>
+      <div
+        :if={@truncated || @file_link}
+        class="flex items-center gap-3 px-3 py-1.5 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/60"
+      >
+        <span :if={@truncated} class="text-xs text-zinc-500 dark:text-zinc-400">
+          … {@line_count - @cap} more lines
+        </span>
         <a
           :if={@file_link}
           href={@file_link}
-          class="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+          class="text-xs text-blue-600 dark:text-blue-400 hover:underline"
         >
           Open in file viewer →
         </a>
       </div>
     </details>
     """
+  end
+
+  # "lib/foo/bar.ex" → "lib/foo" for the dimmed directory chip; nil when the
+  # file sits at the workspace root (no point showing ".").
+  defp dirname_or_nil(display_path) do
+    case Path.dirname(display_path) do
+      "." -> nil
+      dir -> dir
+    end
   end
 
   # grep → a match list: each row shows the file:line prefix dimmed and the
@@ -237,9 +296,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
       |> Enum.map(&parse_grep_line/1)
 
     match_count = Enum.count(rows, &match?({:match, _, _, _}, &1))
+    call = matching_tool_call(assigns)
 
     assigns =
       assign(assigns,
+        pattern: call && call[:input]["pattern"],
         rows: Enum.take(rows, @result_line_cap),
         match_count: match_count,
         truncated: length(rows) > @result_line_cap,
@@ -251,7 +312,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
     <details class={[gutter(), "py-0.5 group/grep"]} open={@detail_level == :trace}>
       <summary class="text-sm text-zinc-500 dark:text-zinc-400 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5">
         <span class="transition-transform group-open/grep:rotate-90">▸</span>
-        <span>{@match_count} {if @match_count == 1, do: "match", else: "matches"}</span>
+        <span :if={@pattern} class="font-mono truncate min-w-0">"{@pattern}"</span>
+        <span class="flex-none whitespace-nowrap">
+          {if @pattern, do: "· ", else: ""}{@match_count} {if @match_count == 1,
+            do: "match",
+            else: "matches"}
+        </span>
       </summary>
       <div class="mt-1 rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800">
         <div class="max-h-96 overflow-auto text-sm md:text-[13px] font-mono leading-snug py-1">
@@ -290,10 +356,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
   defp blank_to_nbsp(""), do: Phoenix.HTML.raw("&nbsp;")
   defp blank_to_nbsp(line), do: line
 
-  # Detect the native Read result format — every line "   <no>→<text>" — and
-  # split it into {stripped_lines, line_numbers}. Anything that doesn't match
-  # wholesale (MCP read_file results are plain text) returns {lines, nil} and
-  # the caller numbers sequentially from 1.
+  # Detect the native Read result format — lines "   <no>→<text>" — and split
+  # it into {stripped_lines, line_numbers}. Detection is TOLERANT (≥90% of
+  # lines match): real Read results often carry a couple of stray non-numbered
+  # lines (a truncation note, a system-reminder tail), and requiring ALL lines
+  # to match made the whole card fall back to double numbering — its own 1..N
+  # gutter stacked on the embedded "N→" prefixes, which also fed the arrows to
+  # the syntax highlighter. Stray lines are dropped (they're harness chrome,
+  # not file content). Plain MCP read_file results (no arrows anywhere) return
+  # {lines, nil} and the caller numbers sequentially from 1.
   defp split_read_lines(content) do
     lines =
       content
@@ -303,19 +374,21 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
       |> Enum.reverse()
 
     parsed = Enum.map(lines, &Regex.run(~r/^\s*(\d+)→(.*)$/, &1))
+    matched = Enum.reject(parsed, &is_nil/1)
 
-    if lines != [] and Enum.all?(parsed, & &1) do
-      {Enum.map(parsed, fn [_, _, text] -> text end),
-       Enum.map(parsed, fn [_, no, _] -> String.to_integer(no) end)}
+    if lines != [] and length(matched) / length(lines) >= 0.9 do
+      {Enum.map(matched, fn [_, _, text] -> text end),
+       Enum.map(matched, fn [_, no, _] -> String.to_integer(no) end)}
     else
       {lines, nil}
     end
   end
 
-  # Mini-app tools (fork/integrate/delete proposals, ask_user) render their
-  # outcome in their own interactive card. Public: Messages' :tool clause also
-  # suppresses the raw tool-call echo for these.
-  @miniapp_tools ~w(propose_fork propose_integrate propose_delete_workspace ask_user)
+  # Mini-app tools (fork/integrate/delete proposals, ask_user — including the
+  # harness's NATIVE AskUserQuestion, which reaches the same card via ACP form
+  # elicitation) render their outcome in their own interactive card. Public:
+  # Messages' :tool clause also suppresses the raw tool-call echo for these.
+  @miniapp_tools ~w(propose_fork propose_integrate propose_delete_workspace ask_user AskUserQuestion)
 
   def miniapp_tool?(tool) when is_binary(tool),
     do: Enum.any?(@miniapp_tools, &String.ends_with?(tool, &1))
@@ -331,43 +404,60 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
     end
   end
 
-  # Walk backwards from a tool_result to the :tool call it belongs to, skipping
-  # any streamed build messages in between.
-  defp matching_tool_call(assigns) do
+  @doc """
+  The `%{role: :tool}` call this tool_result belongs to.
+
+  Pairs by `tool_id` (the harness's toolCallId, stamped on both messages by
+  StreamHandler) — positional pairing is WRONG when the agent calls tools in
+  parallel: every call is emitted first, then every result, so "the nearest
+  tool message above me" attributes the FIRST result to the LAST call (an `ls`
+  dump rendered as a ruby file card). For legacy messages persisted before
+  `tool_id` existed, falls back to order-of-arrival pairing within the turn:
+  results arrive in call order, so the Nth result belongs to the Nth call.
+  """
+  def matching_tool_call(assigns) do
     idx = assigns[:idx]
     messages = assigns[:messages]
 
     if idx && messages && idx > 0 do
-      messages
-      |> Enum.slice(0, idx)
-      |> Enum.reverse()
-      |> Enum.find(fn m -> m.role not in [:build, :build_done, :build_failed] end)
+      prior = Enum.slice(messages, 0, idx)
+
+      case assigns.msg[:tool_id] do
+        tool_id when is_binary(tool_id) ->
+          Enum.find(Enum.reverse(prior), fn m ->
+            m[:role] == :tool and m[:tool_id] == tool_id
+          end)
+
+        _ ->
+          fifo_tool_call(prior)
+      end
     end
   end
 
-  # Check if this tool_result has a streamed build message above it —
-  # the output was already shown live, so rendering it again is redundant.
-  # Message order is: :tool (exec) → :build_done (streamed output) → :tool_result
-  def streamed_exec_result?(assigns) do
-    idx = assigns[:idx]
-    messages = assigns[:messages]
-
-    if idx && messages && idx > 0 do
-      # Walk backwards from this tool_result to find the matching :tool call,
-      # skipping any build/build_done/build_failed messages in between.
-      messages
-      |> Enum.slice(0, idx)
+  # Legacy pairing (messages without tool_id): within the current turn, the
+  # result that has N results before it belongs to the call with N calls before
+  # it — correct for both sequential [call res call res] and parallel
+  # [call call res res] orderings.
+  defp fifo_tool_call(prior) do
+    turn =
+      prior
       |> Enum.reverse()
-      |> Enum.find(fn m -> m.role not in [:build, :build_done, :build_failed] end)
-      |> case do
-        %{role: :tool, tool: tool} when is_binary(tool) ->
-          String.ends_with?(tool, "__exec")
+      |> Enum.take_while(&(&1[:role] != :user))
 
-        _ ->
-          false
-      end
-    else
-      false
+    calls = turn |> Enum.filter(&(&1[:role] == :tool)) |> Enum.reverse()
+    results_before = Enum.count(turn, &(&1[:role] == :tool_result))
+    Enum.at(calls, results_before)
+  end
+
+  # Check if this tool_result's output was already streamed live as a build
+  # message (exec streams into a console box) — rendering it again is redundant.
+  def streamed_exec_result?(assigns) do
+    case matching_tool_call(assigns) do
+      %{role: :tool, tool: tool} when is_binary(tool) ->
+        String.ends_with?(tool, "__exec")
+
+      _ ->
+        false
     end
   end
 

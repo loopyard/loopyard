@@ -467,3 +467,18 @@ Bad:
 - `GET /messages/:id?format=raw`
 
 Path-based variants read as "the resource in this format," cache better (different URLs → independent cache entries), and are cleaner to copy/share/curl. Reserve query strings for actual query parameters — filters, pagination, search.
+
+## Tool results pair with tool calls by `tool_id`, never by position
+
+Agents call tools in PARALLEL: the harness emits every `%{role: :tool}`
+message first, then every `%{role: :tool_result}` — so "the nearest tool
+message above me" attributes the FIRST result to the LAST call. That bug
+rendered an `ls` dump as a syntax-highlighted "ruby" file card titled with
+the path of a totally different `Read` call.
+
+StreamHandler stamps the harness's `toolCallId` as `tool_id` on both the
+`:tool` and `:tool_result` messages; the UI pairs with
+`ToolResults.matching_tool_call/1` (id match, with an order-of-arrival
+fallback for messages persisted before `tool_id` existed). Any new code
+that needs "which call produced this result" goes through that helper —
+never walk the message list positionally.
