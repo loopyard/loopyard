@@ -41,7 +41,7 @@ defmodule LoopyardWeb.Components.SideNav do
     ~H"""
     <section class={[
       @variant == :section && "pt-4 first:pt-3",
-      @variant == :sub && "pt-2.5",
+      @variant == :sub && "pt-2.5 md:pt-2",
       "px-3 pb-1",
       @class
     ]}>
@@ -97,11 +97,11 @@ defmodule LoopyardWeb.Components.SideNav do
          as one cohesive card with no lines. --%>
     <div
       data-sticky-edge="top"
-      class="sticky top-0 z-10 bg-zinc-50/95 dark:bg-zinc-900/95 backdrop-blur-sm px-4 pt-3.5 pb-2.5"
+      class="sticky top-0 z-10 bg-zinc-50/95 dark:bg-zinc-900/95 backdrop-blur-sm px-4 pt-3.5 md:pt-3 pb-2.5 md:pb-2"
     >
       <%!-- Tiny quiet eyebrow (the KIND) — deliberately smaller/lighter than the
            section labels below, so it never competes with the title. --%>
-      <div class="text-[11px] font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500 mb-1">
+      <div class="text-[11px] font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500 mb-1 md:mb-0.5">
         {@eyebrow}
       </div>
       <%!-- The TITLE row: a big, bold name that clearly dominates everything the
@@ -161,9 +161,11 @@ defmodule LoopyardWeb.Components.SideNav do
   # --- Row: the one and only list-item shape ---
   #
   # Every interactive item in any sidebar goes through this. Fixed
-  # row height (min-h-8 desktop, min-h-11 mobile) so trailing slots
+  # row height (min-h-7 desktop, min-h-11 mobile) so trailing slots
   # with port buttons / badges can't push row height up and create
-  # the "services are taller than agents" problem we had.
+  # the "services are taller than agents" problem we had. Desktop is
+  # deliberately denser than mobile — a pointer doesn't need a 44px
+  # target, and loose item spacing read as wasted rail (user feedback).
   #
   # Use one of: navigate, patch, phx_click. Non-link variant: just
   # render children inside <.row as={:div}>...
@@ -182,7 +184,7 @@ defmodule LoopyardWeb.Components.SideNav do
   def row(assigns) do
     assigns =
       assign(assigns, :base_class, [
-        "flex items-center gap-2 px-2 min-h-11 md:min-h-8 rounded text-sm transition-colors",
+        "flex items-center gap-2 px-2 min-h-11 md:min-h-7 rounded text-sm transition-colors",
         if(assigns.selected,
           do: "bg-white dark:bg-zinc-800 shadow-sm",
           else: "hover:bg-white/60 dark:hover:bg-zinc-800/40"
@@ -267,7 +269,7 @@ defmodule LoopyardWeb.Components.SideNav do
 
   def info_row(assigns) do
     ~H"""
-    <div class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-6 text-sm md:text-[13px]">
+    <div class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-5 text-sm md:text-[13px]">
       <span class="text-zinc-500 dark:text-zinc-400 flex-none">{@label}</span>
       <span class={[
         "truncate",

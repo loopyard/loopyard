@@ -322,7 +322,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
            live session flips via ACP session/set_model (persisted for future
            restarts). Options are the CLI's stable aliases; the row shows the
            resolved human name as the current selection. --%>
-      <div class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-6 text-sm">
+      <div class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-5 text-sm">
         <span class="text-zinc-500 dark:text-zinc-400 flex-none">Model</span>
         <form phx-change="set_agent_model" class="flex-none">
           <input type="hidden" name="id" value={@agent.id} />
