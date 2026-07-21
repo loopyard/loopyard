@@ -150,8 +150,18 @@ once per turn. Both reset on `stream_done`.
 **Timeouts.** `get_state/1` and `list_agents/0` use 500ms call
 timeouts with ETS fallback — a wedged agent doesn't hang the UI.
 `terminate/2` caps `backend.stop` at 3s via `Task.yield` +
-`Task.shutdown`. Stream task has a 10-min safety timer via
-`:stream_timeout` ref-tagged.
+`Task.shutdown`. The `:stream_timeout` timer (ref-tagged, 10 min) is a
+STALL watchdog, not a duration cap: a stream that produced events within
+the window, or that has a tool call in flight (long quiet command),
+slides the deadline — busy harnesses are never TTL'd. Only a silent,
+idle-handed stream is presumed wedged.
+
+**Disposable harnesses.** Harnesses are treated as unreliable by
+design: any unexpected CLI death (`midturn_crashes` ≥ 1) recycles —
+fresh session, `ResumeMessage` context summary injected, the
+interrupted user prompt re-driven automatically. The chat shows one
+quiet system line ("Recycled the harness — …"), never an error, unless
+recovery itself fails. A crashed session id is never `resume:`d.
 
 ## Harness backend seam (ACP-first)
 
