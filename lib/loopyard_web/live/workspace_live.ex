@@ -1001,20 +1001,18 @@ defmodule LoopyardWeb.WorkspaceLive do
 
   # Expand/collapse a tool-result card. The body only renders while expanded
   # (see :expanded_results on mount) — the summary line always shows.
+  # Message ids are opaque string tokens — store them as-is.
   @impl true
-  def handle_event("toggle_result", %{"msgid" => msgid}, socket) do
-    with {id, ""} <- Integer.parse(to_string(msgid)) do
-      expanded = socket.assigns.expanded_results
+  def handle_event("toggle_result", %{"msgid" => msgid}, socket)
+      when is_binary(msgid) and msgid != "" do
+    expanded = socket.assigns.expanded_results
 
-      expanded =
-        if MapSet.member?(expanded, id),
-          do: MapSet.delete(expanded, id),
-          else: MapSet.put(expanded, id)
+    expanded =
+      if MapSet.member?(expanded, msgid),
+        do: MapSet.delete(expanded, msgid),
+        else: MapSet.put(expanded, msgid)
 
-      {:noreply, assign(socket, :expanded_results, expanded)}
-    else
-      _ -> {:noreply, socket}
-    end
+    {:noreply, assign(socket, :expanded_results, expanded)}
   end
 
   def handle_event("toggle_result", _params, socket), do: {:noreply, socket}
