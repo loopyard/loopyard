@@ -25,231 +25,200 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
   def question_card(assigns) do
     ~H"""
     <div class="py-2">
-      <%!-- Quiet decision panel: neutral card, a single thin amber accent bar
-           signals "needs you" (amber, NOT violet — violet is the "You" message
-           colour). Everything reads top-down: label › question (hero) › the
-           options as scannable rows, each anchored by a radio/check dot. --%>
-      <div class="flex overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <div class="w-1 flex-none bg-amber-400 dark:bg-amber-500" aria-hidden="true"></div>
-        <div class="min-w-0 flex-1 p-4">
-          <div class="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 mb-3">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3.5 h-3.5">
-              <path
-                fill-rule="evenodd"
-                d="M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14Zm.93-9.412c-.44-.305-1.054-.305-1.494 0-.146.101-.27.245-.354.435a.75.75 0 0 1-1.372-.606c.18-.405.45-.74.819-.995 1.041-.722 2.486-.722 3.527 0 .54.375.94.94.94 1.626 0 .609-.314 1.07-.658 1.39-.124.115-.26.222-.387.32l-.10.078c-.179.139-.31.255-.404.385-.087.12-.12.222-.12.334a.75.75 0 0 1-1.5 0c0-.49.218-.884.47-1.226.21-.286.482-.502.679-.654l.078-.06c.139-.108.224-.18.286-.237.087-.08.108-.13.108-.27a.484.484 0 0 0-.298-.473ZM8 12a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"
-                clip-rule="evenodd"
-              />
-            </svg>
-            Needs your input
-            <span
-              :if={length(@msg.questions) > 1}
-              class="ml-auto normal-case tracking-normal tabular-nums text-zinc-500 dark:text-zinc-400"
-            >
-              {Enum.count(@msg.questions, &locked?(@msg, &1))}/{length(@msg.questions)} answered
-            </span>
+      <div class="rounded-xl border border-amber-200 dark:border-amber-800/50 bg-amber-50/60 dark:bg-amber-900/10 p-4">
+        <div class="flex items-center gap-1.5 text-sm font-semibold text-amber-700 dark:text-amber-400 mb-3">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 16 16"
+            fill="currentColor"
+            class="w-3.5 h-3.5"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14Zm.93-9.412c-.44-.305-1.054-.305-1.494 0-.146.101-.27.245-.354.435a.75.75 0 0 1-1.372-.606c.18-.405.45-.74.819-.995 1.041-.722 2.486-.722 3.527 0 .54.375.94.94.94 1.626 0 .609-.314 1.07-.658 1.39-.124.115-.26.222-.387.32l-.10.078c-.179.139-.31.255-.404.385-.087.12-.12.222-.12.334a.75.75 0 0 1-1.5 0c0-.49.218-.884.47-1.226.21-.286.482-.502.679-.654l.078-.06c.139-.108.224-.18.286-.237.087-.08.108-.13.108-.27a.484.484 0 0 0-.298-.473ZM8 12a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"
+              clip-rule="evenodd"
+            />
+          </svg>
+          The agent needs your input
+          <span
+            :if={length(@msg.questions) > 1}
+            class="ml-auto text-xs font-medium tabular-nums text-amber-600/90 dark:text-amber-400/70"
+          >
+            {Enum.count(@msg.questions, &locked?(@msg, &1))}/{length(@msg.questions)} answered
+          </span>
+        </div>
+
+        <div :for={q <- @msg.questions} class="mb-4 last:mb-0">
+          <div
+            :if={q.header != ""}
+            class="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1"
+          >
+            {q.header}
+          </div>
+          <div class="text-base font-semibold leading-snug text-zinc-900 dark:text-zinc-100 mb-2.5">
+            {q.prompt}
           </div>
 
-          <div :for={q <- @msg.questions} class="mb-5 last:mb-0">
-            <div
-              :if={q.header != ""}
-              class="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1"
+          <%!-- PENDING + not yet settled: interactive options. Each option is a
+               full-width row — the label is the primary affordance, the
+               description subordinate below, the whole row a real tap target.
+               Single-select: one click settles the question. Multi-select:
+               clicks TOGGLE (draft broadcast to every viewer), the button
+               below confirms. --%>
+          <div :if={@msg.status == :pending && !locked?(@msg, q)} class="flex flex-col gap-1">
+            <button
+              :for={o <- q.options}
+              type="button"
+              phx-click={if q[:multi], do: "toggle_question_option", else: "answer_question"}
+              phx-value-question_id={@msg.question_id}
+              phx-value-q={q.id}
+              phx-value-option={o.label}
+              class={[
+                "focus-ring group/opt block w-full text-left rounded-lg px-3 py-2 transition-colors",
+                if(q[:multi] && drafted?(@msg, q, o.label),
+                  do: "bg-amber-100/80 dark:bg-amber-900/30 ring-1 ring-amber-500/60 dark:ring-amber-500/50",
+                  else:
+                    "bg-white/70 dark:bg-zinc-800/50 hover:bg-amber-100/70 dark:hover:bg-amber-900/20"
+                )
+              ]}
             >
-              {q.header}
-            </div>
-            <div class="text-[15px] font-semibold leading-snug text-zinc-900 dark:text-zinc-50 mb-3">
-              {q.prompt}
-            </div>
+              <div class="flex items-center gap-1.5 text-sm font-medium text-zinc-800 dark:text-zinc-100">
+                <span
+                  :if={q[:multi] && drafted?(@msg, q, o.label)}
+                  class="text-amber-600 dark:text-amber-400"
+                  aria-hidden="true"
+                >
+                  ✓
+                </span>
+                {o.label}
+              </div>
+              <div
+                :if={o.description not in [nil, ""]}
+                class="mt-0.5 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400"
+              >
+                {o.description}
+              </div>
+            </button>
 
-            <%!-- PENDING: interactive options. Each is a scannable row anchored by
-                 a radio/check dot. Single-select: one click settles. Multi-select:
-                 clicks TOGGLE (draft broadcast to all viewers); the dot fills and
-                 the button below confirms. --%>
-            <div :if={@msg.status == :pending && !locked?(@msg, q)} class="flex flex-col gap-2">
+            <%!-- Quiet per-question actions: your own answer, confirm a
+                 multi-select draft, or skip — the same escape hatches the
+                 native AskUserQuestion always offers. --%>
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
               <button
-                :for={o <- q.options}
+                :if={q[:multi]}
                 type="button"
-                phx-click={if q[:multi], do: "toggle_question_option", else: "answer_question"}
+                phx-click="confirm_question"
                 phx-value-question_id={@msg.question_id}
                 phx-value-q={q.id}
-                phx-value-option={o.label}
-                class={[
-                  "focus-ring group/opt flex w-full items-start gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors",
-                  if(q[:multi] && drafted?(@msg, q, o.label),
-                    do:
-                      "border-amber-300 bg-amber-50 dark:border-amber-500/50 dark:bg-amber-500/10",
-                    else:
-                      "border-zinc-200 bg-zinc-50/80 hover:border-amber-300 hover:bg-amber-50/60 dark:border-zinc-700/70 dark:bg-zinc-800/40 dark:hover:border-amber-500/40 dark:hover:bg-amber-500/10"
-                  )
-                ]}
+                class="focus-ring inline-flex items-center rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-sm font-medium px-3.5 py-1.5 transition-colors"
               >
-                <span
-                  aria-hidden="true"
-                  class={[
-                    "mt-px flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full border-2 transition-colors",
-                    if(q[:multi] && drafted?(@msg, q, o.label),
-                      do: "border-amber-500 bg-amber-500 text-white",
-                      else:
-                        "border-zinc-300 group-hover/opt:border-amber-400 dark:border-zinc-600 dark:group-hover/opt:border-amber-500"
-                    )
-                  ]}
-                >
-                  <.check :if={q[:multi] && drafted?(@msg, q, o.label)} />
-                </span>
-                <span class="min-w-0 flex-1">
-                  <span class="block text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                    {o.label}
-                  </span>
-                  <span
-                    :if={o.description not in [nil, ""]}
-                    class="mt-0.5 block text-sm leading-relaxed text-zinc-600 dark:text-zinc-400"
-                  >
-                    {o.description}
-                  </span>
-                </span>
+                {if draft_count(@msg, q) > 0,
+                  do: "Done (#{draft_count(@msg, q)} selected)",
+                  else: "None of these"}
               </button>
-
-              <%!-- Quiet per-question actions: confirm a multi-select draft, type
-                   your own, or skip — the escape hatches the native question offers. --%>
-              <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                <button
-                  :if={q[:multi]}
-                  type="button"
-                  phx-click="confirm_question"
-                  phx-value-question_id={@msg.question_id}
-                  phx-value-q={q.id}
-                  class="focus-ring inline-flex items-center rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-sm font-medium px-3.5 py-1.5 transition-colors"
+              <details class="group/other min-w-0">
+                <summary class="text-sm text-amber-700/90 dark:text-amber-400/80 hover:text-amber-800 dark:hover:text-amber-300 cursor-pointer select-none list-none">
+                  Other…
+                </summary>
+                <form
+                  phx-submit="answer_question_text"
+                  class="mt-1.5 flex items-center gap-2"
                 >
-                  {if draft_count(@msg, q) > 0,
-                    do: "Done (#{draft_count(@msg, q)} selected)",
-                    else: "None of these"}
-                </button>
-                <details class="group/other min-w-0">
-                  <summary class="focus-ring inline-flex rounded text-sm font-medium text-amber-700 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-300 cursor-pointer select-none list-none">
-                    Other…
-                  </summary>
-                  <form phx-submit="answer_question_text" class="mt-2 flex items-center gap-2">
-                    <input type="hidden" name="question_id" value={@msg.question_id} />
-                    <input type="hidden" name="q" value={q.id} />
-                    <input
-                      type="text"
-                      name="text"
-                      autocomplete="off"
-                      placeholder="Type your own answer…"
-                      class="focus-ring flex-1 min-w-0 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-1.5 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500"
-                    />
-                    <button
-                      type="submit"
-                      class="focus-ring inline-flex items-center rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-sm font-medium px-3 py-1.5 transition-colors flex-none"
-                    >
-                      Answer
-                    </button>
-                  </form>
-                </details>
-                <button
-                  :if={!q[:multi]}
-                  type="button"
-                  phx-click="skip_question"
-                  phx-value-question_id={@msg.question_id}
-                  phx-value-q={q.id}
-                  class="focus-ring inline-flex rounded text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-                >
-                  Skip
-                </button>
-              </div>
-            </div>
-
-            <%!-- SETTLED: same rows (no layout jump), chosen lit emerald with a
-                 filled check, the rest quietly dimmed but legible. Durable
-                 receipt — survives refresh/restart via persisted :selections. --%>
-            <div :if={locked?(@msg, q)} class="flex flex-col gap-2">
-              <div
-                :for={o <- q.options}
-                class={[
-                  "flex items-start gap-3 rounded-lg border px-3 py-2.5",
-                  if(chosen?(@msg, q, o.label),
-                    do: "border-emerald-300 bg-emerald-50 dark:border-emerald-500/40 dark:bg-emerald-500/10",
-                    else: "border-transparent opacity-60"
-                  )
-                ]}
-              >
-                <span
-                  aria-hidden="true"
-                  class={[
-                    "mt-px flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full border-2",
-                    if(chosen?(@msg, q, o.label),
-                      do: "border-emerald-500 bg-emerald-500 text-white",
-                      else: "border-zinc-300 dark:border-zinc-600"
-                    )
-                  ]}
-                >
-                  <.check :if={chosen?(@msg, q, o.label)} />
-                </span>
-                <span class="min-w-0 flex-1">
-                  <span class={[
-                    "block text-sm font-medium",
-                    if(chosen?(@msg, q, o.label),
-                      do: "text-emerald-800 dark:text-emerald-200",
-                      else: "text-zinc-600 dark:text-zinc-400"
-                    )
-                  ]}>
-                    {o.label}
-                  </span>
-                  <span
-                    :if={o.description not in [nil, ""]}
-                    class={[
-                      "mt-0.5 block text-sm leading-relaxed",
-                      if(chosen?(@msg, q, o.label),
-                        do: "text-emerald-700/80 dark:text-emerald-300/70",
-                        else: "text-zinc-500 dark:text-zinc-500"
-                      )
-                    ]}
+                  <input type="hidden" name="question_id" value={@msg.question_id} />
+                  <input type="hidden" name="q" value={q.id} />
+                  <input
+                    type="text"
+                    name="text"
+                    autocomplete="off"
+                    placeholder="Type your own answer…"
+                    class="focus-ring flex-1 min-w-0 rounded-lg border border-amber-200/70 dark:border-amber-800/50 bg-white/70 dark:bg-zinc-900/40 px-3 py-1.5 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400"
+                  />
+                  <button
+                    type="submit"
+                    class="focus-ring inline-flex items-center rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-sm font-medium px-3 py-1.5 transition-colors flex-none"
                   >
-                    {o.description}
-                  </span>
-                </span>
-              </div>
-
-              <%!-- No option row matched: a free-text answer (show it) or a skip. --%>
-              <div :if={!any_option_chosen?(@msg, q)} class="flex flex-wrap items-center gap-2 text-sm">
-                <span
-                  :if={answer_for(@msg, q)}
-                  class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 font-medium text-emerald-700 dark:text-emerald-300"
-                >
-                  {answer_for(@msg, q)}
-                </span>
-                <span
-                  :if={!answer_for(@msg, q)}
-                  class="inline-flex items-center gap-1.5 rounded-lg bg-zinc-500/10 px-3 py-1.5 font-medium text-zinc-500 dark:text-zinc-400"
-                >
-                  Skipped
-                </span>
-              </div>
+                    Answer
+                  </button>
+                </form>
+              </details>
+              <button
+                :if={!q[:multi]}
+                type="button"
+                phx-click="skip_question"
+                phx-value-question_id={@msg.question_id}
+                phx-value-q={q.id}
+                class="text-sm text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300"
+              >
+                Skip
+              </button>
             </div>
           </div>
 
-          <div
-            :if={@msg.status == :pending}
-            class="mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-800 text-sm text-zinc-500 dark:text-zinc-400"
-          >
-            …or just reply in the chat — your message is sent to the agent as the answer.
-          </div>
+          <%!-- SETTLED (this question answered/skipped — card may still be
+               pending on others): keep the SAME option list (same height → no
+               layout jump on click), chosen lit emerald with a check, the rest
+               dimmed. Durable receipt — survives refresh/restart via the
+               persisted :selections. --%>
+          <div :if={locked?(@msg, q)} class="flex flex-col gap-1">
+            <div
+              :for={o <- q.options}
+              class={[
+                "block w-full text-left rounded-lg px-3 py-2",
+                if(chosen?(@msg, q, o.label),
+                  do: "bg-emerald-50/70 dark:bg-emerald-900/15",
+                  else: "opacity-70"
+                )
+              ]}
+            >
+              <div class={[
+                "flex items-center gap-1.5 text-sm font-medium",
+                if(chosen?(@msg, q, o.label),
+                  do: "text-emerald-700 dark:text-emerald-300",
+                  else: "text-zinc-500 dark:text-zinc-400"
+                )
+              ]}>
+                <span :if={chosen?(@msg, q, o.label)} aria-hidden="true">✓</span>
+                {o.label}
+              </div>
+              <div
+                :if={o.description not in [nil, ""]}
+                class="mt-0.5 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400"
+              >
+                {o.description}
+              </div>
+            </div>
 
-          <div :if={@msg.status == :timeout} class="text-sm text-zinc-500 dark:text-zinc-400">
-            No answer — the agent moved on.
+            <%!-- No option row matched: the receipt is either a free-text
+                 answer (show the text) or an explicit skip. --%>
+            <div :if={!any_option_chosen?(@msg, q)} class="flex flex-wrap items-center gap-2 text-sm">
+              <span
+                :if={answer_for(@msg, q)}
+                class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 font-medium text-emerald-600 dark:text-emerald-400"
+              >
+                {answer_for(@msg, q)}
+              </span>
+              <span
+                :if={!answer_for(@msg, q)}
+                class="inline-flex items-center gap-1.5 rounded-lg bg-zinc-500/10 px-3 py-1.5 font-medium text-zinc-500 dark:text-zinc-400"
+              >
+                Skipped
+              </span>
+            </div>
           </div>
+        </div>
+
+        <div
+          :if={@msg.status == :pending}
+          class="mt-3 pt-3 border-t border-amber-200/60 dark:border-amber-800/40 text-sm text-zinc-500 dark:text-zinc-400"
+        >
+          …or just reply in the chat — your message is sent to the agent as the answer.
+        </div>
+
+        <div :if={@msg.status == :timeout} class="text-sm text-zinc-500 dark:text-zinc-400">
+          No answer — the agent moved on.
         </div>
       </div>
     </div>
-    """
-  end
-
-  # Small check glyph for the filled radio/answered dots. A crisp stroked check
-  # reads better than a text "✓" at this size and inherits currentColor.
-  defp check(assigns) do
-    ~H"""
-    <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.25" class="h-3 w-3">
-      <path d="M2.5 6.5 5 9l4.5-5.5" stroke-linecap="round" stroke-linejoin="round" />
-    </svg>
     """
   end
 
