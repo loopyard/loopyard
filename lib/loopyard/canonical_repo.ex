@@ -174,7 +174,10 @@ defmodule Loopyard.CanonicalRepo do
   def integrate(project_id, workspace_id, branch, github_url \\ nil, opts \\ []) do
     ws = VolumeManager.code_volume_name(workspace_id)
 
-    if is_binary(github_url) and github_url != "" do
+    # Route on "has a remote": a real https URL (production) OR a `{:volume, _}`
+    # stand-in (tests) → land on that remote's main; nil/"" (local-only) → the
+    # legacy canonical path. `remote_spec/2` handles both remote shapes.
+    if github_url not in [nil, ""] do
       {extra_mounts, url} = remote_spec(github_url, opts[:token])
 
       cmd = """

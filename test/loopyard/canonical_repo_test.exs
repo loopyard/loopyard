@@ -107,6 +107,39 @@ defmodule Loopyard.CanonicalRepoTest do
     assert out2 =~ "hello"
   end
 
+  test "GitHub-host mode: fork repoints origin to the CLEAN url; integrate lands on the remote's main",
+       ids do
+    # A stand-in "GitHub": a bare repo seeded with the project's main.
+    remote = CanonicalRepo.volume_name(ids.remote)
+    assert {:ok, _} = CanonicalRepo.init(ids.projA)
+    assert {:ok, _} = empty_bare(remote)
+    assert {:ok, _} = CanonicalRepo.push(ids.projA, {:volume, remote}, refspec: "main:main")
+
+    # Fork WITH a github_url → the workspace's origin is repointed to that clean
+    # URL, and NO token is baked into .git/config (the whole point of 1a).
+    github_url = "https://github.com/acme/widgets.git"
+    assert {:ok, ws1vol} = CanonicalRepo.fork(ids.projA, ids.ws1, "main", "feature", github_url)
+
+    assert {:ok, origin} = git_in(ws1vol, "git remote get-url origin")
+    assert String.trim(origin) == github_url
+
+    assert {:ok, cfg} = git_in(ws1vol, "cat .git/config")
+    refute cfg =~ "@github.com", "no token may be persisted into .git/config"
+
+    # Commit on feature, then integrate to the {:volume} "GitHub" remote's main.
+    assert {:ok, _} = git_in(ws1vol, "echo hi > f.txt && git add -A && git commit -m feat")
+
+    assert {:ok, _} =
+             CanonicalRepo.integrate(ids.projA, ids.ws1, "feature", {:volume, remote})
+
+    # The REMOTE's main now carries the feature commit — proves it landed on the
+    # remote (not canonical). Clone it back and check.
+    assert {:ok, _} = CanonicalRepo.init_from_remote(ids.projB, {:volume, remote})
+    assert {:ok, wsBvol} = CanonicalRepo.fork(ids.projB, ids.wsB, "main", "check")
+    assert {:ok, out} = git_in(wsBvol, "cat f.txt")
+    assert out =~ "hi"
+  end
+
   test "integrate fails cleanly on a rebase conflict (workspace left for the agent to resolve)",
        ids do
     assert {:ok, _} = CanonicalRepo.init(ids.projA)
