@@ -206,7 +206,18 @@ defmodule Loopyard.ChatAgent do
   # since the last clean turn (see midturn_crashes on the struct), recovery
   # compacts (summarize → fresh session) rather than resuming the session
   # that keeps killing its harness.
-  @compact_after_midturn_crashes 2
+  #
+  # ONE, not two. `session/load` resume of a large session is the crash source
+  # (claude-agent-acp #338 / discussion #871: full-JSONL replay dies), while a
+  # fresh `session/new` is reliable. Giving a just-crashed session a SECOND
+  # resume just crashes again — and because a clean turn resets this counter,
+  # an intermittently-crashing resume never reached the old threshold of 2, so
+  # the user hit failed turn after failed turn forever. Tripping on the FIRST
+  # crash means: crash → immediately drop to a fresh, summarized session (the
+  # compaction path re-sends the user's message), so the turn auto-completes
+  # instead of failing. Loopyard keeps the full chat log either way; only the
+  # HARNESS's in-context history compacts to a summary.
+  @compact_after_midturn_crashes 1
 
   @doc """
   True when this agent's session has died mid-conversation enough times that
@@ -651,10 +662,49 @@ defmodule Loopyard.ChatAgent do
       Persistence.persist_message(state, note)
       Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: note})
 
-      handle_cast({:auto_restart_context, nil}, Map.put(state, :midturn_crashes, 0))
+      # Auto-complete the turn the crash interrupted: hand the compaction path
+      # the UNANSWERED user message (nil once it's answered, or once we've
+      # compacted too many times — a fresh session that ALSO keeps crashing must
+      # not loop). So a mid-turn crash becomes: compact → fresh session → the
+      # user's question re-runs and answers itself, no "tap Send" needed.
+      handle_cast(
+        {:auto_restart_context, pending_user_prompt(state)},
+        Map.put(state, :midturn_crashes, 0)
+      )
     else
       restart_session_now(state)
     end
+  end
+
+  # The user's last message with NO assistant reply after it — the in-flight
+  # turn a mid-turn crash interrupted. nil when the last turn already completed
+  # (nothing to re-run) OR when we've compacted repeatedly in a short window (a
+  # fresh session that keeps crashing too — stop auto-retrying, let the user see
+  # it's stuck rather than spin forever).
+  defp pending_user_prompt(state) do
+    if compaction_looping?(state) do
+      nil
+    else
+      Enum.reduce_while(Enum.reverse(state.messages || []), nil, fn m, _ ->
+        cond do
+          m[:role] == :assistant -> {:halt, nil}
+          m[:role] == :user and is_binary(m[:content]) and m[:content] != "" -> {:halt, m[:content]}
+          true -> {:cont, nil}
+        end
+      end)
+    end
+  end
+
+  # ≥3 compactions in 3 minutes = even fresh sessions keep dying, so the problem
+  # isn't the resumed history — don't auto-retry into an infinite loop.
+  defp compaction_looping?(state) do
+    now = DateTime.utc_now()
+
+    Enum.count(state.messages || [], fn m ->
+      m[:role] == :system and is_binary(m[:content]) and
+        String.contains?(m[:content], "Compacting instead") and
+        match?(%DateTime{}, m[:timestamp]) and DateTime.diff(now, m[:timestamp], :second) < 180
+    end) >= 3
   end
 
   defp restart_session_now(state) do
