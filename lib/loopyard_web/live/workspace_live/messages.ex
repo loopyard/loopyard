@@ -355,11 +355,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
             String.contains?(content, "SystemMessage")) do
       ~H"<div></div>"
     else
+      # Meta notes (compaction, CLI crash/restart, context refresh) are
+      # house-keeping, not conversation — keep them a quiet aside: tiny, muted
+      # italic, no bullet, so you can SEE them happen without them competing with
+      # what the agent actually said. (Comment lives here, NOT as a leading HEEX
+      # comment inside ~H — that would make this a non-single-static root and
+      # crash the stateful MessageRowComponent.)
       ~H"""
-      <%!-- Meta notes (compaction, CLI crash/restart, context refresh) are
-           house-keeping, not conversation — keep them a quiet aside: tiny, muted
-           italic, no bullet, so you can SEE them happen without them competing
-           with what the agent actually said. --%>
       <div class={[gutter(), "py-1 text-zinc-400/70 dark:text-zinc-600"]}>
         <span
           class="text-sm italic leading-relaxed"

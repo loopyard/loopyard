@@ -91,14 +91,20 @@ defmodule LoopyardWeb.Components.LogViewer do
         command: assigns.title
       )
 
+    # The console box, four corners (one consistent "that's a command" shape):
+    #   top-left     the command itself, `$ `-prefixed
+    #   top-right    visual controls only (expand/contract, truncation hint)
+    #   bottom-left  the VERDICT: status light + exit code / live elapsed
+    #   bottom-right the takeaway actions (copy, open in new tab)
+    # Command up top, outcome + actions in the footer — the header stays
+    # uncluttered and every box reads the same way at a glance.
+    #
+    # NOTE: this doc MUST stay a `#` comment ABOVE ~H, not a leading `<%!-- --%>`
+    # inside the template. log_inline is the ROOT render of a stateful
+    # LiveComponent for :build_done / :build_failed rows (MessageRowComponent),
+    # and a stateful component's root must be a single STATIC tag — a leading
+    # HEEX comment breaks that ("must have a single static HTML tag at the root").
     ~H"""
-    <%!-- The console box, four corners (one consistent "that's a command" shape):
-           top-left     the command itself, `$ `-prefixed
-           top-right    visual controls only (expand/contract, truncation hint)
-           bottom-left  the VERDICT: status light + exit code / live elapsed
-           bottom-right the takeaway actions (copy, open in new tab)
-         Command up top, outcome + actions in the footer — the header stays
-         uncluttered and every box reads the same way at a glance. --%>
     <div
       id={"log-wrap-#{System.unique_integer([:positive])}"}
       phx-hook="LogExpand"
