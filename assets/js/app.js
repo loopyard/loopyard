@@ -691,6 +691,38 @@ Hooks.ChatForm = {
       }
     } catch (_) {}
 
+    // Focus persistence across a FULL reload (dev live-reload, server restart) —
+    // if you're mid-type and the page rebuilds, land back in the box at the same
+    // caret. Guarded by a freshness WINDOW, not just a flag: we only restore if
+    // you were in the box within the last few seconds, so reopening the tab later
+    // never steals focus (or pops the mobile keyboard) when you didn't ask. Blur
+    // clears it, so clicking away means "leave me out of it."
+    const focusKey = "loopyard:focus:" + location.pathname
+    const FOCUS_TTL = 15000
+    const saveFocus = () => {
+      try { localStorage.setItem(focusKey, JSON.stringify({ pos: ta.selectionStart, t: Date.now() })) } catch (_) {}
+    }
+    const clearFocus = () => { try { localStorage.removeItem(focusKey) } catch (_) {} }
+    ta.addEventListener("focus", saveFocus)
+    ta.addEventListener("blur", clearFocus)
+    // Keep the caret/timestamp fresh while actively editing (typing, arrowing,
+    // clicking within the box) so a long-but-active session still counts as "in it."
+    ta.addEventListener("keyup", () => { if (document.activeElement === ta) saveFocus() })
+    ta.addEventListener("click", () => { if (document.activeElement === ta) saveFocus() })
+    try {
+      const raw = localStorage.getItem(focusKey)
+      if (raw) {
+        const { pos, t } = JSON.parse(raw)
+        if (Date.now() - t < FOCUS_TTL) {
+          ta.focus()
+          const p = Number.isInteger(pos) ? Math.min(pos, ta.value.length) : ta.value.length
+          ta.setSelectionRange(p, p)
+        } else {
+          clearFocus()
+        }
+      }
+    } catch (_) {}
+
     const send = () => {
       if (sending) return
       const text = ta.value.trim()
