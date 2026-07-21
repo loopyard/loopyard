@@ -216,7 +216,11 @@ defmodule Loopyard.Docker do
     env = Keyword.get(opts, :env, [])
     retry = Keyword.get(opts, :retry, true)
     cmd_opts = [stderr_to_stdout: true] ++ if(env == [], do: [], else: [env: env])
-    meta = %{args: args, timeout: timeout}
+    # Execution uses the real `args`; telemetry gets a SCRUBBED copy so a
+    # token-in-URL (e.g. the `git push https://<token>@github.com` in an
+    # integrate) can never leak into /system/events or a future docker-command
+    # logger. No consumer logs it today, but redact at the source.
+    meta = %{args: scrub_secrets(args), timeout: timeout}
 
     :telemetry.span([:loopyard, :docker, :command], meta, fn ->
       result = run_with_retry(args, cmd_opts, timeout, retry)
@@ -226,6 +230,21 @@ defmodule Loopyard.Docker do
       # the docker_test telemetry assertion) get the same context on
       # both span endpoints.
       {result, meta}
+    end)
+  end
+
+  # Redact URL userinfo (`https://<token>@host` / `https://user:pass@host`) from
+  # args before they go into telemetry meta — so a credential-bearing git URL in
+  # an integrate/push command can't surface in /system/events or a logger. Only
+  # touches the telemetry copy; execution uses the real args. No-op for the
+  # common token-free case.
+  @userinfo ~r{//[^/@\s]+@}
+
+  @doc false
+  def scrub_secrets(args) do
+    Enum.map(args, fn
+      arg when is_binary(arg) -> String.replace(arg, @userinfo, "//***@")
+      other -> other
     end)
   end
 

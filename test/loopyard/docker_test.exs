@@ -71,6 +71,27 @@ defmodule Loopyard.DockerTest do
 
       :telemetry.detach(handler_id)
     end
+
+  end
+
+  describe "scrub_secrets/1 (telemetry credential redaction — pure)" do
+    test "redacts a token in a URL but keeps the URL shape" do
+      cmd = "git push https://ghp_SECRETTOKEN@github.com/acme/x HEAD:main"
+      [scrubbed] = Docker.scrub_secrets([cmd])
+      refute scrubbed =~ "ghp_SECRETTOKEN", "the token must never reach telemetry"
+      assert scrubbed =~ "//***@github.com/acme/x", "credentials redacted, path kept"
+    end
+
+    test "redacts user:pass userinfo too" do
+      assert Docker.scrub_secrets(["clone https://u:p@host/r"]) == ["clone https://***@host/r"]
+    end
+
+    test "leaves token-free args untouched (the common case)" do
+      assert Docker.scrub_secrets(["version"]) == ["version"]
+      assert Docker.scrub_secrets(["run", "--rm", "alpine/git"]) == ["run", "--rm", "alpine/git"]
+      # a bare github URL with no credentials is unchanged
+      assert Docker.scrub_secrets(["push https://github.com/a/b"]) == ["push https://github.com/a/b"]
+    end
   end
 
   describe "stream/3" do
