@@ -68,6 +68,44 @@ defmodule Loopyard.ChatAgent.ConcurrentSendTest do
     end
   end
 
+  # A backend whose liveness probe is deliberately SLOW — stands in for ACP's
+  # session_alive? (a real JSON-RPC ping through a busy in-container adapter,
+  # up to 2s). Used to prove the queue-ack path never consults it.
+  defmodule SlowProbeBackend do
+    defdelegate start_session(opts), to: Loopyard.TestSupport.RecordingBackend
+    defdelegate stream(session, prompt), to: Loopyard.TestSupport.RecordingBackend
+    defdelegate stop(session), to: Loopyard.TestSupport.RecordingBackend
+    defdelegate session_id(session), to: Loopyard.TestSupport.RecordingBackend
+    defdelegate cancel_turn(session), to: Loopyard.TestSupport.RecordingBackend
+
+    def session_alive?(_session) do
+      Process.sleep(2_000)
+      true
+    end
+  end
+
+  describe "queue-ack latency (no harness probe in front of the inbox)" do
+    test "enqueue while :thinking acks instantly — the slow liveness probe is never hit",
+         %{id: id} do
+      pid = agent_pid(id)
+
+      # A REAL in-flight turn: stream_ref set (start_turn sets it with the
+      # status flip). Without it the state reads as ghost-:thinking, whose
+      # self-heal legitimately probes the backend.
+      :sys.replace_state(pid, fn s ->
+        %{s | status: :thinking, stream_ref: make_ref(), backend: SlowProbeBackend}
+      end)
+
+      {micros, :ok} = :timer.tc(fn -> ChatAgent.enqueue_message(id, "queued mid-turn") end)
+
+      # Pre-fix this took 2s+ (the probe ran before the queue append).
+      assert div(micros, 1000) < 500,
+             "queue ack took #{div(micros, 1000)}ms — a harness probe is back in the ack path"
+
+      assert :sys.get_state(pid).pending_sends == ["queued mid-turn"]
+    end
+  end
+
   describe "surface #15: concurrent send serialization" do
     test "a send while :thinking parks in the queue without polluting the chat",
          %{id: id} do

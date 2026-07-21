@@ -155,8 +155,10 @@ defmodule Loopyard.ChatAgent.PromptDriftTest do
           resume: true
         )
 
-      assert_receive {:prompt_drift, meta}, 1_000
-      assert meta.agent_id == id
+      # Match THIS agent's event specifically — the global agents.log replays
+      # other tests' leftover agents on boot, and any of them can emit a drift
+      # event of its own into this handler (shared-state pollution).
+      assert_receive {:prompt_drift, %{agent_id: ^id} = meta}, 1_000
       assert meta.old_hash == fake_hash
       assert meta.new_hash != meta.old_hash
 

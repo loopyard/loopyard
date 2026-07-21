@@ -106,7 +106,9 @@ defmodule Loopyard.Harness.MemoryMonitor do
     )
 
     case Registry.lookup(Loopyard.ChatAgentRegistry, id) do
-      [{pid, _}] -> GenServer.cast(pid, :restart_session)
+      # :memory_reclaim → no "crashed" line in the chat; this is maintenance
+      # on a healthy idle agent (the EventLog warning above carries the why).
+      [{pid, _}] -> GenServer.cast(pid, {:restart_session, :memory_reclaim})
       [] -> :ok
     end
   end

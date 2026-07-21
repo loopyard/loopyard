@@ -92,23 +92,61 @@ defmodule LoopyardWeb.Components.LogViewer do
       )
 
     ~H"""
+    <%!-- The console box, four corners (one consistent "that's a command" shape):
+           top-left     the command itself, `$ `-prefixed
+           top-right    visual controls only (expand/contract, truncation hint)
+           bottom-left  the VERDICT: status light + exit code / live elapsed
+           bottom-right the takeaway actions (copy, open in new tab)
+         Command up top, outcome + actions in the footer — the header stays
+         uncluttered and every box reads the same way at a glance. --%>
     <div
       id={"log-wrap-#{System.unique_integer([:positive])}"}
       phx-hook="LogExpand"
       class="mt-2 mb-1 rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden bg-zinc-100 dark:bg-zinc-950"
     >
-      <%!-- Terminal title bar: the COMMAND is the title (one line, truncated — long
-           commands don't wrap and wreck the layout; hover for the full text). It
-           finalizes with a green `exit 0` or red `exit N`. The output streams in
-           the body below; the command is NOT repeated there. --%>
       <div class="flex items-center gap-2 px-3 py-1.5 bg-zinc-50 dark:bg-zinc-900/60 border-b border-zinc-200 dark:border-zinc-800">
-        <div class={"w-1.5 h-1.5 rounded-full flex-none #{@dot_class}"}></div>
         <span
           title={@command}
-          class="text-sm md:text-[13px] font-mono text-zinc-500 dark:text-zinc-400 truncate min-w-0 flex-1"
+          class="text-sm md:text-[13px] font-mono text-zinc-600 dark:text-zinc-300 truncate min-w-0 flex-1"
         >
-          {@command || @status_label}
+          <span :if={@command} class="select-none text-zinc-400 dark:text-zinc-500">$ </span>{@command ||
+            @status_label}
         </span>
+        <span :if={@truncated} data-truncated class="text-xs text-zinc-400 flex-none">
+          … truncated
+        </span>
+        <button
+          type="button"
+          data-expand
+          class="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors hidden flex-none"
+          title="Show full output"
+        >
+          <%!-- Chevron-down = "show more"; LogExpand ROTATES it when expanded
+               (never swaps it for text — that's what produced the giant
+               unstyled EXPAND label). --%>
+          <svg
+            class="w-3.5 h-3.5 transition-transform"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 16 16"
+            fill="currentColor"
+          >
+            <path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" />
+          </svg>
+        </button>
+      </div>
+      <%!-- Output reads like a code-editor pane: no wrap (lines overflow and scroll
+           horizontally), height-capped so a long log doesn't swallow the chat —
+           expand (chevron) to open the full thing. --%>
+      <pre
+        data-log-pre
+        class={[
+          "text-sm md:text-[13px] font-mono leading-snug text-zinc-800 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-950 whitespace-pre overflow-auto px-3 py-2",
+          if(@status == :building, do: "max-h-64", else: "max-h-32")
+        ]}
+      >{Ansi.to_html(@display)}</pre>
+      <%!-- Footer: verdict left, actions right. --%>
+      <div class="flex items-center gap-2 px-3 py-1 bg-zinc-50 dark:bg-zinc-900/60 border-t border-zinc-200 dark:border-zinc-800">
+        <div class={"w-1.5 h-1.5 rounded-full flex-none #{@dot_class}"}></div>
         <span
           :if={@status == :building && elapsed_since(@started)}
           id={"elapsed-#{elapsed_since(@started)}"}
@@ -131,26 +169,7 @@ defmodule LoopyardWeb.Components.LogViewer do
         >
           {exit_label(@status, @exit_code)}
         </span>
-        <span :if={@truncated} class="text-xs text-zinc-400 flex-none">… truncated</span>
-        <div class="flex items-center gap-1 flex-none">
-          <button
-            type="button"
-            data-expand
-            class="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors hidden"
-            title="Show full output"
-          >
-            <%!-- Chevron-down = "show more". Was a ✗ (close) glyph, which read as
-                 an error/cancel right next to the exit status — this is an
-                 expand affordance, not a dismiss. --%>
-            <svg
-              class="w-3.5 h-3.5"
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 16 16"
-              fill="currentColor"
-            >
-              <path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" />
-            </svg>
-          </button>
+        <div class="flex items-center gap-1 flex-none ml-auto">
           <button
             :if={@raw_url}
             id={"copy-log-#{System.unique_integer([:positive])}"}
@@ -202,16 +221,6 @@ defmodule LoopyardWeb.Components.LogViewer do
           </a>
         </div>
       </div>
-      <%!-- Output reads like a code-editor pane: no wrap (lines overflow and scroll
-           horizontally), height-capped so a long log doesn't swallow the chat —
-           click (LogExpand) to open the full thing. --%>
-      <pre
-        data-log-pre
-        class={[
-          "text-sm md:text-[13px] font-mono leading-snug text-zinc-800 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-950 whitespace-pre overflow-auto px-3 py-2",
-          if(@status == :building, do: "max-h-64", else: "max-h-32")
-        ]}
-      >{Ansi.to_html(@display)}</pre>
     </div>
     """
   end

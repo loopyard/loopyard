@@ -165,12 +165,14 @@ defmodule Loopyard.ChatAgent.DeadSessionTest do
 
       ChatAgent.send_message(id, "kick the reconnect")
 
-      # ensure_alive/1 calls start_session once; the dead-session branch
-      # then casts :restart_session, which calls start_session AGAIN.
-      # We assert we saw at least 2 starts — the second proving the
-      # restart cast was processed.
+      # The dead-idle send takes the fast-ack path: queue the text + ONE async
+      # :restart_session (which calls start_session). No synchronous
+      # ensure_alive spawn in front anymore — the old double-start (probe
+      # spawn + restart spawn) was both slow and wasteful.
       assert_receive {:dead_backend_start, _}, 1_000
-      assert_receive {:dead_backend_start, _}, 1_000
+
+      state = :sys.get_state(agent_pid(id))
+      assert "kick the reconnect" in state.pending_sends
     end
   end
 

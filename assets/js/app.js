@@ -583,16 +583,21 @@ Hooks.LogExpand = {
       btn.classList.remove("hidden")
     }
 
-    // Expand/collapse toggle
+    // Expand/collapse toggle. NEVER btn.textContent — that replaced the
+    // chevron SVG with a raw unstyled "expand"/"collapse" word (the giant
+    // text bug). The chevron rotates to point up when expanded instead.
     if (btn) {
       btn.addEventListener("click", () => {
         this._expanded = !this._expanded
+        const icon = btn.querySelector("svg")
         if (this._expanded) {
           pre.style.maxHeight = "none"
-          btn.textContent = "collapse"
+          btn.title = "Collapse output"
+          if (icon) icon.classList.add("rotate-180")
         } else {
           pre.style.maxHeight = ""
-          btn.textContent = "expand"
+          btn.title = "Show full output"
+          if (icon) icon.classList.remove("rotate-180")
           pre.scrollTop = pre.scrollHeight
         }
       })
@@ -698,6 +703,18 @@ Hooks.ChatForm = {
       // reload, reconnect, flaky phone link), the callback never fires — a
       // timeout restores the box so the message is never silently lost.
       const status = document.getElementById("send-status")
+      // Status line under the input. Every caller sets BOTH text and tone so no
+      // color state leaks between the busy and error paths. "Sending…" shows the
+      // instant you hit Send — otherwise the message only appears after the
+      // server round-trip, which visibly lags while the agent is mid-turn.
+      const setStatus = (text, tone) => {
+        if (!status) return
+        status.textContent = text
+        status.className =
+          "mt-1.5 text-sm " +
+          (tone === "error" ? "text-red-500 dark:text-red-400" : "text-zinc-400 dark:text-zinc-500")
+      }
+      setStatus("Sending…", "busy")
       let settled = false
       const settle = (ok, reason) => {
         if (settled) return
@@ -727,10 +744,7 @@ Hooks.ChatForm = {
           // never a silent red flash.
           ta.style.boxShadow = "0 0 0 2px rgb(248 113 113)"
           setTimeout(() => { ta.style.boxShadow = "" }, 2500)
-          if (status) {
-            status.textContent = reason || "Send didn't go through — your text is kept, press Send to retry."
-            status.classList.remove("hidden")
-          }
+          setStatus(reason || "Send didn't go through — your text is kept, press Send to retry.", "error")
           ta.focus()
         }
       }
@@ -951,4 +965,16 @@ if ("serviceWorker" in navigator) {
   liveSocket.socket.onOpen(hide)
   liveSocket.socket.onError(armDown)
   liveSocket.socket.onClose(armDown)
+
+  // Belt-and-suspenders for the states socket callbacks can't see: a page
+  // served mid-reload whose socket NEVER connected (no onError fires), or a
+  // LiveView whose channel JOIN failed on a healthy socket. Both leave a
+  // dead-looking page where typing does nothing and no banner shows — poll
+  // LiveView's own connected marker instead of trusting socket events alone.
+  setInterval(() => {
+    const main = document.querySelector("[data-phx-main]")
+    if (!main) return
+    if (main.classList.contains("phx-connected")) hide()
+    else armDown()
+  }, 2000)
 })()

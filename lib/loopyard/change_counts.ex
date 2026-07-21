@@ -73,6 +73,16 @@ defmodule Loopyard.ChangeCounts do
 
   def handle_info(%Events.ChatAgent.StatusChanged{}, state), do: {:noreply, state}
 
+  # Boot replay resumes every persisted agent — expected topic traffic, not
+  # unknown messages (the catchall was dumping each agent's ENTIRE message
+  # history into the log as a warning, once per agent, on every server boot).
+  # A resumed agent may have pending work → treat like a turn boundary.
+  def handle_info(%Events.ChatAgent.Resumed{summary: %{id: agent_id}}, state) do
+    {:noreply, maybe_recompute(state, workspace_of(agent_id))}
+  end
+
+  def handle_info(%Events.ChatAgent.Resumed{}, state), do: {:noreply, state}
+
   def handle_info(:sweep, state) do
     Process.send_after(self(), :sweep, @sweep_ms)
 

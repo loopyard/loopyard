@@ -129,7 +129,9 @@ defmodule LoopyardWeb.Components.ProjectList do
       phx-click={@row_click}
       aria-current={@current && "true"}
       class={[
-        "group/ws flex items-center gap-2.5 -mx-2 px-2 py-2 rounded-lg transition-colors",
+        # py-2 keeps the 40px touch target on mobile (:xs switcher sheet); the
+        # desktop rail (:sm) doesn't need it and read as wasted space.
+        "group/ws flex items-center gap-2.5 -mx-2 px-2 py-2 md:py-1 rounded-lg transition-colors",
         @current && "bg-violet-100 dark:bg-violet-500/15"
       ]}
     >

@@ -29,6 +29,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     ]
 
   alias LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus
+  alias LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults
 
   # The live-status presentation (thinking feed, live tail, Reasoning Bar) lives
   # in the ChatStatus sub-module to keep this file under its size cap. Re-expose
@@ -446,6 +447,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                next prompt's section takes over — prompts replace each other
                instead of stacking. Pure CSS; the normal-flow scroll (not
                col-reverse) is what makes the per-section sticky pin flush. --%>
+<<<<<<< HEAD
           <%!-- BOTH loops are :key-ed (section → prompt msg id, row → msg id):
                without keys, LiveView diffs comprehensions by index, so the
                window sliding at the cap re-shipped every row on every append
@@ -482,11 +484,43 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                   />
                 <% {:run, items} -> %>
                   <%!-- The response flows directly under its "You" prompt (which
+=======
+          <%= for section <- LoopyardWeb.Live.WorkspaceLive.Messages.transcript_sections(@messages) do %>
+            <section>
+              <%= if section.prompt do %>
+                <% {pmsg, pidx} = section.prompt %>
+                <.chat_msg
+                  msg={pmsg}
+                  idx={pidx}
+                  messages={@messages}
+                  agent_id={@agent.id}
+                  workspace_id={@workspace_id}
+                  host={@host}
+                  detail_level={@detail_level}
+                />
+              <% end %>
+              <%= for group <- section.body do %>
+                <%= case group do %>
+                  <% {:break, {msg, idx}} -> %>
+                    <.chat_msg
+                      :if={not in_live_feed?(@live_tool_from, msg, idx, @messages)}
+                      msg={msg}
+                      idx={idx}
+                      messages={@messages}
+                      agent_id={@agent.id}
+                      workspace_id={@workspace_id}
+                      host={@host}
+                      detail_level={@detail_level}
+                    />
+                  <% {:run, items} -> %>
+                    <%!-- The response flows directly under its "You" prompt (which
+>>>>>>> uncringe
                          carries the dated timestamp) — no "Claude" marker. The
                          `space-y` gives each step (text, tool call, result) room to
                          breathe instead of packing them edge-to-edge; the console
                          boxes and file cards especially need the air to read as
                          separate acts, not one dense wall. --%>
+<<<<<<< HEAD
                   <div class="mt-2">
                     <div class="space-y-4">
                       <.live_component
@@ -501,6 +535,22 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                         host={@host}
                         detail_level={@detail_level}
                       />
+=======
+                    <div class="mt-2">
+                      <div class="space-y-4">
+                        <.chat_msg
+                          :for={{msg, idx} <- items}
+                          :if={not in_live_feed?(@live_tool_from, msg, idx, @messages)}
+                          msg={msg}
+                          idx={idx}
+                          messages={@messages}
+                          agent_id={@agent.id}
+                          workspace_id={@workspace_id}
+                          host={@host}
+                          detail_level={@detail_level}
+                        />
+                      </div>
+>>>>>>> uncringe
                     </div>
                   </div>
               <% end %>
@@ -722,8 +772,25 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       not building?(assigns.messages)
   end
 
-  defp in_live_feed?(nil, _msg, _idx), do: false
-  defp in_live_feed?(from, msg, idx), do: idx > from and msg.role in [:tool, :tool_result]
+  defp in_live_feed?(nil, _msg, _idx, _messages), do: false
+
+  # A COMMAND's result is the exception: it renders inline as the console box
+  # (command title + output + exit) the moment it lands — mid-turn, exactly like
+  # watching a terminal — instead of hiding behind a ✓ chip until the turn ends.
+  # Everything else in the active turn stays in the compact live feed.
+  defp in_live_feed?(from, msg, idx, messages) do
+    idx > from and
+      case msg.role do
+        :tool ->
+          true
+
+        :tool_result ->
+          not ToolResults.console_command_result?(%{msg: msg, idx: idx, messages: messages})
+
+        _ ->
+          false
+      end
+  end
 
   # --- Container Panel ---
 

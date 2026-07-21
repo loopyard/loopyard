@@ -1,0 +1,6 @@
+#!/bin/sh
+# Loopyard browser shim. The container is headless, so instead of failing to
+# open a browser (or erroring with "xdg-open: not found"), print the URL on its
+# own line — the console's web-links addon makes it tappable. Wired as both
+# $BROWSER and xdg-open. Never fails the calling CLI.
+printf '\n\033[1;36m🔗 Open this link:\033[0m\n   %s\n\n' "$1"
