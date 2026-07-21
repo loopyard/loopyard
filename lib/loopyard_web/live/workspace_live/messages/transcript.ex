@@ -160,11 +160,22 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Transcript do
     roles = messages |> Enum.map(& &1.role) |> List.to_tuple()
     n = tuple_size(roles)
 
-    {ctx, _last_non_build} =
+    # Pairing tracker, kept in lockstep with ToolResults.matching_tool_call/1:
+    # by_id pairs results to calls via the harness toolCallId; legacy messages
+    # (no tool_id) fall back to order-of-arrival within the turn (Nth result →
+    # Nth call). Positional "nearest tool above me" is WRONG for parallel
+    # calls — every call is emitted first, then every result.
+    {ctx, _tracker} =
       messages
       |> Enum.with_index()
-      |> Enum.reduce({%{}, nil}, fn {msg, idx}, {acc, last_non_build} ->
-        call = last_non_build
+      |> Enum.reduce({%{}, {%{}, [], 0}}, fn {msg, idx}, {acc, {by_id, turn_calls, turn_results}} ->
+        call =
+          if msg.role == :tool_result do
+            case msg[:tool_id] do
+              tid when is_binary(tid) -> Map.get(by_id, tid)
+              _ -> turn_calls |> Enum.reverse() |> Enum.at(turn_results)
+            end
+          end
 
         entry = %{
           prev_role: if(idx > 0, do: elem(roles, idx - 1)),
@@ -188,10 +199,28 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Transcript do
             end
         }
 
-        last_non_build =
-          if msg.role in [:build, :build_done, :build_failed], do: last_non_build, else: msg
+        tracker =
+          case msg.role do
+            :user ->
+              {by_id, [], 0}
 
-        {Map.put(acc, idx, entry), last_non_build}
+            :tool ->
+              by_id =
+                case msg[:tool_id] do
+                  tid when is_binary(tid) -> Map.put(by_id, tid, msg)
+                  _ -> by_id
+                end
+
+              {by_id, [msg | turn_calls], turn_results}
+
+            :tool_result ->
+              {by_id, turn_calls, turn_results + 1}
+
+            _ ->
+              {by_id, turn_calls, turn_results}
+          end
+
+        {Map.put(acc, idx, entry), tracker}
       end)
 
     ctx

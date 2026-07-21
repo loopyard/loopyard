@@ -678,8 +678,7 @@ defmodule LoopyardWeb.WorkspaceLive do
         {:error, :waking} ->
           # The workspace is booting in the background — a retry in a few
           # seconds lands on a live group. Calm, actionable, no drama.
-          {:reply,
-           %{ok: false, note: "Waking the workspace… press Send again in a few seconds."},
+          {:reply, %{ok: false, note: "Waking the workspace… press Send again in a few seconds."},
            socket}
 
         {:error, :unavailable} ->
@@ -787,16 +786,54 @@ defmodule LoopyardWeb.WorkspaceLive do
         %{"question_id" => qid, "q" => q_id, "option" => option},
         socket
       ) do
-    # Deliver the human's choice to the blocked harness question (multiplayer:
-    # the broker flips the message to :answered for every viewer).
-    case Loopyard.Harness.Questions.answer(qid, %{q_id => [option]}) do
-      :ok ->
+    # Settle ONE question with the clicked option (multiplayer: the broker
+    # broadcasts the per-question lock; the whole ask resolves — and the card
+    # flips to :answered — only when every question is answered or skipped).
+    question_action(socket, Loopyard.Harness.Questions.answer_partial(qid, q_id, [option]))
+  end
+
+  @impl true
+  def handle_event("skip_question", %{"question_id" => qid, "q" => q_id}, socket) do
+    question_action(socket, Loopyard.Harness.Questions.answer_partial(qid, q_id, []))
+  end
+
+  @impl true
+  def handle_event(
+        "toggle_question_option",
+        %{"question_id" => qid, "q" => q_id, "option" => option},
+        socket
+      ) do
+    # Multi-select draft toggle — broadcast, but the question stays open until
+    # its Done button confirms.
+    question_action(socket, Loopyard.Harness.Questions.toggle_option(qid, q_id, option))
+  end
+
+  @impl true
+  def handle_event("confirm_question", %{"question_id" => qid, "q" => q_id}, socket) do
+    question_action(socket, Loopyard.Harness.Questions.confirm_question(qid, q_id))
+  end
+
+  @impl true
+  def handle_event(
+        "answer_question_text",
+        %{"question_id" => qid, "q" => q_id, "text" => text},
+        socket
+      ) do
+    # The per-question "Other…" free-text answer. Blank submits are a no-op
+    # (keep the form open) rather than an accidental skip.
+    case String.trim(text) do
+      "" ->
         {:noreply, socket}
 
-      {:error, :not_found} ->
-        {:noreply, put_flash(socket, :info, "That question was already answered.")}
+      trimmed ->
+        question_action(socket, Loopyard.Harness.Questions.answer_partial(qid, q_id, [trimmed]))
     end
   end
+
+  defp question_action(socket, :ok), do: {:noreply, socket}
+
+  defp question_action(socket, {:error, :not_found}),
+    do: {:noreply, put_flash(socket, :info, "That question was already answered.")}
 
   @impl true
   def handle_event("submit_secret", %{"request_id" => rid, "secret" => value}, socket) do

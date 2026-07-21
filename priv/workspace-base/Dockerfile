@@ -1,7 +1,7 @@
 # The Loopyard work-container base image — the workstation every agent is
 # stamped from (see Loopyard.Workspace.WorkContainer). It is also the harness
 # host: the REAL Claude/Codex harness runs *inside* this container via ACP
-# (`docker exec -i <work> claude-code-acp` / `codex`) against the mounted code
+# (`docker exec -i <work> claude-agent-acp` / `codex`) against the mounted code
 # volume. The box hosts a real harness; it does not reimplement one. New
 # harnesses plug in by adding their adapter here; nothing else changes.
 #
@@ -37,11 +37,15 @@ RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
 
 # Claude Code (`claude`) and Codex (`codex`) — the harnesses + their `…login`
 # flows — plus the ACP adapter that runs the real harness in-box over stdio.
-# acp pinned for reproducibility; bump deliberately.
+# acp pinned for reproducibility; bump deliberately — and bump the image tag in
+# WorkContainer's @image when you do, or ensure_image will keep serving the old
+# build. claude-agent-acp (the renamed claude-code-acp) pushes `usage_update`
+# notifications with real token usage and rate-limit info (_claude/rateLimit)
+# that the Translator depends on for compaction + rate-limit parking.
 RUN npm install -g \
       @anthropic-ai/claude-code \
       @openai/codex \
-      @zed-industries/claude-code-acp@0.16.2
+      @agentclientprotocol/claude-agent-acp@0.60.0
 
 # Fly CLI (`fly`) — installed to a SYSTEM path (/usr/local), NOT $HOME: the
 # $HOME volume would shadow anything the image placed under it, so system tools

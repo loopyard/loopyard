@@ -61,9 +61,69 @@ defmodule LoopyardWeb.Live.WorkspaceLive.MessagesDetailLevelTest do
       refute html =~ "<details"
     end
 
-    test "error output is forced open even at :actions" do
+    test "a short error renders as an always-visible inline row (no disclosure)" do
       msg = %{role: :tool_result, content: "boom", is_error: true}
-      assert render(msg, :actions) =~ "open"
+      html = render(msg, :actions)
+      assert html =~ "boom"
+      refute html =~ "<details"
+    end
+
+    test "a long error keeps the disclosure, forced open even at :actions" do
+      msg = %{role: :tool_result, content: Enum.map_join(1..5, "\n", &"err #{&1}"), is_error: true}
+      html = render(msg, :actions)
+      assert html =~ "<details"
+      assert html =~ "open"
+    end
+  end
+
+  describe "tool_result ↔ tool call pairing" do
+    # Tool calls can run in PARALLEL: every call is emitted first, then every
+    # result. Position-based pairing attributed the first result to the LAST
+    # call — an `ls` dump rendered as a ruby file card. Results pair by
+    # tool_id; legacy messages (no tool_id) pair by order of arrival.
+    defp render_at(messages, idx) do
+      render_component(&Messages.chat_msg/1, %{
+        msg: Enum.at(messages, idx),
+        idx: idx,
+        messages: messages,
+        agent_id: "a1",
+        workspace_id: "w1",
+        host: "localhost",
+        detail_level: :trace
+      })
+    end
+
+    test "parallel calls: each result pairs with its own call by tool_id" do
+      messages = [
+        %{role: :tool, tool: "Bash", tool_id: "t1", input: %{"command" => "ls -l /workspace"}},
+        %{role: :tool, tool: "Read", tool_id: "t2", input: %{"file_path" => "/workspace/a.rb"}},
+        %{role: :tool_result, tool_id: "t1", content: "total 0\n-rw-r--r-- docs", is_error: false},
+        %{role: :tool_result, tool_id: "t2", content: "File does not exist.", is_error: true}
+      ]
+
+      # Bash result → console box titled by the command, NOT a file card
+      bash_html = render_at(messages, 2)
+      assert bash_html =~ "ls -l /workspace"
+      refute bash_html =~ "a.rb"
+
+      # failed Read → inline error row, NOT a "ruby" file card
+      read_html = render_at(messages, 3)
+      assert read_html =~ "File does not exist."
+      refute read_html =~ "ruby"
+    end
+
+    test "legacy messages without tool_id pair by order of arrival" do
+      messages = [
+        %{role: :tool, tool: "Bash", input: %{"command" => "echo hi"}},
+        %{role: :tool, tool: "Read", input: %{"file_path" => "/workspace/lib/foo.ex"}},
+        %{role: :tool_result, content: "hi", is_error: false},
+        %{role: :tool_result, content: "   1→defmodule Foo do\n   2→end", is_error: false}
+      ]
+
+      # first result belongs to the first call (Bash) → console box
+      assert render_at(messages, 2) =~ "echo hi"
+      # second result belongs to Read → file card with the filename
+      assert render_at(messages, 3) =~ "foo.ex"
     end
   end
 
@@ -103,6 +163,23 @@ defmodule LoopyardWeb.Live.WorkspaceLive.MessagesDetailLevelTest do
       # (content is span-wrapped by syntax highlighting — match a single token)
       assert html =~ "2 lines"
       assert html =~ "defmodule"
+    end
+
+    test "a stray non-numbered tail line doesn't break arrow stripping" do
+      # Real Read results can carry harness chrome (truncation notes,
+      # system-reminder tails). Detection is tolerant: ≥90% matching lines
+      # still counts as the native format; the stray line is dropped.
+      numbered = Enum.map_join(1..20, "\n", &"   #{&1}→line #{&1}")
+      html = render_read_result(numbered <> "\n(truncated by the harness)")
+
+      refute html =~ "→"
+      assert html =~ "20 lines"
+      refute html =~ "truncated by the harness"
+    end
+
+    test "syntax highlighting is active (makeup scope present)" do
+      html = render_read_result("   1→defmodule Foo do\n   2→end")
+      assert html =~ "highlight"
     end
   end
 

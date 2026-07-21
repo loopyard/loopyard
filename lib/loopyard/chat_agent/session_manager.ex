@@ -301,6 +301,7 @@ defmodule Loopyard.ChatAgent.SessionManager do
 
         :ets.insert(:chat_agents, {id, Loopyard.ChatAgent.summary(state)})
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
+        schedule_pending_drain(state)
         {:noreply, state}
 
       {:error, reason, next_hint} ->
@@ -336,8 +337,27 @@ defmodule Loopyard.ChatAgent.SessionManager do
 
         :ets.insert(:chat_agents, {id, Loopyard.ChatAgent.summary(state)})
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
+        schedule_pending_drain(state)
         {:noreply, state}
     end
+  end
+
+  # A retry lands the agent back at :idle — with or without a live CLI. If
+  # messages were queued during the crash window (:backoff / :thinking), they
+  # MUST NOT sit stranded: :idle means nothing else will ever drain them (the
+  # normal drain fires on turn completion, and no turn is running). Reuse the
+  # restart path's :drain_resumed_pending machinery — delayed because right
+  # after session/load the harness subprocess can still be spinning up
+  # ("ProcessTransport is not ready for writing"). On the failed-retry path
+  # the drain's send goes through ensure_session_alive, which re-attempts the
+  # spawn — the exact recovery the error copy tells the user to trigger by
+  # hand, still bounded by max_consecutive_crashes.
+  defp schedule_pending_drain(%{pending_sends: []}), do: :ok
+
+  defp schedule_pending_drain(_state) do
+    settle_ms = Application.get_env(:loopyard, :pending_drain_settle_ms, 4_000)
+    Process.send_after(self(), :drain_resumed_pending, settle_ms)
+    :ok
   end
 
   @doc """

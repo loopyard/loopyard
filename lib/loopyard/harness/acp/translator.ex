@@ -38,13 +38,19 @@ defmodule Loopyard.Harness.ACP.Translator do
   # Without it, the assistant's text block BEFORE a tool call and the one AFTER
   # were concatenated with no separator — "…and main." + "No — not merged" came
   # out as "…and main.No — not merged".
-  defstruct text: [], model: nil, tools: %{}, break_pending: false
+  #
+  # `used_tokens`: latest context usage from the adapter's `usage_update`
+  # notifications (claude-agent-acp; the old claude-code-acp never sends them).
+  # Deliberately NOT reset in finish/2 — usage is session-scoped, and the last
+  # known value is the honest number for a turn that emitted no update.
+  defstruct text: [], model: nil, tools: %{}, break_pending: false, used_tokens: nil
 
   @type t :: %__MODULE__{
           text: iodata(),
           model: String.t() | nil,
           tools: map(),
-          break_pending: boolean()
+          break_pending: boolean(),
+          used_tokens: non_neg_integer() | nil
         }
 
   @spec new(keyword()) :: t()
@@ -144,6 +150,29 @@ defmodule Loopyard.Harness.ACP.Translator do
     {state, [%Event.SystemEvent{subtype: :plan, content: Jason.encode!(update["entries"] || [])}]}
   end
 
+  # Real usage + rate-limit PUSH from the modern adapter (claude-agent-acp).
+  # Fires on every assistant-usage change with {used, size}; when the CLI
+  # reports a rate_limit_event, the same update additionally carries the full
+  # rate_limit_info (camelCase) in _meta["_claude/rateLimit"] — status,
+  # resetsAt (ms), utilization, rateLimitType. That's the event-driven signal
+  # that replaces blind nil-reset polling: a :rejected here parks the agent
+  # with a PRECISELY timed retry.
+  defp do_step(state, "usage_update", update) do
+    state =
+      case update["used"] do
+        used when is_integer(used) and used >= 0 -> %{state | used_tokens: used}
+        _ -> state
+      end
+
+    events =
+      case get_in(update, ["_meta", "_claude/rateLimit"]) do
+        info when is_map(info) -> [rate_limit_status(info)]
+        _ -> []
+      end
+
+    {state, events}
+  end
+
   # user_message_chunk (echo of our own prompt) and any unknown update: drop.
   defp do_step(state, _kind, _update), do: {state, []}
 
@@ -169,14 +198,16 @@ defmodule Loopyard.Harness.ACP.Translator do
         _ -> {false, nil}
       end
 
-    # claude-code-acp surfaces no usage numbers (#11), which froze the UI's
-    # token counter at 0 forever. Until the adapter reports real usage,
-    # ESTIMATE output from the turn's assembled text (~4 chars/token) so the
-    # cumulative counter genuinely racks up turn over turn. Input stays 0 —
-    # we have nothing honest to estimate it from.
+    # Input tokens: the adapter's `usage_update` (claude-agent-acp) gives us
+    # the session's real context usage — report it so StreamHandler's
+    # context_utilization actually moves and the 92% proactive compaction
+    # fires BEFORE the harness balloons past the container memory cap (#20).
+    # Under the legacy adapter (no usage_update) it stays 0 as before.
+    # Output: ESTIMATE from the turn's assembled text (~4 chars/token) so the
+    # cumulative counter racks up even when the adapter is usage-silent.
     result = %Event.SessionResult{
       model: state.model,
-      input_tokens: 0,
+      input_tokens: state.used_tokens || 0,
       output_tokens: div(byte_size(full), 4),
       cache_read_tokens: 0,
       cost_usd: 0.0,
@@ -191,6 +222,26 @@ defmodule Loopyard.Harness.ACP.Translator do
   end
 
   # --- helpers ---
+
+  # Map the adapter-forwarded rate_limit_info (CLI wire shape, camelCase) onto
+  # the neutral event. Unknown/missing status degrades to :allowed — never
+  # park the agent on a malformed frame.
+  defp rate_limit_status(info) do
+    status =
+      case info["status"] do
+        "rejected" -> :rejected
+        "allowed_warning" -> :allowed_warning
+        _ -> :allowed
+      end
+
+    %Event.RateLimitStatus{
+      status: status,
+      resets_at_ms: if(is_integer(info["resetsAt"]), do: info["resetsAt"]),
+      utilization: info["utilization"],
+      rate_limit_type: info["rateLimitType"],
+      is_using_overage: info["isUsingOverage"]
+    }
+  end
 
   # claude-code-acp wraps EVERY tool result for display: the whole thing in a
   # markdown code fence (```…```), and errors additionally in

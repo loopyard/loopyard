@@ -87,6 +87,7 @@ defmodule Loopyard.ChatAgent.StreamHandler do
       role: :tool,
       tool: tool_name,
       tool_kind: tool_kind,
+      tool_id: ev.id,
       input: tool_input,
       timestamp: now
     }
@@ -115,10 +116,19 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     state
   end
 
-  def process_event(%Event.ToolResult{content: content, is_error: is_error}, state) do
+  def process_event(%Event.ToolResult{id: tool_id, content: content, is_error: is_error}, state) do
     now = DateTime.utc_now()
     id = state.id
-    result_msg = %{role: :tool_result, content: content, is_error: is_error, timestamp: now}
+    # tool_id pairs this result with its %{role: :tool} message. Tool calls can
+    # run in PARALLEL (all calls emitted, then all results), so "the message
+    # above me" is NOT reliably my call — the UI pairs by id, never position.
+    result_msg = %{
+      role: :tool_result,
+      tool_id: tool_id,
+      content: content,
+      is_error: is_error,
+      timestamp: now
+    }
     {state, result_msg} = append_message(state, result_msg)
     state = %{state | last_activity_at: now, active_tool: nil}
     Persistence.persist_message(state, result_msg)

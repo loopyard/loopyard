@@ -10,13 +10,14 @@ defmodule Loopyard.Application do
     Application.put_env(:loopyard, :launch_secret, secret)
 
     # Reap ACP exec clients orphaned by a previous VM. `docker exec -i …
-    # claude-code-acp` clients survive BEAM death (quiet pipes never EPIPE),
+    # claude-agent-acp` clients survive BEAM death (quiet pipes never EPIPE),
     # pile up across restarts, and hold kernel resources (they saturated the
     # Colima VM's inotify budget once — every session then hung at
     # session/new). At this point in boot NO supervisor has spawned a session
     # yet, so every matching client on the host is ours and stale. Silent
-    # no-op when there are none (pkill exit 1).
-    _ = System.cmd("pkill", ["-f", "exec claude-code-acp"], stderr_to_stdout: true)
+    # no-op when there are none (pkill exit 1). The pattern matches both the
+    # renamed adapter and the legacy claude-code-acp launch line.
+    _ = System.cmd("pkill", ["-f", "claude-(agent|code)-acp"], stderr_to_stdout: true)
 
     children = [
       # --- Infrastructure layer (survives web reloads) ---

@@ -161,15 +161,35 @@ timeouts with ETS fallback — a wedged agent doesn't hang the UI.
 `session_id/1`. Everything above it (ChatAgent, StreamHandler,
 multiplayer fan-out) consumes neutral `Loopyard.Agent.Event` structs,
 so only the event *source* differs per backend. Implementations:
-`Harness.Claude` (the SDK/CLI today), `Harness.ACP`
-(`harness/acp.ex` — drives a **real** Claude/Codex harness over the
-Agent Client Protocol, JSON-RPC over stdio), `Harness.Fake` (tests).
-ACP is the north-star direction (#3): run the real harness
-*in-container* (`docker exec -i <work> claude-code-acp`) against the
-mounted code volume, instead of reimplementing the agent loop. ACP is
-implemented + tested but not yet the default backend — see
-`docs/IMPROVEMENTS.md` for the open ACP gaps (permission round-trip,
-cancel/interrupt, resume, token cost, session_opts shape).
+`Harness.ACP` (`harness/acp.ex` — the DEFAULT: drives the **real**
+Claude Code harness *in-container* over the Agent Client Protocol,
+JSON-RPC over stdio via `docker exec -i <work> claude-agent-acp`
+against the mounted code volume) and `Harness.Fake` (tests). The
+host-execution `Harness.Claude` was deleted — every harness runs
+inside a container; that IS the security boundary. The adapter is
+`@agentclientprotocol/claude-agent-acp` (pinned in
+`priv/workspace-base/Dockerfile`; bump the `WorkContainer` `@image`
+tag with it). It pushes `usage_update` notifications (real token
+usage + `_claude/rateLimit` status) that the `Translator` turns into
+context-utilization and rate-limit events — see `docs/IMPROVEMENTS.md`
+for remaining ACP gaps (permission round-trip / `:ask` mode, tool
+policy, dollar cost).
+
+**Questions round-trip (both harness paths land on ONE card).** The
+harness's native `AskUserQuestion` reaches the user via ACP **form
+elicitation**: the Connection advertises `clientCapabilities.elicitation.form`
+(iff started with an `:agent_id`), handles agent→client `elicitation/create`
+by parsing the `question_<n>` / `question_<n>_custom` schema
+(`QuestionAdapter.AcpElicitation`) and blocking a Task on
+`Harness.Questions.ask/2` — the same broker the MCP `ask_user` tool uses —
+then answers `{action: accept, content}` (free text goes in the `_custom`
+field, skips are omitted, timeout → `decline`). Without the capability the
+adapter routes AskUserQuestion through the plain permission check, which
+`:auto_allow` silently answers — the questions never reach a human. The card
+resolves **per question** (`Questions.answer_partial/3` /
+`toggle_option/3` / `confirm_question/2`): the blocked ask returns only when
+every question is answered or skipped — never resolve the whole ask from one
+button click.
 
 **Tool rendering is harness-agnostic — classify by KIND, never by
 name.** Different backends emit different tool *names* for the same

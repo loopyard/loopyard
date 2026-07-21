@@ -46,7 +46,7 @@ defmodule Loopyard.Onboarding do
         else: CanonicalRepo.init(project_id)
 
     with {:ok, _canon} <- init,
-         {:ok, _ws_vol} <- CanonicalRepo.checkout(project_id, ws_id, "main") do
+         {:ok, _ws_vol} <- CanonicalRepo.checkout(project_id, ws_id, "main", remote) do
       project =
         ProjectRegistry.register(%{
           id: project_id,
@@ -84,7 +84,8 @@ defmodule Loopyard.Onboarding do
   def fork(project_id, base, branch) do
     ws_id = uid()
 
-    with {:ok, _ws_vol} <- CanonicalRepo.fork(project_id, ws_id, base, branch) do
+    with {:ok, _ws_vol} <-
+           CanonicalRepo.fork(project_id, ws_id, base, branch, project_remote(project_id)) do
       ws = register_workspace(project_id, ws_id, branch, is_main: false)
       persist(project_id)
       start_work_async(ws_id)
@@ -109,7 +110,13 @@ defmodule Loopyard.Onboarding do
     # card) so a multi-second fork shows what it's doing instead of a dead spinner.
     progress.("Forking the code volume…")
 
-    with {:ok, _ws_vol} <- CanonicalRepo.fork_from_workspace(source_ws_id, ws_id, branch) do
+    with {:ok, _ws_vol} <-
+           CanonicalRepo.fork_from_workspace(
+             source_ws_id,
+             ws_id,
+             branch,
+             project_remote(project_id)
+           ) do
       progress.("Registering the workspace…")
       ws = register_workspace(project_id, ws_id, branch, is_main: false)
       persist(project_id)
@@ -391,6 +398,16 @@ defmodule Loopyard.Onboarding do
   end
 
   # --- internals ---
+
+  # The project's real git remote (GitHub URL) or nil for a local-only project.
+  # Threaded into CanonicalRepo.fork/checkout so a materialized workspace's
+  # `origin` points at GitHub, not the internal `/canonical`.
+  defp project_remote(project_id) do
+    case ProjectRegistry.get_project(project_id) do
+      %{source_config: %{remote: remote}} when is_binary(remote) and remote != "" -> remote
+      _ -> nil
+    end
+  end
 
   # Always-on per branch: fire-and-forget the cheap work container so a branch
   # is a live, workable box as soon as it exists / is restored. Best-effort —

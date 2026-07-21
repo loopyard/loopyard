@@ -41,7 +41,7 @@ defmodule Loopyard.Harness.ACPInContainerTest do
              ACP.start_session(
                container: container,
                cwd: "/workspace",
-               adapter: "claude-code-acp"
+               adapter: "claude-agent-acp"
              )
 
     assert ACP.session_alive?(conn)

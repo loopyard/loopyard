@@ -31,11 +31,13 @@ defmodule Loopyard.Harness.ACP do
   `start_session/1` forwards to the Connection's `session/new` `mcpServers`.
 
   Known gaps (tracked on #3/#6): mapping Loopyard's tool *policy* (allowed/
-  disallowed tools) onto ACP; token-usage surfacing
-  (claude-code-acp doesn't expose it, so cost reads $0 — see cost-visibility
-  decision); and the human-gated `:ask` permission mode (#7) — today permissions
-  are `:auto_allow`, which is *parity* with the ClaudeCode path (it runs with
-  `dangerously_skip_permissions`, trusting the container sandbox as the boundary).
+  disallowed tools) onto ACP; and the human-gated `:ask` permission mode (#7)
+  — today permissions are `:auto_allow`, which is *parity* with the ClaudeCode
+  path (it ran with `dangerously_skip_permissions`, trusting the container
+  sandbox as the boundary). Token usage + rate-limit status now arrive as
+  `usage_update` notifications from claude-agent-acp (the renamed
+  claude-code-acp) — see `Translator`'s usage_update clause; dollar cost is
+  still not surfaced.
   """
   @behaviour Loopyard.Harness
 
@@ -66,6 +68,9 @@ defmodule Loopyard.Harness.ACP do
       ]
       |> Keyword.merge(runtime)
       |> maybe_put(:model, Keyword.get(opts, :model))
+      # With an agent_id the Connection can route the harness's native
+      # AskUserQuestion (ACP form elicitation) to that agent's question card.
+      |> maybe_put(:agent_id, Keyword.get(opts, :agent_id))
 
     ready_timeout =
       if Keyword.get(opts, :resume), do: @resume_ready_timeout, else: @ready_timeout
@@ -129,11 +134,11 @@ defmodule Loopyard.Harness.ACP do
   # adapter mid-handshake.
   @reap_min_age_s 150
 
-  def docker_exec_cmd(container, adapter \\ "claude-code-acp") do
+  def docker_exec_cmd(container, adapter \\ "claude-agent-acp") do
     # Launch the adapter through an in-container shell that sources ~/.profile, so
     # the identity env (CLAUDE_CODE_OAUTH_TOKEN, written to ~/.loopyard/env and
     # sourced from ~/.profile by Env.sync_home/1) is in scope. A bare
-    # `docker exec ... claude-code-acp` would NOT source it → the harness 401s.
+    # `docker exec ... claude-agent-acp` would NOT source it → the harness 401s.
     # Single-quoted so $HOME/$$ expand in the CONTAINER, not on the host.
     #
     # ORPHAN REAP — bounded, AGE-GUARDED. Killing the host-side `docker exec`
@@ -158,7 +163,19 @@ defmodule Loopyard.Harness.ACP do
         "age=$(( now - st/100 )); if [ \"$age\" -gt #{@reap_min_age_s} ]; then " <>
         ~S|kill -9 "$pid" 2>/dev/null; fi; fi; fi; done; |
 
-    inner = reap <> ~S|. "$HOME/.profile" 2>/dev/null; exec | <> adapter
+    # Transition fallback: containers stamped from the pre-rename base image
+    # ship only the old `claude-code-acp` bin. Prefer the requested (new) bin,
+    # fall back to the old name so an existing workspace keeps booting until
+    # its work container is re-stamped from the new image. No `||`/pipes —
+    # the script must not contain the sigil delimiter `|`.
+    launch =
+      if adapter == "claude-agent-acp" do
+        ~S|h=$(command -v claude-agent-acp); if [ -z "$h" ]; then h=claude-code-acp; fi; exec "$h"|
+      else
+        "exec " <> adapter
+      end
+
+    inner = reap <> ~S|. "$HOME/.profile" 2>/dev/null; | <> launch
 
     "docker exec -i #{container} sh -c '#{inner}'"
   end
@@ -193,7 +210,7 @@ defmodule Loopyard.Harness.ACP do
         case Keyword.get(opts, :transport) do
           # Tests can inject a fake transport even in container mode.
           nil ->
-            adapter = Keyword.get(opts, :adapter, "claude-code-acp")
+            adapter = Keyword.get(opts, :adapter, "claude-agent-acp")
             Keyword.put(base, :transport_opts, cmd: docker_exec_cmd(container, adapter))
 
           transport ->

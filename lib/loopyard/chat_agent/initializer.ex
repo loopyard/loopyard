@@ -109,6 +109,9 @@ defmodule Loopyard.ChatAgent.Initializer do
       # SDK default so unset behavior is unchanged; switch the whole instance
       # with one config line + a restart:  config :loopyard, agent_model: "..."
       model: Application.get_env(:loopyard, :agent_model, "sonnet"),
+      # The ACP backend routes the harness's native AskUserQuestion (form
+      # elicitation) to this agent's chat as a question card.
+      agent_id: id,
       permission_mode: :accept_edits,
       dangerously_skip_permissions: true,
       mcp_servers: ToolConfig.build_mcp_servers(tools, id),
