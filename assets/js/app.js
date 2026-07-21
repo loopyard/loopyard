@@ -546,16 +546,21 @@ Hooks.LogExpand = {
       btn.classList.remove("hidden")
     }
 
-    // Expand/collapse toggle
+    // Expand/collapse toggle. NEVER btn.textContent — that replaced the
+    // chevron SVG with a raw unstyled "expand"/"collapse" word (the giant
+    // text bug). The chevron rotates to point up when expanded instead.
     if (btn) {
       btn.addEventListener("click", () => {
         this._expanded = !this._expanded
+        const icon = btn.querySelector("svg")
         if (this._expanded) {
           pre.style.maxHeight = "none"
-          btn.textContent = "collapse"
+          btn.title = "Collapse output"
+          if (icon) icon.classList.add("rotate-180")
         } else {
           pre.style.maxHeight = ""
-          btn.textContent = "expand"
+          btn.title = "Show full output"
+          if (icon) icon.classList.remove("rotate-180")
           pre.scrollTop = pre.scrollHeight
         }
       })
