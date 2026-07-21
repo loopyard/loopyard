@@ -85,8 +85,8 @@ defmodule LoopyardWeb.Components.LogViewerTest do
         })
 
       assert html =~ "bg-red-500"
-      # No numeric code captured → red "exit ✗" badge.
-      assert html =~ "exit ✗"
+      # No numeric code captured → red "failed" badge (plain-word exit labels).
+      assert html =~ "failed"
     end
 
     test "truncates long output and shows indicator" do

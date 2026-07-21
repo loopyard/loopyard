@@ -16,6 +16,7 @@ defmodule Loopyard.Events.SubscriberContractTest do
   use ExUnit.Case, async: true
 
   @subscriber_modules [
+    Loopyard.Events.ChangeCounts.Subscriber,
     Loopyard.Events.ChatAgent.Subscriber,
     Loopyard.Events.ChatAgentMessage.Subscriber,
     Loopyard.Events.DockerObserver.Subscriber,
