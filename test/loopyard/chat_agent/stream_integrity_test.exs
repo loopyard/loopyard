@@ -186,11 +186,12 @@ defmodule Loopyard.ChatAgent.StreamIntegrityTest do
   end
 
   describe "compact-instead-of-resume breaker (IMPROVEMENTS #20)" do
-    # A session whose harness keeps dying mid-turn has outgrown its memory —
-    # resuming it re-feeds the harness the history that killed it. At the
-    # second unexpected death, recovery must compact (summarize → fresh
-    # session, claude_session_id cleared) instead of resuming.
-    test "first CLI-exit crash still resumes the conversation", %{id: id} do
+    # A session that dies mid-turn is presumed killed by its own resumed
+    # history (`session/load` full-JSONL replay — upstream #338/#871), and a
+    # resume would just reload the bloat that killed it. Since
+    # @compact_after_midturn_crashes went to 1, the FIRST unexpected death
+    # already compacts: summarize → fresh session, claude_session_id cleared.
+    test "first CLI-exit crash compacts — a crashed session is never re-resumed", %{id: id} do
       pid = agent_pid(id)
       ref = make_ref()
 
@@ -203,12 +204,16 @@ defmodule Loopyard.ChatAgent.StreamIntegrityTest do
 
       assert_receive %Loopyard.Events.ChatAgentMessage.Message{
                        agent_id: ^id,
-                       msg: %{role: :system, content: "Agent session restarted" <> _}
+                       msg: %{role: :system, content: "The harness died mid-conversation" <> _}
                      },
-                     500
+                     1_000
+
+      assert_receive %Loopyard.Events.ChatAgent.StatusChanged{id: ^id, status: :idle}, 1_000
 
       state = :sys.get_state(pid)
-      assert Map.get(state, :midturn_crashes) == 1
+      # Fresh session — the poisoned resume id is dropped; breaker re-armed.
+      assert state.claude_session_id == nil
+      assert Map.get(state, :midturn_crashes) == 0
     end
 
     test "second CLI-exit crash compacts: fresh session, counter reset", %{id: id} do
