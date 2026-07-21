@@ -457,7 +457,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     >
       <div
         data-stream-target
-        class="markdown-body text-lg md:text-base leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl whitespace-pre-wrap"
+        class="markdown-body text-lg md:text-base leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl whitespace-pre-line"
       >
       </div>
     </div>
