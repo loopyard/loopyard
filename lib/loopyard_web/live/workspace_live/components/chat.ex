@@ -251,6 +251,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           has_more_messages={@has_more_messages}
           window_tail?={@window_tail?}
           detail_level={@detail_level}
+          expanded_results={@expanded_results}
         />
         <.container_panel
           :if={@tab == :container}
@@ -374,6 +375,22 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     assigns = assign(assigns, :live_tool_from, active_turn_cutoff(assigns))
     assigns = assign_new(assigns, :window_tail?, fn -> true end)
 
+    # Precompute the section structure + per-row context ONCE per render.
+    # item_ctx carries each row's neighbor roles, matched tool call, and
+    # expanded? (live-tail auto-expansion + manual toggles) — value-stable
+    # per row, which is what lets the keyed loops below skip unchanged rows.
+    # nil when the caller doesn't manage expansion (render-everything mode).
+    alias LoopyardWeb.Live.WorkspaceLive.Messages
+
+    assigns =
+      assigns
+      |> assign(:transcript_sections, Messages.transcript_sections(assigns.messages))
+      |> assign(
+        :item_ctx,
+        assigns[:expanded_results] &&
+          Messages.item_contexts(assigns.messages, assigns.expanded_results)
+      )
+
     ~H"""
     <div class="relative flex-1 flex flex-col min-h-0">
       <%!-- Windowed transcript: when you've scrolled up into history, the live
@@ -419,57 +436,61 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                next prompt's section takes over — prompts replace each other
                instead of stacking. Pure CSS; the normal-flow scroll (not
                col-reverse) is what makes the per-section sticky pin flush. --%>
-          <%= for section <- LoopyardWeb.Live.WorkspaceLive.Messages.transcript_sections(@messages) do %>
-            <section>
-              <%= if section.prompt do %>
-                <% {pmsg, pidx} = section.prompt %>
-                <.chat_msg
-                  msg={pmsg}
-                  idx={pidx}
-                  messages={@messages}
-                  agent_id={@agent.id}
-                  workspace_id={@workspace_id}
-                  host={@host}
-                  detail_level={@detail_level}
-                />
-              <% end %>
-              <%= for group <- section.body do %>
-                <%= case group do %>
-                  <% {:break, {msg, idx}} -> %>
-                    <.chat_msg
-                      :if={not in_live_feed?(@live_tool_from, msg, idx)}
-                      msg={msg}
-                      idx={idx}
-                      messages={@messages}
-                      agent_id={@agent.id}
-                      workspace_id={@workspace_id}
-                      host={@host}
-                      detail_level={@detail_level}
-                    />
-                  <% {:run, items} -> %>
-                    <%!-- The response flows directly under its "You" prompt (which
+          <%!-- BOTH loops are :key-ed (section → prompt msg id, row → msg id):
+               without keys, LiveView diffs comprehensions by index, so the
+               window sliding at the cap re-shipped every row on every append
+               (~850KB/turn measured). Per-row assigns come from @item_ctx —
+               precomputed, value-stable — never the whole @messages list. --%>
+          <section :for={section <- @transcript_sections} :key={Messages.section_key(section)}>
+            <%= if section.prompt do %>
+              <% {pmsg, pidx} = section.prompt %>
+              <.chat_msg
+                msg={pmsg}
+                idx={pidx}
+                ctx={@item_ctx && Map.get(@item_ctx, pidx)}
+                agent_id={@agent.id}
+                workspace_id={@workspace_id}
+                host={@host}
+                detail_level={@detail_level}
+              />
+            <% end %>
+            <%= for group <- section.body do %>
+              <%= case group do %>
+                <% {:break, {msg, idx}} -> %>
+                  <.chat_msg
+                    :if={not in_live_feed?(@live_tool_from, msg, idx)}
+                    msg={msg}
+                    idx={idx}
+                    ctx={@item_ctx && Map.get(@item_ctx, idx)}
+                    agent_id={@agent.id}
+                    workspace_id={@workspace_id}
+                    host={@host}
+                    detail_level={@detail_level}
+                  />
+                <% {:run, items} -> %>
+                  <%!-- The response flows directly under its "You" prompt (which
                          carries the dated timestamp) — no "Claude" marker. The
                          `space-y` gives each step (text, tool call, result) room to
                          breathe instead of packing them edge-to-edge. --%>
-                    <div class="mt-2">
-                      <div class="space-y-2.5">
-                        <.chat_msg
-                          :for={{msg, idx} <- items}
-                          :if={not in_live_feed?(@live_tool_from, msg, idx)}
-                          msg={msg}
-                          idx={idx}
-                          messages={@messages}
-                          agent_id={@agent.id}
-                          workspace_id={@workspace_id}
-                          host={@host}
-                          detail_level={@detail_level}
-                        />
-                      </div>
+                  <div class="mt-2">
+                    <div class="space-y-2.5">
+                      <.chat_msg
+                        :for={{msg, idx} <- items}
+                        :key={msg[:id] || idx}
+                        :if={not in_live_feed?(@live_tool_from, msg, idx)}
+                        msg={msg}
+                        idx={idx}
+                        ctx={@item_ctx && Map.get(@item_ctx, idx)}
+                        agent_id={@agent.id}
+                        workspace_id={@workspace_id}
+                        host={@host}
+                        detail_level={@detail_level}
+                      />
                     </div>
-                <% end %>
+                  </div>
               <% end %>
-            </section>
-          <% end %>
+            <% end %>
+          </section>
           <%!-- Live tail: the agent's in-progress work on ONE continuous rail. A
                single line runs from the Claude icon's CENTER straight down through
                the reasoning and into the live status — one unbroken timeline. The

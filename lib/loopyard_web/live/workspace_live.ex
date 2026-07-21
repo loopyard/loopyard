@@ -163,6 +163,11 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:window_tail?, true)
      |> assign(:streaming_text, "")
      |> assign(:streaming_thinking, "")
+     # Which tool-result cards this viewer has expanded (msg ids). Collapsed
+     # cards render NO body — the 300-line pre/file/grep payloads were the
+     # dominant DOM cost (~17k nodes per heavy turn measured; 177k after ten).
+     # Per-viewer, resets on agent switch.
+     |> assign(:expanded_results, MapSet.new())
      |> assign(:thinking_word, nil)
      |> assign(:tab, :chat)
      # Activity disclosure level. Starts at :trace (everything visible) for
@@ -993,6 +998,26 @@ defmodule LoopyardWeb.WorkspaceLive do
   end
 
   def handle_event("set_detail_level", _params, socket), do: {:noreply, socket}
+
+  # Expand/collapse a tool-result card. The body only renders while expanded
+  # (see :expanded_results on mount) — the summary line always shows.
+  @impl true
+  def handle_event("toggle_result", %{"msgid" => msgid}, socket) do
+    with {id, ""} <- Integer.parse(to_string(msgid)) do
+      expanded = socket.assigns.expanded_results
+
+      expanded =
+        if MapSet.member?(expanded, id),
+          do: MapSet.delete(expanded, id),
+          else: MapSet.put(expanded, id)
+
+      {:noreply, assign(socket, :expanded_results, expanded)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("toggle_result", _params, socket), do: {:noreply, socket}
 
   @impl true
   def handle_event("start_rename", _params, socket) do

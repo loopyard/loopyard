@@ -20,19 +20,52 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
   # Same flush-left gutter seam as Messages (returns "" today).
   defp gutter, do: ""
 
+  # Lazy-body gate for collapsible result cards. A collapsed card renders ONLY
+  # its summary line — the body (300-line pre, highlighted file card, grep
+  # list) enters the DOM when the viewer expands it. Measured: closed bodies
+  # were ~17k DOM nodes per heavy turn (177k after ten).
+  #
+  # Expanded means: the LIVE TAIL (results since the last user prompt — the
+  # "watch it work" trust moment, at every detail level), errors, and cards
+  # the viewer clicked open (:expanded_results). Scrollback collapses to
+  # summaries, which is what bounds the DOM. Callers that don't manage
+  # expansion (message tear-off page, operator) pass no :expanded_results
+  # and keep the render-everything behavior.
+  defp result_expanded?(%{ctx: %{expanded?: e}}), do: e
+  defp result_expanded?(_assigns), do: :full
+
+  # In lazy mode the server drives <details open> (body + open arrive in one
+  # patch); the native instant-toggle is suppressed so the two can't fight.
+  defp lazy?(assigns), do: assigns[:ctx] != nil
+
   # How many lines of output we keep in the inline DOM. The full text is always
   # one click away via the raw link; this just bounds a pathological 10k-line
   # dump from bloating the page. Generous so "see everything" mostly means it.
   @result_line_cap 300
 
-  def chat_msg_tool_result(assigns) do
-    content = assigns.msg.content
-    display = Messages.format_tool_result(content)
-    lines = String.split(display, "\n")
-    truncated = length(lines) > @result_line_cap
+  # Rows the live tail auto-expands show this many lines; a click upgrades to
+  # the full @result_line_cap body.
+  @tail_preview_lines 40
+  defp body_line_cap(:preview), do: @tail_preview_lines
+  defp body_line_cap(_), do: @result_line_cap
 
+
+  def chat_msg_tool_result(assigns) do
+    expanded = result_expanded?(assigns)
+    cap = body_line_cap(expanded)
+    content = assigns.msg.content
+    line_count = if(is_binary(content), do: length(String.split(content, "\n")), else: 1)
+    truncated = line_count > cap
+
+    # Body payload is only computed (and rendered) while expanded.
     display =
-      if truncated, do: Enum.take(lines, @result_line_cap) |> Enum.join("\n"), else: display
+      if expanded do
+        d = Messages.format_tool_result(content)
+
+        if truncated,
+          do: d |> String.split("\n") |> Enum.take(cap) |> Enum.join("\n"),
+          else: d
+      end
 
     url = Messages.msg_url(assigns)
     raw = Messages.raw_url(assigns)
@@ -40,10 +73,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
     assigns =
       assign(assigns,
         display: display,
+        expanded?: expanded,
+        lazy?: lazy?(assigns),
         truncated: truncated,
         is_error: assigns.msg.is_error,
-        line_count: length(lines),
-        cap: @result_line_cap,
+        line_count: line_count,
+        cap: cap,
         url: url,
         raw: raw
       )
@@ -51,19 +86,29 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
     ~H"""
     <details
       class={[gutter(), "py-0.5 group/result"]}
-      open={@detail_level == :trace || @is_error}
+      open={if @lazy?, do: @expanded?, else: @detail_level == :trace || @is_error}
     >
-      <summary class="text-sm text-zinc-500 dark:text-zinc-400 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5">
-        <span class="transition-transform group-open/result:rotate-90">▸</span>
+      <summary
+        class="text-sm text-zinc-500 dark:text-zinc-400 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5"
+        phx-click={@lazy? && "toggle_result"}
+        phx-value-msgid={@lazy? && @msg[:id]}
+        onclick={@lazy? && "event.preventDefault()"}
+      >
+        <span class={["transition-transform", @expanded? && "rotate-90"]}>▸</span>
         <span>{if @is_error, do: "error output", else: "output"} · {@line_count} {if @line_count == 1,
           do: "line",
           else: "lines"}</span>
       </summary>
-      <pre class={"mt-1 p-3 rounded-lg text-sm md:text-[13px] font-mono leading-snug overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap
-                   #{if @is_error, do: "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300", else: "bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-zinc-300"}"}>{Ansi.to_html(@display)}</pre>
-      <div class="flex items-center gap-2 mt-1 h-5">
+      <pre
+        :if={@expanded?}
+        class={"mt-1 p-3 rounded-lg text-sm md:text-[13px] font-mono leading-snug overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap
+                   #{if @is_error, do: "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300", else: "bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-zinc-300"}"}
+      >{Ansi.to_html(@display)}</pre>
+      <div :if={@expanded?} class="flex items-center gap-2 mt-1 h-5">
         <p :if={@truncated} class="text-xs text-zinc-500 dark:text-zinc-400">
-          ... {@line_count - @cap} more lines — open raw to see all
+          ... {@line_count - @cap} more lines — {if @expanded? == :preview,
+            do: "click the summary for more",
+            else: "open raw to see all"}
         </p>
         <.copy_btn :if={@raw} raw_url={@raw} />
         <.open_btn :if={@url} url={@url} />
@@ -150,34 +195,44 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
   # into the file viewer. Same collapsible affordance as the plain result, but
   # the body is highlighted code with line numbers.
   def chat_msg_file_result(assigns) do
+    expanded = result_expanded?(assigns)
     call = matching_tool_call(assigns)
     path = call && (call.input["path"] || call.input["file_path"])
     content = Messages.format_tool_result(assigns.msg.content)
-    # Native harness Read results arrive pre-numbered ("   156→<div…"). Strip
-    # that prefix and reuse the REAL file line numbers in the gutter — before
-    # this, the card numbered the excerpt 1..N on top of the embedded numbers
-    # (double gutter) and fed the arrows to the syntax highlighter.
-    {raw_lines, native_nos} = split_read_lines(content)
-    line_count = length(raw_lines)
+    line_count = length(String.split(content, "\n"))
     language = path && FileType.language(path)
-    stripped = if native_nos, do: Enum.join(raw_lines, "\n"), else: content
 
-    highlight? =
-      is_binary(language) and line_count <= @highlight_max_lines and
-        byte_size(stripped) <= @highlight_max_bytes
+    # The whole body pipeline — native line-number strip, syntax-highlight NIF
+    # pass, per-line zip — runs ONLY while expanded. Collapsed cards used to
+    # pay it on every transcript re-render (and hold thousands of highlight
+    # spans in the DOM).
+    {lines, line_count} =
+      if expanded do
+        # Native harness Read results arrive pre-numbered ("   156→<div…").
+        # Strip that prefix and reuse the REAL file line numbers in the gutter.
+        {raw_lines, native_nos} = split_read_lines(content)
+        n = length(raw_lines)
+        stripped = if native_nos, do: Enum.join(raw_lines, "\n"), else: content
 
-    rendered =
-      if highlight? do
-        case Syntax.highlight_lines(stripped, language) do
-          nil -> Enum.map(raw_lines, &blank_to_nbsp/1)
-          hl -> hl
-        end
+        highlight? =
+          is_binary(language) and n <= @highlight_max_lines and
+            byte_size(stripped) <= @highlight_max_bytes
+
+        rendered =
+          if highlight? do
+            case Syntax.highlight_lines(stripped, language) do
+              nil -> Enum.map(raw_lines, &blank_to_nbsp/1)
+              hl -> hl
+            end
+          else
+            Enum.map(raw_lines, &blank_to_nbsp/1)
+          end
+
+        numbers = native_nos || (n > 0 && Enum.to_list(1..n)) || []
+        {rendered |> Enum.zip(numbers) |> Enum.take(body_line_cap(expanded)), n}
       else
-        Enum.map(raw_lines, &blank_to_nbsp/1)
+        {[], line_count}
       end
-
-    numbers = native_nos || (line_count > 0 && Enum.to_list(1..line_count)) || []
-    lines = rendered |> Enum.zip(numbers) |> Enum.take(@result_line_cap)
 
     assigns =
       assign(assigns,
@@ -185,20 +240,33 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
         language: language,
         line_count: line_count,
         lines: lines,
-        truncated: line_count > @result_line_cap,
-        cap: @result_line_cap,
+        expanded?: expanded,
+        lazy?: lazy?(assigns),
+        truncated: line_count > body_line_cap(expanded),
+        cap: body_line_cap(expanded),
         file_link: Messages.build_file_link(path, assigns[:workspace_id])
       )
 
     ~H"""
-    <details class={[gutter(), "py-0.5 group/file"]} open={@detail_level == :trace}>
-      <summary class="text-sm text-zinc-500 dark:text-zinc-400 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5">
-        <span class="transition-transform group-open/file:rotate-90">▸</span>
+    <details
+      class={[gutter(), "py-0.5 group/file"]}
+      open={if @lazy?, do: @expanded?, else: @detail_level == :trace}
+    >
+      <summary
+        class="text-sm text-zinc-500 dark:text-zinc-400 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5"
+        phx-click={@lazy? && "toggle_result"}
+        phx-value-msgid={@lazy? && @msg[:id]}
+        onclick={@lazy? && "event.preventDefault()"}
+      >
+        <span class={["transition-transform", @expanded? && "rotate-90"]}>▸</span>
         <span class="font-mono text-zinc-500 dark:text-zinc-400 truncate">{@path || "file"}</span>
         <span :if={@language} class="text-zinc-500 dark:text-zinc-400">· {@language}</span>
         <span class="text-zinc-500 dark:text-zinc-400">· {@line_count} lines</span>
       </summary>
-      <div class="mt-1 rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800">
+      <div
+        :if={@expanded?}
+        class="mt-1 rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800"
+      >
         <div class="max-h-96 overflow-auto text-sm md:text-[13px] font-mono leading-snug">
           <div :for={{line, i} <- @lines} class="flex">
             <span class="flex-none w-12 pr-3 text-right text-zinc-500 dark:text-zinc-400 select-none tabular-nums">
@@ -208,7 +276,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
           </div>
         </div>
       </div>
-      <div class="flex items-center gap-2 mt-1 h-5">
+      <div :if={@expanded?} class="flex items-center gap-2 mt-1 h-5">
         <p :if={@truncated} class="text-xs text-zinc-500 dark:text-zinc-400">
           ... {@line_count - @cap} more lines
         </p>
@@ -228,6 +296,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
   # matched text readable. Non-matching lines (headers, "No matches") pass
   # through as plain rows.
   def chat_msg_grep_result(assigns) do
+    expanded = result_expanded?(assigns)
     content = Messages.format_tool_result(assigns.msg.content)
 
     rows =
@@ -240,20 +309,33 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
 
     assigns =
       assign(assigns,
-        rows: Enum.take(rows, @result_line_cap),
+        rows: if(expanded, do: Enum.take(rows, body_line_cap(expanded)), else: []),
+        expanded?: expanded,
+        lazy?: lazy?(assigns),
         match_count: match_count,
-        truncated: length(rows) > @result_line_cap,
+        truncated: length(rows) > body_line_cap(expanded),
         total: length(rows),
-        cap: @result_line_cap
+        cap: body_line_cap(expanded)
       )
 
     ~H"""
-    <details class={[gutter(), "py-0.5 group/grep"]} open={@detail_level == :trace}>
-      <summary class="text-sm text-zinc-500 dark:text-zinc-400 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5">
-        <span class="transition-transform group-open/grep:rotate-90">▸</span>
+    <details
+      class={[gutter(), "py-0.5 group/grep"]}
+      open={if @lazy?, do: @expanded?, else: @detail_level == :trace}
+    >
+      <summary
+        class="text-sm text-zinc-500 dark:text-zinc-400 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5"
+        phx-click={@lazy? && "toggle_result"}
+        phx-value-msgid={@lazy? && @msg[:id]}
+        onclick={@lazy? && "event.preventDefault()"}
+      >
+        <span class={["transition-transform", @expanded? && "rotate-90"]}>▸</span>
         <span>{@match_count} {if @match_count == 1, do: "match", else: "matches"}</span>
       </summary>
-      <div class="mt-1 rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800">
+      <div
+        :if={@expanded?}
+        class="mt-1 rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800"
+      >
         <div class="max-h-96 overflow-auto text-sm md:text-[13px] font-mono leading-snug py-1">
           <div
             :for={row <- @rows}
@@ -271,7 +353,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
           </div>
         </div>
       </div>
-      <p :if={@truncated} class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+      <p :if={@expanded? && @truncated} class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
         ... {@total - @cap} more lines
       </p>
     </details>
@@ -331,8 +413,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
     end
   end
 
-  # Walk backwards from a tool_result to the :tool call it belongs to, skipping
-  # any streamed build messages in between.
+  # The :tool call a tool_result belongs to. Precomputed ctx (workspace chat)
+  # beats the legacy walk backwards over @messages skipping streamed build
+  # messages (message tear-off page).
+  defp matching_tool_call(%{ctx: %{call: call}}), do: call
+
   defp matching_tool_call(assigns) do
     idx = assigns[:idx]
     messages = assigns[:messages]
@@ -348,6 +433,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
   # Check if this tool_result has a streamed build message above it —
   # the output was already shown live, so rendering it again is redundant.
   # Message order is: :tool (exec) → :build_done (streamed output) → :tool_result
+  def streamed_exec_result?(%{ctx: %{streamed_exec: s}}), do: s
+
   def streamed_exec_result?(assigns) do
     idx = assigns[:idx]
     messages = assigns[:messages]

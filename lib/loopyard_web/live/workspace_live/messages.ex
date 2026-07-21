@@ -33,6 +33,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   # re-exposed so chat_panel + the transcript-layout tests are unchanged.
   defdelegate transcript_groups(messages), to: Transcript
   defdelegate transcript_sections(messages), to: Transcript
+  defdelegate item_contexts(messages, expanded_results), to: Transcript
+  defdelegate section_key(section), to: Transcript
 
   # The Copy / Open hover buttons live in Messages.Actions (size-cap split);
   # imported so the `<.copy_btn/>` / `<.open_btn/>` chat_msg calls are unchanged.
@@ -489,10 +491,16 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
 
   # Role of the message immediately before/after this one — used to keep the big
   # band air at human<->machine boundaries only (tight between consecutive humans).
+  # Precomputed ctx (workspace chat) beats the legacy walk (message tear-off
+  # page passes messages+idx and no ctx).
+  defp prev_role(%{ctx: %{prev_role: r}}), do: r
+
   defp prev_role(%{idx: idx, messages: messages}) when is_integer(idx) and idx > 0,
     do: Enum.at(messages, idx - 1, %{})[:role]
 
   defp prev_role(_), do: nil
+
+  defp next_role(%{ctx: %{next_role: r}}), do: r
 
   defp next_role(%{idx: idx, messages: messages}) when is_integer(idx) and is_list(messages),
     do: Enum.at(messages, idx + 1, %{})[:role]
@@ -591,6 +599,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   end
 
   def build_file_link(_, _), do: nil
+
+  defp preceded_by_edit?(%{ctx: %{preceded_by_edit: p}}), do: p
 
   defp preceded_by_edit?(assigns) do
     idx = assigns[:idx]

@@ -86,6 +86,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
           |> assign(:selected_agent, agent)
           |> assign_message_page(agent)
           |> assign(:streaming_text, "")
+          |> assign(:expanded_results, MapSet.new())
           |> assign(:booting_agent_id, nil)
           |> assign(:stream_buffer, stream_buffer)
           |> assign(:building, existing_build != nil && existing_build.role == :build)

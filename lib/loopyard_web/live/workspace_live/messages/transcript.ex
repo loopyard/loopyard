@@ -93,6 +93,83 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Transcript do
     |> Enum.reverse()
   end
 
+  @doc """
+  Section identity for keyed rendering: the prompt message's id (the leading
+  no-prompt section keys as :head). Stable across window slides — that's what
+  lets the sections `:for` skip unchanged sections instead of re-shipping
+  everything when the top of the window drops.
+  """
+  def section_key(%{prompt: {%{id: id}, _idx}}) when not is_nil(id), do: id
+  def section_key(%{prompt: {_msg, idx}}), do: {:pidx, idx}
+  def section_key(_), do: :head
+
+  @doc """
+  Per-item render context, precomputed in ONE pass so each transcript row's
+  assigns are STABLE across appends (equal values → keyed diffing skips the
+  row). Replaces the per-row look-back walks that needed the whole @messages
+  list — passing that list (or any per-append-changing value) to every row
+  made LiveView consider every row changed on every append (~850KB/turn
+  measured). Returns idx → %{prev_role, next_role, call, streamed_exec,
+  preceded_by_edit, expanded?}.
+  """
+  def item_contexts(messages, expanded_results) do
+    tail_from = expand_tail_from(messages)
+    roles = messages |> Enum.map(& &1.role) |> List.to_tuple()
+    n = tuple_size(roles)
+
+    {ctx, _last_non_build} =
+      messages
+      |> Enum.with_index()
+      |> Enum.reduce({%{}, nil}, fn {msg, idx}, {acc, last_non_build} ->
+        call = last_non_build
+
+        entry = %{
+          prev_role: if(idx > 0, do: elem(roles, idx - 1)),
+          next_role: if(idx < n - 1, do: elem(roles, idx + 1)),
+          call: call,
+          streamed_exec:
+            match?(%{role: :tool, tool: t} when is_binary(t), call) &&
+              String.ends_with?(call.tool, "__exec"),
+          preceded_by_edit:
+            match?(%{role: :tool}, call) && call_kind(call) == :edit,
+          expanded?:
+            cond do
+              Map.get(msg, :is_error, false) == true -> :full
+              MapSet.member?(expanded_results, msg[:id]) -> :full
+              # Live tail: PREVIEW, not full — a fully-highlighted 300-line
+              # card ships ~150KB of span soup per tool result (measured);
+              # the first lines keep the "watch it work" signal and a click
+              # gets the rest.
+              idx >= tail_from -> :preview
+              true -> false
+            end
+        }
+
+        last_non_build =
+          if msg.role in [:build, :build_done, :build_failed], do: last_non_build, else: msg
+
+        {Map.put(acc, idx, entry), last_non_build}
+      end)
+
+    ctx
+  end
+
+  @doc """
+  Index the auto-expanded live tail starts at: the last user prompt (their
+  results are the current turn's work). Transcripts with no user prompt in
+  the window fall back to the final 20 rows.
+  """
+  def expand_tail_from(messages) when is_list(messages) do
+    case Enum.find_index(Enum.reverse(messages), &(&1.role == :user)) do
+      nil -> max(length(messages) - 20, 0)
+      rev_idx -> length(messages) - 1 - rev_idx
+    end
+  end
+
+  defp call_kind(%{tool_kind: kind}) when not is_nil(kind), do: kind
+  defp call_kind(%{tool: tool}) when is_binary(tool), do: Loopyard.Agent.ToolKind.classify(tool)
+  defp call_kind(_), do: :generic
+
   # The current (most recent) section is a human-prompt section that the agent
   # hasn't answered yet — its body has no agent run, only earlier folded prompts.
   # A new human message folds into it (same "You" area) rather than starting a new
