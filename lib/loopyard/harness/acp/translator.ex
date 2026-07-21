@@ -33,9 +33,25 @@ defmodule Loopyard.Harness.ACP.Translator do
 
   alias Loopyard.Agent.Event
 
-  defstruct text: [], model: nil, tools: %{}
+  # `break_pending`: a tool call surfaced since the last text chunk, so the next
+  # text chunk opens a NEW block and must be separated with a paragraph break.
+  # Without it, the assistant's text block BEFORE a tool call and the one AFTER
+  # were concatenated with no separator — "…and main." + "No — not merged" came
+  # out as "…and main.No — not merged".
+  #
+  # `used_tokens`: latest context usage from the adapter's `usage_update`
+  # notifications (claude-agent-acp; the old claude-code-acp never sends them).
+  # Deliberately NOT reset in finish/2 — usage is session-scoped, and the last
+  # known value is the honest number for a turn that emitted no update.
+  defstruct text: [], model: nil, tools: %{}, break_pending: false, used_tokens: nil
 
-  @type t :: %__MODULE__{text: iodata(), model: String.t() | nil, tools: map()}
+  @type t :: %__MODULE__{
+          text: iodata(),
+          model: String.t() | nil,
+          tools: map(),
+          break_pending: boolean(),
+          used_tokens: non_neg_integer() | nil
+        }
 
   @spec new(keyword()) :: t()
   def new(opts \\ []) do
@@ -50,13 +66,20 @@ defmodule Loopyard.Harness.ACP.Translator do
   def step(state, _other), do: {state, []}
 
   # Streaming assistant text — accumulate for the final Text, emit a live delta.
+  # A paragraph break is prepended when this chunk opens a new block after a
+  # tool call (break_pending) so the break lands in BOTH the live delta stream
+  # and the committed text — the browser and the persisted message match.
   defp do_step(state, "agent_message_chunk", update) do
     text = dig_text(update["content"])
 
     if text == "" do
       {state, []}
     else
-      {%{state | text: [state.text, text]}, [%Event.TextDelta{text: text}]}
+      sep = if state.break_pending and state.text != [], do: "\n\n", else: ""
+      chunk = sep <> text
+
+      {%{state | text: [state.text, chunk], break_pending: false},
+       [%Event.TextDelta{text: chunk}]}
     end
   end
 
@@ -74,7 +97,10 @@ defmodule Loopyard.Harness.ACP.Translator do
   defp do_step(state, "tool_call", update) do
     id = update["toolCallId"]
     {state, entry} = buffer_tool(state, id, update)
-    maybe_emit_call(state, id, entry)
+    {state, events} = maybe_emit_call(state, id, entry)
+    # Tool activity now sits between any prior text and the next — the next
+    # text chunk opens a fresh block (see break_pending).
+    {%{state | break_pending: true}, events}
   end
 
   defp do_step(state, "tool_call_update", update) do
@@ -93,20 +119,21 @@ defmodule Loopyard.Harness.ACP.Translator do
       end
 
     entry = state.tools[id]
-    result_text = dig_text(update["content"])
+    raw = dig_text(update["content"])
 
     {state, result_events} =
-      if not entry.result and result_text != "" do
+      if not entry.result and raw != "" do
         entry = %{entry | result: true}
-        is_error = update["status"] in ["failed", "error"]
+        {content, wrapped_error?} = clean_result(raw)
+        is_error = update["status"] in ["failed", "error"] or wrapped_error?
 
         {put_tool(state, id, entry),
-         [%Event.ToolResult{id: id, content: result_text, is_error: is_error}]}
+         [%Event.ToolResult{id: id, content: content, is_error: is_error}]}
       else
         {state, []}
       end
 
-    {state, call_events ++ result_events}
+    {%{state | break_pending: true}, call_events ++ result_events}
   end
 
   # Slash commands / skills available this session (surface for #8); not chat noise.
@@ -121,6 +148,29 @@ defmodule Loopyard.Harness.ACP.Translator do
 
   defp do_step(state, "plan", update) do
     {state, [%Event.SystemEvent{subtype: :plan, content: Jason.encode!(update["entries"] || [])}]}
+  end
+
+  # Real usage + rate-limit PUSH from the modern adapter (claude-agent-acp).
+  # Fires on every assistant-usage change with {used, size}; when the CLI
+  # reports a rate_limit_event, the same update additionally carries the full
+  # rate_limit_info (camelCase) in _meta["_claude/rateLimit"] — status,
+  # resetsAt (ms), utilization, rateLimitType. That's the event-driven signal
+  # that replaces blind nil-reset polling: a :rejected here parks the agent
+  # with a PRECISELY timed retry.
+  defp do_step(state, "usage_update", update) do
+    state =
+      case update["used"] do
+        used when is_integer(used) and used >= 0 -> %{state | used_tokens: used}
+        _ -> state
+      end
+
+    events =
+      case get_in(update, ["_meta", "_claude/rateLimit"]) do
+        info when is_map(info) -> [rate_limit_status(info)]
+        _ -> []
+      end
+
+    {state, events}
   end
 
   # user_message_chunk (echo of our own prompt) and any unknown update: drop.
@@ -148,10 +198,17 @@ defmodule Loopyard.Harness.ACP.Translator do
         _ -> {false, nil}
       end
 
+    # Input tokens: the adapter's `usage_update` (claude-agent-acp) gives us
+    # the session's real context usage — report it so StreamHandler's
+    # context_utilization actually moves and the 92% proactive compaction
+    # fires BEFORE the harness balloons past the container memory cap (#20).
+    # Under the legacy adapter (no usage_update) it stays 0 as before.
+    # Output: ESTIMATE from the turn's assembled text (~4 chars/token) so the
+    # cumulative counter racks up even when the adapter is usage-silent.
     result = %Event.SessionResult{
       model: state.model,
-      input_tokens: 0,
-      output_tokens: 0,
+      input_tokens: state.used_tokens || 0,
+      output_tokens: div(byte_size(full), 4),
       cache_read_tokens: 0,
       cost_usd: 0.0,
       duration_ms: 0.0,
@@ -161,10 +218,55 @@ defmodule Loopyard.Harness.ACP.Translator do
     }
 
     # Reset turn-scoped accumulation; keep model.
-    {%{state | text: [], tools: %{}}, text_events ++ [result]}
+    {%{state | text: [], tools: %{}, break_pending: false}, text_events ++ [result]}
   end
 
   # --- helpers ---
+
+  # Map the adapter-forwarded rate_limit_info (CLI wire shape, camelCase) onto
+  # the neutral event. Unknown/missing status degrades to :allowed — never
+  # park the agent on a malformed frame.
+  defp rate_limit_status(info) do
+    status =
+      case info["status"] do
+        "rejected" -> :rejected
+        "allowed_warning" -> :allowed_warning
+        _ -> :allowed
+      end
+
+    %Event.RateLimitStatus{
+      status: status,
+      resets_at_ms: if(is_integer(info["resetsAt"]), do: info["resetsAt"]),
+      utilization: info["utilization"],
+      rate_limit_type: info["rateLimitType"],
+      is_using_overage: info["isUsingOverage"]
+    }
+  end
+
+  # claude-code-acp wraps EVERY tool result for display: the whole thing in a
+  # markdown code fence (```…```), and errors additionally in
+  # <tool_use_error>…</tool_use_error>. Loopyard renders tool output RAW (it's a
+  # console card, not prose), so those wrappers showed up literally — and when
+  # the card tail-truncates, the opening ``` scrolled off and left a dangling
+  # ```. Strip the OUTER wrapper (only when it wraps the entire content, never a
+  # fence that's part of the real output) so the card shows the actual command
+  # output. Returns {clean_content, wrapped_in_tool_error?} — the wrapper is
+  # itself an error signal, folded into is_error.
+  @fence ~r/\A```[^\n]*\n(.*)\n```\z/s
+  @tool_err ~r/\A<tool_use_error>\s*(.*?)\s*<\/tool_use_error>\z/s
+
+  defp clean_result(text) do
+    unfenced =
+      case Regex.run(@fence, String.trim(text)) do
+        [_, inner] -> inner
+        _ -> text
+      end
+
+    case Regex.run(@tool_err, String.trim(unfenced)) do
+      [_, inner] -> {inner, true}
+      _ -> {unfenced, false}
+    end
+  end
 
   # Merge the latest name/input for a tool id, preferring non-empty input.
   defp buffer_tool(state, id, update) do

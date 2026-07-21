@@ -100,7 +100,7 @@ defmodule LoopyardWeb.SystemOrphansLive do
           </p>
 
           <%= if @groups == [] do %>
-            <div class="text-sm text-zinc-400 dark:text-zinc-500 italic">
+            <div class="text-sm text-zinc-500 dark:text-zinc-400 italic">
               No tracked resources. Every subsystem is either not yet migrated or has no
               live allocations.
             </div>
@@ -160,7 +160,7 @@ defmodule LoopyardWeb.SystemOrphansLive do
             stale — owner DOWN
           </div>
         </div>
-        <div class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+        <div class="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
           {length(@group.resources)} {if length(@group.resources) == 1,
             do: "resource",
             else: "resources"}

@@ -24,8 +24,10 @@ defmodule Loopyard.Harness.QuestionAdapter.ClaudeCode do
   def render_answer(questions, selections) do
     questions
     |> Enum.map(fn q ->
-      chosen = Map.get(selections, q.id, [])
-      "#{q.prompt} → #{if chosen == [], do: "(no answer)", else: Enum.join(chosen, ", ")}"
+      case Map.get(selections, q.id, []) do
+        [] -> "#{q.prompt} → (skipped — the user chose not to answer; use your best judgment)"
+        chosen -> "#{q.prompt} → #{Enum.join(chosen, ", ")}"
+      end
     end)
     |> Enum.join("\n")
   end

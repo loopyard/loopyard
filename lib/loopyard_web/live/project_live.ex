@@ -476,7 +476,7 @@ defmodule LoopyardWeb.ProjectLive do
           <h2 class="text-lg font-semibold text-zinc-600 dark:text-zinc-300">
             Removing {@project.name}...
           </h2>
-          <p class="text-sm text-zinc-400 dark:text-zinc-500 mt-1">
+          <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
             Stopping containers and cleaning up volumes
           </p>
         </div>
@@ -489,66 +489,37 @@ defmodule LoopyardWeb.ProjectLive do
           <% @live_action == :new_workspace -> %>
             <.new_workspace_screen project={@project} />
           <% true -> %>
-            <div class="flex items-center justify-between mb-6 gap-4">
+            <div class="flex items-start justify-between mb-6 gap-3">
               <div class="min-w-0 flex-1">
-                <%= if @editing_name do %>
-                  <form
-                    phx-submit="rename_project"
-                    phx-click-away="cancel_rename"
-                    class="flex items-center gap-2"
-                  >
-                    <input
-                      type="text"
-                      name="name"
-                      value={@project.name}
-                      autocomplete="off"
-                      autofocus
-                      phx-keydown="cancel_rename"
-                      phx-key="Escape"
-                      class="text-xl font-semibold bg-transparent border-b-2 border-violet-400 focus:outline-none focus:border-violet-500 px-0 py-0.5 min-w-0 flex-1
-                             text-zinc-900 dark:text-zinc-100"
-                    />
-                    <button
-                      type="submit"
-                      class="text-xs font-medium text-violet-600 dark:text-violet-400 hover:text-violet-500 transition-colors flex-none"
-                    >
-                      Save
-                    </button>
-                    <button
-                      type="button"
-                      phx-click="cancel_rename"
-                      class="text-xs font-medium text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors flex-none"
-                    >
-                      Cancel
-                    </button>
-                  </form>
-                <% else %>
-                  <button
-                    phx-click="start_rename"
-                    class="group flex items-center gap-2 text-left hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
-                    title="Rename project"
-                  >
-                    <h2 class="text-xl font-semibold truncate">{@project.name}</h2>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                      class="w-3.5 h-3.5 text-zinc-300 dark:text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity flex-none"
-                    >
-                      <path d="M2.695 14.762l-1.262 3.155a.5.5 0 00.65.65l3.155-1.262a4 4 0 001.343-.886L17.5 5.501a2.121 2.121 0 00-3-3L3.58 13.419a4 4 0 00-.885 1.343z" />
-                    </svg>
-                  </button>
-                <% end %>
-                <p class="text-xs font-mono text-zinc-400 dark:text-zinc-500 mt-0.5 truncate">
+                <h2 class="text-2xl font-semibold truncate text-zinc-900 dark:text-zinc-100">
+                  {@project.name}
+                </h2>
+                <p class="text-xs md:text-sm font-mono text-zinc-500 dark:text-zinc-400 mt-1 truncate">
                   {project_location(@project)}
                 </p>
               </div>
-              <button
-                phx-click="confirm_remove"
-                class="text-xs font-medium text-zinc-400 dark:text-zinc-500 hover:text-red-500 dark:hover:text-red-400 transition-colors flex-none"
+              <%!-- All editing (rename) + removal moved to the settings screen —
+                   no more cramped inline edit / tiny header buttons. --%>
+              <.link
+                navigate={"/projects/#{@project.id}/settings"}
+                aria-label="Project settings"
+                class="flex-none inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 px-3 min-h-[2.75rem] text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors"
               >
-                Remove project
-              </button>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  class="w-4 h-4"
+                  aria-hidden="true"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M8.34 1.804A1 1 0 019.32 1h1.36a1 1 0 01.98.804l.295 1.473c.497.144.97.342 1.416.587l1.25-.834a1 1 0 011.294.116l.962.962a1 1 0 01.116 1.294l-.834 1.25c.245.446.443.919.587 1.416l1.473.294a1 1 0 01.804.98v1.361a1 1 0 01-.804.98l-1.473.295a6.95 6.95 0 01-.587 1.416l.834 1.25a1 1 0 01-.116 1.294l-.962.962a1 1 0 01-1.294.116l-1.25-.834c-.446.245-.919.443-1.416.587l-.294 1.473a1 1 0 01-.98.804H9.32a1 1 0 01-.98-.804l-.295-1.473a6.95 6.95 0 01-1.416-.587l-1.25.834a1 1 0 01-1.294-.116l-.962-.962a1 1 0 01-.116-1.294l.834-1.25a6.95 6.95 0 01-.587-1.416l-1.473-.294A1 1 0 011 10.68V9.32a1 1 0 01.804-.98l1.473-.295c.144-.497.342-.97.587-1.416l-.834-1.25a1 1 0 01.116-1.294l.962-.962a1 1 0 011.294-.116l1.25.834c.446-.245.919-.443 1.416-.587l.294-1.473zM10 13a3 3 0 100-6 3 3 0 000 6z"
+                    clip-rule="evenodd"
+                  />
+                </svg>
+                Settings
+              </.link>
             </div>
 
             <.section_header title="Workspaces">
@@ -580,7 +551,7 @@ defmodule LoopyardWeb.ProjectLive do
                   </span>
                   <span
                     :if={workspace[:is_main]}
-                    class="text-[10px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 flex-none"
+                    class="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 flex-none"
                   >
                     default
                   </span>
@@ -622,7 +593,7 @@ defmodule LoopyardWeb.ProjectLive do
                 </p>
                 <p
                   :if={setup_phase in [:ready, nil] && workspace.status != :running}
-                  class="text-xs md:text-sm text-zinc-400 dark:text-zinc-500 mt-1.5"
+                  class="text-xs md:text-sm text-zinc-500 dark:text-zinc-400 mt-1.5"
                 >
                   Stopped
                 </p>
@@ -784,14 +755,14 @@ defmodule LoopyardWeb.ProjectLive do
 
       <div class="rounded-lg border border-zinc-200 dark:border-zinc-700 divide-y divide-zinc-200 dark:divide-zinc-700">
         <div class="px-4 py-3">
-          <div class="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-2">
+          <div class="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
             Directory to delete
           </div>
           <p class="text-sm font-mono text-zinc-600 dark:text-zinc-400">{@details.loopyard_dir}/</p>
           <ul :if={@details.generated_files != []} class="mt-1.5 space-y-0.5">
             <li
               :for={file <- @details.generated_files}
-              class="text-xs font-mono text-zinc-400 dark:text-zinc-500 pl-4"
+              class="text-xs font-mono text-zinc-500 dark:text-zinc-400 pl-4"
             >
               {file}
             </li>
@@ -802,7 +773,7 @@ defmodule LoopyardWeb.ProjectLive do
         </div>
 
         <div class="px-4 py-3">
-          <div class="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-2">
+          <div class="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
             Docker containers to stop
           </div>
           <%= if @details.containers != [] do %>
@@ -815,7 +786,7 @@ defmodule LoopyardWeb.ProjectLive do
               </li>
             </ul>
           <% else %>
-            <p class="text-sm text-zinc-400 dark:text-zinc-500">No running containers</p>
+            <p class="text-sm text-zinc-500 dark:text-zinc-400">No running containers</p>
           <% end %>
         </div>
       </div>

@@ -237,13 +237,15 @@ defmodule Loopyard.InvariantsTest do
           src = File.read!(path)
 
           Regex.match?(lifecycle_call, src) and
-            not String.contains?(src, "Approvals.request")
+            not (String.contains?(src, "Approvals.post") or
+                   String.contains?(src, "Approvals.request"))
         end)
 
       assert violations == [],
              "Tool(s) create/destroy a workspace without going through " <>
-               "Loopyard.Harness.Approvals.request (the human-approval guardrail): " <>
-               "#{inspect(violations)}. Route the action through a propose_* approval."
+               "Loopyard.Harness.Approvals (post/2 queued, or request/2 blocking) — " <>
+               "the human-approval guardrail: #{inspect(violations)}. Route the " <>
+               "action through a propose_* approval."
     end
   end
 

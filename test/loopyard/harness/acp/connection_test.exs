@@ -299,6 +299,90 @@ defmodule Loopyard.Harness.ACP.ConnectionTest do
     end
   end
 
+  describe "AskUserQuestion via form elicitation" do
+    setup do
+      Loopyard.StateKeeper.ensure_tables!()
+      :ok
+    end
+
+    test "advertises elicitation.form iff an agent_id is present" do
+      {_conn, _t} = start_conn(agent_id: "elic-cap-agent")
+      assert_receive {:sent, %{"method" => "initialize"} = frame}
+      assert frame["params"]["clientCapabilities"]["elicitation"]["form"] == %{}
+    end
+
+    test "no elicitation capability without an agent_id" do
+      {_conn, _t} = start_conn()
+      assert_receive {:sent, %{"method" => "initialize"} = frame}
+      refute Map.has_key?(frame["params"]["clientCapabilities"], "elicitation")
+    end
+
+    test "elicitation/create routes to the question broker; answer returns accept+content" do
+      agent = "elic-agent-#{System.unique_integer([:positive])}"
+      {conn, _t} = start_conn(agent_id: agent)
+      handshake(conn)
+
+      send(
+        conn,
+        {:acp_msg,
+         %{
+           "id" => 77,
+           "method" => "elicitation/create",
+           "params" => %{
+             "mode" => "form",
+             "sessionId" => "sess-123",
+             "message" => "Deploy?",
+             "requestedSchema" => %{
+               "type" => "object",
+               "properties" => %{
+                 "question_0" => %{
+                   "type" => "string",
+                   "oneOf" => [%{"const" => "Yes"}, %{"const" => "No"}]
+                 },
+                 "question_0_custom" => %{"type" => "string", "title" => "Other"}
+               }
+             }
+           }
+         }}
+      )
+
+      # The blocked Task registered a pending question for this agent; a human
+      # click resolves it and the connection answers the JSON-RPC request.
+      qid = wait_for_agent_pending(agent)
+      :ok = Loopyard.Harness.Questions.answer_partial(qid, "question_0", ["Yes"])
+
+      assert_receive {:sent,
+                      %{
+                        "id" => 77,
+                        "result" => %{"action" => "accept", "content" => %{"question_0" => "Yes"}}
+                      }},
+                     2_000
+    end
+
+    test "an unpresentable elicitation is declined (user-skipped), not cancelled" do
+      {conn, _t} = start_conn(agent_id: "elic-decline-agent")
+      handshake(conn)
+
+      send(
+        conn,
+        {:acp_msg, %{"id" => 78, "method" => "elicitation/create", "params" => %{"mode" => "url"}}}
+      )
+
+      assert_receive {:sent, %{"id" => 78, "result" => %{"action" => "decline"}}}
+    end
+  end
+
+  defp wait_for_agent_pending(agent, tries \\ 100) do
+    case Loopyard.Harness.Questions.pending_for_agent(agent) do
+      {qid, _entry} ->
+        qid
+
+      nil when tries > 0 ->
+        Process.sleep(10)
+        wait_for_agent_pending(agent, tries - 1)
+    end
+  end
+
   describe "transport close" do
     test "{:acp_closed, reason} fails an in-flight turn and stops the connection" do
       {conn, _transport} = start_conn()
@@ -326,6 +410,301 @@ defmodule Loopyard.Harness.ACP.ConnectionTest do
 
       assert {:error, {:closed, :boom}} = Task.await(task, 1_000)
       assert_receive {:EXIT, ^conn, :normal}
+    end
+  end
+
+  describe "model config-option dialect (claude-agent-acp 0.60+)" do
+    # The renamed adapter dropped `models`/`session/set_model` from the wire:
+    # models arrive as the `"model"` entry of `configOptions`, and switching is
+    # `session/set_config_option`. Pre-fix, available_models parsed empty and
+    # every model switch silently no-opped (observed live: an agent stuck on a
+    # rate-limited Fable because set_model never reached the harness).
+
+    defp config_options(current) do
+      [
+        %{"id" => "mode", "currentValue" => "default", "options" => []},
+        %{
+          "id" => "model",
+          "currentValue" => current,
+          "options" => [
+            %{"value" => "claude-fable-5", "name" => "Fable 5", "description" => "Fable 5 · Most capable"},
+            %{"value" => "claude-sonnet-5", "name" => "Sonnet 5", "description" => "Sonnet 5 · Everyday"}
+          ]
+        }
+      ]
+    end
+
+    defp handshake_with_config_options(conn, current) do
+      assert_receive {:sent, %{"method" => "initialize", "id" => init_id}}
+      send(conn, {:acp_msg, %{"id" => init_id, "result" => %{}}})
+
+      assert_receive {:sent, %{"method" => "session/new", "id" => new_id}}
+
+      send(
+        conn,
+        {:acp_msg,
+         %{
+           "id" => new_id,
+           "result" => %{"sessionId" => "sess-co", "configOptions" => config_options(current)}
+         }}
+      )
+
+      :ok = Connection.await_ready(conn, 1_000)
+    end
+
+    test "session/new configOptions populate available_models and the current model name" do
+      {conn, _transport} = start_conn(model: nil)
+      handshake_with_config_options(conn, "claude-fable-5")
+
+      assert [%{id: "claude-fable-5"}, %{id: "claude-sonnet-5"}] =
+               Connection.available_models(conn)
+    end
+
+    test "desired model switch goes out as session/set_config_option" do
+      {conn, _transport} = start_conn(model: "claude-sonnet-5")
+      handshake_with_config_options(conn, "claude-fable-5")
+
+      assert_receive {:sent, %{"method" => "session/set_config_option", "id" => _} = frame}
+      assert frame["params"]["configId"] == "model"
+      assert frame["params"]["value"] == "claude-sonnet-5"
+      assert frame["params"]["sessionId"] == "sess-co"
+    end
+
+    test "live set_model uses session/set_config_option under the new dialect" do
+      # model: nil → no boot-time auto-switch frame to confuse the assert.
+      {conn, _transport} = start_conn(model: nil)
+      handshake_with_config_options(conn, "claude-fable-5")
+
+      Connection.set_model(conn, "claude-sonnet-5")
+
+      assert_receive {:sent, %{"method" => "session/set_config_option"} = frame}
+      assert frame["params"]["value"] == "claude-sonnet-5"
+    end
+
+    test "legacy models shape still uses session/set_model" do
+      {conn, _transport} = start_conn(model: nil)
+
+      assert_receive {:sent, %{"method" => "initialize", "id" => init_id}}
+      send(conn, {:acp_msg, %{"id" => init_id, "result" => %{}}})
+      assert_receive {:sent, %{"method" => "session/new", "id" => new_id}}
+
+      send(
+        conn,
+        {:acp_msg,
+         %{
+           "id" => new_id,
+           "result" => %{
+             "sessionId" => "sess-legacy",
+             "models" => %{
+               "currentModelId" => "default",
+               "availableModels" => [%{"modelId" => "opus", "name" => "Opus"}]
+             }
+           }
+         }}
+      )
+
+      :ok = Connection.await_ready(conn, 1_000)
+      Connection.set_model(conn, "opus")
+
+      assert_receive {:sent, %{"method" => "session/set_model"} = frame}
+      assert frame["params"]["modelId"] == "opus"
+    end
+
+    test "config_option_update notification retracks the current model" do
+      {conn, _transport} = start_conn(model: nil)
+      handshake_with_config_options(conn, "claude-fable-5")
+
+      send(
+        conn,
+        {:acp_msg,
+         %{
+           "method" => "session/update",
+           "params" => %{
+             "update" => %{
+               "sessionUpdate" => "config_option_update",
+               "configOptions" => config_options("claude-sonnet-5")
+             }
+           }
+         }}
+      )
+
+      # State reflects the pushed switch (poll via the public models call —
+      # the cast is async).
+      assert Connection.available_models(conn) != []
+      state = :sys.get_state(conn)
+      assert state.model == "Sonnet 5"
+    end
+  end
+
+  describe "rate-limit classification" do
+    # The claude-code-acp adapter doesn't surface an upstream rate-limit
+    # rejection as a status — it errors the session/prompt request (and often
+    # exits) with "API Error: Rate limit reached". Pre-fix, both read as
+    # generic crashes: ChatAgent restart-with-resume looped straight back
+    # into the hard limit (the death spiral). The Connection must classify
+    # them and emit %Event.RateLimitStatus{status: :rejected} so the agent
+    # parks in :rate_limited with a timed retry instead.
+
+    test "session/prompt error mentioning a rate limit emits RateLimitStatus :rejected" do
+      {conn, _transport} = start_conn()
+      handshake(conn)
+      ref = make_ref()
+      Connection.prompt(conn, "go", self(), ref)
+      assert_receive {:sent, %{"method" => "session/prompt", "id" => prompt_id}}
+
+      send(
+        conn,
+        {:acp_msg,
+         %{
+           "id" => prompt_id,
+           "error" => %{
+             "code" => -32603,
+             "message" => "Internal error: API Error: Rate limit reached"
+           }
+         }}
+      )
+
+      assert_receive {:acp_event, ^ref, %Event.RateLimitStatus{status: :rejected}}
+      assert_receive {:acp_event, ^ref, %Event.SessionResult{}}
+      assert_receive {:acp_done, ^ref, {:error, _}}
+    end
+
+    test "adapter death with rate-limit stderr emits RateLimitStatus before the error result" do
+      stderr =
+        Path.join(
+          System.tmp_dir!(),
+          "loopyard-acp-test-#{System.unique_integer([:positive])}.stderr"
+        )
+
+      File.write!(
+        stderr,
+        "Error handling request { method: 'session/prompt' } " <>
+          "{ message: 'Internal error: API Error: Rate limit reached' }\ncontext canceled\n"
+      )
+
+      on_exit(fn -> File.rm(stderr) end)
+
+      {conn, _transport} = start_conn(transport_opts: [test: self(), stderr_log: stderr])
+      handshake(conn)
+      ref = make_ref()
+      Connection.prompt(conn, "go", self(), ref)
+      assert_receive {:sent, %{"method" => "session/prompt"}}
+
+      Process.flag(:trap_exit, true)
+      send(conn, {:acp_closed, {:exit_status, 1}})
+
+      assert_receive {:acp_event, ^ref, %Event.RateLimitStatus{status: :rejected}}
+      assert_receive {:acp_done, ^ref, {:error, {:closed, {:exit_status, 1}}}}
+    end
+
+    test "adapter death with unrelated stderr does NOT emit RateLimitStatus" do
+      stderr =
+        Path.join(
+          System.tmp_dir!(),
+          "loopyard-acp-test-#{System.unique_integer([:positive])}.stderr"
+        )
+
+      File.write!(stderr, "context canceled\n")
+      on_exit(fn -> File.rm(stderr) end)
+
+      {conn, _transport} = start_conn(transport_opts: [test: self(), stderr_log: stderr])
+      handshake(conn)
+      ref = make_ref()
+      Connection.prompt(conn, "go", self(), ref)
+      assert_receive {:sent, %{"method" => "session/prompt"}}
+
+      Process.flag(:trap_exit, true)
+      send(conn, {:acp_closed, {:exit_status, 1}})
+
+      assert_receive {:acp_done, ^ref, {:error, {:closed, {:exit_status, 1}}}}
+      refute_received {:acp_event, ^ref, %Event.RateLimitStatus{}}
+    end
+  end
+
+  describe "cancel (session/cancel)" do
+    test "sends a session/cancel notification for the live session, keeping it warm" do
+      {conn, _transport} = start_conn()
+      sid = handshake(conn)
+
+      Connection.cancel(conn)
+
+      # A notification: has method + params, NO id (not a request).
+      assert_receive {:sent, frame}
+      assert frame["method"] == "session/cancel"
+      assert frame["params"]["sessionId"] == sid
+      refute Map.has_key?(frame, "id")
+
+      # Connection is still alive and reports the same session.
+      assert Connection.session_id(conn) == sid
+    end
+
+    test "no-op before a session exists" do
+      {conn, _transport} = start_conn()
+      # Still initializing — no session id yet.
+      Connection.cancel(conn)
+      refute_receive {:sent, %{"method" => "session/cancel"}}
+    end
+  end
+
+  describe "resume (session/load)" do
+    # Drive init, replying with the given agentCapabilities.
+    defp init_with_caps(conn, caps) do
+      assert_receive {:sent, %{"method" => "initialize", "id" => init_id}}
+      send(conn, {:acp_msg, %{"id" => init_id, "result" => %{"agentCapabilities" => caps}}})
+    end
+
+    test "issues session/load with the saved id when the adapter supports it" do
+      {conn, _transport} = start_conn(resume: "sess-prev")
+      init_with_caps(conn, %{"loadSession" => true})
+
+      assert_receive {:sent, %{"method" => "session/load", "id" => load_id} = frame}
+      assert frame["params"]["sessionId"] == "sess-prev"
+      refute_received {:sent, %{"method" => "session/new"}}
+
+      send(conn, {:acp_msg, %{"id" => load_id, "result" => %{}}})
+      assert Connection.await_ready(conn, 1_000) == :ok
+      # Session id is the resumed one (load result omits it).
+      assert Connection.session_id(conn) == "sess-prev"
+    end
+
+    test "falls back to session/new when the adapter can't load sessions" do
+      {conn, _transport} = start_conn(resume: "sess-prev")
+      init_with_caps(conn, %{"loadSession" => false})
+
+      assert_receive {:sent, %{"method" => "session/new"}}
+      refute_received {:sent, %{"method" => "session/load"}}
+    end
+
+    test "falls back to session/new when session/load errors (expired id)" do
+      {conn, _transport} = start_conn(resume: "sess-gone")
+      init_with_caps(conn, %{"loadSession" => true})
+
+      assert_receive {:sent, %{"method" => "session/load", "id" => load_id}}
+
+      send(
+        conn,
+        {:acp_msg,
+         %{"id" => load_id, "error" => %{"code" => -32_000, "message" => "unknown session"}}}
+      )
+
+      assert_receive {:sent, %{"method" => "session/new", "id" => new_id}}
+      send(conn, {:acp_msg, %{"id" => new_id, "result" => %{"sessionId" => "sess-fresh"}}})
+      assert Connection.await_ready(conn, 1_000) == :ok
+      assert Connection.session_id(conn) == "sess-fresh"
+    end
+
+    test "no resume id → plain session/new (unchanged path)" do
+      {conn, _transport} = start_conn()
+      assert_receive {:sent, %{"method" => "initialize", "id" => init_id}}
+
+      send(
+        conn,
+        {:acp_msg,
+         %{"id" => init_id, "result" => %{"agentCapabilities" => %{"loadSession" => true}}}}
+      )
+
+      assert_receive {:sent, %{"method" => "session/new"}}
+      refute_received {:sent, %{"method" => "session/load"}}
     end
   end
 

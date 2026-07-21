@@ -67,7 +67,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.TextViewer do
             <tr :for={{line, idx} <- Enum.with_index(@lines, 1)}>
               <td
                 phx-no-format
-                class="select-none text-right pr-4 pl-4 py-0 text-zinc-400 dark:text-zinc-600 align-top w-[1%] whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800"
+                class="select-none text-right pr-4 pl-4 py-0 text-zinc-500 dark:text-zinc-400 align-top w-[1%] whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800"
               >{idx}</td>
               <td phx-no-format class="pr-4 pl-4 py-0 whitespace-pre-wrap break-all">{line}</td>
             </tr>

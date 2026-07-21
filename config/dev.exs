@@ -24,3 +24,8 @@ config :loopyard, LoopyardWeb.Endpoint,
 
 config :phoenix, :stacktrace_depth, 20
 config :phoenix, :plug_init_mode, :runtime
+
+# Model the coding agents run on. Alias ("sonnet"/"opus"/"haiku"/"fable") or a
+# full model id. Unset → SDK default ("sonnet"). Change + restart to switch the
+# whole instance — that's the entire "changing models" cost.
+config :loopyard, agent_model: "claude-fable-5"

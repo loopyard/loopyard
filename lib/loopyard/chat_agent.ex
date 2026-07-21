@@ -36,7 +36,18 @@ defmodule Loopyard.ChatAgent do
     :backend,
     :working_dir,
     :bind_mount,
+    # Host access is OPT-IN and explicit — NEVER a fallback. `host_access: true`
+    # is the sole thing that grants a `bind_mount` (native host tools). Default
+    # false → container-only. Persisted so a DELIBERATE opt-in survives resume,
+    # while a stray/legacy bind_mount does not (resume keys off this, not
+    # bind_mount). See docs/SECURITY.md.
+    :host_access,
     :workspace_id,
+    # An explicit container this agent's tools run inside, INSTEAD of a
+    # workspace-derived work container. Set for the operator agent, which has no
+    # workspace but lives in its workstation image. `resolve_container/1` prefers
+    # this when present. nil for normal (workspace) agents.
+    :container,
     # The workstation identity this agent boots its home/env from (the one you
     # were operating as when it started). Lets us count agents per identity and,
     # later, find who to refresh when that identity's home changes.
@@ -156,7 +167,28 @@ defmodule Loopyard.ChatAgent do
     # lose the partial response after a browser refresh. Transient;
     # NOT included in summary/1 — lives only in the live GenServer.
     # See plans/agent-sanity.md #3.
-    in_flight_partial: ""
+    in_flight_partial: "",
+    # Publish coalescing for streaming deltas. Raw SDK token events arrive
+    # 30–60×/s; publishing each one made every viewer's LiveView re-ship and
+    # re-patch the whole accumulated text per token, saturating the browser
+    # main thread (typing lagged during heavy streams). Instead deltas queue
+    # here ({:text | :thinking, chunk}, reversed) and a timer flushes one
+    # combined publish per channel every @delta_flush_ms. Dropped (never
+    # flushed) on turn reset/interrupt — the finalized Message supersedes.
+    # Transient; NOT in summary/1.
+    stream_pub_buffer: [],
+    stream_pub_timer: nil,
+    # Unexpected CLI deaths since the last CLEAN turn completion (or last
+    # fresh/compacted session). This is the compact-instead-of-resume breaker
+    # signal: a session whose harness keeps dying mid-conversation has almost
+    # certainly outgrown the work container's memory cap (ACP reports no token
+    # usage, so the utilization-based compaction can't see it — see
+    # IMPROVEMENTS #20), and `resume:`-ing it just reloads the bloat that
+    # killed it. At @compact_after_midturn_crashes the recovery paths route
+    # through {:auto_restart_context, nil} (summarize → fresh session)
+    # instead of resuming. NOT reset by reset_turn_state — this is session
+    # health, not turn state. Incremented via SessionManager.note_cli_death/1.
+    midturn_crashes: 0
   ]
 
   @ets_table :chat_agents
@@ -169,6 +201,22 @@ defmodule Loopyard.ChatAgent do
   # the Claude API bill. Configurable via Application env for tests
   # that want to exercise the reject path with smaller inputs.
   @max_message_bytes Application.compile_env(:loopyard, :max_message_bytes, 1_048_576)
+
+  # Compact-instead-of-resume breaker: after this many unexpected CLI deaths
+  # since the last clean turn (see midturn_crashes on the struct), recovery
+  # compacts (summarize → fresh session) rather than resuming the session
+  # that keeps killing its harness.
+  @compact_after_midturn_crashes 2
+
+  @doc """
+  True when this agent's session has died mid-conversation enough times that
+  resuming it again is just reloading the bloat that killed it — recovery
+  paths (`:restart_session`, `ensure_alive`, stream-error restart) consult
+  this and route to compaction instead. Map.get: agents live through hot
+  reloads holding pre-upgrade structs.
+  """
+  def compaction_breaker_tripped?(state),
+    do: Map.get(state, :midturn_crashes, 0) >= @compact_after_midturn_crashes
 
   # Warm-interrupt deadline. The SDK's interrupt only blocks when the CLI is
   # wedged (stdin pipe full); a healthy interrupt acks in microseconds. If the
@@ -186,6 +234,24 @@ defmodule Loopyard.ChatAgent do
 
   def send_message(id, text) do
     GenServer.cast(via(id), {:send_message, text})
+  end
+
+  @doc """
+  Durability-confirmed send for the interactive UI. Unlike `send_message/2`
+  (fire-and-forget cast — fine for internal/eval callers), this is a **call**
+  that returns `:ok` only AFTER the agent has actually received and processed
+  the message (appended + persisted, or durably queued in `pending_sends`).
+
+  Returns `{:error, :unavailable}` when the agent's GenServer is down or dies
+  mid-handling. The LiveView send path keys the input-clear on this: no `:ok`,
+  no clear — so a message sent into a crashed/reloading agent is NEVER silently
+  lost with the box wiped. This closes the "acked before it was safe" gap.
+  """
+  @spec enqueue_message(String.t(), String.t()) :: :ok | {:error, :unavailable}
+  def enqueue_message(id, text) do
+    GenServer.call(via(id), {:send_message, text}, 15_000)
+  catch
+    :exit, _ -> {:error, :unavailable}
   end
 
   def get_state(id) do
@@ -256,68 +322,20 @@ defmodule Loopyard.ChatAgent do
   """
   def get_messages(agent_id, opts \\ []), do: MessageWindow.get_messages(agent_id, opts)
 
-  @doc "Append a message to an agent's message list (for stream messages created outside the GenServer).
-  Goes through the GenServer if alive, falls back to direct ETS write."
-  def append_message_ets(agent_id, msg) do
-    msg = Map.put_new_lazy(msg, :id, fn -> generate_msg_id() end)
+  @doc "Append a message from outside the GenServer (see MessageWindow.append_message_ets/2)."
+  defdelegate append_message_ets(agent_id, msg), to: MessageWindow
 
-    case Registry.lookup(Loopyard.ChatAgentRegistry, agent_id) do
-      [{pid, _}] ->
-        GenServer.cast(pid, {:append_external_message, msg})
-        msg
-
-      [] ->
-        # No GenServer running — direct ETS write
-        case :ets.lookup(@ets_table, agent_id) do
-          [{^agent_id, summary}] ->
-            :ets.insert(@ets_table, {agent_id, %{summary | messages: summary.messages ++ [msg]}})
-            msg
-
-          [] ->
-            nil
-        end
-    end
-  end
-
-  @doc "Update a message by ID. Goes through GenServer if alive, falls back to direct ETS."
-  def update_message(agent_id, msg_id, update_fn) do
-    case Registry.lookup(Loopyard.ChatAgentRegistry, agent_id) do
-      [{pid, _}] ->
-        GenServer.cast(pid, {:update_message, msg_id, update_fn})
-        :ok
-
-      [] ->
-        case :ets.lookup(@ets_table, agent_id) do
-          [{^agent_id, summary}] ->
-            try do
-              messages =
-                Enum.map(summary.messages, fn msg ->
-                  if msg[:id] == msg_id, do: update_fn.(msg), else: msg
-                end)
-
-              :ets.insert(@ets_table, {agent_id, %{summary | messages: messages}})
-              :ok
-            rescue
-              e ->
-                :telemetry.execute(
-                  [:loopyard, :agent, :update_message_failed],
-                  %{count: 1},
-                  %{agent_id: agent_id, msg_id: msg_id, reason: Exception.message(e)}
-                )
-
-                :error
-            end
-
-          [] ->
-            :error
-        end
-    end
-  end
+  @doc "Update a message by ID; GenServer if alive, ETS fallback (see MessageWindow.update_message/3)."
+  defdelegate update_message(agent_id, msg_id, update_fn), to: MessageWindow
 
   @doc "Restart the Claude CLI session without losing the agent or its messages"
   def restart_session(id) do
     GenServer.cast(via(id), :restart_session)
   end
+
+  @doc "Switch the agent's model (Usage-panel Model row); see ChatAgent.ModelControl."
+  def set_model(id, model_id) when is_binary(model_id),
+    do: GenServer.cast(via(id), {:set_model, model_id})
 
   @doc "Start a stopped/crashed agent — starts a new GenServer and resumes from saved state"
   defdelegate start_agent(id), to: Lifecycle
@@ -340,6 +358,12 @@ defmodule Loopyard.ChatAgent do
 
   @doc "Every agent's summary from ETS only — no GenServer calls (mount-safe)."
   defdelegate list_agent_summaries(), to: Lifecycle
+
+  @doc "Summaries for ONE workspace, freshening live ones — scoped ETS scan (mount-path query)."
+  defdelegate list_agents_for_workspace(workspace_id), to: Lifecycle
+
+  @doc "Cheap yes/no: any agent for this workspace already in ETS? No GenServer calls."
+  defdelegate workspace_loaded?(workspace_id), to: Lifecycle
 
   def subscribe do
     Loopyard.Events.ChatAgent.subscribe()
@@ -602,7 +626,38 @@ defmodule Loopyard.ChatAgent do
   end
 
   @impl true
+  def handle_cast({:set_model, model_id}, state) do
+    {:noreply, Loopyard.ChatAgent.ModelControl.switch(state, model_id)}
+  end
+
+  @impl true
   def handle_cast(:restart_session, state) do
+    # Breaker gate: a session whose harness keeps dying mid-conversation has
+    # outgrown its memory — resuming it re-feeds the harness the exact history
+    # that OOM-killed it, forever. Compact instead: summarize → fresh session
+    # (Loopyard keeps the full chat log either way). See midturn_crashes.
+    if compaction_breaker_tripped?(state) and state.messages != [] do
+      note = %{
+        role: :system,
+        content:
+          "The harness died mid-conversation again — this session has outgrown " <>
+            "the workspace's memory, and resuming it would just crash it again. " <>
+            "Compacting instead: summarizing the conversation into a fresh session. " <>
+            "Your full chat history stays right here.",
+        timestamp: DateTime.utc_now()
+      }
+
+      {state, note} = append_message(state, note)
+      Persistence.persist_message(state, note)
+      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: note})
+
+      handle_cast({:auto_restart_context, nil}, Map.put(state, :midturn_crashes, 0))
+    else
+      restart_session_now(state)
+    end
+  end
+
+  defp restart_session_now(state) do
     # Stop the current session
     if state.session do
       # Wrap backend.stop in a Task + Task.yield with timeout so a
@@ -616,15 +671,19 @@ defmodule Loopyard.ChatAgent do
     # Start a fresh session with the same opts. When we have a Claude
     # session_id captured from prior turns, pass it as `resume:` so the
     # CLI picks up the same conversation.
-    case state.backend.start_session(SessionManager.start_opts(state)) do
-      {:ok, new_session} ->
+    case SessionManager.start_session_safe(state) do
+      {:ok, new_session, live_id} ->
         # A reboot is a full reset-to-idle — clear EVERY piece of transient turn
         # state, or the agent looks idle while the stream machinery thinks a turn
         # is live (stale stream_ref), and the next send is silently swallowed.
+        # `claude_session_id: live_id` ADOPTS the harness's real current id — if a
+        # stale/oversized resume failed and the connection fell back to a fresh
+        # session/new, we track the new id instead of re-resuming the dead one.
         state =
           SessionManager.track_os_pid(%{
             state
             | session: new_session,
+              claude_session_id: live_id,
               status: :idle,
               stream_ref: nil,
               active_tool: nil,
@@ -632,24 +691,29 @@ defmodule Loopyard.ChatAgent do
               tool_calls_this_turn: 0,
               tool_runaway_warned: false,
               last_tool_call: nil,
-              context_warning_sent: false
+              context_warning_sent: false,
+              # A fresh session re-sourced credentials — clear the auth block so
+              # the UI leaves the red auth_expired state. The retry counter is
+              # kept (only a genuinely successful turn resets it) so a still-bad
+              # token keeps its growing backoff instead of hot-looping.
+              auth_error: nil
           })
 
         :ets.insert(@ets_table, {state.id, summary(state)})
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :idle})
 
         restart_msg =
-          if is_binary(state.claude_session_id) do
+          if is_binary(live_id) do
             %{
               role: :system,
               content:
-                "CLI crashed — restarting and resuming where it left off (#{String.slice(state.claude_session_id, 0..7)}…).",
+                "CLI crashed — restarting and resuming where it left off (#{String.slice(live_id, 0..7)}…).",
               timestamp: DateTime.utc_now()
             }
           else
             %{
               role: :system,
-              content: "CLI crashed — restarting and replaying recent context.",
+              content: "CLI crashed — restarting with a fresh conversation.",
               timestamp: DateTime.utc_now()
             }
           end
@@ -661,11 +725,9 @@ defmodule Loopyard.ChatAgent do
           msg: restart_msg
         })
 
-        # Fallback when we don't have a CLI session_id yet (e.g. the
-        # agent was restarted before its first ResultMessage landed).
-        # With a session_id, `resume:` already restored the full
-        # conversation — no need to pollute it with a summary prompt.
-        if is_nil(state.claude_session_id) do
+        # Fresh session (no live id) → replay recent context so the model isn't
+        # amnesic. A resumed one already has its history.
+        if is_nil(live_id) do
           resume_msg = Loopyard.ChatAgent.ResumeMessage.build(state.messages)
 
           if resume_msg do
@@ -677,39 +739,61 @@ defmodule Loopyard.ChatAgent do
         # fresh CLI (one at a time — the rest pop on turn completion, which
         # batches). NOT batched here: if the backend is permanently dead, this
         # recovery path loops, and batching would nest the queue exponentially.
-        state =
-          case state.pending_sends do
-            [next | rest] ->
-              GenServer.cast(self(), {:send_message, next})
-              %{state | pending_sends: rest}
-
-            [] ->
-              state
-          end
+        #
+        # DELAYED, not immediate: right after session/load the adapter's
+        # underlying CLI subprocess can still be spinning up — prompting in
+        # that window dies with "ProcessTransport is not ready for writing"
+        # (observed with claude-code-acp 0.16.2 on large-session resumes). A
+        # few seconds of settle time lets the resumed subprocess become
+        # writable before the queued send hits it. Reuses the existing
+        # :drain_resumed_pending handler (batch-drains only when :idle).
+        if state.pending_sends != [] do
+          settle_ms = Application.get_env(:loopyard, :pending_drain_settle_ms, 4_000)
+          Process.send_after(self(), :drain_resumed_pending, settle_ms)
+        end
 
         {:noreply, state}
 
-      {:error, reason} ->
+      {:error, reason, next_hint} ->
+        # DON'T give up — a spawn failure is often transient (docker exec racing
+        # a container restart, a config file mid-rewrite, a momentary API blip).
+        # Schedule a backoff retry through the existing :retry_session machinery;
+        # the crash-loop breaker (@max_consecutive_crashes) still bounds it.
+        # ADOPT next_hint: one-strike resume — if this failure was a resume, the
+        # hint is now nil so the retry is a guaranteed-fresh session/new.
+        state = %{state | claude_session_id: next_hint}
+        consecutive = Map.get(state, :consecutive_crashes, 0) + 1
+        base = Application.get_env(:loopyard, :crash_backoff_base_ms, 2_000)
+        backoff_ms = Loopyard.Retry.backoff_ms(consecutive, {:exponential, base})
+        Process.send_after(self(), {:retry_session, consecutive, state.session}, backoff_ms)
+
         error_msg = %{
           role: :error,
           content:
             "Failed to restart the agent session: #{inspect(reason)}. " <>
-              "WHY: the agent harness failed to start — usually auth, " <>
-              "the harness not being installed in the container, or a bad working directory. " <>
-              "CONSEQUENCE: this agent can't accept new messages. " <>
-              "ACTION: check the harness is installed in the container, " <>
-              "then click Restart in the sidebar. If restart keeps failing, " <>
-              "remove the agent and create a new one.",
+              "WHY: the agent harness failed to start — usually a transient spawn race, " <>
+              "auth, or the harness missing in the container. " <>
+              "CONSEQUENCE: no turn is running right now; your messages are preserved. " <>
+              "ACTION: none — retrying automatically in #{div(backoff_ms, 1000)}s. " <>
+              "If it keeps failing, check the harness in the container, then click Restart.",
           timestamp: DateTime.utc_now()
         }
 
         {state, error_msg} = append_message(state, error_msg)
-        state = %{state | errors: state.errors + 1}
+
+        state =
+          %{state | errors: state.errors + 1, status: :backoff}
+          |> Map.put(:consecutive_crashes, consecutive)
+          |> Map.put(:retry_from_session, state.session)
+
+        :ets.insert(@ets_table, {state.id, summary(state)})
 
         Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
           agent_id: state.id,
           msg: error_msg
         })
+
+        Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: state.id, status: :backoff})
 
         {:noreply, state}
     end
@@ -794,6 +878,15 @@ defmodule Loopyard.ChatAgent do
     if old_msg && new_msg && new_msg != old_msg do
       changes = Map.drop(new_msg, [:id])
       Persistence.persist_message_update(state, msg_id, changes)
+
+      # Broadcast the in-place change so every connected viewer patches the
+      # message live. Without this, a question card flipping :pending →
+      # :answered only reached ETS + the log — the click gave no visual
+      # feedback until a full reload.
+      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.MessageUpdated{
+        agent_id: state.id,
+        msg: new_msg
+      })
     end
 
     {:noreply, state}
@@ -848,6 +941,10 @@ defmodule Loopyard.ChatAgent do
               context_utilization: 0.0,
               context_warning_sent: false
           })
+
+        # Fresh session → the harness's memory baseline resets with it; the
+        # compact-instead-of-resume breaker starts over.
+        state = Map.put(state, :midturn_crashes, 0)
 
         # Send the resume summary as a SILENT continuation (the user never typed
         # it — it's the compaction summary), not a visible :user turn.
@@ -994,6 +1091,30 @@ defmodule Loopyard.ChatAgent do
     {:reply, summary(state), state}
   end
 
+  # Synchronous confirm for enqueue_message/2. The reply is the durability
+  # signal the UI waits on before clearing the input — so it must come back
+  # FAST and truthfully. Two regimes:
+  #
+  # - Session alive (the overwhelmingly common case): run the exact cast logic
+  #   inline — append + persist + start the turn — milliseconds — reply :ok.
+  # - Session DEAD: do NOT revive it inside the ack window (a resumed ACP
+  #   session can take 45s+ to load — the caller's 15s timeout fired first,
+  #   reporting "unavailable" for a send that would eventually land, and every
+  #   retry stacked another synchronous revival). Instead: QUEUE the text
+  #   (pending_sends — drained FIFO when the session comes up), kick the
+  #   existing async :restart_session recovery, and reply :ok immediately.
+  #   The inbox owns durability; the harness owns turn execution.
+  def handle_call({:send_message, text}, _from, state) do
+    if session_alive_quick?(state) do
+      {:noreply, new_state} = handle_cast({:send_message, text}, state)
+      {:reply, :ok, new_state}
+    else
+      state = %{state | pending_sends: state.pending_sends ++ [text]}
+      GenServer.cast(self(), :restart_session)
+      {:reply, :ok, state}
+    end
+  end
+
   # Catchall for unknown calls. Returns an error reply instead of
   # crashing — callers get `{:error, :unknown_call}` they can handle,
   # not a noproc/timeout. Same telemetry as handle_info / handle_cast
@@ -1009,6 +1130,20 @@ defmodule Loopyard.ChatAgent do
 
     {:reply, {:error, :unknown_call}, state}
   end
+
+  # Bounded liveness check for the send-ack fast path: nil session or a
+  # backend probe that errors/exits reads as dead. ACP's session_alive? is a
+  # real ping with its own short timeout; never let a probe blow up the ack.
+  defp session_alive_quick?(%{session: nil}), do: false
+
+  defp session_alive_quick?(state) do
+    state.backend.session_alive?(state.session)
+  rescue
+    _ -> false
+  catch
+    :exit, _ -> false
+  end
+
 
   @impl true
   # --- Stream event handling ---
@@ -1026,6 +1161,13 @@ defmodule Loopyard.ChatAgent do
   # agent-sanity #16.
   def handle_info({:stream_event, id, ref, event}, %{id: id, stream_ref: ref} = state) do
     {:noreply, StreamHandler.process_event(event, state)}
+  end
+
+  # Coalesced-delta flush tick: publish whatever streaming chunks queued up
+  # since the last tick (see stream_pub_buffer on the struct). Empty-buffer
+  # firings (drop already happened) are a no-op inside the flush.
+  def handle_info(:flush_stream_deltas, state) do
+    {:noreply, StreamHandler.flush_stream_deltas(state)}
   end
 
   # Stale stream event — ref doesn't match the current stream. The Task
@@ -1095,7 +1237,9 @@ defmodule Loopyard.ChatAgent do
       {:reboot, state} ->
         # Reboot the CLI with resume — clears the wedge, keeps the full chat
         # history, continues the conversation. Queued messages drain onto the
-        # fresh CLI inside the restart path.
+        # fresh CLI inside the restart path. A wedge counts toward the
+        # compact-instead-of-resume breaker (restart_session's gate).
+        state = SessionManager.note_cli_death(state)
         GenServer.cast(self(), :restart_session)
         {:noreply, state}
     end
@@ -1154,6 +1298,7 @@ defmodule Loopyard.ChatAgent do
       # skip finalization). Done here — not in SessionManager — so the
       # crash-recovery module doesn't depend on StreamHandler.
       state = StreamHandler.finalize_partial_on_stream_interrupt(state, state.id, :error)
+      state = SessionManager.note_cli_death(state)
       SessionManager.handle_thinking_exit(reason, state, @max_consecutive_crashes)
     else
       # EXIT from an ALREADY-REPLACED session/task, not the current turn —
@@ -1191,6 +1336,13 @@ defmodule Loopyard.ChatAgent do
         state = Map.delete(state, :retry_from_session)
         {:noreply, state}
 
+      compaction_breaker_tripped?(state) ->
+        # The session this retry would resume keeps killing its harness —
+        # route through :restart_session, whose breaker gate compacts
+        # (summarize → fresh session) instead of resuming.
+        GenServer.cast(self(), :restart_session)
+        {:noreply, state}
+
       true ->
         SessionManager.handle_retry(state, consecutive, @max_consecutive_crashes)
     end
@@ -1201,6 +1353,28 @@ defmodule Loopyard.ChatAgent do
   @impl true
   def handle_info({:retry_session, consecutive}, state) do
     SessionManager.handle_retry(state, consecutive, @max_consecutive_crashes)
+  end
+
+  # Auth self-heal tick. An auth failure is NOT terminal: re-source credentials
+  # by restarting the session (which re-reads the workstation env / home volume
+  # and resumes the conversation). If the token is now valid the agent recovers;
+  # if it's still bad, the next turn re-enters auth_expired and reschedules with
+  # a longer backoff. Stale ticks (already recovered via a token-push reload, or
+  # any other path) are dropped by the status guard.
+  @impl true
+  def handle_info({:auth_retry, _attempt}, %{status: status} = state)
+      when status != :auth_expired do
+    {:noreply, state}
+  end
+
+  def handle_info({:auth_retry, attempt}, state) do
+    Loopyard.EventLog.info(
+      "agent:#{state.name}",
+      "Auth recovery retry ##{attempt} — re-sourcing credentials"
+    )
+
+    GenServer.cast(self(), :restart_session)
+    {:noreply, state}
   end
 
   # Fired by handle_rate_limit_event. Don't optimistically attempt every interval
@@ -1620,7 +1794,9 @@ defmodule Loopyard.ChatAgent do
       name: state.name,
       working_dir: state.working_dir,
       bind_mount: state.bind_mount,
+      host_access: state.host_access,
       workspace_id: state.workspace_id,
+      container: state.container,
       workstation_identity: state.workstation_identity,
       started_at: state.started_at,
       started_by: state.started_by,

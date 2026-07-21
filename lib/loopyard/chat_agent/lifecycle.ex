@@ -256,45 +256,72 @@ defmodule Loopyard.ChatAgent.Lifecycle do
   @doc "List every agent's current summary, freshening live ones from their GenServer."
   def list_agents do
     :ets.tab2list(@ets_table)
-    |> Enum.map(fn {_id, summary} ->
-      # If agent is still alive, get fresh state
-      case Registry.lookup(Loopyard.ChatAgentRegistry, summary.id) do
-        [{pid, _}] ->
-          try do
-            # 500ms timeout matches get_state/1 — a wedged agent
-            # shouldn't block the whole list_agents call while the UI
-            # waits. ETS summary is the fallback.
-            GenServer.call(pid, :get_state, 500)
-          catch
-            :exit, _ -> summary
-          end
+    |> Enum.map(fn {_id, summary} -> refresh_summary(summary) end)
+    |> sort_by_recency()
+  end
 
-        [] ->
-          # No live GenServer. If the summary claims :booting and it's
-          # been sitting there longer than @stuck_booting_seconds, the
-          # boot task has almost certainly died without running its
-          # rescue/catch clauses (TaskSupervisor shutdown, OS kill,
-          # etc). Present it as :crashed so the user sees a real
-          # action (Start/Remove) instead of a perpetual spinner.
-          if stuck_booting?(summary) do
-            %{summary | status: :crashed}
-          else
-            summary
-          end
-      end
-    end)
-    # Agents without a started_at (e.g. test-seeded ETS rows, half-
-    # populated boot state) would crash `DateTime.compare/2`. Treat
-    # missing timestamps as "oldest" so sort is total and safe.
-    |> Enum.sort_by(
-      & &1[:started_at],
-      fn
-        nil, nil -> true
-        nil, _ -> false
-        _, nil -> true
-        a, b -> DateTime.compare(a, b) != :lt
-      end
+  @doc """
+  Agent summaries for ONE workspace, refreshed from live GenServers.
+
+  Filters the ETS table by `workspace_id` FIRST — a cheap map compare — so the
+  cost is proportional to THIS workspace's agents, not the global table. That
+  table can hold thousands of rows on a long-lived server (or across a full
+  test suite), and `list_agents/0` pays a `Registry.lookup` + `get_state` for
+  every one; scoping first means only the workspace's live agents are touched.
+  This is the mount-path query — it must stay cheap.
+  """
+  def list_agents_for_workspace(workspace_id) do
+    :ets.tab2list(@ets_table)
+    |> Enum.filter(fn {_id, s} -> is_map(s) and s[:workspace_id] == workspace_id end)
+    |> Enum.map(fn {_id, summary} -> refresh_summary(summary) end)
+    |> sort_by_recency()
+  end
+
+  @doc """
+  Cheap yes/no: is any agent for this workspace already in ETS? Pure map
+  compares over the raw table, no `Registry.lookup`/`get_state` — safe to call
+  on the mount hot path (unlike `list_agents/0`).
+  """
+  def workspace_loaded?(workspace_id) do
+    :ets.foldl(
+      fn {_id, s}, acc -> acc or (is_map(s) and s[:workspace_id] == workspace_id) end,
+      false,
+      @ets_table
     )
+  end
+
+  # Refresh one ETS summary from its live GenServer (if any).
+  defp refresh_summary(summary) do
+    case Registry.lookup(Loopyard.ChatAgentRegistry, summary.id) do
+      [{pid, _}] ->
+        try do
+          # 500ms timeout matches get_state/1 — a wedged agent shouldn't block
+          # the whole call while the UI waits. ETS summary is the fallback.
+          GenServer.call(pid, :get_state, 500)
+        catch
+          :exit, _ -> summary
+        end
+
+      [] ->
+        # No live GenServer. If the summary claims :booting and it's been sitting
+        # there longer than @stuck_booting_seconds, the boot task almost
+        # certainly died without running its rescue/catch clauses (TaskSupervisor
+        # shutdown, OS kill, etc). Present it as :crashed so the user sees a real
+        # action (Start/Remove) instead of a perpetual spinner.
+        if stuck_booting?(summary), do: %{summary | status: :crashed}, else: summary
+    end
+  end
+
+  # Newest first. Agents without a started_at (test-seeded ETS rows, half-
+  # populated boot state) would crash DateTime.compare/2 — treat missing
+  # timestamps as "oldest" so the sort is total and safe.
+  defp sort_by_recency(agents) do
+    Enum.sort_by(agents, & &1[:started_at], fn
+      nil, nil -> true
+      nil, _ -> false
+      _, nil -> true
+      a, b -> DateTime.compare(a, b) != :lt
+    end)
   end
 
   defp stuck_booting?(%{status: :booting, started_at: %DateTime{} = t}) do

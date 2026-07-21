@@ -7,17 +7,19 @@ defmodule Loopyard.Harness.ACP.Transport.Port do
   `priv/spikes/acp_smoke.exs`). `CLAUDECODE` is unset in the child env so the
   adapter doesn't refuse to launch as a "nested" Claude Code session.
 
-  The in-container variant (#5) is the same idea with a different `cmd` —
-  `docker exec -i <container> <adapter>` — so the harness runs where the code
-  lives. Keep that seam in mind: only `cmd` changes.
+  The harness always runs IN-CONTAINER: `cmd` is `docker exec -i <container>
+  <adapter>` so the adapter runs where the code lives, inside the sandbox. The
+  `/bin/sh` this opens is only the host-side LAUNCHER of that `docker exec` — no
+  agent runs on the host.
+
+  CONTAINMENT: `cmd` is REQUIRED — there is deliberately no default. A default
+  that ran the adapter directly (e.g. `npx claude-code-acp`) would let this
+  transport spawn an agent ON THE HOST if started without a cmd; that vector is
+  removed. Every caller passes an explicit `docker exec …` cmd.
   """
   use GenServer
 
   @behaviour Loopyard.Harness.ACP.Transport
-
-  # Package was renamed to @agentclientprotocol/claude-agent-acp; we default
-  # to the verified name and let callers override.
-  @default_cmd "npx -y @zed-industries/claude-code-acp"
 
   # SECURITY: hard ceiling on the partial-frame buffer. `{:line, 8_000_000}`
   # caps a single delivered chunk, but `:noeol` continuations accumulate in
@@ -39,11 +41,19 @@ defmodule Loopyard.Harness.ACP.Transport.Port do
   @impl GenServer
   def init(opts) do
     owner = Keyword.fetch!(opts, :owner)
-    cmd = Keyword.get(opts, :cmd, @default_cmd)
+    # REQUIRED, no default — see the containment note in the moduledoc. In
+    # production this is always a `docker exec -i <container> …` string, so the
+    # adapter runs inside the container, never on the host.
+    cmd = Keyword.fetch!(opts, :cmd)
     stderr = Keyword.get(opts, :stderr_log, "/dev/null")
 
+    unless String.contains?(cmd, "docker exec") do
+      raise "CONTAINMENT: ACP Transport.Port cmd must run the adapter via `docker exec` " <>
+              "(got: #{inspect(cmd)}). Harnesses run in-container, never on the host."
+    end
+
     shell =
-      "unset CLAUDECODE CLAUDE_CODE_SSE_PORT CLAUDE_CODE_ENTRYPOINT; exec #{cmd} 2>#{stderr}"
+      ~s(unset CLAUDECODE CLAUDE_CODE_SSE_PORT CLAUDE_CODE_ENTRYPOINT; exec #{cmd} 2>"#{stderr}")
 
     port =
       Port.open({:spawn_executable, "/bin/sh"}, [

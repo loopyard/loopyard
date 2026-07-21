@@ -12,8 +12,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
       thinking_word: 2
     ]
 
-  import LoopyardWeb.Components.SideNav, only: [section: 1, row: 1, empty: 1]
+  import LoopyardWeb.Components.SideNav, only: [section: 1, row: 1]
   import LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel, only: [context_sections: 1]
+
+  import LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts,
+    only: [service_context: 1, volume_context: 1]
 
   import LoopyardWeb.Live.WorkspaceLive.Components.Formatters,
     only: [
@@ -64,7 +67,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
          (index/context), hidden when an agent/service is selected. On md+:
          always visible as a fixed-width rail. --%>
     <aside class={[
-      "flex-none border-l border-zinc-200 dark:border-zinc-700/80 flex flex-col bg-zinc-50 dark:bg-zinc-900/50",
+      "flex-none border-l border-zinc-200 dark:border-zinc-700/80 flex flex-col bg-zinc-50 dark:bg-zinc-900/50 safe-pr",
       "w-full md:w-80",
       if(
         @live_action in [
@@ -72,6 +75,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
           :chat,
           :container,
           :context_panel,
+          :info,
           :service,
           :console,
           :services,
@@ -79,156 +83,195 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
           :volume_files_root,
           :volume_file,
           :volume_git,
+          :volume_history,
           :sync
         ] || @selected_id || @selected_service,
         do: "hidden md:flex",
         else: "flex"
       )
     ]}>
-      <div class="flex-1 overflow-y-auto">
-        <.section label="Agents">
-          <.agent_list_item
-            :for={agent <- @agents}
-            agent={agent}
-            selected={@selected_id == agent.id}
-            editing={Map.get(assigns, :editing_agent_id) == agent.id}
-          />
-          <.empty :if={@agents == []} text="No agents" />
-          <.row
-            patch={"#{@base_path}/new"}
-            class="text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 16 16"
-              fill="currentColor"
-              class="w-3.5 h-3.5 flex-none"
-              aria-hidden="true"
-            >
-              <path d="M8.75 3.75a.75.75 0 0 0-1.5 0v3.5h-3.5a.75.75 0 0 0 0 1.5h3.5v3.5a.75.75 0 0 0 1.5 0v-3.5h3.5a.75.75 0 0 0 0-1.5h-3.5v-3.5Z" />
-            </svg>
-            <span>New agent</span>
-          </.row>
-        </.section>
+      <%!-- ── L1 ZONE A · SWITCHER ──────────────────────────────────────────
+           The workspace's resources — agents / services / volumes — you pick
+           one and its detail fills the zone below. Fixed-ish height (caps at
+           ~45% then scrolls internally) on a faintly tinted surface, closed by
+           the ONE heavy rule in the pane. This is the "what's in this
+           workspace" nav, distinct from "the thing you selected". --%>
+      <div class="flex-1 min-h-0 overflow-y-auto bg-zinc-100 dark:bg-zinc-800/40 border-b-2 border-zinc-200 dark:border-zinc-700/70">
+        <.workspace_switcher
+          agents={@agents}
+          service_statuses={@service_statuses}
+          volumes={@volumes}
+          changes={@changes}
+          selected_id={@selected_id}
+          selected_service={@selected_service}
+          selected_volume={Map.get(assigns, :selected_volume)}
+          live_action={@live_action}
+          editing_agent_id={Map.get(assigns, :editing_agent_id)}
+          base_path={@base_path}
+          host={@host}
+          workspace_id={@workspace_id}
+          is_local_source?={@is_local_source?}
+          sync_status={@sync_status}
+        />
+      </div>
 
-        <.section :if={@service_statuses != [] || !@services_loaded} label="Services">
-          <.service_item
-            :for={svc <- @service_statuses}
-            svc={svc}
-            base_path={@base_path}
-            selected={@selected_service == svc.name}
-            host={@host}
-            workspace_id={@workspace_id}
-          />
-          <.empty :if={!@services_loaded} text="Loading..." />
-        </.section>
-
-        <%!-- Volumes + Host file sync live in one group. Sync is
-             conceptually a volume data-source, and shoving it into its
-             own labeled section created an orphan row with ~40px of
-             dead space above it. --%>
-        <.section label="Volumes">
-          <.volume_item :for={vol <- @volumes} vol={vol} base_path={@base_path} />
-          <.empty :if={!@volumes_loaded} text="Loading..." />
-          <.empty :if={@volumes_loaded && @volumes == []} text="No volumes" />
-          <.row
-            :if={@is_local_source? && sync_relevant?(@sync_status)}
-            patch={"#{@base_path}/sync"}
-            aria_label="Open host file sync status"
-          >
-            <span
-              class={"w-1.5 h-1.5 rounded-full flex-none #{sync_dot(@sync_status)}"}
-              aria-hidden="true"
-            ></span>
-            <span class="truncate text-zinc-600 dark:text-zinc-400">Host file sync</span>
-          </.row>
-        </.section>
-
-        <%!-- The selected agent's context (model, tokens, cost, docker, tools)
-             folds in below the workspace nav — one combined rail. --%>
+      <%!-- ── L1 ZONE B · DETAIL ─────────────────────────────────────────────
+           The SELECTED item's detail — polymorphic by kind so the IA is
+           identical whatever you picked: an agent, a service, or a volume each
+           render the SAME 3-zone shape (sticky `detail_hero` + scrolling sections
+           + sticky `action_bar` of buttons). This is the ONE place all the
+           buttons + LiveView status for the selected thing live, instead of being
+           scattered into the center pane's top toolbar. Driven by `live_action`
+           (unambiguous) rather than which "selected_*" happens to be set. --%>
+      <%!-- Detail is ANCHORED TO THE BOTTOM at content height, capped at 50% of
+           the rail (the nav above takes the rest via flex-1). Content-height
+           (not flex-1) so a short/detail-less panel doesn't stretch and leave
+           the sticky footer floating mid-rail — hero + footer stay compact and
+           pinned to the bottom. Caps at 50% then scrolls internally. --%>
+      <div
+        :if={detail_kind(@live_action, @selected_agent) != nil}
+        id="rail-detail-scroll"
+        phx-hook="StickyEdge"
+        class="flex-none md:max-h-[50%] overflow-y-auto"
+      >
         <.context_sections
-          :if={@selected_agent}
+          :if={detail_kind(@live_action, @selected_agent) == :agent}
           agent={@selected_agent}
+          changes={@changes}
           editing_name={@editing_name}
+          base_path={@base_path}
+          live_token_est={Map.get(assigns, :live_token_est, 0)}
+        />
+        <.service_context
+          :if={detail_kind(@live_action, @selected_agent) == :service}
+          svc={Enum.find(@service_statuses, &(&1.name == @selected_service))}
+          service_name={@selected_service}
+          base_path={@base_path}
+          host={@host}
+        />
+        <.volume_context
+          :if={detail_kind(@live_action, @selected_agent) == :volume}
+          vol={Enum.find(@volumes, &(&1.name == @selected_volume))}
+          volume_name={@selected_volume}
+          base_path={@base_path}
+          changes={@changes}
         />
       </div>
     </aside>
     """
   end
 
-  # --- Workspace switcher (LEFT rail / "super-task-bar") ---
+  # Which detail panel Zone B shows. Service + volume routes win over a
+  # lingering selected_agent so opening a service from an agent chat swaps the
+  # detail to that service. Agent is the fallback whenever one is selected.
+  defp detail_kind(action, _selected_agent)
+       when action in [:service, :console],
+       do: :service
 
-  # Where clicking a workspace lands you, in priority order:
-  #   1. resume_path — this window's last view there (per-connection tracked),
-  #   2. its latest agent's chat, else
-  #   3. the workspace root (which spawns a working agent, D10).
-  defp ws_switch_target(project_id, ws) do
-    base = "/projects/#{project_id}/workspaces/#{ws.id}"
+  defp detail_kind(action, _selected_agent)
+       when action in [
+              :volume,
+              :volume_files_root,
+              :volume_file,
+              :volume_git,
+              :volume_history,
+              :git_diff,
+              :git_staged_diff,
+              :git_commit,
+              :git_commit_file
+            ],
+       do: :volume
 
-    cond do
-      ws[:resume_path] -> ws.resume_path
-      ws[:latest_agent_id] -> "#{base}/agents/#{ws.latest_agent_id}"
-      true -> base
-    end
-  end
+  defp detail_kind(_action, selected_agent) when not is_nil(selected_agent), do: :agent
+  defp detail_kind(_action, _selected_agent), do: nil
 
-  @doc """
-  The left rail: switch between the workspaces (branches) of this project.
-  Each row navigates to that workspace; a status dot reflects whether its
-  cluster is running. A "New workspace" link goes to the project's
-  new-workspace screen. Desktop-only (lg+); mobile switches via the project
-  page.
-  """
-  attr :workspaces, :list, default: []
-  attr :current_id, :string, required: true
-  attr :project, :map, required: true
+  # The workspace resource switcher — Agents / Services / Volumes, grouped and
+  # tight. Shared verbatim by the desktop rail (Zone A of `sidebar/1`) and the
+  # mobile "Workspace" tab, so the two never drift. A group's header shows only
+  # when it has contents; a lone item just sits under its header.
+  attr :agents, :list, required: true
+  attr :service_statuses, :list, default: []
+  attr :volumes, :list, default: []
+  attr :changes, :map, default: %{staged: [], unstaged: []}
+  attr :selected_id, :string, default: nil
+  attr :selected_service, :string, default: nil
+  attr :selected_volume, :string, default: nil
+  attr :live_action, :atom, default: :index
+  attr :editing_agent_id, :string, default: nil
+  attr :base_path, :string, required: true
+  attr :host, :string, default: nil
+  attr :workspace_id, :string, required: true
+  attr :is_local_source?, :boolean, default: false
+  attr :sync_status, :any, default: nil
 
   def workspace_switcher(assigns) do
+    assigns = assign(assigns, :changes_count, changes_count(assigns.changes))
+
     ~H"""
-    <aside class="hidden lg:flex flex-none w-56 border-r border-zinc-200 dark:border-zinc-700/80 flex-col bg-zinc-50 dark:bg-zinc-900/50">
-      <div class="flex-1 overflow-y-auto">
-        <.section label="Workspaces">
+    <.section>
+      <%!-- Agents header ALWAYS shows (even with zero agents) because it now
+           carries the + affordance to add one — the old standalone "New agent"
+           row is gone; the + in the header replaces it. --%>
+      <.group_label text="Agents">
+        <:action>
           <.link
-            :for={ws <- @workspaces}
-            navigate={ws_switch_target(@project.id, ws)}
-            class={[
-              "flex items-center gap-2 px-3 min-h-9 text-sm transition-colors",
-              if(ws.id == @current_id,
-                do:
-                  "bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300 font-medium",
-                else: "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/60"
-              )
-            ]}
-            aria-current={ws.id == @current_id && "page"}
-          >
-            <span class={"w-1.5 h-1.5 rounded-full flex-none #{if ws.status == :running, do: "bg-emerald-500", else: "bg-zinc-400"}"}></span>
-            <span class="truncate flex-1">{ws.name}</span>
-            <span
-              :if={ws[:is_main]}
-              class="text-[9px] uppercase tracking-wider text-zinc-400 dark:text-zinc-500 flex-none"
-            >
-              default
-            </span>
-          </.link>
-          <.empty :if={@workspaces == []} text="No workspaces" />
-          <.row
-            navigate={"/projects/#{@project.id}/new"}
-            class="text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10"
+            patch={"#{@base_path}/new"}
+            aria-label="New agent"
+            class="focus-ring inline-flex items-center justify-center w-7 h-7 rounded-md text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-colors"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 16 16"
               fill="currentColor"
-              class="w-3.5 h-3.5 flex-none"
+              class="w-4 h-4"
               aria-hidden="true"
             >
               <path d="M8.75 3.75a.75.75 0 0 0-1.5 0v3.5h-3.5a.75.75 0 0 0 0 1.5h3.5v3.5a.75.75 0 0 0 1.5 0v-3.5h3.5a.75.75 0 0 0 0-1.5h-3.5v-3.5Z" />
             </svg>
-            <span>New workspace</span>
-          </.row>
-        </.section>
-      </div>
-    </aside>
+          </.link>
+        </:action>
+      </.group_label>
+      <.agent_list_item
+        :for={agent <- @agents}
+        agent={agent}
+        selected={@selected_id == agent.id}
+        editing={@editing_agent_id == agent.id}
+      />
+
+      <.group_label :if={@service_statuses != []} text="Services" />
+      <.service_item
+        :for={svc <- @service_statuses}
+        svc={svc}
+        base_path={@base_path}
+        selected={@selected_service == svc.name}
+        host={@host}
+        workspace_id={@workspace_id}
+      />
+
+      <.group_label
+        :if={@volumes != [] || (@is_local_source? && sync_relevant?(@sync_status))}
+        text="Files"
+      />
+      <.volume_items
+        :for={vol <- @volumes}
+        vol={vol}
+        base_path={@base_path}
+        changes_count={@changes_count}
+        live_action={@live_action}
+        selected_volume={@selected_volume}
+      />
+      <.row
+        :if={@is_local_source? && sync_relevant?(@sync_status)}
+        patch={"#{@base_path}/sync"}
+        aria_label="Open host file sync status"
+      >
+        <span
+          class={"w-1.5 h-1.5 rounded-full flex-none #{sync_dot(@sync_status)}"}
+          aria-hidden="true"
+        ></span>
+        <span class="truncate text-zinc-600 dark:text-zinc-400">Host file sync</span>
+      </.row>
+    </.section>
     """
   end
 
@@ -254,6 +297,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
             id="new-agent-input"
             rows="3"
             placeholder="What should this agent work on? (leave blank to start empty)"
+            aria-label="What should this agent work on?"
             class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-3 text-base
                    text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 resize-none
                    focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
@@ -268,7 +312,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
         </form>
 
         <div class="mt-6 pt-6 border-t border-zinc-200 dark:border-zinc-700/80">
-          <div class="text-xs uppercase tracking-wider text-zinc-500 dark:text-zinc-400 font-semibold mb-3">
+          <div class="text-sm uppercase tracking-wider text-zinc-500 dark:text-zinc-400 font-semibold mb-3">
             Presets
           </div>
           <div class="space-y-2">
@@ -280,7 +324,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
               <div class="text-base font-medium text-zinc-900 dark:text-zinc-100">
                 Set up dev environment
               </div>
-              <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+              <div class="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
                 Write Dockerfile + docker-compose.yml, start services, install deps.
               </div>
             </button>
@@ -292,7 +336,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
               <div class="text-base font-medium text-zinc-900 dark:text-zinc-100">
                 Debug failing services
               </div>
-              <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+              <div class="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
                 Check service logs, diagnose errors, fix configuration.
               </div>
             </button>
@@ -304,7 +348,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
               <div class="text-base font-medium text-zinc-900 dark:text-zinc-100">
                 Explore the codebase
               </div>
-              <div class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+              <div class="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
                 Read files, search code, understand the project structure.
               </div>
             </button>
@@ -325,6 +369,23 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
   end
 
   # --- Sidebar items ---
+
+  # A group header inside the workspace switcher — Agents / Services / Volumes.
+  # Tight (small top gap) so the groups don't sprawl like three separate
+  # sections did, but readable enough to scan.
+  attr :text, :string, required: true
+  slot :action, doc: "optional right-aligned control in the header (e.g. a + button)"
+
+  def group_label(assigns) do
+    ~H"""
+    <div class="flex items-center justify-between gap-2 px-2 pt-3 pb-1 first:pt-1.5">
+      <span class="text-sm md:text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+        {@text}
+      </span>
+      <div :if={@action != []} class="flex-none -my-1">{render_slot(@action)}</div>
+    </div>
+    """
+  end
 
   def service_item(assigns) do
     # Prefer the registry-assigned host_port (stable) over observer's
@@ -359,7 +420,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
             target="_blank"
             rel="noopener noreferrer"
             aria-label={"Open http://#{@host}:#{@first_port}"}
-            class="focus-ring inline-flex items-center min-h-8 md:min-h-6 px-2 rounded text-xs font-mono font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
+            class="focus-ring inline-flex items-center min-h-8 md:min-h-6 px-2 rounded text-sm font-mono font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
           >
             :{@first_port}
           </a>
@@ -371,19 +432,19 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
         <% end %>
         <span
           :if={!@first_port && service_status_text(@svc)}
-          class="text-xs text-blue-500 dark:text-blue-400"
+          class="text-sm text-blue-500 dark:text-blue-400"
         >
           {service_status_text(@svc)}
         </span>
         <span
           :if={!@first_port && !service_status_text(@svc) && @svc.status == :running}
-          class="text-xs text-zinc-500 dark:text-zinc-400 font-mono truncate max-w-[88px]"
+          class="text-sm text-zinc-500 dark:text-zinc-400 font-mono truncate max-w-[88px]"
         >
           {service_detail(@svc)}
         </span>
         <span
           :if={@svc.status == :crashed && @svc.exit_info}
-          class="text-xs text-red-500 truncate max-w-[88px]"
+          class="text-sm text-red-500 truncate max-w-[88px]"
         >
           {exit_reason(@svc.exit_info)}
         </span>
@@ -412,7 +473,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
           else: "Open port — share on network"
       }
       class={[
-        "focus-ring inline-flex items-center min-h-8 md:min-h-6 px-1.5 rounded text-[10px] font-medium transition-colors",
+        "focus-ring inline-flex items-center min-h-8 md:min-h-6 px-1.5 rounded text-xs font-medium transition-colors",
         if(@exposed?,
           do: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25",
           else: "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700"
@@ -424,33 +485,102 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
     """
   end
 
-  def volume_item(assigns) do
-    # Use description from volume_info if available, otherwise derive from name
+  # One volume's switcher rows. The CODE volume is the standard-switcher way in:
+  # Files / Changes / History are each their OWN row (no tab bar inside the
+  # detail view). Other volumes (pgdata, caches) get a single row into their
+  # file browser. Info for any volume lives in the detail rail / mobile sheet.
+  attr :vol, :map, required: true
+  attr :base_path, :string, required: true
+  attr :changes_count, :integer, default: 0
+  attr :live_action, :atom, default: :index
+  attr :selected_volume, :string, default: nil
+
+  def volume_items(assigns) do
     description = assigns.vol[:description] || derive_volume_description(assigns.vol.name)
-    service = assigns.vol[:service]
+    code? = String.contains?(assigns.vol.name || "", "code")
+    mine? = assigns.selected_volume == assigns.vol.name
 
     assigns =
       assigns
       |> assign(:description, description)
-      |> assign(:service, service)
+      |> assign(:code?, code?)
+      |> assign(
+        :files_selected,
+        mine? && assigns.live_action in [:volume, :volume_files_root, :volume_file]
+      )
+      |> assign(
+        :changes_selected,
+        mine? && assigns.live_action in [:volume_git, :git_diff, :git_staged_diff]
+      )
+      |> assign(
+        :history_selected,
+        mine? && assigns.live_action in [:volume_history, :git_commit, :git_commit_file]
+      )
 
     ~H"""
-    <.row
-      id={"volume-row-#{@vol.name}"}
-      patch={"#{@base_path}/volumes/#{@vol.name}"}
-      aria_label={"Open #{@description} volume"}
-    >
-      <span class="w-1.5 h-1.5 rounded-full flex-none bg-blue-400" aria-hidden="true"></span>
-      <span class="truncate text-zinc-600 dark:text-zinc-400 flex-1">{@description}</span>
-      <span :if={@service && @service != "workspace"} class="text-xs text-zinc-500 flex-none">
-        {@service}
-      </span>
-      <span :if={@vol[:size]} class="text-xs text-zinc-500 dark:text-zinc-400 font-mono flex-none">
-        {@vol.size}
-      </span>
-    </.row>
+    <%= if @code? do %>
+      <.row
+        id={"volume-row-#{@vol.name}-files"}
+        patch={"#{@base_path}/volumes/#{@vol.name}/files"}
+        selected={@files_selected}
+        aria_label="Browse project files"
+      >
+        <span class="w-1.5 h-1.5 rounded-full flex-none bg-blue-400" aria-hidden="true"></span>
+        <span class="truncate text-zinc-600 dark:text-zinc-400 flex-1">Files</span>
+        <span :if={@vol[:size]} class="text-sm text-zinc-500 dark:text-zinc-400 font-mono flex-none">
+          {@vol.size}
+        </span>
+      </.row>
+      <.row
+        id={"volume-row-#{@vol.name}-changes"}
+        patch={"#{@base_path}/volumes/#{@vol.name}/git"}
+        selected={@changes_selected}
+        aria_label="View working-tree changes"
+      >
+        <span class="w-1.5 h-1.5 rounded-full flex-none bg-amber-400" aria-hidden="true"></span>
+        <span class="truncate text-zinc-600 dark:text-zinc-400 flex-1">Changes</span>
+        <span
+          :if={@changes_count > 0}
+          class="flex-none inline-flex items-center rounded px-1.5 text-sm font-mono font-medium bg-amber-500/15 text-amber-600 dark:text-amber-400"
+          title={"#{@changes_count} changed file(s)"}
+        >
+          ±{@changes_count}
+        </span>
+      </.row>
+      <.row
+        id={"volume-row-#{@vol.name}-history"}
+        patch={"#{@base_path}/volumes/#{@vol.name}/history"}
+        selected={@history_selected}
+        aria_label="View commit history"
+      >
+        <span class="w-1.5 h-1.5 rounded-full flex-none bg-zinc-400" aria-hidden="true"></span>
+        <span class="truncate text-zinc-600 dark:text-zinc-400 flex-1">History</span>
+      </.row>
+    <% else %>
+      <.row
+        id={"volume-row-#{@vol.name}"}
+        patch={"#{@base_path}/volumes/#{@vol.name}/files"}
+        selected={@files_selected}
+        aria_label={"Open #{@description} files"}
+      >
+        <span class="w-1.5 h-1.5 rounded-full flex-none bg-blue-400" aria-hidden="true"></span>
+        <span class="truncate text-zinc-600 dark:text-zinc-400 flex-1">{@description}</span>
+        <span :if={@vol[:size]} class="text-sm text-zinc-500 dark:text-zinc-400 font-mono flex-none">
+          {@vol.size}
+        </span>
+      </.row>
+    <% end %>
     """
   end
+
+  # Changed-file count for a working tree (staged + unstaged, deduped by path).
+  defp changes_count(%{} = changes) do
+    ((Map.get(changes, :staged) || []) ++ (Map.get(changes, :unstaged) || []))
+    |> Enum.uniq_by(& &1.path)
+    |> length()
+  end
+
+  defp changes_count(_), do: 0
 
   def agent_list_item(assigns) do
     display = agent_display_status(assigns.agent)
@@ -472,6 +602,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
           type="text"
           name="name"
           value={@agent.name}
+          aria-label="Agent name"
           autofocus
           class="flex-1 min-w-0 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-0.5 text-sm
                  text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-violet-500/30"
@@ -488,31 +619,28 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
       >
         <span class={"w-1.5 h-1.5 rounded-full flex-none #{status_dot(@display)}"} aria-hidden="true"></span>
         <span
-          class="truncate text-zinc-600 dark:text-zinc-400"
+          class="flex-1 min-w-0 truncate text-zinc-600 dark:text-zinc-400"
           phx-dblclick="start_rename_sidebar"
           phx-value-id={@agent.id}
         >
           {@agent.name}
         </span>
+        <%!-- Rough additional status, RIGHT-aligned: dot + name on the left, what
+             it's doing on the right. --%>
         <span
           :if={@display == :thinking}
-          class="text-xs text-violet-500 dark:text-violet-400 flex-none"
+          class="text-sm text-violet-500 dark:text-violet-400 flex-none truncate max-w-[9rem]"
         >
           {@agent[:thinking_word] || thinking_word(@agent.id, @agent[:active_tool])}
         </span>
-        <span :if={@display == :crashed} class="text-xs text-red-500 dark:text-red-400 flex-none">
+        <span :if={@display == :crashed} class="text-sm text-red-500 dark:text-red-400 flex-none">
           Crashed
         </span>
       </.row>
-      <button
-        :if={!@editing && @display in [:sleeping, :crashed]}
-        phx-click="remove_agent"
-        phx-value-id={@agent.id}
-        aria-label={"Remove agent #{@agent.name}"}
-        class="focus-ring inline-flex items-center justify-center min-w-11 min-h-11 md:min-w-8 md:min-h-8 text-zinc-400 hover:text-red-500 dark:hover:text-red-400 rounded transition-colors"
-      >
-        <span aria-hidden="true">&times;</span>
-      </button>
+      <%!-- No inline destroy control. The row is a single target: click to open
+           the agent, and remove/destroy lives in its detail view. Keeps the list
+           calm (no controls appearing as agents boot) and makes destruction a
+           deliberate, one-place action. --%>
     </div>
     """
   end

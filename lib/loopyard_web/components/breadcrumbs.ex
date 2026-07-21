@@ -18,9 +18,23 @@ defmodule LoopyardWeb.Components.Breadcrumbs do
   attr :class, :string, default: ""
 
   def breadcrumbs(assigns) do
+    # Below sm we hide the trail and show only the current page — so there's no
+    # visible way UP. Add a back arrow to the parent (the crumb right before the
+    # current one, if it links somewhere) that shows on mobile only.
+    parent_path =
+      case Enum.reverse(assigns.crumbs) do
+        [_current, {_label, path} | _] when is_binary(path) -> path
+        _ -> nil
+      end
+
+    assigns = assign(assigns, :parent_path, parent_path)
+
     ~H"""
     <nav aria-label="Breadcrumb" class={["flex items-center min-w-0", @class]}>
       <ol class="flex items-center gap-1.5 min-w-0 list-none p-0 m-0">
+        <li :if={@parent_path} class="flex sm:hidden flex-none">
+          <LoopyardWeb.Components.Nav.back_button size={:sm} navigate={@parent_path} />
+        </li>
         <%= for {{label, path}, idx} <- Enum.with_index(@crumbs) do %>
           <%!-- On mobile show only the current page; the full trail returns at sm+
                so it stops truncating into ellipsis soup against the nav. Hierarchy
@@ -30,20 +44,36 @@ defmodule LoopyardWeb.Components.Breadcrumbs do
             "items-center gap-1.5 min-w-0",
             if(idx == length(@crumbs) - 1, do: "flex", else: "hidden sm:flex")
           ]}>
-            <%= if path do %>
-              <.link
-                navigate={path}
-                class="focus-ring text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors truncate rounded"
-              >
-                {label}
-              </.link>
-            <% else %>
-              <span
-                aria-current={if idx == length(@crumbs) - 1, do: "page"}
-                class="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate"
-              >
-                {label}
-              </span>
+            <%= cond do %>
+              <% brand_root?(label, path) -> %>
+                <%!-- The root crumb IS the brand: trefoil mark + lowercase
+                     "loopyard" wordmark (per loopyard.ai/branding), linked home.
+                     Mark + word inherit the ink/paper color so they read
+                     dark-on-light / light-on-dark. --%>
+                <.link
+                  navigate="/"
+                  aria-label="loopyard home"
+                  class="focus-ring rounded inline-flex items-center text-zinc-900 dark:text-zinc-100 hover:opacity-70 transition-opacity"
+                >
+                  <LoopyardWeb.Components.Brand.logo
+                    mark_class="w-5 h-5 flex-none"
+                    wordmark_class="text-lg md:text-base tracking-tight"
+                  />
+                </.link>
+              <% path -> %>
+                <.link
+                  navigate={path}
+                  class="focus-ring text-lg md:text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors truncate rounded"
+                >
+                  {label}
+                </.link>
+              <% true -> %>
+                <span
+                  aria-current={if idx == length(@crumbs) - 1, do: "page"}
+                  class="text-lg md:text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate"
+                >
+                  {label}
+                </span>
             <% end %>
             <svg
               :if={idx != length(@crumbs) - 1}
@@ -64,4 +94,10 @@ defmodule LoopyardWeb.Components.Breadcrumbs do
     </nav>
     """
   end
+
+  # The "Loopyard" root crumb — render it as the brand logo (linked home),
+  # whether it's a linked ancestor (path "/") or the current page (nil, on the
+  # dashboard). No other crumb uses that label.
+  defp brand_root?("Loopyard", _), do: true
+  defp brand_root?(_, _), do: false
 end

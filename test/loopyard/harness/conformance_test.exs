@@ -11,8 +11,9 @@ defmodule Loopyard.Harness.ConformanceTest do
 
   @behaviour_mod Loopyard.Harness
 
+  # ACP is the only production backend (harnesses run in-container); Fake is the
+  # test double. There is no host-execution backend — Harness.Claude was deleted.
   @backends [
-    Loopyard.Harness.Claude,
     Loopyard.Harness.ACP,
     Loopyard.Harness.Fake
   ]

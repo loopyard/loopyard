@@ -10,14 +10,15 @@ defmodule LoopyardWeb.WorkspaceLive do
   import LoopyardWeb.Live.WorkspaceLive.MainContent
 
   alias LoopyardWeb.Live.WorkspaceLive.{
+    AgentEvents,
     AgentLifecycle,
     DataLoader,
     DiffLoader,
     DockerEvents,
-    FileBrowser,
     Navigation,
     ServiceLogs,
-    Switcher
+    Switcher,
+    VolumeRoutes
   }
 
   # Move #3 strict subscriber behaviours — compile-time enforcement that
@@ -31,6 +32,7 @@ defmodule LoopyardWeb.WorkspaceLive do
   @behaviour Loopyard.Events.SourceSync.Subscriber
   @behaviour Loopyard.Events.WorkspaceSetup.Subscriber
   @behaviour Loopyard.Events.Workspaces.Subscriber
+  @behaviour Loopyard.Events.ChangeCounts.Subscriber
 
   @impl true
   def mount(%{"project_id" => project_id, "workspace_id" => workspace_id}, _session, socket) do
@@ -54,10 +56,18 @@ defmodule LoopyardWeb.WorkspaceLive do
     is_local? = extra_assigns[:project] && extra_assigns[:project][:source_type] == :local
 
     if connected?(socket) do
+      # ChatAgent (chat_agents topic) delivers StatusChanged for EVERY agent —
+      # that's what keeps the god-mode rail's dots live (patched per event, no
+      # full-tree rebuild). We deliberately do NOT subscribe to the Activity
+      # stream here: it also fires on every tool call, and rebuilding the whole
+      # tree that often flickered the rail. Structural changes (agent add/remove,
+      # workspace add/remove) rebuild via their own lifecycle events instead.
       ChatAgent.subscribe()
       Loopyard.Workspace.ServiceManager.subscribe()
       Loopyard.Docker.Observer.subscribe()
       Loopyard.Events.WorkspaceSetup.subscribe(workspace.id)
+      # Live ±N change badges in the god-mode rail.
+      Loopyard.Events.ChangeCounts.subscribe()
 
       # A workspace added/removed/status-changed in this project → refresh the
       # left switcher live (a fork someone makes appears without a reload).
@@ -127,11 +137,8 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:workspace, workspace)
      |> assign(:project, extra_assigns[:project])
      |> assign(:workspace_entry, extra_assigns[:workspace_entry])
-     |> assign(
-       :project_workspaces,
-       Switcher.list_project_workspaces(extra_assigns[:project], socket.transport_pid)
-     )
      |> assign(:base_path, base_path)
+     |> assign(:global_tree, Loopyard.WorkspaceTree.global(host))
      |> Switcher.attach_view_tracker()
      |> assign(:host, host)
      |> assign(:agents, agents)
@@ -141,8 +148,19 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:volumes, volumes)
      |> assign(:selected_id, nil)
      |> assign(:selected_agent, nil)
+     |> assign(:service_frames, [])
+     # Last-viewed item PER CATEGORY for the mobile category tab bar (Agents ·
+     # Services · Volumes). The :selected_* assigns are mutually exclusive (they
+     # null out when you switch categories), but these REMEMBER the last thing
+     # you looked at in each category so tapping a tab jumps straight back to it
+     # (content-first). Cleared to nil = "never opened one; show the list."
+     |> assign(:nav_agent_id, nil)
+     |> assign(:nav_service, nil)
+     |> assign(:nav_volume, nil)
      |> assign(:messages, [])
      |> assign(:has_more_messages, false)
+     # Windowed transcript: does the loaded window still include the live tail?
+     |> assign(:window_tail?, true)
      |> assign(:streaming_text, "")
      |> assign(:streaming_thinking, "")
      |> assign(:thinking_word, nil)
@@ -162,6 +180,7 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:editing_agent_id, nil)
      |> assign(:selected_service, nil)
      |> assign(:selected_volume, nil)
+     |> assign(:mobile_detail_open, false)
      |> assign(:volume_tab, :info)
      |> assign(:file_tree, nil)
      |> assign(:file_content, nil)
@@ -169,6 +188,8 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:browse_path, ".")
      |> assign(:git_log, [])
      |> assign(:git_status, [])
+     # Live working-tree changes for the right-pane "Changes" hero (#58).
+     |> assign(:changes, %{staged: [], unstaged: []})
      |> assign(:diff_content, nil)
      |> assign(:diff_path, nil)
      |> assign(:commit_detail, nil)
@@ -209,11 +230,12 @@ defmodule LoopyardWeb.WorkspaceLive do
 
   @impl true
   def handle_params(%{"id" => id}, _uri, %{assigns: %{live_action: action}} = socket)
-      when action in [:chat, :container, :context_panel] do
+      when action in [:chat, :container, :context_panel, :info] do
     tab =
       case action do
         :container -> :container
         :context_panel -> :context_panel
+        :info -> :info
         _ -> :chat
       end
 
@@ -236,7 +258,12 @@ defmodule LoopyardWeb.WorkspaceLive do
       end
 
     socket = assign(socket, :tab, tab)
+    # Remember this agent so the mobile tab bar can return here from anywhere in
+    # the workspace (service/volume views null out :selected_agent, not this).
+    socket = assign(socket, :nav_agent_id, id)
     socket = if tab == :container, do: DataLoader.fetch_container_data(socket), else: socket
+    # Load the agent's working-tree changes for the right-pane hero (#58).
+    socket = refresh_changes(socket)
     {:noreply, socket}
   end
 
@@ -273,7 +300,12 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:selected_id, nil)
      |> assign(:selected_agent, nil)
      |> assign(:selected_service, service_name)
+     |> assign(:nav_service, service_name)
      |> assign(:service_logs, "Loading logs...")
+     |> assign(
+       :service_frames,
+       Loopyard.Workspace.LogBuffer.grouped(ws_id_for(socket), service_name)
+     )
      |> assign(:all_service_logs, [])}
   end
 
@@ -305,6 +337,7 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:selected_id, nil)
      |> assign(:selected_agent, nil)
      |> assign(:selected_service, service_name)
+     |> assign(:nav_service, service_name)
      |> assign(:console_container, container)}
   end
 
@@ -353,8 +386,17 @@ defmodule LoopyardWeb.WorkspaceLive do
     cond do
       live_agents != [] ->
         case Navigation.landing_target(socket) do
-          nil -> {:noreply, socket}
-          path -> {:noreply, push_patch(socket, to: path)}
+          nil ->
+            {:noreply, socket}
+
+          path ->
+            # REPLACE, don't push: the bare workspace URL (:index) is a transient
+            # hop that immediately resolves to an agent. If it stayed in history,
+            # swiping back would land on :index, which re-fires this and bounces
+            # you FORWARD to the agent again — so "back" looked dead. Replacing it
+            # means back skips :index straight to the project/prior page. Same
+            # visible result (you land on the agent), correct history.
+            {:noreply, push_patch(socket, to: path, replace: true)}
         end
 
       connected?(socket) and !socket.assigns[:auto_spawned] ->
@@ -365,129 +407,56 @@ defmodule LoopyardWeb.WorkspaceLive do
     end
   end
 
-  # Volume info page
-  def handle_params(%{"volume_name" => name}, _uri, %{assigns: %{live_action: :volume}} = socket) do
-    # Default to files view — more useful than info
-    {:noreply, push_patch(socket, to: "#{socket.assigns.base_path}/volumes/#{name}/files")}
-  end
+  # --- Volume routes: bodies live in VolumeRoutes (module-size invariant) ---
 
-  # File browser root: /volumes/:name/files
+  def handle_params(%{"volume_name" => n}, _uri, %{assigns: %{live_action: :volume}} = socket),
+    do: VolumeRoutes.volume_redirect(socket, n)
+
   def handle_params(
-        %{"volume_name" => name},
+        %{"volume_name" => n},
         _uri,
         %{assigns: %{live_action: :volume_files_root}} = socket
-      ) do
-    socket = setup_volume(socket, name, :files)
-    {:noreply, FileBrowser.enter_root(socket, name)}
-  end
+      ),
+      do: VolumeRoutes.files_root(socket, n)
 
-  # File browser: /volumes/:name/files/path/to/thing
-  # Could be a file or a directory — FileBrowser probes both and the
-  # :file_content handle_async dispatches on the returned shape.
   def handle_params(
-        %{"volume_name" => name, "path" => path_parts},
+        %{"volume_name" => n, "path" => p},
         _uri,
         %{assigns: %{live_action: :volume_file}} = socket
-      ) do
-    file_path = Path.join(path_parts)
-    socket = setup_volume(socket, name, :files)
-    {:noreply, FileBrowser.enter_path(socket, name, file_path)}
-  end
+      ),
+      do: VolumeRoutes.file(socket, n, p)
 
-  # Git view
+  def handle_params(%{"volume_name" => n}, _uri, %{assigns: %{live_action: a}} = socket)
+      when a in [:volume_git, :volume_history],
+      do: VolumeRoutes.git_or_history(socket, n, a)
+
   def handle_params(
-        %{"volume_name" => name},
-        _uri,
-        %{assigns: %{live_action: :volume_git}} = socket
-      ) do
-    socket = setup_volume(socket, name, :git)
-
-    socket =
-      if socket.assigns.git_log == [] do
-        git_assigns = Map.take(socket.assigns, [:project, :workspace_entry])
-        start_async(socket, :git_data, fn -> DataLoader.load_git_data(git_assigns) end)
-      else
-        socket
-      end
-
-    {:noreply, socket}
-  end
-
-  # Git diff for unstaged file
-  def handle_params(
-        %{"volume_name" => name, "path" => path_parts},
+        %{"volume_name" => n, "path" => p},
         _uri,
         %{assigns: %{live_action: :git_diff}} = socket
-      ) do
-    file_path = Path.join(path_parts)
-    socket = setup_volume(socket, name, :git)
-    %{project: project, workspace_entry: workspace_entry} = socket.assigns
+      ),
+      do: VolumeRoutes.diff(socket, n, p, :unstaged)
 
-    {:noreply,
-     socket
-     |> assign(:diff_content, :loading)
-     |> assign(:diff_path, file_path)
-     |> start_async(:git_file_diff, fn ->
-       DiffLoader.file_diff(project, workspace_entry, file_path, :unstaged)
-     end)}
-  end
-
-  # Git diff for staged file
   def handle_params(
-        %{"volume_name" => name, "path" => path_parts},
+        %{"volume_name" => n, "path" => p},
         _uri,
         %{assigns: %{live_action: :git_staged_diff}} = socket
-      ) do
-    file_path = Path.join(path_parts)
-    socket = setup_volume(socket, name, :git)
-    %{project: project, workspace_entry: workspace_entry} = socket.assigns
+      ),
+      do: VolumeRoutes.diff(socket, n, p, :staged)
 
-    {:noreply,
-     socket
-     |> assign(:diff_content, :loading)
-     |> assign(:diff_path, file_path)
-     |> start_async(:git_file_diff, fn ->
-       DiffLoader.file_diff(project, workspace_entry, file_path, :staged)
-     end)}
-  end
-
-  # Git commit detail
   def handle_params(
-        %{"volume_name" => name, "sha" => sha},
+        %{"volume_name" => n, "sha" => sha},
         _uri,
         %{assigns: %{live_action: :git_commit}} = socket
-      ) do
-    socket = setup_volume(socket, name, :git)
-    %{project: project, workspace_entry: workspace_entry} = socket.assigns
+      ),
+      do: VolumeRoutes.commit(socket, n, sha)
 
-    {:noreply,
-     socket
-     |> assign(:commit_detail, :loading)
-     |> assign(:commit_sha, sha)
-     |> start_async(:git_commit_detail, fn ->
-       DiffLoader.commit_detail(project, workspace_entry, sha)
-     end)}
-  end
-
-  # Git commit file diff
   def handle_params(
-        %{"volume_name" => name, "sha" => sha, "path" => path_parts},
+        %{"volume_name" => n, "sha" => sha, "path" => p},
         _uri,
         %{assigns: %{live_action: :git_commit_file}} = socket
-      ) do
-    file_path = Path.join(path_parts)
-    socket = setup_volume(socket, name, :git)
-    %{project: project, workspace_entry: workspace_entry} = socket.assigns
-
-    {:noreply,
-     socket
-     |> assign(:diff_content, :loading)
-     |> assign(:diff_path, file_path)
-     |> assign(:commit_sha, sha)
-     |> start_async(:git_file_diff, fn ->
-       DiffLoader.commit_file_diff(project, workspace_entry, sha, file_path)
-     end)}
-  end
+      ),
+      do: VolumeRoutes.commit_file(socket, n, sha, p)
 
   def handle_params(_params, _uri, %{assigns: %{live_action: :sync}} = socket) do
     {:noreply,
@@ -570,6 +539,14 @@ defmodule LoopyardWeb.WorkspaceLive do
 
     {:noreply, socket |> assign(:git_log, git_log) |> assign(:git_status, git_status)}
   end
+
+  # Right-pane "Changes" hero (#58). git_status returns %{staged, unstaged};
+  # anything else (error / no git) resets to empty ("working tree clean").
+  def handle_async(:changes, {:ok, {:ok, status}}, socket) when is_map(status),
+    do: {:noreply, assign(socket, :changes, status)}
+
+  def handle_async(:changes, _other, socket),
+    do: {:noreply, assign(socket, :changes, %{staged: [], unstaged: []})}
 
   def handle_async(:git_data, {:exit, _reason}, socket) do
     {:noreply, socket}
@@ -669,12 +646,41 @@ defmodule LoopyardWeb.WorkspaceLive do
       # Don't add optimistically — let PubSub broadcast handle it for ALL viewers.
       # This ensures multiplayer: every viewer (including the sender) sees the
       # message via the same path.
-      ChatAgent.send_message(socket.assigns.selected_id, message)
-      # Reply so the client's ChatForm hook knows the send LANDED and can clear
-      # the input. Without an ack, a send fired into a momentarily-disconnected
-      # socket (live-reload, reconnect, flaky link) clears the box and vanishes
-      # silently. The hook keeps the text until this reply arrives.
-      {:reply, %{ok: true}, socket}
+      #
+      # DURABILITY-CONFIRMED: use enqueue_message (a call), not send_message (a
+      # cast). We only reply ok: true — the signal the ChatForm hook waits on
+      # before clearing the box — once the agent has actually RECEIVED and stored
+      # the message. If its GenServer is down, DON'T bounce an error at the user:
+      # the asleep contract is "wakes on your next message", so WAKE it and
+      # deliver (wake_and_enqueue). Only if that also fails does the hook keep
+      # the text and a short flash explain — the error is the last resort, never
+      # the first response.
+      id = socket.assigns.selected_id
+
+      result =
+        case ChatAgent.enqueue_message(id, message) do
+          :ok -> :ok
+          {:error, :unavailable} -> AgentLifecycle.wake_and_enqueue(id, message)
+        end
+
+      # ONE message channel: the reply's `note` renders inline under the
+      # composer (the ChatForm hook). No flash — an error toast AND an inline
+      # note competing to explain the same thing was noise.
+      case result do
+        :ok ->
+          {:reply, %{ok: true}, socket}
+
+        {:error, :waking} ->
+          # The workspace is booting in the background — a retry in a few
+          # seconds lands on a live group. Calm, actionable, no drama.
+          {:reply, %{ok: false, note: "Waking the workspace… press Send again in a few seconds."},
+           socket}
+
+        {:error, :unavailable} ->
+          {:reply,
+           %{ok: false, note: "⚠ Couldn't wake the agent — your text is kept; try Send again."},
+           socket}
+      end
     else
       {:reply, %{ok: false}, socket}
     end
@@ -688,24 +694,62 @@ defmodule LoopyardWeb.WorkspaceLive do
       {older, total} =
         ChatAgent.get_messages(
           socket.assigns.selected_id,
-          limit: 50,
+          limit: AgentLifecycle.message_page_size(),
           before_id: oldest && oldest[:id],
           snap_to_prompt: true
         )
 
       if older != [] do
         combined = older ++ socket.assigns.messages
+        max = AgentLifecycle.message_window_max()
+
+        # Cap the DOM: if the window overflows, drop from the BOTTOM (the tail is
+        # off-screen while you're scrolled up here, so nothing shifts). Once we
+        # drop the tail, the window no longer follows the live stream.
+        {windowed, tail?} =
+          if length(combined) > max do
+            {Enum.take(combined, max), false}
+          else
+            {combined, socket.assigns.window_tail?}
+          end
+
+        # Keep offering older until a load comes back empty (the else branch);
+        # the tiny cost is one no-op load at the very top.
+        _ = total
 
         {:noreply,
          socket
-         |> assign(:messages, combined)
-         |> assign(:has_more_messages, length(combined) < total)
+         |> assign(:messages, windowed)
+         |> assign(:has_more_messages, true)
+         |> assign(:window_tail?, tail?)
          |> push_event("messages_prepended", %{})}
       else
         {:noreply, assign(socket, :has_more_messages, false)}
       end
     else
       {:noreply, socket}
+    end
+  end
+
+  # Jump back to the live tail from a scrolled-up history view: reload the last
+  # window batch from the live agent and snap to the bottom. This is how new
+  # messages (which we deliberately didn't append while you were reading history)
+  # get caught up.
+  def handle_event("load_latest", _params, socket) do
+    case socket.assigns.selected_id do
+      nil ->
+        {:noreply, socket}
+
+      id ->
+        msgs = (ChatAgent.get_state(id) || %{})[:messages] || []
+        page = Enum.take(msgs, -AgentLifecycle.message_page_size())
+
+        {:noreply,
+         socket
+         |> assign(:messages, page)
+         |> assign(:has_more_messages, length(page) < length(msgs))
+         |> assign(:window_tail?, true)
+         |> push_event("jump_bottom", %{})}
     end
   end
 
@@ -737,16 +781,54 @@ defmodule LoopyardWeb.WorkspaceLive do
         %{"question_id" => qid, "q" => q_id, "option" => option},
         socket
       ) do
-    # Deliver the human's choice to the blocked harness question (multiplayer:
-    # the broker flips the message to :answered for every viewer).
-    case Loopyard.Harness.Questions.answer(qid, %{q_id => [option]}) do
-      :ok ->
+    # Settle ONE question with the clicked option (multiplayer: the broker
+    # broadcasts the per-question lock; the whole ask resolves — and the card
+    # flips to :answered — only when every question is answered or skipped).
+    question_action(socket, Loopyard.Harness.Questions.answer_partial(qid, q_id, [option]))
+  end
+
+  @impl true
+  def handle_event("skip_question", %{"question_id" => qid, "q" => q_id}, socket) do
+    question_action(socket, Loopyard.Harness.Questions.answer_partial(qid, q_id, []))
+  end
+
+  @impl true
+  def handle_event(
+        "toggle_question_option",
+        %{"question_id" => qid, "q" => q_id, "option" => option},
+        socket
+      ) do
+    # Multi-select draft toggle — broadcast, but the question stays open until
+    # its Done button confirms.
+    question_action(socket, Loopyard.Harness.Questions.toggle_option(qid, q_id, option))
+  end
+
+  @impl true
+  def handle_event("confirm_question", %{"question_id" => qid, "q" => q_id}, socket) do
+    question_action(socket, Loopyard.Harness.Questions.confirm_question(qid, q_id))
+  end
+
+  @impl true
+  def handle_event(
+        "answer_question_text",
+        %{"question_id" => qid, "q" => q_id, "text" => text},
+        socket
+      ) do
+    # The per-question "Other…" free-text answer. Blank submits are a no-op
+    # (keep the form open) rather than an accidental skip.
+    case String.trim(text) do
+      "" ->
         {:noreply, socket}
 
-      {:error, :not_found} ->
-        {:noreply, put_flash(socket, :info, "That question was already answered.")}
+      trimmed ->
+        question_action(socket, Loopyard.Harness.Questions.answer_partial(qid, q_id, [trimmed]))
     end
   end
+
+  defp question_action(socket, :ok), do: {:noreply, socket}
+
+  defp question_action(socket, {:error, :not_found}),
+    do: {:noreply, put_flash(socket, :info, "That question was already answered.")}
 
   @impl true
   def handle_event("submit_secret", %{"request_id" => rid, "secret" => value}, socket) do
@@ -778,59 +860,42 @@ defmodule LoopyardWeb.WorkspaceLive do
     decision = if decision == "approve", do: :approve, else: :deny
     agent_id = socket.assigns.selected_id
 
-    # The approval card message carries both the action and its msg id.
-    card =
-      Enum.find(socket.assigns.messages, fn m -> m[:approval_id] == id end)
-
+    # The approval card message carries the full action + its msg id — the card
+    # is durable (queued model), so the decision runs entirely from it. No blocked
+    # tool waiter to deliver to, no TTL to have expired.
+    card = Enum.find(socket.assigns.messages, fn m -> m[:approval_id] == id end)
     action = card && card[:action]
 
-    # Optimistically flip the card to its working state the instant the human
-    # clicks — fork/integrate can take a few seconds, and we don't want the
-    # buttons to sit there looking unclicked. Persisted + broadcast, so every
-    # viewer sees "Creating…/Merging…" immediately. The tool's own resolve/3
-    # calls that follow are idempotent.
-    if decision == :approve && agent_id && card && action[:verb] != :delete_workspace do
-      transient = if action[:verb] == :integrate, do: :integrating, else: :creating
-      ChatAgent.update_message(agent_id, card.id, fn m -> Map.put(m, :status, transient) end)
-    end
-
-    # Deliver to the blocked propose_* tool. For fork/integrate the tool runs the
-    # action; for delete_workspace the agent would be killed by its own
-    # deletion, so the LiveView runs the destroy + navigates away.
-    case Loopyard.Harness.Approvals.decide(id, decision) do
-      :ok ->
-        :ok
-
-      {:error, :not_found} ->
-        # The propose_* tool that posted this card is gone (session restart,
-        # crash, or the 30-min timeout) — nothing is listening, so the decision
-        # would vanish and the card (already flipped to :creating above) would
-        # spin forever. Flip it to a terminal state so the human isn't stuck.
-        if agent_id && card do
-          ChatAgent.update_message(agent_id, card.id, fn m ->
-            Map.merge(m, %{
-              status: :failed,
-              error: "this proposal expired — ask the agent to create the branch again"
-            })
-          end)
-        end
-    end
-
     cond do
-      decision == :approve && action && action[:verb] == :delete_workspace ->
-        ws_id = action.workspace_id
+      is_nil(card) || is_nil(action) || is_nil(agent_id) ->
+        {:noreply, socket}
 
+      decision == :deny ->
+        Loopyard.Harness.Approvals.resolve(agent_id, card.id, %{status: :denied})
+        {:noreply, socket}
+
+      # Run the approved action OFF the socket so the click returns instantly and
+      # a slow action (fork can take seconds) never blocks the LiveView. run/3
+      # streams progress into the card + resolves it to its terminal status.
+      decision == :approve ->
         Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
-          Loopyard.Workspace.Destructor.destroy(ws_id)
+          Loopyard.Harness.Approvals.run(agent_id, card.id, action)
         end)
 
-        {:noreply,
-         socket
-         |> put_flash(:info, "Workspace deleted.")
-         |> push_navigate(to: "/projects/#{action.project_id}")}
-
-      true ->
-        {:noreply, socket}
+        if action[:verb] == :delete_workspace do
+          # Deleting the workspace destroys this agent — leave the chat now.
+          {:noreply,
+           socket
+           |> put_flash(:info, "Workspace deleted.")
+           |> push_navigate(to: "/projects/#{action.project_id}")}
+        else
+          # Optimistically flip the card to its working state so the buttons don't
+          # sit there looking unclicked while run/3 spins up. run/3's own resolve/3
+          # calls overwrite this; both are idempotent.
+          transient = if action[:verb] == :integrate, do: :integrating, else: :creating
+          ChatAgent.update_message(agent_id, card.id, fn m -> Map.put(m, :status, transient) end)
+          {:noreply, socket}
+        end
     end
   end
 
@@ -988,6 +1053,27 @@ defmodule LoopyardWeb.WorkspaceLive do
   end
 
   @impl true
+  def handle_event("toggle_mobile_detail", _params, socket) do
+    # Server-side toggle so the state SURVIVES navigation: with it open, using
+    # the switchers keeps showing detail for the newly-selected thing until you
+    # toggle back to the content.
+    {:noreply, assign(socket, :mobile_detail_open, !socket.assigns.mobile_detail_open)}
+  end
+
+  @impl true
+  def handle_event("set_agent_model", %{"model" => model} = params, socket) do
+    # Model switcher in the Usage panel. Applies live (ACP session/set_model)
+    # + persists in session_opts; the StatusChanged broadcast refreshes the row.
+    agent_id = params["id"] || socket.assigns.selected_id
+
+    if agent_id && model not in [nil, ""] do
+      ChatAgent.set_model(agent_id, model)
+    end
+
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_event("rename_agent", %{"name" => name} = params, socket) do
     # Sidebar rename passes agent id explicitly; context panel uses selected_id
     agent_id = params["id"] || socket.assigns.selected_id
@@ -1004,26 +1090,6 @@ defmodule LoopyardWeb.WorkspaceLive do
 
   @impl true
   # --- UI state events ---
-
-  def handle_event("switch_tab", %{"tab" => tab}, socket) do
-    tab =
-      case tab do
-        "chat" -> :chat
-        "container" -> :container
-        _ -> :chat
-      end
-
-    bp = workspace_path(socket)
-
-    path =
-      case {socket.assigns.selected_id, tab} do
-        {nil, _} -> bp
-        {id, :container} -> "#{bp}/agents/#{id}/container"
-        {id, _} -> "#{bp}/agents/#{id}"
-      end
-
-    {:noreply, push_patch(socket, to: path)}
-  end
 
   @impl true
   # --- Source-adapter sync events (Local/Mutagen) ---
@@ -1240,7 +1306,14 @@ defmodule LoopyardWeb.WorkspaceLive do
   def handle_info(%Events.ChatAgent.Quarantined{} = e, socket), do: on_quarantined(e, socket)
   def handle_info(%Events.ChatAgent.Released{} = e, socket), do: on_released(e, socket)
 
+  # God-mode sidebar (#55): any agent's status/tool activity, anywhere, rebuilds
+  # the cross-project tree so the left rail stays live across all projects.
+
   def handle_info(%Events.ChatAgentMessage.Message{} = e, socket), do: on_message(e, socket)
+
+  def handle_info(%Events.ChatAgentMessage.MessageUpdated{} = e, socket),
+    do: on_message_updated(e, socket)
+
   def handle_info(%Events.ChatAgentMessage.TextDelta{} = e, socket), do: on_text_delta(e, socket)
 
   def handle_info(%Events.ChatAgentMessage.StreamOutput{} = e, socket),
@@ -1282,6 +1355,9 @@ defmodule LoopyardWeb.WorkspaceLive do
     do: on_setup_retry_scheduled(e, socket)
 
   def handle_info(%Events.Workspaces.Changed{} = e, socket), do: on_workspaces_changed(e, socket)
+
+  def handle_info(%Events.ChangeCounts.Updated{} = e, socket),
+    do: on_change_counts_updated(e, socket)
 
   # Non-PubSub internal messages (send/2 self-dispatches, async task
   # replies). These aren't subject to the publisher-module boundary
@@ -1331,7 +1407,7 @@ defmodule LoopyardWeb.WorkspaceLive do
   end
 
   def handle_info({:build_output, id, data}, socket) when id == socket.assigns.selected_id do
-    upsert_stream_message(socket, data, "Building Docker image...", nil)
+    AgentEvents.upsert_stream_message(socket, data, "Building Docker image...", nil)
   end
 
   def handle_info({:fetch_service_logs, service_name}, socket) do
@@ -1339,7 +1415,10 @@ defmodule LoopyardWeb.WorkspaceLive do
       (socket.assigns.workspace_entry && socket.assigns.workspace_entry.id) ||
         socket.assigns.workspace.id
 
-    {:noreply, ServiceLogs.start_service_logs_fetch(socket, ws_id, service_name)}
+    # Read the persistent LogBuffer (survives container crashes) instead of
+    # polling the current container's `docker logs`.
+    {:noreply,
+     assign(socket, :service_frames, Loopyard.Workspace.LogBuffer.grouped(ws_id, service_name))}
   end
 
   def handle_info(:fetch_all_service_logs, socket) do
@@ -1360,7 +1439,11 @@ defmodule LoopyardWeb.WorkspaceLive do
         ServiceLogs.schedule_log_refresh()
 
         {:noreply,
-         ServiceLogs.start_service_logs_fetch(socket, ws_id, socket.assigns.selected_service)}
+         assign(
+           socket,
+           :service_frames,
+           Loopyard.Workspace.LogBuffer.grouped(ws_id, socket.assigns.selected_service)
+         )}
 
       :services ->
         ServiceLogs.schedule_log_refresh()
@@ -1398,13 +1481,17 @@ defmodule LoopyardWeb.WorkspaceLive do
   # --- ChatAgent subscriber callbacks ---
   # Logic extracted to AgentEvents — callbacks delegate there.
 
-  alias LoopyardWeb.Live.WorkspaceLive.AgentEvents
+  @impl Events.ChatAgent.Subscriber
+  def on_started(event, socket) do
+    {:noreply, socket} = AgentEvents.handle_started(event, socket)
+    {:noreply, rebuild_tree(socket)}
+  end
 
   @impl Events.ChatAgent.Subscriber
-  def on_started(event, socket), do: AgentEvents.handle_started(event, socket)
-
-  @impl Events.ChatAgent.Subscriber
-  def on_resumed(event, socket), do: AgentEvents.handle_resumed(event, socket)
+  def on_resumed(event, socket) do
+    {:noreply, socket} = AgentEvents.handle_resumed(event, socket)
+    {:noreply, rebuild_tree(socket)}
+  end
 
   @impl Events.ChatAgent.Subscriber
   def on_booting(event, socket), do: AgentEvents.handle_booting(event, socket)
@@ -1417,16 +1504,90 @@ defmodule LoopyardWeb.WorkspaceLive do
     do: AgentEvents.handle_boot_failed(event, socket, &workspace_path/1)
 
   @impl Events.ChatAgent.Subscriber
-  def on_stopped(_event, socket), do: AgentEvents.handle_stopped(socket)
+  def on_stopped(_event, socket) do
+    {:noreply, socket} = AgentEvents.handle_stopped(socket)
+    {:noreply, rebuild_tree(socket)}
+  end
 
   @impl Events.ChatAgent.Subscriber
-  def on_removed(event, socket), do: AgentEvents.handle_removed(event, socket)
+  def on_removed(event, socket) do
+    {:noreply, socket} = AgentEvents.handle_removed(event, socket)
+    {:noreply, rebuild_tree(socket)}
+  end
 
   @impl Events.ChatAgent.Subscriber
   def on_renamed(event, socket), do: AgentEvents.handle_renamed(event, socket)
 
   @impl Events.ChatAgent.Subscriber
-  def on_status_changed(event, socket), do: AgentEvents.handle_status_changed(event, socket)
+  def on_status_changed(event, socket) do
+    {:noreply, socket} = AgentEvents.handle_status_changed(event, socket)
+
+    # Keep the god-mode rail LIVE off the SAME authoritative transition the
+    # right pane uses — patch the tree agent's status straight from the event
+    # (no stale ETS re-read). Without this the rail freezes on an old frame:
+    # the right pane goes green while the rail still shows red/gray.
+    socket = update(socket, :global_tree, &patch_tree_agent_status(&1, event.id, event.status))
+
+    # When the selected agent finishes a turn (→ :idle), its working-tree
+    # changes have settled — refresh the right-pane "Changes" hero (#58).
+    socket =
+      if event.id == socket.assigns.selected_id and event.status == :idle,
+        do: refresh_changes(socket),
+        else: socket
+
+    {:noreply, socket}
+  end
+
+  # Patch one agent's `:status` in the global tree from a StatusChanged event.
+  # The dot is computed at render time from this status + live liveness, so the
+  # rail reflects reality the instant the transition fires.
+  defp patch_tree_agent_status(tree, agent_id, status) when is_list(tree) do
+    Enum.map(tree, fn project ->
+      workspaces =
+        Enum.map(project.workspaces, fn ws ->
+          agents =
+            Enum.map(ws.agents, fn a ->
+              if a.id == agent_id, do: %{a | status: status}, else: a
+            end)
+
+          %{ws | agents: agents}
+        end)
+
+      %{project | workspaces: workspaces}
+    end)
+  end
+
+  defp patch_tree_agent_status(tree, _id, _status), do: tree
+
+  # Rebuild the whole tree from scratch — ONLY for structural changes (an agent
+  # or workspace appeared/disappeared), which are rare. Never on the hot path
+  # (tool calls / status flips): those are handled by targeted patches so the
+  # rail doesn't flicker.
+  defp rebuild_tree(socket),
+    do: assign(socket, :global_tree, Loopyard.WorkspaceTree.global(socket.assigns.host))
+
+  # Async-fetch the selected agent's workspace working-tree changes for the
+  # right-pane "Changes" hero (#58). No-op without a selected agent / project,
+  # or when the source doesn't support git. Dispatches through the source
+  # adapter (same path DataLoader uses).
+  defp ws_id_for(socket) do
+    (socket.assigns[:workspace_entry] && socket.assigns.workspace_entry.id) ||
+      socket.assigns.workspace.id
+  end
+
+  defp refresh_changes(socket) do
+    project = socket.assigns[:project]
+    ws = socket.assigns[:workspace_entry]
+
+    with true <- socket.assigns[:selected_id] != nil,
+         proj when not is_nil(proj) <- project,
+         adapter <- Loopyard.Source.for_project(proj),
+         true <- Loopyard.Source.supports_git?(adapter) do
+      start_async(socket, :changes, fn -> adapter.git_status(proj, ws) end)
+    else
+      _ -> socket
+    end
+  end
 
   @impl Events.ChatAgent.Subscriber
   def on_quarantined(_event, socket), do: {:noreply, socket}
@@ -1437,98 +1598,16 @@ defmodule LoopyardWeb.WorkspaceLive do
   # --- ChatAgentMessage subscriber callbacks ---
 
   @impl Events.ChatAgentMessage.Subscriber
-  def on_message(%Events.ChatAgentMessage.Message{agent_id: id, msg: msg}, socket)
-      when id == socket.assigns.selected_id do
-    # Guard against duplicate messages (mobile reconnect can cause double PubSub subscriptions)
-    if msg[:id] && Enum.any?(socket.assigns.messages, &(&1[:id] == msg[:id])) do
-      {:noreply, socket}
-    else
-      socket =
-        if msg.role == :assistant,
-          do: socket |> assign(:streaming_text, "") |> assign(:streaming_thinking, ""),
-          else: socket
-
-      # If build was running and we get a post-build message, mark build as done
-      socket =
-        if socket.assigns.building && msg.role in [:system, :error] do
-          messages =
-            Enum.map(socket.assigns.messages, fn
-              %{role: :build} = m -> %{m | role: :build_done}
-              other -> other
-            end)
-
-          socket |> assign(:messages, messages) |> assign(:building, false)
-        else
-          socket
-        end
-
-      socket =
-        socket
-        |> assign(:messages, socket.assigns.messages ++ [msg])
-        |> AgentEvents.refresh_selected_from_agents(id, socket.assigns.agents)
-        |> push_event("scroll_bottom", %{})
-
-      # Update thinking word when a tool message arrives — shows the
-      # tool-specific phrase (e.g., "grepping" instead of "pondering")
-      socket =
-        if msg.role == :tool && socket.assigns.selected_agent &&
-             socket.assigns.selected_agent.status == :thinking do
-          tool = msg[:tool]
-          word = LoopyardWeb.Components.Sidebar.thinking_word(id, tool)
-          assign(socket, :thinking_word, word)
-        else
-          socket
-        end
-
-      {:noreply, socket}
-    end
-  end
-
-  def on_message(%Events.ChatAgentMessage.Message{}, socket), do: {:noreply, socket}
+  def on_message(e, socket), do: AgentEvents.on_message(e, socket)
 
   @impl Events.ChatAgentMessage.Subscriber
-  def on_text_delta(%Events.ChatAgentMessage.TextDelta{agent_id: id, text: text}, socket)
-      when id == socket.assigns.selected_id do
-    {:noreply,
-     socket
-     |> AgentEvents.refresh_selected_from_agents(id, socket.assigns.agents)
-     |> assign(:streaming_text, socket.assigns.streaming_text <> text)
-     |> assign(:streaming_thinking, "")
-     |> push_event("scroll_bottom", %{})}
-  end
-
-  def on_text_delta(%Events.ChatAgentMessage.TextDelta{}, socket), do: {:noreply, socket}
+  def on_message_updated(e, socket), do: AgentEvents.on_message_updated(e, socket)
 
   @impl Events.ChatAgentMessage.Subscriber
-  def on_stream_output(
-        %Events.ChatAgentMessage.StreamOutput{
-          agent_id: id,
-          data: data,
-          title: "__thinking__"
-        },
-        socket
-      )
-      when id == socket.assigns.selected_id do
-    {:noreply,
-     socket
-     |> assign(:streaming_thinking, (socket.assigns[:streaming_thinking] || "") <> data)
-     |> push_event("scroll_bottom", %{})}
-  end
+  def on_text_delta(e, socket), do: AgentEvents.on_text_delta(e, socket)
 
-  def on_stream_output(
-        %Events.ChatAgentMessage.StreamOutput{
-          agent_id: id,
-          data: data,
-          title: title,
-          msg_id: msg_id
-        },
-        socket
-      )
-      when id == socket.assigns.selected_id do
-    upsert_stream_message(socket, data, title, msg_id)
-  end
-
-  def on_stream_output(%Events.ChatAgentMessage.StreamOutput{}, socket), do: {:noreply, socket}
+  @impl Events.ChatAgentMessage.Subscriber
+  def on_stream_output(e, socket), do: AgentEvents.on_stream_output(e, socket)
 
   # --- DockerObserver subscriber callbacks ---
   # Logic extracted to DockerEvents — callbacks delegate there.
@@ -1554,16 +1633,20 @@ defmodule LoopyardWeb.WorkspaceLive do
   @impl Events.WorkspaceServices.Subscriber
   def on_services_updated(event, socket), do: DockerEvents.handle_services_updated(event, socket)
 
-  # --- Workspaces (switcher list) subscriber callback ---
+  # --- Workspaces subscriber callback ---
 
+  # A workspace added/removed/renamed → rebuild the god-mode sidebar tree so it
+  # reflects the change live (a fork someone makes appears without a reload).
   @impl Events.Workspaces.Subscriber
   def on_workspaces_changed(_event, socket) do
-    {:noreply,
-     assign(
-       socket,
-       :project_workspaces,
-       Switcher.list_project_workspaces(socket.assigns.project, socket.transport_pid)
-     )}
+    {:noreply, assign(socket, :global_tree, Loopyard.WorkspaceTree.global(socket.assigns.host))}
+  end
+
+  # A workspace's ±N change count moved → rebuild the rail tree so the badge is
+  # live. Fires only on actual count changes (ChangeCounts publishes on delta).
+  @impl Events.ChangeCounts.Subscriber
+  def on_change_counts_updated(_event, socket) do
+    {:noreply, assign(socket, :global_tree, Loopyard.WorkspaceTree.global(socket.assigns.host))}
   end
 
   # --- SourceSync subscriber callbacks ---
@@ -1620,53 +1703,23 @@ defmodule LoopyardWeb.WorkspaceLive do
 
   # --- Private ---
 
-  defp upsert_stream_message(socket, data, title, msg_id) do
-    stream_buffer =
-      socket.assigns.stream_buffer
-      |> StreamBuffer.append(data, title: title, msg_id: msg_id)
-
-    messages = StreamBuffer.upsert_message(stream_buffer, socket.assigns.messages)
-
-    {:noreply,
-     socket
-     |> assign(:messages, messages)
-     |> assign(:stream_buffer, stream_buffer)
-     |> assign(:building, true)}
-  end
-
   defp workspace_path(socket), do: socket.assigns.base_path
-
-  defp setup_volume(socket, name, tab) do
-    is_code = String.contains?(name, "code")
-
-    adapter =
-      if socket.assigns[:project], do: Loopyard.Source.for_project(socket.assigns.project)
-
-    supports_git = is_code && adapter && Loopyard.Source.supports_git?(adapter)
-
-    socket =
-      if socket.assigns[:selected_volume] != name do
-        socket
-        |> assign(:selected_id, nil)
-        |> assign(:selected_agent, nil)
-        |> assign(:selected_service, nil)
-        |> assign(:selected_volume, name)
-        |> FileBrowser.reset()
-        |> assign(:git_log, [])
-        |> assign(:git_status, [])
-        |> assign(:diff_content, nil)
-        |> assign(:supports_git, supports_git)
-      else
-        socket
-      end
-
-    assign(socket, :volume_tab, tab)
-  end
 
   # --- Render ---
 
   @impl true
   def render(assigns) do
+    # Show the mobile detail only when it's toggled open AND there's actually a
+    # selected thing to detail — so switching to a detail-less surface (or the
+    # index) falls back to the content instead of a blank panel.
+    assigns =
+      assign(
+        assigns,
+        :show_mobile_detail,
+        assigns.mobile_detail_open &&
+          (assigns.selected_agent || assigns.selected_service || assigns.selected_volume) != nil
+      )
+
     ~H"""
     <div
       id="chat-page"
@@ -1677,25 +1730,75 @@ defmodule LoopyardWeb.WorkspaceLive do
         workspace={@workspace}
         project={@project}
         workspace_entry={@workspace_entry}
+        global_tree={@global_tree}
         live_action={@live_action}
         base_path={@base_path}
         iex_session={@iex_session}
+        selected_agent={@selected_agent}
+        nav_agent_id={@nav_agent_id}
+        nav_service={@nav_service}
+        nav_volume={@nav_volume}
+        agents={@agents}
+        service_statuses={@service_statuses}
+        volumes={@volumes}
+        changes={@changes}
+        tab={@tab}
+        has_container={@has_container}
+        mobile_detail_open={@mobile_detail_open}
       />
       <.flash_banner flash={@flash} kind={:error} class="mx-4 mt-2" />
       <div class="flex-1 flex min-h-0">
-        <%!-- LEFT rail: switch between this project's workspaces (desktop-only). --%>
-        <.workspace_switcher
-          :if={@project}
-          workspaces={@project_workspaces}
-          current_id={@workspace.id}
-          project={@project}
+        <%!-- LEFT rail: god-mode tree — every project → workspace → agent, live
+             across all projects (#55). Desktop-only. --%>
+        <LoopyardWeb.Components.GlobalSidebar.global_sidebar
+          tree={@global_tree}
+          current_workspace_id={@workspace.id}
+          class="hidden md:flex w-72 flex-none border-r border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-900/50 safe-pl"
         />
         <%!-- Main content: hidden on mobile when the rail is showing (index/new with no selection) --%>
         <main
           id="main-content"
           class={"flex-1 flex flex-col min-w-0 #{if @live_action == :index && !@selected_id && !@selected_service, do: "hidden md:flex", else: "flex"}"}
         >
-          <.main_content {assigns} />
+          <%!-- MOBILE inline detail: flat, in the surface's own scroll flow.
+               The `toggle_mobile_detail` event flips @mobile_detail_open — a
+               SERVER assign so the state survives LiveView patches: switch the
+               agent/service/file while it's open and it keeps showing detail for
+               the newly-selected thing until you toggle back. `md:!hidden` pins
+               it off on desktop (the right rail owns detail there). --%>
+          <div
+            id="mobile-detail"
+            phx-hook="StickyEdge"
+            class={[
+              "md:!hidden flex-1 min-h-0 overflow-y-auto",
+              if(@show_mobile_detail, do: "block", else: "hidden")
+            ]}
+          >
+            <LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts.mobile_detail_inline
+              selected_agent={@selected_agent}
+              selected_service={@selected_service}
+              selected_volume={@selected_volume}
+              service_statuses={@service_statuses}
+              volumes={@volumes}
+              changes={@changes}
+              editing_name={@editing_name}
+              base_path={@base_path}
+              host={@host}
+              live_action={@live_action}
+              streaming_text={@streaming_text}
+            />
+          </div>
+          <%!-- The surface content. `md:!flex` keeps it visible on desktop
+               regardless of the mobile detail state. --%>
+          <div
+            id="surface"
+            class={[
+              "flex-1 flex-col min-h-0 md:!flex",
+              if(@show_mobile_detail, do: "hidden", else: "flex")
+            ]}
+          >
+            <.main_content {assigns} />
+          </div>
         </main>
         <%!-- RIGHT rail: Agents/Services/Volumes nav + the selected agent's
              context (model, tokens, cost). The old left sidebar, flipped. --%>
@@ -1703,6 +1806,7 @@ defmodule LoopyardWeb.WorkspaceLive do
           agents={@agents}
           selected_id={@selected_id}
           selected_agent={@selected_agent}
+          changes={@changes}
           editing_name={@editing_name}
           container_env={@container_env}
           container_logs={@container_logs}
@@ -1711,6 +1815,7 @@ defmodule LoopyardWeb.WorkspaceLive do
           workspace_entry={@workspace_entry}
           service_statuses={@service_statuses}
           selected_service={@selected_service}
+          selected_volume={@selected_volume}
           services_loaded={@services_loaded}
           volumes_loaded={@volumes_loaded}
           live_action={@live_action}
@@ -1722,8 +1827,13 @@ defmodule LoopyardWeb.WorkspaceLive do
           workspace_state={@workspace_state}
           workspace_state_since={@workspace_state_since}
           docker_connected?={@docker_connected?}
+          live_token_est={
+            LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus.token_estimate(@streaming_text)
+          }
         />
       </div>
+      <%!-- The mobile detail lives INLINE in #main-content now (flat, toggled by
+           Nav.toggle_details/0) — no bottom sheets. --%>
     </div>
     """
   end

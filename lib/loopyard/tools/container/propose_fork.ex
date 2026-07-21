@@ -18,7 +18,7 @@ defmodule Loopyard.Tools.Container.ProposeFork do
     ]
 
   alias Loopyard.Harness.Approvals
-  alias Loopyard.{Onboarding, WorkspaceRegistry, ChatAgent}
+  alias Loopyard.{WorkspaceRegistry, ChatAgent}
 
   def execute(%{agent_id: agent_id, branch: branch} = params, _assigns) do
     with %{workspace_id: ws_id} when is_binary(ws_id) <- ChatAgent.get_state(agent_id),
@@ -26,64 +26,27 @@ defmodule Loopyard.Tools.Container.ProposeFork do
            WorkspaceRegistry.get_workspace(ws_id) do
       base = Map.get(params, :base) || Map.get(ws, :branch) || "main"
 
+      # `workspace_id` (this workspace = the fork source) rides in the action so
+      # the decision handler can run the fork later WITHOUT the proposing agent's
+      # live state — the card is self-contained and durable.
       action = %{
         verb: :fork,
         project_id: project_id,
+        workspace_id: ws_id,
         base: base,
         branch: branch,
         reason: Map.get(params, :reason)
       }
 
-      case Approvals.request(agent_id, action) do
-        {:approve, msg_id} ->
-          Approvals.resolve(agent_id, msg_id, %{status: :creating, detail: "Starting…"})
+      # Queued approval (no blocking, no TTL): post the card and return. On
+      # approve, the LiveView runs `Approvals.run/3`, which forks this workspace,
+      # spawns the branch's agent, and streams progress into the card.
+      Approvals.post(agent_id, action)
 
-          # Stream each creation phase into the card so the human watches it work
-          # (mini-app progress) instead of staring at a static "Creating…" spinner.
-          progress = fn step ->
-            Approvals.resolve(agent_id, msg_id, %{status: :creating, detail: step})
-          end
-
-          # Copy THIS workspace (working tree + .loopyard infra), not a fresh
-          # canonical clone — "branch this and try something else" should bring
-          # the in-progress files and env along. `base` is just the card label.
-          case Onboarding.fork_from_workspace(project_id, ws_id, branch, progress) do
-            {:ok, new_ws} ->
-              # Spin up the branch's agent as part of provisioning, so the fork is
-              # ready WITH an agent before it becomes available — "Open" lands you
-              # straight on a live chat, not a blank workspace that scrambles to
-              # auto-spawn. Services keep booting in the background.
-              progress.("Starting the agent…")
-
-              new_agent_id =
-                case Onboarding.spawn_agent(new_ws.id, started_by: "fork") do
-                  {:ok, aid} -> aid
-                  _ -> nil
-                end
-
-              Approvals.resolve(agent_id, msg_id, %{
-                status: :approved,
-                workspace_id: new_ws.id,
-                project_id: project_id,
-                agent_id: new_agent_id
-              })
-
-              {:ok,
-               "Approved. Created branch '#{branch}' as a new workspace (#{new_ws.id}), " <>
-                 "forked from '#{base}', with an agent ready. The user can open it from the card."}
-
-            {:error, reason} ->
-              Approvals.resolve(agent_id, msg_id, %{status: :failed, error: inspect(reason)})
-              {:error, "Branch approved but creation failed: #{inspect(reason)}"}
-          end
-
-        {:deny, msg_id} ->
-          Approvals.resolve(agent_id, msg_id, %{status: :denied})
-          {:ok, "The user declined to create the '#{branch}' branch."}
-
-        {:timeout, _} ->
-          {:ok, "No response on the branch proposal — not created."}
-      end
+      {:ok,
+       "I've proposed forking this workspace onto a new branch '#{branch}' " <>
+         "(from '#{base}'). Approve the card whenever you're ready — no time " <>
+         "limit — and I'll create it with an agent ready to open."}
     else
       _ -> {:error, "Couldn't resolve the project for this workspace."}
     end

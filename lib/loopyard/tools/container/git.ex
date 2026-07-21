@@ -2,7 +2,7 @@ defmodule Loopyard.Tools.Container.Git do
   use Loopyard.Tool,
     name: "git",
     description:
-      "Run a git command on the project repo. Each workspace is locked to its branch — checkout/switch are blocked (create a new workspace for a different branch). Reading other branches is fine: diff main, log origin/main..HEAD, show main:file, merge main, rebase main, cherry-pick, etc.",
+      "Run git against `origin` (GitHub). Drive it normally: status/diff/log/add/commit/checkout/switch/branch/merge/rebase/cherry-pick, and push/pull/fetch feature branches freely. To LAND work on the default branch (main), use `propose_integrate` (rebased + human-approved) — a direct push to main, a force-push, or a remote-branch delete is declined here.",
     busy_words: ["git-ing", "committing", "versioning"],
     params: [
       agent_id: {:string, required: true},
@@ -31,42 +31,116 @@ defmodule Loopyard.Tools.Container.Git do
     end
   end
 
-  # Commands that change which branch the workspace is on.
-  # Each workspace IS a branch — switching breaks the invariant.
-  @branch_switch_commands ~w(checkout switch worktree)
-
   defp run_git(workspace_id, command) do
     args = OptionParser.split(command)
 
+    # A workspace is a full clone (origin = GitHub), so ALL local git is free:
+    # checkout, switch, branch, rebase, merge, cherry-pick. The ONLY thing the
+    # tool steers is `push` — and only as a GUARDRAIL, not a security boundary
+    # (an agent has raw `exec` + the token, so it can bypass this in one line;
+    # real "protect main" is GitHub branch protection + the host-side, approved
+    # `propose_integrate`). We nudge the compliant agent, fail-OPEN when unsure.
     case args do
-      [subcmd | _] when subcmd in @branch_switch_commands ->
+      ["push" | rest] -> push_guardrail(workspace_id, rest, args, command)
+      _ -> run_git_for_workspace(workspace_id, args, command)
+    end
+  end
+
+  # Redirect the three outbound moves we want humans in the loop on; pass
+  # everything else (feature-branch push) straight through. UX only. The arg
+  # parsing (classify_push/1) is pure + tested; the branch comparison needs a
+  # container read, so it's resolved here.
+  defp push_guardrail(workspace_id, rest, args, command) do
+    case classify_push(rest) do
+      :force ->
         {:error,
-         "Cannot #{subcmd} — a workspace is a worktree locked to ONE branch. " <>
-           "To work on a different branch, that's a new workspace. " <>
-           "You can still read other branches: git diff main, git show main:file, git merge main, etc."}
+         "Force-push is disallowed (it rewrites shared history). Rebase and push a " <>
+           "fresh branch, or land via `propose_integrate`."}
 
-      # A workspace IS a worktree on a branch — branching means creating a new
-      # workspace, and deleting a branch means deleting one. Route those through
-      # the gated (human-approved) workspace flow instead of raw git.
-      ["branch" | rest] ->
-        cond do
-          Enum.any?(rest, &(&1 in ["-d", "-D", "--delete"])) ->
-            {:error,
-             "To remove a branch, use `propose_delete_workspace` — a branch's workspace is the worktree, " <>
-               "and deleting it is the destructive, human-approved action."}
+      :delete ->
+        {:error,
+         "Deleting a remote branch isn't done from here — a human does that in the UI/GitHub."}
 
-          Enum.any?(rest, &(not String.starts_with?(&1, "-"))) ->
-            {:error,
-             "To create a branch, use `propose_fork` — branching means a new workspace (its own worktree + env), " <>
-               "which the user approves. `git branch` (no name) to list is fine."}
+      {:target, branch} ->
+        gate_if_default(workspace_id, branch, args, command)
 
-          true ->
-            # Listing branches (no name, just flags like -a/-v) — allowed.
-            run_git_for_workspace(workspace_id, args, command)
-        end
+      :current ->
+        gate_if_default(
+          workspace_id,
+          git_read(workspace_id, "branch --show-current"),
+          args,
+          command
+        )
+    end
+  end
 
-      _ ->
-        run_git_for_workspace(workspace_id, args, command)
+  @doc """
+  Classify a `git push` from its args (everything after `push`). Pure.
+
+    * `:force`  — `--force`/`-f`/`--force-with-lease`, or a `+`-prefixed refspec
+    * `:delete` — `--delete`/`-d`, or a `:branch` (empty-source) refspec
+    * `{:target, branch}` — explicit `git push <remote> <refspec>`; `branch` is
+      the REMOTE side of a `local:remote` refspec, else the ref itself
+    * `:current` — bare `git push` / `git push <remote>` → the current branch
+  """
+  def classify_push(rest) do
+    flags = Enum.filter(rest, &String.starts_with?(&1, "-"))
+    positionals = Enum.reject(rest, &String.starts_with?(&1, "-"))
+
+    force? =
+      Enum.any?(flags, &(&1 in ~w(--force -f --force-with-lease))) or
+        Enum.any?(positionals, &String.starts_with?(&1, "+"))
+
+    delete? =
+      Enum.any?(flags, &(&1 in ~w(--delete -d))) or
+        Enum.any?(positionals, &String.starts_with?(&1, ":"))
+
+    cond do
+      force? -> :force
+      delete? -> :delete
+      match?([_remote, _refspec | _], positionals) -> {:target, push_target(positionals)}
+      true -> :current
+    end
+  end
+
+  defp push_target([_remote, refspec | _]) do
+    case String.split(refspec, ":", parts: 2) do
+      [_, remote_ref] -> remote_ref
+      [ref] -> ref
+    end
+  end
+
+  # Gate a resolved target branch: block ONLY the default branch; fail-OPEN
+  # (unknown/blank target → allow) so a legit feature push never gets blocked.
+  defp gate_if_default(workspace_id, target, args, command) do
+    default = default_branch(workspace_id)
+
+    if is_binary(target) and target != "" and target == default do
+      {:error,
+       "Pushing to the default branch directly isn't the path — use `propose_integrate` " <>
+         "to land your work on main (rebased + human-approved). Push feature branches freely."}
+    else
+      run_git_for_workspace(workspace_id, args, command)
+    end
+  end
+
+  # The repo's default branch name via `origin/HEAD`; "main" if unresolved.
+  defp default_branch(workspace_id) do
+    case git_read(workspace_id, "symbolic-ref --short refs/remotes/origin/HEAD") do
+      "origin/" <> b when b != "" -> b
+      b when is_binary(b) and b != "" -> b
+      _ -> "main"
+    end
+  end
+
+  # Run a read-only git query in the container; trimmed output or nil.
+  defp git_read(workspace_id, subcmd) do
+    with {:ok, container} <- Loopyard.Workspace.ensure_working(workspace_id),
+         {:ok, out} <-
+           Loopyard.Docker.exec_in(container, "git -C /workspace #{subcmd} 2>/dev/null") do
+      String.trim(out)
+    else
+      _ -> nil
     end
   end
 
@@ -108,13 +182,19 @@ defmodule Loopyard.Tools.Container.Git do
 
         # safe.directory + a default identity so commits work in the container.
         # (Per-participant authorship is a future refinement.)
+        # GIT_TERMINAL_PROMPT=0: a push/pull needing credentials FAILS FAST (~1s)
+        # instead of hanging on an interactive prompt with no tty. Auth itself is
+        # supplied by the gh credential helper configured in Workstation.Env
+        # (reads the identity's GITHUB_TOKEN) — see login: true below, which
+        # sources ~/.profile so that token + gh are in scope.
         cmd =
-          "git config --global --add safe.directory /workspace 2>/dev/null; " <>
+          "export GIT_TERMINAL_PROMPT=0; " <>
+            "git config --global --add safe.directory /workspace 2>/dev/null; " <>
             "git config --global user.email 'loopyard@local' 2>/dev/null; " <>
             "git config --global user.name 'Loopyard' 2>/dev/null; " <>
             "git -C /workspace #{git_args}"
 
-        case Loopyard.Docker.exec_in(container, cmd) do
+        case Loopyard.Docker.exec_in(container, cmd, login: true) do
           {:ok, output} -> {:ok, Pagination.cap(output)}
           {:error, output} -> {:error, "git #{command} failed:\n#{Pagination.cap(output)}"}
         end

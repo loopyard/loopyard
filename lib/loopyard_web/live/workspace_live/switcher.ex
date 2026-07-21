@@ -1,36 +1,14 @@
 defmodule LoopyardWeb.Live.WorkspaceLive.Switcher do
   @moduledoc """
-  Data + per-window view tracking for the left workspace-switcher rail.
+  Per-window view tracking for the workspace rail.
 
-  `list_project_workspaces/2` builds the sibling-workspace list (each enriched
-  with this window's resume path + its latest agent). `attach_view_tracker/1`
-  records where the window is on every navigation, keyed by the LiveView
-  connection (`transport_pid`) so two windows stay independent and the memory
-  survives a workspace-switch remount. Extracted from `WorkspaceLive` to keep
-  that file under its line cap.
+  `attach_view_tracker/1` records where the window is on every navigation, keyed
+  by the LiveView connection (`transport_pid`) so two windows stay independent
+  and the memory survives a workspace-switch remount. (The old
+  `list_project_workspaces/2` was retired when the left rail became the god-mode
+  global tree — see `Loopyard.WorkspaceTree` / #55.)
   """
   import Phoenix.LiveView, only: [connected?: 1, attach_hook: 4]
-
-  @doc """
-  Sibling workspaces of the project, for the switcher rail (cheap — ETS only).
-  Each gets `:resume_path` (this window's last view there) + `:latest_agent_id`
-  (the fallback landing target). `[]` when there's no project.
-  """
-  def list_project_workspaces(nil, _conn), do: []
-
-  def list_project_workspaces(project, conn) do
-    # list_agents/0 is newest-first, so the first agent per workspace is latest.
-    agents_by_ws = Enum.group_by(Loopyard.ChatAgent.list_agents(), & &1[:workspace_id])
-
-    Loopyard.ProjectRegistry.list_workspaces(project.id)
-    |> Enum.map(fn ws ->
-      latest = agents_by_ws |> Map.get(ws.id, []) |> List.first()
-
-      ws
-      |> Map.put(:latest_agent_id, latest && latest.id)
-      |> Map.put(:resume_path, Loopyard.WindowViews.resume_path(conn, ws.id))
-    end)
-  end
 
   @doc """
   Record where this window is, per workspace, so the switcher resumes there. A

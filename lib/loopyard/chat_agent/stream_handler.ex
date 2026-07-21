@@ -43,6 +43,13 @@ defmodule Loopyard.ChatAgent.StreamHandler do
   # Max in-memory messages (matching ChatAgent's cap).
   @max_messages 1000
 
+  # Streaming-delta publish cadence. Raw token deltas queue in
+  # state.stream_pub_buffer and one combined publish per channel goes out
+  # each tick — 10 DOM patches/s per viewer instead of one per token.
+  # 100ms is imperceptible for reading a live stream but keeps heavy
+  # streams from monopolizing the browser main thread (typing lag).
+  @delta_flush_ms 100
+
   # --- Public API ---
 
   @doc """
@@ -54,8 +61,10 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     assistant_msg = %{role: :assistant, content: content, timestamp: now}
     {state, assistant_msg} = append_message(state, assistant_msg)
     # Full text arrived — clear any accumulated partial so a
-    # subsequent stream_error/timeout doesn't re-emit it.
-    state = %{state | last_activity_at: now, in_flight_partial: ""}
+    # subsequent stream_error/timeout doesn't re-emit it. Unflushed delta
+    # chunks are dropped too: the Message below supersedes them, and a
+    # late flush after it would resurrect a ghost streaming bubble.
+    state = drop_stream_deltas(%{state | last_activity_at: now, in_flight_partial: ""})
     Persistence.persist_message(state, assistant_msg)
 
     Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
@@ -66,10 +75,22 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     state
   end
 
-  def process_event(%Event.ToolCall{name: tool_name, input: tool_input}, state) do
+  def process_event(%Event.ToolCall{name: tool_name, input: tool_input} = ev, state) do
     now = DateTime.utc_now()
     id = state.id
-    tool_msg = %{role: :tool, tool: tool_name, input: tool_input, timestamp: now}
+    # Neutral tool kind travels ON the message so the UI classifies by kind,
+    # never by matching raw tool names. A backend may set ev.kind itself; else
+    # we derive it from the name via the single ToolKind seam.
+    tool_kind = ev.kind || Loopyard.Agent.ToolKind.classify(tool_name)
+
+    tool_msg = %{
+      role: :tool,
+      tool: tool_name,
+      tool_kind: tool_kind,
+      tool_id: ev.id,
+      input: tool_input,
+      timestamp: now
+    }
     {state, tool_msg} = append_message(state, tool_msg)
 
     state = %{
@@ -89,13 +110,25 @@ defmodule Loopyard.ChatAgent.StreamHandler do
 
     Persistence.persist_message(state, tool_msg)
     Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: id, msg: tool_msg})
+    # Feed the global/per-project activity stream (#54): this is the "latest
+    # tool call" the god-mode sidebar surfaces across all projects.
+    Loopyard.Events.Activity.record(id, :tool, tool_name)
     state
   end
 
-  def process_event(%Event.ToolResult{content: content, is_error: is_error}, state) do
+  def process_event(%Event.ToolResult{id: tool_id, content: content, is_error: is_error}, state) do
     now = DateTime.utc_now()
     id = state.id
-    result_msg = %{role: :tool_result, content: content, is_error: is_error, timestamp: now}
+    # tool_id pairs this result with its %{role: :tool} message. Tool calls can
+    # run in PARALLEL (all calls emitted, then all results), so "the message
+    # above me" is NOT reliably my call — the UI pairs by id, never position.
+    result_msg = %{
+      role: :tool_result,
+      tool_id: tool_id,
+      content: content,
+      is_error: is_error,
+      timestamp: now
+    }
     {state, result_msg} = append_message(state, result_msg)
     state = %{state | last_activity_at: now, active_tool: nil}
     Persistence.persist_message(state, result_msg)
@@ -109,13 +142,18 @@ defmodule Loopyard.ChatAgent.StreamHandler do
   end
 
   def process_event(%Event.TextDelta{text: text}, state) do
-    id = state.id
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.TextDelta{agent_id: id, text: text})
-    %{state | in_flight_partial: state.in_flight_partial <> (text || "")}
+    # Don't publish per token — queue the chunk; the :flush_stream_deltas
+    # timer publishes one combined TextDelta per @delta_flush_ms. Per-token
+    # publishes made every viewer re-patch the whole streamed text 30–60×/s,
+    # lagging keyboard input browser-side.
+    state = %{state | in_flight_partial: state.in_flight_partial <> (text || "")}
+    buffer_stream_delta(state, :text, text || "")
   end
 
   def process_event(%Event.Thinking{thinking: thinking}, state) do
     now = DateTime.utc_now()
+    # Finalized thinking block supersedes any queued thinking chunks.
+    state = drop_stream_deltas(state)
     msg = %{role: :thinking, content: thinking, timestamp: now}
     {state, msg} = append_message(state, msg)
     Persistence.persist_message(state, msg)
@@ -129,16 +167,9 @@ defmodule Loopyard.ChatAgent.StreamHandler do
   end
 
   def process_event(%Event.ThinkingDelta{thinking: thinking}, state) do
-    # Broadcast on a separate channel so the LV can stream thinking
-    # into its own assign without mixing with the response text.
-    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.StreamOutput{
-      agent_id: state.id,
-      data: thinking || "",
-      title: "__thinking__",
-      msg_id: "__thinking__"
-    })
-
-    state
+    # Separate channel from response text (LV streams it into its own
+    # assign); same coalescing as TextDelta — see buffer_stream_delta/3.
+    buffer_stream_delta(state, :thinking, thinking || "")
   end
 
   def process_event(%Event.ServerTool{name: name, input: input}, state) do
@@ -273,7 +304,7 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     attempt = state.turn_retry_count + 1
 
     state = %{
-      state
+      drop_stream_deltas(state)
       | turn_retry_count: attempt,
         pending_turn_error: nil,
         active_tool: nil,
@@ -308,13 +339,12 @@ defmodule Loopyard.ChatAgent.StreamHandler do
     id = state.id
     prompt = state.current_turn_prompt
 
+    # Terse on purpose: the input box already has the text back (the UI restores
+    # it), so DON'T narrate "we kept your text" — the user can see it. Just say
+    # it failed and how to retry.
     err = %{
       role: :error,
-      content:
-        "Your message didn't go through — Anthropic's API returned an error " <>
-          "(their servers, not your code or your message).\n\n" <>
-          "Nothing was lost: your text is back in the message box. Hit Send to try " <>
-          "again (Anthropic blips are usually brief — status: https://status.claude.com).",
+      content: "Turn failed — tap Send to retry.",
       timestamp: DateTime.utc_now()
     }
 
@@ -346,7 +376,7 @@ defmodule Loopyard.ChatAgent.StreamHandler do
   # warning). Does NOT set :status — the caller picks the resting status.
   defp reset_turn_state(state) do
     %{
-      state
+      drop_stream_deltas(state)
       | active_tool: nil,
         in_flight_partial: "",
         pending_turn_error: nil,
@@ -364,6 +394,12 @@ defmodule Loopyard.ChatAgent.StreamHandler do
 
     state = reset_turn_state(%{state | status: :idle, turns: state.turns + 1})
     state = Map.put(state, :consecutive_crashes, 0)
+    # Clean completion → the harness survived this conversation size; the
+    # compact-instead-of-resume breaker starts over.
+    state = Map.put(state, :midturn_crashes, 0)
+    # A turn completed cleanly → credentials are valid; clear the auth backoff so
+    # the next failure (if any) starts fresh rather than at a capped interval.
+    state = Map.put(state, :auth_retry_count, 0)
 
     cond do
       # Proactive compaction: turn finished but we're deep into the window. Compact
@@ -475,22 +511,38 @@ defmodule Loopyard.ChatAgent.StreamHandler do
 
     if is_binary(reason) && String.contains?(reason, "CLI session exited") && recent_crashes < 2 do
       # CLI died — restart session and resume the same conversation
-      state = %{state | last_activity_at: now, errors: state.errors + 1}
+      state = SessionManager.note_cli_death(%{state | last_activity_at: now, errors: state.errors + 1})
 
-      case state.backend.start_session(SessionManager.start_opts(state)) do
-        {:ok, new_session} ->
+      restart_or_compact(state, id)
+    else
+      stream_error_no_restart(state, id, reason, now)
+    end
+  end
+
+  # Breaker tripped → don't resume the session that keeps killing its harness;
+  # funnel through :restart_session, whose gate compacts (summarize → fresh
+  # session). Otherwise: spawn a new CLI resuming the same conversation.
+  defp restart_or_compact(state, id) do
+    if Loopyard.ChatAgent.compaction_breaker_tripped?(state) do
+      GenServer.cast(self(), :restart_session)
+      state = Map.put(state, :active_tool, nil)
+      :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
+      {:noreply, state}
+    else
+      case SessionManager.start_session_safe(state) do
+        {:ok, new_session, live_id} ->
           recovered_msg =
-            if is_binary(state.claude_session_id) do
+            if is_binary(live_id) do
               %{
                 role: :system,
                 content:
-                  "Agent session restarted automatically (resumed conversation #{String.slice(state.claude_session_id, 0..7)}…).",
+                  "Agent session restarted automatically (resumed conversation #{String.slice(live_id, 0..7)}…).",
                 timestamp: DateTime.utc_now()
               }
             else
               %{
                 role: :system,
-                content: "Agent session restarted automatically.",
+                content: "Agent session restarted automatically (fresh conversation).",
                 timestamp: DateTime.utc_now()
               }
             end
@@ -500,6 +552,7 @@ defmodule Loopyard.ChatAgent.StreamHandler do
               SessionManager.track_os_pid(%{
                 state
                 | session: new_session,
+                  claude_session_id: live_id,
                   status: :idle,
                   active_tool: nil
               }),
@@ -511,15 +564,19 @@ defmodule Loopyard.ChatAgent.StreamHandler do
             msg: recovered_msg
           })
 
+          :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
           Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
 
-          if is_nil(state.claude_session_id) do
+          # A fresh session (no live id) needs its prior context replayed;
+          # a resumed one already has it.
+          if is_nil(live_id) do
             {:build_resume, state}
           else
             drain_pending_sends(state)
           end
 
-        {:error, reason} ->
+        {:error, reason, next_hint} ->
+          state = %{state | claude_session_id: next_hint}
           fail_msg = %{
             role: :error,
             content:
@@ -539,11 +596,17 @@ defmodule Loopyard.ChatAgent.StreamHandler do
             msg: fail_msg
           })
 
+          :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
           Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
           drain_pending_sends(state)
       end
-    else
-      error_msg = %{
+    end
+  end
+
+  # Unrecoverable stream error: drop the turn, surface the
+  # WHY/CONSEQUENCE/ACTION error, settle to idle.
+  defp stream_error_no_restart(state, id, reason, now) do
+    error_msg = %{
         role: :error,
         content:
           "Stream error: #{reason}. " <>
@@ -570,9 +633,9 @@ defmodule Loopyard.ChatAgent.StreamHandler do
         msg: error_msg
       })
 
+      :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
       Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
       drain_pending_sends(state)
-    end
   end
 
   @doc """
@@ -607,6 +670,7 @@ defmodule Loopyard.ChatAgent.StreamHandler do
       msg: error_msg
     })
 
+    :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
     Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
 
     # Reboot the harness (keeps history, resumes via claude_session_id). Queued
@@ -619,13 +683,88 @@ defmodule Loopyard.ChatAgent.StreamHandler do
   Finalize any partial text accumulated from TextDelta events when a stream is
   interrupted (error, timeout, user stop). Delegates to
   `Loopyard.ChatAgent.PartialText` — kept as a thin passthrough so existing
-  callers (StreamHandler + ChatAgent) don't need to change.
+  callers (StreamHandler + ChatAgent) don't need to change. Queued delta
+  chunks are dropped first: the finalized partial Message carries the full
+  accumulated text, and a flush landing after it would ghost a stale
+  streaming bubble in every viewer.
   """
-  defdelegate finalize_partial_on_stream_interrupt(state, id, reason),
-    to: Loopyard.ChatAgent.PartialText,
-    as: :finalize
+  def finalize_partial_on_stream_interrupt(state, id, reason) do
+    state
+    |> drop_stream_deltas()
+    |> Loopyard.ChatAgent.PartialText.finalize(id, reason)
+  end
+
+  @doc """
+  Publish everything queued in `state.stream_pub_buffer` — one combined
+  event per channel run, in arrival order — and rearm for the next tick.
+  Called from ChatAgent's `:flush_stream_deltas` timer. No-op (beyond
+  clearing the timer ref) when the buffer is empty or the turn is no
+  longer streaming.
+  """
+  # These three helpers use Map.get/Map.put (not strict struct access) on the
+  # two coalescing fields: agents live through hot code reloads on a running
+  # dev server, and a GenServer holding a pre-reload struct (without the new
+  # keys) must not KeyError mid-stream.
+  def flush_stream_deltas(state) do
+    buffer = Map.get(state, :stream_pub_buffer, [])
+    id = state.id
+
+    # Publish only while the turn is still streaming — after an interrupt
+    # that raced the timer, the finalized Message already superseded these
+    # chunks, and publishing them would corrupt the next turn's assigns.
+    if buffer != [] and state.status == :thinking do
+      buffer
+      |> Enum.reverse()
+      |> Enum.each(fn
+        {:text, text} ->
+          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.TextDelta{
+            agent_id: id,
+            text: text
+          })
+
+        {:thinking, data} ->
+          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.StreamOutput{
+            agent_id: id,
+            data: data,
+            title: "__thinking__",
+            msg_id: "__thinking__"
+          })
+      end)
+    end
+
+    state |> Map.put(:stream_pub_buffer, []) |> Map.put(:stream_pub_timer, nil)
+  end
+
+  @doc """
+  Discard queued delta chunks and cancel the pending flush tick. Every path
+  that finalizes or resets a turn goes through this — see the struct docs
+  on `stream_pub_buffer`.
+  """
+  def drop_stream_deltas(state) do
+    if timer = Map.get(state, :stream_pub_timer), do: Process.cancel_timer(timer)
+    state |> Map.put(:stream_pub_buffer, []) |> Map.put(:stream_pub_timer, nil)
+  end
 
   # --- Private helpers ---
+
+  # Queue a streaming chunk for the next flush tick, coalescing onto the
+  # newest chunk when the channel matches (buffer is stored reversed).
+  # Arms the flush timer if idle.
+  defp buffer_stream_delta(state, _channel, ""), do: state
+
+  defp buffer_stream_delta(state, channel, text) do
+    buffer =
+      case Map.get(state, :stream_pub_buffer, []) do
+        [{^channel, acc} | rest] -> [{channel, acc <> text} | rest]
+        other -> [{channel, text} | other]
+      end
+
+    timer =
+      Map.get(state, :stream_pub_timer) ||
+        Process.send_after(self(), :flush_stream_deltas, @delta_flush_ms)
+
+    state |> Map.put(:stream_pub_buffer, buffer) |> Map.put(:stream_pub_timer, timer)
+  end
 
   # Fingerprint a tool call for loop detection.
   defp tool_call_hash(tool_name, tool_input) do

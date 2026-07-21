@@ -30,6 +30,28 @@
   border-radius: 6px;
 }
 
+/* Scroll-aware divider for sticky detail-panel bands (hero/footer). No border by
+ * default — the StickyEdge JS hook sets [data-stuck] only while content is
+ * actually scrolling under the band, and THEN this soft shadow appears. A short,
+ * non-scrolling panel stays lineless and cohesive. */
+[data-sticky-edge][data-stuck] {
+  transition: box-shadow 150ms ease;
+}
+[data-sticky-edge="top"][data-stuck] {
+  box-shadow: 0 8px 8px -8px rgba(0, 0, 0, 0.18);
+}
+[data-sticky-edge="bottom"][data-stuck] {
+  box-shadow: 0 -8px 8px -8px rgba(0, 0, 0, 0.18);
+}
+@media (prefers-color-scheme: dark) {
+  [data-sticky-edge="top"][data-stuck] {
+    box-shadow: 0 8px 10px -8px rgba(0, 0, 0, 0.6);
+  }
+  [data-sticky-edge="bottom"][data-stuck] {
+    box-shadow: 0 -8px 10px -8px rgba(0, 0, 0, 0.6);
+  }
+}
+
 /* On touch devices, shrink-wrapped links/buttons need a hit area
  * expansion even when the visible element is smaller. This preserves
  * compact visual density while giving fingers 44×44 to land on. */
@@ -185,6 +207,21 @@
   .safe-area-x {
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
+  }
+  /* Directional insets for the 3-column layout: the rail BACKGROUND reaches the
+     screen edge, but its CONTENT is padded off the notch / dynamic island. Put
+     these on the rail element itself (padding is inside its background box). */
+  .safe-pl { padding-left: env(safe-area-inset-left); }
+  .safe-pr { padding-right: env(safe-area-inset-right); }
+  .safe-pt { padding-top: env(safe-area-inset-top); }
+  .safe-pb { padding-bottom: env(safe-area-inset-bottom); }
+  /* Bottom padding that's AT LEAST the given base and grows for the home
+     indicator — for the composer / any fixed-ish bottom bar. Base is 0.75rem
+     (mobile); md bumps to 1rem. Combines instead of overriding, unlike
+     .safe-pb, so content never loses its normal breathing room. */
+  .pb-safe { padding-bottom: max(0.75rem, env(safe-area-inset-bottom)); }
+  @media (min-width: 768px) {
+    .pb-safe { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
   }
 }
 refresh your browser when you save files and it does not affect production.

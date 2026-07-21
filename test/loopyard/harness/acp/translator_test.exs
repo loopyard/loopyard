@@ -23,6 +23,109 @@ defmodule Loopyard.Harness.ACP.TranslatorTest do
 
   defp chunk(text), do: %{"type" => "text", "text" => text}
 
+  describe "text-block separation across tool calls (no jammed sentences)" do
+    test "a tool call between two text blocks inserts a paragraph break" do
+      {state, events} =
+        run(Translator.new(), [
+          %{"sessionUpdate" => "agent_message_chunk", "content" => chunk("Checking main.")},
+          %{
+            "sessionUpdate" => "tool_call",
+            "toolCallId" => "t1",
+            "title" => "Bash",
+            "rawInput" => %{"command" => "gh pr view"}
+          },
+          %{"sessionUpdate" => "agent_message_chunk", "content" => chunk("No — not merged.")}
+        ])
+
+      # The break rides the LIVE delta too, so browser + committed text match.
+      assert %Event.TextDelta{text: "\n\nNo — not merged."} =
+               Enum.find(events, &match?(%Event.TextDelta{text: "\n\n" <> _}, &1))
+
+      {_state, finish_events} = Translator.finish(state, nil)
+      assert %Event.Text{text: "Checking main.\n\nNo — not merged."} = hd(finish_events)
+    end
+
+    test "deltas WITHIN one block (no tool between) are NOT broken apart" do
+      {state, _} =
+        run(Translator.new(), [
+          %{"sessionUpdate" => "agent_message_chunk", "content" => chunk("Hello ")},
+          %{"sessionUpdate" => "agent_message_chunk", "content" => chunk("world.")}
+        ])
+
+      {_state, finish_events} = Translator.finish(state, nil)
+      assert %Event.Text{text: "Hello world."} = hd(finish_events)
+    end
+
+    test "no leading break when text opens the turn after a tool call" do
+      {state, _} =
+        run(Translator.new(), [
+          %{
+            "sessionUpdate" => "tool_call",
+            "toolCallId" => "t1",
+            "title" => "Bash",
+            "rawInput" => %{"command" => "ls"}
+          },
+          %{"sessionUpdate" => "agent_message_chunk", "content" => chunk("Done.")}
+        ])
+
+      {_state, finish_events} = Translator.finish(state, nil)
+      assert %Event.Text{text: "Done."} = hd(finish_events)
+    end
+  end
+
+  describe "tool-result unwrapping (claude-code-acp display wrappers)" do
+    defp result_update(id, content, status \\ "completed") do
+      %{
+        "sessionUpdate" => "tool_call_update",
+        "toolCallId" => id,
+        "status" => status,
+        "content" => %{"type" => "text", "text" => content}
+      }
+    end
+
+    defp result_content(events) do
+      Enum.find_value(events, fn
+        %Event.ToolResult{} = r -> r
+        _ -> nil
+      end)
+    end
+
+    test "strips the outer markdown code fence that wraps the whole result" do
+      {_state, events} =
+        run(Translator.new(), [
+          %{"sessionUpdate" => "tool_call", "toolCallId" => "t1", "title" => "Bash",
+            "rawInput" => %{"command" => "gh"}},
+          result_update("t1", "```\nstate\nurl\n```")
+        ])
+
+      assert %Event.ToolResult{content: "state\nurl", is_error: false} = result_content(events)
+    end
+
+    test "unwraps <tool_use_error> AND flags is_error even on a non-failed status" do
+      {_state, events} =
+        run(Translator.new(), [
+          %{"sessionUpdate" => "tool_call", "toolCallId" => "e1", "title" => "Read",
+            "rawInput" => %{"path" => "/x"}},
+          result_update("e1", "```\n<tool_use_error>Path does not exist: /x</tool_use_error>\n```")
+        ])
+
+      assert %Event.ToolResult{content: "Path does not exist: /x", is_error: true} =
+               result_content(events)
+    end
+
+    test "a fence in the MIDDLE of output is preserved (only the outer wrapper is stripped)" do
+      {_state, events} =
+        run(Translator.new(), [
+          %{"sessionUpdate" => "tool_call", "toolCallId" => "m1", "title" => "Bash",
+            "rawInput" => %{"command" => "cat x"}},
+          result_update("m1", "here is code:\n```js\nx()\n```\ndone")
+        ])
+
+      assert %Event.ToolResult{content: "here is code:\n```js\nx()\n```\ndone"} =
+               result_content(events)
+    end
+  end
+
   describe "agent_message_chunk (text deltas)" do
     test "emits a TextDelta per non-empty chunk and accumulates for finish" do
       {state, events} =
@@ -382,6 +485,96 @@ defmodule Loopyard.Harness.ACP.TranslatorTest do
 
       {_state, finish_events} = Translator.finish(state, "end_turn")
       assert %Event.Text{text: "turn 2"} = hd(finish_events)
+    end
+  end
+
+  describe "usage_update (claude-agent-acp usage + rate-limit push)" do
+    test "plain usage_update tracks used tokens silently and feeds SessionResult" do
+      {state, events} =
+        Translator.step(Translator.new(), %{
+          "sessionUpdate" => "usage_update",
+          "used" => 123_456,
+          "size" => 200_000
+        })
+
+      # Usage alone is bookkeeping, not a chat event.
+      assert events == []
+
+      {_state, finish_events} = Translator.finish(state)
+      assert %Event.SessionResult{input_tokens: 123_456} = List.last(finish_events)
+    end
+
+    test "used tokens survive finish/2 (session-scoped, not turn-scoped)" do
+      {state, _} =
+        Translator.step(Translator.new(), %{
+          "sessionUpdate" => "usage_update",
+          "used" => 50_000,
+          "size" => 200_000
+        })
+
+      {state, _} = Translator.finish(state)
+
+      # Next turn emits no usage_update; last known usage still reported.
+      {_state, finish_events} = Translator.finish(state)
+      assert %Event.SessionResult{input_tokens: 50_000} = List.last(finish_events)
+    end
+
+    test "rate-limit _meta emits a full RateLimitStatus event" do
+      {_state, events} =
+        Translator.step(Translator.new(), %{
+          "sessionUpdate" => "usage_update",
+          "used" => 180_000,
+          "size" => 200_000,
+          "_meta" => %{
+            "_claude/rateLimit" => %{
+              "status" => "rejected",
+              "resetsAt" => 1_700_000_000_000,
+              "utilization" => 0.97,
+              "rateLimitType" => "five_hour",
+              "isUsingOverage" => false
+            }
+          }
+        })
+
+      assert [
+               %Event.RateLimitStatus{
+                 status: :rejected,
+                 resets_at_ms: 1_700_000_000_000,
+                 utilization: 0.97,
+                 rate_limit_type: "five_hour",
+                 is_using_overage: false
+               }
+             ] = events
+    end
+
+    test "allowed_warning and unknown statuses map safely" do
+      warn = %{
+        "sessionUpdate" => "usage_update",
+        "_meta" => %{"_claude/rateLimit" => %{"status" => "allowed_warning"}}
+      }
+
+      junk = %{
+        "sessionUpdate" => "usage_update",
+        "_meta" => %{"_claude/rateLimit" => %{"status" => "??", "resetsAt" => "soon"}}
+      }
+
+      {state, [%Event.RateLimitStatus{status: :allowed_warning}]} =
+        Translator.step(Translator.new(), warn)
+
+      # Malformed frame degrades to :allowed with nil resets — never parks.
+      {_state, [%Event.RateLimitStatus{status: :allowed, resets_at_ms: nil}]} =
+        Translator.step(state, junk)
+    end
+
+    test "non-integer used is ignored, keeping the prior value" do
+      {state, _} =
+        Translator.step(Translator.new(), %{"sessionUpdate" => "usage_update", "used" => 10_000})
+
+      {state, []} =
+        Translator.step(state, %{"sessionUpdate" => "usage_update", "used" => "huh"})
+
+      {_state, finish_events} = Translator.finish(state)
+      assert %Event.SessionResult{input_tokens: 10_000} = List.last(finish_events)
     end
   end
 end

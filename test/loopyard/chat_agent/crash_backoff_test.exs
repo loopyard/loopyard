@@ -237,4 +237,41 @@ defmodule Loopyard.ChatAgent.CrashBackoffTest do
       assert Map.get(new_state, :consecutive_crashes) == 2
     end
   end
+
+  describe ":retry_session pending-sends drain" do
+    # Pre-fix: a message sent while the agent was in :backoff (crash window)
+    # landed in pending_sends, and a successful :retry_session reset the agent
+    # to :idle WITHOUT draining the queue. :idle means no turn completion will
+    # ever fire, so the message sat stranded forever — the user saw an idle
+    # agent that never answered. Fix: handle_retry schedules the same
+    # :drain_resumed_pending the :restart_session path uses.
+
+    test "messages queued during the crash window drain after a successful retry", %{id: id} do
+      Application.put_env(:loopyard, :pending_drain_settle_ms, 0)
+      on_exit(fn -> Application.delete_env(:loopyard, :pending_drain_settle_ms) end)
+
+      pid = agent_pid(id)
+      assert pid != nil
+
+      dead_session = :sys.get_state(pid).session
+
+      :sys.replace_state(pid, fn state ->
+        %{state | status: :backoff, pending_sends: ["queued while crashed"]}
+      end)
+
+      send(pid, {:retry_session, 1, dead_session})
+
+      # Retry lands at :idle, then the scheduled drain starts a turn with the
+      # queued message.
+      assert_receive %Loopyard.Events.ChatAgent.StatusChanged{id: ^id, status: :idle}, 1_000
+      assert_receive %Loopyard.Events.ChatAgent.StatusChanged{id: ^id, status: :thinking}, 1_000
+
+      state = :sys.get_state(pid)
+      assert state.pending_sends == []
+
+      assert Enum.any?(state.messages, fn m ->
+               m.role == :user and m.content == "queued while crashed"
+             end)
+    end
+  end
 end

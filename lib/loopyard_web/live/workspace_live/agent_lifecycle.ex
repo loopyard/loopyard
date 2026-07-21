@@ -84,7 +84,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
           |> assign(:agents, agents)
           |> assign(:selected_id, id)
           |> assign(:selected_agent, agent)
-          |> assign_message_page(id)
+          |> assign_message_page(agent)
           |> assign(:streaming_text, "")
           |> assign(:booting_agent_id, nil)
           |> assign(:stream_buffer, stream_buffer)
@@ -94,15 +94,32 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
     end
   end
 
-  @message_page_size 50
+  # WINDOWED transcript. The chat is a narrow window into a possibly-huge stream,
+  # not the whole thing — an agent with thousands of messages must not blow up
+  # the DOM (it was OOM-ing the tab). Load only a batch at the bottom; older
+  # loads lazily on scroll-up (may never load); newer drops off the top as the
+  # stream grows. `window_tail?` tracks whether the window still includes the
+  # live tail — see the load_older / on_message / load_latest handlers.
+  #
+  # Sourced from the live `get_state` snapshot (prefers the GenServer), not a
+  # second ETS read: per-message events only write ETS at turn boundaries, so an
+  # ETS read lags the live conversation and is empty right after a resume
+  # re-stream — that was the blank chat.
+  @message_page_size 60
 
-  defp assign_message_page(socket, agent_id) do
-    {messages, total} = Loopyard.ChatAgent.get_messages(agent_id, limit: @message_page_size)
+  defp assign_message_page(socket, agent) do
+    msgs = agent[:messages] || []
+    page = Enum.take(msgs, -@message_page_size)
 
     socket
-    |> assign(:messages, messages)
-    |> assign(:has_more_messages, length(messages) < total)
+    |> assign(:messages, page)
+    |> assign(:has_more_messages, length(page) < length(msgs))
+    |> assign(:window_tail?, true)
   end
+
+  @doc "Initial window batch size + the DOM cap, shared with the window handlers."
+  def message_page_size, do: @message_page_size
+  def message_window_max, do: 160
 
   @doc """
   List agents belonging to the given workspace path.
@@ -126,8 +143,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
     # path → id is a pure ETS lookup; cheap.
     workspace_id = Loopyard.Workspace.workspace_id(workspace_path)
 
-    ChatAgent.list_agents()
-    |> Enum.filter(fn a -> a[:workspace_id] == workspace_id end)
+    # Scoped ETS query — filters by workspace_id BEFORE touching any GenServer,
+    # so the sidebar load costs one workspace's worth of agents, not a global
+    # scan of a table that can hold thousands of rows. This runs on the mount
+    # hot path (see the :chat mount budget test).
+    ChatAgent.list_agents_for_workspace(workspace_id)
     |> Enum.map(&annotate_liveness/1)
   end
 
@@ -151,6 +171,77 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
   end
 
   def annotate_liveness(other), do: other
+
+  @doc """
+  Wake a sleeping agent and deliver a message to it — the SEND path's version
+  of the "wakes on your next message" contract. The status card literally
+  promises that an asleep (:crashed/:stopped) agent wakes when you message it;
+  bouncing an error toast at the user instead (making THEM the retry loop) was
+  a contract violation. Wake (resume-spawn from ETS), wait briefly for the
+  GenServer to register, then enqueue with the same durability-confirmed call.
+  Only if all of that fails does the caller show an error.
+  """
+  def wake_and_enqueue(id, text) do
+    # Config-gated (off in test): the wake is a LIVE-system feature — it boots
+    # real supervisors/agents (and possibly compose). In tests those side
+    # effects wedge the shared WorkspaceSupervisor + slow teardowns; sends to
+    # dead agents there get the old instant :unavailable instead.
+    if Application.get_env(:loopyard, :send_wakes_agent?, true) do
+      do_wake_and_enqueue(id, text)
+    else
+      {:error, :unavailable}
+    end
+  end
+
+  defp do_wake_and_enqueue(id, text) do
+    case ChatAgent.get_state(id) do
+      %{workspace_id: ws_id} when is_binary(ws_id) ->
+        case ensure_workspace_group(ws_id) do
+          :ok ->
+            start_agent_quiet(ws_id, id)
+            wait_alive(id, 40)
+            ChatAgent.enqueue_message(id, text)
+
+          :waking ->
+            # Group boot was kicked off but didn't finish inside the budget —
+            # it CONTINUES in the background, so the user's retry in a few
+            # seconds lands on a live group and succeeds.
+            {:error, :waking}
+
+          :error ->
+            {:error, :unavailable}
+        end
+
+      _ ->
+        {:error, :unavailable}
+    end
+  end
+
+  # Start the agent under its (now live) group. The supervisor call can time
+  # out while ChatAgent.init resumes state — registration happens at
+  # start_link BEFORE init, so wait_alive + the enqueue call still land; the
+  # enqueue rides the mailbox behind init. Never let the exit crash the LV.
+  defp start_agent_quiet(ws_id, id) do
+    Loopyard.WorkspaceGroup.start_agent(ws_id, id: id, resume: true)
+  catch
+    :exit, _ -> :ok
+  end
+
+  # Bounded wait (40 × 50ms = 2s max) for the woken agent's Registry entry.
+  # Registration happens at start_link, so this typically returns on the first
+  # check; the loop is a belt for supervisor scheduling under load.
+  defp wait_alive(_id, 0), do: :ok
+
+  defp wait_alive(id, n) do
+    case Registry.lookup(Loopyard.ChatAgentRegistry, id) do
+      [{pid, _}] when is_pid(pid) ->
+        :ok
+
+      _ ->
+        Process.sleep(50)
+        wait_alive(id, n - 1)
+    end
+  end
 
   # Wake a sleeping agent — agent exists in ETS but its GenServer is gone
   # (server restart without ServiceManager replay, user stopped it, crash).
@@ -178,10 +269,55 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentLifecycle do
         :ok
 
       %{workspace_id: workspace_id} when is_binary(workspace_id) ->
-        Loopyard.WorkspaceGroup.start_agent(workspace_id, id: id, resume: true)
+        # SELECT-path wake: instant, best-effort. Do NOT ensure the workspace
+        # group here — that carries a bounded (8s) boot wait that belongs only
+        # in the SEND path (wake_and_enqueue); on select it blocked every
+        # mount/select for dead-group workspaces (test timeouts, sluggish UI).
+        # If the group is down, mount's own async {:start_workspace} handles it.
+        start_agent_quiet(workspace_id, id)
 
       _ ->
         :ok
     end
+  end
+
+  # Make sure the workspace's supervisor GROUP exists (`whereis`, not
+  # `workspace_healthy?` — that also demands a live ServiceManager, which an
+  # agent doesn't need just to accept a message). If it's down, kick
+  # start_workspace with a bounded wait: normally it returns within the budget;
+  # if compose drags past it, the start CONTINUES in the background
+  # (async_nolink + ignore) and we report :waking so the caller can tell the
+  # user to retry in a moment instead of blocking the LiveView for minutes.
+  defp ensure_workspace_group(workspace_id) do
+    case Loopyard.WorkspaceGroup.whereis(workspace_id) do
+      pid when is_pid(pid) ->
+        :ok
+
+      nil ->
+        ws = Loopyard.WorkspaceRegistry.get_workspace(workspace_id)
+
+        if ws && ws[:path] do
+          task =
+            Task.Supervisor.async_nolink(Loopyard.TaskSupervisor, fn ->
+              Loopyard.WorkspaceSupervisor.start_workspace(workspace_id, ws.path)
+            end)
+
+          case Task.yield(task, 8_000) do
+            {:ok, _} ->
+              :ok
+
+            nil ->
+              Task.ignore(task)
+              :waking
+
+            {:exit, _} ->
+              :error
+          end
+        else
+          :error
+        end
+    end
+  rescue
+    _ -> :error
   end
 end

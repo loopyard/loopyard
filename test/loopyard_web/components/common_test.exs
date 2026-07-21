@@ -22,7 +22,7 @@ defmodule LoopyardWeb.Components.CommonTest do
       html = rendered_to_string(~H[<.flash_banner flash={@flash} kind={:error} />])
       assert html =~ "Something broke"
       assert html =~ "bg-red-50"
-      assert html =~ "text-red-700"
+      assert html =~ "text-red-800"
     end
 
     test "renders info message in green" do
@@ -30,7 +30,7 @@ defmodule LoopyardWeb.Components.CommonTest do
       html = rendered_to_string(~H[<.flash_banner flash={@flash} kind={:info} />])
       assert html =~ "Saved!"
       assert html =~ "bg-green-50"
-      assert html =~ "text-green-700"
+      assert html =~ "text-green-800"
     end
 
     test "info banner ignores error key" do
@@ -39,14 +39,17 @@ defmodule LoopyardWeb.Components.CommonTest do
       refute html =~ "boom"
     end
 
-    test "custom class is applied alongside the kind class" do
+    test "custom class is IGNORED — the banner is fixed-position overlay" do
+      # The redesigned banner overlays (fixed top-center) instead of shoving the
+      # page down; caller layout classes are deliberately dropped.
       assigns = %{flash: %{"error" => "x"}}
 
       html =
         rendered_to_string(~H[<.flash_banner flash={@flash} kind={:error} class="mx-4 mt-2" />])
 
-      assert html =~ "mx-4 mt-2"
+      refute html =~ "mx-4 mt-2"
       assert html =~ "bg-red-50"
+      assert html =~ "fixed top-3"
     end
   end
 

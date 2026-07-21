@@ -12,15 +12,21 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
   use Phoenix.Component
 
   @doc """
-  The agent asked the user a question (via the `ask_user` tool / harness
-  question machinery). An interactive decision card — options as buttons.
-  Answering flips status to `:answered` for everyone.
+  The agent asked the user a question (via the `ask_user` tool or the harness's
+  native AskUserQuestion over ACP form elicitation). An interactive decision
+  card — options as buttons.
+
+  Mirrors the native tool's semantics: each question resolves INDEPENDENTLY
+  (answer, skip, or type your own), the whole ask returns to the agent only
+  when every question is settled, and multi-select questions toggle then
+  confirm. Everything is broadcast (multiplayer) — a question someone else
+  already answered renders locked with their choice.
   """
   def question_card(assigns) do
     ~H"""
-    <div class="pl-7 py-2">
+    <div class="py-2">
       <div class="rounded-xl border border-violet-200 dark:border-violet-800/60 bg-violet-50/50 dark:bg-violet-900/10 p-4">
-        <div class="flex items-center gap-1.5 text-xs font-medium text-violet-600 dark:text-violet-400 mb-3">
+        <div class="flex items-center gap-1.5 text-sm font-medium text-violet-600 dark:text-violet-400 mb-3">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 16 16"
@@ -34,58 +40,200 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
             />
           </svg>
           The agent needs your input
+          <span
+            :if={length(@msg.questions) > 1}
+            class="ml-auto text-xs font-normal tabular-nums text-violet-500/80 dark:text-violet-400/70"
+          >
+            {Enum.count(@msg.questions, &locked?(@msg, &1))}/{length(@msg.questions)} answered
+          </span>
         </div>
 
-        <div :for={q <- @msg.questions} class="mb-3 last:mb-0">
+        <div :for={q <- @msg.questions} class="mb-4 last:mb-0">
           <div
             :if={q.header != ""}
-            class="text-[11px] uppercase tracking-wide text-zinc-400 dark:text-zinc-500 mb-1"
+            class="text-sm uppercase tracking-wide text-zinc-500 dark:text-zinc-400 mb-1"
           >
             {q.header}
           </div>
-          <div class="text-[15px] font-medium leading-snug text-zinc-800 dark:text-zinc-200 mb-3">
+          <div class="text-lg md:text-base font-medium leading-snug text-zinc-800 dark:text-zinc-200 mb-3">
             {q.prompt}
           </div>
 
-          <%!-- Each option is a full-width row: the label is the primary
-               affordance, the description hugs it directly below (tight
-               mt-0.5) so it reads as subordinate, and a larger gap-2.5
-               separates one option from the next. The whole row is the
-               click target — a real tap area on phones. --%>
-          <div :if={@msg.status == :pending} class="flex flex-col gap-2.5">
+          <%!-- PENDING + not yet settled: interactive options. Each option is a
+               full-width row — the label is the primary affordance, the
+               description subordinate below, the whole row a real tap target.
+               Single-select: one click settles the question. Multi-select:
+               clicks TOGGLE (draft broadcast to every viewer), the button
+               below confirms. --%>
+          <div :if={@msg.status == :pending && !locked?(@msg, q)} class="flex flex-col gap-2.5">
             <button
               :for={o <- q.options}
               type="button"
-              phx-click="answer_question"
+              phx-click={if q[:multi], do: "toggle_question_option", else: "answer_question"}
               phx-value-question_id={@msg.question_id}
               phx-value-q={q.id}
               phx-value-option={o.label}
-              class="focus-ring group/opt block w-full text-left rounded-lg border border-violet-200/70 dark:border-violet-800/50 bg-white/70 dark:bg-zinc-900/40 px-3.5 py-2.5 hover:border-violet-400 hover:bg-violet-50 dark:hover:border-violet-600/80 dark:hover:bg-violet-900/20 transition-colors"
+              class={[
+                "focus-ring group/opt block w-full text-left rounded-lg border px-3.5 py-2.5 transition-colors",
+                if(q[:multi] && drafted?(@msg, q, o.label),
+                  do:
+                    "border-violet-500 dark:border-violet-500/80 bg-violet-100/70 dark:bg-violet-900/30",
+                  else:
+                    "border-violet-200/70 dark:border-violet-800/50 bg-white/70 dark:bg-zinc-900/40 hover:border-violet-400 hover:bg-violet-50 dark:hover:border-violet-600/80 dark:hover:bg-violet-900/20"
+                )
+              ]}
             >
-              <div class="text-sm font-medium text-violet-700 dark:text-violet-300">{o.label}</div>
+              <div class="flex items-center gap-1.5 text-lg md:text-base font-medium text-violet-700 dark:text-violet-300">
+                <span :if={q[:multi] && drafted?(@msg, q, o.label)} aria-hidden="true">✓</span>
+                {o.label}
+              </div>
               <div
                 :if={o.description not in [nil, ""]}
-                class="mt-0.5 text-xs leading-relaxed text-zinc-500 dark:text-zinc-400"
+                class="mt-0.5 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400"
               >
                 {o.description}
               </div>
             </button>
+
+            <%!-- Quiet per-question actions: your own answer, confirm a
+                 multi-select draft, or skip — the same escape hatches the
+                 native AskUserQuestion always offers. --%>
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+              <button
+                :if={q[:multi]}
+                type="button"
+                phx-click="confirm_question"
+                phx-value-question_id={@msg.question_id}
+                phx-value-q={q.id}
+                class="focus-ring inline-flex items-center rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium px-3.5 py-1.5 transition-colors"
+              >
+                {if draft_count(@msg, q) > 0,
+                  do: "Done (#{draft_count(@msg, q)} selected)",
+                  else: "None of these"}
+              </button>
+              <details class="group/other min-w-0">
+                <summary class="text-sm text-violet-600/80 dark:text-violet-400/80 hover:text-violet-700 dark:hover:text-violet-300 cursor-pointer select-none list-none">
+                  Other…
+                </summary>
+                <form
+                  phx-submit="answer_question_text"
+                  class="mt-1.5 flex items-center gap-2"
+                >
+                  <input type="hidden" name="question_id" value={@msg.question_id} />
+                  <input type="hidden" name="q" value={q.id} />
+                  <input
+                    type="text"
+                    name="text"
+                    autocomplete="off"
+                    placeholder="Type your own answer…"
+                    class="focus-ring flex-1 min-w-0 rounded-lg border border-violet-200/70 dark:border-violet-800/50 bg-white/70 dark:bg-zinc-900/40 px-3 py-1.5 text-sm text-zinc-800 dark:text-zinc-200 placeholder-zinc-400"
+                  />
+                  <button
+                    type="submit"
+                    class="focus-ring inline-flex items-center rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium px-3 py-1.5 transition-colors flex-none"
+                  >
+                    Answer
+                  </button>
+                </form>
+              </details>
+              <button
+                :if={!q[:multi]}
+                type="button"
+                phx-click="skip_question"
+                phx-value-question_id={@msg.question_id}
+                phx-value-q={q.id}
+                class="text-sm text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300"
+              >
+                Skip
+              </button>
+            </div>
           </div>
 
-          <div :if={@msg.status != :pending} class="flex flex-wrap items-center gap-2 text-sm">
-            <span class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 font-medium text-emerald-600 dark:text-emerald-400">
-              {answer_for(@msg, q)}
-            </span>
+          <%!-- SETTLED (this question answered/skipped — card may still be
+               pending on others): keep the SAME option list (same height → no
+               layout jump on click), chosen lit emerald with a check, the rest
+               dimmed. Durable receipt — survives refresh/restart via the
+               persisted :selections. --%>
+          <div :if={locked?(@msg, q)} class="flex flex-col gap-2.5">
+            <div
+              :for={o <- q.options}
+              class={[
+                "block w-full text-left rounded-lg border px-3.5 py-2.5",
+                if(chosen?(@msg, q, o.label),
+                  do:
+                    "border-emerald-400/70 dark:border-emerald-600/60 bg-emerald-50/70 dark:bg-emerald-900/15",
+                  else:
+                    "border-zinc-200/60 dark:border-zinc-800/60 bg-white/40 dark:bg-zinc-900/20 opacity-50"
+                )
+              ]}
+            >
+              <div class={[
+                "flex items-center gap-1.5 text-lg md:text-base font-medium",
+                if(chosen?(@msg, q, o.label),
+                  do: "text-emerald-700 dark:text-emerald-300",
+                  else: "text-zinc-500 dark:text-zinc-400"
+                )
+              ]}>
+                <span :if={chosen?(@msg, q, o.label)} aria-hidden="true">✓</span>
+                {o.label}
+              </div>
+              <div
+                :if={o.description not in [nil, ""]}
+                class="mt-0.5 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400"
+              >
+                {o.description}
+              </div>
+            </div>
+
+            <%!-- No option row matched: the receipt is either a free-text
+                 answer (show the text) or an explicit skip. --%>
+            <div :if={!any_option_chosen?(@msg, q)} class="flex flex-wrap items-center gap-2 text-sm">
+              <span
+                :if={answer_for(@msg, q)}
+                class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 font-medium text-emerald-600 dark:text-emerald-400"
+              >
+                {answer_for(@msg, q)}
+              </span>
+              <span
+                :if={!answer_for(@msg, q)}
+                class="inline-flex items-center gap-1.5 rounded-lg bg-zinc-500/10 px-3 py-1.5 font-medium text-zinc-500 dark:text-zinc-400"
+              >
+                Skipped
+              </span>
+            </div>
           </div>
         </div>
 
-        <div :if={@msg.status == :timeout} class="text-xs text-zinc-400 dark:text-zinc-500">
+        <div
+          :if={@msg.status == :pending}
+          class="mt-3 pt-3 border-t border-violet-200/60 dark:border-violet-800/40 text-sm text-zinc-500 dark:text-zinc-400"
+        >
+          …or just reply in the chat — your message is sent to the agent as the answer.
+        </div>
+
+        <div :if={@msg.status == :timeout} class="text-sm text-zinc-500 dark:text-zinc-400">
           No answer — the agent moved on.
         </div>
       </div>
     </div>
     """
   end
+
+  # A question is settled once it's in the message's `done` list (per-question
+  # progressive answering) or the whole ask has resolved.
+  defp locked?(msg, q),
+    do: msg.status != :pending or q.id in (msg[:done] || [])
+
+  # Multi-select draft state (selections accumulate before Done confirms).
+  defp drafted?(%{selections: sel}, q, label) when is_map(sel),
+    do: label in Map.get(sel, q.id, [])
+
+  defp drafted?(_msg, _q, _label), do: false
+
+  defp draft_count(%{selections: sel}, q) when is_map(sel),
+    do: length(Map.get(sel, q.id, []))
+
+  defp draft_count(_msg, _q), do: 0
 
   @doc """
   The agent asked for a SECRET (api key / token) via `request_secret`. A masked
@@ -95,9 +243,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
   """
   def secret_card(assigns) do
     ~H"""
-    <div class="pl-7 py-2">
+    <div class="py-2">
       <div class="rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50/50 dark:bg-amber-900/10 p-4">
-        <div class="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 mb-2">
+        <div class="flex items-center gap-1.5 text-sm font-medium text-amber-700 dark:text-amber-400 mb-2">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 16 16"
@@ -113,10 +261,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           The agent needs a secret
         </div>
 
-        <div class="text-[15px] font-medium leading-snug text-zinc-800 dark:text-zinc-200">
+        <div class="text-lg md:text-base font-medium leading-snug text-zinc-800 dark:text-zinc-200">
           <span class="font-mono">{@msg.name}</span>
         </div>
-        <div :if={@msg[:why] not in [nil, ""]} class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+        <div :if={@msg[:why] not in [nil, ""]} class="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
           {@msg.why}
         </div>
 
@@ -133,6 +281,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
               autocomplete="off"
               spellcheck="false"
               placeholder={"Paste #{@msg.name}…"}
+              aria-label={"Secret value for #{@msg.name}"}
               class="flex-1 min-w-0 rounded-lg border border-amber-300 dark:border-amber-700/60 bg-white dark:bg-zinc-900 px-3 py-2 text-sm font-mono text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
             />
             <button
@@ -148,7 +297,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
             type="button"
             phx-click="cancel_secret"
             phx-value-request_id={@msg.request_id}
-            class="focus-ring mt-2 text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+            class="focus-ring mt-2 text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
           >
             I don't have it — skip
           </button>
@@ -156,7 +305,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
 
         <div
           :if={@msg.status == :declined}
-          class="mt-3 text-xs text-zinc-400 dark:text-zinc-500"
+          class="mt-3 text-sm text-zinc-500 dark:text-zinc-400"
         >
           Declined — the agent will proceed without it.
         </div>
@@ -171,7 +320,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
             else: "Submitted by #{@msg.submitted_by} — kept out of chat."}
         </div>
 
-        <div :if={@msg.status == :timeout} class="mt-3 text-xs text-zinc-400 dark:text-zinc-500">
+        <div :if={@msg.status == :timeout} class="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
           No secret submitted — the agent moved on.
         </div>
       </div>
@@ -189,9 +338,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
     assigns = assign(assigns, :action, assigns.msg.action)
 
     ~H"""
-    <div class="pl-7 py-2">
+    <div class="py-2">
       <div class="rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50/50 dark:bg-amber-900/10 p-4">
-        <div class="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 mb-2">
+        <div class="flex items-center gap-1.5 text-sm font-medium text-amber-700 dark:text-amber-400 mb-2">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 16 16"
@@ -203,40 +352,57 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           {case @action.verb do
             :integrate -> "Merge proposal — needs your OK"
             :delete_workspace -> "Delete workspace — needs your OK"
+            :create_project -> "New project — needs your OK"
             _ -> "Branch proposal — needs your OK"
           end}
         </div>
 
-        <div :if={@action.verb == :integrate} class="text-sm text-zinc-800 dark:text-zinc-200 mb-1">
+        <div
+          :if={@action.verb == :create_project}
+          class="text-lg md:text-base text-zinc-800 dark:text-zinc-200 mb-1"
+        >
+          Create project
+          <code class="text-sm bg-violet-200/70 dark:bg-violet-800/50 rounded px-1 py-0.5">
+            {@action.name}
+          </code>
+          <span class="text-zinc-400">— {@action.detail}</span>
+        </div>
+        <div
+          :if={@action.verb == :integrate}
+          class="text-lg md:text-base text-zinc-800 dark:text-zinc-200 mb-1"
+        >
           Merge
-          <code class="text-xs bg-violet-200/70 dark:bg-violet-800/50 rounded px-1 py-0.5">
+          <code class="text-sm bg-violet-200/70 dark:bg-violet-800/50 rounded px-1 py-0.5">
             {@action.branch}
           </code>
-          → <code class="text-xs bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">main</code>
+          → <code class="text-sm bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">main</code>
           <span class="text-zinc-400">(rebase + merge into the green main)</span>
         </div>
         <div
           :if={@action.verb == :delete_workspace}
-          class="text-sm text-zinc-800 dark:text-zinc-200 mb-1"
+          class="text-lg md:text-base text-zinc-800 dark:text-zinc-200 mb-1"
         >
           Delete workspace
-          <code class="text-xs bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">
+          <code class="text-sm bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">
             {@action.branch}
           </code>
           <span class="text-zinc-400">— removes its env + containers (the code stays in main)</span>
         </div>
-        <div :if={@action.verb == :fork} class="text-sm text-zinc-800 dark:text-zinc-200 mb-1">
+        <div
+          :if={@action.verb == :fork}
+          class="text-lg md:text-base text-zinc-800 dark:text-zinc-200 mb-1"
+        >
           Fork
-          <code class="text-xs bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">
+          <code class="text-sm bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">
             {@action.base}
           </code>
           → new branch
-          <code class="text-xs bg-violet-200/70 dark:bg-violet-800/50 rounded px-1 py-0.5">
+          <code class="text-sm bg-violet-200/70 dark:bg-violet-800/50 rounded px-1 py-0.5">
             {@action.branch}
           </code>
           <span class="text-zinc-400">(its own isolated workspace)</span>
         </div>
-        <div :if={@action[:reason]} class="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
+        <div :if={@action[:reason]} class="text-sm text-zinc-500 dark:text-zinc-400 mb-3">
           {@action.reason}
         </div>
         <div :if={!@action[:reason]} class="mb-3"></div>
@@ -294,9 +460,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                 </path>
               </svg>
               <span class="font-medium">
-                {if @msg.status == :integrating,
-                  do: "Merging into main",
-                  else: "Creating the branch workspace"}
+                {cond do
+                  @msg.status == :integrating -> "Merging into main"
+                  @action.verb == :create_project -> "Creating the project"
+                  true -> "Creating the branch workspace"
+                end}
               </span>
               <span :if={@msg[:detail]} class="text-zinc-400 animate-pulse truncate">
                 · {@msg.detail}
@@ -307,19 +475,21 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
               navigate={approved_link(@msg)}
               class="focus-ring inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
             >
-              Ready — open <code class="text-xs">{@action.branch}</code> →
+              Ready — open <code class="text-sm">{@action[:name] || @action[:branch]}</code> →
             </.link>
           <% :integrated -> %>
             <span class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400">
-              Merged <code class="text-xs">{@action.branch}</code> → main ✓
+              Merged <code class="text-sm">{@action.branch}</code> → main ✓
             </span>
           <% :denied -> %>
-            <span class="text-sm text-zinc-400 dark:text-zinc-500">Declined.</span>
+            <span class="text-sm text-zinc-500 dark:text-zinc-400">Declined.</span>
           <% :failed -> %>
             <span class="text-sm text-red-500">
-              {if @action.verb == :integrate, do: "Merge failed", else: "Couldn't create the branch"}: {@msg[
-                :error
-              ]}
+              {case @action.verb do
+                :integrate -> "Merge failed"
+                :create_project -> "Couldn't create the project"
+                _ -> "Couldn't create the branch"
+              end}: {@msg[:error]}
             </span>
           <% _ -> %>
             <span></span>
@@ -336,13 +506,91 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
     if msg[:agent_id], do: "#{base}/agents/#{msg[:agent_id]}", else: base
   end
 
-  # The human's chosen answer for a question, once answered.
+  # The human's chosen answer for a question, once settled — nil when the
+  # question was skipped (empty selection), so the card shows the explicit
+  # "Skipped" receipt instead of a phantom "answered".
   defp answer_for(%{selections: sel}, q) when is_map(sel) do
     case Map.get(sel, q.id, []) do
-      [] -> "✓ answered"
+      [] -> nil
       chosen -> Enum.join(chosen, ", ")
     end
   end
 
-  defp answer_for(_msg, _q), do: "✓ answered"
+  defp answer_for(_msg, _q), do: nil
+
+  # Was this option's label among the persisted selections for question q?
+  defp chosen?(%{selections: sel}, q, label) when is_map(sel),
+    do: label in Map.get(sel, q.id, [])
+
+  defp chosen?(_msg, _q, _label), do: false
+
+  # Did ANY listed option match the selections? False for free-text answers
+  # (typed in chat), which need the text chip fallback instead.
+  defp any_option_chosen?(msg, q),
+    do: Enum.any?(q.options, &chosen?(msg, q, &1.label))
+
+  @doc """
+  An embedded LIVE "quote" of ANOTHER agent's chat — the chat-in-chat mini-app.
+  Reads the referenced agent's current status (ETS-backed `get_state`) and renders
+  a compact card: name + status dot + what it's doing + open link. It's a curated
+  slice, one level deep — never a recursive transcript — so it can't spiral.
+  Reusable in any chat stream (the operator embeds the workspace agents it spawns).
+  Liveness comes from the host LiveView subscribing to the referenced agent's
+  status topic and re-rendering (see WorkspaceLive).
+  """
+  def agent_embed(assigns) do
+    assigns = assign(assigns, :st, embed_state(assigns.msg[:agent_id]))
+
+    ~H"""
+    <div class="py-2">
+      <.link
+        navigate={embed_link(@msg)}
+        class="group block rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50/60 dark:bg-zinc-800/30 p-3 hover:border-violet-300 dark:hover:border-violet-500/40 transition-colors"
+      >
+        <div class="flex items-center gap-2">
+          <span class={["w-2 h-2 rounded-full flex-none", embed_dot(@st)]}></span>
+          <span class="text-sm font-semibold text-zinc-800 dark:text-zinc-100 truncate">
+            {@msg[:label] || "workspace"}
+          </span>
+          <span class="text-xs text-zinc-500 dark:text-zinc-400 flex-none">· {embed_word(@st)}</span>
+          <span class="ml-auto text-xs text-violet-500 group-hover:text-violet-600 flex-none">
+            open →
+          </span>
+        </div>
+        <div :if={embed_detail(@st)} class="mt-1 text-xs text-zinc-500 dark:text-zinc-400 truncate">
+          {embed_detail(@st)}
+        </div>
+      </.link>
+    </div>
+    """
+  end
+
+  defp embed_state(id) when is_binary(id) do
+    Loopyard.ChatAgent.get_state(id)
+  rescue
+    _ -> nil
+  catch
+    _, _ -> nil
+  end
+
+  defp embed_state(_), do: nil
+
+  defp embed_dot(%{status: :thinking}), do: "bg-violet-500 animate-pulse"
+  defp embed_dot(%{status: :idle}), do: "bg-emerald-500"
+  defp embed_dot(%{status: s}) when s in [:crashed, :stopped], do: "bg-zinc-400"
+  defp embed_dot(_), do: "bg-zinc-300 dark:bg-zinc-600"
+
+  defp embed_word(%{status: :thinking}), do: "working"
+  defp embed_word(%{status: :idle}), do: "ready"
+  defp embed_word(%{status: s}) when is_atom(s) and not is_nil(s), do: to_string(s)
+  defp embed_word(_), do: "starting…"
+
+  defp embed_detail(%{active_tool: t}) when is_binary(t) and t != "", do: "running #{t}"
+  defp embed_detail(%{status: :idle}), do: "set up — open to see what it built"
+  defp embed_detail(_), do: nil
+
+  defp embed_link(msg) do
+    base = "/projects/#{msg[:project_id]}/workspaces/#{msg[:workspace_id]}"
+    if msg[:agent_id], do: "#{base}/agents/#{msg[:agent_id]}", else: base
+  end
 end

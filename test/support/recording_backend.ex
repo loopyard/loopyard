@@ -62,13 +62,25 @@ defmodule Loopyard.TestSupport.RecordingBackend do
     Agent.update(__MODULE__, &Map.put(&1, :session_id_override, sid))
   end
 
+  @doc "Make the NEXT start_session fail with `{:error, reason}` (one-shot)."
+  def fail_next(reason \\ :simulated_start_failure) do
+    Agent.update(__MODULE__, &Map.put(&1, :fail_next, reason))
+  end
+
   @impl true
   def start_session(opts) do
     Agent.update(__MODULE__, fn s -> %{s | starts: [opts | s.starts]} end)
-    # Each call returns a fresh trivial GenServer pid so callers have
-    # something alive to hold onto.
-    {:ok, pid} = Agent.start_link(fn -> :ok end)
-    {:ok, pid}
+
+    case Agent.get_and_update(__MODULE__, fn s -> {Map.get(s, :fail_next), Map.put(s, :fail_next, nil)} end) do
+      nil ->
+        # Each call returns a fresh trivial GenServer pid so callers have
+        # something alive to hold onto.
+        {:ok, pid} = Agent.start_link(fn -> :ok end)
+        {:ok, pid}
+
+      reason ->
+        {:error, reason}
+    end
   end
 
   @impl true

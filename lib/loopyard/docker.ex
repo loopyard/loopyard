@@ -216,7 +216,11 @@ defmodule Loopyard.Docker do
     env = Keyword.get(opts, :env, [])
     retry = Keyword.get(opts, :retry, true)
     cmd_opts = [stderr_to_stdout: true] ++ if(env == [], do: [], else: [env: env])
-    meta = %{args: args, timeout: timeout}
+    # Execution uses the real `args`; telemetry gets a SCRUBBED copy so a
+    # token-in-URL (e.g. the `git push https://<token>@github.com` in an
+    # integrate) can never leak into /system/events or a future docker-command
+    # logger. No consumer logs it today, but redact at the source.
+    meta = %{args: scrub_secrets(args), timeout: timeout}
 
     :telemetry.span([:loopyard, :docker, :command], meta, fn ->
       result = run_with_retry(args, cmd_opts, timeout, retry)
@@ -226,6 +230,21 @@ defmodule Loopyard.Docker do
       # the docker_test telemetry assertion) get the same context on
       # both span endpoints.
       {result, meta}
+    end)
+  end
+
+  # Redact URL userinfo (`https://<token>@host` / `https://user:pass@host`) from
+  # args before they go into telemetry meta — so a credential-bearing git URL in
+  # an integrate/push command can't surface in /system/events or a logger. Only
+  # touches the telemetry copy; execution uses the real args. No-op for the
+  # common token-free case.
+  @userinfo ~r{//[^/@\s]+@}
+
+  @doc false
+  def scrub_secrets(args) do
+    Enum.map(args, fn
+      arg when is_binary(arg) -> String.replace(arg, @userinfo, "//***@")
+      other -> other
     end)
   end
 
@@ -350,6 +369,21 @@ defmodule Loopyard.Docker do
 
   Options:
     * `:env` — list of `{name, value}` tuples passed to the child process
+    * `:watchdog` — spawn via a stdin-watchdog shell that KILLS the docker
+      client when the port goes away (default `false`).
+
+  ## Why `:watchdog` exists (the 148-orphan incident)
+
+  Closing an Erlang port only closes the child's stdio pipes — it does NOT
+  kill the process. A read-only follower like `docker logs -f` on a QUIET
+  container never writes, so it never hits EPIPE and lives forever: every
+  LogBuffer/owner restart, and every full-VM reboot, orphaned one follower
+  per service until the accumulated clients exhausted Colima's docker socket
+  (EOF on every new connection). With `:watchdog`, the wrapper's `cat` sees
+  stdin EOF the moment the port dies — owner crash, Port.close, or whole-BEAM
+  death alike — and kills the docker client. Use it for every follower that
+  doesn't need stdin (`logs -f`, `events`); NOT for interactive ports (the
+  terminal writes keystrokes through stdin, which the watchdog would eat).
   """
   def open_port(args, opts \\ []) do
     case System.find_executable("docker") do
@@ -360,8 +394,7 @@ defmodule Loopyard.Docker do
         port_opts = [
           :binary,
           :exit_status,
-          :stderr_to_stdout,
-          {:args, args}
+          :stderr_to_stdout
         ]
 
         port_opts =
@@ -374,7 +407,20 @@ defmodule Loopyard.Docker do
                 [{:env, Enum.map(env, fn {k, v} -> {to_charlist(k), to_charlist(v)} end)}]
           end
 
-        Port.open({:spawn_executable, docker_path}, port_opts)
+        if Keyword.get(opts, :watchdog, false) do
+          # `$0` is the docker path, `"$@"` the args; docker's stdout/stderr
+          # inherit the shell's, so output flows to the port unchanged. `cat`
+          # holds the shell on stdin until the port dies, then the client is
+          # killed — no orphan survives its port.
+          script = ~S("$0" "$@" & p=$!; cat >/dev/null 2>&1; kill "$p" 2>/dev/null; wait "$p" 2>/dev/null)
+
+          Port.open(
+            {:spawn_executable, System.find_executable("sh")},
+            port_opts ++ [{:args, ["-c", script, docker_path | args]}]
+          )
+        else
+          Port.open({:spawn_executable, docker_path}, port_opts ++ [{:args, args}])
+        end
     end
   end
 

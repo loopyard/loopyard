@@ -55,6 +55,11 @@ defmodule Loopyard.Harness.Questions do
       {qid, %{agent_id: agent_id, msg_id: msg_id, waiter: self(), questions: questions}}
     )
 
+    # Signal "the agent needs YOU" so the chime bridge can play its distinct
+    # attention sound (vs the turn-finished "done" chime). Observability only —
+    # crash-safe, no-op if activity/sound is off.
+    Loopyard.Events.Activity.record(agent_id, :status, :awaiting)
+
     receive do
       {:answered, ^qid, selections} ->
         :ets.delete(@table, qid)
@@ -72,6 +77,10 @@ defmodule Loopyard.Harness.Questions do
   Deliver a human's answer to a pending question. Called from the LiveView.
   `selections` is `%{question_id => [chosen_label, ...]}`. Idempotent-ish: a
   second answer for an already-resolved question is a no-op.
+
+  Resolves the WHOLE ask at once — used by `answer_with_text/2` (typed chat
+  answers everything). Button clicks go through `answer_partial/3` instead,
+  which resolves only when EVERY question has been answered or skipped.
   """
   @spec answer(String.t(), selections()) :: :ok | {:error, :not_found}
   def answer(qid, selections) when is_binary(qid) and is_map(selections) do
@@ -84,6 +93,91 @@ defmodule Loopyard.Harness.Questions do
         {:error, :not_found}
     end
   end
+
+  @doc """
+  Record ONE question's answer (and mark it done) without resolving the rest.
+
+  This is what the card's buttons call. A multi-question ask used to resolve on
+  the FIRST click — the remaining questions were returned to the harness as
+  "(no answer)" and shown as answered, which is exactly the "I answered one and
+  the rest got marked answered" bug. Now each question locks in independently
+  (broadcast to every viewer via the message update) and the blocked harness
+  call resolves only when the last question is answered or skipped.
+
+  `labels == []` means the user skipped this question.
+  """
+  @spec answer_partial(String.t(), String.t(), [String.t()]) :: :ok | {:error, :not_found}
+  def answer_partial(qid, q_id, labels) when is_binary(qid) and is_list(labels) do
+    with_entry(qid, fn entry ->
+      entry
+      |> put_selection(q_id, labels)
+      |> mark_done(q_id)
+    end)
+  end
+
+  @doc """
+  Toggle one option label in a multi-select question's draft selection.
+  Does NOT mark the question done — `confirm_question/2` does that. The draft
+  lives on the broker entry + message (broadcast), so every viewer sees the
+  toggles (multiplayer), and a refresh doesn't lose them.
+  """
+  @spec toggle_option(String.t(), String.t(), String.t()) :: :ok | {:error, :not_found}
+  def toggle_option(qid, q_id, label) when is_binary(qid) and is_binary(label) do
+    with_entry(qid, fn entry ->
+      if q_id in (entry[:done] || []) do
+        entry
+      else
+        current = Map.get(entry[:selections] || %{}, q_id, [])
+
+        toggled =
+          if label in current, do: List.delete(current, label), else: current ++ [label]
+
+        put_selection(entry, q_id, toggled)
+      end
+    end)
+  end
+
+  @doc "Confirm a multi-select question's current draft (possibly empty = skip) as its answer."
+  @spec confirm_question(String.t(), String.t()) :: :ok | {:error, :not_found}
+  def confirm_question(qid, q_id) when is_binary(qid) and is_binary(q_id) do
+    with_entry(qid, fn entry ->
+      entry
+      |> put_selection(q_id, Map.get(entry[:selections] || %{}, q_id, []))
+      |> mark_done(q_id)
+    end)
+  end
+
+  # Read-modify-write an entry, broadcast the new partial state onto the card's
+  # message, and resolve the blocked waiter once every question is done.
+  # (Concurrent clicks from two viewers race the read-modify-write; the window
+  # is milliseconds and the loser's toggle is re-clickable — accepted.)
+  defp with_entry(qid, fun) do
+    case :ets.lookup(@table, qid) do
+      [{^qid, entry}] ->
+        entry = fun.(entry)
+        :ets.insert(@table, {qid, entry})
+
+        update_msg(entry.agent_id, entry.msg_id, %{
+          selections: entry[:selections] || %{},
+          done: entry[:done] || []
+        })
+
+        if length(entry[:done] || []) >= length(entry.questions) do
+          send(entry.waiter, {:answered, qid, entry[:selections] || %{}})
+        end
+
+        :ok
+
+      _ ->
+        {:error, :not_found}
+    end
+  end
+
+  defp put_selection(entry, q_id, labels),
+    do: Map.put(entry, :selections, Map.put(entry[:selections] || %{}, q_id, labels))
+
+  defp mark_done(entry, q_id),
+    do: Map.put(entry, :done, Enum.uniq((entry[:done] || []) ++ [q_id]))
 
   @doc "Is this question still awaiting an answer?"
   @spec pending?(String.t()) :: boolean()
@@ -131,8 +225,17 @@ defmodule Loopyard.Harness.Questions do
   @spec answer_with_text(String.t(), String.t()) :: :ok | {:error, :none_pending}
   def answer_with_text(agent_id, text) when is_binary(agent_id) and is_binary(text) do
     case pending_for_agent(agent_id) do
-      {qid, %{questions: questions}} ->
-        selections = Map.new(questions, fn q -> {q.id, [text]} end)
+      {qid, %{questions: questions} = entry} ->
+        # Keep any answers already locked in via the card's buttons — the typed
+        # text answers only the questions still open.
+        existing = entry[:selections] || %{}
+        done = entry[:done] || []
+
+        selections =
+          Map.new(questions, fn q ->
+            if q.id in done, do: {q.id, Map.get(existing, q.id, [])}, else: {q.id, [text]}
+          end)
+
         answer(qid, selections)
 
       _ ->

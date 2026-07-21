@@ -40,7 +40,7 @@ defmodule LoopyardWeb.Components.LogViewer do
     <pre
       id={@id}
       phx-hook="TailScroll"
-      class={"flex-1 px-4 py-3 text-xs font-mono overflow-auto whitespace-pre-wrap bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-zinc-300 #{@class}"}
+      class={"flex-1 px-4 py-3 text-sm md:text-[13px] font-mono leading-snug overflow-auto whitespace-pre-wrap bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-zinc-300 #{@class}"}
     >{@ansi_html}</pre>
     """
   end
@@ -95,7 +95,7 @@ defmodule LoopyardWeb.Components.LogViewer do
     <div
       id={"log-wrap-#{System.unique_integer([:positive])}"}
       phx-hook="LogExpand"
-      class="mt-2 mb-1 ml-5 rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden bg-zinc-100 dark:bg-zinc-950"
+      class="mt-2 mb-1 rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden bg-zinc-100 dark:bg-zinc-950"
     >
       <%!-- Terminal title bar: the COMMAND is the title (one line, truncated — long
            commands don't wrap and wreck the layout; hover for the full text). It
@@ -105,7 +105,7 @@ defmodule LoopyardWeb.Components.LogViewer do
         <div class={"w-1.5 h-1.5 rounded-full flex-none #{@dot_class}"}></div>
         <span
           title={@command}
-          class="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 truncate min-w-0 flex-1"
+          class="text-sm md:text-[13px] font-mono text-zinc-500 dark:text-zinc-400 truncate min-w-0 flex-1"
         >
           {@command || @status_label}
         </span>
@@ -115,14 +115,14 @@ defmodule LoopyardWeb.Components.LogViewer do
           phx-hook="Elapsed"
           phx-update="ignore"
           data-since={elapsed_since(@started)}
-          class="text-[10px] tabular-nums text-amber-500 dark:text-amber-400 flex-none"
+          class="text-xs tabular-nums text-amber-500 dark:text-amber-400 flex-none"
         >
           0s
         </span>
         <span
           :if={@status != :building}
           class={[
-            "text-[10px] font-semibold tabular-nums flex-none",
+            "text-xs font-semibold tabular-nums flex-none",
             if(@status == :done,
               do: "text-green-600 dark:text-green-400",
               else: "text-red-500 dark:text-red-400"
@@ -131,21 +131,24 @@ defmodule LoopyardWeb.Components.LogViewer do
         >
           {exit_label(@status, @exit_code)}
         </span>
-        <span :if={@truncated} class="text-[10px] text-zinc-400 flex-none">… truncated</span>
+        <span :if={@truncated} class="text-xs text-zinc-400 flex-none">… truncated</span>
         <div class="flex items-center gap-1 flex-none">
           <button
             type="button"
             data-expand
-            class="p-1 text-zinc-400 hover:text-zinc-300 transition-colors hidden"
-            title="Expand"
+            class="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors hidden"
+            title="Show full output"
           >
+            <%!-- Chevron-down = "show more". Was a ✗ (close) glyph, which read as
+                 an error/cancel right next to the exit status — this is an
+                 expand affordance, not a dismiss. --%>
             <svg
-              class="w-3 h-3"
+              class="w-3.5 h-3.5"
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 16 16"
               fill="currentColor"
             >
-              <path d="M5.28 4.22a.75.75 0 0 0-1.06 1.06L6.94 8l-2.72 2.72a.75.75 0 1 0 1.06 1.06L8 9.06l2.72 2.72a.75.75 0 1 0 1.06-1.06L9.06 8l2.72-2.72a.75.75 0 0 0-1.06-1.06L8 6.94 5.28 4.22Z" />
+              <path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" />
             </svg>
           </button>
           <button
@@ -205,7 +208,7 @@ defmodule LoopyardWeb.Components.LogViewer do
       <pre
         data-log-pre
         class={[
-          "text-xs font-mono leading-snug text-zinc-800 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-950 whitespace-pre overflow-auto px-3 py-2",
+          "text-sm md:text-[13px] font-mono leading-snug text-zinc-800 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-950 whitespace-pre overflow-auto px-3 py-2",
           if(@status == :building, do: "max-h-64", else: "max-h-32")
         ]}
       >{Ansi.to_html(@display)}</pre>
@@ -252,7 +255,7 @@ defmodule LoopyardWeb.Components.LogViewer do
     assigns = assign(assigns, lines: lines, padded_name: padded_name)
 
     ~H"""
-    <div :for={line <- @lines} class="flex text-xs font-mono leading-relaxed">
+    <div :for={line <- @lines} class="flex text-sm md:text-[13px] font-mono leading-snug">
       <span class={"#{@color} w-36 text-right flex-none select-none"}>{@padded_name} |</span>
       <span class="text-zinc-300 ml-2 whitespace-pre-wrap break-all">{Ansi.to_html(line)}</span>
     </div>
@@ -265,10 +268,12 @@ defmodule LoopyardWeb.Components.LogViewer do
   defp elapsed_since(%DateTime{} = dt), do: DateTime.to_unix(dt, :millisecond)
   defp elapsed_since(_), do: nil
 
-  # The finalized status badge: green `exit 0` on success, red `exit N` on failure
-  # (or `exit ✗` when the numeric code wasn't captured).
+  # The finalized status badge: green `exit 0` on success, red `exit N` when we
+  # captured the code (streamed exec/build path), else a plain red `failed`. The
+  # ACP tool-result path only reports pass/fail (no numeric code), so `failed`
+  # is the honest label there — never a cryptic `✗` that reads like a close icon.
   defp exit_label(:done, _), do: "exit 0"
   defp exit_label(:failed, code) when is_integer(code), do: "exit #{code}"
-  defp exit_label(:failed, _), do: "exit ✗"
+  defp exit_label(:failed, _), do: "failed"
   defp exit_label(_, _), do: ""
 end

@@ -250,6 +250,18 @@ Views read from ETS/GenServers. They never create or modify infrastructure state
 
 Use `StreamBuffer` for all "show existing content + stream new data" patterns. It handles rolling byte windows, message upsert, and page-reload restoration. Don't reinvent this in LiveView assigns.
 
+## Never publish streaming deltas per token
+
+Raw token deltas arrive 30–60×/s. Publishing each one makes every connected
+LiveView re-ship and morphdom-patch the entire accumulated text per token —
+the browser main thread saturates and typing lags for everyone watching.
+Delta events queue on `state.stream_pub_buffer` in the ChatAgent and flush
+as one combined publish per 100ms tick (`StreamHandler.flush_stream_deltas/1`).
+A new delta-shaped event goes through `buffer_stream_delta/3`, never straight
+to `Events.ChatAgentMessage.publish/1`; every turn-reset/interrupt path must
+drop the buffer (`drop_stream_deltas/1`) so a late flush can't ghost a stale
+streaming bubble.
+
 ## Operations must be idempotent
 
 Check if running before starting. Never `docker rm -f` then `docker run` unconditionally.
@@ -455,3 +467,18 @@ Bad:
 - `GET /messages/:id?format=raw`
 
 Path-based variants read as "the resource in this format," cache better (different URLs → independent cache entries), and are cleaner to copy/share/curl. Reserve query strings for actual query parameters — filters, pagination, search.
+
+## Tool results pair with tool calls by `tool_id`, never by position
+
+Agents call tools in PARALLEL: the harness emits every `%{role: :tool}`
+message first, then every `%{role: :tool_result}` — so "the nearest tool
+message above me" attributes the FIRST result to the LAST call. That bug
+rendered an `ls` dump as a syntax-highlighted "ruby" file card titled with
+the path of a totally different `Read` call.
+
+StreamHandler stamps the harness's `toolCallId` as `tool_id` on both the
+`:tool` and `:tool_result` messages; the UI pairs with
+`ToolResults.matching_tool_call/1` (id match, with an order-of-arrival
+fallback for messages persisted before `tool_id` existed). Any new code
+that needs "which call produced this result" goes through that helper —
+never walk the message list positionally.

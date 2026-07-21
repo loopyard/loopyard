@@ -1,8 +1,8 @@
 defmodule LoopyardWeb.Live.WorkspaceLive.TranscriptLayoutTest do
   @moduledoc """
-  The agent renders as a continuous transcript (document + icon gutter), NOT
-  bubbles: prose flows on the surface, the "Claude" identity shows once per run,
-  and a faint left spine ties the run together. Humans stay bubbles.
+  The agent renders as a continuous transcript (document), NOT bubbles: prose
+  flows on the surface directly under its "You" prompt — no per-run "Claude"
+  marker. Humans stay bubbles (the purple "You" band carries the timestamp).
   """
   use ExUnit.Case, async: true
 

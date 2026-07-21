@@ -41,7 +41,94 @@ defmodule Loopyard.Harness.QuestionsTest do
     test "render_answer maps selections back to text" do
       {:ok, [q]} = ClaudeCode.parse([%{"question" => "Pick?", "options" => [%{"label" => "A"}]}])
       assert ClaudeCode.render_answer([q], %{q.id => ["A"]}) =~ "Pick? → A"
-      assert ClaudeCode.render_answer([q], %{}) =~ "(no answer)"
+      assert ClaudeCode.render_answer([q], %{}) =~ "(skipped"
+    end
+  end
+
+  describe "AcpElicitation adapter (native AskUserQuestion over ACP form elicitation)" do
+    alias Loopyard.Harness.QuestionAdapter.AcpElicitation
+
+    # The claude-agent-acp shape: question_<n> selection fields (+ per-question
+    # question_<n>_custom "Other" boxes), single question's text in `message`.
+    defp elicitation_params do
+      %{
+        "mode" => "form",
+        "message" => "Please answer the following questions.",
+        "requestedSchema" => %{
+          "type" => "object",
+          "properties" => %{
+            "question_0" => %{
+              "type" => "string",
+              "title" => "Persistence",
+              "description" => "What happens to VIP status?",
+              "oneOf" => [
+                %{"const" => "Graduate", "title" => "Graduate", "description" => "Auto-clears"},
+                %{"const" => "VIP forever", "title" => "VIP forever"}
+              ]
+            },
+            "question_0_custom" => %{"type" => "string", "title" => "Other"},
+            "question_1" => %{
+              "type" => "array",
+              "title" => "Channels",
+              "description" => "Which channels?",
+              "items" => %{
+                "anyOf" => [%{"const" => "Email"}, %{"const" => "SMS"}]
+              }
+            },
+            "question_1_custom" => %{"type" => "string", "title" => "Other"}
+          }
+        }
+      }
+    end
+
+    test "parses the question_<n> schema into normalized questions (custom fields excluded)" do
+      assert {:ok, [q0, q1]} = AcpElicitation.parse(elicitation_params())
+
+      assert q0.id == "question_0"
+      assert q0.header == "Persistence"
+      assert q0.prompt == "What happens to VIP status?"
+      refute q0.multi
+      assert [%{label: "Graduate", description: "Auto-clears"}, %{label: "VIP forever"}] = q0.options
+
+      assert q1.id == "question_1"
+      assert q1.multi
+      assert [%{label: "Email"}, %{label: "SMS"}] = q1.options
+    end
+
+    test "single question takes its prompt from the top-level message" do
+      params = %{
+        "message" => "Deploy now?",
+        "requestedSchema" => %{
+          "properties" => %{
+            "question_0" => %{"type" => "string", "oneOf" => [%{"const" => "Yes"}]},
+            "question_0_custom" => %{"type" => "string"}
+          }
+        }
+      }
+
+      assert {:ok, [q]} = AcpElicitation.parse(params)
+      assert q.prompt == "Deploy now?"
+    end
+
+    test "render_content: option labels to fields, free text to _custom, skips omitted" do
+      {:ok, [q0, q1]} = AcpElicitation.parse(elicitation_params())
+
+      # single-select option, multi-select list
+      assert AcpElicitation.render_content([q0, q1], %{
+               "question_0" => ["VIP forever"],
+               "question_1" => ["Email", "SMS"]
+             }) == %{"question_0" => "VIP forever", "question_1" => ["Email", "SMS"]}
+
+      # free text (not an option label) goes to the custom field; skip omitted
+      assert AcpElicitation.render_content([q0, q1], %{
+               "question_0" => ["keep them special but let them unsubscribe"],
+               "question_1" => []
+             }) == %{"question_0_custom" => "keep them special but let them unsubscribe"}
+    end
+
+    test "rejects schemas with no question fields" do
+      assert :error = AcpElicitation.parse(%{"requestedSchema" => %{"properties" => %{}}})
+      assert :error = AcpElicitation.parse(%{"mode" => "url"})
     end
   end
 
@@ -66,6 +153,78 @@ defmodule Loopyard.Harness.QuestionsTest do
     test "answering an unknown question is a clean error" do
       assert {:error, :not_found} =
                Questions.answer("nope-#{System.unique_integer()}", %{"q0" => ["x"]})
+    end
+  end
+
+  describe "per-question progressive answering" do
+    # THE bug this guards: a 3-question ask used to resolve on the FIRST click,
+    # returning "(no answer)" for the other two and showing them as answered.
+    test "a multi-question ask resolves only when every question is settled" do
+      {:ok, questions} =
+        ClaudeCode.parse([
+          %{"question" => "One?", "options" => [%{"label" => "A"}, %{"label" => "B"}]},
+          %{"question" => "Two?", "options" => [%{"label" => "C"}]},
+          %{"question" => "Three?", "options" => [%{"label" => "D"}]}
+        ])
+
+      task = Task.async(fn -> Questions.ask("q-multi-agent", questions) end)
+      qid = wait_for_pending()
+
+      # First answer does NOT resolve the ask.
+      assert :ok = Questions.answer_partial(qid, "q0", ["A"])
+      assert Questions.pending?(qid)
+      assert nil == Task.yield(task, 50)
+
+      # Second question skipped — still pending on the third.
+      assert :ok = Questions.answer_partial(qid, "q1", [])
+      assert Questions.pending?(qid)
+
+      # Last one settles the whole ask with everything accumulated.
+      assert :ok = Questions.answer_partial(qid, "q2", ["D"])
+
+      assert {:ok, %{"q0" => ["A"], "q1" => [], "q2" => ["D"]}} = Task.await(task, 2_000)
+      refute Questions.pending?(qid)
+    end
+
+    test "multi-select: toggles accumulate without resolving; confirm settles" do
+      {:ok, questions} =
+        ClaudeCode.parse([
+          %{
+            "question" => "Which?",
+            "multiSelect" => true,
+            "options" => [%{"label" => "X"}, %{"label" => "Y"}, %{"label" => "Z"}]
+          }
+        ])
+
+      task = Task.async(fn -> Questions.ask("q-toggle-agent", questions) end)
+      qid = wait_for_pending()
+
+      assert :ok = Questions.toggle_option(qid, "q0", "X")
+      assert :ok = Questions.toggle_option(qid, "q0", "Y")
+      # toggling off works
+      assert :ok = Questions.toggle_option(qid, "q0", "X")
+      assert Questions.pending?(qid)
+
+      assert :ok = Questions.confirm_question(qid, "q0")
+      assert {:ok, %{"q0" => ["Y"]}} = Task.await(task, 2_000)
+    end
+
+    test "typed chat text answers only the still-open questions" do
+      agent = "q-mixed-agent-#{System.unique_integer([:positive])}"
+
+      {:ok, questions} =
+        ClaudeCode.parse([
+          %{"question" => "One?", "options" => [%{"label" => "A"}]},
+          %{"question" => "Two?", "options" => [%{"label" => "B"}]}
+        ])
+
+      task = Task.async(fn -> Questions.ask(agent, questions) end)
+      qid = wait_for_pending()
+
+      assert :ok = Questions.answer_partial(qid, "q0", ["A"])
+      assert :ok = Questions.answer_with_text(agent, "actually just ship it")
+
+      assert {:ok, %{"q0" => ["A"], "q1" => ["actually just ship it"]}} = Task.await(task, 2_000)
     end
   end
 

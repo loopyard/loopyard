@@ -34,7 +34,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
     <%!-- Live tool feed only. The status header (word + elapsed + Stop) is
          docked at the bottom in the Reasoning Bar so it never scrolls off the
          top, no matter how long the work runs. --%>
-    <div :if={@activity != [] || @stall_hint} class="pl-7 py-1.5">
+    <div :if={@activity != [] || @stall_hint} class="py-1.5">
       <ul :if={@activity != []} class="space-y-1.5">
         <li :for={a <- @activity} class="flex items-start gap-2 text-sm leading-relaxed">
           <span class={[
@@ -47,7 +47,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
           <span class={[
             "min-w-0 break-words font-mono",
             a.active && "text-zinc-700 dark:text-zinc-200",
-            !a.active && "text-zinc-400 dark:text-zinc-500"
+            !a.active && "text-zinc-500 dark:text-zinc-400"
           ]}>
             {a.summary}
           </span>
@@ -74,6 +74,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
   attr :word, :string, required: true
   attr :agent_id, :string, required: true
   attr :mode, :atom, default: :thinking
+  # Cumulative tokens this agent has used (real usage, updated when each turn
+  # settles). Shown live so utilization visibly racks up turn over turn — the
+  # `~N` estimate below is this turn's streamed output on top of it.
+  attr :tokens, :integer, default: 0
 
   def live_status(assigns) do
     # The bar shows the WORK BEING DONE — not all of it is thinking. Harness
@@ -83,14 +87,26 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
     assigns =
       assigns
       |> assign(:turn_since, turn_started_unix_ms(assigns.messages))
+      |> assign_new(:streaming_text, fn -> "" end)
+      |> assign_new(:active_tool, fn -> nil end)
       |> assign_status_styles()
 
+    # Live signal so a long percolation isn't a black box (#62): ONE counter =
+    # cumulative real total + this turn's streamed-output estimate (~4 chars/
+    # token), so the number visibly TICKS UP while prose streams. `~` marks it
+    # as estimating mid-stream; on turn settle the real total absorbs it.
+    est = token_estimate(assigns.streaming_text)
+
+    assigns =
+      assigns
+      |> assign(:shown_tokens, assigns.tokens + est)
+      |> assign(:estimating?, est > 0)
+
     ~H"""
-    <%!-- The live tip of the timeline. It FLOWS on the spine like the activity rows
-         above it — same pl-7 gutter, NO box, NO gap — so the faint vertical line
-         runs straight down into it as one continuous timeline (not a floating
-         widget). dots + word + elapsed on the left, Stop docked right. --%>
-    <div class="flex items-center gap-2.5 pl-7 pr-1 py-1.5">
+    <%!-- The live tip of the turn: dots + word + elapsed on the left, Stop docked
+         right. Flush-left (no rail/indent) so it lines up with the streaming prose
+         and completed messages above it. --%>
+    <div class="flex items-center gap-2.5 pr-1 py-1.5">
       <div class="flex gap-1.5 flex-none" aria-hidden="true">
         <div class={["w-2 h-2 rounded-full animate-bounce", @dot_class]} style="animation-delay: 0ms">
         </div>
@@ -112,8 +128,24 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
         phx-hook="Elapsed"
         phx-update="ignore"
         data-since={@turn_since}
-        class={["text-xs flex-none tabular-nums", @elapsed_class]}
+        class={["text-sm flex-none tabular-nums", @elapsed_class]}
       ></span>
+      <%!-- ONE incrementing token counter: cumulative real total + this turn's
+           streamed estimate, summed — it visibly ticks up as text streams instead
+           of a static total with a separate "+~N" bolted on. --%>
+      <span
+        :if={@shown_tokens > 0}
+        class="text-sm flex-none tabular-nums text-zinc-400"
+        title="tokens used by this agent (cumulative real total + this turn's streamed estimate)"
+      >
+        · {if @estimating?, do: "~"}{fmt_tokens(@shown_tokens)} tok
+      </span>
+      <span
+        :if={@active_tool && @streaming_text == ""}
+        class="text-sm flex-none truncate font-mono text-zinc-400"
+      >
+        · {short_tool(@active_tool)}
+      </span>
       <div class="flex-1 min-w-0"></div>
       <button
         type="button"
@@ -126,6 +158,23 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
     </div>
     """
   end
+
+  # Compact integer token count for the live status line (26543 → "26.5k").
+  defp fmt_tokens(n) when is_integer(n) and n >= 1000, do: "#{Float.round(n / 1000, 1)}k"
+  defp fmt_tokens(n) when is_integer(n), do: Integer.to_string(n)
+  defp fmt_tokens(_), do: "0"
+
+  @doc """
+  Rough output-token estimate from streamed text (~4 chars/token), as an
+  integer so it SUMS with the cumulative total into one ticking counter.
+  Public: the sidebar Usage panel adds the SAME estimate to its Total so the
+  status line and sidebar always show the same number.
+  """
+  def token_estimate(text) when is_binary(text), do: div(byte_size(text), 4)
+  def token_estimate(_), do: 0
+
+  defp short_tool(tool) when is_binary(tool), do: tool |> String.split("__") |> List.last()
+  defp short_tool(tool), do: to_string(tool)
 
   # Word + colour scheme for the live bar, by what the harness is actually doing.
   # Thinking stays violet; harness maintenance (compacting, restarting a crashed
@@ -205,11 +254,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
         phx-hook="Elapsed"
         phx-update="ignore"
         data-since={@turn_since}
-        class="text-xs text-zinc-400 dark:text-zinc-500 flex-none tabular-nums"
+        class="text-sm text-zinc-500 dark:text-zinc-400 flex-none tabular-nums"
       ></span>
       <span
         :if={@current_action}
-        class="hidden sm:block text-xs text-zinc-500 dark:text-zinc-400 truncate min-w-0"
+        class="hidden sm:block text-sm text-zinc-500 dark:text-zinc-400 truncate min-w-0"
       >
         · {@current_action}
       </span>
@@ -218,7 +267,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
         type="button"
         phx-click="interrupt_agent"
         phx-value-id={@agent_id}
-        class="focus-ring inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 transition-colors flex-none"
+        class="focus-ring inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 transition-colors flex-none"
       >
         <span class="w-2 h-2 rounded-[2px] bg-red-500"></span> Stop
       </button>

@@ -60,7 +60,7 @@ defmodule LoopyardWeb.Components.Workstation do
     >
       <div class="min-w-0">
         <div class="text-sm font-medium text-zinc-800 dark:text-zinc-100">{@title}</div>
-        <div :if={@desc} class="text-[11px] text-zinc-400 dark:text-zinc-500 truncate">{@desc}</div>
+        <div :if={@desc} class="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">{@desc}</div>
       </div>
       <span class="flex items-center gap-2 flex-none text-xs">
         {render_slot(@trailing)}

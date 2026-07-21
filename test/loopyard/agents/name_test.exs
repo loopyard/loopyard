@@ -6,7 +6,6 @@ defmodule Loopyard.Agents.NameTest do
 
   describe "label_for/1" do
     test "known harnesses map to their brand" do
-      assert Name.label_for(Harness.Claude) == "Claude"
       assert Name.label_for(Harness.ACP) == "Claude"
       assert Name.label_for(Harness.Fake) == "Claude"
     end

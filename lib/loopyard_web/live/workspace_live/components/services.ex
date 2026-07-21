@@ -2,7 +2,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
   @moduledoc "Service-related views: service_log_view, console_view, all_services_view."
   use Phoenix.Component
 
-  import LoopyardWeb.Components.Common, only: [detail_panel: 1, control_btn: 1, dot: 1]
+  alias LoopyardWeb.Components.Ansi
+
+  import LoopyardWeb.Components.Common, only: [detail_panel: 1, dot: 1]
   import LoopyardWeb.Components.LogViewer
 
   import LoopyardWeb.Components.Sidebar,
@@ -28,101 +30,127 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
     <.detail_panel>
       <:header>
         <.dot :if={@svc} color={service_dot(@svc)} />
-        <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{@service_name}</span>
-        <span :if={@svc} class="text-xs text-zinc-400 dark:text-zinc-500 font-mono">
+        <span class="text-base font-semibold text-zinc-900 dark:text-zinc-100 truncate">
+          {@service_name}
+        </span>
+        <span :if={@svc} class="hidden sm:inline text-xs text-zinc-500 dark:text-zinc-400 font-mono truncate">
           {service_detail(@svc)}
         </span>
         <a
           :if={@first_port}
           href={"http://#{@host}:#{@first_port}"}
           target="_blank"
-          class="text-xs font-mono text-violet-500 hover:text-violet-400 transition-colors"
+          class="hidden sm:inline text-xs font-mono text-violet-500 hover:text-violet-400 transition-colors truncate"
         >
           {@host}:{@first_port}
         </a>
-        <div class="ml-auto flex items-center gap-2">
-          <%!--
-            Running → Restart + Stop. Stopped/crashed → Start (compose
-            up -d brings it back; `restart` on a stopped container is
-            a no-op). When we can't identify the service yet, show
-            Start so the button always points at a useful action.
-          --%>
-          <.control_btn
-            :if={@running?}
-            phx-click="restart_service"
-            phx-value-service_name={@service_name}
-          >
-            Restart
-          </.control_btn>
-          <.control_btn
-            :if={!@running?}
-            variant={:primary}
-            phx-click="start_service"
-            phx-value-service_name={@service_name}
-          >
-            Start
-          </.control_btn>
-          <.control_btn
-            :if={@running?}
-            phx-click="stop_service"
-            phx-value-service_name={@service_name}
-          >
-            Stop
-          </.control_btn>
-          <.link
-            :if={@running?}
-            patch={"#{@base_path}/services/#{@service_name}/console"}
-            class="inline-block px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors"
-          >
-            Console
-          </.link>
-          <a
-            :if={@first_port}
-            href={"http://#{@host}:#{@first_port}"}
-            target="_blank"
-            rel="noopener"
-            class="px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors"
-          >
-            Open
-          </a>
-          <.control_btn
-            :if={@exposed? && @container_port}
-            phx-click="toggle_port_exposure"
-            phx-value-service={@service_name}
-            phx-value-container_port={@container_port}
-            phx-value-expose="false"
-          >
-            Close Port
-          </.control_btn>
-          <.control_btn
-            :if={!@exposed? && @container_port && @running?}
-            phx-click="toggle_port_exposure"
-            phx-value-service={@service_name}
-            phx-value-container_port={@container_port}
-            phx-value-expose="true"
-          >
-            Open Port
-          </.control_btn>
-        </div>
+        <%!-- Actions live in service_context (desktop right rail + mobile details
+             sheet). This header is desktop-only (detail_panel hides it on
+             mobile), so no action cluster here — one consistent home. --%>
       </:header>
-      <%!-- Service is up → show logs. Service is stopped/missing →
-           show a clear empty state pointing the user at Start,
-           rather than the confusing "(could not fetch logs)" that
-           used to render a blank log panel. --%>
-      <.log_panel :if={@running?} id="service-logs" content={@logs} />
+      <%!-- Buffered frames (from LogBuffer) whenever there are ANY — including
+           after a crash, so the output that killed it is still on screen. Only
+           when the buffer is truly empty do we fall back to the starting /
+           stopped empty states. --%>
+      <.service_frames_panel :if={@frames != []} frames={@frames} />
+      <.service_waiting_panel :if={@frames == [] && @running?} />
       <.service_starting_panel
-        :if={!@running? && @svc && @svc.status == :starting}
+        :if={@frames == [] && !@running? && @svc && @svc.status == :starting}
         service_name={@service_name}
       />
       <.service_stopped_panel
-        :if={!@running? && (!@svc || @svc.status != :starting)}
+        :if={@frames == [] && !@running? && (!@svc || @svc.status != :starting)}
         service_name={@service_name}
         svc={@svc}
         workspace_state={@workspace_state}
       />
     </.detail_panel>
+    <%!-- Mobile actions live in the shared `service-context` bottom sheet
+         (workspace_live render), opened by the section switcher's details
+         button — same content as the desktop right rail. --%>
     """
   end
+
+  # Streamed service logs, grouped by run so crash/restart boundaries are
+  # visible. The last group is the current run; earlier ones ended (crashed or
+  # stopped) — their output stays put because the buffer outlives the container.
+  attr :frames, :list, required: true
+
+  defp service_frames_panel(assigns) do
+    assigns = assign(assigns, :last_i, length(assigns.frames) - 1)
+
+    ~H"""
+    <div class="flex-1 flex flex-col min-h-0">
+      <%!-- ONE continuous log — no boxed groups, no inter-run gaps, no outer
+           padding. Runs are separated ONLY by a thin full-bleed sticky divider
+           line; content scrolls cleanly beneath it (opaque bg, so nothing peeks
+           out clipped above the divider — the old p-2 gap did that).
+           overscroll-contain keeps the iOS rubber-band from bouncing the page;
+           `LogTail` owns the momentum-aware auto-tail. --%>
+      <div
+        id="service-logs"
+        phx-hook="LogTail"
+        class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain bg-zinc-100 dark:bg-zinc-950 font-mono text-xs leading-snug text-zinc-800 dark:text-zinc-300"
+      >
+        <div :for={{group, gi} <- Enum.with_index(@frames)}>
+          <%!-- Run boundary: a thin sticky rule, not a chunky boxed header. --%>
+          <div
+            id={"run-#{group.run}"}
+            class="sticky top-0 z-10 flex items-center gap-2 px-3 h-7 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-100/95 dark:bg-zinc-950/95 backdrop-blur text-[11px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
+          >
+            <span class={[
+              "w-1.5 h-1.5 rounded-full flex-none",
+              if(gi == @last_i, do: "bg-emerald-500", else: "bg-zinc-400 dark:bg-zinc-600")
+            ]}></span>
+            Run {group.run}
+            <span
+              :if={gi < @last_i}
+              class="font-normal normal-case text-zinc-500 dark:text-zinc-400"
+            >
+              · ended
+            </span>
+          </div>
+          <div
+            :for={f <- group.frames}
+            class="flex gap-3 px-3 py-px hover:bg-zinc-200/40 dark:hover:bg-zinc-900/40"
+          >
+            <span
+              :if={f.ts}
+              class="flex-none text-zinc-500 dark:text-zinc-400 tabular-nums select-none"
+            >
+              {short_ts(f.ts)}
+            </span>
+            <%!-- min-w-0 lets this flex item shrink below its content width, so
+                 whitespace-pre-wrap + break-words actually wrap long/unbreakable
+                 tokens instead of overflowing the row (the horizontal
+                 rubber-band). --%>
+            <%!-- ANSI → colored spans, same converter the chat CLI console uses, so
+                 every console surface reads identically (color, not raw \e[..m). --%>
+            <span class="min-w-0 flex-1 whitespace-pre-wrap break-words">{Ansi.to_html(f.text)}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp service_waiting_panel(assigns) do
+    ~H"""
+    <div class="flex-1 flex items-center justify-center">
+      <p class="text-sm text-zinc-500 dark:text-zinc-400">Waiting for output…</p>
+    </div>
+    """
+  end
+
+  # "2026-07-14T06:38:07.123456789Z" → "06:38:07"
+  defp short_ts(ts) when is_binary(ts) do
+    case String.split(ts, "T") do
+      [_, time] -> time |> String.split(".") |> hd() |> String.slice(0, 8)
+      _ -> ts
+    end
+  end
+
+  defp short_ts(_), do: ""
 
   defp service_starting_panel(assigns) do
     ~H"""
@@ -138,7 +166,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
             <path d="M6.3 2.84A1.5 1.5 0 0 0 4 4.11v11.78a1.5 1.5 0 0 0 2.3 1.27l9.344-5.891a1.5 1.5 0 0 0 0-2.538L6.3 2.841Z" />
           </svg>
         </div>
-        <h3 class="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-1">
+        <h3 class="text-base font-semibold text-zinc-900 dark:text-zinc-100 mb-1">
           Starting {@service_name}...
         </h3>
       </div>
@@ -166,18 +194,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
             />
           </svg>
         </div>
-        <h3 class="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-1">
+        <h3 class="text-base font-semibold text-zinc-900 dark:text-zinc-100 mb-1">
           {@service_name} is stopped
         </h3>
         <p
           :if={@workspace_state in [:stopped, :starting]}
-          class="text-xs text-zinc-500 dark:text-zinc-400 mb-4"
+          class="text-sm text-zinc-500 dark:text-zinc-400 mb-4"
         >
           The workspace is {@workspace_state}. Start it from the sidebar to bring services up.
         </p>
         <p
           :if={@workspace_state not in [:stopped, :starting]}
-          class="text-xs text-zinc-500 dark:text-zinc-400 mb-4"
+          class="text-sm text-zinc-500 dark:text-zinc-400 mb-4"
         >
           Start it to see live logs.
         </p>
@@ -214,8 +242,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
     ~H"""
     <.detail_panel>
       <:header>
-        <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{@service_name}</span>
-        <span class="text-xs text-zinc-400 dark:text-zinc-500">console</span>
+        <span class="text-base font-semibold text-zinc-900 dark:text-zinc-100">{@service_name}</span>
+        <span class="text-xs text-zinc-500 dark:text-zinc-400">console</span>
         <div :if={@ssh_cmd} class="ml-auto">
           <button
             id="copy-ssh"
@@ -268,7 +296,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
     ~H"""
     <.detail_panel>
       <:header>
-        <span class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">All Services</span>
+        <span class="text-base font-semibold text-zinc-900 dark:text-zinc-100">All Services</span>
       </:header>
       <.log_multi_service logs={@all_service_logs} />
     </.detail_panel>

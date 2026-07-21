@@ -33,10 +33,43 @@ defmodule Loopyard.Harness.ACP.Connection do
   def prompt(pid, text, subscriber, ref),
     do: GenServer.cast(pid, {:prompt, text, subscriber, ref})
 
+  @doc "Cancel the in-flight turn (ACP `session/cancel`) while keeping the session warm."
+  def cancel(pid), do: GenServer.cast(pid, :cancel)
+
   def session_id(pid) do
     GenServer.call(pid, :session_id, 1_000)
   catch
     :exit, _ -> nil
+  end
+
+  @doc """
+  Protocol-level liveness probe: round-trips a `session/list` request through
+  the adapter and returns `:pong` iff its event loop answered. This is the
+  difference between "our local GenServer/exec client is alive" and "the
+  harness in the container actually responds" — the exec client can outlive a
+  dead or wedged in-container adapter (daemon hiccup, EMFILE storm), and a
+  pid check alone reported those sessions alive while every turn timed out.
+  Any response (result or error) counts: it proves the loop is serving.
+  """
+  def ping(pid, timeout \\ 2_000) do
+    GenServer.call(pid, :ping, timeout)
+  catch
+    :exit, _ -> {:error, :unresponsive}
+  end
+
+  @doc """
+  Switch the live session's model. Async; display updates optimistically.
+  Wire method depends on the adapter dialect: `session/set_config_option`
+  (claude-agent-acp 0.60+) or legacy `session/set_model`.
+  """
+  def set_model(pid, model_id) when is_binary(model_id),
+    do: GenServer.cast(pid, {:set_model, model_id})
+
+  @doc "The adapter's model list for this session: `[%{id, name, description}]`."
+  def available_models(pid) do
+    GenServer.call(pid, :available_models, 1_000)
+  catch
+    :exit, _ -> []
   end
 
   def stop(pid), do: GenServer.stop(pid, :normal)
@@ -48,20 +81,55 @@ defmodule Loopyard.Harness.ACP.Connection do
     transport_mod = Keyword.get(opts, :transport, Loopyard.Harness.ACP.Transport.Port)
     transport_opts = Keyword.get(opts, :transport_opts, [])
 
+    # Capture the adapter's stderr to a per-session file instead of the old
+    # /dev/null default. When the adapter dies or wedges, its dying words are
+    # the diagnosis (an EMFILE watcher storm hid here for hours once) — on
+    # abnormal close we read the tail back and log it loudly. Cheap: the file
+    # is empty in the happy path and removed on clean shutdown.
+    stderr_log =
+      Keyword.get_lazy(transport_opts, :stderr_log, fn ->
+        Path.join(
+          System.tmp_dir!(),
+          "loopyard-acp-#{:erlang.unique_integer([:positive])}.stderr"
+        )
+      end)
+
+    # Abnormal closes deliberately KEEP their stderr file (it's the diagnosis),
+    # which under a crash loop accumulated hundreds of them. Sweep old ones
+    # here — by the time a new session boots, day-old dying words are stale.
+    sweep_stale_stderr_logs()
+
+    transport_opts = Keyword.put(transport_opts, :stderr_log, stderr_log)
+
     case transport_mod.start_link([owner: self()] ++ transport_opts) do
       {:ok, transport} ->
         state = %{
           transport_mod: transport_mod,
           transport: transport,
+          stderr_log: stderr_log,
           next_id: 1,
           pending: %{},
           session_id: nil,
           status: :initializing,
+          # What the caller WANTS the session to run on (a model id/alias like
+          # "opus") — requested via session/set_model once the session is ready.
+          # `model` is the resolved human-readable name for display (seeded with
+          # the requested id until the adapter's model list resolves it);
+          # `available_models` is the adapter's id→name list (drives the UI
+          # switcher); `fallback_model` restores display if set_model errors.
+          desired_model: Keyword.get(opts, :model),
           model: Keyword.get(opts, :model),
+          available_models: [],
+          fallback_model: nil,
           cwd: Keyword.get(opts, :cwd) || File.cwd!(),
           resume: Keyword.get(opts, :resume),
           mcp_servers: Keyword.get(opts, :mcp_servers, []),
           permission_mode: Keyword.get(opts, :permission_mode, :auto_allow),
+          # Present → native AskUserQuestion elicitations route to this agent's
+          # question card (we advertise elicitation.form below). Absent → we
+          # don't advertise, and the adapter falls back to its non-elicitation
+          # AskUserQuestion path.
+          agent_id: Keyword.get(opts, :agent_id),
           waiters: [],
           turn: nil
         }
@@ -77,12 +145,33 @@ defmodule Loopyard.Harness.ACP.Connection do
             %{}
           end
 
+        # Form elicitation is how claude-agent-acp surfaces the harness's
+        # NATIVE AskUserQuestion tool (per-question options + "Other" free
+        # text + skip). Without this capability the adapter routes the tool
+        # through the plain permission check — which :auto_allow answers
+        # silently, so the questions never reach a human. Only advertise it
+        # when we actually have an agent chat to show the card in.
+        client_caps =
+          if state.agent_id,
+            do: Map.put(client_caps, "elicitation", %{"form" => %{}}),
+            else: client_caps
+
         state =
           request(state, "initialize", %{
             "protocolVersion" => @protocol_version,
             "clientCapabilities" => client_caps
           })
           |> elem(0)
+
+        # HANDSHAKE DEADLINE: if the adapter never gets us to :ready (wedged
+        # session/new, MCP connect hanging, slow session/load replay past
+        # budget), give up ORDERLY — reply waiters {:error, :handshake_timeout}
+        # and stop — instead of sitting in :initializing forever and letting
+        # the CALLER's GenServer.call timeout raise an exit through the whole
+        # supervision chain. Kept just under the caller's budget (ACP module:
+        # 30s fresh / 120s resume) so the connection always answers first.
+        deadline = if state.resume, do: 115_000, else: 25_000
+        Process.send_after(self(), :handshake_deadline, deadline)
 
         {:ok, state}
 
@@ -104,6 +193,26 @@ defmodule Loopyard.Harness.ACP.Connection do
 
   def handle_call(:session_id, _from, state), do: {:reply, state.session_id, state}
 
+  # Liveness probe. Only a :ready session gets the wire round-trip; anything
+  # else answers its status immediately (starting up ≠ dead — the caller
+  # decides). The waiter rides in `pending` next to the request id and is
+  # replied to when ANY response for that id lands (see handle_response).
+  def handle_call(:ping, from, %{status: :ready} = state) do
+    {state, id} = request(state, "session/list", %{})
+    {:noreply, %{state | pending: Map.put(state.pending, id, {:ping, from})}}
+  end
+
+  def handle_call(:ping, _from, state), do: {:reply, {:error, state.status}, state}
+
+  def handle_call(:available_models, _from, state) do
+    models =
+      Enum.map(state.available_models, fn m ->
+        %{id: m["modelId"], name: m["name"], description: m["description"]}
+      end)
+
+    {:reply, models, state}
+  end
+
   # ---- casts ----
 
   @impl true
@@ -122,6 +231,44 @@ defmodule Loopyard.Harness.ACP.Connection do
 
     turn = %{ref: ref, subscriber: subscriber, translator: Translator.new(model: state.model)}
     {:noreply, %{state | turn: turn}}
+  end
+
+  # session/cancel is a NOTIFICATION (no id, no response). The adapter finishes
+  # the in-flight session/prompt with stopReason "cancelled", which flows through
+  # handle_response(:session_prompt) and finalizes the turn cleanly. The
+  # connection stays warm — this interrupts the turn, it doesn't tear down the
+  # session. No-op when there's no session yet.
+  def handle_cast(:cancel, %{session_id: sid} = state) when is_binary(sid) do
+    send_msg(state, %{
+      "jsonrpc" => "2.0",
+      "method" => "session/cancel",
+      "params" => %{"sessionId" => sid}
+    })
+
+    {:noreply, state}
+  end
+
+  def handle_cast(:cancel, state), do: {:noreply, state}
+
+  # Live model switch (UI-driven). Optimistic display; :set_model error reverts.
+  def handle_cast({:set_model, model_id}, %{session_id: sid} = state) when is_binary(sid) do
+    {state, id} = request_model_switch(state, model_id)
+
+    {:noreply,
+     %{
+       state
+       | pending: Map.put(state.pending, id, :set_model),
+         fallback_model: state.model,
+         model: model_name(state.available_models, model_id) || model_id
+     }}
+  end
+
+  def handle_cast({:set_model, _model_id}, state), do: {:noreply, state}
+
+  # Deferred JSON-RPC answer to an `elicitation/create` request — sent by the
+  # Task that blocked on Questions.ask (see handle_agent_request).
+  def handle_cast({:elicitation_result, id, result}, state) do
+    {:noreply, respond(state, id, result)}
   end
 
   # ---- inbound messages ----
@@ -153,10 +300,48 @@ defmodule Loopyard.Harness.ACP.Connection do
     handle_notification(method, msg["params"] || %{}, state)
   end
 
+  def handle_info(:handshake_deadline, %{status: :ready} = state), do: {:noreply, state}
+  def handle_info(:handshake_deadline, %{status: :closed} = state), do: {:noreply, state}
+
+  def handle_info(:handshake_deadline, state) do
+    # Still :initializing past the deadline — the handshake wedged (adapter
+    # hung on session/new, MCP connect stuck, or a session/load replay slower
+    # than even the resume budget). Fail ORDERLY: answer every waiter with an
+    # error (so the caller's start_session returns {:error, _} instead of its
+    # call raising an exit) and stop, which closes the port + sweeps the
+    # in-container adapter on the next launch.
+    Logger.warning(
+      "ACP: handshake deadline hit while #{inspect(state.status)} " <>
+        "(resume=#{inspect(state.resume != nil)}); closing connection"
+    )
+
+    surface_dying_words(state, :handshake_timeout)
+    state = reply_waiters(state, {:error, :handshake_timeout})
+    {:stop, :normal, %{state | status: :closed}}
+  end
+
   def handle_info({:acp_closed, reason}, state) do
+    # The adapter died — its stderr is the diagnosis. Read the tail back and
+    # log it LOUDLY (server log + /system/events); without this, failures like
+    # the inotify EMFILE storm are invisible ("session/new never answered").
+    stderr_tail = surface_dying_words(state, reason)
+
     state = reply_waiters(state, {:error, {:closed, reason}})
 
     if state.turn do
+      # The adapter EXITS on an upstream rate-limit rejection instead of
+      # surfacing it ("Internal error: API Error: Rate limit reached" on
+      # stderr, then exit 1). Without classification, upstream treats that
+      # as a generic crash and restart-with-resume loops straight back into
+      # the limit — the death spiral. Emit RateLimitStatus first so the
+      # ChatAgent parks in :rate_limited (timed retry, queue held) instead.
+      if rate_limited_error?(stderr_tail) do
+        send(
+          state.turn.subscriber,
+          {:acp_event, state.turn.ref, %Event.RateLimitStatus{status: :rejected}}
+        )
+      end
+
       # Emit an error SessionResult BEFORE acp_done so upstream sees the turn
       # actually failed (adapter died mid-turn) instead of a clean stop with
       # no result event.
@@ -172,23 +357,92 @@ defmodule Loopyard.Harness.ACP.Connection do
 
   # ---- response routing ----
 
-  defp handle_response(:initialize, _msg, state) do
-    {state, _} =
-      request(state, "session/new", %{"cwd" => state.cwd, "mcpServers" => state.mcp_servers})
+  defp handle_response(:initialize, msg, %{resume: sid} = state)
+       when is_binary(sid) and sid != "" do
+    # Resume: replay the saved conversation via session/load instead of booting
+    # a fresh (amnesic) session/new — this is what makes ACP honor the
+    # conversation-continuity invariant across restarts. Only if the adapter
+    # advertises the capability; otherwise fall back to a new session so we
+    # still boot.
+    if load_supported?(msg) do
+      {state, _} =
+        request(state, "session/load", %{
+          "sessionId" => sid,
+          "cwd" => state.cwd,
+          "mcpServers" => state.mcp_servers
+        })
 
-    {:noreply, state}
+      {:noreply, state}
+    else
+      {:noreply, elem(new_session(state), 0)}
+    end
+  end
+
+  defp handle_response(:initialize, _msg, state) do
+    {:noreply, elem(new_session(state), 0)}
+  end
+
+  defp handle_response(:session_load, %{"result" => result}, state) do
+    # session/load loads the session we named, so its id is our resume id (the
+    # adapter may omit it from the result). Any replayed history arrives as
+    # session/update notifications with turn == nil first — safely ignored.
+    sid = (is_map(result) && result["sessionId"]) || state.resume
+
+    state =
+      state
+      |> session_ready(sid, result)
+      |> maybe_set_model(result)
+
+    {:noreply, reply_waiters(state, :ok)}
+  end
+
+  defp handle_response(:session_load, %{"error" => error}, state) do
+    # Saved session unknown/expired — boot a fresh one so the agent still comes
+    # up (as a new conversation) rather than failing to start. LOUD on purpose:
+    # this silently drops harness-side conversation continuity (Loopyard's own
+    # message history survives in ETS), so it must be visible when it happens.
+    Logger.warning(
+      "ACP: session/load for #{inspect(state.resume)} failed (#{inspect(error)}); " <>
+        "falling back to a FRESH session — harness-side history not restored"
+    )
+
+    Loopyard.EventLog.error(
+      "harness:acp",
+      "Resume failed for session #{inspect(state.resume)} — started fresh instead"
+    )
+
+    {:noreply, elem(new_session(state), 0)}
   end
 
   defp handle_response(:session_new, %{"result" => result}, state) do
-    sid = result["sessionId"]
-    model = get_in(result, ["models", "currentModelId"]) || state.model
-    state = %{state | session_id: sid, model: model, status: :ready}
+    state =
+      state
+      |> session_ready(result["sessionId"], result)
+      |> maybe_set_model(result)
+
     {:noreply, reply_waiters(state, :ok)}
   end
 
   defp handle_response(:session_new, %{"error" => error}, state) do
     {:noreply, reply_waiters(%{state | status: :closed}, {:error, error})}
   end
+
+  # Ping response — result OR error both prove the adapter's event loop is
+  # alive and serving; reply :pong either way.
+  defp handle_response({:ping, from}, _msg, state) do
+    GenServer.reply(from, :pong)
+    {:noreply, state}
+  end
+
+  # session/set_model outcome. Success needs nothing (we already display the
+  # requested model's name); on error, log + fall back to what the session
+  # actually runs on — never fail the session over a model preference.
+  defp handle_response(:set_model, %{"error" => error}, state) do
+    Logger.warning("ACP: model switch failed (#{inspect(error)}); staying on adapter default")
+    {:noreply, %{state | model: state.fallback_model || state.model}}
+  end
+
+  defp handle_response(:set_model, _msg, state), do: {:noreply, state}
 
   defp handle_response(:session_prompt, _msg, %{turn: nil} = state), do: {:noreply, state}
 
@@ -199,6 +453,14 @@ defmodule Loopyard.Harness.ACP.Connection do
     # A JSON-RPC error response means the turn failed; carry that into
     # SessionResult so upstream auto-retry + error surfacing fire.
     error = if match?(%{"error" => e} when not is_nil(e), msg), do: {:error, error_subtype(msg)}
+
+    # A rate-limit rejection ("Internal error: API Error: Rate limit reached")
+    # must park the agent in :rate_limited, not read as a retryable turn error
+    # — retrying into a hard limit is the death spiral.
+    if match?({:error, _}, error) and rate_limited_error?(error_subtype(msg)) do
+      send(turn.subscriber, {:acp_event, turn.ref, %Event.RateLimitStatus{status: :rejected}})
+    end
+
     {_translator, events} = Translator.finish(turn.translator, error)
 
     Enum.each(events, &send(turn.subscriber, {:acp_event, turn.ref, &1}))
@@ -207,14 +469,76 @@ defmodule Loopyard.Harness.ACP.Connection do
     {:noreply, %{state | turn: nil}}
   end
 
+  # Request the DESIRED model when it differs from what the session booted on.
+  # The adapter starts every session on the CLI "default" alias — this is what
+  # actually puts the chosen model on the case. Display flips to the desired
+  # model's human name immediately; the :set_model error path reverts it.
+  # `session_ready/3` (already run) normalized the current model + dialect out
+  # of either wire shape.
+  defp maybe_set_model(state, result) do
+    desired = state.desired_model
+    {_models, current, _dialect} = extract_models(result)
+
+    # Only when the adapter TOLD us the current model (is_binary current) and it
+    # differs — otherwise we can't confirm a switch is needed, and firing blind
+    # would emit a spurious request (and break callers that don't expect one).
+    if is_binary(desired) and desired != "" and is_binary(current) and desired != current and
+         is_binary(state.session_id) do
+      {state, id} = request_model_switch(state, desired)
+
+      %{
+        state
+        | pending: Map.put(state.pending, id, :set_model),
+          fallback_model: state.model,
+          model: model_name(state.available_models, desired) || desired
+      }
+    else
+      state
+    end
+  end
+
+  defp new_session(state),
+    do: request(state, "session/new", %{"cwd" => state.cwd, "mcpServers" => state.mcp_servers})
+
   defp prompt_error(%{"error" => error}), do: {:error, error}
   defp prompt_error(_), do: :unknown
+
+  # Does adapter stderr / an error message describe an upstream API
+  # rate-limit rejection? The adapter phrases it "API Error: Rate limit
+  # reached"; match loosely — only adapter/API errors reach these strings,
+  # never agent output.
+  defp rate_limited_error?(text) when is_binary(text),
+    do: text =~ ~r/rate limit/i
+
+  defp rate_limited_error?(_), do: false
 
   defp error_subtype(%{"error" => %{"message" => m}}) when is_binary(m), do: m
   defp error_subtype(%{"error" => %{"code" => c}}), do: "error_#{c}"
   defp error_subtype(_), do: "error"
 
   # ---- notifications ----
+
+  # config_option_update (claude-agent-acp): the adapter pushes the full
+  # configOptions whenever one changes — a set_config_option round-trip
+  # confirming, or an SDK-initiated model fallback mid-turn. Track the model
+  # option at the CONNECTION level (it's session config, not turn content),
+  # with or without an active turn.
+  defp handle_notification(
+         "session/update",
+         %{"update" => %{"sessionUpdate" => "config_option_update"} = update},
+         state
+       ) do
+    state =
+      case extract_models(%{"configOptions" => update["configOptions"]}) do
+        {models, current, :config_option} when is_binary(current) ->
+          %{state | available_models: models, model: model_name(models, current) || current}
+
+        _ ->
+          state
+      end
+
+    {:noreply, state}
+  end
 
   defp handle_notification("session/update", %{"update" => update}, %{turn: turn} = state)
        when not is_nil(turn) do
@@ -279,6 +603,50 @@ defmodule Loopyard.Harness.ACP.Connection do
     end
 
     {:noreply, decide_permission(state, id, options)}
+  end
+
+  defp handle_agent_request("elicitation/create", id, params, state) do
+    # The harness's native AskUserQuestion, surfaced as an ACP form elicitation
+    # (we advertise elicitation.form iff state.agent_id is set). Route it to the
+    # agent's question card via the same broker the MCP ask_user tool uses —
+    # the human answers/skips per question, and the form response feeds the
+    # answers back into the tool's own input. Questions.ask BLOCKS (up to
+    # 10 min), so it runs in a Task: the connection keeps streaming the turn,
+    # and the JSON-RPC response is sent when the answer lands (handle_cast
+    # below). Decline (= "user skipped") on anything we can't present — cancel
+    # would abort the whole tool call.
+    alias Loopyard.Harness.QuestionAdapter.AcpElicitation
+
+    with agent_id when is_binary(agent_id) <- state.agent_id,
+         "form" <- params["mode"] || "form",
+         {:ok, questions} <- AcpElicitation.parse(params) do
+      conn = self()
+
+      Task.start(fn ->
+        result =
+          case Loopyard.Harness.Questions.ask(agent_id, questions) do
+            {:ok, selections} ->
+              %{
+                "action" => "accept",
+                "content" => AcpElicitation.render_content(questions, selections)
+              }
+
+            {:error, :timeout} ->
+              %{"action" => "decline"}
+          end
+
+        GenServer.cast(conn, {:elicitation_result, id, result})
+      end)
+
+      {:noreply, state}
+    else
+      _ ->
+        Logger.warning(
+          "ACP: unpresentable elicitation/create; declining (#{inspect(params["mode"])})"
+        )
+
+        {:noreply, respond(state, id, %{"action" => "decline"})}
+    end
   end
 
   defp handle_agent_request(method, id, _params, state) do
@@ -348,11 +716,178 @@ defmodule Loopyard.Harness.ACP.Connection do
 
   defp method_kind("initialize"), do: :initialize
   defp method_kind("session/new"), do: :session_new
+  defp method_kind("session/load"), do: :session_load
   defp method_kind("session/prompt"), do: :session_prompt
   defp method_kind(other), do: other
+
+  # Whether the adapter advertised it can replay a saved session (session/load).
+  # Absent → false → we use session/new. Guards against booting session/load
+  # against an adapter that doesn't support it.
+  defp load_supported?(msg) do
+    caps = get_in(msg, ["result", "agentCapabilities"]) || %{}
+    caps["loadSession"] == true
+  end
+
+  # Session became ready: capture the id, the adapter's model list (drives the
+  # UI switcher + name resolution), and the current model's HUMAN name — the
+  # adapter reports currentModelId "default" (useless in the UI); its
+  # availableModels descriptions carry the real mapping, e.g. default →
+  # "Sonnet 4.5 · Best for everyday tasks" → "Sonnet 4.5".
+  #
+  # Two wire dialects: legacy claude-code-acp puts a `models` map
+  # (`availableModels`/`currentModelId`) in the session result and switches
+  # via `session/set_model`; claude-agent-acp (0.60+) reports `configOptions`
+  # (the `"model"` entry: `options`/`currentValue`) and switches via
+  # `session/set_config_option`. We normalize both into the legacy internal
+  # shape and remember which dialect to speak (`:model_dialect`).
+  defp session_ready(state, sid, result) do
+    {models, current, dialect} = extract_models(result)
+    name = model_name(models, current) || current || state.model
+
+    state
+    |> Map.put(:model_dialect, dialect)
+    |> Map.merge(%{session_id: sid, status: :ready, available_models: models, model: name})
+  end
+
+  defp extract_models(result) when is_map(result) do
+    case find_model_config_option(result["configOptions"]) do
+      %{"options" => opts} = opt when is_list(opts) ->
+        models =
+          Enum.map(opts, fn o ->
+            %{"modelId" => o["value"], "name" => o["name"], "description" => o["description"]}
+          end)
+
+        {models, opt["currentValue"], :config_option}
+
+      _ ->
+        {get_in(result, ["models", "availableModels"]) || [],
+         get_in(result, ["models", "currentModelId"]), :set_model}
+    end
+  end
+
+  defp extract_models(_result), do: {[], nil, :set_model}
+
+  defp find_model_config_option(options) when is_list(options),
+    do: Enum.find(options, &(is_map(&1) and &1["id"] == "model"))
+
+  defp find_model_config_option(_), do: nil
+
+  # The dialect-appropriate model-switch request. Response handling is shared
+  # (pending tag :set_model): success needs nothing, error reverts the display.
+  defp request_model_switch(%{model_dialect: :config_option} = state, model_id) do
+    request(state, "session/set_config_option", %{
+      "sessionId" => state.session_id,
+      "configId" => "model",
+      "value" => model_id
+    })
+  end
+
+  defp request_model_switch(state, model_id) do
+    request(state, "session/set_model", %{
+      "sessionId" => state.session_id,
+      "modelId" => model_id
+    })
+  end
+
+  # id → human name from the adapter's model list (description's leading
+  # segment before "·", else the entry's name). nil when unknown.
+  defp model_name(models, id) when is_list(models) and is_binary(id) do
+    case Enum.find(models, &(&1["modelId"] == id)) do
+      %{"description" => d} when is_binary(d) and d != "" ->
+        d |> String.split("·") |> hd() |> String.trim()
+
+      %{"name" => n} when is_binary(n) and n != "" ->
+        n
+
+      _ ->
+        nil
+    end
+  end
+
+  defp model_name(_models, _id), do: nil
 
   defp reply_waiters(state, reply) do
     Enum.each(state.waiters, &GenServer.reply(&1, reply))
     %{state | waiters: []}
+  end
+
+  # On abnormal close, read the adapter's captured stderr tail and log it —
+  # then keep the file for post-mortem. On clean shutdown, remove it.
+  # Returns the tail (or nil) so the caller can classify the death — e.g.
+  # a rate-limit rejection that killed the adapter.
+  @stderr_tail_bytes 2_000
+
+  defp surface_dying_words(%{stderr_log: path}, reason) when is_binary(path) do
+    tail =
+      case File.read(path) do
+        {:ok, ""} ->
+          nil
+
+        {:ok, out} ->
+          binary_part(
+            out,
+            max(byte_size(out) - @stderr_tail_bytes, 0),
+            min(byte_size(out), @stderr_tail_bytes)
+          )
+
+        _ ->
+          nil
+      end
+
+    if tail do
+      Logger.warning(
+        "[ACP] adapter closed (#{inspect(reason)}); stderr tail (full: #{path}):\n#{tail}"
+      )
+
+      short = binary_part(tail, max(byte_size(tail) - 400, 0), min(byte_size(tail), 400))
+
+      Loopyard.EventLog.error(
+        "harness:acp",
+        "Adapter closed (#{inspect(reason)}). Stderr: #{short}"
+      )
+    else
+      # An EMPTY stderr on abnormal close is itself a diagnosis: the shell
+      # inside the container never ran — the container is likely down or
+      # restarting (docker exec failed before the redirect existed). Without
+      # this line that failure mode was completely silent.
+      Loopyard.EventLog.error(
+        "harness:acp",
+        "Adapter closed (#{inspect(reason)}) with NO stderr captured — " <>
+          "the workspace container may be down or restarting."
+      )
+    end
+
+    tail
+  end
+
+  defp surface_dying_words(_state, _reason), do: nil
+
+  # Delete stderr capture files older than a day — abnormal closes keep theirs
+  # for diagnosis, and a crash loop used to accumulate hundreds. Best-effort.
+  defp sweep_stale_stderr_logs do
+    cutoff = System.os_time(:second) - 24 * 3600
+
+    System.tmp_dir!()
+    |> Path.join("loopyard-acp-*.stderr")
+    |> Path.wildcard()
+    |> Enum.each(fn f ->
+      case File.stat(f, time: :posix) do
+        {:ok, %{mtime: m}} when m < cutoff -> File.rm(f)
+        _ -> :ok
+      end
+    end)
+  rescue
+    _ -> :ok
+  end
+
+  @impl true
+  def terminate(reason, state) do
+    # Clean stop → the stderr capture served its purpose; don't litter tmp.
+    # Abnormal → keep it (surface_dying_words already pointed at the path).
+    if reason == :normal and state.status != :closed and is_binary(state[:stderr_log]) do
+      _ = File.rm(state.stderr_log)
+    end
+
+    :ok
   end
 end

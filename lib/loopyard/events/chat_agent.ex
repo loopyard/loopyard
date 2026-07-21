@@ -69,7 +69,16 @@ defmodule Loopyard.Events.ChatAgent do
   def publish(%Removed{} = e), do: bcast(e)
   def publish(%Renamed{} = e), do: bcast(e)
   def publish(%Resumed{} = e), do: bcast(e)
-  def publish(%StatusChanged{} = e), do: bcast(e)
+
+  def publish(%StatusChanged{} = e) do
+    # Mirror status onto the global/per-project activity stream (#54) so the
+    # god-mode sidebar, Foreman, and sound layer get it without subscribing to
+    # this topic directly. Both live in the events layer, so the pubsub
+    # boundary holds.
+    Loopyard.Events.Activity.record(e.id, :status, e.status)
+    bcast(e)
+  end
+
   def publish(%Quarantined{} = e), do: bcast(e)
   def publish(%Released{} = e), do: bcast(e)
 

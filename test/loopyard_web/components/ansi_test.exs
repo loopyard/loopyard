@@ -39,6 +39,22 @@ defmodule LoopyardWeb.Components.AnsiTest do
       assert html =~ "ansi-red"
     end
 
+    test "combines bold + color from SEPARATE codes (Rails style)" do
+      # \e[1m then \e[36m must render as ONE bold-cyan span, not bold-then-cyan
+      # with the bold lost — the exact SQL-log pattern that was showing plain.
+      input = "\e[1m\e[36mSELECT 1\e[0m"
+      html = safe_to_string(Ansi.to_html(input))
+      assert html =~ ~s(<span class="ansi-bold ansi-cyan">SELECT 1</span>)
+      refute html =~ "<span></span>"
+    end
+
+    test "a later color replaces the prior color but keeps bold" do
+      input = "\e[1m\e[31mred\e[36mcyan\e[0m"
+      html = safe_to_string(Ansi.to_html(input))
+      assert html =~ ~s(<span class="ansi-bold ansi-red">red</span>)
+      assert html =~ ~s(<span class="ansi-bold ansi-cyan">cyan</span>)
+    end
+
     test "handles bright colors" do
       input = "\e[91mbright red\e[0m"
       html = safe_to_string(Ansi.to_html(input))

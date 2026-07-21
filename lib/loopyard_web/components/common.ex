@@ -23,19 +23,44 @@ defmodule LoopyardWeb.Components.Common do
   attr :class, :string, default: "mb-4"
 
   def flash_banner(assigns) do
+    # A FLOATING toast, not an in-flow banner: it used to be a full-width <p> that
+    # shoved the entire page down when it appeared (jarring, and loud). Now it's
+    # fixed-position + compact + centered, so it overlays without shifting layout,
+    # and tapping it dismisses (lv:clear-flash). `@class` is ignored for layout —
+    # positioning is intrinsic to the toast — but kept for call-site compat.
     ~H"""
-    <p :if={Phoenix.Flash.get(@flash, @kind)} class={[@class, banner_class(@kind)]}>
-      {Phoenix.Flash.get(@flash, @kind)}
-    </p>
+    <div
+      :if={Phoenix.Flash.get(@flash, @kind)}
+      class={[
+        "fixed top-3 left-1/2 -translate-x-1/2 z-[60] w-[min(92vw,34rem)] flex items-start gap-2",
+        "rounded-xl px-4 py-2.5 text-sm shadow-lg shadow-black/10",
+        banner_class(@kind)
+      ]}
+      role="alert"
+    >
+      <%!-- Text is selectable (select-text) so you can copy the error to paste at
+           an agent. ONLY the ✕ dismisses — clicking the body must not clear it out
+           from under a copy. --%>
+      <span class="flex-1 min-w-0 select-text">{Phoenix.Flash.get(@flash, @kind)}</span>
+      <button
+        type="button"
+        phx-click="lv:clear-flash"
+        phx-value-key={@kind}
+        aria-label="Dismiss"
+        class="flex-none -mr-1 -mt-0.5 px-1 opacity-50 hover:opacity-100 leading-none text-base cursor-pointer"
+      >
+        &times;
+      </button>
+    </div>
     """
   end
 
   defp banner_class(:info) do
-    "rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 px-4 py-3 text-sm text-green-700 dark:text-green-300"
+    "bg-green-50 dark:bg-green-950/80 border border-green-200 dark:border-green-800/70 text-green-800 dark:text-green-300 backdrop-blur"
   end
 
   defp banner_class(:error) do
-    "rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300"
+    "bg-red-50 dark:bg-red-950/80 border border-red-200 dark:border-red-800/70 text-red-800 dark:text-red-300 backdrop-blur"
   end
 
   @doc """
@@ -85,9 +110,12 @@ defmodule LoopyardWeb.Components.Common do
   def detail_panel(assigns) do
     ~H"""
     <div class="flex-1 flex flex-col min-h-0">
-      <div class="flex-none border-b border-zinc-200 dark:border-zinc-700/80 px-4 md:px-5 h-12 flex items-center gap-3">
+      <%!-- Desktop-only header. On mobile the section switcher already names the
+           selected thing and its details button opens the actions sheet, so this
+           bar (name + actions) is redundant chrome — hide it. --%>
+      <LoopyardWeb.Components.Nav.bar height="h-12" gap="gap-3" class="hidden md:flex">
         {render_slot(@header)}
-      </div>
+      </LoopyardWeb.Components.Nav.bar>
       {render_slot(@inner_block)}
     </div>
     """
@@ -99,31 +127,63 @@ defmodule LoopyardWeb.Components.Common do
       <.control_btn>Restart</.control_btn>
       <.control_btn variant={:primary}>+ Debug Agent</.control_btn>
   """
-  attr :variant, :atom, default: :default, values: [:default, :primary]
+  attr :variant, :atom, default: :default, values: [:default, :primary, :danger]
+  # Optional link targets — a toolbar action is often a navigation (Console) or
+  # an external link (Open), not a phx-click. Passing any of these renders the
+  # SAME-sized control as a link instead of a <button>, so every action in a
+  # toolbar is one consistent size.
+  attr :navigate, :string, default: nil
+  attr :patch, :string, default: nil
+  attr :href, :string, default: nil
+  # Extra layout classes (e.g. "w-full justify-center" for a stacked sidebar
+  # button). Appended AFTER the base + color so callers can stretch/center the
+  # control without redefining its look. Kept out of `@rest` so it never
+  # produces a duplicate `class` attribute alongside the base.
+  attr :class, :string, default: ""
 
   attr :rest, :global,
     include:
-      ~w(phx-click phx-value-id phx-value-service_name phx-value-workspace-id phx-value-volume_name data-confirm)
+      ~w(phx-click phx-value-id phx-value-service_name phx-value-service phx-value-container_port phx-value-expose phx-value-workspace-id phx-value-volume_name target rel data-confirm)
 
   slot :inner_block, required: true
 
-  def control_btn(%{variant: :primary} = assigns) do
-    ~H"""
-    <button
-      class="px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-violet-600 dark:text-violet-400 transition-colors"
-      {@rest}
-    >
-      {render_slot(@inner_block)}
-    </button>
-    """
-  end
+  # ONE toolbar-button size + shape everywhere. Only the text color changes by
+  # variant. Renders <button> for actions, <.link>/<a> for navigations — same
+  # box either way.
+  # min-h-11 (44px) is the WCAG/HIG touch-target floor on mobile; md:min-h-8
+  # (~32px) keeps the dense desktop toolbar size. So every action button is
+  # comfortably tappable on a phone without bloating the desktop rail.
+  @control_btn_base "inline-flex items-center min-h-11 md:min-h-8 px-3 py-1.5 rounded-md text-sm font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
 
   def control_btn(assigns) do
+    color =
+      case assigns.variant do
+        :primary ->
+          "text-violet-600 dark:text-violet-400"
+
+        # Destructive: red text on a transparent box (set apart from the zinc
+        # operational buttons), red-tinted hover. `!` overrides the base zinc
+        # bg/hover so a Remove/Delete never looks like a neutral action.
+        :danger ->
+          "text-red-600 dark:text-red-400 !bg-transparent hover:!bg-red-50 dark:hover:!bg-red-900/20"
+
+        _ ->
+          "text-zinc-600 dark:text-zinc-300"
+      end
+
+    assigns = assign(assigns, :cls, [@control_btn_base, color, assigns.class])
+
     ~H"""
-    <button
-      class="px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors"
-      {@rest}
-    >
+    <.link :if={@navigate} navigate={@navigate} class={@cls} {@rest}>
+      {render_slot(@inner_block)}
+    </.link>
+    <.link :if={@patch} patch={@patch} class={@cls} {@rest}>
+      {render_slot(@inner_block)}
+    </.link>
+    <a :if={@href} href={@href} class={@cls} {@rest}>
+      {render_slot(@inner_block)}
+    </a>
+    <button :if={!@navigate && !@patch && !@href} class={@cls} {@rest}>
       {render_slot(@inner_block)}
     </button>
     """
@@ -301,7 +361,7 @@ defmodule LoopyardWeb.Components.Common do
     assigns = assign(assigns, :width_class, width_class)
 
     ~H"""
-    <div class="min-h-screen bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
+    <div class="min-h-screen bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 safe-area-x">
       <.header
         breadcrumbs={@breadcrumbs}
         iex_session={@iex_session}
@@ -315,6 +375,54 @@ defmodule LoopyardWeb.Components.Common do
         {render_slot(@inner_block)}
       </div>
     </div>
+    """
+  end
+
+  @doc """
+  The header ambient-sound control: a SPEAKER icon that links to the full
+  `/sound` page (live nav, so the bed never cuts). A speaker reads as "open the
+  sound controls" — not a transport button — so tapping-to-open is intuitive and
+  there's no "why didn't it play?" confusion. It still shows state: waves when
+  playing, muted when off (plus a subtle violet tint while on). The `SoundIcon`
+  JS hook mirrors the engine state. Give each placement a unique `id`.
+  """
+  attr :id, :string, default: "sound-control"
+  attr :class, :string, default: nil
+
+  def sound_control(assigns) do
+    ~H"""
+    <.link
+      navigate="/sound"
+      id={@id}
+      phx-hook="SoundIcon"
+      aria-label="Sound"
+      class={[
+        "flex-none inline-flex items-center justify-center w-11 h-11 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors",
+        @class
+      ]}
+    >
+      <svg
+        data-sound-icon="off"
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 20 20"
+        fill="currentColor"
+        class="w-5 h-5"
+      >
+        <path d="M10 3.75a.75.75 0 0 0-1.264-.546L5.203 6.5H3.667A1.667 1.667 0 0 0 2 8.167v3.666A1.667 1.667 0 0 0 3.667 13.5h1.536l3.533 3.296A.75.75 0 0 0 10 16.25V3.75Z" />
+        <path d="M14.78 7.72a.75.75 0 0 0-1.06 1.06L14.94 10l-1.22 1.22a.75.75 0 1 0 1.06 1.06L16 11.06l1.22 1.22a.75.75 0 1 0 1.06-1.06L17.06 10l1.22-1.22a.75.75 0 0 0-1.06-1.06L16 8.94l-1.22-1.22Z" />
+      </svg>
+      <svg
+        data-sound-icon="on"
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 20 20"
+        fill="currentColor"
+        class="w-5 h-5 hidden"
+      >
+        <path d="M10 3.75a.75.75 0 0 0-1.264-.546L5.203 6.5H3.667A1.667 1.667 0 0 0 2 8.167v3.666A1.667 1.667 0 0 0 3.667 13.5h1.536l3.533 3.296A.75.75 0 0 0 10 16.25V3.75Z" />
+        <path d="M14.657 3.879a.75.75 0 0 0-1.06 1.06 7 7 0 0 1 0 9.9.75.75 0 0 0 1.06 1.061 8.5 8.5 0 0 0 0-12.021Z" />
+        <path d="M12.182 6.354a.75.75 0 0 0-1.06 1.06 3.5 3.5 0 0 1 0 4.95.75.75 0 0 0 1.06 1.06 5 5 0 0 0 0-7.07Z" />
+      </svg>
+    </.link>
     """
   end
 end

@@ -64,7 +64,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.DataLoader do
   end
 
   defp workspace_already_in_ets?(workspace_id) do
-    Enum.any?(Loopyard.ChatAgent.list_agents(), &(&1[:workspace_id] == workspace_id))
+    # Cheap ETS presence check — do NOT route through ChatAgent.list_agents/0,
+    # which get_states every live agent and scans the whole (possibly huge)
+    # table just to answer a yes/no. This runs on the mount hot path.
+    Loopyard.ChatAgent.workspace_loaded?(workspace_id)
   end
 
   # Kicks off three Docker calls (container_running?, do_logs, do_inspect)

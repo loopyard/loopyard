@@ -118,8 +118,12 @@ defmodule Loopyard.Workspace.ServiceManager do
       try do
         case Compose.ps(effective_project_dir, workspace_id) do
           {:ok, running} when running != [] ->
-            # Containers already running — reconnect state without rebuilding
-            GenServer.call(self_pid, :reconnect, 30_000)
+            # Containers already running — reconnect state without rebuilding.
+            # 120s (was 30s): :reconnect replays the agent log and each agent
+            # start can legitimately take up to its own 30s harness budget —
+            # nested timeouts must DECREASE going inward, or the outer call
+            # dies first and the whole init retries from scratch.
+            GenServer.call(self_pid, :reconnect, 120_000)
 
           _ ->
             # No running containers — do a full start
@@ -721,14 +725,26 @@ defmodule Loopyard.Workspace.ServiceManager do
           _ ->
             opts = [id: agent_id, resume: true, started_by: "log_replay"]
 
-            case Loopyard.WorkspaceGroup.start_agent(workspace_id, opts) do
+            # try/catch :exit — a wedged agent boot (slow harness handshake
+            # blowing the start_agent call timeout) must NOT crash the
+            # ServiceManager mid-:reconnect: that cascaded a :one_for_all
+            # restart of the whole workspace group, which re-ran :reconnect,
+            # which re-started the same wedged agent — the crash loop.
+            result =
+              try do
+                Loopyard.WorkspaceGroup.start_agent(workspace_id, opts)
+              catch
+                :exit, reason -> {:error, {:start_timeout, reason}}
+              end
+
+            case result do
               {:ok, _pid} ->
                 :ok
 
               {:error, reason} ->
                 Loopyard.EventLog.warning(
                   "workspace",
-                  "Failed to resume agent #{agent_id}: #{inspect(reason)}"
+                  "Failed to resume agent #{agent_id}: #{inspect(reason, limit: 20)}"
                 )
             end
         end
