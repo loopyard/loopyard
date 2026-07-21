@@ -100,7 +100,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Transcript do
   everything when the top of the window drops.
   """
   def section_key(%{prompt: {%{id: id}, _idx}}) when not is_nil(id), do: id
+  def section_key(%{prompt: {%{id: id}, _idx, _ctx}}) when not is_nil(id), do: id
   def section_key(%{prompt: {_msg, idx}}), do: {:pidx, idx}
+  def section_key(%{prompt: {_msg, idx, _ctx}}), do: {:pidx, idx}
   def section_key(_), do: :head
 
   @doc """
@@ -112,6 +114,47 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Transcript do
   measured). Returns idx → %{prev_role, next_role, call, streamed_exec,
   preceded_by_edit, expanded?}.
   """
+  @doc """
+  Sections with per-item context baked into the items: every `{msg, idx}`
+  becomes `{msg, idx, ctx}`, and rows the live activity feed already shows
+  (tool/tool_result past `live_from`) are FILTERED OUT here instead of a
+  per-row `:if` in the template. Both matter for the wire: keyed
+  comprehension tracking compares the loop variables, so context must live
+  IN the item (equal tuple → row skipped), and a per-row `:if` reading a
+  per-append-changing assign (`@live_tool_from`) re-dirtied every row on
+  every append (~75KB/append measured).
+  """
+  def visible_sections(messages, expanded_results, live_from) do
+    ctx = item_contexts(messages, expanded_results)
+
+    enrich = fn {msg, idx} -> {msg, idx, Map.get(ctx, idx)} end
+
+    visible? = fn {msg, idx} ->
+      not (is_integer(live_from) and idx > live_from and msg.role in [:tool, :tool_result])
+    end
+
+    messages
+    |> transcript_sections()
+    |> Enum.map(fn sec ->
+      %{
+        prompt: sec.prompt && enrich.(sec.prompt),
+        body:
+          sec.body
+          |> Enum.map(fn
+            {:break, item} ->
+              if visible?.(item), do: {:break, enrich.(item)}
+
+            {:run, items} ->
+              case items |> Enum.filter(visible?) |> Enum.map(enrich) do
+                [] -> nil
+                kept -> {:run, kept}
+              end
+          end)
+          |> Enum.reject(&is_nil/1)
+      }
+    end)
+  end
+
   def item_contexts(messages, expanded_results) do
     tail_from = expand_tail_from(messages)
     roles = messages |> Enum.map(& &1.role) |> List.to_tuple()

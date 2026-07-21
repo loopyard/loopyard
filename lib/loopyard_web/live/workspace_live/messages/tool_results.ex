@@ -86,7 +86,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
     ~H"""
     <details
       class={[gutter(), "py-0.5 group/result"]}
-      open={if @lazy?, do: @expanded?, else: @detail_level == :trace || @is_error}
+      open={if @lazy?, do: @expanded? != false, else: @detail_level == :trace || @is_error}
     >
       <summary
         class="text-sm text-zinc-500 dark:text-zinc-400 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5"
@@ -250,7 +250,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
     ~H"""
     <details
       class={[gutter(), "py-0.5 group/file"]}
-      open={if @lazy?, do: @expanded?, else: @detail_level == :trace}
+      open={if @lazy?, do: @expanded? != false, else: @detail_level == :trace}
     >
       <summary
         class="text-sm text-zinc-500 dark:text-zinc-400 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5"
@@ -321,7 +321,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
     ~H"""
     <details
       class={[gutter(), "py-0.5 group/grep"]}
-      open={if @lazy?, do: @expanded?, else: @detail_level == :trace}
+      open={if @lazy?, do: @expanded? != false, else: @detail_level == :trace}
     >
       <summary
         class="text-sm text-zinc-500 dark:text-zinc-400 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-400 select-none list-none flex items-center gap-1.5"

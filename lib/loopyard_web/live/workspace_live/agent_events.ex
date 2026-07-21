@@ -21,6 +21,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentEvents do
   alias Loopyard.Events
   alias Loopyard.StreamBuffer
 
+  # How far past message_window_max the window may run before pruning back
+  # down to max. See the windowing comment in on_message/2.
+  @window_prune_slack 40
+
   @doc """
   Merge ETS data with event-driven assigns for the selected agent.
 
@@ -322,11 +326,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentEvents do
         # bottom following the stream), so the browser's scroll anchoring keeps
         # the visible content put — no shift. Dropping the top means older
         # messages now live off-window, so re-enable "load older".
+        #
+        # Pruned in CHUNKS, not one-per-append: dropping exactly one from the
+        # top on every append shifts EVERY row's position, and the keyed
+        # transcript then ships a move record per row per append (~87KB/append
+        # measured at the cap). Letting the window run @window_prune_slack over
+        # and dropping the whole overhang at once makes the other appends pure
+        # appends — zero shifts.
         max = AgentLifecycle.message_window_max()
         appended = socket.assigns.messages ++ [msg]
 
         {windowed, dropped_top?} =
-          if length(appended) > max,
+          if length(appended) > max + @window_prune_slack,
             do: {Enum.take(appended, -max), true},
             else: {appended, false}
 

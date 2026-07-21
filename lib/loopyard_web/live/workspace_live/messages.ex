@@ -34,6 +34,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   defdelegate transcript_groups(messages), to: Transcript
   defdelegate transcript_sections(messages), to: Transcript
   defdelegate item_contexts(messages, expanded_results), to: Transcript
+  defdelegate visible_sections(messages, expanded_results, live_from), to: Transcript
   defdelegate section_key(section), to: Transcript
 
   # The Copy / Open hover buttons live in Messages.Actions (size-cap split);

@@ -375,21 +375,28 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     assigns = assign(assigns, :live_tool_from, active_turn_cutoff(assigns))
     assigns = assign_new(assigns, :window_tail?, fn -> true end)
 
-    # Precompute the section structure + per-row context ONCE per render.
-    # item_ctx carries each row's neighbor roles, matched tool call, and
-    # expanded? (live-tail auto-expansion + manual toggles) — value-stable
-    # per row, which is what lets the keyed loops below skip unchanged rows.
-    # nil when the caller doesn't manage expansion (render-everything mode).
+    # Precompute the section structure ONCE per render, with per-row context
+    # baked into each item ({msg, idx, ctx}) and live-feed-suppressed rows
+    # already filtered out. Rows must not reference any per-append-changing
+    # assign (@item_ctx map, @live_tool_from) — that re-dirtied every row on
+    # every append. Keyed tracking compares the loop items themselves.
     alias LoopyardWeb.Live.WorkspaceLive.Messages
 
     assigns =
-      assigns
-      |> assign(:transcript_sections, Messages.transcript_sections(assigns.messages))
-      |> assign(
-        :item_ctx,
-        assigns[:expanded_results] &&
-          Messages.item_contexts(assigns.messages, assigns.expanded_results)
+      assign(
+        assigns,
+        :transcript_sections,
+        Messages.visible_sections(
+          assigns.messages,
+          assigns[:expanded_results] || MapSet.new(),
+          assigns.live_tool_from
+        )
       )
+
+    # Rows reference @agent_id, never @agent.id: @agent is re-assigned on
+    # every append (last_activity_at), which would mark every row's agent_id
+    # expression dirty. assign/3 value-compares, so this stays unchanged.
+    assigns = assign(assigns, :agent_id, assigns.agent.id)
 
     ~H"""
     <div class="relative flex-1 flex flex-col min-h-0">
@@ -443,12 +450,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                precomputed, value-stable — never the whole @messages list. --%>
           <section :for={section <- @transcript_sections} :key={Messages.section_key(section)}>
             <%= if section.prompt do %>
-              <% {pmsg, pidx} = section.prompt %>
+              <% {pmsg, pidx, pctx} = section.prompt %>
               <.chat_msg
                 msg={pmsg}
                 idx={pidx}
-                ctx={@item_ctx && Map.get(@item_ctx, pidx)}
-                agent_id={@agent.id}
+                ctx={pctx}
+                agent_id={@agent_id}
                 workspace_id={@workspace_id}
                 host={@host}
                 detail_level={@detail_level}
@@ -456,13 +463,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             <% end %>
             <%= for group <- section.body do %>
               <%= case group do %>
-                <% {:break, {msg, idx}} -> %>
+                <% {:break, {msg, idx, ctx}} -> %>
                   <.chat_msg
-                    :if={not in_live_feed?(@live_tool_from, msg, idx)}
                     msg={msg}
                     idx={idx}
-                    ctx={@item_ctx && Map.get(@item_ctx, idx)}
-                    agent_id={@agent.id}
+                    ctx={ctx}
+                    agent_id={@agent_id}
                     workspace_id={@workspace_id}
                     host={@host}
                     detail_level={@detail_level}
@@ -475,13 +481,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                   <div class="mt-2">
                     <div class="space-y-2.5">
                       <.chat_msg
-                        :for={{msg, idx} <- items}
+                        :for={{msg, idx, ctx} <- items}
                         :key={msg[:id] || idx}
-                        :if={not in_live_feed?(@live_tool_from, msg, idx)}
                         msg={msg}
                         idx={idx}
-                        ctx={@item_ctx && Map.get(@item_ctx, idx)}
-                        agent_id={@agent.id}
+                        ctx={ctx}
+                        agent_id={@agent_id}
                         workspace_id={@workspace_id}
                         host={@host}
                         detail_level={@detail_level}
