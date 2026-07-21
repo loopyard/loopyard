@@ -329,8 +329,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   def chat_msg(%{msg: %{role: :build_done}} = assigns) do
     assigns = assign(assigns, :link, msg_url(assigns))
 
+    # Wrap in a plain <div>: this is the ROOT of a stateful LiveComponent
+    # (MessageRowComponent), which requires a single STATIC root. log_inline's own
+    # root carries a dynamic id (System.unique_integer) + phx-hook, so it can't be
+    # `.root: true` on its own — the static wrapper gives the component a clean root.
     ~H"""
-    <.log_inline content={@msg.content} status={:done} raw_url={@link} title={@msg[:title]} />
+    <div>
+      <.log_inline content={@msg.content} status={:done} raw_url={@link} title={@msg[:title]} />
+    </div>
     """
   end
 
@@ -338,13 +344,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     assigns = assign(assigns, :link, msg_url(assigns))
 
     ~H"""
-    <.log_inline
-      content={@msg.content}
-      status={:failed}
-      raw_url={@link}
-      title={@msg[:title]}
-      exit_code={@msg[:exit_code]}
-    />
+    <div>
+      <.log_inline
+        content={@msg.content}
+        status={:failed}
+        raw_url={@link}
+        title={@msg[:title]}
+        exit_code={@msg[:exit_code]}
+      />
+    </div>
     """
   end
 
