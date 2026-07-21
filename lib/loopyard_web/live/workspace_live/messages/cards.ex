@@ -51,11 +51,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
         <div :for={q <- @msg.questions} class="mb-4 last:mb-0">
           <div
             :if={q.header != ""}
-            class="text-sm uppercase tracking-wide text-zinc-500 dark:text-zinc-400 mb-1"
+            class="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1"
           >
             {q.header}
           </div>
-          <div class="text-lg md:text-base font-medium leading-snug text-zinc-800 dark:text-zinc-200 mb-3">
+          <div class="text-base font-semibold leading-snug text-zinc-900 dark:text-zinc-100 mb-2.5">
             {q.prompt}
           </div>
 
@@ -65,7 +65,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                Single-select: one click settles the question. Multi-select:
                clicks TOGGLE (draft broadcast to every viewer), the button
                below confirms. --%>
-          <div :if={@msg.status == :pending && !locked?(@msg, q)} class="flex flex-col gap-2.5">
+          <div :if={@msg.status == :pending && !locked?(@msg, q)} class="flex flex-col gap-1">
             <button
               :for={o <- q.options}
               type="button"
@@ -74,17 +74,21 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
               phx-value-q={q.id}
               phx-value-option={o.label}
               class={[
-                "focus-ring group/opt block w-full text-left rounded-lg border px-3.5 py-2.5 transition-colors",
+                "focus-ring group/opt block w-full text-left rounded-lg px-3 py-2 transition-colors",
                 if(q[:multi] && drafted?(@msg, q, o.label),
-                  do:
-                    "border-violet-500 dark:border-violet-500/80 bg-violet-100/70 dark:bg-violet-900/30",
-                  else:
-                    "border-violet-200/70 dark:border-violet-800/50 bg-white/70 dark:bg-zinc-900/40 hover:border-violet-400 hover:bg-violet-50 dark:hover:border-violet-600/80 dark:hover:bg-violet-900/20"
+                  do: "bg-violet-100/70 dark:bg-violet-900/30",
+                  else: "hover:bg-violet-100/50 dark:hover:bg-violet-900/20"
                 )
               ]}
             >
-              <div class="flex items-center gap-1.5 text-lg md:text-base font-medium text-violet-700 dark:text-violet-300">
-                <span :if={q[:multi] && drafted?(@msg, q, o.label)} aria-hidden="true">✓</span>
+              <div class="flex items-center gap-1.5 text-sm font-medium text-zinc-800 dark:text-zinc-100">
+                <span
+                  :if={q[:multi] && drafted?(@msg, q, o.label)}
+                  class="text-violet-600 dark:text-violet-400"
+                  aria-hidden="true"
+                >
+                  ✓
+                </span>
                 {o.label}
               </div>
               <div
@@ -154,21 +158,19 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                layout jump on click), chosen lit emerald with a check, the rest
                dimmed. Durable receipt — survives refresh/restart via the
                persisted :selections. --%>
-          <div :if={locked?(@msg, q)} class="flex flex-col gap-2.5">
+          <div :if={locked?(@msg, q)} class="flex flex-col gap-1">
             <div
               :for={o <- q.options}
               class={[
-                "block w-full text-left rounded-lg border px-3.5 py-2.5",
+                "block w-full text-left rounded-lg px-3 py-2",
                 if(chosen?(@msg, q, o.label),
-                  do:
-                    "border-emerald-400/70 dark:border-emerald-600/60 bg-emerald-50/70 dark:bg-emerald-900/15",
-                  else:
-                    "border-zinc-200/60 dark:border-zinc-800/60 bg-white/40 dark:bg-zinc-900/20 opacity-50"
+                  do: "bg-emerald-50/70 dark:bg-emerald-900/15",
+                  else: "opacity-45"
                 )
               ]}
             >
               <div class={[
-                "flex items-center gap-1.5 text-lg md:text-base font-medium",
+                "flex items-center gap-1.5 text-sm font-medium",
                 if(chosen?(@msg, q, o.label),
                   do: "text-emerald-700 dark:text-emerald-300",
                   else: "text-zinc-500 dark:text-zinc-400"
