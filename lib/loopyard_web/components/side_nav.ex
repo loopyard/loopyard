@@ -39,10 +39,13 @@ defmodule LoopyardWeb.Components.SideNav do
 
   def section(assigns) do
     ~H"""
+    <%!-- pb-0: the between-groups gap is the NEXT section's pt-4 alone (16px),
+         matching the workspace rail's group_label pt-4 — pb-1 + pt-4 gave the
+         details zone a visibly looser rhythm than the rail above it. --%>
     <section class={[
       @variant == :section && "pt-4 first:pt-3",
       @variant == :sub && "pt-2.5 md:pt-2",
-      "px-3 pb-1",
+      "px-3 pb-0",
       @class
     ]}>
       <div

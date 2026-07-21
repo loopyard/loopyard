@@ -378,7 +378,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
 
   def group_label(assigns) do
     ~H"""
-    <div class="flex items-center justify-between gap-2 px-2 pt-3 pb-1 first:pt-1.5">
+    <%!-- pt-4 = the ONE between-groups gap, shared with SideNav.section (the
+         details rail) — the two zones of the right rail must breathe at the
+         same rhythm or the seam between them reads as two different UIs. --%>
+    <div class="flex items-center justify-between gap-2 px-2 pt-4 pb-1 first:pt-1.5">
       <span class="text-sm md:text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
         {@text}
       </span>
