@@ -17,6 +17,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   want to (e.g., a message permalink page).
   """
   use Phoenix.Component
+  # Streaming markdown: renders the live reply block-by-block, freezing completed
+  # blocks (phx-update="ignore") and re-diffing only the active block per token —
+  # so we get live-rendered markdown WITHOUT the O(reply) re-render firehose that
+  # d0c34c5's client-append avoided. See streaming_bubble/1.
+  use PhoenixStreamdown
 
   import LoopyardWeb.Components.LogViewer, only: [log_inline: 1]
   import LoopyardWeb.Components.DiffView, only: [diff: 1]
@@ -445,31 +450,35 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     """
   end
 
+  attr :streaming_text, :string, default: ""
+
   def streaming_bubble(assigns) do
     # Flush-left (no rail, no indent) so the live prose lines up with completed
     # assistant messages and everything else in the transcript.
     #
-    # CLIENT-APPENDED: the body is phx-update="ignore" and the StreamAppend
-    # hook appends each delta chunk as a text node (pushed via "stream_delta").
-    # Rendering the accumulated text server-side re-shipped and re-patched the
-    # ENTIRE reply on every flush — O(reply) wire + DOM churn 10×/s was the
-    # residual typing lag and a Safari memory firehose. Live text is plain
-    # (whitespace-pre-wrap); markdown renders once when the finalized assistant
-    # Message replaces this element. The `:if` at the call site removes the
-    # element between turns, so each stream starts from an empty node.
+    # LIVE-RENDERED via phoenix_streamdown: the reply renders block-by-block —
+    # completed blocks freeze with phx-update="ignore", and only the active
+    # (in-progress) block is remended + MDEx-rendered + re-diffed per token. That
+    # keeps the per-token cost bounded to ONE block (not the whole reply — the
+    # O(reply) firehose d0c34c5 fought), while showing rendered markdown instead
+    # of raw text. `@streaming_text` is accumulated server-side per delta in
+    # agent_events.ex; the `:if` at the call site drops the element between turns.
     ~H"""
     <div
-      class="py-0.5 mt-2"
+      class="py-0.5 mt-2 markdown-body text-lg md:text-base leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl"
       id="streaming-msg"
-      phx-update="ignore"
-      phx-hook="StreamAppend"
-      data-stream-event="stream_delta"
     >
-      <div
-        data-stream-target
-        class="markdown-body text-lg md:text-base leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl whitespace-pre-line"
-      >
-      </div>
+<%!-- mdex_opts match Loopyard.Markdown (finalized messages): same extensions +
+           hardbreaks, and syntax_highlight OFF. Off is required AND consistent —
+           MDEx 0.13 moved highlighting to a separate :lumis dep (streamdown's
+           default "onedark" theme raises without it → falls back to raw), and
+           Loopyard's finalized renderer doesn't highlight either, so streaming
+           now matches the settled bubble exactly. --%>
+      <.markdown
+        content={@streaming_text}
+        streaming
+        mdex_opts={[syntax_highlight: nil, render: [hardbreaks: true, unsafe_: false]]}
+      />
     </div>
     """
   end

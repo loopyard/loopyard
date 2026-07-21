@@ -530,7 +530,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               @detail_level != :chat && assigns[:streaming_thinking] != "" &&
                 assigns[:streaming_thinking] != nil
             } />
-            <.streaming_bubble :if={@streaming_text != ""} />
+            <.streaming_bubble :if={@streaming_text != ""} streaming_text={@streaming_text} />
             <.thinking_indicator
               :if={
                 @agent.status == :thinking && @streaming_text == "" &&
