@@ -666,6 +666,18 @@ Hooks.ChatForm = {
       // reload, reconnect, flaky phone link), the callback never fires — a
       // timeout restores the box so the message is never silently lost.
       const status = document.getElementById("send-status")
+      // Status line under the input. Every caller sets BOTH text and tone so no
+      // color state leaks between the busy and error paths. "Sending…" shows the
+      // instant you hit Send — otherwise the message only appears after the
+      // server round-trip, which visibly lags while the agent is mid-turn.
+      const setStatus = (text, tone) => {
+        if (!status) return
+        status.textContent = text
+        status.className =
+          "mt-1.5 text-sm " +
+          (tone === "error" ? "text-red-500 dark:text-red-400" : "text-zinc-400 dark:text-zinc-500")
+      }
+      setStatus("Sending…", "busy")
       let settled = false
       const settle = (ok, reason) => {
         if (settled) return
@@ -695,10 +707,7 @@ Hooks.ChatForm = {
           // never a silent red flash.
           ta.style.boxShadow = "0 0 0 2px rgb(248 113 113)"
           setTimeout(() => { ta.style.boxShadow = "" }, 2500)
-          if (status) {
-            status.textContent = reason || "Send didn't go through — your text is kept, press Send to retry."
-            status.classList.remove("hidden")
-          }
+          setStatus(reason || "Send didn't go through — your text is kept, press Send to retry.", "error")
           ta.focus()
         }
       }
