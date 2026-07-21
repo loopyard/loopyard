@@ -174,6 +174,42 @@ defmodule Loopyard.Tools.Container.Helpers do
   end
 
   @doc """
+  Drain a BURST of port output: the chunk in hand plus everything that
+  arrives within `window_ms`. The streaming loops (exec / docker_compose /
+  stream_port_output) do one message-update + one broadcast per burst
+  instead of per chunk — a chatty build (watcher spew, line-buffered
+  output) published per line, forcing every viewer through a full update
+  cycle each time (measured as 100ms+ main-thread stalls while typing).
+  ≤100ms of display latency on build output is imperceptible.
+
+  If the port exits mid-drain, the exit message is RE-INJECTED into the
+  caller's mailbox so its normal `{:exit_status, _}` branch still runs.
+  """
+  def drain_port_burst(port, first_data, window_ms \\ 100) do
+    deadline = System.monotonic_time(:millisecond) + window_ms
+    drain_port_loop(port, first_data, deadline)
+  end
+
+  defp drain_port_loop(port, acc, deadline) do
+    remaining = deadline - System.monotonic_time(:millisecond)
+
+    if remaining <= 0 do
+      acc
+    else
+      receive do
+        {^port, {:data, d}} ->
+          drain_port_loop(port, acc <> d, deadline)
+
+        {^port, {:exit_status, _}} = exit_msg ->
+          send(self(), exit_msg)
+          acc
+      after
+        remaining -> acc
+      end
+    end
+  end
+
+  @doc """
   Stream output from a Port to a chat message, broadcasting chunks via PubSub.
 
   Used by docker_compose and exec tools to show real-time build/command output.
@@ -181,6 +217,7 @@ defmodule Loopyard.Tools.Container.Helpers do
   def stream_port_output(agent_id, port, command, msg_id, acc, timeout) do
     receive do
       {^port, {:data, data}} ->
+        data = drain_port_burst(port, data)
         acc = acc <> data
 
         Loopyard.ChatAgent.update_message(agent_id, msg_id, fn msg ->

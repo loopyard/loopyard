@@ -213,6 +213,43 @@ Hooks.StreamAppend = {
   }
 }
 
+// PerfProbe — lightweight client-health beacon for real sessions. Samples
+// worst main-thread frame gap (rAF drift ≈ typing jank), DOM node count, and
+// JS heap, and pushes one compact event every 20s while the tab is visible.
+// The server logs it to the EventLog, so "the UI feels slow" is diagnosable
+// from /system/events (or rpc) with real numbers instead of vibes.
+Hooks.PerfProbe = {
+  mounted() {
+    this.gap = {max: 0, over50: 0}
+    let last = performance.now()
+    let raf = () => {
+      const now = performance.now()
+      const g = now - last
+      if (g > this.gap.max) this.gap.max = g
+      if (g > 50) this.gap.over50++
+      last = now
+      this.rafId = requestAnimationFrame(raf)
+    }
+    this.rafId = requestAnimationFrame(raf)
+
+    this.timer = setInterval(() => {
+      if (document.hidden) { this.gap = {max: 0, over50: 0}; return }
+      const sample = {
+        max_gap_ms: Math.round(this.gap.max),
+        gaps_over_50: this.gap.over50,
+        dom: document.querySelectorAll("*").length,
+        heap_mb: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : null
+      }
+      this.gap = {max: 0, over50: 0}
+      this.pushEvent("perf_sample", sample)
+    }, 20000)
+  },
+  destroyed() {
+    clearInterval(this.timer)
+    cancelAnimationFrame(this.rafId)
+  }
+}
+
 Hooks.ScrollBottom = {
   mounted() {
     this._loading = false

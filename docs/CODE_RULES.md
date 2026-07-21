@@ -262,6 +262,11 @@ to `Events.ChatAgentMessage.publish/1`; every turn-reset/interrupt path must
 drop the buffer (`drop_stream_deltas/1`) so a late flush can't ghost a stale
 streaming bubble.
 
+The same rule covers BUILD OUTPUT: port chunks from exec/docker_compose
+stream through `Helpers.drain_port_burst/3` (one update + one broadcast per
+~100ms burst). Per-line publishes from a watcher measured as 175ms
+main-thread stalls while typing; batched, the same load is a 32ms blip.
+
 ## Operations must be idempotent
 
 Check if running before starting. Never `docker rm -f` then `docker run` unconditionally.

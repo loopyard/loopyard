@@ -1054,6 +1054,33 @@ defmodule LoopyardWeb.WorkspaceLive do
 
   def handle_event("toggle_result", _params, socket), do: {:noreply, socket}
 
+  # Client perf beacon (PerfProbe hook): telemetry always; EventLog only when
+  # the sample is actually janky, so healthy viewers stay silent.
+  @impl true
+  def handle_event("perf_sample", sample, socket) when is_map(sample) do
+    max_gap = sample["max_gap_ms"]
+
+    if is_number(max_gap) and max_gap > 100 do
+      Loopyard.EventLog.warning(
+        "perf",
+        "client jank: max_gap=#{max_gap}ms over50=#{sample["gaps_over_50"]} " <>
+          "dom=#{sample["dom"]} heap=#{sample["heap_mb"]}MB agent=#{socket.assigns.selected_id}"
+      )
+    end
+
+    :telemetry.execute(
+      [:loopyard, :client, :perf],
+      %{
+        max_gap_ms: (is_number(max_gap) && max_gap) || 0,
+        dom: (is_number(sample["dom"]) && sample["dom"]) || 0,
+        heap_mb: (is_number(sample["heap_mb"]) && sample["heap_mb"]) || 0
+      },
+      %{agent_id: socket.assigns.selected_id}
+    )
+
+    {:noreply, socket}
+  end
+
   @impl true
   def handle_event("start_rename", _params, socket) do
     {:noreply, assign(socket, :editing_name, true)}

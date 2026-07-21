@@ -97,6 +97,9 @@ defmodule Loopyard.Tools.Container.DockerCompose do
   defp collect_and_stream(agent_id, port, command, msg_id, acc, timeout) do
     receive do
       {^port, {:data, data}} ->
+        # One update + one broadcast per BURST, not per chunk — see
+        # Helpers.drain_port_burst/3.
+        data = Helpers.drain_port_burst(port, data)
         acc = acc <> data
 
         # Update the streaming message in ETS + broadcast to LiveView

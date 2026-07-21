@@ -55,6 +55,9 @@ defmodule Loopyard.Tools.Container.Exec do
   defp collect_output(agent_id, port, command, msg_id, acc, timeout) do
     receive do
       {^port, {:data, data}} ->
+        # One update + one broadcast per BURST, not per chunk — see
+        # Helpers.drain_port_burst/3.
+        data = Helpers.drain_port_burst(port, data)
         acc = acc <> data
 
         Loopyard.ChatAgent.update_message(agent_id, msg_id, fn msg ->

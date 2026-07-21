@@ -399,7 +399,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     assigns = assign(assigns, :agent_id, assigns.agent.id)
 
     ~H"""
-    <div class="relative flex-1 flex flex-col min-h-0">
+    <%!-- PerfProbe: client-health beacon (frame gaps / DOM / heap → EventLog).
+         Lives on the chat panel because that's the surface with the perf
+         history — see the hook in app.js. --%>
+    <div class="relative flex-1 flex flex-col min-h-0" id="chat-perf-probe" phx-hook="PerfProbe">
       <%!-- Windowed transcript: when you've scrolled up into history, the live
            tail isn't loaded. This snaps you back to the newest messages. --%>
       <button
