@@ -447,12 +447,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                next prompt's section takes over — prompts replace each other
                instead of stacking. Pure CSS; the normal-flow scroll (not
                col-reverse) is what makes the per-section sticky pin flush. --%>
-<<<<<<< HEAD
           <%!-- BOTH loops are :key-ed (section → prompt msg id, row → msg id):
                without keys, LiveView diffs comprehensions by index, so the
                window sliding at the cap re-shipped every row on every append
-               (~850KB/turn measured). Per-row assigns come from @item_ctx —
-               precomputed, value-stable — never the whole @messages list. --%>
+               (~850KB/turn measured). Rows are LiveComponents (diffed by id +
+               assigns equality) with per-row precomputed ctx — never the whole
+               @messages list. Live-feed suppression happens server-side in
+               Messages.visible_sections/3. --%>
           <section :for={section <- @transcript_sections} :key={Messages.section_key(section)}>
             <%= if section.prompt do %>
               <% {pmsg, pidx, pctx} = section.prompt %>
@@ -484,43 +485,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                   />
                 <% {:run, items} -> %>
                   <%!-- The response flows directly under its "You" prompt (which
-=======
-          <%= for section <- LoopyardWeb.Live.WorkspaceLive.Messages.transcript_sections(@messages) do %>
-            <section>
-              <%= if section.prompt do %>
-                <% {pmsg, pidx} = section.prompt %>
-                <.chat_msg
-                  msg={pmsg}
-                  idx={pidx}
-                  messages={@messages}
-                  agent_id={@agent.id}
-                  workspace_id={@workspace_id}
-                  host={@host}
-                  detail_level={@detail_level}
-                />
-              <% end %>
-              <%= for group <- section.body do %>
-                <%= case group do %>
-                  <% {:break, {msg, idx}} -> %>
-                    <.chat_msg
-                      :if={not in_live_feed?(@live_tool_from, msg, idx, @messages)}
-                      msg={msg}
-                      idx={idx}
-                      messages={@messages}
-                      agent_id={@agent.id}
-                      workspace_id={@workspace_id}
-                      host={@host}
-                      detail_level={@detail_level}
-                    />
-                  <% {:run, items} -> %>
-                    <%!-- The response flows directly under its "You" prompt (which
->>>>>>> uncringe
                          carries the dated timestamp) — no "Claude" marker. The
                          `space-y` gives each step (text, tool call, result) room to
                          breathe instead of packing them edge-to-edge; the console
                          boxes and file cards especially need the air to read as
                          separate acts, not one dense wall. --%>
-<<<<<<< HEAD
                   <div class="mt-2">
                     <div class="space-y-4">
                       <.live_component
@@ -535,22 +504,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                         host={@host}
                         detail_level={@detail_level}
                       />
-=======
-                    <div class="mt-2">
-                      <div class="space-y-4">
-                        <.chat_msg
-                          :for={{msg, idx} <- items}
-                          :if={not in_live_feed?(@live_tool_from, msg, idx, @messages)}
-                          msg={msg}
-                          idx={idx}
-                          messages={@messages}
-                          agent_id={@agent.id}
-                          workspace_id={@workspace_id}
-                          host={@host}
-                          detail_level={@detail_level}
-                        />
-                      </div>
->>>>>>> uncringe
                     </div>
                   </div>
               <% end %>

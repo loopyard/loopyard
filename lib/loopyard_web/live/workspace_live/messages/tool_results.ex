@@ -286,20 +286,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
       ]}
       open={if @lazy?, do: @expanded? != false, else: @detail_level == :trace}
     >
-<<<<<<< HEAD
+      <%!-- Four corners, same scheme as the console box: top-left the file's
+           IDENTITY (name + dir), top-right the visual control (disclosure);
+           meta (language, line count) and actions live in the footer. Keeps
+           the header one quiet line. In lazy mode the server drives open
+           (body renders on demand) — see result_expanded?/1. --%>
       <summary
         class="flex items-center gap-2 px-3 py-1.5 cursor-pointer select-none list-none bg-zinc-50 dark:bg-zinc-900/60 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
         phx-click={@lazy? && "toggle_result"}
         phx-value-msgid={@lazy? && @msg[:id]}
         onclick={@lazy? && "event.preventDefault()"}
       >
-=======
-      <%!-- Four corners, same scheme as the console box: top-left the file's
-           IDENTITY (name + dir), top-right the visual control (disclosure);
-           meta (language, line count) and actions live in the footer. Keeps
-           the header one quiet line. --%>
-      <summary class="flex items-center gap-2 px-3 py-1.5 cursor-pointer select-none list-none bg-zinc-50 dark:bg-zinc-900/60 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors">
->>>>>>> uncringe
         <.icon name={:document} class="w-3.5 h-3.5 flex-none text-sky-500 dark:text-sky-400" />
         <span class="min-w-0 flex-1 flex items-baseline gap-1.5 font-mono text-sm md:text-[13px]">
           <span class="flex-none text-zinc-700 dark:text-zinc-200 font-medium">{@basename}</span>
@@ -320,15 +317,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
           <code class="whitespace-pre pl-3 pr-3 text-zinc-800 dark:text-zinc-200">{line}</code>
         </div>
       </div>
-<<<<<<< HEAD
-      <div
-        :if={@expanded? && (@truncated || @file_link)}
-        class="flex items-center gap-3 px-3 py-1.5 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/60"
-      >
-        <span :if={@truncated} class="text-xs text-zinc-500 dark:text-zinc-400">
-          … {@line_count - @cap} more lines
-=======
-      <%!-- Footer: meta left (language, size, truncation), actions right. --%>
+      <%!-- Footer: meta left (language, size, truncation), actions right.
+           Always rendered (it's tiny and carries the collapsed card's meta);
+           only the truncation note is gated on expansion — truncation of a
+           body that isn't rendered means nothing. --%>
       <div class="flex items-center gap-2 px-3 py-1 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/60">
         <span
           :if={@language}
@@ -339,9 +331,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
         <span class="flex-none whitespace-nowrap text-xs tabular-nums text-zinc-400 dark:text-zinc-500">
           {@line_count} {if @line_count == 1, do: "line", else: "lines"}
         </span>
-        <span :if={@truncated} class="text-xs text-zinc-500 dark:text-zinc-400 truncate">
+        <span :if={@expanded? && @truncated} class="text-xs text-zinc-500 dark:text-zinc-400 truncate">
           … {@line_count - @cap} more
->>>>>>> uncringe
         </span>
         <a
           :if={@file_link}

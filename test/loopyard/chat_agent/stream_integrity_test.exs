@@ -242,8 +242,18 @@ defmodule Loopyard.ChatAgent.StreamIntegrityTest do
       send(pid, {:stream_timeout, id, ref})
       assert_receive %Loopyard.Events.ChatAgent.StatusChanged{id: ^id}, 1_000
 
+      # Threshold-1 semantics: the wedge counts as a CLI death, which
+      # immediately recycles (compact → fresh session, counter re-armed to 0).
+      # The observable outcome is the quiet recycle note + no resume id.
+      assert_receive %Loopyard.Events.ChatAgentMessage.Message{
+                       agent_id: ^id,
+                       msg: %{role: :system, content: "Recycled the harness" <> _}
+                     },
+                     1_000
+
       state = :sys.get_state(pid)
-      assert Map.get(state, :midturn_crashes, 0) >= 1
+      assert state.claude_session_id == nil
+      assert Map.get(state, :midturn_crashes, 0) == 0
     end
   end
 
@@ -266,7 +276,7 @@ defmodule Loopyard.ChatAgent.StreamIntegrityTest do
 
       assert_receive %Loopyard.Events.ChatAgentMessage.Message{
                        agent_id: ^id,
-                       msg: %{role: :system, content: "The harness died mid-conversation" <> _}
+                       msg: %{role: :system, content: "Recycled the harness" <> _}
                      },
                      1_000
 
@@ -291,7 +301,7 @@ defmodule Loopyard.ChatAgent.StreamIntegrityTest do
 
       assert_receive %Loopyard.Events.ChatAgentMessage.Message{
                        agent_id: ^id,
-                       msg: %{role: :system, content: "The harness died mid-conversation" <> _}
+                       msg: %{role: :system, content: "Recycled the harness" <> _}
                      },
                      1_000
 

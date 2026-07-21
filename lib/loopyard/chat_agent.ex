@@ -672,13 +672,12 @@ defmodule Loopyard.ChatAgent do
     # that OOM-killed it, forever. Compact instead: summarize → fresh session
     # (Loopyard keeps the full chat log either way). See midturn_crashes.
     if compaction_breaker_tripped?(state) and state.messages != [] do
+      # Harnesses are treated as disposable: one calm line, not an error —
+      # the swap is routine maintenance (fresh session, context carried over,
+      # interrupted work re-driven automatically below).
       note = %{
         role: :system,
-        content:
-          "The harness died mid-conversation again — this session has outgrown " <>
-            "the workspace's memory, and resuming it would just crash it again. " <>
-            "Compacting instead: summarizing the conversation into a fresh session. " <>
-            "Your full chat history stays right here.",
+        content: "Recycled the harness — fresh session, context carried over.",
         timestamp: DateTime.utc_now()
       }
 

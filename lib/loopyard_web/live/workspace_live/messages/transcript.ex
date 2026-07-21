@@ -129,8 +129,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Transcript do
 
     enrich = fn {msg, idx} -> {msg, idx, Map.get(ctx, idx)} end
 
+    # Mirrors Chat.in_live_feed?/4: rows the live activity feed already shows
+    # are filtered here — EXCEPT a COMMAND's result, which renders inline as
+    # the console box the moment it lands (mid-turn, like watching a
+    # terminal). Kind comes from the precomputed paired call.
     visible? = fn {msg, idx} ->
-      not (is_integer(live_from) and idx > live_from and msg.role in [:tool, :tool_result])
+      cond do
+        not (is_integer(live_from) and idx > live_from) -> true
+        msg.role == :tool -> false
+        msg.role == :tool_result -> call_kind(Map.get(ctx, idx, %{})[:call]) == :command
+        true -> true
+      end
     end
 
     messages
