@@ -928,4 +928,16 @@ if ("serviceWorker" in navigator) {
   liveSocket.socket.onOpen(hide)
   liveSocket.socket.onError(armDown)
   liveSocket.socket.onClose(armDown)
+
+  // Belt-and-suspenders for the states socket callbacks can't see: a page
+  // served mid-reload whose socket NEVER connected (no onError fires), or a
+  // LiveView whose channel JOIN failed on a healthy socket. Both leave a
+  // dead-looking page where typing does nothing and no banner shows — poll
+  // LiveView's own connected marker instead of trusting socket events alone.
+  setInterval(() => {
+    const main = document.querySelector("[data-phx-main]")
+    if (!main) return
+    if (main.classList.contains("phx-connected")) hide()
+    else armDown()
+  }, 2000)
 })()
