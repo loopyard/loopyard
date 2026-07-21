@@ -68,6 +68,9 @@ defmodule Loopyard.Harness.ACP do
       ]
       |> Keyword.merge(runtime)
       |> maybe_put(:model, Keyword.get(opts, :model))
+      # With an agent_id the Connection can route the harness's native
+      # AskUserQuestion (ACP form elicitation) to that agent's question card.
+      |> maybe_put(:agent_id, Keyword.get(opts, :agent_id))
 
     ready_timeout =
       if Keyword.get(opts, :resume), do: @resume_ready_timeout, else: @ready_timeout

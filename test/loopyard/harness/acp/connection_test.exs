@@ -299,6 +299,90 @@ defmodule Loopyard.Harness.ACP.ConnectionTest do
     end
   end
 
+  describe "AskUserQuestion via form elicitation" do
+    setup do
+      Loopyard.StateKeeper.ensure_tables!()
+      :ok
+    end
+
+    test "advertises elicitation.form iff an agent_id is present" do
+      {_conn, _t} = start_conn(agent_id: "elic-cap-agent")
+      assert_receive {:sent, %{"method" => "initialize"} = frame}
+      assert frame["params"]["clientCapabilities"]["elicitation"]["form"] == %{}
+    end
+
+    test "no elicitation capability without an agent_id" do
+      {_conn, _t} = start_conn()
+      assert_receive {:sent, %{"method" => "initialize"} = frame}
+      refute Map.has_key?(frame["params"]["clientCapabilities"], "elicitation")
+    end
+
+    test "elicitation/create routes to the question broker; answer returns accept+content" do
+      agent = "elic-agent-#{System.unique_integer([:positive])}"
+      {conn, _t} = start_conn(agent_id: agent)
+      handshake(conn)
+
+      send(
+        conn,
+        {:acp_msg,
+         %{
+           "id" => 77,
+           "method" => "elicitation/create",
+           "params" => %{
+             "mode" => "form",
+             "sessionId" => "sess-123",
+             "message" => "Deploy?",
+             "requestedSchema" => %{
+               "type" => "object",
+               "properties" => %{
+                 "question_0" => %{
+                   "type" => "string",
+                   "oneOf" => [%{"const" => "Yes"}, %{"const" => "No"}]
+                 },
+                 "question_0_custom" => %{"type" => "string", "title" => "Other"}
+               }
+             }
+           }
+         }}
+      )
+
+      # The blocked Task registered a pending question for this agent; a human
+      # click resolves it and the connection answers the JSON-RPC request.
+      qid = wait_for_agent_pending(agent)
+      :ok = Loopyard.Harness.Questions.answer_partial(qid, "question_0", ["Yes"])
+
+      assert_receive {:sent,
+                      %{
+                        "id" => 77,
+                        "result" => %{"action" => "accept", "content" => %{"question_0" => "Yes"}}
+                      }},
+                     2_000
+    end
+
+    test "an unpresentable elicitation is declined (user-skipped), not cancelled" do
+      {conn, _t} = start_conn(agent_id: "elic-decline-agent")
+      handshake(conn)
+
+      send(
+        conn,
+        {:acp_msg, %{"id" => 78, "method" => "elicitation/create", "params" => %{"mode" => "url"}}}
+      )
+
+      assert_receive {:sent, %{"id" => 78, "result" => %{"action" => "decline"}}}
+    end
+  end
+
+  defp wait_for_agent_pending(agent, tries \\ 100) do
+    case Loopyard.Harness.Questions.pending_for_agent(agent) do
+      {qid, _entry} ->
+        qid
+
+      nil when tries > 0 ->
+        Process.sleep(10)
+        wait_for_agent_pending(agent, tries - 1)
+    end
+  end
+
   describe "transport close" do
     test "{:acp_closed, reason} fails an in-flight turn and stops the connection" do
       {conn, _transport} = start_conn()
@@ -326,6 +410,129 @@ defmodule Loopyard.Harness.ACP.ConnectionTest do
 
       assert {:error, {:closed, :boom}} = Task.await(task, 1_000)
       assert_receive {:EXIT, ^conn, :normal}
+    end
+  end
+
+  describe "model config-option dialect (claude-agent-acp 0.60+)" do
+    # The renamed adapter dropped `models`/`session/set_model` from the wire:
+    # models arrive as the `"model"` entry of `configOptions`, and switching is
+    # `session/set_config_option`. Pre-fix, available_models parsed empty and
+    # every model switch silently no-opped (observed live: an agent stuck on a
+    # rate-limited Fable because set_model never reached the harness).
+
+    defp config_options(current) do
+      [
+        %{"id" => "mode", "currentValue" => "default", "options" => []},
+        %{
+          "id" => "model",
+          "currentValue" => current,
+          "options" => [
+            %{"value" => "claude-fable-5", "name" => "Fable 5", "description" => "Fable 5 · Most capable"},
+            %{"value" => "claude-sonnet-5", "name" => "Sonnet 5", "description" => "Sonnet 5 · Everyday"}
+          ]
+        }
+      ]
+    end
+
+    defp handshake_with_config_options(conn, current) do
+      assert_receive {:sent, %{"method" => "initialize", "id" => init_id}}
+      send(conn, {:acp_msg, %{"id" => init_id, "result" => %{}}})
+
+      assert_receive {:sent, %{"method" => "session/new", "id" => new_id}}
+
+      send(
+        conn,
+        {:acp_msg,
+         %{
+           "id" => new_id,
+           "result" => %{"sessionId" => "sess-co", "configOptions" => config_options(current)}
+         }}
+      )
+
+      :ok = Connection.await_ready(conn, 1_000)
+    end
+
+    test "session/new configOptions populate available_models and the current model name" do
+      {conn, _transport} = start_conn(model: nil)
+      handshake_with_config_options(conn, "claude-fable-5")
+
+      assert [%{id: "claude-fable-5"}, %{id: "claude-sonnet-5"}] =
+               Connection.available_models(conn)
+    end
+
+    test "desired model switch goes out as session/set_config_option" do
+      {conn, _transport} = start_conn(model: "claude-sonnet-5")
+      handshake_with_config_options(conn, "claude-fable-5")
+
+      assert_receive {:sent, %{"method" => "session/set_config_option", "id" => _} = frame}
+      assert frame["params"]["configId"] == "model"
+      assert frame["params"]["value"] == "claude-sonnet-5"
+      assert frame["params"]["sessionId"] == "sess-co"
+    end
+
+    test "live set_model uses session/set_config_option under the new dialect" do
+      # model: nil → no boot-time auto-switch frame to confuse the assert.
+      {conn, _transport} = start_conn(model: nil)
+      handshake_with_config_options(conn, "claude-fable-5")
+
+      Connection.set_model(conn, "claude-sonnet-5")
+
+      assert_receive {:sent, %{"method" => "session/set_config_option"} = frame}
+      assert frame["params"]["value"] == "claude-sonnet-5"
+    end
+
+    test "legacy models shape still uses session/set_model" do
+      {conn, _transport} = start_conn(model: nil)
+
+      assert_receive {:sent, %{"method" => "initialize", "id" => init_id}}
+      send(conn, {:acp_msg, %{"id" => init_id, "result" => %{}}})
+      assert_receive {:sent, %{"method" => "session/new", "id" => new_id}}
+
+      send(
+        conn,
+        {:acp_msg,
+         %{
+           "id" => new_id,
+           "result" => %{
+             "sessionId" => "sess-legacy",
+             "models" => %{
+               "currentModelId" => "default",
+               "availableModels" => [%{"modelId" => "opus", "name" => "Opus"}]
+             }
+           }
+         }}
+      )
+
+      :ok = Connection.await_ready(conn, 1_000)
+      Connection.set_model(conn, "opus")
+
+      assert_receive {:sent, %{"method" => "session/set_model"} = frame}
+      assert frame["params"]["modelId"] == "opus"
+    end
+
+    test "config_option_update notification retracks the current model" do
+      {conn, _transport} = start_conn(model: nil)
+      handshake_with_config_options(conn, "claude-fable-5")
+
+      send(
+        conn,
+        {:acp_msg,
+         %{
+           "method" => "session/update",
+           "params" => %{
+             "update" => %{
+               "sessionUpdate" => "config_option_update",
+               "configOptions" => config_options("claude-sonnet-5")
+             }
+           }
+         }}
+      )
+
+      # State reflects the pushed switch (poll via the public models call —
+      # the cast is async).
+      assert Connection.available_models(conn) != []
+      state = :sys.get_state(conn)
+      assert state.model == "Sonnet 5"
     end
   end
 

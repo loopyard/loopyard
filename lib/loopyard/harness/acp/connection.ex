@@ -57,7 +57,11 @@ defmodule Loopyard.Harness.ACP.Connection do
     :exit, _ -> {:error, :unresponsive}
   end
 
-  @doc "Switch the live session's model (`session/set_model`). Async; display updates optimistically."
+  @doc """
+  Switch the live session's model. Async; display updates optimistically.
+  Wire method depends on the adapter dialect: `session/set_config_option`
+  (claude-agent-acp 0.60+) or legacy `session/set_model`.
+  """
   def set_model(pid, model_id) when is_binary(model_id),
     do: GenServer.cast(pid, {:set_model, model_id})
 
@@ -121,6 +125,11 @@ defmodule Loopyard.Harness.ACP.Connection do
           resume: Keyword.get(opts, :resume),
           mcp_servers: Keyword.get(opts, :mcp_servers, []),
           permission_mode: Keyword.get(opts, :permission_mode, :auto_allow),
+          # Present → native AskUserQuestion elicitations route to this agent's
+          # question card (we advertise elicitation.form below). Absent → we
+          # don't advertise, and the adapter falls back to its non-elicitation
+          # AskUserQuestion path.
+          agent_id: Keyword.get(opts, :agent_id),
           waiters: [],
           turn: nil
         }
@@ -135,6 +144,17 @@ defmodule Loopyard.Harness.ACP.Connection do
           else
             %{}
           end
+
+        # Form elicitation is how claude-agent-acp surfaces the harness's
+        # NATIVE AskUserQuestion tool (per-question options + "Other" free
+        # text + skip). Without this capability the adapter routes the tool
+        # through the plain permission check — which :auto_allow answers
+        # silently, so the questions never reach a human. Only advertise it
+        # when we actually have an agent chat to show the card in.
+        client_caps =
+          if state.agent_id,
+            do: Map.put(client_caps, "elicitation", %{"form" => %{}}),
+            else: client_caps
 
         state =
           request(state, "initialize", %{
@@ -232,8 +252,7 @@ defmodule Loopyard.Harness.ACP.Connection do
 
   # Live model switch (UI-driven). Optimistic display; :set_model error reverts.
   def handle_cast({:set_model, model_id}, %{session_id: sid} = state) when is_binary(sid) do
-    {state, id} =
-      request(state, "session/set_model", %{"sessionId" => sid, "modelId" => model_id})
+    {state, id} = request_model_switch(state, model_id)
 
     {:noreply,
      %{
@@ -245,6 +264,12 @@ defmodule Loopyard.Harness.ACP.Connection do
   end
 
   def handle_cast({:set_model, _model_id}, state), do: {:noreply, state}
+
+  # Deferred JSON-RPC answer to an `elicitation/create` request — sent by the
+  # Task that blocked on Questions.ask (see handle_agent_request).
+  def handle_cast({:elicitation_result, id, result}, state) do
+    {:noreply, respond(state, id, result)}
+  end
 
   # ---- inbound messages ----
 
@@ -413,7 +438,7 @@ defmodule Loopyard.Harness.ACP.Connection do
   # requested model's name); on error, log + fall back to what the session
   # actually runs on — never fail the session over a model preference.
   defp handle_response(:set_model, %{"error" => error}, state) do
-    Logger.warning("ACP: session/set_model failed (#{inspect(error)}); staying on adapter default")
+    Logger.warning("ACP: model switch failed (#{inspect(error)}); staying on adapter default")
     {:noreply, %{state | model: state.fallback_model || state.model}}
   end
 
@@ -445,23 +470,21 @@ defmodule Loopyard.Harness.ACP.Connection do
   end
 
   # Request the DESIRED model when it differs from what the session booted on.
-  # The adapter starts every session on the CLI "default" alias (Sonnet); this
-  # is what actually puts Opus on the case. Display flips to the desired
+  # The adapter starts every session on the CLI "default" alias — this is what
+  # actually puts the chosen model on the case. Display flips to the desired
   # model's human name immediately; the :set_model error path reverts it.
+  # `session_ready/3` (already run) normalized the current model + dialect out
+  # of either wire shape.
   defp maybe_set_model(state, result) do
     desired = state.desired_model
-    current = is_map(result) && get_in(result, ["models", "currentModelId"])
+    {_models, current, _dialect} = extract_models(result)
 
     # Only when the adapter TOLD us the current model (is_binary current) and it
     # differs — otherwise we can't confirm a switch is needed, and firing blind
     # would emit a spurious request (and break callers that don't expect one).
     if is_binary(desired) and desired != "" and is_binary(current) and desired != current and
          is_binary(state.session_id) do
-      {state, id} =
-        request(state, "session/set_model", %{
-          "sessionId" => state.session_id,
-          "modelId" => desired
-        })
+      {state, id} = request_model_switch(state, desired)
 
       %{
         state
@@ -494,6 +517,28 @@ defmodule Loopyard.Harness.ACP.Connection do
   defp error_subtype(_), do: "error"
 
   # ---- notifications ----
+
+  # config_option_update (claude-agent-acp): the adapter pushes the full
+  # configOptions whenever one changes — a set_config_option round-trip
+  # confirming, or an SDK-initiated model fallback mid-turn. Track the model
+  # option at the CONNECTION level (it's session config, not turn content),
+  # with or without an active turn.
+  defp handle_notification(
+         "session/update",
+         %{"update" => %{"sessionUpdate" => "config_option_update"} = update},
+         state
+       ) do
+    state =
+      case extract_models(%{"configOptions" => update["configOptions"]}) do
+        {models, current, :config_option} when is_binary(current) ->
+          %{state | available_models: models, model: model_name(models, current) || current}
+
+        _ ->
+          state
+      end
+
+    {:noreply, state}
+  end
 
   defp handle_notification("session/update", %{"update" => update}, %{turn: turn} = state)
        when not is_nil(turn) do
@@ -558,6 +603,50 @@ defmodule Loopyard.Harness.ACP.Connection do
     end
 
     {:noreply, decide_permission(state, id, options)}
+  end
+
+  defp handle_agent_request("elicitation/create", id, params, state) do
+    # The harness's native AskUserQuestion, surfaced as an ACP form elicitation
+    # (we advertise elicitation.form iff state.agent_id is set). Route it to the
+    # agent's question card via the same broker the MCP ask_user tool uses —
+    # the human answers/skips per question, and the form response feeds the
+    # answers back into the tool's own input. Questions.ask BLOCKS (up to
+    # 10 min), so it runs in a Task: the connection keeps streaming the turn,
+    # and the JSON-RPC response is sent when the answer lands (handle_cast
+    # below). Decline (= "user skipped") on anything we can't present — cancel
+    # would abort the whole tool call.
+    alias Loopyard.Harness.QuestionAdapter.AcpElicitation
+
+    with agent_id when is_binary(agent_id) <- state.agent_id,
+         "form" <- params["mode"] || "form",
+         {:ok, questions} <- AcpElicitation.parse(params) do
+      conn = self()
+
+      Task.start(fn ->
+        result =
+          case Loopyard.Harness.Questions.ask(agent_id, questions) do
+            {:ok, selections} ->
+              %{
+                "action" => "accept",
+                "content" => AcpElicitation.render_content(questions, selections)
+              }
+
+            {:error, :timeout} ->
+              %{"action" => "decline"}
+          end
+
+        GenServer.cast(conn, {:elicitation_result, id, result})
+      end)
+
+      {:noreply, state}
+    else
+      _ ->
+        Logger.warning(
+          "ACP: unpresentable elicitation/create; declining (#{inspect(params["mode"])})"
+        )
+
+        {:noreply, respond(state, id, %{"action" => "decline"})}
+    end
   end
 
   defp handle_agent_request(method, id, _params, state) do
@@ -644,12 +733,60 @@ defmodule Loopyard.Harness.ACP.Connection do
   # adapter reports currentModelId "default" (useless in the UI); its
   # availableModels descriptions carry the real mapping, e.g. default →
   # "Sonnet 4.5 · Best for everyday tasks" → "Sonnet 4.5".
+  #
+  # Two wire dialects: legacy claude-code-acp puts a `models` map
+  # (`availableModels`/`currentModelId`) in the session result and switches
+  # via `session/set_model`; claude-agent-acp (0.60+) reports `configOptions`
+  # (the `"model"` entry: `options`/`currentValue`) and switches via
+  # `session/set_config_option`. We normalize both into the legacy internal
+  # shape and remember which dialect to speak (`:model_dialect`).
   defp session_ready(state, sid, result) do
-    models = (is_map(result) && get_in(result, ["models", "availableModels"])) || []
-    current = is_map(result) && get_in(result, ["models", "currentModelId"])
+    {models, current, dialect} = extract_models(result)
     name = model_name(models, current) || current || state.model
 
-    %{state | session_id: sid, status: :ready, available_models: models, model: name}
+    state
+    |> Map.put(:model_dialect, dialect)
+    |> Map.merge(%{session_id: sid, status: :ready, available_models: models, model: name})
+  end
+
+  defp extract_models(result) when is_map(result) do
+    case find_model_config_option(result["configOptions"]) do
+      %{"options" => opts} = opt when is_list(opts) ->
+        models =
+          Enum.map(opts, fn o ->
+            %{"modelId" => o["value"], "name" => o["name"], "description" => o["description"]}
+          end)
+
+        {models, opt["currentValue"], :config_option}
+
+      _ ->
+        {get_in(result, ["models", "availableModels"]) || [],
+         get_in(result, ["models", "currentModelId"]), :set_model}
+    end
+  end
+
+  defp extract_models(_result), do: {[], nil, :set_model}
+
+  defp find_model_config_option(options) when is_list(options),
+    do: Enum.find(options, &(is_map(&1) and &1["id"] == "model"))
+
+  defp find_model_config_option(_), do: nil
+
+  # The dialect-appropriate model-switch request. Response handling is shared
+  # (pending tag :set_model): success needs nothing, error reverts the display.
+  defp request_model_switch(%{model_dialect: :config_option} = state, model_id) do
+    request(state, "session/set_config_option", %{
+      "sessionId" => state.session_id,
+      "configId" => "model",
+      "value" => model_id
+    })
+  end
+
+  defp request_model_switch(state, model_id) do
+    request(state, "session/set_model", %{
+      "sessionId" => state.session_id,
+      "modelId" => model_id
+    })
   end
 
   # id → human name from the adapter's model list (description's leading

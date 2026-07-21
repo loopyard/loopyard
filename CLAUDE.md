@@ -175,6 +175,22 @@ context-utilization and rate-limit events — see `docs/IMPROVEMENTS.md`
 for remaining ACP gaps (permission round-trip / `:ask` mode, tool
 policy, dollar cost).
 
+**Questions round-trip (both harness paths land on ONE card).** The
+harness's native `AskUserQuestion` reaches the user via ACP **form
+elicitation**: the Connection advertises `clientCapabilities.elicitation.form`
+(iff started with an `:agent_id`), handles agent→client `elicitation/create`
+by parsing the `question_<n>` / `question_<n>_custom` schema
+(`QuestionAdapter.AcpElicitation`) and blocking a Task on
+`Harness.Questions.ask/2` — the same broker the MCP `ask_user` tool uses —
+then answers `{action: accept, content}` (free text goes in the `_custom`
+field, skips are omitted, timeout → `decline`). Without the capability the
+adapter routes AskUserQuestion through the plain permission check, which
+`:auto_allow` silently answers — the questions never reach a human. The card
+resolves **per question** (`Questions.answer_partial/3` /
+`toggle_option/3` / `confirm_question/2`): the blocked ask returns only when
+every question is answered or skipped — never resolve the whole ask from one
+button click.
+
 **Tool rendering is harness-agnostic — classify by KIND, never by
 name.** Different backends emit different tool *names* for the same
 act (the in-container ACP harness uses Claude Code's NATIVE tools —
