@@ -376,6 +376,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     assigns = assign(assigns, :live_tool_from, active_turn_cutoff(assigns))
     assigns = assign_new(assigns, :window_tail?, fn -> true end)
 
+    # The human's label is the WORKSTATION identity (e.g. "Brad"), not a generic
+    # "You" — the messages are sent under that identity. Stable per agent, so it
+    # adds no per-row diff churn. `active_prompt_id` is the id of the prompt the
+    # agent is CURRENTLY answering (last user message while it's working) — the
+    # :user band styles that one stronger. Passed as a per-row boolean so only the
+    # active row (and the one it hands off from) ever re-diffs.
+    assigns =
+      assign(assigns,
+        user_label: workstation_label(assigns.agent),
+        active_prompt_ids: active_prompt_ids(assigns)
+      )
+
     # Precompute the section structure ONCE per render, with per-row context
     # baked into each item ({msg, idx, ctx}) and live-feed-suppressed rows
     # already filtered out. Rows must not reference any per-append-changing
@@ -466,6 +478,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                 agent_id={@agent_id}
                 workspace_id={@workspace_id}
                 host={@host}
+                user_label={@user_label}
+                active?={MapSet.member?(@active_prompt_ids, pmsg[:id])}
                 detail_level={@detail_level}
               />
             <% end %>
@@ -481,6 +495,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                     agent_id={@agent_id}
                     workspace_id={@workspace_id}
                     host={@host}
+                    user_label={@user_label}
+                    active?={MapSet.member?(@active_prompt_ids, msg[:id])}
                     detail_level={@detail_level}
                   />
                 <% {:run, items} -> %>
@@ -502,6 +518,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                         agent_id={@agent_id}
                         workspace_id={@workspace_id}
                         host={@host}
+                        user_label={@user_label}
+                        active?={MapSet.member?(@active_prompt_ids, msg[:id])}
                         detail_level={@detail_level}
                       />
                     </div>
@@ -563,49 +581,66 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       <%!-- pb-safe: the composer clears the home indicator in a standalone PWA
            while keeping its normal padding in the browser. --%>
       <div class="flex-none border-t border-zinc-200 dark:border-zinc-700/80 px-3 pt-3 pb-safe md:px-4 md:pt-4 space-y-2">
-        <%!-- The queue is a quiet, COMPACT list waiting for the agent to pick up
-              next — kept dense (small text, tight rows, no card chrome) so a few
-              stacked don't dominate the composer. Tap a row to pull it back into
-              the box and edit it. --%>
-        <div :if={(@agent[:pending_count] || 0) > 0} class="space-y-0.5">
-          <div class="flex items-center justify-between px-0.5">
-            <span class="text-xs font-medium uppercase tracking-wide text-violet-500/80 dark:text-violet-400/80">
-              Queued · sends when the agent finishes
-            </span>
+        <%!-- The queue is ONE card: a single "You" band (one name, one state) with
+              every pending line INSIDE it, each line cancelable by its own ✕. Reads
+              as one prompt-in-waiting — exactly how the transcript groups a batch —
+              never a stack of repeated BRAD/queued headers. When the agent takes
+              the turn, the queue drains: these lines become the committed prompt
+              band above (dated, highlighted) with the live Working/Stop status
+              below — the ✕'s are gone because it's no longer editable. --%>
+        <div
+          :if={(@agent[:pending_count] || 0) > 0}
+          class="-mx-3 md:-mx-4 bg-violet-100 dark:bg-[#2b2348] px-4 md:px-6 py-2"
+        >
+          <div class="flex items-baseline justify-between gap-2 mb-1.5">
+            <div class="flex items-baseline gap-2 min-w-0">
+              <span class="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300">
+                <.icon name={:user} class="w-3.5 h-3.5 flex-none self-center" /> {@user_label}
+              </span>
+              <span class="text-sm text-violet-500/80 dark:text-violet-300/60">
+                queued · sends when the agent finishes
+              </span>
+            </div>
             <button
+              :if={(@agent[:pending_count] || 0) > 1}
               type="button"
               phx-click="clear_pending"
               phx-value-id={@agent.id}
-              class="focus-ring text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+              class="focus-ring flex-none text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
             >
               Clear all
             </button>
           </div>
-          <div
-            :for={{text, i} <- Enum.with_index(@agent[:pending_messages] || [])}
-            class="group/q flex items-center gap-1.5 rounded-md border border-zinc-200/60 dark:border-zinc-700/50 bg-zinc-50 dark:bg-zinc-800/40 px-2.5 py-1"
-          >
-            <button
-              type="button"
-              phx-click="edit_pending"
-              phx-value-id={@agent.id}
-              phx-value-index={i}
-              title="Edit — pull back into the message box"
-              class="focus-ring flex-1 min-w-0 text-left truncate text-sm text-zinc-600 dark:text-zinc-300"
+          <ul class="space-y-1.5">
+            <li
+              :for={{text, i} <- Enum.with_index(@agent[:pending_messages] || [])}
+              class="group/q flex items-start justify-between gap-2.5"
             >
-              {text}
-            </button>
-            <button
-              type="button"
-              phx-click="remove_pending"
-              phx-value-id={@agent.id}
-              phx-value-index={i}
-              title="Remove from queue"
-              class="focus-ring flex-none w-5 h-5 rounded flex items-center justify-center text-zinc-400 hover:text-red-500 hover:bg-red-500/10 opacity-0 group-hover/q:opacity-100 transition-opacity"
-            >
-              ✕
-            </button>
-          </div>
+              <button
+                type="button"
+                phx-click="edit_pending"
+                phx-value-id={@agent.id}
+                phx-value-index={i}
+                title="Edit — pull back into the message box"
+                class="focus-ring flex-1 min-w-0 text-left text-base leading-relaxed text-zinc-800 dark:text-zinc-100 line-clamp-3"
+              >
+                {text}
+              </button>
+              <%!-- Cancel just THIS line — always visible (hover-only was invisible
+                   on touch). --%>
+              <button
+                type="button"
+                phx-click="remove_pending"
+                phx-value-id={@agent.id}
+                phx-value-index={i}
+                aria-label="Cancel this queued message"
+                title="Cancel — remove from the queue"
+                class="focus-ring flex-none w-6 h-6 rounded-md flex items-center justify-center text-violet-500/50 dark:text-violet-300/40 hover:text-red-500 hover:bg-red-500/10 transition-colors"
+              >
+                <.icon name={:x_mark} class="w-4 h-4" />
+              </button>
+            </li>
+          </ul>
         </div>
         <%!-- Auto-compaction is house-keeping the user shouldn't have to care about:
            no pre-warning, and only a tiny muted marker WHILE it's actually
@@ -656,6 +691,36 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     </div>
     """
   end
+
+  # The human's display label: the workstation identity ("brad" → "Brad") the
+  # agent operates as, falling back to "You" when unknown. Sender identity, not
+  # a generic pronoun — the same name shows on committed prompts and queued ones.
+  defp workstation_label(agent) do
+    case agent && agent[:workstation_identity] do
+      id when is_binary(id) and id != "" -> String.capitalize(id)
+      _ -> "You"
+    end
+  end
+
+  # The ids of the prompts the agent is CURRENTLY answering — the WHOLE trailing
+  # batch of user messages since the last assistant reply (a rapid-fire b/c/d…
+  # groups into one visual block, so we highlight all of them as one, not just
+  # the last — a lone highlighted sub-row reads as a rendering glitch). Empty
+  # unless the agent is actively working, so an idle agent has no active block.
+  defp active_prompt_ids(%{agent: agent, messages: messages}) do
+    if agent[:status] in [:thinking, :backoff, :compacting] do
+      messages
+      |> Enum.reverse()
+      |> Enum.take_while(fn m -> m[:role] != :assistant end)
+      |> Enum.filter(fn m -> m[:role] == :user end)
+      |> Enum.map(& &1[:id])
+      |> MapSet.new()
+    else
+      MapSet.new()
+    end
+  end
+
+  defp active_prompt_ids(_), do: MapSet.new()
 
   # True when the most recent question card is still unanswered. While it
   # is, the agent's turn is parked inside ask_user waiting on the human —

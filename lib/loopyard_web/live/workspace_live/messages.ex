@@ -90,6 +90,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   def chat_msg(%{msg: %{role: :user}} = assigns) do
     assigns = assign(assigns, :url, msg_url(assigns))
     assigns = assign(assigns, :raw, raw_url(assigns))
+    # Label = the workstation identity (chat.ex passes it); `active?` marks the
+    # prompt the agent is currently answering. Defaults keep non-transcript
+    # callers (tests, build-row reuse) working without passing them.
+    assigns = assign_new(assigns, :user_label, fn -> "You" end)
+    assigns = assign_new(assigns, :active?, fn -> false end)
 
     # The big "chapter-break" air belongs at human<->machine boundaries only.
     # Consecutive human messages (a flurry / queued batch) GROUP into one purple
@@ -118,7 +123,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     ~H"""
     <div
       class={[
-        "-mx-4 md:-mx-6 px-4 md:px-6 bg-violet-100 dark:bg-[#2b2348] group/msg",
+        "-mx-4 md:-mx-6 px-4 md:px-6 group/msg transition-colors",
+        # The prompt being answered right now reads stronger (deeper wash + a
+        # violet left rail) so you can see which prompt the live response is for.
+        (@active? && "bg-violet-200 dark:bg-[#332a54] border-l-2 border-violet-500 dark:border-violet-400") ||
+          "bg-violet-100 dark:bg-[#2b2348] border-l-2 border-transparent",
         @sticky_class,
         @band_top,
         @band_bottom
@@ -132,7 +141,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
             class="flex items-baseline gap-2 mb-1.5"
           >
             <span class="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300">
-              <.icon name={:user} class="w-3.5 h-3.5 flex-none self-center" /> You
+              <.icon name={:user} class="w-3.5 h-3.5 flex-none self-center" /> {@user_label}
             </span>
             <span
               :if={@msg[:timestamp]}

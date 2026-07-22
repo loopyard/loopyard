@@ -673,6 +673,16 @@ defmodule LoopyardWeb.WorkspaceLive do
       # note competing to explain the same thing was noise.
       case result do
         :ok ->
+          # Optimistic queue: enqueue_message already wrote the new pending list
+          # to ETS synchronously, so pull it into THIS reply's diff. Otherwise the
+          # queued card only appears when the StatusChanged broadcast is processed
+          # — and while the agent is thinking, that broadcast waits behind a
+          # backlog of streaming-token messages in the mailbox, so the box clears
+          # but the card visibly lags. Rendering it here lands the card in the same
+          # frame as the ack; the in-flight broadcast then overwrites with the
+          # identical list (no flicker). If the agent was idle, ETS pending is
+          # still [] (the message sent immediately) → nothing rendered here.
+          socket = AgentEvents.refresh_selected_from_agents(socket, id, socket.assigns.agents)
           {:reply, %{ok: true}, socket}
 
         {:error, :waking} ->
