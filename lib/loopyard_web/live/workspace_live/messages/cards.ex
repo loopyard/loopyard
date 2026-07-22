@@ -47,7 +47,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
             </span>
           </div>
 
-          <div :for={q <- @msg.questions} class="mb-5 last:mb-0">
+          <div :for={q <- @msg.questions} class="mb-8 last:mb-0">
             <div
               :if={q.header != ""}
               class="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1"
@@ -62,7 +62,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                  a radio/check dot. Single-select: one click settles. Multi-select:
                  clicks TOGGLE (draft broadcast to all viewers); the dot fills and
                  the button below confirms. --%>
-            <div :if={@msg.status == :pending && !locked?(@msg, q)} class="flex flex-col gap-2">
+            <div :if={@msg.status == :pending && !locked?(@msg, q)} class="flex flex-col gap-1">
               <button
                 :for={o <- q.options}
                 type="button"
@@ -159,7 +159,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
             <%!-- SETTLED: same rows (no layout jump), chosen lit emerald with a
                  filled check, the rest quietly dimmed but legible. Durable
                  receipt — survives refresh/restart via persisted :selections. --%>
-            <div :if={locked?(@msg, q)} class="flex flex-col gap-2">
+            <div :if={locked?(@msg, q)} class="flex flex-col gap-1">
               <div
                 :for={o <- q.options}
                 class={[
