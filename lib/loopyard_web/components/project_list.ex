@@ -140,12 +140,19 @@ defmodule LoopyardWeb.Components.ProjectList do
         {@ws.name}
       </span>
       <%!-- XS: ONLY the needs-you signal (picking fast). SM: the full headline
-           word + the port chip in a fixed column so the rail scans straight. --%>
+           word + the port chip in a fixed column so the rail scans straight.
+           A :changed headline renders the green/red git-stat, not the single
+           colour word. --%>
       <span
         :if={@headline && (@size == :sm || @headline.kind == :needs_you)}
-        class={["flex-none text-xs truncate max-w-[9rem]", @headline.class]}
+        class="flex-none text-xs truncate max-w-[9rem]"
       >
-        {@headline.text}
+        <.change_stat
+          :if={@headline.kind == :changed}
+          added={@headline.added}
+          removed={@headline.removed}
+        />
+        <span :if={@headline.kind != :changed} class={@headline.class}>{@headline.text}</span>
       </span>
       <div :if={@size == :sm} class="flex-none w-[4.25rem] flex justify-end">
         <span
@@ -192,8 +199,19 @@ defmodule LoopyardWeb.Components.ProjectList do
             :{ws_port(@ws)}
           </span>
         </div>
-        <div class={["text-sm truncate", (@headline && @headline.class) || "text-zinc-500 dark:text-zinc-400"]}>
-          {(@headline && @headline.text) || quiet_line(@ws)}
+        <div class={[
+          "text-sm truncate",
+          (@headline && @headline.kind != :changed && @headline.class) ||
+            "text-zinc-500 dark:text-zinc-400"
+        ]}>
+          <.change_stat
+            :if={@headline && @headline.kind == :changed}
+            added={@headline.added}
+            removed={@headline.removed}
+          />
+          <span :if={!(@headline && @headline.kind == :changed)}>
+            {(@headline && @headline.text) || quiet_line(@ws)}
+          </span>
         </div>
       </div>
     </.link>
@@ -207,7 +225,10 @@ defmodule LoopyardWeb.Components.ProjectList do
   attr :row_click, :any, default: nil
 
   defp ws_card(assigns) do
-    assigns = assign(assigns, :headline, Birdseye.headline(assigns.ws))
+    assigns =
+      assigns
+      |> assign(:headline, Birdseye.headline(assigns.ws))
+      |> assign(:changes, card_changes(assigns.ws))
 
     ~H"""
     <div class={[
@@ -246,16 +267,32 @@ defmodule LoopyardWeb.Components.ProjectList do
            changes to its RIGHT (conditional: only when known + nonzero). This is
            the ONLY place ±N shows; the story line never repeats it. --%>
       <div
-        :if={@ws[:last_activity_at] || card_changes(@ws)}
+        :if={@ws[:last_activity_at] || @changes}
         class="mt-1 text-xs text-zinc-400 dark:text-zinc-500"
       >
         <span :if={@ws[:last_activity_at]}>Active {time_ago(@ws.last_activity_at)}</span>
-        <span :if={@ws[:last_activity_at] && card_changes(@ws)}> · </span>
-        <span :if={card_changes(@ws)} class="text-emerald-600/80 dark:text-emerald-400/80">
-          ±{card_changes(@ws)} changes
-        </span>
+        <span :if={@ws[:last_activity_at] && @changes}> · </span>
+        <.change_stat :if={@changes} added={@changes.added} removed={@changes.removed} />
       </div>
     </div>
+    """
+  end
+
+  # The ONE git-stat renderer — +additions green, −deletions red — used by the
+  # card footer AND the compact/rail rows, so the colour split is identical
+  # everywhere (a compact row's "−11" is red too, not a single-colour headline).
+  attr :added, :integer, required: true
+  attr :removed, :integer, required: true
+
+  defp change_stat(assigns) do
+    ~H"""
+    <span class="tabular-nums font-medium"><span
+        :if={@added > 0}
+        class="text-emerald-600 dark:text-emerald-400"
+      >+{@added}</span><span :if={@added > 0 && @removed > 0} class="inline-block w-1"></span><span
+        :if={@removed > 0}
+        class="text-red-500 dark:text-red-400"
+      >−{@removed}</span></span>
     """
   end
 
@@ -296,10 +333,11 @@ defmodule LoopyardWeb.Components.ProjectList do
   defp ws_port(%{ports: [%{port: p} | _]}), do: p
   defp ws_port(_), do: nil
 
-  # ±N for the card footer — only when known and nonzero (nil = unknown, 0 = clean).
+  # Line +/- for the card footer — %{added, removed}, only when known and nonzero
+  # (nil = unknown / no running container, or clean = 0 add + 0 remove).
   defp card_changes(ws) do
     case ws[:changes] do
-      n when is_integer(n) and n > 0 -> n
+      %{added: a, removed: r} when a + r > 0 -> %{added: a, removed: r}
       _ -> nil
     end
   end

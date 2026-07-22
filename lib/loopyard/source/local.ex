@@ -346,6 +346,14 @@ defmodule Loopyard.Source.Local do
   end
 
   @impl true
+  def git_diff_stat(_project, workspace) do
+    case worktree_path_for(workspace) do
+      {:ok, path} -> Git.diff_stat(path)
+      {:error, _} = err -> err
+    end
+  end
+
+  @impl true
   def git_show(_project, workspace, ref, file) do
     case worktree_path_for(workspace) do
       {:ok, path} -> Git.show(path, ref, file)

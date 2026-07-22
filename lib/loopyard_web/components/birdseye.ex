@@ -128,10 +128,16 @@ defmodule LoopyardWeb.Components.Birdseye do
           class: "text-violet-600 dark:text-violet-400"
         }
 
-      is_integer(ws[:changes]) and ws[:changes] > 0 ->
+      match?(%{added: _, removed: _}, ws[:changes]) and
+          ws[:changes].added + ws[:changes].removed > 0 ->
+        # Carry the raw +/- so every surface can render the green/red split
+        # (ProjectList.change_stat). `text`/`class` stay as a single-colour
+        # fallback for anywhere that only reads text.
         %{
           kind: :changed,
-          text: "±#{ws[:changes]} changes",
+          added: ws[:changes].added,
+          removed: ws[:changes].removed,
+          text: "+#{ws[:changes].added} −#{ws[:changes].removed}",
           class: "text-emerald-600 dark:text-emerald-400"
         }
 

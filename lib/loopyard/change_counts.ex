@@ -154,9 +154,8 @@ defmodule Loopyard.ChangeCounts do
            Loopyard.ProjectRegistry.get_project(ws[:project_id]),
          adapter <- Loopyard.Source.for_project(project),
          true <- Loopyard.Source.supports_git?(adapter),
-         {:ok, %{staged: staged, unstaged: unstaged}} <- adapter.git_status(project, ws) do
-      count = Enum.uniq_by((staged || []) ++ (unstaged || []), & &1.path) |> length()
-      put(ws_id, count)
+         {:ok, %{added: added, removed: removed}} <- adapter.git_diff_stat(project, ws) do
+      put(ws_id, %{added: added, removed: removed})
     else
       _ -> :ok
     end
@@ -164,18 +163,23 @@ defmodule Loopyard.ChangeCounts do
     _ -> :ok
   end
 
-  # Store + publish only when the value MOVED — no rebuild storms for no-ops.
-  defp put(ws_id, count) do
+  # Store + publish only when the value MOVED — no rebuild storms for no-ops. The
+  # cached value is now `%{added, removed}` (line +/-); the event still carries a
+  # scalar `count` (added+removed) since subscribers just trigger a tree reload.
+  defp put(ws_id, %{added: added, removed: removed} = changes) do
     prev =
       case :ets.lookup(@table, ws_id) do
         [{^ws_id, c, _}] -> c
         _ -> nil
       end
 
-    :ets.insert(@table, {ws_id, count, System.system_time(:second)})
+    :ets.insert(@table, {ws_id, changes, System.system_time(:second)})
 
-    if count != prev do
-      Events.ChangeCounts.publish(%Events.ChangeCounts.Updated{workspace_id: ws_id, count: count})
+    if changes != prev do
+      Events.ChangeCounts.publish(%Events.ChangeCounts.Updated{
+        workspace_id: ws_id,
+        count: added + removed
+      })
     end
 
     :ok

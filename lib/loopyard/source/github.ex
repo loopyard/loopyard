@@ -106,6 +106,9 @@ defmodule Loopyard.Source.GitHub do
   def git_status(_project, workspace), do: Git.status(runner(workspace))
   @impl true
   def git_diff(_project, workspace, opts \\ []), do: Git.diff(runner(workspace), opts)
+
+  @impl true
+  def git_diff_stat(_project, workspace), do: Git.diff_stat(runner(workspace))
   @impl true
   def git_show(_project, workspace, ref, path), do: Git.show(runner(workspace), ref, path)
   @impl true

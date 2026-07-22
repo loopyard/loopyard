@@ -89,6 +89,8 @@ defmodule Loopyard.Source do
 
   @callback git_log(project, workspace, opts :: keyword) :: {:ok, list} | {:error, term}
   @callback git_status(project, workspace) :: {:ok, list} | {:error, term}
+  @callback git_diff_stat(project, workspace) ::
+              {:ok, %{added: non_neg_integer, removed: non_neg_integer}} | {:error, term}
   @callback git_diff(project, workspace, opts :: keyword) :: {:ok, String.t()} | {:error, term}
   @callback git_diff_staged(project, workspace, opts :: keyword) ::
               {:ok, String.t()} | {:error, term}
@@ -101,6 +103,7 @@ defmodule Loopyard.Source do
 
   @optional_callbacks git_log: 3,
                       git_status: 2,
+                      git_diff_stat: 2,
                       git_diff: 3,
                       git_diff_staged: 3,
                       git_show: 4,

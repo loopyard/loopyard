@@ -248,6 +248,31 @@ defmodule Loopyard.Git do
   end
 
   @doc """
+  Working-tree diff stat vs HEAD, for the overview's ±changes badge.
+  Returns `{:ok, %{added: n, removed: n}}` (tracked insertions/deletions,
+  staged + unstaged). NOTE: `git diff` does not count untracked (brand-new)
+  files, so a workspace whose only changes are new files reports 0/0.
+  """
+  def diff_stat(target) do
+    case run(target, ["diff", "HEAD", "--shortstat"]) do
+      {:ok, out} ->
+        {:ok, %{added: shortstat_num(out, "insertion"), removed: shortstat_num(out, "deletion")}}
+
+      err ->
+        err
+    end
+  end
+
+  # Pull the number before "insertions(+)" / "deletions(-)" from a --shortstat
+  # line like " 3 files changed, 42 insertions(+), 13 deletions(-)". 0 when absent.
+  defp shortstat_num(out, word) do
+    case Regex.run(~r/(\d+)\s+#{word}/, out) do
+      [_, n] -> String.to_integer(n)
+      _ -> 0
+    end
+  end
+
+  @doc """
   Get commit detail: files changed with insertions/deletions.
   Returns {:ok, %{sha, message, author, date, files: [%{path, insertions, deletions, status}]}}.
   """
