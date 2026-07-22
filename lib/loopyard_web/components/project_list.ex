@@ -249,7 +249,7 @@ defmodule LoopyardWeb.Components.ProjectList do
         :if={@ws[:last_activity_at] || card_changes(@ws)}
         class="mt-1 text-xs text-zinc-400 dark:text-zinc-500"
       >
-        <span :if={@ws[:last_activity_at]}>active {time_ago(@ws.last_activity_at)}</span>
+        <span :if={@ws[:last_activity_at]}>Active {time_ago(@ws.last_activity_at)}</span>
         <span :if={@ws[:last_activity_at] && card_changes(@ws)}> · </span>
         <span :if={card_changes(@ws)} class="text-emerald-600/80 dark:text-emerald-400/80">
           ±{card_changes(@ws)} changes
