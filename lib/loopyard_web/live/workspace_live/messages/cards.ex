@@ -25,13 +25,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
   def question_card(assigns) do
     ~H"""
     <div class="py-2">
-      <%!-- Quiet decision panel: neutral card, a single thin amber accent bar
-           signals "needs you" (amber, NOT violet — violet is the "You" message
-           colour). Everything reads top-down: label › question (hero) › the
-           options as scannable rows, each anchored by a radio/check dot. --%>
-      <div class="flex overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <div class="w-1 flex-none bg-amber-400 dark:bg-amber-500" aria-hidden="true"></div>
-        <div class="min-w-0 flex-1 p-4">
+      <%!-- Quiet decision panel: a light amber WASH signals "needs you" (amber,
+           NOT violet — violet is the "You" message colour). Options sit on white
+           rows so they stay distinct on the tint. Reads top-down: label ›
+           question (hero) › the options, each anchored by a radio/check dot. --%>
+      <div class="rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/20 p-4">
           <div class="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 mb-3">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3.5 h-3.5">
               <path
@@ -76,9 +74,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                   "focus-ring group/opt flex w-full items-start gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors",
                   if(q[:multi] && drafted?(@msg, q, o.label),
                     do:
-                      "border-amber-300 bg-amber-50 dark:border-amber-500/50 dark:bg-amber-500/10",
+                      "border-amber-400 bg-amber-100 dark:border-amber-500/60 dark:bg-amber-500/15",
                     else:
-                      "border-zinc-200 bg-zinc-50/80 hover:border-amber-300 hover:bg-amber-50/60 dark:border-zinc-700/70 dark:bg-zinc-800/40 dark:hover:border-amber-500/40 dark:hover:bg-amber-500/10"
+                      "border-zinc-200 bg-white hover:border-amber-300 hover:bg-amber-100/60 dark:border-zinc-700/70 dark:bg-zinc-900/50 dark:hover:border-amber-500/40 dark:hover:bg-amber-500/10"
                   )
                 ]}
               >
@@ -237,7 +235,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           <div :if={@msg.status == :timeout} class="text-sm text-zinc-500 dark:text-zinc-400">
             No answer — the agent moved on.
           </div>
-        </div>
       </div>
     </div>
     """
