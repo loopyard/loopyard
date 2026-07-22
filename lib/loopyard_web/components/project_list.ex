@@ -232,26 +232,28 @@ defmodule LoopyardWeb.Components.ProjectList do
           <Birdseye.port_chip port={ws_port_entry(@ws).port} url={ws_port_entry(@ws).url} />
         </span>
       </div>
-      <%!-- The story line: what it needs / what broke / what it's doing —
-           or, quietly, who's here. --%>
+      <%!-- The story line: what it needs / what broke / what it's doing — or,
+           quietly, who's here. A `:changed` headline is NOT a story (it's a
+           footer fact), so on the card it collapses to the quiet who's-here line;
+           ±N shows once, in the footer. --%>
       <div class={[
         "mt-2 text-sm truncate",
-        (@headline && @headline.class) || "text-zinc-500 dark:text-zinc-400"
+        card_story_class(@headline) || "text-zinc-500 dark:text-zinc-400"
       ]}>
-        {(@headline && agent_prefixed(@ws, @headline.text)) || quiet_line(@ws)}
+        {card_story_text(@headline, @ws)}
       </div>
-      <%!-- Footer facts: changes (when known+nonzero) · last activity. The ±N
-           shows here even when a louder headline (needs-you/working) owns the
-           story line — the card has room for both. --%>
+      <%!-- Footer facts: last activity (the STEADY anchor — always present) then
+           changes to its RIGHT (conditional: only when known + nonzero). This is
+           the ONLY place ±N shows; the story line never repeats it. --%>
       <div
-        :if={card_changes(@ws) || @ws[:last_activity_at]}
+        :if={@ws[:last_activity_at] || card_changes(@ws)}
         class="mt-1 text-xs text-zinc-400 dark:text-zinc-500"
       >
+        <span :if={@ws[:last_activity_at]}>active {time_ago(@ws.last_activity_at)}</span>
+        <span :if={@ws[:last_activity_at] && card_changes(@ws)}> · </span>
         <span :if={card_changes(@ws)} class="text-emerald-600/80 dark:text-emerald-400/80">
           ±{card_changes(@ws)} changes
         </span>
-        <span :if={card_changes(@ws) && @ws[:last_activity_at]}> · </span>
-        <span :if={@ws[:last_activity_at]}>active {time_ago(@ws.last_activity_at)}</span>
       </div>
     </div>
     """
@@ -273,6 +275,17 @@ defmodule LoopyardWeb.Components.ProjectList do
     do: "#{name} · #{text}"
 
   defp agent_prefixed(_, text), do: text
+
+  # Card story line: a `:changed` headline is a footer fact, not a story, so it
+  # collapses to the quiet who's-here line (±N shows only in the footer). Real
+  # stories (needs-you/broken/working) show with their colour.
+  defp card_story_text(%{kind: :changed}, ws), do: quiet_line(ws)
+  defp card_story_text(%{text: text}, ws), do: agent_prefixed(ws, text)
+  defp card_story_text(_, ws), do: quiet_line(ws)
+
+  defp card_story_class(%{kind: :changed}), do: nil
+  defp card_story_class(%{class: class}), do: class
+  defp card_story_class(_), do: nil
 
   # Quiet fallback line: who's here (the dot already says ready/asleep — no
   # status words), or that nobody is.
