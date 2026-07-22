@@ -62,7 +62,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                  a radio/check dot. Single-select: one click settles. Multi-select:
                  clicks TOGGLE (draft broadcast to all viewers); the dot fills and
                  the button below confirms. --%>
-            <div :if={@msg.status == :pending && !locked?(@msg, q)} class="flex flex-col gap-1">
+            <div :if={@msg.status == :pending && !locked?(@msg, q)} class="flex flex-col gap-0.5">
               <button
                 :for={o <- q.options}
                 type="button"
@@ -71,7 +71,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                 phx-value-q={q.id}
                 phx-value-option={o.label}
                 class={[
-                  "focus-ring group/opt flex w-full items-start gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors",
+                  "focus-ring group/opt flex w-full items-start gap-3 rounded-lg border px-3 py-1.5 text-left transition-colors",
                   if(q[:multi] && drafted?(@msg, q, o.label),
                     do:
                       "border-amber-400 bg-amber-100 dark:border-amber-500/60 dark:bg-amber-500/15",
@@ -159,11 +159,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
             <%!-- SETTLED: same rows (no layout jump), chosen lit emerald with a
                  filled check, the rest quietly dimmed but legible. Durable
                  receipt — survives refresh/restart via persisted :selections. --%>
-            <div :if={locked?(@msg, q)} class="flex flex-col gap-1">
+            <div :if={locked?(@msg, q)} class="flex flex-col gap-0.5">
               <div
                 :for={o <- q.options}
                 class={[
-                  "flex items-start gap-3 rounded-lg border px-3 py-2.5",
+                  "flex items-start gap-3 rounded-lg border px-3 py-1.5",
                   if(chosen?(@msg, q, o.label),
                     do: "border-emerald-300 bg-emerald-50 dark:border-emerald-500/40 dark:bg-emerald-500/10",
                     else: "border-transparent opacity-60"
