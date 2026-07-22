@@ -8,6 +8,18 @@ Write a failing test first, then implement. Not optional. See [TESTING.md](TESTI
 
 If you're fixing a bug, write a test that reproduces it BEFORE writing the fix. Run the test, watch it fail, then fix the code, then watch it pass. If you skip this, you have no proof the fix works. We've shipped "fixes" multiple times that didn't actually fix anything because the test wasn't written first.
 
+## UI rhythm — group by proximity, share gutters
+
+Before writing Tailwind spacing on any multi-item layout (sidebars, chat cards,
+option lists, panels), **load the `ui-rhythm` skill** (`.claude/skills/ui-rhythm`).
+The recurring bug: within-group and between-group spacing come out the same, so
+nothing reads as a group — it happened in the sidebars and the question card.
+The rule in one line: **between-group gap must be ≥4× the within-group gap**
+(the `SideNav` exemplar runs ~16×: `space-y-px` within, `pt-4` between), the
+between-group gap comes from ONE side (never `mb-*` on A + `pt-*` on B), and every
+text element shares one left gutter via consistent horizontal padding. Exemplar:
+`lib/loopyard_web/components/side_nav.ex`.
+
 ## Isolate logic into testable modules
 
 Don't bury behavior in LiveView private functions. If it has logic worth getting right, it belongs in its own module with its own tests. LiveViews should be thin — they handle events, delegate to modules, and render.
