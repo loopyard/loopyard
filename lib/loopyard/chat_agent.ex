@@ -33,6 +33,10 @@ defmodule Loopyard.ChatAgent do
     :name,
     :session,
     :session_opts,
+    # Boot opts (tools/prompt/model/container) needed to REBUILD session_opts on
+    # a full "reload tools" restart. Runtime-only, NOT persisted — a server
+    # restart repopulates it from the resume opts. See Initializer.rebuild_session_opts/1.
+    :init_opts,
     :backend,
     :working_dir,
     :bind_mount,
@@ -354,6 +358,10 @@ defmodule Loopyard.ChatAgent do
   reloads):
 
     * `:user` — someone clicked Restart; confirm with a quiet marker.
+    * `:reload` — someone clicked "Restart agent" wanting a FULL restart:
+      rebuild session_opts first (fresh MCP tool config + a system prompt
+      re-read from disk) so a dropped/changed tool comes back, THEN restart
+      like `:user` (conversation kept). This is the button's reason.
     * `:credentials` — token pushed (`Workstation.reload_agents`); silent.
     * `:memory_reclaim` — MemoryMonitor reclaiming an idle bloated harness;
       silent (it already EventLogs the why).
@@ -361,7 +369,7 @@ defmodule Loopyard.ChatAgent do
       marker.
   """
   def restart_session(id, reason \\ :user)
-      when reason in [:user, :credentials, :memory_reclaim, :recovery] do
+      when reason in [:user, :reload, :credentials, :memory_reclaim, :recovery] do
     GenServer.cast(via(id), {:restart_session, reason})
   end
 
@@ -713,6 +721,13 @@ defmodule Loopyard.ChatAgent do
 
   defp restart_note(:user, true, _), do: "Session restarted (conversation resumed)."
   defp restart_note(:user, false, _), do: "Session restarted; rebuilding context from history."
+
+  defp restart_note(:reload, true, _),
+    do: "Restarted — tools reloaded, conversation resumed."
+
+  defp restart_note(:reload, false, _),
+    do: "Restarted — tools reloaded, rebuilding context from history."
+
   defp restart_note(_maintenance, _resumed?, _live_id), do: nil
 
   # The user's last message with NO assistant reply after it — the in-flight
@@ -747,6 +762,25 @@ defmodule Loopyard.ChatAgent do
   end
 
   defp restart_session_now(state, reason) do
+    # A full ("reload tools") restart rebuilds session_opts from the agent's boot
+    # opts BEFORE restarting, so the fresh CLI picks up a changed MCP tool set +
+    # a system prompt re-read from disk. Falls back to the frozen opts if the
+    # rebuild fails (e.g. workspace config momentarily unreadable) — the button
+    # still recovers a wedged harness. Everything downstream is the normal
+    # restart, so the conversation resumes just like `:user`.
+    state =
+      if reason == :reload do
+        case Initializer.rebuild_session_opts(state) do
+          {:ok, fresh_opts, prompt_hash} ->
+            %{state | session_opts: fresh_opts, prompt_hash: prompt_hash}
+
+          {:error, _} ->
+            state
+        end
+      else
+        state
+      end
+
     # A credential/account switch invalidates the native session id — the NEW
     # account can't resume the old session, so resuming would boot the agent
     # amnesic ("switched accounts and it forgot everything"). Drop it → start

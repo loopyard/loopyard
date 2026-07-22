@@ -101,9 +101,20 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
 
     <.docker_context agent={@agent} />
 
-    <%!-- STICKY FOOTER: destructive "Remove agent", set apart. Stops the session
-         and removes the agent from the workspace; the code volume is untouched. --%>
+    <%!-- STICKY FOOTER: a full "Restart agent" (escape hatch for a wedged harness
+         or a dropped/changed MCP tool — reloads tools, keeps the conversation),
+         then the destructive "Remove agent" set apart below the divider. --%>
     <.action_bar>
+      <:main>
+        <.control_btn
+          phx-click="restart_session"
+          phx-value-id={@agent.id}
+          data-confirm={"Restart agent \"#{@agent.name}\"? Reloads its tools and reconnects the harness. Any in-progress turn stops; the conversation is kept."}
+          class="w-full justify-center"
+        >
+          Restart agent
+        </.control_btn>
+      </:main>
       <:danger>
         <.control_btn
           variant={:danger}

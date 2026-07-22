@@ -916,7 +916,10 @@ defmodule LoopyardWeb.WorkspaceLive do
 
   @impl true
   def handle_event("restart_session", %{"id" => id}, socket) do
-    ChatAgent.restart_session(id)
+    # The sidebar "Restart agent" button → a FULL restart: rebuild session_opts
+    # (fresh MCP tool config + refreshed system prompt) so a dropped/changed tool
+    # comes back, conversation kept. See ChatAgent.restart_session/2 (:reload).
+    ChatAgent.restart_session(id, :reload)
     {:noreply, socket}
   end
 

@@ -62,6 +62,79 @@ defmodule Loopyard.ChatAgent.Initializer do
   `{session, session_opts, backend, prompt_hash}`.
   """
   def start_session(id, opts, params) do
+    {session_opts, backend, system_prompt} = build_session_opts(id, opts, params)
+
+    # Fail closed: never start a runtime on the host. Raises if the resolved
+    # backend/opts would run the harness process outside a container.
+    assert_runtime_contained!(backend, session_opts, id)
+
+    case backend.start_session(session_opts) do
+      {:ok, session} ->
+        prompt_hash = :crypto.hash(:sha256, system_prompt || "") |> Base.encode16(case: :lower)
+        {session, session_opts, backend, prompt_hash}
+
+      {:error, reason} ->
+        # Tagged exception, RESCUED at the build_state boundary into a clean
+        # {:stop, {:harness_start_failed, reason}} — never an abnormal crash.
+        raise Loopyard.ChatAgent.HarnessStartError,
+          reason: reason,
+          message:
+            "Failed to start the agent harness for agent #{id}: #{inspect(reason)}. " <>
+              "Usually this means: the harness isn't installed in the container, the workspace volume " <>
+              "is unreachable, or auth isn't configured. Check the harness is installed in the " <>
+              "container to diagnose."
+    end
+  end
+
+  # Boot-opt keys that a full restart needs to rebuild session_opts (see below).
+  @rebuildable_opt_keys [:tools, :backend, :system_prompt, :model, :container, :workstation_identity]
+
+  @doc """
+  The subset of boot `opts` needed to REBUILD an agent's session_opts later (a
+  full "reload tools" restart). Stashed on the state as `:init_opts` at init, so
+  a reload reconstructs the exact tool set / prompt / container the agent booted
+  with — a workspace agent's `[]` correctly falls back to `default_tools()`.
+  """
+  def rebuildable_opts(opts), do: Keyword.take(opts, @rebuildable_opt_keys)
+
+  @doc """
+  Regenerate an agent's session_opts from its stashed boot opts + live state,
+  WITHOUT spawning. Used by a full ("reload tools") restart: the returned opts
+  carry a freshly-built MCP tool config (`mcp_servers` / `acp_mcp_servers`) and a
+  system prompt re-read from disk, so the next session start picks up tool or
+  prompt changes while the conversation (via `claude_session_id`) is kept.
+  Returns `{:ok, session_opts, prompt_hash}`, or `{:error, term}` (the caller
+  then falls back to the frozen opts — the restart still recovers the harness).
+  """
+  def rebuild_session_opts(state) do
+    # Map.get, not state.init_opts: an agent struct that predates this field (hot
+    # code reload before its first server restart) has no :init_opts key. Absent
+    # → [] → rebuild falls back to default tools (correct for a workspace agent).
+    opts = Map.get(state, :init_opts) || []
+
+    params = [
+      working_dir: state.working_dir,
+      bind_mount: state.bind_mount,
+      workspace_id: state.workspace_id,
+      service_name: state.service_name,
+      claude_session_id: state.claude_session_id,
+      max_turns: Keyword.get(state.session_opts || [], :max_turns)
+    ]
+
+    {session_opts, _backend, system_prompt} = build_session_opts(state.id, opts, params)
+    prompt_hash = :crypto.hash(:sha256, system_prompt || "") |> Base.encode16(case: :lower)
+    {:ok, session_opts, prompt_hash}
+  rescue
+    e -> {:error, e}
+  end
+
+  @doc """
+  Pure builder: everything `start_session/3` does EXCEPT spawning the backend
+  process. Returns `{session_opts, backend, system_prompt}`. Split out so a full
+  restart can regenerate session_opts (fresh MCP tool config + refreshed system
+  prompt) without spawning. See `rebuild_session_opts/1`.
+  """
+  def build_session_opts(id, opts, params) do
     working_dir = Keyword.fetch!(params, :working_dir)
     bind_mount = Keyword.get(params, :bind_mount)
     workspace_id = Keyword.get(params, :workspace_id)
@@ -197,26 +270,7 @@ defmodule Loopyard.ChatAgent.Initializer do
           session_opts
       end
 
-    # Fail closed: never start a runtime on the host. Raises if the resolved
-    # backend/opts would run the harness process outside a container.
-    assert_runtime_contained!(backend, session_opts, id)
-
-    case backend.start_session(session_opts) do
-      {:ok, session} ->
-        prompt_hash = :crypto.hash(:sha256, system_prompt || "") |> Base.encode16(case: :lower)
-        {session, session_opts, backend, prompt_hash}
-
-      {:error, reason} ->
-        # Tagged exception, RESCUED at the build_state boundary into a clean
-        # {:stop, {:harness_start_failed, reason}} — never an abnormal crash.
-        raise Loopyard.ChatAgent.HarnessStartError,
-          reason: reason,
-          message:
-            "Failed to start the agent harness for agent #{id}: #{inspect(reason)}. " <>
-              "Usually this means: the harness isn't installed in the container, the workspace volume " <>
-              "is unreachable, or auth isn't configured. Check the harness is installed in the " <>
-              "container to diagnose."
-    end
+    {session_opts, backend, system_prompt}
   end
 
   # --- Private helpers ---
@@ -388,7 +442,12 @@ defmodule Loopyard.ChatAgent.Initializer do
         rate_limit_status: :ok,
         rate_limit_resets_at_ms: nil,
         rate_limit_type: nil,
-        auth_error: nil
+        auth_error: nil,
+        # Boot opts needed to REBUILD session_opts on a full ("reload tools")
+        # restart. On a server-restart resume these come from the resume opts
+        # (empty for a workspace agent → default tools; populated for the
+        # operator). See rebuild_session_opts/1.
+        init_opts: rebuildable_opts(opts)
       )
 
     state = SessionManager.track_os_pid(state)
@@ -497,7 +556,10 @@ defmodule Loopyard.ChatAgent.Initializer do
       messages: Enum.reverse(initial_messages),
       claude_session_id: resumed_session_id,
       service_name: service_name,
-      prompt_hash: prompt_hash
+      prompt_hash: prompt_hash,
+      # Boot opts needed to REBUILD session_opts on a full ("reload tools")
+      # restart — see rebuild_session_opts/1.
+      init_opts: rebuildable_opts(opts)
     }
 
     state = SessionManager.track_os_pid(state)
