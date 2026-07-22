@@ -799,21 +799,28 @@ Hooks.ChatForm = {
     }
 
     // Submit semantics, keyed to the LAYOUT (Tailwind's md breakpoint, 768px) —
-    // NOT pointer type. A desktop narrowed to a mobile viewport should behave
-    // like mobile (you're testing the mobile layout), and a real phone is
-    // always below the breakpoint, so this is right for both:
-    //   DESKTOP (≥768px): Enter sends · Shift+Enter newline
-    //   MOBILE  (<768px):  Enter newlines · you send with the button
-    // Cmd/Ctrl+Enter ALWAYS sends, everywhere. Evaluated live on each keydown
-    // so resizing the window flips behavior without a remount. `isComposing`
-    // guards IME users (CJK): Enter during composition picks a candidate.
+    // NOT pointer type. A desktop narrowed to a mobile viewport behaves like
+    // mobile, and a real phone is always below the breakpoint:
+    //   DESKTOP (≥768px): Enter SENDS · Shift+Enter newline
+    //   MOBILE  (<768px):  Enter does NOTHING — you tap the send button
+    // Shift+Enter is the ONLY way plain-Enter inserts a newline; ⌘/Ctrl+Enter
+    // ALWAYS sends. Evaluated live on each keydown so resizing flips behavior
+    // without a remount. `isComposing` guards IME users (CJK): Enter picks a
+    // candidate.
+    //
+    // CRITICAL: plain Enter calls preventDefault UNCONDITIONALLY (before the
+    // desktop/mobile branch). Previously the mobile path `return`ed *before*
+    // preventDefault, so any time `isDesktop()` read false — a narrow window, an
+    // embedded/preview webview, zoom — a newline slipped into the box, growing
+    // it then collapsing on the send-ack. Now the newline is impossible either
+    // way; only the send-vs-nothing decision depends on the viewport.
     const isDesktop = () => window.matchMedia("(min-width: 768px)").matches
     ta.addEventListener("keydown", (e) => {
       if (e.key !== "Enter" || e.isComposing) return
       if (e.metaKey || e.ctrlKey) { e.preventDefault(); send(); return }  // ⌘/⌃+Enter: always send
-      if (!isDesktop()) return                                            // mobile: Enter = newline
-      if (e.shiftKey) return                                              // desktop: Shift+Enter = newline
-      e.preventDefault(); send()                                          // desktop: Enter = send
+      if (e.shiftKey) return                                              // Shift+Enter: newline (both)
+      e.preventDefault()                                                  // plain Enter: never a newline
+      if (isDesktop()) send()                                            // desktop sends; mobile does nothing
     })
 
     // Auto-resize textarea + clear any stale "send failed" notice as you edit
