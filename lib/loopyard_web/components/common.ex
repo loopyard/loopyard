@@ -379,25 +379,27 @@ defmodule LoopyardWeb.Components.Common do
   end
 
   @doc """
-  The header ambient-sound control: a SPEAKER icon that links to the full
-  `/sound` page (live nav, so the bed never cuts). A speaker reads as "open the
-  sound controls" — not a transport button — so tapping-to-open is intuitive and
-  there's no "why didn't it play?" confusion. It still shows state: waves when
-  playing, muted when off (plus a subtle violet tint while on). The `SoundIcon`
-  JS hook mirrors the engine state. Give each placement a unique `id`.
+  The Operator affordance — a command-grid icon that links to `/operator` (live
+  nav, so the ambient bed never cuts). The operator is now the one place you run
+  everything from AND the ambient presence, so this REPLACES the old speaker
+  icon everywhere it appeared. The `SoundIcon` JS hook stays: it mirrors the
+  ambient engine state onto `data-sound-icon`, so the icon carries a subtle
+  violet tint while the operator's bed is playing — the operator "is live" cue.
+  Give each placement a unique `id`.
   """
-  attr :id, :string, default: "sound-control"
+  attr :id, :string, default: "operator-link"
   attr :class, :string, default: nil
 
-  def sound_control(assigns) do
+  def operator_link(assigns) do
     ~H"""
     <.link
-      navigate="/sound"
+      navigate="/operator"
       id={@id}
       phx-hook="SoundIcon"
-      aria-label="Sound"
+      aria-label="Operator"
+      title="Operator — run and watch everything from here"
       class={[
-        "flex-none inline-flex items-center justify-center w-11 h-11 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors",
+        "flex-none inline-flex items-center justify-center w-11 h-11 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-violet-600 dark:hover:text-violet-400 transition-colors",
         @class
       ]}
     >
@@ -408,19 +410,16 @@ defmodule LoopyardWeb.Components.Common do
         fill="currentColor"
         class="w-5 h-5"
       >
-        <path d="M10 3.75a.75.75 0 0 0-1.264-.546L5.203 6.5H3.667A1.667 1.667 0 0 0 2 8.167v3.666A1.667 1.667 0 0 0 3.667 13.5h1.536l3.533 3.296A.75.75 0 0 0 10 16.25V3.75Z" />
-        <path d="M14.78 7.72a.75.75 0 0 0-1.06 1.06L14.94 10l-1.22 1.22a.75.75 0 1 0 1.06 1.06L16 11.06l1.22 1.22a.75.75 0 1 0 1.06-1.06L17.06 10l1.22-1.22a.75.75 0 0 0-1.06-1.06L16 8.94l-1.22-1.22Z" />
+        <path fill-rule="evenodd" d="M4.25 2A2.25 2.25 0 0 0 2 4.25v2.5A2.25 2.25 0 0 0 4.25 9h2.5A2.25 2.25 0 0 0 9 6.75v-2.5A2.25 2.25 0 0 0 6.75 2h-2.5Zm0 9A2.25 2.25 0 0 0 2 13.25v2.5A2.25 2.25 0 0 0 4.25 18h2.5A2.25 2.25 0 0 0 9 15.75v-2.5A2.25 2.25 0 0 0 6.75 11h-2.5Zm9-9A2.25 2.25 0 0 0 11 4.25v2.5A2.25 2.25 0 0 0 13.25 9h2.5A2.25 2.25 0 0 0 18 6.75v-2.5A2.25 2.25 0 0 0 15.75 2h-2.5Zm0 9A2.25 2.25 0 0 0 11 13.25v2.5A2.25 2.25 0 0 0 13.25 18h2.5A2.25 2.25 0 0 0 18 15.75v-2.5A2.25 2.25 0 0 0 15.75 11h-2.5Z" clip-rule="evenodd" />
       </svg>
       <svg
         data-sound-icon="on"
         xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 20 20"
         fill="currentColor"
-        class="w-5 h-5 hidden"
+        class="w-5 h-5 hidden text-violet-500 dark:text-violet-400"
       >
-        <path d="M10 3.75a.75.75 0 0 0-1.264-.546L5.203 6.5H3.667A1.667 1.667 0 0 0 2 8.167v3.666A1.667 1.667 0 0 0 3.667 13.5h1.536l3.533 3.296A.75.75 0 0 0 10 16.25V3.75Z" />
-        <path d="M14.657 3.879a.75.75 0 0 0-1.06 1.06 7 7 0 0 1 0 9.9.75.75 0 0 0 1.06 1.061 8.5 8.5 0 0 0 0-12.021Z" />
-        <path d="M12.182 6.354a.75.75 0 0 0-1.06 1.06 3.5 3.5 0 0 1 0 4.95.75.75 0 0 0 1.06 1.06 5 5 0 0 0 0-7.07Z" />
+        <path fill-rule="evenodd" d="M4.25 2A2.25 2.25 0 0 0 2 4.25v2.5A2.25 2.25 0 0 0 4.25 9h2.5A2.25 2.25 0 0 0 9 6.75v-2.5A2.25 2.25 0 0 0 6.75 2h-2.5Zm0 9A2.25 2.25 0 0 0 2 13.25v2.5A2.25 2.25 0 0 0 4.25 18h2.5A2.25 2.25 0 0 0 9 15.75v-2.5A2.25 2.25 0 0 0 6.75 11h-2.5Zm9-9A2.25 2.25 0 0 0 11 4.25v2.5A2.25 2.25 0 0 0 13.25 9h2.5A2.25 2.25 0 0 0 18 6.75v-2.5A2.25 2.25 0 0 0 15.75 2h-2.5Zm0 9A2.25 2.25 0 0 0 11 13.25v2.5A2.25 2.25 0 0 0 13.25 18h2.5A2.25 2.25 0 0 0 18 15.75v-2.5A2.25 2.25 0 0 0 15.75 11h-2.5Z" clip-rule="evenodd" />
       </svg>
     </.link>
     """

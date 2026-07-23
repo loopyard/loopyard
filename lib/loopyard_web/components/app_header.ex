@@ -42,7 +42,7 @@ defmodule LoopyardWeb.Components.AppHeader do
         <%!-- Deliberately minimal: only the global sound control lives here. The
              Workstations surface is reached from the root DASHBOARD, not a
              top-right menu (which would become a catch-all mess). --%>
-        <LoopyardWeb.Components.Common.sound_control id="sound-app" />
+        <LoopyardWeb.Components.Common.operator_link id="operator-app" />
       </:actions>
     </LoopyardWeb.Components.Nav.bar>
     """

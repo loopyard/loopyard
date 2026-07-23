@@ -58,6 +58,9 @@ defmodule LoopyardWeb.OperatorLive do
       # tail. (chat_panel still reads these two.)
       |> assign(:has_more_messages, false)
       |> assign(:window_tail?, true)
+      # The glanceable working board — every project/workspace + status. Refreshed
+      # on any agent's status change (below). ETS-cheap.
+      |> assign(:tree, Loopyard.WorkspaceTree.global(host))
       |> load_agent()
 
     {:ok, socket}
@@ -192,10 +195,29 @@ defmodule LoopyardWeb.OperatorLive do
 
   def handle_info(%Events.ChatAgentMessage.StreamOutput{}, socket), do: {:noreply, socket}
 
-  def handle_info(%Events.ChatAgent.StatusChanged{} = e, socket),
-    do: AgentEvents.handle_status_changed(e, socket)
+  def handle_info(%Events.ChatAgent.StatusChanged{} = e, socket) do
+    {:noreply, socket} = AgentEvents.handle_status_changed(e, socket)
+
+    # The operator's OWN status drives the ambient bed — it swells while the
+    # operator works, settles when idle. Best-effort; sound never blocks the page.
+    if e.id == socket.assigns.agent_id, do: drive_sound(e.status)
+
+    # Any agent's status change can move the board.
+    {:noreply, assign(socket, :tree, Loopyard.WorkspaceTree.global(socket.assigns.host))}
+  end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  # Operator activity → ambient loudness (Aural continuous level, 0..1).
+  defp drive_sound(status) do
+    level = if status in [:thinking, :backoff, :compacting], do: 0.7, else: 0.12
+    Aural.Channel.set_activity("activity", level)
+    :ok
+  rescue
+    _ -> :ok
+  catch
+    _, _ -> :ok
+  end
 
   @impl true
   def render(assigns) do
@@ -217,23 +239,78 @@ defmodule LoopyardWeb.OperatorLive do
           >
             <span class="w-2 h-2 rounded-sm bg-red-500"></span> Stop
           </button>
-          <LoopyardWeb.Components.Common.sound_control id="sound-operator" />
         </:actions>
       </Nav.bar>
 
-      <.chat_panel
-        messages={@messages}
-        streaming_text={@streaming_text}
-        streaming_thinking={@streaming_thinking}
-        agent={@selected_agent}
-        workspace_id={nil}
-        host={@host}
-        thinking_word={@thinking_word || "Thinking"}
-        has_more_messages={@has_more_messages}
-        window_tail?={@window_tail?}
-        detail_level={:trace}
-      />
+      <div class="flex-1 min-h-0 flex">
+        <%!-- Chat is PRIMARY — mostly you just talk to the operator. --%>
+        <div class="flex-1 min-w-0 flex flex-col min-h-0">
+          <.chat_panel
+            messages={@messages}
+            streaming_text={@streaming_text}
+            streaming_thinking={@streaming_thinking}
+            agent={@selected_agent}
+            workspace_id={nil}
+            host={@host}
+            thinking_word={@thinking_word || "Thinking"}
+            has_more_messages={@has_more_messages}
+            window_tail?={@window_tail?}
+            detail_level={:trace}
+          />
+        </div>
+        <%!-- The glanceable working board — secondary, quiet, desktop-only. What's
+             here / what's running, at a glance, while you work in chat. --%>
+        <aside class="hidden lg:flex w-72 flex-none flex-col border-l border-zinc-200 dark:border-zinc-800 overflow-y-auto bg-zinc-50/60 dark:bg-zinc-900/40">
+          <.operator_board tree={@tree} />
+        </aside>
+      </div>
     </div>
     """
+  end
+
+  # The working board: every project → workspace, with a live status dot + open
+  # ports. Reuses the WorkspaceTree the whole app rides + Birdseye's dot colors so
+  # the operator's glance agrees with the rail and the home page.
+  attr :tree, :list, required: true
+
+  defp operator_board(assigns) do
+    ~H"""
+    <div class="p-3 space-y-4">
+      <div class="text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500 px-1">
+        Working
+      </div>
+      <p :if={@tree == []} class="px-1 text-sm text-zinc-500 dark:text-zinc-400">
+        No projects yet.
+      </p>
+      <div :for={p <- @tree} class="space-y-1">
+        <div class="px-1 text-sm font-medium text-zinc-700 dark:text-zinc-300 truncate">
+          {p.name}
+        </div>
+        <div :if={p.workspaces == []} class="px-1 text-xs text-zinc-400">no workspaces</div>
+        <div
+          :for={ws <- p.workspaces}
+          class="flex items-center gap-2 rounded-md px-2 py-1 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60"
+        >
+          <span class={[
+            "flex-none w-2 h-2 rounded-full",
+            LoopyardWeb.Components.Birdseye.ws_dot(ws)
+          ]} />
+          <span class="flex-1 min-w-0 truncate">{ws.name}</span>
+          <span :if={ports(ws) != ""} class="flex-none text-xs font-mono text-emerald-600 dark:text-emerald-400">
+            {ports(ws)}
+          </span>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp ports(ws) do
+    Loopyard.PortRegistry.list_for_workspace(ws.id)
+    |> Enum.filter(& &1.exposed)
+    |> Enum.map(&":#{&1.host_port}")
+    |> Enum.join(" ")
+  rescue
+    _ -> ""
   end
 end
