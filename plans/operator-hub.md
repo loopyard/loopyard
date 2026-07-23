@@ -21,13 +21,45 @@ place you run everything from. It:
 
 ## Principle
 
-> The operator is the HUB. It already has a body (a ChatAgent in the workstation
-> container) and a nervous system (the `Events.Activity` backbone that already
-> aggregates every agent's activity across every project). This feature gives it
-> **eyes and hands** into other workspaces, a **lean way to learn what finished**,
-> **one home**, and **ownership of the sound** — reusing existing seams, additive
-> first. Context stays lean by default: headlines are pulled, details fetched only
-> on demand.
+> The operator is the HUB — **Brad's cockpit for all of Loopyard**. It already
+> has a body (a ChatAgent in the workstation container) and a nervous system (the
+> `Events.Activity` backbone that already aggregates every agent's activity across
+> every project). This feature gives it **eyes and hands** into other workspaces,
+> a **lean way to learn what finished**, **one home**, and **ownership of the
+> sound** — reusing existing seams, additive first. Context stays lean by default:
+> headlines are pulled, details fetched only on demand.
+
+## The cockpit (what Brad does in it)
+
+Mostly chat. Ask it anything about Loopyard's state and drive everything through it:
+- **Status**: what projects/workspaces/agents/ports exist, what's running, what
+  just finished, machine/system status.
+- **Ports**: open/close a workspace's port (network exposure).
+- **Lifecycle**: spin up / tear down projects and workspaces (consent-gated).
+- **Dispatch**: hand a task to a workspace agent when it chooses.
+It just needs a bare "something finished" ping — not the details — and can pull
+detail on demand.
+
+## Context discipline (optimize the RIGHT thing)
+
+Tool *definitions* are cheap (~10–15 tools ≈ 1–2% of the window; Claude Code
+picks from that many cleanly). What blows context is tool *outputs* accumulating
+over a long conversation. So the rule is NOT "as few tools as possible" (that
+cripples the cockpit and turns each tool into a confusing multi-mode blob) — it's:
+- **Terse outputs** (`truncate_for_agent`-style caps on everything).
+- **Pull-on-demand** — one compact `overview`, details only via `peek_workspace`.
+- **Consolidate naturally-parallel actions** (open/close/list ports → one `ports`
+  tool) but keep distinct verbs distinct.
+- The operator can compact; nothing is auto-injected into its context.
+
+## Security boundary (unchanged, load-bearing)
+
+The operator's `exec` runs INSIDE its workstation container — never a host shell.
+Host visibility ("how much memory on this machine") comes through a NARROW,
+read-only `system_status` tool (reusing `Health` / `Docker.Observer` /
+`MemoryMonitor`), NOT host exec. Read docs/SECURITY.md before touching this.
+Destructive lifecycle (create/clone/delete project or workspace) stays behind the
+existing approval cards (`propose_*` → `Harness.Approvals`).
 
 ## What already exists (build ON this — do not rebuild)
 
@@ -72,17 +104,40 @@ same digest** — start here; add them only if it feels too passive.
 
 ## Phases
 
-### Phase 1 — Operator's eyes & hands (operator-scoped MCP tools, pull-based)
-New `Loopyard.Tools.ControlPlane.*` modules, registered in `@tools`:
-- `list_workspaces` — projects → workspaces → agent status / who's working
-  (reuse `WorkspaceTree` / `Activity`; no shell-out).
+### Phase 1 — The cockpit toolset (operator-scoped MCP tools, curated ~10)
+New `Loopyard.Tools.ControlPlane.*` modules, registered in `@tools`. Reads are
+TERSE; detail is pulled, not dumped.
+
+Reads:
+- `overview` — ONE compact tree: projects → workspaces → agent status / who's
+  working / open ports. Answers most "what's there / what's running" questions in
+  one cheap call (reuse `WorkspaceTree` / `Birdseye` / `PortRegistry` / `Activity`;
+  no shell-out). Replaces separate list_projects/list_workspaces/list_ports.
 - `peek_workspace(workspace_id | agent_id, limit)` — one workspace's status +
   recent chat, on demand (reuse the `RecallConversation` read via
   `ChatAgent.MessageWindow`, cross-agent, operator-scoped, read-only).
-- `dispatch(target, message)` — enqueue a task to a workspace agent
-  (`enqueue_message/2`); resolve target by workspace id or agent id; validate it
-  exists; NEW cross-agent send (none exists today).
+- `system_status` — read-only HOST snapshot: memory, `Health` map, container /
+  volume counts (reuse `Health` / `Docker.Observer` / `Harness.MemoryMonitor`).
+  NOT host exec (see Security boundary).
 - `recent_activity(limit)` — read the operator digest (Phase 2).
+
+Acts:
+- `ports(workspace, action: open|close, service, port)` — network exposure toggle
+  (`PortRegistry.set_exposure/4`). Consolidates open/close/list.
+- `dispatch(target, message)` — enqueue a task to a workspace agent
+  (`enqueue_message/2`); resolve target by workspace or agent id; validate; NEW
+  cross-agent send (none exists today).
+- `manage_workspace(action: create|delete, ...)` — via the existing consent cards
+  (`propose_fork`/`propose_delete_workspace` flows), operator-initiated.
+- `manage_project(action: create_scratch|create_github|create_path|delete, ...)` —
+  wraps the existing `ControlPlane` create flows + a NEW consent-gated project
+  delete card.
+
+Keep existing operator tools: `Gh`, `Exec` (container-scoped).
+
+Model note: the operator's model is set at spawn and is a runtime toggle — Brad
+wants to TRY a few (chief-of-staff routing may favor a cheaper/faster model, or
+not). Not decided; keep it a one-line config, experiment during Phase 3–5.
 
 ### Phase 2 — The operator digest ("told when things finish", compact)
 - `Loopyard.Operator.Digest` (GenServer + ETS ring, per workstation): subscribes
@@ -92,12 +147,17 @@ New `Loopyard.Tools.ControlPlane.*` modules, registered in `@tools`:
 - Config-gated like `ChangeCounts` (off in test).
 
 ### Phase 3 — The unified operator surface (`/operator`)
-Rework `OperatorLive` into the one home:
-- **operator chat** (existing `chat_panel`), plus
-- a live **working board** (projects/workspaces + status + recent completions,
-  from `WorkspaceTree`/`Birdseye`/`Digest`), plus
+Rework `OperatorLive` into the one home. **Chat-primary** — mostly you'll see the
+operator chat and just talk to it:
+- **operator chat** (existing `chat_panel`) is the primary surface, plus
+- a glanceable **status strip / board** (projects/workspaces + who's working,
+  from `WorkspaceTree`/`Birdseye`) — secondary, not a busy feed, plus
 - **sound controls inline** (fold in what `/sound` offers).
 Keep `/operator` the canonical entry.
+
+**Do NOT build a live turn-taking / completions feed** (Brad's own concern: it
+reads as noise). Completions stay in the operator's pull-digest; at most a quiet
+unread badge later. Consent cards (create/clone/delete) render inline as today.
 
 ### Phase 4 — Operator drives sound + icon swap
 - Drive the ambient channel from the OPERATOR: `set_activity` for a continuous
