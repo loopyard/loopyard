@@ -306,6 +306,24 @@ boots the cloned config once cloning is done — not just forks.
   (`context_panel.ex` → `harness_status/1`) is the one place to glance
   at to know harness state (Ready / Starting / Reconnecting / offline /
   rate-limited), with a plain-language consequence line.
+- **"Restart agent" button** (agent sidebar, above Remove) is a FULL
+  restart, not a session recycle: `restart_session(id, :reload)`
+  rebuilds `session_opts` via `Initializer.rebuild_session_opts/1`
+  (fresh `mcp_servers`/`acp_mcp_servers` + a system prompt re-read from
+  disk) BEFORE restarting, so a dropped/changed MCP tool comes back —
+  then runs the normal resume path, so the conversation continues. The
+  boot opts needed for the rebuild are stashed on the agent as
+  `:init_opts`. Falls back to the frozen opts if the rebuild fails, so
+  the button still un-wedges a harness. Other restart reasons
+  (`:user`/`:credentials`/`:recovery`/`:memory_reclaim`) are unchanged.
+- **Composer queue is ONE card.** Messages queued while the agent is
+  busy render as a single sender-labeled band (the workstation name,
+  e.g. "Brad" — not "You") with every pending line inside it, each
+  cancelable by its own ✕; it appears instantly (the send handler pulls
+  the just-enqueued list from ETS into the ack reply, not the later
+  `StatusChanged` broadcast). On desktop **Enter sends** (never inserts
+  a newline — `preventDefault` is unconditional); on mobile Enter is a
+  no-op (tap Send); Shift+Enter newlines, ⌘/Ctrl+Enter always sends.
 
 ## Docs
 
