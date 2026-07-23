@@ -27,10 +27,12 @@ defmodule Loopyard.Tools.ControlPlane do
     Loopyard.Tools.ControlPlane.RecentActivity,
     Loopyard.Tools.ControlPlane.Ports,
     Loopyard.Tools.ControlPlane.Dispatch,
-    # --- Lifecycle (approval-gated create; delete added in a later phase) ---
+    # --- Lifecycle (all approval-gated: create + destructive delete) ---
     Loopyard.Tools.ControlPlane.CreateProjectFromScratch,
     Loopyard.Tools.ControlPlane.CreateProjectFromGithub,
     Loopyard.Tools.ControlPlane.CreateProjectFromPath,
+    Loopyard.Tools.ControlPlane.DeleteWorkspace,
+    Loopyard.Tools.ControlPlane.DeleteProject,
     Loopyard.Tools.ControlPlane.Gh,
     # A real shell inside the operator's OWN container image — resolve_container
     # targets its workstation container. This is "the same tools + do whatever in

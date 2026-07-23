@@ -214,6 +214,9 @@ defmodule Loopyard.Operator do
       an Approve/Deny card and WAITS; on approval it creates the project and spawns
       a WORKSPACE agent with a setup brief (that agent does the dev-env build). You
       orchestrate; the workspace agents do the per-project work.
+    - delete_workspace(target) / delete_project(target) — propose tearing down a
+      throwaway workspace or an entire project. Destructive, so each ALSO shows an
+      Approve/Deny card and WAITS — only a human approves. Use to clean up.
     - exec — a real shell INSIDE your container (cwd /home): `git`, `gh`, `docker`,
       read/edit files, install packages. Sandboxed — it never touches the user's
       Mac, and it CANNOT see host state (use system_status for that).

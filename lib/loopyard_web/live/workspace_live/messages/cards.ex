@@ -383,6 +383,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           {case @action.verb do
             :integrate -> "Merge proposal — needs your OK"
             :delete_workspace -> "Delete workspace — needs your OK"
+            :delete_project -> "Delete project — needs your OK"
             :create_project -> "New project — needs your OK"
             _ -> "Branch proposal — needs your OK"
           end}
@@ -420,6 +421,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           <span class="text-zinc-400">— removes its env + containers (the code stays in main)</span>
         </div>
         <div
+          :if={@action.verb == :delete_project}
+          class="text-lg md:text-base text-zinc-800 dark:text-zinc-200 mb-1"
+        >
+          Delete project
+          <code class="text-sm bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">
+            {@action[:name] || @action.project_id}
+          </code>
+          <span class="text-zinc-400">
+            — destroys ALL its workspaces (envs, containers, volumes). Irreversible.
+          </span>
+        </div>
+        <div
           :if={@action.verb == :fork}
           class="text-lg md:text-base text-zinc-800 dark:text-zinc-200 mb-1"
         >
@@ -448,13 +461,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                 phx-value-decision="approve"
                 class={[
                   "focus-ring inline-flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium text-white transition-colors",
-                  if(@action.verb == :delete_workspace,
+                  if(@action.verb in [:delete_workspace, :delete_project],
                     do: "bg-red-600 hover:bg-red-700",
                     else: "bg-emerald-600 hover:bg-emerald-700"
                   )
                 ]}
               >
-                {if @action.verb == :delete_workspace, do: "Delete", else: "Approve"}
+                {if @action.verb in [:delete_workspace, :delete_project], do: "Delete", else: "Approve"}
               </button>
               <button
                 type="button"
@@ -466,7 +479,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                 Deny
               </button>
             </div>
-          <% s when s in [:creating, :integrating] -> %>
+          <% s when s in [:creating, :integrating, :deleting] -> %>
             <div class="flex items-center gap-2 text-sm text-zinc-500">
               <svg
                 class="w-4 h-4 animate-spin flex-none"
@@ -493,6 +506,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
               <span class="font-medium">
                 {cond do
                   @msg.status == :integrating -> "Merging into main"
+                  @msg.status == :deleting and @action.verb == :delete_project -> "Deleting the project"
+                  @msg.status == :deleting -> "Deleting the workspace"
                   @action.verb == :create_project -> "Creating the project"
                   true -> "Creating the branch workspace"
                 end}
@@ -512,6 +527,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
             <span class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400">
               Merged <code class="text-sm">{@action.branch}</code> → main ✓
             </span>
+          <% :deleted -> %>
+            <span class="inline-flex items-center gap-1.5 rounded-lg bg-zinc-500/15 px-3 py-1.5 text-sm font-medium text-zinc-600 dark:text-zinc-300">
+              Deleted <code class="text-sm">{@action[:name] || @action[:branch] || @action[:workspace_id]}</code> ✓
+            </span>
           <% :denied -> %>
             <span class="text-sm text-zinc-500 dark:text-zinc-400">Declined.</span>
           <% :failed -> %>
@@ -519,6 +538,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
               {case @action.verb do
                 :integrate -> "Merge failed"
                 :create_project -> "Couldn't create the project"
+                :delete_workspace -> "Couldn't delete the workspace"
+                :delete_project -> "Couldn't delete the project"
                 _ -> "Couldn't create the branch"
               end}: {@msg[:error]}
             </span>
