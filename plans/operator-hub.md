@@ -192,6 +192,18 @@ then a deliberate merge to `main` + reboot.
 - **Worktree + deliberate cutover** — build here (isolated from the shared dev
   server); Brad cuts to main + reboots when a phase is proven.
 
+## Follow-on — keeping the human in the loop (GitHub issues, not yet built)
+
+Design captured as issues so the human can review before we build (epic #68):
+- **#69 Attention / turn-taking view** — a low-noise surface of the workspaces
+  you're actively cycling through that are waiting on you (finished a turn / asked
+  a question / stalled) — NOT every workspace; scoped by engagement/recency.
+- **#70 Workspace focus descriptor** — a short, agent-maintained "what we're
+  working on / where we're at", updated freely (no consent), that reminds you when
+  you flip in AND gives the operator lean status without pulling full chat.
+- **#71 Rename project / workspace** — consent-gated rename tools (distinct from
+  the free descriptor).
+
 ## Files (anticipated)
 - new `lib/loopyard/tools/control_plane/list_workspaces.ex`, `peek_workspace.ex`,
   `dispatch.ex`, `recent_activity.ex`
