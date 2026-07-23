@@ -23,7 +23,9 @@ defmodule Loopyard.MixProject do
   def application do
     [
       mod: {Loopyard.Application, []},
-      extra_applications: [:logger, :runtime_tools, :ssh, :crypto, :public_key]
+      # :os_mon (built into OTP) starts :memsup so the operator's system_status
+      # tool can report host memory cross-platform.
+      extra_applications: [:logger, :runtime_tools, :ssh, :crypto, :public_key, :os_mon]
     ]
   end
 

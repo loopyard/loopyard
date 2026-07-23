@@ -20,10 +20,16 @@ defmodule Loopyard.Tools.ControlPlane do
   alias Loopyard.Onboarding
 
   @tools [
+    # --- The cockpit: read the whole picture, dig in, drive it (operator-hub) ---
+    Loopyard.Tools.ControlPlane.Overview,
+    Loopyard.Tools.ControlPlane.PeekWorkspace,
+    Loopyard.Tools.ControlPlane.SystemStatus,
+    Loopyard.Tools.ControlPlane.Ports,
+    Loopyard.Tools.ControlPlane.Dispatch,
+    # --- Lifecycle (approval-gated create; delete added in a later phase) ---
     Loopyard.Tools.ControlPlane.CreateProjectFromScratch,
     Loopyard.Tools.ControlPlane.CreateProjectFromGithub,
     Loopyard.Tools.ControlPlane.CreateProjectFromPath,
-    Loopyard.Tools.ControlPlane.ListProjects,
     Loopyard.Tools.ControlPlane.Gh,
     # A real shell inside the operator's OWN container image — resolve_container
     # targets its workstation container. This is "the same tools + do whatever in
@@ -126,6 +132,66 @@ defmodule Loopyard.Tools.ControlPlane do
        Colima daemon that way.
     5. Verify it's reachable with `probe_http` and report the URL.
     """
+  end
+
+  @doc """
+  Resolve an operator-supplied target string to a workspace agent summary.
+  Accepts an agent id, a workspace id, or a workspace name (case-insensitive),
+  and returns that workspace's agent (the first one). Used by `peek_workspace`
+  and `dispatch` so the operator can name a target however is natural.
+  """
+  def resolve_agent(target) when is_binary(target) do
+    t = String.trim(target)
+    summaries = Loopyard.ChatAgent.list_agent_summaries()
+
+    cond do
+      hit = Enum.find(summaries, &(&1.id == t)) ->
+        {:ok, hit}
+
+      ws_id = resolve_workspace_id(t) ->
+        case Enum.filter(summaries, &(&1[:workspace_id] == ws_id)) do
+          [] -> {:error, "Workspace '#{target}' has no running agent. Use overview to check."}
+          [agent | _] -> {:ok, agent}
+        end
+
+      true ->
+        {:error,
+         "No workspace or agent matched '#{target}'. Call overview to see valid ids/names."}
+    end
+  end
+
+  def resolve_agent(_), do: {:error, "target must be a workspace id/name or an agent id."}
+
+  @doc """
+  Resolve a target string to a workspace id (id verbatim or case-insensitive
+  name). Unlike `resolve_agent/1` this does not require a running agent — ports
+  and lifecycle exist independent of agents. Used by `ports`.
+  """
+  def resolve_workspace(target) when is_binary(target) do
+    case resolve_workspace_id(String.trim(target)) do
+      nil ->
+        {:error, "No workspace matched '#{target}'. Call overview to see valid ids/names."}
+
+      ws_id ->
+        {:ok, ws_id}
+    end
+  end
+
+  def resolve_workspace(_), do: {:error, "target must be a workspace id or name."}
+
+  # A workspace id verbatim, or a (case-insensitive) workspace name → its id.
+  defp resolve_workspace_id(t) do
+    workspaces =
+      Loopyard.ProjectRegistry.list_projects()
+      |> Enum.flat_map(&Loopyard.WorkspaceRegistry.list_workspaces(&1.id))
+
+    cond do
+      Enum.any?(workspaces, &(&1.id == t)) -> t
+      ws = Enum.find(workspaces, &(String.downcase(&1[:name] || "") == String.downcase(t))) -> ws.id
+      true -> nil
+    end
+  rescue
+    _ -> nil
   end
 
   @doc "Resolve a GitHub token for cloning private repos, from the operating identity."
