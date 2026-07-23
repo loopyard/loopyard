@@ -1,5 +1,15 @@
 # Plan: The Operator — one chief-of-staff agent + surface
 
+> **Build status (branch `operator-hub`, worktree):** Phases 1–4 built + compiling.
+> Phase 1 (cockpit tools), Phase 2 (digest + recent_activity), Phase 3 (unified
+> `/operator` surface + working board), Phase 4 (operator icon + operator-driven
+> sound) are done. **Phase 5 (cutover)** is pending: Brad merges to `main` +
+> reboots to verify live; CI runs the suite; then tune the surface/sound feel and
+> add the delete-lifecycle tools + tests. Known follow-ups: operator-driven sound
+> level currently fires from `OperatorLive` (works while /operator is open);
+> moving it to `ActivitySound` makes it global. Project/workspace DELETE tools
+> (`manage_*`) not yet built — creates + consent cards work today.
+
 ## Vision (Brad's words, consolidated)
 
 Combine the **workstation**, the **operator agent** (the workspace-less agent

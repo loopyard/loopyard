@@ -325,6 +325,40 @@ boots the cloned config once cloning is done — not just forks.
   a newline — `preventDefault` is unconditional); on mobile Enter is a
   no-op (tap Send); Shift+Enter newlines, ⌘/Ctrl+Enter always sends.
 
+## The Operator — the cockpit (plans/operator-hub.md)
+
+`/operator` (`OperatorLive`) is the one place to run and watch all of Loopyard.
+The **operator agent** (`Loopyard.Operator`, a workspace-less ChatAgent in the
+workstation container) is a **chief of staff**: it reads status, dispatches work,
+and pulls detail on demand — it does NOT hold everything in context.
+
+**Operator toolset** (`Tools.ControlPlane`, ACP `:operator` scope). Curated + terse
++ pull-on-demand — tool COUNT is cheap, tool OUTPUT is the context cost, so reads
+are capped and detail is fetched only when needed:
+- `overview` — one compact read of every project → workspace → agents/status →
+  ports (the default "what's here / running"). `peek_workspace(target)` pulls one
+  workspace's status + recent chat. `system_status` — read-only host snapshot
+  (memory via `:os_mon`, `Health` map, agent counts; NEVER a host shell — the
+  operator's `exec` stays in its container; containment holds). `recent_activity`
+  — the completion digest.
+- `ports(target, action)` toggles a workspace's network exposure; `dispatch(target,
+  message)` hands a task to a workspace agent (`enqueue_message`); the create tools
+  stay approval-gated (`Harness.Approvals`).
+- `resolve_agent/1` + `resolve_workspace/1` (in the toolkit) let the operator name
+  a target by agent id / workspace id / workspace name.
+
+**Told when things finish, without firehosing context:** `Loopyard.Operator.Digest`
+rides `Events.Activity.subscribe_global/0` and appends a compact one-liner to a
+bounded ETS ring (`:operator_digest`) on each workspace agent's turn-end. Nothing
+is injected into the operator's context — it PULLS via `recent_activity` and digs
+in with `peek_workspace`. Config-gated (`:operator_digest_enabled?`).
+
+**The surface + sound:** `/operator` is chat-primary with a quiet desktop working
+board (WorkspaceTree + Birdseye dots + ports). The speaker icon everywhere is now
+the **operator icon** (`Common.operator_link`) → `/operator`; the operator is the
+ambient presence, and its own thinking/idle drives the Aural continuous activity
+level (`Aural.Channel.set_activity/2`).
+
 ## Docs
 
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — System design, supervisor tree, container model, data flow
