@@ -101,6 +101,12 @@ defmodule Loopyard.Application do
       # is false (test env).
       Loopyard.ChangeCounts,
 
+      # Operator completion digest — rides the Activity backbone, appends a
+      # compact "what finished" ring to StateKeeper's :operator_digest so the
+      # operator can PULL it (recent_activity tool) with none of it in its
+      # context. Inert when :operator_digest_enabled? is false (test env).
+      Loopyard.Operator.Digest,
+
       # Proactive harness memory management (Layer 2). Periodically reclaims a
       # bloated-but-idle harness by restarting its session BEFORE the work
       # container's hard `--memory` cap (Layer 1) OOM-kills it mid-turn. :ignore

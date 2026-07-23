@@ -24,6 +24,7 @@ defmodule Loopyard.Tools.ControlPlane do
     Loopyard.Tools.ControlPlane.Overview,
     Loopyard.Tools.ControlPlane.PeekWorkspace,
     Loopyard.Tools.ControlPlane.SystemStatus,
+    Loopyard.Tools.ControlPlane.RecentActivity,
     Loopyard.Tools.ControlPlane.Ports,
     Loopyard.Tools.ControlPlane.Dispatch,
     # --- Lifecycle (approval-gated create; delete added in a later phase) ---

@@ -57,6 +57,12 @@ defmodule Loopyard.StateKeeper do
     # zero render-time git shell-outs. Written by ChangeCounts' async
     # recomputes; WorkspaceTree reads direct.
     {:ws_change_counts, [:named_table, :public, :set, {:read_concurrency, true}]},
+    # Loopyard.Operator.Digest — a bounded ring of cross-workspace turn
+    # completions ({seq, entry}), so the operator can PULL "what finished"
+    # (recent_activity tool) without any of it living in its LLM context.
+    # ordered_set keyed by a monotonic seq; the Digest GenServer writes, the
+    # tool reads direct.
+    {:operator_digest, [:named_table, :public, :ordered_set, {:read_concurrency, true}]},
     # Ring buffer for Loopyard.Events.Tap — every broadcast on every
     # known topic. ordered_set keyed by a monotonic counter so the
     # newest records come out with a single :ets.select_reverse.
