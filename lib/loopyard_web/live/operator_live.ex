@@ -211,13 +211,14 @@ defmodule LoopyardWeb.OperatorLive do
 
   def handle_event(_evt, _params, socket), do: {:noreply, socket}
 
-  # A workspace's mapped ports as launchable badges: {label (container port), url}.
+  # A workspace's mapped ports as launchable links. `port` is the HOST port (what
+  # you actually navigate to — the container port is internal), matching the
+  # workspace header's app-port link.
   defp workspace_ports(ws_id, host) do
     Loopyard.PortRegistry.list_for_workspace(ws_id)
-    |> Enum.map(fn e ->
-      %{label: e[:container_port] || e[:service] || "port", url: "http://#{host}:#{e[:host_port]}"}
-    end)
-    |> Enum.sort_by(& &1.label)
+    |> Enum.map(fn e -> %{port: e[:host_port], url: "http://#{host}:#{e[:host_port]}"} end)
+    |> Enum.reject(&is_nil(&1.port))
+    |> Enum.sort_by(& &1.port)
   rescue
     _ -> []
   end
@@ -263,8 +264,8 @@ defmodule LoopyardWeb.OperatorLive do
       |> Enum.map(fn j ->
         j
         |> Map.put(:watching?, MapSet.member?(watched, j.id))
-        # ALL mapped ports (not just network-exposed) — the operator's viewer is
-        # on the host, so loopback dev servers are launchable at host:host_port.
+        # Mapped ports as launchable links — the operator's viewer is on the host,
+        # so a workspace's dev server is reachable at host:host_port.
         |> Map.put(:ports, workspace_ports(j.id, host))
       end)
 
@@ -511,18 +512,20 @@ defmodule LoopyardWeb.OperatorLive do
               class="text-zinc-500 dark:text-zinc-400"
             > · {i.needs}</span>
           </div>
-          <%!-- Launchable ports — open the running server in a new tab. The inline
-               stopPropagation keeps the click off the card's open_job. --%>
-          <div :if={i.ports != []} class="mt-1 pl-3.5 flex flex-wrap gap-1">
+          <%!-- Launchable ports — same style as the workspace header's app-port
+               link (font-mono emerald `:host_port ↗`). stopPropagation keeps the
+               click off the card's open_job dive-in. --%>
+          <div :if={i.ports != []} class="mt-0.5 pl-3.5 flex flex-wrap gap-2">
             <a
               :for={p <- i.ports}
               href={p.url}
               target="_blank"
               rel="noopener"
               onclick="event.stopPropagation()"
-              class="focus-ring inline-flex items-center gap-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-300 dark:border-emerald-500/30 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition-colors"
+              aria-label={"Open app on port #{p.port}"}
+              class="focus-ring inline-flex items-center gap-0.5 rounded px-1 font-mono text-sm text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 active:bg-emerald-500/20 transition-colors"
             >
-              :{p.label} ↗
+              :{p.port} <span class="text-xs opacity-70">↗</span>
             </a>
           </div>
         </div>
