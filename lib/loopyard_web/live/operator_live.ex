@@ -64,8 +64,9 @@ defmodule LoopyardWeb.OperatorLive do
       # The attention queue — every active project/workspace + what it needs.
       # Refreshed on any agent's status change (below). ETS-cheap.
       |> assign(:tree, Loopyard.WorkspaceTree.global(host))
-      # Mobile: the queue is a toggleable sheet (desktop shows it as a rail).
-      |> assign(:queue_open, false)
+      # "Needs you" = the town-hall blocking-item count (questions/secrets/
+      # approvals across all agents), refreshed on any status change.
+      |> assign(:needs_you_count, Loopyard.Attention.count(host))
       |> load_agent()
       # The shared consent surface: question + secret cards answer through the
       # SAME hook as the workspace chat, so the operator stream is never missing
@@ -171,9 +172,6 @@ defmodule LoopyardWeb.OperatorLive do
     {:noreply, load_agent(socket)}
   end
 
-  def handle_event("toggle_queue", _params, socket),
-    do: {:noreply, assign(socket, :queue_open, !socket.assigns.queue_open)}
-
   # Dive into a job's agent chat — re-anchor your read-position (delta → 0, so a
   # read done job retires), then navigate into that workspace's own stream.
   def handle_event("open_job", %{"ws" => ws, "project" => pid, "agent" => aid}, socket) do
@@ -242,8 +240,12 @@ defmodule LoopyardWeb.OperatorLive do
     # operator works, settles when idle. Best-effort; sound never blocks the page.
     if e.id == socket.assigns.agent_id, do: drive_sound(e.status)
 
-    # Any agent's status change can move the board.
-    {:noreply, assign(socket, :tree, Loopyard.WorkspaceTree.global(socket.assigns.host))}
+    # Any agent's status change can move the board AND change what's blocking
+    # (a question asked/answered rides a status change → :awaiting/back).
+    {:noreply,
+     socket
+     |> assign(:tree, Loopyard.WorkspaceTree.global(socket.assigns.host))
+     |> assign(:needs_you_count, Loopyard.Attention.count(socket.assigns.host))}
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
@@ -270,21 +272,21 @@ defmodule LoopyardWeb.OperatorLive do
       <Nav.bar height="h-14" gap="gap-3">
         <.breadcrumbs crumbs={[{"Loopyard", "/"}, {"Operator", nil}]} />
         <:actions>
-          <%!-- Mobile: toggle the attention-queue sheet (desktop shows it as a rail). --%>
-          <button
-            type="button"
-            phx-click="toggle_queue"
-            aria-label="What needs you"
-            class="lg:hidden focus-ring inline-flex items-center gap-1.5 rounded-full border border-zinc-200 dark:border-zinc-700 px-3 h-9 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+          <%!-- "Needs you" → the town hall (/queue): the stack of blocking
+               questions/secrets/approvals to go through, answerable inline. --%>
+          <.link
+            navigate={~p"/queue"}
+            aria-label="Needs you — the town hall"
+            class="focus-ring inline-flex items-center gap-1.5 rounded-full border border-zinc-200 dark:border-zinc-700 px-3 h-9 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
           >
             Needs you
             <span
-              :if={needs_count(@tree) > 0}
+              :if={@needs_you_count > 0}
               class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full bg-amber-500 text-white text-xs font-semibold"
             >
-              {needs_count(@tree)}
+              {@needs_you_count}
             </span>
-          </button>
+          </.link>
           <%!-- Stop lives in the chat's live-status (chat_panel), not up here. --%>
           <LoopyardWeb.Components.Common.sound_pill id="operator-sound" />
         </:actions>
@@ -306,44 +308,15 @@ defmodule LoopyardWeb.OperatorLive do
             detail_level={:trace}
           />
         </div>
-        <%!-- Desktop (lg+): the attention queue as a persistent right rail beside
-             the chat. On mobile it's the sheet below instead. --%>
+        <%!-- Desktop (lg+): the WORKER QUEUE (dispatched jobs + progress) as a
+             persistent right rail. "Needs you" (the town hall) is the header
+             link — a different surface (blocking items to answer). --%>
         <aside class="hidden lg:flex w-72 flex-none flex-col border-l border-zinc-200 dark:border-zinc-800 overflow-y-auto bg-zinc-50/60 dark:bg-zinc-900/40">
           <.attention_queue tree={@tree} />
         </aside>
       </div>
-
-      <%!-- Mobile (<lg): the same queue as a full-height sheet, toggled from the
-           header. Tapping a card dives into that agent (leaving the sheet). --%>
-      <div
-        :if={@queue_open}
-        class="lg:hidden fixed inset-0 z-40 flex flex-col bg-white dark:bg-zinc-900 safe-area-x"
-      >
-        <div class="flex-none flex items-center justify-between h-14 px-4 border-b border-zinc-200 dark:border-zinc-800">
-          <span class="text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-            Needs you
-          </span>
-          <button
-            type="button"
-            phx-click="toggle_queue"
-            aria-label="Close"
-            class="focus-ring inline-flex items-center justify-center w-9 h-9 rounded-lg text-lg text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-          >
-            ✕
-          </button>
-        </div>
-        <div class="flex-1 overflow-y-auto">
-          <.attention_queue tree={@tree} />
-        </div>
-      </div>
     </div>
     """
-  end
-
-  # How many dispatched jobs want your attention (needs-you or an unread done) —
-  # the mobile header badge, so you know to open the sheet without opening it.
-  defp needs_count(tree) do
-    Loopyard.Operator.Queue.items(tree) |> Enum.count(&(&1.state in [:needs_you, :done]))
   end
 
   # The WORKER QUEUE: one card per job you've DISPATCHED (Operator.Queue). Starts
