@@ -8,7 +8,8 @@ defmodule Loopyard.Operator.Policy.Default do
   """
   @behaviour Loopyard.Operator.Policy
 
-  @state_rank %{blocked: 0, finished: 1, working: 2, idle: 3}
+  # Worker-queue order: needs-you (blocked) > done (unread result) > chugging.
+  @state_rank %{needs_you: 0, done: 1, chugging: 2}
 
   @impl true
   def rank(items, _opts) do

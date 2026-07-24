@@ -29,6 +29,8 @@ defmodule Loopyard.Tools.ControlPlane.Dispatch do
   def execute(%{target: target, message: message}, _assigns) do
     with {:ok, agent} <- Loopyard.Tools.ControlPlane.resolve_agent(target),
          :ok <- Loopyard.ChatAgent.enqueue_message(agent.id, message) do
+      # Add/refresh this workspace's job in the operator's worker queue.
+      Loopyard.Operator.Jobs.note_dispatch(agent[:workspace_id], agent.id)
       {:ok, "Dispatched to #{agent.name} (#{agent.id})#{busy_note(agent)}."}
     else
       {:error, msg} when is_binary(msg) ->

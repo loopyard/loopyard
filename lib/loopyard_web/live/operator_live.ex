@@ -170,6 +170,13 @@ defmodule LoopyardWeb.OperatorLive do
   def handle_event("toggle_queue", _params, socket),
     do: {:noreply, assign(socket, :queue_open, !socket.assigns.queue_open)}
 
+  # Dive into a job's agent chat — re-anchor your read-position (delta → 0, so a
+  # read done job retires), then navigate into that workspace's own stream.
+  def handle_event("open_job", %{"ws" => ws, "project" => pid, "agent" => aid}, socket) do
+    Loopyard.Operator.Jobs.mark_read(ws)
+    {:noreply, push_navigate(socket, to: ~p"/projects/#{pid}/workspaces/#{ws}/agents/#{aid}")}
+  end
+
   def handle_event(_evt, _params, socket), do: {:noreply, socket}
 
   # --- Message + streaming events: delegate to the SAME handlers the workspace
@@ -329,17 +336,17 @@ defmodule LoopyardWeb.OperatorLive do
     """
   end
 
-  # How many items are actually asking for you (blocked or freshly finished) — the
-  # mobile header badge, so you know to open the sheet without opening it.
+  # How many dispatched jobs want your attention (needs-you or an unread done) —
+  # the mobile header badge, so you know to open the sheet without opening it.
   defp needs_count(tree) do
-    Loopyard.Operator.Queue.items(tree) |> Enum.count(&(&1.state in [:blocked, :finished]))
+    Loopyard.Operator.Queue.items(tree) |> Enum.count(&(&1.state in [:needs_you, :done]))
   end
 
-  # The attention queue (Phase 1, minimal): active agents as condensed cards —
-  # project·workspace + the plain-language "what it needs from you" — grouped by
-  # state via Operator.Queue + the swappable Operator.Policy (dumb for now). Live:
-  # @tree is rebuilt on every StatusChanged, so this re-derives + re-ranks on each
-  # change. Order is a CLUE — the human watches to see what's important.
+  # The WORKER QUEUE: one card per job you've DISPATCHED (Operator.Queue). Starts
+  # blank; each card shows project·workspace, the live state (working / done /
+  # needs-you), and the "N new since you looked" delta. Clicking dives into that
+  # agent's chat, which re-anchors your read-position (delta → 0, done cards
+  # retire). Live: @tree rebuilds on every StatusChanged so this re-derives + re-ranks.
   attr :tree, :list, required: true
 
   defp attention_queue(assigns) do
@@ -348,37 +355,54 @@ defmodule LoopyardWeb.OperatorLive do
     ~H"""
     <div class="p-3 space-y-1.5">
       <div class="text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500 px-1 pb-1">
-        Needs you
+        Worker queue
       </div>
       <p :if={@items == []} class="px-1 text-sm text-zinc-500 dark:text-zinc-400">
-        Nothing active.
+        Nothing dispatched yet — ask the operator to put a workspace to work.
       </p>
-      <.link
+      <div
         :for={i <- @items}
-        navigate={~p"/projects/#{i.project_id}/workspaces/#{i.id}/agents/#{i.agent_id}"}
-        class="block rounded-lg px-2.5 py-2 border border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+        phx-click="open_job"
+        phx-value-ws={i.id}
+        phx-value-project={i.project_id}
+        phx-value-agent={i.agent_id}
+        class="rounded-lg px-2.5 py-2 border border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors cursor-pointer"
       >
         <div class="flex items-center gap-2">
           <span class={["flex-none w-1.5 h-1.5 rounded-full", state_dot(i.state)]} />
           <span class="flex-1 min-w-0 truncate text-sm font-medium text-zinc-700 dark:text-zinc-200">
             {i.project_name} · {i.workspace_name}
           </span>
+          <span
+            :if={i.delta > 0}
+            class="flex-none text-xs font-semibold text-violet-600 dark:text-violet-400"
+          >
+            {i.delta} new
+          </span>
         </div>
-        <div :if={i.needs != ""} class={["mt-0.5 pl-3.5 text-xs truncate", state_text(i.state)]}>
-          {i.needs}
+        <div class="mt-0.5 pl-3.5 text-xs truncate">
+          <span class={state_text(i.state)}>{state_label(i.state)}</span><span
+            :if={i.needs not in ["", state_label(i.state)]}
+            class="text-zinc-500 dark:text-zinc-400"
+          > · {i.needs}</span>
         </div>
-      </.link>
+      </div>
     </div>
     """
   end
 
-  defp state_dot(:blocked), do: "bg-amber-500"
-  defp state_dot(:working), do: "bg-violet-500"
-  defp state_dot(:finished), do: "bg-emerald-500"
+  defp state_dot(:needs_you), do: "bg-amber-500"
+  defp state_dot(:done), do: "bg-emerald-500"
+  defp state_dot(:chugging), do: "bg-violet-500 animate-pulse"
   defp state_dot(_), do: "bg-zinc-400 dark:bg-zinc-500"
 
-  defp state_text(:blocked), do: "text-amber-600 dark:text-amber-400"
-  defp state_text(:working), do: "text-violet-600 dark:text-violet-400"
-  defp state_text(:finished), do: "text-emerald-600 dark:text-emerald-400"
+  defp state_text(:needs_you), do: "text-amber-600 dark:text-amber-400 font-medium"
+  defp state_text(:done), do: "text-emerald-600 dark:text-emerald-400"
+  defp state_text(:chugging), do: "text-violet-600 dark:text-violet-400"
   defp state_text(_), do: "text-zinc-500 dark:text-zinc-400"
+
+  defp state_label(:needs_you), do: "needs you"
+  defp state_label(:done), do: "done"
+  defp state_label(:chugging), do: "working"
+  defp state_label(_), do: ""
 end

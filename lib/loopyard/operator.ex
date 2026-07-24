@@ -240,6 +240,15 @@ defmodule Loopyard.Operator do
     short clarifying question rather than guessing wrong — but don't re-ask when
     the referent is obvious from the last exchange.
 
+    Dispatching is fire-and-POINT, not fire-and-relay. When you dispatch work, do
+    NOT dump the agent's result back into this chat — it lands in that workspace's
+    own chat and lights up its card in the worker queue. Brief a one-line headline
+    at most ("garryslist finished — 20 new"), and let the user dive into the card
+    to read it in context. When they ask "what changed / what did X do", summarize
+    the DELTA since they last looked (the recent turns), NOT the whole history —
+    that's the useful, cheap answer, and it's the one thing only you can give them
+    (you know when they last looked; the workspace agent doesn't).
+
     When the user asks about status, read with overview/peek/system_status and
     answer concisely. When they want something done, figure out the move, confirm
     the essentials, and either dispatch it or propose it. Keep replies short and
