@@ -27,6 +27,9 @@ defmodule Loopyard.Tools.ControlPlane do
     Loopyard.Tools.ControlPlane.RecentActivity,
     Loopyard.Tools.ControlPlane.Ports,
     Loopyard.Tools.ControlPlane.Dispatch,
+    # --- Keep the fleet moving: agent + workspace-cluster control ---
+    Loopyard.Tools.ControlPlane.Agent,
+    Loopyard.Tools.ControlPlane.Workspace,
     # --- Lifecycle (all approval-gated: create + destructive delete) ---
     Loopyard.Tools.ControlPlane.CreateProjectFromScratch,
     Loopyard.Tools.ControlPlane.CreateProjectFromGithub,
