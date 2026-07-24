@@ -31,6 +31,7 @@ defmodule LoopyardWeb.OperatorLive do
   import LoopyardWeb.Live.WorkspaceLive.Messages.Cards, only: [question_card: 1, secret_card: 1]
 
   @aural_channel "activity"
+  @rail_tick_ms 3_000
   # The bed roster — mirrors SoundLive so the rail player and /sound agree.
   @tracks [
     {:serene, "Serene"},
@@ -50,6 +51,10 @@ defmodule LoopyardWeb.OperatorLive do
       # Operator `music` play/pause/volume commands → bridged to this client's
       # AmbientAudio engine (server-side track/status don't need this).
       Events.Aural.subscribe()
+      # Keep the rail fresh: status/message events refresh it instantly; this tick
+      # is the backstop that catches a cross-workspace answer or a timed-out
+      # question we didn't get a direct event for (same pattern as the town hall).
+      Process.send_after(self(), :refresh_rail, @rail_tick_ms)
     end
 
     host =
@@ -79,12 +84,11 @@ defmodule LoopyardWeb.OperatorLive do
       # tail. (chat_panel still reads these two.)
       |> assign(:has_more_messages, false)
       |> assign(:window_tail?, true)
-      # The attention queue — every active project/workspace + what it needs.
-      # Refreshed on any agent's status change (below). ETS-cheap.
-      |> assign(:tree, Loopyard.WorkspaceTree.global(host))
-      # "Needs you" = the town-hall blocking-item count (questions/secrets/
-      # approvals across all agents), refreshed on any status change.
-      |> assign(:needs_you_count, Loopyard.Attention.count(host))
+      # The rail (needs-you groups + working jobs + count) computed IN the
+      # LiveView and stored as real assigns, so it's part of the reactive graph —
+      # NOT recomputed inside the component (which LiveView memoizes when @tree/
+      # @host don't change, leaving the rail stale after an answer).
+      |> refresh_rail()
       |> load_agent()
       # The shared consent surface: question + secret cards answer through the
       # SAME hook as the workspace chat, so the operator stream is never missing
@@ -215,6 +219,47 @@ defmodule LoopyardWeb.OperatorLive do
     _, _ -> :serene
   end
 
+  # Compute the rail's data IN the LiveView so it's bound to the reactive assign
+  # graph. The operator's OWN blocking questions live in the chat (your direct
+  # conversation) — excluded here so they don't double up in the rail.
+  defp refresh_rail(socket) do
+    host = socket.assigns.host
+    op = socket.assigns.agent_id
+    tree = Loopyard.WorkspaceTree.global(host)
+    line = Loopyard.Attention.line(host)
+
+    groups =
+      line
+      |> Enum.reject(&(&1.agent_id == op))
+      |> Enum.group_by(& &1.workspace_id)
+      |> Enum.map(fn {_ws, items} ->
+        first = hd(items)
+
+        %{
+          name: first.workspace_name || "Operator",
+          project: first.project_name,
+          path: first.path,
+          items: items
+        }
+      end)
+      |> Enum.sort_by(&length(&1.items), :desc)
+
+    watched = Loopyard.Operator.Digest.watches() |> MapSet.new(& &1.ws_id)
+
+    jobs =
+      tree
+      |> Loopyard.Operator.Queue.items()
+      |> Enum.map(&Map.put(&1, :watching?, MapSet.member?(watched, &1.id)))
+
+    socket
+    |> assign(:tree, tree)
+    |> assign(:attention_groups, groups)
+    |> assign(:rail_jobs, jobs)
+    # Header count = ALL blocking items (matches /queue, which the button opens);
+    # the rail groups exclude the operator's own (those show in the chat).
+    |> assign(:needs_you_count, length(line))
+  end
+
   # --- Message + streaming events: delegate to the SAME handlers the workspace
   # chat uses, so the operator gets incremental append + live streaming. ---
 
@@ -225,8 +270,12 @@ defmodule LoopyardWeb.OperatorLive do
   # Card status resolutions (approval → :renamed / :deleted / :approved / progress)
   # ride MessageUpdated. Without this the operator's cards freeze at their
   # optimistic status and never show the outcome (the "stuck Creating…" bug).
-  def handle_info(%Events.ChatAgentMessage.MessageUpdated{} = e, socket),
-    do: AgentEvents.on_message_updated(e, socket)
+  def handle_info(%Events.ChatAgentMessage.MessageUpdated{} = e, socket) do
+    {:noreply, socket} = AgentEvents.on_message_updated(e, socket)
+    # A message update can resolve a question → refresh the rail so the answered
+    # card doesn't sit there stale (the "not bound to LV" bug).
+    {:noreply, refresh_rail(socket)}
+  end
 
   def handle_info(%Events.ChatAgentMessage.TextDelta{} = e, socket),
     do: AgentEvents.handle_text_delta(e, socket)
@@ -274,12 +323,15 @@ defmodule LoopyardWeb.OperatorLive do
     # operator works, settles when idle. Best-effort; sound never blocks the page.
     if e.id == socket.assigns.agent_id, do: drive_sound(e.status)
 
-    # Any agent's status change can move the board AND change what's blocking
-    # (a question asked/answered rides a status change → :awaiting/back).
-    {:noreply,
-     socket
-     |> assign(:tree, Loopyard.WorkspaceTree.global(socket.assigns.host))
-     |> assign(:needs_you_count, Loopyard.Attention.count(socket.assigns.host))}
+    # Any agent's status change can move the board AND change what's blocking.
+    {:noreply, refresh_rail(socket)}
+  end
+
+  # Backstop tick: catches a cross-workspace answer / timed-out question we got no
+  # direct event for. Cheap (ETS reads); keeps the rail honest.
+  def handle_info(:refresh_rail, socket) do
+    Process.send_after(self(), :refresh_rail, @rail_tick_ms)
+    {:noreply, refresh_rail(socket)}
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
@@ -347,7 +399,7 @@ defmodule LoopyardWeb.OperatorLive do
              operator curates this; the chat is where you talk about it. --%>
         <aside class="hidden lg:flex lg:w-[26rem] xl:w-[32rem] flex-none flex-col border-l border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/40">
           <div class="flex-1 min-h-0 overflow-y-auto">
-            <.for_you_rail tree={@tree} host={@host} />
+            <.for_you_rail groups={@attention_groups} jobs={@rail_jobs} />
           </div>
           <.sound_player id="rail-sound" tracks={@tracks} current_track={@current_track} />
         </aside>
@@ -356,45 +408,14 @@ defmodule LoopyardWeb.OperatorLive do
     """
   end
 
-  # The "for you" rail: NEEDS YOU (blocking items, grouped by workspace, answered
-  # inline) + WORKING (dispatched jobs, live state + delta). @tree rebuilds on
-  # every StatusChanged so both zones re-derive + re-rank.
-  attr :tree, :list, required: true
-  attr :host, :string, required: true
+  # The "for you" rail — PURE render of assigns computed in refresh_rail/1 (bound
+  # to the reactive graph, so it updates when a question is answered). NEEDS YOU
+  # (blocking items, grouped by workspace, answered inline via the ConsentUI hook)
+  # + WORKING (dispatched jobs, live state + delta).
+  attr :groups, :list, required: true
+  attr :jobs, :list, required: true
 
   defp for_you_rail(assigns) do
-    # NEEDS YOU: every blocking item across all agents (Attention), grouped by
-    # workspace, answered INLINE — the town-hall stack pulled next to the chat so
-    # there's no page-switch. Question cards are answerable here via the ConsentUI
-    # hook attached in mount.
-    groups =
-      assigns.host
-      |> Loopyard.Attention.line()
-      |> Enum.group_by(& &1.workspace_id)
-      |> Enum.map(fn {_ws_id, items} ->
-        first = hd(items)
-
-        %{
-          name: first.workspace_name || "Operator",
-          project: first.project_name,
-          path: first.path,
-          items: items
-        }
-      end)
-      |> Enum.sort_by(&length(&1.items), :desc)
-
-    needs_count = Enum.reduce(groups, 0, fn g, n -> n + length(g.items) end)
-
-    # WORKING: dispatched jobs + progress (the old worker queue). 🔔 = watched.
-    watched = Loopyard.Operator.Digest.watches() |> MapSet.new(& &1.ws_id)
-
-    jobs =
-      assigns.tree
-      |> Loopyard.Operator.Queue.items()
-      |> Enum.map(&Map.put(&1, :watching?, MapSet.member?(watched, &1.id)))
-
-    assigns = assign(assigns, groups: groups, needs_count: needs_count, jobs: jobs)
-
     ~H"""
     <div class="flex flex-col">
       <%!-- Blocking items (action required), grouped by workspace — no header,
