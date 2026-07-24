@@ -105,6 +105,36 @@ stack re-sorts itself: a question arrives → that card *slides up* to Blocked; 
 turn finishes → it eases into Finished; you clear it → it fades. Smooth reorder
 animations, **bounded to the top N**, so it breathes rather than floods.
 
+## Chat × queue: focus vs. priority (what "this" means)
+
+The queue reshuffles by urgency; the conversation must NOT get yanked around with
+it. Separate two things that are easy to conflate:
+
+- **Priority order** (the queue) — ambient, reshuffles as scores change. It is NOT
+  the referent for "this / that / it."
+- **Conversational focus** (what "this" means) — **sticky to the conversation**.
+  Set by what you're discussing, tapping a card, diving into an agent, or naming
+  one explicitly. It does NOT auto-follow the top of the queue.
+
+So reshuffling never changes "this." Discussing garryslist and gbrain jumps to
+Blocked? garryslist is still "this" until you say otherwise.
+
+Make focus visible + stable:
+- **A focus chip by the composer / breadcrumb** — `● garryslist · ui-changes` —
+  shows exactly what "this" points at right now, regardless of queue order. It's
+  the anchor; the focused card also stays highlighted in the queue as it sorts
+  (and if it drops below the fold, the chip still holds the reference).
+- **Switching focus is explicit** — name it, tap its card, or dive in. The chief
+  of staff **confirms the switch** ("switching to gbrain") so the referent is
+  never ambiguous.
+- **New urgent items are nudges, not hijacks.** Something jumps to Blocked mid-
+  conversation → the chief of staff surfaces it as a briefing line ("heads up,
+  gbrain hit a gate, needs a decision") WITHOUT changing your focus. You choose to
+  switch or keep going. Interruptions are surfaced, never silent context-swaps.
+
+Same "never interlace / pull, don't firehose" principle, applied to attention:
+the board moves on its own; your focus only moves when you move it.
+
 ## Navigation (desktop + mobile, same model)
 
 - **Tap a card → dive into that workspace's own chat.** Reuses Loopyard's
