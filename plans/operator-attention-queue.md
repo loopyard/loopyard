@@ -166,6 +166,13 @@ it deliberately digs in — never per message. The focus descriptor (#70) is thu
 the ROUTING INDEX, not just a human reminder: it must be short + current so the
 chief of staff can route the whole fleet from a few hundred tokens.
 
+**It's a general referent check, not dispatch-only.** The same "am I sure which
+agent?" applies when you ASK ABOUT one ("how's the auth work going?") as when you
+dispatch to one. If two agents could match, the chief of staff clarifies (candidate
+card) BEFORE it answers, rather than confidently reporting on the wrong one. Same
+single inference over the descriptor index, so it costs nothing extra — being
+unsure-and-asking is its default posture whenever the referent isn't obvious.
+
 ## Navigation (desktop + mobile, same model)
 
 - **Tap a card → dive into that workspace's own chat.** Reuses Loopyard's
