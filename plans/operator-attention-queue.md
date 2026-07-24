@@ -258,21 +258,36 @@ end
 - **Last-engaged** → new: last time you dispatched to / opened the workspace
   (distinguishes "actively juggling" from "long idle"). Small ETS field.
 
+## Build approach — optimize for reps (visibility first)
+
+**Order might not matter — it's a CLUE, not an authority.** The likely value is
+human *visibility*: a live board you WATCH to see what's important vs. not, where
+the sort just nudges your eye and YOU make the call. So a rough/approximate policy
+is fine, and we lead with the visible board, not the scoring engine. We'll learn
+whether order earns its keep by watching the real thing — so build for cheap reps:
+every tweak is a config number or a one-module `Operator.Policy` swap.
+
+- Ship the **simplest live board first**; `Operator.Policy.Default` starts DUMB
+  (group by state, recency tiebreak). Don't over-invest in weights before reps.
+- Then **watch + tune** (or decide it's just a calm visible board and order is
+  cosmetic). Judge the policy on "does this help me notice the right stuff?",
+  never on "is the sort correct?".
+
 ## Phases
 
-1. **Queue model** — a pure function: active workspaces → `[%{workspace, tier,
-   last_engaged, status}]`, sorted `blocked>finished>working>idle` then recency.
-   Computed from `WorkspaceTree` + `Digest` + `Activity` (ETS-cheap, no shell-out).
-   Add a `last_engaged` signal (bump on dispatch / on opening a workspace chat).
-2. **The queue UI** — the operator right rail renders the sorted live cards with
-   smooth reorder (LiveView stream + CSS transition / FLIP), bounded top N;
-   replaces `operator_board/1`. Re-sorts on the PubSub events above.
+1. **Minimal live board (ship first — the thing you watch)** — reuse the existing
+   sidebar to show *active* agents + their state + the "what-it-needs" line,
+   updating live on the PubSub events we already have (`StatusChanged`, `Activity`,
+   `needs_you`/`broken`, `Digest`). `Operator.Policy.Default` = a dumb order
+   (state group, recency). ETS-cheap, no shell-out. Get it on screen fast.
+2. **Reps + tune** — watch it live; let usefulness pull the `Operator.Policy`
+   (add score dials, or decide order's cosmetic). Config / one-module swaps only.
 3. **Dive-in nav** — card → workspace chat; mobile swipe-back, desktop nav /
    new-tab. Bump `last_engaged` on open.
-4. **Dispatch integration** — `dispatch` lights up / adds the target's card
-   (working-set entry point) + bumps `last_engaged`.
-5. **Mobile layout** — the queue as a collapsible sheet / overlay + one chat;
-   swipe between. Desktop: rail + chat (optionally 2-up on wide).
+4. **Dispatch integration + focus chip** — `dispatch` lights up the target's card;
+   the chip pins "this". Bumps `last_engaged`.
+5. **Mobile sheet + desktop rail polish** — reuse the existing sidebar mechanics
+   (collapsible bottom sheet / persistent rail); inherit collapse/swipe/sync.
 
 ## Guardrails
 - Calm by construction: bounded top N, board-not-stream, smooth reshuffle.
