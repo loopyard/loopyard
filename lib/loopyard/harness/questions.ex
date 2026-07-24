@@ -215,6 +215,25 @@ defmodule Loopyard.Harness.Questions do
   def pending_for_agent?(agent_id), do: pending_for_agent(agent_id) != nil
 
   @doc """
+  Every live pending question across ALL agents — the town-hall line. Reaps
+  dead/leaked entries (waiter no longer alive) as it scans, so the result only
+  ever holds questions still blocking a live tool. Small table; linear scan.
+  """
+  @spec pending_all() :: [{String.t(), map()}]
+  def pending_all do
+    :ets.tab2list(@table)
+    |> Enum.filter(fn {qid, entry} ->
+      if Process.alive?(entry.waiter) do
+        true
+      else
+        :ets.delete(@table, qid)
+        update_msg(entry.agent_id, entry.msg_id, %{status: :timeout})
+        false
+      end
+    end)
+  end
+
+  @doc """
   Resolve an agent's pending question with free-text the user typed into
   chat (instead of clicking a button). Maps the text onto every question
   in the pending call as the chosen answer, so the blocked harness turn

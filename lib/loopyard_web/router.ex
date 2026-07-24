@@ -44,6 +44,9 @@ defmodule LoopyardWeb.Router do
       live "/workspaces", ProjectListLive, :index
       # Opens (creating on first visit) the operating identity's operator agent.
       live "/operator", OperatorLive, :index
+      # The town hall — every blocking question/secret/approval across all agents
+      # in one tear-out line. Self-decaying (Loopyard.Attention).
+      live "/queue", QueueLive, :index
       # Full-page ambient-sound control. In the live_session so navigating here
       # (and back) is a live patch — the root-layout audio engine keeps playing.
       live "/sound", SoundLive, :index

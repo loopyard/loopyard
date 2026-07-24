@@ -219,6 +219,25 @@ defmodule Loopyard.Harness.Approvals do
   def pending_for_agent?(agent_id), do: pending_for_agent(agent_id) != nil
 
   @doc """
+  Every live BLOCKING approval across all agents — for the town-hall line. Only
+  the blocking path (`request/2`) lands in this table; queued `propose_*` cards
+  live in the message stream (see `pending_in_messages?/1`). Reaps dead waiters
+  as it scans.
+  """
+  @spec pending_all() :: [{String.t(), map()}]
+  def pending_all do
+    :ets.tab2list(@table)
+    |> Enum.filter(fn {id, entry} ->
+      if Process.alive?(entry.waiter) do
+        true
+      else
+        reap(id, entry)
+        false
+      end
+    end)
+  end
+
+  @doc """
   Whether a message list carries an unresolved approval card. The QUEUED path
   (`post/2` — every workspace fork/integrate/delete) deliberately does NOT
   insert into this module's ETS table (nothing blocks on it), so

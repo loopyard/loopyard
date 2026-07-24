@@ -164,6 +164,25 @@ defmodule Loopyard.Harness.SecretRequests do
     end)
   end
 
+  @doc """
+  Every live pending secret request across ALL agents — for the town-hall line.
+  Reaps dead/leaked entries (waiter gone) as it scans, so the result only holds
+  requests still blocking a live tool.
+  """
+  @spec pending_all() :: [{String.t(), map()}]
+  def pending_all do
+    :ets.tab2list(@table)
+    |> Enum.filter(fn {rid, entry} ->
+      if Process.alive?(entry.waiter) do
+        true
+      else
+        :ets.delete(@table, rid)
+        update_msg(entry.agent_id, entry.msg_id, %{status: :timeout})
+        false
+      end
+    end)
+  end
+
   # --- internals ---
 
   defp update_msg(_agent_id, nil, _changes), do: :ok
