@@ -129,9 +129,19 @@ defmodule LoopyardWeb.OperatorLive do
     agent_id = socket.assigns.agent_id
     card = Enum.find(socket.assigns.messages, &(&1[:approval_id] == id))
 
-    # Optimistic flip so the buttons don't sit unclicked while the project builds.
+    # Optimistic flip so the buttons don't sit unclicked while the action runs —
+    # but the transient must MATCH the verb (a rename is not "Creating the branch
+    # workspace"; that misleading text made a harmless rename look destructive).
     if decision == :approve and card do
-      ChatAgent.update_message(agent_id, card.id, &Map.put(&1, :status, :creating))
+      transient =
+        case card[:action][:verb] do
+          v when v in [:delete_workspace, :delete_project] -> :deleting
+          v when v in [:rename_workspace, :rename_project] -> :renaming
+          :integrate -> :integrating
+          _ -> :creating
+        end
+
+      ChatAgent.update_message(agent_id, card.id, &Map.put(&1, :status, transient))
     end
 
     case Loopyard.Harness.Approvals.decide(id, decision) do
@@ -160,6 +170,12 @@ defmodule LoopyardWeb.OperatorLive do
   @impl true
   def handle_info(%Events.ChatAgentMessage.Message{} = e, socket),
     do: AgentEvents.handle_message(e, socket)
+
+  # Card status resolutions (approval → :renamed / :deleted / :approved / progress)
+  # ride MessageUpdated. Without this the operator's cards freeze at their
+  # optimistic status and never show the outcome (the "stuck Creating…" bug).
+  def handle_info(%Events.ChatAgentMessage.MessageUpdated{} = e, socket),
+    do: AgentEvents.on_message_updated(e, socket)
 
   def handle_info(%Events.ChatAgentMessage.TextDelta{} = e, socket),
     do: AgentEvents.handle_text_delta(e, socket)

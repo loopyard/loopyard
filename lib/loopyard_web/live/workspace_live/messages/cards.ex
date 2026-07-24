@@ -497,7 +497,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                 Deny
               </button>
             </div>
-          <% s when s in [:creating, :integrating, :deleting] -> %>
+          <% s when s in [:creating, :integrating, :deleting, :renaming] -> %>
             <div class="flex items-center gap-2 text-sm text-zinc-500">
               <svg
                 class="w-4 h-4 animate-spin flex-none"
@@ -524,6 +524,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
               <span class="font-medium">
                 {cond do
                   @msg.status == :integrating -> "Merging into main"
+                  @msg.status == :renaming -> "Renaming"
                   @msg.status == :deleting and @action.verb == :delete_project -> "Deleting the project"
                   @msg.status == :deleting -> "Deleting the workspace"
                   @action.verb == :create_project -> "Creating the project"
