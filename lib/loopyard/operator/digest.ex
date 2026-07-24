@@ -1,48 +1,45 @@
 defmodule Loopyard.Operator.Digest do
   @moduledoc """
-  The operator's completion digest **and** its "tell me when it's done" watches —
-  both ride the one Elixir seam that fires when a workspace agent finishes a turn
-  (`Events.Activity`, `kind: :status, summary: "idle"`). Crucially this hook lives
-  in Loopyard, NOT in the harness: "done" = Loopyard observing the agent go idle,
-  so it can't be lost by a sub-agent forgetting to call something or crashing
-  mid-turn.
+  The operator's completion digest **and** its "tell me when it's done" watches.
+  The model: we **feed agents work, they tell us when they're done, so we can put
+  them back to work.** A watch is how one dispatched task reports back.
+
+  All of it rides Elixir-side signals, NOT the harness — a sub-agent can't lose a
+  notification by crashing or forgetting. A watch reacts to **three** things, so
+  the loop never stalls silently:
+
+    1. **Done** — the agent goes `:idle` (`Events.Activity`). Resolve + report the
+       result; the operator can re-feed it.
+    2. **Needs something** — the agent goes `:awaiting` (it asked a question).
+       Surface it ALONG THE WAY so the user can unblock it; keep watching.
+    3. **Exits** — the agent process dies (`Process.monitor` `:DOWN`), gracefully
+       stopped OR crashed. The stop path publishes a `Stopped` event, not a
+       status, and a crash emits nothing on the activity stream — so the monitor
+       is the ONLY reliable "it exited" signal. Resolve + report it went down.
+
+  Plus a `@watch_ttl_ms` stall backstop for the (documented) case where none of
+  those fire. The `Operator.Jobs` slot is the durable **result** (pull-safe): a
+  missed wake never loses the answer, it's still on the board.
 
   ## Digest (pull)
   A bounded ring of "what just finished" across every workspace, read by the
-  `recent_activity` MCP tool. Nothing is pushed into the operator's context — it
+  `recent_activity` MCP tool. Nothing pushed into the operator's context — it
   pulls on its own cadence. (`:operator_digest` ETS, owned by `StateKeeper`.)
 
-  ## Watches (push — "tell me when it's done")
-  The operator arms a watch on an agent it dispatched to (`watch/4`, via the
-  `notify_when_done` tool). The watch is the **trigger**; the `Operator.Jobs` slot
-  is the durable **result** (pull-safe — even if a wake is missed the result still
-  sits in the slot on the board). Watches are keyed by **agent_id** (the thing
-  that goes idle), never by workspace — one workspace can hold more than one
-  agent, and matching by workspace would let two watches clobber each other.
-
-  Terminal states:
-
-    * agent goes idle having produced work (delta > 0) → **done** (report result);
-    * idle having produced nothing (delta 0) → **done, empty**;
-    * unresolved after `@watch_ttl_ms` → **stalled** (dispatch looks dead — the
-      self-decay we allow everywhere else).
-
   ## Known limits (documented, not swallowed)
-  These are real edges — surfaced here rather than hidden, and every one degrades
-  to the pull-safe slot, never to a wrong success:
+  Every edge degrades to the pull-safe slot, never to a wrong success:
 
-    * **Resolves on the agent's *next* idle.** In the dispatch→notify flow that's
-      the dispatched task (the inbox drains without an intermediate idle). Arm it
-      on an agent already busy with unrelated work and it fires when THAT ends.
-    * **Arm race:** if the agent finishes in the sub-ms window between the tool
-      reading its status and the watch registering, it resolves via the stall TTL
-      instead. Rare; still pull-safe.
+    * **Resolves on the agent's *next* idle** for the "done" signal. In the
+      dispatch→notify flow that's the dispatched task (the inbox drains without an
+      intermediate idle). Arm it on an agent busy with unrelated work and "done"
+      fires when THAT ends.
+    * **Arm race:** finishes in the sub-ms window before the watch registers →
+      caught by the stall TTL instead.
     * **Delivery race:** the wake is a `{:resume_prompt}` cast that only drives a
       turn if the operator is idle; if it flips busy in that instant the cast is
-      dropped. The result is still on the board, and the next tick re-attempts.
-    * **Digest crash drops in-memory watches.** Supervised restart; watches are
-      lost but results aren't (slot). ETS-backing is the hardening if we ever
-      want cross-crash durability.
+      dropped — the next tick re-attempts, and the result is on the board anyway.
+    * **Digest crash drops in-memory watches** (+ their monitors). Supervised
+      restart; results survive in the slot. ETS-backing is the future hardening.
     * **One watch per agent** (last arm wins) — single-operator assumption.
 
   Config-gated (`:operator_digest_enabled?`, off in test).
@@ -90,8 +87,8 @@ defmodule Loopyard.Operator.Digest do
 
   @doc """
   Arm a "tell me when it's done" watch on `agent_id`: wake `operator_id` when that
-  agent next finishes a turn (or stalls). `ws_id`/`name` are captured for the
-  report text.
+  agent finishes (`:idle`), asks for input (`:awaiting`), or exits (process DOWN).
+  `ws_id`/`name` are captured for the report text.
   """
   @spec watch(String.t(), String.t(), String.t(), String.t()) :: :ok
   def watch(ws_id, agent_id, operator_id, name)
@@ -111,7 +108,8 @@ defmodule Loopyard.Operator.Digest do
       Process.send_after(self(), :tick, @tick_ms)
     end
 
-    # watches: agent_id => %{ws_id, operator_id, name, armed_at}
+    # watches: agent_id => %{ws_id, operator_id, name, armed_at, mon}
+    #   (mon = the Process.monitor ref for the agent, or nil if it wasn't alive)
     # pending: operator_id => [wake_text]  (stashed while the operator is busy)
     {:ok, %{seq: 0, last: nil, watches: %{}, pending: %{}}}
   end
@@ -128,31 +126,51 @@ defmodule Loopyard.Operator.Digest do
 
   @impl true
   def handle_cast({:watch, ws_id, agent_id, operator_id, name}, state) do
-    watch = %{ws_id: ws_id, operator_id: operator_id, name: name, armed_at: now_ms()}
+    # Monitor the agent's process so we hear an EXIT (crash or graceful stop) —
+    # the activity stream never carries that. nil if it isn't alive right now
+    # (then only :idle/:awaiting/TTL can resolve it).
+    mon =
+      case Registry.lookup(Loopyard.ChatAgentRegistry, agent_id) do
+        [{pid, _}] -> Process.monitor(pid)
+        _ -> nil
+      end
+
+    watch = %{ws_id: ws_id, operator_id: operator_id, name: name, armed_at: now_ms(), mon: mon}
     {:noreply, put_in(state.watches[agent_id], watch)}
   end
 
   def handle_cast(_msg, state), do: {:noreply, state}
 
-  # A workspace agent finished a turn (idle). Digest + resolve any watch on it.
+  # Every agent status change flows here (Events.ChatAgent mirrors StatusChanged
+  # into Activity). React to the ones that matter for a watch; keep the digest
+  # ring on workspace idles. Everything else (thinking/backoff/…) is ignored.
   @impl true
-  def handle_info(
-        %Events.Activity.Event{kind: :status, summary: "idle", workspace_id: ws} = e,
-        state
-      )
-      when is_binary(ws) do
+  def handle_info(%Events.Activity.Event{kind: :status, agent_id: aid, summary: sum} = e, state) do
     state
-    |> digest_idle(e)
-    |> resolve_watch(e.agent_id)
+    |> maybe_digest(e, sum)
+    |> react_watch(aid, sum)
+    |> maybe_flush(aid, sum)
     |> then(&{:noreply, &1})
   end
 
-  # An idle event with no workspace = the operator itself going idle → flush any
-  # wake we stashed while it was busy.
-  def handle_info(%Events.Activity.Event{kind: :status, summary: "idle", agent_id: aid}, state),
-    do: {:noreply, flush_pending(state, aid)}
-
   def handle_info(%Events.Activity.Event{}, state), do: {:noreply, state}
+
+  # The watched agent's PROCESS died — the "it exited" signal the status stream
+  # can't give us. Resolve the matching watch as an exit (with the reason).
+  def handle_info({:DOWN, ref, :process, _pid, reason}, state) do
+    case Enum.find(state.watches, fn {_aid, w} -> w.mon == ref end) do
+      {aid, w} ->
+        # The monitor already fired; just drop it from state (no demonitor).
+        state
+        |> stash(w.operator_id, wake_text_exited(w, reason))
+        |> Map.update!(:watches, &Map.delete(&1, aid))
+        |> try_deliver(w.operator_id)
+        |> then(&{:noreply, &1})
+
+      nil ->
+        {:noreply, state}
+    end
+  end
 
   # TTL sweep + delivery retry + leak cleanup, once a minute.
   def handle_info(:tick, state) do
@@ -172,6 +190,11 @@ defmodule Loopyard.Operator.Digest do
   end
 
   # --- digest ring ---
+
+  defp maybe_digest(state, %{workspace_id: ws} = e, "idle") when is_binary(ws),
+    do: digest_idle(state, e)
+
+  defp maybe_digest(state, _e, _sum), do: state
 
   defp digest_idle(state, e) do
     key = {e.agent_id, :idle}
@@ -197,32 +220,42 @@ defmodule Loopyard.Operator.Digest do
     end
   end
 
-  # --- watch resolution ---
+  # --- watch reactions ---
 
-  defp resolve_watch(state, agent_id) do
-    case Map.get(state.watches, agent_id) do
-      %{} = w ->
-        state
-        |> stash(w.operator_id, wake_text_done(w))
-        |> Map.update!(:watches, &Map.delete(&1, agent_id))
-        |> try_deliver(w.operator_id)
-
-      nil ->
-        state
+  defp react_watch(state, aid, sum) do
+    case Map.get(state.watches, aid) do
+      %{} = w -> react(state, aid, w, sum)
+      nil -> state
     end
+  end
+
+  # Done → resolve + report (and re-feed).
+  defp react(state, aid, w, "idle"), do: resolve(state, aid, w, wake_text_done(w))
+
+  # Needs input → surface ALONG THE WAY, keep the watch alive.
+  defp react(state, _aid, w, "awaiting"),
+    do: state |> stash(w.operator_id, wake_text_awaiting(w)) |> try_deliver(w.operator_id)
+
+  defp react(state, _aid, _w, _sum), do: state
+
+  # Remove a watch (demonitoring its process monitor) and stash its wake.
+  defp resolve(state, aid, w, text) do
+    if w.mon, do: Process.demonitor(w.mon, [:flush])
+
+    state
+    |> stash(w.operator_id, text)
+    |> Map.update!(:watches, &Map.delete(&1, aid))
+    |> try_deliver(w.operator_id)
   end
 
   defp sweep_stalled(state) do
     cutoff = now_ms() - @watch_ttl_ms
 
     Enum.reduce(state.watches, state, fn
-      {agent_id, %{armed_at: at} = w}, acc when at < cutoff ->
-        acc
-        |> stash(w.operator_id, wake_text_stalled(w))
-        |> Map.update!(:watches, &Map.delete(&1, agent_id))
-        |> try_deliver(w.operator_id)
+      {aid, %{armed_at: at} = w}, acc when at < cutoff ->
+        resolve(acc, aid, w, wake_text_stalled(w))
 
-      {_agent_id, _w}, acc ->
+      {_aid, _w}, acc ->
         acc
     end)
   end
@@ -245,6 +278,9 @@ defmodule Loopyard.Operator.Digest do
       state
     end
   end
+
+  defp maybe_flush(state, aid, "idle"), do: flush_pending(state, aid)
+  defp maybe_flush(state, _aid, _sum), do: state
 
   defp flush_pending(state, agent_id) do
     if Map.has_key?(state.pending, agent_id), do: try_deliver(state, agent_id), else: state
@@ -286,6 +322,8 @@ defmodule Loopyard.Operator.Digest do
     end
   end
 
+  # --- wake texts ---
+
   defp wake_text_done(w) do
     delta = Jobs.delta(Jobs.get(w.ws_id))
 
@@ -296,8 +334,28 @@ defmodule Loopyard.Operator.Digest do
 
     "[auto-notify] A task you were watching just finished in workspace " <>
       "\"#{w.name}\". #{produced} Pull the result (peek_workspace / recent_activity " <>
-      "for #{w.ws_id}) and tell the user, concisely, what got done. You can stop " <>
-      "watching it now."
+      "for #{w.ws_id}) and tell the user, concisely, what got done — and if there's " <>
+      "an obvious next task, tee it up (we keep agents fed). You can stop watching it now."
+  end
+
+  defp wake_text_awaiting(w) do
+    "[auto-notify] The task you're watching in workspace \"#{w.name}\" is WAITING ON " <>
+      "INPUT — it asked a question and is blocked until answered. Point the user to it " <>
+      "(the /queue town hall, or its workspace chat) so it can keep going. Still " <>
+      "watching — I'll tell you when it finishes."
+  end
+
+  defp wake_text_exited(w, reason) do
+    how =
+      case reason do
+        r when r in [:normal, :shutdown] -> "was stopped"
+        {:shutdown, _} -> "was shut down"
+        _ -> "crashed (#{inspect(reason, limit: 5)})"
+      end
+
+    "[auto-notify] The agent you were watching in workspace \"#{w.name}\" #{how} before " <>
+      "finishing. Tell the user it went down, and offer to restart it / check its logs, " <>
+      "or re-dispatch the task."
   end
 
   defp wake_text_stalled(w) do
