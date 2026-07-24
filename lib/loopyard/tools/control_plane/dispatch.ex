@@ -26,11 +26,15 @@ defmodule Loopyard.Tools.ControlPlane.Dispatch do
         {:string, required: true, description: "The task/message to send to that agent."}
     ]
 
-  def execute(%{target: target, message: message}, _assigns) do
+  def execute(%{agent_id: operator_id, target: target, message: message}, _assigns) do
     with {:ok, agent} <- Loopyard.Tools.ControlPlane.resolve_agent(target),
          :ok <- Loopyard.ChatAgent.enqueue_message(agent.id, message) do
       # Add/refresh this workspace's job in the operator's worker queue.
       Loopyard.Operator.Jobs.note_dispatch(agent[:workspace_id], agent.id)
+      # Drop a live "mini app" tile into the operator's own chat — a window INTO
+      # the delegated agent (status streams working→ready; click drills into it).
+      # So you watch the delegation from the cockpit instead of a peek dump.
+      emit_mini_app(operator_id, agent)
       {:ok, "Dispatched to #{agent.name} (#{agent.id})#{busy_note(agent)}."}
     else
       {:error, msg} when is_binary(msg) ->
@@ -47,4 +51,27 @@ defmodule Loopyard.Tools.ControlPlane.Dispatch do
     do: " — it's busy, so this queues and sends when its current turn finishes"
 
   defp busy_note(_), do: " — it'll pick it up now"
+
+  # The mini-app card: a role: :embed message referencing the delegated agent.
+  # `Cards.agent_embed` renders it live (reads the agent's status) and it survives
+  # the :chat detail level, so the executive sees the delegation, not the plumbing.
+  defp emit_mini_app(operator_id, agent) when is_binary(operator_id) do
+    ws_id = agent[:workspace_id]
+    ws = ws_id && Loopyard.WorkspaceRegistry.get_workspace(ws_id)
+
+    Loopyard.ChatAgent.append_message_ets(operator_id, %{
+      role: :embed,
+      agent_id: agent.id,
+      workspace_id: ws_id,
+      project_id: ws && ws[:project_id],
+      label: (ws && ws[:name]) || agent.name || "agent",
+      timestamp: DateTime.utc_now()
+    })
+
+    :ok
+  rescue
+    _ -> :ok
+  end
+
+  defp emit_mini_app(_, _), do: :ok
 end
