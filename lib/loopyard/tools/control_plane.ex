@@ -33,6 +33,8 @@ defmodule Loopyard.Tools.ControlPlane do
     Loopyard.Tools.ControlPlane.CreateProjectFromPath,
     Loopyard.Tools.ControlPlane.DeleteWorkspace,
     Loopyard.Tools.ControlPlane.DeleteProject,
+    Loopyard.Tools.ControlPlane.RenameWorkspace,
+    Loopyard.Tools.ControlPlane.RenameProject,
     Loopyard.Tools.ControlPlane.Gh,
     # A real shell inside the operator's OWN container image — resolve_container
     # targets its workstation container. This is "the same tools + do whatever in

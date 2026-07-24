@@ -384,6 +384,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
             :integrate -> "Merge proposal — needs your OK"
             :delete_workspace -> "Delete workspace — needs your OK"
             :delete_project -> "Delete project — needs your OK"
+            :rename_workspace -> "Rename workspace — needs your OK"
+            :rename_project -> "Rename project — needs your OK"
             :create_project -> "New project — needs your OK"
             _ -> "Branch proposal — needs your OK"
           end}
@@ -433,6 +435,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           </span>
         </div>
         <div
+          :if={@action.verb in [:rename_workspace, :rename_project]}
+          class="text-lg md:text-base text-zinc-800 dark:text-zinc-200 mb-1"
+        >
+          Rename {if @action.verb == :rename_project, do: "project", else: "workspace"}
+          <code class="text-sm bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">
+            {@action[:old_name]}
+          </code>
+          → <code class="text-sm bg-violet-200/70 dark:bg-violet-800/50 rounded px-1 py-0.5">
+            {@action[:name]}
+          </code>
+        </div>
+        <div
           :if={@action.verb == :fork}
           class="text-lg md:text-base text-zinc-800 dark:text-zinc-200 mb-1"
         >
@@ -467,7 +481,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                   )
                 ]}
               >
-                {if @action.verb in [:delete_workspace, :delete_project], do: "Delete", else: "Approve"}
+                {cond do
+                  @action.verb in [:delete_workspace, :delete_project] -> "Delete"
+                  @action.verb in [:rename_workspace, :rename_project] -> "Rename"
+                  true -> "Approve"
+                end}
               </button>
               <button
                 type="button"
@@ -530,6 +548,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           <% :deleted -> %>
             <span class="inline-flex items-center gap-1.5 rounded-lg bg-zinc-500/15 px-3 py-1.5 text-sm font-medium text-zinc-600 dark:text-zinc-300">
               Deleted <code class="text-sm">{@action[:name] || @action[:branch] || @action[:workspace_id]}</code> ✓
+            </span>
+          <% :renamed -> %>
+            <span class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400">
+              Renamed → <code class="text-sm">{@action[:name]}</code> ✓
             </span>
           <% :denied -> %>
             <span class="text-sm text-zinc-500 dark:text-zinc-400">Declined.</span>

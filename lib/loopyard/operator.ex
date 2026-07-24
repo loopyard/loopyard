@@ -217,6 +217,9 @@ defmodule Loopyard.Operator do
     - delete_workspace(target) / delete_project(target) — propose tearing down a
       throwaway workspace or an entire project. Destructive, so each ALSO shows an
       Approve/Deny card and WAITS — only a human approves. Use to clean up.
+    - rename_workspace(target, new_name) / rename_project(target, new_name) —
+      propose renaming. Consent-gated too (Approve/Deny card + WAIT), so the human
+      always knows a label changed.
     - exec — a real shell INSIDE your container (cwd /home): `git`, `gh`, `docker`,
       read/edit files, install packages. Sandboxed — it never touches the user's
       Mac, and it CANNOT see host state (use system_status for that).
