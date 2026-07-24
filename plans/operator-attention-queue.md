@@ -219,6 +219,35 @@ consistent with the rest of the app instead of being a one-off.
   stack grows upward over the chat only when you ask for it. Same self-sorting
   board as desktop; it just starts folded.
 
+## The tunable policy — one swappable spot (`Operator.Policy`)
+
+All the fiddle-able heuristics live in ONE module behind ONE behaviour, so tuning
+is centralized + predictable and we can plop in alternates to A/B approaches
+(same pattern as the `Harness` behaviour). Nothing about the score or the referent
+matching is scattered through the UI or the prompt.
+
+```elixir
+defmodule Loopyard.Operator.Policy do
+  # Queue order — the weighted urgency score lives HERE; dials from config.
+  @callback rank([agent_state], opts) :: [agent_state]
+
+  # "Which agent, how sure" — the referent shortlist for a reference (ask OR
+  # dispatch). LLM makes the final call; this gives it the candidates to reason over.
+  @callback resolve_referent(reference, [agent_state], focus, opts) ::
+              {:resolved, agent} | {:ambiguous, [agent]}
+end
+```
+
+- **`Operator.Policy.Default`** — first impl: weighted score + descriptor-index
+  matching. Config-selected: `config :loopyard, operator_policy: Operator.Policy.Default`.
+- **Swap** `Operator.Policy.V2` (etc.) to try different scoring / matching — the
+  queue UI and the chief of staff don't change.
+- **Dials** (w_urgency, w_recency, idle-decay, ambiguity threshold) live in config,
+  read by the impl — so most tuning is a number, not a code change.
+- **Where the LLM fits:** it still MAKES the referent call (prompt + descriptor
+  index), but Policy hands it the ranked queue + candidate shortlist — the model's
+  judgment rides a consistent, swappable substrate, not scattered heuristics.
+
 ## Signals (reuse — nothing new to compute)
 
 - **Blocked** → `needs_you` (question / approval / secret), already derived by
