@@ -354,7 +354,12 @@ defmodule LoopyardWeb.OperatorLive do
   attr :tree, :list, required: true
 
   defp attention_queue(assigns) do
-    assigns = assign(assigns, :items, Loopyard.Operator.Queue.items(assigns.tree))
+    # Mark the jobs we've armed a "tell me when it's done" watch on, so the board
+    # doubles as the live registry of "what am I waiting on".
+    watched = Loopyard.Operator.Digest.watches() |> MapSet.new(& &1.ws_id)
+    items = Loopyard.Operator.Queue.items(assigns.tree)
+    items = Enum.map(items, &Map.put(&1, :watching?, MapSet.member?(watched, &1.id)))
+    assigns = assign(assigns, :items, items)
 
     ~H"""
     <div class="p-3 space-y-1.5">
@@ -376,6 +381,13 @@ defmodule LoopyardWeb.OperatorLive do
           <span class={["flex-none w-1.5 h-1.5 rounded-full", state_dot(i.state)]} />
           <span class="flex-1 min-w-0 truncate text-sm font-medium text-zinc-700 dark:text-zinc-200">
             {i.project_name} · {i.workspace_name}
+          </span>
+          <span
+            :if={i.watching?}
+            title="Watching — you'll be told when this finishes"
+            class="flex-none text-xs text-amber-600 dark:text-amber-400"
+          >
+            🔔
           </span>
           <span
             :if={i.delta > 0}

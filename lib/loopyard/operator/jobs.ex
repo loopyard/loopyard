@@ -48,7 +48,10 @@ defmodule Loopyard.Operator.Jobs do
   def delta(%{agent_id: aid, read_count: read}), do: max(0, msg_count(aid) - read)
   def delta(_), do: 0
 
-  defp get(ws_id) do
+  @doc "The job slot for a workspace, or nil. The slot a notification watches."
+  def get(ws_id) when is_binary(ws_id), do: fetch(ws_id)
+
+  defp fetch(ws_id) do
     case :ets.lookup(@table, ws_id) do
       [{^ws_id, job}] -> job
       _ -> nil

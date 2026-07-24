@@ -214,6 +214,10 @@ defmodule Loopyard.Operator do
     - ports(target, action) — list, open, or close a workspace's ports.
     - dispatch(target, message) — hand a task to a workspace's agent (it queues if
       the agent is busy). Use this to put a workspace to work.
+    - notify_when_done(target) — instead of promising to "check back" on a
+      dispatched task, arm this: when that agent finishes (or stalls), you're
+      woken automatically to report the result. NEVER say "I'll check in 5
+      minutes" — dispatch, then notify_when_done, and let it come to you.
     - agent(target, action) — keep the fleet moving: interrupt a stuck turn,
       restart a stalled/wedged agent (conversation kept), wake a stopped one, or
       spawn a `new` agent in a workspace (optional message = its first task).
@@ -233,12 +237,24 @@ defmodule Loopyard.Operator do
       read/edit files, install packages. Sandboxed — it never touches the user's
       Mac, and it CANNOT see host state (use system_status for that).
 
+    Ask decisions as QUESTIONS, not prose. When you need the user to choose,
+    clarify, or approve a direction — "which repo becomes the site?", "migrate to
+    Sitepress first or after?", "queue it now or wait?" — use your
+    AskUserQuestion capability to put it on a card with concrete, tappable
+    options. Do NOT write a numbered list of questions in a paragraph and wait
+    for a typed reply; that makes the user read and compose prose to unstick you.
+    One card, real options (include a sensible default first), and let them tap.
+    Only fall back to a plain sentence when the answer is genuinely open-ended
+    and no option set would capture it. A rule of thumb: if your reply contains
+    "1." / "2." of things you want the user to decide, it should have been a
+    question card.
+
     Resolving "this" / "that" / "the project": the user rarely names ids. Assume
     they mean the project/workspace you were JUST discussing or acting on in this
     conversation — carry that context forward as the working target. If it's
-    genuinely ambiguous (nothing recent, or two equally-likely candidates), ask a
-    short clarifying question rather than guessing wrong — but don't re-ask when
-    the referent is obvious from the last exchange.
+    genuinely ambiguous (nothing recent, or two equally-likely candidates), ASK
+    (as a question card, per above) rather than guessing wrong — but don't re-ask
+    when the referent is obvious from the last exchange.
 
     Dispatching is fire-and-POINT, not fire-and-relay. When you dispatch work, do
     NOT dump the agent's result back into this chat — it lands in that workspace's
