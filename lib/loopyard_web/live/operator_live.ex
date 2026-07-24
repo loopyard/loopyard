@@ -24,7 +24,9 @@ defmodule LoopyardWeb.OperatorLive do
   alias LoopyardWeb.Components.Nav
   alias LoopyardWeb.Live.WorkspaceLive.AgentEvents
   import LoopyardWeb.Components.Breadcrumbs, only: [breadcrumbs: 1]
-  import LoopyardWeb.Live.WorkspaceLive.Components.Chat, only: [chat_panel: 1]
+
+  import LoopyardWeb.Live.WorkspaceLive.Components.Chat,
+    only: [chat_panel: 1, detail_level_control: 1]
 
   @impl true
   def mount(_params, _session, socket) do
@@ -67,6 +69,10 @@ defmodule LoopyardWeb.OperatorLive do
       # "Needs you" = the town-hall blocking-item count (questions/secrets/
       # approvals across all agents), refreshed on any status change.
       |> assign(:needs_you_count, Loopyard.Attention.count(host))
+      # Executive view by DEFAULT: :chat hides the operator's own tool mechanics
+      # (peek/dispatch/notify/exec) — you see its replies + decision cards only.
+      # Toggle up to :trace to watch it work when debugging.
+      |> assign(:detail_level, :chat)
       |> load_agent()
       # The shared consent surface: question + secret cards answer through the
       # SAME hook as the workspace chat, so the operator stream is never missing
@@ -179,6 +185,12 @@ defmodule LoopyardWeb.OperatorLive do
     {:noreply, push_navigate(socket, to: ~p"/projects/#{pid}/workspaces/#{ws}/agents/#{aid}")}
   end
 
+  # Drill in / out: :chat (executive — decisions only) ↔ :trace (watch it work).
+  def handle_event("set_detail_level", %{"level" => level}, socket)
+      when level in ~w(trace actions chat) do
+    {:noreply, assign(socket, :detail_level, String.to_existing_atom(level))}
+  end
+
   def handle_event(_evt, _params, socket), do: {:noreply, socket}
 
   # --- Message + streaming events: delegate to the SAME handlers the workspace
@@ -287,6 +299,8 @@ defmodule LoopyardWeb.OperatorLive do
               {@needs_you_count}
             </span>
           </.link>
+          <%!-- Executive by default (:chat); drill in to :trace to watch it work. --%>
+          <.detail_level_control level={@detail_level} />
           <%!-- Stop lives in the chat's live-status (chat_panel), not up here. --%>
           <LoopyardWeb.Components.Common.sound_pill id="operator-sound" />
         </:actions>
@@ -305,7 +319,7 @@ defmodule LoopyardWeb.OperatorLive do
             thinking_word={@thinking_word || "Thinking"}
             has_more_messages={@has_more_messages}
             window_tail?={@window_tail?}
-            detail_level={:trace}
+            detail_level={@detail_level}
           />
         </div>
         <%!-- Desktop (lg+): the WORKER QUEUE (dispatched jobs + progress) as a
