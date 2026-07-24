@@ -286,13 +286,17 @@ defmodule Loopyard.Workstation.Env do
 
   # The parts of the driver's host `~/.claude` that make Claude *theirs* —
   # skills, slash commands, custom subagents, and the user-level CLAUDE.md.
-  # WITHOUT these the in-container ACP harness is the real Claude Code but
-  # with a blank identity: `/frontend-design` → "Unknown skill", no house
-  # rules, no presets. An explicit ALLOWLIST — never the whole dir, which
-  # can hold credentials (.credentials.json), session logs, and caches that
-  # must not leak into (or bloat) the volume.
-  @claude_identity_dirs ~w(skills commands agents)
-  @claude_identity_files ~w(CLAUDE.md)
+  #
+  # DISABLED (was `~w(skills commands agents)` + `~w(CLAUDE.md)`): carrying the
+  # driver's ENTIRE personal identity into every agent backfired hard. A router
+  # skill like `gstack` hijacked workspace agents into dispatching through it
+  # ("that's not a gstack skill"), and injecting ~60 skills' preambles blew agent
+  # context past 3M tokens. A loopyard workspace agent must keep ITS role + load
+  # the PROJECT's own `.claude` (via trust_projects) — not inherit the human's
+  # global toolkit. If specific skills are ever wanted in agents, add them as an
+  # explicit, curated allowlist here — never the whole dir.
+  @claude_identity_dirs ~w()
+  @claude_identity_files ~w()
 
   @doc """
   Sync the driver's Claude identity (#{Enum.join(@claude_identity_dirs, "/, ")}/,

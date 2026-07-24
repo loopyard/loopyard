@@ -427,22 +427,8 @@ defmodule LoopyardWeb.OperatorLive do
       <Nav.bar height="h-14" gap="gap-3">
         <.breadcrumbs crumbs={[{"Loopyard", "/"}, {"Operator", nil}]} />
         <:actions>
-          <%!-- "Needs you" → the town hall (/queue): the stack of blocking
-               questions/secrets/approvals to go through, answerable inline. --%>
-          <.link
-            navigate={~p"/queue"}
-            aria-label="Needs you — the town hall"
-            class="focus-ring inline-flex items-center gap-1.5 rounded-full border border-zinc-200 dark:border-zinc-700 px-3 h-9 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-          >
-            Needs you
-            <span
-              :if={@needs_you_count > 0}
-              class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full bg-amber-500 text-white text-xs font-semibold"
-            >
-              {@needs_you_count}
-            </span>
-          </.link>
-          <%!-- Sound moved to a proper player docked at the bottom of the rail. --%>
+          <%!-- No "Needs you" pill — the rail shows blocking items right there.
+               Sound is a player docked at the bottom of the rail. --%>
         </:actions>
       </Nav.bar>
 
