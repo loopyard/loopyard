@@ -114,6 +114,28 @@ A prioritized list of known, scoped improvements for Loopyard. Ordered within ea
 
 12. **Weave Aural (ambient sound) into the workspace experience.** _Partially shipped:_ a persistent app-wide ambient bed now lives in the root layout (`root.html.heex` `#ambient` + the `AmbientAudio` app.js hook), and the whole app runs in one `live_session` so the bed survives navigation. Off by default (autoplay policy); a corner toggle starts it and the choice persists in localStorage. It streams the global `activity` channel, which `ActivitySound` already drives from live agent events. **Still open:** (a) per-scope channels — switch the bed to `project-<id>` as you enter a project so each sounds distinct (today it's one global channel for continuity; changing `src` restarts the stream, so a crossfade is needed); (b) per-participant mute/volume beyond the on/off toggle (it's multiplayer — one person's audio ≠ everyone's; a volume slider + the two-channel proximity mix `ActivitySound` already emits); (c) richer signal→bed mapping (decision-waiting vs build-running distinct textures). Lives near the collaborative-listening direction (Presence + per-room channel) already sketched for Aural.
 
+13. **Cascading TTL — let the system fall asleep in tiers.** The town-hall line
+    (`/queue`, `Loopyard.Attention`) already self-decays: an unanswered question
+    ages out on its TTL (the brokers reap dead waiters). Extend that decay
+    upward: a question times out → after its own idle TTL a *workspace* with no
+    live attention falls asleep (cluster down, agent CLI reaped) → after a longer
+    TTL the whole *project* idles down. Accessing any tier spins it back up
+    lazily and it drifts back to sleep when you leave. The point is resource
+    efficiency without manual lifecycle management — the system uses what it
+    needs and releases the rest on its own. Build on the existing idle reaper
+    (`ChatAgent.IdleReaper`) + `Harness.MemoryMonitor`; the new piece is the
+    tiered cascade + lazy wake. (Deferred deliberately until the queue UI proved
+    out.)
+
+14. **Global "needs you" badge — the town hall, reachable from anywhere.** `/queue`
+    exists and is tear-out-able, but you still have to navigate to it. Add a
+    small always-present count badge (app-wide chrome) that shows the blocking-item
+    count and links to `/queue`, so from any page you can see "3 agents waiting"
+    and jump. Cleanest wiring: an `on_mount` hook on the `:app` live_session that
+    subscribes to global activity + assigns the count, rendered as a floating
+    element in `app.html.heex`. Keep it defensive (rescue, safe default) — it runs
+    on every page, so a crash there freezes everything.
+
 9. **Tool cards: rich visual previews for every tool call.** Each tool call in the chat should be a compact, visual window into what the agent is doing — not raw text dumps. DiffView (syntax-highlighted diffs for edits) is the first. Future cards: terminal output (exec — looks like a mini terminal), search results (grep — highlighted matches in context), file viewer (read — syntax-highlighted code), git log (commit list), browser screenshots (headless browser). Each card type has a compact (inline chat) and expanded (full-screen) mode. Clicking a card opens the full view. Same rendering components power both. The code browser / file viewer / git viewer are standalone product surfaces; the chat embeds previews that link into them.
 
 ## How to work this list
