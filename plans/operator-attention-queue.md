@@ -135,6 +135,27 @@ Make focus visible + stable:
 Same "never interlace / pull, don't firehose" principle, applied to attention:
 the board moves on its own; your focus only moves when you move it.
 
+### Disambiguating a message ("who is this for?")
+
+Two questions hide in "rebase this": (a) is it for the chief of staff or a
+workspace agent, and (b) which agent. Both are smaller than they look:
+
+- **(a) me vs. delegate — mostly resolved by *separation of duties*.** The chief
+  of staff structurally can't do a workspace's work (no write_file/compose/volume
+  for a project — a deliberate boundary). So per-workspace tasks ("rebase / fix
+  the bug / run tests") MUST be delegated; its own tools are orchestration/status
+  only. The decision collapses to just "which agent?".
+- **(b) which agent — layered, never a wrong guess:**
+  1. **Focus chip** (default): "this" is already pinned → dispatch there.
+  2. **Disambiguation card** (when unsure): the chief of staff drops a card
+     offering the likely targets as buttons — the top queue agents + "handle it
+     myself" — one tap, no typing. (This is the dispatcher's "slightly special
+     UI".) e.g. *"Send this to → [garryslist] [gbrain] [me]?"*
+  3. **Ask in prose** (last resort) if even candidates aren't clear.
+
+So it delegates by default, the chip keeps "this" pinned, and only genuine
+ambiguity surfaces a small candidate card. Never a silent wrong guess.
+
 ## Navigation (desktop + mobile, same model)
 
 - **Tap a card → dive into that workspace's own chat.** Reuses Loopyard's
