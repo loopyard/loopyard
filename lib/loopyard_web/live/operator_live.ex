@@ -278,56 +278,57 @@ defmodule LoopyardWeb.OperatorLive do
         <%!-- The glanceable working board — secondary, quiet, desktop-only. What's
              here / what's running, at a glance, while you work in chat. --%>
         <aside class="hidden lg:flex w-72 flex-none flex-col border-l border-zinc-200 dark:border-zinc-800 overflow-y-auto bg-zinc-50/60 dark:bg-zinc-900/40">
-          <.operator_board tree={@tree} />
+          <.attention_queue tree={@tree} />
         </aside>
       </div>
     </div>
     """
   end
 
-  # The working board: every project → workspace, with a live status dot + open
-  # ports. Reuses the WorkspaceTree the whole app rides + Birdseye's dot colors so
-  # the operator's glance agrees with the rail and the home page.
+  # The attention queue (Phase 1, minimal): active agents as condensed cards —
+  # project·workspace + the plain-language "what it needs from you" — grouped by
+  # state via Operator.Queue + the swappable Operator.Policy (dumb for now). Live:
+  # @tree is rebuilt on every StatusChanged, so this re-derives + re-ranks on each
+  # change. Order is a CLUE — the human watches to see what's important.
   attr :tree, :list, required: true
 
-  defp operator_board(assigns) do
+  defp attention_queue(assigns) do
+    assigns = assign(assigns, :items, Loopyard.Operator.Queue.items(assigns.tree))
+
     ~H"""
-    <div class="p-3 space-y-4">
-      <div class="text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500 px-1">
-        Working
+    <div class="p-3 space-y-1.5">
+      <div class="text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500 px-1 pb-1">
+        Needs you
       </div>
-      <p :if={@tree == []} class="px-1 text-sm text-zinc-500 dark:text-zinc-400">
-        No projects yet.
+      <p :if={@items == []} class="px-1 text-sm text-zinc-500 dark:text-zinc-400">
+        Nothing active.
       </p>
-      <div :for={p <- @tree} class="space-y-1">
-        <div class="px-1 text-sm font-medium text-zinc-700 dark:text-zinc-300 truncate">
-          {p.name}
-        </div>
-        <div :if={p.workspaces == []} class="px-1 text-xs text-zinc-400">no workspaces</div>
-        <div
-          :for={ws <- p.workspaces}
-          class="flex items-center gap-2 rounded-md px-2 py-1 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60"
-        >
-          <span class={[
-            "flex-none w-2 h-2 rounded-full",
-            LoopyardWeb.Components.Birdseye.ws_dot(ws)
-          ]} />
-          <span class="flex-1 min-w-0 truncate">{ws.name}</span>
-          <span :if={ports(ws) != ""} class="flex-none text-xs font-mono text-emerald-600 dark:text-emerald-400">
-            {ports(ws)}
+      <.link
+        :for={i <- @items}
+        navigate={~p"/projects/#{i.project_id}/workspaces/#{i.id}/agents/#{i.agent_id}"}
+        class="block rounded-lg px-2.5 py-2 border border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+      >
+        <div class="flex items-center gap-2">
+          <span class={["flex-none w-1.5 h-1.5 rounded-full", state_dot(i.state)]} />
+          <span class="flex-1 min-w-0 truncate text-sm font-medium text-zinc-700 dark:text-zinc-200">
+            {i.project_name} · {i.workspace_name}
           </span>
         </div>
-      </div>
+        <div :if={i.needs != ""} class={["mt-0.5 pl-3.5 text-xs truncate", state_text(i.state)]}>
+          {i.needs}
+        </div>
+      </.link>
     </div>
     """
   end
 
-  defp ports(ws) do
-    Loopyard.PortRegistry.list_for_workspace(ws.id)
-    |> Enum.filter(& &1.exposed)
-    |> Enum.map(&":#{&1.host_port}")
-    |> Enum.join(" ")
-  rescue
-    _ -> ""
-  end
+  defp state_dot(:blocked), do: "bg-amber-500"
+  defp state_dot(:working), do: "bg-violet-500"
+  defp state_dot(:finished), do: "bg-emerald-500"
+  defp state_dot(_), do: "bg-zinc-400 dark:bg-zinc-500"
+
+  defp state_text(:blocked), do: "text-amber-600 dark:text-amber-400"
+  defp state_text(:working), do: "text-violet-600 dark:text-violet-400"
+  defp state_text(:finished), do: "text-emerald-600 dark:text-emerald-400"
+  defp state_text(_), do: "text-zinc-500 dark:text-zinc-400"
 end
