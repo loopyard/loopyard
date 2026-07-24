@@ -156,6 +156,16 @@ workspace agent, and (b) which agent. Both are smaller than they look:
 So it delegates by default, the chip keeps "this" pinned, and only genuine
 ambiguity surfaces a small candidate card. Never a silent wrong guess.
 
+**Cheap by construction — route off the index, never the context.** To decide
+"which agent" the chief of staff does NOT hold each agent's context (that would
+burn tokens). It routes off the short per-agent focus descriptors (#70) — a
+handful of one-liners already in its `overview`/queue. Matching your message
+against those is a single inference over what it already has: no extra tool
+calls, no chat reads. Full context (`peek_workspace`) is opt-in, pulled only when
+it deliberately digs in — never per message. The focus descriptor (#70) is thus
+the ROUTING INDEX, not just a human reminder: it must be short + current so the
+chief of staff can route the whole fleet from a few hundred tokens.
+
 ## Navigation (desktop + mobile, same model)
 
 - **Tap a card → dive into that workspace's own chat.** Reuses Loopyard's
