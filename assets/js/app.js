@@ -279,9 +279,12 @@ Hooks.StreamMarkdown = {
   mounted() {
     const blocks = this.el.querySelector("[data-stream-blocks]")
     const tail = this.el.querySelector("[data-stream-tail]")
-    this.handleEvent("stream_html", ({html, tail: tailText}) => {
+    this.handleEvent("stream_html", ({html, tail: tailHtml}) => {
       if (html) blocks.insertAdjacentHTML("beforeend", html)
-      tail.textContent = tailText || ""
+      // Tail is server-rendered HTML for the in-progress block (small, one block)
+      // — swap it in place. Balanced markdown renders; a truly-unclosed marker
+      // resolves on the next delta.
+      tail.innerHTML = tailHtml || ""
     })
   }
 }

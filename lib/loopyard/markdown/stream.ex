@@ -8,11 +8,14 @@ defmodule Loopyard.Markdown.Stream do
   token and you thrash the DOM (and fight LiveView's diff). Both failure modes
   are exactly what kept breaking.
 
-  The fix: buffer the raw stream on the SERVER and emit only **complete blocks,
-  already rendered to safe HTML** (through `Loopyard.Markdown`, so the same MDEx
-  escaping boundary holds). The trailing, not-yet-complete block stays a plain
-  "tail" the client shows verbatim until it closes. Emitted HTML blocks are
-  append-only — the client appends each once and never re-diffs it.
+  The fix: buffer the raw stream on the SERVER. Completed blocks are emitted as
+  safe HTML (through `Loopyard.Markdown`, so the MDEx escaping boundary holds),
+  append-only — the client appends each once and never re-diffs it. The trailing,
+  not-yet-complete block is ALSO rendered to HTML (it's small — one block — so
+  re-rendering it per delta is cheap) and shipped as the "tail" the client swaps
+  in place. MDEx renders balanced inline markup correctly, so `**bold**` inside
+  the tail shows bold; only a genuinely UNCLOSED marker briefly renders literally,
+  resolving on the next delta. No whole paragraph of raw `**` ever shows.
 
   A block boundary is a blank line (`\\n\\n`) that is NOT inside an open code
   fence, so a fenced code block — blank lines and all — is only emitted once its
@@ -48,17 +51,13 @@ defmodule Loopyard.Markdown.Stream do
 
     * `html` — safe HTML for any block(s) that completed with this delta (`""`
       if none). Append it; never re-diff it.
-    * `tail` — the current incomplete block as PLAIN text. Replace the tail
-      element with it (shows the in-progress block verbatim until it closes).
+    * `tail` — the current incomplete block rendered to safe HTML (`""` if none).
+      Swap the tail element's contents with it each delta.
   """
   @spec feed(t(), binary()) :: {t(), binary(), binary()}
   def feed(%__MODULE__{pending: pending} = state, delta) when is_binary(delta) do
-    text = pending <> delta
-
-    case split_stable(text) do
-      {"", tail} -> {%{state | pending: tail}, "", tail}
-      {stable, tail} -> {%{state | pending: tail}, render(stable), tail}
-    end
+    {stable, tail} = split_stable(pending <> delta)
+    {%{state | pending: tail}, render(stable), render(tail)}
   end
 
   @doc """

@@ -475,7 +475,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     <div class="py-0.5 mt-2" id="streaming-msg" phx-update="ignore" phx-hook="StreamMarkdown">
       <div class="markdown-body text-lg md:text-base leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl">
         <div data-stream-blocks></div>
-        <div data-stream-tail class="whitespace-pre-wrap"></div>
+        <div data-stream-tail></div>
       </div>
     </div>
     """
