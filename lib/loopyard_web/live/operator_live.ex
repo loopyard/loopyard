@@ -366,24 +366,9 @@ defmodule LoopyardWeb.OperatorLive do
 
     ~H"""
     <div class="flex flex-col">
-      <%!-- NEEDS YOU — action required, leads the rail --%>
-      <section class="p-3 space-y-3">
-        <div class="flex items-center gap-2 px-1">
-          <span class="text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
-            Needs you
-          </span>
-          <span
-            :if={@needs_count > 0}
-            class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full bg-amber-500 text-white text-xs font-semibold"
-          >
-            {@needs_count}
-          </span>
-        </div>
-
-        <p :if={@needs_count == 0} class="px-1 text-sm text-zinc-500 dark:text-zinc-400">
-          Nobody's waiting on you.
-        </p>
-
+      <%!-- Blocking items (action required), grouped by workspace — no header,
+           the groups speak for themselves and lead the rail. --%>
+      <section :if={@groups != []} class="p-3 space-y-3">
         <div :for={g <- @groups} class="space-y-1.5">
           <div class="flex items-baseline gap-1.5 px-1">
             <span class="text-sm font-semibold text-zinc-700 dark:text-zinc-200 truncate">
