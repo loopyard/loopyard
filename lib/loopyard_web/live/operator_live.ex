@@ -52,6 +52,7 @@ defmodule LoopyardWeb.OperatorLive do
       |> assign(:selected_id, agent_id)
       |> assign(:host, host)
       |> assign(:streaming_text, "")
+      |> assign(:stream_md, Loopyard.Markdown.Stream.new())
       |> assign(:streaming_thinking, "")
       |> assign(:stream_buffer, StreamBuffer.new())
       |> assign(:building, false)

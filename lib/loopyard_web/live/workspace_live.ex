@@ -162,6 +162,7 @@ defmodule LoopyardWeb.WorkspaceLive do
      # Windowed transcript: does the loaded window still include the live tail?
      |> assign(:window_tail?, true)
      |> assign(:streaming_text, "")
+     |> assign(:stream_md, Loopyard.Markdown.Stream.new())
      |> assign(:streaming_thinking, "")
      # Which tool-result cards this viewer has expanded (msg ids). Collapsed
      # cards render NO body — the 300-line pre/file/grep payloads were the

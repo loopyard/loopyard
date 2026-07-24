@@ -462,28 +462,20 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   attr :streaming_text, :string, default: ""
 
   def streaming_bubble(assigns) do
-    # CLIENT-APPENDED (restored from d0c34c5, the last version that actually
-    # worked). The body is phx-update="ignore" and the `StreamAppend` hook appends
-    # each delta chunk (pushed as "stream_delta") as a text node — the server NEVER
-    # renders the accumulated text here. Everything that touched this element
-    # server-side broke: phoenix_streamdown's block-freezing fought LiveView diffs
-    # (chunks not appending); rendering @streaming_text server-side (to_html)
-    # re-shipped + re-patched the whole reply 10×/s AND fought the still-firing
-    # stream_delta events. Live text is PLAIN (whitespace-pre-wrap); markdown
-    # renders once, when the finalized assistant Message replaces this element. The
-    # `:if` at the call site removes it between turns, so each stream starts empty.
+    # Server-side incremental markdown, client-appended. The server
+    # (`Markdown.Stream`, per connection) buffers raw tokens and emits COMPLETE
+    # blocks as safe HTML; the `StreamMarkdown` hook appends each block into
+    # [data-stream-blocks] ONCE (never re-diffed → no DOM thrash) and shows the
+    # current incomplete block as a plain [data-stream-tail]. phx-update="ignore"
+    # keeps LiveView off this subtree; the `:if` at the call site removes it
+    # between turns so each stream starts empty. The finalized assistant Message
+    # re-renders through the SAME renderer, so there's no snap when it replaces
+    # this element.
     ~H"""
-    <div
-      class="py-0.5 mt-2"
-      id="streaming-msg"
-      phx-update="ignore"
-      phx-hook="StreamAppend"
-      data-stream-event="stream_delta"
-    >
-      <div
-        data-stream-target
-        class="markdown-body text-lg md:text-base leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl whitespace-pre-wrap"
-      >
+    <div class="py-0.5 mt-2" id="streaming-msg" phx-update="ignore" phx-hook="StreamMarkdown">
+      <div class="markdown-body text-lg md:text-base leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl">
+        <div data-stream-blocks></div>
+        <div data-stream-tail class="whitespace-pre-wrap"></div>
       </div>
     </div>
     """

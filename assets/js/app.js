@@ -268,6 +268,24 @@ Hooks.StreamAppend = {
   }
 }
 
+// StreamMarkdown — server-side incremental markdown for the live assistant
+// reply. The server (Markdown.Stream) emits COMPLETE blocks as safe HTML plus
+// the current incomplete block as plain text. We append each HTML block ONCE
+// into [data-stream-blocks] (insertAdjacentHTML, never re-diffed → no DOM
+// thrash, no fighting LiveView's patcher — the container is phx-update="ignore")
+// and mirror the small plain remainder into [data-stream-tail]. The finalized
+// Message re-renders identically server-side and replaces the whole element.
+Hooks.StreamMarkdown = {
+  mounted() {
+    const blocks = this.el.querySelector("[data-stream-blocks]")
+    const tail = this.el.querySelector("[data-stream-tail]")
+    this.handleEvent("stream_html", ({html, tail: tailText}) => {
+      if (html) blocks.insertAdjacentHTML("beforeend", html)
+      tail.textContent = tailText || ""
+    })
+  }
+}
+
 // PerfProbe — lightweight client-health beacon for real sessions. Samples
 // worst main-thread frame gap (rAF drift ≈ typing jank), DOM node count, and
 // JS heap, and pushes one compact event every 20s while the tab is visible.

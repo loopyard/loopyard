@@ -261,7 +261,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentEvents do
         # garbles (raw HTML / stray ** leaking). Mirrors on_message (:307).
         |> then(fn s ->
           if msg.role == :assistant,
-            do: s |> assign(:streaming_text, "") |> assign(:streaming_thinking, ""),
+            do:
+              s
+              |> assign(:streaming_text, "")
+              |> assign(:streaming_thinking, "")
+              |> assign(:stream_md, Loopyard.Markdown.Stream.new()),
             else: s
         end)
         |> refresh_selected_from_agents(id, socket.assigns.agents)
@@ -285,15 +289,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentEvents do
 
   def handle_message(_event, socket), do: {:noreply, socket}
 
-  def handle_text_delta(%{agent_id: id, text: text}, socket)
-      when id == socket.assigns.selected_id do
-    {:noreply,
-     socket
-     |> assign(:streaming_text, text)
-     |> push_event("scroll_bottom", %{})}
-  end
-
-  def handle_text_delta(_event, socket), do: {:noreply, socket}
+  # The operator (OperatorLive) delegates its TextDelta here. Unified onto
+  # on_text_delta so BOTH chats stream through the one Markdown.Stream path — the
+  # old divergent body ("replace streaming_text with the chunk, don't push to the
+  # client") is gone; it's what made the operator stream differently.
+  def handle_text_delta(e, socket), do: on_text_delta(e, socket)
 
   # --- ChatAgentMessage subscriber bodies (WorkspaceLive delegates here) ---
 
@@ -314,7 +314,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentEvents do
       true ->
         socket =
           if msg.role == :assistant,
-            do: socket |> assign(:streaming_text, "") |> assign(:streaming_thinking, ""),
+            do:
+              socket
+              |> assign(:streaming_text, "")
+              |> assign(:streaming_thinking, "")
+              |> assign(:stream_md, Loopyard.Markdown.Stream.new()),
             else: socket
 
         # If build was running and we get a post-build message, mark build as done
@@ -400,20 +404,23 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentEvents do
   def on_text_delta(%Events.ChatAgentMessage.TextDelta{agent_id: id, text: text}, socket)
       when id == socket.assigns.selected_id do
     # ONLY touch streaming state on a token. Do NOT rebuild @selected_agent here
-    # (that re-rendered the entire cockpit — recent tools, usage, changes — on
-    # every single token, the main flicker/CPU source). The context panel
-    # refreshes on Message / StatusChanged, which is often enough.
+    # (that re-rendered the entire cockpit on every token — the flicker/CPU
+    # source). The context panel refreshes on Message / StatusChanged.
     #
-    # The chunk reaches the DOM via "stream_delta" → the StreamAppend hook
-    # appends a text node — O(chunk) on the wire. The accumulated assign is
-    # kept ONLY for the live token counter and the bubble's :if visibility;
-    # nothing renders the full text anymore (that re-shipped the whole reply
-    # every flush).
+    # Feed the raw chunk into the per-connection markdown streamer: it emits
+    # COMPLETE blocks as safe HTML (append-only, the StreamMarkdown hook appends
+    # each once) plus the current incomplete block as a plain tail. No partial
+    # markdown ever reaches the DOM, and nothing re-diffs the growing reply.
+    # `streaming_text` is still accumulated for the token counter + bubble :if.
+    stream_md = socket.assigns[:stream_md] || Loopyard.Markdown.Stream.new()
+    {stream_md, html, tail} = Loopyard.Markdown.Stream.feed(stream_md, text)
+
     {:noreply,
      socket
      |> assign(:streaming_text, socket.assigns.streaming_text <> text)
+     |> assign(:stream_md, stream_md)
      |> assign(:streaming_thinking, "")
-     |> push_event("stream_delta", %{text: text})
+     |> push_event("stream_html", %{html: html, tail: tail})
      |> push_event("scroll_bottom", %{})}
   end
 
