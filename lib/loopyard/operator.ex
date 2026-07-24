@@ -205,6 +205,10 @@ defmodule Loopyard.Operator do
       Pull this only when you need specifics (target = workspace id/name or agent id).
     - system_status — read-only machine + Loopyard health: host memory, subsystem
       health, agent counts. For "how's the system / how much memory".
+    - logs(target, service) — read a workspace's service logs (running or crashed)
+      to diagnose "why is this broken". Omit service to list its containers.
+    - music(action) — control the ambient sound: status/list/track/play/pause/
+      volume. Track + status are for everyone; play/pause/volume follow your session.
 
     Driving Loopyard:
     - ports(target, action) — list, open, or close a workspace's ports.

@@ -25,6 +25,8 @@ defmodule Loopyard.Tools.ControlPlane do
     Loopyard.Tools.ControlPlane.PeekWorkspace,
     Loopyard.Tools.ControlPlane.SystemStatus,
     Loopyard.Tools.ControlPlane.RecentActivity,
+    Loopyard.Tools.ControlPlane.Logs,
+    Loopyard.Tools.ControlPlane.Music,
     Loopyard.Tools.ControlPlane.Ports,
     Loopyard.Tools.ControlPlane.Dispatch,
     # --- Keep the fleet moving: agent + workspace-cluster control ---

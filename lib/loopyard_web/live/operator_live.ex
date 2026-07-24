@@ -33,6 +33,9 @@ defmodule LoopyardWeb.OperatorLive do
     if connected?(socket) do
       Events.ChatAgentMessage.subscribe(agent_id)
       Events.ChatAgent.subscribe()
+      # Operator `music` play/pause/volume commands → bridged to this client's
+      # AmbientAudio engine (server-side track/status don't need this).
+      Events.Aural.subscribe()
     end
 
     host =
@@ -179,6 +182,11 @@ defmodule LoopyardWeb.OperatorLive do
 
   def handle_info(%Events.ChatAgentMessage.TextDelta{} = e, socket),
     do: AgentEvents.handle_text_delta(e, socket)
+
+  # Ambient play/pause/volume command from the operator's `music` tool → push to
+  # this client's AmbientAudio engine (which applies it; the sound pill reflects).
+  def handle_info(%Events.Aural.Command{action: action, value: value}, socket),
+    do: {:noreply, push_event(socket, "aural_command", %{action: to_string(action), value: value})}
 
   # Streamed model reasoning → the thinking bubble.
   def handle_info(

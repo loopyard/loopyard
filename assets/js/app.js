@@ -32,6 +32,15 @@ Hooks.AmbientAudio = {
     window.addEventListener("ambient:set-volume", this._onSetVol)
     window.addEventListener("ambient:query", this._onQuery)
 
+    // Operator `music` tool → server pushes play/pause/volume here (via the
+    // operator LiveView). We drive the engine directly; the sound pill follows
+    // through the ambient:changed broadcast.
+    this.handleEvent("aural_command", ({action, value}) => {
+      if (action === "play") this.start().catch(() => {})
+      else if (action === "pause") this.stop()
+      else if (action === "volume") this.setVolume(value)
+    })
+
     // Restore intent. Autoplay is blocked without a gesture on a fresh load, so
     // if play() rejects we just reflect "off" — a tap on the control re-arms it.
     if (localStorage.getItem("loopyard:ambient") === "on") {
