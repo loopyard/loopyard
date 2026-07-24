@@ -543,27 +543,29 @@ defmodule LoopyardWeb.OperatorLive do
               {i.delta} new
             </span>
           </div>
-          <div class="mt-0.5 pl-3.5 text-xs truncate">
-            <span class={state_text(i.state)}>{state_label(i.state)}</span><span
-              :if={i.needs not in ["", state_label(i.state)]}
-              class="text-zinc-500 dark:text-zinc-400"
-            > · {i.needs}</span>
-          </div>
-          <%!-- Launchable ports — same style as the workspace header's app-port
-               link (font-mono emerald `:host_port ↗`). stopPropagation keeps the
-               click off the card's open_job dive-in. --%>
-          <div :if={i.ports != []} class="mt-0.5 pl-3.5 flex flex-wrap gap-2">
-            <a
-              :for={p <- i.ports}
-              href={p.url}
-              target="_blank"
-              rel="noopener"
-              onclick="event.stopPropagation()"
-              aria-label={"Open app on port #{p.port}"}
-              class="focus-ring inline-flex items-center gap-0.5 rounded px-1 font-mono text-sm text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 active:bg-emerald-500/20 transition-colors"
-            >
-              :{p.port} <span class="text-xs opacity-70">↗</span>
-            </a>
+          <%!-- State on the left, launchable port bottom-RIGHT (same font-mono
+               emerald `:host_port ↗` as the workspace header). stopPropagation
+               keeps the port click off the card's open_job dive-in. --%>
+          <div class="mt-0.5 pl-3.5 flex items-center gap-2 text-xs">
+            <span class="min-w-0 truncate">
+              <span class={state_text(i.state)}>{state_label(i.state)}</span><span
+                :if={i.needs not in ["", state_label(i.state)]}
+                class="text-zinc-500 dark:text-zinc-400"
+              > · {i.needs}</span>
+            </span>
+            <span :if={i.ports != []} class="ml-auto flex-none flex gap-2">
+              <a
+                :for={p <- i.ports}
+                href={p.url}
+                target="_blank"
+                rel="noopener"
+                onclick="event.stopPropagation()"
+                aria-label={"Open app on port #{p.port}"}
+                class="focus-ring inline-flex items-center gap-0.5 rounded px-1 font-mono text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 active:bg-emerald-500/20 transition-colors"
+              >
+                :{p.port} <span class="text-[10px] opacity-70">↗</span>
+              </a>
+            </span>
           </div>
         </div>
       </section>
