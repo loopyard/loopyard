@@ -30,6 +30,10 @@ defmodule Loopyard.Tools.ControlPlane do
     Loopyard.Tools.ControlPlane.Ports,
     Loopyard.Tools.ControlPlane.Dispatch,
     Loopyard.Tools.ControlPlane.NotifyWhenDone,
+    # Ask the user decisions as tappable question cards — the deterministic path
+    # (same broker as the town hall / consent cards), not the flaky ACP-native
+    # AskUserQuestion. Agent-scoped, so it fits the workspace-less operator.
+    Loopyard.Tools.Container.AskUser,
     # --- Keep the fleet moving: agent + workspace-cluster control ---
     Loopyard.Tools.ControlPlane.Agent,
     Loopyard.Tools.ControlPlane.Workspace,

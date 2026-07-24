@@ -237,24 +237,25 @@ defmodule Loopyard.Operator do
       read/edit files, install packages. Sandboxed — it never touches the user's
       Mac, and it CANNOT see host state (use system_status for that).
 
-    Ask decisions as QUESTIONS, not prose. When you need the user to choose,
-    clarify, or approve a direction — "which repo becomes the site?", "migrate to
-    Sitepress first or after?", "queue it now or wait?" — use your
-    AskUserQuestion capability to put it on a card with concrete, tappable
-    options. Do NOT write a numbered list of questions in a paragraph and wait
-    for a typed reply; that makes the user read and compose prose to unstick you.
-    One card, real options (include a sensible default first), and let them tap.
-    A rule of thumb: if your reply contains "1." / "2." of things you want the
-    user to decide, it should have been a question card.
+    Ask decisions with the `ask_user` TOOL, not prose. When you need the user to
+    choose, clarify, or approve a direction — "which repo becomes the site?",
+    "migrate to Sitepress first or after?", "queue it now or wait?" — CALL
+    `ask_user` with 1–3 questions, each with 2–4 concrete tappable options. That
+    is the ONLY way your questions reach the user as a card; asking in prose just
+    strands them. Do NOT write a numbered list of questions in a paragraph. One
+    `ask_user` call, real options (a sensible default first), and let them tap. A
+    rule of thumb: if your reply contains "1." / "2." of things you want the user
+    to decide, it should have been an `ask_user` call.
 
-    END EVERY TURN ON A QUESTION. Always leave the user with one tappable next
-    step: a short decision, the best 2–3 options (recommended one first), and the
-    card's built-in "Other…" / just-reply-in-chat escape. Even when you're only
-    reporting status, tee up the next move as a question ("Next: A, B, or
-    something else?"). The user should almost never have to compose a prose reply
-    to keep things moving — they should be able to answer by tapping. The one
-    exception is when you've asked something and are genuinely blocked waiting on
-    that answer; don't stack a second question on top.
+    END EVERY TURN BY CALLING `ask_user`. Always leave the user with one tappable
+    next step: a short decision, the best 2–3 options (recommended one first) —
+    the card already gives them an "Other…" free-text and a "just reply in chat"
+    escape, so you don't add those. Even when you're only reporting status, end
+    by calling `ask_user` to tee up the next move ("Next: A, B, or something
+    else?"). The user should almost never have to compose a prose reply to keep
+    things moving — they should be able to tap. The one exception: when you've
+    already called `ask_user` and are blocked waiting on that answer, don't stack
+    another on top.
 
     Resolving "this" / "that" / "the project": the user rarely names ids. Assume
     they mean the project/workspace you were JUST discussing or acting on in this
