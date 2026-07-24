@@ -230,15 +230,7 @@ defmodule LoopyardWeb.OperatorLive do
       <Nav.bar height="h-14" gap="gap-3">
         <.breadcrumbs crumbs={[{"Loopyard", "/"}, {"Operator", nil}]} />
         <:actions>
-          <button
-            :if={@selected_agent.status == :thinking}
-            type="button"
-            phx-click="interrupt_agent"
-            phx-value-id={@agent_id}
-            class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500/20 transition-colors"
-          >
-            <span class="w-2 h-2 rounded-sm bg-red-500"></span> Stop
-          </button>
+          <%!-- Stop lives in the chat's live-status (chat_panel), not up here. --%>
           <LoopyardWeb.Components.Common.sound_pill id="operator-sound" />
         </:actions>
       </Nav.bar>

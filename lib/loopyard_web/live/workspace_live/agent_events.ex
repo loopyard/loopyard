@@ -254,6 +254,16 @@ defmodule LoopyardWeb.Live.WorkspaceLive.AgentEvents do
       socket =
         socket
         |> assign(:messages, socket.assigns.messages ++ [msg])
+        # The finalized assistant message IS the streamed text — clear the live
+        # partial (and thinking) so it stops rendering below the real message.
+        # Without this the last partial sticks at the bottom AND streaming_text
+        # keeps accumulating across turns into a blob the markdown renderer
+        # garbles (raw HTML / stray ** leaking). Mirrors on_message (:307).
+        |> then(fn s ->
+          if msg.role == :assistant,
+            do: s |> assign(:streaming_text, "") |> assign(:streaming_thinking, ""),
+            else: s
+        end)
         |> refresh_selected_from_agents(id, socket.assigns.agents)
         |> push_event("scroll_bottom", %{})
 
