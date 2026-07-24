@@ -4,12 +4,22 @@
 > (the operator cockpit + Operator.Digest). Design settled in conversation; this is
 > the buildable spec.
 
+## Roles (who's who)
+
+- **Operator = you** (the human running everything).
+- **Chief of staff = the agent** (`Loopyard.Operator` / `/operator` in code). Its
+  job: surface the important problems, **put them in context for you**, answer
+  what it can, and **delegate back to the workspace agents**. It works FOR you.
+
+So "the attention queue" is **a live summary of what YOU need to do**, curated by
+the chief of staff — not a status readout.
+
 ## The idea (one sentence)
 
-The operator's **right sidebar is a self-sorting priority queue of condensed
-workspace cards** — "what needs me" — that reshuffles calmly as agents change
-state, while the operator's own chat stays a clean 1:1 dialogue and each
-workspace's activity stays in its own stream.
+The chief of staff's **right sidebar is a self-sorting priority queue of condensed
+cards** — "what needs YOU" — that reshuffles calmly as agents change state, while
+your 1:1 chat with the chief of staff stays clean and each workspace's activity
+stays in its own stream.
 
 ## The core principle: never interlace — three separate things
 
@@ -32,16 +42,29 @@ don't get firehosed) keeps the operator *UI* calm.
 
 ## The card
 
-- **One live, deduplicated card per active workspace** — NOT one per dispatch or
-  message. Dispatch into garryslist three times → still one garryslist card,
-  updating in place. Card count = workspaces you're actively juggling (small by
-  construction).
-- **Live status on the card**: blocked / finished / working / idle — updates
-  itself. It's a little *window* into the workspace (status + "dive in"), not a
-  dead receipt.
-- **Enters the queue two ways**: you *dispatch* work to a workspace (it lights up
-  its card), OR the workspace's *state* surfaces it (asks a question, finishes,
-  hits a gate). Reads (`overview`/`peek`) do NOT mint cards.
+The queue is keyed by **agent**, but a workspace ≈ one agent, so practically it's
+one card per active workspace. What the card SHOWS is the important part:
+
+- **Identity = project · workspace**, never "Claude". The model name is noise —
+  every agent is Claude. `garryslist · ui-changes`, not `Claude · idle`.
+- **Body = where it's at / what it needs from YOU** — framed by the chief of
+  staff, NOT a raw green/idle dot. This is the whole value: a card is a
+  contextualized ask, e.g.
+  - blocked → the question or gate in plain terms: *"needs your call: rebase onto
+    main, or merge as-is?"*, *"approve deleting the stale volume?"*
+  - finished → *"port fix landed, tests green — ready for your next turn"*
+  - working → *"wiring up the auth flow…"* (quiet, low)
+  The base content comes from the live signal (the actual question / gate action /
+  the workspace's focus descriptor #70); the chief of staff may reword it so it
+  reads as *what you need to decide*, not *what state a process is in*.
+- **One live, deduplicated card per agent** — NOT one per dispatch or message.
+  Dispatch into garryslist three times → still one garryslist card, updating in
+  place. Card count = agents you're actively juggling (small by construction).
+- **Enters the queue two ways**: you *dispatch* work to it (lights up its card),
+  OR its *state* surfaces it (asks a question, finishes, hits a gate). Reads
+  (`overview`/`peek`) do NOT mint cards.
+- **Either party can jump in.** You tap a card to dive into that agent's chat and
+  micro-manage it; the chief of staff can also `dispatch` / act on it for you.
 
 ## The ordering engine — a weighted score (tunable dials)
 
