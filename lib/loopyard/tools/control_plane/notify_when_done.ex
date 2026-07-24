@@ -31,6 +31,9 @@ defmodule Loopyard.Tools.ControlPlane.NotifyWhenDone do
 
   alias Loopyard.Tools.ControlPlane
 
+  # No blanket rescue: `with` handles the EXPECTED errors; anything unexpected
+  # should surface (logged, returned to the ACP caller) so we find the bug, not
+  # get a vague "couldn't set the watch".
   def execute(%{agent_id: operator_id, target: target}, _assigns) do
     with {:ok, agent} <- ControlPlane.resolve_agent(target),
          {:ok, ws_id} <- workspace_id(agent),
@@ -42,8 +45,6 @@ defmodule Loopyard.Tools.ControlPlane.NotifyWhenDone do
        "Watching #{name} — I'll report the moment it finishes (or if it stalls). " <>
          "You don't have to check back."}
     end
-  rescue
-    e -> {:error, "Couldn't set the watch: #{inspect(e)}"}
   end
 
   defp workspace_id(%{workspace_id: ws}) when is_binary(ws), do: {:ok, ws}
