@@ -171,6 +171,17 @@ ambiguity surfaces a small candidate card. Never a silent wrong guess.
 
 ## Layout — desktop vs mobile (same model, different framing)
 
+**Build it as an evolution of Loopyard's EXISTING sidebar, not a bespoke panel.**
+The god-mode rail already shows projects → workspaces → agents on desktop
+(`global_sidebar` / `Birdseye` / `ProjectList.project_groups`) with a working
+mobile counterpart (the `Nav.switcher_sheet` bottom sheet). The attention queue is
+**that same rail, re-sorted by the weighted urgency score and condensed to
+"what needs you"** — each row shows the what-it-needs line instead of a status
+dot. Reusing that component family means the desktop-rail + mobile-sheet behavior
+(collapse, swipe, sync) is largely inherited, and the queue stays visually
+consistent with the rest of the app instead of being a one-off.
+
+
 - **Desktop:** the stack is a persistent **right rail** beside the operator chat
   (where `operator_board/1` sits today). Always visible, always reshuffling; the
   chat is the main column. On a wide screen a dived-into workspace can open 2-up
