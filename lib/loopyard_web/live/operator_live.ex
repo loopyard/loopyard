@@ -30,6 +30,16 @@ defmodule LoopyardWeb.OperatorLive do
   # ConsentUI hook as the chat, so a question is answered right there.
   import LoopyardWeb.Live.WorkspaceLive.Messages.Cards, only: [question_card: 1, secret_card: 1]
 
+  @aural_channel "activity"
+  # The bed roster — mirrors SoundLive so the rail player and /sound agree.
+  @tracks [
+    {:serene, "Serene"},
+    {:nocturne, "Nocturne"},
+    {:cascade, "Cascade"},
+    {:hum, "Hum"},
+    {:pink, "Pink"}
+  ]
+
   @impl true
   def mount(_params, _session, socket) do
     {:ok, %{agent_id: agent_id}} = Operator.ensure_agent()
@@ -57,6 +67,9 @@ defmodule LoopyardWeb.OperatorLive do
       |> assign(:host, host)
       |> assign(:streaming_text, "")
       |> assign(:stream_md, Loopyard.Markdown.Stream.new())
+      # The rail's ambient-sound player (track roster + current track).
+      |> assign(:tracks, @tracks)
+      |> assign(:current_track, current_track())
       |> assign(:streaming_thinking, "")
       |> assign(:stream_buffer, StreamBuffer.new())
       |> assign(:building, false)
@@ -184,7 +197,23 @@ defmodule LoopyardWeb.OperatorLive do
     {:noreply, push_navigate(socket, to: ~p"/projects/#{pid}/workspaces/#{ws}/agents/#{aid}")}
   end
 
+  # Rail sound player: crossfade the bed to another track (no reconnect).
+  def handle_event("pick_track", %{"track" => track}, socket) do
+    Aural.Channel.pick_track(@aural_channel, String.to_existing_atom(track))
+    {:noreply, assign(socket, :current_track, String.to_existing_atom(track))}
+  rescue
+    ArgumentError -> {:noreply, socket}
+  end
+
   def handle_event(_evt, _params, socket), do: {:noreply, socket}
+
+  defp current_track do
+    Aural.Channel.state(@aural_channel).track
+  rescue
+    _ -> :serene
+  catch
+    _, _ -> :serene
+  end
 
   # --- Message + streaming events: delegate to the SAME handlers the workspace
   # chat uses, so the operator gets incremental append + live streaming. ---
@@ -292,8 +321,7 @@ defmodule LoopyardWeb.OperatorLive do
               {@needs_you_count}
             </span>
           </.link>
-          <%!-- Stop lives in the chat's live-status (chat_panel), not up here. --%>
-          <LoopyardWeb.Components.Common.sound_pill id="operator-sound" />
+          <%!-- Sound moved to a proper player docked at the bottom of the rail. --%>
         </:actions>
       </Nav.bar>
 
@@ -317,8 +345,11 @@ defmodule LoopyardWeb.OperatorLive do
              with NEEDS YOU (blocking questions/approvals, grouped by workspace,
              answered inline) then WORKING (dispatched jobs + progress). The
              operator curates this; the chat is where you talk about it. --%>
-        <aside class="hidden lg:flex lg:w-[26rem] xl:w-[32rem] flex-none flex-col border-l border-zinc-200 dark:border-zinc-800 overflow-y-auto bg-zinc-50/60 dark:bg-zinc-900/40">
-          <.for_you_rail tree={@tree} host={@host} />
+        <aside class="hidden lg:flex lg:w-[26rem] xl:w-[32rem] flex-none flex-col border-l border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/40">
+          <div class="flex-1 min-h-0 overflow-y-auto">
+            <.for_you_rail tree={@tree} host={@host} />
+          </div>
+          <.sound_player id="rail-sound" tracks={@tracks} current_track={@current_track} />
         </aside>
       </div>
     </div>
@@ -444,6 +475,90 @@ defmodule LoopyardWeb.OperatorLive do
           </div>
         </div>
       </section>
+    </div>
+    """
+  end
+
+  # Docked ambient-sound player. Reuses the SoundPill hook (drives the root-layout
+  # AmbientAudio engine over window events) for play/pause + volume; the track
+  # pills crossfade the bed via `pick_track` (server). Bigger than the old header
+  # pill: play button, track name, volume, and the roster to switch.
+  attr :id, :string, required: true
+  attr :tracks, :list, required: true
+  attr :current_track, :atom, required: true
+
+  defp sound_player(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :track_name,
+        Enum.find_value(assigns.tracks, "Sound", fn {id, name} ->
+          id == assigns.current_track && name
+        end)
+      )
+
+    ~H"""
+    <div class="flex-none border-t border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50/60 dark:bg-zinc-900/40">
+      <div
+        id={@id}
+        phx-hook="SoundPill"
+        data-on="text-violet-600 dark:text-violet-400"
+        data-off="text-zinc-400 dark:text-zinc-500"
+        class="text-zinc-400 dark:text-zinc-500"
+      >
+        <div class="flex items-center gap-3">
+          <button
+            type="button"
+            data-sound-power
+            aria-label="Play or pause the ambient sound"
+            title="Play / pause"
+            class="focus-ring flex-none inline-flex items-center justify-center w-10 h-10 rounded-full bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors"
+          >
+            <%!-- OFF (paused) → PLAY --%>
+            <svg data-sound-icon="off" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+              <path d="M6.3 2.84A1 1 0 0 0 5 3.79v12.42a1 1 0 0 0 1.55.83l9.06-6.21a1 1 0 0 0 0-1.66L6.3 2.84Z" />
+            </svg>
+            <%!-- ON (playing) → PAUSE --%>
+            <svg data-sound-icon="on" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 hidden">
+              <path d="M6 3.5A1.5 1.5 0 0 0 4.5 5v10a1.5 1.5 0 0 0 3 0V5A1.5 1.5 0 0 0 6 3.5Zm8 0A1.5 1.5 0 0 0 12.5 5v10a1.5 1.5 0 0 0 3 0V5A1.5 1.5 0 0 0 14 3.5Z" />
+            </svg>
+          </button>
+
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-medium text-zinc-700 dark:text-zinc-200 truncate">
+              {@track_name}
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              data-sound-volume
+              aria-label="Volume"
+              class="mt-1 w-full h-1 cursor-pointer accent-violet-500"
+            />
+          </div>
+        </div>
+
+        <div class="mt-2 flex flex-wrap gap-1">
+          <button
+            :for={{id, name} <- @tracks}
+            type="button"
+            phx-click="pick_track"
+            phx-value-track={id}
+            class={[
+              "focus-ring rounded-full px-2.5 py-0.5 text-xs font-medium border transition-colors",
+              if(@current_track == id,
+                do: "bg-violet-500 border-violet-500 text-white",
+                else:
+                  "bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:border-violet-300 dark:hover:border-violet-500/40"
+              )
+            ]}
+          >
+            {name}
+          </button>
+        </div>
+      </div>
     </div>
     """
   end
