@@ -181,6 +181,52 @@ Hooks.SoundPanel = {
   }
 }
 
+// SoundPill — the compact ambient control (operator surface). Same engine
+// commands as SoundPanel (toggle + volume over window events), but it lives
+// inline in a header pill: the whole pill swaps to the accent class set when
+// playing and grays when off, and the speaker icon flips waves↔muted. Track
+// picking is a link to /sound (live nav, so the audio never cuts).
+Hooks.SoundPill = {
+  mounted() {
+    this.root = this.el
+    this.power = this.el.querySelector("[data-sound-power]")
+    this.slider = this.el.querySelector("[data-sound-volume]")
+    this.iconOn = this.el.querySelector('[data-sound-icon="on"]')
+    this.iconOff = this.el.querySelector('[data-sound-icon="off"]')
+    this.onCls = (this.root.dataset.on || "").split(" ").filter(Boolean)
+    this.offCls = (this.root.dataset.off || "").split(" ").filter(Boolean)
+
+    this.power.addEventListener("click", () =>
+      window.dispatchEvent(new CustomEvent("ambient:toggle"))
+    )
+    this.slider.addEventListener("input", (e) =>
+      window.dispatchEvent(new CustomEvent("ambient:set-volume", {detail: parseFloat(e.target.value)}))
+    )
+
+    this._onChanged = (e) => this.render(e.detail)
+    window.addEventListener("ambient:changed", this._onChanged)
+
+    const on = document.documentElement.dataset.ambientOn === "1"
+    const vol = parseFloat(localStorage.getItem("loopyard:ambient:vol"))
+    this.render({on, volume: Number.isNaN(vol) ? 0.35 : vol})
+    window.dispatchEvent(new CustomEvent("ambient:query"))
+  },
+  destroyed() {
+    window.removeEventListener("ambient:changed", this._onChanged)
+  },
+  render({on, connecting, volume}) {
+    if (this.iconOn) this.iconOn.classList.toggle("hidden", !on)
+    if (this.iconOff) this.iconOff.classList.toggle("hidden", on)
+    // Swap the whole pill between the accent (on) and muted (off) class sets.
+    this.root.classList.remove(...(on ? this.offCls : this.onCls))
+    this.root.classList.add(...(on ? this.onCls : this.offCls))
+    if (this.power) this.power.classList.toggle("animate-pulse", !!connecting)
+    if (volume != null && this.slider && document.activeElement !== this.slider) {
+      this.slider.value = volume
+    }
+  }
+}
+
 // ScrollBottom: lives on #chat-page (ancestor), scrolls #messages
 // (descendant). Hooks on deeply nested elements (inside function
 // components with phx-id) don't mount in LiveView — so the hook

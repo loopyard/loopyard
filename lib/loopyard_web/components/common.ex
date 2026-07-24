@@ -424,4 +424,68 @@ defmodule LoopyardWeb.Components.Common do
     </.link>
     """
   end
+
+  @doc """
+  The ambient-sound PILL — a compact media-control for the operator surface. A
+  mute/unmute speaker (the icon flips waves↔muted), a volume slider, and a "more"
+  button that opens the full `/sound` view to change the track. The `SoundPill`
+  JS hook drives the persistent `AmbientAudio` engine over window events and
+  mirrors its state back: the whole pill goes ACCENT (violet) when playing, muted
+  gray when off. `data-on`/`data-off` carry the swappable class sets as literals
+  so Tailwind keeps them in the bundle.
+  """
+  attr :id, :string, default: "sound-pill"
+  attr :class, :string, default: nil
+
+  def sound_pill(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      phx-hook="SoundPill"
+      data-on="bg-violet-50 dark:bg-violet-500/10 border-violet-300 dark:border-violet-500/40 text-violet-600 dark:text-violet-400"
+      data-off="bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-400 dark:text-zinc-500"
+      class={[
+        "inline-flex items-center gap-1 rounded-full border pl-1 pr-1.5 py-0.5 transition-colors bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-400 dark:text-zinc-500",
+        @class
+      ]}
+    >
+      <button
+        type="button"
+        data-sound-power
+        aria-label="Mute or unmute the ambient sound"
+        title="Mute / unmute"
+        class="focus-ring flex-none inline-flex items-center justify-center w-7 h-7 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+      >
+        <svg data-sound-icon="off" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+          <path d="M10 3.75a.75.75 0 0 0-1.264-.546L5.203 6.5H3.667A1.667 1.667 0 0 0 2 8.167v3.666A1.667 1.667 0 0 0 3.667 13.5h1.536l3.533 3.296A.75.75 0 0 0 10 16.25V3.75Z" />
+          <path d="M14.78 7.72a.75.75 0 0 0-1.06 1.06L14.94 10l-1.22 1.22a.75.75 0 1 0 1.06 1.06L16 11.06l1.22 1.22a.75.75 0 1 0 1.06-1.06L17.06 10l1.22-1.22a.75.75 0 0 0-1.06-1.06L16 8.94l-1.22-1.22Z" />
+        </svg>
+        <svg data-sound-icon="on" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 hidden">
+          <path d="M10 3.75a.75.75 0 0 0-1.264-.546L5.203 6.5H3.667A1.667 1.667 0 0 0 2 8.167v3.666A1.667 1.667 0 0 0 3.667 13.5h1.536l3.533 3.296A.75.75 0 0 0 10 16.25V3.75Z" />
+          <path d="M14.657 3.879a.75.75 0 0 0-1.06 1.06 7 7 0 0 1 0 9.9.75.75 0 0 0 1.06 1.061 8.5 8.5 0 0 0 0-12.021Z" />
+          <path d="M12.182 6.354a.75.75 0 0 0-1.06 1.06 3.5 3.5 0 0 1 0 4.95.75.75 0 0 0 1.06 1.06 5 5 0 0 0 0-7.07Z" />
+        </svg>
+      </button>
+      <input
+        type="range"
+        min="0"
+        max="1"
+        step="0.01"
+        data-sound-volume
+        aria-label="Volume"
+        class="w-20 h-1 cursor-pointer accent-violet-500"
+      />
+      <.link
+        navigate="/sound"
+        aria-label="Open sound settings and change the track"
+        title="Open the full sound view — change the track"
+        class="focus-ring flex-none inline-flex items-center justify-center w-7 h-7 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+      >
+        <svg viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
+          <path d="M4.5 10a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm7 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm7 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" />
+        </svg>
+      </.link>
+    </div>
+    """
+  end
 end
