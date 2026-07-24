@@ -237,13 +237,6 @@ defmodule LoopyardWeb.OperatorLive do
   end
 
   # Rail sound player: crossfade the bed to another track (no reconnect).
-  def handle_event("pick_track", %{"track" => track}, socket) do
-    Aural.Channel.pick_track(@aural_channel, String.to_existing_atom(track))
-    {:noreply, assign(socket, :current_track, String.to_existing_atom(track))}
-  rescue
-    ArgumentError -> {:noreply, socket}
-  end
-
   def handle_event(_evt, _params, socket), do: {:noreply, socket}
 
   # A workspace's mapped ports as launchable links. `port` is the HOST port (what
@@ -638,9 +631,28 @@ defmodule LoopyardWeb.OperatorLive do
           </button>
 
           <div class="flex-1 min-w-0">
-            <div class="text-sm font-medium text-zinc-700 dark:text-zinc-200 truncate">
-              {@track_name}
-            </div>
+            <%!-- Track name is the "change it" affordance: tap → the full /sound
+                 UI (picker). The chevron signals it's tappable. --%>
+            <.link
+              navigate={~p"/sound"}
+              title="Change the track"
+              class="focus-ring group -mx-1 inline-flex max-w-full items-center gap-1 rounded px-1 py-0.5 hover:bg-zinc-200/60 dark:hover:bg-zinc-700/60 transition-colors"
+            >
+              <span class="text-sm font-medium text-zinc-700 dark:text-zinc-200 truncate">
+                {@track_name}
+              </span>
+              <svg
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                class="w-3.5 h-3.5 flex-none text-zinc-400 group-hover:text-zinc-600 dark:group-hover:text-zinc-300"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.168 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02Z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+            </.link>
             <input
               type="range"
               min="0"
@@ -651,25 +663,6 @@ defmodule LoopyardWeb.OperatorLive do
               class="mt-1 w-full h-1 cursor-pointer accent-violet-500"
             />
           </div>
-        </div>
-
-        <div class="mt-2 flex flex-wrap gap-1">
-          <button
-            :for={{id, name} <- @tracks}
-            type="button"
-            phx-click="pick_track"
-            phx-value-track={id}
-            class={[
-              "focus-ring rounded-full px-2.5 py-0.5 text-xs font-medium border transition-colors",
-              if(@current_track == id,
-                do: "bg-violet-500 border-violet-500 text-white",
-                else:
-                  "bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 hover:border-violet-300 dark:hover:border-violet-500/40"
-              )
-            ]}
-          >
-            {name}
-          </button>
         </div>
       </div>
     </div>
