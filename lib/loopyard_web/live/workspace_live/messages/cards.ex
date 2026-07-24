@@ -614,15 +614,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
   status topic and re-rendering (see WorkspaceLive).
   """
   def agent_embed(assigns) do
-    assigns = assign(assigns, :st, embed_state(assigns.msg[:agent_id]))
+    st = embed_state(assigns.msg[:agent_id])
+    assigns = assign(assigns, st: st, recent: embed_recent(st))
 
     ~H"""
     <div class="py-2">
-      <.link
-        navigate={embed_link(@msg)}
-        class="group block rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50/60 dark:bg-zinc-800/30 p-3 hover:border-violet-300 dark:hover:border-violet-500/40 transition-colors"
-      >
-        <div class="flex items-center gap-2">
+      <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50/60 dark:bg-zinc-800/30 overflow-hidden">
+        <%!-- Header: who + live status + drill-in --%>
+        <.link
+          navigate={embed_link(@msg)}
+          class="group flex items-center gap-2 px-3 py-2 hover:bg-zinc-100/60 dark:hover:bg-zinc-800/50 transition-colors"
+        >
           <span class={["w-2 h-2 rounded-full flex-none", embed_dot(@st)]}></span>
           <span class="text-sm font-semibold text-zinc-800 dark:text-zinc-100 truncate">
             {@msg[:label] || "workspace"}
@@ -631,11 +633,44 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           <span class="ml-auto text-xs text-violet-500 group-hover:text-violet-600 flex-none">
             open →
           </span>
+        </.link>
+
+        <%!-- Live window: the sub-agent's recent turns, ONE level deep (never a
+             recursive transcript). Updates as the host LV re-renders on the
+             agent's events — so you watch it work, incl. work you drove directly. --%>
+        <div
+          :if={@recent != []}
+          class="border-t border-zinc-100 dark:border-zinc-800 px-3 py-2 space-y-1.5 max-h-72 overflow-y-auto"
+        >
+          <div :for={line <- @recent}>
+            <div
+              :if={line.kind == :text}
+              class="markdown-body text-sm text-zinc-700 dark:text-zinc-200 line-clamp-4"
+            >
+              {Loopyard.Markdown.to_html(line.text)}
+            </div>
+            <div
+              :if={line.kind == :tool}
+              class="font-mono text-xs text-zinc-500 dark:text-zinc-400 truncate"
+            >
+              ⚙ {line.tool}
+            </div>
+          </div>
+          <%!-- What it's doing right NOW (mid-turn), when known --%>
+          <div
+            :if={embed_detail(@st) && @st[:status] == :thinking}
+            class="font-mono text-xs text-violet-500 dark:text-violet-400 truncate"
+          >
+            {embed_detail(@st)}
+          </div>
         </div>
-        <div :if={embed_detail(@st)} class="mt-1 text-xs text-zinc-500 dark:text-zinc-400 truncate">
+        <div
+          :if={@recent == [] && embed_detail(@st)}
+          class="border-t border-zinc-100 dark:border-zinc-800 px-3 py-2 text-xs text-zinc-500 dark:text-zinc-400 truncate"
+        >
           {embed_detail(@st)}
         </div>
-      </.link>
+      </div>
     </div>
     """
   end
@@ -649,6 +684,27 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
   end
 
   defp embed_state(_), do: nil
+
+  # The sub-agent's last few OUTPUT messages (its work) — assistant text + tool
+  # calls, oldest→newest. Skips user/system so the embed shows what the agent is
+  # DOING, one level deep. Capped so it never becomes a recursive transcript.
+  defp embed_recent(%{messages: msgs}) when is_list(msgs) do
+    msgs
+    |> Enum.reverse()
+    |> Enum.reduce_while([], fn m, acc ->
+      cond do
+        length(acc) >= 4 -> {:halt, acc}
+        m[:role] == :assistant and String.trim(to_string(m[:content])) != "" ->
+          {:cont, [%{kind: :text, text: to_string(m[:content])} | acc]}
+        m[:role] == :tool and is_binary(m[:tool]) ->
+          {:cont, [%{kind: :tool, tool: m[:tool]} | acc]}
+        true ->
+          {:cont, acc}
+      end
+    end)
+  end
+
+  defp embed_recent(_), do: []
 
   defp embed_dot(%{status: :thinking}), do: "bg-violet-500 animate-pulse"
   defp embed_dot(%{status: :idle}), do: "bg-emerald-500"

@@ -94,8 +94,43 @@ defmodule LoopyardWeb.OperatorLive do
       # SAME hook as the workspace chat, so the operator stream is never missing
       # a consent feature. No workspace → secrets scope to nil.
       |> LoopyardWeb.Live.ConsentUI.attach(secret_scope: nil)
+      # Subscribe to the sub-agents this operator is embedding, so their live
+      # windows update as they work — INCLUDING work driven directly, not just
+      # what the operator dispatched.
+      |> assign(:embedded_ids, MapSet.new())
+      |> subscribe_embeds()
 
     {:ok, socket}
+  end
+
+  # The sub-agents referenced by :embed cards in the transcript. Subscribe to any
+  # newly-referenced one; the subscription is idempotent per LV (we track which).
+  defp subscribe_embeds(socket) do
+    ids =
+      socket.assigns.messages
+      |> Enum.filter(&(&1[:role] == :embed and is_binary(&1[:agent_id])))
+      |> MapSet.new(& &1.agent_id)
+
+    if connected?(socket) do
+      MapSet.difference(ids, socket.assigns.embedded_ids)
+      |> Enum.each(&Events.ChatAgentMessage.subscribe/1)
+    end
+
+    assign(socket, :embedded_ids, ids)
+  end
+
+  # Force a specific embed card to re-render (re-read the sub-agent's state) by
+  # touching its message — the ONLY reliable way past LiveView's component
+  # memoization. Never mixes the sub-agent's content into the operator's chat.
+  defp touch_embed(socket, agent_id) do
+    messages =
+      Enum.map(socket.assigns.messages, fn m ->
+        if m[:role] == :embed and m[:agent_id] == agent_id,
+          do: Map.put(m, :tick, (m[:tick] || 0) + 1),
+          else: m
+      end)
+
+    assign(socket, :messages, messages)
   end
 
   # Load the agent summary + transcript into the workspace-chat assign shape:
@@ -282,8 +317,23 @@ defmodule LoopyardWeb.OperatorLive do
   # chat uses, so the operator gets incremental append + live streaming. ---
 
   @impl true
-  def handle_info(%Events.ChatAgentMessage.Message{} = e, socket),
-    do: AgentEvents.handle_message(e, socket)
+  def handle_info(%Events.ChatAgentMessage.Message{agent_id: id} = e, socket) do
+    cond do
+      id == socket.assigns.agent_id ->
+        # The operator's own message → normal chat handling. A new :embed card may
+        # reference a new sub-agent, so re-check subscriptions.
+        {:noreply, socket} = AgentEvents.handle_message(e, socket)
+        {:noreply, subscribe_embeds(socket)}
+
+      MapSet.member?(socket.assigns.embedded_ids, id) ->
+        # A sub-agent we embed produced a message → refresh its live window ONLY;
+        # never fold a sub-agent's content into the operator's own transcript.
+        {:noreply, touch_embed(socket, id)}
+
+      true ->
+        {:noreply, socket}
+    end
+  end
 
   # Card status resolutions (approval → :renamed / :deleted / :approved / progress)
   # ride MessageUpdated. Without this the operator's cards freeze at their
@@ -342,7 +392,15 @@ defmodule LoopyardWeb.OperatorLive do
     if e.id == socket.assigns.agent_id, do: drive_sound(e.status)
 
     # Any agent's status change can move the board AND change what's blocking.
-    {:noreply, refresh_rail(socket)}
+    socket = refresh_rail(socket)
+
+    # If it's an agent we embed, refresh its live window too (working → ready).
+    socket =
+      if MapSet.member?(socket.assigns.embedded_ids, e.id),
+        do: touch_embed(socket, e.id),
+        else: socket
+
+    {:noreply, socket}
   end
 
   # Backstop tick: catches a cross-workspace answer / timed-out question we got no
