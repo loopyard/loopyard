@@ -61,9 +61,11 @@ defmodule LoopyardWeb.OperatorLive do
       # tail. (chat_panel still reads these two.)
       |> assign(:has_more_messages, false)
       |> assign(:window_tail?, true)
-      # The glanceable working board — every project/workspace + status. Refreshed
-      # on any agent's status change (below). ETS-cheap.
+      # The attention queue — every active project/workspace + what it needs.
+      # Refreshed on any agent's status change (below). ETS-cheap.
       |> assign(:tree, Loopyard.WorkspaceTree.global(host))
+      # Mobile: the queue is a toggleable sheet (desktop shows it as a rail).
+      |> assign(:queue_open, false)
       |> load_agent()
 
     {:ok, socket}
@@ -165,6 +167,9 @@ defmodule LoopyardWeb.OperatorLive do
     {:noreply, load_agent(socket)}
   end
 
+  def handle_event("toggle_queue", _params, socket),
+    do: {:noreply, assign(socket, :queue_open, !socket.assigns.queue_open)}
+
   def handle_event(_evt, _params, socket), do: {:noreply, socket}
 
   # --- Message + streaming events: delegate to the SAME handlers the workspace
@@ -254,6 +259,21 @@ defmodule LoopyardWeb.OperatorLive do
       <Nav.bar height="h-14" gap="gap-3">
         <.breadcrumbs crumbs={[{"Loopyard", "/"}, {"Operator", nil}]} />
         <:actions>
+          <%!-- Mobile: toggle the attention-queue sheet (desktop shows it as a rail). --%>
+          <button
+            type="button"
+            phx-click="toggle_queue"
+            aria-label="What needs you"
+            class="lg:hidden focus-ring inline-flex items-center gap-1.5 rounded-full border border-zinc-200 dark:border-zinc-700 px-3 h-9 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+          >
+            Needs you
+            <span
+              :if={needs_count(@tree) > 0}
+              class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full bg-amber-500 text-white text-xs font-semibold"
+            >
+              {needs_count(@tree)}
+            </span>
+          </button>
           <%!-- Stop lives in the chat's live-status (chat_panel), not up here. --%>
           <LoopyardWeb.Components.Common.sound_pill id="operator-sound" />
         </:actions>
@@ -275,14 +295,44 @@ defmodule LoopyardWeb.OperatorLive do
             detail_level={:trace}
           />
         </div>
-        <%!-- The glanceable working board — secondary, quiet, desktop-only. What's
-             here / what's running, at a glance, while you work in chat. --%>
+        <%!-- Desktop (lg+): the attention queue as a persistent right rail beside
+             the chat. On mobile it's the sheet below instead. --%>
         <aside class="hidden lg:flex w-72 flex-none flex-col border-l border-zinc-200 dark:border-zinc-800 overflow-y-auto bg-zinc-50/60 dark:bg-zinc-900/40">
           <.attention_queue tree={@tree} />
         </aside>
       </div>
+
+      <%!-- Mobile (<lg): the same queue as a full-height sheet, toggled from the
+           header. Tapping a card dives into that agent (leaving the sheet). --%>
+      <div
+        :if={@queue_open}
+        class="lg:hidden fixed inset-0 z-40 flex flex-col bg-white dark:bg-zinc-900 safe-area-x"
+      >
+        <div class="flex-none flex items-center justify-between h-14 px-4 border-b border-zinc-200 dark:border-zinc-800">
+          <span class="text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+            Needs you
+          </span>
+          <button
+            type="button"
+            phx-click="toggle_queue"
+            aria-label="Close"
+            class="focus-ring inline-flex items-center justify-center w-9 h-9 rounded-lg text-lg text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          >
+            ✕
+          </button>
+        </div>
+        <div class="flex-1 overflow-y-auto">
+          <.attention_queue tree={@tree} />
+        </div>
+      </div>
     </div>
     """
+  end
+
+  # How many items are actually asking for you (blocked or freshly finished) — the
+  # mobile header badge, so you know to open the sheet without opening it.
+  defp needs_count(tree) do
+    Loopyard.Operator.Queue.items(tree) |> Enum.count(&(&1.state in [:blocked, :finished]))
   end
 
   # The attention queue (Phase 1, minimal): active agents as condensed cards —
