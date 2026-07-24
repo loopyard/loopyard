@@ -211,6 +211,17 @@ defmodule LoopyardWeb.OperatorLive do
 
   def handle_event(_evt, _params, socket), do: {:noreply, socket}
 
+  # A workspace's mapped ports as launchable badges: {label (container port), url}.
+  defp workspace_ports(ws_id, host) do
+    Loopyard.PortRegistry.list_for_workspace(ws_id)
+    |> Enum.map(fn e ->
+      %{label: e[:container_port] || e[:service] || "port", url: "http://#{host}:#{e[:host_port]}"}
+    end)
+    |> Enum.sort_by(& &1.label)
+  rescue
+    _ -> []
+  end
+
   defp current_track do
     Aural.Channel.state(@aural_channel).track
   rescue
@@ -249,7 +260,13 @@ defmodule LoopyardWeb.OperatorLive do
     jobs =
       tree
       |> Loopyard.Operator.Queue.items()
-      |> Enum.map(&Map.put(&1, :watching?, MapSet.member?(watched, &1.id)))
+      |> Enum.map(fn j ->
+        j
+        |> Map.put(:watching?, MapSet.member?(watched, j.id))
+        # ALL mapped ports (not just network-exposed) — the operator's viewer is
+        # on the host, so loopback dev servers are launchable at host:host_port.
+        |> Map.put(:ports, workspace_ports(j.id, host))
+      end)
 
     socket
     |> assign(:tree, tree)
@@ -493,6 +510,20 @@ defmodule LoopyardWeb.OperatorLive do
               :if={i.needs not in ["", state_label(i.state)]}
               class="text-zinc-500 dark:text-zinc-400"
             > · {i.needs}</span>
+          </div>
+          <%!-- Launchable ports — open the running server in a new tab. The inline
+               stopPropagation keeps the click off the card's open_job. --%>
+          <div :if={i.ports != []} class="mt-1 pl-3.5 flex flex-wrap gap-1">
+            <a
+              :for={p <- i.ports}
+              href={p.url}
+              target="_blank"
+              rel="noopener"
+              onclick="event.stopPropagation()"
+              class="focus-ring inline-flex items-center gap-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-300 dark:border-emerald-500/30 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition-colors"
+            >
+              :{p.label} ↗
+            </a>
           </div>
         </div>
       </section>
