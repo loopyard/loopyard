@@ -462,32 +462,23 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   attr :streaming_text, :string, default: ""
 
   def streaming_bubble(assigns) do
-    # Flush-left (no rail, no indent) so the live prose lines up with completed
-    # assistant messages and everything else in the transcript.
-    #
-    # LIVE-RENDERED via phoenix_streamdown: the reply renders block-by-block —
-    # completed blocks freeze with phx-update="ignore", and only the active
-    # (in-progress) block is remended + MDEx-rendered + re-diffed per token. That
-    # keeps the per-token cost bounded to ONE block (not the whole reply — the
-    # O(reply) firehose d0c34c5 fought), while showing rendered markdown instead
-    # of raw text. `@streaming_text` is accumulated server-side per delta in
-    # agent_events.ex; the `:if` at the call site drops the element between turns.
+    # Render the live reply the EXACT same way a FINALIZED assistant message
+    # renders — plain `Loopyard.Markdown.to_html/1`, re-rendered on each update.
+    # NO phoenix_streamdown streaming mode / block-freezing: that machinery kept
+    # breaking (chunks not appending, raw HTML/** leaking, stuck partials) because
+    # its phx-update="ignore" block indexing fought LiveView's re-diffs. Deltas are
+    # already coalesced to ~100ms server-side (@delta_flush_ms), so a full re-render
+    # per flush is cheap AND correct — and streaming now looks identical to the
+    # settled bubble, so there's no jump when it finalizes. Partial markdown (an
+    # unclosed **) just renders as literal text until the next flush closes it —
+    # fine, and it can't break structurally. Flush-left so it lines up with
+    # completed messages; `:if` at the call site drops the element between turns.
     ~H"""
     <div
       class="py-0.5 mt-2 markdown-body text-lg md:text-base leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl"
       id="streaming-msg"
     >
-<%!-- mdex_opts match Loopyard.Markdown (finalized messages): same extensions +
-           hardbreaks, and syntax_highlight OFF. Off is required AND consistent —
-           MDEx 0.13 moved highlighting to a separate :lumis dep (streamdown's
-           default "onedark" theme raises without it → falls back to raw), and
-           Loopyard's finalized renderer doesn't highlight either, so streaming
-           now matches the settled bubble exactly. --%>
-      <.markdown
-        content={@streaming_text}
-        streaming
-        mdex_opts={[syntax_highlight: nil, render: [hardbreaks: true, unsafe_: false]]}
-      />
+      {Loopyard.Markdown.to_html(@streaming_text)}
     </div>
     """
   end
