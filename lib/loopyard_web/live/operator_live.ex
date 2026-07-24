@@ -67,6 +67,10 @@ defmodule LoopyardWeb.OperatorLive do
       # Mobile: the queue is a toggleable sheet (desktop shows it as a rail).
       |> assign(:queue_open, false)
       |> load_agent()
+      # The shared consent surface: question + secret cards answer through the
+      # SAME hook as the workspace chat, so the operator stream is never missing
+      # a consent feature. No workspace → secrets scope to nil.
+      |> LoopyardWeb.Live.ConsentUI.attach(secret_scope: nil)
 
     {:ok, socket}
   end

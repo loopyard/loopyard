@@ -212,7 +212,11 @@ defmodule LoopyardWeb.WorkspaceLive do
        DockerEvents.derive_workspace_state(workspace.id, service_statuses, nil)
      )
      |> assign(:workspace_state_since, DateTime.utc_now())
-     |> assign(:docker_connected?, DockerEvents.docker_connected?())}
+     |> assign(:docker_connected?, DockerEvents.docker_connected?())
+     # Question + secret cards answer through the SHARED consent hook (the same
+     # one the operator chat uses) so the two streams can't drift. Secrets scope
+     # to this workspace.
+     |> LoopyardWeb.Live.ConsentUI.attach(secret_scope: workspace.id)}
   end
 
   # Refresh the :selected_agent assign with the agent's latest summary
@@ -790,85 +794,11 @@ defmodule LoopyardWeb.WorkspaceLive do
     end
   end
 
-  @impl true
-  def handle_event(
-        "answer_question",
-        %{"question_id" => qid, "q" => q_id, "option" => option},
-        socket
-      ) do
-    # Settle ONE question with the clicked option (multiplayer: the broker
-    # broadcasts the per-question lock; the whole ask resolves — and the card
-    # flips to :answered — only when every question is answered or skipped).
-    question_action(socket, Loopyard.Harness.Questions.answer_partial(qid, q_id, [option]))
-  end
-
-  @impl true
-  def handle_event("skip_question", %{"question_id" => qid, "q" => q_id}, socket) do
-    question_action(socket, Loopyard.Harness.Questions.answer_partial(qid, q_id, []))
-  end
-
-  @impl true
-  def handle_event(
-        "toggle_question_option",
-        %{"question_id" => qid, "q" => q_id, "option" => option},
-        socket
-      ) do
-    # Multi-select draft toggle — broadcast, but the question stays open until
-    # its Done button confirms.
-    question_action(socket, Loopyard.Harness.Questions.toggle_option(qid, q_id, option))
-  end
-
-  @impl true
-  def handle_event("confirm_question", %{"question_id" => qid, "q" => q_id}, socket) do
-    question_action(socket, Loopyard.Harness.Questions.confirm_question(qid, q_id))
-  end
-
-  @impl true
-  def handle_event(
-        "answer_question_text",
-        %{"question_id" => qid, "q" => q_id, "text" => text},
-        socket
-      ) do
-    # The per-question "Other…" free-text answer. Blank submits are a no-op
-    # (keep the form open) rather than an accidental skip.
-    case String.trim(text) do
-      "" ->
-        {:noreply, socket}
-
-      trimmed ->
-        question_action(socket, Loopyard.Harness.Questions.answer_partial(qid, q_id, [trimmed]))
-    end
-  end
-
-  defp question_action(socket, :ok), do: {:noreply, socket}
-
-  defp question_action(socket, {:error, :not_found}),
-    do: {:noreply, put_flash(socket, :info, "That question was already answered.")}
-
-  @impl true
-  def handle_event("submit_secret", %{"request_id" => rid, "secret" => value}, socket) do
-    # The masked value goes straight to the on-disk store (scoped to this
-    # workspace) and the broker signals the blocked agent with only the KEY — the
-    # value is never assigned, broadcast, or returned here, so it stays out of the
-    # transcript. `value` is dropped immediately after this call.
-    ws_id = socket.assigns.workspace.id
-
-    case Loopyard.Harness.SecretRequests.submit(rid, value, ws_id, nil) do
-      {:ok, _key} ->
-        {:noreply, socket}
-
-      {:error, :not_found} ->
-        {:noreply, put_flash(socket, :info, "That secret request is no longer waiting.")}
-    end
-  end
-
-  @impl true
-  def handle_event("cancel_secret", %{"request_id" => rid}, socket) do
-    # The human declined — flip the card to :declined for everyone and let the
-    # agent's turn resume so it stops asking.
-    Loopyard.Harness.SecretRequests.cancel(rid, nil)
-    {:noreply, socket}
-  end
+  # Question + secret cards (answer_question / skip_question /
+  # toggle_question_option / confirm_question / answer_question_text /
+  # submit_secret / cancel_secret) are handled by the shared
+  # `LoopyardWeb.Live.ConsentUI` hook attached in mount — same handlers as the
+  # operator chat, so the two streams can't drift.
 
   @impl true
   def handle_event("decide_approval", %{"approval_id" => id, "decision" => decision}, socket) do
