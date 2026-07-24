@@ -462,23 +462,29 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   attr :streaming_text, :string, default: ""
 
   def streaming_bubble(assigns) do
-    # Render the live reply the EXACT same way a FINALIZED assistant message
-    # renders — plain `Loopyard.Markdown.to_html/1`, re-rendered on each update.
-    # NO phoenix_streamdown streaming mode / block-freezing: that machinery kept
-    # breaking (chunks not appending, raw HTML/** leaking, stuck partials) because
-    # its phx-update="ignore" block indexing fought LiveView's re-diffs. Deltas are
-    # already coalesced to ~100ms server-side (@delta_flush_ms), so a full re-render
-    # per flush is cheap AND correct — and streaming now looks identical to the
-    # settled bubble, so there's no jump when it finalizes. Partial markdown (an
-    # unclosed **) just renders as literal text until the next flush closes it —
-    # fine, and it can't break structurally. Flush-left so it lines up with
-    # completed messages; `:if` at the call site drops the element between turns.
+    # CLIENT-APPENDED (restored from d0c34c5, the last version that actually
+    # worked). The body is phx-update="ignore" and the `StreamAppend` hook appends
+    # each delta chunk (pushed as "stream_delta") as a text node — the server NEVER
+    # renders the accumulated text here. Everything that touched this element
+    # server-side broke: phoenix_streamdown's block-freezing fought LiveView diffs
+    # (chunks not appending); rendering @streaming_text server-side (to_html)
+    # re-shipped + re-patched the whole reply 10×/s AND fought the still-firing
+    # stream_delta events. Live text is PLAIN (whitespace-pre-wrap); markdown
+    # renders once, when the finalized assistant Message replaces this element. The
+    # `:if` at the call site removes it between turns, so each stream starts empty.
     ~H"""
     <div
-      class="py-0.5 mt-2 markdown-body text-lg md:text-base leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl"
+      class="py-0.5 mt-2"
       id="streaming-msg"
+      phx-update="ignore"
+      phx-hook="StreamAppend"
+      data-stream-event="stream_delta"
     >
-      {Loopyard.Markdown.to_html(@streaming_text)}
+      <div
+        data-stream-target
+        class="markdown-body text-lg md:text-base leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl whitespace-pre-wrap"
+      >
+      </div>
     </div>
     """
   end
