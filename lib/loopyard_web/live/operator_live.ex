@@ -26,6 +26,10 @@ defmodule LoopyardWeb.OperatorLive do
   import LoopyardWeb.Components.Breadcrumbs, only: [breadcrumbs: 1]
   import LoopyardWeb.Live.WorkspaceLive.Components.Chat, only: [chat_panel: 1]
 
+  # Answerable consent cards rendered inline in the "for you" rail — same broker +
+  # ConsentUI hook as the chat, so a question is answered right there.
+  import LoopyardWeb.Live.WorkspaceLive.Messages.Cards, only: [question_card: 1, secret_card: 1]
+
   @impl true
   def mount(_params, _session, socket) do
     {:ok, %{agent_id: agent_id}} = Operator.ensure_agent()
@@ -309,74 +313,152 @@ defmodule LoopyardWeb.OperatorLive do
             detail_level={:chat}
           />
         </div>
-        <%!-- Desktop (lg+): the WORKER QUEUE (dispatched jobs + progress) as a
-             persistent right rail. "Needs you" (the town hall) is the header
-             link — a different surface (blocking items to answer). --%>
-        <aside class="hidden lg:flex w-72 flex-none flex-col border-l border-zinc-200 dark:border-zinc-800 overflow-y-auto bg-zinc-50/60 dark:bg-zinc-900/40">
-          <.attention_queue tree={@tree} />
+        <%!-- Desktop (lg+): the "for you" rail — co-equal with the chat. Leads
+             with NEEDS YOU (blocking questions/approvals, grouped by workspace,
+             answered inline) then WORKING (dispatched jobs + progress). The
+             operator curates this; the chat is where you talk about it. --%>
+        <aside class="hidden lg:flex lg:w-[26rem] xl:w-[32rem] flex-none flex-col border-l border-zinc-200 dark:border-zinc-800 overflow-y-auto bg-zinc-50/60 dark:bg-zinc-900/40">
+          <.for_you_rail tree={@tree} host={@host} />
         </aside>
       </div>
     </div>
     """
   end
 
-  # The WORKER QUEUE: one card per job you've DISPATCHED (Operator.Queue). Starts
-  # blank; each card shows project·workspace, the live state (working / done /
-  # needs-you), and the "N new since you looked" delta. Clicking dives into that
-  # agent's chat, which re-anchors your read-position (delta → 0, done cards
-  # retire). Live: @tree rebuilds on every StatusChanged so this re-derives + re-ranks.
+  # The "for you" rail: NEEDS YOU (blocking items, grouped by workspace, answered
+  # inline) + WORKING (dispatched jobs, live state + delta). @tree rebuilds on
+  # every StatusChanged so both zones re-derive + re-rank.
   attr :tree, :list, required: true
+  attr :host, :string, required: true
 
-  defp attention_queue(assigns) do
-    # Mark the jobs we've armed a "tell me when it's done" watch on, so the board
-    # doubles as the live registry of "what am I waiting on".
+  defp for_you_rail(assigns) do
+    # NEEDS YOU: every blocking item across all agents (Attention), grouped by
+    # workspace, answered INLINE — the town-hall stack pulled next to the chat so
+    # there's no page-switch. Question cards are answerable here via the ConsentUI
+    # hook attached in mount.
+    groups =
+      assigns.host
+      |> Loopyard.Attention.line()
+      |> Enum.group_by(& &1.workspace_id)
+      |> Enum.map(fn {_ws_id, items} ->
+        first = hd(items)
+
+        %{
+          name: first.workspace_name || "Operator",
+          project: first.project_name,
+          path: first.path,
+          items: items
+        }
+      end)
+      |> Enum.sort_by(&length(&1.items), :desc)
+
+    needs_count = Enum.reduce(groups, 0, fn g, n -> n + length(g.items) end)
+
+    # WORKING: dispatched jobs + progress (the old worker queue). 🔔 = watched.
     watched = Loopyard.Operator.Digest.watches() |> MapSet.new(& &1.ws_id)
-    items = Loopyard.Operator.Queue.items(assigns.tree)
-    items = Enum.map(items, &Map.put(&1, :watching?, MapSet.member?(watched, &1.id)))
-    assigns = assign(assigns, :items, items)
+
+    jobs =
+      assigns.tree
+      |> Loopyard.Operator.Queue.items()
+      |> Enum.map(&Map.put(&1, :watching?, MapSet.member?(watched, &1.id)))
+
+    assigns = assign(assigns, groups: groups, needs_count: needs_count, jobs: jobs)
 
     ~H"""
-    <div class="p-3 space-y-1.5">
-      <div class="text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500 px-1 pb-1">
-        Worker queue
-      </div>
-      <p :if={@items == []} class="px-1 text-sm text-zinc-500 dark:text-zinc-400">
-        Nothing dispatched yet — ask the operator to put a workspace to work.
-      </p>
-      <div
-        :for={i <- @items}
-        phx-click="open_job"
-        phx-value-ws={i.id}
-        phx-value-project={i.project_id}
-        phx-value-agent={i.agent_id}
-        class="rounded-lg px-2.5 py-2 border border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors cursor-pointer"
-      >
-        <div class="flex items-center gap-2">
-          <span class={["flex-none w-1.5 h-1.5 rounded-full", state_dot(i.state)]} />
-          <span class="flex-1 min-w-0 truncate text-sm font-medium text-zinc-700 dark:text-zinc-200">
-            {i.project_name} · {i.workspace_name}
+    <div class="flex flex-col">
+      <%!-- NEEDS YOU — action required, leads the rail --%>
+      <section class="p-3 space-y-3">
+        <div class="flex items-center gap-2 px-1">
+          <span class="text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+            Needs you
           </span>
           <span
-            :if={i.watching?}
-            title="Watching — you'll be told when this finishes"
-            class="flex-none text-xs text-amber-600 dark:text-amber-400"
+            :if={@needs_count > 0}
+            class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full bg-amber-500 text-white text-xs font-semibold"
           >
-            🔔
-          </span>
-          <span
-            :if={i.delta > 0}
-            class="flex-none text-xs font-semibold text-violet-600 dark:text-violet-400"
-          >
-            {i.delta} new
+            {@needs_count}
           </span>
         </div>
-        <div class="mt-0.5 pl-3.5 text-xs truncate">
-          <span class={state_text(i.state)}>{state_label(i.state)}</span><span
-            :if={i.needs not in ["", state_label(i.state)]}
-            class="text-zinc-500 dark:text-zinc-400"
-          > · {i.needs}</span>
+
+        <p :if={@needs_count == 0} class="px-1 text-sm text-zinc-500 dark:text-zinc-400">
+          Nobody's waiting on you.
+        </p>
+
+        <div :for={g <- @groups} class="space-y-1.5">
+          <div class="flex items-baseline gap-1.5 px-1">
+            <span class="text-sm font-semibold text-zinc-700 dark:text-zinc-200 truncate">
+              {g.name}
+            </span>
+            <span :if={g.project} class="text-xs text-zinc-400 dark:text-zinc-500 truncate">
+              {g.project}
+            </span>
+            <span class="ml-auto flex-none text-xs text-zinc-400 dark:text-zinc-500">
+              {length(g.items)} waiting
+            </span>
+          </div>
+
+          <div :for={item <- g.items}>
+            <.question_card :if={item.kind == :question and item.msg} msg={item.msg} />
+            <.secret_card :if={item.kind == :secret and item.msg} msg={item.msg} />
+            <.link
+              :if={item.kind == :approval or (item.kind != :question and is_nil(item.msg))}
+              navigate={item.path}
+              class="focus-ring flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-violet-300 dark:hover:border-violet-500/40"
+            >
+              <span class="flex-1 min-w-0 truncate text-sm text-zinc-700 dark:text-zinc-200">
+                {item.label}
+              </span>
+              <span class="flex-none text-xs font-medium text-violet-600 dark:text-violet-400">
+                open →
+              </span>
+            </.link>
+          </div>
         </div>
-      </div>
+      </section>
+
+      <%!-- WORKING — ambient progress of what you dispatched --%>
+      <section class="p-3 space-y-1.5 border-t border-zinc-200 dark:border-zinc-800">
+        <div class="text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500 px-1 pb-1">
+          Working
+        </div>
+        <p :if={@jobs == []} class="px-1 text-sm text-zinc-500 dark:text-zinc-400">
+          Nothing dispatched yet.
+        </p>
+        <div
+          :for={i <- @jobs}
+          phx-click="open_job"
+          phx-value-ws={i.id}
+          phx-value-project={i.project_id}
+          phx-value-agent={i.agent_id}
+          class="rounded-lg px-2.5 py-2 border border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors cursor-pointer"
+        >
+          <div class="flex items-center gap-2">
+            <span class={["flex-none w-1.5 h-1.5 rounded-full", state_dot(i.state)]} />
+            <span class="flex-1 min-w-0 truncate text-sm font-medium text-zinc-700 dark:text-zinc-200">
+              {i.project_name} · {i.workspace_name}
+            </span>
+            <span
+              :if={i.watching?}
+              title="Watching — you'll be told when this finishes"
+              class="flex-none text-xs text-amber-600 dark:text-amber-400"
+            >
+              🔔
+            </span>
+            <span
+              :if={i.delta > 0}
+              class="flex-none text-xs font-semibold text-violet-600 dark:text-violet-400"
+            >
+              {i.delta} new
+            </span>
+          </div>
+          <div class="mt-0.5 pl-3.5 text-xs truncate">
+            <span class={state_text(i.state)}>{state_label(i.state)}</span><span
+              :if={i.needs not in ["", state_label(i.state)]}
+              class="text-zinc-500 dark:text-zinc-400"
+            > · {i.needs}</span>
+          </div>
+        </div>
+      </section>
     </div>
     """
   end
