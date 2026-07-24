@@ -4,6 +4,45 @@
 > (the operator cockpit + Operator.Digest). Design settled in conversation; this is
 > the buildable spec.
 
+## PIVOT (adopted): it's a WORKER QUEUE, not a status board
+
+The always-on attention board tried to show every workspace's state + sort it by
+importance — which is why it needed scoring/decay/"is this noise". We're pivoting
+to a **worker queue**: it starts **blank**, fills only with work **you dispatch**,
+each job **chugs**, and it tells you when a job is **done** (or **needs you**).
+Bounded by your actions, not the fleet's state — so nothing is noise (you put it
+there) and the scoring engine mostly evaporates (it's your handful of jobs).
+
+**Lifecycle:** `blank → dispatch → chugging → done | needs-you → address → clears.`
+
+**Retirement = an INBOX model (the hard part, solved):**
+- **chugging** → stays (live work).
+- **done** → becomes an **UNREAD** item — stays, highlighted (a to-do, not a receipt).
+- **you dive in (look)** → marks it **read** → it **retires**. Seeing it IS addressing it.
+- **you dispatch a follow-up** → **revives** to chugging (still one item).
+- **dismiss** (swipe) → clear without looking (escape hatch).
+- **needs-you** (gate/question mid-job) → stays until you unblock, regardless of read.
+
+Read is tracked as `read_at` vs `dispatched_at`: a done job shows iff you haven't
+opened it since the last dispatch (`dispatched_at > read_at`); opening sets
+`read_at = now`; re-dispatch bumps `dispatched_at` → unread again. No transition-
+time bookkeeping needed. Derived state (chugging/done/needs-you) comes from the
+live agent status (already in `@tree`), so no status-subscriber — the operator page
+already rebuilds on `StatusChanged`.
+
+**Why this also fixes the "dispatch → async result relayed back" problem:** the
+result never re-enters the operator chat — dispatching flips the job to
+unread-done; you read it in the *workspace's own context* (dive in), which clears
+it. The card is a read-receipt for a job, not a transcript dumped at you.
+
+**Ordering is now trivial:** `needs-you > unread-done > chugging`, recency within.
+The rest of this doc (weighted score, decay dials, "is this noise") is SUPERSEDED
+for the queue's data model — kept only as reference / for a possible later "also
+show non-dispatched agents that need you" layer. The `Operator.Policy` seam stays
+(it's where even the trivial order lives, swappable).
+
+---
+
 ## Roles (who's who)
 
 - **Operator = you** (the human running everything).
