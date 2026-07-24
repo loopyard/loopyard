@@ -484,25 +484,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
            Loopyard's finalized renderer doesn't highlight either, so streaming
            now matches the settled bubble exactly. --%>
       <.markdown
-        content={completed_blocks(@streaming_text)}
+        content={@streaming_text}
         streaming
         mdex_opts={[syntax_highlight: nil, render: [hardbreaks: true, unsafe_: false]]}
       />
     </div>
     """
-  end
-
-  # Completed-blocks-only streaming: render every block EXCEPT the last (still
-  # in-progress) one, so the user never sees raw markdown source — a block only
-  # appears once it's structurally complete (a table waits for its separator row,
-  # etc.). Reuses streamdown's own splitter (code fences / tables / html aware),
-  # so we don't re-implement block detection. The dropped tail is still driving
-  # the status bar's "thinking" indicator, so nothing looks stuck.
-  defp completed_blocks(text) do
-    (text || "")
-    |> PhoenixStreamdown.Blocks.parse()
-    |> Enum.drop(-1)
-    |> Enum.join("\n\n")
   end
 
   def streaming_thinking(assigns) do
