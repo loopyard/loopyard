@@ -111,6 +111,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         # meant the previous (sticky) prompt hung over a big empty gap before the
         # next one pushed it up. Small, even spacing → prompts hand off flush.
         band_top: if(first?, do: "mt-5 md:mt-6 pt-4 md:pt-5", else: "mt-0 pt-2"),
+        # Rounding is derived from GROUP POSITION (same data as the label +
+        # padding), never composed across siblings: first-of-group rounds the
+        # top, last rounds the bottom, seams between grouped messages stay
+        # square and flush. The ACTIVE last message leaves its bottom open —
+        # the live tail closes the shape.
+        band_round: [
+          first? && "xl:rounded-t-xl",
+          next_role(assigns) != :user && !assigns[:active?] && "xl:rounded-b-xl"
+        ],
         band_bottom:
           cond do
             # The running prompt hands straight off to its live response: no
@@ -137,7 +146,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         # hard corners read unfinished next to the rounded listings. Round it;
         # the ACTIVE band rounds only its top so it stays flush into the live
         # tail below (which rounds the bottom).
-        (@active? && "xl:rounded-t-xl") || "xl:rounded-xl",
+        @band_round,
         # The prompt being answered right now reads stronger (deeper wash).
         (@active? && "bg-violet-200 dark:bg-[#332a54]") ||
           "bg-violet-100 dark:bg-[#2b2348]",
