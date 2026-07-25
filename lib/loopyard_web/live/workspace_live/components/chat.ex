@@ -552,7 +552,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                 (@agent.status == :thinking && not awaiting_answer?(@messages) &&
                    not awaiting_approval?(@messages) && not building?(@messages))
             }
-            class="-mx-4 md:-mx-6 xl:-mx-2 px-4 md:px-6 lg:px-8 xl:rounded-b-xl chat-live-rail-tail"
+            class="-mx-4 md:-mx-6 2xl:-mx-2 px-4 md:px-6 lg:px-8 2xl:rounded-b-xl chat-live-rail-tail"
           >
             <%!-- The lit violet left rail: this wrapper renders ONLY while the
                  turn is live (streaming / thinking / restarting / compacting), so
@@ -609,7 +609,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               below — the ✕'s are gone because it's no longer editable. --%>
         <div
           :if={(@agent[:pending_count] || 0) > 0}
-          class="-mx-3 md:-mx-4 xl:-mx-2 xl:rounded-xl bg-violet-100 dark:bg-[#2b2348] px-4 md:px-6 lg:px-8 pt-3 pb-3"
+          class="-mx-3 md:-mx-4 2xl:-mx-2 2xl:rounded-xl bg-violet-100 dark:bg-[#2b2348] px-4 md:px-6 lg:px-8 pt-3 pb-3"
         >
           <div class="flex items-baseline justify-between gap-2 mb-1.5">
             <div class="flex items-baseline gap-2 min-w-0">

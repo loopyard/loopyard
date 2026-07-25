@@ -117,8 +117,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         # square and flush. The ACTIVE last message leaves its bottom open —
         # the live tail closes the shape.
         band_round: [
-          first? && "xl:rounded-t-xl",
-          next_role(assigns) != :user && !assigns[:active?] && "xl:rounded-b-xl"
+          first? && "2xl:rounded-t-xl",
+          next_role(assigns) != :user && !assigns[:active?] && "2xl:rounded-b-xl"
         ],
         band_bottom:
           cond do
@@ -141,7 +141,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     ~H"""
     <div
       class={[
-        "-mx-4 md:-mx-6 xl:-mx-2 px-4 md:px-6 lg:px-8 group/msg transition-colors",
+        "-mx-4 md:-mx-6 2xl:-mx-2 px-4 md:px-6 lg:px-8 group/msg transition-colors",
         # In a centered column the band is a block, not an edge-to-edge stripe —
         # hard corners read unfinished next to the rounded listings. Round it;
         # the ACTIVE band rounds only its top so it stays flush into the live
