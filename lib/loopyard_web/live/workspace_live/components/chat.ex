@@ -475,20 +475,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                assigns equality) with per-row precomputed ctx — never the whole
                @messages list. Live-feed suppression happens server-side in
                Messages.visible_sections/3. --%>
-          <%!-- The ACTIVE turn's whole section is illuminated — the same glowing
-               rail runs from the running prompt down through every tool call /
-               output and into the streaming tail below, as ONE continuous lit
-               region (not disconnected fragments). Bleeds to the column edge so
-               the rail sits in the gutter; the prompt band + live-tail carry the
-               same rail at the same x, flush, so it reads unbroken. --%>
-          <section
-            :for={section <- @transcript_sections}
-            :key={Messages.section_key(section)}
-            class={
-              (section.prompt && MapSet.member?(@active_prompt_ids, elem(section.prompt, 0)[:id]) &&
-                 "-mx-4 md:-mx-6 px-4 md:px-6 border-l-2 border-violet-500 dark:border-violet-400 chat-live-rail") || ""
-            }
-          >
+          <%!-- No rail on the active turn — the deeper wash on the running
+               prompt band + the live status row mark it. (Rails kept
+               misaligning across band/tail/breakpoints; not worth it.) --%>
+          <section :for={section <- @transcript_sections} :key={Messages.section_key(section)}>
             <%= if section.prompt do %>
               <% {pmsg, pidx, pctx} = section.prompt %>
               <.live_component
@@ -562,7 +552,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                 (@agent.status == :thinking && not awaiting_answer?(@messages) &&
                    not awaiting_approval?(@messages) && not building?(@messages))
             }
-            class="-mx-4 md:-mx-6 xl:-mx-2 px-4 md:px-6 lg:px-8 xl:rounded-b-xl border-l-2 border-violet-500 dark:border-violet-400 chat-live-rail chat-live-rail-tail"
+            class="-mx-4 md:-mx-6 xl:-mx-2 px-4 md:px-6 lg:px-8 xl:rounded-b-xl chat-live-rail-tail"
           >
             <%!-- The lit violet left rail: this wrapper renders ONLY while the
                  turn is live (streaming / thinking / restarting / compacting), so

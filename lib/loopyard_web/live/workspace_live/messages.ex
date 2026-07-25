@@ -142,9 +142,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         # GLOWING violet left rail — same .chat-live-rail as the streaming
         # content below, so the running prompt and its live response read as one
         # continuous, lit timeline).
-        (@active? &&
-           "bg-violet-200 dark:bg-[#332a54] border-l-2 border-violet-500 dark:border-violet-400 chat-live-rail") ||
-          "bg-violet-100 dark:bg-[#2b2348] border-l-2 border-transparent",
+        (@active? && "bg-violet-200 dark:bg-[#332a54]") ||
+          "bg-violet-100 dark:bg-[#2b2348]",
         @sticky_class,
         @band_top,
         @band_bottom
