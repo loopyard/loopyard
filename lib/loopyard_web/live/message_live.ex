@@ -17,58 +17,28 @@ defmodule LoopyardWeb.MessageLive do
 
   @impl true
   def mount(%{"agent_id" => agent_id, "msg_id" => msg_id}, _session, socket) do
-    {anchor, turn} = load_turn(agent_id, msg_id)
+    {mode, turn, anchor} = LoopyardWeb.TurnSlice.resolve(agent_id, msg_id)
 
+    # Only a live TURN streams new content below it. A single-message permalink
+    # is a static artifact — subscribe just to catch an in-place update of that
+    # one message; a lone message never grows into a turn.
     if connected?(socket) and anchor, do: Loopyard.ChatAgent.subscribe(agent_id)
 
     {:ok,
      socket
      |> assign(:agent_id, agent_id)
      |> assign(:msg_id, msg_id)
+     |> assign(:mode, mode)
      |> assign(:anchor, anchor)
      |> assign(:turn, turn)
      # id of the user message that STARTED this turn — used to detect when the
      # NEXT user turn begins (which closes this one).
      |> assign(:turn_start_id, anchor && anchor[:id])
-     |> assign(:closed?, turn_closed?(agent_id, anchor))
+     # Single messages never stream below; a turn is closed once a later user
+     # prompt already exists (historical).
+     |> assign(:closed?, mode == :single or turn_closed?(agent_id, anchor))
      |> assign(:streaming_text, "")
      |> assign(:raw_url, LoopyardWeb.OutputController.raw_url(agent_id, msg_id))}
-  end
-
-  # The turn = the user message at-or-before the anchor, through everything up to
-  # (not including) the next user message. So linking ANY message in a turn shows
-  # the whole exchange.
-  defp load_turn(agent_id, anchor_id) do
-    msgs = (Loopyard.ChatAgent.get_state(agent_id) || %{})[:messages] || []
-
-    case Enum.find_index(msgs, &(&1[:id] == anchor_id)) do
-      nil ->
-        {nil, []}
-
-      idx ->
-        start_idx =
-          msgs
-          |> Enum.take(idx + 1)
-          |> Enum.with_index()
-          |> Enum.filter(fn {m, _} -> m[:role] == :user end)
-          |> List.last()
-          |> case do
-            {_m, i} -> i
-            nil -> 0
-          end
-
-        tail_len =
-          msgs
-          |> Enum.drop(start_idx + 1)
-          |> Enum.find_index(&(&1[:role] == :user))
-          |> case do
-            nil -> length(msgs) - start_idx - 1
-            n -> n
-          end
-
-        turn = Enum.slice(msgs, start_idx, tail_len + 1)
-        {List.first(turn), turn}
-    end
   end
 
   # Is there already a NEXT user turn after this one? Then it's historical (no
@@ -151,7 +121,7 @@ defmodule LoopyardWeb.MessageLive do
           navigate={"/messages/#{@agent_id}/#{@msg_id}"}
           class="text-sm font-medium text-zinc-600 dark:text-zinc-300"
         >
-          Turn
+          {if @mode == :single, do: "Message", else: "Turn"}
         </.link>
         <span
           :if={!@closed? && @streaming_text != ""}
