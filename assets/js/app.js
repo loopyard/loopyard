@@ -932,8 +932,8 @@ Hooks.ChatForm = {
       if (e.key !== "Enter" || e.isComposing) return
       if (e.metaKey || e.ctrlKey) { e.preventDefault(); send(); return }  // ⌘/⌃+Enter: always send
       if (e.shiftKey) return                                              // Shift+Enter: newline (both)
-      e.preventDefault()                                                  // plain Enter: never a newline
-      if (isDesktop()) send()                                            // desktop sends; mobile does nothing
+      if (isDesktop()) { e.preventDefault(); send(); return }             // desktop: Enter SENDS
+      // mobile: fall through — Enter inserts a NEWLINE (send is the button)
     })
 
     // Auto-resize textarea + clear any stale "send failed" notice as you edit
