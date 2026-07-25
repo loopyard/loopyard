@@ -599,7 +599,7 @@ defmodule LoopyardWeb.OperatorLive do
              operator curates this; the chat is where you talk about it. --%>
         <aside class={[
           "flex-none flex-col border-l border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/40",
-          "w-full lg:w-[26rem] xl:w-[32rem]",
+          "w-full lg:w-72 xl:w-80",
           (@mobile_view == :rail && "flex") || "hidden",
           "lg:flex"
         ]}>
@@ -691,13 +691,6 @@ defmodule LoopyardWeb.OperatorLive do
             class="flex-none text-xs font-semibold text-violet-600 dark:text-violet-400 tabular-nums"
           >
             {i.delta} new
-          </span>
-          <span
-            :if={i.watching?}
-            title="Watching — you'll be told when this finishes"
-            class="flex-none text-xs text-amber-600 dark:text-amber-400"
-          >
-            🔔
           </span>
           <span class="ml-auto flex-none text-xs font-medium text-violet-600 dark:text-violet-400 opacity-0 group-hover:opacity-100 transition-opacity">
             dive in →
