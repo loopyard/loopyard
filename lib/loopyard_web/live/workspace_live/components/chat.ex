@@ -475,7 +475,20 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                assigns equality) with per-row precomputed ctx — never the whole
                @messages list. Live-feed suppression happens server-side in
                Messages.visible_sections/3. --%>
-          <section :for={section <- @transcript_sections} :key={Messages.section_key(section)}>
+          <%!-- The ACTIVE turn's whole section is illuminated — the same glowing
+               rail runs from the running prompt down through every tool call /
+               output and into the streaming tail below, as ONE continuous lit
+               region (not disconnected fragments). Bleeds to the column edge so
+               the rail sits in the gutter; the prompt band + live-tail carry the
+               same rail at the same x, flush, so it reads unbroken. --%>
+          <section
+            :for={section <- @transcript_sections}
+            :key={Messages.section_key(section)}
+            class={
+              (section.prompt && MapSet.member?(@active_prompt_ids, elem(section.prompt, 0)[:id]) &&
+                 "-mx-4 md:-mx-6 px-4 md:px-6 border-l-2 border-violet-500 dark:border-violet-400 chat-live-rail") || ""
+            }
+          >
             <%= if section.prompt do %>
               <% {pmsg, pidx, pctx} = section.prompt %>
               <.live_component
