@@ -236,22 +236,13 @@
 .markdown-body-user a { color: #e9d5ff; }
 .markdown-body-user blockquote { border-left-color: rgba(255, 255, 255, 0.4); color: rgba(255, 255, 255, 0.8); }
 
-/* The live turn's left rail — a lit violet glow beside the content being written
-   right now, so it clearly reads as part of the current turn (continues the
-   active prompt band's rail above it). The border color is set in markup; this
-   adds the "lit" glow into the gutter and a gentle breathing pulse. */
-.chat-live-rail { box-shadow: -2px 0 12px -4px rgba(139, 124, 255, 0.45); }
+/* The live turn's left rail is JUST the solid violet border (set in markup) —
+   a clean, calm line marking the current turn. The old glow/breathing box-shadow
+   read as a gross drop-shadow halo, so it's gone. */
 /* The live content butts FLUSH under the running prompt band (which sets mb-0),
-   so the glowing rail is unbroken from prompt into response — cancel the
-   transcript's space-y gap above it (higher specificity, hence !important). */
+   so the rail is unbroken from prompt into response — cancel the transcript's
+   space-y gap above it (higher specificity, hence !important). */
 .chat-live-rail-tail { margin-top: 0 !important; }
-@media (prefers-reduced-motion: no-preference) {
-  .chat-live-rail { animation: chat-live-rail 1.8s ease-in-out infinite; }
-  @keyframes chat-live-rail {
-    0%, 100% { box-shadow: -2px 0 10px -4px rgba(139, 124, 255, 0.3); }
-    50%      { box-shadow: -2px 0 16px -3px rgba(139, 124, 255, 0.65); }
-  }
-}
 
 /* ANSI color classes for log output */
 .ansi-bold { font-weight: 700; }
