@@ -133,6 +133,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     <div
       class={[
         "-mx-4 md:-mx-6 px-4 md:px-6 lg:px-8 group/msg transition-colors",
+        # In a centered column the band is a block, not an edge-to-edge stripe —
+        # hard corners read unfinished next to the rounded listings. Round it;
+        # the ACTIVE band rounds only its top so it stays flush into the live
+        # tail below (which rounds the bottom).
+        (@active? && "rounded-t-xl") || "rounded-xl",
         # The prompt being answered right now reads stronger (deeper wash + a
         # GLOWING violet left rail — same .chat-live-rail as the streaming
         # content below, so the running prompt and its live response read as one

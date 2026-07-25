@@ -562,7 +562,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                 (@agent.status == :thinking && not awaiting_answer?(@messages) &&
                    not awaiting_approval?(@messages) && not building?(@messages))
             }
-            class="-mx-4 md:-mx-6 px-4 md:px-6 lg:px-8 border-l-2 border-violet-500 dark:border-violet-400 chat-live-rail chat-live-rail-tail"
+            class="-mx-4 md:-mx-6 px-4 md:px-6 lg:px-8 rounded-b-xl border-l-2 border-violet-500 dark:border-violet-400 chat-live-rail chat-live-rail-tail"
           >
             <%!-- The lit violet left rail: this wrapper renders ONLY while the
                  turn is live (streaming / thinking / restarting / compacting), so
