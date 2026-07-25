@@ -97,34 +97,48 @@ defmodule LoopyardWeb.Components.ProjectList do
     """
   end
 
-  # Compact rail / switcher (:xs, :sm): a calm FLAT list. Every workspace is one
-  # uniform row — no section headers, no nesting. The project name leads and the
-  # branch is appended ("project · branch") ONLY when a project has more than one
-  # workspace; a lone "main" is implied, never spelled out.
+  # Compact rail / switcher (:xs, :sm): projects are GROUPS. The project name is
+  # the group heading — WHITE, readable (a real heading, not a muted label) —
+  # and its branches sit indented below it, each a status light + branch name.
+  # Generous space BETWEEN projects so the groups read as distinct.
   def project_groups(assigns) do
     ~H"""
-    <div class="space-y-1">
-      <.ws_row_compact
-        :for={{project, ws} <- flat_rows(@projects)}
-        ws={ws}
-        project_id={project.id}
-        project_name={project.name}
-        current={ws.id == @current_workspace_id}
-        row_click={@row_click}
-        size={@size}
-        multi={length(project.workspaces) > 1}
-      />
+    <div class="space-y-4">
+      <section :for={project <- @projects}>
+        <%!-- The group heading = the project, as white readable text. Sticky so
+             it pins while its branches scroll; opaque bg (matches the rail)
+             covers rows sliding under; shadow only when stuck. --%>
+        <.link
+          navigate={"/projects/#{project.id}"}
+          phx-click={@row_click}
+          data-sticky-header
+          class="group sticky top-0 z-10 block pb-1 bg-zinc-50 dark:bg-zinc-900 transition-shadow data-[stuck]:shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]"
+        >
+          <h2 class="text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 truncate group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors">
+            {project.name}
+          </h2>
+        </.link>
+
+        <%!-- Branches, indented under the project: status light on the left,
+             branch name to its right. --%>
+        <div class="pl-3 space-y-0.5">
+          <.ws_row_compact
+            :for={ws <- project.workspaces}
+            ws={ws}
+            project_id={project.id}
+            project_name={project.name}
+            current={ws.id == @current_workspace_id}
+            row_click={@row_click}
+            size={@size}
+          />
+        </div>
+      </section>
+
       <div :if={@projects == []} class="text-sm text-zinc-400 py-8 text-center">
         No projects yet.
       </div>
     </div>
     """
-  end
-
-  # Flatten projects → [{project, workspace}] for the flat rail list, preserving
-  # order so a multi-workspace project's branches stay adjacent.
-  defp flat_rows(projects) do
-    for project <- projects, ws <- project.workspaces, do: {project, ws}
   end
 
   # --- XS (switcher) + SM (rail): one compact line ------------------------------
@@ -135,10 +149,6 @@ defmodule LoopyardWeb.Components.ProjectList do
   attr :current, :boolean, default: false
   attr :row_click, :any, default: nil
   attr :size, :atom, required: true
-  # multi: this project has more than one workspace, so the branch is appended
-  # ("project · branch"). A single-workspace project shows just its name (the
-  # lone "main" is implied), keeping the flat list calm and uncluttered.
-  attr :multi, :boolean, default: false
 
   defp ws_row_compact(assigns) do
     assigns = assign(assigns, :headline, Birdseye.headline(assigns.ws))
@@ -162,15 +172,15 @@ defmodule LoopyardWeb.Components.ProjectList do
         class="absolute inset-0 rounded-lg focus-ring"
       >
       </.link>
-      <%!-- Flat list: the PROJECT name leads (readable, not muted — the rail is
-           calm through spacing, not by dimming everything to grey), with the
-           branch appended only when the project has more than one workspace. --%>
+      <%!-- Indented BRANCH row: the project (white heading) is right above, so
+           this shows just the branch — status light on the left, branch name to
+           its right — quietly (muted) so the project heading leads. --%>
       <LoopyardWeb.Components.Common.workspace_identity
-        project={@project_name}
-        workspace={if @multi, do: @ws.name, else: nil}
+        project={@ws.name}
+        workspace={nil}
         state={ws_state(@ws)}
         size={:sm}
-        muted={false}
+        muted={@size == :sm}
         class="min-w-0 flex-1"
       />
       <%!-- The rail carries only the SIGNAL words (needs-you / broken / …), never
