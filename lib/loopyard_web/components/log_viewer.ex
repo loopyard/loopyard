@@ -108,7 +108,7 @@ defmodule LoopyardWeb.Components.LogViewer do
     <div
       id={"log-wrap-#{System.unique_integer([:positive])}"}
       phx-hook="LogExpand"
-      class="mt-3 mb-1 rounded-xl overflow-hidden bg-gradient-to-b from-zinc-100 to-zinc-50 dark:from-zinc-800/40 dark:to-zinc-900/50"
+      class="mt-3 mb-1 rounded-lg overflow-hidden bg-gradient-to-b from-zinc-500/[0.06] to-zinc-500/[0.02] dark:from-white/[0.05] dark:to-white/[0.015]"
     >
       <div class="flex items-center gap-2 px-3.5 pt-2 pb-1">
         <span
