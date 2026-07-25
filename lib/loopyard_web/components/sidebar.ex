@@ -85,13 +85,23 @@ defmodule LoopyardWeb.Components.Sidebar do
       navigate={"#{@base_path}/services/#{@svc.name}"}
     >
       <:actions>
+        <%!-- A running service with a host port IS the dev server — surface a
+             conspicuous "Open" button (not a tiny port number) so launching it
+             in a browser is obvious, no hunting. stopPropagation so it opens the
+             app instead of navigating into the service detail. --%>
         <a
           :if={@first_port && @svc.status == :running}
           href={"http://localhost:#{@first_port}"}
           target="_blank"
-          class="text-xs text-violet-500 hover:text-violet-400 font-mono ml-auto flex-none transition-colors"
+          rel="noopener"
+          onclick="event.stopPropagation()"
+          title={"Open the running app (http://localhost:#{@first_port})"}
+          class="ml-auto flex-none inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
         >
-          :{@first_port}
+          Open <span class="font-mono opacity-70">:{@first_port}</span>
+          <svg viewBox="0 0 20 20" fill="currentColor" class="w-3 h-3 flex-none">
+            <path d="M11 3a1 1 0 1 0 0 2h2.586l-6.293 6.293a1 1 0 1 0 1.414 1.414L15 6.414V9a1 1 0 1 0 2 0V4a1 1 0 0 0-1-1h-5Z" /><path d="M5 5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-3a1 1 0 1 0-2 0v3H5V7h3a1 1 0 0 0 0-2H5Z" />
+          </svg>
         </a>
         <span :if={service_status_text(@svc)} class="text-xs text-blue-400 ml-auto flex-none">
           {service_status_text(@svc)}
