@@ -443,11 +443,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
              load_more). Normal flow (NOT col-reverse) so the human prompts can
              `position: sticky` to the top of their section. --%>
         <%!-- The document column: transcript + composer share this centered,
-             capped measure. On wide screens the human's prompt bands + the input
-             (which bleed to THIS column's edges) become same-width "bubbles" that
-             read as your lane, while the agent's prose stays at its narrower 68ch
-             measure inside — so the wider element is you. --%>
-        <div class="space-y-3 mt-auto w-full max-w-5xl mx-auto px-4 md:px-6">
+             capped measure so their gutters LINE UP. The outer div is a
+             full-width flex child that bottom-anchors the transcript (mt-auto);
+             the inner is the centered measure. Centering a BLOCK (mx-auto in
+             normal flow) is what reliably lines the transcript's gutters up with
+             the composer below — mx-auto on a direct flex-column child does NOT
+             center it. Prompt bands + input bleed to THIS column's edges (so on
+             wide screens they're same-width "bubbles"); prose stays 68ch inside. --%>
+        <div class="mt-auto w-full">
+          <div class="space-y-3 max-w-5xl mx-auto px-4 md:px-6">
           <%!-- Progressive loader: while there's older history above the window,
                a soft shimmer sits at the very top. Scroll into it and load_more
                fetches the next batch (prepended below this, so it stays put);
@@ -579,6 +583,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               tokens={(@agent[:total_input_tokens] || 0) + (@agent[:total_output_tokens] || 0)}
               context_utilization={@agent[:context_utilization] || 0.0}
             />
+          </div>
           </div>
         </div>
       </div>
