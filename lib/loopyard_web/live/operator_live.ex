@@ -32,6 +32,9 @@ defmodule LoopyardWeb.OperatorLive do
 
   @aural_channel "activity"
   @rail_tick_ms 3_000
+  # Recent-tail size for the chat transcript. Caps the initial LiveView payload
+  # so a long-lived operator's history can't blow the WebSocket join frame.
+  @message_window 80
   # The bed roster — mirrors SoundLive so the rail player and /sound agree.
   @tracks [
     {:serene, "Serene"},
@@ -144,10 +147,21 @@ defmodule LoopyardWeb.OperatorLive do
   defp load_agent(socket) do
     case ChatAgent.get_state(socket.assigns.agent_id) do
       %{} = st ->
+        all = st.messages || []
+        # WINDOW the transcript. The operator was built for "short chats" with
+        # windowing off, but a long-lived operator accumulates hundreds of turns —
+        # rendering all of them made the initial LiveView payload ~1 MB, which
+        # blows the WebSocket frame on join (Bandit closes the socket at the
+        # protocol level — no Elixir error, just a perpetual "connection lost —
+        # reconnecting"). Render only the recent tail; the full history still
+        # lives in the durable log.
+        windowed = Enum.take(all, -@message_window)
+
         socket
         |> assign(:selected_agent, st)
         |> assign(:agents, [st])
-        |> assign(:messages, st.messages)
+        |> assign(:messages, windowed)
+        |> assign(:has_more_messages, length(all) > length(windowed))
 
       _ ->
         stub = %{id: socket.assigns.agent_id, status: :idle}
