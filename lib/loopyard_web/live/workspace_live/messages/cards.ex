@@ -29,7 +29,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
            NOT violet — violet is the "You" message colour). Options sit on white
            rows so they stay distinct on the tint. Reads top-down: label ›
            question (hero) › the options, each anchored by a radio/check dot. --%>
-      <LoopyardWeb.Components.StreamCard.band tone={:needs_you}>
+      <LoopyardWeb.Components.StreamCard.band tone={(@msg.status == :pending && :needs_you) || :neutral}>
           <%!-- Card anatomy (every stream card): identity chip TOP-LEFT (which
                project·workspace this is about — the canonical design-language
                badge), the card's label TOP-RIGHT opposite it; actions live at
@@ -43,7 +43,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
               size={:sm}
               class="min-w-0"
             />
-            <span class="chat-meta flex items-center gap-1.5 font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 flex-none">
+            <span class={[
+              "chat-meta flex items-center gap-1.5 font-semibold uppercase tracking-wide flex-none",
+              (@msg.status == :pending && "text-amber-700 dark:text-amber-400") ||
+                "text-zinc-500 dark:text-zinc-400"
+            ]}>
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3.5 h-3.5">
                 <path
                   fill-rule="evenodd"
@@ -51,7 +55,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                   clip-rule="evenodd"
                 />
               </svg>
-              Needs your input
+              {case @msg.status do
+                :pending -> "Needs your input"
+                :timeout -> "No answer"
+                _ -> "Answered"
+              end}
               <span
                 :if={length(@msg.questions) > 1}
                 class="normal-case tracking-normal tabular-nums text-zinc-500 dark:text-zinc-400"
@@ -325,7 +333,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
   def secret_card(assigns) do
     ~H"""
     <div class="py-2">
-      <LoopyardWeb.Components.StreamCard.band tone={:needs_you}>
+      <LoopyardWeb.Components.StreamCard.band tone={(@msg.status == :pending && :needs_you) || :neutral}>
         <LoopyardWeb.Components.StreamCard.header state={:needs_you}>
           <:label>
             <svg
@@ -423,7 +431,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
 
     ~H"""
     <div class="py-3">
-      <LoopyardWeb.Components.StreamCard.band tone={:needs_you}>
+      <LoopyardWeb.Components.StreamCard.band tone={(@msg.status == :pending && :needs_you) || :neutral}>
         <%!-- Card anatomy: identity chip top-left (which project·workspace the
              action is about, resolved from the action's ids), label top-right,
              actions at the bottom. Without a resolvable chip the label holds
@@ -437,7 +445,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
             size={:sm}
             class="min-w-0"
           />
-          <span class="chat-meta flex items-center gap-1.5 font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400/90 flex-none">
+          <span class={[
+            "chat-meta flex items-center gap-1.5 font-semibold uppercase tracking-wide flex-none",
+            (@msg.status == :pending && "text-amber-700 dark:text-amber-400/90") ||
+              "text-zinc-500 dark:text-zinc-400"
+          ]}>
             <svg
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 16 16"
@@ -446,14 +458,25 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
             >
               <path d="M8 1.5a2 2 0 0 0-2 2v.5H4.5A1.5 1.5 0 0 0 3 5.5v.879a2.5 2.5 0 0 0 0 4.242V13.5A1.5 1.5 0 0 0 4.5 15h7a1.5 1.5 0 0 0 1.5-1.5v-2.879a2.5 2.5 0 0 0 0-4.242V5.5A1.5 1.5 0 0 0 11.5 4H10v-.5a2 2 0 0 0-2-2Z" />
             </svg>
-            {case @action.verb do
-              :integrate -> "Merge — needs your OK"
-              :delete_workspace -> "Delete workspace — needs your OK"
-              :delete_project -> "Delete project — needs your OK"
-              :rename_workspace -> "Rename — needs your OK"
-              :rename_project -> "Rename — needs your OK"
-              :create_project -> "New project — needs your OK"
-              _ -> "Branch — needs your OK"
+            {cond do
+              @msg.status == :pending ->
+                case @action.verb do
+                  :integrate -> "Merge — needs your OK"
+                  :delete_workspace -> "Delete workspace — needs your OK"
+                  :delete_project -> "Delete project — needs your OK"
+                  :rename_workspace -> "Rename — needs your OK"
+                  :rename_project -> "Rename — needs your OK"
+                  :create_project -> "New project — needs your OK"
+                  _ -> "Branch — needs your OK"
+                end
+
+              @msg.status in [:creating, :integrating, :deleting, :renaming] -> "Working…"
+              @msg.status == :integrated -> "Merged"
+              @msg.status == :deleted -> "Deleted"
+              @msg.status == :renamed -> "Renamed"
+              @msg.status == :denied -> "Declined"
+              @msg.status == :failed -> "Failed"
+              true -> "Approved"
             end}
           </span>
         </div>
