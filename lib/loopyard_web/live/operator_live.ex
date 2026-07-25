@@ -341,6 +341,37 @@ defmodule LoopyardWeb.OperatorLive do
 
   defp fade_class(_, _), do: "opacity-50"
 
+  # Recency GROUPS instead of a fade: readable at any age, and recency reads from
+  # the section label ("Recently" / "Past hour" / "Today" / "Earlier"), not from
+  # dimming rows to near-invisible. Returns a list of {label, items}, non-empty
+  # groups only, in newest→oldest order.
+  @recency_order [
+    {:recently, "Recently"},
+    {:hour, "Past hour"},
+    {:day, "Today"},
+    {:older, "Earlier"}
+  ]
+
+  defp bucket_done(done, now) do
+    by = Enum.group_by(done, &recency_bucket(&1[:last_activity_at], now))
+
+    for {key, label} <- @recency_order,
+        items = Map.get(by, key, []),
+        items != [],
+        do: {label, items}
+  end
+
+  defp recency_bucket(%DateTime{} = at, now) do
+    case DateTime.diff(now, at, :minute) do
+      m when m < 15 -> :recently
+      m when m < 60 -> :hour
+      m when m < 1440 -> :day
+      _ -> :older
+    end
+  end
+
+  defp recency_bucket(_, _), do: :older
+
   defp current_track do
     Aural.Channel.state(@aural_channel).track
   rescue
@@ -402,7 +433,9 @@ defmodule LoopyardWeb.OperatorLive do
     |> assign(:tree, tree)
     |> assign(:attention_groups, groups)
     |> assign(:active_jobs, active)
-    |> assign(:done_jobs, done)
+    # Grouped by how long ago they wrapped — Recently / Past hour / Today /
+    # Earlier — instead of one list dimmed by age. Calmer, and readable (no fade).
+    |> assign(:done_buckets, bucket_done(done, now))
     # Header count = ALL blocking items (matches /queue, which the button opens);
     # the rail groups exclude the operator's own (those show in the chat).
     |> assign(:needs_you_count, length(line))
@@ -604,7 +637,11 @@ defmodule LoopyardWeb.OperatorLive do
           "lg:flex"
         ]}>
           <div class="flex-1 min-h-0 overflow-y-auto">
-            <.for_you_rail groups={@attention_groups} active={@active_jobs} done={@done_jobs} />
+            <.for_you_rail
+              groups={@attention_groups}
+              active={@active_jobs}
+              done_buckets={@done_buckets}
+            />
           </div>
           <.sound_player id="rail-sound" tracks={@tracks} current_track={@current_track} />
         </aside>
@@ -619,7 +656,7 @@ defmodule LoopyardWeb.OperatorLive do
   # + WORKING (dispatched jobs, live state + delta).
   attr :groups, :list, required: true
   attr :active, :list, required: true
-  attr :done, :list, required: true
+  attr :done_buckets, :list, required: true
 
   defp for_you_rail(assigns) do
     ~H"""
@@ -696,29 +733,27 @@ defmodule LoopyardWeb.OperatorLive do
           </span>
         </div>
 
-        <%!-- RECENTLY WRAPPED — done work, deduped by project, quiet. An
-             acknowledgment ("these finished"), not competing for attention. --%>
-        <div :if={@done != []} class="mt-2 pt-2">
+        <%!-- WRAPPED work, grouped by how long ago (Recently / Past hour / Today
+             / Earlier). Full size + full opacity at every age — recency reads
+             from the section label, not from dimming rows away. --%>
+        <div :for={{label, items} <- @done_buckets} class="mt-3">
           <div class="text-[11px] font-medium uppercase tracking-wide text-zinc-400/80 dark:text-zinc-600 px-1 pb-1">
-            Recently wrapped
+            {label}
           </div>
           <div
-            :for={i <- @done}
+            :for={i <- items}
             phx-click="open_job"
             phx-value-ws={i.id}
             phx-value-project={i.project_id}
             phx-value-agent={i.agent_id}
             title={"#{i.project_name} · #{i.workspace_name} — done"}
-            class={[
-              "group flex items-center gap-2 rounded-lg px-2.5 py-1 cursor-pointer transition-opacity hover:opacity-100 hover:bg-zinc-100 dark:hover:bg-zinc-800/60",
-              i.fade
-            ]}
+            class="group flex items-center gap-2 rounded-lg px-2.5 py-1.5 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
           >
             <.workspace_identity
               project={i.project_name}
               workspace={i.workspace_name}
               state={:done}
-              size={:sm}
+              size={:md}
               class="flex-1"
             />
             <span class="ml-auto flex-none text-[11px] font-medium text-violet-500 opacity-0 group-hover:opacity-100 transition-opacity">
