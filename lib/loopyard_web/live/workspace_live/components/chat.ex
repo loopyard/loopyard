@@ -545,10 +545,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                 (@agent.status == :thinking && not awaiting_answer?(@messages) &&
                    not awaiting_approval?(@messages) && not building?(@messages))
             }
-            class=""
+            class="-ml-4 md:-ml-6 pl-4 md:pl-6 lg:pl-8 border-l-2 border-violet-500 dark:border-violet-400 chat-live-rail"
           >
-            <%!-- No "Claude" marker and no timeline rail — the live turn's content
-                 sits flush at the gutter, directly under its "You" prompt. --%>
+            <%!-- The lit violet left rail: this wrapper renders ONLY while the
+                 turn is live (streaming / thinking / restarting / compacting), so
+                 the rail marks exactly the content being written right now. It's
+                 aligned to the column edge — same x as the active prompt band's
+                 left rail above — so the two read as one continuous "current turn"
+                 timeline. --%>
             <.streaming_thinking :if={
               @detail_level != :chat && assigns[:streaming_thinking] != "" &&
                 assigns[:streaming_thinking] != nil
