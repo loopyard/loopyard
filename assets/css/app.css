@@ -375,3 +375,58 @@ refresh your browser when you save files and it does not affect production.
   .highlight .gi                                                       { color: #22863a; }
   .highlight .gd                                                       { color: #b31d28; }
 }
+
+/* Ambient-sound volume slider. Native range inputs render as a fat, near-white
+   strip in dark mode; this makes it a thin, theme-tokened track + violet thumb
+   that matches light/dark like the rest of the UI. */
+input[type="range"].volume-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 9999px;
+  background: #e4e4e7; /* zinc-200 */
+  cursor: pointer;
+  outline: none;
+}
+input[type="range"].volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: #8b5cf6; /* violet-500 */
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+}
+input[type="range"].volume-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #ffffff;
+  border-radius: 9999px;
+  background: #8b5cf6;
+  cursor: pointer;
+}
+input[type="range"].volume-slider::-moz-range-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: #e4e4e7;
+}
+input[type="range"].volume-slider:focus-visible {
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.5);
+}
+@media (prefers-color-scheme: dark) {
+  input[type="range"].volume-slider {
+    background: #3f3f46; /* zinc-700 */
+  }
+  input[type="range"].volume-slider::-webkit-slider-thumb {
+    border-color: #18181b; /* zinc-900 — matches the panel bg */
+  }
+  input[type="range"].volume-slider::-moz-range-thumb {
+    border-color: #18181b;
+  }
+  input[type="range"].volume-slider::-moz-range-track {
+    background: #3f3f46;
+  }
+}

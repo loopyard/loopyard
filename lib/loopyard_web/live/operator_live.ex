@@ -384,17 +384,25 @@ defmodule LoopyardWeb.OperatorLive do
       |> Enum.map(fn j ->
         j
         |> Map.put(:watching?, MapSet.member?(watched, j.id))
-        # Fade by staleness. The list is sorted newest-first (Queue.items), and
-        # the fade makes recency VISUAL too: what you touched just now is bright,
-        # older work dims and recedes (hover/tap restores it). "What I'm working
-        # on" reads first; done-hours-ago stuff is present but out of the way.
+        # Fade by staleness — makes recency visual, used on the "wrapped" tier.
         |> Map.put(:fade, fade_class(j[:last_activity_at], now))
       end)
+
+    # A chief of staff shows what NEEDS you, not a roster. "In motion" = anything
+    # worth your eyes: actively running, awaiting you, OR done-but-unseen (it has
+    # new changes since you last looked). Everything else drops to a quiet
+    # "recently wrapped" tier, deduped by project so two done workspaces of one
+    # project don't read as "gbrain gbrain".
+    {active, done} =
+      Enum.split_with(jobs, &(&1.state in [:chugging, :needs_you] or &1.delta > 0))
+
+    done = Enum.uniq_by(done, & &1.project_name)
 
     socket
     |> assign(:tree, tree)
     |> assign(:attention_groups, groups)
-    |> assign(:rail_jobs, jobs)
+    |> assign(:active_jobs, active)
+    |> assign(:done_jobs, done)
     # Header count = ALL blocking items (matches /queue, which the button opens);
     # the rail groups exclude the operator's own (those show in the chat).
     |> assign(:needs_you_count, length(line))
@@ -596,7 +604,7 @@ defmodule LoopyardWeb.OperatorLive do
           "lg:flex"
         ]}>
           <div class="flex-1 min-h-0 overflow-y-auto">
-            <.for_you_rail groups={@attention_groups} jobs={@rail_jobs} />
+            <.for_you_rail groups={@attention_groups} active={@active_jobs} done={@done_jobs} />
           </div>
           <.sound_player id="rail-sound" tracks={@tracks} current_track={@current_track} />
         </aside>
@@ -610,7 +618,8 @@ defmodule LoopyardWeb.OperatorLive do
   # (blocking items, grouped by workspace, answered inline via the ConsentUI hook)
   # + WORKING (dispatched jobs, live state + delta).
   attr :groups, :list, required: true
-  attr :jobs, :list, required: true
+  attr :active, :list, required: true
+  attr :done, :list, required: true
 
   defp for_you_rail(assigns) do
     ~H"""
@@ -650,36 +659,38 @@ defmodule LoopyardWeb.OperatorLive do
         </div>
       </section>
 
-      <%!-- IN MOTION — a briefing line, not a dashboard. One row per project:
-           dot + name + a one-word state + "dive in →". The vitals (ports, logs,
-           the full agent chat) live INSIDE the project — the whole row taps
-           through to the workspace agent (open_job), which is the "weeds". An
-           excellent chief of staff keeps this glanceable and gets out of the way. --%>
-      <section class="p-3 space-y-0.5 border-t border-zinc-200 dark:border-zinc-800">
+      <%!-- IN MOTION — what's actually RUNNING right now, prominent. Delta sits
+           INLINE next to the name (not floated across the rail), so it reads as
+           one line. The row taps through to the workspace agent (the weeds). --%>
+      <section class="p-3 border-t border-zinc-200 dark:border-zinc-800">
         <div class="text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500 px-1 pb-1.5">
           In motion
         </div>
-        <p :if={@jobs == []} class="px-1 text-sm text-zinc-500 dark:text-zinc-400">
-          Nothing in motion.
+        <p :if={@active == []} class="px-1 py-1 text-sm text-zinc-500 dark:text-zinc-400">
+          Nothing running right now.
         </p>
         <div
-          :for={i <- @jobs}
+          :for={i <- @active}
           phx-click="open_job"
           phx-value-ws={i.id}
           phx-value-project={i.project_id}
           phx-value-agent={i.agent_id}
           title={"#{i.project_name} · #{i.workspace_name} — #{state_label(i.state)}"}
-          class={[
-            "group flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 cursor-pointer transition-opacity hover:opacity-100 hover:bg-zinc-100 dark:hover:bg-zinc-800/60",
-            i.fade
-          ]}
+          class="group flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
         >
           <span class={["flex-none w-1.5 h-1.5 rounded-full", state_dot(i.state)]} />
-          <span class="flex-1 min-w-0 truncate text-sm text-zinc-700 dark:text-zinc-200">
+          <span class="min-w-0 truncate text-sm font-medium text-zinc-700 dark:text-zinc-200">
             {i.project_name}<span
               :if={i.workspace_name not in [nil, "", "main"]}
-              class="text-zinc-400 dark:text-zinc-500"
+              class="font-normal text-zinc-400 dark:text-zinc-500"
             > · {i.workspace_name}</span>
+          </span>
+          <span
+            :if={i.delta > 0}
+            title={"#{i.delta} new since you last looked"}
+            class="flex-none text-xs font-semibold text-violet-600 dark:text-violet-400 tabular-nums"
+          >
+            {i.delta} new
           </span>
           <span
             :if={i.watching?}
@@ -688,16 +699,40 @@ defmodule LoopyardWeb.OperatorLive do
           >
             🔔
           </span>
-          <span
-            :if={i.delta > 0}
-            title={"#{i.delta} new since you last looked"}
-            class="flex-none text-xs font-semibold text-violet-600 dark:text-violet-400"
-          >
-            {i.delta}
-          </span>
-          <span class="flex-none text-xs font-medium text-violet-600 dark:text-violet-400 opacity-0 group-hover:opacity-100 transition-opacity">
+          <span class="ml-auto flex-none text-xs font-medium text-violet-600 dark:text-violet-400 opacity-0 group-hover:opacity-100 transition-opacity">
             dive in →
           </span>
+        </div>
+
+        <%!-- RECENTLY WRAPPED — done work, deduped by project, quiet. An
+             acknowledgment ("these finished"), not competing for attention. --%>
+        <div :if={@done != []} class="mt-2 pt-2">
+          <div class="text-[11px] font-medium uppercase tracking-wide text-zinc-400/80 dark:text-zinc-600 px-1 pb-1">
+            Recently wrapped
+          </div>
+          <div
+            :for={i <- @done}
+            phx-click="open_job"
+            phx-value-ws={i.id}
+            phx-value-project={i.project_id}
+            phx-value-agent={i.agent_id}
+            title={"#{i.project_name} · #{i.workspace_name} — done"}
+            class={[
+              "group flex items-center gap-2 rounded-lg px-2.5 py-1 cursor-pointer transition-opacity hover:opacity-100 hover:bg-zinc-100 dark:hover:bg-zinc-800/60",
+              i.fade
+            ]}
+          >
+            <span class="flex-none w-1 h-1 rounded-full bg-emerald-500/70" />
+            <span class="min-w-0 truncate text-[13px] text-zinc-500 dark:text-zinc-400">
+              {i.project_name}<span
+                :if={i.workspace_name not in [nil, "", "main"]}
+                class="text-zinc-400/70 dark:text-zinc-600"
+              > · {i.workspace_name}</span>
+            </span>
+            <span class="ml-auto flex-none text-[11px] font-medium text-violet-500 opacity-0 group-hover:opacity-100 transition-opacity">
+              →
+            </span>
+          </div>
         </div>
       </section>
     </div>
@@ -779,7 +814,7 @@ defmodule LoopyardWeb.OperatorLive do
               step="0.01"
               data-sound-volume
               aria-label="Volume"
-              class="mt-1 w-full h-1 cursor-pointer accent-violet-500"
+              class="volume-slider mt-1"
             />
           </div>
         </div>
