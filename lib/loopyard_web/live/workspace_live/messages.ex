@@ -384,7 +384,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       # comment inside ~H — that would make this a non-single-static root and
       # crash the stateful MessageRowComponent.)
       ~H"""
-      <div class={[gutter(), "py-1 text-zinc-400/70 dark:text-zinc-600"]}>
+      <div class="py-1.5 text-center text-zinc-400/70 dark:text-zinc-600">
         <span
           class="text-sm italic leading-relaxed"
           id={"system-msg-#{@msg[:id] || hash_content(@msg.content)}"}

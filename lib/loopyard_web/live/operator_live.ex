@@ -575,8 +575,12 @@ defmodule LoopyardWeb.OperatorLive do
 
       <div class="flex-1 min-h-0 flex">
         <%!-- Chat is PRIMARY — mostly you just talk to the operator. --%>
+        <%!-- Constrain the chat to a reading column on big screens (xl+): it caps
+             at ~4xl and centers, so on a wide/ultra-wide display the stream sits
+             in a comfortable measure with breathing room instead of stretching
+             edge-to-edge. Below xl it fills the pane. --%>
         <div class={[
-          "flex-1 min-w-0 flex-col min-h-0",
+          "flex-1 min-w-0 flex-col min-h-0 xl:max-w-4xl xl:mx-auto",
           (@mobile_view == :chat && "flex") || "hidden",
           "lg:flex"
         ]}>
