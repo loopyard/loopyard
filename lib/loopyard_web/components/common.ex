@@ -231,6 +231,10 @@ defmodule LoopyardWeb.Components.Common do
   attr :workspace, :string, default: nil
   attr :state, :atom, default: :asleep, values: [:working, :needs_you, :done, :asleep, :broken]
   attr :size, :atom, default: :md, values: [:sm, :md]
+  # Ambient contexts (a nav rail that should recede behind the chat) pass
+  # muted={true}: the name dims to a quiet weight so the identity is legible
+  # without competing for attention.
+  attr :muted, :boolean, default: false
   attr :class, :string, default: nil
 
   def workspace_identity(assigns) do
@@ -246,7 +250,10 @@ defmodule LoopyardWeb.Components.Common do
       >
       </span>
       <span class={["min-w-0 truncate", (@size == :sm && "text-[13px]") || "text-sm"]}>
-        <span class="font-medium text-zinc-800 dark:text-zinc-100">{@project}</span><span
+        <span class={
+          (@muted && "text-zinc-500 dark:text-zinc-400") ||
+            "font-medium text-zinc-800 dark:text-zinc-100"
+        }>{@project}</span><span
           :if={@workspace not in [nil, ""]}
           class="text-zinc-400 dark:text-zinc-500"
         > · {@workspace}</span>

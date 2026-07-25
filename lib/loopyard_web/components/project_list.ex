@@ -60,8 +60,15 @@ defmodule LoopyardWeb.Components.ProjectList do
           ]}
         >
           <h2 class={[
-            if(@size == :full, do: "text-xl", else: "text-base"),
-            "font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 truncate group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors"
+            # The rail/switcher is AMBIENT navigation, not the star — so the
+            # project header recedes to a quiet, muted section label (the chat is
+            # the focus). Only /workspaces (:full) keeps a prominent heading.
+            if(@size == :full,
+              do: "text-xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50",
+              else:
+                "text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500"
+            ),
+            "truncate group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors"
           ]}>
             {project.name}
           </h2>
@@ -143,11 +150,15 @@ defmodule LoopyardWeb.Components.ProjectList do
         @current && "bg-violet-100 dark:bg-violet-500/15"
       ]}
     >
+      <%!-- The project is the STICKY HEADER right above, so the row shows just the
+           workspace (● name) — no redundant project — and mutes it in the rail
+           (:sm) so the nav recedes behind the chat. --%>
       <LoopyardWeb.Components.Common.workspace_identity
-        project={@project_name}
-        workspace={@ws.name}
+        project={@ws.name}
+        workspace={nil}
         state={ws_state(@ws)}
         size={:sm}
+        muted={@size == :sm}
         class="min-w-0 flex-1"
       />
       <%!-- XS: ONLY the needs-you signal (picking fast). SM: the full headline
@@ -166,10 +177,7 @@ defmodule LoopyardWeb.Components.ProjectList do
         <span :if={@headline.kind != :changed} class={@headline.class}>{@headline.text}</span>
       </span>
       <div :if={@size == :sm} class="flex-none w-[4.25rem] flex justify-end">
-        <span
-          :if={ws_port(@ws)}
-          class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-        >
+        <span :if={ws_port(@ws)} class="text-xs font-mono text-zinc-400 dark:text-zinc-500">
           :{ws_port(@ws)}
         </span>
       </div>
