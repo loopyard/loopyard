@@ -132,7 +132,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     ~H"""
     <div
       class={[
-        "-mx-4 md:-mx-6 px-4 md:px-6 lg:px-8 group/msg transition-colors",
+        "-mx-2 md:-mx-4 px-4 md:px-6 lg:px-8 group/msg transition-colors",
         # In a centered column the band is a block, not an edge-to-edge stripe —
         # hard corners read unfinished next to the rounded listings. Round it;
         # the ACTIVE band rounds only its top so it stays flush into the live

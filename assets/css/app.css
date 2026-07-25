@@ -139,7 +139,7 @@
      and the 68ch measure — the document feel comes from size + rhythm + measure,
      not from a typeface change. (Tried a serif; it didn't sit right.) */
   max-width: 68ch;          /* the measure — the single biggest readability win */
-  @apply text-chat-body;    /* size/leading from the chat-body token */
+  @apply text-chat-body md:text-chat-body-md; /* size/leading from the chat-body tokens */
   letter-spacing: 0;
 }
 .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
@@ -187,7 +187,12 @@
   white-space: pre;
   padding: 0;
   background: transparent;
-  font-size: 0.8em;
+  /* SAME mono size as the console boxes + diff view (text-sm md:text-[13px]) —
+     one fixed-width size everywhere, not prose-relative drift. */
+  font-size: 0.9375rem;
+}
+@media (min-width: 768px) {
+  .markdown-body pre code { font-size: 13px; }
 }
 .markdown-body blockquote {
   margin: 0.5em 0;
@@ -254,7 +259,7 @@
    feel like a mix of slightly-different fonts. */
 /* Sizes come from the Tailwind fontSize tokens (tailwind.config.js →
    chat-body / chat-sub / chat-sub-md / chat-meta) — tune them THERE. */
-.chat-body { @apply text-chat-body; }
+.chat-body { @apply text-chat-body md:text-chat-body-md; }
 .chat-sub  { @apply text-chat-sub md:text-chat-sub-md; }
 .chat-meta { @apply text-chat-meta; }
 
@@ -264,7 +269,7 @@
 .markdown-body.human-prompt p,
 .markdown-body.human-prompt li {
   font-family: inherit;
-  @apply text-chat-body;
+  @apply text-chat-body md:text-chat-body-md;
   line-height: 1.55;
 }
 
