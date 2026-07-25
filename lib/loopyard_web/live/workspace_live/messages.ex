@@ -110,8 +110,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         # Keep the chapter-break air TIGHT: a large top margin on the next prompt
         # meant the previous (sticky) prompt hung over a big empty gap before the
         # next one pushed it up. Small, even spacing → prompts hand off flush.
-        band_top: if(first?, do: "mt-5 md:mt-6 pt-3", else: "mt-0 pt-1"),
-        band_bottom: if(next_role(assigns) == :user, do: "mb-0 pb-1", else: "mb-4 md:mb-5 pb-3")
+        band_top: if(first?, do: "mt-5 md:mt-6 pt-4 md:pt-5", else: "mt-0 pt-2"),
+        band_bottom: if(next_role(assigns) == :user, do: "mb-0 pb-2", else: "mb-4 md:mb-5 pb-4 md:pb-5")
       )
 
     # The human prompt is a full-bleed purple band, not a bubble. It's `sticky`
@@ -123,7 +123,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     ~H"""
     <div
       class={[
-        "-mx-4 md:-mx-6 px-4 md:px-6 group/msg transition-colors",
+        "-mx-4 md:-mx-6 px-4 md:px-6 lg:px-8 group/msg transition-colors",
         # The prompt being answered right now reads stronger (deeper wash + a
         # violet left rail) so you can see which prompt the live response is for.
         (@active? && "bg-violet-200 dark:bg-[#332a54] border-l-2 border-violet-500 dark:border-violet-400") ||
