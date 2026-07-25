@@ -1,0 +1,32 @@
+/* Loopyard brand motion — pairs with LoopyardWeb.Components.Brand.
+   This file + brand.ex are the liftable unit: the marketing site (loopyard.ai)
+   can consume both as-is (the mark svg needs only class="loop-thinking" and
+   pathLength="100" on its path), so brand assets consolidate down the road the
+   same way :aural did.
+
+   The thinking mark: the trefoil comes undone like a string and loops back up
+   while slowly swirling. Two eased animations at different durations (dash
+   3.4s, swirl 11s): their phase drift makes each cycle land slightly
+   differently, so the motion breathes instead of ticking. Single small svg,
+   transform + dash only — compositor-cheap, no JS, no DOM churn. */
+.loop-thinking {
+  transform-origin: 50% 50%;
+  animation: loop-swirl 11s ease-in-out infinite;
+}
+.loop-thinking path {
+  stroke-dasharray: 24 76;
+  animation: loop-undone 3.4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+@keyframes loop-undone {
+  0%   { stroke-dashoffset: 0;    stroke-dasharray: 24 76; }
+  50%  { stroke-dashoffset: -52;  stroke-dasharray: 70 30; }
+  100% { stroke-dashoffset: -100; stroke-dasharray: 24 76; }
+}
+@keyframes loop-swirl {
+  0%   { transform: rotate(0deg); }
+  50%  { transform: rotate(200deg); }
+  100% { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loop-thinking, .loop-thinking path { animation: none !important; }
+}
