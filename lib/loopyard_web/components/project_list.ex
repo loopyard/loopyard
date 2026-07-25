@@ -112,9 +112,15 @@ defmodule LoopyardWeb.Components.ProjectList do
           navigate={"/projects/#{project.id}"}
           phx-click={@row_click}
           data-sticky-header
-          class="group sticky top-0 z-10 block pb-1 bg-zinc-50 dark:bg-zinc-900 transition-shadow data-[stuck]:shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]"
+          class={[
+            "group sticky top-0 z-10 block bg-zinc-50 dark:bg-zinc-900 transition-shadow data-[stuck]:shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]",
+            (@size == :xs && "py-2.5") || "pb-1"
+          ]}
         >
-          <h2 class="text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 truncate group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors">
+          <h2 class={[
+            "font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 truncate group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors",
+            (@size == :xs && "text-base") || "text-sm"
+          ]}>
             {project.name}
           </h2>
         </.link>
@@ -159,9 +165,10 @@ defmodule LoopyardWeb.Components.ProjectList do
          OWN link — one tap opens the running dev server in a new tab without
          first opening the workspace and hunting for it. --%>
     <div class={[
-      # py-2 keeps the 40px touch target on mobile (:xs switcher sheet); the
-      # desktop rail (:sm) doesn't need it and read as wasted space.
-      "group/ws relative flex items-center gap-2.5 -mx-2 px-2 py-2 md:py-1 rounded-lg transition-colors",
+      "group/ws relative flex items-center gap-2.5 -mx-2 px-2 rounded-lg transition-colors",
+      # :xs = the mobile switcher sheet — finger-sized rows (≥44px), same as the
+      # operator rail's mobile rows. :sm = the desktop rail — compact.
+      (@size == :xs && "py-3") || "py-1",
       @current && "bg-violet-100 dark:bg-violet-500/15"
     ]}>
       <.link
@@ -179,7 +186,7 @@ defmodule LoopyardWeb.Components.ProjectList do
         project={@ws.name}
         workspace={nil}
         state={ws_state(@ws)}
-        size={:sm}
+        size={(@size == :xs && :md) || :sm}
         muted={@size == :sm}
         class="min-w-0 flex-1"
       />
