@@ -168,20 +168,15 @@ defmodule LoopyardWeb.Components.ProjectList do
         muted={@size == :sm}
         class="min-w-0 flex-1"
       />
-      <%!-- XS: ONLY the needs-you signal (picking fast). SM: the full headline
-           word + the port chip in a fixed column so the rail scans straight.
-           A :changed headline renders the green/red git-stat, not the single
-           colour word. --%>
+      <%!-- The rail carries only the SIGNAL words (needs-you / broken / …), never
+           the loud green/red git line-stats — those are noise in a nav rail and
+           live in the right sidebar's Changes row instead. XS shows only the
+           needs-you signal (picking fast); SM shows any signal word. --%>
       <span
-        :if={@headline && (@size == :sm || @headline.kind == :needs_you)}
+        :if={@headline && @headline.kind != :changed && (@size == :sm || @headline.kind == :needs_you)}
         class="relative flex-none text-xs truncate max-w-[9rem]"
       >
-        <.change_stat
-          :if={@headline.kind == :changed}
-          added={@headline.added}
-          removed={@headline.removed}
-        />
-        <span :if={@headline.kind != :changed} class={@headline.class}>{@headline.text}</span>
+        <span class={@headline.class}>{@headline.text}</span>
       </span>
       <div :if={@size == :sm} class="relative z-10 flex-none w-[4.25rem] flex justify-end">
         <Birdseye.port_chip

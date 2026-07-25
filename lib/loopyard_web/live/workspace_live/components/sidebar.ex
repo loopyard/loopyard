@@ -205,7 +205,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
   attr :sync_status, :any, default: nil
 
   def workspace_switcher(assigns) do
-    assigns = assign(assigns, :changes_count, changes_count(assigns.changes))
+    assigns =
+      assigns
+      |> assign(:changes_count, changes_count(assigns.changes))
+      # The +/- line stat (added/removed) for the Changes row — pulled from the
+      # ChangeCounts cache, the same source the (now-removed) left-rail git-stat
+      # used. This is where the diff belongs: next to Changes, not in the nav rail.
+      |> assign(:changes_stat, Loopyard.ChangeCounts.get(assigns.workspace_id))
 
     ~H"""
     <.section>
@@ -257,6 +263,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
         vol={vol}
         base_path={@base_path}
         changes_count={@changes_count}
+        changes_stat={@changes_stat}
         live_action={@live_action}
         selected_volume={@selected_volume}
       />
@@ -495,6 +502,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
   attr :vol, :map, required: true
   attr :base_path, :string, required: true
   attr :changes_count, :integer, default: 0
+  attr :changes_stat, :map, default: nil
   attr :live_action, :atom, default: :index
   attr :selected_volume, :string, default: nil
 
@@ -542,8 +550,22 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
       >
         <span class="w-1.5 h-1.5 rounded-full flex-none bg-amber-400" aria-hidden="true"></span>
         <span class="truncate text-zinc-600 dark:text-zinc-400 flex-1">Changes</span>
+        <%!-- The useful diff stat lives HERE (right sidebar), not in the nav rail:
+             the +/- line count when we have it, with the changed-file count as a
+             quiet secondary. --%>
         <span
-          :if={@changes_count > 0}
+          :if={@changes_stat && (@changes_stat.added > 0 || @changes_stat.removed > 0)}
+          class="flex-none inline-flex items-center gap-1.5 text-sm font-mono font-medium"
+          title={"+#{@changes_stat.added} / -#{@changes_stat.removed} lines across #{@changes_count} file(s)"}
+        >
+          <span class="text-emerald-600 dark:text-emerald-400">+{@changes_stat.added}</span>
+          <span class="text-red-500 dark:text-red-400">−{@changes_stat.removed}</span>
+        </span>
+        <span
+          :if={
+            (is_nil(@changes_stat) || (@changes_stat.added == 0 && @changes_stat.removed == 0)) &&
+              @changes_count > 0
+          }
           class="flex-none inline-flex items-center rounded px-1.5 text-sm font-mono font-medium bg-amber-500/15 text-amber-600 dark:text-amber-400"
           title={"#{@changes_count} changed file(s)"}
         >
