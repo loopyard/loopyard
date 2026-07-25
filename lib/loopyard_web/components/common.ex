@@ -204,6 +204,67 @@ defmodule LoopyardWeb.Components.Common do
   end
 
   @doc """
+  THE canonical project·workspace identity — one design-language primitive so a
+  "status-light + Project · workspace" reads as *the same thing* everywhere it
+  appears: a switcher row, an inline chat mention, a chip, a memo's source line,
+  the operator rail. Wherever you name a workspace, use THIS — never hand-roll a
+  dot + name again (that drift is exactly what made four different grammars for
+  one concept).
+
+      <.workspace_identity project="firehose-site" workspace="main" state={:working} />
+      <.workspace_identity project="Loopyard" workspace="cleanup" state={:done} size={:sm} />
+
+  `state` is the ONE status vocabulary the light speaks — map your local status
+  to it so a color always means the same thing:
+
+    * `:working`   — violet, pulsing (a turn is live)
+    * `:needs_you` — amber (blocked on you)
+    * `:done`      — emerald (idle / finished)
+    * `:asleep`    — zinc (stopped / resting)
+    * `:broken`    — red (crashed / errored)
+
+  The workspace renders as a muted "· name" suffix and is ALWAYS shown (the
+  identity is project AND workspace); pass `workspace={nil}` only for a
+  project-level thing with no workspace.
+  """
+  attr :project, :string, required: true
+  attr :workspace, :string, default: nil
+  attr :state, :atom, default: :asleep, values: [:working, :needs_you, :done, :asleep, :broken]
+  attr :size, :atom, default: :md, values: [:sm, :md]
+  attr :class, :string, default: nil
+
+  def workspace_identity(assigns) do
+    ~H"""
+    <span class={["inline-flex items-center min-w-0", (@size == :sm && "gap-1.5") || "gap-2", @class]}>
+      <span
+        aria-hidden="true"
+        class={[
+          "flex-none rounded-full",
+          (@size == :sm && "w-1.5 h-1.5") || "w-2 h-2",
+          state_light(@state)
+        ]}
+      >
+      </span>
+      <span class={["min-w-0 truncate", (@size == :sm && "text-[13px]") || "text-sm"]}>
+        <span class="font-medium text-zinc-800 dark:text-zinc-100">{@project}</span><span
+          :if={@workspace not in [nil, ""]}
+          class="text-zinc-400 dark:text-zinc-500"
+        > · {@workspace}</span>
+      </span>
+    </span>
+    """
+  end
+
+  # The ONE status→light mapping. Every project·workspace light speaks this, so a
+  # color always means the same thing across the whole app. (`:chugging` accepted
+  # as an alias for the operator rail's live state.)
+  defp state_light(s) when s in [:working, :chugging], do: "bg-violet-500 animate-pulse"
+  defp state_light(:needs_you), do: "bg-amber-500"
+  defp state_light(:done), do: "bg-emerald-500"
+  defp state_light(:broken), do: "bg-red-500"
+  defp state_light(_), do: "bg-zinc-400"
+
+  @doc """
   A chevron-right affordance for navigable rows. Scales up slightly on
   desktop. Reacts to a parent `.group` hover.
   """

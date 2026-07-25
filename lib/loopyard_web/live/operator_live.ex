@@ -678,13 +678,12 @@ defmodule LoopyardWeb.OperatorLive do
           title={"#{i.project_name} · #{i.workspace_name} — #{state_label(i.state)}"}
           class="group flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
         >
-          <span class={["flex-none w-1.5 h-1.5 rounded-full", state_dot(i.state)]} />
-          <span class="min-w-0 truncate text-sm font-medium text-zinc-700 dark:text-zinc-200">
-            {i.project_name}<span
-              :if={i.workspace_name not in [nil, "", "main"]}
-              class="font-normal text-zinc-400 dark:text-zinc-500"
-            > · {i.workspace_name}</span>
-          </span>
+          <.workspace_identity
+            project={i.project_name}
+            workspace={i.workspace_name}
+            state={(i.state == :chugging && :working) || i.state}
+            class="flex-1"
+          />
           <span
             :if={i.delta > 0}
             title={"#{i.delta} new since you last looked"}
@@ -715,13 +714,13 @@ defmodule LoopyardWeb.OperatorLive do
               i.fade
             ]}
           >
-            <span class="flex-none w-1 h-1 rounded-full bg-emerald-500/70" />
-            <span class="min-w-0 truncate text-[13px] text-zinc-500 dark:text-zinc-400">
-              {i.project_name}<span
-                :if={i.workspace_name not in [nil, "", "main"]}
-                class="text-zinc-400/70 dark:text-zinc-600"
-              > · {i.workspace_name}</span>
-            </span>
+            <.workspace_identity
+              project={i.project_name}
+              workspace={i.workspace_name}
+              state={:done}
+              size={:sm}
+              class="flex-1"
+            />
             <span class="ml-auto flex-none text-[11px] font-medium text-violet-500 opacity-0 group-hover:opacity-100 transition-opacity">
               →
             </span>
@@ -816,10 +815,6 @@ defmodule LoopyardWeb.OperatorLive do
     """
   end
 
-  defp state_dot(:needs_you), do: "bg-amber-500"
-  defp state_dot(:done), do: "bg-emerald-500"
-  defp state_dot(:chugging), do: "bg-violet-500 animate-pulse"
-  defp state_dot(_), do: "bg-zinc-400 dark:bg-zinc-500"
 
   defp state_label(:needs_you), do: "needs you"
   defp state_label(:done), do: "done"
