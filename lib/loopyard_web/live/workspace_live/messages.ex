@@ -255,6 +255,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       # burst of reads was a noisy double-reported stack; the card alone is
       # the single, calm representation.
       msg_kind(assigns.msg) == :read -> ~H"<div></div>"
+      # Link plumbing (file_url/app_url): pure mechanics — the produced link
+      # lands in the agent's prose. A wall of "Get file URL / output · 1 line"
+      # rows says nothing; render neither call nor result.
+      msg_kind(assigns.msg) == :plumbing -> ~H"<div></div>"
       true -> render_tool_call(assigns)
     end
   end
@@ -286,6 +290,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         ~H"<div></div>"
 
       is_binary(content) && String.contains?(content, "completed with no output") ->
+        ~H"<div></div>"
+
+      # Link-plumbing results (file_url/app_url) vanish with their calls — the
+      # produced link lives in the agent's prose.
+      (mc = matching_tool_call(assigns)) != nil and msg_kind(mc) == :plumbing ->
         ~H"<div></div>"
 
       # Mini-app tools (propose_fork, ask_user, …) show their outcome in their

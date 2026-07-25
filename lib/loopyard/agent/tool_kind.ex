@@ -24,10 +24,12 @@ defmodule Loopyard.Agent.ToolKind do
     * `:grep`    — a search; renders as the match list.
     * `:edit`    — an edit; renders the diff inline on the call.
     * `:write`   — a file write (category tint only).
+    * `:plumbing` — link/url helpers (file_url, app_url): mechanics whose
+      product lands in the agent's prose — not rendered in the transcript.
     * `:generic` — anything else; the plain collapsible output.
   """
 
-  @type t :: :command | :read | :grep | :edit | :write | :generic
+  @type t :: :command | :read | :grep | :edit | :write | :plumbing | :generic
 
   @doc "Neutral kind for a tool name. Unknown names → `:generic` (graceful)."
   @spec classify(String.t() | nil) :: t()
@@ -38,6 +40,7 @@ defmodule Loopyard.Agent.ToolKind do
       name == "Grep" or String.ends_with?(name, "__grep") -> :grep
       edit?(name) -> :edit
       name == "Write" or String.ends_with?(name, "__write_file") -> :write
+      String.ends_with?(name, "__file_url") or String.ends_with?(name, "__app_url") -> :plumbing
       true -> :generic
     end
   end
