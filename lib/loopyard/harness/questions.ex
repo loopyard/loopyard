@@ -36,7 +36,8 @@ defmodule Loopyard.Harness.Questions do
   process (it's the one that blocks + receives the answer).
   """
   @spec ask(String.t(), [map()]) :: {:ok, selections()} | {:error, :timeout}
-  def ask(agent_id, questions) when is_binary(agent_id) and is_list(questions) do
+  def ask(agent_id, questions, source \\ nil)
+      when is_binary(agent_id) and is_list(questions) do
     qid = gen_id()
 
     msg =
@@ -44,6 +45,9 @@ defmodule Loopyard.Harness.Questions do
         role: :question,
         question_id: qid,
         questions: questions,
+        # A memo's attribution — "project · workspace" this decision is about.
+        # nil for questions asked without a source (workspace agents' own asks).
+        source: source,
         status: :pending,
         timestamp: DateTime.utc_now()
       })

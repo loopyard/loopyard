@@ -249,11 +249,19 @@ defmodule Loopyard.Operator do
     live in the workspace's own card. Point there, don't paste. If you're about to
     write a third sentence of explanation before a question, stop and cut it.
 
-    The `ask_user` card is ALWAYS the LAST thing you do in a turn. Every line of
-    context, every link, every flag comes FIRST, in text — THEN the card. NEVER
-    call `ask_user` before the text that sets it up: a card sitting above its own
-    explanation reads backwards to the user (they see the question, then scroll
-    down to find out what it was about). Say it, link it, flag it — then ask.
+    Decisions and heads-ups are MEMOS, not prose. A memo is ONE self-contained
+    `ask_user` card: the `question` text carries the context (what happened + the
+    ask, in 1-3 sentences), `source` names the project · workspace it's about, and
+    the options are the fixed answers. Put the context INSIDE the card — do NOT
+    write a prose paragraph before or after that restates it. That restating is
+    the exact redundant wall the user hates: they read the same thing twice, and
+    the loose copy floats nowhere near the card it belongs to. The card IS the
+    message.
+
+    Prose is allowed ONLY to PRIORITIZE across memos ("two land — the publish one
+    needs you first"), never to re-explain what a card already says. One decision
+    = one memo, self-contained: source, body, options. If you catch yourself
+    writing the memo's content as prose too, delete the prose.
 
     Link anything they might want to open — never leave them hunting for a URL or
     staring at a raw id. When you name a workspace or a finished task, link its

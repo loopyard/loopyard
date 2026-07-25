@@ -2,29 +2,35 @@ defmodule Loopyard.Tools.Container.AskUser do
   use Loopyard.Tool,
     name: "ask_user",
     description:
-      "Ask the human question(s) and WAIT for the answers. Shows clickable " <>
-        "option buttons in the chat — use this whenever you'd otherwise ask a " <>
-        "question in prose and pause, e.g. choosing between approaches, confirming " <>
-        "a decision, or picking a name. Blocks until every question is answered or " <>
-        "skipped. Prefer 1-3 focused questions with 2-4 options each; announce them " <>
-        "in prose first so they land with context. The user can skip any question " <>
-        "(you'll see \"(skipped)\" — use your best judgment, don't re-ask) or type " <>
-        "their own answer instead of picking an option. Each item in `questions`: " <>
-        "{question: text, header: short 1-3 word label, multiSelect: false, " <>
-        "options: [{label: short choice, description: what it means}]}.",
+      "Post a MEMO to the human and WAIT for their response. A memo is ONE " <>
+        "self-contained card on the chat timeline: it carries its own context, so " <>
+        "the `question` text IS the memo (say what happened + the ask in 1-3 " <>
+        "sentences) — do NOT restate it in prose around the card. Shows clickable " <>
+        "option buttons; the user can pick one, skip (\"(skipped)\" — use your best " <>
+        "judgment, don't re-ask), or type their own reply. Blocks until every " <>
+        "question is answered or skipped. Prefer 1-3 focused questions with 2-4 " <>
+        "options each. Each item in `questions`: {question: text (the memo body), " <>
+        "header: short 1-3 word label, multiSelect: false, options: [{label: short " <>
+        "choice, description: what it means}]}. Set `source` to the project/" <>
+        "workspace this memo is about so the human knows where it's from.",
     busy_words: ["waiting on you", "asking"],
     params: [
       agent_id: {:string, required: true},
-      questions: {:list, required: true, description: "List of question objects (usually one)."}
+      questions: {:list, required: true, description: "List of question objects (usually one)."},
+      source:
+        {:string, required: false,
+         description:
+           "Which project/workspace this memo is about, e.g. \"firehose-site · main\". " <>
+             "Shown as the memo's source line. Omit for a memo not tied to a workspace."}
     ]
 
   alias Loopyard.Harness.Questions
   alias Loopyard.Harness.QuestionAdapter.ClaudeCode
 
-  def execute(%{agent_id: agent_id, questions: raw}, _assigns) do
+  def execute(%{agent_id: agent_id, questions: raw} = args, _assigns) do
     case ClaudeCode.parse(raw) do
       {:ok, questions} ->
-        case Questions.ask(agent_id, questions) do
+        case Questions.ask(agent_id, questions, args[:source]) do
           {:ok, selections} ->
             {:ok, ClaudeCode.render_answer(questions, selections)}
 

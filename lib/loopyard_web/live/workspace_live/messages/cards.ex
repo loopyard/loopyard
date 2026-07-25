@@ -47,6 +47,16 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
             </span>
           </div>
 
+          <%!-- Memo attribution: which project/workspace this decision is FROM.
+               Makes the card self-contained — you know its source without hunting
+               through the surrounding prose. --%>
+          <div
+            :if={@msg[:source] not in [nil, ""]}
+            class="text-xs text-zinc-500 dark:text-zinc-400 -mt-1 mb-3"
+          >
+            from <span class="font-medium text-zinc-700 dark:text-zinc-200">{@msg.source}</span>
+          </div>
+
           <div :for={q <- @msg.questions} class="mb-8 last:mb-0">
             <div
               :if={q.header != ""}
