@@ -108,9 +108,9 @@ defmodule LoopyardWeb.Components.LogViewer do
     <div
       id={"log-wrap-#{System.unique_integer([:positive])}"}
       phx-hook="LogExpand"
-      class="mt-2 mb-1 rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden bg-zinc-100 dark:bg-zinc-950"
+      class="mt-3 mb-1 rounded-xl overflow-hidden bg-gradient-to-b from-zinc-100 to-zinc-50 dark:from-zinc-800/40 dark:to-zinc-900/50"
     >
-      <div class="flex items-center gap-2 px-3 py-1.5 bg-zinc-50 dark:bg-zinc-900/60 border-b border-zinc-200 dark:border-zinc-800">
+      <div class="flex items-center gap-2 px-3.5 pt-2 pb-1">
         <span
           title={@command}
           class="text-sm md:text-[13px] font-mono text-zinc-600 dark:text-zinc-300 truncate min-w-0 flex-1"
@@ -146,12 +146,13 @@ defmodule LoopyardWeb.Components.LogViewer do
       <pre
         data-log-pre
         class={[
-          "text-sm md:text-[13px] font-mono leading-snug text-zinc-800 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-950 whitespace-pre overflow-auto px-3 py-2",
+          "text-sm md:text-[13px] font-mono leading-snug text-zinc-700 dark:text-zinc-300 bg-transparent whitespace-pre overflow-auto px-3.5 py-1.5",
           if(@status == :building, do: "max-h-64", else: "max-h-32")
         ]}
       >{Ansi.to_html(@display)}</pre>
-      <%!-- Footer: verdict left, actions right. --%>
-      <div class="flex items-center gap-2 px-3 py-1 bg-zinc-50 dark:bg-zinc-900/60 border-t border-zinc-200 dark:border-zinc-800">
+      <%!-- Footer: verdict left, actions right. Borderless — blends into the
+           soft panel; the verdict dot + colour carry the status, not a rule. --%>
+      <div class="flex items-center gap-2 px-3.5 pt-1 pb-2">
         <div class={"w-1.5 h-1.5 rounded-full flex-none #{@dot_class}"}></div>
         <span
           :if={@status == :building && elapsed_since(@started)}
