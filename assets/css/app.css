@@ -210,6 +210,31 @@
 @media (prefers-color-scheme: dark) {
   .markdown-body strong { color: #f4f4f8; }
 }
+/* Tables: a calm, evidently-a-table skin. The table scrolls left/right as one
+   block (never squeezes columns until headers shatter mid-word); sane min
+   column widths keep cells readable; hairline row separators + a stronger
+   header rule anchor it as a table instead of data floating in the prose. */
+.markdown-body table {
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+  margin: 1.1em 0;
+  border-collapse: collapse;
+}
+.markdown-body th,
+.markdown-body td {
+  min-width: 6.5rem;
+  padding: 0.45em 0.9em 0.45em 0;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid rgba(127, 127, 127, 0.18);
+}
+.markdown-body thead th {
+  font-weight: 650;
+  border-bottom: 1.5px solid rgba(127, 127, 127, 0.4);
+}
+.markdown-body tbody tr:last-child td { border-bottom: none; }
+
 .markdown-body hr { margin: 1em 0; border-color: rgba(0, 0, 0, 0.1); }
 @media (prefers-color-scheme: dark) {
   .markdown-body hr { border-color: rgba(255, 255, 255, 0.1); }
