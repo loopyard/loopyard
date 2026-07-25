@@ -46,8 +46,12 @@ defmodule LoopyardWeb.Components.ProjectList do
       <section :for={project <- @projects}>
         <%!-- Project header: just the name (→ the project page, where "New
              workspace" lives). STICKY so it pins while its workspaces scroll;
-             opaque bg covers rows sliding under; shadow only when stuck. --%>
+             opaque bg covers rows sliding under; shadow only when stuck.
+             SKIPPED in the compact rail when a project has a single workspace —
+             that row shows "project · workspace" on ONE line instead of a header
+             + a lone row (dead space). Multi-workspace projects keep the header. --%>
         <.link
+          :if={@size == :full or length(project.workspaces) != 1}
           navigate={"/projects/#{project.id}"}
           phx-click={@row_click}
           data-sticky-header
@@ -108,6 +112,7 @@ defmodule LoopyardWeb.Components.ProjectList do
             current={ws.id == @current_workspace_id}
             row_click={@row_click}
             size={@size}
+            standalone={length(project.workspaces) == 1}
           />
         </div>
 
@@ -134,6 +139,10 @@ defmodule LoopyardWeb.Components.ProjectList do
   attr :current, :boolean, default: false
   attr :row_click, :any, default: nil
   attr :size, :atom, required: true
+  # standalone: this project has a single workspace, so there's no section header
+  # above — the row carries the project name too ("project · workspace"), on one
+  # line, instead of a lone muted "main" under a redundant header.
+  attr :standalone, :boolean, default: false
 
   defp ws_row_compact(assigns) do
     assigns = assign(assigns, :headline, Birdseye.headline(assigns.ws))
@@ -161,11 +170,11 @@ defmodule LoopyardWeb.Components.ProjectList do
            workspace (● name) — no redundant project — and mutes it in the rail
            (:sm) so the nav recedes behind the chat. --%>
       <LoopyardWeb.Components.Common.workspace_identity
-        project={@ws.name}
-        workspace={nil}
+        project={if @standalone, do: @project_name, else: @ws.name}
+        workspace={if @standalone, do: @ws.name, else: nil}
         state={ws_state(@ws)}
         size={:sm}
-        muted={@size == :sm}
+        muted={@size == :sm and not @standalone}
         class="min-w-0 flex-1"
       />
       <%!-- The rail carries only the SIGNAL words (needs-you / broken / …), never
