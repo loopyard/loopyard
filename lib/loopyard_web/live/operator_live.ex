@@ -326,17 +326,20 @@ defmodule LoopyardWeb.OperatorLive do
 
   def handle_event(_evt, _params, socket), do: {:noreply, socket}
 
-  # A workspace's mapped ports as launchable links. `port` is the HOST port (what
-  # you actually navigate to — the container port is internal), matching the
-  # workspace header's app-port link.
-  defp workspace_ports(ws_id, host) do
-    Loopyard.PortRegistry.list_for_workspace(ws_id)
-    |> Enum.map(fn e -> %{port: e[:host_port], url: "http://#{host}:#{e[:host_port]}"} end)
-    |> Enum.reject(&is_nil(&1.port))
-    |> Enum.sort_by(& &1.port)
-  rescue
-    _ -> []
+  # Opacity by how long since the workspace was last active. Recent work stays
+  # bright; older work dims and recedes. Floored at 50% so a faded row is still
+  # readable WITHOUT hover (mobile has none) — hover/tap restores full weight.
+  # This makes recency visual, not just the sort order.
+  defp fade_class(%DateTime{} = at, now) do
+    case DateTime.diff(now, at, :minute) do
+      m when m < 10 -> "opacity-100"
+      m when m < 60 -> "opacity-75"
+      m when m < 360 -> "opacity-60"
+      _ -> "opacity-50"
+    end
   end
+
+  defp fade_class(_, _), do: "opacity-50"
 
   defp current_track do
     Aural.Channel.state(@aural_channel).track
@@ -373,15 +376,19 @@ defmodule LoopyardWeb.OperatorLive do
 
     watched = Loopyard.Operator.Digest.watches() |> MapSet.new(& &1.ws_id)
 
+    now = DateTime.utc_now()
+
     jobs =
       tree
       |> Loopyard.Operator.Queue.items()
       |> Enum.map(fn j ->
         j
         |> Map.put(:watching?, MapSet.member?(watched, j.id))
-        # Mapped ports as launchable links — the operator's viewer is on the host,
-        # so a workspace's dev server is reachable at host:host_port.
-        |> Map.put(:ports, workspace_ports(j.id, host))
+        # Fade by staleness. The list is sorted newest-first (Queue.items), and
+        # the fade makes recency VISUAL too: what you touched just now is bright,
+        # older work dims and recedes (hover/tap restores it). "What I'm working
+        # on" reads first; done-hours-ago stuff is present but out of the way.
+        |> Map.put(:fade, fade_class(j[:last_activity_at], now))
       end)
 
     socket
@@ -661,11 +668,18 @@ defmodule LoopyardWeb.OperatorLive do
           phx-value-ws={i.id}
           phx-value-project={i.project_id}
           phx-value-agent={i.agent_id}
-          class="group flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors cursor-pointer"
+          title={"#{i.project_name} · #{i.workspace_name} — #{state_label(i.state)}"}
+          class={[
+            "group flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 cursor-pointer transition-opacity hover:opacity-100 hover:bg-zinc-100 dark:hover:bg-zinc-800/60",
+            i.fade
+          ]}
         >
           <span class={["flex-none w-1.5 h-1.5 rounded-full", state_dot(i.state)]} />
           <span class="flex-1 min-w-0 truncate text-sm text-zinc-700 dark:text-zinc-200">
-            {i.project_name}<span class="text-zinc-400 dark:text-zinc-500"> · {String.downcase(state_label(i.state))}</span>
+            {i.project_name}<span
+              :if={i.workspace_name not in [nil, "", "main"]}
+              class="text-zinc-400 dark:text-zinc-500"
+            > · {i.workspace_name}</span>
           </span>
           <span
             :if={i.watching?}
