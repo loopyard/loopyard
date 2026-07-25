@@ -28,6 +28,10 @@ defmodule Loopyard.Tools.ControlPlane.DeleteProject do
           verb: :delete_project,
           project_id: project.id,
           name: project.name,
+          # Real blast radius, so the card can tell the truth: an EMPTY project
+          # (0 workspaces) has nothing to tear down, and shouldn't wear the scary
+          # "destroys ALL its workspaces, irreversible" boilerplate.
+          workspace_count: length(Loopyard.WorkspaceRegistry.list_workspaces(project.id)),
           reason: params[:reason]
         }
 
@@ -56,10 +60,36 @@ defmodule Loopyard.Tools.ControlPlane.DeleteProject do
     t = String.trim(target)
     projects = Loopyard.ProjectRegistry.list_projects()
 
-    cond do
-      p = Enum.find(projects, &(&1.id == t)) -> {:ok, p}
-      p = Enum.find(projects, &(String.downcase(&1.name) == String.downcase(t))) -> {:ok, p}
-      true -> {:error, "No project matched '#{target}'. Call overview to see valid names/ids."}
+    # An exact id is unambiguous — take it.
+    case Enum.find(projects, &(&1.id == t)) do
+      %{} = p ->
+        {:ok, p}
+
+      nil ->
+        # By NAME: a destructive, cascading delete must NEVER guess. If a name
+        # matches more than one project (a real one plus empty duplicates), do
+        # NOT silently pick the first — you could nuke the project that holds all
+        # the work. Refuse and show which is which (id + workspace count) so the
+        # caller targets the exact id. This is the safety boundary: ambiguity is
+        # an error, not a coin flip.
+        case Enum.filter(projects, &(String.downcase(&1.name) == String.downcase(t))) do
+          [p] ->
+            {:ok, p}
+
+          [] ->
+            {:error, "No project matched '#{target}'. Call overview to see valid names/ids."}
+
+          many ->
+            candidates =
+              Enum.map_join(many, "; ", fn p ->
+                n = length(Loopyard.WorkspaceRegistry.list_workspaces(p.id))
+                "#{p.id} (#{n} workspace#{if n == 1, do: "", else: "s"})"
+              end)
+
+            {:error,
+             "Ambiguous — #{length(many)} projects are named '#{target}', so I won't guess which to delete " <>
+               "(one likely holds all the work). Pass the exact project id. Candidates: #{candidates}."}
+        end
     end
   end
 end

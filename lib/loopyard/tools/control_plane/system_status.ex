@@ -50,7 +50,9 @@ defmodule Loopyard.Tools.ControlPlane.SystemStatus do
   end
 
   defp health_block do
-    overall = Loopyard.Health.format(Loopyard.Health.overall())
+    # severity/0 is the AGGREGATE status; overall/0 is the per-component MAP —
+    # passing the map to format/1 is what crashed system_status every call.
+    overall = Loopyard.Health.format(Loopyard.Health.severity())
 
     comps =
       Loopyard.Health.components()

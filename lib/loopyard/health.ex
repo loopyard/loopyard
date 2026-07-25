@@ -160,6 +160,15 @@ defmodule Loopyard.Health do
   the reason.
   """
   def format(:healthy), do: "healthy"
+  # Bare severity atoms (from `severity/0`) as well as the {status, reason}
+  # component tuples (from `component/1`) — format/1 must speak BOTH, since both
+  # flow into system_status. Missing the bare forms is what crashed it.
+  def format(:degraded), do: "degraded"
+  def format(:down), do: "down"
   def format({:degraded, reason}), do: "degraded — #{reason}"
   def format({:down, reason}), do: "down — #{reason}"
+  # Never crash a health read on an unexpected shape — a status label is not
+  # worth taking down the whole system_status tool (that's how format/1 got a
+  # map and FunctionClause-crashed every call).
+  def format(other), do: "unknown (#{inspect(other)})"
 end
