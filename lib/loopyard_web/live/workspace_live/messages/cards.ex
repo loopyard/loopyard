@@ -29,7 +29,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
            NOT violet — violet is the "You" message colour). Options sit on white
            rows so they stay distinct on the tint. Reads top-down: label ›
            question (hero) › the options, each anchored by a radio/check dot. --%>
-      <div class="rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/20 p-4">
+      <div class="rounded-2xl border border-amber-300/60 dark:border-amber-700/40 bg-gradient-to-b from-amber-50/80 to-amber-50/30 dark:from-amber-950/25 dark:to-amber-950/5 p-5 shadow-sm shadow-amber-900/5 ring-1 ring-amber-500/[0.04]">
           <div class="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 mb-3">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3.5 h-3.5">
               <path
@@ -285,7 +285,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
   def secret_card(assigns) do
     ~H"""
     <div class="py-2">
-      <div class="rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50/50 dark:bg-amber-900/10 p-4">
+      <div class="rounded-2xl border border-amber-300/60 dark:border-amber-700/40 bg-gradient-to-b from-amber-50/80 to-amber-50/30 dark:from-amber-950/25 dark:to-amber-950/5 p-5 shadow-sm shadow-amber-900/5 ring-1 ring-amber-500/[0.04]">
         <div class="flex items-center gap-1.5 text-sm font-medium text-amber-700 dark:text-amber-400 mb-2">
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -379,9 +379,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
     assigns = assign(assigns, :action, assigns.msg.action)
 
     ~H"""
-    <div class="py-2">
-      <div class="rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50/50 dark:bg-amber-900/10 p-4">
-        <div class="flex items-center gap-1.5 text-sm font-medium text-amber-700 dark:text-amber-400 mb-2">
+    <div class="py-3">
+      <div class="rounded-2xl border border-amber-300/60 dark:border-amber-700/40 bg-gradient-to-b from-amber-50/80 to-amber-50/30 dark:from-amber-950/25 dark:to-amber-950/5 p-5 shadow-sm shadow-amber-900/5 ring-1 ring-amber-500/[0.04]">
+        <div class="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400/90 mb-2.5">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 16 16"
@@ -403,7 +403,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
 
         <div
           :if={@action.verb == :create_project}
-          class="text-lg md:text-base text-zinc-800 dark:text-zinc-200 mb-1"
+          class="text-[15px] leading-relaxed text-zinc-800 dark:text-zinc-100 mb-1"
         >
           Create project
           <code class="text-sm bg-violet-200/70 dark:bg-violet-800/50 rounded px-1 py-0.5">
@@ -413,7 +413,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
         </div>
         <div
           :if={@action.verb == :integrate}
-          class="text-lg md:text-base text-zinc-800 dark:text-zinc-200 mb-1"
+          class="text-[15px] leading-relaxed text-zinc-800 dark:text-zinc-100 mb-1"
         >
           Merge
           <code class="text-sm bg-violet-200/70 dark:bg-violet-800/50 rounded px-1 py-0.5">
@@ -424,7 +424,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
         </div>
         <div
           :if={@action.verb == :delete_workspace}
-          class="text-lg md:text-base text-zinc-800 dark:text-zinc-200 mb-1"
+          class="text-[15px] leading-relaxed text-zinc-800 dark:text-zinc-100 mb-1"
         >
           Delete workspace
           <code class="text-sm bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">
@@ -434,7 +434,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
         </div>
         <div
           :if={@action.verb == :delete_project}
-          class="text-lg md:text-base text-zinc-800 dark:text-zinc-200 mb-1"
+          class="text-[15px] leading-relaxed text-zinc-800 dark:text-zinc-100 mb-1"
         >
           Delete project
           <code class="text-sm bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">
@@ -446,7 +446,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
         </div>
         <div
           :if={@action.verb in [:rename_workspace, :rename_project]}
-          class="text-lg md:text-base text-zinc-800 dark:text-zinc-200 mb-1"
+          class="text-[15px] leading-relaxed text-zinc-800 dark:text-zinc-100 mb-1"
         >
           Rename {if @action.verb == :rename_project, do: "project", else: "workspace"}
           <code class="text-sm bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">
@@ -458,7 +458,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
         </div>
         <div
           :if={@action.verb == :fork}
-          class="text-lg md:text-base text-zinc-800 dark:text-zinc-200 mb-1"
+          class="text-[15px] leading-relaxed text-zinc-800 dark:text-zinc-100 mb-1"
         >
           Fork
           <code class="text-sm bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">
@@ -484,10 +484,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                 phx-value-approval_id={@msg.approval_id}
                 phx-value-decision="approve"
                 class={[
-                  "focus-ring inline-flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium text-white transition-colors",
+                  "focus-ring inline-flex items-center gap-1.5 rounded-lg px-5 py-2 text-sm font-semibold text-white shadow-sm transition-colors",
                   if(@action.verb in [:delete_workspace, :delete_project],
-                    do: "bg-red-600 hover:bg-red-700",
-                    else: "bg-emerald-600 hover:bg-emerald-700"
+                    do: "bg-red-600 hover:bg-red-700 shadow-red-900/20",
+                    else: "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-900/20"
                   )
                 ]}
               >
@@ -502,7 +502,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                 phx-click="decide_approval"
                 phx-value-approval_id={@msg.approval_id}
                 phx-value-decision="deny"
-                class="focus-ring inline-flex items-center rounded-lg border border-zinc-300 dark:border-zinc-600 px-4 py-1.5 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                class="focus-ring inline-flex items-center rounded-lg border border-zinc-300 dark:border-zinc-600 px-5 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
               >
                 Deny
               </button>
@@ -638,12 +638,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
     assigns = assign(assigns, st: st, recent: embed_recent(st), proj: proj, ws: ws)
 
     ~H"""
-    <div class="py-2">
-      <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50/60 dark:bg-zinc-800/30 overflow-hidden">
+    <div class="py-3">
+      <div class="rounded-2xl border border-zinc-200 dark:border-zinc-700/70 bg-zinc-50/70 dark:bg-zinc-800/40 shadow-sm shadow-black/5 overflow-hidden">
         <%!-- Header: who + live status + drill-in --%>
         <.link
           navigate={embed_link(@msg)}
-          class="group flex items-center gap-2 px-3 py-2 hover:bg-zinc-100/60 dark:hover:bg-zinc-800/50 transition-colors"
+          class="group flex items-center gap-2 px-3.5 py-2.5 hover:bg-zinc-100/60 dark:hover:bg-zinc-800/50 transition-colors"
         >
           <LoopyardWeb.Components.Common.workspace_identity
             project={@proj}
@@ -652,7 +652,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
             class="min-w-0"
           />
           <span class="text-xs text-zinc-500 dark:text-zinc-400 flex-none">· {embed_word(@st)}</span>
-          <span class="ml-auto text-xs text-violet-500 group-hover:text-violet-600 flex-none">
+          <span class="ml-auto flex-none inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium text-violet-600 dark:text-violet-400 group-hover:bg-violet-500/10 transition-colors">
             open →
           </span>
         </.link>
