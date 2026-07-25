@@ -138,12 +138,9 @@
      and the 68ch measure — the document feel comes from size + rhythm + measure,
      not from a typeface change. (Tried a serif; it didn't sit right.) */
   max-width: 68ch;          /* the measure — the single biggest readability win */
-  font-size: 1.25rem;       /* mobile reading size (~20px) */
-  line-height: 1.65;
+  font-size: 1.125rem;      /* ~18px — the chat-body size, every viewport */
+  line-height: 1.7;
   letter-spacing: 0;
-}
-@media (min-width: 768px) {
-  .markdown-body { font-size: 1.125rem; line-height: 1.7; }  /* desktop ~18px */
 }
 .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
   font-weight: 650;
@@ -230,9 +227,9 @@
    meta: labels & receipts (eyebrows, timestamps, footers, source lines)
    One scale = calm rhythm; per-surface ad-hoc sizes are what made the stream
    feel like a mix of slightly-different fonts. */
-.chat-body { font-size: 1.25rem; line-height: 1.6; }
-.chat-sub  { font-size: 1.0625rem; line-height: 1.55; }
-.chat-meta { font-size: 0.875rem; line-height: 1.4; }
+.chat-body { font-size: 1.125rem; line-height: 1.65; }
+.chat-sub  { font-size: 1rem; line-height: 1.55; }
+.chat-meta { font-size: 0.8125rem; line-height: 1.4; }
 @media (min-width: 768px) {
   .chat-body { font-size: 1.125rem; }
   .chat-sub  { font-size: 0.9375rem; }
@@ -245,13 +242,8 @@
 .markdown-body.human-prompt p,
 .markdown-body.human-prompt li {
   font-family: inherit;
-  font-size: 1.25rem;
+  font-size: 1.125rem;
   line-height: 1.55;
-}
-@media (min-width: 768px) {
-  .markdown-body.human-prompt,
-  .markdown-body.human-prompt p,
-  .markdown-body.human-prompt li { font-size: 1.125rem; }
 }
 
 /* User message markdown (white text on purple bg) */
