@@ -34,7 +34,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                project·workspace this is about — the canonical design-language
                badge), the card's label TOP-RIGHT opposite it; actions live at
                the BOTTOM. Without a source the label holds the left edge. --%>
-          <div class="flex items-center justify-between gap-3 mb-3 min-w-0">
+          <div class="flex items-center justify-between gap-3 mb-2 min-w-0">
             <LoopyardWeb.Components.Common.workspace_identity
               :if={@msg[:source] not in [nil, ""]}
               project={source_project(@msg.source)}
@@ -326,7 +326,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
     ~H"""
     <div class="py-2">
       <div class="-mx-4 md:-mx-6 px-4 md:px-6 lg:px-8 pt-4 md:pt-5 pb-4 md:pb-5 bg-amber-50/70 dark:bg-amber-950/15 border-l-2 border-amber-400 dark:border-amber-500/60">
-        <div class="flex items-center gap-1.5 text-sm font-medium text-amber-700 dark:text-amber-400 mb-2">
+        <div class="chat-meta flex items-center gap-1.5 font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 mb-2">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 16 16"
@@ -426,7 +426,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
              action is about, resolved from the action's ids), label top-right,
              actions at the bottom. Without a resolvable chip the label holds
              the left edge. --%>
-        <div class="flex items-center justify-between gap-3 mb-2.5 min-w-0">
+        <div class="flex items-center justify-between gap-3 mb-2 min-w-0">
           <LoopyardWeb.Components.Common.workspace_identity
             :if={@identity}
             project={elem(@identity, 0)}
@@ -704,10 +704,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
             project={@proj}
             workspace={@ws}
             state={embed_identity_state(@st)}
+            size={:sm}
             class="min-w-0"
           />
           <span class="chat-meta text-zinc-500 dark:text-zinc-400 flex-none">· {embed_word(@st)}</span>
-          <span class="ml-auto flex-none inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium text-violet-600 dark:text-violet-400 group-hover:bg-violet-500/10 transition-colors">
+          <span class="chat-meta ml-auto flex-none inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-medium text-violet-600 dark:text-violet-400 group-hover:bg-violet-500/10 transition-colors">
             open →
           </span>
         </.link>

@@ -249,7 +249,10 @@ defmodule LoopyardWeb.Components.Common do
         ]}
       >
       </span>
-      <span class={["min-w-0 truncate", (@size == :sm && "text-[13px]") || "text-sm"]}>
+      <%!-- :sm rides the chat-meta token — the same size as every other
+           stream-top label (BRAD, timestamps, card labels), so header rows
+           never mix slightly-different sizes. --%>
+      <span class={["min-w-0 truncate", (@size == :sm && "text-chat-meta") || "text-sm"]}>
         <span class={
           (@muted && "text-zinc-500 dark:text-zinc-400") ||
             "font-medium text-zinc-800 dark:text-zinc-100"

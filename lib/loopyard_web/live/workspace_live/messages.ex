@@ -150,7 +150,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         <div class="min-w-0">
           <div
             :if={@show_user_label}
-            class="flex items-baseline gap-2 mb-1.5"
+            class="flex items-center gap-2 mb-2"
           >
             <span class="chat-meta inline-flex items-center gap-1.5 font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300">
               <.icon name={:user} class="w-3.5 h-3.5 flex-none self-center" /> {@user_label}
