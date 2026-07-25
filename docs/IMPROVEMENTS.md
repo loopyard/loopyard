@@ -146,3 +146,16 @@ A prioritized list of known, scoped improvements for Loopyard. Ordered within ea
 - Items can be added by anyone; new entries go to the bottom of their category so ordering stays stable.
 - If an item needs more than a paragraph of design (scope cuts, data shapes, migration path), drop a scoped plan into `plans/<name>.md` and move the entry here to the "In flight" section with a link. Delete the plan file when it ships, or archive it if the decision informs future work.
 - When you ship behavior, update the doc that owns the concern in the same commit. See the "Update docs when you ship a major change" rule in `CLAUDE.md`.
+
+## Attention: pending cards without live waiters must stay in the line
+`Attention.line` (feeds /operator "For you" + /queue) lists only items with a
+live waiter; `Questions.pending_all` prunes dead waiters and marks the card
+:timeout. But the queued model means a card can be answerable long after its
+waiter died (answers persist + reach the agent). Result: the longest-waiting
+questions vanish from "For you" and the human has to hunt (gbrain incident,
+Jul 25). Fix: source the line from PENDING CARDS in the message store (role
+:question/:secret/:approval, status :pending), waiter-or-not; answering a
+waiterless card records + informs the agent on its next turn. Also: Digest
+should append a "needs input" entry when a question posts, and the operator
+prompt should tell it to surface unanswered questions proactively — the chief
+of staff hunts so the human doesn't.
