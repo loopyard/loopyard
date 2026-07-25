@@ -767,10 +767,17 @@ Hooks.ChatForm = {
     // keystroke into localStorage (keyed per-agent via the path) and restore it
     // on mount. Cleared only on a confirmed send.
     const draftKey = "loopyard:draft:" + location.pathname
-    const saveDraft = () => {
+    const writeDraft = () => {
       try { ta.value ? localStorage.setItem(draftKey, ta.value) : localStorage.removeItem(draftKey) } catch (_) {}
     }
-    const clearDraft = () => { try { localStorage.removeItem(draftKey) } catch (_) {} }
+    // Writing localStorage on EVERY keystroke is a synchronous disk hit that
+    // shows up as type latency. Debounce to ~300ms after you stop typing; a
+    // blur (below) flushes immediately, so leaving the box always persists.
+    let draftTimer = null
+    const saveDraft = () => { clearTimeout(draftTimer); draftTimer = setTimeout(writeDraft, 300) }
+    // Clearing (on a confirmed send) must also kill any pending debounced write,
+    // or it would resurrect the just-sent draft a moment later.
+    const clearDraft = () => { clearTimeout(draftTimer); try { localStorage.removeItem(draftKey) } catch (_) {} }
 
     // Restore a draft from a prior session, but never clobber text already in the
     // box (e.g. server-restored input that mounted first).
@@ -797,11 +804,16 @@ Hooks.ChatForm = {
       try { localStorage.setItem(focusKey, JSON.stringify({ pos: ta.selectionStart, t: Date.now() })) } catch (_) {}
     }
     const clearFocus = () => { try { localStorage.removeItem(focusKey) } catch (_) {} }
+    // keyup fires per keystroke, so its focus write is debounced too (same disk-
+    // latency reason as the draft). focus/click are rare → write immediately.
+    let focusTimer = null
+    const saveFocusDebounced = () => { clearTimeout(focusTimer); focusTimer = setTimeout(saveFocus, 300) }
     ta.addEventListener("focus", saveFocus)
-    ta.addEventListener("blur", clearFocus)
+    // Blur flushes the draft (immediate persist on leaving) then clears focus.
+    ta.addEventListener("blur", () => { clearTimeout(draftTimer); writeDraft(); clearFocus() })
     // Keep the caret/timestamp fresh while actively editing (typing, arrowing,
     // clicking within the box) so a long-but-active session still counts as "in it."
-    ta.addEventListener("keyup", () => { if (document.activeElement === ta) saveFocus() })
+    ta.addEventListener("keyup", () => { if (document.activeElement === ta) saveFocusDebounced() })
     ta.addEventListener("click", () => { if (document.activeElement === ta) saveFocus() })
     try {
       const raw = localStorage.getItem(focusKey)
