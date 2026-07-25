@@ -196,6 +196,10 @@
   }
 }
 .markdown-body a { color: #7c3aed; text-decoration: underline; text-underline-offset: 2px; }
+@media (prefers-color-scheme: dark) {
+  /* violet-600 is unreadable on the dark ground — lift to violet-400. */
+  .markdown-body a { color: #a78bfa; }
+}
 /* Bold lead-ins are the skim anchors — let them pop a touch from body weight. */
 .markdown-body strong { font-weight: 650; color: inherit; }
 @media (prefers-color-scheme: dark) {
