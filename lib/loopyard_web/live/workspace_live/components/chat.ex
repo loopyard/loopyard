@@ -435,14 +435,19 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       <%!-- scroll-smooth: the auto-tail (ScrollBottom hook nudges scrollTop as the
            agent streams) animates instead of jumping, so following the thinking
            glides. Pure CSS — honors prefers-reduced-motion automatically. --%>
-      <div id="messages" class="flex-1 overflow-y-auto flex flex-col px-4 md:px-6 pb-4">
+      <div id="messages" class="flex-1 overflow-y-auto flex flex-col pb-4">
         <%!-- `mt-auto` anchors the transcript to the BOTTOM: the most recent
              message sits just above the input on first paint, so there's no
              post-load scroll jump (that animated slide-down was the jank).
              Older messages load in chunks as you scroll up (ScrollBottom hook →
              load_more). Normal flow (NOT col-reverse) so the human prompts can
              `position: sticky` to the top of their section. --%>
-        <div class="space-y-3 mt-auto">
+        <%!-- The document column: transcript + composer share this centered,
+             capped measure. On wide screens the human's prompt bands + the input
+             (which bleed to THIS column's edges) become same-width "bubbles" that
+             read as your lane, while the agent's prose stays at its narrower 68ch
+             measure inside — so the wider element is you. --%>
+        <div class="space-y-3 mt-auto w-full max-w-5xl mx-auto px-4 md:px-6">
           <%!-- Progressive loader: while there's older history above the window,
                a soft shimmer sits at the very top. Scroll into it and load_more
                fetches the next batch (prepended below this, so it stays put);
@@ -581,7 +586,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             agent works. --%>
       <%!-- pb-safe: the composer clears the home indicator in a standalone PWA
            while keeping its normal padding in the browser. --%>
-      <div class="flex-none border-t border-zinc-200 dark:border-zinc-700/80 px-3 pt-3 pb-safe md:px-4 md:pt-4 space-y-2">
+      <div class="flex-none border-t border-zinc-200 dark:border-zinc-700/80 pb-safe">
+       <div class="w-full max-w-5xl mx-auto px-3 pt-3 md:px-4 md:pt-4 space-y-2">
         <%!-- The queue is ONE card: a single "You" band (one name, one state) with
               every pending line INSIDE it, each line cancelable by its own ✕. Reads
               as one prompt-in-waiting — exactly how the transcript groups a batch —
@@ -688,6 +694,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               rejected send is never just a silent red flash. --%>
           <p id="send-status" class="hidden mt-1.5 text-sm text-red-500 dark:text-red-400"></p>
         </div>
+       </div>
       </div>
     </div>
     """
