@@ -31,13 +31,11 @@ defmodule Loopyard.Tools.Container.RecallConversation do
       before_id:
         {:string,
          description:
-           "Return messages BEFORE this message id (for paging further back — " <>
-             "use the before_id printed in a previous call's footer)."},
+           "Return messages BEFORE this message id (for paging further back — use the before_id printed in a previous call's footer)."},
       query:
         {:string,
          description:
-           "Case-insensitive substring to search message text for. Returns the " <>
-             "most recent matches (before_id is ignored when searching)."}
+           "Case-insensitive substring to search message text for. Returns the most recent matches (before_id is ignored when searching)."}
     ]
 
   alias Loopyard.ChatAgent.MessageWindow

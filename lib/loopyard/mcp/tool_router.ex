@@ -25,6 +25,8 @@ defmodule Loopyard.MCP.ToolRouter do
   No GenServer state, no PubSub — safe to unit-test directly.
   """
 
+  require Logger
+
   alias Loopyard.ChatAgent.ToolConfig
 
   @doc """
@@ -48,13 +50,38 @@ defmodule Loopyard.MCP.ToolRouter do
   MCP `tools/list` payload — one entry per exposed tool, bare-named.
   """
   def list_tools(modules \\ tool_modules()) do
-    Enum.map(modules, fn mod ->
+    modules
+    |> Enum.map(fn mod ->
       %{
         "name" => mod.__tool_name__(),
         "description" => mod.__description__(),
         "inputSchema" => mod.input_schema()
       }
     end)
+    |> Enum.filter(&serializable_or_drop/1)
+  end
+
+  # RESILIENCE: one malformed tool schema must NOT take the whole tools/list down
+  # and offline EVERY tool for the agent (a param description left as compile-time
+  # AST — see CODE_RULES.md § macro schemas — is the classic culprit). Encode each
+  # entry defensively; drop the offender so the rest stay online, but LOUDLY — log
+  # + telemetry so a broken tool surfaces instead of silently vanishing.
+  defp serializable_or_drop(tool) do
+    case Jason.encode(tool) do
+      {:ok, _} ->
+        true
+
+      {:error, reason} ->
+        name = tool["name"]
+
+        Logger.error(
+          "MCP tools/list dropped a non-serializable tool #{inspect(name)}: #{inspect(reason)}. " <>
+            "A param description is likely compile-time AST (a `<>` or sigil) — see CODE_RULES.md § macro schemas."
+        )
+
+        :telemetry.execute([:loopyard, :mcp, :bad_tool_schema], %{count: 1}, %{tool: name})
+        false
+    end
   end
 
   @doc """

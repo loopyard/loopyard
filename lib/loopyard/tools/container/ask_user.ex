@@ -20,8 +20,7 @@ defmodule Loopyard.Tools.Container.AskUser do
       source:
         {:string, required: false,
          description:
-           "Which project/workspace this memo is about, e.g. \"firehose-site · main\". " <>
-             "Shown as the memo's source line. Omit for a memo not tied to a workspace."}
+           "Which project/workspace this memo is about (e.g. 'firehose-site · main'), shown as the memo's source line. Omit if not tied to a workspace."}
     ]
 
   alias Loopyard.Harness.Questions
