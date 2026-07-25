@@ -1115,7 +1115,9 @@ if ("serviceWorker" in navigator) {
     if (downTimer) { clearTimeout(downTimer); downTimer = null }
     banner.classList.add("hidden")
   }
-  const armDown = () => { if (!downTimer) downTimer = setTimeout(show, 1500) }
+  // 4s grace: a dev code-reload / server restart usually reconnects in 1–4s —
+  // narrating those blips isn't calm. A real outage still surfaces within 4s.
+  const armDown = () => { if (!downTimer) downTimer = setTimeout(show, 4000) }
   liveSocket.socket.onOpen(hide)
   liveSocket.socket.onError(armDown)
   liveSocket.socket.onClose(armDown)
