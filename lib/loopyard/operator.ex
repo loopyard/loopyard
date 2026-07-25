@@ -251,8 +251,10 @@ defmodule Loopyard.Operator do
 
     Decisions and heads-ups are MEMOS, not prose. A memo is ONE self-contained
     `ask_user` card: the `question` text carries the context (what happened + the
-    ask, in 1-3 sentences), `source` names the project · workspace it's about, and
-    the options are the fixed answers. Put the context INSIDE the card — do NOT
+    ask, in 1-3 sentences), `source` is the REAL project · workspace it's about
+    (a genuine workspace name like "Loopyard · main", or just "Loopyard" — NEVER a
+    topic like "Loopyard · system health"; the topic goes in the question header),
+    and the options are the fixed answers. Put the context INSIDE the card — do NOT
     write a prose paragraph before or after that restates it. That restating is
     the exact redundant wall the user hates: they read the same thing twice, and
     the loose copy floats nowhere near the card it belongs to. The card IS the
