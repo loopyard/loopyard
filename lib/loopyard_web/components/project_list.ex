@@ -139,17 +139,24 @@ defmodule LoopyardWeb.Components.ProjectList do
     assigns = assign(assigns, :headline, Birdseye.headline(assigns.ws))
 
     ~H"""
-    <.link
-      navigate={workspace_href(@project_id, @ws)}
-      phx-click={@row_click}
-      aria-current={@current && "true"}
-      class={[
-        # py-2 keeps the 40px touch target on mobile (:xs switcher sheet); the
-        # desktop rail (:sm) doesn't need it and read as wasted space.
-        "group/ws flex items-center gap-2.5 -mx-2 px-2 py-2 md:py-1 rounded-lg transition-colors",
-        @current && "bg-violet-100 dark:bg-violet-500/15"
-      ]}
-    >
+    <%!-- Stretched-link row: the whole row navigates to the workspace via an
+         absolute overlay link, so the port chip can sit ABOVE it (z-10) as its
+         OWN link — one tap opens the running dev server in a new tab without
+         first opening the workspace and hunting for it. --%>
+    <div class={[
+      # py-2 keeps the 40px touch target on mobile (:xs switcher sheet); the
+      # desktop rail (:sm) doesn't need it and read as wasted space.
+      "group/ws relative flex items-center gap-2.5 -mx-2 px-2 py-2 md:py-1 rounded-lg transition-colors",
+      @current && "bg-violet-100 dark:bg-violet-500/15"
+    ]}>
+      <.link
+        navigate={workspace_href(@project_id, @ws)}
+        phx-click={@row_click}
+        aria-current={@current && "true"}
+        aria-label={"Open workspace #{@ws.name}"}
+        class="absolute inset-0 rounded-lg focus-ring"
+      >
+      </.link>
       <%!-- The project is the STICKY HEADER right above, so the row shows just the
            workspace (● name) — no redundant project — and mutes it in the rail
            (:sm) so the nav recedes behind the chat. --%>
@@ -167,7 +174,7 @@ defmodule LoopyardWeb.Components.ProjectList do
            colour word. --%>
       <span
         :if={@headline && (@size == :sm || @headline.kind == :needs_you)}
-        class="flex-none text-xs truncate max-w-[9rem]"
+        class="relative flex-none text-xs truncate max-w-[9rem]"
       >
         <.change_stat
           :if={@headline.kind == :changed}
@@ -176,12 +183,14 @@ defmodule LoopyardWeb.Components.ProjectList do
         />
         <span :if={@headline.kind != :changed} class={@headline.class}>{@headline.text}</span>
       </span>
-      <div :if={@size == :sm} class="flex-none w-[4.25rem] flex justify-end">
-        <span :if={ws_port(@ws)} class="text-xs font-mono text-zinc-400 dark:text-zinc-500">
-          :{ws_port(@ws)}
-        </span>
+      <div :if={@size == :sm} class="relative z-10 flex-none w-[4.25rem] flex justify-end">
+        <Birdseye.port_chip
+          :if={ws_port_entry(@ws) && ws_port_entry(@ws).url}
+          port={ws_port_entry(@ws).port}
+          url={ws_port_entry(@ws).url}
+        />
       </div>
-    </.link>
+    </div>
     """
   end
 
