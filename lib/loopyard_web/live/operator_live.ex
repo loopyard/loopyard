@@ -643,13 +643,17 @@ defmodule LoopyardWeb.OperatorLive do
         </div>
       </section>
 
-      <%!-- WORKING — ambient progress of what you dispatched --%>
-      <section class="p-3 space-y-1.5 border-t border-zinc-200 dark:border-zinc-800">
-        <div class="text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500 px-1 pb-1">
-          Working
+      <%!-- IN MOTION — a briefing line, not a dashboard. One row per project:
+           dot + name + a one-word state + "dive in →". The vitals (ports, logs,
+           the full agent chat) live INSIDE the project — the whole row taps
+           through to the workspace agent (open_job), which is the "weeds". An
+           excellent chief of staff keeps this glanceable and gets out of the way. --%>
+      <section class="p-3 space-y-0.5 border-t border-zinc-200 dark:border-zinc-800">
+        <div class="text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500 px-1 pb-1.5">
+          In motion
         </div>
         <p :if={@jobs == []} class="px-1 text-sm text-zinc-500 dark:text-zinc-400">
-          Nothing dispatched yet.
+          Nothing in motion.
         </p>
         <div
           :for={i <- @jobs}
@@ -657,51 +661,29 @@ defmodule LoopyardWeb.OperatorLive do
           phx-value-ws={i.id}
           phx-value-project={i.project_id}
           phx-value-agent={i.agent_id}
-          class="rounded-lg px-2.5 py-2 border border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors cursor-pointer"
+          class="group flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors cursor-pointer"
         >
-          <div class="flex items-center gap-2">
-            <span class={["flex-none w-1.5 h-1.5 rounded-full", state_dot(i.state)]} />
-            <span class="flex-1 min-w-0 truncate text-sm font-medium text-zinc-700 dark:text-zinc-200">
-              {i.project_name} · {i.workspace_name}
-            </span>
-            <span
-              :if={i.watching?}
-              title="Watching — you'll be told when this finishes"
-              class="flex-none text-xs text-amber-600 dark:text-amber-400"
-            >
-              🔔
-            </span>
-            <span
-              :if={i.delta > 0}
-              class="flex-none text-xs font-semibold text-violet-600 dark:text-violet-400"
-            >
-              {i.delta} new
-            </span>
-          </div>
-          <%!-- State on the left, launchable port bottom-RIGHT (same font-mono
-               emerald `:host_port ↗` as the workspace header). stopPropagation
-               keeps the port click off the card's open_job dive-in. --%>
-          <div class="mt-0.5 pl-3.5 flex items-center gap-2 text-xs">
-            <span class="min-w-0 truncate">
-              <span class={state_text(i.state)}>{state_label(i.state)}</span><span
-                :if={i.needs not in ["", state_label(i.state)]}
-                class="text-zinc-500 dark:text-zinc-400"
-              > · {i.needs}</span>
-            </span>
-            <span :if={i.ports != []} class="ml-auto flex-none flex gap-2">
-              <a
-                :for={p <- i.ports}
-                href={p.url}
-                target="_blank"
-                rel="noopener"
-                onclick="event.stopPropagation()"
-                aria-label={"Open app on port #{p.port}"}
-                class="focus-ring inline-flex items-center gap-0.5 rounded px-1 font-mono text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 active:bg-emerald-500/20 transition-colors"
-              >
-                :{p.port} <span class="text-[10px] opacity-70">↗</span>
-              </a>
-            </span>
-          </div>
+          <span class={["flex-none w-1.5 h-1.5 rounded-full", state_dot(i.state)]} />
+          <span class="flex-1 min-w-0 truncate text-sm text-zinc-700 dark:text-zinc-200">
+            {i.project_name}<span class="text-zinc-400 dark:text-zinc-500"> · {String.downcase(state_label(i.state))}</span>
+          </span>
+          <span
+            :if={i.watching?}
+            title="Watching — you'll be told when this finishes"
+            class="flex-none text-xs text-amber-600 dark:text-amber-400"
+          >
+            🔔
+          </span>
+          <span
+            :if={i.delta > 0}
+            title={"#{i.delta} new since you last looked"}
+            class="flex-none text-xs font-semibold text-violet-600 dark:text-violet-400"
+          >
+            {i.delta}
+          </span>
+          <span class="flex-none text-xs font-medium text-violet-600 dark:text-violet-400 opacity-0 group-hover:opacity-100 transition-opacity">
+            dive in →
+          </span>
         </div>
       </section>
     </div>
@@ -796,11 +778,6 @@ defmodule LoopyardWeb.OperatorLive do
   defp state_dot(:done), do: "bg-emerald-500"
   defp state_dot(:chugging), do: "bg-violet-500 animate-pulse"
   defp state_dot(_), do: "bg-zinc-400 dark:bg-zinc-500"
-
-  defp state_text(:needs_you), do: "text-amber-600 dark:text-amber-400 font-medium"
-  defp state_text(:done), do: "text-emerald-600 dark:text-emerald-400"
-  defp state_text(:chugging), do: "text-violet-600 dark:text-violet-400"
-  defp state_text(_), do: "text-zinc-500 dark:text-zinc-400"
 
   defp state_label(:needs_you), do: "needs you"
   defp state_label(:done), do: "done"
