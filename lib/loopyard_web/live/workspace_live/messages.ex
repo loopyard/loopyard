@@ -141,7 +141,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     ~H"""
     <div
       class={[
-        "-mx-4 md:-mx-6 2xl:-mx-2 px-4 md:px-6 lg:px-8 group/msg transition-colors",
+        "-mx-4 md:-mx-6 2xl:-mx-4 px-4 md:px-6 lg:px-8 group/msg transition-colors",
+        # Pinned (data-stuck, set by the StickyShadow hook on #messages): square
+        # the top — a rounded corner smashed into the header edge looks broken.
+        "2xl:data-[stuck]:!rounded-t-none",
         # In a centered column the band is a block, not an edge-to-edge stripe —
         # hard corners read unfinished next to the rounded listings. Round it;
         # the ACTIVE band rounds only its top so it stays flush into the live
@@ -155,6 +158,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         @band_bottom
       ]}
       id={"msg-user-#{@msg[:id] || hash_content(@msg.content)}"}
+      data-sticky-header={@show_user_label}
     >
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0">
