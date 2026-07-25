@@ -279,6 +279,31 @@ stream through `Helpers.drain_port_burst/3` (one update + one broadcast per
 ~100ms burst). Per-line publishes from a watcher measured as 175ms
 main-thread stalls while typing; batched, the same load is a 32ms blip.
 
+## The client is a scarce resource — run on the server by default
+
+Treat the browser, the DOM, and client-side JS as scarce. **Don't compromise
+functionality — but do as much on the server as makes sense, and reach for JS
+only when the server genuinely can't do the job well.** State and logic live
+server-side (assigns, PubSub, GenServers); the client renders what the server
+sends. This is why the whole app is server-driven — it keeps the client thin,
+multiplayer-consistent, and fast, and it keeps behavior testable in Elixir
+instead of hidden in browser state.
+
+**The narrow, legitimate exception is per-frame *presentation* the server
+shouldn't drive** — a ticking clock, a CSS transition. A server tick would push
+a socket diff to every connected browser *every second* just to animate a
+number; that's the wrong trade. So a live timer runs in a tiny hook — but the
+**state still comes from the server** (a timestamp assign); the hook holds none,
+it only animates the display *between* server updates. The `Elapsed` hook is the
+model: ONE hook counts both up (`data-since`) and down (`data-until`), server
+owns the timestamp. If a new need looks like an existing hook, **generalize the
+hook — never add a near-duplicate.** JS bloat is a cost you pay on every page
+load and every interaction; spend it deliberately.
+
+Before adding client JS, ask: can an assign + PubSub do this? Can an existing
+hook be generalized? Is this truly per-frame presentation, or am I about to put
+*state* in the browser? Only the last, presentation-only case earns new JS.
+
 ## Operations must be idempotent
 
 Check if running before starting. Never `docker rm -f` then `docker run` unconditionally.

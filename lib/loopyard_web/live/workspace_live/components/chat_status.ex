@@ -53,11 +53,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
           </span>
         </li>
       </ul>
+      <%!-- A retry is NOT an error — it's a calm status subtext under the live
+           spinner ("busy, not wedged"). Muted, no ⚠, no "press Stop" burden: the
+           system is handling it, and a real failure surfaces its own error. --%>
       <p
         :if={@stall_hint}
-        class="mt-3 flex items-start gap-2 text-sm leading-relaxed text-amber-600 dark:text-amber-400"
+        class="mt-2.5 flex items-start gap-2 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400"
       >
-        <span class="flex-none">⚠</span>
+        <span class="flex-none text-zinc-400 dark:text-zinc-500" aria-hidden="true">↻</span>
         <span class="min-w-0">{@stall_hint}</span>
       </p>
     </div>
@@ -300,10 +303,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
       %{content: c} ->
         cond do
           c =~ ~r/\b(529|overloaded)\b/i ->
-            "Claude's servers are overloaded — retrying this turn. Can take a minute; press Stop and resend if it doesn't recover."
+            "Claude's servers are busy right now — I'm retrying automatically. This one can take a minute."
 
           c =~ @api_error_re ->
-            "Last response hit a temporary server error — retrying. Press Stop and resend if it doesn't recover."
+            "The model had a brief hiccup — retrying automatically. Nothing you need to do."
 
           true ->
             nil

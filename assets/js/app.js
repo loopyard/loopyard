@@ -700,18 +700,36 @@ Hooks.LogExpand = {
 // every second from data-since (unix ms), entirely client-side — no server
 // round-trips. Makes a silent long command visibly "alive" so you can tell
 // working from wedged. phx-update="ignore" keeps LiveView off our textContent.
+// ONE timer, both directions: counts UP from data-since (elapsed) or DOWN to
+// data-until (countdown, epoch ms). The server owns the timestamp — the browser
+// only animates the display between server updates, like a CSS transition, so a
+// turn or a wait visibly progresses without a socket round-trip every second.
+// No client state. Optional data-prefix / data-suffix wrap the number.
 Hooks.Elapsed = {
-  mounted() {
+  mounted() { this._start() },
+  updated() { this._start() },
+  _start() {
+    if (this._timer) { clearInterval(this._timer); this._timer = null }
     const since = parseInt(this.el.dataset.since, 10)
-    if (!since) return
+    const until = parseInt(this.el.dataset.until, 10)
+    if (!since && !until) { this.el.textContent = ""; return }
+    const prefix = this.el.dataset.prefix || ""
+    const suffix = this.el.dataset.suffix || ""
     const fmt = (ms) => {
-      const s = Math.max(0, Math.floor(ms / 1000))
+      const s = Math.max(0, Math.round(ms / 1000))
+      if (until && s <= 0) return "now"
       if (s < 60) return `${s}s`
       const m = Math.floor(s / 60), r = s % 60
       if (m < 60) return `${m}m ${r}s`
       return `${Math.floor(m / 60)}h ${m % 60}m`
     }
-    const tick = () => { this.el.textContent = fmt(Date.now() - since) }
+    const tick = () => {
+      const ms = until ? until - Date.now() : Date.now() - since
+      this.el.textContent = prefix + fmt(ms) + suffix
+      if (until && until - Date.now() <= 0 && this._timer) {
+        clearInterval(this._timer); this._timer = null
+      }
+    }
     tick()
     this._timer = setInterval(tick, 1000)
   },

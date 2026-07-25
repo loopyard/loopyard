@@ -151,8 +151,19 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
         <span class={["w-2 h-2 rounded-full flex-none", @hs.dot, @hs.pulse]}></span>
         <div class="min-w-0">
           <div class={["text-sm font-semibold leading-tight", @hs.text]}>{@hs.label}</div>
-          <div :if={@hs.detail} class="text-sm text-zinc-500 dark:text-zinc-400 truncate">
-            {@hs.detail}
+          <div :if={@hs.detail || @hs[:countdown]} class="text-sm text-zinc-500 dark:text-zinc-400">
+            <span
+              :if={@hs[:countdown]}
+              id={"hs-cd-#{@agent[:id]}-#{@hs.countdown}"}
+              phx-hook="Elapsed"
+              phx-update="ignore"
+              data-until={@hs.countdown}
+              data-prefix="resets in "
+              class="tabular-nums"
+            ></span><span
+              :if={@hs[:countdown] && @hs.detail}
+              class="text-zinc-400 dark:text-zinc-500"
+            > · </span>{@hs.detail}
           </div>
         </div>
       </div>
@@ -191,30 +202,35 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
       # Genuinely disconnected while it should be active (e.g. session died
       # mid-recovery) — this one IS reconnecting.
       alive? == false ->
-        bad("Reconnecting", "the harness dropped — restarting; your messages will queue")
+        bad("Reconnecting", "the connection dropped — reconnecting; your messages will queue and send")
 
       agent[:auth_error] ->
-        bad("Auth expired", "re-login required — connect Claude on /workstation")
+        bad("Sign-in expired", "your Claude login expired — reconnect it on the Workstation page")
 
       Map.get(agent, :rate_limit_status, :ok) != :ok or status == :rate_limited ->
-        reset = Loopyard.ChatAgent.StreamHandler.format_reset(agent[:rate_limit_resets_at_ms])
+        resets_at = agent[:rate_limit_resets_at_ms]
         label = Loopyard.ChatAgent.StreamHandler.rate_limit_label(agent[:rate_limit_type])
         util = agent[:rate_limit_utilization]
 
         pct =
           if is_number(util) and util > 0, do: " · ~#{round(util * 100)}% of cap", else: ""
 
-        warn(
-          "amber",
-          "#{String.capitalize(label)} limit reached",
-          "resets #{reset}#{pct} · queued messages auto-send"
-        )
+        detail =
+          if is_integer(resets_at),
+            # Live countdown ("resets in …") carries the timing; detail is the
+            # reassurance so a wait visibly progresses instead of reading as stuck.
+            do: "queued messages auto-send#{pct}",
+            else:
+              "resets #{Loopyard.ChatAgent.StreamHandler.format_reset(resets_at)}#{pct} · queued messages auto-send"
+
+        base = warn("amber", "#{String.capitalize(label)} limit reached", detail)
+        if is_integer(resets_at), do: Map.put(base, :countdown, resets_at), else: base
 
       status == :backoff ->
-        warn("blue", "Reconnecting…", "restarting the harness, then resuming")
+        warn("blue", "Reconnecting…", "reconnecting, then picking up where it left off")
 
       status in [:booting, :starting] ->
-        warn("blue", "Starting…", "bringing the harness up")
+        warn("blue", "Starting…", "getting the agent ready")
 
       status == :thinking ->
         tool = agent[:active_tool]
