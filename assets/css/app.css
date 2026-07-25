@@ -134,28 +134,35 @@
    over-padded wall. The levers are a reading MEASURE (line length is what makes
    a wide wall feel tense), generous LEADING, and real HIERARCHY + rhythm. */
 .markdown-body {
+  /* A reading SERIF is what turns a technical answer into a document you WANT
+     to read — calm, warm, and a joy on the eyes for long-form, where a UI sans
+     reads as a dense wall. System serifs (gorgeous on macOS, robust fallbacks)
+     so there's no webfont to load. Code spans + the UI stay sans/mono. */
+  font-family: 'Iowan Old Style', 'Charter', 'Palatino Linotype', Palatino,
+               Georgia, Cambria, 'Times New Roman', serif;
   max-width: 68ch;          /* the measure — the single biggest readability win */
-  line-height: 1.7;
-  letter-spacing: 0.002em;
+  font-size: 1.05em;        /* serifs want a touch more size to breathe */
+  line-height: 1.78;        /* open leading = unhurried, document-grade */
+  letter-spacing: 0;
 }
 .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
   font-weight: 650;
-  margin-top: 1.6em;        /* generous air ABOVE a heading = clear section breaks */
-  margin-bottom: 0.55em;
+  margin-top: 1.7em;        /* generous air ABOVE a heading = clear section breaks */
+  margin-bottom: 0.5em;
   line-height: 1.25;
-  letter-spacing: -0.012em;
+  letter-spacing: -0.01em;
 }
 .markdown-body > :first-child { margin-top: 0; }
 .markdown-body h1 { font-size: 1.4em; }
 .markdown-body h2 { font-size: 1.2em; }
 .markdown-body h3 { font-size: 1.05em; }
-.markdown-body p { margin: 0.8em 0; }
+.markdown-body p { margin: 1em 0; }        /* real air between paragraphs = skimmable */
 .markdown-body p:first-child { margin-top: 0; }
 .markdown-body p:last-child { margin-bottom: 0; }
-.markdown-body ul, .markdown-body ol { margin: 0.8em 0; padding-left: 1.4em; }
+.markdown-body ul, .markdown-body ol { margin: 1.05em 0; padding-left: 1.5em; }
 .markdown-body ul { list-style-type: disc; }
 .markdown-body ol { list-style-type: decimal; }
-.markdown-body li { margin: 0.4em 0; padding-left: 0.15em; line-height: 1.65; }
+.markdown-body li { margin: 0.55em 0; padding-left: 0.2em; line-height: 1.72; }
 .markdown-body li::marker { color: rgba(139, 124, 255, 0.55); } /* accent bullets, quietly */
 .markdown-body li > ul, .markdown-body li > ol { margin: 0.35em 0; }
 .markdown-body code {
