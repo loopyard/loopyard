@@ -159,19 +159,25 @@ defmodule Loopyard.Tools.ControlPlane do
     t = String.trim(target)
     summaries = Loopyard.ChatAgent.list_agent_summaries()
 
-    cond do
-      hit = Enum.find(summaries, &(&1.id == t)) ->
+    case Enum.find(summaries, &(&1.id == t)) do
+      %{} = hit ->
         {:ok, hit}
 
-      ws_id = resolve_workspace_id(t) ->
-        case Enum.filter(summaries, &(&1[:workspace_id] == ws_id)) do
-          [] -> {:error, "Workspace '#{target}' has no running agent. Use overview to check."}
-          [agent | _] -> {:ok, agent}
-        end
+      nil ->
+        # Fall back to resolving as a WORKSPACE — which now refuses an ambiguous
+        # bare name (e.g. "main") instead of guessing a project. Propagate that
+        # error so the operator gets the disambiguation candidates, not a vague
+        # "no match".
+        case resolve_workspace(t) do
+          {:ok, ws_id} ->
+            case Enum.filter(summaries, &(&1[:workspace_id] == ws_id)) do
+              [] -> {:error, "Workspace '#{target}' has no running agent. Use overview to check."}
+              [agent | _] -> {:ok, agent}
+            end
 
-      true ->
-        {:error,
-         "No workspace or agent matched '#{target}'. Call overview to see valid ids/names."}
+          {:error, msg} ->
+            {:error, msg}
+        end
     end
   end
 
@@ -183,31 +189,51 @@ defmodule Loopyard.Tools.ControlPlane do
   and lifecycle exist independent of agents. Used by `ports`.
   """
   def resolve_workspace(target) when is_binary(target) do
-    case resolve_workspace_id(String.trim(target)) do
-      nil ->
-        {:error, "No workspace matched '#{target}'. Call overview to see valid ids/names."}
+    t = String.trim(target)
 
-      ws_id ->
-        {:ok, ws_id}
+    # Each workspace paired with its project, so an ambiguous name can be shown
+    # as "project · workspace".
+    workspaces =
+      Loopyard.ProjectRegistry.list_projects()
+      |> Enum.flat_map(fn p ->
+        Enum.map(Loopyard.WorkspaceRegistry.list_workspaces(p.id), &{&1, p})
+      end)
+
+    case Enum.find(workspaces, fn {ws, _p} -> ws.id == t end) do
+      {ws, _p} ->
+        # An exact id is unambiguous.
+        {:ok, ws.id}
+
+      nil ->
+        # By NAME: a bare name like "main" exists in EVERY project. NEVER resolve
+        # it to the first match — for a delete/dispatch that silently targets the
+        # WRONG project. One match → use it; several → refuse and list them so the
+        # caller passes the exact id.
+        case Enum.filter(workspaces, fn {ws, _p} ->
+               String.downcase(ws[:name] || "") == String.downcase(t)
+             end) do
+          [{ws, _p}] ->
+            {:ok, ws.id}
+
+          [] ->
+            {:error, "No workspace matched '#{target}'. Call overview to see valid ids/names."}
+
+          many ->
+            candidates =
+              Enum.map_join(many, "; ", fn {ws, p} ->
+                "#{p.name} · #{ws[:name]} (#{String.slice(ws.id, 0, 8)})"
+              end)
+
+            {:error,
+             "Ambiguous — '#{target}' names #{length(many)} workspaces (every project has one). " <>
+               "Pass the exact id. Candidates: #{candidates}."}
+        end
     end
+  rescue
+    _ -> {:error, "Couldn't resolve workspace '#{target}'."}
   end
 
   def resolve_workspace(_), do: {:error, "target must be a workspace id or name."}
-
-  # A workspace id verbatim, or a (case-insensitive) workspace name → its id.
-  defp resolve_workspace_id(t) do
-    workspaces =
-      Loopyard.ProjectRegistry.list_projects()
-      |> Enum.flat_map(&Loopyard.WorkspaceRegistry.list_workspaces(&1.id))
-
-    cond do
-      Enum.any?(workspaces, &(&1.id == t)) -> t
-      ws = Enum.find(workspaces, &(String.downcase(&1[:name] || "") == String.downcase(t))) -> ws.id
-      true -> nil
-    end
-  rescue
-    _ -> nil
-  end
 
   @doc "Resolve a GitHub token for cloning private repos, from the operating identity."
   def github_token do
