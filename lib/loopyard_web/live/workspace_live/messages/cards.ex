@@ -29,7 +29,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
            NOT violet — violet is the "You" message colour). Options sit on white
            rows so they stay distinct on the tint. Reads top-down: label ›
            question (hero) › the options, each anchored by a radio/check dot. --%>
-      <div class="rounded-2xl border border-amber-300/60 dark:border-amber-700/40 bg-gradient-to-b from-amber-50/80 to-amber-50/30 dark:from-amber-950/25 dark:to-amber-950/5 p-5 shadow-sm shadow-amber-900/5 ring-1 ring-amber-500/[0.04]">
+      <div class="-mx-4 md:-mx-6 px-4 md:px-6 lg:px-8 pt-4 md:pt-5 pb-4 md:pb-5 bg-amber-50/70 dark:bg-amber-950/15 border-l-2 border-amber-400 dark:border-amber-500/60">
           <%!-- Card anatomy (every stream card): identity chip TOP-LEFT (which
                project·workspace this is about — the canonical design-language
                badge), the card's label TOP-RIGHT opposite it; actions live at
@@ -325,7 +325,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
   def secret_card(assigns) do
     ~H"""
     <div class="py-2">
-      <div class="rounded-2xl border border-amber-300/60 dark:border-amber-700/40 bg-gradient-to-b from-amber-50/80 to-amber-50/30 dark:from-amber-950/25 dark:to-amber-950/5 p-5 shadow-sm shadow-amber-900/5 ring-1 ring-amber-500/[0.04]">
+      <div class="-mx-4 md:-mx-6 px-4 md:px-6 lg:px-8 pt-4 md:pt-5 pb-4 md:pb-5 bg-amber-50/70 dark:bg-amber-950/15 border-l-2 border-amber-400 dark:border-amber-500/60">
         <div class="flex items-center gap-1.5 text-sm font-medium text-amber-700 dark:text-amber-400 mb-2">
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -421,7 +421,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
 
     ~H"""
     <div class="py-3">
-      <div class="rounded-2xl border border-amber-300/60 dark:border-amber-700/40 bg-gradient-to-b from-amber-50/80 to-amber-50/30 dark:from-amber-950/25 dark:to-amber-950/5 p-5 shadow-sm shadow-amber-900/5 ring-1 ring-amber-500/[0.04]">
+      <div class="-mx-4 md:-mx-6 px-4 md:px-6 lg:px-8 pt-4 md:pt-5 pb-4 md:pb-5 bg-amber-50/70 dark:bg-amber-950/15 border-l-2 border-amber-400 dark:border-amber-500/60">
         <%!-- Card anatomy: identity chip top-left (which project·workspace the
              action is about, resolved from the action's ids), label top-right,
              actions at the bottom. Without a resolvable chip the label holds
