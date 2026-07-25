@@ -1,11 +1,14 @@
 defmodule LoopyardWeb.MessageLive do
   @moduledoc """
-  Live view for a single message. Static messages show content.
-  Streaming messages (build output, exec_stream) subscribe and update in real-time.
-  Multiplayer — all viewers see the same content.
+  Permalink view for a TURN — a user prompt plus the whole run of the agent's
+  response below it, up to (not including) the next user turn. Renders like the
+  chat, and STREAMS live: subscribe to the agent, append new messages of this
+  turn as they land, accumulate in-flight assistant text, and stop when the next
+  user turn begins. Any single message id in a turn resolves to the same turn, so
+  every item in the chat is reachable by linking its turn. Multiplayer — all
+  viewers see the same live turn.
   """
   use LoopyardWeb, :live_view
-  import LoopyardWeb.Components.LogViewer
 
   alias Loopyard.Events
   alias LoopyardWeb.Components.Nav
@@ -14,40 +17,74 @@ defmodule LoopyardWeb.MessageLive do
 
   @impl true
   def mount(%{"agent_id" => agent_id, "msg_id" => msg_id}, _session, socket) do
-    msg = Loopyard.ChatAgent.get_message(agent_id, msg_id)
+    {anchor, turn} = load_turn(agent_id, msg_id)
 
-    if msg do
-      if connected?(socket) do
-        Loopyard.ChatAgent.subscribe(agent_id)
-      end
+    if connected?(socket) and anchor, do: Loopyard.ChatAgent.subscribe(agent_id)
 
-      raw_url = LoopyardWeb.OutputController.raw_url(agent_id, msg_id)
-      streaming = msg.role in [:build, :stream]
+    {:ok,
+     socket
+     |> assign(:agent_id, agent_id)
+     |> assign(:msg_id, msg_id)
+     |> assign(:anchor, anchor)
+     |> assign(:turn, turn)
+     # id of the user message that STARTED this turn — used to detect when the
+     # NEXT user turn begins (which closes this one).
+     |> assign(:turn_start_id, anchor && anchor[:id])
+     |> assign(:closed?, turn_closed?(agent_id, anchor))
+     |> assign(:streaming_text, "")
+     |> assign(:raw_url, LoopyardWeb.OutputController.raw_url(agent_id, msg_id))}
+  end
 
-      {:ok,
-       socket
-       |> assign(:agent_id, agent_id)
-       |> assign(:msg_id, msg_id)
-       |> assign(:msg, msg)
-       |> assign(:raw_url, raw_url)
-       |> assign(:streaming, streaming)
-       |> assign(:streaming_text, "")
-       # Local accumulator for streaming
-       |> assign(:stream_content, msg.content || "")}
-    else
-      {:ok,
-       socket
-       |> assign(:msg, nil)
-       |> assign(:raw_url, nil)
-       |> assign(:streaming, false)
-       |> assign(:agent_id, agent_id)
-       |> assign(:msg_id, msg_id)
-       |> assign(:streaming_text, "")
-       |> assign(:stream_content, "")}
+  # The turn = the user message at-or-before the anchor, through everything up to
+  # (not including) the next user message. So linking ANY message in a turn shows
+  # the whole exchange.
+  defp load_turn(agent_id, anchor_id) do
+    msgs = (Loopyard.ChatAgent.get_state(agent_id) || %{})[:messages] || []
+
+    case Enum.find_index(msgs, &(&1[:id] == anchor_id)) do
+      nil ->
+        {nil, []}
+
+      idx ->
+        start_idx =
+          msgs
+          |> Enum.take(idx + 1)
+          |> Enum.with_index()
+          |> Enum.filter(fn {m, _} -> m[:role] == :user end)
+          |> List.last()
+          |> case do
+            {_m, i} -> i
+            nil -> 0
+          end
+
+        tail_len =
+          msgs
+          |> Enum.drop(start_idx + 1)
+          |> Enum.find_index(&(&1[:role] == :user))
+          |> case do
+            nil -> length(msgs) - start_idx - 1
+            n -> n
+          end
+
+        turn = Enum.slice(msgs, start_idx, tail_len + 1)
+        {List.first(turn), turn}
     end
   end
 
-  # --- PubSub dispatch ---
+  # Is there already a NEXT user turn after this one? Then it's historical (no
+  # live streaming to expect).
+  defp turn_closed?(_agent_id, nil), do: true
+
+  defp turn_closed?(agent_id, anchor) do
+    msgs = (Loopyard.ChatAgent.get_state(agent_id) || %{})[:messages] || []
+    start = Enum.find_index(msgs, &(&1[:id] == anchor[:id])) || 0
+
+    msgs
+    |> Enum.drop(start + 1)
+    |> Enum.any?(&(&1[:role] == :user))
+  end
+
+  # --- streaming: append new messages of THIS turn, accumulate live text ---
 
   @impl true
   def handle_info(%Events.ChatAgentMessage.Message{} = e, socket), do: on_message(e, socket)
@@ -57,103 +94,70 @@ defmodule LoopyardWeb.MessageLive do
 
   def handle_info(%Events.ChatAgentMessage.TextDelta{} = e, socket), do: on_text_delta(e, socket)
 
-  def handle_info(%Events.ChatAgentMessage.StreamOutput{} = e, socket),
-    do: on_stream_output(e, socket)
+  def handle_info(_e, socket), do: {:noreply, socket}
 
-  # Non-PubSub build-output events (sent as {:build_output, …} intra-
-  # process — not a publisher-module topic).
-  def handle_info({:build_output, id, data}, socket) when id == socket.assigns.agent_id do
-    # Accumulate build output locally
-    new_content = socket.assigns.stream_content <> data
-    {:noreply, socket |> assign(:stream_content, new_content) |> assign(:streaming, true)}
-  end
-
-  def handle_info(_, socket), do: {:noreply, socket}
-
-  # --- Subscriber callbacks ---
-
-  # Streaming text deltas for assistant messages — accumulate for real-time display.
   @impl Events.ChatAgentMessage.Subscriber
   def on_text_delta(%Events.ChatAgentMessage.TextDelta{agent_id: id, text: text}, socket)
       when id == socket.assigns.agent_id do
-    {:noreply, assign(socket, :streaming_text, socket.assigns.streaming_text <> text)}
+    if socket.assigns.closed?,
+      do: {:noreply, socket},
+      else: {:noreply, assign(socket, :streaming_text, socket.assigns.streaming_text <> text)}
   end
 
   def on_text_delta(_e, socket), do: {:noreply, socket}
 
-  # Stream output for build/exec_stream — accumulate locally for instant updates.
   @impl Events.ChatAgentMessage.Subscriber
-  def on_stream_output(
-        %Events.ChatAgentMessage.StreamOutput{agent_id: id, msg_id: msg_id, data: data},
-        socket
-      )
-      when id == socket.assigns.agent_id and msg_id == socket.assigns.msg_id do
-    new_content = socket.assigns.stream_content <> data
-    {:noreply, socket |> assign(:stream_content, new_content) |> assign(:streaming, true)}
-  end
+  def on_message(%Events.ChatAgentMessage.Message{agent_id: id, msg: msg}, socket)
+      when id == socket.assigns.agent_id do
+    cond do
+      socket.assigns.closed? ->
+        {:noreply, socket}
 
-  def on_stream_output(_e, socket), do: {:noreply, socket}
+      # A NEW user message (not our turn's start) begins the NEXT turn — close this one.
+      msg[:role] == :user and msg[:id] != socket.assigns.turn_start_id ->
+        {:noreply, socket |> assign(:closed?, true) |> assign(:streaming_text, "")}
 
-  # Completed chat messages — refresh if this is our message being updated.
-  @impl Events.ChatAgentMessage.Subscriber
-  def on_message(%Events.ChatAgentMessage.Message{agent_id: id, msg: %{id: msg_id} = msg}, socket)
-      when id == socket.assigns.agent_id and msg_id == socket.assigns.msg_id do
-    # Clear streaming text when full message arrives
-    socket = if msg.role == :assistant, do: assign(socket, :streaming_text, ""), else: socket
-    {:noreply, socket |> assign(:msg, msg) |> assign(:stream_content, msg.content || "")}
-  end
+      # Already have it (dedupe) — ignore.
+      Enum.any?(socket.assigns.turn, &(&1[:id] == msg[:id])) ->
+        {:noreply, socket}
 
-  # Build/stream complete (system message arrives) — refresh to pull the
-  # terminal role (:build_done / :build_failed) from ETS.
-  def on_message(%Events.ChatAgentMessage.Message{agent_id: id, msg: %{role: role}}, socket)
-      when id == socket.assigns.agent_id and role in [:system, :error] do
-    if socket.assigns.streaming do
-      refresh_message(socket)
-    else
-      {:noreply, socket}
+      # A continuation of THIS turn — append, and clear the in-flight text an
+      # assistant message just finalized.
+      true ->
+        st = if msg[:role] == :assistant, do: "", else: socket.assigns.streaming_text
+        {:noreply, socket |> assign(:turn, socket.assigns.turn ++ [msg]) |> assign(:streaming_text, st)}
     end
   end
 
   def on_message(_e, socket), do: {:noreply, socket}
 
-  # In-place change to the message this view shows (question answered, approval
-  # resolved) — swap it in directly.
   @impl Events.ChatAgentMessage.Subscriber
-  def on_message_updated(
-        %Events.ChatAgentMessage.MessageUpdated{agent_id: id, msg: %{id: msg_id} = msg},
-        socket
-      )
-      when id == socket.assigns.agent_id and msg_id == socket.assigns.msg_id do
-    {:noreply, assign(socket, :msg, msg)}
+  def on_message_updated(%Events.ChatAgentMessage.MessageUpdated{agent_id: id, msg: msg}, socket)
+      when id == socket.assigns.agent_id do
+    turn = Enum.map(socket.assigns.turn, fn m -> if m[:id] == msg[:id], do: msg, else: m end)
+    {:noreply, assign(socket, :turn, turn)}
   end
 
   def on_message_updated(_e, socket), do: {:noreply, socket}
 
-  defp refresh_message(socket) do
-    msg = Loopyard.ChatAgent.get_message(socket.assigns.agent_id, socket.assigns.msg_id)
-
-    if msg do
-      {:noreply,
-       socket
-       |> assign(:msg, msg)
-       |> assign(:streaming, msg.role in [:build, :stream])
-       |> assign(:stream_content, msg.content || "")}
-    else
-      {:noreply, socket}
-    end
-  end
+  def on_stream_output(_e, socket), do: {:noreply, socket}
 
   @impl true
   def render(assigns) do
     ~H"""
     <div class="min-h-screen bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 safe-area-x">
       <Nav.bar height="h-12" pad="px-4">
-        <span :if={@msg} class="text-sm font-medium text-zinc-500 dark:text-zinc-400">
-          {@msg[:title] || message_type(@msg)}
-        </span>
-        <span :if={@streaming} class="flex items-center gap-1.5 text-xs text-amber-500">
-          <div class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></div>
-          live
+        <.link
+          navigate={"/messages/#{@agent_id}/#{@msg_id}"}
+          class="text-sm font-medium text-zinc-600 dark:text-zinc-300"
+        >
+          Turn
+        </.link>
+        <span
+          :if={!@closed? && @streaming_text != ""}
+          class="flex items-center gap-1.5 text-xs text-violet-500"
+        >
+          <span class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse"></span> live
         </span>
         <:actions>
           <a
@@ -166,61 +170,92 @@ defmodule LoopyardWeb.MessageLive do
         </:actions>
       </Nav.bar>
 
-      <div :if={@msg} class="p-4">
-        <.log_panel
-          :if={@msg.role in [:build, :build_done, :build_failed, :stream, :tool_result]}
-          id="msg-output"
-          content={@stream_content}
-          class="text-sm rounded-lg p-4 max-h-[calc(100vh-6rem)]"
-        />
+      <%!-- The turn, constrained to a reading measure so it reads like a
+           document. A read-only per-role view (interactive cards link into the
+           live chat), streaming the whole exchange until the next turn. --%>
+      <div :if={@turn != []} class="mx-auto w-full max-w-3xl px-4 md:px-6 py-6 space-y-4">
+        <.turn_msg :for={m <- @turn} msg={m} agent_id={@agent_id} />
 
-        <div :if={@msg.role == :assistant} id="msg-content" class="prose dark:prose-invert max-w-none">
+        <%!-- In-flight assistant text (before it commits as a message). --%>
+        <div :if={!@closed? && @streaming_text != ""}>
           <div class="markdown-body">
-            {Loopyard.Markdown.to_html(
-              if @streaming_text != "", do: @streaming_text, else: @msg.content
-            )}
+            {Phoenix.HTML.raw(Loopyard.Markdown.to_html(@streaming_text))}
           </div>
-        </div>
-
-        <%!-- Show streaming indicator when accumulating text --%>
-        <div
-          :if={@streaming_text != "" && @msg.role == :assistant}
-          class="mt-2 flex items-center gap-1.5 text-xs text-amber-500"
-        >
-          <div class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></div>
-          streaming...
-        </div>
-
-        <div
-          :if={@msg.role == :user}
-          class="text-sm whitespace-pre-wrap"
-        >
-          {@msg.content}
-        </div>
-
-        <div
-          :if={@msg.role in [:system, :error]}
-          class={"text-sm #{if @msg.role == :error, do: "text-red-600 dark:text-red-400", else: "text-zinc-500 dark:text-zinc-400 italic"}"}
-        >
-          {@msg.content}
+          <div class="mt-2 flex items-center gap-1.5 text-xs text-violet-500">
+            <span class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse"></span> streaming…
+          </div>
         </div>
       </div>
 
-      <div :if={!@msg} class="flex items-center justify-center h-64">
-        <p class="text-sm text-zinc-400">Message not found or link expired</p>
+      <div :if={@turn == []} class="flex items-center justify-center h-64">
+        <p class="text-sm text-zinc-400">Turn not found or link expired</p>
       </div>
     </div>
     """
   end
 
-  defp message_type(%{role: :assistant}), do: "assistant"
-  defp message_type(%{role: :user}), do: "user"
-  defp message_type(%{role: :build}), do: "build output"
-  defp message_type(%{role: :build_done}), do: "build output"
-  defp message_type(%{role: :build_failed}), do: "build output (failed)"
-  defp message_type(%{role: :tool_result}), do: "tool output"
-  defp message_type(%{role: :tool}), do: "tool call"
-  defp message_type(%{role: :system}), do: "system"
-  defp message_type(%{role: :error}), do: "error"
-  defp message_type(_), do: "message"
+  # --- read-only per-role rendering of a turn's messages ---
+
+  def turn_msg(%{msg: %{role: :user, content: c}} = assigns) when is_binary(c) do
+    ~H"""
+    <div class="rounded-xl bg-violet-100 dark:bg-[#2b2348] px-4 py-3 text-[15px] leading-relaxed whitespace-pre-wrap text-zinc-900 dark:text-zinc-50">
+      {@msg.content}
+    </div>
+    """
+  end
+
+  def turn_msg(%{msg: %{role: :assistant, content: c}} = assigns) when is_binary(c) and c != "" do
+    ~H"""
+    <div class="markdown-body">
+      {Phoenix.HTML.raw(Loopyard.Markdown.to_html(@msg.content))}
+    </div>
+    """
+  end
+
+  def turn_msg(%{msg: %{role: :tool}} = assigns) do
+    ~H"""
+    <div class="font-mono text-xs text-zinc-500 dark:text-zinc-400">⚙ {@msg[:tool] || "tool"}</div>
+    """
+  end
+
+  def turn_msg(%{msg: %{role: role, content: c}} = assigns)
+      when role in [:tool_result, :build, :build_done, :build_failed] and is_binary(c) do
+    ~H"""
+    <pre class="text-xs font-mono whitespace-pre-wrap overflow-x-auto rounded-lg bg-zinc-100 dark:bg-zinc-950 text-zinc-700 dark:text-zinc-300 p-3 max-h-64 overflow-y-auto">{@msg.content}</pre>
+    """
+  end
+
+  def turn_msg(%{msg: %{role: :system, content: c}} = assigns) when is_binary(c) do
+    ~H"""
+    <div class="py-1 text-center text-sm italic text-zinc-400/70 dark:text-zinc-600">{@msg.content}</div>
+    """
+  end
+
+  def turn_msg(%{msg: %{role: :error, content: c}} = assigns) when is_binary(c) do
+    ~H"""
+    <div class="text-sm text-red-600 dark:text-red-400 whitespace-pre-wrap">{@msg.content}</div>
+    """
+  end
+
+  def turn_msg(%{msg: %{role: :embed}} = assigns) do
+    ~H"""
+    <.link
+      navigate={"/projects/#{@msg[:project_id]}/workspaces/#{@msg[:workspace_id]}/agents/#{@msg[:agent_id]}"}
+      class="inline-flex items-center gap-2 rounded-lg border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-sm text-violet-600 dark:text-violet-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+    >
+      ▸ {@msg[:label] || "workspace"} — open in chat →
+    </.link>
+    """
+  end
+
+  def turn_msg(%{msg: %{role: role}} = assigns)
+      when role in [:question, :approval, :secret_request] do
+    ~H"""
+    <div class="rounded-lg border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+      Needs your input — answer it in the live chat.
+    </div>
+    """
+  end
+
+  def turn_msg(assigns), do: ~H""
 end
