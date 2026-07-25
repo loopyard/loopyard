@@ -29,7 +29,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
            NOT violet — violet is the "You" message colour). Options sit on white
            rows so they stay distinct on the tint. Reads top-down: label ›
            question (hero) › the options, each anchored by a radio/check dot. --%>
-      <div class="-mx-4 md:-mx-6 px-4 md:px-6 lg:px-8 pt-4 md:pt-5 pb-4 md:pb-5 bg-amber-50/70 dark:bg-amber-950/15 border-l-2 border-amber-400 dark:border-amber-500/60">
+      <LoopyardWeb.Components.StreamCard.band tone={:needs_you}>
           <%!-- Card anatomy (every stream card): identity chip TOP-LEFT (which
                project·workspace this is about — the canonical design-language
                badge), the card's label TOP-RIGHT opposite it; actions live at
@@ -249,7 +249,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           <div :if={@msg.status == :timeout} class="chat-meta text-zinc-500 dark:text-zinc-400">
             No answer — the agent moved on.
           </div>
-      </div>
+      </LoopyardWeb.Components.StreamCard.band>
     </div>
     """
   end
@@ -325,27 +325,29 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
   def secret_card(assigns) do
     ~H"""
     <div class="py-2">
-      <div class="-mx-4 md:-mx-6 px-4 md:px-6 lg:px-8 pt-4 md:pt-5 pb-4 md:pb-5 bg-amber-50/70 dark:bg-amber-950/15 border-l-2 border-amber-400 dark:border-amber-500/60">
-        <div class="chat-meta flex items-center gap-1.5 font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 mb-2">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 16 16"
-            fill="currentColor"
-            class="w-3.5 h-3.5"
-          >
-            <path
-              fill-rule="evenodd"
-              d="M8 1a3 3 0 0 0-3 3v2H4.5A1.5 1.5 0 0 0 3 7.5v5A1.5 1.5 0 0 0 4.5 14h7a1.5 1.5 0 0 0 1.5-1.5v-5A1.5 1.5 0 0 0 11.5 6H11V4a3 3 0 0 0-3-3Zm1.5 5V4a1.5 1.5 0 1 0-3 0v2h3Z"
-              clip-rule="evenodd"
-            />
-          </svg>
-          The agent needs a secret
-        </div>
+      <LoopyardWeb.Components.StreamCard.band tone={:needs_you}>
+        <LoopyardWeb.Components.StreamCard.header state={:needs_you}>
+          <:label>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 16 16"
+              fill="currentColor"
+              class="w-3.5 h-3.5"
+            >
+              <path
+                fill-rule="evenodd"
+                d="M8 1a3 3 0 0 0-3 3v2H4.5A1.5 1.5 0 0 0 3 7.5v5A1.5 1.5 0 0 0 4.5 14h7a1.5 1.5 0 0 0 1.5-1.5v-5A1.5 1.5 0 0 0 11.5 6H11V4a3 3 0 0 0-3-3Zm1.5 5V4a1.5 1.5 0 1 0-3 0v2h3Z"
+                clip-rule="evenodd"
+              />
+            </svg>
+            Needs a secret
+          </:label>
+        </LoopyardWeb.Components.StreamCard.header>
 
-        <div class="text-lg md:text-base font-medium leading-snug text-zinc-800 dark:text-zinc-200">
+        <div class="chat-body font-medium leading-snug text-zinc-800 dark:text-zinc-200">
           <span class="font-mono">{@msg.name}</span>
         </div>
-        <div :if={@msg[:why] not in [nil, ""]} class="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
+        <div :if={@msg[:why] not in [nil, ""]} class="chat-sub mt-0.5 text-zinc-500 dark:text-zinc-400">
           {@msg.why}
         </div>
 
@@ -404,7 +406,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
         <div :if={@msg.status == :timeout} class="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
           No secret submitted — the agent moved on.
         </div>
-      </div>
+      </LoopyardWeb.Components.StreamCard.band>
     </div>
     """
   end
@@ -421,7 +423,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
 
     ~H"""
     <div class="py-3">
-      <div class="-mx-4 md:-mx-6 px-4 md:px-6 lg:px-8 pt-4 md:pt-5 pb-4 md:pb-5 bg-amber-50/70 dark:bg-amber-950/15 border-l-2 border-amber-400 dark:border-amber-500/60">
+      <LoopyardWeb.Components.StreamCard.band tone={:needs_you}>
         <%!-- Card anatomy: identity chip top-left (which project·workspace the
              action is about, resolved from the action's ids), label top-right,
              actions at the bottom. Without a resolvable chip the label holds
@@ -634,7 +636,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           <% _ -> %>
             <span></span>
         <% end %>
-      </div>
+      </LoopyardWeb.Components.StreamCard.band>
     </div>
     """
   end
