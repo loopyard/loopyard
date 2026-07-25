@@ -138,8 +138,7 @@
      and the 68ch measure — the document feel comes from size + rhythm + measure,
      not from a typeface change. (Tried a serif; it didn't sit right.) */
   max-width: 68ch;          /* the measure — the single biggest readability win */
-  font-size: 1.125rem;      /* ~18px — the chat-body size, every viewport */
-  line-height: 1.7;
+  @apply text-chat-body;    /* size/leading from the chat-body token */
   letter-spacing: 0;
 }
 .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
@@ -227,14 +226,11 @@
    meta: labels & receipts (eyebrows, timestamps, footers, source lines)
    One scale = calm rhythm; per-surface ad-hoc sizes are what made the stream
    feel like a mix of slightly-different fonts. */
-.chat-body { font-size: 1.125rem; line-height: 1.65; }
-.chat-sub  { font-size: 1rem; line-height: 1.55; }
-.chat-meta { font-size: 0.8125rem; line-height: 1.4; }
-@media (min-width: 768px) {
-  .chat-body { font-size: 1.125rem; }
-  .chat-sub  { font-size: 0.9375rem; }
-  .chat-meta { font-size: 0.8125rem; }
-}
+/* Sizes come from the Tailwind fontSize tokens (tailwind.config.js →
+   chat-body / chat-sub / chat-sub-md / chat-meta) — tune them THERE. */
+.chat-body { @apply text-chat-body; }
+.chat-sub  { @apply text-chat-sub md:text-chat-sub-md; }
+.chat-meta { @apply text-chat-meta; }
 
 /* The human prompt band reads at chat-body, same as the prose and the composer
    input — a typed message keeps its size as it peels off into the queue. */
@@ -242,7 +238,7 @@
 .markdown-body.human-prompt p,
 .markdown-body.human-prompt li {
   font-family: inherit;
-  font-size: 1.125rem;
+  @apply text-chat-body;
   line-height: 1.55;
 }
 

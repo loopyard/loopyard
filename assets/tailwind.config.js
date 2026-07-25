@@ -24,6 +24,13 @@ module.exports = {
         sm: ['0.9375rem', '1.375rem'],  // 15px (was 14)
         base: ['1rem', '1.5rem'],        // 16px — the anchor
         lg: ['1.125rem', '1.75rem'],     // 18px — chat prose
+        // The chat stream's THREE-step type scale (see .chat-body/.chat-sub/
+        // .chat-meta in app.css — they @apply these). ONE place to tune how big
+        // the chat reads; a future per-user font-size preference scales these.
+        'chat-body': ['1.125rem', '1.7'],     // 18px — prose, prompts, question heroes, composer
+        'chat-sub': ['1rem', '1.55'],         // 16px — options, card details, buttons (mobile)
+        'chat-sub-md': ['0.9375rem', '1.55'], // 15px — chat-sub on md+ screens
+        'chat-meta': ['0.8125rem', '1.4'],    // 13px — eyebrows, timestamps, footers
       },
       fontFamily: {
         // System stacks only — no custom font downloads. Serif is the
