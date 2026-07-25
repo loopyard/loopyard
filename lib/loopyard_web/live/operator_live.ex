@@ -84,6 +84,10 @@ defmodule LoopyardWeb.OperatorLive do
       # tail. (chat_panel still reads these two.)
       |> assign(:has_more_messages, false)
       |> assign(:window_tail?, true)
+      # Mobile only: the chat and the "for you" rail are co-equal on desktop but
+      # can't both fit a phone, so we show ONE at a time with a top toggle.
+      # Desktop (lg+) ignores this and shows both side-by-side.
+      |> assign(:mobile_view, :chat)
       # The rail (needs-you groups + working jobs + count) computed IN the
       # LiveView and stored as real assigns, so it's part of the reactive graph —
       # NOT recomputed inside the component (which LiveView memoizes when @tree/
@@ -237,6 +241,11 @@ defmodule LoopyardWeb.OperatorLive do
   end
 
   # Rail sound player: crossfade the bed to another track (no reconnect).
+  # Mobile: flip between the chat and the "for you" rail.
+  def handle_event("mobile_view", %{"v" => v}, socket) when v in ~w(chat rail) do
+    {:noreply, assign(socket, :mobile_view, String.to_existing_atom(v))}
+  end
+
   def handle_event(_evt, _params, socket), do: {:noreply, socket}
 
   # A workspace's mapped ports as launchable links. `port` is the HOST port (what
@@ -418,6 +427,10 @@ defmodule LoopyardWeb.OperatorLive do
 
   @impl true
   def render(assigns) do
+    # Badge on the mobile "For you" tab: how many blocking items are waiting.
+    assigns =
+      assign(assigns, :needs_count, Enum.sum(Enum.map(assigns.attention_groups, &length(&1.items))))
+
     ~H"""
     <div
       id="operator-page"
@@ -432,9 +445,48 @@ defmodule LoopyardWeb.OperatorLive do
         </:actions>
       </Nav.bar>
 
+      <%!-- Mobile only: chat ⇄ rail toggle. Both panes are co-equal but can't
+           share a phone screen, so show one at a time. Hidden on lg+ (both show). --%>
+      <div class="lg:hidden flex-none flex border-b border-zinc-200 dark:border-zinc-800 text-sm">
+        <button
+          type="button"
+          phx-click="mobile_view"
+          phx-value-v="chat"
+          class={[
+            "flex-1 py-2.5 font-medium text-center border-b-2 -mb-px transition-colors",
+            (@mobile_view == :chat && "border-violet-500 text-violet-600 dark:text-violet-400") ||
+              "border-transparent text-zinc-500 dark:text-zinc-400"
+          ]}
+        >
+          Chat
+        </button>
+        <button
+          type="button"
+          phx-click="mobile_view"
+          phx-value-v="rail"
+          class={[
+            "flex-1 py-2.5 font-medium text-center border-b-2 -mb-px transition-colors inline-flex items-center justify-center gap-1.5",
+            (@mobile_view == :rail && "border-violet-500 text-violet-600 dark:text-violet-400") ||
+              "border-transparent text-zinc-500 dark:text-zinc-400"
+          ]}
+        >
+          For you
+          <span
+            :if={@needs_count > 0}
+            class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full bg-violet-600 text-white text-xs font-semibold tabular-nums"
+          >
+            {@needs_count}
+          </span>
+        </button>
+      </div>
+
       <div class="flex-1 min-h-0 flex">
         <%!-- Chat is PRIMARY — mostly you just talk to the operator. --%>
-        <div class="flex-1 min-w-0 flex flex-col min-h-0">
+        <div class={[
+          "flex-1 min-w-0 flex-col min-h-0",
+          (@mobile_view == :chat && "flex") || "hidden",
+          "lg:flex"
+        ]}>
           <.chat_panel
             messages={@messages}
             streaming_text={@streaming_text}
@@ -452,7 +504,12 @@ defmodule LoopyardWeb.OperatorLive do
              with NEEDS YOU (blocking questions/approvals, grouped by workspace,
              answered inline) then WORKING (dispatched jobs + progress). The
              operator curates this; the chat is where you talk about it. --%>
-        <aside class="hidden lg:flex lg:w-[26rem] xl:w-[32rem] flex-none flex-col border-l border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/40">
+        <aside class={[
+          "flex-none flex-col border-l border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/40",
+          "w-full lg:w-[26rem] xl:w-[32rem]",
+          (@mobile_view == :rail && "flex") || "hidden",
+          "lg:flex"
+        ]}>
           <div class="flex-1 min-h-0 overflow-y-auto">
             <.for_you_rail groups={@attention_groups} jobs={@rail_jobs} />
           </div>
