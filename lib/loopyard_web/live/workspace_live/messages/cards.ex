@@ -47,14 +47,23 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
             </span>
           </div>
 
-          <%!-- Memo attribution: which project/workspace this decision is FROM.
-               Makes the card self-contained — you know its source without hunting
-               through the surrounding prose. --%>
+          <%!-- Memo attribution: which project/workspace this decision is FROM —
+               rendered as the canonical workspace_identity chip (status light +
+               project · workspace), the same design-language badge used
+               everywhere else. Pending question = that workspace literally
+               needs you (amber); settled = done. --%>
           <div
             :if={@msg[:source] not in [nil, ""]}
-            class="chat-meta text-zinc-500 dark:text-zinc-400 -mt-1 mb-3"
+            class="flex items-center gap-1.5 -mt-1 mb-3"
           >
-            from <span class="font-medium text-zinc-700 dark:text-zinc-200">{@msg.source}</span>
+            <span class="chat-meta text-zinc-500 dark:text-zinc-400">from</span>
+            <LoopyardWeb.Components.Common.workspace_identity
+              project={source_project(@msg.source)}
+              workspace={source_workspace(@msg.source)}
+              state={if @msg.status == :pending, do: :needs_you, else: :done}
+              size={:sm}
+              class="min-w-0"
+            />
           </div>
 
           <div :for={q <- @msg.questions} class="mb-8 last:mb-0">
@@ -258,6 +267,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
       <path d="M2.5 6.5 5 9l4.5-5.5" stroke-linecap="round" stroke-linejoin="round" />
     </svg>
     """
+  end
+
+  # The memo source is a "project · workspace" string (set by ask_user's source
+  # param) — split it back into the two identity parts for the chip. A source
+  # without the separator renders as just the project (no fake workspace).
+  defp source_project(source), do: source |> String.split(" · ", parts: 2) |> hd()
+
+  defp source_workspace(source) do
+    case String.split(source, " · ", parts: 2) do
+      [_project, workspace] -> workspace
+      _ -> nil
+    end
   end
 
   # A question is settled once it's in the message's `done` list (per-question
