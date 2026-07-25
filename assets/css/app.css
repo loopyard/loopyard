@@ -228,6 +228,10 @@
    active prompt band's rail above it). The border color is set in markup; this
    adds the "lit" glow into the gutter and a gentle breathing pulse. */
 .chat-live-rail { box-shadow: -2px 0 12px -4px rgba(139, 124, 255, 0.45); }
+/* The live content butts FLUSH under the running prompt band (which sets mb-0),
+   so the glowing rail is unbroken from prompt into response — cancel the
+   transcript's space-y gap above it (higher specificity, hence !important). */
+.chat-live-rail-tail { margin-top: 0 !important; }
 @media (prefers-reduced-motion: no-preference) {
   .chat-live-rail { animation: chat-live-rail 1.8s ease-in-out infinite; }
   @keyframes chat-live-rail {

@@ -111,7 +111,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         # meant the previous (sticky) prompt hung over a big empty gap before the
         # next one pushed it up. Small, even spacing → prompts hand off flush.
         band_top: if(first?, do: "mt-5 md:mt-6 pt-4 md:pt-5", else: "mt-0 pt-2"),
-        band_bottom: if(next_role(assigns) == :user, do: "mb-0 pb-2", else: "mb-4 md:mb-5 pb-4 md:pb-5")
+        band_bottom:
+          cond do
+            # The running prompt hands straight off to its live response: no
+            # bottom margin, so the glowing rail continues unbroken into the
+            # streaming content flush below it.
+            assigns[:active?] -> "mb-0 pb-4 md:pb-5"
+            next_role(assigns) == :user -> "mb-0 pb-2"
+            true -> "mb-4 md:mb-5 pb-4 md:pb-5"
+          end
       )
 
     # The human prompt is a full-bleed purple band, not a bubble. It's `sticky`
@@ -125,8 +133,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       class={[
         "-mx-4 md:-mx-6 px-4 md:px-6 lg:px-8 group/msg transition-colors",
         # The prompt being answered right now reads stronger (deeper wash + a
-        # violet left rail) so you can see which prompt the live response is for.
-        (@active? && "bg-violet-200 dark:bg-[#332a54] border-l-2 border-violet-500 dark:border-violet-400") ||
+        # GLOWING violet left rail — same .chat-live-rail as the streaming
+        # content below, so the running prompt and its live response read as one
+        # continuous, lit timeline).
+        (@active? &&
+           "bg-violet-200 dark:bg-[#332a54] border-l-2 border-violet-500 dark:border-violet-400 chat-live-rail") ||
           "bg-violet-100 dark:bg-[#2b2348] border-l-2 border-transparent",
         @sticky_class,
         @band_top,
