@@ -250,6 +250,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       # the raw "$ cmd" tool row would just show the command a second time. Suppress
       # it so the console window is the single representation of the command.
       msg_kind(assigns.msg) == :command -> ~H"<div></div>"
+      # File reads render as a rich file card (name + dir + content) — the
+      # "Read /workspace/…" call row above it said the same thing again. A
+      # burst of reads was a noisy double-reported stack; the card alone is
+      # the single, calm representation.
+      msg_kind(assigns.msg) == :read -> ~H"<div></div>"
       true -> render_tool_call(assigns)
     end
   end
