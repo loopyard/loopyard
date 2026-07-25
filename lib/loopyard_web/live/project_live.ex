@@ -538,17 +538,13 @@ defmodule LoopyardWeb.ProjectLive do
                 }
               >
                 <div class="flex items-center gap-2">
-                  <div class={"w-2.5 h-2.5 md:w-3 md:h-3 rounded-full flex-none #{cond do
-                    Map.get(workspace, :setup, %{})[:phase] == :running -> "bg-blue-500 animate-pulse"
-                    Map.get(workspace, :setup, %{})[:phase] == :pending -> "bg-blue-300 animate-pulse"
-                    Map.get(workspace, :setup, %{})[:phase] == :failed -> "bg-red-500"
-                    workspace.status == :running -> "bg-green-500"
-                    true -> "bg-zinc-400"
-                  end}"}>
-                  </div>
-                  <span class="text-sm md:text-base font-medium text-zinc-900 dark:text-zinc-100 truncate">
-                    {workspace.name}
-                  </span>
+                  <.workspace_identity
+                    project={@project.name}
+                    workspace={workspace.name}
+                    state={ws_card_state(workspace)}
+                    size={:md}
+                    class="min-w-0 flex-1"
+                  />
                   <span
                     :if={workspace[:is_main]}
                     class="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 flex-none"
@@ -603,6 +599,19 @@ defmodule LoopyardWeb.ProjectLive do
       <% end %>
     </.page_shell>
     """
+  end
+
+  # Map a workspace's setup/cluster phase onto the ONE canonical
+  # workspace_identity light — provisioning → working, failed → broken, a
+  # running cluster → done, otherwise asleep. Mirrors the old bespoke dot cond
+  # so the only change is the unified color vocabulary.
+  defp ws_card_state(workspace) do
+    cond do
+      Map.get(workspace, :setup, %{})[:phase] in [:running, :pending] -> :working
+      Map.get(workspace, :setup, %{})[:phase] == :failed -> :broken
+      workspace.status == :running -> :done
+      true -> :asleep
+    end
   end
 
   defp breadcrumbs_for(%{live_action: :settings, project: project}) do
