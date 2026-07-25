@@ -252,14 +252,31 @@ defmodule Loopyard.Harness.Questions do
   def pending_all do
     :ets.tab2list(@table)
     |> Enum.filter(fn {qid, entry} ->
-      if Process.alive?(entry.waiter) do
-        true
-      else
-        :ets.delete(@table, qid)
-        update_msg(entry.agent_id, entry.msg_id, %{status: :timeout})
-        false
+      cond do
+        Process.alive?(entry.waiter) ->
+          true
+
+        # Waiter gone (ACP elicitation gives up in ~60s) but the CARD is still
+        # :pending — the agent hasn't moved on, so the question is still
+        # RELEVANT and must stay in the attention line ("For you"). Relevance
+        # is card state, not waiter liveness: cancel_for_agent flips the card
+        # to :timeout when the agent moves past it, and THAT is when it drops.
+        card_pending?(entry) ->
+          true
+
+        true ->
+          :ets.delete(@table, qid)
+          false
       end
     end)
+  end
+
+  defp card_pending?(entry) do
+    match?(%{status: :pending}, Loopyard.ChatAgent.get_message(entry.agent_id, entry.msg_id))
+  rescue
+    _ -> false
+  catch
+    _, _ -> false
   end
 
   @doc """
