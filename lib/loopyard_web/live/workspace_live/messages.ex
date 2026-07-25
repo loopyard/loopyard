@@ -138,10 +138,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         # the ACTIVE band rounds only its top so it stays flush into the live
         # tail below (which rounds the bottom).
         (@active? && "xl:rounded-t-xl") || "xl:rounded-xl",
-        # The prompt being answered right now reads stronger (deeper wash + a
-        # GLOWING violet left rail — same .chat-live-rail as the streaming
-        # content below, so the running prompt and its live response read as one
-        # continuous, lit timeline).
+        # The prompt being answered right now reads stronger (deeper wash).
         (@active? && "bg-violet-200 dark:bg-[#332a54]") ||
           "bg-violet-100 dark:bg-[#2b2348]",
         @sticky_class,
