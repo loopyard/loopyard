@@ -609,7 +609,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               below — the ✕'s are gone because it's no longer editable. --%>
         <div
           :if={(@agent[:pending_count] || 0) > 0}
-          class="-mx-3 md:-mx-4 bg-violet-100 dark:bg-[#2b2348] px-4 md:px-6 py-2"
+          class="-mx-3 md:-mx-4 xl:-mx-2 xl:rounded-xl bg-violet-100 dark:bg-[#2b2348] px-4 md:px-6 lg:px-8 pt-3 pb-3"
         >
           <div class="flex items-baseline justify-between gap-2 mb-1.5">
             <div class="flex items-baseline gap-2 min-w-0">
