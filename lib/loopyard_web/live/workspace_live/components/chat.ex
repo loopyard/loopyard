@@ -451,7 +451,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
              center it. Prompt bands + input bleed to THIS column's edges (so on
              wide screens they're same-width "bubbles"); prose stays 68ch inside. --%>
         <div class="mt-auto w-full">
-          <div class="space-y-3 max-w-5xl mx-auto px-4 md:px-6">
+          <div class="space-y-3 max-w-4xl mx-auto px-4 md:px-6">
           <%!-- Progressive loader: while there's older history above the window,
                a soft shimmer sits at the very top. Scroll into it and load_more
                fetches the next batch (prepended below this, so it stays put);
@@ -609,7 +609,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       <%!-- pb-safe: the composer clears the home indicator in a standalone PWA
            while keeping its normal padding in the browser. --%>
       <div class="flex-none border-t border-zinc-200 dark:border-zinc-700/80 pb-safe">
-       <div class="w-full max-w-5xl mx-auto px-3 pt-3 md:px-4 md:pt-4 space-y-2">
+       <div class="w-full max-w-4xl mx-auto px-3 pt-3 md:px-4 md:pt-4 space-y-2">
         <%!-- The queue is ONE card: a single "You" band (one name, one state) with
               every pending line INSIDE it, each line cancelable by its own ✕. Reads
               as one prompt-in-waiting — exactly how the transcript groups a batch —
