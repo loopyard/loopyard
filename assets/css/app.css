@@ -522,3 +522,11 @@ input[type="range"].volume-slider:focus-visible {
     background: #3f3f46;
   }
 }
+
+/* "Ready to send" cue — the ChatForm hook toggles .send-ready on the send
+   button while the input has text: the arrow fills violet, inviting submit. */
+#chat-form button[type="submit"].send-ready {
+  background: #7c3aed;
+  color: #fff;
+}
+#chat-form button[type="submit"].send-ready:hover { background: #6d28d9; }

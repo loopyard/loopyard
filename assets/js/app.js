@@ -829,6 +829,12 @@ Hooks.ChatForm = {
       }
     } catch (_) {}
 
+    // Subtle "ready to send" cue: the arrow fills violet when there's text.
+    const updateSend = () => {
+      if (btn) btn.classList.toggle("send-ready", ta.value.trim() !== "")
+    }
+    updateSend()
+
     const send = () => {
       if (sending) return
       const text = ta.value.trim()
@@ -863,6 +869,7 @@ Hooks.ChatForm = {
           ta.value = ""
           ta.style.height = "auto"
           clearDraft()
+          updateSend()
           // iOS: tapping Send keeps focus in the field (touchend preventDefault),
           // and a pending autocorrect can COMMIT the just-cleared text right back
           // into it — which our input listener then dutifully re-saves as a
@@ -934,6 +941,7 @@ Hooks.ChatForm = {
       const status = document.getElementById("send-status")
       if (status && !status.classList.contains("hidden")) status.classList.add("hidden")
       saveDraft()
+      updateSend()
       requestAnimationFrame(() => {
         ta.style.height = "auto"
         ta.style.height = Math.min(ta.scrollHeight, 200) + "px"
@@ -966,6 +974,7 @@ Hooks.ChatForm = {
 
     function fillBox(text) {
       ta.value = text
+      updateSend()
       ta.style.height = "auto"
       ta.style.height = Math.min(ta.scrollHeight, 200) + "px"
       saveDraft()

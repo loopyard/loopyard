@@ -115,7 +115,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
     <%!-- The live tip of the turn: dots + word + elapsed on the left, Stop docked
          right. Flush-left (no rail/indent) so it lines up with the streaming prose
          and completed messages above it. --%>
-    <div class="flex items-center gap-2.5 pr-1 py-1.5">
+    <div class="flex items-center gap-2.5 py-3">
       <span class={["flex-none", @text_class]} aria-hidden="true">
         <LoopyardWeb.Components.Brand.mark animated class="w-5 h-5" />
       </span>
@@ -150,7 +150,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
         type="button"
         phx-click="interrupt_agent"
         phx-value-id={@agent_id}
-        class="focus-ring inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 active:bg-red-500/20 transition-colors flex-none"
+        class="focus-ring inline-flex items-center gap-2 rounded-full border border-zinc-200 dark:border-zinc-700 px-3.5 py-1.5 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:border-red-300 hover:text-red-600 dark:hover:border-red-500/50 dark:hover:text-red-400 hover:bg-red-500/10 active:bg-red-500/20 transition-colors flex-none"
       >
         <span class="w-2.5 h-2.5 rounded-[3px] bg-red-500"></span> Stop
       </button>
