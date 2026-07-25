@@ -118,7 +118,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         # the live tail closes the shape.
         band_round: [
           first? && "2xl:rounded-t-xl",
-          next_role(assigns) != :user && !assigns[:active?] && "2xl:rounded-b-xl"
+          next_role(assigns) != :user && "2xl:rounded-b-xl"
         ],
         band_bottom:
           cond do
