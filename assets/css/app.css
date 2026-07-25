@@ -141,9 +141,13 @@
   font-family: 'Iowan Old Style', 'Charter', 'Palatino Linotype', Palatino,
                Georgia, Cambria, 'Times New Roman', serif;
   max-width: 68ch;          /* the measure — the single biggest readability win */
-  font-size: 1.05em;        /* serifs want a touch more size to breathe */
-  line-height: 1.78;        /* open leading = unhurried, document-grade */
+  font-size: 1.175rem;      /* MOBILE reading size — bumped: 1.05em rendered ~16.8px
+                               everywhere (it wins over text-lg), too small on a phone */
+  line-height: 1.72;        /* open leading = unhurried, document-grade */
   letter-spacing: 0;
+}
+@media (min-width: 768px) {
+  .markdown-body { font-size: 1.05rem; line-height: 1.78; }  /* desktop: back to ~16.8px */
 }
 .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
   font-weight: 650;
@@ -184,8 +188,10 @@
   color: #a5d6a7;
 }
 .markdown-body pre code {
-  white-space: pre-wrap;
-  word-break: break-all;
+  /* Do NOT wrap: pre-wrap + break-all shredded ASCII trees, tables, and aligned
+     code. Keep lines intact and let the <pre> scroll horizontally (overflow-x:
+     auto above) so structure is preserved. */
+  white-space: pre;
   padding: 0;
   background: transparent;
   font-size: 0.8em;
@@ -226,8 +232,13 @@
 .markdown-body.human-prompt p,
 .markdown-body.human-prompt li {
   font-family: inherit;
-  font-size: 1rem;
+  font-size: 1.125rem;  /* mobile — matches the composer input's text-lg */
   line-height: 1.5;
+}
+@media (min-width: 768px) {
+  .markdown-body.human-prompt,
+  .markdown-body.human-prompt p,
+  .markdown-body.human-prompt li { font-size: 1rem; }  /* desktop — input's md:text-base */
 }
 
 /* User message markdown (white text on purple bg) */

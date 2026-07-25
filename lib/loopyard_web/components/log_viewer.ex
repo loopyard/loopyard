@@ -108,12 +108,12 @@ defmodule LoopyardWeb.Components.LogViewer do
     <div
       id={"log-wrap-#{System.unique_integer([:positive])}"}
       phx-hook="LogExpand"
-      class="mt-3 mb-1 rounded-lg overflow-hidden bg-gradient-to-b from-zinc-500/[0.06] to-zinc-500/[0.02] dark:from-white/[0.05] dark:to-white/[0.015]"
+      class="mt-3 mb-1 rounded-lg overflow-hidden bg-zinc-500/[0.06] dark:bg-white/[0.045]"
     >
       <div class="flex items-center gap-2 px-3.5 pt-2 pb-1">
         <span
           title={@command}
-          class="text-sm md:text-[13px] font-mono text-zinc-600 dark:text-zinc-300 truncate min-w-0 flex-1"
+          class="text-sm md:text-[13px] font-mono text-zinc-700 dark:text-zinc-200 truncate min-w-0 flex-1"
         >
           <span :if={@command} class="select-none text-zinc-400 dark:text-zinc-500">$ </span>{@command ||
             @status_label}
@@ -146,7 +146,7 @@ defmodule LoopyardWeb.Components.LogViewer do
       <pre
         data-log-pre
         class={[
-          "text-sm md:text-[13px] font-mono leading-snug text-zinc-700 dark:text-zinc-300 bg-transparent whitespace-pre overflow-auto px-3.5 py-1.5",
+          "text-sm md:text-[13px] font-mono leading-snug text-zinc-800 dark:text-zinc-200 bg-transparent whitespace-pre overflow-auto px-3.5 py-1.5",
           if(@status == :building, do: "max-h-64", else: "max-h-32")
         ]}
       >{Ansi.to_html(@display)}</pre>
