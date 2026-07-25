@@ -74,10 +74,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
   attr :word, :string, required: true
   attr :agent_id, :string, required: true
   attr :mode, :atom, default: :thinking
-  # Cumulative tokens this agent has used (real usage, updated when each turn
-  # settles). Shown live so utilization visibly racks up turn over turn — the
-  # `~N` estimate below is this turn's streamed output on top of it.
+  # Lifetime cumulative tokens this agent has used (real usage, updated when
+  # each turn settles). Kept for callers/tooltips, but NO LONGER shown in the
+  # live footer — it's a cost odometer, not a context gauge (see below).
   attr :tokens, :integer, default: 0
+  # Fraction (0.0–1.0) of the CONTEXT WINDOW filled this turn — the fuel gauge.
+  attr :context_utilization, :float, default: 0.0
 
   def live_status(assigns) do
     # The bar shows the WORK BEING DONE — not all of it is thinking. Harness
@@ -91,16 +93,20 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
       |> assign_new(:active_tool, fn -> nil end)
       |> assign_status_styles()
 
-    # Live signal so a long percolation isn't a black box (#62): ONE counter =
-    # cumulative real total + this turn's streamed-output estimate (~4 chars/
-    # token), so the number visibly TICKS UP while prose streams. `~` marks it
-    # as estimating mid-stream; on turn settle the real total absorbs it.
-    est = token_estimate(assigns.streaming_text)
+    # Fuel gauge, NOT odometer. The live footer shows how full the CONTEXT
+    # WINDOW is (the thing that forces a compaction), not the lifetime
+    # cumulative cost — a 7-figure cumulative number sitting next to a live
+    # spinner reads as a runaway when the context is actually near-empty
+    # (that exact misread nearly got a working harness thrown out). The
+    # lifetime cost still lives in the sidebar context panel where it reads
+    # as cost, not alarm. Liveness ("it's working") is carried by the bouncing
+    # dots + the elapsed timer, so the ticking estimate is retired here.
+    ctx_pct = round((assigns[:context_utilization] || 0.0) * 100)
 
     assigns =
       assigns
-      |> assign(:shown_tokens, assigns.tokens + est)
-      |> assign(:estimating?, est > 0)
+      |> assign(:ctx_pct, ctx_pct)
+      |> assign(:ctx_class, ctx_class(assigns[:context_utilization] || 0.0))
 
     ~H"""
     <%!-- The live tip of the turn: dots + word + elapsed on the left, Stop docked
@@ -130,15 +136,16 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
         data-since={@turn_since}
         class={["text-sm flex-none tabular-nums", @elapsed_class]}
       ></span>
-      <%!-- ONE incrementing token counter: cumulative real total + this turn's
-           streamed estimate, summed — it visibly ticks up as text streams instead
-           of a static total with a separate "+~N" bolted on. --%>
+      <%!-- Context fuel gauge: how full the window is THIS turn. Quiet zinc
+           when there's headroom, amber/red as it approaches a compaction. NOT
+           the lifetime cumulative cost (that's in the sidebar) — so a busy
+           agent with an empty context never looks like a runaway. --%>
       <span
-        :if={@shown_tokens > 0}
-        class="text-sm flex-none tabular-nums text-zinc-400"
-        title="tokens used by this agent (cumulative real total + this turn's streamed estimate)"
+        :if={@ctx_pct > 0}
+        class={["text-sm flex-none tabular-nums", @ctx_class]}
+        title="context window filled this turn — compaction kicks in near full; lifetime token cost is in the sidebar"
       >
-        · {if @estimating?, do: "~"}{fmt_tokens(@shown_tokens)} tok
+        · {@ctx_pct}% ctx
       </span>
       <span
         :if={@active_tool && @streaming_text == ""}
@@ -159,10 +166,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
     """
   end
 
-  # Compact integer token count for the live status line (26543 → "26.5k").
-  defp fmt_tokens(n) when is_integer(n) and n >= 1000, do: "#{Float.round(n / 1000, 1)}k"
-  defp fmt_tokens(n) when is_integer(n), do: Integer.to_string(n)
-  defp fmt_tokens(_), do: "0"
+  # Fuel-gauge color: quiet while there's headroom, amber approaching a
+  # compaction, red when the window is about to force one.
+  defp ctx_class(u) when is_number(u) and u >= 0.92, do: "text-red-500"
+  defp ctx_class(u) when is_number(u) and u >= 0.75, do: "text-amber-500"
+  defp ctx_class(_), do: "text-zinc-400"
 
   @doc """
   Rough output-token estimate from streamed text (~4 chars/token), as an
