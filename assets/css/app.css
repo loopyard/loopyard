@@ -217,6 +217,19 @@
   .markdown-body hr { border-color: rgba(255, 255, 255, 0.1); }
 }
 
+/* The human prompt band uses the COMPOSER's face (the app sans) + size, so a
+   typed message flows seamlessly from the "Type a message…" input into the
+   prompt band as it queues — no font shift on "peel off". The agent's prose
+   stays serif, so the two voices read distinctly: human = crisp sans, agent =
+   document serif. font-family:inherit picks up whatever the input inherits. */
+.markdown-body.human-prompt,
+.markdown-body.human-prompt p,
+.markdown-body.human-prompt li {
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
 /* User message markdown (white text on purple bg) */
 .markdown-body-user { color: white; }
 .markdown-body-user code { background: rgba(255, 255, 255, 0.2); color: white; }
