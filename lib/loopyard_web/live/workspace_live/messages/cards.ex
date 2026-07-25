@@ -625,7 +625,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
   """
   def agent_embed(assigns) do
     st = embed_state(assigns.msg[:agent_id])
-    assigns = assign(assigns, st: st, recent: embed_recent(st))
+
+    # Show the canonical project · workspace identity, not a bare "main". The msg
+    # carries project_id + label(=workspace name); resolve the project name. If it
+    # can't be resolved, fall back to the workspace name alone (no fake project).
+    {proj, ws} =
+      case embed_project(assigns.msg) do
+        nil -> {assigns.msg[:label] || "workspace", nil}
+        name -> {name, assigns.msg[:label]}
+      end
+
+    assigns = assign(assigns, st: st, recent: embed_recent(st), proj: proj, ws: ws)
 
     ~H"""
     <div class="py-2">
@@ -635,10 +645,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           navigate={embed_link(@msg)}
           class="group flex items-center gap-2 px-3 py-2 hover:bg-zinc-100/60 dark:hover:bg-zinc-800/50 transition-colors"
         >
-          <span class={["w-2 h-2 rounded-full flex-none", embed_dot(@st)]}></span>
-          <span class="text-sm font-semibold text-zinc-800 dark:text-zinc-100 truncate">
-            {@msg[:label] || "workspace"}
-          </span>
+          <LoopyardWeb.Components.Common.workspace_identity
+            project={@proj}
+            workspace={@ws}
+            state={embed_identity_state(@st)}
+            class="min-w-0"
+          />
           <span class="text-xs text-zinc-500 dark:text-zinc-400 flex-none">· {embed_word(@st)}</span>
           <span class="ml-auto text-xs text-violet-500 group-hover:text-violet-600 flex-none">
             open →
@@ -716,10 +728,27 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
 
   defp embed_recent(_), do: []
 
-  defp embed_dot(%{status: :thinking}), do: "bg-violet-500 animate-pulse"
-  defp embed_dot(%{status: :idle}), do: "bg-emerald-500"
-  defp embed_dot(%{status: s}) when s in [:crashed, :stopped], do: "bg-zinc-400"
-  defp embed_dot(_), do: "bg-zinc-300 dark:bg-zinc-600"
+  # Map the sub-agent's status onto the canonical workspace_identity light.
+  defp embed_identity_state(%{status: :thinking}), do: :working
+  defp embed_identity_state(%{status: :idle}), do: :done
+  defp embed_identity_state(%{status: :crashed}), do: :broken
+  defp embed_identity_state(_), do: :asleep
+
+  # Resolve the embed's project NAME from the message's project_id (the agent
+  # state only carries workspace_id). nil if unresolvable — the caller then shows
+  # the workspace name alone rather than inventing a project.
+  defp embed_project(%{project_id: pid}) when is_binary(pid) do
+    case Loopyard.ProjectRegistry.get_project(pid) do
+      %{name: n} -> n
+      _ -> nil
+    end
+  rescue
+    _ -> nil
+  catch
+    _, _ -> nil
+  end
+
+  defp embed_project(_), do: nil
 
   defp embed_word(%{status: :thinking}), do: "working"
   defp embed_word(%{status: :idle}), do: "ready"
