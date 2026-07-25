@@ -542,7 +542,7 @@ defmodule Loopyard.ChatAgent do
       # forever while the user's reply sits "Queued"). Record the
       # message as a normal user turn-input so it's visible, then
       # resolve the question.
-      Loopyard.Harness.Questions.pending_for_agent?(state.id) ->
+      Loopyard.Harness.Questions.pending_for_agent?(state.id) and state.status != :idle ->
         user_msg = %{role: :user, content: text, timestamp: DateTime.utc_now()}
         {state, user_msg} = append_message(state, user_msg)
         Persistence.persist_message(state, user_msg)
@@ -554,6 +554,19 @@ defmodule Loopyard.ChatAgent do
 
         Loopyard.Harness.Questions.answer_with_text(state.id, text)
         {:noreply, state}
+
+      # ORPHANED question: a question reports "pending" but the agent is :idle.
+      # A genuinely-live ask_user parks the turn INSIDE the tool call, so the
+      # agent is never idle while really waiting. Idle + pending means the broker
+      # Task leaked — the harness abandoned the elicitation on its own (shorter)
+      # timeout while our ask/2 kept blocking for its full 10-min window. Routing
+      # the reply to answer_with_text would hand it to a consumer that's already
+      # gone → the message is silently eaten and the agent never responds (the
+      # "I typed a reply and the operator went dead" stall). Cancel the leaked
+      # question and treat the message as a fresh prompt — start a real turn.
+      Loopyard.Harness.Questions.pending_for_agent?(state.id) ->
+        Loopyard.Harness.Questions.cancel_for_agent(state.id)
+        send_message_normal(state, text)
 
       # Ghost :thinking — the status says a turn is in flight, but there's
       # NO live stream and NO live session. A real turn always carries a

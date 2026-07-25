@@ -215,6 +215,31 @@ defmodule Loopyard.Harness.Questions do
   def pending_for_agent?(agent_id), do: pending_for_agent(agent_id) != nil
 
   @doc """
+  Cancel an agent's leaked/orphaned pending question: kill the still-blocked
+  waiter Task, drop the ETS entry, and flip the card to :timeout. Used when the
+  agent is idle but a question still reports pending — the harness abandoned the
+  elicitation (its own shorter timeout) while our `ask/2` kept blocking for its
+  full window, so the "pending" question can never be usefully answered. Killing
+  the waiter is safe: its consumer (the ACP elicitation request) already gave up,
+  so it would only cast a result nobody's waiting for. No-op if nothing's pending.
+  """
+  @spec cancel_for_agent(String.t()) :: :ok
+  def cancel_for_agent(agent_id) when is_binary(agent_id) do
+    case pending_for_agent(agent_id) do
+      {qid, entry} ->
+        if is_pid(entry.waiter) and Process.alive?(entry.waiter),
+          do: Process.exit(entry.waiter, :kill)
+
+        :ets.delete(@table, qid)
+        update_msg(agent_id, entry.msg_id, %{status: :timeout})
+        :ok
+
+      nil ->
+        :ok
+    end
+  end
+
+  @doc """
   Every live pending question across ALL agents — the town-hall line. Reaps
   dead/leaked entries (waiter no longer alive) as it scans, so the result only
   ever holds questions still blocking a live tool. Small table; linear scan.
