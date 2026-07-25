@@ -152,19 +152,19 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
             :if={@show_user_label}
             class="flex items-baseline gap-2 mb-1.5"
           >
-            <span class="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300">
+            <span class="chat-meta inline-flex items-center gap-1.5 font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300">
               <.icon name={:user} class="w-3.5 h-3.5 flex-none self-center" /> {@user_label}
             </span>
             <span
               :if={@msg[:timestamp]}
-              class="text-sm text-violet-500/80 dark:text-violet-300/60"
+              class="chat-meta text-violet-500/80 dark:text-violet-300/60"
             >
               {Calendar.strftime(@msg.timestamp, "%b %-d, %-I:%M %p")}
             </span>
           </div>
           <%!-- Clamp to a few lines: the prompt is a sticky HEADER, so a long
                paste must stay header-sized (full text via the ↗ link). --%>
-          <div class="markdown-body human-prompt text-lg md:text-base leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-3xl line-clamp-3">
+          <div class="markdown-body human-prompt text-zinc-800 dark:text-zinc-100 max-w-3xl line-clamp-3">
             {Loopyard.Markdown.to_html(@msg.content)}
           </div>
         </div>
@@ -204,7 +204,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     ~H"""
     <div class="group/msg" id={"msg-#{@msg[:id] || hash_content(@msg.content)}"}>
       <div class={[gutter(), "py-0.5"]}>
-        <div class="markdown-body text-lg md:text-base leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl">
+        <div class="markdown-body text-zinc-800 dark:text-zinc-100 max-w-2xl">
           {Loopyard.Markdown.to_html(@rendered_content)}
         </div>
         <div :if={@port_info && !@port_info.exposed} class="mt-1.5 flex items-center gap-2 py-1">
@@ -330,7 +330,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       <div class="w-4 h-4 rounded bg-red-100 dark:bg-red-900/30 flex items-center justify-center flex-none mt-0.5">
         <span class="text-xs font-bold text-red-500">!</span>
       </div>
-      <span class="text-sm text-red-600 dark:text-red-400">{Ansi.to_html(@msg.content)}</span>
+      <span class="chat-sub text-red-600 dark:text-red-400">{Ansi.to_html(@msg.content)}</span>
       <span class="text-xs text-zinc-300 dark:text-zinc-600 flex-none">
         {Calendar.strftime(@msg.timestamp, "%H:%M:%S")}
       </span>
@@ -454,11 +454,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         <a
           :if={@file_link}
           href={@file_link}
-          class="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+          class="chat-sub text-blue-600 dark:text-blue-400 hover:underline"
         >
           {@summary}
         </a>
-        <span :if={!@file_link} class="text-sm text-zinc-600 dark:text-zinc-400">{@summary}</span>
+        <span :if={!@file_link} class="chat-sub text-zinc-600 dark:text-zinc-400">{@summary}</span>
       </div>
       <.diff
         :if={@is_edit && @old_str && @new_str}
@@ -485,7 +485,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     # this element.
     ~H"""
     <div class="py-0.5 mt-2" id="streaming-msg" phx-update="ignore" phx-hook="StreamMarkdown">
-      <div class="markdown-body text-lg md:text-base leading-relaxed text-zinc-800 dark:text-zinc-100 max-w-2xl">
+      <div class="markdown-body text-zinc-800 dark:text-zinc-100 max-w-2xl">
         <div data-stream-blocks></div>
         <div data-stream-tail></div>
       </div>

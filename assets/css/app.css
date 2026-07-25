@@ -224,17 +224,34 @@
    prompt band as it queues — no font shift on "peel off". The agent's prose
    stays serif, so the two voices read distinctly: human = crisp sans, agent =
    document serif. font-family:inherit picks up whatever the input inherits. */
+/* ---- The chat type scale — THREE sizes, used everywhere in the stream ----
+   body: primary reading text (prose, prompts, question heroes, composer input)
+   sub:  supporting content (option labels/descriptions, card details)
+   meta: labels & receipts (eyebrows, timestamps, footers, source lines)
+   One scale = calm rhythm; per-surface ad-hoc sizes are what made the stream
+   feel like a mix of slightly-different fonts. */
+.chat-body { font-size: 1.25rem; line-height: 1.6; }
+.chat-sub  { font-size: 1.0625rem; line-height: 1.55; }
+.chat-meta { font-size: 0.875rem; line-height: 1.4; }
+@media (min-width: 768px) {
+  .chat-body { font-size: 1.125rem; }
+  .chat-sub  { font-size: 0.9375rem; }
+  .chat-meta { font-size: 0.8125rem; }
+}
+
+/* The human prompt band reads at chat-body, same as the prose and the composer
+   input — a typed message keeps its size as it peels off into the queue. */
 .markdown-body.human-prompt,
 .markdown-body.human-prompt p,
 .markdown-body.human-prompt li {
   font-family: inherit;
-  font-size: 1.125rem;  /* mobile — matches the composer input's text-lg */
-  line-height: 1.5;
+  font-size: 1.25rem;
+  line-height: 1.55;
 }
 @media (min-width: 768px) {
   .markdown-body.human-prompt,
   .markdown-body.human-prompt p,
-  .markdown-body.human-prompt li { font-size: 1rem; }  /* desktop — input's md:text-base */
+  .markdown-body.human-prompt li { font-size: 1.125rem; }
 }
 
 /* User message markdown (white text on purple bg) */

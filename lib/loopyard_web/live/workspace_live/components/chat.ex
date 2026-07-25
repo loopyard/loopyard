@@ -699,7 +699,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               placeholder="Type a message..."
               aria-label="Message"
               autocomplete="off"
-              class="focus-ring flex-1 bg-transparent border-0 rounded-lg px-1 py-2.5 text-lg md:text-base
+              class="focus-ring chat-body flex-1 bg-transparent border-0 rounded-lg px-1 py-2.5
                    text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 resize-none
                    focus:outline-none focus:ring-0"
             ></textarea>

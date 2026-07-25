@@ -30,7 +30,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
            rows so they stay distinct on the tint. Reads top-down: label ›
            question (hero) › the options, each anchored by a radio/check dot. --%>
       <div class="rounded-2xl border border-amber-300/60 dark:border-amber-700/40 bg-gradient-to-b from-amber-50/80 to-amber-50/30 dark:from-amber-950/25 dark:to-amber-950/5 p-5 shadow-sm shadow-amber-900/5 ring-1 ring-amber-500/[0.04]">
-          <div class="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 mb-3">
+          <div class="chat-meta flex items-center gap-1.5 font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 mb-3">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3.5 h-3.5">
               <path
                 fill-rule="evenodd"
@@ -52,7 +52,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                through the surrounding prose. --%>
           <div
             :if={@msg[:source] not in [nil, ""]}
-            class="text-xs text-zinc-500 dark:text-zinc-400 -mt-1 mb-3"
+            class="chat-meta text-zinc-500 dark:text-zinc-400 -mt-1 mb-3"
           >
             from <span class="font-medium text-zinc-700 dark:text-zinc-200">{@msg.source}</span>
           </div>
@@ -60,11 +60,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           <div :for={q <- @msg.questions} class="mb-8 last:mb-0">
             <div
               :if={q.header != ""}
-              class="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1"
+              class="chat-meta font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-1"
             >
               {q.header}
             </div>
-            <div class="text-[15px] font-semibold leading-snug text-zinc-900 dark:text-zinc-50 mb-3">
+            <div class="chat-body font-semibold leading-snug text-zinc-900 dark:text-zinc-50 mb-3">
               {q.prompt}
             </div>
 
@@ -104,12 +104,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                   <.check :if={q[:multi] && drafted?(@msg, q, o.label)} />
                 </span>
                 <span class="min-w-0 flex-1">
-                  <span class="block text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                  <span class="chat-sub block font-medium text-zinc-900 dark:text-zinc-100">
                     {o.label}
                   </span>
                   <span
                     :if={o.description not in [nil, ""]}
-                    class="mt-0.5 block text-sm leading-relaxed text-zinc-600 dark:text-zinc-400"
+                    class="chat-sub mt-0.5 block text-zinc-600 dark:text-zinc-400"
                   >
                     {o.description}
                   </span>
@@ -125,14 +125,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                   phx-click="confirm_question"
                   phx-value-question_id={@msg.question_id}
                   phx-value-q={q.id}
-                  class="focus-ring inline-flex items-center rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-sm font-medium px-3.5 py-1.5 transition-colors"
+                  class="focus-ring chat-sub inline-flex items-center rounded-lg bg-amber-700 hover:bg-amber-800 text-white font-medium px-3.5 py-1.5 transition-colors"
                 >
                   {if draft_count(@msg, q) > 0,
                     do: "Done (#{draft_count(@msg, q)} selected)",
                     else: "None of these"}
                 </button>
                 <details class="group/other min-w-0">
-                  <summary class="focus-ring inline-flex rounded text-sm font-medium text-amber-700 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-300 cursor-pointer select-none list-none">
+                  <summary class="focus-ring chat-sub inline-flex rounded font-medium text-amber-700 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-300 cursor-pointer select-none list-none">
                     Other…
                   </summary>
                   <form phx-submit="answer_question_text" class="mt-2 flex items-center gap-2">
@@ -143,11 +143,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                       name="text"
                       autocomplete="off"
                       placeholder="Type your own answer…"
-                      class="focus-ring flex-1 min-w-0 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-1.5 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500"
+                      class="focus-ring chat-sub flex-1 min-w-0 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-1.5 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500"
                     />
                     <button
                       type="submit"
-                      class="focus-ring inline-flex items-center rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-sm font-medium px-3 py-1.5 transition-colors flex-none"
+                      class="focus-ring chat-sub inline-flex items-center rounded-lg bg-amber-700 hover:bg-amber-800 text-white font-medium px-3 py-1.5 transition-colors flex-none"
                     >
                       Answer
                     </button>
@@ -159,7 +159,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                   phx-click="skip_question"
                   phx-value-question_id={@msg.question_id}
                   phx-value-q={q.id}
-                  class="focus-ring inline-flex rounded text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+                  class="focus-ring chat-sub inline-flex rounded text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
                 >
                   Skip
                 </button>
@@ -194,7 +194,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                 </span>
                 <span class="min-w-0 flex-1">
                   <span class={[
-                    "block text-sm font-medium",
+                    "chat-sub block font-medium",
                     if(chosen?(@msg, q, o.label),
                       do: "text-emerald-800 dark:text-emerald-200",
                       else: "text-zinc-600 dark:text-zinc-400"
@@ -205,7 +205,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                   <span
                     :if={o.description not in [nil, ""]}
                     class={[
-                      "mt-0.5 block text-sm leading-relaxed",
+                      "chat-sub mt-0.5 block",
                       if(chosen?(@msg, q, o.label),
                         do: "text-emerald-700/80 dark:text-emerald-300/70",
                         else: "text-zinc-500 dark:text-zinc-500"
@@ -218,7 +218,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
               </div>
 
               <%!-- No option row matched: a free-text answer (show it) or a skip. --%>
-              <div :if={!any_option_chosen?(@msg, q)} class="flex flex-wrap items-center gap-2 text-sm">
+              <div :if={!any_option_chosen?(@msg, q)} class="chat-sub flex flex-wrap items-center gap-2">
                 <span
                   :if={answer_for(@msg, q)}
                   class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 font-medium text-emerald-700 dark:text-emerald-300"
@@ -237,12 +237,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
 
           <div
             :if={@msg.status == :pending}
-            class="mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-800 text-sm text-zinc-500 dark:text-zinc-400"
+            class="chat-meta mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400"
           >
             …or just reply in the chat — your message is sent to the agent as the answer.
           </div>
 
-          <div :if={@msg.status == :timeout} class="text-sm text-zinc-500 dark:text-zinc-400">
+          <div :if={@msg.status == :timeout} class="chat-meta text-zinc-500 dark:text-zinc-400">
             No answer — the agent moved on.
           </div>
       </div>
@@ -381,7 +381,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
     ~H"""
     <div class="py-3">
       <div class="rounded-2xl border border-amber-300/60 dark:border-amber-700/40 bg-gradient-to-b from-amber-50/80 to-amber-50/30 dark:from-amber-950/25 dark:to-amber-950/5 p-5 shadow-sm shadow-amber-900/5 ring-1 ring-amber-500/[0.04]">
-        <div class="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400/90 mb-2.5">
+        <div class="chat-meta flex items-center gap-1.5 font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400/90 mb-2.5">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 16 16"
@@ -403,7 +403,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
 
         <div
           :if={@action.verb == :create_project}
-          class="text-[15px] leading-relaxed text-zinc-800 dark:text-zinc-100 mb-1"
+          class="chat-sub text-zinc-800 dark:text-zinc-100 mb-1"
         >
           Create project
           <code class="text-sm bg-violet-200/70 dark:bg-violet-800/50 rounded px-1 py-0.5">
@@ -413,7 +413,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
         </div>
         <div
           :if={@action.verb == :integrate}
-          class="text-[15px] leading-relaxed text-zinc-800 dark:text-zinc-100 mb-1"
+          class="chat-sub text-zinc-800 dark:text-zinc-100 mb-1"
         >
           Merge
           <code class="text-sm bg-violet-200/70 dark:bg-violet-800/50 rounded px-1 py-0.5">
@@ -424,7 +424,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
         </div>
         <div
           :if={@action.verb == :delete_workspace}
-          class="text-[15px] leading-relaxed text-zinc-800 dark:text-zinc-100 mb-1"
+          class="chat-sub text-zinc-800 dark:text-zinc-100 mb-1"
         >
           Delete workspace
           <code class="text-sm bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">
@@ -434,7 +434,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
         </div>
         <div
           :if={@action.verb == :delete_project}
-          class="text-[15px] leading-relaxed text-zinc-800 dark:text-zinc-100 mb-1"
+          class="chat-sub text-zinc-800 dark:text-zinc-100 mb-1"
         >
           Delete project
           <code class="text-sm bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">
@@ -446,7 +446,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
         </div>
         <div
           :if={@action.verb in [:rename_workspace, :rename_project]}
-          class="text-[15px] leading-relaxed text-zinc-800 dark:text-zinc-100 mb-1"
+          class="chat-sub text-zinc-800 dark:text-zinc-100 mb-1"
         >
           Rename {if @action.verb == :rename_project, do: "project", else: "workspace"}
           <code class="text-sm bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">
@@ -458,7 +458,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
         </div>
         <div
           :if={@action.verb == :fork}
-          class="text-[15px] leading-relaxed text-zinc-800 dark:text-zinc-100 mb-1"
+          class="chat-sub text-zinc-800 dark:text-zinc-100 mb-1"
         >
           Fork
           <code class="text-sm bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">
@@ -470,7 +470,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           </code>
           <span class="text-zinc-400">(its own isolated workspace)</span>
         </div>
-        <div :if={@action[:reason]} class="text-sm text-zinc-500 dark:text-zinc-400 mb-3">
+        <div :if={@action[:reason]} class="chat-meta text-zinc-500 dark:text-zinc-400 mb-3">
           {@action.reason}
         </div>
         <div :if={!@action[:reason]} class="mb-3"></div>
@@ -484,7 +484,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                 phx-value-approval_id={@msg.approval_id}
                 phx-value-decision="approve"
                 class={[
-                  "focus-ring inline-flex items-center gap-1.5 rounded-lg px-5 py-2 text-sm font-semibold text-white shadow-sm transition-colors",
+                  "focus-ring chat-sub inline-flex items-center gap-1.5 rounded-lg px-5 py-2 font-semibold text-white shadow-sm transition-colors",
                   if(@action.verb in [:delete_workspace, :delete_project],
                     do: "bg-red-600 hover:bg-red-700 shadow-red-900/20",
                     else: "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-900/20"
@@ -502,13 +502,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                 phx-click="decide_approval"
                 phx-value-approval_id={@msg.approval_id}
                 phx-value-decision="deny"
-                class="focus-ring inline-flex items-center rounded-lg border border-zinc-300 dark:border-zinc-600 px-5 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                class="focus-ring chat-sub inline-flex items-center rounded-lg border border-zinc-300 dark:border-zinc-600 px-5 py-2 font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
               >
                 Deny
               </button>
             </div>
           <% s when s in [:creating, :integrating, :deleting, :renaming] -> %>
-            <div class="flex items-center gap-2 text-sm text-zinc-500">
+            <div class="chat-sub flex items-center gap-2 text-zinc-500">
               <svg
                 class="w-4 h-4 animate-spin flex-none"
                 xmlns="http://www.w3.org/2000/svg"
@@ -548,26 +548,26 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           <% :approved -> %>
             <.link
               navigate={approved_link(@msg)}
-              class="focus-ring inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
+              class="focus-ring chat-sub inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
             >
               Ready — open <code class="text-sm">{@action[:name] || @action[:branch]}</code> →
             </.link>
           <% :integrated -> %>
-            <span class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400">
+            <span class="chat-sub inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 font-medium text-emerald-600 dark:text-emerald-400">
               Merged <code class="text-sm">{@action.branch}</code> → main ✓
             </span>
           <% :deleted -> %>
-            <span class="inline-flex items-center gap-1.5 rounded-lg bg-zinc-500/15 px-3 py-1.5 text-sm font-medium text-zinc-600 dark:text-zinc-300">
+            <span class="chat-sub inline-flex items-center gap-1.5 rounded-lg bg-zinc-500/15 px-3 py-1.5 font-medium text-zinc-600 dark:text-zinc-300">
               Deleted <code class="text-sm">{@action[:name] || @action[:branch] || @action[:workspace_id]}</code> ✓
             </span>
           <% :renamed -> %>
-            <span class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400">
+            <span class="chat-sub inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/15 px-3 py-1.5 font-medium text-emerald-600 dark:text-emerald-400">
               Renamed → <code class="text-sm">{@action[:name]}</code> ✓
             </span>
           <% :denied -> %>
-            <span class="text-sm text-zinc-500 dark:text-zinc-400">Declined.</span>
+            <span class="chat-meta text-zinc-500 dark:text-zinc-400">Declined.</span>
           <% :failed -> %>
-            <span class="text-sm text-red-500">
+            <span class="chat-sub text-red-500">
               {case @action.verb do
                 :integrate -> "Merge failed"
                 :create_project -> "Couldn't create the project"
@@ -651,7 +651,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
             state={embed_identity_state(@st)}
             class="min-w-0"
           />
-          <span class="text-xs text-zinc-500 dark:text-zinc-400 flex-none">· {embed_word(@st)}</span>
+          <span class="chat-meta text-zinc-500 dark:text-zinc-400 flex-none">· {embed_word(@st)}</span>
           <span class="ml-auto flex-none inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium text-violet-600 dark:text-violet-400 group-hover:bg-violet-500/10 transition-colors">
             open →
           </span>
@@ -667,7 +667,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           <div :for={line <- @recent}>
             <div
               :if={line.kind == :text}
-              class="markdown-body text-sm text-zinc-700 dark:text-zinc-200 line-clamp-4"
+              class="markdown-body chat-sub text-zinc-700 dark:text-zinc-200 line-clamp-4"
             >
               {Loopyard.Markdown.to_html(line.text)}
             </div>
