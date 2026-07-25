@@ -35,6 +35,10 @@ defmodule LoopyardWeb.OperatorLive do
   # Recent-tail size for the chat transcript. Caps the initial LiveView payload
   # so a long-lived operator's history can't blow the WebSocket join frame.
   @message_window 80
+  # Hard cap on messages held in the DOM. Scrolling up pages older ones in; once
+  # the window overflows this, the live tail is dropped (off-screen anyway) so the
+  # DOM never holds the whole history. "Jump to latest" reloads the tail.
+  @message_window_max 240
   # The bed roster — mirrors SoundLive so the rail player and /sound agree.
   @tracks [
     {:serene, "Serene"},
@@ -258,6 +262,66 @@ defmodule LoopyardWeb.OperatorLive do
   # Mobile: flip between the chat and the "for you" rail.
   def handle_event("mobile_view", %{"v" => v}, socket) when v in ~w(chat rail) do
     {:noreply, assign(socket, :mobile_view, String.to_existing_atom(v))}
+  end
+
+  # Scroll-up paging: the ScrollBottom hook fires this near the top. Prepend the
+  # next older batch from the durable log, capped at @message_window_max so the
+  # DOM never holds the whole history — on overflow we drop from the TAIL (it's
+  # off-screen while you read up here), which stops the window following the live
+  # stream until "jump to latest" (load_latest) snaps back.
+  def handle_event("load_more", _params, socket) do
+    if socket.assigns.has_more_messages && socket.assigns.selected_id do
+      oldest = List.first(socket.assigns.messages)
+
+      {older, _total} =
+        ChatAgent.get_messages(socket.assigns.selected_id,
+          limit: @message_window,
+          before_id: oldest && oldest[:id],
+          snap_to_prompt: true
+        )
+
+      if older != [] do
+        combined = older ++ socket.assigns.messages
+
+        {windowed, tail?} =
+          if length(combined) > @message_window_max do
+            {Enum.take(combined, @message_window_max), false}
+          else
+            {combined, socket.assigns.window_tail?}
+          end
+
+        {:noreply,
+         socket
+         |> assign(:messages, windowed)
+         |> assign(:has_more_messages, true)
+         |> assign(:window_tail?, tail?)}
+      else
+        {:noreply, assign(socket, :has_more_messages, false)}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # Jump back to the live tail after scrolling up past the DOM cap: reload the
+  # last window from the agent and snap to the bottom (catches up any messages we
+  # didn't append while window_tail? was false).
+  def handle_event("load_latest", _params, socket) do
+    case socket.assigns.selected_id do
+      nil ->
+        {:noreply, socket}
+
+      id ->
+        all = (ChatAgent.get_state(id) || %{})[:messages] || []
+        page = Enum.take(all, -@message_window)
+
+        {:noreply,
+         socket
+         |> assign(:messages, page)
+         |> assign(:has_more_messages, length(page) < length(all))
+         |> assign(:window_tail?, true)
+         |> push_event("jump_bottom", %{})}
+    end
   end
 
   def handle_event(_evt, _params, socket), do: {:noreply, socket}
