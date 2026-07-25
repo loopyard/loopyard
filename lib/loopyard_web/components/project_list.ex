@@ -227,9 +227,12 @@ defmodule LoopyardWeb.Components.ProjectList do
     >
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2">
+          <%!-- The project HEADER right above owns the project name — the row
+               shows just the branch, so the header (big) → branch (small) reads
+               as real hierarchy instead of "Loopyard / Loopyard · main". --%>
           <LoopyardWeb.Components.Common.workspace_identity
-            project={@project_name}
-            workspace={@ws.name}
+            project={@ws.name}
+            workspace={nil}
             state={ws_state(@ws)}
             size={:md}
             class="min-w-0 flex-1"
@@ -288,9 +291,11 @@ defmodule LoopyardWeb.Components.ProjectList do
       >
       </.link>
       <div class="flex items-center gap-2">
+        <%!-- The project header above the grid owns the project name — the card
+             leads with its branch (see ws_row_md). --%>
         <LoopyardWeb.Components.Common.workspace_identity
-          project={@project_name}
-          workspace={@ws.name}
+          project={@ws.name}
+          workspace={nil}
           state={ws_state(@ws)}
           size={:md}
           class="min-w-0 flex-1"

@@ -114,9 +114,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         band_bottom:
           cond do
             # The running prompt hands straight off to its live response: no
-            # bottom margin, so the glowing rail continues unbroken into the
-            # streaming content flush below it.
-            assigns[:active?] -> "mb-0 pb-6 md:pb-7"
+            # bottom margin, so the rail continues unbroken into the streaming
+            # content flush below it. Padding matches the TOP (pt-4/5) — the
+            # bigger completed-band padding read as a gap inside the active band.
+            assigns[:active?] -> "mb-0 pb-4 md:pb-5"
             next_role(assigns) == :user -> "mb-0 pb-3"
             true -> "mb-4 md:mb-5 pb-6 md:pb-7"
           end

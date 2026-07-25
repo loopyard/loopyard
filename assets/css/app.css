@@ -134,20 +134,16 @@
    over-padded wall. The levers are a reading MEASURE (line length is what makes
    a wide wall feel tense), generous LEADING, and real HIERARCHY + rhythm. */
 .markdown-body {
-  /* A reading SERIF is what turns a technical answer into a document you WANT
-     to read — calm, warm, and a joy on the eyes for long-form, where a UI sans
-     reads as a dense wall. System serifs (gorgeous on macOS, robust fallbacks)
-     so there's no webfont to load. Code spans + the UI stay sans/mono. */
-  font-family: 'Iowan Old Style', 'Charter', 'Palatino Linotype', Palatino,
-               Georgia, Cambria, 'Times New Roman', serif;
+  /* The app sans (inherited), set at a generous reading size with open leading
+     and the 68ch measure — the document feel comes from size + rhythm + measure,
+     not from a typeface change. (Tried a serif; it didn't sit right.) */
   max-width: 68ch;          /* the measure — the single biggest readability win */
-  font-size: 1.175rem;      /* MOBILE reading size — bumped: 1.05em rendered ~16.8px
-                               everywhere (it wins over text-lg), too small on a phone */
-  line-height: 1.72;        /* open leading = unhurried, document-grade */
+  font-size: 1.25rem;       /* mobile reading size (~20px) */
+  line-height: 1.65;
   letter-spacing: 0;
 }
 @media (min-width: 768px) {
-  .markdown-body { font-size: 1.05rem; line-height: 1.78; }  /* desktop: back to ~16.8px */
+  .markdown-body { font-size: 1.125rem; line-height: 1.7; }  /* desktop ~18px */
 }
 .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
   font-weight: 650;

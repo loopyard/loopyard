@@ -573,13 +573,15 @@ defmodule LoopyardWeb.OperatorLive do
 
       <%!-- Mobile only: chat ⇄ rail toggle. Both panes are co-equal but can't
            share a phone screen, so show one at a time. Hidden on lg+ (both show). --%>
-      <div class="lg:hidden flex-none flex border-b border-zinc-200 dark:border-zinc-800 text-sm">
+      <%!-- Finger-sized tabs: this bar is mobile-only, so padding is sized for
+           touch (py-4, text-base ≈ 48px target), not for a pointer. --%>
+      <div class="lg:hidden flex-none flex border-b border-zinc-200 dark:border-zinc-800 text-base">
         <button
           type="button"
           phx-click="mobile_view"
           phx-value-v="chat"
           class={[
-            "flex-1 py-2.5 font-medium text-center border-b-2 -mb-px transition-colors",
+            "flex-1 py-4 font-medium text-center border-b-2 -mb-px transition-colors",
             (@mobile_view == :chat && "border-violet-500 text-violet-600 dark:text-violet-400") ||
               "border-transparent text-zinc-500 dark:text-zinc-400"
           ]}
@@ -591,7 +593,7 @@ defmodule LoopyardWeb.OperatorLive do
           phx-click="mobile_view"
           phx-value-v="rail"
           class={[
-            "flex-1 py-2.5 font-medium text-center border-b-2 -mb-px transition-colors inline-flex items-center justify-center gap-1.5",
+            "flex-1 py-4 font-medium text-center border-b-2 -mb-px transition-colors inline-flex items-center justify-center gap-1.5",
             (@mobile_view == :rail && "border-violet-500 text-violet-600 dark:text-violet-400") ||
               "border-transparent text-zinc-500 dark:text-zinc-400"
           ]}
@@ -713,7 +715,7 @@ defmodule LoopyardWeb.OperatorLive do
           phx-value-project={i.project_id}
           phx-value-agent={i.agent_id}
           title={"#{i.project_name} · #{i.workspace_name} — #{state_label(i.state)}"}
-          class="group flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+          class="group flex items-center gap-2.5 rounded-lg px-2.5 py-3 lg:py-1.5 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
         >
           <.workspace_identity
             project={i.project_name}
@@ -747,7 +749,7 @@ defmodule LoopyardWeb.OperatorLive do
             phx-value-project={i.project_id}
             phx-value-agent={i.agent_id}
             title={"#{i.project_name} · #{i.workspace_name} — done"}
-            class="group flex items-center gap-2 rounded-lg px-2.5 py-1.5 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+            class="group flex items-center gap-2 rounded-lg px-2.5 py-3 lg:py-1.5 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
           >
             <.workspace_identity
               project={i.project_name}
