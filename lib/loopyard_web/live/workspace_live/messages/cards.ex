@@ -30,40 +30,35 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
            rows so they stay distinct on the tint. Reads top-down: label ›
            question (hero) › the options, each anchored by a radio/check dot. --%>
       <div class="rounded-2xl border border-amber-300/60 dark:border-amber-700/40 bg-gradient-to-b from-amber-50/80 to-amber-50/30 dark:from-amber-950/25 dark:to-amber-950/5 p-5 shadow-sm shadow-amber-900/5 ring-1 ring-amber-500/[0.04]">
-          <div class="chat-meta flex items-center gap-1.5 font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 mb-3">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3.5 h-3.5">
-              <path
-                fill-rule="evenodd"
-                d="M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14Zm.93-9.412c-.44-.305-1.054-.305-1.494 0-.146.101-.27.245-.354.435a.75.75 0 0 1-1.372-.606c.18-.405.45-.74.819-.995 1.041-.722 2.486-.722 3.527 0 .54.375.94.94.94 1.626 0 .609-.314 1.07-.658 1.39-.124.115-.26.222-.387.32l-.10.078c-.179.139-.31.255-.404.385-.087.12-.12.222-.12.334a.75.75 0 0 1-1.5 0c0-.49.218-.884.47-1.226.21-.286.482-.502.679-.654l.078-.06c.139-.108.224-.18.286-.237.087-.08.108-.13.108-.27a.484.484 0 0 0-.298-.473ZM8 12a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"
-                clip-rule="evenodd"
-              />
-            </svg>
-            Needs your input
-            <span
-              :if={length(@msg.questions) > 1}
-              class="ml-auto normal-case tracking-normal tabular-nums text-zinc-500 dark:text-zinc-400"
-            >
-              {Enum.count(@msg.questions, &locked?(@msg, &1))}/{length(@msg.questions)} answered
-            </span>
-          </div>
-
-          <%!-- Memo attribution: which project/workspace this decision is FROM —
-               rendered as the canonical workspace_identity chip (status light +
-               project · workspace), the same design-language badge used
-               everywhere else. Pending question = that workspace literally
-               needs you (amber); settled = done. --%>
-          <div
-            :if={@msg[:source] not in [nil, ""]}
-            class="flex items-center gap-1.5 -mt-1 mb-3"
-          >
-            <span class="chat-meta text-zinc-500 dark:text-zinc-400">from</span>
+          <%!-- Card anatomy (every stream card): identity chip TOP-LEFT (which
+               project·workspace this is about — the canonical design-language
+               badge), the card's label TOP-RIGHT opposite it; actions live at
+               the BOTTOM. Without a source the label holds the left edge. --%>
+          <div class="flex items-center justify-between gap-3 mb-3 min-w-0">
             <LoopyardWeb.Components.Common.workspace_identity
+              :if={@msg[:source] not in [nil, ""]}
               project={source_project(@msg.source)}
               workspace={source_workspace(@msg.source)}
               state={if @msg.status == :pending, do: :needs_you, else: :done}
               size={:sm}
               class="min-w-0"
             />
+            <span class="chat-meta flex items-center gap-1.5 font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 flex-none">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3.5 h-3.5">
+                <path
+                  fill-rule="evenodd"
+                  d="M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14Zm.93-9.412c-.44-.305-1.054-.305-1.494 0-.146.101-.27.245-.354.435a.75.75 0 0 1-1.372-.606c.18-.405.45-.74.819-.995 1.041-.722 2.486-.722 3.527 0 .54.375.94.94.94 1.626 0 .609-.314 1.07-.658 1.39-.124.115-.26.222-.387.32l-.10.078c-.179.139-.31.255-.404.385-.087.12-.12.222-.12.334a.75.75 0 0 1-1.5 0c0-.49.218-.884.47-1.226.21-.286.482-.502.679-.654l.078-.06c.139-.108.224-.18.286-.237.087-.08.108-.13.108-.27a.484.484 0 0 0-.298-.473ZM8 12a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+              Needs your input
+              <span
+                :if={length(@msg.questions) > 1}
+                class="normal-case tracking-normal tabular-nums text-zinc-500 dark:text-zinc-400"
+              >
+                {Enum.count(@msg.questions, &locked?(@msg, &1))}/{length(@msg.questions)}
+              </span>
+            </span>
           </div>
 
           <div :for={q <- @msg.questions} class="mb-8 last:mb-0">
@@ -269,6 +264,30 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
     """
   end
 
+  # The approval's subject as {project_name, workspace_name} for the identity
+  # chip, resolved from the action's ids (project name via registry, workspace
+  # name likewise; the branch stands in for a not-yet-created workspace on fork).
+  # nil when nothing is resolvable — the card renders label-only.
+  defp action_identity(action) do
+    case embed_project(%{project_id: action[:project_id]}) do
+      proj when is_binary(proj) -> {proj, action_workspace_name(action)}
+      _ -> nil
+    end
+  end
+
+  defp action_workspace_name(%{workspace_id: wid} = action) when is_binary(wid) do
+    case Loopyard.WorkspaceRegistry.get_workspace(wid) do
+      %{name: n} when is_binary(n) -> n
+      _ -> action[:branch]
+    end
+  rescue
+    _ -> action[:branch]
+  catch
+    _, _ -> action[:branch]
+  end
+
+  defp action_workspace_name(action), do: action[:branch]
+
   # The memo source is a "project · workspace" string (set by ask_user's source
   # param) — split it back into the two identity parts for the chip. A source
   # without the separator renders as just the project (no fake workspace).
@@ -398,28 +417,43 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
   """
   def approval_card(assigns) do
     assigns = assign(assigns, :action, assigns.msg.action)
+    assigns = assign(assigns, :identity, action_identity(assigns.action))
 
     ~H"""
     <div class="py-3">
       <div class="rounded-2xl border border-amber-300/60 dark:border-amber-700/40 bg-gradient-to-b from-amber-50/80 to-amber-50/30 dark:from-amber-950/25 dark:to-amber-950/5 p-5 shadow-sm shadow-amber-900/5 ring-1 ring-amber-500/[0.04]">
-        <div class="chat-meta flex items-center gap-1.5 font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400/90 mb-2.5">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 16 16"
-            fill="currentColor"
-            class="w-3.5 h-3.5"
-          >
-            <path d="M8 1.5a2 2 0 0 0-2 2v.5H4.5A1.5 1.5 0 0 0 3 5.5v.879a2.5 2.5 0 0 0 0 4.242V13.5A1.5 1.5 0 0 0 4.5 15h7a1.5 1.5 0 0 0 1.5-1.5v-2.879a2.5 2.5 0 0 0 0-4.242V5.5A1.5 1.5 0 0 0 11.5 4H10v-.5a2 2 0 0 0-2-2Z" />
-          </svg>
-          {case @action.verb do
-            :integrate -> "Merge proposal — needs your OK"
-            :delete_workspace -> "Delete workspace — needs your OK"
-            :delete_project -> "Delete project — needs your OK"
-            :rename_workspace -> "Rename workspace — needs your OK"
-            :rename_project -> "Rename project — needs your OK"
-            :create_project -> "New project — needs your OK"
-            _ -> "Branch proposal — needs your OK"
-          end}
+        <%!-- Card anatomy: identity chip top-left (which project·workspace the
+             action is about, resolved from the action's ids), label top-right,
+             actions at the bottom. Without a resolvable chip the label holds
+             the left edge. --%>
+        <div class="flex items-center justify-between gap-3 mb-2.5 min-w-0">
+          <LoopyardWeb.Components.Common.workspace_identity
+            :if={@identity}
+            project={elem(@identity, 0)}
+            workspace={elem(@identity, 1)}
+            state={if @msg.status == :pending, do: :needs_you, else: :done}
+            size={:sm}
+            class="min-w-0"
+          />
+          <span class="chat-meta flex items-center gap-1.5 font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400/90 flex-none">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 16 16"
+              fill="currentColor"
+              class="w-3.5 h-3.5"
+            >
+              <path d="M8 1.5a2 2 0 0 0-2 2v.5H4.5A1.5 1.5 0 0 0 3 5.5v.879a2.5 2.5 0 0 0 0 4.242V13.5A1.5 1.5 0 0 0 4.5 15h7a1.5 1.5 0 0 0 1.5-1.5v-2.879a2.5 2.5 0 0 0 0-4.242V5.5A1.5 1.5 0 0 0 11.5 4H10v-.5a2 2 0 0 0-2-2Z" />
+            </svg>
+            {case @action.verb do
+              :integrate -> "Merge — needs your OK"
+              :delete_workspace -> "Delete workspace — needs your OK"
+              :delete_project -> "Delete project — needs your OK"
+              :rename_workspace -> "Rename — needs your OK"
+              :rename_project -> "Rename — needs your OK"
+              :create_project -> "New project — needs your OK"
+              _ -> "Branch — needs your OK"
+            end}
+          </span>
         </div>
 
         <div
