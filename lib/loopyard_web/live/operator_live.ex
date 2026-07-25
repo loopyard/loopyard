@@ -95,6 +95,8 @@ defmodule LoopyardWeb.OperatorLive do
       # can't both fit a phone, so we show ONE at a time with a top toggle.
       # Desktop (lg+) ignores this and shows both side-by-side.
       |> assign(:mobile_view, :chat)
+      # {agent_id, msg_id} of the attention item expanded full-pane in the rail.
+      |> assign(:expanded_attention, nil)
       # The rail (needs-you groups + working jobs + count) computed IN the
       # LiveView and stored as real assigns, so it's part of the reactive graph —
       # NOT recomputed inside the component (which LiveView memoizes when @tree/
