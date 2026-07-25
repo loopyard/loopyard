@@ -23,6 +23,10 @@ defmodule LoopyardWeb.Components.ProjectList do
 
   import LoopyardWeb.Live.WorkspaceLive.Components.Formatters, only: [time_ago: 1]
 
+  # The raw agent statuses that mean "a turn is live" — mirrors Birdseye's
+  # @working so the canonical workspace_identity light agrees with the ws_dot.
+  @working_statuses [:thinking, :compacting, :booting, :backoff, :rate_limited]
+
   @doc """
   Renders the grouped overview.
 
@@ -72,6 +76,7 @@ defmodule LoopyardWeb.Components.ProjectList do
               :for={ws <- project.workspaces}
               ws={ws}
               project_id={project.id}
+              project_name={project.name}
               current={ws.id == @current_workspace_id}
               row_click={@row_click}
             />
@@ -81,6 +86,7 @@ defmodule LoopyardWeb.Components.ProjectList do
               :for={ws <- project.workspaces}
               ws={ws}
               project_id={project.id}
+              project_name={project.name}
               row_click={@row_click}
             />
           </div>
@@ -91,6 +97,7 @@ defmodule LoopyardWeb.Components.ProjectList do
             :for={ws <- project.workspaces}
             ws={ws}
             project_id={project.id}
+            project_name={project.name}
             current={ws.id == @current_workspace_id}
             row_click={@row_click}
             size={@size}
@@ -116,6 +123,7 @@ defmodule LoopyardWeb.Components.ProjectList do
 
   attr :ws, :map, required: true
   attr :project_id, :string, required: true
+  attr :project_name, :string, required: true
   attr :current, :boolean, default: false
   attr :row_click, :any, default: nil
   attr :size, :atom, required: true
@@ -135,10 +143,13 @@ defmodule LoopyardWeb.Components.ProjectList do
         @current && "bg-violet-100 dark:bg-violet-500/15"
       ]}
     >
-      <Birdseye.dot class={Birdseye.ws_dot(@ws)} size={:md} />
-      <span class="min-w-0 flex-1 truncate text-sm font-medium text-zinc-900 dark:text-zinc-100 group-hover/ws:text-violet-600 dark:group-hover/ws:text-violet-400 transition-colors">
-        {@ws.name}
-      </span>
+      <LoopyardWeb.Components.Common.workspace_identity
+        project={@project_name}
+        workspace={@ws.name}
+        state={ws_state(@ws)}
+        size={:sm}
+        class="min-w-0 flex-1"
+      />
       <%!-- XS: ONLY the needs-you signal (picking fast). SM: the full headline
            word + the port chip in a fixed column so the rail scans straight.
            A :changed headline renders the green/red git-stat, not the single
@@ -170,6 +181,7 @@ defmodule LoopyardWeb.Components.ProjectList do
 
   attr :ws, :map, required: true
   attr :project_id, :string, required: true
+  attr :project_name, :string, required: true
   attr :current, :boolean, default: false
   attr :row_click, :any, default: nil
 
@@ -186,12 +198,15 @@ defmodule LoopyardWeb.Components.ProjectList do
         @current && "bg-violet-100 dark:bg-violet-500/15"
       ]}
     >
-      <Birdseye.dot class={"mt-1.5 #{Birdseye.ws_dot(@ws)}"} size={:md} />
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2">
-          <span class="min-w-0 flex-1 truncate text-base font-medium text-zinc-900 dark:text-zinc-100 group-hover/ws:text-violet-600 dark:group-hover/ws:text-violet-400 transition-colors">
-            {@ws.name}
-          </span>
+          <LoopyardWeb.Components.Common.workspace_identity
+            project={@project_name}
+            workspace={@ws.name}
+            state={ws_state(@ws)}
+            size={:md}
+            class="min-w-0 flex-1"
+          />
           <span
             :if={ws_port(@ws)}
             class="flex-none inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
@@ -222,6 +237,7 @@ defmodule LoopyardWeb.Components.ProjectList do
 
   attr :ws, :map, required: true
   attr :project_id, :string, required: true
+  attr :project_name, :string, required: true
   attr :row_click, :any, default: nil
 
   defp ws_card(assigns) do
@@ -245,10 +261,13 @@ defmodule LoopyardWeb.Components.ProjectList do
       >
       </.link>
       <div class="flex items-center gap-2">
-        <Birdseye.dot class={Birdseye.ws_dot(@ws)} size={:md} />
-        <span class="min-w-0 flex-1 truncate text-base font-semibold text-zinc-900 dark:text-zinc-100">
-          {@ws.name}
-        </span>
+        <LoopyardWeb.Components.Common.workspace_identity
+          project={@project_name}
+          workspace={@ws.name}
+          state={ws_state(@ws)}
+          size={:md}
+          class="min-w-0 flex-1"
+        />
         <span :if={ws_port_entry(@ws)} class="relative z-10 flex-none">
           <Birdseye.port_chip port={ws_port_entry(@ws).port} url={ws_port_entry(@ws).url} />
         </span>
@@ -332,6 +351,29 @@ defmodule LoopyardWeb.Components.ProjectList do
 
   defp ws_port(%{ports: [%{port: p} | _]}), do: p
   defp ws_port(_), do: nil
+
+  # Map a workspace onto the ONE canonical workspace_identity light — same
+  # priority order as Birdseye.ws_dot/1 (needs-you > broken > working > ready >
+  # asleep) so the badge's light and the tree's dot can never disagree.
+  defp ws_state(ws) do
+    cond do
+      ws[:needs_you] ->
+        :needs_you
+
+      ws[:broken] ->
+        :broken
+
+      true ->
+        statuses = Enum.map(ws[:agents] || [], &Map.get(&1, :status))
+
+        cond do
+          Enum.any?(statuses, &(&1 == :auth_expired)) -> :broken
+          Enum.any?(statuses, &(&1 in @working_statuses)) -> :working
+          Enum.any?(statuses, &(&1 == :idle)) -> :done
+          true -> :asleep
+        end
+    end
+  end
 
   # Line +/- for the card footer — %{added, removed}, only when known and nonzero
   # (nil = unknown / no running container, or clean = 0 add + 0 remove).
