@@ -71,8 +71,8 @@ defmodule LoopyardWeb.Components.LogViewer do
     {status_label, dot_class} =
       case assigns.status do
         :building -> {"Running", "bg-amber-400 animate-pulse"}
-        :done -> {"Done", "bg-green-500"}
-        :failed -> {"Failed", "bg-red-500"}
+        :done -> {"Done", "bg-emerald-500/50"}
+        :failed -> {"Failed", "bg-rose-500/50"}
       end
 
     content = assigns.content || ""
@@ -167,10 +167,12 @@ defmodule LoopyardWeb.Components.LogViewer do
         <span
           :if={@status != :building}
           class={[
-            "text-xs font-semibold tabular-nums flex-none",
+            # Calm footnote, not an alarm — a failed command (often a probe /
+            # expected non-zero) shouldn't demand attention. Muted + medium weight.
+            "text-xs font-medium tabular-nums flex-none",
             if(@status == :done,
-              do: "text-green-600 dark:text-green-400",
-              else: "text-red-500 dark:text-red-400"
+              do: "text-emerald-600/70 dark:text-emerald-500/60",
+              else: "text-rose-500/70 dark:text-rose-400/60"
             )
           ]}
         >
