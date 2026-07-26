@@ -46,10 +46,16 @@ defmodule LoopyardWeb.OperatorLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, %{agent_id: agent_id}} = Operator.ensure_agent()
+    # NEVER spawn the operator synchronously here: ensure_agent/0 can boot the
+    # workstation CONTAINER (docker pull + run — seconds to minutes cold), and
+    # mount must render instantly. Fast path: the operator is usually already
+    # alive → agent_id/0 is a registry check. Cold path: render the stub shell
+    # now, boot in start_async, wire up when it lands (harness-status shows
+    # "Starting" meanwhile).
+    agent_id = Operator.agent_id()
 
     if connected?(socket) do
-      Events.ChatAgentMessage.subscribe(agent_id)
+      if agent_id, do: Events.ChatAgentMessage.subscribe(agent_id)
       Events.ChatAgent.subscribe()
       # Operator `music` play/pause/volume commands → bridged to this client's
       # AmbientAudio engine (server-side track/status don't need this).
@@ -107,7 +113,39 @@ defmodule LoopyardWeb.OperatorLive do
       |> assign(:embedded_ids, MapSet.new())
       |> subscribe_embeds()
 
+    socket =
+      if connected?(socket) and is_nil(agent_id) do
+        Phoenix.LiveView.start_async(socket, :ensure_operator, fn ->
+          Operator.ensure_agent()
+        end)
+      else
+        socket
+      end
+
     {:ok, socket}
+  end
+
+  @impl true
+  def handle_async(:ensure_operator, {:ok, {:ok, %{agent_id: agent_id}}}, socket) do
+    Events.ChatAgentMessage.subscribe(agent_id)
+
+    {:noreply,
+     socket
+     |> assign(:agent_id, agent_id)
+     |> assign(:selected_id, agent_id)
+     |> load_agent()
+     |> refresh_rail()}
+  end
+
+  def handle_async(:ensure_operator, result, socket) do
+    Loopyard.EventLog.error("operator", "Operator boot failed: #{inspect(result, limit: 5)}")
+
+    {:noreply,
+     Phoenix.LiveView.put_flash(
+       socket,
+       :error,
+       "The operator couldn't start — check the workstation container on /system."
+     )}
   end
 
   # The sub-agents referenced by :embed cards in the transcript. Subscribe to any
@@ -179,8 +217,24 @@ defmodule LoopyardWeb.OperatorLive do
     # (which makes it reply "your message came through empty"). Still ack so the
     # ChatForm hook clears the box.
     message = String.trim(message)
-    if message != "", do: ChatAgent.send_message(socket.assigns.agent_id, message)
-    {:reply, %{ok: true}, socket}
+
+    cond do
+      message == "" ->
+        {:reply, %{ok: true}, socket}
+
+      is_nil(socket.assigns.agent_id) ->
+        # Boot window (cold start): don't cast into the void. ok:false makes the
+        # ChatForm hook keep the typed text and show the note inline.
+        {:reply,
+         %{
+           ok: false,
+           note: "The operator is still starting — your text is kept; try again in a moment."
+         }, socket}
+
+      true ->
+        ChatAgent.send_message(socket.assigns.agent_id, message)
+        {:reply, %{ok: true}, socket}
+    end
   end
 
   # Composer/queue controls (chat_panel emits these) — wired so no button is dead.
