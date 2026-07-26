@@ -450,6 +450,20 @@ defmodule Loopyard.ProjectRegistry do
       persistence_key = project[:git_url] || project[:path]
       ProjectStore.remove(persistence_key)
 
+      # Canonical-backed projects (#19): forget the canonical_projects.json
+      # entry AND the canonical volume — boot restores every store entry, so
+      # skipping this resurrected deleted projects on the next restart (the
+      # "empty firehose-site keeps coming back" bug).
+      Loopyard.CanonicalStore.delete(id)
+
+      if vol = project[:canonical_volume] do
+        try do
+          Loopyard.VolumeManager.delete_volume(vol)
+        rescue
+          _ -> :ok
+        end
+      end
+
       # Delete .loopyard directory synchronously (fast local operation)
       unless project[:volume_based] do
         loopyard_dir = Path.join(project.path, ".loopyard")
