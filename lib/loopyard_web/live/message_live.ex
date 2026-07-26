@@ -125,9 +125,9 @@ defmodule LoopyardWeb.MessageLive do
         </.link>
         <span
           :if={!@closed? && @streaming_text != ""}
-          class="flex items-center gap-1.5 text-xs text-indigo-500"
+          class="flex items-center gap-1.5 text-xs text-violet-500"
         >
-          <span class="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></span> live
+          <span class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse"></span> live
         </span>
         <:actions>
           <a
@@ -151,8 +151,8 @@ defmodule LoopyardWeb.MessageLive do
           <div class="markdown-body">
             {Phoenix.HTML.raw(Loopyard.Markdown.to_html(@streaming_text))}
           </div>
-          <div class="mt-2 flex items-center gap-1.5 text-xs text-indigo-500">
-            <span class="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></span> streaming…
+          <div class="mt-2 flex items-center gap-1.5 text-xs text-violet-500">
+            <span class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse"></span> streaming…
           </div>
         </div>
       </div>
@@ -168,7 +168,7 @@ defmodule LoopyardWeb.MessageLive do
 
   def turn_msg(%{msg: %{role: :user, content: c}} = assigns) when is_binary(c) do
     ~H"""
-    <div class="rounded-xl bg-indigo-100 dark:bg-[#262a4d] px-4 py-3 text-[15px] leading-relaxed whitespace-pre-wrap text-zinc-900 dark:text-zinc-50">
+    <div class="rounded-xl bg-violet-100 dark:bg-[#2b2348] px-4 py-3 text-[15px] leading-relaxed whitespace-pre-wrap text-zinc-900 dark:text-zinc-50">
       {@msg.content}
     </div>
     """
@@ -211,7 +211,7 @@ defmodule LoopyardWeb.MessageLive do
     ~H"""
     <.link
       navigate={"/projects/#{@msg[:project_id]}/workspaces/#{@msg[:workspace_id]}/agents/#{@msg[:agent_id]}"}
-      class="inline-flex items-center gap-2 rounded-lg border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-sm text-indigo-600 dark:text-indigo-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+      class="inline-flex items-center gap-2 rounded-lg border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-sm text-violet-600 dark:text-violet-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
     >
       ▸ {@msg[:label] || "workspace"} — open in chat →
     </.link>

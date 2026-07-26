@@ -14,12 +14,12 @@
  */
 :root {
   --tap-min: 44px;
-  --focus-ring-color: #4f46e5;
+  --focus-ring-color: #7c3aed;
   --focus-ring-offset: 2px;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --focus-ring-color: #818cf8;
+    --focus-ring-color: #a78bfa;
   }
 }
 
@@ -160,7 +160,7 @@
 .markdown-body ul { list-style-type: disc; }
 .markdown-body ol { list-style-type: decimal; }
 .markdown-body li { margin: 0.55em 0; padding-left: 0.2em; line-height: 1.72; }
-.markdown-body li::marker { color: rgba(129, 140, 248, 0.55); } /* accent bullets, quietly */
+.markdown-body li::marker { color: rgba(139, 124, 255, 0.55); } /* accent bullets, quietly */
 .markdown-body li > ul, .markdown-body li > ol { margin: 0.35em 0; }
 .markdown-body code {
   font-size: 0.85em;
@@ -206,10 +206,10 @@
     color: rgba(255, 255, 255, 0.6);
   }
 }
-.markdown-body a { color: #4f46e5; text-decoration: underline; text-underline-offset: 2px; }
+.markdown-body a { color: #7c3aed; text-decoration: underline; text-underline-offset: 2px; }
 @media (prefers-color-scheme: dark) {
   /* violet-600 is unreadable on the dark ground — lift to violet-400. */
-  .markdown-body a { color: #818cf8; }
+  .markdown-body a { color: #a78bfa; }
 }
 /* Bold lead-ins are the skim anchors — let them pop a touch from body weight. */
 .markdown-body strong { font-weight: 650; color: inherit; }
@@ -526,7 +526,7 @@ input[type="range"].volume-slider:focus-visible {
 /* "Ready to send" cue — the ChatForm hook toggles .send-ready on the send
    button while the input has text: the arrow fills violet, inviting submit. */
 #chat-form button[type="submit"].send-ready {
-  background: #4f46e5;
+  background: #7c3aed;
   color: #fff;
 }
-#chat-form button[type="submit"].send-ready:hover { background: #4338ca; }
+#chat-form button[type="submit"].send-ready:hover { background: #6d28d9; }

@@ -241,7 +241,7 @@ defmodule LoopyardWeb.Components.LogViewer do
 
     * `logs` - Required. List of `%{name: String.t(), logs: String.t()}` maps.
   """
-  @service_colors ~w(text-blue-400 text-green-400 text-yellow-400 text-pink-400 text-cyan-400 text-orange-400 text-indigo-400 text-emerald-400)
+  @service_colors ~w(text-blue-400 text-green-400 text-yellow-400 text-pink-400 text-cyan-400 text-orange-400 text-violet-400 text-emerald-400)
 
   attr :logs, :list, required: true
 

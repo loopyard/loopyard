@@ -159,7 +159,7 @@ defmodule LoopyardWeb.Components.Common do
     color =
       case assigns.variant do
         :primary ->
-          "text-indigo-600 dark:text-indigo-400"
+          "text-violet-600 dark:text-violet-400"
 
         # Destructive: red text on a transparent box (set apart from the zinc
         # operational buttons), red-tinted hover. `!` overrides the base zinc
@@ -268,7 +268,7 @@ defmodule LoopyardWeb.Components.Common do
   # The ONE status→light mapping. Every project·workspace light speaks this, so a
   # color always means the same thing across the whole app. (`:chugging` accepted
   # as an alias for the operator rail's live state.)
-  defp state_light(s) when s in [:working, :chugging], do: "bg-indigo-500 animate-pulse"
+  defp state_light(s) when s in [:working, :chugging], do: "bg-violet-500 animate-pulse"
   defp state_light(:needs_you), do: "bg-orange-500"
   defp state_light(:done), do: "bg-emerald-500"
   defp state_light(:broken), do: "bg-red-500"
@@ -337,7 +337,7 @@ defmodule LoopyardWeb.Components.Common do
       class={[
         "group flex flex-col rounded-xl border transition-colors p-4 md:p-5 sm:aspect-[4/3]",
         @accent ||
-          "border-zinc-200 dark:border-zinc-700 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+          "border-zinc-200 dark:border-zinc-700 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
       ]}
       {@rest}
     >
@@ -391,7 +391,7 @@ defmodule LoopyardWeb.Components.Common do
     ~H"""
     <.link
       navigate={@navigate}
-      class="focus-ring inline-flex items-center justify-center gap-1.5 w-full sm:w-auto rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 text-sm font-semibold transition-colors"
+      class="focus-ring inline-flex items-center justify-center gap-1.5 w-full sm:w-auto rounded-lg bg-violet-600 hover:bg-violet-700 text-white px-4 py-2.5 text-sm font-semibold transition-colors"
       {@rest}
     >
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
@@ -470,7 +470,7 @@ defmodule LoopyardWeb.Components.Common do
       aria-label="Operator"
       title="Operator — run and watch everything from here"
       class={[
-        "flex-none inline-flex items-center justify-center w-11 h-11 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors",
+        "flex-none inline-flex items-center justify-center w-11 h-11 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-violet-600 dark:hover:text-violet-400 transition-colors",
         @class
       ]}
     >
@@ -488,7 +488,7 @@ defmodule LoopyardWeb.Components.Common do
         xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 20 20"
         fill="currentColor"
-        class="w-5 h-5 hidden text-indigo-500 dark:text-indigo-400"
+        class="w-5 h-5 hidden text-violet-500 dark:text-violet-400"
       >
         <path fill-rule="evenodd" d="M4.25 2A2.25 2.25 0 0 0 2 4.25v2.5A2.25 2.25 0 0 0 4.25 9h2.5A2.25 2.25 0 0 0 9 6.75v-2.5A2.25 2.25 0 0 0 6.75 2h-2.5Zm0 9A2.25 2.25 0 0 0 2 13.25v2.5A2.25 2.25 0 0 0 4.25 18h2.5A2.25 2.25 0 0 0 9 15.75v-2.5A2.25 2.25 0 0 0 6.75 11h-2.5Zm9-9A2.25 2.25 0 0 0 11 4.25v2.5A2.25 2.25 0 0 0 13.25 9h2.5A2.25 2.25 0 0 0 18 6.75v-2.5A2.25 2.25 0 0 0 15.75 2h-2.5Zm0 9A2.25 2.25 0 0 0 11 13.25v2.5A2.25 2.25 0 0 0 13.25 18h2.5A2.25 2.25 0 0 0 18 15.75v-2.5A2.25 2.25 0 0 0 15.75 11h-2.5Z" clip-rule="evenodd" />
       </svg>
@@ -513,7 +513,7 @@ defmodule LoopyardWeb.Components.Common do
     <div
       id={@id}
       phx-hook="SoundPill"
-      data-on="bg-indigo-50 dark:bg-indigo-500/10 border-indigo-300 dark:border-indigo-500/40 text-indigo-600 dark:text-indigo-400"
+      data-on="bg-violet-50 dark:bg-violet-500/10 border-violet-300 dark:border-violet-500/40 text-violet-600 dark:text-violet-400"
       data-off="bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-400 dark:text-zinc-500"
       class={[
         "inline-flex items-center gap-1 rounded-full border pl-1 pr-1.5 py-0.5 transition-colors bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-400 dark:text-zinc-500",
@@ -544,7 +544,7 @@ defmodule LoopyardWeb.Components.Common do
         step="0.01"
         data-sound-volume
         aria-label="Volume"
-        class="w-20 h-1 cursor-pointer accent-indigo-500"
+        class="w-20 h-1 cursor-pointer accent-violet-500"
       />
       <.link
         navigate="/sound"

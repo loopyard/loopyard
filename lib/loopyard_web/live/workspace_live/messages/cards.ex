@@ -496,7 +496,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           class="chat-sub text-zinc-800 dark:text-zinc-100 mb-1"
         >
           Create project
-          <code class="text-sm bg-indigo-200/70 dark:bg-indigo-800/50 rounded px-1 py-0.5">
+          <code class="text-sm bg-violet-200/70 dark:bg-violet-800/50 rounded px-1 py-0.5">
             {@action.name}
           </code>
           <span class="text-zinc-400">— {@action.detail}</span>
@@ -506,7 +506,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           class="chat-sub text-zinc-800 dark:text-zinc-100 mb-1"
         >
           Merge
-          <code class="text-sm bg-indigo-200/70 dark:bg-indigo-800/50 rounded px-1 py-0.5">
+          <code class="text-sm bg-violet-200/70 dark:bg-violet-800/50 rounded px-1 py-0.5">
             {@action.branch}
           </code>
           → <code class="text-sm bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">main</code>
@@ -542,7 +542,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           <code class="text-sm bg-zinc-200/70 dark:bg-zinc-700/70 rounded px-1 py-0.5">
             {@action[:old_name]}
           </code>
-          → <code class="text-sm bg-indigo-200/70 dark:bg-indigo-800/50 rounded px-1 py-0.5">
+          → <code class="text-sm bg-violet-200/70 dark:bg-violet-800/50 rounded px-1 py-0.5">
             {@action[:name]}
           </code>
         </div>
@@ -555,7 +555,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
             {@action.base}
           </code>
           → new branch
-          <code class="text-sm bg-indigo-200/70 dark:bg-indigo-800/50 rounded px-1 py-0.5">
+          <code class="text-sm bg-violet-200/70 dark:bg-violet-800/50 rounded px-1 py-0.5">
             {@action.branch}
           </code>
           <span class="text-zinc-400">(its own isolated workspace)</span>
@@ -743,7 +743,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
             class="min-w-0"
           />
           <span class="chat-meta text-zinc-500 dark:text-zinc-400 flex-none">· {embed_word(@st)}</span>
-          <span class="chat-meta ml-auto flex-none inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-medium text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-500/10 transition-colors">
+          <span class="chat-meta ml-auto flex-none inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-medium text-violet-600 dark:text-violet-400 group-hover:bg-violet-500/10 transition-colors">
             open →
           </span>
         </.link>
@@ -772,7 +772,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           <%!-- What it's doing right NOW (mid-turn), when known --%>
           <div
             :if={embed_detail(@st) && @st[:status] == :thinking}
-            class="font-mono text-xs text-indigo-500 dark:text-indigo-400 truncate"
+            class="font-mono text-xs text-violet-500 dark:text-violet-400 truncate"
           >
             {embed_detail(@st)}
           </div>

@@ -254,7 +254,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatNav do
 
   def status_tone(agent) do
     case agent_display_status(agent) do
-      :thinking -> "text-indigo-600 dark:text-indigo-400"
+      :thinking -> "text-violet-600 dark:text-violet-400"
       :idle -> "text-emerald-600 dark:text-emerald-400"
       _ -> "text-zinc-500 dark:text-zinc-400"
     end

@@ -39,7 +39,7 @@ defmodule LoopyardWeb.Components.StreamCard do
     do: "bg-orange-50/70 dark:bg-orange-950/15 border-orange-400 dark:border-orange-500/60"
 
   defp band_tone(:you),
-    do: "bg-indigo-100 dark:bg-[#262a4d] border-indigo-500 dark:border-indigo-400"
+    do: "bg-violet-100 dark:bg-[#2b2348] border-violet-500 dark:border-violet-400"
 
   defp band_tone(:neutral),
     do: "bg-zinc-500/[0.06] dark:bg-white/[0.045] border-zinc-300 dark:border-zinc-600"

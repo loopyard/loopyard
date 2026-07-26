@@ -22,13 +22,17 @@ module.exports = {
           // flame === Tailwind orange-600, so needs-you surfaces use the native
           // orange-* scale (orange-600 IS brand flame) for shades/washes.
           flame: "#ea580c",
+          // iris — the ORIGINAL loopyard violet, expanded into a full working
+          // family (tried cooling it to indigo; the violet is the identity).
           iris: {
-            DEFAULT: "#4f46e5", // indigo-600 — light-mode accent (cooled toward
-            // the site's slate; bluer than violet, still pops off the neutrals)
-            bright: "#818cf8", // indigo-400 — dark-mode accent
-            wash: "#e0e7ff", //  light band wash
-            "wash-dark": "#262a4d", // dark band wash
-            "wash-active-dark": "#2e335c" // dark active-band wash
+            DEFAULT: "#7c3aed", // violet-600 — links, actions, "you" on paper
+            deep: "#6d28d9", //   violet-700 — hover/pressed on paper
+            bright: "#a78bfa", // violet-400 — links/accent on ink
+            soft: "#c4b5fd", //   violet-300 — secondary accents on ink
+            wash: "#ede9fe", //   violet-100 — prompt-band ground on paper
+            "wash-active": "#ddd6fe", // violet-200 — the ACTIVE band on paper
+            "wash-dark": "#2b2348", // prompt-band ground on ink
+            "wash-active-dark": "#332a54" // active band on ink
           },
           // Every accent is a PAIR: DEFAULT reads on paper, bright reads on ink.
           // (Single-value accents kept forcing ad-hoc dark: picks in the app.)

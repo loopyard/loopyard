@@ -105,7 +105,7 @@ defmodule LoopyardWeb.ConnectLive do
       </:header_actions>
 
       <div :if={@toggling} class="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400 py-16">
-        <span class="w-2 h-2 rounded-full bg-indigo-500 animate-pulse flex-none"></span>
+        <span class="w-2 h-2 rounded-full bg-violet-500 animate-pulse flex-none"></span>
         Restarting the endpoint…
       </div>
 
@@ -178,7 +178,7 @@ defmodule LoopyardWeb.ConnectLive do
         </p>
         <button
           phx-click="expose"
-          class="focus-ring inline-flex items-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 text-sm font-medium transition-colors"
+          class="focus-ring inline-flex items-center gap-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white px-5 py-2.5 text-sm font-medium transition-colors"
         >
           Expose endpoint
         </button>

@@ -142,7 +142,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
           href={"http://#{@host}:#{@first_port}"}
           target="_blank"
           rel="noopener"
-          class="truncate font-mono text-indigo-500 hover:text-indigo-400 transition-colors"
+          class="truncate font-mono text-violet-500 hover:text-violet-400 transition-colors"
         >
           {@host}:{@first_port}
         </a>

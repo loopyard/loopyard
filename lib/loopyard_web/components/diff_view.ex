@@ -72,7 +72,7 @@ defmodule LoopyardWeb.Components.DiffView do
         <a
           :if={@link}
           href={@link}
-          class="text-zinc-500 dark:text-zinc-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+          class="text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
         >
           {@path}
         </a>
@@ -80,7 +80,7 @@ defmodule LoopyardWeb.Components.DiffView do
       </div>
       <div class="px-3 py-2 text-zinc-500 dark:text-zinc-400">
         Diff too large to render inline ({div(@total_bytes, 1024)} KB).
-        <a :if={@link} href={@link} class="text-indigo-600 dark:text-indigo-400 hover:underline">
+        <a :if={@link} href={@link} class="text-violet-600 dark:text-violet-400 hover:underline">
           Open file
         </a>
       </div>
@@ -100,7 +100,7 @@ defmodule LoopyardWeb.Components.DiffView do
           href={@link}
           target="_blank"
           rel="noopener"
-          class="min-w-0 flex-1 truncate text-zinc-500 dark:text-zinc-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+          class="min-w-0 flex-1 truncate text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
         >
           {@path}
         </a>
@@ -115,7 +115,7 @@ defmodule LoopyardWeb.Components.DiffView do
           target="_blank"
           rel="noopener"
           title="Open file in a new tab"
-          class="flex-none p-0.5 text-zinc-400 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors"
+          class="flex-none p-0.5 text-zinc-400 hover:text-violet-500 dark:hover:text-violet-400 transition-colors"
         >
           <svg
             class="w-3 h-3"

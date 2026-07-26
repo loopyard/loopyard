@@ -53,7 +53,7 @@ defmodule LoopyardWeb.Components.ProjectList do
           data-sticky-header
           class="group sticky top-0 z-10 block pt-1 pb-1 bg-brand-paper dark:bg-brand-ink transition-shadow data-[stuck]:shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]"
         >
-          <h2 class="text-xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+          <h2 class="text-xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 truncate group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors">
             {project.name}
           </h2>
         </.link>
@@ -118,7 +118,7 @@ defmodule LoopyardWeb.Components.ProjectList do
           ]}
         >
           <h2 class={[
-            "font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors",
+            "font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 truncate group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors",
             (@size == :xs && "text-base") || "text-sm"
           ]}>
             {project.name}
@@ -169,7 +169,7 @@ defmodule LoopyardWeb.Components.ProjectList do
       # :xs = the mobile switcher sheet — finger-sized rows (≥44px), same as the
       # operator rail's mobile rows. :sm = the desktop rail — compact.
       (@size == :xs && "py-3") || "py-1",
-      @current && "bg-indigo-100 dark:bg-indigo-500/15"
+      @current && "bg-violet-100 dark:bg-violet-500/15"
     ]}>
       <.link
         navigate={workspace_href(@project_id, @ws)}
@@ -229,7 +229,7 @@ defmodule LoopyardWeb.Components.ProjectList do
       aria-current={@current && "true"}
       class={[
         "group/ws flex items-start gap-2.5 -mx-2 px-2 py-2 rounded-lg transition-colors",
-        @current && "bg-indigo-100 dark:bg-indigo-500/15"
+        @current && "bg-violet-100 dark:bg-violet-500/15"
       ]}
     >
       <div class="min-w-0 flex-1">
@@ -363,7 +363,7 @@ defmodule LoopyardWeb.Components.ProjectList do
 
   defp card_tint(_),
     do:
-      "border-zinc-200 dark:border-zinc-800 hover:border-indigo-300 dark:hover:border-indigo-500/40"
+      "border-zinc-200 dark:border-zinc-800 hover:border-violet-300 dark:hover:border-violet-500/40"
 
   # "Claude · editing files" — the card has room for WHO before the what.
   defp agent_prefixed(%{agents: [%{name: name} | _]}, text) when is_binary(name),

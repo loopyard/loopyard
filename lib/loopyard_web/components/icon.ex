@@ -6,7 +6,7 @@ defmodule LoopyardWeb.Components.Icon do
   across templates, no more drifting sizes/strokes. Paths are Heroicons (mini
   `0 0 20 20` / micro `0 0 16 16`); each entry carries its own viewBox so they
   render crisp at any size. Color follows `currentColor`, so set it with text
-  utilities on the call site (`class="w-4 h-4 text-indigo-500"`).
+  utilities on the call site (`class="w-4 h-4 text-violet-500"`).
 
   To add an icon: drop a `{viewBox, inner_svg}` entry in `@paths`. The body is a
   static literal (never user input), so `raw/1` is safe.

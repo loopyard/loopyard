@@ -302,7 +302,7 @@ defmodule LoopyardWeb.SystemLive do
           </div>
           <div class="mt-2 h-2 bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
             <div
-              class={"h-full rounded-full #{if pct > 80, do: "bg-red-500", else: "bg-indigo-500"}"}
+              class={"h-full rounded-full #{if pct > 80, do: "bg-red-500", else: "bg-violet-500"}"}
               style={"width: #{pct}%"}
             >
             </div>
@@ -316,7 +316,7 @@ defmodule LoopyardWeb.SystemLive do
           </div>
           <div class="mt-2 h-2 bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
             <div
-              class={"h-full rounded-full #{if String.contains?(disk.use_pct || "", "9"), do: "bg-red-500", else: "bg-indigo-500"}"}
+              class={"h-full rounded-full #{if String.contains?(disk.use_pct || "", "9"), do: "bg-red-500", else: "bg-violet-500"}"}
               style={"width: #{disk.use_pct}"}
             >
             </div>
@@ -556,7 +556,7 @@ defmodule LoopyardWeb.SystemLive do
     ~H"""
     <.link
       navigate={@href}
-      class="block rounded-lg border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 p-4 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+      class="block rounded-lg border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 p-4 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
     >
       <div class="flex items-center justify-between">
         <div>

@@ -40,7 +40,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
           :if={@first_port}
           href={"http://#{@host}:#{@first_port}"}
           target="_blank"
-          class="hidden sm:inline text-xs font-mono text-indigo-500 hover:text-indigo-400 transition-colors truncate"
+          class="hidden sm:inline text-xs font-mono text-violet-500 hover:text-violet-400 transition-colors truncate"
         >
           {@host}:{@first_port}
         </a>
@@ -213,7 +213,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
           :if={@workspace_state not in [:stopped, :starting]}
           phx-click="start_service"
           phx-value-service_name={@service_name}
-          class="focus-ring inline-flex items-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 text-sm font-medium transition-colors"
+          class="focus-ring inline-flex items-center gap-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white px-5 py-2.5 text-sm font-medium transition-colors"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"

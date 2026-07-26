@@ -233,11 +233,11 @@ defmodule LoopyardWeb.SystemSagasLive do
   end
 
   defp filter_pill_class(true),
-    do: "rounded-full px-3 py-1 text-xs font-medium bg-indigo-600 text-white"
+    do: "rounded-full px-3 py-1 text-xs font-medium bg-violet-600 text-white"
 
   defp filter_pill_class(false),
     do:
-      "rounded-full px-3 py-1 text-xs font-medium border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-indigo-400 dark:hover:border-indigo-500"
+      "rounded-full px-3 py-1 text-xs font-medium border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-violet-400 dark:hover:border-violet-500"
 
   defp saga_table(assigns) do
     ~H"""
@@ -262,7 +262,7 @@ defmodule LoopyardWeb.SystemSagasLive do
         <span class={status_badge_class(@saga.status)}>
           {humanize_status(@saga.status)}
         </span>
-        <span class="text-xs font-mono font-semibold text-indigo-700 dark:text-indigo-400">
+        <span class="text-xs font-mono font-semibold text-violet-700 dark:text-violet-400">
           {@saga.saga}
         </span>
         <span class="text-[11px] font-mono text-zinc-500">

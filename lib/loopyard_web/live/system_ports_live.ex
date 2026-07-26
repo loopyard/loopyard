@@ -159,7 +159,7 @@ defmodule LoopyardWeb.SystemPortsLive do
       <td class="py-2 px-2 font-mono text-xs">
         <.link
           navigate={"/projects/#{@r.project_id}/workspaces/#{@r.workspace_id}"}
-          class="text-indigo-600 dark:text-indigo-400 hover:underline"
+          class="text-violet-600 dark:text-violet-400 hover:underline"
         >
           {@r.workspace_id}
         </.link>

@@ -414,7 +414,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
             <%= case row do %>
               <% {:match, path, lno, text} -> %>
                 <span class="flex-none text-zinc-500 dark:text-zinc-400 select-none">
-                  {path}<span class="text-indigo-500 dark:text-indigo-400">:{lno}</span>
+                  {path}<span class="text-violet-500 dark:text-violet-400">:{lno}</span>
                 </span>
                 <span class="whitespace-pre text-zinc-800 dark:text-zinc-200 truncate">{text}</span>
               <% {:plain, line} -> %>
@@ -586,7 +586,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
           href={@url}
           target="_blank"
           rel="noopener"
-          class="chat-sub block truncate text-indigo-600 dark:text-indigo-400 hover:underline mb-3"
+          class="chat-sub block truncate text-violet-600 dark:text-violet-400 hover:underline mb-3"
         >
           {@url}
         </a>
@@ -594,7 +594,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
           phx-click="open_port_from_chat"
           phx-value-service={@service}
           phx-value-container_port={@container_port}
-          class="focus-ring chat-sub inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 font-medium bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition-colors flex-none"
+          class="focus-ring chat-sub inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 font-medium bg-violet-600 hover:bg-violet-700 text-white shadow-sm transition-colors flex-none"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"

@@ -285,7 +285,7 @@ defmodule LoopyardWeb.Components.Nav do
         class={[
           "focus-ring flex-none inline-flex items-center justify-center w-11 h-11 rounded-lg transition-colors",
           if(@details_open,
-            do: "bg-indigo-100 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-400",
+            do: "bg-violet-100 dark:bg-violet-500/15 text-violet-600 dark:text-violet-400",
             else:
               "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700"
           )
@@ -509,7 +509,7 @@ defmodule LoopyardWeb.Components.Nav do
     [
       "focus-ring flex items-center gap-3 min-h-[3.25rem] px-3 rounded-xl text-base transition-colors",
       if(active?,
-        do: "bg-indigo-100 dark:bg-indigo-500/15 text-zinc-900 dark:text-zinc-100 font-semibold",
+        do: "bg-violet-100 dark:bg-violet-500/15 text-zinc-900 dark:text-zinc-100 font-semibold",
         else:
           "text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700"
       )
@@ -538,7 +538,7 @@ defmodule LoopyardWeb.Components.Nav do
   # A violet check for the active row in a switcher sheet.
   defp check(assigns) do
     ~H"""
-    <svg viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 flex-none text-indigo-600 dark:text-indigo-400" aria-hidden="true">
+    <svg viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 flex-none text-violet-600 dark:text-violet-400" aria-hidden="true">
       <path
         fill-rule="evenodd"
         d="M16.7 5.3a1 1 0 0 1 0 1.4l-7.5 7.5a1 1 0 0 1-1.4 0l-3.5-3.5a1 1 0 1 1 1.4-1.4l2.8 2.79 6.8-6.79a1 1 0 0 1 1.4 0Z"

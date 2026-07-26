@@ -237,10 +237,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
         detail = if tool, do: "running #{short_tool(tool)}", else: "thinking…"
 
         %{
-          bg: "bg-indigo-500/10",
-          dot: "bg-indigo-500",
+          bg: "bg-violet-500/10",
+          dot: "bg-violet-500",
           pulse: "animate-pulse",
-          text: "text-indigo-700 dark:text-indigo-300",
+          text: "text-violet-700 dark:text-violet-300",
           label: "Working",
           detail: detail
         }
@@ -356,7 +356,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
           <select
             name="model"
             aria-label="Agent model"
-            class="focus-ring rounded-md border-0 bg-transparent py-0 pl-1 pr-6 text-sm font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400"
+            class="focus-ring rounded-md border-0 bg-transparent py-0 pl-1 pr-6 text-sm font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer hover:text-violet-600 dark:hover:text-violet-400"
           >
             <%!-- The container CLI's set_model passes FULL model ids through, so
                  we offer the latest frontier models by id — not just the
