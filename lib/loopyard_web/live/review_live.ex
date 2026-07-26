@@ -262,10 +262,38 @@ defmodule LoopyardWeb.ReviewLive do
            subject, so the content is just the question itself. --%>
       <div :if={@q}>
         <Cards.question_block msg={@msg} q={@q} />
-        <p class="chat-meta text-zinc-400 dark:text-zinc-500 mt-6">
-          …or answer in your own words in
-          <.link :if={@slide.path} navigate={@slide.path} class="text-violet-600 dark:text-violet-400 hover:underline">the chat</.link>
-        </p>
+
+        <%!-- First-class free-text answer, SCOPED TO THIS QUESTION (the same
+             answer_question_text path as the card's Other…): your words settle
+             this slide only — the ask's other questions stay pending as their
+             own slides, so a custom answer never silently negates them. If it
+             moots them, Skip as they come up; the agent reads everything in
+             order. --%>
+        <div :if={@msg.status == :pending} class="mt-6 pt-4 border-t border-zinc-200 dark:border-zinc-800">
+          <form phx-submit="answer_question_text" class="flex items-center gap-2">
+            <input type="hidden" name="question_id" value={@msg.question_id} />
+            <input type="hidden" name="q" value={@q.id} />
+            <input
+              type="text"
+              name="text"
+              autocomplete="off"
+              placeholder="Or answer this in your own words…"
+              class="focus-ring chat-sub flex-1 min-w-0 rounded-sm bg-zinc-500/[0.06] dark:bg-white/[0.05] border-0 px-3 py-2.5 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500"
+            />
+            <button
+              type="submit"
+              class="focus-ring chat-sub inline-flex items-center rounded-sm bg-orange-700 hover:bg-orange-800 text-white font-medium px-3.5 py-2.5 transition-colors flex-none"
+            >
+              Answer
+            </button>
+          </form>
+          <p :if={@slide.path} class="chat-meta text-zinc-400 dark:text-zinc-500 mt-3">
+            Answers only this question — for a longer conversation,
+            <.link navigate={@slide.path} class="text-violet-600 dark:text-violet-400 hover:underline">
+              open the chat
+            </.link>
+          </p>
+        </div>
       </div>
 
       <div :if={is_nil(@q) && @msg && @msg.role == :approval}>
