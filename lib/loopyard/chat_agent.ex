@@ -693,18 +693,10 @@ defmodule Loopyard.ChatAgent do
     # that OOM-killed it, forever. Compact instead: summarize → fresh session
     # (Loopyard keeps the full chat log either way). See midturn_crashes.
     if compaction_breaker_tripped?(state) and state.messages != [] do
-      # Harnesses are treated as disposable: one calm line, not an error —
-      # the swap is routine maintenance (fresh session, context carried over,
-      # interrupted work re-driven automatically below).
-      note = %{
-        role: :system,
-        content: "Recycled the harness — fresh session, context carried over.",
-        timestamp: DateTime.utc_now()
-      }
-
-      {state, note} = append_message(state, note)
-      Persistence.persist_message(state, note)
-      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{agent_id: state.id, msg: note})
+      # Harnesses are disposable and the recycle WORKS — so it's silent
+      # (EventLog only). The chat speaks only when recovery fails or drags;
+      # the sidebar's harness-status shows the in-between.
+      Loopyard.EventLog.info("agent:#{state.name}", "recycled harness (context carried over)")
 
       # Auto-complete the turn the crash interrupted: hand the compaction path
       # the UNANSWERED user message (nil once it's answered, or once we've
@@ -727,10 +719,10 @@ defmodule Loopyard.ChatAgent do
   # and rebuild context from Loopyard's durable log? A non-nil live_id does NOT
   # mean "resumed" (session/new returns a fresh id too), so the copy keys off
   # resumed?, never off the id.
-  defp restart_note(:recovery, true, live_id),
-    do: "Session crashed — restarted and resumed where it left off (#{String.slice(live_id, 0..7)}…)."
-
-  defp restart_note(:recovery, false, _), do: "Session crashed — restarted; rebuilding context from history."
+  # Successful crash recovery is SILENT (EventLog carries the details): the
+  # user is told only when recovery fails or keeps failing — "it worked" is
+  # not news (Brad, twice). The user's own Restart click still confirms.
+  defp restart_note(:recovery, _resumed?, _live_id), do: nil
 
   defp restart_note(:user, true, _), do: "Session restarted (conversation resumed)."
   defp restart_note(:user, false, _), do: "Session restarted; rebuilding context from history."
@@ -754,9 +746,14 @@ defmodule Loopyard.ChatAgent do
     else
       Enum.reduce_while(Enum.reverse(state.messages || []), nil, fn m, _ ->
         cond do
-          m[:role] == :assistant -> {:halt, nil}
-          m[:role] == :user and is_binary(m[:content]) and m[:content] != "" -> {:halt, m[:content]}
-          true -> {:cont, nil}
+          m[:role] == :assistant ->
+            {:halt, nil}
+
+          m[:role] == :user and is_binary(m[:content]) and m[:content] != "" ->
+            {:halt, m[:content]}
+
+          true ->
+            {:cont, nil}
         end
       end)
     end
@@ -867,7 +864,10 @@ defmodule Loopyard.ChatAgent do
               Loopyard.EventLog.info(
                 "agent:#{state.name}",
                 "Session restarted (#{reason}), " <>
-                  if(resumed?, do: "resumed #{String.slice(live_id, 0..7)}…", else: "rebuilt context from history")
+                  if(resumed?,
+                    do: "resumed #{String.slice(live_id, 0..7)}…",
+                    else: "rebuilt context from history"
+                  )
               )
 
               state
@@ -1315,7 +1315,6 @@ defmodule Loopyard.ChatAgent do
   catch
     :exit, _ -> false
   end
-
 
   @impl true
   # --- Stream event handling ---
@@ -1850,8 +1849,7 @@ defmodule Loopyard.ChatAgent do
       note = %{
         role: :system,
         timestamp: DateTime.utc_now(),
-        content:
-          "Reconnecting the harness — your message is queued and will send automatically."
+        content: "Reconnecting the harness — your message is queued and will send automatically."
       }
 
       {state, note} = append_message(state, note)

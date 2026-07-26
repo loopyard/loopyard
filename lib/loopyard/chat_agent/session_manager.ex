@@ -182,73 +182,59 @@ defmodule Loopyard.ChatAgent.SessionManager do
   defp ensure_alive_respawn(state) do
     Loopyard.EventLog.warning("agent:#{state.name}", "CLI session dead, auto-restarting")
 
-      restart_msg = %{
-        role: :system,
-        content: "Session lost — reconnecting...",
-        timestamp: DateTime.utc_now()
-      }
+    restart_msg = %{
+      role: :system,
+      content: "Session lost — reconnecting...",
+      timestamp: DateTime.utc_now()
+    }
 
-      {state, restart_msg} = append_message(state, restart_msg)
+    {state, restart_msg} = append_message(state, restart_msg)
 
-      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-        agent_id: state.id,
-        msg: restart_msg
-      })
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+      agent_id: state.id,
+      msg: restart_msg
+    })
 
-      case start_session_safe(state) do
-        {:ok, new_session, live_id} ->
-          Loopyard.EventLog.info("agent:#{state.name}", "CLI session restarted")
+    case start_session_safe(state) do
+      {:ok, new_session, live_id} ->
+        # Success is SILENT in chat (EventLog carries it) — the user is told
+        # only when reconnecting fails; the sidebar status shows the rest.
+        Loopyard.EventLog.info(
+          "agent:#{state.name}",
+          "CLI session restarted (#{(is_binary(live_id) && "resumed") || "fresh"})"
+        )
 
-          ok_content =
-            if is_binary(live_id) do
-              "Reconnected (resumed conversation #{String.slice(live_id, 0..7)}…)."
-            else
-              "Reconnected (fresh conversation)."
-            end
+        track_os_pid(%{state | session: new_session, claude_session_id: live_id})
 
-          ok_msg = %{role: :system, content: ok_content, timestamp: DateTime.utc_now()}
+      {:error, reason, next_hint} ->
+        state = %{state | claude_session_id: next_hint}
 
-          {state, ok_msg} =
-            append_message(
-              track_os_pid(%{state | session: new_session, claude_session_id: live_id}),
-              ok_msg
-            )
+        Loopyard.EventLog.error(
+          "agent:#{state.name}",
+          "Failed to restart CLI: #{inspect(reason)}"
+        )
 
-          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-            agent_id: state.id,
-            msg: ok_msg
-          })
+        fail_msg = %{
+          role: :error,
+          content:
+            "Failed to reconnect to the agent harness: #{inspect(reason)}. " <>
+              "WHY: the harness session died, and trying to spawn a new one failed. " <>
+              "CONSEQUENCE: your message was saved but won't be processed until the harness is back. " <>
+              "ACTION: (1) check the harness is installed in the container and authenticated, " <>
+              "(2) click Restart in the sidebar, " <>
+              "(3) send your message again. Prior conversation context is preserved.",
+          timestamp: DateTime.utc_now()
+        }
 
-          state
+        {state, fail_msg} = append_message(state, fail_msg)
 
-        {:error, reason, next_hint} ->
-          state = %{state | claude_session_id: next_hint}
-          Loopyard.EventLog.error(
-            "agent:#{state.name}",
-            "Failed to restart CLI: #{inspect(reason)}"
-          )
+        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+          agent_id: state.id,
+          msg: fail_msg
+        })
 
-          fail_msg = %{
-            role: :error,
-            content:
-              "Failed to reconnect to the agent harness: #{inspect(reason)}. " <>
-                "WHY: the harness session died, and trying to spawn a new one failed. " <>
-                "CONSEQUENCE: your message was saved but won't be processed until the harness is back. " <>
-                "ACTION: (1) check the harness is installed in the container and authenticated, " <>
-                "(2) click Restart in the sidebar, " <>
-                "(3) send your message again. Prior conversation context is preserved.",
-            timestamp: DateTime.utc_now()
-          }
-
-          {state, fail_msg} = append_message(state, fail_msg)
-
-          Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-            agent_id: state.id,
-            msg: fail_msg
-          })
-
-          state
-      end
+        state
+    end
   end
 
   # --- Retry session after crash ---
@@ -265,39 +251,50 @@ defmodule Loopyard.ChatAgent.SessionManager do
 
     case start_session_safe(state) do
       {:ok, new_session, live_id} ->
-        content =
-          if is_binary(live_id) do
-            "Session crashed — restarted automatically (attempt #{consecutive}, resumed conversation #{String.slice(live_id, 0..7)}…)."
-          else
-            "Session crashed — restarted automatically (attempt #{consecutive}, fresh conversation)."
+        # First-attempt recoveries are silent (routine); REPEAT crashes are
+        # news — something's actually wrong, tell the user once per streak.
+        recovered_msg =
+          if consecutive >= 2 do
+            %{
+              role: :system,
+              content:
+                "The harness keeps crashing (attempt #{consecutive}) — recovered again, " <>
+                  "but if this persists, try Restart agent or check /system.",
+              timestamp: DateTime.utc_now()
+            }
           end
 
-        recovered_msg = %{
-          role: :system,
-          content: content,
-          timestamp: DateTime.utc_now()
-        }
+        state =
+          track_os_pid(%{
+            state
+            | session: new_session,
+              claude_session_id: live_id,
+              status: :idle,
+              active_tool: nil,
+              errors: state.errors + 1
+          })
 
-        {state, recovered_msg} =
-          append_message(
-            track_os_pid(%{
-              state
-              | session: new_session,
-                claude_session_id: live_id,
-                status: :idle,
-                active_tool: nil,
-                errors: state.errors + 1
-            }),
-            recovered_msg
-          )
+        state =
+          if recovered_msg do
+            {state, msg} = append_message(state, recovered_msg)
+
+            Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+              agent_id: id,
+              msg: msg
+            })
+
+            state
+          else
+            Loopyard.EventLog.info(
+              "agent:#{state.name}",
+              "CLI crash recovered (attempt 1, silent)"
+            )
+
+            state
+          end
 
         state = Map.put(state, :consecutive_crashes, consecutive)
         state = Map.delete(state, :retry_from_session)
-
-        Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-          agent_id: id,
-          msg: recovered_msg
-        })
 
         :ets.insert(:chat_agents, {id, Loopyard.ChatAgent.summary(state)})
         Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
@@ -327,6 +324,7 @@ defmodule Loopyard.ChatAgent.SessionManager do
             active_tool: nil,
             errors: state.errors + 1
         }
+
         state = Map.put(state, :consecutive_crashes, consecutive)
         state = Map.delete(state, :retry_from_session)
 
@@ -464,6 +462,7 @@ defmodule Loopyard.ChatAgent.SessionManager do
   defp generate_msg_id do
     :crypto.strong_rand_bytes(8) |> Base.url_encode64(padding: false)
   end
+
   @doc """
   Start the harness session and apply the two resume-reliability rules, returning
   the session id Loopyard should track next:
