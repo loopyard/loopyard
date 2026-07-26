@@ -53,7 +53,7 @@ defmodule LoopyardWeb.Components.LogViewerTest do
           max_lines: 50
         })
 
-      assert html =~ "bg-green-500"
+      assert html =~ "bg-emerald-500"
       # The command is the title; a green "exit 0" badge finalizes it.
       assert html =~ "npm install"
       assert html =~ "exit 0"
@@ -84,7 +84,7 @@ defmodule LoopyardWeb.Components.LogViewerTest do
           max_lines: 50
         })
 
-      assert html =~ "bg-red-500"
+      assert html =~ "bg-rose-500"
       # No numeric code captured → plain red "failed" badge (never a cryptic
       # ✗ that reads like a close icon).
       assert html =~ "failed"

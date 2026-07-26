@@ -16,11 +16,26 @@ defmodule Loopyard.SoundBoundaryTest do
   """
   use ExUnit.Case, async: true
 
+  # The sound feature's OWN surface — files that ARE the sound layer, not core
+  # depending on it. Ripping out sound means deleting these too, so the
+  # rip-out-ability guarantee holds:
+  #   * events/aural.ex — the sound-bridge publisher (broadcasts must live in
+  #     lib/loopyard/events/ per the PubSub boundary rule, so it can't move to
+  #     the web edge).
+  #   * tools/control_plane/music.ex — the operator's music tool; its whole job
+  #     is driving Aural.Channel.
+  # Anything else referencing Aural is still a violation.
+  @sound_surface [
+    "lib/loopyard/events/aural.ex",
+    "lib/loopyard/tools/control_plane/music.ex"
+  ]
+
   @tag timeout: 30_000
   test "core (lib/loopyard/**) contains no references to the sound layer" do
     violations =
       "lib/loopyard/**/*.ex"
       |> Path.wildcard()
+      |> Enum.reject(&(relative(&1) in @sound_surface))
       |> Enum.flat_map(&find_violations/1)
 
     assert violations == [],

@@ -115,9 +115,36 @@ defmodule Loopyard.SystemStats do
     %HostCpu{cores: cores, load_avg: load}
   end
 
-  @doc "Host RAM stats from vm_stat (macOS)."
+  @doc "Host RAM stats — vm_stat on macOS, memsup (:os_mon) elsewhere."
   @spec host_memory() :: HostMemory.t()
   def host_memory do
+    case :os.type() do
+      {:unix, :darwin} -> darwin_memory()
+      _ -> memsup_memory()
+    end
+  end
+
+  # Non-macOS (Linux CI, servers): :os_mon's memsup, no shell-out. vm_stat
+  # doesn't exist there — calling it raised :enoent and crashed the async task.
+  defp memsup_memory do
+    data = :memsup.get_system_memory_data()
+    total = Keyword.get(data, :system_total_memory, 0)
+    available = Keyword.get(data, :available_memory) || Keyword.get(data, :free_memory, 0)
+
+    %HostMemory{
+      total: total,
+      used: max(total - available, 0),
+      free: available,
+      inactive: 0,
+      compressed: 0
+    }
+  rescue
+    _ -> %HostMemory{total: 0, used: 0, free: 0, inactive: 0, compressed: 0}
+  catch
+    :exit, _ -> %HostMemory{total: 0, used: 0, free: 0, inactive: 0, compressed: 0}
+  end
+
+  defp darwin_memory do
     # macOS: vm_stat for memory breakdown
     case System.cmd("vm_stat", [], stderr_to_stdout: true) do
       {output, 0} ->

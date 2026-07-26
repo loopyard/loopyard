@@ -4,6 +4,16 @@ A prioritized list of known, scoped improvements for Loopyard. Ordered within ea
 
 ## Simplicity (less to read, less to misunderstand)
 
+1. **Split the over-cap modules.** The Reviewer/attention sprint pushed seven
+   files past the size ratchet; they got explicit allowances in
+   `test/loopyard/invariants_test.exs` (`@size_allowlist`) with the split plan
+   noted per file: `cards.ex` (approval/secret cards out of question cards),
+   `operator_live.ex` (rail/attention rows component), `chat.ex` (composer
+   module), `stream_handler.ex` (rate-limit/usage handling),
+   `acp/connection.ex` (elicitation/permission round-trip), plus `chat_agent.ex`
+   and `workspace_live.ex` allowance bumps. When you split one, lower its
+   allowance — the ratchet only ratchets if allowances come back down.
+
 2. **Continue splitting workspace_live handler clusters (if they grow).** Git diff and file browser are out (`DiffLoader`, `FileBrowser`). Sync and cluster-control clusters were reviewed and judged too thin to earn modules — section comments are enough. Revisit if either grows meaningfully.
 
 ## Robustness (handles edge cases gracefully)

@@ -105,7 +105,7 @@ defmodule Loopyard.ChatAgent.DeadSessionTest do
   end
 
   describe "send_message_normal dead-session branch (message-survival guarantee)" do
-    test "queues raw text, appends error, stays idle, and kicks restart", %{id: id} do
+    test "queues raw text, drops a quiet note, stays idle, and kicks restart", %{id: id} do
       pid = agent_pid(id)
 
       # Swap in the always-dead backend AFTER boot, and ensure status is
@@ -129,15 +129,18 @@ defmodule Loopyard.ChatAgent.DeadSessionTest do
       # the session is dead).
       assert state.status == :idle
 
-      # (1) A role: :error message was appended explaining the failure.
-      error_msgs = Enum.filter(state.messages, &(&1.role == :error))
-      assert error_msgs != [], "expected a role: :error message to be appended"
+      # (1) ONE quiet :system note — never a red :error ahead of a restart
+      # that usually heals in seconds (don't-narrate-fast-recoveries). The
+      # loud escalation lives on the harness-status block + quarantine.
+      notes = Enum.filter(state.messages, &(&1.role == :system))
 
-      assert Enum.any?(error_msgs, fn m ->
-               String.contains?(m.content || "", "could not be started") and
-                 String.contains?(m.content || "", "saved and queued")
+      assert Enum.any?(notes, fn m ->
+               String.contains?(m.content || "", "queued")
              end),
-             "expected the WHY/CONSEQUENCE/ACTION 'saved and queued' error copy"
+             "expected the quiet 'Reconnecting the harness — message queued' note"
+
+      refute Enum.any?(state.messages, &(&1.role == :error)),
+             "dead-session send must not append a red :error before the restart attempt"
 
       # The raw user text must NOT have been appended as a :user message
       # in this branch — it's only persisted as a user message once a
