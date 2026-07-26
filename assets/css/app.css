@@ -74,11 +74,13 @@
 
 /* ── IN-BETWEEN STATES (the input-feedback baseline) ─────────────────────────
    Phoenix stamps `phx-click-loading` / `phx-submit-loading` on any element
-   whose event is in flight. Styling them ONCE here gives every button, option
-   row, and form in the app an instant "the server has it" state — the moment
-   you click, before anything is processed. Never gate visible feedback on the
-   LiveView round-trip (see CODE_RULES "optimistic sends"): this is the floor
-   for everything that doesn't have a richer optimistic UI of its own. */
+   whose event is in flight. This covers ONLY the click→server-receipt sliver —
+   the one window that is legitimately client-side (the server can't broadcast
+   what it hasn't received), and only the clicker sees it. Everything AFTER
+   receipt is multiplayer: the processing state must be SERVER state, broadcast
+   (card status transients, the pending queue, drafted selections) so every
+   viewer sees "being worked". See CODE_RULES "in-between states are
+   two-tiered". */
 .phx-click-loading {
   opacity: 0.55;
   pointer-events: none;

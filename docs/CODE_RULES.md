@@ -558,13 +558,22 @@ for OPTIONS on a resource (filters, legacy fallbacks), never for identity.
 Before adding a `?thing=id` param, add the route. A URL should read like it
 means something when pasted into a chat — that's the test.
 
-## Every input shows its in-between state
+## In-between states are two-tiered (multiplayer!)
 
-Between "the user acted" and "the server processed it" there is always a
-window — usually milliseconds, sometimes seconds (busy LiveView, waking
-agent). The app must SHOW that window, never freeze through it. The floor is
-global: `.phx-click-loading` / `.phx-submit-loading` styles in app.css dim +
-lock any element with an in-flight event. High-traffic inputs get richer
-optimistic UI on top (the composer's instant clear + #send-echo). When adding
-an input, ask: what does the user see 500ms after acting if the server is
-slow? "Nothing changed" is a bug.
+Between "the user acted" and "processed" there are TWO windows with different
+owners:
+
+1. **Click → server receipt** (ms): the ONLY legitimately client-side feedback
+   — the server can't broadcast what it hasn't received, and only the clicker
+   needs it. Floor: the global `.phx-click-loading`/`.phx-submit-loading`
+   styles (app.css). The composer's instant clear + #send-echo is the same
+   tier, richer.
+2. **Server receipt → processed**: MULTIPLAYER. The transitional state must be
+   SERVER state, broadcast, so every viewer sees "being worked" — a status
+   transient on the card (`:creating`/`:integrating`/`:deleting` via
+   `update_message`), the pending queue, drafted selections. Never model this
+   tier client-side: the other people in the room would see a frozen UI.
+
+When adding an input, ask BOTH: what does the clicker see at 200ms, and what
+does everyone ELSE see while it processes? "Nothing changed" is a bug in
+either seat.
