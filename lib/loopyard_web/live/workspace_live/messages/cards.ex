@@ -123,13 +123,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
         <button
           :for={o <- @q.options}
           type="button"
-          phx-click={if @q[:multi], do: "toggle_question_option", else: "answer_question"}
+          phx-click={if @q[:multi], do: "toggle_question_option", else: "draft_question_option"}
           phx-value-question_id={@msg.question_id}
           phx-value-q={@q.id}
           phx-value-option={o.label}
           class={[
             "focus-ring group/opt flex w-full items-start gap-3 rounded-sm px-3 py-2.5 md:py-2 text-left transition-colors",
-            if(@q[:multi] && drafted?(@msg, @q, o.label),
+            if(drafted?(@msg, @q, o.label),
               do: "bg-orange-500/15 dark:bg-orange-500/20",
               else:
                 "bg-zinc-500/[0.06] dark:bg-white/[0.05] hover:bg-orange-500/10 dark:hover:bg-orange-500/10"
@@ -140,14 +140,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
             aria-hidden="true"
             class={[
               "mt-px flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full border-2 transition-colors",
-              if(@q[:multi] && drafted?(@msg, @q, o.label),
+              if(drafted?(@msg, @q, o.label),
                 do: "border-orange-500 bg-orange-500 text-white",
                 else:
                   "border-zinc-300 group-hover/opt:border-orange-400 dark:border-zinc-600 dark:group-hover/opt:border-orange-500"
               )
             ]}
           >
-            <.check :if={@q[:multi] && drafted?(@msg, @q, o.label)} />
+            <.check :if={drafted?(@msg, @q, o.label)} />
           </span>
           <span class="min-w-0 flex-1">
             <span class="chat-sub block font-medium text-zinc-900 dark:text-zinc-100">
@@ -183,7 +183,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
             placeholder="Other…"
             class="chat-sub min-w-0 flex-1 border-0 bg-transparent px-0 py-1.5 font-medium text-zinc-900 dark:text-zinc-100 placeholder-zinc-500 dark:placeholder-zinc-400 focus:outline-none focus:ring-0"
           />
-          <button type="submit" class="sr-only">Answer</button>
+          <button
+            type="submit"
+            class="focus-ring chat-sub flex-none inline-flex items-center rounded-sm bg-orange-700 hover:bg-orange-800 text-white font-medium px-3.5 py-1.5 transition-colors"
+          >
+            Answer
+          </button>
         </form>
 
         <%!-- Quiet footer: confirm (multi) + Skip, out of the answer path. --%>

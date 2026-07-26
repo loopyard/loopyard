@@ -143,6 +143,30 @@ defmodule Loopyard.Harness.Questions do
 
   @doc "Confirm a multi-select question's current draft (possibly empty = skip) as its answer."
   @spec confirm_question(String.t(), String.t()) :: :ok | {:error, :not_found}
+  @doc """
+  Draft ONE option for a single-select question (replaces any prior draft) —
+  broadcast so every viewer sees the highlight, but nothing commits until
+  `commit_draft/2`. The tap-to-highlight half of tap → Answer.
+  """
+  def draft_option(qid, q_id, label) when is_binary(qid) and is_binary(label) do
+    with_entry(qid, fn entry ->
+      if q_id in (entry[:done] || []), do: entry, else: put_selection(entry, q_id, [label])
+    end)
+  end
+
+  @doc """
+  Commit the drafted selection — the Answer button. NO-OP when nothing is
+  drafted (an empty commit is not a skip; Skip is explicit).
+  """
+  def commit_draft(qid, q_id) when is_binary(qid) and is_binary(q_id) do
+    with_entry(qid, fn entry ->
+      case Map.get(entry[:selections] || %{}, q_id, []) do
+        [] -> entry
+        drafted -> entry |> put_selection(q_id, drafted) |> mark_done(q_id)
+      end
+    end)
+  end
+
   def confirm_question(qid, q_id) when is_binary(qid) and is_binary(q_id) do
     with_entry(qid, fn entry ->
       entry
@@ -197,7 +221,9 @@ defmodule Loopyard.Harness.Questions do
   defp rebuild_entry(qid) do
     Enum.find_value(ChatAgent.list_agents(), fn %{id: aid} = st ->
       (Map.get(st, :messages) || [])
-      |> Enum.find(&(&1[:role] == :question and &1[:question_id] == qid and &1[:status] == :pending))
+      |> Enum.find(
+        &(&1[:role] == :question and &1[:question_id] == qid and &1[:status] == :pending)
+      )
       |> case do
         nil ->
           nil

@@ -61,6 +61,15 @@ defmodule LoopyardWeb.Live.ConsentUI do
        ),
        do: settle(socket, Questions.answer_partial(qid, q_id, [option]))
 
+  # Single-select tap = DRAFT (highlight, broadcast) — commits only via the
+  # Answer button. Tap-to-commit dropped typed Other text; never again.
+  defp handle_consent(
+         "draft_question_option",
+         %{"question_id" => qid, "q" => q_id, "option" => option},
+         socket
+       ),
+       do: settle(socket, Questions.draft_option(qid, q_id, option))
+
   defp handle_consent("skip_question", %{"question_id" => qid, "q" => q_id}, socket),
     do: settle(socket, Questions.answer_partial(qid, q_id, []))
 
@@ -81,10 +90,10 @@ defmodule LoopyardWeb.Live.ConsentUI do
          %{"question_id" => qid, "q" => q_id, "text" => text},
          socket
        ) do
-    # The per-question "Other…" free-text answer. Blank submits are a no-op (keep
-    # the form open) rather than an accidental skip.
+    # The Answer button: typed text wins; BLANK text commits the drafted
+    # option (still a no-op when nothing is drafted — Skip stays explicit).
     case String.trim(text) do
-      "" -> {:halt, socket}
+      "" -> settle(socket, Questions.commit_draft(qid, q_id))
       trimmed -> settle(socket, Questions.answer_partial(qid, q_id, [trimmed]))
     end
   end
