@@ -25,12 +25,40 @@ defmodule Loopyard.Tools.ControlPlane.RecentActivity do
   def execute(params, _assigns) do
     limit = params |> Map.get(:limit) |> clamp(@default, 1, @max)
 
-    case Loopyard.Operator.Digest.recent(limit) do
-      [] -> {:ok, "Nothing has finished recently."}
-      entries -> {:ok, "Recently finished (newest first):\n" <> Enum.map_join(entries, "\n", &line/1)}
-    end
+    # LEAD with what's WAITING ON THE HUMAN — pulled live from the attention
+    # line (questions/secrets/approvals still pending), so it self-clears when
+    # answered. A chief of staff surfaces these before the completion feed.
+    waiting = waiting_lines(params[:agent_id])
+
+    finished =
+      case Loopyard.Operator.Digest.recent(limit) do
+        [] -> "Nothing has finished recently."
+        entries -> "Recently finished (newest first):\n" <> Enum.map_join(entries, "\n", &line/1)
+      end
+
+    {:ok, waiting <> finished}
   rescue
     e -> {:error, "Couldn't read recent activity: #{inspect(e)}"}
+  end
+
+  defp waiting_lines(operator_id) do
+    items =
+      Loopyard.Attention.line()
+      |> Enum.reject(&(&1.agent_id == operator_id))
+
+    case items do
+      [] ->
+        ""
+
+      items ->
+        "WAITING ON THE HUMAN (surface these — they're blocked until answered):\n" <>
+          Enum.map_join(items, "\n", fn i ->
+            where = [i.project_name, i.workspace_name] |> Enum.reject(&is_nil/1) |> Enum.join(" · ")
+            "  - #{where}: #{i.label}#{ago(i.asked_at)}"
+          end) <> "\n\n"
+    end
+  rescue
+    _ -> ""
   end
 
   defp line(e) do
