@@ -260,6 +260,23 @@ defmodule LoopyardWeb.OperatorLive do
 
   # Rail sound player: crossfade the bed to another track (no reconnect).
   # Mobile: flip between the chat and the "for you" rail.
+  # PerfProbe (chat_panel's client-health beacon) reports here too — without
+  # this clause every jank sample CRASHED the LiveView it was reporting on
+  # (FunctionClauseError → remount), which read as "the app feels unreliable".
+  def handle_event("perf_sample", sample, socket) when is_map(sample) do
+    max_gap = sample["max_gap_ms"]
+
+    if is_number(max_gap) and max_gap > 100 do
+      Loopyard.EventLog.warning(
+        "perf",
+        "client jank: max_gap=#{max_gap}ms over50=#{sample["gaps_over_50"]} " <>
+          "dom=#{sample["dom"]} heap=#{sample["heap_mb"]}MB agent=#{socket.assigns.agent_id}"
+      )
+    end
+
+    {:noreply, socket}
+  end
+
   def handle_event("mobile_view", %{"v" => v}, socket) when v in ~w(chat rail) do
     {:noreply, assign(socket, :mobile_view, String.to_existing_atom(v))}
   end

@@ -68,6 +68,23 @@ defmodule LoopyardWeb.DesignSystemTest do
            "every user input needs its in-flight state — the global phx-*-loading rules are the floor"
   end
 
+  test "every LiveView that renders chat_panel handles its PerfProbe events" do
+    # chat_panel carries the PerfProbe hook, which pushes "perf_sample" to the
+    # HOST LiveView. A host without the handler CRASHES on every jank report
+    # (FunctionClauseError → remount) — the exact "app feels unreliable" bug.
+    offenders =
+      for path <- Path.wildcard("lib/loopyard_web/live/**/*.ex"),
+          src = File.read!(path),
+          String.contains?(src, "chat_panel"),
+          String.contains?(src, "def render") or String.contains?(src, "~H"),
+          String.contains?(src, "<.chat_panel") or String.contains?(src, "chat_panel("),
+          not String.contains?(src, "perf_sample"),
+          do: path
+
+    assert offenders == [],
+           "these render chat_panel but don't handle \"perf_sample\": #{inspect(offenders)}"
+  end
+
   test "the old Brand module path is gone (it lives in packages/brand)" do
     offenders =
       for {path, src} <- web_sources(),
