@@ -75,9 +75,10 @@ defmodule LoopyardWeb.DesignSystemTest do
     offenders =
       for path <- Path.wildcard("lib/loopyard_web/live/**/*.ex"),
           src = File.read!(path),
-          String.contains?(src, "chat_panel"),
-          String.contains?(src, "def render") or String.contains?(src, "~H"),
-          String.contains?(src, "<.chat_panel") or String.contains?(src, "chat_panel("),
+          # hosts only: actual LiveViews that RENDER the panel (not the
+          # component module that defines it)
+          String.contains?(src, "use LoopyardWeb, :live_view"),
+          String.contains?(src, "<.chat_panel"),
           not String.contains?(src, "perf_sample"),
           do: path
 
