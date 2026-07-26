@@ -29,7 +29,7 @@ defmodule LoopyardWeb.Components.Dashboard do
     ~H"""
     <.link
       navigate={@navigate}
-      class="group flex flex-col rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 p-5 hover:border-violet-300 dark:hover:border-violet-500/40 hover:bg-zinc-50/60 dark:hover:bg-zinc-800/30 transition-colors"
+      class="group flex flex-col rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-brand-paper dark:bg-brand-ink/40 p-5 hover:border-violet-300 dark:hover:border-violet-500/40 hover:bg-zinc-50/60 dark:hover:bg-zinc-800/30 transition-colors"
     >
       <div class="flex items-center gap-2.5">
         <span class={["w-2.5 h-2.5 rounded-full flex-none", dot_tone(@tone)]}></span>

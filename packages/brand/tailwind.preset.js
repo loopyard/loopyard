@@ -15,8 +15,12 @@ module.exports = {
       colors: {
         brand: {
           paper: "#fafaf9",
+          "paper-shade": "#f2f1ef", // secondary light surface (rails, panels)
           ink: "#0a0a0a",
+          "ink-raised": "#161616", // secondary dark surface (rails, panels)
           slate: "#1e293b",
+          // flame === Tailwind orange-600, so needs-you surfaces use the native
+          // orange-* scale (orange-600 IS brand flame) for shades/washes.
           flame: "#ea580c",
           iris: {
             DEFAULT: "#7c3aed", // violet-600 — light-mode accent

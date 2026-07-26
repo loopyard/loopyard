@@ -417,7 +417,7 @@ defmodule LoopyardWeb.Components.Nav do
         aria-hidden="true"
       >
       </div>
-      <div class="absolute inset-0 flex flex-col bg-white dark:bg-zinc-900 safe-area-x">
+      <div class="absolute inset-0 flex flex-col bg-brand-paper dark:bg-brand-ink safe-area-x">
         <%!-- The current selection AS a tap-to-close header: tapping it (or the
              backdrop) toggles the sheet shut — so open-then-tap-the-same-thing
              "goes back", like a toggle. It's flex-none at the top, so it stays put
@@ -475,7 +475,7 @@ defmodule LoopyardWeb.Components.Nav do
         id={"#{@id}-panel"}
         phx-hook="BottomSheet"
         data-sheet={"##{@id}"}
-        class="absolute inset-x-0 bottom-0 translate-y-full flex flex-col max-h-[85dvh] rounded-t-2xl bg-white dark:bg-zinc-900 shadow-2xl shadow-black/30 safe-area-x transition-transform duration-300 ease-out motion-reduce:transition-none"
+        class="absolute inset-x-0 bottom-0 translate-y-full flex flex-col max-h-[85dvh] rounded-t-2xl bg-brand-paper dark:bg-brand-ink shadow-2xl shadow-black/30 safe-area-x transition-transform duration-300 ease-out motion-reduce:transition-none"
       >
         <%!-- Grab handle + optional header = the DRAG ZONE: swipe it down to
              dismiss. The body below scrolls independently. --%>

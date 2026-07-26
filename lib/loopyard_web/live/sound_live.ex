@@ -55,7 +55,7 @@ defmodule LoopyardWeb.SoundLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="min-h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 safe-area-x">
+    <div class="min-h-screen flex flex-col bg-brand-paper dark:bg-brand-ink text-zinc-900 dark:text-zinc-100 safe-area-x">
       <%!-- A global overlay (the audio engine lives in the root layout so it never
            cuts) — so it CLOSES with an ✕, it isn't a page you navigate back from. --%>
       <Nav.bar pad="px-4">

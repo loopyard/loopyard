@@ -218,7 +218,7 @@ defmodule LoopyardWeb.Components.Common do
   to it so a color always means the same thing:
 
     * `:working`   — violet, pulsing (a turn is live)
-    * `:needs_you` — amber (blocked on you)
+    * `:needs_you` — flame (blocked on you)
     * `:done`      — emerald (idle / finished)
     * `:asleep`    — zinc (stopped / resting)
     * `:broken`    — red (crashed / errored)
@@ -269,7 +269,7 @@ defmodule LoopyardWeb.Components.Common do
   # color always means the same thing across the whole app. (`:chugging` accepted
   # as an alias for the operator rail's live state.)
   defp state_light(s) when s in [:working, :chugging], do: "bg-violet-500 animate-pulse"
-  defp state_light(:needs_you), do: "bg-amber-500"
+  defp state_light(:needs_you), do: "bg-orange-500"
   defp state_light(:done), do: "bg-emerald-500"
   defp state_light(:broken), do: "bg-red-500"
   defp state_light(_), do: "bg-zinc-400"
@@ -432,7 +432,7 @@ defmodule LoopyardWeb.Components.Common do
     assigns = assign(assigns, :width_class, width_class)
 
     ~H"""
-    <div class="min-h-screen bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 safe-area-x">
+    <div class="min-h-screen bg-brand-paper dark:bg-brand-ink text-zinc-900 dark:text-zinc-100 safe-area-x">
       <.header
         breadcrumbs={@breadcrumbs}
         iex_session={@iex_session}

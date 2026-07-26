@@ -23,7 +23,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
   def context_panel(assigns) do
     ~H"""
     <aside class={[
-      "flex-col h-full bg-zinc-50 dark:bg-zinc-900/50 overflow-y-auto border-l border-zinc-200 dark:border-zinc-700/80",
+      "flex-col h-full bg-brand-paper-shade dark:bg-brand-ink/50 overflow-y-auto border-l border-zinc-200 dark:border-zinc-700/80",
       if(@mobile, do: "flex flex-1", else: "hidden lg:flex w-80 flex-none")
     ]}>
       <.context_sections agent={@agent} editing_name={@editing_name} />

@@ -571,7 +571,7 @@ defmodule LoopyardWeb.OperatorLive do
     <div
       id="operator-page"
       phx-hook="ScrollBottom"
-      class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 safe-area-x"
+      class="h-screen flex flex-col bg-brand-paper dark:bg-brand-ink text-zinc-900 dark:text-zinc-100 safe-area-x"
     >
       <Nav.bar height="h-14" gap="gap-3">
         <.breadcrumbs crumbs={[{"Loopyard", "/"}, {"Operator", nil}]} />
@@ -731,19 +731,19 @@ defmodule LoopyardWeb.OperatorLive do
               phx-click="expand_attention"
               phx-value-agent={item.agent_id}
               phx-value-msg={item.msg.id}
-              class="focus-ring flex w-full items-center gap-2 rounded-lg px-2.5 py-3 lg:py-2 text-left bg-white dark:bg-zinc-900 border border-amber-300/60 dark:border-amber-500/30 hover:border-amber-400 dark:hover:border-amber-500/60 transition-colors"
+              class="focus-ring flex w-full items-center gap-2 rounded-lg px-2.5 py-3 lg:py-2 text-left bg-brand-paper dark:bg-brand-ink border border-orange-300/60 dark:border-orange-500/30 hover:border-orange-400 dark:hover:border-orange-500/60 transition-colors"
             >
               <span class="flex-1 min-w-0 truncate chat-sub text-zinc-800 dark:text-zinc-100">
                 {attention_summary(item)}
               </span>
-              <span class="flex-none chat-meta font-medium text-amber-700 dark:text-amber-400">
+              <span class="flex-none chat-meta font-medium text-orange-700 dark:text-orange-400">
                 Answer →
               </span>
             </button>
             <.link
               :if={item.kind == :approval or (item.kind != :question and is_nil(item.msg))}
               navigate={item.path}
-              class="focus-ring flex items-center gap-2 rounded-lg px-2.5 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:border-violet-300 dark:hover:border-violet-500/40"
+              class="focus-ring flex items-center gap-2 rounded-lg px-2.5 py-2 bg-brand-paper dark:bg-brand-ink border border-zinc-200 dark:border-zinc-800 hover:border-violet-300 dark:hover:border-violet-500/40"
             >
               <span class="flex-1 min-w-0 truncate text-sm text-zinc-700 dark:text-zinc-200">
                 {item.label}

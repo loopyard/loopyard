@@ -45,7 +45,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
             />
             <span class={[
               "chat-meta flex items-center gap-1.5 font-semibold uppercase tracking-wide flex-none",
-              (@msg.status == :pending && "text-amber-700 dark:text-amber-400") ||
+              (@msg.status == :pending && "text-orange-700 dark:text-orange-400") ||
                 "text-zinc-500 dark:text-zinc-400"
             ]}>
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-3.5 h-3.5">
@@ -96,9 +96,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                   "focus-ring group/opt flex w-full items-start gap-3 rounded-lg border px-3 py-2.5 md:py-1.5 text-left transition-colors",
                   if(q[:multi] && drafted?(@msg, q, o.label),
                     do:
-                      "border-amber-400 bg-amber-100 dark:border-amber-500/60 dark:bg-amber-500/15",
+                      "border-orange-400 bg-orange-100 dark:border-orange-500/60 dark:bg-orange-500/15",
                     else:
-                      "border-zinc-200 bg-white hover:border-amber-300 hover:bg-amber-100/60 dark:border-zinc-700/70 dark:bg-zinc-900/50 dark:hover:border-amber-500/40 dark:hover:bg-amber-500/10"
+                      "border-zinc-200 bg-white hover:border-orange-300 hover:bg-orange-100/60 dark:border-zinc-700/70 dark:bg-zinc-900/50 dark:hover:border-orange-500/40 dark:hover:bg-orange-500/10"
                   )
                 ]}
               >
@@ -107,9 +107,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                   class={[
                     "mt-px flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full border-2 transition-colors",
                     if(q[:multi] && drafted?(@msg, q, o.label),
-                      do: "border-amber-500 bg-amber-500 text-white",
+                      do: "border-orange-500 bg-orange-500 text-white",
                       else:
-                        "border-zinc-300 group-hover/opt:border-amber-400 dark:border-zinc-600 dark:group-hover/opt:border-amber-500"
+                        "border-zinc-300 group-hover/opt:border-orange-400 dark:border-zinc-600 dark:group-hover/opt:border-orange-500"
                     )
                   ]}
                 >
@@ -137,14 +137,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                   phx-click="confirm_question"
                   phx-value-question_id={@msg.question_id}
                   phx-value-q={q.id}
-                  class="focus-ring chat-sub inline-flex items-center rounded-lg bg-amber-700 hover:bg-amber-800 text-white font-medium px-3.5 py-1.5 transition-colors"
+                  class="focus-ring chat-sub inline-flex items-center rounded-lg bg-orange-700 hover:bg-orange-800 text-white font-medium px-3.5 py-1.5 transition-colors"
                 >
                   {if draft_count(@msg, q) > 0,
                     do: "Done (#{draft_count(@msg, q)} selected)",
                     else: "None of these"}
                 </button>
                 <details class="group/other min-w-0">
-                  <summary class="focus-ring tap-target chat-sub inline-flex rounded font-medium text-amber-700 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-300 cursor-pointer select-none list-none">
+                  <summary class="focus-ring tap-target chat-sub inline-flex rounded font-medium text-orange-700 dark:text-orange-400 hover:text-orange-800 dark:hover:text-orange-300 cursor-pointer select-none list-none">
                     Other…
                   </summary>
                   <form phx-submit="answer_question_text" class="mt-2 flex items-center gap-2">
@@ -159,7 +159,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                     />
                     <button
                       type="submit"
-                      class="focus-ring chat-sub inline-flex items-center rounded-lg bg-amber-700 hover:bg-amber-800 text-white font-medium px-3 py-1.5 transition-colors flex-none"
+                      class="focus-ring chat-sub inline-flex items-center rounded-lg bg-orange-700 hover:bg-orange-800 text-white font-medium px-3 py-1.5 transition-colors flex-none"
                     >
                       Answer
                     </button>
@@ -337,7 +337,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
         <LoopyardWeb.Components.StreamCard.header
           state={:needs_you}
           label_class={
-            (@msg.status == :pending && "text-amber-700 dark:text-amber-400") ||
+            (@msg.status == :pending && "text-orange-700 dark:text-orange-400") ||
               "text-zinc-500 dark:text-zinc-400"
           }
         >
@@ -383,11 +383,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
               spellcheck="false"
               placeholder={"Paste #{@msg.name}…"}
               aria-label={"Secret value for #{@msg.name}"}
-              class="flex-1 min-w-0 rounded-lg border border-amber-300 dark:border-amber-700/60 bg-white dark:bg-zinc-900 px-3 py-2 text-sm font-mono text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+              class="flex-1 min-w-0 rounded-lg border border-orange-300 dark:border-orange-700/60 bg-brand-paper dark:bg-brand-ink px-3 py-2 text-sm font-mono text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-orange-500/30"
             />
             <button
               type="submit"
-              class="focus-ring flex-none rounded-lg bg-amber-600 hover:bg-amber-700 px-3.5 py-2 text-sm font-medium text-white transition-colors"
+              class="focus-ring flex-none rounded-lg bg-orange-600 hover:bg-orange-700 px-3.5 py-2 text-sm font-medium text-white transition-colors"
             >
               Submit
             </button>
@@ -457,7 +457,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           />
           <span class={[
             "chat-meta flex items-center gap-1.5 font-semibold uppercase tracking-wide flex-none",
-            (@msg.status == :pending && "text-amber-700 dark:text-amber-400/90") ||
+            (@msg.status == :pending && "text-orange-700 dark:text-orange-400/90") ||
               "text-zinc-500 dark:text-zinc-400"
           ]}>
             <svg

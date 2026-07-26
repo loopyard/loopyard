@@ -36,7 +36,7 @@ defmodule LoopyardWeb.Components.StreamCard do
   end
 
   defp band_tone(:needs_you),
-    do: "bg-amber-50/70 dark:bg-amber-950/15 border-amber-400 dark:border-amber-500/60"
+    do: "bg-orange-50/70 dark:bg-orange-950/15 border-orange-400 dark:border-orange-500/60"
 
   defp band_tone(:you),
     do: "bg-violet-100 dark:bg-[#2b2348] border-violet-500 dark:border-violet-400"
@@ -47,7 +47,7 @@ defmodule LoopyardWeb.Components.StreamCard do
   attr :project, :string, default: nil
   attr :workspace, :string, default: nil
   attr :state, :atom, default: :needs_you
-  attr :label_class, :string, default: "text-amber-700 dark:text-amber-400"
+  attr :label_class, :string, default: "text-orange-700 dark:text-orange-400"
   slot :label, required: true
 
   def header(assigns) do

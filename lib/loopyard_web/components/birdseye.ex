@@ -92,12 +92,12 @@ defmodule LoopyardWeb.Components.Birdseye do
 
   @doc """
   The ONE workspace dot color — same priority order as `headline/1` so the
-  light and the words can never disagree: needs-you (amber pulse) > broken
+  light and the words can never disagree: needs-you (flame pulse) > broken
   (red) > the agent aggregate (working violet / ready green / asleep gray).
   """
   def ws_dot(ws) do
     cond do
-      ws[:needs_you] -> "bg-amber-400 animate-pulse"
+      ws[:needs_you] -> "bg-orange-500 animate-pulse"
       ws[:broken] -> "bg-red-500"
       true -> aggregate_dot(ws[:agents] || []) || "bg-zinc-300 dark:bg-zinc-600"
     end
@@ -116,7 +116,7 @@ defmodule LoopyardWeb.Components.Birdseye do
 
     cond do
       kind = ws[:needs_you] ->
-        %{kind: :needs_you, text: needs_you_text(kind), class: "text-amber-600 dark:text-amber-400"}
+        %{kind: :needs_you, text: needs_you_text(kind), class: "text-orange-600 dark:text-orange-400"}
 
       kind = ws[:broken] ->
         %{kind: :broken, text: broken_text(kind), class: "text-red-500 dark:text-red-400"}

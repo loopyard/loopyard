@@ -51,7 +51,7 @@ defmodule LoopyardWeb.Components.ProjectList do
           navigate={"/projects/#{project.id}"}
           phx-click={@row_click}
           data-sticky-header
-          class="group sticky top-0 z-10 block pt-1 pb-1 bg-white dark:bg-zinc-900 transition-shadow data-[stuck]:shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]"
+          class="group sticky top-0 z-10 block pt-1 pb-1 bg-brand-paper dark:bg-brand-ink transition-shadow data-[stuck]:shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]"
         >
           <h2 class="text-xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50 truncate group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors">
             {project.name}
@@ -113,7 +113,7 @@ defmodule LoopyardWeb.Components.ProjectList do
           phx-click={@row_click}
           data-sticky-header
           class={[
-            "group sticky top-0 z-10 block bg-zinc-50 dark:bg-zinc-900 transition-shadow data-[stuck]:shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]",
+            "group sticky top-0 z-10 block bg-brand-paper-shade dark:bg-brand-ink transition-shadow data-[stuck]:shadow-[0_5px_6px_-6px_rgba(0,0,0,0.28)]",
             (@size == :xs && "py-2.5") || "pb-1"
           ]}
         >

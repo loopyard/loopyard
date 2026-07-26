@@ -1718,7 +1718,7 @@ defmodule LoopyardWeb.WorkspaceLive do
     <div
       id="chat-page"
       phx-hook="ScrollBottom"
-      class="h-screen flex flex-col bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100"
+      class="h-screen flex flex-col bg-brand-paper dark:bg-brand-ink text-zinc-900 dark:text-zinc-100"
     >
       <.chat_header
         workspace={@workspace}
@@ -1747,7 +1747,7 @@ defmodule LoopyardWeb.WorkspaceLive do
         <LoopyardWeb.Components.GlobalSidebar.global_sidebar
           tree={@global_tree}
           current_workspace_id={@workspace.id}
-          class="hidden md:flex w-72 flex-none border-r border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-900/50 safe-pl"
+          class="hidden md:flex w-72 flex-none border-r border-zinc-200 dark:border-zinc-700/80 bg-brand-paper-shade dark:bg-brand-ink/50 safe-pl"
         />
         <%!-- Main content: hidden on mobile when the rail is showing (index/new with no selection) --%>
         <main

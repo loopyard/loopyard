@@ -44,7 +44,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.SetupProgress do
     assigns = assign(assigns, :phases, @phases)
 
     ~H"""
-    <div class="flex-1 flex items-center justify-center p-8 bg-zinc-50 dark:bg-zinc-900">
+    <div class="flex-1 flex items-center justify-center p-8 bg-brand-paper-shade dark:bg-brand-ink">
       <div class="max-w-xl w-full space-y-6">
         <div>
           <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">

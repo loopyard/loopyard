@@ -279,7 +279,7 @@ defmodule LoopyardWeb.SystemSagasLive do
         </span>
       </summary>
 
-      <div class="px-3 py-2 bg-zinc-50 dark:bg-zinc-900/50 border-t border-zinc-200 dark:border-zinc-700/50">
+      <div class="px-3 py-2 bg-brand-paper-shade dark:bg-brand-ink/50 border-t border-zinc-200 dark:border-zinc-700/50">
         <.step_list
           steps={@saga.completed_steps}
           rolled_back={@saga.rolled_back_steps}

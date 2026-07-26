@@ -242,7 +242,7 @@ defmodule LoopyardWeb.ProjectListLive do
                 autofocus
                 disabled={@creating != nil}
                 value={@creating}
-                class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-3 py-2.5 text-sm
+                class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-brand-paper dark:bg-brand-ink px-3 py-2.5 text-sm
                      text-zinc-900 dark:text-zinc-200 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 disabled:opacity-60
                      focus:outline-none focus:ring-1 focus:ring-violet-500/30 focus:border-violet-400"
               />
@@ -291,7 +291,7 @@ defmodule LoopyardWeb.ProjectListLive do
                 placeholder="/Users/you/projects/my-app"
                 autocomplete="off"
                 autofocus
-                class="flex-1 min-w-0 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 px-3 py-2.5 text-sm font-mono
+                class="flex-1 min-w-0 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-brand-paper dark:bg-brand-ink px-3 py-2.5 text-sm font-mono
                      text-zinc-900 dark:text-zinc-300 placeholder:text-zinc-400 dark:placeholder:text-zinc-600
                      focus:outline-none focus:ring-1 focus:ring-violet-500/20 focus:border-violet-400"
               />

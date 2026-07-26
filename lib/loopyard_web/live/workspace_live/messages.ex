@@ -290,7 +290,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
       <%!-- Prose thinking, not machine output — matches the live streaming_thinking
            pre (text-sm, no mono) so the block doesn't change typeface when the
            turn finalizes. --%>
-      <pre class="mt-1 p-3 rounded-lg text-sm bg-zinc-50 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto">{@msg.content}</pre>
+      <pre class="mt-1 p-3 rounded-lg text-sm bg-brand-paper-shade dark:bg-brand-ink text-zinc-500 dark:text-zinc-400 whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto">{@msg.content}</pre>
     </details>
     """
   end

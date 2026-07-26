@@ -123,7 +123,7 @@ defmodule LoopyardWeb.ConnectLive do
         <%!-- QR hero (scan target) + connection details. Stacks on phone, sits
              side-by-side on desktop with the QR as a fixed-width anchor. --%>
         <div class="grid gap-6 md:grid-cols-[auto_minmax(0,1fr)] md:items-start">
-          <div class="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 p-4 w-max mx-auto md:mx-0">
+          <div class="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-brand-paper dark:bg-brand-ink/40 p-4 w-max mx-auto md:mx-0">
             <div class="bg-white rounded-xl p-2.5 w-max">{raw(@qr_svg)}</div>
             <p class="text-xs text-zinc-500 dark:text-zinc-400 mt-3 max-w-[240px] text-center">
               Scan to open on your phone or another device.
@@ -161,7 +161,7 @@ defmodule LoopyardWeb.ConnectLive do
       <%!-- Private: a single explanatory card + the one CTA. --%>
       <div
         :if={!@toggling && !@exposed}
-        class="max-w-xl space-y-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/40 p-6"
+        class="max-w-xl space-y-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-brand-paper dark:bg-brand-ink/40 p-6"
       >
         <div class="flex items-center gap-2 text-sm">
           <span class="w-2 h-2 rounded-full bg-zinc-400 flex-none"></span>

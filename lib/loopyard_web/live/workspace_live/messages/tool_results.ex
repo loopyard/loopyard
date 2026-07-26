@@ -282,7 +282,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
       class={[
         gutter(),
         "my-1 group/file rounded-lg border border-zinc-200 dark:border-zinc-800",
-        "overflow-hidden bg-white dark:bg-zinc-900"
+        "overflow-hidden bg-brand-paper dark:bg-brand-ink"
       ]}
       open={if @lazy?, do: @expanded? != false, else: @detail_level == :trace}
     >
@@ -292,7 +292,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
            the header one quiet line. In lazy mode the server drives open
            (body renders on demand) — see result_expanded?/1. --%>
       <summary
-        class="flex items-center gap-2 px-3 py-1.5 cursor-pointer select-none list-none bg-zinc-50 dark:bg-zinc-900/60 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+        class="flex items-center gap-2 px-3 py-1.5 cursor-pointer select-none list-none bg-brand-paper-shade dark:bg-brand-ink/60 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
         phx-click={@lazy? && "toggle_result"}
         phx-value-msgid={@lazy? && @msg[:id]}
         onclick={@lazy? && "event.preventDefault()"}
@@ -311,7 +311,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
         class="highlight border-t border-zinc-200 dark:border-zinc-800 max-h-96 overflow-auto text-sm md:text-[13px] font-mono leading-relaxed"
       >
         <div :for={{line, i} <- @lines} class="flex min-w-max">
-          <span class="flex-none sticky left-0 w-12 pr-3 text-right select-none tabular-nums bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-100 dark:border-zinc-800 text-zinc-400 dark:text-zinc-600">
+          <span class="flex-none sticky left-0 w-12 pr-3 text-right select-none tabular-nums bg-brand-paper-shade dark:bg-brand-ink border-r border-zinc-100 dark:border-zinc-800 text-zinc-400 dark:text-zinc-600">
             {i}
           </span>
           <code class="whitespace-pre pl-3 pr-3 text-zinc-800 dark:text-zinc-200">{line}</code>
@@ -321,7 +321,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
            Always rendered (it's tiny and carries the collapsed card's meta);
            only the truncation note is gated on expansion — truncation of a
            body that isn't rendered means nothing. --%>
-      <div class="flex items-center gap-2 px-3 py-1 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/60">
+      <div class="flex items-center gap-2 px-3 py-1 border-t border-zinc-200 dark:border-zinc-800 bg-brand-paper-shade dark:bg-brand-ink/60">
         <span
           :if={@language}
           class="flex-none whitespace-nowrap text-xs px-1.5 py-px rounded bg-sky-500/10 text-sky-600 dark:text-sky-400"

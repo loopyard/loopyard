@@ -25,7 +25,7 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
            screen; the speaker (desktop's only always-visible header, since the
            mobile chat_header is md:hidden) toggles/opens ambient sound. Fixed
            height so nothing shifts. --%>
-      <div class="relative z-20 flex items-center h-14 flex-none border-b border-zinc-200/70 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900">
+      <div class="relative z-20 flex items-center h-14 flex-none border-b border-zinc-200/70 dark:border-zinc-800 bg-brand-paper-shade dark:bg-brand-ink">
         <%!-- Left inset matches the app header's Nav.bar pad (`px-4 md:px-5`)
              EXACTLY, so the loopyard mark sits at the same x whether you're on
              a header page (dashboard/list) or the 3-pane rail — it never jumps
@@ -54,7 +54,7 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
       <div
         id="rail-scroll"
         phx-hook="StickyShadow"
-        class="flex-1 overflow-y-auto bg-zinc-50 dark:bg-zinc-900 px-4 md:px-5 py-2"
+        class="flex-1 overflow-y-auto bg-brand-paper-shade dark:bg-brand-ink px-4 md:px-5 py-2"
       >
         <LoopyardWeb.Components.ProjectList.project_groups
           projects={@tree}
