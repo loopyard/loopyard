@@ -95,8 +95,6 @@ defmodule LoopyardWeb.OperatorLive do
       # can't both fit a phone, so we show ONE at a time with a top toggle.
       # Desktop (lg+) ignores this and shows both side-by-side.
       |> assign(:mobile_view, :chat)
-      # {agent_id, msg_id} of the attention item expanded full-pane in the rail.
-      |> assign(:expanded_attention, nil)
       # The rail (needs-you groups + working jobs + count) computed IN the
       # LiveView and stored as real assigns, so it's part of the reactive graph —
       # NOT recomputed inside the component (which LiveView memoizes when @tree/
@@ -266,14 +264,6 @@ defmodule LoopyardWeb.OperatorLive do
 
   # Rail sound player: crossfade the bed to another track (no reconnect).
   # Mobile: flip between the chat and the "for you" rail.
-  def handle_event("expand_attention", %{"agent" => aid, "msg" => mid}, socket) do
-    {:noreply, assign(socket, :expanded_attention, {aid, mid})}
-  end
-
-  def handle_event("collapse_attention", _p, socket) do
-    {:noreply, assign(socket, :expanded_attention, nil)}
-  end
-
   def handle_event("mobile_view", %{"v" => v}, socket) when v in ~w(chat rail) do
     {:noreply, assign(socket, :mobile_view, String.to_existing_atom(v))}
   end
@@ -667,7 +657,6 @@ defmodule LoopyardWeb.OperatorLive do
         ]}>
           <div class="flex-1 min-h-0 overflow-y-auto">
             <.for_you_rail
-              expanded={expanded_attention_msg(@expanded_attention)}
               groups={@attention_groups}
               active={@active_jobs}
               done_buckets={@done_buckets}
@@ -684,7 +673,6 @@ defmodule LoopyardWeb.OperatorLive do
   # to the reactive graph, so it updates when a question is answered). NEEDS YOU
   # (blocking items, grouped by workspace, answered inline via the ConsentUI hook)
   # + WORKING (dispatched jobs, live state + delta).
-  attr :expanded, :map, default: nil
   attr :groups, :list, required: true
   attr :active, :list, required: true
   attr :done_buckets, :list, required: true
@@ -695,34 +683,9 @@ defmodule LoopyardWeb.OperatorLive do
   defp attention_summary(%{kind: :secret, msg: %{name: name}}), do: "Needs a secret: #{name}"
   defp attention_summary(item), do: item[:label] || "Needs your input"
 
-  # Resolve the expanded {agent_id, msg_id} to the LIVE message so the card
-  # renders current state (pending → answered receipt) and survives refreshes.
-  defp expanded_attention_msg(nil), do: nil
-
-  defp expanded_attention_msg({aid, mid}) do
-    Loopyard.ChatAgent.get_message(aid, mid)
-  rescue
-    _ -> nil
-  catch
-    _, _ -> nil
-  end
-
   defp for_you_rail(assigns) do
     ~H"""
-    <div :if={@expanded} class="flex flex-col p-3">
-      <button
-        type="button"
-        phx-click="collapse_attention"
-        class="focus-ring self-start inline-flex items-center gap-1.5 rounded-sm px-2.5 py-2 mb-1 chat-sub font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60"
-      >
-        ← For you
-      </button>
-      <div class="px-1">
-        <.question_card :if={@expanded.role == :question} msg={@expanded} />
-        <.secret_card :if={@expanded.role == :secret_request} msg={@expanded} />
-      </div>
-    </div>
-    <div :if={is_nil(@expanded)} class="flex flex-col">
+    <div class="flex flex-col">
       <%!-- Blocking items (action required), grouped by workspace — no header,
     the groups speak for themselves and lead the rail. --%>
       <section :if={@groups != []} class="p-3 space-y-3">
@@ -742,12 +705,9 @@ defmodule LoopyardWeb.OperatorLive do
           <div :for={item <- g.items}>
             <%!-- Compact row — the full card is a wall in a rail. Tap to expand
     it full-pane; answering settles it there, back returns here. --%>
-            <button
+            <.link
               :if={item.kind in [:question, :secret] and item.msg}
-              type="button"
-              phx-click="expand_attention"
-              phx-value-agent={item.agent_id}
-              phx-value-msg={item.msg.id}
+              navigate={"/review?q=#{item.agent_id}:#{item.msg.id}"}
               class="focus-ring flex w-full items-center gap-2 rounded-sm px-2.5 py-3 lg:py-2 text-left bg-brand-paper dark:bg-brand-ink border border-orange-300/60 dark:border-orange-500/30 hover:border-orange-400 dark:hover:border-orange-500/60 transition-colors"
             >
               <span class="flex-1 min-w-0 truncate chat-sub text-zinc-800 dark:text-zinc-100">
@@ -756,10 +716,10 @@ defmodule LoopyardWeb.OperatorLive do
               <span class="flex-none chat-meta font-medium text-orange-700 dark:text-orange-400">
                 Answer →
               </span>
-            </button>
+            </.link>
             <.link
               :if={item.kind == :approval or (item.kind != :question and is_nil(item.msg))}
-              navigate={(item.msg && "/messages/#{item.agent_id}/#{item.msg.id}") || item.path}
+              navigate={(item.msg && "/review?q=#{item.agent_id}:#{item.msg.id}") || item.path}
               class="focus-ring flex items-center gap-2 rounded-sm px-2.5 py-2 bg-brand-paper dark:bg-brand-ink border border-zinc-200 dark:border-zinc-800 hover:border-violet-300 dark:hover:border-violet-500/40"
             >
               <span class="flex-1 min-w-0 truncate text-sm text-zinc-700 dark:text-zinc-200">
