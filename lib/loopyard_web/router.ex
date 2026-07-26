@@ -48,6 +48,8 @@ defmodule LoopyardWeb.Router do
       # in one tear-out line. Self-decaying (Loopyard.Attention).
       live "/queue", QueueLive, :index
       live "/review", ReviewLive, :index
+      live "/review/:agent_id/:msg_id", ReviewLive, :item
+      live "/projects/:project_id/workspaces/:workspace_id/review", ReviewLive, :workspace
       # Full-page ambient-sound control. In the live_session so navigating here
       # (and back) is a live patch — the root-layout audio engine keeps playing.
       live "/sound", SoundLive, :index

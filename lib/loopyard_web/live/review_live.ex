@@ -32,13 +32,22 @@ defmodule LoopyardWeb.ReviewLive do
       Process.send_after(self(), :tick, @tick_ms)
     end
 
-    scope = params["workspace"]
+    # Resource routes: /review · /review/:agent_id/:msg_id ·
+    # /projects/:project_id/workspaces/:workspace_id/review.
+    # (?workspace= / ?q=agent:msg accepted as legacy fallbacks.)
+    scope = params["workspace_id"] || params["workspace"]
     socket = assign(socket, :scope, scope)
     slides = slides(scope)
 
+    start =
+      case {params["agent_id"], params["msg_id"], params["q"]} do
+        {aid, mid, _} when is_binary(aid) and is_binary(mid) -> {aid, mid}
+        {_, _, q} when is_binary(q) -> q |> String.split(":", parts: 2) |> List.to_tuple()
+        _ -> nil
+      end
+
     current =
-      with q when is_binary(q) <- params["q"],
-           [aid, mid] <- String.split(q, ":", parts: 2),
+      with {aid, mid} <- start,
            %{} = slide <- Enum.find(slides, &(&1.agent_id == aid and &1.msg_id == mid)) do
         slide.key
       else

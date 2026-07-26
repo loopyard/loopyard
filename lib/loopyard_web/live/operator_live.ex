@@ -703,7 +703,7 @@ defmodule LoopyardWeb.OperatorLive do
         <div class="space-y-0.5">
           <.link
             :for={item <- @operator_attention}
-            navigate={(item.msg && "/review?q=#{item.agent_id}:#{item.msg.id}") || "/review"}
+            navigate={(item.msg && "/review/#{item.agent_id}/#{item.msg.id}") || "/review"}
             class="flex items-center gap-2.5 rounded-sm px-2 py-2 lg:py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
           >
             <svg
@@ -766,8 +766,8 @@ defmodule LoopyardWeb.OperatorLive do
             <.link
               :for={item <- Enum.take(Map.get(@attention_by_ws, i.id, []), 3)}
               navigate={
-                (item.msg && "/review?q=#{item.agent_id}:#{item.msg.id}") ||
-                  "/review?workspace=#{i.id}"
+                (item.msg && "/review/#{item.agent_id}/#{item.msg.id}") ||
+                  "/projects/#{i.project_id}/workspaces/#{i.id}/review"
               }
               class="flex items-center gap-2.5 rounded-sm px-2 py-2 lg:py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
             >
@@ -787,7 +787,7 @@ defmodule LoopyardWeb.OperatorLive do
             </.link>
             <.link
               :if={length(Map.get(@attention_by_ws, i.id, [])) > 3}
-              navigate={"/review?workspace=#{i.id}"}
+              navigate={"/projects/#{i.project_id}/workspaces/#{i.id}/review"}
               class="block pl-2.5 chat-meta text-orange-700 dark:text-orange-400 hover:underline"
             >
               +{length(Map.get(@attention_by_ws, i.id, [])) - 3} more →
