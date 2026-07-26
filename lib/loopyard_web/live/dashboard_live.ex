@@ -13,7 +13,7 @@ defmodule LoopyardWeb.DashboardLive do
   use LoopyardWeb, :live_view
   use LoopyardWeb.IExAware
 
-  import LoopyardWeb.Components.Dashboard
+  import LoopyardWeb.Components.Common, only: [flash_banner: 1]
 
   @refresh_ms 3_000
 
@@ -61,6 +61,7 @@ defmodule LoopyardWeb.DashboardLive do
     |> assign(:remote_exposed, safe(&Loopyard.HostExposer.exposed?/0, false))
     |> assign(:operator, safe(&Loopyard.Workstation.current/0, "—"))
     |> assign(:operator_count, safe(fn -> length(Loopyard.Workstation.list()) end, 1))
+    |> assign(:waiting, safe(&Loopyard.Attention.count/0, 0))
   end
 
   defp safe(fun, default) do
@@ -74,103 +75,202 @@ defmodule LoopyardWeb.DashboardLive do
   @impl true
   def render(assigns) do
     assigns = assign(assigns, :ws, workspace_stats(assigns.tree))
+    assigns = assign(assigns, :recent, recent_workspaces(assigns.tree))
 
     ~H"""
-    <.page_shell
-      breadcrumbs={[{"Loopyard", nil}]}
-      iex_session={@iex_session}
-      max_width={:lg}
-      flash={@flash}
-    >
-      <header class="mb-6">
-        <h1 class="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-          Dashboard
-        </h1>
-        <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-1">Live status across Loopyard.</p>
-      </header>
+    <%!-- The ENTRANCE: no app top bar — the page IS the nav. A quiet wordmark,
+         then the three modes (plans/ia-two-modes.md), each an icon-led panel
+         with live status + deep links into its second level. An app, not a
+         marketing hero: one screen, everything reachable. --%>
+    <div class="min-h-screen bg-brand-paper dark:bg-brand-ink text-zinc-900 dark:text-zinc-100 safe-area-x safe-area-top">
+      <.flash_banner flash={@flash} kind={:error} />
+      <.flash_banner flash={@flash} kind={:info} />
 
-      <.dashboard_grid>
-        <%!-- Workspaces --%>
-        <.dashboard_card
-          navigate="/workspaces"
-          title="Workspaces"
-          tone={if @ws.working > 0, do: :ok, else: :neutral}
-          status={if @ws.working > 0, do: "#{@ws.working} working", else: nil}
-        >
-          <div class="text-zinc-700 dark:text-zinc-200 font-medium">
-            {@ws.projects} {plural(@ws.projects, "project")} · {@ws.agents} {plural(
-              @ws.agents,
-              "agent"
-            )}
-          </div>
-          <div class="mt-0.5">
-            {@ws.workspaces} {plural(@ws.workspaces, "workspace")}{if @ws.working > 0,
-              do: " · #{@ws.working} working now",
-              else: ""}
-          </div>
-        </.dashboard_card>
+      <div class="mx-auto max-w-6xl px-4 md:px-8 pt-10 md:pt-16 pb-10">
+        <Brand.logo mark_class="w-6 h-6 flex-none" wordmark_class="text-lg tracking-tight" />
 
-        <%!-- Remote --%>
-        <.dashboard_card
-          navigate="/remote/"
-          title="Remote"
-          tone={if @remote_exposed, do: :ok, else: :neutral}
-          status={if @remote_exposed, do: "exposed", else: "private"}
-        >
-          <div :if={@remote_exposed} class="text-zinc-700 dark:text-zinc-200">
-            Reachable on your network
-          </div>
-          <div :if={@remote_exposed} class="mt-0.5 font-mono text-xs">{@host}</div>
-          <div :if={!@remote_exposed}>Private — only this machine can reach it.</div>
-        </.dashboard_card>
+        <div class="mt-8 md:mt-12 grid gap-4 md:grid-cols-3">
+          <%!-- ── WORKSPACES ─────────────────────────────────────────────── --%>
+          <section class="relative border border-zinc-200 dark:border-zinc-800 bg-white/60 dark:bg-white/[0.03] p-5 md:p-6">
+            <.link navigate="/workspaces" class="absolute inset-0 focus-ring" aria-label="Workspaces"></.link>
+            <div class="flex items-center gap-2.5 text-zinc-900 dark:text-zinc-50">
+              <svg
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                class="w-5 h-5 text-violet-600 dark:text-violet-400"
+                aria-hidden="true"
+              >
+                <path d="M3 3.5A1.5 1.5 0 0 1 4.5 2h3A1.5 1.5 0 0 1 9 3.5v3A1.5 1.5 0 0 1 7.5 8h-3A1.5 1.5 0 0 1 3 6.5v-3ZM3 13.5A1.5 1.5 0 0 1 4.5 12h3A1.5 1.5 0 0 1 9 13.5v3A1.5 1.5 0 0 1 7.5 18h-3A1.5 1.5 0 0 1 3 16.5v-3ZM11 3.5A1.5 1.5 0 0 1 12.5 2h3A1.5 1.5 0 0 1 17 3.5v3A1.5 1.5 0 0 1 15.5 8h-3A1.5 1.5 0 0 1 11 6.5v-3ZM11 13.5a1.5 1.5 0 0 1 1.5-1.5h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3a1.5 1.5 0 0 1-1.5-1.5v-3Z" />
+              </svg>
+              <h2 class="text-base font-semibold tracking-tight">Workspaces</h2>
+              <span
+                :if={@ws.working > 0}
+                class="ml-auto chat-meta text-violet-600 dark:text-violet-400"
+              >
+                {@ws.working} working
+              </span>
+            </div>
+            <p class="chat-meta text-zinc-500 dark:text-zinc-400 mt-1">
+              {@ws.projects} {plural(@ws.projects, "project")} · {@ws.workspaces} {plural(
+                @ws.workspaces,
+                "workspace"
+              )} · {@ws.agents} {plural(@ws.agents, "agent")}
+            </p>
+            <div class="relative z-10 mt-4 space-y-1">
+              <.link
+                :for={w <- @recent}
+                navigate={w.path}
+                class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+              >
+                <LoopyardWeb.Components.Common.workspace_identity
+                  project={w.project}
+                  workspace={w.workspace}
+                  state={w.state}
+                  size={:sm}
+                  class="min-w-0 flex-1"
+                />
+              </.link>
+            </div>
+          </section>
 
-        <%!-- System --%>
-        <.dashboard_card
-          navigate="/system"
-          title="System"
-          tone={health_tone(@health)}
-          status={to_string(@health)}
-        >
-          <div class="text-zinc-700 dark:text-zinc-200">{health_line(@health)}</div>
-        </.dashboard_card>
+          <%!-- ── OPERATOR ───────────────────────────────────────────────── --%>
+          <section class="relative border border-zinc-200 dark:border-zinc-800 bg-white/60 dark:bg-white/[0.03] p-5 md:p-6">
+            <.link navigate="/operator" class="absolute inset-0 focus-ring" aria-label="Operator"></.link>
+            <div class="flex items-center gap-2.5 text-zinc-900 dark:text-zinc-50">
+              <span class="text-violet-600 dark:text-violet-400"><Brand.mark class="w-5 h-5" /></span>
+              <h2 class="text-base font-semibold tracking-tight">Operator</h2>
+              <span
+                :if={@waiting > 0}
+                class="ml-auto chat-meta font-semibold text-orange-700 dark:text-orange-400"
+              >
+                {@waiting} waiting on you
+              </span>
+            </div>
+            <p class="chat-meta text-zinc-500 dark:text-zinc-400 mt-1">
+              Running the shop as
+              <span class="font-medium text-zinc-700 dark:text-zinc-300">{@operator}</span>
+            </p>
+            <div class="relative z-10 mt-4 space-y-1">
+              <.link
+                navigate="/operator"
+                class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 chat-meta text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+              >
+                Chat with the operator
+              </.link>
+              <.link
+                navigate="/queue"
+                class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 chat-meta text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+              >
+                For you
+                <span :if={@waiting > 0} class="text-orange-700 dark:text-orange-400 font-semibold">{@waiting}</span>
+              </.link>
+              <.link
+                navigate="/workstations"
+                class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 chat-meta text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+              >
+                Workstations · {@operator_count}
+              </.link>
+            </div>
+          </section>
 
-        <%!-- Operator — opens the operator agent for the current identity --%>
-        <.dashboard_card
-          navigate="/operator"
-          title="Operator"
-          tone={:neutral}
-          status={@operator}
-        >
-          <div class="text-zinc-700 dark:text-zinc-200">
-            Talk to your operator agent
-          </div>
-          <div class="mt-0.5">
-            as <span class="font-medium">{@operator}</span>
-          </div>
-        </.dashboard_card>
-
-        <%!-- Workstations — the identities (users) that run inside the containers:
-    their creds, image, and env. The home for setting up + switching
-    identities (reached from here, not a top-right menu). --%>
-        <.dashboard_card
-          navigate="/workstations"
-          title="Workstations"
-          tone={:neutral}
-          status={"#{@operator_count} #{plural(@operator_count, "workstation")}"}
-        >
-          <div class="text-zinc-700 dark:text-zinc-200">
-            Identities that run in the containers — creds, image, env
-          </div>
-          <div class="mt-0.5">
-            operating as <span class="font-medium">{@operator}</span>
-          </div>
-        </.dashboard_card>
-      </.dashboard_grid>
-    </.page_shell>
+          <%!-- ── SYSTEM ─────────────────────────────────────────────────── --%>
+          <section class="relative border border-zinc-200 dark:border-zinc-800 bg-white/60 dark:bg-white/[0.03] p-5 md:p-6">
+            <.link navigate="/system" class="absolute inset-0 focus-ring" aria-label="System"></.link>
+            <div class="flex items-center gap-2.5 text-zinc-900 dark:text-zinc-50">
+              <svg
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                class="w-5 h-5 text-zinc-500 dark:text-zinc-400"
+                aria-hidden="true"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M7.84 1.804A1 1 0 0 1 8.82 1h2.36a1 1 0 0 1 .98.804l.331 1.652a6.993 6.993 0 0 1 1.929 1.115l1.598-.54a1 1 0 0 1 1.186.447l1.18 2.044a1 1 0 0 1-.205 1.251l-1.267 1.113a7.047 7.047 0 0 1 0 2.228l1.267 1.113a1 1 0 0 1 .206 1.25l-1.18 2.045a1 1 0 0 1-1.187.447l-1.598-.54a6.993 6.993 0 0 1-1.929 1.115l-.33 1.652a1 1 0 0 1-.98.804H8.82a1 1 0 0 1-.98-.804l-.331-1.652a6.993 6.993 0 0 1-1.929-1.115l-1.598.54a1 1 0 0 1-1.186-.447l-1.18-2.044a1 1 0 0 1 .205-1.251l1.267-1.114a7.05 7.05 0 0 1 0-2.227L1.821 7.773a1 1 0 0 1-.206-1.25l1.18-2.045a1 1 0 0 1 1.187-.447l1.598.54A6.992 6.992 0 0 1 7.51 3.456l.33-1.652ZM10 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+              <h2 class="text-base font-semibold tracking-tight">System</h2>
+              <span class={[
+                "ml-auto chat-meta font-semibold",
+                (@health == :healthy && "text-emerald-600 dark:text-emerald-400") ||
+                  (@health == :degraded && "text-orange-700 dark:text-orange-400") ||
+                  (@health == :down && "text-rose-600 dark:text-rose-400") ||
+                  "text-zinc-400"
+              ]}>
+                {@health}
+              </span>
+            </div>
+            <p class="chat-meta text-zinc-500 dark:text-zinc-400 mt-1">
+              {health_line(@health)} · {(@remote_exposed && "reachable on #{@host}") ||
+                "private to this machine"}
+            </p>
+            <div class="relative z-10 mt-4 space-y-1">
+              <.link
+                navigate="/system"
+                class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 chat-meta text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+              >
+                Health
+              </.link>
+              <.link
+                navigate="/system/ports"
+                class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 chat-meta text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+              >
+                Ports
+              </.link>
+              <.link
+                navigate="/system/secrets"
+                class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 chat-meta text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+              >
+                Secrets
+              </.link>
+              <.link
+                navigate="/remote/"
+                class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 chat-meta text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+              >
+                Remote · {(@remote_exposed && "exposed") || "private"}
+              </.link>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
     """
   end
 
   # ── derived values ────────────────────────────────────────────────────────
+
+  # The 4 most recently active workspaces — the deep links into the mode.
+  defp recent_workspaces(tree) do
+    for p <- tree, w <- p.workspaces do
+      agent = List.first(w[:agents] || [])
+
+      %{
+        project: p.name,
+        workspace: w.name,
+        state: ws_state(w),
+        at: w[:last_activity_at] || DateTime.from_unix!(0),
+        path:
+          (agent && "/projects/#{p.id}/workspaces/#{w.id}/agents/#{agent.id}") ||
+            "/projects/#{p.id}/workspaces/#{w.id}"
+      }
+    end
+    |> Enum.sort_by(& &1.at, {:desc, DateTime})
+    |> Enum.take(4)
+  end
+
+  @working_statuses [:thinking, :compacting, :booting, :backoff, :rate_limited]
+
+  defp ws_state(w) do
+    statuses = Enum.map(w[:agents] || [], & &1.status)
+
+    cond do
+      w[:needs_you] -> :needs_you
+      w[:broken] -> :broken
+      Enum.any?(statuses, &(&1 in @working_statuses)) -> :working
+      Enum.any?(statuses, &(&1 == :idle)) -> :done
+      true -> :asleep
+    end
+  end
 
   defp workspace_stats(tree) do
     agents = Enum.flat_map(tree, fn p -> Enum.flat_map(p.workspaces, & &1.agents) end)
