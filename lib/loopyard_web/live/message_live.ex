@@ -77,49 +77,11 @@ defmodule LoopyardWeb.MessageLive do
     |> Enum.any?(&(&1[:role] == :user))
   end
 
-  # Approve/Deny works on the permalink too — BOTH approval models, same as the
-  # chats: a live waiter takes the decision directly (blocking model); otherwise
-  # the card is durable (queued model) and the action runs off the card.
+  # Approve/Deny on the permalink — the shared implementation (both models).
   @impl true
   def handle_event("decide_approval", %{"approval_id" => id, "decision" => decision}, socket) do
     decision = if decision == "approve", do: :approve, else: :deny
-    agent_id = socket.assigns.agent_id
-
-    card =
-      Enum.find(socket.assigns.turn, &(&1[:approval_id] == id)) ||
-        Enum.find(
-          (Loopyard.ChatAgent.get_state(agent_id) || %{})[:messages] || [],
-          &(&1[:approval_id] == id)
-        )
-
-    case Loopyard.Harness.Approvals.decide(id, decision) do
-      :ok ->
-        :ok
-
-      {:error, :not_found} when not is_nil(card) and decision == :deny ->
-        Loopyard.Harness.Approvals.resolve(agent_id, card.id, %{status: :denied})
-
-      {:error, :not_found} when not is_nil(card) ->
-        # Optimistic flip (matched to the verb) so the buttons respond instantly;
-        # run/3 streams progress into the card and resolves the terminal status.
-        transient =
-          case card[:action][:verb] do
-            v when v in [:delete_workspace, :delete_project] -> :deleting
-            v when v in [:rename_workspace, :rename_project] -> :renaming
-            :integrate -> :integrating
-            _ -> :creating
-          end
-
-        Loopyard.ChatAgent.update_message(agent_id, card.id, &Map.put(&1, :status, transient))
-
-        Task.Supervisor.start_child(Loopyard.TaskSupervisor, fn ->
-          Loopyard.Harness.Approvals.run(agent_id, card.id, card[:action])
-        end)
-
-      _ ->
-        :ok
-    end
-
+    LoopyardWeb.Live.ApprovalActions.decide(socket.assigns.agent_id, id, decision)
     {:noreply, socket}
   end
 

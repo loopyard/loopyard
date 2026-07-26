@@ -158,7 +158,7 @@ defmodule LoopyardWeb.DashboardLive do
                 Chat with the operator
               </.link>
               <.link
-                navigate="/queue"
+                navigate="/review"
                 class="flex items-center gap-2 -mx-2 px-2 py-2 md:py-1.5 chat-meta text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
               >
                 For you
