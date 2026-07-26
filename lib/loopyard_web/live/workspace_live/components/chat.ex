@@ -611,7 +611,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     below — the ✕'s are gone because it's no longer editable. --%>
           <div
             :if={(@agent[:pending_count] || 0) > 0}
-            class="-mx-3 md:-mx-4 2xl:-mx-4 2xl:mt-2 2xl:rounded-xl bg-violet-100 dark:bg-[#2b2348] px-4 md:px-6 lg:px-8 pt-3 pb-3"
+            class="-mx-3 md:-mx-4 2xl:-mx-4 2xl:mt-2 bg-violet-100 dark:bg-[#2b2348] px-4 md:px-6 lg:px-8 pt-3 pb-3"
           >
             <div class="flex items-baseline justify-between gap-2 mb-1.5">
               <div class="flex items-baseline gap-2 min-w-0">
@@ -686,7 +686,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
         <div
           id="send-echo"
           phx-update="ignore"
-          class="hidden -mx-3 md:-mx-4 2xl:-mx-4 2xl:mt-2 2xl:rounded-xl bg-violet-100 dark:bg-[#2b2348] px-4 md:px-6 lg:px-8 pt-3 pb-3"
+          class="hidden -mx-3 md:-mx-4 2xl:-mx-4 2xl:mt-2 bg-violet-100 dark:bg-[#2b2348] px-4 md:px-6 lg:px-8 pt-3 pb-3"
         >
           <div class="chat-meta font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300 mb-1.5">
             Queued

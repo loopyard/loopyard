@@ -26,10 +26,6 @@ defmodule LoopyardWeb.OperatorLive do
   import LoopyardWeb.Components.Breadcrumbs, only: [breadcrumbs: 1]
   import LoopyardWeb.Live.WorkspaceLive.Components.Chat, only: [chat_panel: 1]
 
-  # Answerable consent cards rendered inline in the "for you" rail — same broker +
-  # ConsentUI hook as the chat, so a question is answered right there.
-  import LoopyardWeb.Live.WorkspaceLive.Messages.Cards, only: [question_card: 1, secret_card: 1]
-
   @aural_channel "activity"
   @rail_tick_ms 3_000
   # Recent-tail size for the chat transcript. Caps the initial LiveView payload
@@ -440,6 +436,10 @@ defmodule LoopyardWeb.OperatorLive do
       :attention_by_ws,
       Enum.group_by(Enum.reject(line, &(&1.agent_id == op)), & &1.workspace_id)
     )
+    # The OPERATOR's own pending asks — no workspace row to nest under, so the
+    # rail gives them their own block up top (they also render inline in the
+    # chat, but "For you" must show EVERYTHING waiting).
+    |> assign(:operator_attention, Enum.filter(line, &(&1.agent_id == op)))
     |> assign(:active_jobs, active)
     # Grouped by how long ago they wrapped — Recently / Past hour / Today /
     # Earlier — instead of one list dimmed by age. Calmer, and readable (no fade).
@@ -661,6 +661,7 @@ defmodule LoopyardWeb.OperatorLive do
         ]}>
           <div class="flex-1 min-h-0 overflow-y-auto">
             <.for_you_rail
+              operator_attention={@operator_attention}
               attention_by_ws={@attention_by_ws}
               groups={@attention_groups}
               active={@active_jobs}
@@ -678,6 +679,7 @@ defmodule LoopyardWeb.OperatorLive do
   # to the reactive graph, so it updates when a question is answered). NEEDS YOU
   # (blocking items, grouped by workspace, answered inline via the ConsentUI hook)
   # + WORKING (dispatched jobs, live state + delta).
+  attr :operator_attention, :list, default: []
   attr :attention_by_ws, :map, default: %{}
   attr :groups, :list, required: true
   attr :active, :list, required: true
@@ -692,6 +694,26 @@ defmodule LoopyardWeb.OperatorLive do
   defp for_you_rail(assigns) do
     ~H"""
     <div class="flex flex-col">
+      <%!-- The OPERATOR's own questions — no workspace row to nest under, so
+           they lead the rail. Same flame mini-language; tap → the Reviewer. --%>
+      <section :if={@operator_attention != []} class="p-3 pb-0">
+        <div class="text-[11px] font-medium uppercase tracking-wide text-orange-700/80 dark:text-orange-400/80 px-1 pb-1">
+          Operator · needs you
+        </div>
+        <div class="space-y-0.5">
+          <.link
+            :for={item <- @operator_attention}
+            navigate={(item.msg && "/review?q=#{item.agent_id}:#{item.msg.id}") || "/review"}
+            class="flex items-center gap-2 rounded-sm border-l-2 border-orange-400 dark:border-orange-500/60 bg-orange-50/70 dark:bg-orange-500/[0.07] px-2.5 py-2 lg:py-1.5 hover:bg-orange-100/70 dark:hover:bg-orange-500/[0.14] transition-colors"
+          >
+            <span class="flex-1 min-w-0 truncate chat-meta text-zinc-700 dark:text-zinc-200">
+              {attention_summary(item)}
+            </span>
+            <span class="flex-none chat-meta font-medium text-orange-700 dark:text-orange-400">→</span>
+          </.link>
+        </div>
+      </section>
+
       <%!-- IN MOTION — what's actually RUNNING right now, prominent. Delta sits
     INLINE next to the name (not floated across the rail), so it reads as
     one line. The row taps through to the workspace agent (the weeds). --%>
