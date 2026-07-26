@@ -36,7 +36,7 @@ defmodule LoopyardWeb.Components.Birdseye do
   @working [:thinking, :compacting, :booting, :backoff, :rate_limited]
   @asleep_dot "bg-zinc-400 dark:bg-zinc-500"
 
-  defp status_color(s) when s in @working, do: "bg-violet-500 animate-pulse"
+  defp status_color(s) when s in @working, do: "bg-indigo-500 animate-pulse"
   defp status_color(:auth_expired), do: "bg-red-500"
   defp status_color(:idle), do: "bg-green-500"
   defp status_color(_), do: @asleep_dot
@@ -56,7 +56,7 @@ defmodule LoopyardWeb.Components.Birdseye do
 
     cond do
       Enum.any?(statuses, &(&1 == :auth_expired)) -> "bg-red-500"
-      Enum.any?(statuses, &(&1 in @working)) -> "bg-violet-500 animate-pulse"
+      Enum.any?(statuses, &(&1 in @working)) -> "bg-indigo-500 animate-pulse"
       Enum.any?(statuses, &(&1 == :idle)) -> "bg-green-500"
       statuses != [] -> @asleep_dot
       true -> nil
@@ -125,7 +125,7 @@ defmodule LoopyardWeb.Components.Birdseye do
         %{
           kind: :working,
           text: working_text(working),
-          class: "text-violet-600 dark:text-violet-400"
+          class: "text-indigo-600 dark:text-indigo-400"
         }
 
       match?(%{added: _, removed: _}, ws[:changes]) and

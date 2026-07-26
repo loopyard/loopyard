@@ -63,7 +63,7 @@ defmodule LoopyardWeb.Components.Breadcrumbs do
               <% path -> %>
                 <.link
                   navigate={path}
-                  class="focus-ring text-lg md:text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors truncate rounded"
+                  class="focus-ring text-lg md:text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors truncate rounded"
                 >
                   {label}
                 </.link>

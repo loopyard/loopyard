@@ -39,7 +39,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
         <li :for={a <- @activity} class="flex items-start gap-2 text-sm leading-relaxed">
           <span class={[
             "flex-none w-3.5 text-center mt-0.5",
-            a.active && "text-violet-500 animate-pulse",
+            a.active && "text-indigo-500 animate-pulse",
             !a.active && "text-emerald-500/70"
           ]}>
             {if a.active, do: "▸", else: "✓"}
@@ -194,9 +194,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
            "text-rose-700 dark:text-rose-200", "text-rose-500/70 dark:text-rose-300/50"}
 
         _ ->
-          {if(assigns.word in [nil, ""], do: "Thinking", else: assigns.word), "bg-violet-400",
-           "border-violet-200/70 dark:border-violet-500/20 bg-violet-50 dark:bg-violet-500/10",
-           "text-violet-700 dark:text-violet-200", "text-violet-500/70 dark:text-violet-300/50"}
+          {if(assigns.word in [nil, ""], do: "Thinking", else: assigns.word), "bg-indigo-400",
+           "border-indigo-200/70 dark:border-indigo-500/20 bg-indigo-50 dark:bg-indigo-500/10",
+           "text-indigo-700 dark:text-indigo-200", "text-indigo-500/70 dark:text-indigo-300/50"}
       end
 
     assign(assigns,
@@ -229,11 +229,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
       |> assign(:current_action, current && current.summary)
 
     ~H"""
-    <div class="flex items-center gap-2.5 rounded-xl bg-violet-50 dark:bg-violet-500/10 border border-violet-200/70 dark:border-violet-500/20 px-3.5 py-2">
-      <span class="flex-none text-violet-500 dark:text-violet-400" aria-hidden="true">
+    <div class="flex items-center gap-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200/70 dark:border-indigo-500/20 px-3.5 py-2">
+      <span class="flex-none text-indigo-500 dark:text-indigo-400" aria-hidden="true">
         <Brand.mark animated class="w-4 h-4" />
       </span>
-      <span class="text-sm font-medium text-violet-600 dark:text-violet-300 flex-none">{@word}…</span>
+      <span class="text-sm font-medium text-indigo-600 dark:text-indigo-300 flex-none">{@word}…</span>
       <span
         :if={@turn_since}
         id="turn-elapsed"

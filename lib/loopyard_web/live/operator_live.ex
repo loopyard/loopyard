@@ -592,7 +592,7 @@ defmodule LoopyardWeb.OperatorLive do
           phx-value-v="chat"
           class={[
             "flex-1 py-4 font-medium text-center border-b-2 -mb-px transition-colors",
-            (@mobile_view == :chat && "border-violet-500 text-violet-600 dark:text-violet-400") ||
+            (@mobile_view == :chat && "border-indigo-500 text-indigo-600 dark:text-indigo-400") ||
               "border-transparent text-zinc-500 dark:text-zinc-400"
           ]}
         >
@@ -604,14 +604,14 @@ defmodule LoopyardWeb.OperatorLive do
           phx-value-v="rail"
           class={[
             "flex-1 py-4 font-medium text-center border-b-2 -mb-px transition-colors inline-flex items-center justify-center gap-1.5",
-            (@mobile_view == :rail && "border-violet-500 text-violet-600 dark:text-violet-400") ||
+            (@mobile_view == :rail && "border-indigo-500 text-indigo-600 dark:text-indigo-400") ||
               "border-transparent text-zinc-500 dark:text-zinc-400"
           ]}
         >
           For you
           <span
             :if={@needs_count > 0}
-            class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full bg-violet-600 text-white text-xs font-semibold tabular-nums"
+            class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full bg-indigo-600 text-white text-xs font-semibold tabular-nums"
           >
             {@needs_count}
           </span>
@@ -743,12 +743,12 @@ defmodule LoopyardWeb.OperatorLive do
             <.link
               :if={item.kind == :approval or (item.kind != :question and is_nil(item.msg))}
               navigate={item.path}
-              class="focus-ring flex items-center gap-2 rounded-lg px-2.5 py-2 bg-brand-paper dark:bg-brand-ink border border-zinc-200 dark:border-zinc-800 hover:border-violet-300 dark:hover:border-violet-500/40"
+              class="focus-ring flex items-center gap-2 rounded-lg px-2.5 py-2 bg-brand-paper dark:bg-brand-ink border border-zinc-200 dark:border-zinc-800 hover:border-indigo-300 dark:hover:border-indigo-500/40"
             >
               <span class="flex-1 min-w-0 truncate text-sm text-zinc-700 dark:text-zinc-200">
                 {item.label}
               </span>
-              <span class="flex-none text-xs font-medium text-violet-600 dark:text-violet-400">
+              <span class="flex-none text-xs font-medium text-indigo-600 dark:text-indigo-400">
                 open →
               </span>
             </.link>
@@ -784,11 +784,11 @@ defmodule LoopyardWeb.OperatorLive do
           <span
             :if={i.delta > 0}
             title={"#{i.delta} new since you last looked"}
-            class="flex-none text-xs font-semibold text-violet-600 dark:text-violet-400 tabular-nums"
+            class="flex-none text-xs font-semibold text-indigo-600 dark:text-indigo-400 tabular-nums"
           >
             {i.delta} new
           </span>
-          <span class="ml-auto flex-none text-xs font-medium text-violet-600 dark:text-violet-400 opacity-0 group-hover:opacity-100 transition-opacity">
+          <span class="ml-auto flex-none text-xs font-medium text-indigo-600 dark:text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity">
             dive in →
           </span>
         </div>
@@ -816,7 +816,7 @@ defmodule LoopyardWeb.OperatorLive do
               size={:md}
               class="flex-1"
             />
-            <span class="ml-auto flex-none text-[11px] font-medium text-violet-500 opacity-0 group-hover:opacity-100 transition-opacity">
+            <span class="ml-auto flex-none text-[11px] font-medium text-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity">
               →
             </span>
           </div>
@@ -849,7 +849,7 @@ defmodule LoopyardWeb.OperatorLive do
       <div
         id={@id}
         phx-hook="SoundPill"
-        data-on="text-violet-600 dark:text-violet-400"
+        data-on="text-indigo-600 dark:text-indigo-400"
         data-off="text-zinc-400 dark:text-zinc-500"
         class="text-zinc-400 dark:text-zinc-500"
       >

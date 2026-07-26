@@ -119,7 +119,7 @@ defmodule LoopyardWeb.SoundLive do
               min="0"
               max="1"
               step="0.05"
-              class="w-full h-2 accent-violet-600"
+              class="w-full h-2 accent-indigo-600"
             />
           </div>
         </div>
@@ -139,7 +139,7 @@ defmodule LoopyardWeb.SoundLive do
               class={[
                 "w-full flex items-center gap-3 px-3 min-h-[3.5rem] rounded-xl text-left transition-colors",
                 if(@current_track == id,
-                  do: "bg-violet-100 dark:bg-violet-500/15",
+                  do: "bg-indigo-100 dark:bg-indigo-500/15",
                   else:
                     "hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700/60"
                 )
@@ -147,7 +147,7 @@ defmodule LoopyardWeb.SoundLive do
             >
               <span class={[
                 "flex-none w-2 h-2 rounded-full",
-                if(@current_track == id, do: "bg-violet-500", else: "bg-zinc-300 dark:bg-zinc-600")
+                if(@current_track == id, do: "bg-indigo-500", else: "bg-zinc-300 dark:bg-zinc-600")
               ]}></span>
               <span class="flex-1 min-w-0">
                 <span class="block font-medium text-zinc-900 dark:text-zinc-100">{name}</span>
@@ -157,7 +157,7 @@ defmodule LoopyardWeb.SoundLive do
                 :if={@current_track == id}
                 viewBox="0 0 20 20"
                 fill="currentColor"
-                class="w-5 h-5 flex-none text-violet-600 dark:text-violet-400"
+                class="w-5 h-5 flex-none text-indigo-600 dark:text-indigo-400"
               >
                 <path
                   fill-rule="evenodd"

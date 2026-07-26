@@ -83,7 +83,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
           patch={"#{@base_path}/volumes/#{@volume_name}/git/commits/#{commit.sha}"}
           class="block w-full px-4 py-2 flex items-start gap-3 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
         >
-          <span class="font-mono text-xs text-violet-500 dark:text-violet-400 shrink-0 pt-0.5">
+          <span class="font-mono text-xs text-indigo-500 dark:text-indigo-400 shrink-0 pt-0.5">
             {String.slice(commit.sha, 0..6)}
           </span>
           <div class="min-w-0 flex-1">
@@ -123,7 +123,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
       <%!-- Commit header --%>
       <div class="px-4 py-4">
         <div class="flex items-start gap-3">
-          <span class="font-mono text-xs text-violet-500 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 rounded px-2 py-0.5 shrink-0">
+          <span class="font-mono text-xs text-indigo-500 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 rounded px-2 py-0.5 shrink-0">
             {String.slice(@commit.sha, 0..6)}
           </span>
           <div class="min-w-0">
@@ -263,7 +263,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
         "text-red-700 dark:text-red-300"
 
       String.starts_with?(line, "@@") ->
-        "text-violet-600 dark:text-violet-400"
+        "text-indigo-600 dark:text-indigo-400"
 
       String.starts_with?(line, "diff ") or String.starts_with?(line, "index ") ->
         "text-zinc-500 dark:text-zinc-400"

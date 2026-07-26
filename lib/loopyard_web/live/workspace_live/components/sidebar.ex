@@ -223,7 +223,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
           <.link
             patch={"#{@base_path}/new"}
             aria-label="New agent"
-            class="focus-ring inline-flex items-center justify-center w-7 h-7 rounded-md text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-colors"
+            class="focus-ring inline-flex items-center justify-center w-7 h-7 rounded-md text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition-colors"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -307,7 +307,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
             aria-label="What should this agent work on?"
             class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-3 text-base
                    text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 resize-none
-                   focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+                   focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
           ></textarea>
           <button
             type="submit"
@@ -630,7 +630,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
           aria-label="Agent name"
           autofocus
           class="flex-1 min-w-0 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-0.5 text-sm
-                 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-violet-500/30"
+                 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-indigo-500/30"
         />
       </form>
       <%!-- Normal display --%>
@@ -654,7 +654,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
              it's doing on the right. --%>
         <span
           :if={@display == :thinking}
-          class="text-sm text-violet-500 dark:text-violet-400 flex-none truncate max-w-[9rem]"
+          class="text-sm text-indigo-500 dark:text-indigo-400 flex-none truncate max-w-[9rem]"
         >
           {@agent[:thinking_word] || thinking_word(@agent.id, @agent[:active_tool])}
         </span>

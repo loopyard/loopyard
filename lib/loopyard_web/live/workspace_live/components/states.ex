@@ -6,9 +6,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.States do
     ~H"""
     <div class="flex-1 flex items-center justify-center">
       <div class="text-center max-w-sm">
-        <div class="w-16 h-16 rounded-2xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center mx-auto mb-4">
+        <div class="w-16 h-16 rounded-2xl bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center mx-auto mb-4">
           <svg
-            class="w-7 h-7 text-violet-500 animate-spin"
+            class="w-7 h-7 text-indigo-500 animate-spin"
             xmlns="http://www.w3.org/2000/svg"
             fill="none"
             viewBox="0 0 24 24"
@@ -52,12 +52,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.States do
     ~H"""
     <div class="flex-1 flex items-center justify-center">
       <div class="text-center max-w-md px-4">
-        <div class="w-16 h-16 rounded-2xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center mx-auto mb-4">
+        <div class="w-16 h-16 rounded-2xl bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center mx-auto mb-4">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 24 24"
             fill="currentColor"
-            class="w-7 h-7 text-violet-500"
+            class="w-7 h-7 text-indigo-500"
           >
             <path d="M16.5 7.5h-9v9h9v-9Z" />
             <path
@@ -74,7 +74,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.States do
         </p>
         <.link
           patch={"#{@base_path}/new"}
-          class="focus-ring inline-flex items-center gap-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white px-6 py-3 text-sm font-medium transition-colors"
+          class="focus-ring inline-flex items-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 text-sm font-medium transition-colors"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -206,7 +206,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.States do
               type="button"
               phx-click="boot_workspace"
               aria-label="Start all services"
-              class="focus-ring inline-flex items-center gap-2 rounded-md px-4 min-h-10 text-sm font-medium bg-violet-600 hover:bg-violet-700 active:bg-violet-800 text-white transition-colors"
+              class="focus-ring inline-flex items-center gap-2 rounded-md px-4 min-h-10 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white transition-colors"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -225,7 +225,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.States do
         <p class="text-sm text-zinc-500 dark:text-zinc-400">
           Pick an agent or service from the sidebar, or <.link
             patch={"#{@base_path}/new"}
-            class="text-violet-600 dark:text-violet-400 hover:underline"
+            class="text-indigo-600 dark:text-indigo-400 hover:underline"
           >
             launch a new agent
           </.link>.

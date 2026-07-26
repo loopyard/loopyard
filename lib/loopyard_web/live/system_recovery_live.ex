@@ -134,7 +134,7 @@ defmodule LoopyardWeb.SystemRecoveryLive do
           </thead>
           <tbody>
             <tr :for={e <- @entries} class="border-b border-zinc-100 dark:border-zinc-800/50">
-              <td class="py-2 pr-4 text-violet-700 dark:text-violet-400 font-semibold">
+              <td class="py-2 pr-4 text-indigo-700 dark:text-indigo-400 font-semibold">
                 {short_id(e.workspace_id)}
               </td>
               <td class="py-2 pr-4 text-zinc-600 dark:text-zinc-400">

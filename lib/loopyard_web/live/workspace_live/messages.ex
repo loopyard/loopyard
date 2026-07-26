@@ -151,8 +151,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         # tail below (which rounds the bottom).
         @band_round,
         # The prompt being answered right now reads stronger (deeper wash).
-        (@active? && "bg-violet-200 dark:bg-[#332a54]") ||
-          "bg-violet-100 dark:bg-[#2b2348]",
+        (@active? && "bg-indigo-200 dark:bg-[#2e335c]") ||
+          "bg-indigo-100 dark:bg-[#262a4d]",
         @sticky_class,
         @band_top,
         @band_bottom
@@ -166,12 +166,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
             :if={@show_user_label}
             class="flex items-center gap-2 mb-2"
           >
-            <span class="chat-meta inline-flex items-center gap-1.5 font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300">
+            <span class="chat-meta inline-flex items-center gap-1.5 font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-300">
               <.icon name={:user} class="w-3.5 h-3.5 flex-none self-center" /> {@user_label}
             </span>
             <span
               :if={@msg[:timestamp]}
-              class="chat-meta text-violet-500/80 dark:text-violet-300/60"
+              class="chat-meta text-indigo-500/80 dark:text-indigo-300/60"
             >
               {Calendar.strftime(@msg.timestamp, "%b %-d, %-I:%M %p")}
             </span>
@@ -577,7 +577,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   defp tool_dot(tool) when is_binary(tool) do
     cond do
       ToolKind.classify(tool) in [:edit, :write] ->
-        "bg-violet-400"
+        "bg-indigo-400"
 
       ToolKind.command?(tool) ->
         "bg-emerald-400"

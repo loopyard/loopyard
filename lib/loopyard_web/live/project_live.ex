@@ -471,7 +471,7 @@ defmodule LoopyardWeb.ProjectLive do
     >
       <%= if @removing do %>
         <div class="text-center py-16">
-          <div class="inline-block w-6 h-6 border-2 border-zinc-300 dark:border-zinc-600 border-t-violet-500 rounded-full animate-spin mb-4">
+          <div class="inline-block w-6 h-6 border-2 border-zinc-300 dark:border-zinc-600 border-t-indigo-500 rounded-full animate-spin mb-4">
           </div>
           <h2 class="text-lg font-semibold text-zinc-600 dark:text-zinc-300">
             Removing {@project.name}...
@@ -656,7 +656,7 @@ defmodule LoopyardWeb.ProjectLive do
             autocomplete="off"
             class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-800/50 px-3 py-2.5 text-sm font-mono
                    text-zinc-600 dark:text-zinc-300
-                   focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+                   focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
           />
         </div>
         <div>
@@ -671,13 +671,13 @@ defmodule LoopyardWeb.ProjectLive do
             autofocus
             class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2.5 text-sm font-mono
                    text-zinc-600 dark:text-zinc-300 placeholder:text-zinc-400
-                   focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+                   focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
           />
         </div>
         <div class="flex items-center gap-3 pt-1">
           <button
             type="submit"
-            class="rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium px-4 py-2.5 transition-colors"
+            class="rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 transition-colors"
           >
             Create workspace
           </button>
@@ -715,12 +715,12 @@ defmodule LoopyardWeb.ProjectLive do
           autocomplete="off"
           class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2.5 text-base
                  text-zinc-900 dark:text-zinc-100
-                 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+                 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
         />
         <div class="pt-1">
           <button
             type="submit"
-            class="rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium px-4 py-2 transition-colors"
+            class="rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 transition-colors"
           >
             Save name
           </button>

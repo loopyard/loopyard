@@ -204,7 +204,7 @@ defmodule LoopyardWeb.Components.Sidebar do
   # the internal status directly (chat header, etc.) — they map onto
   # the same four visible colors.
   def status_dot(:ready), do: "bg-green-500"
-  def status_dot(:thinking), do: "bg-violet-500 animate-pulse"
+  def status_dot(:thinking), do: "bg-indigo-500 animate-pulse"
   def status_dot(:sleeping), do: "bg-zinc-400"
   def status_dot(:crashed), do: "bg-red-500"
   def status_dot(:hidden), do: "bg-zinc-400"
@@ -215,11 +215,11 @@ defmodule LoopyardWeb.Components.Sidebar do
   def status_dot(:quarantined), do: "bg-red-500"
   # Internal-atom fallbacks
   def status_dot(:idle), do: "bg-green-500"
-  def status_dot(:booting), do: "bg-violet-500 animate-pulse"
+  def status_dot(:booting), do: "bg-indigo-500 animate-pulse"
   # Audit-2 LOW #7 — :backoff shares the thinking look for now.
-  def status_dot(:backoff), do: "bg-violet-500 animate-pulse"
+  def status_dot(:backoff), do: "bg-indigo-500 animate-pulse"
   # Surface #10 — rate-limited is auto-retrying; thinking look.
-  def status_dot(:rate_limited), do: "bg-violet-500 animate-pulse"
+  def status_dot(:rate_limited), do: "bg-indigo-500 animate-pulse"
   # Surface #10 — auth_expired is terminal without re-auth.
   def status_dot(:auth_expired), do: "bg-red-500"
   def status_dot(:stopped), do: "bg-zinc-400"

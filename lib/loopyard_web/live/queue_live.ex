@@ -138,6 +138,6 @@ defmodule LoopyardWeb.QueueLive do
 
   defp kind_dot(:question), do: "bg-amber-500"
   defp kind_dot(:secret), do: "bg-sky-500"
-  defp kind_dot(:approval), do: "bg-violet-500"
+  defp kind_dot(:approval), do: "bg-indigo-500"
   defp kind_dot(_), do: "bg-zinc-400"
 end

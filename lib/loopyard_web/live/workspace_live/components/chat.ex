@@ -173,7 +173,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             :if={@active == :agents}
             patch={"#{@base_path}/new"}
             phx-click={JS.hide(to: "#item-switcher")}
-            class="flex items-center gap-2 px-3 min-h-[2.75rem] rounded-lg text-sm font-medium text-violet-600 dark:text-violet-400 active:bg-violet-50 dark:active:bg-violet-500/10"
+            class="flex items-center gap-2 px-3 min-h-[2.75rem] rounded-lg text-sm font-medium text-indigo-600 dark:text-indigo-400 active:bg-indigo-50 dark:active:bg-indigo-500/10"
           >
             + New agent
           </.link>
@@ -421,7 +421,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       <button
         :if={not @window_tail?}
         phx-click="load_latest"
-        class="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-1.5 rounded-full bg-violet-600 text-white text-sm font-medium px-3.5 py-1.5 shadow-lg shadow-violet-900/20 hover:bg-violet-700 transition-colors"
+        class="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 inline-flex items-center gap-1.5 rounded-full bg-indigo-600 text-white text-sm font-medium px-3.5 py-1.5 shadow-lg shadow-indigo-900/20 hover:bg-indigo-700 transition-colors"
       >
         Jump to latest
         <svg viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5">
@@ -609,14 +609,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               below — the ✕'s are gone because it's no longer editable. --%>
         <div
           :if={(@agent[:pending_count] || 0) > 0}
-          class="-mx-3 md:-mx-4 2xl:-mx-4 -mt-3 md:-mt-4 2xl:mt-0 2xl:rounded-xl bg-violet-100 dark:bg-[#2b2348] px-4 md:px-6 lg:px-8 pt-3 pb-3"
+          class="-mx-3 md:-mx-4 2xl:-mx-4 -mt-3 md:-mt-4 2xl:mt-0 2xl:rounded-xl bg-indigo-100 dark:bg-[#262a4d] px-4 md:px-6 lg:px-8 pt-3 pb-3"
         >
           <div class="flex items-baseline justify-between gap-2 mb-1.5">
             <div class="flex items-baseline gap-2 min-w-0">
-              <span class="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300">
+              <span class="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-300">
                 <.icon name={:user} class="w-3.5 h-3.5 flex-none self-center" /> {@user_label}
               </span>
-              <span class="text-sm text-violet-500/80 dark:text-violet-300/60">
+              <span class="text-sm text-indigo-500/80 dark:text-indigo-300/60">
                 queued · sends when the agent finishes
               </span>
             </div>
@@ -654,7 +654,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
                 phx-value-index={i}
                 aria-label="Cancel this queued message"
                 title="Cancel — remove from the queue"
-                class="focus-ring tap-target flex-none w-6 h-6 rounded-md flex items-center justify-center text-violet-500/50 dark:text-violet-300/40 hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                class="focus-ring tap-target flex-none w-6 h-6 rounded-md flex items-center justify-center text-indigo-500/50 dark:text-indigo-300/40 hover:text-red-500 hover:bg-red-500/10 transition-colors"
               >
                 <.icon name={:x_mark} class="w-4 h-4" />
               </button>
@@ -696,8 +696,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             <button
               type="submit"
               aria-label="Send"
-              class="focus-ring flex-none flex items-center justify-center rounded-full w-10 h-10 mb-[5px] md:mb-1 text-violet-600 dark:text-violet-400
-                   hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-colors"
+              class="focus-ring flex-none flex items-center justify-center rounded-full w-10 h-10 mb-[5px] md:mb-1 text-indigo-600 dark:text-indigo-400
+                   hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition-colors"
             >
               <.icon name={:arrow_up} class="w-6 h-6" />
             </button>
@@ -868,7 +868,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               placeholder="Filter service..."
               aria-label="Filter logs by service"
               class="text-sm rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-1 w-28
-                     focus:outline-none focus:ring-1 focus:ring-violet-500/30"
+                     focus:outline-none focus:ring-1 focus:ring-indigo-500/30"
             />
           </form>
         </div>

@@ -185,7 +185,7 @@ defmodule LoopyardWeb.ProjectListLive do
             </div>
             <.link
               navigate="/projects/new"
-              class="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:border-violet-300 dark:hover:border-violet-500/40 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
+              class="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:border-indigo-300 dark:hover:border-indigo-500/40 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
             >
               <svg viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" /></svg>
               New project
@@ -244,12 +244,12 @@ defmodule LoopyardWeb.ProjectListLive do
                 value={@creating}
                 class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-brand-paper dark:bg-brand-ink px-3 py-2.5 text-sm
                      text-zinc-900 dark:text-zinc-200 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 disabled:opacity-60
-                     focus:outline-none focus:ring-1 focus:ring-violet-500/30 focus:border-violet-400"
+                     focus:outline-none focus:ring-1 focus:ring-indigo-500/30 focus:border-indigo-400"
               />
               <button
                 type="submit"
                 disabled={@creating != nil}
-                class="focus-ring w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 disabled:opacity-70 px-5 py-2.5 text-sm font-semibold text-white transition-colors"
+                class="focus-ring w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-70 px-5 py-2.5 text-sm font-semibold text-white transition-colors"
               >
                 <svg
                   :if={@creating}
@@ -293,7 +293,7 @@ defmodule LoopyardWeb.ProjectListLive do
                 autofocus
                 class="flex-1 min-w-0 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-brand-paper dark:bg-brand-ink px-3 py-2.5 text-sm font-mono
                      text-zinc-900 dark:text-zinc-300 placeholder:text-zinc-400 dark:placeholder:text-zinc-600
-                     focus:outline-none focus:ring-1 focus:ring-violet-500/20 focus:border-violet-400"
+                     focus:outline-none focus:ring-1 focus:ring-indigo-500/20 focus:border-indigo-400"
               />
               <button
                 type="submit"
@@ -351,7 +351,7 @@ defmodule LoopyardWeb.ProjectListLive do
     ~H"""
     <.link
       navigate={@navigate}
-      class="flex items-center justify-between gap-3 w-full rounded-xl border border-zinc-200 dark:border-zinc-700 p-4 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group"
+      class="flex items-center justify-between gap-3 w-full rounded-xl border border-zinc-200 dark:border-zinc-700 p-4 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group"
     >
       <div class="min-w-0">
         <div class="flex items-center gap-2">

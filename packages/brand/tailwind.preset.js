@@ -23,11 +23,12 @@ module.exports = {
           // orange-* scale (orange-600 IS brand flame) for shades/washes.
           flame: "#ea580c",
           iris: {
-            DEFAULT: "#7c3aed", // violet-600 — light-mode accent
-            bright: "#a78bfa", // violet-400 — dark-mode accent
-            wash: "#ede9fe", //  light band wash
-            "wash-dark": "#2b2348", // dark band wash
-            "wash-active-dark": "#332a54" // dark active-band wash
+            DEFAULT: "#4f46e5", // indigo-600 — light-mode accent (cooled toward
+            // the site's slate; bluer than violet, still pops off the neutrals)
+            bright: "#818cf8", // indigo-400 — dark-mode accent
+            wash: "#e0e7ff", //  light band wash
+            "wash-dark": "#262a4d", // dark band wash
+            "wash-active-dark": "#2e335c" // dark active-band wash
           },
           moss: "#059669", // emerald-600 — done/healthy
           amber: "#b45309", // amber-700 — needs-you

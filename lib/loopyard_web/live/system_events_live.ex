@@ -127,11 +127,11 @@ defmodule LoopyardWeb.SystemEventsLive do
   end
 
   defp topic_pill_class(true) do
-    "rounded-full px-3 py-1 text-xs font-medium bg-violet-600 text-white"
+    "rounded-full px-3 py-1 text-xs font-medium bg-indigo-600 text-white"
   end
 
   defp topic_pill_class(false) do
-    "rounded-full px-3 py-1 text-xs font-medium border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-violet-400 dark:hover:border-violet-500"
+    "rounded-full px-3 py-1 text-xs font-medium border border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:border-indigo-400 dark:hover:border-indigo-500"
   end
 
   defp event_table(assigns) do
@@ -163,7 +163,7 @@ defmodule LoopyardWeb.SystemEventsLive do
                   )}
               </td>
               <td class="px-3 py-2 font-mono text-zinc-600 dark:text-zinc-400">{e.topic}</td>
-              <td class="px-3 py-2 font-mono text-violet-700 dark:text-violet-400 font-semibold">
+              <td class="px-3 py-2 font-mono text-indigo-700 dark:text-indigo-400 font-semibold">
                 {inspect(e.tag)}
               </td>
               <td
