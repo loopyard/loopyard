@@ -783,10 +783,30 @@ Hooks.ShareSheet = {
   }
 }
 
+// ChatForm — the composer. THE CONTRACT, in one place:
+//
+//   ENTER (decided per keydown by layout width, md=768px):
+//     desktop ≥768px : Enter SENDS · Shift+Enter newline · ⌘/⌃+Enter sends
+//     mobile  <768px : Enter NEWLINES (Send is the button) · ⌘/⌃+Enter sends
+//   Plain Enter on desktop preventDefaults BEFORE anything else — a newline
+//   can never enter the box on the send path.
+//
+//   SEND is OPTIMISTIC: the box clears INSTANTLY and the text appears in the
+//   #send-echo band (same spot/skin as the server queue band), so there is
+//   zero perceived latency even when the LiveView is seconds behind on a busy
+//   stream. The server ack then swaps the echo for the real queue band (the
+//   ack reply carries the pending list, so the swap is one render). On
+//   failure/timeout the text returns to the box — never lost.
+//
+//   The element persists across LiveView reconnects (phx-update="ignore"
+//   wrapper), so mounted() can run again on the SAME dom — the wire-once
+//   guard prevents duplicate listeners (double-send, double-resize).
 Hooks.ChatForm = {
   mounted() {
     const ta = this.el.querySelector("#chat-input")
     const btn = this.el.querySelector("button[type=submit]")
+    if (!ta || ta.dataset.wired) return
+    ta.dataset.wired = "1"
     let sending = false
 
     // Draft persistence — the LAST line of defense for a half-typed message.
@@ -871,23 +891,37 @@ Hooks.ChatForm = {
       sending = true
       if (btn) btn.disabled = true
 
-      // Do NOT clear the input yet. Keep the text until the server ACKS the
-      // send (the handle_event reply). If the socket is disconnected (live
-      // reload, reconnect, flaky phone link), the callback never fires — a
-      // timeout restores the box so the message is never silently lost.
+      // OPTIMISTIC: clear the box NOW and echo the text where the queue band
+      // will render — the message is visible instantly, nothing jumps later.
+      ta.value = ""
+      ta.style.height = "auto"
+      clearDraft()
+      updateSend()
+      // iOS: a pending autocorrect can commit the just-cleared text right back
+      // within a frame. Anything in the box one frame after our clear (a human
+      // can't type that fast) is that artifact — clear it again.
+      requestAnimationFrame(() => {
+        if (sending && ta.value !== "") {
+          ta.value = ""
+          ta.style.height = "auto"
+          ta.dispatchEvent(new Event("input", { bubbles: true }))
+        }
+      })
+
+      const echo = document.getElementById("send-echo")
+      const echoText = echo && echo.querySelector("[data-echo-text]")
+      if (echoText) echoText.textContent = text
+      if (echo) echo.classList.remove("hidden")
+      const hideEcho = () => { if (echo) echo.classList.add("hidden") }
+
       const status = document.getElementById("send-status")
-      // Status line under the input. Every caller sets BOTH text and tone so no
-      // color state leaks between the busy and error paths. "Sending…" shows the
-      // instant you hit Send — otherwise the message only appears after the
-      // server round-trip, which visibly lags while the agent is mid-turn.
-      const setStatus = (text, tone) => {
+      const setStatus = (text2, tone) => {
         if (!status) return
-        status.textContent = text
+        status.textContent = text2
         status.className =
           "mt-1.5 text-sm " +
           (tone === "error" ? "text-red-500 dark:text-red-400" : "text-zinc-400 dark:text-zinc-500")
       }
-      setStatus("Sending…", "busy")
       let settled = false
       const settle = (ok, reason) => {
         if (settled) return
@@ -895,27 +929,18 @@ Hooks.ChatForm = {
         sending = false
         if (btn) btn.disabled = false
         if (ok) {
-          ta.value = ""
-          ta.style.height = "auto"
-          clearDraft()
-          updateSend()
-          // iOS: tapping Send keeps focus in the field (touchend preventDefault),
-          // and a pending autocorrect can COMMIT the just-cleared text right back
-          // into it — which our input listener then dutifully re-saves as a
-          // draft. Clear again next frame, and fire a synthetic input so the
-          // resize + draft listeners see the truly-empty state.
-          requestAnimationFrame(() => {
-            if (!sending) {
-              ta.value = ""
-              ta.style.height = "auto"
-              clearDraft()
-              ta.dispatchEvent(new Event("input", { bubbles: true }))
-            }
-          })
+          // The ack render carries the pending list — the server queue band is
+          // already on screen; drop the echo in the same frame.
+          hideEcho()
           if (status) status.classList.add("hidden")
         } else {
-          // Text is still in the box — flag it AND say why, so a failed send is
-          // never a silent red flash.
+          // Put the text back (unless the user already started the next
+          // message) and say why — a failed send is never silent, never lost.
+          hideEcho()
+          if (ta.value.trim() === "") {
+            ta.value = text
+            ta.dispatchEvent(new Event("input", { bubbles: true }))
+          }
           ta.style.boxShadow = "0 0 0 2px rgb(248 113 113)"
           setTimeout(() => { ta.style.boxShadow = "" }, 2500)
           setStatus(reason || "Send didn't go through — your text is kept, press Send to retry.", "error")
@@ -923,19 +948,15 @@ Hooks.ChatForm = {
         }
       }
 
-      // 25s: a send into an ASLEEP agent can legitimately take a while — the
-      // server wakes the workspace + agent and delivers (wait ~2s + enqueue
-      // call ≤15s). A short timer here mislabeled those as failures while the
-      // message actually landed → confusing double-sends. Genuinely-dead
-      // sockets are reported separately (and faster) by the conn-banner.
+      // 25s: a send into an ASLEEP agent legitimately takes a while (the server
+      // wakes the workspace + agent). Dead sockets are reported faster by the
+      // conn-banner; this is only the never-acked backstop.
       const timer = setTimeout(() =>
         settle(false, "⚠ Couldn't reach the server — your text is safe; press Send to retry."),
       25000)
       this.pushEvent("send_message", { message: text }, (reply) => {
         clearTimeout(timer)
         if (reply && reply.ok) settle(true)
-        // The server's note is THE message (calm "waking…" vs real failure) —
-        // one channel, no generic guess, no competing toast.
         else settle(false, (reply && reply.note) || "⚠ Send didn't land — your text is kept; try again.")
       })
     }
