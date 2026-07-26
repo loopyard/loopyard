@@ -25,9 +25,7 @@ defmodule Loopyard.Tools.Container.RecallConversation do
         "newest. Page further back with before_id, or search with query.",
     params: [
       agent_id: {:string, required: true},
-      limit:
-        {:integer,
-         description: "How many messages to return (default 30, max 200)."},
+      limit: {:integer, description: "How many messages to return (default 30, max 200)."},
       before_id:
         {:string,
          description:
@@ -86,6 +84,7 @@ defmodule Loopyard.Tools.Container.RecallConversation do
     footer =
       if start > 0 do
         earliest = List.first(window)
+
         "\n\n(#{start} older message(s) — call recall_conversation with " <>
           "before_id=#{earliest[:id]} to read further back.)"
       else
@@ -109,7 +108,10 @@ defmodule Loopyard.Tools.Container.RecallConversation do
 
     header =
       "Search of #{total} message(s) for \"#{query}\": #{match_count} match(es)" <>
-        if(match_count > length(shown), do: " (showing the #{length(shown)} most recent)", else: "") <>
+        if(match_count > length(shown),
+          do: " (showing the #{length(shown)} most recent)",
+          else: ""
+        ) <>
         if(match_count == 0, do: ".", else: ", oldest first:")
 
     body = if shown == [], do: "", else: "\n\n" <> render(shown)
@@ -143,7 +145,11 @@ defmodule Loopyard.Tools.Container.RecallConversation do
     end
   end
 
-  defp ts(%DateTime{} = dt), do: " [" <> (dt |> DateTime.to_iso8601() |> String.slice(0, 16) |> String.replace("T", " ")) <> "]"
+  defp ts(%DateTime{} = dt),
+    do:
+      " [" <>
+        (dt |> DateTime.to_iso8601() |> String.slice(0, 16) |> String.replace("T", " ")) <> "]"
+
   defp ts(_), do: ""
 
   defp clamp(n, _default, lo, hi) when is_integer(n), do: n |> max(lo) |> min(hi)

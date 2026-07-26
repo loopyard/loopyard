@@ -106,15 +106,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Transcript do
   def section_key(_), do: :head
 
   @doc """
-  Per-item render context, precomputed in ONE pass so each transcript row's
-  assigns are STABLE across appends (equal values → keyed diffing skips the
-  row). Replaces the per-row look-back walks that needed the whole @messages
-  list — passing that list (or any per-append-changing value) to every row
-  made LiveView consider every row changed on every append (~850KB/turn
-  measured). Returns idx → %{prev_role, next_role, call, streamed_exec,
-  preceded_by_edit, expanded?}.
-  """
-  @doc """
   Sections with per-item context baked into the items: every `{msg, idx}`
   becomes `{msg, idx, ctx}`, and rows the live activity feed already shows
   (tool/tool_result past `live_from`) are FILTERED OUT here instead of a
@@ -164,6 +155,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Transcript do
     end)
   end
 
+  @doc """
+  Per-item render context, precomputed in ONE pass so each transcript row's
+  assigns are STABLE across appends (equal values → keyed diffing skips the
+  row). Replaces the per-row look-back walks that needed the whole @messages
+  list — passing that list (or any per-append-changing value) to every row
+  made LiveView consider every row changed on every append (~850KB/turn
+  measured). Returns idx → %{prev_role, next_role, call, streamed_exec,
+  preceded_by_edit, expanded?}.
+  """
   def item_contexts(messages, expanded_results) do
     tail_from = expand_tail_from(messages)
     roles = messages |> Enum.map(& &1.role) |> List.to_tuple()

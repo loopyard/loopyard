@@ -1058,7 +1058,7 @@ defmodule LoopyardWeb.WorkspaceLive do
   def handle_event("set_agent_model", %{"model" => model} = params, socket) do
     # Model switcher in the Usage panel. Applies live (ACP session/set_model)
     # + persists in session_opts; the StatusChanged broadcast refreshes the row.
-    agent_id = params["id"] || socket.assigns.selected_id
+    agent_id = params["agent-id"] || socket.assigns.selected_id
 
     if agent_id && model not in [nil, ""] do
       ChatAgent.set_model(agent_id, model)
@@ -1082,11 +1082,9 @@ defmodule LoopyardWeb.WorkspaceLive do
      |> assign(:editing_agent_id, nil)}
   end
 
-  @impl true
-  # --- UI state events ---
+  # --- Source-adapter sync events (Local/Mutagen) ---
 
   @impl true
-  # --- Source-adapter sync events (Local/Mutagen) ---
 
   def handle_event("sync_restart", %{"workspace-id" => ws_id}, socket) do
     case Loopyard.Source.Local.SyncMonitor.whereis(ws_id) do

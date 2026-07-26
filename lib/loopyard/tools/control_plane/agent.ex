@@ -73,7 +73,6 @@ defmodule Loopyard.Tools.ControlPlane.Agent do
 
       case Loopyard.Onboarding.spawn_agent(ws_id, opts) do
         {:ok, aid} -> {:ok, "Spawned a new agent (#{aid}) in workspace #{ws_id}."}
-        aid when is_binary(aid) -> {:ok, "Spawned a new agent (#{aid}) in workspace #{ws_id}."}
         {:error, r} -> {:error, "Couldn't spawn an agent: #{inspect(r)}"}
       end
     end

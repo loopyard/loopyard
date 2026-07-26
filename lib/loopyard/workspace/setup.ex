@@ -401,7 +401,6 @@ defmodule Loopyard.Workspace.Setup do
       do_invoke_phase(phase, adapter, workspace, workspace_id)
     else
       nil -> {:error, :not_found}
-      _ -> {:error, :not_found}
     end
   end
 

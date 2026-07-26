@@ -48,10 +48,5 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Switcher do
     end
   end
 
-  defp view_path(uri) do
-    case URI.parse(uri) do
-      %URI{path: path} -> path
-      _ -> nil
-    end
-  end
+  defp view_path(uri), do: URI.parse(uri).path
 end

@@ -11,7 +11,10 @@ defmodule Loopyard.Tools.ControlPlane.CreateProjectFromPath do
     params: [
       agent_id: {:string, required: true},
       name: {:string, required: true, description: "Project name in Loopyard"},
-      path: {:string, required: true, description: "Absolute host path to the folder, e.g. '/Users/me/Projects/app'"},
+      path:
+        {:string,
+         required: true,
+         description: "Absolute host path to the folder, e.g. '/Users/me/Projects/app'"},
       reason: {:string, description: "Short why — shown on the approval card"}
     ]
 

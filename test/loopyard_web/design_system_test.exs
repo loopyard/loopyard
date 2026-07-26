@@ -31,7 +31,8 @@ defmodule LoopyardWeb.DesignSystemTest do
     offenders =
       for {path, src} <- web_sources(), String.contains?(src, "indigo-"), do: path
 
-    assert offenders == [], "indigo-* classes found (iris is the violet family): #{inspect(offenders)}"
+    assert offenders == [],
+           "indigo-* classes found (iris is the violet family): #{inspect(offenders)}"
   end
 
   test "needs-you speaks flame (orange), never amber, in the card family" do

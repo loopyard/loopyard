@@ -71,7 +71,9 @@ defmodule Loopyard.TestSupport.RecordingBackend do
   def start_session(opts) do
     Agent.update(__MODULE__, fn s -> %{s | starts: [opts | s.starts]} end)
 
-    case Agent.get_and_update(__MODULE__, fn s -> {Map.get(s, :fail_next), Map.put(s, :fail_next, nil)} end) do
+    case Agent.get_and_update(__MODULE__, fn s ->
+           {Map.get(s, :fail_next), Map.put(s, :fail_next, nil)}
+         end) do
       nil ->
         # Each call returns a fresh trivial GenServer pid so callers have
         # something alive to hold onto.

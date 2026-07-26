@@ -115,7 +115,9 @@ defmodule Loopyard.Operator do
       claude_session_id: claude_session_id
     ]
 
-    {:ok, _pid} = DynamicSupervisor.start_child(Loopyard.AgentSupervisor, {Loopyard.ChatAgent, opts})
+    {:ok, _pid} =
+      DynamicSupervisor.start_child(Loopyard.AgentSupervisor, {Loopyard.ChatAgent, opts})
+
     id
   end
 

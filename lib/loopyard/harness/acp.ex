@@ -260,7 +260,6 @@ defmodule Loopyard.Harness.ACP do
     :exit, _ -> :ok
   end
 
-  @impl true
   @doc "Switch the live session's model (ACP session/set_model). Async."
   def set_model(conn, model_id) when is_pid(conn), do: Connection.set_model(conn, model_id)
   def set_model(_conn, _model_id), do: :ok
@@ -276,6 +275,7 @@ defmodule Loopyard.Harness.ACP do
   # Connection.ping round-trips the adapter's event loop; :initializing counts
   # as alive (still booting ≠ dead — don't let a caller double-spawn mid-
   # handshake).
+  @impl true
   def session_alive?(conn) do
     is_pid(conn) and Process.alive?(conn) and
       case Connection.ping(conn) do

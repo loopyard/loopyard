@@ -69,7 +69,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.MessagesDetailLevelTest do
     end
 
     test "a long error keeps the disclosure, forced open even at :actions" do
-      msg = %{role: :tool_result, content: Enum.map_join(1..5, "\n", &"err #{&1}"), is_error: true}
+      msg = %{
+        role: :tool_result,
+        content: Enum.map_join(1..5, "\n", &"err #{&1}"),
+        is_error: true
+      }
+
       html = render(msg, :actions)
       assert html =~ "<details"
       assert html =~ "open"
@@ -97,7 +102,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.MessagesDetailLevelTest do
       messages = [
         %{role: :tool, tool: "Bash", tool_id: "t1", input: %{"command" => "ls -l /workspace"}},
         %{role: :tool, tool: "Read", tool_id: "t2", input: %{"file_path" => "/workspace/a.rb"}},
-        %{role: :tool_result, tool_id: "t1", content: "total 0\n-rw-r--r-- docs", is_error: false},
+        %{
+          role: :tool_result,
+          tool_id: "t1",
+          content: "total 0\n-rw-r--r-- docs",
+          is_error: false
+        },
         %{role: :tool_result, tool_id: "t2", content: "File does not exist.", is_error: true}
       ]
 

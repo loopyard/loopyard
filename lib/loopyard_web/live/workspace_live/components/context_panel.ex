@@ -355,7 +355,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
       <div class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-5 text-sm">
         <span class="text-zinc-500 dark:text-zinc-400 flex-none">Model</span>
         <form phx-change="set_agent_model" class="flex-none">
-          <input type="hidden" name="id" value={@agent.id} />
+          <input type="hidden" name="agent-id" value={@agent.id} />
           <select
             name="model"
             aria-label="Agent model"

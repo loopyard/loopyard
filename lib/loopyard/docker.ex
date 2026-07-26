@@ -412,7 +412,8 @@ defmodule Loopyard.Docker do
           # inherit the shell's, so output flows to the port unchanged. `cat`
           # holds the shell on stdin until the port dies, then the client is
           # killed — no orphan survives its port.
-          script = ~S("$0" "$@" & p=$!; cat >/dev/null 2>&1; kill "$p" 2>/dev/null; wait "$p" 2>/dev/null)
+          script =
+            ~S("$0" "$@" & p=$!; cat >/dev/null 2>&1; kill "$p" 2>/dev/null; wait "$p" 2>/dev/null)
 
           Port.open(
             {:spawn_executable, System.find_executable("sh")},

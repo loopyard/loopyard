@@ -358,13 +358,8 @@ defmodule Loopyard.AgentBoot do
           {:ok, %{initial_message: :skipped}}
         else
           msg = initial_message || default_message(ws_config, service_name)
-
-          if msg do
-            ChatAgent.send_message(id, msg)
-            {:ok, %{initial_message: :sent}}
-          else
-            {:ok, %{initial_message: :none}}
-          end
+          ChatAgent.send_message(id, msg)
+          {:ok, %{initial_message: :sent}}
         end
       end
     }

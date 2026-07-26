@@ -365,7 +365,8 @@ defmodule Loopyard.Harness.ACP.ConnectionTest do
 
       send(
         conn,
-        {:acp_msg, %{"id" => 78, "method" => "elicitation/create", "params" => %{"mode" => "url"}}}
+        {:acp_msg,
+         %{"id" => 78, "method" => "elicitation/create", "params" => %{"mode" => "url"}}}
       )
 
       assert_receive {:sent, %{"id" => 78, "result" => %{"action" => "decline"}}}
@@ -427,8 +428,16 @@ defmodule Loopyard.Harness.ACP.ConnectionTest do
           "id" => "model",
           "currentValue" => current,
           "options" => [
-            %{"value" => "claude-fable-5", "name" => "Fable 5", "description" => "Fable 5 · Most capable"},
-            %{"value" => "claude-sonnet-5", "name" => "Sonnet 5", "description" => "Sonnet 5 · Everyday"}
+            %{
+              "value" => "claude-fable-5",
+              "name" => "Fable 5",
+              "description" => "Fable 5 · Most capable"
+            },
+            %{
+              "value" => "claude-sonnet-5",
+              "name" => "Sonnet 5",
+              "description" => "Sonnet 5 · Everyday"
+            }
           ]
         }
       ]

@@ -24,7 +24,12 @@ defmodule Loopyard.Tools.ControlPlane.RenameProject do
 
     with false <- name == "",
          {:ok, project} <- resolve_project(target) do
-      action = %{verb: :rename_project, project_id: project.id, old_name: project.name, name: name}
+      action = %{
+        verb: :rename_project,
+        project_id: project.id,
+        old_name: project.name,
+        name: name
+      }
 
       case Approvals.request(operator_id, action) do
         {:approve, msg_id} ->

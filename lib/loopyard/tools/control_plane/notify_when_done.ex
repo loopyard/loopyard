@@ -25,8 +25,7 @@ defmodule Loopyard.Tools.ControlPlane.NotifyWhenDone do
       agent_id: {:string, required: true},
       target:
         {:string,
-         required: true,
-         description: "Workspace id/name or agent id whose completion to watch."}
+         required: true, description: "Workspace id/name or agent id whose completion to watch."}
     ]
 
   alias Loopyard.Tools.ControlPlane

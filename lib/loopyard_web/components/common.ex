@@ -452,15 +452,6 @@ defmodule LoopyardWeb.Components.Common do
   end
 
   @doc """
-  The Operator affordance — a command-grid icon that links to `/operator` (live
-  nav, so the ambient bed never cuts). The operator is now the one place you run
-  everything from AND the ambient presence, so this REPLACES the old speaker
-  icon everywhere it appeared. The `SoundIcon` JS hook stays: it mirrors the
-  ambient engine state onto `data-sound-icon`, so the icon carries a subtle
-  violet tint while the operator's bed is playing — the operator "is live" cue.
-  Give each placement a unique `id`.
-  """
-  @doc """
   The MODE NAV — the app's two modes + the System click-off, per
   plans/ia-two-modes.md. Three fixed icons, used identically everywhere:
   Workspaces (2×2 grid) ⇄ Operator (the trefoil — the operator is loopyard's
@@ -519,6 +510,15 @@ defmodule LoopyardWeb.Components.Common do
   attr :id, :string, default: "operator-link"
   attr :class, :string, default: nil
 
+  @doc """
+  The Operator affordance — a command-grid icon that links to `/operator` (live
+  nav, so the ambient bed never cuts). The operator is now the one place you run
+  everything from AND the ambient presence, so this REPLACES the old speaker
+  icon everywhere it appeared. The `SoundIcon` JS hook stays: it mirrors the
+  ambient engine state onto `data-sound-icon`, so the icon carries a subtle
+  violet tint while the operator's bed is playing — the operator "is live" cue.
+  Give each placement a unique `id`.
+  """
   def operator_link(assigns) do
     ~H"""
     <.link

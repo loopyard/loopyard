@@ -11,7 +11,9 @@ defmodule Loopyard.Tools.ControlPlane.CreateProjectFromGithub do
     params: [
       agent_id: {:string, required: true},
       name: {:string, required: true, description: "Project name in Loopyard"},
-      repo: {:string, required: true, description: "GitHub repo as 'owner/name', e.g. 'overtonxyz/gbrain'"},
+      repo:
+        {:string,
+         required: true, description: "GitHub repo as 'owner/name', e.g. 'overtonxyz/gbrain'"},
       reason: {:string, description: "Short why — shown on the approval card"}
     ]
 

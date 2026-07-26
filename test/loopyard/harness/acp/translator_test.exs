@@ -93,8 +93,12 @@ defmodule Loopyard.Harness.ACP.TranslatorTest do
     test "strips the outer markdown code fence that wraps the whole result" do
       {_state, events} =
         run(Translator.new(), [
-          %{"sessionUpdate" => "tool_call", "toolCallId" => "t1", "title" => "Bash",
-            "rawInput" => %{"command" => "gh"}},
+          %{
+            "sessionUpdate" => "tool_call",
+            "toolCallId" => "t1",
+            "title" => "Bash",
+            "rawInput" => %{"command" => "gh"}
+          },
           result_update("t1", "```\nstate\nurl\n```")
         ])
 
@@ -104,9 +108,16 @@ defmodule Loopyard.Harness.ACP.TranslatorTest do
     test "unwraps <tool_use_error> AND flags is_error even on a non-failed status" do
       {_state, events} =
         run(Translator.new(), [
-          %{"sessionUpdate" => "tool_call", "toolCallId" => "e1", "title" => "Read",
-            "rawInput" => %{"path" => "/x"}},
-          result_update("e1", "```\n<tool_use_error>Path does not exist: /x</tool_use_error>\n```")
+          %{
+            "sessionUpdate" => "tool_call",
+            "toolCallId" => "e1",
+            "title" => "Read",
+            "rawInput" => %{"path" => "/x"}
+          },
+          result_update(
+            "e1",
+            "```\n<tool_use_error>Path does not exist: /x</tool_use_error>\n```"
+          )
         ])
 
       assert %Event.ToolResult{content: "Path does not exist: /x", is_error: true} =
@@ -116,8 +127,12 @@ defmodule Loopyard.Harness.ACP.TranslatorTest do
     test "a fence in the MIDDLE of output is preserved (only the outer wrapper is stripped)" do
       {_state, events} =
         run(Translator.new(), [
-          %{"sessionUpdate" => "tool_call", "toolCallId" => "m1", "title" => "Bash",
-            "rawInput" => %{"command" => "cat x"}},
+          %{
+            "sessionUpdate" => "tool_call",
+            "toolCallId" => "m1",
+            "title" => "Bash",
+            "rawInput" => %{"command" => "cat x"}
+          },
           result_update("m1", "here is code:\n```js\nx()\n```\ndone")
         ])
 

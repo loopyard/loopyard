@@ -88,7 +88,9 @@ defmodule Loopyard.Harness.QuestionsTest do
       assert q0.header == "Persistence"
       assert q0.prompt == "What happens to VIP status?"
       refute q0.multi
-      assert [%{label: "Graduate", description: "Auto-clears"}, %{label: "VIP forever"}] = q0.options
+
+      assert [%{label: "Graduate", description: "Auto-clears"}, %{label: "VIP forever"}] =
+               q0.options
 
       assert q1.id == "question_1"
       assert q1.multi

@@ -44,7 +44,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
       match?(%{status: :running}, sync) -> "bg-emerald-500"
       match?(%{status: :paused}, sync) -> "bg-amber-400"
       match?(%{status: :errored}, sync) -> "bg-red-500"
-      match?(%{status: :starting}, sync) -> "bg-blue-400 animate-pulse"
       true -> "bg-zinc-400"
     end
   end

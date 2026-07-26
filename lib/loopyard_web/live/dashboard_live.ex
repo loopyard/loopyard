@@ -283,11 +283,6 @@ defmodule LoopyardWeb.DashboardLive do
     }
   end
 
-  defp health_tone(:healthy), do: :ok
-  defp health_tone(:degraded), do: :warn
-  defp health_tone(:down), do: :down
-  defp health_tone(_), do: :neutral
-
   defp health_line(:healthy) do
     n = length(Loopyard.Health.components())
     "All #{n} subsystems healthy"

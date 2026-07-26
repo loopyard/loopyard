@@ -57,7 +57,8 @@ defmodule Loopyard.HarnessCheck do
       {:error,
        %{
          reason: :container_required,
-         detail: "probe/1 needs a :container (e.g. a work container name) — harnesses run in-container, never on the host",
+         detail:
+           "probe/1 needs a :container (e.g. a work container name) — harnesses run in-container, never on the host",
          backend: backend
        }}
     else

@@ -16,7 +16,8 @@ defmodule Loopyard.Tools.ControlPlane.Music do
     busy_words: ["working the music"],
     params: [
       agent_id: {:string, required: true},
-      action: {:string, required: true, description: "status | list | track | play | pause | volume"},
+      action:
+        {:string, required: true, description: "status | list | track | play | pause | volume"},
       track: {:string, description: "For action=track: the track name (see action=list)."},
       level: {:number, description: "For action=volume: 0.0–1.0."}
     ]
@@ -25,13 +26,26 @@ defmodule Loopyard.Tools.ControlPlane.Music do
 
   def execute(params, _assigns) do
     case (params[:action] || "") |> to_string() |> String.downcase() do
-      "status" -> status()
-      "list" -> {:ok, "Available tracks: #{Enum.join(tracks(), ", ")}. Switch with action=track."}
-      "track" -> track(params[:track])
-      "play" -> command(:play, nil, "Playing the ambient bed.")
-      "pause" -> command(:pause, nil, "Paused the ambient bed.")
-      "volume" -> volume(params[:level])
-      other -> {:error, "Unknown action '#{other}'. Use status, list, track, play, pause, or volume."}
+      "status" ->
+        status()
+
+      "list" ->
+        {:ok, "Available tracks: #{Enum.join(tracks(), ", ")}. Switch with action=track."}
+
+      "track" ->
+        track(params[:track])
+
+      "play" ->
+        command(:play, nil, "Playing the ambient bed.")
+
+      "pause" ->
+        command(:pause, nil, "Paused the ambient bed.")
+
+      "volume" ->
+        volume(params[:level])
+
+      other ->
+        {:error, "Unknown action '#{other}'. Use status, list, track, play, pause, or volume."}
     end
   rescue
     e -> {:error, "music failed: #{inspect(e)}"}

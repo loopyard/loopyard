@@ -53,7 +53,9 @@ defmodule Loopyard.Tools.ControlPlane.RecentActivity do
       items ->
         "WAITING ON THE HUMAN (surface these — they're blocked until answered):\n" <>
           Enum.map_join(items, "\n", fn i ->
-            where = [i.project_name, i.workspace_name] |> Enum.reject(&is_nil/1) |> Enum.join(" · ")
+            where =
+              [i.project_name, i.workspace_name] |> Enum.reject(&is_nil/1) |> Enum.join(" · ")
+
             "  - #{where}: #{i.label}#{ago(i.asked_at)}"
           end) <> "\n\n"
     end

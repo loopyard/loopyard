@@ -64,13 +64,19 @@ defmodule LoopyardWeb.Live.WorkspaceLive.QuestionCardTest do
           id: "q1",
           header: "GH AUTH",
           prompt: "How to authenticate?",
-          options: [%{label: "Paste a token", description: nil}, %{label: "Hold off", description: nil}]
+          options: [
+            %{label: "Paste a token", description: nil},
+            %{label: "Hold off", description: nil}
+          ]
         },
         %{
           id: "q2",
           header: "SCOPE",
           prompt: "Which repos?",
-          options: [%{label: "All", description: nil}, %{label: "Just this one", description: nil}]
+          options: [
+            %{label: "All", description: nil},
+            %{label: "Just this one", description: nil}
+          ]
         }
       ]
     }

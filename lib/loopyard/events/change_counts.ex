@@ -29,24 +29,3 @@ defmodule Loopyard.Events.ChangeCounts do
 
   def publish(%Updated{}), do: :ok
 end
-
-defmodule Loopyard.Events.ChangeCounts.Updated do
-  @moduledoc "A workspace's cached changed-file count changed."
-  defstruct [:workspace_id, :count]
-
-  @type t :: %__MODULE__{workspace_id: String.t(), count: non_neg_integer()}
-end
-
-defmodule Loopyard.Events.ChangeCounts.Subscriber do
-  @moduledoc """
-  Behaviour for LiveViews subscribed to the change-counts topic. Implement
-  `on_change_counts_updated/2` explicitly (no `@optional_callbacks`).
-  """
-
-  alias Loopyard.Events.ChangeCounts
-
-  @type socket :: Phoenix.LiveView.Socket.t()
-  @type result :: {:noreply, socket} | {:reply, map, socket}
-
-  @callback on_change_counts_updated(ChangeCounts.Updated.t(), socket) :: result
-end

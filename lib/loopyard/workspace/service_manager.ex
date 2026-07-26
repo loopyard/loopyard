@@ -628,87 +628,40 @@ defmodule Loopyard.Workspace.ServiceManager do
         :ok
 
       {:error, {:version_mismatch, file: file_v, requested: @log_version}} ->
-        # Attempt migration before giving up
-        case migrate_log(log_path, file_v) do
-          :ok ->
-            Loopyard.EventLog.info(
-              "workspace",
-              "Migrated agent log from v#{file_v} to v#{@log_version}"
-            )
+        # No migration path exists yet (see migrate_log/2). When one lands,
+        # restore the migrate → retry-replay flow here.
+        {:error, :no_migration_path} = migrate_log(log_path, file_v)
 
-            # Retry replay after successful migration
-            replay_agent_log(nil, workspace_id)
-
-          {:error, :no_migration_path} ->
-            Loopyard.EventLog.warning(
-              "workspace",
-              "Agent log version mismatch: file is v#{file_v}, expected v#{@log_version}. " <>
-                "No migration path available. Agents not restored."
-            )
-
-          {:error, reason} ->
-            Loopyard.EventLog.warning(
-              "workspace",
-              "Failed to migrate agent log from v#{file_v}: #{inspect(reason)}. Agents not restored."
-            )
-        end
+        Loopyard.EventLog.warning(
+          "workspace",
+          "Agent log version mismatch: file is v#{file_v}, expected v#{@log_version}. " <>
+            "No migration path available. Agents not restored."
+        )
 
       {:error, reason} ->
         Loopyard.EventLog.warning("workspace", "Failed to replay agent log: #{inspect(reason)}")
     end
   end
 
-  # Migrate log file from old version to @log_version.
-  # Handles multi-step migrations (e.g., v1→v2→v3) by chaining.
-  defp migrate_log(log_path, from_version) when from_version < @log_version do
-    # Find next version in chain
-    next_version = from_version + 1
-
-    case migration_transformer(from_version, next_version) do
-      nil ->
-        {:error, :no_migration_path}
-
-      transformer ->
-        case Loopyard.AgentLog.migrate(
-               log_path: log_path,
-               from: from_version,
-               to: next_version,
-               transformer: transformer
-             ) do
-          :ok when next_version == @log_version ->
-            :ok
-
-          :ok ->
-            # Continue chain to reach @log_version
-            migrate_log(log_path, next_version)
-
-          error ->
-            error
-        end
-    end
-  end
-
-  defp migrate_log(_log_path, from_version) when from_version > @log_version do
-    # File is newer than code - can't downgrade
-    {:error, :no_migration_path}
-  end
-
-  # Define transformers for each version step.
-  # Return nil if no migration exists for that step.
-  #
-  # Example for future v1→v2 migration:
+  # Migrate log file from old version to @log_version. No migration steps
+  # exist yet (v1 is the only version ever shipped), so any mismatch is a
+  # dead end. When the log format first bumps, reintroduce per-step
+  # transformers chained through `Loopyard.AgentLog.migrate/1`:
   #
   #   defp migration_transformer(1, 2) do
   #     fn
   #       {:msg, agent_id, data} ->
-  #         # Example: rename field
   #         {:msg, agent_id, Map.put(data, :new_field, Map.get(data, :old_field))}
   #       other ->
   #         other
   #     end
   #   end
   #
-  defp migration_transformer(_from, _to), do: nil
+  # then AgentLog.migrate(log_path:, from:, to:, transformer:) per step,
+  # recursing until @log_version.
+  defp migrate_log(_log_path, from_version) when from_version != @log_version do
+    {:error, :no_migration_path}
+  end
 
   defp start_restored_agent(workspace_id, agent_id) do
     # Don't start if the agent process is already running

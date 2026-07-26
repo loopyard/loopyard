@@ -185,7 +185,6 @@ defmodule LoopyardWeb.Components.ProjectList do
     its right — quietly (muted) so the project heading leads. --%>
       <LoopyardWeb.Components.Common.workspace_identity
         project={@ws.name}
-        workspace={nil}
         state={ws_state(@ws)}
         size={(@size == :xs && :md) || :sm}
         muted={@size == :sm}
@@ -242,7 +241,6 @@ defmodule LoopyardWeb.Components.ProjectList do
     as real hierarchy instead of "Loopyard / Loopyard · main". --%>
           <LoopyardWeb.Components.Common.workspace_identity
             project={@ws.name}
-            workspace={nil}
             state={ws_state(@ws)}
             size={:md}
             class="min-w-0 flex-1"
@@ -304,7 +302,6 @@ defmodule LoopyardWeb.Components.ProjectList do
     leads with its branch (see ws_row_md). --%>
         <LoopyardWeb.Components.Common.workspace_identity
           project={@ws.name}
-          workspace={nil}
           state={ws_state(@ws)}
           size={:md}
           class="min-w-0 flex-1"

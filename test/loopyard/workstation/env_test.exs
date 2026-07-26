@@ -48,6 +48,7 @@ defmodule Loopyard.Workstation.EnvTest do
 
     test "valid → {:ok, map} with every key preserved", %{id: id, path: path} do
       write_store(path, %{"CLAUDE_CODE_OAUTH_TOKEN" => "x", "GITHUB_TOKEN" => "y"})
+
       assert {:ok, %{"CLAUDE_CODE_OAUTH_TOKEN" => "x", "GITHUB_TOKEN" => "y"}} =
                Env.current_for_write(id)
     end

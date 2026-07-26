@@ -47,8 +47,11 @@ defmodule Loopyard.Tools.ControlPlane.RenameWorkspace do
           {:ok, "No response on the rename proposal — not renamed."}
       end
     else
-      true -> {:error, "new_name can't be empty."}
-      _ -> {:error, "Couldn't resolve workspace '#{target}'. Call overview to see valid ids/names."}
+      true ->
+        {:error, "new_name can't be empty."}
+
+      _ ->
+        {:error, "Couldn't resolve workspace '#{target}'. Call overview to see valid ids/names."}
     end
   rescue
     e -> {:error, "Rename failed: #{inspect(e)}"}

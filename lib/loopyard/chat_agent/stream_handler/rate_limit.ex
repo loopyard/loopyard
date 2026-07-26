@@ -220,7 +220,10 @@ defmodule Loopyard.ChatAgent.StreamHandler.RateLimit do
 
   @doc false
   def auth_retry_backoff_ms(attempt) when is_integer(attempt) and attempt > 0 do
-    min(Loopyard.Retry.backoff_ms(attempt, {:exponential, @auth_retry_base_ms}), @auth_retry_max_ms)
+    min(
+      Loopyard.Retry.backoff_ms(attempt, {:exponential, @auth_retry_base_ms}),
+      @auth_retry_max_ms
+    )
   end
 
   @doc """

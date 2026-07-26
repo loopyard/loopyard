@@ -65,9 +65,11 @@ defmodule LoopyardWeb.Components.FocusedView do
       <div class="flex items-center gap-2.5 min-w-0">
         <span
           aria-hidden="true"
-          class={["flex-none w-2.5 h-2.5 rounded-full", LoopyardWeb.Components.Common.state_light(@state)]}
-        >
-        </span>
+          class={[
+            "flex-none w-2.5 h-2.5 rounded-full",
+            LoopyardWeb.Components.Common.state_light(@state)
+          ]}
+        ></span>
         <h1 class="min-w-0 truncate text-xl md:text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
           {@project}<span
             :if={@workspace not in [nil, ""]}

@@ -124,6 +124,12 @@ defmodule LoopyardWeb.SystemLive do
      |> kick_fast_slices()}
   end
 
+  def handle_info(:refresh_slow, socket) do
+    schedule_refresh(:slow)
+    {:noreply, kick_slow_slices(socket)}
+  end
+
+  @impl true
   def handle_event("reboot", _params, socket) do
     case Loopyard.Reboot.trigger() do
       :ok ->
@@ -137,11 +143,6 @@ defmodule LoopyardWeb.SystemLive do
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, "Couldn't launch the reboot: #{inspect(reason)}")}
     end
-  end
-
-  def handle_info(:refresh_slow, socket) do
-    schedule_refresh(:slow)
-    {:noreply, kick_slow_slices(socket)}
   end
 
   # --- Async results ---

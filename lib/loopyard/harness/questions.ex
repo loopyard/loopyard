@@ -141,8 +141,6 @@ defmodule Loopyard.Harness.Questions do
     end)
   end
 
-  @doc "Confirm a multi-select question's current draft (possibly empty = skip) as its answer."
-  @spec confirm_question(String.t(), String.t()) :: :ok | {:error, :not_found}
   @doc """
   Draft ONE option for a single-select question (replaces any prior draft) —
   broadcast so every viewer sees the highlight, but nothing commits until
@@ -167,6 +165,8 @@ defmodule Loopyard.Harness.Questions do
     end)
   end
 
+  @doc "Confirm a multi-select question's current draft (possibly empty = skip) as its answer."
+  @spec confirm_question(String.t(), String.t()) :: :ok | {:error, :not_found}
   def confirm_question(qid, q_id) when is_binary(qid) and is_binary(q_id) do
     with_entry(qid, fn entry ->
       entry

@@ -9,7 +9,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   import LoopyardWeb.Components.Sidebar, only: [status_dot: 1, agent_display_status: 1]
 
   import LoopyardWeb.Live.WorkspaceLive.Messages,
-    only: [chat_msg: 1, streaming_bubble: 1, streaming_thinking: 1]
+    only: [streaming_bubble: 1, streaming_thinking: 1]
 
   import LoopyardWeb.Components.Icon
 
@@ -29,7 +29,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     ]
 
   alias LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus
-  alias LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults
 
   # The live-status presentation (thinking feed, live tail, Reasoning Bar) lives
   # in the ChatStatus sub-module to keep this file under its size cap. Re-expose
@@ -836,26 +835,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       not awaiting_answer?(assigns.messages) and
       not awaiting_approval?(assigns.messages) and
       not building?(assigns.messages)
-  end
-
-  defp in_live_feed?(nil, _msg, _idx, _messages), do: false
-
-  # A COMMAND's result is the exception: it renders inline as the console box
-  # (command title + output + exit) the moment it lands — mid-turn, exactly like
-  # watching a terminal — instead of hiding behind a ✓ chip until the turn ends.
-  # Everything else in the active turn stays in the compact live feed.
-  defp in_live_feed?(from, msg, idx, messages) do
-    idx > from and
-      case msg.role do
-        :tool ->
-          true
-
-        :tool_result ->
-          not ToolResults.console_command_result?(%{msg: msg, idx: idx, messages: messages})
-
-        _ ->
-          false
-      end
   end
 
   # --- Container Panel ---

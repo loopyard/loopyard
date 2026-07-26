@@ -71,7 +71,6 @@ defmodule Loopyard.DockerTest do
 
       :telemetry.detach(handler_id)
     end
-
   end
 
   describe "scrub_secrets/1 (telemetry credential redaction — pure)" do
@@ -90,7 +89,9 @@ defmodule Loopyard.DockerTest do
       assert Docker.scrub_secrets(["version"]) == ["version"]
       assert Docker.scrub_secrets(["run", "--rm", "alpine/git"]) == ["run", "--rm", "alpine/git"]
       # a bare github URL with no credentials is unchanged
-      assert Docker.scrub_secrets(["push https://github.com/a/b"]) == ["push https://github.com/a/b"]
+      assert Docker.scrub_secrets(["push https://github.com/a/b"]) == [
+               "push https://github.com/a/b"
+             ]
     end
   end
 

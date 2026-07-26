@@ -18,7 +18,8 @@ defmodule Loopyard.Tools.Container.AskUser do
       agent_id: {:string, required: true},
       questions: {:list, required: true, description: "List of question objects (usually one)."},
       source:
-        {:string, required: false,
+        {:string,
+         required: false,
          description:
            "The REAL project — and optionally its real workspace/branch — this memo is about, e.g. 'firehose-site · main' or just 'Loopyard'. This is an IDENTITY, not a topic: what's after the · MUST be an actual workspace name (never a subject like 'system health' — that goes in the question header). Omit if not tied to a project."}
     ]

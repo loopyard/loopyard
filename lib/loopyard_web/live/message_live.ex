@@ -167,6 +167,7 @@ defmodule LoopyardWeb.MessageLive do
 
   def on_message_updated(_e, socket), do: {:noreply, socket}
 
+  @impl true
   def on_stream_output(_e, socket), do: {:noreply, socket}
 
   @impl true

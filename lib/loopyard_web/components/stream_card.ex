@@ -38,7 +38,8 @@ defmodule LoopyardWeb.Components.StreamCard do
   # The left line MEANS "live — waiting on you / the active turn". Settled
   # receipts (:neutral) carry no line: the wash alone is the receipt.
   defp band_tone(:needs_you),
-    do: "border-l-2 bg-orange-50/70 dark:bg-orange-950/15 border-orange-400 dark:border-orange-500/60"
+    do:
+      "border-l-2 bg-orange-50/70 dark:bg-orange-950/15 border-orange-400 dark:border-orange-500/60"
 
   defp band_tone(:you),
     do: "border-l-2 bg-violet-100 dark:bg-[#2b2348] border-violet-500 dark:border-violet-400"

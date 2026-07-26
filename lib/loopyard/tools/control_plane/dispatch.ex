@@ -20,10 +20,8 @@ defmodule Loopyard.Tools.ControlPlane.Dispatch do
       agent_id: {:string, required: true},
       target:
         {:string,
-         required: true,
-         description: "Workspace id/name or agent id to send the task to."},
-      message:
-        {:string, required: true, description: "The task/message to send to that agent."}
+         required: true, description: "Workspace id/name or agent id to send the task to."},
+      message: {:string, required: true, description: "The task/message to send to that agent."}
     ]
 
   def execute(%{agent_id: operator_id, target: target, message: message}, _assigns) do

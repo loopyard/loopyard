@@ -17,9 +17,7 @@ defmodule Loopyard.Tools.ControlPlane.PeekWorkspace do
     params: [
       agent_id: {:string, required: true},
       target:
-        {:string,
-         required: true,
-         description: "Workspace id/name, or an agent id, to look into."},
+        {:string, required: true, description: "Workspace id/name, or an agent id, to look into."},
       limit: {:integer, description: "How many recent messages to show (default 15, max 60)."}
     ]
 

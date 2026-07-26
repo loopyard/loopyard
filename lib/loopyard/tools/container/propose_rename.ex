@@ -16,9 +16,7 @@ defmodule Loopyard.Tools.Container.ProposeRename do
     params: [
       agent_id: {:string, required: true},
       scope:
-        {:string,
-         required: true,
-         description: "What to rename: \"project\" or \"workspace\"."},
+        {:string, required: true, description: "What to rename: \"project\" or \"workspace\"."},
       new_name: {:string, required: true, description: "The proposed new name."},
       reason: {:string, description: "Short why — shown on the approval card."}
     ]

@@ -91,6 +91,7 @@ defmodule Loopyard.ChatAgent.StreamHandler do
       input: tool_input,
       timestamp: now
     }
+
     {state, tool_msg} = append_message(state, tool_msg)
 
     state = %{
@@ -129,6 +130,7 @@ defmodule Loopyard.ChatAgent.StreamHandler do
       is_error: is_error,
       timestamp: now
     }
+
     {state, result_msg} = append_message(state, result_msg)
     state = %{state | last_activity_at: now, active_tool: nil}
     Persistence.persist_message(state, result_msg)
@@ -511,7 +513,8 @@ defmodule Loopyard.ChatAgent.StreamHandler do
 
     if is_binary(reason) && String.contains?(reason, "CLI session exited") && recent_crashes < 2 do
       # CLI died — restart session and resume the same conversation
-      state = SessionManager.note_cli_death(%{state | last_activity_at: now, errors: state.errors + 1})
+      state =
+        SessionManager.note_cli_death(%{state | last_activity_at: now, errors: state.errors + 1})
 
       restart_or_compact(state, id)
     else
@@ -577,6 +580,7 @@ defmodule Loopyard.ChatAgent.StreamHandler do
 
         {:error, reason, next_hint} ->
           state = %{state | claude_session_id: next_hint}
+
           fail_msg = %{
             role: :error,
             content:
@@ -607,35 +611,35 @@ defmodule Loopyard.ChatAgent.StreamHandler do
   # WHY/CONSEQUENCE/ACTION error, settle to idle.
   defp stream_error_no_restart(state, id, reason, now) do
     error_msg = %{
-        role: :error,
-        content:
-          "Stream error: #{reason}. " <>
-            "WHY: the CLI reported an unrecoverable error mid-stream (common: MCP tool " <>
-            "crash, payload too big, malformed tool response). " <>
-            "CONSEQUENCE: the in-flight turn was dropped. Prior context is preserved. " <>
-            "ACTION: send another message — the agent will retry. If the same error " <>
-            "recurs, check /system/events for details.",
-        timestamp: now
-      }
+      role: :error,
+      content:
+        "Stream error: #{reason}. " <>
+          "WHY: the CLI reported an unrecoverable error mid-stream (common: MCP tool " <>
+          "crash, payload too big, malformed tool response). " <>
+          "CONSEQUENCE: the in-flight turn was dropped. Prior context is preserved. " <>
+          "ACTION: send another message — the agent will retry. If the same error " <>
+          "recurs, check /system/events for details.",
+      timestamp: now
+    }
 
-      {state, error_msg} = append_message(state, error_msg)
+    {state, error_msg} = append_message(state, error_msg)
 
-      state =
-        reset_turn_state(%{
-          state
-          | status: :idle,
-            last_activity_at: now,
-            errors: state.errors + 1
-        })
-
-      Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
-        agent_id: id,
-        msg: error_msg
+    state =
+      reset_turn_state(%{
+        state
+        | status: :idle,
+          last_activity_at: now,
+          errors: state.errors + 1
       })
 
-      :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
-      Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
-      drain_pending_sends(state)
+    Events.ChatAgentMessage.publish(%Events.ChatAgentMessage.Message{
+      agent_id: id,
+      msg: error_msg
+    })
+
+    :ets.insert(@ets_table, {id, Loopyard.ChatAgent.summary(state)})
+    Events.ChatAgent.publish(%Events.ChatAgent.StatusChanged{id: id, status: :idle})
+    drain_pending_sends(state)
   end
 
   @doc """

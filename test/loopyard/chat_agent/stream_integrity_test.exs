@@ -268,7 +268,13 @@ defmodule Loopyard.ChatAgent.StreamIntegrityTest do
       ref = make_ref()
 
       :sys.replace_state(pid, fn s ->
-        %{s | stream_ref: ref, status: :thinking, in_flight_partial: "part", claude_session_id: "sid-1"}
+        %{
+          s
+          | stream_ref: ref,
+            status: :thinking,
+            in_flight_partial: "part",
+            claude_session_id: "sid-1"
+        }
         |> Map.put(:midturn_crashes, 0)
       end)
 
@@ -293,7 +299,13 @@ defmodule Loopyard.ChatAgent.StreamIntegrityTest do
       ref = make_ref()
 
       :sys.replace_state(pid, fn s ->
-        %{s | stream_ref: ref, status: :thinking, in_flight_partial: "part", claude_session_id: "sid-1"}
+        %{
+          s
+          | stream_ref: ref,
+            status: :thinking,
+            in_flight_partial: "part",
+            claude_session_id: "sid-1"
+        }
         |> Map.put(:midturn_crashes, 1)
       end)
 

@@ -32,7 +32,9 @@ defmodule Loopyard.Tools.ControlPlane.Workspace do
       case action do
         "up" ->
           Loopyard.Onboarding.start_preview_async(ws_id)
-          {:ok, "Bringing workspace #{ws_id}'s dev cluster up (background) — check overview for ports when ready."}
+
+          {:ok,
+           "Bringing workspace #{ws_id}'s dev cluster up (background) — check overview for ports when ready."}
 
         "down" ->
           Loopyard.Workspace.ServiceManager.stop_services(Loopyard.Workspace.compose_dir(ws_id))
@@ -41,7 +43,9 @@ defmodule Loopyard.Tools.ControlPlane.Workspace do
         "restart" ->
           Loopyard.Workspace.ServiceManager.stop_services(Loopyard.Workspace.compose_dir(ws_id))
           Loopyard.Onboarding.start_preview_async(ws_id)
-          {:ok, "Restarting workspace #{ws_id}'s dev cluster (down, then back up in the background)."}
+
+          {:ok,
+           "Restarting workspace #{ws_id}'s dev cluster (down, then back up in the background)."}
 
         other ->
           {:error, "Unknown action '#{other}'. Use up, down, or restart."}

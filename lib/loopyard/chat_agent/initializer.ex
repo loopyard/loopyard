@@ -70,7 +70,7 @@ defmodule Loopyard.ChatAgent.Initializer do
 
     case backend.start_session(session_opts) do
       {:ok, session} ->
-        prompt_hash = :crypto.hash(:sha256, system_prompt || "") |> Base.encode16(case: :lower)
+        prompt_hash = :crypto.hash(:sha256, system_prompt) |> Base.encode16(case: :lower)
         {session, session_opts, backend, prompt_hash}
 
       {:error, reason} ->
@@ -87,7 +87,14 @@ defmodule Loopyard.ChatAgent.Initializer do
   end
 
   # Boot-opt keys that a full restart needs to rebuild session_opts (see below).
-  @rebuildable_opt_keys [:tools, :backend, :system_prompt, :model, :container, :workstation_identity]
+  @rebuildable_opt_keys [
+    :tools,
+    :backend,
+    :system_prompt,
+    :model,
+    :container,
+    :workstation_identity
+  ]
 
   @doc """
   The subset of boot `opts` needed to REBUILD an agent's session_opts later (a
@@ -122,7 +129,7 @@ defmodule Loopyard.ChatAgent.Initializer do
     ]
 
     {session_opts, _backend, system_prompt} = build_session_opts(state.id, opts, params)
-    prompt_hash = :crypto.hash(:sha256, system_prompt || "") |> Base.encode16(case: :lower)
+    prompt_hash = :crypto.hash(:sha256, system_prompt) |> Base.encode16(case: :lower)
     {:ok, session_opts, prompt_hash}
   rescue
     e -> {:error, e}
@@ -251,8 +258,14 @@ defmodule Loopyard.ChatAgent.Initializer do
           install_brief(Loopyard.Workspace.volume_name_for(workspace_id), system_prompt)
 
           session_opts
-          |> Keyword.put(:acp_mcp_servers, ToolConfig.acp_mcp_servers(id, workspace_id, :workspace))
-          |> Keyword.put(:container, Loopyard.Workspace.WorkContainer.container_name(workspace_id))
+          |> Keyword.put(
+            :acp_mcp_servers,
+            ToolConfig.acp_mcp_servers(id, workspace_id, :workspace)
+          )
+          |> Keyword.put(
+            :container,
+            Loopyard.Workspace.WorkContainer.container_name(workspace_id)
+          )
           |> Keyword.put(:cwd, "/workspace")
           |> Keyword.put(:model, acp_model)
 
