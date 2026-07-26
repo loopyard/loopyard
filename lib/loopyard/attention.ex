@@ -85,7 +85,10 @@ defmodule Loopyard.Attention do
 
     cards =
       for %{id: aid} = st <- agent_summaries(),
-          msg <- Map.get(st, :messages) || [],
+          # Only the recent tail: pending cards live near it, and this scan runs
+          # on every rail tick / Reviewer refresh — full-history scans across the
+          # fleet made typing jank (client saw 250ms+ main-thread gaps).
+          msg <- st |> Map.get(:messages, []) |> Enum.take(-200),
           msg[:status] == :pending,
           kind = card_kind(msg[:role]),
           kind != nil,

@@ -131,7 +131,20 @@ defmodule LoopyardWeb.ReviewLive do
     {:noreply, refresh(socket)}
   end
 
-  def handle_info(%Events.Activity.Event{}, socket), do: {:noreply, refresh(socket)}
+  # Activity events arrive from EVERY agent — a busy fleet fires them in
+  # bursts. Coalesce: arm one delayed refresh instead of scanning per event
+  # (the deck rarely changes; the scan isn't free).
+  def handle_info(%Events.Activity.Event{}, socket) do
+    if socket.assigns[:refresh_armed?] do
+      {:noreply, socket}
+    else
+      Process.send_after(self(), :coalesced_refresh, 250)
+      {:noreply, assign(socket, :refresh_armed?, true)}
+    end
+  end
+
+  def handle_info(:coalesced_refresh, socket),
+    do: {:noreply, socket |> assign(:refresh_armed?, false) |> refresh()}
 
   # The answer's card update just landed — settle NOW, not on the next tick.
   def handle_info(%Events.ChatAgentMessage.MessageUpdated{}, socket),
