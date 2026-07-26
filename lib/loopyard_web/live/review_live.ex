@@ -34,20 +34,13 @@ defmodule LoopyardWeb.ReviewLive do
 
     # Resource routes: /review · /review/:agent_id/:msg_id ·
     # /projects/:project_id/workspaces/:workspace_id/review.
-    # (?workspace= / ?q=agent:msg accepted as legacy fallbacks.)
-    scope = params["workspace_id"] || params["workspace"]
+    scope = params["workspace_id"]
     socket = assign(socket, :scope, scope)
     slides = slides(scope)
 
-    start =
-      case {params["agent_id"], params["msg_id"], params["q"]} do
-        {aid, mid, _} when is_binary(aid) and is_binary(mid) -> {aid, mid}
-        {_, _, q} when is_binary(q) -> q |> String.split(":", parts: 2) |> List.to_tuple()
-        _ -> nil
-      end
-
     current =
-      with {aid, mid} <- start,
+      with aid when is_binary(aid) <- params["agent_id"],
+           mid when is_binary(mid) <- params["msg_id"],
            %{} = slide <- Enum.find(slides, &(&1.agent_id == aid and &1.msg_id == mid)) do
         slide.key
       else
@@ -58,8 +51,33 @@ defmodule LoopyardWeb.ReviewLive do
      socket
      |> assign(:slides, slides)
      |> assign(:current, current)
+     |> assign(:subscribed, MapSet.new())
+     |> assign(:last_path, nil)
      |> LoopyardWeb.Live.ConsentUI.attach(secret_scope: scope)
-     |> sync_secret_scope()}
+     |> sync_secret_scope()
+     |> track_current()}
+  end
+
+  # Answer updates are CASTS — the card flips via a MessageUpdated broadcast,
+  # not synchronously with the click. Subscribe to the current slide's agent so
+  # the settle renders the instant the update lands (no 3s tick latency). Also
+  # remember the slide's chat path — it's where "done reviewing" returns to.
+  defp track_current(socket) do
+    case current_slide(socket) do
+      %{agent_id: aid} = slide when is_binary(aid) ->
+        socket =
+          if connected?(socket) and not MapSet.member?(socket.assigns.subscribed, aid) do
+            Events.ChatAgentMessage.subscribe(aid)
+            assign(socket, :subscribed, MapSet.put(socket.assigns.subscribed, aid))
+          else
+            socket
+          end
+
+        assign(socket, :last_path, slide[:path] || socket.assigns.last_path)
+
+      _ ->
+        socket
+    end
   end
 
   # ── the slide deck ────────────────────────────────────────────────────────
@@ -115,15 +133,28 @@ defmodule LoopyardWeb.ReviewLive do
 
   def handle_info(%Events.Activity.Event{}, socket), do: {:noreply, refresh(socket)}
 
+  # The answer's card update just landed — settle NOW, not on the next tick.
+  def handle_info(%Events.ChatAgentMessage.MessageUpdated{}, socket),
+    do: {:noreply, refresh(socket)}
+
+  def handle_info(%Events.ChatAgentMessage.Message{}, socket), do: {:noreply, refresh(socket)}
+
   # The settled beat is over — advance to the next pending slide.
   def handle_info(:advance, socket) do
     slides = slides(socket.assigns.scope)
 
-    {:noreply,
-     socket
-     |> assign(:slides, slides)
-     |> assign(:current, first_key(slides))
-     |> sync_secret_scope()}
+    if slides == [] do
+      # Line cleared — reviewing is DONE. Return to the work instead of
+      # dead-ending on an empty screen: the last item's chat, else the operator.
+      {:noreply, push_navigate(socket, to: socket.assigns.last_path || "/operator")}
+    else
+      {:noreply,
+       socket
+       |> assign(:slides, slides)
+       |> assign(:current, first_key(slides))
+       |> sync_secret_scope()
+       |> track_current()}
+    end
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
@@ -166,7 +197,8 @@ defmodule LoopyardWeb.ReviewLive do
     {:noreply,
      socket
      |> assign(:current, slides |> Enum.at(next) |> then(&(&1 && &1.key)))
-     |> sync_secret_scope()}
+     |> sync_secret_scope()
+     |> track_current()}
   end
 
   def handle_event("decide_approval", %{"approval_id" => id, "decision" => decision}, socket) do
@@ -324,8 +356,14 @@ defmodule LoopyardWeb.ReviewLive do
         <Cards.secret_card msg={@msg} />
       </div>
 
-      <div :if={is_nil(@msg)} class="flex items-center justify-center py-24">
+      <div :if={is_nil(@msg)} class="flex flex-col items-center justify-center gap-4 py-24">
         <p class="chat-sub text-zinc-400 dark:text-zinc-500">Nothing waiting on you.</p>
+        <.link
+          navigate="/operator"
+          class="chat-sub font-medium text-violet-600 dark:text-violet-400 hover:underline"
+        >
+          ← Back to the operator
+        </.link>
       </div>
 
       <div :if={@slide && @slide.path && is_nil(@q) && @msg} class="mt-4">
