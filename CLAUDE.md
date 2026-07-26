@@ -375,8 +375,9 @@ operator rail LISTS what's waiting (flame mini-rows nested under each
 workspace's "In motion" row, capped at 3 + "+N more"; the operator's own asks
 lead the rail); the **Reviewer** (`/review`, `ReviewLive`) clears the backlog —
 ONE decision per slide (a multi-question ask fans out per question),
-prev/next, answer → settled beat → auto-advance, `?workspace=` scopes,
-`?q=agent:msg` deep-links. Approvals decide through the ONE shared
+prev/next, answer → settled beat → auto-advance. Resource URLs only:
+`/review`, `/review/:agent_id/:msg_id`,
+`/projects/:project_id/workspaces/:workspace_id/review`. Approvals decide through the ONE shared
 `LoopyardWeb.Live.ApprovalActions` (both models: blocking waiter or durable
 queued card). `Cards.question_block/1` is the per-question atom shared by the
 chat card and the Reviewer.
