@@ -1,18 +1,25 @@
 defmodule LoopyardWeb.ReviewLive do
   @moduledoc """
-  `/review` — the question Reviewer (plans/question-review.md): answer
-  everything waiting on you, back to back. ONE item per screen (question /
-  approval / secret, the same live cards as the chat), prev/next, a position
-  indicator, and answer-→-advance. Live: leave it open in a tab and new items
-  join the queue as agents ask.
+  `/review` — the Reviewer (plans/question-review.md): catch up on everything
+  waiting on you, ONE decision per slide. A multi-question ask fans out into
+  one slide per question; approvals and secrets are one slide each. Prev/next,
+  a position indicator, and answer → settled beat → advance. Live: leave it
+  open in a tab and new items join the line as agents ask.
 
-  Sourced from `Loopyard.Attention.line/0` (durable, card-sourced), so nothing
-  waiting can be missing here. The current item is keyed by `{agent_id, msg_id}`
-  so queue churn never yanks the screen out from under you.
+  Built on the FOCUSED VIEW shell (`LoopyardWeb.Components.FocusedView`) — the
+  subject (project · workspace) is prominent, the content sits alone at the
+  reading measure. Sourced from `Loopyard.Attention.line/0` (durable,
+  card-sourced), so nothing waiting can be missing. `?workspace=<id>` scopes to
+  one workspace; `?q=<agent>:<msg>` starts at a specific item.
+
+  The current slide is keyed `{agent_id, msg_id, q_id}` so queue churn never
+  yanks the screen; when the current decision settles it holds for a beat
+  (you see it take), then advances to the next pending slide.
   """
   use LoopyardWeb, :live_view
 
   alias Loopyard.Events
+  alias LoopyardWeb.Components.FocusedView
   alias LoopyardWeb.Live.WorkspaceLive.Messages.Cards
 
   @tick_ms 3_000
@@ -25,40 +32,69 @@ defmodule LoopyardWeb.ReviewLive do
       Process.send_after(self(), :tick, @tick_ms)
     end
 
-    # Optional scope: /review?workspace=<id> reviews ONE workspace's line —
-    # the same surface embeds per-workspace (Brad: any workspace can open its
-    # own reviewer).
     scope = params["workspace"]
     socket = assign(socket, :scope, scope)
-    items = line(scope)
+    slides = slides(scope)
 
     current =
       with q when is_binary(q) <- params["q"],
            [aid, mid] <- String.split(q, ":", parts: 2),
-           %{} = item <- Enum.find(items, &(&1.agent_id == aid and &1.msg && &1.msg.id == mid)) do
-        key(item)
+           %{} = slide <- Enum.find(slides, &(&1.agent_id == aid and &1.msg_id == mid)) do
+        slide.key
       else
-        _ -> items |> List.first() |> then(&(&1 && key(&1)))
+        _ -> first_key(slides)
       end
 
     {:ok,
      socket
-     |> assign(:items, items)
+     |> assign(:slides, slides)
      |> assign(:current, current)
      |> LoopyardWeb.Live.ConsentUI.attach(secret_scope: scope)
      |> sync_secret_scope()}
   end
 
-  defp key(item), do: {item.agent_id, item.msg && item.msg.id}
+  # ── the slide deck ────────────────────────────────────────────────────────
+  #
+  # One slide per DECISION: each pending question of a multi-question ask is
+  # its own slide; an approval or secret is one slide. Slides carry everything
+  # the render needs except the live message (fetched fresh per render).
 
-  defp line(scope \\ nil) do
+  defp slides(scope) do
     Loopyard.Attention.line()
     |> Enum.filter(&(is_nil(scope) or &1.workspace_id == scope))
+    |> Enum.flat_map(&item_slides/1)
   rescue
     _ -> []
   catch
     _, _ -> []
   end
+
+  defp item_slides(%{kind: :question, msg: %{} = msg} = item) do
+    for q <- msg[:questions] || [], q.id not in (msg[:done] || []) do
+      slide(item, q.id)
+    end
+  end
+
+  defp item_slides(%{msg: %{}} = item), do: [slide(item, nil)]
+  defp item_slides(_), do: []
+
+  defp slide(item, q_id) do
+    %{
+      key: {item.agent_id, item.msg.id, q_id},
+      agent_id: item.agent_id,
+      msg_id: item.msg.id,
+      q_id: q_id,
+      kind: item.kind,
+      workspace_id: item.workspace_id,
+      project_name: item.project_name,
+      workspace_name: item.workspace_name,
+      agent_name: item.agent_name,
+      path: item.path,
+      asked_at: item.asked_at
+    }
+  end
+
+  defp first_key(slides), do: slides |> List.first() |> then(&(&1 && &1.key))
 
   # ── queue upkeep ─────────────────────────────────────────────────────────
 
@@ -68,63 +104,60 @@ defmodule LoopyardWeb.ReviewLive do
     {:noreply, refresh(socket)}
   end
 
-  # Any agent activity can settle or add items.
   def handle_info(%Events.Activity.Event{}, socket), do: {:noreply, refresh(socket)}
 
-  # The settled beat is over — move to the next pending item.
+  # The settled beat is over — advance to the next pending slide.
   def handle_info(:advance, socket) do
-    items = line(socket.assigns.scope)
+    slides = slides(socket.assigns.scope)
+
     {:noreply,
-     socket |> assign(:items, items) |> assign(:current, first_key(items)) |> sync_secret_scope()}
+     socket |> assign(:slides, slides) |> assign(:current, first_key(slides)) |> sync_secret_scope()}
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
 
-  defp first_key(items), do: items |> List.first() |> then(&(&1 && key(&1)))
-
-  # Refresh the queue. If the CURRENT item just resolved (left the line), hold
-  # it on screen for a settled beat, then advance.
+  # If the CURRENT slide just settled (left the deck), hold it for a beat so
+  # the answer visibly takes, then advance.
   defp refresh(socket) do
-    items = line(socket.assigns.scope)
+    slides = slides(socket.assigns.scope)
     cur = socket.assigns.current
 
     cond do
       is_nil(cur) ->
-        socket |> assign(:items, items) |> assign(:current, first_key(items))
+        socket |> assign(:slides, slides) |> assign(:current, first_key(slides)) |> sync_secret_scope()
 
-      Enum.any?(items, &(key(&1) == cur)) ->
-        assign(socket, :items, items)
+      Enum.any?(slides, &(&1.key == cur)) ->
+        assign(socket, :slides, slides)
 
       true ->
         Process.send_after(self(), :advance, @advance_ms)
-        assign(socket, :items, items)
+        assign(socket, :slides, slides)
     end
   end
 
-  # ── navigation ───────────────────────────────────────────────────────────
+  # ── navigation + decisions ───────────────────────────────────────────────
 
   @impl true
   def handle_event("nav", %{"dir" => dir}, socket) do
-    items = socket.assigns.items
-    idx = Enum.find_index(items, &(key(&1) == socket.assigns.current)) || 0
-    n = length(items)
+    slides = socket.assigns.slides
+    idx = Enum.find_index(slides, &(&1.key == socket.assigns.current)) || 0
 
     next =
       case dir do
-        "next" -> min(idx + 1, n - 1)
+        "next" -> min(idx + 1, length(slides) - 1)
         _ -> max(idx - 1, 0)
       end
 
     {:noreply,
      socket
-     |> assign(:current, items |> Enum.at(next) |> then(&(&1 && key(&1))))
+     |> assign(:current, slides |> Enum.at(next) |> then(&(&1 && &1.key)))
      |> sync_secret_scope()}
   end
 
   def handle_event("decide_approval", %{"approval_id" => id, "decision" => decision}, socket) do
     decision = if decision == "approve", do: :approve, else: :deny
 
-    case current_item(socket) do
+    case current_slide(socket) do
       %{agent_id: aid} -> LoopyardWeb.Live.ApprovalActions.decide(aid, id, decision)
       _ -> :ok
     end
@@ -132,27 +165,35 @@ defmodule LoopyardWeb.ReviewLive do
     {:noreply, socket}
   end
 
-  defp current_item(socket),
-    do: Enum.find(socket.assigns.items, &(key(&1) == socket.assigns.current))
+  defp current_slide(socket) do
+    Enum.find(socket.assigns.slides, &(&1.key == socket.assigns.current)) ||
+      rehydrate(socket.assigns.current)
+  end
 
-  # Secrets submitted in the reviewer scope to the CURRENT item's workspace —
-  # ConsentUI reads :consent_secret_scope from socket assigns at submit time.
+  # The settled-beat case: the slide left the deck but stays on screen — carry
+  # enough to keep rendering it from the current key.
+  defp rehydrate(nil), do: nil
+
+  defp rehydrate({aid, mid, q_id}) do
+    %{key: {aid, mid, q_id}, agent_id: aid, msg_id: mid, q_id: q_id, kind: nil, path: nil}
+    |> Map.merge(%{workspace_id: nil, project_name: nil, workspace_name: nil, agent_name: nil})
+  end
+
+  # Secrets submitted here scope to the CURRENT slide's workspace.
   defp sync_secret_scope(socket) do
     assign(
       socket,
       :consent_secret_scope,
-      case current_item(socket) do
-        %{workspace_id: ws} -> ws
+      case current_slide(socket) do
+        %{workspace_id: ws} when is_binary(ws) -> ws
         _ -> socket.assigns[:scope]
       end
     )
   end
 
-  # The LIVE message for the current item (fresh state every render — a click
-  # anywhere flips it for every viewer).
-  defp current_msg(nil), do: nil
+  defp live_msg(nil), do: nil
 
-  defp current_msg(%{agent_id: aid, msg: %{id: mid}}) do
+  defp live_msg(%{agent_id: aid, msg_id: mid}) do
     Loopyard.ChatAgent.get_message(aid, mid)
   rescue
     _ -> nil
@@ -160,33 +201,30 @@ defmodule LoopyardWeb.ReviewLive do
     _, _ -> nil
   end
 
-  defp current_msg(_), do: nil
-
   # ── render ───────────────────────────────────────────────────────────────
 
   @impl true
   def render(assigns) do
-    item = Enum.find(assigns.items, &(key(&1) == assigns.current))
-    idx = Enum.find_index(assigns.items, &(key(&1) == assigns.current))
+    slide = Enum.find(assigns.slides, &(&1.key == assigns.current)) || rehydrate(assigns.current)
+    msg = live_msg(slide)
+    idx = Enum.find_index(assigns.slides, &(&1.key == assigns.current))
+    q = slide && slide.q_id && msg && Enum.find(msg[:questions] || [], &(&1.id == slide.q_id))
 
     assigns =
       assigns
-      |> assign(:item, item)
-      |> assign(:msg, current_msg(item))
+      |> assign(:slide, slide)
+      |> assign(:msg, msg)
+      |> assign(:q, q)
       |> assign(:idx, idx)
-      |> assign(:count, length(assigns.items))
+      |> assign(:count, length(assigns.slides))
 
     ~H"""
-    <div class="min-h-screen flex flex-col bg-brand-paper dark:bg-brand-ink text-zinc-900 dark:text-zinc-100 safe-area-x safe-area-top">
-      <%!-- Header: where you are in the line + prev/next. --%>
-      <div class="flex-none flex items-center gap-3 h-14 px-4 md:px-6 border-b border-zinc-200 dark:border-zinc-800">
-        <span class="chat-meta font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-400">
-          Review
-        </span>
-        <span :if={@count > 0} class="chat-meta tabular-nums text-zinc-500 dark:text-zinc-400">
-          {(@idx || 0) + 1} of {@count}
-        </span>
-        <div class="flex-1"></div>
+    <FocusedView.layout
+      label="Review"
+      position={@count > 0 && "#{(@idx || 0) + 1} of #{@count}"}
+      mode={:operator}
+    >
+      <:nav>
         <button
           :if={@count > 1}
           type="button"
@@ -209,33 +247,66 @@ defmodule LoopyardWeb.ReviewLive do
         >
           →
         </button>
-        <LoopyardWeb.Components.Common.mode_nav active={:operator} class="ml-2" />
+      </:nav>
+
+      <:subject :if={@slide && @slide.project_name}>
+        <FocusedView.subject
+          project={@slide.project_name}
+          workspace={@slide.workspace_name}
+          state={:needs_you}
+          context={subject_context(@slide, @msg)}
+        />
+      </:subject>
+
+      <%!-- ONE decision per slide, unboxed — the FocusedView already names the
+           subject, so the content is just the question itself. --%>
+      <div :if={@q}>
+        <Cards.question_block msg={@msg} q={@q} />
+        <p class="chat-meta text-zinc-400 dark:text-zinc-500 mt-6">
+          …or answer in your own words in
+          <.link :if={@slide.path} navigate={@slide.path} class="text-violet-600 dark:text-violet-400 hover:underline">the chat</.link>
+        </p>
       </div>
 
-      <%!-- ONE item, centered at the reading measure — mobile and desktop. --%>
-      <div class="flex-1 overflow-y-auto">
-        <div :if={@msg} class="mx-auto w-full max-w-2xl px-4 md:px-6 py-6 md:py-10">
-          <.review_card msg={@msg} />
-          <div :if={@item} class="mt-4">
-            <.link
-              navigate={@item.path}
-              class="chat-meta text-violet-600 dark:text-violet-400 hover:underline"
-            >
-              Open in chat for context →
-            </.link>
-          </div>
-        </div>
-
-        <div :if={is_nil(@msg)} class="h-full flex items-center justify-center py-24">
-          <p class="chat-sub text-zinc-400 dark:text-zinc-500">Nothing waiting on you.</p>
-        </div>
+      <div :if={is_nil(@q) && @msg && @msg.role == :approval}>
+        <Cards.approval_card msg={@msg} />
       </div>
-    </div>
+
+      <div :if={is_nil(@q) && @msg && @msg.role == :secret_request}>
+        <Cards.secret_card msg={@msg} />
+      </div>
+
+      <div :if={is_nil(@msg)} class="flex items-center justify-center py-24">
+        <p class="chat-sub text-zinc-400 dark:text-zinc-500">Nothing waiting on you.</p>
+      </div>
+
+      <div :if={@slide && @slide.path && is_nil(@q) && @msg} class="mt-4">
+        <.link
+          navigate={@slide.path}
+          class="chat-meta text-violet-600 dark:text-violet-400 hover:underline"
+        >
+          Open in chat for context →
+        </.link>
+      </div>
+    </FocusedView.layout>
     """
   end
 
-  defp review_card(%{msg: %{role: :question}} = assigns), do: Cards.question_card(assigns)
-  defp review_card(%{msg: %{role: :approval}} = assigns), do: Cards.approval_card(assigns)
-  defp review_card(%{msg: %{role: :secret_request}} = assigns), do: Cards.secret_card(assigns)
-  defp review_card(assigns), do: ~H""
+  defp subject_context(%{agent_name: name, asked_at: %DateTime{} = at}, _msg)
+       when is_binary(name) do
+    "#{name} asked #{ago(at)}"
+  end
+
+  defp subject_context(_, _), do: nil
+
+  defp ago(at) do
+    secs = DateTime.diff(DateTime.utc_now(), at)
+
+    cond do
+      secs < 60 -> "moments ago"
+      secs < 3600 -> "#{div(secs, 60)}m ago"
+      secs < 86_400 -> "#{div(secs, 3600)}h ago"
+      true -> "#{div(secs, 86_400)}d ago"
+    end
+  end
 end

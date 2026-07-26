@@ -268,11 +268,11 @@ defmodule LoopyardWeb.Components.Common do
   # The ONE status→light mapping. Every project·workspace light speaks this, so a
   # color always means the same thing across the whole app. (`:chugging` accepted
   # as an alias for the operator rail's live state.)
-  defp state_light(s) when s in [:working, :chugging], do: "bg-violet-500 animate-pulse"
-  defp state_light(:needs_you), do: "bg-orange-500"
-  defp state_light(:done), do: "bg-emerald-500"
-  defp state_light(:broken), do: "bg-red-500"
-  defp state_light(_), do: "bg-zinc-400"
+  def state_light(s) when s in [:working, :chugging], do: "bg-violet-500 animate-pulse"
+  def state_light(:needs_you), do: "bg-orange-500"
+  def state_light(:done), do: "bg-emerald-500"
+  def state_light(:broken), do: "bg-red-500"
+  def state_light(_), do: "bg-zinc-400"
 
   @doc """
   A chevron-right affordance for navigable rows. Scales up slightly on

@@ -316,7 +316,7 @@ defmodule Loopyard.Harness.Questions do
     :ets.tab2list(@table)
     |> Enum.filter(fn {qid, entry} ->
       cond do
-        Process.alive?(entry.waiter) ->
+        is_pid(entry.waiter) and Process.alive?(entry.waiter) ->
           true
 
         # Waiter gone (ACP elicitation gives up in ~60s) but the CARD is still
