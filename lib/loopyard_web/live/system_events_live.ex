@@ -72,6 +72,7 @@ defmodule LoopyardWeb.SystemEventsLive do
   def render(assigns) do
     ~H"""
     <.page_shell
+      mode={:system}
       breadcrumbs={[{"Loopyard", "/"}, {"System", "/system"}, {"Events", nil}]}
       iex_session={@iex_session}
       max_width={:xl}

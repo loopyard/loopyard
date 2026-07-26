@@ -179,6 +179,7 @@ defmodule LoopyardWeb.SystemWorkspacesLive do
   def render(assigns) do
     ~H"""
     <.page_shell
+      mode={:system}
       breadcrumbs={[{"Loopyard", "/"}, {"System", "/system"}, {"Workspaces", nil}]}
       iex_session={@iex_session}
       max_width={:lg}

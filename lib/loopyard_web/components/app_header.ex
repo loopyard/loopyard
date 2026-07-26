@@ -18,6 +18,9 @@ defmodule LoopyardWeb.Components.AppHeader do
   """
   attr :breadcrumbs, :list, default: []
   attr :iex_session, :map, default: %{level: nil}
+  # Which IA mode this page belongs to (highlights in the mode nav) — see
+  # plans/ia-two-modes.md. nil = a page outside the three roots.
+  attr :mode, :atom, default: nil
   attr :current_path, :string, default: "/"
   attr :host_exposed, :boolean, default: false
   slot :back, doc: "Optional leading element (e.g. a mobile back button) before the breadcrumbs."
@@ -39,10 +42,9 @@ defmodule LoopyardWeb.Components.AppHeader do
       <.iex_indicator :if={@iex_session.level} session={@iex_session} />
       <:actions>
         {render_slot(@inner_block)}
-        <%!-- Deliberately minimal: only the global sound control lives here. The
-    Workstations surface is reached from the root DASHBOARD, not a
-    top-right menu (which would become a catch-all mess). --%>
-        <LoopyardWeb.Components.Common.operator_link id="operator-app" />
+        <%!-- The mode nav (Workspaces ⇄ Operator, System) — the ONE global
+             navigation, identical on every shell. --%>
+        <LoopyardWeb.Components.Common.mode_nav active={@mode} />
       </:actions>
     </LoopyardWeb.Components.Nav.bar>
     """

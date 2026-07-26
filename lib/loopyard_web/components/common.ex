@@ -417,6 +417,7 @@ defmodule LoopyardWeb.Components.Common do
   attr :iex_session, :map, required: true
   attr :max_width, :atom, default: :lg, values: [:sm, :md, :lg, :xl]
   attr :flash, :map, default: %{}
+  attr :mode, :atom, default: nil
   slot :header_actions
   slot :inner_block, required: true
 
@@ -436,6 +437,7 @@ defmodule LoopyardWeb.Components.Common do
       <.header
         breadcrumbs={@breadcrumbs}
         iex_session={@iex_session}
+        mode={@mode}
         host_exposed={Loopyard.HostExposer.exposed?()}
       >
         {render_slot(@header_actions)}

@@ -164,6 +164,7 @@ defmodule LoopyardWeb.ProjectListLive do
   def render(assigns) do
     ~H"""
     <.page_shell
+      mode={:workspaces}
       breadcrumbs={crumbs(@live_action)}
       iex_session={@iex_session}
       max_width={:xl}

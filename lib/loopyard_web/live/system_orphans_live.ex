@@ -75,6 +75,7 @@ defmodule LoopyardWeb.SystemOrphansLive do
   def render(assigns) do
     ~H"""
     <.page_shell
+      mode={:system}
       breadcrumbs={[{"Loopyard", "/"}, {"System", "/system"}, {"Orphans", nil}]}
       iex_session={@iex_session}
       max_width={:xl}

@@ -106,6 +106,7 @@ defmodule LoopyardWeb.SystemPortsLive do
   def render(assigns) do
     ~H"""
     <.page_shell
+      mode={:system}
       breadcrumbs={[{"Loopyard", "/"}, {"System", "/system"}, {"Ports", nil}]}
       iex_session={@iex_session}
       max_width={:lg}
