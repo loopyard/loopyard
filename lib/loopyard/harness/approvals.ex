@@ -63,6 +63,21 @@ defmodule Loopyard.Harness.Approvals do
   `action` map (durable in the card) and `msg_id` (the card's message id).
   """
   @spec run(String.t(), String.t() | nil, map()) :: :ok
+  def run(agent_id, msg_id, %{verb: :rename_project} = action) do
+    case Loopyard.ProjectRegistry.rename_project(action.project_id, action.name) do
+      {:ok, _} -> resolve(agent_id, msg_id, %{status: :renamed})
+      {:error, reason} -> resolve(agent_id, msg_id, %{status: :failed, error: inspect(reason)})
+    end
+
+    :ok
+  end
+
+  def run(agent_id, msg_id, %{verb: :rename_workspace} = action) do
+    Loopyard.WorkspaceRegistry.update_setup(action.workspace_id, %{name: action.name})
+    resolve(agent_id, msg_id, %{status: :renamed})
+    :ok
+  end
+
   def run(agent_id, msg_id, %{verb: :fork} = action) do
     resolve(agent_id, msg_id, %{status: :creating, detail: "Starting…"})
     progress = fn step -> resolve(agent_id, msg_id, %{status: :creating, detail: step}) end
