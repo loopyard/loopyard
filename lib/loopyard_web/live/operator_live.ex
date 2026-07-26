@@ -436,6 +436,10 @@ defmodule LoopyardWeb.OperatorLive do
     socket
     |> assign(:tree, tree)
     |> assign(:attention_groups, groups)
+    |> assign(
+      :attention_by_ws,
+      Enum.group_by(Enum.reject(line, &(&1.agent_id == op)), & &1.workspace_id)
+    )
     |> assign(:active_jobs, active)
     # Grouped by how long ago they wrapped — Recently / Past hour / Today /
     # Earlier — instead of one list dimmed by age. Calmer, and readable (no fade).
@@ -657,6 +661,7 @@ defmodule LoopyardWeb.OperatorLive do
         ]}>
           <div class="flex-1 min-h-0 overflow-y-auto">
             <.for_you_rail
+              attention_by_ws={@attention_by_ws}
               groups={@attention_groups}
               active={@active_jobs}
               done_buckets={@done_buckets}
@@ -673,6 +678,7 @@ defmodule LoopyardWeb.OperatorLive do
   # to the reactive graph, so it updates when a question is answered). NEEDS YOU
   # (blocking items, grouped by workspace, answered inline via the ConsentUI hook)
   # + WORKING (dispatched jobs, live state + delta).
+  attr :attention_by_ws, :map, default: %{}
   attr :groups, :list, required: true
   attr :active, :list, required: true
   attr :done_buckets, :list, required: true
@@ -743,31 +749,57 @@ defmodule LoopyardWeb.OperatorLive do
         <p :if={@active == []} class="px-1 py-1 text-sm text-zinc-500 dark:text-zinc-400">
           Nothing running right now.
         </p>
-        <div
-          :for={i <- @active}
-          phx-click="open_job"
-          phx-value-ws={i.id}
-          phx-value-project={i.project_id}
-          phx-value-agent={i.agent_id}
-          title={"#{i.project_name} · #{i.workspace_name} — #{state_label(i.state)}"}
-          class="group flex items-center gap-2.5 rounded-sm px-2.5 py-3 lg:py-1.5 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
-        >
-          <.workspace_identity
-            project={i.project_name}
-            workspace={i.workspace_name}
-            state={(i.state == :chugging && :working) || i.state}
-            class="flex-1"
-          />
-          <span
-            :if={i.delta > 0}
-            title={"#{i.delta} new since you last looked"}
-            class="flex-none text-xs font-semibold text-violet-600 dark:text-violet-400 tabular-nums"
+        <div :for={i <- @active}>
+          <div
+            phx-click="open_job"
+            phx-value-ws={i.id}
+            phx-value-project={i.project_id}
+            phx-value-agent={i.agent_id}
+            title={"#{i.project_name} · #{i.workspace_name} — #{state_label(i.state)}"}
+            class="group flex items-center gap-2.5 rounded-sm px-2.5 py-3 lg:py-1.5 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
           >
-            {i.delta} new
-          </span>
-          <span class="ml-auto flex-none text-xs font-medium text-violet-600 dark:text-violet-400 opacity-0 group-hover:opacity-100 transition-opacity">
-            dive in →
-          </span>
+            <.workspace_identity
+              project={i.project_name}
+              workspace={i.workspace_name}
+              state={(i.state == :chugging && :working) || i.state}
+              class="flex-1"
+            />
+            <span
+              :if={i.delta > 0}
+              title={"#{i.delta} new since you last looked"}
+              class="flex-none text-xs font-semibold text-violet-600 dark:text-violet-400 tabular-nums"
+            >
+              {i.delta} new
+            </span>
+            <span class="ml-auto flex-none text-xs font-medium text-violet-600 dark:text-violet-400 opacity-0 group-hover:opacity-100 transition-opacity">
+              dive in →
+            </span>
+          </div>
+          <%!-- The workspace's OPEN QUESTIONS, nested right under its row — the
+             flame mini-language (the question's own words). Tap → the Reviewer
+             at that item. Capped at 3; the rest are one tap away. --%>
+          <div :if={Map.get(@attention_by_ws, i.id, []) != []} class="pl-4 pb-1 space-y-0.5">
+            <.link
+              :for={item <- Enum.take(Map.get(@attention_by_ws, i.id, []), 3)}
+              navigate={
+                (item.msg && "/review?q=#{item.agent_id}:#{item.msg.id}") ||
+                  "/review?workspace=#{i.id}"
+              }
+              class="flex items-center gap-2 rounded-sm border-l-2 border-orange-400 dark:border-orange-500/60 bg-orange-50/70 dark:bg-orange-500/[0.07] px-2.5 py-2 lg:py-1.5 hover:bg-orange-100/70 dark:hover:bg-orange-500/[0.14] transition-colors"
+            >
+              <span class="flex-1 min-w-0 truncate chat-meta text-zinc-700 dark:text-zinc-200">
+                {attention_summary(item)}
+              </span>
+              <span class="flex-none chat-meta font-medium text-orange-700 dark:text-orange-400">→</span>
+            </.link>
+            <.link
+              :if={length(Map.get(@attention_by_ws, i.id, [])) > 3}
+              navigate={"/review?workspace=#{i.id}"}
+              class="block pl-2.5 chat-meta text-orange-700 dark:text-orange-400 hover:underline"
+            >
+              +{length(Map.get(@attention_by_ws, i.id, [])) - 3} more →
+            </.link>
+          </div>
         </div>
 
         <%!-- WRAPPED work, grouped by how long ago (Recently / Past hour / Today
