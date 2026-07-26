@@ -30,9 +30,12 @@ module.exports = {
             "wash-dark": "#262a4d", // dark band wash
             "wash-active-dark": "#2e335c" // dark active-band wash
           },
-          moss: "#059669", // emerald-600 — done/healthy
-          amber: "#b45309", // amber-700 — needs-you
-          rose: "#e11d48" // rose-600 — broken/destructive
+          // Every accent is a PAIR: DEFAULT reads on paper, bright reads on ink.
+          // (Single-value accents kept forcing ad-hoc dark: picks in the app.)
+          moss: { DEFAULT: "#059669", bright: "#34d399" }, // done/healthy
+          amber: { DEFAULT: "#b45309", bright: "#fbbf24" }, // transitional caution
+          rose: { DEFAULT: "#e11d48", bright: "#fb7185" }, // broken/destructive
+          "flame-bright": "#fb923c" // flame on ink (orange-400)
         }
       }
     }
