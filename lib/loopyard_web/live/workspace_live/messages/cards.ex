@@ -511,11 +511,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
                   :rename_workspace -> "Rename — needs your OK"
                   :rename_project -> "Rename — needs your OK"
                   :create_project -> "New project — needs your OK"
+                  :peer_workspaces -> "Peer workspaces — needs your OK"
                   _ -> "Branch — needs your OK"
                 end
 
               @msg.status in [:creating, :integrating, :deleting, :renaming] ->
                 "Working…"
+
+              @msg.status == :approved and @action.verb == :peer_workspaces ->
+                "Peered"
 
               @msg.status == :integrated ->
                 "Merged"
@@ -538,6 +542,20 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           </span>
         </div>
 
+        <div
+          :if={@action.verb == :peer_workspaces}
+          class="chat-sub text-zinc-800 dark:text-zinc-100 mb-1"
+        >
+          Let
+          <code class="text-sm bg-violet-200/70 dark:bg-violet-800/50 rounded-sm px-1 py-0.5">{@action[
+            :workspace_name
+          ] || @action[:workspace_id]}</code>
+          and
+          <code class="text-sm bg-violet-200/70 dark:bg-violet-800/50 rounded-sm px-1 py-0.5">{@action[
+            :peer_workspace_name
+          ] || @action[:peer_workspace_id]}</code>
+          message each other's agents directly (both directions)
+        </div>
         <div
           :if={@action.verb == :create_project}
           class="chat-sub text-zinc-800 dark:text-zinc-100 mb-1"

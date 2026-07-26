@@ -61,6 +61,8 @@ defmodule Loopyard.Tools.Container do
     Container.RequestSecret,
     Container.ProposeFork,
     Container.ProposeRename,
+    Container.ProposePeering,
+    Container.SendToWorkspace,
     Container.ProposeIntegrate,
     Container.ProposeDeleteWorkspace,
     Container.RecallConversation

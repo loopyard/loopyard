@@ -527,6 +527,7 @@ Two ways in:
 | `PortExposer` | Per-port TCP proxy GenServer (loopback ↔ network toggle) |
 | `PortStore` | JSON persistence for port assignments (`ports.json`) |
 | `Tools.Container` | MCP toolkit — one file per tool (incl. propose_fork/integrate/delete/rename, ask_user, request_secret, recall_conversation) |
+| `Loopyard.Peering` | Human-approved workspace↔workspace messaging grants (see SECURITY.md) |
 | `Loopyard.Attention` | The durable "waiting on the human" line (cards ∪ broker) feeding rail/Reviewer/dashboard |
 | `Loopyard.CardText` | Cards → paste-ready markdown (share/raw) |
 | `LoopyardWeb.ReviewLive` | `/review` — one-decision-per-slide Reviewer |

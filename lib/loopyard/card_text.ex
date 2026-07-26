@@ -70,6 +70,9 @@ defmodule Loopyard.CardText do
 
   defp action_line(%{verb: :create_project, name: n}), do: "Create project `#{n}`"
 
+  defp action_line(%{verb: :peer_workspaces} = a),
+    do: "Peer `#{a[:workspace_name]}` ↔ `#{a[:peer_workspace_name]}` (direct agent messaging)"
+
   defp action_line(%{verb: v} = a) when v in [:rename_workspace, :rename_project],
     do: "Rename `#{a[:old_name]}` → `#{a[:name]}`"
 

@@ -209,3 +209,15 @@ Before merging anything that touches tools, MCP servers, compose processing, or 
 5. **Tests:** every boundary has a test that proves it rejects the attack (see `test/loopyard/compose_test.exs`, `test/loopyard/secrets_test.exs`, `test/loopyard/tool_authorization_test.exs`, `test/loopyard/tools/container/volumes_test.exs`, `test/loopyard/tools/container/write_file_test.exs`). Keep them green. New boundaries get new tests.
 
 If you're unsure whether a change weakens the model, ask before merging. The rule is: every boundary is a runtime check, not a rule the model follows.
+
+## Workspace peering (cross-workspace messaging)
+
+`send_to_workspace` lets one workspace's agent message another's — ONLY under
+a human-approved peering grant (`propose_peering` → approval card →
+`Peering.grant_pair/2`, persisted in `~/.loopyard/peering.json`). Grants are
+directed; the standard card grants the pair. Delivery is the durable inbox
+(`enqueue_message`) with provenance prefixed, so every cross-workspace message
+is visible in the receiving chat and attributable. No grant → the tool
+refuses and points at `propose_peering`. Revoke: `Peering.revoke/2` (console;
+UI affordance is future work). The operator remains the ungated dispatcher;
+peering is for blessed pairs that genuinely collaborate.
