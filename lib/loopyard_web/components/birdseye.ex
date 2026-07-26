@@ -24,10 +24,10 @@ defmodule LoopyardWeb.Components.Birdseye do
   #
   # Semantics mirror the right pane's harness_state so the rail and the pane
   # never disagree:
-  #   • working  → violet pulse
-  #   • ready    → green
-  #   • ATTENTION (auth expired — needs you to re-login) → red
-  #   • asleep (:crashed / :stopped / anything else) → muted gray.
+  #  • working  → violet pulse
+  #  • ready  → green
+  #  • ATTENTION (auth expired — needs you to re-login) → red
+  #  • asleep (:crashed / :stopped / anything else) → muted gray.
   # :crashed/:stopped is "Asleep — wakes on your next message", NOT broken, so
   # it must not scream red — clicking it just wakes it (→ working → ready). It
   # gets a calm gray dot (NOT nothing): a blank slot reads as broken/empty, and
@@ -116,7 +116,11 @@ defmodule LoopyardWeb.Components.Birdseye do
 
     cond do
       kind = ws[:needs_you] ->
-        %{kind: :needs_you, text: needs_you_text(kind), class: "text-orange-600 dark:text-orange-400"}
+        %{
+          kind: :needs_you,
+          text: needs_you_text(kind),
+          class: "text-orange-600 dark:text-orange-400"
+        }
 
       kind = ws[:broken] ->
         %{kind: :broken, text: broken_text(kind), class: "text-red-500 dark:text-red-400"}
@@ -201,7 +205,7 @@ defmodule LoopyardWeb.Components.Birdseye do
       href={@url}
       target="_blank"
       rel="noopener"
-      class="group/port tap-target inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-mono text-emerald-600/90 dark:text-emerald-400/90 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
+      class="group/port tap-target inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-xs font-mono text-emerald-600/90 dark:text-emerald-400/90 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
       title={"Open the running app (#{@url})"}
       onclick="event.stopPropagation()"
     >

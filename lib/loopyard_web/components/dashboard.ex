@@ -13,11 +13,11 @@ defmodule LoopyardWeb.Components.Dashboard do
   @doc """
   A single status card.
 
-    * `navigate` — where tapping the card goes.
-    * `title` — the area name.
-    * `tone` — `:ok | :warn | :down | :neutral`, drives the dot + status color.
-    * `status` — short status word shown top-right (e.g. "healthy", "exposed").
-    * `:inner_block` — the live summary line(s).
+  * `navigate` — where tapping the card goes.
+  * `title` — the area name.
+  * `tone` — `:ok | :warn | :down | :neutral`, drives the dot + status color.
+  * `status` — short status word shown top-right (e.g. "healthy", "exposed").
+  * `:inner_block` — the live summary line(s).
   """
   attr :navigate, :string, required: true
   attr :title, :string, required: true
@@ -29,12 +29,15 @@ defmodule LoopyardWeb.Components.Dashboard do
     ~H"""
     <.link
       navigate={@navigate}
-      class="group flex flex-col rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-brand-paper dark:bg-brand-ink/40 p-5 hover:border-violet-300 dark:hover:border-violet-500/40 hover:bg-zinc-50/60 dark:hover:bg-zinc-800/30 transition-colors"
+      class="group flex flex-col  border border-zinc-200 dark:border-zinc-800 bg-brand-paper dark:bg-brand-ink/40 p-5 hover:border-violet-300 dark:hover:border-violet-500/40 hover:bg-zinc-50/60 dark:hover:bg-zinc-800/30 transition-colors"
     >
       <div class="flex items-center gap-2.5">
         <span class={["w-2.5 h-2.5 rounded-full flex-none", dot_tone(@tone)]}></span>
         <h2 class="text-base font-semibold text-zinc-900 dark:text-zinc-50">{@title}</h2>
-        <span :if={@status} class={["ml-auto text-xs font-semibold uppercase tracking-wide", text_tone(@tone)]}>
+        <span
+          :if={@status}
+          class={["ml-auto text-xs font-semibold uppercase tracking-wide", text_tone(@tone)]}
+        >
           {@status}
         </span>
       </div>

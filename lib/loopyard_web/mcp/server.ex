@@ -144,7 +144,9 @@ defmodule LoopyardWeb.MCP.Server do
   # Notifications (initialized, cancelled, …) and anything else with no handler:
   # for a notification the caller drops the result; for a request it's method-not-found.
   defp handle_method("notifications/" <> _rest, _params, _identity), do: %{}
-  defp handle_method(method, _params, _identity), do: {:error, -32601, "method not found: #{method}"}
+
+  defp handle_method(method, _params, _identity),
+    do: {:error, -32601, "method not found: #{method}"}
 
   # The token's scope selects which toolset this session sees (workspace vs
   # operator). Defaults to :workspace for older tokens.

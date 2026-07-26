@@ -63,9 +63,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
 
     ~H"""
     <%!-- The workspace rail (RIGHT side): Agents/Services/Volumes nav + the
-         selected agent's context. On mobile: full-width when visible
-         (index/context), hidden when an agent/service is selected. On md+:
-         always visible as a fixed-width rail. --%>
+    selected agent's context. On mobile: full-width when visible
+    (index/context), hidden when an agent/service is selected. On md+:
+    always visible as a fixed-width rail. --%>
     <aside class={[
       "flex-none border-l border-zinc-200 dark:border-zinc-700/80 flex flex-col bg-brand-paper-shade dark:bg-brand-ink/50 safe-pr",
       "w-full md:w-80",
@@ -91,11 +91,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
       )
     ]}>
       <%!-- ── L1 ZONE A · SWITCHER ──────────────────────────────────────────
-           The workspace's resources — agents / services / volumes — you pick
-           one and its detail fills the zone below. Fixed-ish height (caps at
-           ~45% then scrolls internally) on a faintly tinted surface, closed by
-           the ONE heavy rule in the pane. This is the "what's in this
-           workspace" nav, distinct from "the thing you selected". --%>
+    The workspace's resources — agents / services / volumes — you pick
+    one and its detail fills the zone below. Fixed-ish height (caps at
+    ~45% then scrolls internally) on a faintly tinted surface, closed by
+    the ONE heavy rule in the pane. This is the "what's in this
+    workspace" nav, distinct from "the thing you selected". --%>
       <div class="flex-1 min-h-0 overflow-y-auto bg-zinc-100 dark:bg-zinc-800/40 border-b-2 border-zinc-200 dark:border-zinc-700/70">
         <.workspace_switcher
           agents={@agents}
@@ -116,18 +116,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
       </div>
 
       <%!-- ── L1 ZONE B · DETAIL ─────────────────────────────────────────────
-           The SELECTED item's detail — polymorphic by kind so the IA is
-           identical whatever you picked: an agent, a service, or a volume each
-           render the SAME 3-zone shape (sticky `detail_hero` + scrolling sections
-           + sticky `action_bar` of buttons). This is the ONE place all the
-           buttons + LiveView status for the selected thing live, instead of being
-           scattered into the center pane's top toolbar. Driven by `live_action`
-           (unambiguous) rather than which "selected_*" happens to be set. --%>
+    The SELECTED item's detail — polymorphic by kind so the IA is
+    identical whatever you picked: an agent, a service, or a volume each
+    render the SAME 3-zone shape (sticky `detail_hero` + scrolling sections
+    + sticky `action_bar` of buttons). This is the ONE place all the
+    buttons + LiveView status for the selected thing live, instead of being
+    scattered into the center pane's top toolbar. Driven by `live_action`
+    (unambiguous) rather than which "selected_*" happens to be set. --%>
       <%!-- Detail is ANCHORED TO THE BOTTOM at content height, capped at 50% of
-           the rail (the nav above takes the rest via flex-1). Content-height
-           (not flex-1) so a short/detail-less panel doesn't stretch and leave
-           the sticky footer floating mid-rail — hero + footer stay compact and
-           pinned to the bottom. Caps at 50% then scrolls internally. --%>
+    the rail (the nav above takes the rest via flex-1). Content-height
+    (not flex-1) so a short/detail-less panel doesn't stretch and leave
+    the sticky footer floating mid-rail — hero + footer stay compact and
+    pinned to the bottom. Caps at 50% then scrolls internally. --%>
       <div
         :if={detail_kind(@live_action, @selected_agent) != nil}
         id="rail-detail-scroll"
@@ -216,14 +216,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
     ~H"""
     <.section>
       <%!-- Agents header ALWAYS shows (even with zero agents) because it now
-           carries the + affordance to add one — the old standalone "New agent"
-           row is gone; the + in the header replaces it. --%>
+    carries the + affordance to add one — the old standalone "New agent"
+    row is gone; the + in the header replaces it. --%>
       <.group_label text="Agents">
         <:action>
           <.link
             patch={"#{@base_path}/new"}
             aria-label="New agent"
-            class="focus-ring inline-flex items-center justify-center w-7 h-7 rounded-md text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-colors"
+            class="focus-ring inline-flex items-center justify-center w-7 h-7 rounded-sm text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-colors"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -305,14 +305,14 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
             rows="3"
             placeholder="What should this agent work on? (leave blank to start empty)"
             aria-label="What should this agent work on?"
-            class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-3 text-base
-                   text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 resize-none
-                   focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+            class="w-full rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-4 py-3 text-base
+    text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 resize-none
+    focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
           ></textarea>
           <button
             type="submit"
-            class="rounded-lg bg-zinc-900 dark:bg-zinc-100 px-5 py-2.5 text-base font-medium text-white dark:text-zinc-900
-                   hover:bg-zinc-700 dark:hover:bg-zinc-300 transition-colors"
+            class="rounded-sm bg-zinc-900 dark:bg-zinc-100 px-5 py-2.5 text-base font-medium text-white dark:text-zinc-900
+    hover:bg-zinc-700 dark:hover:bg-zinc-300 transition-colors"
           >
             Launch Agent
           </button>
@@ -326,7 +326,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
             <button
               phx-click="spawn_agent_with_message"
               phx-value-preset="setup"
-              class="w-full text-left rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+              class="w-full text-left rounded-sm border border-zinc-200 dark:border-zinc-700 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
             >
               <div class="text-base font-medium text-zinc-900 dark:text-zinc-100">
                 Set up dev environment
@@ -338,7 +338,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
             <button
               phx-click="spawn_agent_with_message"
               phx-value-preset="debug"
-              class="w-full text-left rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+              class="w-full text-left rounded-sm border border-zinc-200 dark:border-zinc-700 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
             >
               <div class="text-base font-medium text-zinc-900 dark:text-zinc-100">
                 Debug failing services
@@ -350,7 +350,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
             <button
               phx-click="spawn_agent_with_message"
               phx-value-preset="explore"
-              class="w-full text-left rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+              class="w-full text-left rounded-sm border border-zinc-200 dark:border-zinc-700 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
             >
               <div class="text-base font-medium text-zinc-900 dark:text-zinc-100">
                 Explore the codebase
@@ -386,8 +386,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
   def group_label(assigns) do
     ~H"""
     <%!-- pt-4 = the ONE between-groups gap, shared with SideNav.section (the
-         details rail) — the two zones of the right rail must breathe at the
-         same rhythm or the seam between them reads as two different UIs. --%>
+    details rail) — the two zones of the right rail must breathe at the
+    same rhythm or the seam between them reads as two different UIs. --%>
     <div class="flex items-center justify-between gap-2 px-2 pt-4 pb-1 first:pt-1.5">
       <span class="text-sm md:text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
         {@text}
@@ -414,7 +414,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
     >
       <.link
         patch={"#{@base_path}/services/#{@svc.name}"}
-        class="focus-ring flex items-center gap-2 min-w-0 -mx-2 px-2 h-full rounded"
+        class="focus-ring flex items-center gap-2 min-w-0 -mx-2 px-2 h-full rounded-sm"
         aria-label={"Open #{@svc.name} service"}
       >
         <span class={"w-1.5 h-1.5 rounded-full flex-none #{service_dot(@svc)}"} aria-hidden="true"></span>
@@ -422,15 +422,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
       </.link>
       <div class="flex items-center justify-end gap-1.5">
         <%!-- Open port: green pill with port number (link opens URL).
-             Closed port: plain link + Open Port button.
-             Close Port lives on the service detail page, not here. --%>
+    Closed port: plain link + Open Port button.
+    Close Port lives on the service detail page, not here. --%>
         <%= if @first_port && @svc.status == :running && Map.get(@svc, :exposed) do %>
           <a
             href={"http://#{@host}:#{@first_port}"}
             target="_blank"
             rel="noopener noreferrer"
             aria-label={"Open http://#{@host}:#{@first_port}"}
-            class="focus-ring inline-flex items-center min-h-8 md:min-h-6 px-2 rounded text-sm font-mono font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
+            class="focus-ring inline-flex items-center min-h-8 md:min-h-6 px-2 rounded-sm text-sm font-mono font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
           >
             :{@first_port}
           </a>
@@ -483,7 +483,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
           else: "Open port — share on network"
       }
       class={[
-        "focus-ring inline-flex items-center min-h-8 md:min-h-6 px-1.5 rounded text-xs font-medium transition-colors",
+        "focus-ring inline-flex items-center min-h-8 md:min-h-6 px-1.5 rounded-sm text-xs font-medium transition-colors",
         if(@exposed?,
           do: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25",
           else: "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700"
@@ -551,8 +551,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
         <span class="w-1.5 h-1.5 rounded-full flex-none bg-amber-400" aria-hidden="true"></span>
         <span class="truncate text-zinc-600 dark:text-zinc-400 flex-1">Changes</span>
         <%!-- The useful diff stat lives HERE (right sidebar), not in the nav rail:
-             the +/- line count when we have it, with the changed-file count as a
-             quiet secondary. --%>
+    the +/- line count when we have it, with the changed-file count as a
+    quiet secondary. --%>
         <span
           :if={@changes_stat && (@changes_stat.added > 0 || @changes_stat.removed > 0)}
           class="flex-none inline-flex items-center gap-1.5 text-sm font-mono font-medium"
@@ -566,7 +566,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
             (is_nil(@changes_stat) || (@changes_stat.added == 0 && @changes_stat.removed == 0)) &&
               @changes_count > 0
           }
-          class="flex-none inline-flex items-center rounded px-1.5 text-sm font-mono font-medium bg-amber-500/15 text-amber-600 dark:text-amber-400"
+          class="flex-none inline-flex items-center rounded-sm px-1.5 text-sm font-mono font-medium bg-amber-500/15 text-amber-600 dark:text-amber-400"
           title={"#{@changes_count} changed file(s)"}
         >
           ±{@changes_count}
@@ -629,8 +629,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
           value={@agent.name}
           aria-label="Agent name"
           autofocus
-          class="flex-1 min-w-0 rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-0.5 text-sm
-                 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-violet-500/30"
+          class="flex-1 min-w-0 rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-0.5 text-sm
+    text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-violet-500/30"
         />
       </form>
       <%!-- Normal display --%>
@@ -651,7 +651,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
           {@agent.name}
         </span>
         <%!-- Rough additional status, RIGHT-aligned: dot + name on the left, what
-             it's doing on the right. --%>
+    it's doing on the right. --%>
         <span
           :if={@display == :thinking}
           class="text-sm text-violet-500 dark:text-violet-400 flex-none truncate max-w-[9rem]"
@@ -663,9 +663,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Sidebar do
         </span>
       </.row>
       <%!-- No inline destroy control. The row is a single target: click to open
-           the agent, and remove/destroy lives in its detail view. Keeps the list
-           calm (no controls appearing as agents boot) and makes destruction a
-           deliberate, one-place action. --%>
+    the agent, and remove/destroy lives in its detail view. Keeps the list
+    calm (no controls appearing as agents boot) and makes destruction a
+    deliberate, one-place action. --%>
     </div>
     """
   end

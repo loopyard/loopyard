@@ -73,7 +73,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
         live_token_est={ChatStatus.token_estimate(@streaming_text)}
       />
       <%!-- nil (not a status-only fallback) so service_context's `svc && …`
-           short-circuits — a fallback map has no :ports and would KeyError. --%>
+    short-circuits — a fallback map has no :ports and would KeyError. --%>
       <.service_context
         :if={@selected_service && @live_action in [:service, :console]}
         svc={Enum.find(@service_statuses, &(&1.name == @selected_service))}
@@ -116,7 +116,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
 
     ~H"""
     <%!-- STICKY HERO: service name + live status (Running/Stopped…) flush-right,
-         port · exposure inline. --%>
+    port · exposure inline. --%>
     <.detail_hero
       eyebrow="Service"
       name={@service_name}
@@ -130,8 +130,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
     </.detail_hero>
 
     <%!-- Connection details only when there ARE any (a port or container port).
-         A portless service (e.g. `work`) has none — status lives in the hero —
-         so we skip the section entirely rather than render an empty header. --%>
+    A portless service (e.g. `work`) has none — status lives in the hero —
+    so we skip the section entirely rather than render an empty header. --%>
     <.section :if={@first_port || @container_port} label="Connection">
       <div
         :if={@first_port}
@@ -196,7 +196,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
         </.control_btn>
 
         <%!-- SECONDARY: full-width single column on mobile (big tap targets),
-             2-up grid on the desktop rail where space is tight. --%>
+    2-up grid on the desktop rail where space is tight. --%>
         <div :if={@running?} class="grid grid-cols-1 md:grid-cols-2 gap-1.5">
           <.control_btn
             phx-click="restart_service"
@@ -334,7 +334,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.DetailContexts do
     </.section>
 
     <%!-- STICKY FOOTER: destructive delete (non-code volumes only), set apart.
-         Code volume → no footer at all. --%>
+    Code volume → no footer at all. --%>
     <.action_bar>
       <:danger :if={!@code?}>
         <.control_btn

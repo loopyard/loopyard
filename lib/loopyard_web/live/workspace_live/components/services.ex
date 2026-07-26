@@ -33,7 +33,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
         <span class="text-base font-semibold text-zinc-900 dark:text-zinc-100 truncate">
           {@service_name}
         </span>
-        <span :if={@svc} class="hidden sm:inline text-xs text-zinc-500 dark:text-zinc-400 font-mono truncate">
+        <span
+          :if={@svc}
+          class="hidden sm:inline text-xs text-zinc-500 dark:text-zinc-400 font-mono truncate"
+        >
           {service_detail(@svc)}
         </span>
         <a
@@ -45,13 +48,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
           {@host}:{@first_port}
         </a>
         <%!-- Actions live in service_context (desktop right rail + mobile details
-             sheet). This header is desktop-only (detail_panel hides it on
-             mobile), so no action cluster here — one consistent home. --%>
+    sheet). This header is desktop-only (detail_panel hides it on
+    mobile), so no action cluster here — one consistent home. --%>
       </:header>
       <%!-- Buffered frames (from LogBuffer) whenever there are ANY — including
-           after a crash, so the output that killed it is still on screen. Only
-           when the buffer is truly empty do we fall back to the starting /
-           stopped empty states. --%>
+    after a crash, so the output that killed it is still on screen. Only
+    when the buffer is truly empty do we fall back to the starting /
+    stopped empty states. --%>
       <.service_frames_panel :if={@frames != []} frames={@frames} />
       <.service_waiting_panel :if={@frames == [] && @running?} />
       <.service_starting_panel
@@ -66,8 +69,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
       />
     </.detail_panel>
     <%!-- Mobile actions live in the shared `service-context` bottom sheet
-         (workspace_live render), opened by the section switcher's details
-         button — same content as the desktop right rail. --%>
+    (workspace_live render), opened by the section switcher's details
+    button — same content as the desktop right rail. --%>
     """
   end
 
@@ -82,11 +85,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
     ~H"""
     <div class="flex-1 flex flex-col min-h-0">
       <%!-- ONE continuous log — no boxed groups, no inter-run gaps, no outer
-           padding. Runs are separated ONLY by a thin full-bleed sticky divider
-           line; content scrolls cleanly beneath it (opaque bg, so nothing peeks
-           out clipped above the divider — the old p-2 gap did that).
-           overscroll-contain keeps the iOS rubber-band from bouncing the page;
-           `LogTail` owns the momentum-aware auto-tail. --%>
+    padding. Runs are separated ONLY by a thin full-bleed sticky divider
+    line; content scrolls cleanly beneath it (opaque bg, so nothing peeks
+    out clipped above the divider — the old p-2 gap did that).
+    overscroll-contain keeps the iOS rubber-band from bouncing the page;
+    `LogTail` owns the momentum-aware auto-tail. --%>
       <div
         id="service-logs"
         phx-hook="LogTail"
@@ -121,11 +124,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
               {short_ts(f.ts)}
             </span>
             <%!-- min-w-0 lets this flex item shrink below its content width, so
-                 whitespace-pre-wrap + break-words actually wrap long/unbreakable
-                 tokens instead of overflowing the row (the horizontal
-                 rubber-band). --%>
+    whitespace-pre-wrap + break-words actually wrap long/unbreakable
+    tokens instead of overflowing the row (the horizontal
+    rubber-band). --%>
             <%!-- ANSI → colored spans, same converter the chat CLI console uses, so
-                 every console surface reads identically (color, not raw \e[..m). --%>
+    every console surface reads identically (color, not raw \e[..m). --%>
             <span class="min-w-0 flex-1 whitespace-pre-wrap break-words">{Ansi.to_html(f.text)}</span>
           </div>
         </div>
@@ -156,7 +159,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
     ~H"""
     <div class="flex-1 flex items-center justify-center">
       <div class="text-center max-w-sm px-4">
-        <div class="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center mx-auto mb-4">
+        <div class="w-14 h-14  bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center mx-auto mb-4">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 24 24"
@@ -180,7 +183,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
     ~H"""
     <div class="flex-1 flex items-center justify-center">
       <div class="text-center max-w-sm px-4">
-        <div class="w-14 h-14 rounded-2xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mx-auto mb-4">
+        <div class="w-14 h-14  bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mx-auto mb-4">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 24 24"
@@ -213,7 +216,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Services do
           :if={@workspace_state not in [:stopped, :starting]}
           phx-click="start_service"
           phx-value-service_name={@service_name}
-          class="focus-ring inline-flex items-center gap-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white px-5 py-2.5 text-sm font-medium transition-colors"
+          class="focus-ring inline-flex items-center gap-2 rounded-sm bg-violet-600 hover:bg-violet-700 text-white px-5 py-2.5 text-sm font-medium transition-colors"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"

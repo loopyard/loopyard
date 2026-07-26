@@ -11,8 +11,8 @@ defmodule LoopyardWeb.Format do
   @doc """
   Replace `$HOME` with `~` in a filesystem path. Returns "" for nil/non-string.
 
-      iex> LoopyardWeb.Format.shorten_path("/Users/me/projects/foo")
-      "~/projects/foo"   # if $HOME is /Users/me
+  iex> LoopyardWeb.Format.shorten_path("/Users/me/projects/foo")
+  "~/projects/foo" # if $HOME is /Users/me
   """
   def shorten_path(path) when is_binary(path) do
     home = System.user_home!()

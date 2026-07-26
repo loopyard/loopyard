@@ -50,7 +50,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
   defp body_line_cap(:preview), do: @tail_preview_lines
   defp body_line_cap(_), do: @result_line_cap
 
-
   def chat_msg_tool_result(assigns) do
     expanded = result_expanded?(assigns)
     cap = body_line_cap(expanded)
@@ -97,7 +96,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
   defp compact_error(assigns) do
     ~H"""
     <div class={[gutter(), "flex items-start gap-2 py-1"]}>
-      <div class="w-4 h-4 rounded bg-red-100 dark:bg-red-900/30 flex items-center justify-center flex-none mt-0.5">
+      <div class="w-4 h-4 rounded-sm bg-red-100 dark:bg-red-900/30 flex items-center justify-center flex-none mt-0.5">
         <span class="text-xs font-bold text-red-500">!</span>
       </div>
       <span class="text-sm font-mono text-red-600 dark:text-red-400 whitespace-pre-wrap min-w-0">{@display}</span>
@@ -124,8 +123,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
       </summary>
       <pre
         :if={@expanded?}
-        class={"mt-1 p-3 rounded-lg text-sm md:text-[13px] font-mono leading-snug overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap
-                   #{if @is_error, do: "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300", else: "bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-zinc-300"}"}
+        class={"mt-1 p-3 rounded-sm text-sm md:text-[13px] font-mono leading-snug overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap
+    #{if @is_error, do: "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300", else: "bg-zinc-100 dark:bg-zinc-950 text-zinc-800 dark:text-zinc-300"}"}
       >{Ansi.to_html(@display)}</pre>
       <div :if={@expanded?} class="flex items-center gap-2 mt-1 h-5">
         <p :if={@truncated} class="text-xs text-zinc-500 dark:text-zinc-400">
@@ -235,7 +234,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
     # spans in the DOM).
     {lines, line_count} =
       if expanded do
-        # Native harness Read results arrive pre-numbered ("   156→<div…").
+        # Native harness Read results arrive pre-numbered (" 156→<div…").
         # Strip that prefix and reuse the REAL file line numbers in the gutter.
         {raw_lines, native_nos} = split_read_lines(content)
         n = length(raw_lines)
@@ -281,16 +280,16 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
     <details
       class={[
         gutter(),
-        "my-1 group/file rounded-lg border border-zinc-200 dark:border-zinc-800",
+        "my-1 group/file rounded-sm border border-zinc-200 dark:border-zinc-800",
         "overflow-hidden bg-brand-paper dark:bg-brand-ink"
       ]}
       open={if @lazy?, do: @expanded? != false, else: @detail_level == :trace}
     >
       <%!-- Four corners, same scheme as the console box: top-left the file's
-           IDENTITY (name + dir), top-right the visual control (disclosure);
-           meta (language, line count) and actions live in the footer. Keeps
-           the header one quiet line. In lazy mode the server drives open
-           (body renders on demand) — see result_expanded?/1. --%>
+    IDENTITY (name + dir), top-right the visual control (disclosure);
+    meta (language, line count) and actions live in the footer. Keeps
+    the header one quiet line. In lazy mode the server drives open
+    (body renders on demand) — see result_expanded?/1. --%>
       <summary
         class="flex items-center gap-2 px-3 py-1.5 cursor-pointer select-none list-none bg-brand-paper-shade dark:bg-brand-ink/60 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
         phx-click={@lazy? && "toggle_result"}
@@ -318,13 +317,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
         </div>
       </div>
       <%!-- Footer: meta left (language, size, truncation), actions right.
-           Always rendered (it's tiny and carries the collapsed card's meta);
-           only the truncation note is gated on expansion — truncation of a
-           body that isn't rendered means nothing. --%>
+    Always rendered (it's tiny and carries the collapsed card's meta);
+    only the truncation note is gated on expansion — truncation of a
+    body that isn't rendered means nothing. --%>
       <div class="flex items-center gap-2 px-3 py-1 border-t border-zinc-200 dark:border-zinc-800 bg-brand-paper-shade dark:bg-brand-ink/60">
         <span
           :if={@language}
-          class="flex-none whitespace-nowrap text-xs px-1.5 py-px rounded bg-sky-500/10 text-sky-600 dark:text-sky-400"
+          class="flex-none whitespace-nowrap text-xs px-1.5 py-px rounded-sm bg-sky-500/10 text-sky-600 dark:text-sky-400"
         >
           {@language}
         </span>
@@ -404,7 +403,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
       </summary>
       <div
         :if={@expanded?}
-        class="mt-1 rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800"
+        class="mt-1 rounded-sm overflow-hidden bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800"
       >
         <div class="max-h-96 overflow-auto text-sm md:text-[13px] font-mono leading-snug py-1">
           <div
@@ -442,7 +441,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
   defp blank_to_nbsp(""), do: Phoenix.HTML.raw("&nbsp;")
   defp blank_to_nbsp(line), do: line
 
-  # Detect the native Read result format — lines "   <no>→<text>" — and split
+  # Detect the native Read result format — lines " <no>→<text>" — and split
   # it into {stripped_lines, line_numbers}. Detection is TOLERANT (≥90% of
   # lines match): real Read results often carry a couple of stray non-numbered
   # lines (a truncation note, a system-reminder tail), and requiring ALL lines
@@ -594,7 +593,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.ToolResults do
           phx-click="open_port_from_chat"
           phx-value-service={@service}
           phx-value-container_port={@container_port}
-          class="focus-ring chat-sub inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 font-medium bg-violet-600 hover:bg-violet-700 text-white shadow-sm transition-colors flex-none"
+          class="focus-ring chat-sub inline-flex items-center gap-1.5 rounded-sm px-3.5 py-1.5 font-medium bg-violet-600 hover:bg-violet-700 text-white shadow-sm transition-colors flex-none"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"

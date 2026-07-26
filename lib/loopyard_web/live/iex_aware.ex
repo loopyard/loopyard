@@ -5,11 +5,11 @@ defmodule LoopyardWeb.IExAware do
 
   Usage:
 
-      use LoopyardWeb.IExAware
+  use LoopyardWeb.IExAware
 
   Then in mount (inside `if connected?(socket)` block):
 
-      socket = subscribe_iex(socket)
+  socket = subscribe_iex(socket)
 
   The module injects a `handle_info` clause for `:iex_session` messages.
   """

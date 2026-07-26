@@ -12,9 +12,9 @@ defmodule LoopyardWeb.Components.AppHeader do
 
   ## Assigns
 
-    * `:breadcrumbs` — list of `{label, path}` tuples for navigation. Last item is current page (no link).
-    * `:iex_session` — current IExSession state (from assign). Optional.
-    * `:inner_block` — optional slot for extra header content (buttons, etc.)
+  * `:breadcrumbs` — list of `{label, path}` tuples for navigation. Last item is current page (no link).
+  * `:iex_session` — current IExSession state (from assign). Optional.
+  * `:inner_block` — optional slot for extra header content (buttons, etc.)
   """
   attr :breadcrumbs, :list, default: []
   attr :iex_session, :map, default: %{level: nil}
@@ -32,7 +32,7 @@ defmodule LoopyardWeb.Components.AppHeader do
 
     ~H"""
     <%!-- safe-area-top so this top bar clears the notch / Dynamic Island in a
-         standalone PWA; no-op in the browser. --%>
+    standalone PWA; no-op in the browser. --%>
     <LoopyardWeb.Components.Nav.bar height="h-14" gap="gap-3" class="safe-area-top">
       {render_slot(@back)}
       <.breadcrumbs crumbs={@breadcrumbs} />
@@ -40,8 +40,8 @@ defmodule LoopyardWeb.Components.AppHeader do
       <:actions>
         {render_slot(@inner_block)}
         <%!-- Deliberately minimal: only the global sound control lives here. The
-             Workstations surface is reached from the root DASHBOARD, not a
-             top-right menu (which would become a catch-all mess). --%>
+    Workstations surface is reached from the root DASHBOARD, not a
+    top-right menu (which would become a catch-all mess). --%>
         <LoopyardWeb.Components.Common.operator_link id="operator-app" />
       </:actions>
     </LoopyardWeb.Components.Nav.bar>

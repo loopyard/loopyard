@@ -5,13 +5,13 @@ defmodule LoopyardWeb.WorkstationLive do
 
   Two surfaces:
 
-    * **Console** — a shell on the live workstation container (which mounts your
-      `$HOME` volume), for the logins only you can do (`gh auth login`,
-      `claude login`, `fly auth login`). They persist in the home volume; every
-      agent inherits them.
-    * **Environment** — transfer creds from your Mac, set env vars (delivered as
-      files in the home volume, sourced by a login shell — never `docker -e`),
-      push tokens.
+  * **Console** — a shell on the live workstation container (which mounts your
+  `$HOME` volume), for the logins only you can do (`gh auth login`,
+  `claude login`, `fly auth login`). They persist in the home volume; every
+  agent inherits them.
+  * **Environment** — transfer creds from your Mac, set env vars (delivered as
+  files in the home volume, sourced by a login shell — never `docker -e`),
+  push tokens.
 
   Identity is the home volume, not an image: the bench + console boot from the
   shared base image, and your creds ride in via the mounted `$HOME`. See
@@ -257,7 +257,7 @@ defmodule LoopyardWeb.WorkstationLive do
               placeholder="new-id"
               pattern="[a-z0-9][a-z0-9-]*"
               title="Lowercase letters, digits, dashes"
-              class="flex-1 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm placeholder:text-zinc-400 focus-ring"
+              class="flex-1 rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm placeholder:text-zinc-400 focus-ring"
             />
             <.button variant={:primary} type="submit" class="flex-none">Create</.button>
           </form>
@@ -345,7 +345,7 @@ defmodule LoopyardWeb.WorkstationLive do
         </div>
         <div
           id="ws-console"
-          class="h-[72dvh] rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden p-2 bg-[#18181b]"
+          class="h-[72dvh]  border border-zinc-200 dark:border-zinc-700 overflow-hidden p-2 bg-[#18181b]"
         >
           <div
             :if={@console_container}
@@ -368,7 +368,7 @@ defmodule LoopyardWeb.WorkstationLive do
           </div>
           <div
             :if={@console_error}
-            class="rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-3 text-sm text-red-600 dark:text-red-400"
+            class="rounded-sm border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-3 text-sm text-red-600 dark:text-red-400"
           >
             Couldn't start the workstation console: {@console_error}
           </div>
@@ -413,7 +413,7 @@ defmodule LoopyardWeb.WorkstationLive do
               autocomplete="off"
               autocapitalize="characters"
               spellcheck="false"
-              class="sm:w-56 font-mono text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+              class="sm:w-56 font-mono text-sm rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
             />
             <input
               name="value"
@@ -421,13 +421,13 @@ defmodule LoopyardWeb.WorkstationLive do
               placeholder="value"
               autocomplete="off"
               spellcheck="false"
-              class="flex-1 font-mono text-sm rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+              class="flex-1 font-mono text-sm rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
             />
             <.button variant={:secondary} type="submit" class="flex-none">Add</.button>
           </form>
           <ul
             :if={@other_env_keys != []}
-            class="divide-y divide-zinc-100 dark:divide-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-800 px-3"
+            class="divide-y divide-zinc-100 dark:divide-zinc-800 rounded-sm border border-zinc-200 dark:border-zinc-800 px-3"
           >
             <li :for={k <- @other_env_keys} class="flex items-center gap-3 py-2">
               <span class="font-mono text-sm text-zinc-700 dark:text-zinc-300">{k}</span>
@@ -451,10 +451,10 @@ defmodule LoopyardWeb.WorkstationLive do
           hint="Each tool's page has the easy path. For a custom key or a remote Loopyard, this is the general form (carries your push token):"
         >
           <div id="ws-push" phx-hook="PushCmd" data-token={@push_token} class="relative">
-            <pre class="overflow-x-auto rounded-lg bg-zinc-900 dark:bg-zinc-950 text-zinc-100 text-[11px] leading-relaxed font-mono p-3 pr-16 ring-1 ring-zinc-800"><code class="ws-push-cmd">{push_cmd(@push_token, @current_id)}</code></pre>
+            <pre class="overflow-x-auto rounded-sm bg-zinc-900 dark:bg-zinc-950 text-zinc-100 text-[11px] leading-relaxed font-mono p-3 pr-16 ring-1 ring-zinc-800"><code class="ws-push-cmd">{push_cmd(@push_token, @current_id)}</code></pre>
             <button
               type="button"
-              class="ws-push-copy focus-ring absolute top-2 right-2 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-2 py-1 text-[11px]"
+              class="ws-push-copy focus-ring absolute top-2 right-2 rounded-sm bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-2 py-1 text-[11px]"
             >
               Copy
             </button>
@@ -473,8 +473,8 @@ defmodule LoopyardWeb.WorkstationLive do
   defp push_cmd(token, current_id) do
     """
     gh auth token | curl -fsS -T - \\
-      -H "Authorization: Bearer #{token}" \\
-      __ORIGIN__/workstations/#{current_id}/env/GITHUB_TOKEN\
+    -H "Authorization: Bearer #{token}" \\
+    __ORIGIN__/workstations/#{current_id}/env/GITHUB_TOKEN\
     """
   end
 

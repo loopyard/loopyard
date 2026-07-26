@@ -42,7 +42,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
   defdelegate current_turn_activity(messages), to: ChatStatus
 
   # Build the breadcrumb trail for this workspace view.
-  #   Loopyard / {project.name} / {workspace label}
+  #  Loopyard / {project.name} / {workspace label}
   #
   # The trailing crumb is whatever the workspace's Source adapter
   # decides — branch name for Local, eventually `owner/repo#branch`
@@ -57,8 +57,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     # Two rows that mirror the hierarchy Root → Project → Workspace →
     # { Agents · Services · Repo }:
     #
-    #   Row 1  ←  Loopyard / uncringe .................... 🔊   (WHERE you are)
-    #   Row 2  [ Agents · Services · Repo ]  ● my-agent · Ready  Switch ⌄  (WHAT)
+    #  Row 1  ←  Loopyard / uncringe .................... 🔊  (WHERE you are)
+    #  Row 2  [ Agents · Services · Repo ]  ● my-agent · Ready  Switch ⌄  (WHAT)
     #
     # Row 1 is the location breadcrumb (project / workspace) + back-out + sound.
     # Row 2 switches CATEGORY (content-first: jump to your last item there) and
@@ -100,11 +100,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
 
     ~H"""
     <%!-- safe-area-top: in a standalone PWA the header sits under the Dynamic
-         Island / notch without it. No-op in the browser (inset is 0). --%>
+    Island / notch without it. No-op in the browser (inset is 0). --%>
     <div class="md:hidden safe-area-top">
       <%!-- Row 1: WHERE you are — back out + Project / Workspace + sound. Tapping
-           either name throws open ONE full-screen switcher of every project and
-           its workspaces (pick any to jump; ✕ / backdrop to bail). No pop-overs. --%>
+    either name throws open ONE full-screen switcher of every project and
+    its workspaces (pick any to jump; ✕ / backdrop to bail). No pop-overs. --%>
       <Nav.bar height="h-12" pad="px-2" gap="gap-1.5">
         <Nav.back_button navigate="/workspaces" label="Back to workspaces" />
         <nav class="flex-1 min-w-0 flex items-center gap-1.5 text-lg" aria-label="Location">
@@ -121,16 +121,16 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
         </nav>
         <:actions>
           <%!-- Details (agent/service/volume) moved to the section switcher row
-               below — one consistent affordance, next to the thing it expands. --%>
+    below — one consistent affordance, next to the thing it expands. --%>
           <%!-- One-tap open the running app: the workspace's exposed port URL,
-               reachable from this phone (only shows when a port is network-open). --%>
+    reachable from this phone (only shows when a port is network-open). --%>
           <.link
             :if={@app_port}
             href={@app_port.url}
             target="_blank"
             rel="noopener"
             aria-label={"Open app on port #{@app_port.port}"}
-            class="focus-ring inline-flex items-center justify-center gap-0.5 h-11 px-2.5 rounded-lg font-mono text-sm text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 active:bg-emerald-500/20 transition-colors flex-none"
+            class="focus-ring inline-flex items-center justify-center gap-0.5 h-11 px-2.5 rounded-sm font-mono text-sm text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 active:bg-emerald-500/20 transition-colors flex-none"
           >
             :{@app_port.port} <span class="text-xs opacity-70">↗</span>
           </.link>
@@ -156,7 +156,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       </Nav.switcher_sheet>
 
       <%!-- Row 2: WHAT you're looking at — section tabs + the current item, which
-           taps open a full-screen switcher of siblings. --%>
+    taps open a full-screen switcher of siblings. --%>
       <Nav.section_switcher
         id="item-switcher"
         title={section_title(@active)}
@@ -173,7 +173,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
             :if={@active == :agents}
             patch={"#{@base_path}/new"}
             phx-click={JS.hide(to: "#item-switcher")}
-            class="flex items-center gap-2 px-3 min-h-[2.75rem] rounded-lg text-sm font-medium text-violet-600 dark:text-violet-400 active:bg-violet-50 dark:active:bg-violet-500/10"
+            class="flex items-center gap-2 px-3 min-h-[2.75rem] rounded-sm text-sm font-medium text-violet-600 dark:text-violet-400 active:bg-violet-50 dark:active:bg-violet-500/10"
           >
             + New agent
           </.link>
@@ -229,9 +229,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     ~H"""
     <div class="flex-1 flex min-h-0">
       <%!-- Center pane. The mobile category switcher lives in the top back bar
-           now; the agent's Info folds into the header — so this pane is just the
-           chat (or the container view). Agents / Services / Volumes are reached
-           by the tab bar, which routes services/volumes to their own screens. --%>
+    now; the agent's Info folds into the header — so this pane is just the
+    chat (or the container view). Agents / Services / Volumes are reached
+    by the tab bar, which routes services/volumes to their own screens. --%>
       <div class="flex-1 flex flex-col min-w-0 min-h-0">
         <.agent_header
           agent={@selected_agent}
@@ -287,11 +287,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
         </div>
         <div class="flex items-center gap-2 flex-none">
           <%!-- Container lifecycle is DESTRUCTIVE (Stop kills the container; Remove
-               deletes the agent). On phones you interrupt with the red pill above
-               the input and start/remove from the agents switcher. --%>
+    deletes the agent). On phones you interrupt with the red pill above
+    the input and start/remove from the agents switcher. --%>
           <div class="flex items-center gap-2">
             <%!-- Stop = interrupt the RUNNING turn. Only shown while the agent is
-                 actually working — an idle "Stop" is meaningless ("stop what?"). --%>
+    actually working — an idle "Stop" is meaningless ("stop what?"). --%>
             <.control_btn
               :if={agent_display_status(@agent) == :thinking}
               phx-click="interrupt_agent"
@@ -349,7 +349,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
       id="detail-level"
       phx-hook="DetailLevel"
       data-level={@level}
-      class="hidden sm:inline-flex items-center rounded-lg bg-zinc-100 dark:bg-zinc-800 p-1"
+      class="hidden sm:inline-flex items-center rounded-sm bg-zinc-100 dark:bg-zinc-800 p-1"
       role="group"
       aria-label="Activity detail level"
     >
@@ -413,11 +413,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
 
     ~H"""
     <%!-- PerfProbe: client-health beacon (frame gaps / DOM / heap → EventLog).
-         Lives on the chat panel because that's the surface with the perf
-         history — see the hook in app.js. --%>
+    Lives on the chat panel because that's the surface with the perf
+    history — see the hook in app.js. --%>
     <div class="relative flex-1 flex flex-col min-h-0" id="chat-perf-probe" phx-hook="PerfProbe">
       <%!-- Windowed transcript: when you've scrolled up into history, the live
-           tail isn't loaded. This snaps you back to the newest messages. --%>
+    tail isn't loaded. This snaps you back to the newest messages. --%>
       <button
         :if={not @window_tail?}
         phx-click="load_latest"
@@ -433,280 +433,282 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
         </svg>
       </button>
       <%!-- scroll-smooth: the auto-tail (ScrollBottom hook nudges scrollTop as the
-           agent streams) animates instead of jumping, so following the thinking
-           glides. Pure CSS — honors prefers-reduced-motion automatically. --%>
-      <div id="messages" phx-hook="StickyShadow" class="flex-1 overflow-y-auto flex flex-col pb-4">
+    agent streams) animates instead of jumping, so following the thinking
+    glides. Pure CSS — honors prefers-reduced-motion automatically. --%>
+      <div id="messages" class="flex-1 overflow-y-auto flex flex-col pb-4">
         <%!-- `mt-auto` anchors the transcript to the BOTTOM: the most recent
-             message sits just above the input on first paint, so there's no
-             post-load scroll jump (that animated slide-down was the jank).
-             Older messages load in chunks as you scroll up (ScrollBottom hook →
-             load_more). Normal flow (NOT col-reverse) so the human prompts can
-             `position: sticky` to the top of their section. --%>
+    message sits just above the input on first paint, so there's no
+    post-load scroll jump (that animated slide-down was the jank).
+    Older messages load in chunks as you scroll up (ScrollBottom hook →
+    load_more). Normal flow (NOT col-reverse) so the human prompts can
+    `position: sticky` to the top of their section. --%>
         <%!-- The document column: transcript + composer share this centered,
-             capped measure so their gutters LINE UP. The outer div is a
-             full-width flex child that bottom-anchors the transcript (mt-auto);
-             the inner is the centered measure. Centering a BLOCK (mx-auto in
-             normal flow) is what reliably lines the transcript's gutters up with
-             the composer below — mx-auto on a direct flex-column child does NOT
-             center it. Prompt bands + input bleed to THIS column's edges (so on
-             wide screens they're same-width "bubbles"); prose stays 68ch inside. --%>
+    capped measure so their gutters LINE UP. The outer div is a
+    full-width flex child that bottom-anchors the transcript (mt-auto);
+    the inner is the centered measure. Centering a BLOCK (mx-auto in
+    normal flow) is what reliably lines the transcript's gutters up with
+    the composer below — mx-auto on a direct flex-column child does NOT
+    center it. Prompt bands + input bleed to THIS column's edges (so on
+    wide screens they're same-width "bubbles"); prose stays 68ch inside. --%>
         <div class="mt-auto w-full">
           <div class="space-y-3 max-w-2xl mx-auto px-4 md:px-6">
-          <%!-- Progressive loader: while there's older history above the window,
-               a soft shimmer sits at the very top. Scroll into it and load_more
-               fetches the next batch (prepended below this, so it stays put);
-               when you reach the start it disappears. Gentler than a hard
-               "Loading…" flash. --%>
-          <div :if={assigns[:has_more_messages]} class="space-y-2.5 py-3" aria-hidden="true">
-            <div class="h-3 w-20 rounded bg-zinc-200/80 dark:bg-zinc-700/50 animate-pulse"></div>
-            <div class="h-3.5 w-3/4 rounded bg-zinc-200/70 dark:bg-zinc-700/40 animate-pulse"></div>
-            <div class="h-3.5 w-1/2 rounded bg-zinc-200/70 dark:bg-zinc-700/40 animate-pulse"></div>
-          </div>
-          <%!-- Split into SECTIONS: each human prompt + the response it owns. The
-               prompt is `sticky top-0` WITHIN its <section>, so it pins while you
-               scroll its response and then RELEASES at the section boundary as the
-               next prompt's section takes over — prompts replace each other
-               instead of stacking. Pure CSS; the normal-flow scroll (not
-               col-reverse) is what makes the per-section sticky pin flush. --%>
-          <%!-- BOTH loops are :key-ed (section → prompt msg id, row → msg id):
-               without keys, LiveView diffs comprehensions by index, so the
-               window sliding at the cap re-shipped every row on every append
-               (~850KB/turn measured). Rows are LiveComponents (diffed by id +
-               assigns equality) with per-row precomputed ctx — never the whole
-               @messages list. Live-feed suppression happens server-side in
-               Messages.visible_sections/3. --%>
-          <%!-- No rail on the active turn — the deeper wash on the running
-               prompt band + the live status row mark it. (Rails kept
-               misaligning across band/tail/breakpoints; not worth it.) --%>
-          <section :for={section <- @transcript_sections} :key={Messages.section_key(section)}>
-            <%= if section.prompt do %>
-              <% {pmsg, pidx, pctx} = section.prompt %>
-              <.live_component
-                module={LoopyardWeb.Live.WorkspaceLive.MessageRowComponent}
-                id={"mr-#{pmsg[:id] || pidx}"}
-                msg={pmsg}
-                idx={pidx}
-                ctx={pctx}
-                agent_id={@agent_id}
-                workspace_id={@workspace_id}
-                host={@host}
-                user_label={@user_label}
-                active?={MapSet.member?(@active_prompt_ids, pmsg[:id])}
-                detail_level={@detail_level}
-              />
-            <% end %>
-            <%= for group <- section.body do %>
-              <%= case group do %>
-                <% {:break, {msg, idx, ctx}} -> %>
-                  <.live_component
-                    module={LoopyardWeb.Live.WorkspaceLive.MessageRowComponent}
-                    id={"mr-#{msg[:id] || idx}"}
-                    msg={msg}
-                    idx={idx}
-                    ctx={ctx}
-                    agent_id={@agent_id}
-                    workspace_id={@workspace_id}
-                    host={@host}
-                    user_label={@user_label}
-                    active?={MapSet.member?(@active_prompt_ids, msg[:id])}
-                    detail_level={@detail_level}
-                  />
-                <% {:run, items} -> %>
-                  <%!-- The response flows directly under its "You" prompt (which
-                         carries the dated timestamp) — no "Claude" marker. The
-                         `space-y` gives each step (text, tool call, result) room to
-                         breathe instead of packing them edge-to-edge; the console
-                         boxes and file cards especially need the air to read as
-                         separate acts, not one dense wall. --%>
-                  <div class="mt-2">
-                    <div class="space-y-4">
-                      <.live_component
-                        :for={{msg, idx, ctx} <- items}
-                        module={LoopyardWeb.Live.WorkspaceLive.MessageRowComponent}
-                        id={"mr-#{msg[:id] || idx}"}
-                        msg={msg}
-                        idx={idx}
-                        ctx={ctx}
-                        agent_id={@agent_id}
-                        workspace_id={@workspace_id}
-                        host={@host}
-                        user_label={@user_label}
-                        active?={MapSet.member?(@active_prompt_ids, msg[:id])}
-                        detail_level={@detail_level}
-                      />
-                    </div>
-                  </div>
+            <%!-- Progressive loader: while there's older history above the window,
+    a soft shimmer sits at the very top. Scroll into it and load_more
+    fetches the next batch (prepended below this, so it stays put);
+    when you reach the start it disappears. Gentler than a hard
+    "Loading…" flash. --%>
+            <div :if={assigns[:has_more_messages]} class="space-y-2.5 py-3" aria-hidden="true">
+              <div class="h-3 w-20 rounded-sm bg-zinc-200/80 dark:bg-zinc-700/50 animate-pulse"></div>
+              <div class="h-3.5 w-3/4 rounded-sm bg-zinc-200/70 dark:bg-zinc-700/40 animate-pulse">
+              </div>
+              <div class="h-3.5 w-1/2 rounded-sm bg-zinc-200/70 dark:bg-zinc-700/40 animate-pulse">
+              </div>
+            </div>
+            <%!-- Split into SECTIONS: each human prompt + the response it owns. The
+    prompt is `sticky top-0` WITHIN its <section>, so it pins while you
+    scroll its response and then RELEASES at the section boundary as the
+    next prompt's section takes over — prompts replace each other
+    instead of stacking. Pure CSS; the normal-flow scroll (not
+    col-reverse) is what makes the per-section sticky pin flush. --%>
+            <%!-- BOTH loops are :key-ed (section → prompt msg id, row → msg id):
+    without keys, LiveView diffs comprehensions by index, so the
+    window sliding at the cap re-shipped every row on every append
+    (~850KB/turn measured). Rows are LiveComponents (diffed by id +
+    assigns equality) with per-row precomputed ctx — never the whole
+    @messages list. Live-feed suppression happens server-side in
+    Messages.visible_sections/3. --%>
+            <%!-- No rail on the active turn — the deeper wash on the running
+    prompt band + the live status row mark it. (Rails kept
+    misaligning across band/tail/breakpoints; not worth it.) --%>
+            <section :for={section <- @transcript_sections} :key={Messages.section_key(section)}>
+              <%= if section.prompt do %>
+                <% {pmsg, pidx, pctx} = section.prompt %>
+                <.live_component
+                  module={LoopyardWeb.Live.WorkspaceLive.MessageRowComponent}
+                  id={"mr-#{pmsg[:id] || pidx}"}
+                  msg={pmsg}
+                  idx={pidx}
+                  ctx={pctx}
+                  agent_id={@agent_id}
+                  workspace_id={@workspace_id}
+                  host={@host}
+                  user_label={@user_label}
+                  active?={MapSet.member?(@active_prompt_ids, pmsg[:id])}
+                  detail_level={@detail_level}
+                />
               <% end %>
-            <% end %>
-          </section>
-          <%!-- Live tail: the agent's in-progress work on ONE continuous rail. A
-               single line runs from the Claude icon's CENTER straight down through
-               the reasoning and into the live status — one unbroken timeline. The
-               icon + "Claude" label show only when this is the top of the response
-               (pure thinking); once the section above owns the header, just the line
-               continues. --%>
-          <div
-            :if={
-              @streaming_text != "" || (assigns[:streaming_thinking] || "") != "" ||
-                @agent.status in [:backoff, :compacting] ||
-                (@agent.status == :thinking && not awaiting_answer?(@messages) &&
-                   not awaiting_approval?(@messages) && not building?(@messages))
-            }
-            class="-mx-4 md:-mx-6 2xl:-mx-4 px-4 md:px-6 lg:px-8 chat-live-rail-tail"
-          >
-            <%!-- The lit violet left rail: this wrapper renders ONLY while the
-                 turn is live (streaming / thinking / restarting / compacting), so
-                 the rail marks exactly the content being written right now. It's
-                 aligned to the column edge — same x as the active prompt band's
-                 left rail above — so the two read as one continuous "current turn"
-                 timeline. --%>
-            <.streaming_thinking :if={
-              @detail_level != :chat && assigns[:streaming_thinking] != "" &&
-                assigns[:streaming_thinking] != nil
-            } />
-            <.streaming_bubble :if={@streaming_text != ""} streaming_text={@streaming_text} />
-            <.thinking_indicator
+              <%= for group <- section.body do %>
+                <%= case group do %>
+                  <% {:break, {msg, idx, ctx}} -> %>
+                    <.live_component
+                      module={LoopyardWeb.Live.WorkspaceLive.MessageRowComponent}
+                      id={"mr-#{msg[:id] || idx}"}
+                      msg={msg}
+                      idx={idx}
+                      ctx={ctx}
+                      agent_id={@agent_id}
+                      workspace_id={@workspace_id}
+                      host={@host}
+                      user_label={@user_label}
+                      active?={MapSet.member?(@active_prompt_ids, msg[:id])}
+                      detail_level={@detail_level}
+                    />
+                  <% {:run, items} -> %>
+                    <%!-- The response flows directly under its "You" prompt (which
+    carries the dated timestamp) — no "Claude" marker. The
+    `space-y` gives each step (text, tool call, result) room to
+    breathe instead of packing them edge-to-edge; the console
+    boxes and file cards especially need the air to read as
+    separate acts, not one dense wall. --%>
+                    <div class="mt-2">
+                      <div class="space-y-4">
+                        <.live_component
+                          :for={{msg, idx, ctx} <- items}
+                          module={LoopyardWeb.Live.WorkspaceLive.MessageRowComponent}
+                          id={"mr-#{msg[:id] || idx}"}
+                          msg={msg}
+                          idx={idx}
+                          ctx={ctx}
+                          agent_id={@agent_id}
+                          workspace_id={@workspace_id}
+                          host={@host}
+                          user_label={@user_label}
+                          active?={MapSet.member?(@active_prompt_ids, msg[:id])}
+                          detail_level={@detail_level}
+                        />
+                      </div>
+                    </div>
+                <% end %>
+              <% end %>
+            </section>
+            <%!-- Live tail: the agent's in-progress work on ONE continuous rail. A
+    single line runs from the Claude icon's CENTER straight down through
+    the reasoning and into the live status — one unbroken timeline. The
+    icon + "Claude" label show only when this is the top of the response
+    (pure thinking); once the section above owns the header, just the line
+    continues. --%>
+            <div
               :if={
-                @agent.status == :thinking && @streaming_text == "" &&
-                  (assigns[:streaming_thinking] || "") == "" &&
-                  not awaiting_answer?(@messages) && not awaiting_approval?(@messages) &&
-                  not building?(@messages)
+                @streaming_text != "" || (assigns[:streaming_thinking] || "") != "" ||
+                  @agent.status in [:backoff, :compacting] ||
+                  (@agent.status == :thinking && not awaiting_answer?(@messages) &&
+                     not awaiting_approval?(@messages) && not building?(@messages))
               }
-              messages={@messages}
-              word={@thinking_word}
-            />
-            <.live_status
-              :if={@agent.status in [:thinking, :backoff, :compacting]}
-              messages={@messages}
-              word={@thinking_word}
-              agent_id={@agent.id}
-              mode={live_status_mode(@agent)}
-              streaming_text={@streaming_text}
-              active_tool={@agent[:active_tool]}
-              tokens={(@agent[:total_input_tokens] || 0) + (@agent[:total_output_tokens] || 0)}
-              context_utilization={@agent[:context_utilization] || 0.0}
-            />
-          </div>
+              class="-mx-4 md:-mx-6 2xl:-mx-4 px-4 md:px-6 lg:px-8 chat-live-rail-tail"
+            >
+              <%!-- The lit violet left rail: this wrapper renders ONLY while the
+    turn is live (streaming / thinking / restarting / compacting), so
+    the rail marks exactly the content being written right now. It's
+    aligned to the column edge — same x as the active prompt band's
+    left rail above — so the two read as one continuous "current turn"
+    timeline. --%>
+              <.streaming_thinking :if={
+                @detail_level != :chat && assigns[:streaming_thinking] != "" &&
+                  assigns[:streaming_thinking] != nil
+              } />
+              <.streaming_bubble :if={@streaming_text != ""} streaming_text={@streaming_text} />
+              <.thinking_indicator
+                :if={
+                  @agent.status == :thinking && @streaming_text == "" &&
+                    (assigns[:streaming_thinking] || "") == "" &&
+                    not awaiting_answer?(@messages) && not awaiting_approval?(@messages) &&
+                    not building?(@messages)
+                }
+                messages={@messages}
+                word={@thinking_word}
+              />
+              <.live_status
+                :if={@agent.status in [:thinking, :backoff, :compacting]}
+                messages={@messages}
+                word={@thinking_word}
+                agent_id={@agent.id}
+                mode={live_status_mode(@agent)}
+                streaming_text={@streaming_text}
+                active_tool={@agent[:active_tool]}
+                tokens={(@agent[:total_input_tokens] || 0) + (@agent[:total_output_tokens] || 0)}
+                context_utilization={@agent[:context_utilization] || 0.0}
+              />
+            </div>
           </div>
         </div>
       </div>
       <%!-- The composer: queue + Reasoning Bar + input, grouped as ONE unit. The
-            input lives in its own phx-update="ignore" wrapper (the ChatForm hook
-            owns flush/ack/mobile/Enter — do NOT move it inside something LV
-            patches). The queue and the always-visible Reasoning Bar sit above it,
-            LiveView-updated, so you can keep queuing and watch progress while the
-            agent works. --%>
+    input lives in its own phx-update="ignore" wrapper (the ChatForm hook
+    owns flush/ack/mobile/Enter — do NOT move it inside something LV
+    patches). The queue and the always-visible Reasoning Bar sit above it,
+    LiveView-updated, so you can keep queuing and watch progress while the
+    agent works. --%>
       <%!-- pb-safe: the composer clears the home indicator in a standalone PWA
-           while keeping its normal padding in the browser. --%>
+    while keeping its normal padding in the browser. --%>
       <div class="flex-none border-t border-zinc-200 dark:border-zinc-700/80 pb-safe">
-       <div class="w-full max-w-2xl mx-auto px-3 pt-3 md:px-4 md:pt-4 space-y-2">
-        <%!-- The queue is ONE card: a single "You" band (one name, one state) with
-              every pending line INSIDE it, each line cancelable by its own ✕. Reads
-              as one prompt-in-waiting — exactly how the transcript groups a batch —
-              never a stack of repeated BRAD/queued headers. When the agent takes
-              the turn, the queue drains: these lines become the committed prompt
-              band above (dated, highlighted) with the live Working/Stop status
-              below — the ✕'s are gone because it's no longer editable. --%>
-        <div
-          :if={(@agent[:pending_count] || 0) > 0}
-          class="-mx-3 md:-mx-4 2xl:-mx-4 -mt-3 md:-mt-4 2xl:mt-0 2xl:rounded-xl bg-violet-100 dark:bg-[#2b2348] px-4 md:px-6 lg:px-8 pt-3 pb-3"
-        >
-          <div class="flex items-baseline justify-between gap-2 mb-1.5">
-            <div class="flex items-baseline gap-2 min-w-0">
-              <span class="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300">
-                <.icon name={:user} class="w-3.5 h-3.5 flex-none self-center" /> {@user_label}
-              </span>
-              <span class="text-sm text-violet-500/80 dark:text-violet-300/60">
-                queued · sends when the agent finishes
-              </span>
-            </div>
-            <button
-              :if={(@agent[:pending_count] || 0) > 1}
-              type="button"
-              phx-click="clear_pending"
-              phx-value-id={@agent.id}
-              class="focus-ring flex-none text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-            >
-              Clear all
-            </button>
-          </div>
-          <ul class="space-y-1.5">
-            <li
-              :for={{text, i} <- Enum.with_index(@agent[:pending_messages] || [])}
-              class="group/q flex items-start justify-between gap-2.5"
-            >
-              <button
-                type="button"
-                phx-click="edit_pending"
-                phx-value-id={@agent.id}
-                phx-value-index={i}
-                title="Edit — pull back into the message box"
-                class="focus-ring flex-1 min-w-0 text-left text-base leading-relaxed text-zinc-800 dark:text-zinc-100 line-clamp-3"
-              >
-                {text}
-              </button>
-              <%!-- Cancel just THIS line — always visible (hover-only was invisible
-                   on touch). --%>
-              <button
-                type="button"
-                phx-click="remove_pending"
-                phx-value-id={@agent.id}
-                phx-value-index={i}
-                aria-label="Cancel this queued message"
-                title="Cancel — remove from the queue"
-                class="focus-ring tap-target flex-none w-6 h-6 rounded-md flex items-center justify-center text-violet-500/50 dark:text-violet-300/40 hover:text-red-500 hover:bg-red-500/10 transition-colors"
-              >
-                <.icon name={:x_mark} class="w-4 h-4" />
-              </button>
-            </li>
-          </ul>
-        </div>
-        <%!-- Auto-compaction is house-keeping the user shouldn't have to care about:
-           no pre-warning, and only a tiny muted marker WHILE it's actually
-           happening (≥92%). It's automatic and lossless (full history is kept),
-           so it never needs a sentence or an alarm. --%>
-        <div
-          :if={(@agent[:context_utilization] || 0.0) >= 0.92}
-          class="flex items-center gap-1.5 text-sm text-zinc-500 dark:text-zinc-400"
-        >
-          <span class="flex-none">🗜</span>
-          <span class="min-w-0">Compacting…</span>
-        </div>
-        <%!-- The composer IS the input: the whole bottom bar (border-t above)
-             reads as one big submission unit — no inner boxed textarea, no big
-             filled button. Just the caret and a quiet violet arrow. --%>
-        <div id="chat-form-wrapper" phx-update="ignore">
-          <form
-            id="chat-form"
-            phx-submit="send_message"
-            phx-hook="ChatForm"
-            class="flex items-end gap-2"
+        <div class="w-full max-w-2xl mx-auto px-3 pt-3 md:px-4 md:pt-4 space-y-2">
+          <%!-- The queue is ONE card: a single "You" band (one name, one state) with
+    every pending line INSIDE it, each line cancelable by its own ✕. Reads
+    as one prompt-in-waiting — exactly how the transcript groups a batch —
+    never a stack of repeated BRAD/queued headers. When the agent takes
+    the turn, the queue drains: these lines become the committed prompt
+    band above (dated, highlighted) with the live Working/Stop status
+    below — the ✕'s are gone because it's no longer editable. --%>
+          <div
+            :if={(@agent[:pending_count] || 0) > 0}
+            class="-mx-3 md:-mx-4 2xl:-mx-4 -mt-3 md:-mt-4 2xl:mt-0  bg-violet-100 dark:bg-[#2b2348] px-4 md:px-6 lg:px-8 pt-3 pb-3"
           >
-            <textarea
-              name="message"
-              id="chat-input"
-              rows="1"
-              placeholder="Type a message..."
-              aria-label="Message"
-              autocomplete="off"
-              class="focus-ring chat-body flex-1 bg-transparent border-0 rounded-lg px-1 py-2.5
-                   text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 resize-none
-                   focus:outline-none focus:ring-0"
-            ></textarea>
-            <button
-              type="submit"
-              aria-label="Send"
-              class="focus-ring flex-none flex items-center justify-center rounded-full w-10 h-10 mb-[5px] md:mb-1 text-violet-600 dark:text-violet-400
-                   hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-colors"
+            <div class="flex items-baseline justify-between gap-2 mb-1.5">
+              <div class="flex items-baseline gap-2 min-w-0">
+                <span class="inline-flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-300">
+                  <.icon name={:user} class="w-3.5 h-3.5 flex-none self-center" /> {@user_label}
+                </span>
+                <span class="text-sm text-violet-500/80 dark:text-violet-300/60">
+                  queued · sends when the agent finishes
+                </span>
+              </div>
+              <button
+                :if={(@agent[:pending_count] || 0) > 1}
+                type="button"
+                phx-click="clear_pending"
+                phx-value-id={@agent.id}
+                class="focus-ring flex-none text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+              >
+                Clear all
+              </button>
+            </div>
+            <ul class="space-y-1.5">
+              <li
+                :for={{text, i} <- Enum.with_index(@agent[:pending_messages] || [])}
+                class="group/q flex items-start justify-between gap-2.5"
+              >
+                <button
+                  type="button"
+                  phx-click="edit_pending"
+                  phx-value-id={@agent.id}
+                  phx-value-index={i}
+                  title="Edit — pull back into the message box"
+                  class="focus-ring flex-1 min-w-0 text-left text-base leading-relaxed text-zinc-800 dark:text-zinc-100 line-clamp-3"
+                >
+                  {text}
+                </button>
+                <%!-- Cancel just THIS line — always visible (hover-only was invisible
+    on touch). --%>
+                <button
+                  type="button"
+                  phx-click="remove_pending"
+                  phx-value-id={@agent.id}
+                  phx-value-index={i}
+                  aria-label="Cancel this queued message"
+                  title="Cancel — remove from the queue"
+                  class="focus-ring tap-target flex-none w-6 h-6 rounded-sm flex items-center justify-center text-violet-500/50 dark:text-violet-300/40 hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                >
+                  <.icon name={:x_mark} class="w-4 h-4" />
+                </button>
+              </li>
+            </ul>
+          </div>
+          <%!-- Auto-compaction is house-keeping the user shouldn't have to care about:
+    no pre-warning, and only a tiny muted marker WHILE it's actually
+    happening (≥92%). It's automatic and lossless (full history is kept),
+    so it never needs a sentence or an alarm. --%>
+          <div
+            :if={(@agent[:context_utilization] || 0.0) >= 0.92}
+            class="flex items-center gap-1.5 text-sm text-zinc-500 dark:text-zinc-400"
+          >
+            <span class="flex-none">🗜</span>
+            <span class="min-w-0">Compacting…</span>
+          </div>
+          <%!-- The composer IS the input: the whole bottom bar (border-t above)
+    reads as one big submission unit — no inner boxed textarea, no big
+    filled button. Just the caret and a quiet violet arrow. --%>
+          <div id="chat-form-wrapper" phx-update="ignore">
+            <form
+              id="chat-form"
+              phx-submit="send_message"
+              phx-hook="ChatForm"
+              class="flex items-end gap-2"
             >
-              <.icon name={:arrow_up} class="w-6 h-6" />
-            </button>
-          </form>
-          <%!-- Why a send failed — the ChatForm hook fills + reveals this so a
-              rejected send is never just a silent red flash. --%>
-          <p id="send-status" class="hidden mt-1.5 text-sm text-red-500 dark:text-red-400"></p>
+              <textarea
+                name="message"
+                id="chat-input"
+                rows="1"
+                placeholder="Type a message..."
+                aria-label="Message"
+                autocomplete="off"
+                class="focus-ring chat-body flex-1 bg-transparent border-0 rounded-sm px-1 py-2.5
+    text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 resize-none
+    focus:outline-none focus:ring-0"
+              ></textarea>
+              <button
+                type="submit"
+                aria-label="Send"
+                class="focus-ring flex-none flex items-center justify-center rounded-full w-10 h-10 mb-[5px] md:mb-1 text-violet-600 dark:text-violet-400
+    hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-colors"
+              >
+                <.icon name={:arrow_up} class="w-6 h-6" />
+              </button>
+            </form>
+            <%!-- Why a send failed — the ChatForm hook fills + reveals this so a
+    rejected send is never just a silent red flash. --%>
+            <p id="send-status" class="hidden mt-1.5 text-sm text-red-500 dark:text-red-400"></p>
+          </div>
         </div>
-       </div>
       </div>
     </div>
     """
@@ -867,8 +869,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
               value={@log_service || ""}
               placeholder="Filter service..."
               aria-label="Filter logs by service"
-              class="text-sm rounded border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-1 w-28
-                     focus:outline-none focus:ring-1 focus:ring-violet-500/30"
+              class="text-sm rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-2 py-1 w-28
+    focus:outline-none focus:ring-1 focus:ring-violet-500/30"
             />
           </form>
         </div>

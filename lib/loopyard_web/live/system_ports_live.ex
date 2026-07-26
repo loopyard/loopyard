@@ -205,7 +205,7 @@ defmodule LoopyardWeb.SystemPortsLive do
           phx-value-cport={@r.container_port}
           phx-value-expose={to_string(!@r.exposed)}
           class={[
-            "text-xs font-medium rounded px-2 py-1 transition-colors",
+            "text-xs font-medium rounded-sm px-2 py-1 transition-colors",
             if(@r.exposed,
               do: "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-700",
               else:

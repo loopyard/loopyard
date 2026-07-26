@@ -3,13 +3,13 @@ defmodule LoopyardWeb.Components.ProjectList do
   The ONE grouped project → workspace overview, rendered at three sizes so the
   gesture is learned once and the SAME status model shows everywhere:
 
-    * `size={:xs}` — the mobile switcher sheet: dot + name, needs-you badge
-      only. Picking fast; no port/status noise.
-    * `size={:sm}` — the desktop rail: one aligned line per workspace —
-      dot + name … headline word + port chip.
-    * `size={:full}` — /workspaces: responsive. Small screens get two-line
-      rows; md+ gets a GRID OF CARDS per project with the full story (agent +
-      activity, port, last active), needs-you/broken tinting the card.
+  * `size={:xs}` — the mobile switcher sheet: dot + name, needs-you badge
+  only. Picking fast; no port/status noise.
+  * `size={:sm}` — the desktop rail: one aligned line per workspace —
+  dot + name … headline word + port chip.
+  * `size={:full}` — /workspaces: responsive. Small screens get two-line
+  rows; md+ gets a GRID OF CARDS per project with the full story (agent +
+  activity, port, last active), needs-you/broken tinting the card.
 
   All sizes derive from `Birdseye.ws_dot/1` + `Birdseye.headline/1` — the
   priority-ordered status model (needs-you > broken > working > quiet). The dot
@@ -30,10 +30,10 @@ defmodule LoopyardWeb.Components.ProjectList do
   @doc """
   Renders the grouped overview.
 
-    * `projects` — `WorkspaceTree.global` list.
-    * `current_workspace_id` — highlight this workspace's row (switcher/rail).
-    * `row_click` — optional `JS` run when a row is tapped (e.g. close sheet).
-    * `size` — `:xs` | `:sm` | `:full` (see moduledoc).
+  * `projects` — `WorkspaceTree.global` list.
+  * `current_workspace_id` — highlight this workspace's row (switcher/rail).
+  * `row_click` — optional `JS` run when a row is tapped (e.g. close sheet).
+  * `size` — `:xs` | `:sm` | `:full` (see moduledoc).
   """
   attr :projects, :list, required: true
   attr :current_workspace_id, :string, default: nil
@@ -45,8 +45,8 @@ defmodule LoopyardWeb.Components.ProjectList do
     <div class="space-y-9">
       <section :for={project <- @projects}>
         <%!-- Project header (→ the project page, where "New workspace" lives).
-             STICKY so it pins while its workspaces scroll; opaque bg covers rows
-             sliding under; shadow only when stuck. --%>
+    STICKY so it pins while its workspaces scroll; opaque bg covers rows
+    sliding under; shadow only when stuck. --%>
         <.link
           navigate={"/projects/#{project.id}"}
           phx-click={@row_click}
@@ -59,7 +59,7 @@ defmodule LoopyardWeb.Components.ProjectList do
         </.link>
 
         <%!-- Two-line rows on small screens, the card grid on md+ — one render,
-             responsive, no UA sniffing. --%>
+    responsive, no UA sniffing. --%>
         <div class="pt-1">
           <div class="md:hidden space-y-0.5">
             <.ws_row_md
@@ -106,8 +106,8 @@ defmodule LoopyardWeb.Components.ProjectList do
     <div class="space-y-4">
       <section :for={project <- @projects}>
         <%!-- The group heading = the project, as white readable text. Sticky so
-             it pins while its branches scroll; opaque bg (matches the rail)
-             covers rows sliding under; shadow only when stuck. --%>
+    it pins while its branches scroll; opaque bg (matches the rail)
+    covers rows sliding under; shadow only when stuck. --%>
         <.link
           navigate={"/projects/#{project.id}"}
           phx-click={@row_click}
@@ -126,7 +126,7 @@ defmodule LoopyardWeb.Components.ProjectList do
         </.link>
 
         <%!-- Branches, indented under the project: status light on the left,
-             branch name to its right. --%>
+    branch name to its right. --%>
         <div class="pl-3 space-y-0.5">
           <.ws_row_compact
             :for={ws <- project.workspaces}
@@ -161,27 +161,28 @@ defmodule LoopyardWeb.Components.ProjectList do
 
     ~H"""
     <%!-- Stretched-link row: the whole row navigates to the workspace via an
-         absolute overlay link, so the port chip can sit ABOVE it (z-10) as its
-         OWN link — one tap opens the running dev server in a new tab without
-         first opening the workspace and hunting for it. --%>
-    <div class={[
-      "group/ws relative flex items-center gap-2.5 -mx-2 px-2 rounded-lg transition-colors",
-      # :xs = the mobile switcher sheet — finger-sized rows (≥44px), same as the
-      # operator rail's mobile rows. :sm = the desktop rail — compact.
-      (@size == :xs && "py-3") || "py-1",
-      @current && "bg-violet-100 dark:bg-violet-500/15"
-    ]}>
+    absolute overlay link, so the port chip can sit ABOVE it (z-10) as its
+    OWN link — one tap opens the running dev server in a new tab without
+    first opening the workspace and hunting for it. --%>
+    <div class={
+      [
+        "group/ws relative flex items-center gap-2.5 -mx-2 px-2 rounded-sm transition-colors",
+        # :xs = the mobile switcher sheet — finger-sized rows (≥44px), same as the
+        # operator rail's mobile rows. :sm = the desktop rail — compact.
+        (@size == :xs && "py-3") || "py-1",
+        @current && "bg-violet-100 dark:bg-violet-500/15"
+      ]
+    }>
       <.link
         navigate={workspace_href(@project_id, @ws)}
         phx-click={@row_click}
         aria-current={@current && "true"}
         aria-label={"Open workspace #{@ws.name}"}
-        class="absolute inset-0 rounded-lg focus-ring"
-      >
-      </.link>
+        class="absolute inset-0 rounded-sm focus-ring"
+      ></.link>
       <%!-- Indented BRANCH row: the project (white heading) is right above, so
-           this shows just the branch — status light on the left, branch name to
-           its right — quietly (muted) so the project heading leads. --%>
+    this shows just the branch — status light on the left, branch name to
+    its right — quietly (muted) so the project heading leads. --%>
       <LoopyardWeb.Components.Common.workspace_identity
         project={@ws.name}
         workspace={nil}
@@ -191,11 +192,13 @@ defmodule LoopyardWeb.Components.ProjectList do
         class="min-w-0 flex-1"
       />
       <%!-- The rail carries only the SIGNAL words (needs-you / broken / …), never
-           the loud green/red git line-stats — those are noise in a nav rail and
-           live in the right sidebar's Changes row instead. XS shows only the
-           needs-you signal (picking fast); SM shows any signal word. --%>
+    the loud green/red git line-stats — those are noise in a nav rail and
+    live in the right sidebar's Changes row instead. XS shows only the
+    needs-you signal (picking fast); SM shows any signal word. --%>
       <span
-        :if={@headline && @headline.kind != :changed && (@size == :sm || @headline.kind == :needs_you)}
+        :if={
+          @headline && @headline.kind != :changed && (@size == :sm || @headline.kind == :needs_you)
+        }
         class="relative flex-none text-xs truncate max-w-[9rem]"
       >
         <span class={@headline.class}>{@headline.text}</span>
@@ -228,15 +231,15 @@ defmodule LoopyardWeb.Components.ProjectList do
       phx-click={@row_click}
       aria-current={@current && "true"}
       class={[
-        "group/ws flex items-start gap-2.5 -mx-2 px-2 py-2 rounded-lg transition-colors",
+        "group/ws flex items-start gap-2.5 -mx-2 px-2 py-2 rounded-sm transition-colors",
         @current && "bg-violet-100 dark:bg-violet-500/15"
       ]}
     >
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2">
           <%!-- The project HEADER right above owns the project name — the row
-               shows just the branch, so the header (big) → branch (small) reads
-               as real hierarchy instead of "Loopyard / Loopyard · main". --%>
+    shows just the branch, so the header (big) → branch (small) reads
+    as real hierarchy instead of "Loopyard / Loopyard · main". --%>
           <LoopyardWeb.Components.Common.workspace_identity
             project={@ws.name}
             workspace={nil}
@@ -246,7 +249,7 @@ defmodule LoopyardWeb.Components.ProjectList do
           />
           <span
             :if={ws_port(@ws)}
-            class="flex-none inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+            class="flex-none inline-flex items-center px-1.5 py-0.5 rounded-sm text-xs font-mono font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
           >
             :{ws_port(@ws)}
           </span>
@@ -285,21 +288,20 @@ defmodule LoopyardWeb.Components.ProjectList do
 
     ~H"""
     <div class={[
-      "relative rounded-xl border p-4 transition-colors",
+      "relative  border p-4 transition-colors",
       card_tint(@headline)
     ]}>
       <%!-- Stretched link covers the card (→ the agent chat) WITHOUT nesting
-           anchors; the port chip sits above it (z-10) as its own link. --%>
+    anchors; the port chip sits above it (z-10) as its own link. --%>
       <.link
         navigate={workspace_href(@project_id, @ws)}
         phx-click={@row_click}
-        class="absolute inset-0 rounded-xl focus-ring"
+        class="absolute inset-0  focus-ring"
         aria-label={"Open workspace #{@ws.name}"}
-      >
-      </.link>
+      ></.link>
       <div class="flex items-center gap-2">
         <%!-- The project header above the grid owns the project name — the card
-             leads with its branch (see ws_row_md). --%>
+    leads with its branch (see ws_row_md). --%>
         <LoopyardWeb.Components.Common.workspace_identity
           project={@ws.name}
           workspace={nil}
@@ -312,9 +314,9 @@ defmodule LoopyardWeb.Components.ProjectList do
         </span>
       </div>
       <%!-- The story line: what it needs / what broke / what it's doing — or,
-           quietly, who's here. A `:changed` headline is NOT a story (it's a
-           footer fact), so on the card it collapses to the quiet who's-here line;
-           ±N shows once, in the footer. --%>
+    quietly, who's here. A `:changed` headline is NOT a story (it's a
+    footer fact), so on the card it collapses to the quiet who's-here line;
+    ±N shows once, in the footer. --%>
       <div class={[
         "mt-2 text-sm truncate",
         card_story_class(@headline) || "text-zinc-500 dark:text-zinc-400"
@@ -322,8 +324,8 @@ defmodule LoopyardWeb.Components.ProjectList do
         {card_story_text(@headline, @ws)}
       </div>
       <%!-- Footer facts: last activity (the STEADY anchor — always present) then
-           changes to its RIGHT (conditional: only when known + nonzero). This is
-           the ONLY place ±N shows; the story line never repeats it. --%>
+    changes to its RIGHT (conditional: only when known + nonzero). This is
+    the ONLY place ±N shows; the story line never repeats it. --%>
       <div
         :if={@ws[:last_activity_at] || @changes}
         class="mt-1 text-xs text-zinc-400 dark:text-zinc-500"
@@ -345,12 +347,12 @@ defmodule LoopyardWeb.Components.ProjectList do
   defp change_stat(assigns) do
     ~H"""
     <span class="tabular-nums font-medium"><span
-        :if={@added > 0}
-        class="text-emerald-600 dark:text-emerald-400"
-      >+{@added}</span><span :if={@added > 0 && @removed > 0} class="inline-block w-1"></span><span
-        :if={@removed > 0}
-        class="text-red-500 dark:text-red-400"
-      >−{@removed}</span></span>
+      :if={@added > 0}
+      class="text-emerald-600 dark:text-emerald-400"
+    >+{@added}</span><span :if={@added > 0 && @removed > 0} class="inline-block w-1"></span><span
+      :if={@removed > 0}
+      class="text-red-500 dark:text-red-400"
+    >−{@removed}</span></span>
     """
   end
 

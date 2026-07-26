@@ -13,9 +13,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.SetupProgress do
 
   Renders three phases (matching `Loopyard.Workspace.Setup.phases/0`):
 
-    * `:worktree` — host git worktree creation
-    * `:volume`   — Docker volume creation
-    * `:seeding`  — rsync host → volume (the slow one)
+  * `:worktree` — host git worktree creation
+  * `:volume`  — Docker volume creation
+  * `:seeding`  — rsync host → volume (the slow one)
 
   During `:seeding`, a live progress block shows file count, bytes
   copied, transfer rate, ETA, and the current file (when available),
@@ -184,7 +184,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.SetupProgress do
 
   defp error_panel(assigns) do
     ~H"""
-    <div class="rounded-md border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 p-4 space-y-3">
+    <div class="rounded-sm border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 p-4 space-y-3">
       <div>
         <h3 class="text-sm font-semibold text-red-800 dark:text-red-300">
           {Map.get(@error, :why, "Setup failed")}
@@ -200,7 +200,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.SetupProgress do
         <button
           phx-click="retry_setup"
           phx-value-workspace-id={@workspace_id}
-          class="text-xs px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-medium"
+          class="text-xs px-3 py-1.5 rounded-sm bg-blue-600 hover:bg-blue-700 text-white font-medium"
         >
           Retry
         </button>
@@ -208,7 +208,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.SetupProgress do
           phx-click="remove_workspace_setup_failed"
           phx-value-workspace-id={@workspace_id}
           data-confirm="Remove this workspace? Volumes, worktree, and files will be deleted."
-          class="text-xs px-3 py-1.5 rounded-md bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-200 font-medium"
+          class="text-xs px-3 py-1.5 rounded-sm bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 text-zinc-700 dark:text-zinc-200 font-medium"
         >
           Remove workspace
         </button>

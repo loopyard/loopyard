@@ -6,7 +6,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.States do
     ~H"""
     <div class="flex-1 flex items-center justify-center">
       <div class="text-center max-w-sm">
-        <div class="w-16 h-16 rounded-2xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center mx-auto mb-4">
+        <div class="w-16 h-16  bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center mx-auto mb-4">
           <svg
             class="w-7 h-7 text-violet-500 animate-spin"
             xmlns="http://www.w3.org/2000/svg"
@@ -30,7 +30,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.States do
           <summary class="text-xs text-zinc-500 dark:text-zinc-400 cursor-pointer hover:text-zinc-600 dark:hover:text-zinc-300">
             Boot log
           </summary>
-          <div class="mt-2 bg-zinc-50 dark:bg-zinc-800 rounded-lg p-3 text-xs font-mono text-zinc-500 dark:text-zinc-400 space-y-0.5 max-h-48 overflow-y-auto">
+          <div class="mt-2 bg-zinc-50 dark:bg-zinc-800 rounded-sm p-3 text-xs font-mono text-zinc-500 dark:text-zinc-400 space-y-0.5 max-h-48 overflow-y-auto">
             <p :for={line <- @boot_log}>{line}</p>
           </div>
         </details>
@@ -52,7 +52,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.States do
     ~H"""
     <div class="flex-1 flex items-center justify-center">
       <div class="text-center max-w-md px-4">
-        <div class="w-16 h-16 rounded-2xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center mx-auto mb-4">
+        <div class="w-16 h-16  bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center mx-auto mb-4">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 24 24"
@@ -74,7 +74,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.States do
         </p>
         <.link
           patch={"#{@base_path}/new"}
-          class="focus-ring inline-flex items-center gap-2 rounded-lg bg-violet-600 hover:bg-violet-700 text-white px-6 py-3 text-sm font-medium transition-colors"
+          class="focus-ring inline-flex items-center gap-2 rounded-sm bg-violet-600 hover:bg-violet-700 text-white px-6 py-3 text-sm font-medium transition-colors"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -188,7 +188,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.States do
               type="button"
               phx-click="shutdown_workspace"
               aria-label="Stop workspace"
-              class="focus-ring inline-flex items-center gap-2 rounded-md px-4 min-h-10 text-sm font-medium border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+              class="focus-ring inline-flex items-center gap-2 rounded-sm px-4 min-h-10 text-sm font-medium border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -206,7 +206,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.States do
               type="button"
               phx-click="boot_workspace"
               aria-label="Start all services"
-              class="focus-ring inline-flex items-center gap-2 rounded-md px-4 min-h-10 text-sm font-medium bg-violet-600 hover:bg-violet-700 active:bg-violet-800 text-white transition-colors"
+              class="focus-ring inline-flex items-center gap-2 rounded-sm px-4 min-h-10 text-sm font-medium bg-violet-600 hover:bg-violet-700 active:bg-violet-800 text-white transition-colors"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -227,8 +227,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.States do
             patch={"#{@base_path}/new"}
             class="text-violet-600 dark:text-violet-400 hover:underline"
           >
-            launch a new agent
-          </.link>.
+    launch a new agent
+    </.link>.
         </p>
       </div>
     </div>
@@ -239,7 +239,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.States do
     ~H"""
     <div class="flex-1 flex items-center justify-center">
       <div class="text-center">
-        <div class="w-16 h-16 rounded-2xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mx-auto mb-4">
+        <div class="w-16 h-16  bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mx-auto mb-4">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 24 24"

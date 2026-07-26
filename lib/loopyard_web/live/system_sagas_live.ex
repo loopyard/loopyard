@@ -126,7 +126,7 @@ defmodule LoopyardWeb.SystemSagasLive do
 
   defp incomplete_banner(assigns) do
     ~H"""
-    <div class="mb-4 rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4">
+    <div class="mb-4 rounded-sm border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4">
       <div class="flex items-start gap-3">
         <div class="flex-shrink-0 text-red-600 dark:text-red-400 text-xl leading-none">!</div>
         <div class="flex-1">
@@ -200,19 +200,19 @@ defmodule LoopyardWeb.SystemSagasLive do
 
   defp summary_card_class(:neutral),
     do:
-      "rounded-lg border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 px-3 py-2"
+      "rounded-sm border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 px-3 py-2"
 
   defp summary_card_class(:ok),
     do:
-      "rounded-lg border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50 dark:bg-emerald-900/10 px-3 py-2"
+      "rounded-sm border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50 dark:bg-emerald-900/10 px-3 py-2"
 
   defp summary_card_class(:warn),
     do:
-      "rounded-lg border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-900/10 px-3 py-2"
+      "rounded-sm border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-900/10 px-3 py-2"
 
   defp summary_card_class(:alert),
     do:
-      "rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-3 py-2"
+      "rounded-sm border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-3 py-2"
 
   defp filter_bar(assigns) do
     ~H"""
@@ -257,7 +257,7 @@ defmodule LoopyardWeb.SystemSagasLive do
 
   defp saga_row(assigns) do
     ~H"""
-    <details class={"rounded-lg border overflow-hidden " <> row_border_class(@saga.status)}>
+    <details class={"rounded-sm border overflow-hidden " <> row_border_class(@saga.status)}>
       <summary class="px-3 py-2 cursor-pointer flex items-center gap-3">
         <span class={status_badge_class(@saga.status)}>
           {humanize_status(@saga.status)}

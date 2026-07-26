@@ -166,9 +166,9 @@ defmodule LoopyardWeb.Router do
   # the URL — a headless curl always names which identity it's pushing to (never
   # an implicit server-side "current"). The Workstation page bakes your current
   # id into the commands it shows, so copy-paste is unchanged.
-  #   curl -fsS http://localhost:4000/workstations/brad/setup.sh | sh    # everything
-  #   gh auth token | curl -T - .../workstations/brad/env/GITHUB_TOKEN    # one env var
-  #   curl -T - .../workstations/brad/file/.codex/auth.json < ~/.codex/auth.json  # one file
+  #  curl -fsS http://localhost:4000/workstations/brad/setup.sh | sh  # everything
+  #  gh auth token | curl -T - .../workstations/brad/env/GITHUB_TOKEN  # one env var
+  #  curl -T - .../workstations/brad/file/.codex/auth.json < ~/.codex/auth.json  # one file
   # Local requests need no auth (a curl on this machine is already trusted);
   # tunnel/remote requests need the PushToken (see PushAuth). Defined BEFORE the
   # `/workstations/:id/:tool` page route so these literal sub-paths win.

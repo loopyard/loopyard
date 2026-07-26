@@ -16,9 +16,9 @@ defmodule LoopyardWeb.MCP.Listener do
   CSRF (there's no browser here), no Phoenix router.
 
   Config (`config :loopyard, :acp_mcp_listener, ...`):
-    * `enabled` — start the listener at all (default true; false in test).
-    * `port` — TCP port (default 4030; `LOOPYARD_MCP_PORT` overrides).
-    * `ip` — bind address (default `{0, 0, 0, 0}` so containers can reach it).
+  * `enabled` — start the listener at all (default true; false in test).
+  * `port` — TCP port (default 4030; `LOOPYARD_MCP_PORT` overrides).
+  * `ip` — bind address (default `{0, 0, 0, 0}` so containers can reach it).
   """
   use Plug.Builder
 

@@ -57,7 +57,7 @@ defmodule LoopyardWeb.SoundLive do
     ~H"""
     <div class="min-h-screen flex flex-col bg-brand-paper dark:bg-brand-ink text-zinc-900 dark:text-zinc-100 safe-area-x">
       <%!-- A global overlay (the audio engine lives in the root layout so it never
-           cuts) — so it CLOSES with an ✕, it isn't a page you navigate back from. --%>
+    cuts) — so it CLOSES with an ✕, it isn't a page you navigate back from. --%>
       <Nav.bar pad="px-4">
         <h1 class="text-lg font-semibold">Sound</h1>
         <:actions>
@@ -67,7 +67,7 @@ defmodule LoopyardWeb.SoundLive do
 
       <div id="sound-panel" phx-hook="SoundPanel" class="flex-1 overflow-y-auto">
         <%!-- Playback: the big power button toggles the persistent engine; the
-             state label + volume mirror it. --%>
+    state label + volume mirror it. --%>
         <div class="p-5 border-b border-zinc-200 dark:border-zinc-700/60">
           <div class="flex items-center gap-4">
             <button
@@ -78,8 +78,8 @@ defmodule LoopyardWeb.SoundLive do
               class="flex-none w-16 h-16 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center transition-colors"
             >
               <%!-- Media-control semantics: PLAY (▶) when stopped, PAUSE (⏸) when
-                   playing. The hook shows `off` when paused and `on` when
-                   playing, so `off` = play icon, `on` = pause icon. --%>
+    playing. The hook shows `off` when paused and `on` when
+    playing, so `off` = play icon, `on` = pause icon. --%>
               <svg
                 data-sound-icon="off"
                 viewBox="0 0 20 20"
@@ -125,7 +125,7 @@ defmodule LoopyardWeb.SoundLive do
         </div>
 
         <%!-- Tracks: tapping crossfades the live stream (~3s), so switching
-             never cuts the audio. --%>
+    never cuts the audio. --%>
         <div class="p-3">
           <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400 px-2 mb-1.5">
             Tracks
@@ -137,7 +137,7 @@ defmodule LoopyardWeb.SoundLive do
               phx-click="pick_track"
               phx-value-track={id}
               class={[
-                "w-full flex items-center gap-3 px-3 min-h-[3.5rem] rounded-xl text-left transition-colors",
+                "w-full flex items-center gap-3 px-3 min-h-[3.5rem]  text-left transition-colors",
                 if(@current_track == id,
                   do: "bg-violet-100 dark:bg-violet-500/15",
                   else:

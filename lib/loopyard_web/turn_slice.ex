@@ -4,11 +4,11 @@ defmodule LoopyardWeb.TurnSlice do
 
   Two shapes, decided by the anchor's role:
 
-    * the anchor is a `:user` prompt → a whole **turn**: that prompt through
-      everything below it, up to (not including) the next user prompt. This is
-      the shareable "prompt → result" link.
-    * the anchor is anything else → just that **single** message. Linking a
-      specific reply / mini-app / tool output shares only that artifact.
+  * the anchor is a `:user` prompt → a whole **turn**: that prompt through
+  everything below it, up to (not including) the next user prompt. This is
+  the shareable "prompt → result" link.
+  * the anchor is anything else → just that **single** message. Linking a
+  specific reply / mini-app / tool output shares only that artifact.
 
   Shared by `LoopyardWeb.MessageLive` (the streaming turn page) and
   `LoopyardWeb.OutputController` (the raw-text download) so both agree on what a

@@ -15,10 +15,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Transcript do
   Group the message list into transcript segments for the run-spine layout.
 
   Returns an ordered list of:
-    * `{:run, [{msg, idx}]}` — consecutive agent-authored messages that share
-      ONE spine + ONE "Claude" header.
-    * `{:break, {msg, idx}}` — a human-facing message (user bubble, or a
-      question/approval card) that stands alone and breaks the run.
+  * `{:run, [{msg, idx}]}` — consecutive agent-authored messages that share
+  ONE spine + ONE "Claude" header.
+  * `{:break, {msg, idx}}` — a human-facing message (user bubble, or a
+  question/approval card) that stands alone and breaks the run.
 
   Indices are the original positions in `messages` (so `chat_msg` look-back
   helpers still work).
@@ -177,7 +177,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Transcript do
     {ctx, _tracker} =
       messages
       |> Enum.with_index()
-      |> Enum.reduce({%{}, {%{}, [], 0}}, fn {msg, idx}, {acc, {by_id, turn_calls, turn_results}} ->
+      |> Enum.reduce({%{}, {%{}, [], 0}}, fn {msg, idx},
+                                             {acc, {by_id, turn_calls, turn_results}} ->
         call =
           if msg.role == :tool_result do
             case msg[:tool_id] do
@@ -193,8 +194,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Transcript do
           streamed_exec:
             match?(%{role: :tool, tool: t} when is_binary(t), call) &&
               String.ends_with?(call.tool, "__exec"),
-          preceded_by_edit:
-            match?(%{role: :tool}, call) && call_kind(call) == :edit,
+          preceded_by_edit: match?(%{role: :tool}, call) && call_kind(call) == :edit,
           expanded?:
             cond do
               Map.get(msg, :is_error, false) == true -> :full

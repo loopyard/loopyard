@@ -19,8 +19,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.DiffLoader do
   @doc """
   Diff for a file at one side of the working tree.
 
-    * `:unstaged` — `git diff HEAD <file>` equivalent
-    * `:staged`   — `git diff --cached HEAD <file>` equivalent
+  * `:unstaged` — `git diff HEAD <file>` equivalent
+  * `:staged`  — `git diff --cached HEAD <file>` equivalent
   """
   def file_diff(project, workspace_entry, file_path, :unstaged) do
     adapter(project).git_diff(project, workspace_entry, file: file_path)

@@ -28,7 +28,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.SyncDetail do
       </:header>
       <div class="flex-1 overflow-y-auto p-6 md:p-8">
         <div class="max-w-lg space-y-4">
-          <div class="rounded-lg border border-zinc-200 dark:border-zinc-700/80 divide-y divide-zinc-200 dark:divide-zinc-700/80">
+          <div class="rounded-sm border border-zinc-200 dark:border-zinc-700/80 divide-y divide-zinc-200 dark:divide-zinc-700/80">
             <div class="px-4 py-3 flex items-center justify-between">
               <span class="text-xs text-zinc-500 dark:text-zinc-400">Status</span>
               <span class={"text-sm font-medium #{status_text_class(@status)}"}>
@@ -58,7 +58,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.SyncDetail do
           <% details = @sync[:details] %>
           <div
             :if={details}
-            class="rounded-lg border border-zinc-200 dark:border-zinc-700/80 divide-y divide-zinc-200 dark:divide-zinc-700/80"
+            class="rounded-sm border border-zinc-200 dark:border-zinc-700/80 divide-y divide-zinc-200 dark:divide-zinc-700/80"
           >
             <div :if={details[:status_text]} class="px-4 py-3 flex items-center justify-between">
               <span class="text-xs text-zinc-500 dark:text-zinc-400">Mutagen</span>

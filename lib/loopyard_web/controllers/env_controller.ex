@@ -4,7 +4,7 @@ defmodule LoopyardWeb.EnvController do
   Loopyard — the "transfer credentials from your Mac into the Docker workstation"
   path. The workstation id is in the URL (the curl names which identity):
 
-      gh auth token | curl -T - http://localhost:4000/workstations/brad/env/GITHUB_TOKEN
+  gh auth token | curl -T - http://localhost:4000/workstations/brad/env/GITHUB_TOKEN
 
   `-T -` PUTs stdin as the raw body (no `-X`, no `-d`, no content-type). Stores
   the value via `Loopyard.Workstation.Env` (injected as `-e` into the console +

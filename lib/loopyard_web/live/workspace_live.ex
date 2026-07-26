@@ -377,9 +377,9 @@ defmodule LoopyardWeb.WorkspaceLive do
 
     # Working is the default: landing on a bare workspace URL should NEVER dump
     # you on a blank "select an agent" screen. Resolve a real landing target:
-    #   1. no agents yet → auto-spawn one (you land in a fresh live chat),
-    #   2. agents exist → resume this window's last view here (WindowViews), or
-    #      fall back to the latest agent's chat.
+    #  1. no agents yet → auto-spawn one (you land in a fresh live chat),
+    #  2. agents exist → resume this window's last view here (WindowViews), or
+    #  fall back to the latest agent's chat.
     #
     # CRITICAL: read the LIVE agent list here, not socket.assigns.agents — that's
     # a mount-time snapshot, stale across the remounts a reconnect/live-reload
@@ -1743,7 +1743,7 @@ defmodule LoopyardWeb.WorkspaceLive do
       <.flash_banner flash={@flash} kind={:error} class="mx-4 mt-2" />
       <div class="flex-1 flex min-h-0">
         <%!-- LEFT rail: god-mode tree — every project → workspace → agent, live
-             across all projects (#55). Desktop-only. --%>
+    across all projects (#55). Desktop-only. --%>
         <LoopyardWeb.Components.GlobalSidebar.global_sidebar
           tree={@global_tree}
           current_workspace_id={@workspace.id}
@@ -1755,11 +1755,11 @@ defmodule LoopyardWeb.WorkspaceLive do
           class={"flex-1 flex flex-col min-w-0 #{if @live_action == :index && !@selected_id && !@selected_service, do: "hidden md:flex", else: "flex"}"}
         >
           <%!-- MOBILE inline detail: flat, in the surface's own scroll flow.
-               The `toggle_mobile_detail` event flips @mobile_detail_open — a
-               SERVER assign so the state survives LiveView patches: switch the
-               agent/service/file while it's open and it keeps showing detail for
-               the newly-selected thing until you toggle back. `md:!hidden` pins
-               it off on desktop (the right rail owns detail there). --%>
+    The `toggle_mobile_detail` event flips @mobile_detail_open — a
+    SERVER assign so the state survives LiveView patches: switch the
+    agent/service/file while it's open and it keeps showing detail for
+    the newly-selected thing until you toggle back. `md:!hidden` pins
+    it off on desktop (the right rail owns detail there). --%>
           <div
             id="mobile-detail"
             phx-hook="StickyEdge"
@@ -1783,7 +1783,7 @@ defmodule LoopyardWeb.WorkspaceLive do
             />
           </div>
           <%!-- The surface content. `md:!flex` keeps it visible on desktop
-               regardless of the mobile detail state. --%>
+    regardless of the mobile detail state. --%>
           <div
             id="surface"
             class={[
@@ -1795,7 +1795,7 @@ defmodule LoopyardWeb.WorkspaceLive do
           </div>
         </main>
         <%!-- RIGHT rail: Agents/Services/Volumes nav + the selected agent's
-             context (model, tokens, cost). The old left sidebar, flipped. --%>
+    context (model, tokens, cost). The old left sidebar, flipped. --%>
         <.sidebar
           agents={@agents}
           selected_id={@selected_id}
@@ -1827,7 +1827,7 @@ defmodule LoopyardWeb.WorkspaceLive do
         />
       </div>
       <%!-- The mobile detail lives INLINE in #main-content now (flat, toggled by
-           Nav.toggle_details/0) — no bottom sheets. --%>
+    Nav.toggle_details/0) — no bottom sheets. --%>
     </div>
     """
   end

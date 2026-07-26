@@ -64,7 +64,7 @@ defmodule LoopyardWeb.Components.DiffView do
     assigns = assign(assigns, :total_bytes, total_bytes)
 
     ~H"""
-    <div class="mt-1 rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-700/80 text-sm md:text-[13px] font-mono leading-snug">
+    <div class="mt-1 rounded-sm overflow-hidden border border-zinc-200 dark:border-zinc-700/80 text-sm md:text-[13px] font-mono leading-snug">
       <div
         :if={@path}
         class="px-3 py-1 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center gap-2"
@@ -90,7 +90,7 @@ defmodule LoopyardWeb.Components.DiffView do
 
   defp render_diff(assigns) do
     ~H"""
-    <div class="mt-1 rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-700/80 text-sm md:text-[13px] font-mono leading-snug">
+    <div class="mt-1 rounded-sm overflow-hidden border border-zinc-200 dark:border-zinc-700/80 text-sm md:text-[13px] font-mono leading-snug">
       <div
         :if={@path}
         class="px-3 py-1 bg-zinc-50 dark:bg-zinc-800/50 border-b border-zinc-200 dark:border-zinc-700/80 flex items-center gap-2"
@@ -108,7 +108,7 @@ defmodule LoopyardWeb.Components.DiffView do
           {@path}
         </span>
         <%!-- Drill down: open the full file in a new tab (the diff here is height-
-             capped + scrolls; this is the escape to the whole thing). --%>
+    capped + scrolls; this is the escape to the whole thing). --%>
         <a
           :if={@link}
           href={@link}
@@ -129,8 +129,8 @@ defmodule LoopyardWeb.Components.DiffView do
         </a>
       </div>
       <%!-- Code-editor pane: lines DON'T wrap — they overflow and scroll
-           horizontally — and the whole diff is height-capped so a big edit doesn't
-           swallow the chat. Click the path/Open to see the full file. --%>
+    horizontally — and the whole diff is height-capped so a big edit doesn't
+    swallow the chat. Click the path/Open to see the full file. --%>
       <div class="overflow-auto max-h-80">
         <table class="w-full border-collapse highlight">
           <tbody>
@@ -142,7 +142,7 @@ defmodule LoopyardWeb.Components.DiffView do
                 {row.new_num}
               </td>
               <%!-- phx-no-format + hugged tags: the cell is whitespace-pre, so any template
-              indentation here renders as literal leading space on the diff line. --%>
+    indentation here renders as literal leading space on the diff line. --%>
               <td phx-no-format class={"pr-3 py-0 whitespace-pre #{row.text_class}"}><span class="select-none text-zinc-500 dark:text-zinc-400">{row.prefix}</span>{row.content}</td>
             </tr>
           </tbody>

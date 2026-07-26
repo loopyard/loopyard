@@ -76,7 +76,12 @@ defmodule LoopyardWeb.DashboardLive do
     assigns = assign(assigns, :ws, workspace_stats(assigns.tree))
 
     ~H"""
-    <.page_shell breadcrumbs={[{"Loopyard", nil}]} iex_session={@iex_session} max_width={:lg} flash={@flash}>
+    <.page_shell
+      breadcrumbs={[{"Loopyard", nil}]}
+      iex_session={@iex_session}
+      max_width={:lg}
+      flash={@flash}
+    >
       <header class="mb-6">
         <h1 class="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
           Dashboard
@@ -93,7 +98,10 @@ defmodule LoopyardWeb.DashboardLive do
           status={if @ws.working > 0, do: "#{@ws.working} working", else: nil}
         >
           <div class="text-zinc-700 dark:text-zinc-200 font-medium">
-            {@ws.projects} {plural(@ws.projects, "project")} · {@ws.agents} {plural(@ws.agents, "agent")}
+            {@ws.projects} {plural(@ws.projects, "project")} · {@ws.agents} {plural(
+              @ws.agents,
+              "agent"
+            )}
           </div>
           <div class="mt-0.5">
             {@ws.workspaces} {plural(@ws.workspaces, "workspace")}{if @ws.working > 0,
@@ -142,8 +150,8 @@ defmodule LoopyardWeb.DashboardLive do
         </.dashboard_card>
 
         <%!-- Workstations — the identities (users) that run inside the containers:
-             their creds, image, and env. The home for setting up + switching
-             identities (reached from here, not a top-right menu). --%>
+    their creds, image, and env. The home for setting up + switching
+    identities (reached from here, not a top-right menu). --%>
         <.dashboard_card
           navigate="/workstations"
           title="Workstations"

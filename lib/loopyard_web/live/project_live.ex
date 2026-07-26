@@ -499,11 +499,11 @@ defmodule LoopyardWeb.ProjectLive do
                 </p>
               </div>
               <%!-- All editing (rename) + removal moved to the settings screen —
-                   no more cramped inline edit / tiny header buttons. --%>
+    no more cramped inline edit / tiny header buttons. --%>
               <.link
                 navigate={"/projects/#{@project.id}/settings"}
                 aria-label="Project settings"
-                class="flex-none inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 px-3 min-h-[2.75rem] text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors"
+                class="flex-none inline-flex items-center gap-1.5 rounded-sm border border-zinc-200 dark:border-zinc-700 px-3 min-h-[2.75rem] text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -654,9 +654,9 @@ defmodule LoopyardWeb.ProjectLive do
             name="from"
             value={@default_branch}
             autocomplete="off"
-            class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-800/50 px-3 py-2.5 text-sm font-mono
-                   text-zinc-600 dark:text-zinc-300
-                   focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+            class="w-full rounded-sm border border-zinc-300 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-800/50 px-3 py-2.5 text-sm font-mono
+    text-zinc-600 dark:text-zinc-300
+    focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
           />
         </div>
         <div>
@@ -669,15 +669,15 @@ defmodule LoopyardWeb.ProjectLive do
             placeholder="e.g. bradgessler/fix-login"
             autocomplete="off"
             autofocus
-            class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2.5 text-sm font-mono
-                   text-zinc-600 dark:text-zinc-300 placeholder:text-zinc-400
-                   focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+            class="w-full rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2.5 text-sm font-mono
+    text-zinc-600 dark:text-zinc-300 placeholder:text-zinc-400
+    focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
           />
         </div>
         <div class="flex items-center gap-3 pt-1">
           <button
             type="submit"
-            class="rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium px-4 py-2.5 transition-colors"
+            class="rounded-sm bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium px-4 py-2.5 transition-colors"
           >
             Create workspace
           </button>
@@ -713,14 +713,14 @@ defmodule LoopyardWeb.ProjectLive do
           name="name"
           value={@project.name}
           autocomplete="off"
-          class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2.5 text-base
-                 text-zinc-900 dark:text-zinc-100
-                 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+          class="w-full rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2.5 text-base
+    text-zinc-900 dark:text-zinc-100
+    focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
         />
         <div class="pt-1">
           <button
             type="submit"
-            class="rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium px-4 py-2 transition-colors"
+            class="rounded-sm bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium px-4 py-2 transition-colors"
           >
             Save name
           </button>
@@ -743,7 +743,7 @@ defmodule LoopyardWeb.ProjectLive do
         </p>
         <button
           phx-click="confirm_remove"
-          class="rounded-lg border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 text-sm font-medium px-4 py-2 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+          class="rounded-sm border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 text-sm font-medium px-4 py-2 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
         >
           Remove project
         </button>
@@ -762,7 +762,7 @@ defmodule LoopyardWeb.ProjectLive do
         </p>
       </div>
 
-      <div class="rounded-lg border border-zinc-200 dark:border-zinc-700 divide-y divide-zinc-200 dark:divide-zinc-700">
+      <div class="rounded-sm border border-zinc-200 dark:border-zinc-700 divide-y divide-zinc-200 dark:divide-zinc-700">
         <div class="px-4 py-3">
           <div class="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
             Directory to delete
@@ -803,7 +803,7 @@ defmodule LoopyardWeb.ProjectLive do
       <div class="flex items-center gap-3">
         <button
           phx-click="remove_project"
-          class="rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium px-4 py-2 transition-colors"
+          class="rounded-sm bg-red-600 hover:bg-red-700 text-white text-sm font-medium px-4 py-2 transition-colors"
         >
           Remove project
         </button>

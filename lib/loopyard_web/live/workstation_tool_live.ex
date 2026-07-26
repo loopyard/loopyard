@@ -202,7 +202,7 @@ defmodule LoopyardWeb.WorkstationToolLive do
                 name="value"
                 autocomplete="off"
                 placeholder={"paste #{@ig.env}"}
-                class="flex-1 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-transparent px-3 py-2 text-sm font-mono placeholder:font-sans placeholder:text-zinc-400 focus-ring"
+                class="flex-1 rounded-sm border border-zinc-200 dark:border-zinc-700 bg-transparent px-3 py-2 text-sm font-mono placeholder:font-sans placeholder:text-zinc-400 focus-ring"
               />
               <.button variant={:secondary} type="submit" class="flex-none">Save</.button>
             </div>
@@ -216,14 +216,14 @@ defmodule LoopyardWeb.WorkstationToolLive do
                 type="button"
                 phx-click="run_in_console"
                 phx-value-cmd={@ig.console}
-                class="focus-ring rounded-md border border-zinc-200 dark:border-zinc-700 px-2.5 py-1 text-[11px] font-mono text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                class="focus-ring rounded-sm border border-zinc-200 dark:border-zinc-700 px-2.5 py-1 text-[11px] font-mono text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
               >
                 ▶ {@ig[:console_label] || @ig.console}
               </button>
             </div>
             <div
               id="ws-console"
-              class="rounded-lg overflow-hidden h-[44dvh] min-h-[280px] bg-[#18181b]"
+              class="rounded-sm overflow-hidden h-[44dvh] min-h-[280px] bg-[#18181b]"
             >
               <div
                 :if={@console_container}

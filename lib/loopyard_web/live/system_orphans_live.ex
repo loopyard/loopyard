@@ -189,11 +189,11 @@ defmodule LoopyardWeb.SystemOrphansLive do
   end
 
   defp owner_group_class(true),
-    do: "rounded-lg border border-zinc-200 dark:border-zinc-700/80 overflow-hidden"
+    do: "rounded-sm border border-zinc-200 dark:border-zinc-700/80 overflow-hidden"
 
   defp owner_group_class(false),
     do:
-      "rounded-lg border-2 border-red-300 dark:border-red-800 overflow-hidden bg-red-50/30 dark:bg-red-900/10"
+      "rounded-sm border-2 border-red-300 dark:border-red-800 overflow-hidden bg-red-50/30 dark:bg-red-900/10"
 
   # Monotonic microseconds → human-readable relative string.
   # Monotonic time has no epoch anchor; compare to current monotonic.

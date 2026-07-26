@@ -141,7 +141,7 @@ defmodule LoopyardWeb.SystemEventsLive do
         No events captured yet. Broadcasts will appear here in real time.
       </div>
     <% else %>
-      <div class="rounded-lg border border-zinc-200 dark:border-zinc-700/80 overflow-hidden">
+      <div class="rounded-sm border border-zinc-200 dark:border-zinc-700/80 overflow-hidden">
         <table class="w-full text-xs">
           <thead>
             <tr class="bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 text-left">

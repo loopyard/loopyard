@@ -35,9 +35,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
       <%!-- Loading --%>
       <div :if={@git_log == :loading} class="p-6">
         <div class="animate-pulse space-y-3">
-          <div class="h-3 bg-zinc-200 dark:bg-zinc-700 rounded w-1/3"></div>
-          <div class="h-3 bg-zinc-200 dark:bg-zinc-700 rounded w-2/3"></div>
-          <div class="h-3 bg-zinc-200 dark:bg-zinc-700 rounded w-1/2"></div>
+          <div class="h-3 bg-zinc-200 dark:bg-zinc-700 rounded-sm w-1/3"></div>
+          <div class="h-3 bg-zinc-200 dark:bg-zinc-700 rounded-sm w-2/3"></div>
+          <div class="h-3 bg-zinc-200 dark:bg-zinc-700 rounded-sm w-1/2"></div>
         </div>
       </div>
 
@@ -123,7 +123,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
       <%!-- Commit header --%>
       <div class="px-4 py-4">
         <div class="flex items-start gap-3">
-          <span class="font-mono text-xs text-violet-500 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 rounded px-2 py-0.5 shrink-0">
+          <span class="font-mono text-xs text-violet-500 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 rounded-sm px-2 py-0.5 shrink-0">
             {String.slice(@commit.sha, 0..6)}
           </span>
           <div class="min-w-0">
@@ -195,7 +195,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.GitViewer do
         <table class="text-xs font-mono leading-relaxed w-full border-collapse">
           <tbody>
             <%!-- phx-no-format + hugged tags: pre-wrap cell renders template indentation
-              as literal leading space + blank rows. Keep content flush to the tags. --%>
+    as literal leading space + blank rows. Keep content flush to the tags. --%>
             <tr :for={{line, idx} <- Enum.with_index(@lines, 1)} class={diff_line_bg(line)}>
               <td
                 phx-no-format

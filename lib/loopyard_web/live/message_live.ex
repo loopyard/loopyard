@@ -95,7 +95,9 @@ defmodule LoopyardWeb.MessageLive do
       # assistant message just finalized.
       true ->
         st = if msg[:role] == :assistant, do: "", else: socket.assigns.streaming_text
-        {:noreply, socket |> assign(:turn, socket.assigns.turn ++ [msg]) |> assign(:streaming_text, st)}
+
+        {:noreply,
+         socket |> assign(:turn, socket.assigns.turn ++ [msg]) |> assign(:streaming_text, st)}
     end
   end
 
@@ -141,8 +143,8 @@ defmodule LoopyardWeb.MessageLive do
       </Nav.bar>
 
       <%!-- The turn, constrained to a reading measure so it reads like a
-           document. A read-only per-role view (interactive cards link into the
-           live chat), streaming the whole exchange until the next turn. --%>
+    document. A read-only per-role view (interactive cards link into the
+    live chat), streaming the whole exchange until the next turn. --%>
       <div :if={@turn != []} class="mx-auto w-full max-w-3xl px-4 md:px-6 py-6 space-y-4">
         <.turn_msg :for={m <- @turn} msg={m} agent_id={@agent_id} />
 
@@ -168,7 +170,7 @@ defmodule LoopyardWeb.MessageLive do
 
   def turn_msg(%{msg: %{role: :user, content: c}} = assigns) when is_binary(c) do
     ~H"""
-    <div class="rounded-xl bg-violet-100 dark:bg-[#2b2348] px-4 py-3 text-[15px] leading-relaxed whitespace-pre-wrap text-zinc-900 dark:text-zinc-50">
+    <div class=" bg-violet-100 dark:bg-[#2b2348] px-4 py-3 text-[15px] leading-relaxed whitespace-pre-wrap text-zinc-900 dark:text-zinc-50">
       {@msg.content}
     </div>
     """
@@ -191,13 +193,15 @@ defmodule LoopyardWeb.MessageLive do
   def turn_msg(%{msg: %{role: role, content: c}} = assigns)
       when role in [:tool_result, :build, :build_done, :build_failed] and is_binary(c) do
     ~H"""
-    <pre class="text-xs font-mono whitespace-pre-wrap overflow-x-auto rounded-lg bg-zinc-100 dark:bg-zinc-950 text-zinc-700 dark:text-zinc-300 p-3 max-h-64 overflow-y-auto">{@msg.content}</pre>
+    <pre class="text-xs font-mono whitespace-pre-wrap overflow-x-auto rounded-sm bg-zinc-100 dark:bg-zinc-950 text-zinc-700 dark:text-zinc-300 p-3 max-h-64 overflow-y-auto">{@msg.content}</pre>
     """
   end
 
   def turn_msg(%{msg: %{role: :system, content: c}} = assigns) when is_binary(c) do
     ~H"""
-    <div class="py-1 text-center text-sm italic text-zinc-400/70 dark:text-zinc-600">{@msg.content}</div>
+    <div class="py-1 text-center text-sm italic text-zinc-400/70 dark:text-zinc-600">
+      {@msg.content}
+    </div>
     """
   end
 
@@ -211,7 +215,7 @@ defmodule LoopyardWeb.MessageLive do
     ~H"""
     <.link
       navigate={"/projects/#{@msg[:project_id]}/workspaces/#{@msg[:workspace_id]}/agents/#{@msg[:agent_id]}"}
-      class="inline-flex items-center gap-2 rounded-lg border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-sm text-violet-600 dark:text-violet-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+      class="inline-flex items-center gap-2 rounded-sm border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-sm text-violet-600 dark:text-violet-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
     >
       ▸ {@msg[:label] || "workspace"} — open in chat →
     </.link>
@@ -221,7 +225,7 @@ defmodule LoopyardWeb.MessageLive do
   def turn_msg(%{msg: %{role: role}} = assigns)
       when role in [:question, :approval, :secret_request] do
     ~H"""
-    <div class="rounded-lg border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+    <div class="rounded-sm border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
       Needs your input — answer it in the live chat.
     </div>
     """

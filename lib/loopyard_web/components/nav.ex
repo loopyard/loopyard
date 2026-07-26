@@ -9,16 +9,16 @@ defmodule LoopyardWeb.Components.Nav do
   header row, a back arrow, a segmented pill control, the zoom item-switcher).
   They drifted. This is the extraction:
 
-    * `bar/1`             — the top-bar shell: a `flex-none` bordered row with a
-                            `min-w-0` title zone (`:inner_block`) and a
-                            `flex-none` `:actions` zone. WHERE you are.
-    * `back_button/1`     — the canonical back-out affordance (navigate / patch /
-                            `onclick="history.back()"`), two sizes.
-    * `segmented/1`       — a segmented pill control from a list of link items;
-                            `seg_item_class/1` is exposed for the rare
-                            button-based control (e.g. detail level).
-    * `section_switcher/1`— the "WHAT am I looking at" row: section tabs + the
-                            current item + a zoom-out panel of siblings.
+  * `bar/1`  — the top-bar shell: a `flex-none` bordered row with a
+  `min-w-0` title zone (`:inner_block`) and a
+  `flex-none` `:actions` zone. WHERE you are.
+  * `back_button/1`  — the canonical back-out affordance (navigate / patch /
+  `onclick="history.back()"`), two sizes.
+  * `segmented/1`  — a segmented pill control from a list of link items;
+  `seg_item_class/1` is exposed for the rare
+  button-based control (e.g. detail level).
+  * `section_switcher/1`— the "WHAT am I looking at" row: section tabs + the
+  current item + a zoom-out panel of siblings.
 
   All of it is server-driven markup — the only client behaviour is the switcher's
   `toggle_panel/0` show/hide transition (no round-trip). Responsive by
@@ -37,11 +37,11 @@ defmodule LoopyardWeb.Components.Nav do
   truncates; the actions zone holds its size. Used by the workspace mobile
   header, the app header, the `/sound` page, and every detail panel.
 
-      <.bar>
-        <.back_button navigate="/" />
-        <h1 class="truncate font-semibold">Sound</h1>
-        <:actions><.operator_link /></:actions>
-      </.bar>
+  <.bar>
+  <.back_button navigate="/" />
+  <h1 class="truncate font-semibold">Sound</h1>
+  <:actions><.operator_link /></:actions>
+  </.bar>
   """
   attr :height, :string, default: "h-14", doc: "row height, e.g. h-12 (compact) / h-14"
   attr :pad, :string, default: "px-4 md:px-5"
@@ -84,9 +84,9 @@ defmodule LoopyardWeb.Components.Nav do
   `size={:sm}` (w-9) suits an inline breadcrumb; the default `:md` (w-11) is a
   proper 44px tap target for a full-bleed header.
 
-      <.back_button navigate="/" />
-      <.back_button size={:sm} navigate={@parent_path} />
-      <.back_button onclick="history.back()" />
+  <.back_button navigate="/" />
+  <.back_button size={:sm} navigate={@parent_path} />
+  <.back_button onclick="history.back()" />
   """
   attr :navigate, :string, default: nil
   attr :patch, :string, default: nil
@@ -97,7 +97,7 @@ defmodule LoopyardWeb.Components.Nav do
   def back_button(assigns) do
     assigns =
       assign(assigns, :cls, [
-        "focus-ring flex-none inline-flex items-center justify-center rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors",
+        "focus-ring flex-none inline-flex items-center justify-center rounded-sm text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors",
         if(assigns.size == :sm, do: "w-9 h-9 -ml-1", else: "w-11 h-11 -ml-1.5")
       ])
 
@@ -132,8 +132,8 @@ defmodule LoopyardWeb.Components.Nav do
   "navigate back" — the right signal for something that floats over the app.
   Pass `phx-click` (client dismiss) or `onclick="history.back()"` (page-level).
 
-      <.close_button onclick="history.back()" />
-      <.close_button phx-click={JS.hide(to: "#sheet")} />
+  <.close_button onclick="history.back()" />
+  <.close_button phx-click={JS.hide(to: "#sheet")} />
   """
   attr :label, :string, default: "Close"
   attr :rest, :global, include: ~w(onclick)
@@ -143,7 +143,7 @@ defmodule LoopyardWeb.Components.Nav do
     <button
       type="button"
       aria-label={@label}
-      class="focus-ring flex-none inline-flex items-center justify-center w-11 h-11 -mr-1.5 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors"
+      class="focus-ring flex-none inline-flex items-center justify-center w-11 h-11 -mr-1.5 rounded-sm text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 active:bg-zinc-200 dark:active:bg-zinc-700 transition-colors"
       {@rest}
     >
       <svg viewBox="0 0 20 20" fill="currentColor" class="w-6 h-6" aria-hidden="true">
@@ -159,15 +159,15 @@ defmodule LoopyardWeb.Components.Nav do
   A segmented pill control built from a list of link items. The active segment
   is a raised white/dark pill; the rest are quiet labels. Each item is a map:
 
-      %{label: "Agents", active?: true, patch: "/…"}   # or navigate:/href:
+  %{label: "Agents", active?: true, patch: "/…"}  # or navigate:/href:
 
-      <.segmented
-        label="Workspace section"
-        items={[
-          %{label: "Agents", active?: @active == :agents, patch: @agents_href},
-          %{label: "Services", active?: @active == :services, patch: @services_href}
-        ]}
-      />
+  <.segmented
+  label="Workspace section"
+  items={[
+  %{label: "Agents", active?: @active == :agents, patch: @agents_href},
+  %{label: "Services", active?: @active == :services, patch: @services_href}
+  ]}
+  />
 
   For a button-based control (a `phx-click` toggle rather than navigation) use
   `seg_item_class/1` on your own `<button>`s inside a matching container — see
@@ -182,7 +182,7 @@ defmodule LoopyardWeb.Components.Nav do
     ~H"""
     <nav
       :if={@items != []}
-      class={["inline-flex items-center rounded-xl bg-zinc-100 dark:bg-zinc-800 p-0.5 flex-none", @class]}
+      class={["inline-flex items-center  bg-zinc-100 dark:bg-zinc-800 p-0.5 flex-none", @class]}
       aria-label={@label}
       {@rest}
     >
@@ -207,7 +207,7 @@ defmodule LoopyardWeb.Components.Nav do
   """
   def seg_item_class(active?) do
     [
-      "focus-ring inline-flex items-center justify-center min-h-[2.5rem] px-3 rounded-lg text-sm font-medium leading-none transition-colors whitespace-nowrap",
+      "focus-ring inline-flex items-center justify-center min-h-[2.5rem] px-3 rounded-sm text-sm font-medium leading-none transition-colors whitespace-nowrap",
       if(active?,
         do: "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm",
         else: "text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
@@ -223,16 +223,16 @@ defmodule LoopyardWeb.Components.Nav do
   current item zooms OUT to a panel of its siblings, pick one to zoom back in.
   Client-side toggle (`toggle_panel/0`), no server round-trip.
 
-    * `current` — `%{label, dot, detail, tone, badge}` or `nil` (row hides the
-      trigger when nothing is selected in this section).
-    * `items`   — sibling rows: `%{label, href, active?, dot, detail}`. The
-      Switch pill only appears when there's more than one to switch to.
-    * `:extra`  — optional trailing action(s) in the panel (e.g. "+ New agent").
+  * `current` — `%{label, dot, detail, tone, badge}` or `nil` (row hides the
+  trigger when nothing is selected in this section).
+  * `items`  — sibling rows: `%{label, href, active?, dot, detail}`. The
+  Switch pill only appears when there's more than one to switch to.
+  * `:extra`  — optional trailing action(s) in the panel (e.g. "+ New agent").
 
-      <.section_switcher id="item-switcher" current={@current} items={@items}>
-        <:tabs><.segmented items={@section_tabs} label="Workspace section" /></:tabs>
-        <:extra><.link patch={@base_path <> "/new"}>+ New agent</.link></:extra>
-      </.section_switcher>
+  <.section_switcher id="item-switcher" current={@current} items={@items}>
+  <:tabs><.segmented items={@section_tabs} label="Workspace section" /></:tabs>
+  <:extra><.link patch={@base_path <> "/new"}>+ New agent</.link></:extra>
+  </.section_switcher>
   """
   attr :id, :string, default: "item-switcher"
   attr :title, :string, default: "Switch"
@@ -254,8 +254,8 @@ defmodule LoopyardWeb.Components.Nav do
     <div class="flex items-center gap-2 px-2 h-16 border-t border-zinc-200/70 dark:border-zinc-700/50">
       {render_slot(@tabs)}
       <%!-- The current item, minimalist: a status dot (colour IS the state, no
-           "Running" text), the name, and a chevron as the sole "tap to switch"
-           affordance. No purple Switch pill — the chevron carries it. --%>
+    "Running" text), the name, and a chevron as the sole "tap to switch"
+    affordance. No purple Switch pill — the chevron carries it. --%>
       <button
         :if={@current}
         type="button"
@@ -263,7 +263,7 @@ defmodule LoopyardWeb.Components.Nav do
         aria-controls={@id}
         aria-haspopup="dialog"
         aria-label={"Switch #{@title} — currently #{@current.label}"}
-        class="focus-ring flex-1 min-w-0 flex items-center gap-2 min-h-[2.75rem] px-3 rounded-lg text-left hover:bg-zinc-100 dark:hover:bg-zinc-800/60 active:bg-zinc-200 dark:active:bg-zinc-700/60 transition-colors"
+        class="focus-ring flex-1 min-w-0 flex items-center gap-2 min-h-[2.75rem] px-3 rounded-sm text-left hover:bg-zinc-100 dark:hover:bg-zinc-800/60 active:bg-zinc-200 dark:active:bg-zinc-700/60 transition-colors"
       >
         <span class={["w-2 h-2 rounded-full flex-none", @current.dot]}></span>
         <span class="flex-1 min-w-0 truncate font-semibold text-zinc-900 dark:text-zinc-100">
@@ -272,9 +272,9 @@ defmodule LoopyardWeb.Components.Nav do
         <.chevron_down class="w-4 h-4 text-zinc-500 dark:text-zinc-400 flex-none" />
       </button>
       <%!-- Details TOGGLE for the selected thing (agent usage / service actions /
-           volume info). Same icon + behaviour everywhere; sits with the switcher
-           because it expands what the switcher names. Tap → the detail replaces
-           the surface in place (flat, scrolls with the viewport); tap → back. --%>
+    volume info). Same icon + behaviour everywhere; sits with the switcher
+    because it expands what the switcher names. Tap → the detail replaces
+    the surface in place (flat, scrolls with the viewport); tap → back. --%>
       <button
         :if={@current && @has_details}
         id="section-details-toggle"
@@ -283,7 +283,7 @@ defmodule LoopyardWeb.Components.Nav do
         aria-label="Toggle details"
         aria-pressed={to_string(@details_open)}
         class={[
-          "focus-ring flex-none inline-flex items-center justify-center w-11 h-11 rounded-lg transition-colors",
+          "focus-ring flex-none inline-flex items-center justify-center w-11 h-11 rounded-sm transition-colors",
           if(@details_open,
             do: "bg-violet-100 dark:bg-violet-500/15 text-violet-600 dark:text-violet-400",
             else:
@@ -314,11 +314,11 @@ defmodule LoopyardWeb.Components.Nav do
         <span class={["w-2.5 h-2.5 rounded-full flex-none", item.dot]}></span>
         <span class="flex-1 min-w-0 truncate">{item.label}</span>
         <%!-- Check BEFORE the status so the status stays flush-right on every
-             row — a trailing check shifted the active row's status left and
-             broke alignment with the others. --%>
+    row — a trailing check shifted the active row's status left and
+    broke alignment with the others. --%>
         <.check :if={item[:active?]} />
         <%!-- Status same size as the name, muted + right-aligned (matches the
-             switcher trigger above). --%>
+    switcher trigger above). --%>
         <span :if={item[:detail]} class="flex-none truncate text-zinc-500 dark:text-zinc-400">
           {item.detail}
         </span>
@@ -338,8 +338,8 @@ defmodule LoopyardWeb.Components.Nav do
 
   Pair it with a `switcher_sheet/1` of the same `id`:
 
-      <.crumb id="nav-switcher" label={@ws} current switch?={@many?} />
-      <.switcher_sheet id="nav-switcher" title="Switch">…rows…</.switcher_sheet>
+  <.crumb id="nav-switcher" label={@ws} current switch?={@many?} />
+  <.switcher_sheet id="nav-switcher" title="Switch">…rows…</.switcher_sheet>
   """
   attr :id, :string, default: nil
   attr :label, :string, required: true
@@ -360,7 +360,10 @@ defmodule LoopyardWeb.Components.Nav do
       aria-controls={@id}
       aria-haspopup="dialog"
       aria-label={"Switch — currently #{@label}"}
-      class={["focus-ring min-w-0 inline-flex items-center gap-0.5 rounded", crumb_label_class(@current)]}
+      class={[
+        "focus-ring min-w-0 inline-flex items-center gap-0.5 rounded-sm",
+        crumb_label_class(@current)
+      ]}
     >
       <span class="truncate">{@label}</span>
       <.chevron_down :if={@chevron} class="w-4 h-4 flex-none opacity-60" />
@@ -387,10 +390,10 @@ defmodule LoopyardWeb.Components.Nav do
   (`:inner_block`) — build them with `sheet_row_class/1` and a `JS.hide(to: "#id")`
   on tap so selecting closes the sheet.
 
-      <.switcher_sheet id="nav-switcher" title="Switch">
-        <.link :for={…} navigate={…} phx-click={JS.hide(to: "#nav-switcher")}
-          class={Nav.sheet_row_class(active?)}>…</.link>
-      </.switcher_sheet>
+  <.switcher_sheet id="nav-switcher" title="Switch">
+  <.link :for={…} navigate={…} phx-click={JS.hide(to: "#nav-switcher")}
+  class={Nav.sheet_row_class(active?)}>…</.link>
+  </.switcher_sheet>
   """
   attr :id, :string, required: true
   attr :title, :string, required: true
@@ -419,11 +422,11 @@ defmodule LoopyardWeb.Components.Nav do
       </div>
       <div class="absolute inset-0 flex flex-col bg-brand-paper dark:bg-brand-ink safe-area-x">
         <%!-- The current selection AS a tap-to-close header: tapping it (or the
-             backdrop) toggles the sheet shut — so open-then-tap-the-same-thing
-             "goes back", like a toggle. It's flex-none at the top, so it stays put
-             while the selectable options scroll beneath. The up-chevron mirrors the
-             trigger's down-chevron: down to open, up to collapse. Falls back to the
-             plain title when no :current is given. --%>
+    backdrop) toggles the sheet shut — so open-then-tap-the-same-thing
+    "goes back", like a toggle. It's flex-none at the top, so it stays put
+    while the selectable options scroll beneath. The up-chevron mirrors the
+    trigger's down-chevron: down to open, up to collapse. Falls back to the
+    plain title when no :current is given. --%>
         <button
           type="button"
           phx-click={toggle_panel(@id)}
@@ -464,7 +467,13 @@ defmodule LoopyardWeb.Components.Nav do
 
   def bottom_sheet(assigns) do
     ~H"""
-    <div id={@id} class="hidden fixed inset-0 z-[60]" role="dialog" aria-modal="true" aria-label={@title}>
+    <div
+      id={@id}
+      class="hidden fixed inset-0 z-[60]"
+      role="dialog"
+      aria-modal="true"
+      aria-label={@title}
+    >
       <div
         class="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm"
         phx-click={close_sheet(@id)}
@@ -475,10 +484,10 @@ defmodule LoopyardWeb.Components.Nav do
         id={"#{@id}-panel"}
         phx-hook="BottomSheet"
         data-sheet={"##{@id}"}
-        class="absolute inset-x-0 bottom-0 translate-y-full flex flex-col max-h-[85dvh] rounded-t-2xl bg-brand-paper dark:bg-brand-ink shadow-2xl shadow-black/30 safe-area-x transition-transform duration-300 ease-out motion-reduce:transition-none"
+        class="absolute inset-x-0 bottom-0 translate-y-full flex flex-col max-h-[85dvh]  bg-brand-paper dark:bg-brand-ink shadow-2xl shadow-black/30 safe-area-x transition-transform duration-300 ease-out motion-reduce:transition-none"
       >
         <%!-- Grab handle + optional header = the DRAG ZONE: swipe it down to
-             dismiss. The body below scrolls independently. --%>
+    dismiss. The body below scrolls independently. --%>
         <div data-sheet-drag class="flex-none touch-none select-none">
           <div class="flex justify-center pt-2.5 pb-1">
             <div class="w-10 h-1.5 rounded-full bg-zinc-300 dark:bg-zinc-600"></div>
@@ -507,7 +516,7 @@ defmodule LoopyardWeb.Components.Nav do
   """
   def sheet_row_class(active?) do
     [
-      "focus-ring flex items-center gap-3 min-h-[3.25rem] px-3 rounded-xl text-base transition-colors",
+      "focus-ring flex items-center gap-3 min-h-[3.25rem] px-3  text-base transition-colors",
       if(active?,
         do: "bg-violet-100 dark:bg-violet-500/15 text-zinc-900 dark:text-zinc-100 font-semibold",
         else:
@@ -538,7 +547,12 @@ defmodule LoopyardWeb.Components.Nav do
   # A violet check for the active row in a switcher sheet.
   defp check(assigns) do
     ~H"""
-    <svg viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 flex-none text-violet-600 dark:text-violet-400" aria-hidden="true">
+    <svg
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      class="w-5 h-5 flex-none text-violet-600 dark:text-violet-400"
+      aria-hidden="true"
+    >
       <path
         fill-rule="evenodd"
         d="M16.7 5.3a1 1 0 0 1 0 1.4l-7.5 7.5a1 1 0 0 1-1.4 0l-3.5-3.5a1 1 0 1 1 1.4-1.4l2.8 2.79 6.8-6.79a1 1 0 0 1 1.4 0Z"
@@ -574,7 +588,15 @@ defmodule LoopyardWeb.Components.Nav do
   def details_icon(assigns) do
     ~H"""
     <svg viewBox="0 0 24 24" fill="none" class={@class} aria-hidden="true">
-      <rect x="3.25" y="4.75" width="17.5" height="14.5" rx="3" stroke="currentColor" stroke-width="1.7" />
+      <rect
+        x="3.25"
+        y="4.75"
+        width="17.5"
+        height="14.5"
+        rx="3"
+        stroke="currentColor"
+        stroke-width="1.7"
+      />
       <path
         d="M3.25 14.25h17.5v2a3 3 0 0 1-3 3H6.25a3 3 0 0 1-3-3z"
         fill="currentColor"

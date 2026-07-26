@@ -37,9 +37,9 @@ defmodule LoopyardWeb.Components.Breadcrumbs do
         </li>
         <%= for {{label, path}, idx} <- Enum.with_index(@crumbs) do %>
           <%!-- On mobile show only the current page; the full trail returns at sm+
-               so it stops truncating into ellipsis soup against the nav. Hierarchy
-               is by COLOR (ancestors muted, current page solid) — same font weight
-               throughout so navigating up never shifts the layout by a pixel. --%>
+    so it stops truncating into ellipsis soup against the nav. Hierarchy
+    is by COLOR (ancestors muted, current page solid) — same font weight
+    throughout so navigating up never shifts the layout by a pixel. --%>
           <li class={[
             "items-center gap-1.5 min-w-0",
             if(idx == length(@crumbs) - 1, do: "flex", else: "hidden sm:flex")
@@ -47,13 +47,13 @@ defmodule LoopyardWeb.Components.Breadcrumbs do
             <%= cond do %>
               <% brand_root?(label, path) -> %>
                 <%!-- The root crumb IS the brand: trefoil mark + lowercase
-                     "loopyard" wordmark (per loopyard.ai/branding), linked home.
-                     Mark + word inherit the ink/paper color so they read
-                     dark-on-light / light-on-dark. --%>
+    "loopyard" wordmark (per loopyard.ai/branding), linked home.
+    Mark + word inherit the ink/paper color so they read
+    dark-on-light / light-on-dark. --%>
                 <.link
                   navigate="/"
                   aria-label="loopyard home"
-                  class="focus-ring rounded inline-flex items-center text-zinc-900 dark:text-zinc-100 hover:opacity-70 transition-opacity"
+                  class="focus-ring rounded-sm inline-flex items-center text-zinc-900 dark:text-zinc-100 hover:opacity-70 transition-opacity"
                 >
                   <Brand.logo
                     mark_class="w-5 h-5 flex-none"
@@ -63,7 +63,7 @@ defmodule LoopyardWeb.Components.Breadcrumbs do
               <% path -> %>
                 <.link
                   navigate={path}
-                  class="focus-ring text-lg md:text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors truncate rounded"
+                  class="focus-ring text-lg md:text-sm font-medium text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors truncate rounded-sm"
                 >
                   {label}
                 </.link>

@@ -153,7 +153,7 @@ defmodule LoopyardWeb.SystemDockerLive do
         <% @containers == [] -> %>
           <div class="text-sm text-zinc-500 dark:text-zinc-400">No loopyard-* containers running</div>
         <% true -> %>
-          <div class="rounded-lg border border-zinc-200 dark:border-zinc-700/80 overflow-hidden">
+          <div class="rounded-sm border border-zinc-200 dark:border-zinc-700/80 overflow-hidden">
             <table class="w-full text-xs">
               <thead>
                 <tr class="bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 text-left">
@@ -185,7 +185,7 @@ defmodule LoopyardWeb.SystemDockerLive do
                       phx-click="kill_container"
                       phx-value-name={c.name}
                       data-confirm={"Force-remove container #{c.name}?"}
-                      class="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded px-1.5 py-0.5 font-medium transition-colors"
+                      class="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-sm px-1.5 py-0.5 font-medium transition-colors"
                     >
                       rm -f
                     </button>
@@ -213,7 +213,7 @@ defmodule LoopyardWeb.SystemDockerLive do
         <% @volumes == [] -> %>
           <div class="text-sm text-zinc-500 dark:text-zinc-400">No loopyard-* volumes</div>
         <% true -> %>
-          <div class="rounded-lg border border-zinc-200 dark:border-zinc-700/80 overflow-hidden">
+          <div class="rounded-sm border border-zinc-200 dark:border-zinc-700/80 overflow-hidden">
             <table class="w-full text-xs">
               <thead>
                 <tr class="bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 text-left">

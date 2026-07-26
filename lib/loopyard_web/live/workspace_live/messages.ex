@@ -74,9 +74,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   attr :workspace_id, :string, default: nil
   attr :host, :string, default: "localhost"
   # Disclosure level — how much of the agent's inner work to show:
-  #   :trace   — everything, reasoning + tool outputs expanded (default, max trust)
-  #   :actions — reasoning + tool calls; outputs collapsed (click to drill down)
-  #   :chat    — just the conversation; activity hidden (still drillable by switching back)
+  #  :trace  — everything, reasoning + tool outputs expanded (default, max trust)
+  #  :actions — reasoning + tool calls; outputs collapsed (click to drill down)
+  #  :chat  — just the conversation; activity hidden (still drillable by switching back)
   attr :detail_level, :atom, default: :trace
 
   # The two interactive mini-app cards live in Messages.Cards (extracted to keep
@@ -111,15 +111,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         # meant the previous (sticky) prompt hung over a big empty gap before the
         # next one pushed it up. Small, even spacing → prompts hand off flush.
         band_top: if(first?, do: "mt-5 md:mt-6 pt-4 md:pt-5", else: "mt-0 pt-2"),
-        # Rounding is derived from GROUP POSITION (same data as the label +
-        # padding), never composed across siblings: first-of-group rounds the
-        # top, last rounds the bottom, seams between grouped messages stay
-        # square and flush. The ACTIVE last message leaves its bottom open —
-        # the live tail closes the shape.
-        band_round: [
-          first? && "2xl:rounded-t-xl",
-          next_role(assigns) != :user && "2xl:rounded-b-xl"
-        ],
         band_bottom:
           cond do
             # The running prompt hands straight off to its live response: no
@@ -140,23 +131,24 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
     # response scrolls underneath.
     ~H"""
     <div
-      class={[
-        "-mx-4 md:-mx-6 2xl:-mx-4 px-4 md:px-6 lg:px-8 group/msg transition-colors",
-        # Pinned (data-stuck, set by the StickyShadow hook on #messages): square
-        # the top — a rounded corner smashed into the header edge looks broken.
-        "2xl:data-[stuck]:!rounded-t-none",
-        # In a centered column the band is a block, not an edge-to-edge stripe —
-        # hard corners read unfinished next to the rounded listings. Round it;
-        # the ACTIVE band rounds only its top so it stays flush into the live
-        # tail below (which rounds the bottom).
-        @band_round,
-        # The prompt being answered right now reads stronger (deeper wash).
-        (@active? && "bg-violet-200 dark:bg-[#332a54]") ||
-          "bg-violet-100 dark:bg-[#2b2348]",
-        @sticky_class,
-        @band_top,
-        @band_bottom
-      ]}
+      class={
+        [
+          "-mx-4 md:-mx-6 2xl:-mx-4 px-4 md:px-6 lg:px-8 group/msg transition-colors",
+          # Pinned (data-stuck, set by the StickyShadow hook on #messages): square
+          # the top — a rounded-sm corner smashed into the header edge looks broken.
+          "2xl:data-[stuck]:!rounded-t-none",
+          # In a centered column the band is a block, not an edge-to-edge stripe —
+          # hard corners read unfinished next to the rounded-sm listings. Round it;
+          # the ACTIVE band rounds only its top so it stays flush into the live
+          # tail below (which rounds the bottom).
+          # The prompt being answered right now reads stronger (deeper wash).
+          (@active? && "bg-violet-200 dark:bg-[#332a54]") ||
+            "bg-violet-100 dark:bg-[#2b2348]",
+          @sticky_class,
+          @band_top,
+          @band_bottom
+        ]
+      }
       id={"msg-user-#{@msg[:id] || hash_content(@msg.content)}"}
       data-sticky-header={@show_user_label}
     >
@@ -177,7 +169,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
             </span>
           </div>
           <%!-- Clamp to a few lines: the prompt is a sticky HEADER, so a long
-               paste must stay header-sized (full text via the ↗ link). --%>
+    paste must stay header-sized (full text via the ↗ link). --%>
           <div class="markdown-body human-prompt text-zinc-800 dark:text-zinc-100 max-w-3xl line-clamp-3">
             {Loopyard.Markdown.to_html(@msg.content)}
           </div>
@@ -228,7 +220,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
             phx-click="open_port_from_chat"
             phx-value-service={@port_info.service}
             phx-value-container_port={@port_info.container_port}
-            class="inline-flex items-center px-1.5 rounded text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+            class="inline-flex items-center px-1.5 rounded-sm text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
           >
             Open Port
           </button>
@@ -240,7 +232,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
             href={"http://#{assigns[:host] || "localhost"}:#{@port_info.host_port}"}
             target="_blank"
             rel="noopener noreferrer"
-            class="inline-flex items-center px-2 rounded text-sm font-mono font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
+            class="inline-flex items-center px-2 rounded-sm text-sm font-mono font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
           >
             :{@port_info.host_port}
           </a>
@@ -288,9 +280,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
         💭 Reasoning
       </summary>
       <%!-- Prose thinking, not machine output — matches the live streaming_thinking
-           pre (text-sm, no mono) so the block doesn't change typeface when the
-           turn finalizes. --%>
-      <pre class="mt-1 p-3 rounded-lg text-sm bg-brand-paper-shade dark:bg-brand-ink text-zinc-500 dark:text-zinc-400 whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto">{@msg.content}</pre>
+    pre (text-sm, no mono) so the block doesn't change typeface when the
+    turn finalizes. --%>
+      <pre class="mt-1 p-3 rounded-sm text-sm bg-brand-paper-shade dark:bg-brand-ink text-zinc-500 dark:text-zinc-400 whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto">{@msg.content}</pre>
     </details>
     """
   end
@@ -355,7 +347,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages do
   def chat_msg(%{msg: %{role: :error}} = assigns) do
     ~H"""
     <div class={[gutter(), "flex items-start gap-2 py-1"]}>
-      <div class="w-4 h-4 rounded bg-red-100 dark:bg-red-900/30 flex items-center justify-center flex-none mt-0.5">
+      <div class="w-4 h-4 rounded-sm bg-red-100 dark:bg-red-900/30 flex items-center justify-center flex-none mt-0.5">
         <span class="text-xs font-bold text-red-500">!</span>
       </div>
       <span class="chat-sub text-red-600 dark:text-red-400">{Ansi.to_html(@msg.content)}</span>

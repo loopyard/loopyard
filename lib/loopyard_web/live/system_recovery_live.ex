@@ -5,11 +5,11 @@ defmodule LoopyardWeb.SystemRecoveryLive do
 
   Shows, for every running Checkpointer:
 
-    * Last snapshot timestamp + status (ok / failed).
-    * Current log size and records accumulated since the last
-      snapshot — the two quantities that bound recovery time.
-    * Presence / size of the `.prev` backup used by
-      `AgentLog.replay_with_fallback/1` on boot corruption.
+  * Last snapshot timestamp + status (ok / failed).
+  * Current log size and records accumulated since the last
+  snapshot — the two quantities that bound recovery time.
+  * Presence / size of the `.prev` backup used by
+  `AgentLog.replay_with_fallback/1` on boot corruption.
 
   Refreshes every 2s.
   """

@@ -51,9 +51,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.FileBrowser do
   Decide whether `path` in `volume_name` is a file, a directory, or
   missing. Returns one of:
 
-    * `%{path: path, content: binary}` — readable file
-    * `%{path: path, is_dir: true, entries: list}` — directory
-    * `%{path: path, not_found: true, content: nil}` — neither
+  * `%{path: path, content: binary}` — readable file
+  * `%{path: path, is_dir: true, entries: list}` — directory
+  * `%{path: path, not_found: true, content: nil}` — neither
 
   The LiveView's `handle_async(:file_content, ...)` pattern-matches on
   the shape to assign the right state.

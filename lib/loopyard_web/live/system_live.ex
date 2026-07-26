@@ -200,7 +200,7 @@ defmodule LoopyardWeb.SystemLive do
       <h2 class="text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
         Server
       </h2>
-      <div class="rounded-xl border border-red-200 dark:border-red-900/40 bg-red-50/40 dark:bg-red-900/10 p-4 flex items-start justify-between gap-4">
+      <div class=" border border-red-200 dark:border-red-900/40 bg-red-50/40 dark:bg-red-900/10 p-4 flex items-start justify-between gap-4">
         <div class="min-w-0">
           <div class="text-sm font-medium text-zinc-800 dark:text-zinc-200">Reboot the server</div>
           <p class="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5 max-w-prose">
@@ -214,7 +214,7 @@ defmodule LoopyardWeb.SystemLive do
           type="button"
           phx-click="reboot"
           data-confirm="Reboot the server? Every agent session stops and re-spawns (containers keep running). The page reconnects when it's back up."
-          class="focus-ring flex-none inline-flex items-center rounded-lg bg-red-600 hover:bg-red-700 px-4 py-2 text-sm font-medium text-white transition-colors"
+          class="focus-ring flex-none inline-flex items-center rounded-sm bg-red-600 hover:bg-red-700 px-4 py-2 text-sm font-medium text-white transition-colors"
         >
           Reboot
         </button>
@@ -253,15 +253,15 @@ defmodule LoopyardWeb.SystemLive do
 
   defp health_card_class(:healthy),
     do:
-      "rounded-lg border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-900/10 px-3 py-3"
+      "rounded-sm border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-900/10 px-3 py-3"
 
   defp health_card_class({:degraded, _}),
     do:
-      "rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-3 py-3"
+      "rounded-sm border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-3 py-3"
 
   defp health_card_class({:down, _}),
     do:
-      "rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-3 py-3"
+      "rounded-sm border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-3 py-3"
 
   defp health_dot_class(:healthy), do: "bg-emerald-500"
   defp health_dot_class({:degraded, _}), do: "bg-amber-500 animate-pulse"
@@ -347,7 +347,7 @@ defmodule LoopyardWeb.SystemLive do
 
   defp host_card(assigns) do
     ~H"""
-    <div class="rounded-lg border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 p-4 min-h-[6rem]">
+    <div class="rounded-sm border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 p-4 min-h-[6rem]">
       <div class="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-2">
         {@label}
       </div>
@@ -386,7 +386,7 @@ defmodule LoopyardWeb.SystemLive do
 
   defp stat_card(assigns) do
     ~H"""
-    <div class="rounded-lg border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 px-3 py-2">
+    <div class="rounded-sm border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 px-3 py-2">
       <div class="text-[10px] uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
         {@label}
       </div>
@@ -556,7 +556,7 @@ defmodule LoopyardWeb.SystemLive do
     ~H"""
     <.link
       navigate={@href}
-      class="block rounded-lg border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 p-4 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+      class="block rounded-sm border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 p-4 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
     >
       <div class="flex items-center justify-between">
         <div>
@@ -591,7 +591,7 @@ defmodule LoopyardWeb.SystemLive do
       <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
         Recent Logs <span class="text-zinc-400 font-normal">(last 20)</span>
       </h2>
-      <div class="rounded-lg border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 overflow-hidden">
+      <div class="rounded-sm border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 overflow-hidden">
         <div class="px-4 py-3 text-xs font-mono text-zinc-600 dark:text-zinc-400 space-y-0.5 max-h-64 overflow-y-auto">
           <div :if={@logs == []} class="text-zinc-400">no recent logs</div>
           <div :for={entry <- @logs}>

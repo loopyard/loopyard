@@ -53,7 +53,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.TextViewer do
           href={"/raw/#{@volume_name}/#{@path}"}
           target="_blank"
           rel="noopener"
-          class="px-2 py-0.5 rounded text-xs hover:bg-zinc-200 dark:hover:bg-zinc-700"
+          class="px-2 py-0.5 rounded-sm text-xs hover:bg-zinc-200 dark:hover:bg-zinc-700"
         >
           Raw
         </a>
@@ -62,15 +62,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.TextViewer do
         <table class="text-sm font-mono leading-relaxed w-full border-collapse">
           <tbody>
             <%!-- phx-no-format + hugged tags: the code cell is whitespace-pre-wrap, so any
-              template indentation/newlines around the content render as literal leading
-              space (pushing code right) and blank lines (making every row tall). --%>
+    template indentation/newlines around the content render as literal leading
+    space (pushing code right) and blank lines (making every row tall). --%>
             <tr :for={{line, idx} <- Enum.with_index(@lines, 1)}>
               <td
                 phx-no-format
                 class="select-none text-right pr-4 pl-4 py-0 text-zinc-500 dark:text-zinc-400 align-top w-[1%] whitespace-nowrap border-r border-zinc-200 dark:border-zinc-800"
               >{idx}</td>
               <%!-- No wrapping: lines stay intact (code structure preserved) and the
-                   overflow-auto wrapper scrolls left/right for long lines. --%>
+    overflow-auto wrapper scrolls left/right for long lines. --%>
               <td phx-no-format class="pr-4 pl-4 py-0 whitespace-pre">{line}</td>
             </tr>
           </tbody>

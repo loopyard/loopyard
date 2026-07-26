@@ -9,9 +9,9 @@ defmodule LoopyardWeb.SlowMountLogger do
   turns a 30ms mount into a 5s mount.
 
   Phoenix.LiveView already emits these telemetry events out of the box:
-    [:phoenix, :live_view, :mount, :stop]
-    [:phoenix, :live_view, :handle_params, :stop]
-    [:phoenix, :live_view, :handle_event, :stop]
+  [:phoenix, :live_view, :mount, :stop]
+  [:phoenix, :live_view, :handle_params, :stop]
+  [:phoenix, :live_view, :handle_event, :stop]
 
   We attach a single handler per event during application start
   (`Loopyard.Application.start/2` calls `attach/0`).

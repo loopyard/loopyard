@@ -133,7 +133,7 @@ defmodule LoopyardWeb.SystemQuarantineLive do
               No agents are currently quarantined.
             </div>
           <% else %>
-            <div class="rounded-lg border border-zinc-200 dark:border-zinc-700/80 overflow-hidden">
+            <div class="rounded-sm border border-zinc-200 dark:border-zinc-700/80 overflow-hidden">
               <table class="w-full text-xs">
                 <thead>
                   <tr class="bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 text-left">
@@ -167,7 +167,7 @@ defmodule LoopyardWeb.SystemQuarantineLive do
                         phx-click="release"
                         phx-value-id={q.id}
                         data-confirm={"Release #{q.name} from quarantine? The agent will be allowed to start again."}
-                        class="rounded-md bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 font-medium transition-colors"
+                        class="rounded-sm bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 font-medium transition-colors"
                       >
                         Release
                       </button>

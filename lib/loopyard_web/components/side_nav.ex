@@ -8,17 +8,17 @@ defmodule LoopyardWeb.Components.SideNav do
 
   Composition:
 
-      <.section label="Agents">
-        <.row navigate={path}>
-          <.dot class="bg-emerald-500" />
-          <span class="truncate">True Bloom</span>
-        </.row>
-        <.empty :if={empty?} text="No agents" />
-      </.section>
+  <.section label="Agents">
+  <.row navigate={path}>
+  <.dot class="bg-emerald-500" />
+  <span class="truncate">True Bloom</span>
+  </.row>
+  <.empty :if={empty?} text="No agents" />
+  </.section>
 
-      <.section label="Info">
-        <.info_row label="Status" value={status} />
-      </.section>
+  <.section label="Info">
+  <.info_row label="Status" value={status} />
+  </.section>
   """
 
   use Phoenix.Component
@@ -40,8 +40,8 @@ defmodule LoopyardWeb.Components.SideNav do
   def section(assigns) do
     ~H"""
     <%!-- pb-0: the between-groups gap is the NEXT section's pt-4 alone (16px),
-         matching the workspace rail's group_label pt-4 — pb-1 + pt-4 gave the
-         details zone a visibly looser rhythm than the rail above it. --%>
+    matching the workspace rail's group_label pt-4 — pb-1 + pt-4 gave the
+    details zone a visibly looser rhythm than the rail above it. --%>
     <section class={[
       @variant == :section && "pt-4 first:pt-3",
       @variant == :sub && "pt-2.5 md:pt-2",
@@ -94,21 +94,21 @@ defmodule LoopyardWeb.Components.SideNav do
   def detail_hero(assigns) do
     ~H"""
     <%!-- NO border by default — a sticky element only needs a divider when content
-         is actually scrolling under it. The opaque (/95) blurred bg covers any
-         scrolling content; the `StickyEdge` hook adds a subtle shadow ONLY while
-         there's content scrolled under it, so a short (non-scrolling) panel reads
-         as one cohesive card with no lines. --%>
+    is actually scrolling under it. The opaque (/95) blurred bg covers any
+    scrolling content; the `StickyEdge` hook adds a subtle shadow ONLY while
+    there's content scrolled under it, so a short (non-scrolling) panel reads
+    as one cohesive card with no lines. --%>
     <div
       data-sticky-edge="top"
       class="sticky top-0 z-10 bg-zinc-50/95 dark:bg-zinc-900/95 backdrop-blur-sm px-4 pt-3.5 md:pt-3 pb-2.5 md:pb-2"
     >
       <%!-- Tiny quiet eyebrow (the KIND) — deliberately smaller/lighter than the
-           section labels below, so it never competes with the title. --%>
+    section labels below, so it never competes with the title. --%>
       <div class="text-[11px] font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500 mb-1 md:mb-0.5">
         {@eyebrow}
       </div>
       <%!-- The TITLE row: a big, bold name that clearly dominates everything the
-           card shows/controls, with the status as a colored pill flush-right. --%>
+    card shows/controls, with the status as a colored pill flush-right. --%>
       <div class="flex items-center gap-2">
         <span :if={@dot} class={"w-2.5 h-2.5 rounded-full flex-none #{@dot}"} aria-hidden="true"></span>
         <h2 class="flex-1 min-w-0 text-lg font-semibold leading-tight text-zinc-900 dark:text-zinc-100 truncate">
@@ -149,14 +149,17 @@ defmodule LoopyardWeb.Components.SideNav do
       <div :if={@main != []} class="space-y-1.5">{render_slot(@main)}</div>
       <div
         :if={@danger != []}
-        class={["mt-2 pt-2 border-t border-zinc-100 dark:border-zinc-800", @main == [] && "!mt-0 !pt-0 !border-t-0"]}
+        class={[
+          "mt-2 pt-2 border-t border-zinc-100 dark:border-zinc-800",
+          @main == [] && "!mt-0 !pt-0 !border-t-0"
+        ]}
       >
         {render_slot(@danger)}
       </div>
     </div>
     <%!-- No buttons at all (e.g. the code volume) → there's no footer to supply
-         bottom breathing room, so the last content would butt against the panel
-         edge. A small breather fixes the abrupt cut-off. --%>
+    bottom breathing room, so the last content would butt against the panel
+    edge. A small breather fixes the abrupt cut-off. --%>
     <div :if={@main == [] && @danger == []} class="h-4" aria-hidden="true"></div>
     """
   end
@@ -187,7 +190,7 @@ defmodule LoopyardWeb.Components.SideNav do
   def row(assigns) do
     assigns =
       assign(assigns, :base_class, [
-        "flex items-center gap-2 px-2 min-h-11 md:min-h-7 rounded text-sm transition-colors",
+        "flex items-center gap-2 px-2 min-h-11 md:min-h-7 rounded-sm text-sm transition-colors",
         if(assigns.selected,
           do: "bg-white dark:bg-zinc-800 shadow-sm",
           else: "hover:bg-white/60 dark:hover:bg-zinc-800/40"

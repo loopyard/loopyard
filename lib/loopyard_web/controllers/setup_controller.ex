@@ -3,7 +3,7 @@ defmodule LoopyardWeb.SetupController do
   Serves the one-shot credential-transfer script for a *named* workstation. On
   your Mac:
 
-      curl -fsS http://localhost:4000/workstations/brad/setup.sh | sh
+  curl -fsS http://localhost:4000/workstations/brad/setup.sh | sh
 
   The script is just the per-tool transfer scripts (`Integration.mac_script/4`)
   concatenated, with the push-token header baked in. Those are **keychain-aware**:
@@ -87,18 +87,18 @@ defmodule LoopyardWeb.SetupController do
     # So: feed it the real terminal (< /dev/tty) and tee output back to the
     # terminal while capturing it for token extraction.
     if [ -r /dev/tty ]; then
-      out=$(claude setup-token < /dev/tty 2>&1 | tee /dev/tty)
+    out=$(claude setup-token < /dev/tty 2>&1 | tee /dev/tty)
     else
-      out=$(claude setup-token 2>&1)
+    out=$(claude setup-token 2>&1)
     fi
     t=$(printf '%s' "$out" | grep -oE 'sk-ant-oat[A-Za-z0-9_-]+' | tail -1)
     if [ -n "$t" ]; then
-      printf '%s' "$t" | curl -fsS -H "Authorization: Bearer #{token}" -T - "#{env_url}"
-      echo
-      echo "Pushed a 1-year CLAUDE_CODE_OAUTH_TOKEN to '#{ws}'. Agents reload themselves — nothing else to do."
+    printf '%s' "$t" | curl -fsS -H "Authorization: Bearer #{token}" -T - "#{env_url}"
+    echo
+    echo "Pushed a 1-year CLAUDE_CODE_OAUTH_TOKEN to '#{ws}'. Agents reload themselves — nothing else to do."
     else
-      echo "Couldn't capture a token. Run 'claude setup-token' yourself, then paste it on the Claude page."
-      exit 1
+    echo "Couldn't capture a token. Run 'claude setup-token' yourself, then paste it on the Claude page."
+    exit 1
     fi
     """
   end
@@ -137,7 +137,7 @@ defmodule LoopyardWeb.SetupController do
     tools =
       Integration.all()
       |> Enum.map_join("\n\n", fn ig ->
-        ~s(echo "  #{ig.label}…"\n) <>
+        ~s(echo " #{ig.label}…"\n) <>
           Integration.mac_script(ig, "$L", "$WS", ~s(-fsS -H "$AUTH"))
       end)
 
@@ -145,7 +145,7 @@ defmodule LoopyardWeb.SetupController do
     #!/bin/sh
     # Loopyard — transfer your logged-in Mac credentials into workstation '#{ws}'.
     # Run on the Mac where you're logged in:
-    #   curl -fsS #{base}/workstations/#{ws}/setup.sh | sh
+    #  curl -fsS #{base}/workstations/#{ws}/setup.sh | sh
     # Keychain-aware: gh + Claude keep creds in the macOS Keychain, not files.
     L="#{base}"
     WS="#{ws}"

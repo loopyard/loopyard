@@ -32,8 +32,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
     # thinking", so give it room. The chat_panel wraps it in the run-spine.
     ~H"""
     <%!-- Live tool feed only. The status header (word + elapsed + Stop) is
-         docked at the bottom in the Reasoning Bar so it never scrolls off the
-         top, no matter how long the work runs. --%>
+    docked at the bottom in the Reasoning Bar so it never scrolls off the
+    top, no matter how long the work runs. --%>
     <div :if={@activity != [] || @stall_hint} class="py-1.5">
       <ul :if={@activity != []} class="space-y-1.5">
         <li :for={a <- @activity} class="flex items-start gap-2 text-sm leading-relaxed">
@@ -54,8 +54,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
         </li>
       </ul>
       <%!-- A retry is NOT an error — it's a calm status subtext under the live
-           spinner ("busy, not wedged"). Muted, no ⚠, no "press Stop" burden: the
-           system is handling it, and a real failure surfaces its own error. --%>
+    spinner ("busy, not wedged"). Muted, no ⚠, no "press Stop" burden: the
+    system is handling it, and a real failure surfaces its own error. --%>
       <p
         :if={@stall_hint}
         class="mt-2.5 flex items-start gap-2 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400"
@@ -113,8 +113,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
 
     ~H"""
     <%!-- The live tip of the turn: dots + word + elapsed on the left, Stop docked
-         right. Flush-left (no rail/indent) so it lines up with the streaming prose
-         and completed messages above it. --%>
+    right. Flush-left (no rail/indent) so it lines up with the streaming prose
+    and completed messages above it. --%>
     <div class="flex items-center gap-2.5 py-3">
       <span class={["flex-none", @text_class]} aria-hidden="true">
         <Brand.mark animated class="w-5 h-5" />
@@ -129,9 +129,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
         class={["text-sm flex-none tabular-nums", @elapsed_class]}
       ></span>
       <%!-- Context fuel gauge: how full the window is THIS turn. Quiet zinc
-           when there's headroom, amber/red as it approaches a compaction. NOT
-           the lifetime cumulative cost (that's in the sidebar) — so a busy
-           agent with an empty context never looks like a runaway. --%>
+    when there's headroom, amber/red as it approaches a compaction. NOT
+    the lifetime cumulative cost (that's in the sidebar) — so a busy
+    agent with an empty context never looks like a runaway. --%>
       <span
         :if={@ctx_pct > 0}
         class={["text-sm flex-none tabular-nums", @ctx_class]}
@@ -229,7 +229,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
       |> assign(:current_action, current && current.summary)
 
     ~H"""
-    <div class="flex items-center gap-2.5 rounded-xl bg-violet-50 dark:bg-violet-500/10 border border-violet-200/70 dark:border-violet-500/20 px-3.5 py-2">
+    <div class="flex items-center gap-2.5  bg-violet-50 dark:bg-violet-500/10 border border-violet-200/70 dark:border-violet-500/20 px-3.5 py-2">
       <span class="flex-none text-violet-500 dark:text-violet-400" aria-hidden="true">
         <Brand.mark animated class="w-4 h-4" />
       </span>
@@ -253,7 +253,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
         type="button"
         phx-click="interrupt_agent"
         phx-value-id={@agent_id}
-        class="focus-ring inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 transition-colors flex-none"
+        class="focus-ring inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 transition-colors flex-none"
       >
         <span class="w-2 h-2 rounded-[2px] bg-red-500"></span> Stop
       </button>
@@ -357,8 +357,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
   # they don't ALSO belong in the compact activity feed, which would double-show
   # them (the command/card a second time).
   @own_surface_tools ~w(
-    exec docker_compose ask_user request_secret
-    propose_fork propose_integrate propose_delete_workspace
+  exec docker_compose ask_user request_secret
+  propose_fork propose_integrate propose_delete_workspace
   )
   defp own_surface_tool?(tool) when is_binary(tool),
     do: Enum.any?(@own_surface_tools, &String.ends_with?(tool, &1))

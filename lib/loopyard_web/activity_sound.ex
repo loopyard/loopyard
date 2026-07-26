@@ -10,8 +10,8 @@ defmodule LoopyardWeb.ActivitySound do
 
   ## Channels & proximity
   Each activity fires on two channels:
-    * a **global** `"activity"` channel — everything, everywhere.
-    * a **per-project** `"project-<id>"` channel — just that project.
+  * a **global** `"activity"` channel — everything, everywhere.
+  * a **per-project** `"project-<id>"` channel — just that project.
 
   Proximity-by-loudness is then a *client* choice: a browser viewing a project
   subscribes to that project's channel (near/loud) plus the global channel

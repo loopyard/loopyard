@@ -13,16 +13,16 @@ defmodule LoopyardWeb.Live.ConsentUI do
 
   In the LiveView's `mount/3`, after the base socket is assigned:
 
-      socket = LoopyardWeb.Live.ConsentUI.attach(socket, secret_scope: workspace.id)
+  socket = LoopyardWeb.Live.ConsentUI.attach(socket, secret_scope: workspace.id)
 
   `:secret_scope` is the workspace id a submitted secret is stored under — pass
   the workspace id in a workspace chat, or omit it (nil) for the operator, which
   has no workspace. The hook owns every consent event the cards emit:
 
-    * question round-trip — `answer_question` (single-select), `toggle_question_option`
-      (multi-select draft), `confirm_question` (multi Done), `answer_question_text`
-      (Other…), `skip_question`;
-    * secret round-trip — `submit_secret`, `cancel_secret`.
+  * question round-trip — `answer_question` (single-select), `toggle_question_option`
+  (multi-select draft), `confirm_question` (multi Done), `answer_question_text`
+  (Other…), `skip_question`;
+  * secret round-trip — `submit_secret`, `cancel_secret`.
 
   Everything else falls through (`{:cont, socket}`) to the LiveView's own
   `handle_event/3`.

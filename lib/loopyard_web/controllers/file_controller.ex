@@ -4,7 +4,7 @@ defmodule LoopyardWeb.FileController do
   volume from your Mac — for tools whose login lives in a file rather than an
   env var (Codex `~/.codex/auth.json`, gh `~/.config/gh/hosts.yml`, AWS, …):
 
-      curl -T - http://localhost:4000/workstations/brad/file/.codex/auth.json < ~/.codex/auth.json
+  curl -T - http://localhost:4000/workstations/brad/file/.codex/auth.json < ~/.codex/auth.json
 
   The file lands in the shared `$HOME` volume, so every agent inherits it **live**
   (no Restart — unlike env vars). Same auth as the env push (local = no token,

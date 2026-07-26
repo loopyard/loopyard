@@ -35,7 +35,7 @@ defmodule LoopyardWeb.Components.Sidebar do
 
   def sidebar_item(assigns) do
     ~H"""
-    <div class={"flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors #{if @selected, do: "bg-white dark:bg-zinc-800 shadow-sm", else: "hover:bg-white/60 dark:hover:bg-zinc-800/40"}"}>
+    <div class={"flex items-center gap-2 px-2 py-1.5 rounded-sm text-sm transition-colors #{if @selected, do: "bg-white dark:bg-zinc-800 shadow-sm", else: "hover:bg-white/60 dark:hover:bg-zinc-800/40"}"}>
       <%= if @navigate do %>
         <.link navigate={@navigate} class="flex items-center gap-2 min-w-0 flex-1">
           <div class={"w-1.5 h-1.5 rounded-full flex-none #{@dot_class}"}></div>
@@ -86,9 +86,9 @@ defmodule LoopyardWeb.Components.Sidebar do
     >
       <:actions>
         <%!-- A running service with a host port IS the dev server — surface a
-             conspicuous "Open" button (not a tiny port number) so launching it
-             in a browser is obvious, no hunting. stopPropagation so it opens the
-             app instead of navigating into the service detail. --%>
+    conspicuous "Open" button (not a tiny port number) so launching it
+    in a browser is obvious, no hunting. stopPropagation so it opens the
+    app instead of navigating into the service detail. --%>
         <a
           :if={@first_port && @svc.status == :running}
           href={"http://localhost:#{@first_port}"}
@@ -96,7 +96,7 @@ defmodule LoopyardWeb.Components.Sidebar do
           rel="noopener"
           onclick="event.stopPropagation()"
           title={"Open the running app (http://localhost:#{@first_port})"}
-          class="ml-auto flex-none inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
+          class="ml-auto flex-none inline-flex items-center gap-1 rounded-sm px-2 py-0.5 text-xs font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
         >
           Open <span class="font-mono opacity-70">:{@first_port}</span>
           <svg viewBox="0 0 20 20" fill="currentColor" class="w-3 h-3 flex-none">
@@ -129,10 +129,10 @@ defmodule LoopyardWeb.Components.Sidebar do
   Translate an agent's internal status + liveness into the human-facing
   display state. Four visible states:
 
-      :ready    — GenServer alive, CLI idle, waiting for input
-      :thinking — a turn is in flight (includes :booting for simplicity)
-      :sleeping — log exists but no GenServer (restart, user-stopped, etc.)
-      :crashed  — session crashed in a way the agent couldn't recover from
+  :ready  — GenServer alive, CLI idle, waiting for input
+  :thinking — a turn is in flight (includes :booting for simplicity)
+  :sleeping — log exists but no GenServer (restart, user-stopped, etc.)
+  :crashed  — session crashed in a way the agent couldn't recover from
 
   Plus `:hidden` for `:destroying` — the agent is about to be removed
   from the UI entirely.

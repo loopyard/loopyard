@@ -4,7 +4,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.FileViewer do
 
   Usage in a parent component:
 
-      <.file_viewer path={@file_path} content={@file_content} />
+  <.file_viewer path={@file_path} content={@file_content} />
   """
   use Phoenix.Component
 

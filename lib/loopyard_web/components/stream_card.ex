@@ -4,14 +4,14 @@ defmodule LoopyardWeb.Components.StreamCard do
 
   One card language, three pieces:
 
-    * `band/1` — the full-bleed container. Same geometry as the human prompt
-      band (edge-to-edge wash, the shared content gutter, a colored left rail),
-      toned by meaning: `:needs_you` amber, `:you` violet, `:neutral` quiet.
-    * `header/1` — the standard top row: the canonical `workspace_identity`
-      chip TOP-LEFT (when the card knows its subject), the card's label
-      TOP-RIGHT opposite it (icon + uppercase `chat-meta` text). Without a
-      chip the label holds the left edge.
-    * Actions/links belong at the BOTTOM of the card (convention, not markup).
+  * `band/1` — the full-bleed container. Same geometry as the human prompt
+  band (edge-to-edge wash, the shared content gutter, a colored left rail),
+  toned by meaning: `:needs_you` amber, `:you` violet, `:neutral` quiet.
+  * `header/1` — the standard top row: the canonical `workspace_identity`
+  chip TOP-LEFT (when the card knows its subject), the card's label
+  TOP-RIGHT opposite it (icon + uppercase `chat-meta` text). Without a
+  chip the label holds the left edge.
+  * Actions/links belong at the BOTTOM of the card (convention, not markup).
 
   Using these instead of hand-rolling containers/headers is what keeps every
   card aligned to the same gutter, size, and rhythm — see the question,
@@ -26,7 +26,7 @@ defmodule LoopyardWeb.Components.StreamCard do
   def band(assigns) do
     ~H"""
     <div class={[
-      "-mx-4 md:-mx-6 2xl:-mx-4 px-4 md:px-6 lg:px-8 pt-4 md:pt-5 pb-4 md:pb-5 border-l-2 2xl:rounded-xl",
+      "-mx-4 md:-mx-6 2xl:-mx-4 px-4 md:px-6 lg:px-8 pt-4 md:pt-5 pb-4 md:pb-5 border-l-2 ",
       band_tone(@tone),
       @class
     ]}>

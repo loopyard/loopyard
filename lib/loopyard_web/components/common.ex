@@ -15,8 +15,8 @@ defmodule LoopyardWeb.Components.Common do
   Flash strip — green for `:info`, red for `:error`. Renders nothing if
   the corresponding flash key isn't set.
 
-      <.flash_banner flash={@flash} kind={:info} />
-      <.flash_banner flash={@flash} kind={:error} />
+  <.flash_banner flash={@flash} kind={:info} />
+  <.flash_banner flash={@flash} kind={:error} />
   """
   attr :flash, :map, required: true
   attr :kind, :atom, required: true, values: [:info, :error]
@@ -33,14 +33,14 @@ defmodule LoopyardWeb.Components.Common do
       :if={Phoenix.Flash.get(@flash, @kind)}
       class={[
         "fixed top-3 left-1/2 -translate-x-1/2 z-[60] w-[min(92vw,34rem)] flex items-start gap-2",
-        "rounded-xl px-4 py-2.5 text-sm shadow-lg shadow-black/10",
+        " px-4 py-2.5 text-sm shadow-lg shadow-black/10",
         banner_class(@kind)
       ]}
       role="alert"
     >
       <%!-- Text is selectable (select-text) so you can copy the error to paste at
-           an agent. ONLY the ✕ dismisses — clicking the body must not clear it out
-           from under a copy. --%>
+    an agent. ONLY the ✕ dismisses — clicking the body must not clear it out
+    from under a copy. --%>
       <span class="flex-1 min-w-0 select-text">{Phoenix.Flash.get(@flash, @kind)}</span>
       <button
         type="button"
@@ -67,9 +67,9 @@ defmodule LoopyardWeb.Components.Common do
   Loading skeleton. Used as a placeholder while a `start_async` slice is
   in flight. Two shapes:
 
-      <.skeleton />               # one row, generic
-      <.skeleton rows={4} />      # multiple stacked rows
-      <.skeleton variant={:card} /> # card-shaped (title + bar + small bar)
+  <.skeleton />  # one row, generic
+  <.skeleton rows={4} />  # multiple stacked rows
+  <.skeleton variant={:card} /> # card-shaped (title + bar + small bar)
   """
   attr :rows, :integer, default: 1
   attr :variant, :atom, default: :rows, values: [:rows, :card]
@@ -78,9 +78,9 @@ defmodule LoopyardWeb.Components.Common do
   def skeleton(%{variant: :card} = assigns) do
     ~H"""
     <div class={["animate-pulse space-y-2", @class]}>
-      <div class="h-6 w-2/3 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
-      <div class="h-2 w-full bg-zinc-200 dark:bg-zinc-700 rounded"></div>
-      <div class="h-2 w-1/3 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+      <div class="h-6 w-2/3 bg-zinc-200 dark:bg-zinc-700 rounded-sm"></div>
+      <div class="h-2 w-full bg-zinc-200 dark:bg-zinc-700 rounded-sm"></div>
+      <div class="h-2 w-1/3 bg-zinc-200 dark:bg-zinc-700 rounded-sm"></div>
     </div>
     """
   end
@@ -88,10 +88,11 @@ defmodule LoopyardWeb.Components.Common do
   def skeleton(assigns) do
     ~H"""
     <div class={[
-      "rounded-lg border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 p-4 space-y-2",
+      "rounded-sm border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 p-4 space-y-2",
       @class
     ]}>
-      <div :for={_ <- 1..@rows} class="h-4 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
+      <div :for={_ <- 1..@rows} class="h-4 bg-zinc-200 dark:bg-zinc-700 rounded-sm animate-pulse">
+      </div>
     </div>
     """
   end
@@ -99,10 +100,10 @@ defmodule LoopyardWeb.Components.Common do
   @doc """
   Detail panel wrapper — the outer flex column that every detail view uses.
 
-      <.detail_panel>
-        <:header>Title</:header>
-        Content here
-      </.detail_panel>
+  <.detail_panel>
+  <:header>Title</:header>
+  Content here
+  </.detail_panel>
   """
   slot :header, required: true
   slot :inner_block, required: true
@@ -111,8 +112,8 @@ defmodule LoopyardWeb.Components.Common do
     ~H"""
     <div class="flex-1 flex flex-col min-h-0">
       <%!-- Desktop-only header. On mobile the section switcher already names the
-           selected thing and its details button opens the actions sheet, so this
-           bar (name + actions) is redundant chrome — hide it. --%>
+    selected thing and its details button opens the actions sheet, so this
+    bar (name + actions) is redundant chrome — hide it. --%>
       <LoopyardWeb.Components.Nav.bar height="h-12" gap="gap-3" class="hidden md:flex">
         {render_slot(@header)}
       </LoopyardWeb.Components.Nav.bar>
@@ -124,8 +125,8 @@ defmodule LoopyardWeb.Components.Common do
   @doc """
   Small control button used in detail view headers.
 
-      <.control_btn>Restart</.control_btn>
-      <.control_btn variant={:primary}>+ Debug Agent</.control_btn>
+  <.control_btn>Restart</.control_btn>
+  <.control_btn variant={:primary}>+ Debug Agent</.control_btn>
   """
   attr :variant, :atom, default: :default, values: [:default, :primary, :danger]
   # Optional link targets — a toolbar action is often a navigation (Console) or
@@ -153,7 +154,7 @@ defmodule LoopyardWeb.Components.Common do
   # min-h-11 (44px) is the WCAG/HIG touch-target floor on mobile; md:min-h-8
   # (~32px) keeps the dense desktop toolbar size. So every action button is
   # comfortably tappable on a phone without bloating the desktop rail.
-  @control_btn_base "inline-flex items-center min-h-11 md:min-h-8 px-3 py-1.5 rounded-md text-sm font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+  @control_btn_base "inline-flex items-center min-h-11 md:min-h-8 px-3 py-1.5 rounded-sm text-sm font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
 
   def control_btn(assigns) do
     color =
@@ -192,8 +193,8 @@ defmodule LoopyardWeb.Components.Common do
   @doc """
   Status dot — colored circle for running/stopped/error states.
 
-      <.dot color="bg-emerald-500" />
-      <.dot color="bg-red-500" />
+  <.dot color="bg-emerald-500" />
+  <.dot color="bg-red-500" />
   """
   attr :color, :string, required: true
 
@@ -211,17 +212,17 @@ defmodule LoopyardWeb.Components.Common do
   dot + name again (that drift is exactly what made four different grammars for
   one concept).
 
-      <.workspace_identity project="firehose-site" workspace="main" state={:working} />
-      <.workspace_identity project="Loopyard" workspace="cleanup" state={:done} size={:sm} />
+  <.workspace_identity project="firehose-site" workspace="main" state={:working} />
+  <.workspace_identity project="Loopyard" workspace="cleanup" state={:done} size={:sm} />
 
   `state` is the ONE status vocabulary the light speaks — map your local status
   to it so a color always means the same thing:
 
-    * `:working`   — violet, pulsing (a turn is live)
-    * `:needs_you` — flame (blocked on you)
-    * `:done`      — emerald (idle / finished)
-    * `:asleep`    — zinc (stopped / resting)
-    * `:broken`    — red (crashed / errored)
+  * `:working`  — violet, pulsing (a turn is live)
+  * `:needs_you` — flame (blocked on you)
+  * `:done`  — emerald (idle / finished)
+  * `:asleep`  — zinc (stopped / resting)
+  * `:broken`  — red (crashed / errored)
 
   The workspace renders as a muted "· name" suffix and is ALWAYS shown (the
   identity is project AND workspace); pass `workspace={nil}` only for a
@@ -247,11 +248,10 @@ defmodule LoopyardWeb.Components.Common do
           (@size == :sm && "w-1.5 h-1.5") || "w-2 h-2",
           state_light(@state)
         ]}
-      >
-      </span>
+      ></span>
       <%!-- :sm rides the chat-meta token — the same size as every other
-           stream-top label (BRAD, timestamps, card labels), so header rows
-           never mix slightly-different sizes. --%>
+    stream-top label (BRAD, timestamps, card labels), so header rows
+    never mix slightly-different sizes. --%>
       <span class={["min-w-0 truncate", (@size == :sm && "text-chat-meta") || "text-sm"]}>
         <span class={
           (@muted && "text-zinc-500 dark:text-zinc-400") ||
@@ -319,11 +319,11 @@ defmodule LoopyardWeb.Components.Common do
   Pass `accent` to override the default border/hover (e.g. a running
   workspace gets a green accent).
 
-      <.card_grid>
-        <.tile_card :for={p <- @projects} navigate={"/projects/" <> p.id}>
-          <h3 class="font-semibold truncate">{p.name}</h3>
-        </.tile_card>
-      </.card_grid>
+  <.card_grid>
+  <.tile_card :for={p <- @projects} navigate={"/projects/" <> p.id}>
+  <h3 class="font-semibold truncate">{p.name}</h3>
+  </.tile_card>
+  </.card_grid>
   """
   attr :navigate, :string, required: true
   attr :accent, :string, default: nil
@@ -335,7 +335,7 @@ defmodule LoopyardWeb.Components.Common do
     <.link
       navigate={@navigate}
       class={[
-        "group flex flex-col rounded-xl border transition-colors p-4 md:p-5 sm:aspect-[4/3]",
+        "group flex flex-col  border transition-colors p-4 md:p-5 sm:aspect-[4/3]",
         @accent ||
           "border-zinc-200 dark:border-zinc-700 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
       ]}
@@ -391,7 +391,7 @@ defmodule LoopyardWeb.Components.Common do
     ~H"""
     <.link
       navigate={@navigate}
-      class="focus-ring inline-flex items-center justify-center gap-1.5 w-full sm:w-auto rounded-lg bg-violet-600 hover:bg-violet-700 text-white px-4 py-2.5 text-sm font-semibold transition-colors"
+      class="focus-ring inline-flex items-center justify-center gap-1.5 w-full sm:w-auto rounded-sm bg-violet-600 hover:bg-violet-700 text-white px-4 py-2.5 text-sm font-semibold transition-colors"
       {@rest}
     >
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
@@ -406,12 +406,12 @@ defmodule LoopyardWeb.Components.Common do
   Standard page shell for all non-chat pages. Provides consistent
   layout: full-height dark/light bg, header, and centered content area.
 
-      <.page_shell breadcrumbs={[{"Loopyard", "/"}]} iex_session={@iex_session}>
-        Page content here
-      </.page_shell>
+  <.page_shell breadcrumbs={[{"Loopyard", "/"}]} iex_session={@iex_session}>
+  Page content here
+  </.page_shell>
 
   Options:
-    * `max_width` — content width: `:sm`, `:md`, `:lg`, `:xl` (default `:lg`)
+  * `max_width` — content width: `:sm`, `:md`, `:lg`, `:xl` (default `:lg`)
   """
   attr :breadcrumbs, :list, required: true
   attr :iex_session, :map, required: true
@@ -470,7 +470,7 @@ defmodule LoopyardWeb.Components.Common do
       aria-label="Operator"
       title="Operator — run and watch everything from here"
       class={[
-        "flex-none inline-flex items-center justify-center w-11 h-11 rounded-lg text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-violet-600 dark:hover:text-violet-400 transition-colors",
+        "flex-none inline-flex items-center justify-center w-11 h-11 rounded-sm text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-violet-600 dark:hover:text-violet-400 transition-colors",
         @class
       ]}
     >
@@ -481,7 +481,11 @@ defmodule LoopyardWeb.Components.Common do
         fill="currentColor"
         class="w-5 h-5"
       >
-        <path fill-rule="evenodd" d="M4.25 2A2.25 2.25 0 0 0 2 4.25v2.5A2.25 2.25 0 0 0 4.25 9h2.5A2.25 2.25 0 0 0 9 6.75v-2.5A2.25 2.25 0 0 0 6.75 2h-2.5Zm0 9A2.25 2.25 0 0 0 2 13.25v2.5A2.25 2.25 0 0 0 4.25 18h2.5A2.25 2.25 0 0 0 9 15.75v-2.5A2.25 2.25 0 0 0 6.75 11h-2.5Zm9-9A2.25 2.25 0 0 0 11 4.25v2.5A2.25 2.25 0 0 0 13.25 9h2.5A2.25 2.25 0 0 0 18 6.75v-2.5A2.25 2.25 0 0 0 15.75 2h-2.5Zm0 9A2.25 2.25 0 0 0 11 13.25v2.5A2.25 2.25 0 0 0 13.25 18h2.5A2.25 2.25 0 0 0 18 15.75v-2.5A2.25 2.25 0 0 0 15.75 11h-2.5Z" clip-rule="evenodd" />
+        <path
+          fill-rule="evenodd"
+          d="M4.25 2A2.25 2.25 0 0 0 2 4.25v2.5A2.25 2.25 0 0 0 4.25 9h2.5A2.25 2.25 0 0 0 9 6.75v-2.5A2.25 2.25 0 0 0 6.75 2h-2.5Zm0 9A2.25 2.25 0 0 0 2 13.25v2.5A2.25 2.25 0 0 0 4.25 18h2.5A2.25 2.25 0 0 0 9 15.75v-2.5A2.25 2.25 0 0 0 6.75 11h-2.5Zm9-9A2.25 2.25 0 0 0 11 4.25v2.5A2.25 2.25 0 0 0 13.25 9h2.5A2.25 2.25 0 0 0 18 6.75v-2.5A2.25 2.25 0 0 0 15.75 2h-2.5Zm0 9A2.25 2.25 0 0 0 11 13.25v2.5A2.25 2.25 0 0 0 13.25 18h2.5A2.25 2.25 0 0 0 18 15.75v-2.5A2.25 2.25 0 0 0 15.75 11h-2.5Z"
+          clip-rule="evenodd"
+        />
       </svg>
       <svg
         data-sound-icon="on"
@@ -490,7 +494,11 @@ defmodule LoopyardWeb.Components.Common do
         fill="currentColor"
         class="w-5 h-5 hidden text-violet-500 dark:text-violet-400"
       >
-        <path fill-rule="evenodd" d="M4.25 2A2.25 2.25 0 0 0 2 4.25v2.5A2.25 2.25 0 0 0 4.25 9h2.5A2.25 2.25 0 0 0 9 6.75v-2.5A2.25 2.25 0 0 0 6.75 2h-2.5Zm0 9A2.25 2.25 0 0 0 2 13.25v2.5A2.25 2.25 0 0 0 4.25 18h2.5A2.25 2.25 0 0 0 9 15.75v-2.5A2.25 2.25 0 0 0 6.75 11h-2.5Zm9-9A2.25 2.25 0 0 0 11 4.25v2.5A2.25 2.25 0 0 0 13.25 9h2.5A2.25 2.25 0 0 0 18 6.75v-2.5A2.25 2.25 0 0 0 15.75 2h-2.5Zm0 9A2.25 2.25 0 0 0 11 13.25v2.5A2.25 2.25 0 0 0 13.25 18h2.5A2.25 2.25 0 0 0 18 15.75v-2.5A2.25 2.25 0 0 0 15.75 11h-2.5Z" clip-rule="evenodd" />
+        <path
+          fill-rule="evenodd"
+          d="M4.25 2A2.25 2.25 0 0 0 2 4.25v2.5A2.25 2.25 0 0 0 4.25 9h2.5A2.25 2.25 0 0 0 9 6.75v-2.5A2.25 2.25 0 0 0 6.75 2h-2.5Zm0 9A2.25 2.25 0 0 0 2 13.25v2.5A2.25 2.25 0 0 0 4.25 18h2.5A2.25 2.25 0 0 0 9 15.75v-2.5A2.25 2.25 0 0 0 6.75 11h-2.5Zm9-9A2.25 2.25 0 0 0 11 4.25v2.5A2.25 2.25 0 0 0 13.25 9h2.5A2.25 2.25 0 0 0 18 6.75v-2.5A2.25 2.25 0 0 0 15.75 2h-2.5Zm0 9A2.25 2.25 0 0 0 11 13.25v2.5A2.25 2.25 0 0 0 13.25 18h2.5A2.25 2.25 0 0 0 18 15.75v-2.5A2.25 2.25 0 0 0 15.75 11h-2.5Z"
+          clip-rule="evenodd"
+        />
       </svg>
     </.link>
     """

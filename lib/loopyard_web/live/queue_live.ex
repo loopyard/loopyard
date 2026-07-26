@@ -87,7 +87,10 @@ defmodule LoopyardWeb.QueueLive do
           </.link>
         </header>
 
-        <div :if={@count == 0} class="rounded-2xl border border-dashed border-zinc-300 dark:border-zinc-700 px-6 py-16 text-center">
+        <div
+          :if={@count == 0}
+          class=" border border-dashed border-zinc-300 dark:border-zinc-700 px-6 py-16 text-center"
+        >
           <div class="text-4xl">🎤</div>
           <p class="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
             When an agent needs a decision, a secret, or an approval, it lines up here.
@@ -98,7 +101,7 @@ defmodule LoopyardWeb.QueueLive do
           <li
             :for={item <- @line}
             id={"attn-#{item.kind}-#{item.id}"}
-            class="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+            class="overflow-hidden  border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
           >
             <%!-- who's at the mic --%>
             <.link
@@ -117,13 +120,13 @@ defmodule LoopyardWeb.QueueLive do
             </.link>
 
             <%!-- QUESTIONS answer inline (shared consent hook). SECRETS/APPROVALS
-                 resolve in their own chat — link with a one-line summary. --%>
+    resolve in their own chat — link with a one-line summary. --%>
             <div class="p-2 sm:p-3">
               <.question_card :if={item.kind == :question and item.msg} msg={item.msg} />
               <.link
                 :if={item.kind != :question or is_nil(item.msg)}
                 navigate={item.path}
-                class="focus-ring flex items-center gap-3 rounded-xl px-3 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+                class="focus-ring flex items-center gap-3  px-3 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
               >
                 <span class="text-sm text-zinc-700 dark:text-zinc-200">{item.label}</span>
                 <span class="ml-auto text-xs font-medium text-amber-700 dark:text-amber-400">Open →</span>

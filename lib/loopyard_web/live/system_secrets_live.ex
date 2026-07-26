@@ -131,7 +131,7 @@ defmodule LoopyardWeb.SystemSecretsLive do
 
           <div
             :if={@secrets != []}
-            class="rounded-lg border border-zinc-200 dark:border-zinc-700/80 overflow-hidden"
+            class="rounded-sm border border-zinc-200 dark:border-zinc-700/80 overflow-hidden"
           >
             <table class="w-full text-sm">
               <thead>
@@ -155,7 +155,7 @@ defmodule LoopyardWeb.SystemSecretsLive do
                   <td class="px-3 py-2">
                     <span
                       :if={s.scope == []}
-                      class="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                      class="inline-flex items-center rounded-sm px-1.5 py-0.5 text-[11px] font-medium bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400"
                     >
                       global
                     </span>
@@ -224,7 +224,7 @@ defmodule LoopyardWeb.SystemSecretsLive do
                   value={@form["key"]}
                   placeholder="GITHUB_TOKEN"
                   autocomplete="off"
-                  class="mt-1 w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+                  class="mt-1 w-full rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
                 />
               </label>
               <label class="block">
@@ -236,7 +236,7 @@ defmodule LoopyardWeb.SystemSecretsLive do
                   value={@form["name"]}
                   placeholder="GitHub personal access token"
                   autocomplete="off"
-                  class="mt-1 w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+                  class="mt-1 w-full rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
                 />
               </label>
             </div>
@@ -248,7 +248,7 @@ defmodule LoopyardWeb.SystemSecretsLive do
                 value={@form["value"]}
                 placeholder="ghp_…"
                 autocomplete="off"
-                class="mt-1 w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+                class="mt-1 w-full rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
               />
             </label>
             <label class="block">
@@ -260,7 +260,7 @@ defmodule LoopyardWeb.SystemSecretsLive do
                 value={@form["scope"]}
                 placeholder="workspace-id, project-id (comma-separated)"
                 autocomplete="off"
-                class="mt-1 w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
+                class="mt-1 w-full rounded-sm border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 px-3 py-2 text-sm font-mono text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400"
               />
               <span class="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 block">
                 Restrict which workspaces / projects can read this secret. Leave blank so every
@@ -269,7 +269,7 @@ defmodule LoopyardWeb.SystemSecretsLive do
             </label>
             <button
               type="submit"
-              class="inline-flex items-center rounded-lg bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 text-sm font-medium transition-colors"
+              class="inline-flex items-center rounded-sm bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 text-sm font-medium transition-colors"
             >
               Save secret
             </button>

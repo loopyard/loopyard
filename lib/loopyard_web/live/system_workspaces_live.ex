@@ -204,7 +204,7 @@ defmodule LoopyardWeb.SystemWorkspacesLive do
 
   defp workspace_row(assigns) do
     ~H"""
-    <div class="rounded-lg border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 px-4 py-3">
+    <div class="rounded-sm border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/50 px-4 py-3">
       <div class="flex items-center justify-between gap-3">
         <div class="flex items-center gap-3 min-w-0">
           <div class={"w-2 h-2 rounded-full flex-none #{if @ws.group_alive && @ws.service_manager_alive, do: "bg-green-500", else: "bg-red-500"}"}>
@@ -226,7 +226,7 @@ defmodule LoopyardWeb.SystemWorkspacesLive do
             phx-click="restart_workspace"
             phx-value-id={@ws.workspace_id}
             phx-value-path={@ws.path}
-            class="text-xs font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10 rounded px-2 py-1 transition-colors"
+            class="text-xs font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10 rounded-sm px-2 py-1 transition-colors"
           >
             Restart
           </button>

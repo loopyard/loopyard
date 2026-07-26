@@ -15,9 +15,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.MainContent do
   def main_content(assigns) do
     ~H"""
     <%!-- When the workspace setup saga hasn't finished (volume not yet
-         populated) take over the main content area. The sidebar keeps
-         showing so the user has navigation; the workspace content is
-         replaced with the SetupProgress step list. --%>
+    populated) take over the main content area. The sidebar keeps
+    showing so the user has navigation; the workspace content is
+    replaced with the SetupProgress step list. --%>
     <%= if !Loopyard.Workspace.ready?(@workspace_entry) do %>
       <.setup_progress
         setup={Map.get(@workspace_entry, :setup, %{phase: :pending})}
@@ -26,15 +26,15 @@ defmodule LoopyardWeb.Live.WorkspaceLive.MainContent do
       />
     <% else %>
       <%!-- Stopped-workspace screen only when the user isn't looking
-           at a specific agent. Agent history stays readable regardless
-           of service state — sending new messages is what the running
-           workspace gates. --%>
+    at a specific agent. Agent history stays readable regardless
+    of service state — sending new messages is what the running
+    workspace gates. --%>
       <%!-- Cluster is down → show the big "Start workspace" empty
-           state ONLY on the workspace root and the agent-less
-           chat/container routes. Volume, git, sync, service, and
-           new-agent views all carry their own content that should
-           render regardless of cluster state — overlaying the
-           start screen on top of them is the bug we're avoiding. --%>
+    state ONLY on the workspace root and the agent-less
+    chat/container routes. Volume, git, sync, service, and
+    new-agent views all carry their own content that should
+    render regardless of cluster state — overlaying the
+    start screen on top of them is the bug we're avoiding. --%>
       <.workspace_not_running
         :if={
           @workspace_state in [:stopped, :starting] && !@selected_agent &&
@@ -67,7 +67,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.MainContent do
       />
       <.all_services_view :if={@live_action == :services} all_service_logs={@all_service_logs} />
       <.volume_detail
-        :if={@live_action in [:volume, :volume_files_root, :volume_file, :volume_git, :volume_history]}
+        :if={
+          @live_action in [:volume, :volume_files_root, :volume_file, :volume_git, :volume_history]
+        }
         volume_name={@selected_volume}
         volumes={@volumes}
         workspace_id={@workspace.id}

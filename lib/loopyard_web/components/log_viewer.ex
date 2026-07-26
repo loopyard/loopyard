@@ -4,9 +4,9 @@ defmodule LoopyardWeb.Components.LogViewer do
 
   Two variants:
   - `log_panel/1` — Full-height scrollable log viewer with TailScroll.
-    Used for service log views and message live view.
+  Used for service log views and message live view.
   - `log_inline/1` — Compact inline log display with truncation.
-    Used for build/command output in chat messages.
+  Used for build/command output in chat messages.
 
   Both support the "show existing content + stream new data" pattern.
   TailScroll auto-scrolls to the bottom unless the user has scrolled up.
@@ -24,9 +24,9 @@ defmodule LoopyardWeb.Components.LogViewer do
 
   ## Attributes
 
-    * `id` - Required. Unique DOM id for the element.
-    * `content` - Required. The log text to display.
-    * `class` - Optional. Additional CSS classes for the `<pre>` element.
+  * `id` - Required. Unique DOM id for the element.
+  * `content` - Required. The log text to display.
+  * `class` - Optional. Additional CSS classes for the `<pre>` element.
   """
   attr :id, :string, required: true
   attr :content, :string, required: true
@@ -53,11 +53,11 @@ defmodule LoopyardWeb.Components.LogViewer do
 
   ## Attributes
 
-    * `content` - Required. Full log content.
-    * `status` - Required. One of `:building`, `:done`, `:failed`.
-    * `title` - Optional. Label for the header (defaults based on status).
-    * `raw_url` - Optional. URL to full content in a new tab.
-    * `max_lines` - Optional. Number of tail lines to show (default: 50).
+  * `content` - Required. Full log content.
+  * `status` - Required. One of `:building`, `:done`, `:failed`.
+  * `title` - Optional. Label for the header (defaults based on status).
+  * `raw_url` - Optional. URL to full content in a new tab.
+  * `max_lines` - Optional. Number of tail lines to show (default: 50).
   """
   attr :content, :string, required: true
   attr :status, :atom, required: true
@@ -92,10 +92,10 @@ defmodule LoopyardWeb.Components.LogViewer do
       )
 
     # The console box, four corners (one consistent "that's a command" shape):
-    #   top-left     the command itself, `$ `-prefixed
-    #   top-right    visual controls only (expand/contract, truncation hint)
-    #   bottom-left  the VERDICT: status light + exit code / live elapsed
-    #   bottom-right the takeaway actions (copy, open in new tab)
+    #  top-left  the command itself, `$ `-prefixed
+    #  top-right  visual controls only (expand/contract, truncation hint)
+    #  bottom-left  the VERDICT: status light + exit code / live elapsed
+    #  bottom-right the takeaway actions (copy, open in new tab)
     # Command up top, outcome + actions in the footer — the header stays
     # uncluttered and every box reads the same way at a glance.
     #
@@ -108,7 +108,7 @@ defmodule LoopyardWeb.Components.LogViewer do
     <div
       id={"log-wrap-#{System.unique_integer([:positive])}"}
       phx-hook="LogExpand"
-      class="mt-3 mb-1 rounded-lg overflow-hidden bg-zinc-500/[0.06] dark:bg-white/[0.045]"
+      class="mt-3 mb-1 rounded-sm overflow-hidden bg-zinc-500/[0.06] dark:bg-white/[0.045]"
     >
       <div class="flex items-center gap-2 px-3.5 pt-2 pb-1">
         <span
@@ -128,8 +128,8 @@ defmodule LoopyardWeb.Components.LogViewer do
           title="Show full output"
         >
           <%!-- Chevron-down = "show more"; LogExpand ROTATES it when expanded
-               (never swaps it for text — that's what produced the giant
-               unstyled EXPAND label). --%>
+    (never swaps it for text — that's what produced the giant
+    unstyled EXPAND label). --%>
           <svg
             class="w-3.5 h-3.5 transition-transform"
             xmlns="http://www.w3.org/2000/svg"
@@ -141,8 +141,8 @@ defmodule LoopyardWeb.Components.LogViewer do
         </button>
       </div>
       <%!-- Output reads like a code-editor pane: no wrap (lines overflow and scroll
-           horizontally), height-capped so a long log doesn't swallow the chat —
-           expand (chevron) to open the full thing. --%>
+    horizontally), height-capped so a long log doesn't swallow the chat —
+    expand (chevron) to open the full thing. --%>
       <pre
         data-log-pre
         class={[
@@ -151,7 +151,7 @@ defmodule LoopyardWeb.Components.LogViewer do
         ]}
       >{Ansi.to_html(@display)}</pre>
       <%!-- Footer: verdict left, actions right. Borderless — blends into the
-           soft panel; the verdict dot + colour carry the status, not a rule. --%>
+    soft panel; the verdict dot + colour carry the status, not a rule. --%>
       <div class="flex items-center gap-2 px-3.5 pt-1 pb-2">
         <div class={"w-1.5 h-1.5 rounded-full flex-none #{@dot_class}"}></div>
         <span
@@ -166,15 +166,17 @@ defmodule LoopyardWeb.Components.LogViewer do
         </span>
         <span
           :if={@status != :building}
-          class={[
-            # Calm footnote, not an alarm — a failed command (often a probe /
-            # expected non-zero) shouldn't demand attention. Muted + medium weight.
-            "text-xs font-medium tabular-nums flex-none",
-            if(@status == :done,
-              do: "text-emerald-600/70 dark:text-emerald-500/60",
-              else: "text-rose-500/70 dark:text-rose-400/60"
-            )
-          ]}
+          class={
+            [
+              # Calm footnote, not an alarm — a failed command (often a probe /
+              # expected non-zero) shouldn't demand attention. Muted + medium weight.
+              "text-xs font-medium tabular-nums flex-none",
+              if(@status == :done,
+                do: "text-emerald-600/70 dark:text-emerald-500/60",
+                else: "text-rose-500/70 dark:text-rose-400/60"
+              )
+            ]
+          }
         >
           {exit_label(@status, @exit_code)}
         </span>
@@ -239,7 +241,7 @@ defmodule LoopyardWeb.Components.LogViewer do
 
   ## Attributes
 
-    * `logs` - Required. List of `%{name: String.t(), logs: String.t()}` maps.
+  * `logs` - Required. List of `%{name: String.t(), logs: String.t()}` maps.
   """
   @service_colors ~w(text-blue-400 text-green-400 text-yellow-400 text-pink-400 text-cyan-400 text-orange-400 text-violet-400 text-emerald-400)
 

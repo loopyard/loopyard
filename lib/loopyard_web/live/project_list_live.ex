@@ -172,8 +172,8 @@ defmodule LoopyardWeb.ProjectListLive do
       <%= case @live_action do %>
         <% :index -> %>
           <%!-- The birdseye: every project → workspace → agent, expanded, with
-               live status + what each agent is doing + openable ports. The big
-               mission-control twin of the sidebar. --%>
+    live status + what each agent is doing + openable ports. The big
+    mission-control twin of the sidebar. --%>
           <header class="mb-8 flex items-end justify-between gap-4">
             <div>
               <h1 class="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
@@ -185,7 +185,7 @@ defmodule LoopyardWeb.ProjectListLive do
             </div>
             <.link
               navigate="/projects/new"
-              class="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:border-violet-300 dark:hover:border-violet-500/40 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
+              class="hidden sm:inline-flex items-center gap-1.5 rounded-sm border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:border-violet-300 dark:hover:border-violet-500/40 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
             >
               <svg viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" /></svg>
               New project
@@ -193,12 +193,12 @@ defmodule LoopyardWeb.ProjectListLive do
           </header>
 
           <%!-- The ONE grouped project → workspace list (also loaded by the mobile
-               switcher, so there's a single visual language). --%>
+    switcher, so there's a single visual language). --%>
           <ProjectList.project_groups projects={@projects} />
           <div class="mt-6 sm:hidden">
             <.link
               navigate="/projects/new"
-              class="flex items-center justify-center gap-1.5 w-full rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 px-3 py-3 text-sm font-medium text-zinc-500 dark:text-zinc-400 active:bg-zinc-100 dark:active:bg-zinc-800 transition-colors"
+              class="flex items-center justify-center gap-1.5 w-full  border border-dashed border-zinc-300 dark:border-zinc-700 px-3 py-3 text-sm font-medium text-zinc-500 dark:text-zinc-400 active:bg-zinc-100 dark:active:bg-zinc-800 transition-colors"
             >
               <svg viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" /></svg>
               New project
@@ -242,14 +242,14 @@ defmodule LoopyardWeb.ProjectListLive do
                 autofocus
                 disabled={@creating != nil}
                 value={@creating}
-                class="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-brand-paper dark:bg-brand-ink px-3 py-2.5 text-sm
-                     text-zinc-900 dark:text-zinc-200 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 disabled:opacity-60
-                     focus:outline-none focus:ring-1 focus:ring-violet-500/30 focus:border-violet-400"
+                class="w-full rounded-sm border border-zinc-300 dark:border-zinc-600 bg-brand-paper dark:bg-brand-ink px-3 py-2.5 text-sm
+    text-zinc-900 dark:text-zinc-200 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 disabled:opacity-60
+    focus:outline-none focus:ring-1 focus:ring-violet-500/30 focus:border-violet-400"
               />
               <button
                 type="submit"
                 disabled={@creating != nil}
-                class="focus-ring w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 disabled:opacity-70 px-5 py-2.5 text-sm font-semibold text-white transition-colors"
+                class="focus-ring w-full inline-flex items-center justify-center gap-1.5 rounded-sm bg-violet-600 hover:bg-violet-700 disabled:opacity-70 px-5 py-2.5 text-sm font-semibold text-white transition-colors"
               >
                 <svg
                   :if={@creating}
@@ -291,30 +291,30 @@ defmodule LoopyardWeb.ProjectListLive do
                 placeholder="/Users/you/projects/my-app"
                 autocomplete="off"
                 autofocus
-                class="flex-1 min-w-0 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-brand-paper dark:bg-brand-ink px-3 py-2.5 text-sm font-mono
-                     text-zinc-900 dark:text-zinc-300 placeholder:text-zinc-400 dark:placeholder:text-zinc-600
-                     focus:outline-none focus:ring-1 focus:ring-violet-500/20 focus:border-violet-400"
+                class="flex-1 min-w-0 rounded-sm border border-zinc-300 dark:border-zinc-600 bg-brand-paper dark:bg-brand-ink px-3 py-2.5 text-sm font-mono
+    text-zinc-900 dark:text-zinc-300 placeholder:text-zinc-400 dark:placeholder:text-zinc-600
+    focus:outline-none focus:ring-1 focus:ring-violet-500/20 focus:border-violet-400"
               />
               <button
                 type="submit"
-                class="focus-ring flex-none rounded-lg bg-zinc-900 dark:bg-zinc-200 hover:bg-zinc-800 dark:hover:bg-white px-5 py-2.5 text-sm font-semibold text-white dark:text-zinc-900 transition-colors"
+                class="focus-ring flex-none rounded-sm bg-zinc-900 dark:bg-zinc-200 hover:bg-zinc-800 dark:hover:bg-white px-5 py-2.5 text-sm font-semibold text-white dark:text-zinc-900 transition-colors"
               >
                 Open
               </button>
             </form>
-            <div class="rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 p-4">
+            <div class=" border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 p-4">
               <p class="text-[11px] text-zinc-500 dark:text-zinc-400 mb-1.5">
                 Or run this from that folder in your terminal:
               </p>
               <div class="flex items-center gap-2">
-                <div class="flex-1 min-w-0 bg-zinc-900 dark:bg-zinc-950 rounded-lg px-3 py-1.5 font-mono text-[11px] text-zinc-300 overflow-x-auto whitespace-nowrap select-all">
+                <div class="flex-1 min-w-0 bg-zinc-900 dark:bg-zinc-950 rounded-sm px-3 py-1.5 font-mono text-[11px] text-zinc-300 overflow-x-auto whitespace-nowrap select-all">
                   <span class="text-zinc-500 select-none">$ </span>{@launch_cmd}
                 </div>
                 <button
                   id="copy-launch"
                   phx-hook="CopySource"
                   data-source={@launch_cmd}
-                  class="flex-none rounded-lg border border-zinc-300 dark:border-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-300 transition-colors"
+                  class="flex-none rounded-sm border border-zinc-300 dark:border-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-300 transition-colors"
                 >
                   Copy
                 </button>
@@ -332,7 +332,7 @@ defmodule LoopyardWeb.ProjectListLive do
             <p class="text-sm text-zinc-500 dark:text-zinc-400 mb-5">
               Clone a repo to start, and sync back as it matures. The engine's built — the UI is next.
             </p>
-            <div class="rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 p-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
+            <div class=" border border-dashed border-zinc-300 dark:border-zinc-700 p-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
               Coming soon.
             </div>
           </div>
@@ -351,7 +351,7 @@ defmodule LoopyardWeb.ProjectListLive do
     ~H"""
     <.link
       navigate={@navigate}
-      class="flex items-center justify-between gap-3 w-full rounded-xl border border-zinc-200 dark:border-zinc-700 p-4 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group"
+      class="flex items-center justify-between gap-3 w-full  border border-zinc-200 dark:border-zinc-700 p-4 hover:border-violet-400 dark:hover:border-violet-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group"
     >
       <div class="min-w-0">
         <div class="flex items-center gap-2">

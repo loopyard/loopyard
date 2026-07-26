@@ -54,13 +54,13 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Volumes do
           {section_label(@volume_tab)}
         </span>
         <%!-- Volume info: desktop right rail + mobile "volume-context" sheet,
-             opened by the section switcher's details button (consistent with
-             agents + services). No per-view trigger here. --%>
+    opened by the section switcher's details button (consistent with
+    agents + services). No per-view trigger here. --%>
       </:header>
       <div class="flex-1 overflow-y-auto">
         <%!-- No tab bar: Files / Changes / History are their own SWITCHER items
-             in the workspace rail (the standard nav), and Info lives in the
-             right rail (desktop) / pull-up sheet (mobile). One view per route. --%>
+    in the workspace rail (the standard nav), and Info lives in the
+    right rail (desktop) / pull-up sheet (mobile). One view per route. --%>
         <div :if={@volume_tab == :files}>
           <.files_tab
             file_tree={@file_tree}

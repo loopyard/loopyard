@@ -5,18 +5,18 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.FileType do
   """
 
   @text_extensions ~w(.ex .exs .erl .rb .py .js .ts .tsx .jsx .json .yml .yaml
-    .toml .xml .html .heex .css .scss .sass .less .md .txt .sh .bash .zsh
-    .fish .dockerfile .gitignore .env .env.example .editorconfig .tool-versions
-    .lock .log .csv .sql .graphql .gql .vue .svelte .rs .go .java .kt .swift
-    .c .h .cpp .hpp .cs .php .lua .r .jl .zig .nim .tf .hcl .conf .cfg .ini
-    .properties .makefile .rake .gemfile .gemspec .podfile .csproj .sln
-    .gradle .pom .cabal .nix .dhall .prisma .proto)
+  .toml .xml .html .heex .css .scss .sass .less .md .txt .sh .bash .zsh
+  .fish .dockerfile .gitignore .env .env.example .editorconfig .tool-versions
+  .lock .log .csv .sql .graphql .gql .vue .svelte .rs .go .java .kt .swift
+  .c .h .cpp .hpp .cs .php .lua .r .jl .zig .nim .tf .hcl .conf .cfg .ini
+  .properties .makefile .rake .gemfile .gemspec .podfile .csproj .sln
+  .gradle .pom .cabal .nix .dhall .prisma .proto)
 
   @image_extensions ~w(.png .jpg .jpeg .gif .webp .svg .ico .bmp)
 
   @binary_extensions ~w(.zip .tar .gz .bz2 .xz .7z .rar .jar .war .ear
-    .whl .egg .gem .deb .rpm .dmg .iso .bin .exe .dll .so .dylib .o .a
-    .wasm .pdf .doc .docx .xls .xlsx .ppt .pptx .sqlite .db .dat)
+  .whl .egg .gem .deb .rpm .dmg .iso .bin .exe .dll .so .dylib .o .a
+  .wasm .pdf .doc .docx .xls .xlsx .ppt .pptx .sqlite .db .dat)
 
   @type file_type :: :text | :image | :binary | :unknown
 
@@ -93,8 +93,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.FileType do
       ext in ~w(.proto) -> "protobuf"
       ext in ~w(.dockerfile) or name == "dockerfile" -> "dockerfile"
       name in ~w(gemfile rakefile guardfile vagrantfile berksfile capfile podfile
-                 dangerfile fastfile appfile matchfile pluginfile snapfile
-                 thorfile config.ru .pryrc .irbrc .gemrc) -> "ruby"
+  dangerfile fastfile appfile matchfile pluginfile snapfile
+  thorfile config.ru .pryrc .irbrc .gemrc) -> "ruby"
       name == "brewfile" -> "ruby"
       name == "makefile" -> "makefile"
       name == "procfile" -> "yaml"
@@ -114,8 +114,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.FileType do
 
   defp name_suggests_text?(name) do
     name in ~w(readme license changelog authors contributors todo
-               .gitignore .gitattributes .dockerignore .editorconfig
-               .env .env.example .tool-versions .ruby-version .node-version
-               .nvmrc .python-version procfile)
+  .gitignore .gitattributes .dockerignore .editorconfig
+  .env .env.example .tool-versions .ruby-version .node-version
+  .nvmrc .python-version procfile)
   end
 end

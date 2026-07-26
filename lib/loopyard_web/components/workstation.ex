@@ -37,7 +37,7 @@ defmodule LoopyardWeb.Components.Workstation do
 
   def nav_list(assigns) do
     ~H"""
-    <div class="rounded-xl border border-zinc-200 dark:border-zinc-800 divide-y divide-zinc-100 dark:divide-zinc-800 overflow-hidden">
+    <div class=" border border-zinc-200 dark:border-zinc-800 divide-y divide-zinc-100 dark:divide-zinc-800 overflow-hidden">
       {render_slot(@inner_block)}
     </div>
     """
@@ -107,14 +107,14 @@ defmodule LoopyardWeb.Components.Workstation do
   def command_box(assigns) do
     ~H"""
     <div class="flex items-stretch gap-2">
-      <pre class="flex-1 overflow-x-auto rounded-lg bg-zinc-900 dark:bg-zinc-950 text-zinc-100 text-[11px] leading-relaxed font-mono px-3 py-2.5 ring-1 ring-zinc-800">{@command}</pre>
+      <pre class="flex-1 overflow-x-auto rounded-sm bg-zinc-900 dark:bg-zinc-950 text-zinc-100 text-[11px] leading-relaxed font-mono px-3 py-2.5 ring-1 ring-zinc-800">{@command}</pre>
       <button
         id={@id}
         type="button"
         phx-hook="Clip"
         data-label="Copy"
         data-copy={@command}
-        class="focus-ring flex-none self-start rounded-lg bg-zinc-900 hover:bg-zinc-700 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white px-3.5 py-2.5 text-xs font-medium transition-colors"
+        class="focus-ring flex-none self-start rounded-sm bg-zinc-900 hover:bg-zinc-700 text-white dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white px-3.5 py-2.5 text-xs font-medium transition-colors"
       >
         Copy
       </button>
@@ -125,8 +125,8 @@ defmodule LoopyardWeb.Components.Workstation do
   @doc """
   A button, consistent across the Workstation pages.
 
-    * `:primary` — solid violet (the page's main action: Save & Rebuild).
-    * `:secondary` — outline (Save, Add — quieter confirmations).
+  * `:primary` — solid violet (the page's main action: Save & Rebuild).
+  * `:secondary` — outline (Save, Add — quieter confirmations).
 
   Pass `type="submit"` for forms; any other attrs (`name`, `value`, `disabled`,
   `phx-click`, …) pass through.
@@ -147,11 +147,11 @@ defmodule LoopyardWeb.Components.Workstation do
 
   defp button_class(:primary),
     do:
-      "focus-ring inline-flex items-center justify-center gap-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white px-4 py-2 text-sm font-semibold transition-colors"
+      "focus-ring inline-flex items-center justify-center gap-1.5 rounded-sm bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white px-4 py-2 text-sm font-semibold transition-colors"
 
   defp button_class(:secondary),
     do:
-      "focus-ring inline-flex items-center justify-center rounded-lg border border-zinc-300 dark:border-zinc-600 px-4 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-60 transition-colors"
+      "focus-ring inline-flex items-center justify-center rounded-sm border border-zinc-300 dark:border-zinc-600 px-4 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-60 transition-colors"
 
   @doc "A small Restart button — recreates the workstation container ($HOME kept)."
   attr :restarting, :boolean, required: true
@@ -164,7 +164,7 @@ defmodule LoopyardWeb.Components.Workstation do
       disabled={@restarting}
       title="Recreate the workstation container (your $HOME / logins are kept)"
       class={[
-        "focus-ring inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-50 transition-colors",
+        "focus-ring inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-50 transition-colors",
         @class
       ]}
     >

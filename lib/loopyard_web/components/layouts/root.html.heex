@@ -1,26 +1,26 @@
 <!DOCTYPE html>
 <%!-- No safe-area-x on <html> — that would inset the WHOLE app so the 3-column
-     rails couldn't reach the screen edge. Safe insets live on the rail content
-     (safe-pl / safe-pr) and on full-bleed single-column page roots instead, so
-     backgrounds go edge-to-edge while content clears the notch / dynamic island. --%>
+  rails couldn't reach the screen edge. Safe insets live on the rail content
+  (safe-pl / safe-pr) and on full-bleed single-column page roots instead, so
+  backgrounds go edge-to-edge while content clears the notch / dynamic island. --%>
 <html lang="en" class="h-full bg-brand-paper dark:bg-brand-ink">
   <head>
     <meta charset="utf-8" />
     <%!-- Base viewport. JS below adds maximum-scale=1 on iOS only to
-         prevent auto-zoom on input focus. iOS ignores it for pinch-zoom
-         (safe). Android respects it (blocks pinch-zoom = bad), so we
-         only set it where it's needed. --%>
+  prevent auto-zoom on input focus. iOS ignores it for pinch-zoom
+  (safe). Android respects it (blocks pinch-zoom = bad), so we
+  only set it where it's needed. --%>
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <script>
       if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
-        document.querySelector('meta[name=viewport]').setAttribute('content',
-          'width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover');
+      document.querySelector('meta[name=viewport]').setAttribute('content',
+      'width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover');
       }
     </script>
     <%!-- PWA / add-to-home-screen. `standalone` (manifest + apple meta) launches
-         chromeless like a native app; the apple-touch-icon is the home-screen
-         icon on iOS (which ignores manifest icons); the title is the label under
-         it. theme-color tints the status bar / title bar to match the shell. --%>
+  chromeless like a native app; the apple-touch-icon is the home-screen
+  icon on iOS (which ignores manifest icons); the title is the label under
+  it. theme-color tints the status bar / title bar to match the shell. --%>
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#18181b" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -39,9 +39,9 @@
   </head>
   <body class="h-full antialiased font-sans">
     <%!-- Connection-lost banner. Hidden by default; the LiveSocket lifecycle in
-    app.js reveals it when the websocket has been down past a short grace period,
-    so you always know when a send won't go through (the input also holds the text
-    until the server acks — see the ChatForm hook). --%>
+  app.js reveals it when the websocket has been down past a short grace period,
+  so you always know when a send won't go through (the input also holds the text
+  until the server acks — see the ChatForm hook). --%>
     <div
       id="conn-banner"
       role="status"
@@ -49,7 +49,7 @@
       class="hidden fixed top-0 inset-x-0 z-[100] flex items-center justify-center gap-2 bg-amber-500 text-amber-950 text-sm font-medium px-4 py-1.5 shadow-md safe-pt"
     >
       <%!-- Terse status, one line, no wrap: pulsing dot = actively reconnecting;
-           sends queue meanwhile (ChatForm holds text until the ack). --%>
+  sends queue meanwhile (ChatForm holds text until the ack). --%>
       <span class="w-1.5 h-1.5 rounded-full bg-amber-900 animate-pulse flex-none"></span>
       <span class="truncate">Disconnected — reconnecting…</span>
       <button
@@ -62,29 +62,35 @@
     </div>
     <a
       href="#main-content"
-      class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:bg-violet-600 focus:text-white focus:px-4 focus:py-2 focus:rounded-md focus:font-medium"
+      class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:bg-violet-600 focus:text-white focus:px-4 focus:py-2 focus:rounded-sm focus:font-medium"
     >
       Skip to main content
     </a>
     <%!-- Ambient audio ENGINE — the "room tone" of Loopyard. Lives in the root
-         layout (outside {@inner_content}); the whole app runs in one
-         live_session, so it's mounted once and the bed keeps playing across
-         every navigation. No visible control here — the speaker button + settings
-         panel live in the page headers (`<.operator_link>`) and drive this engine
-         over window events. Streams the `activity` channel, which ActivitySound
-         drives from live agent events. --%>
+  layout (outside {@inner_content}); the whole app runs in one
+  live_session, so it's mounted once and the bed keeps playing across
+  every navigation. No visible control here — the speaker button + settings
+  panel live in the page headers (`<.operator_link>`) and drive this engine
+  over window events. Streams the `activity` channel, which ActivitySound
+  drives from live agent events. --%>
     <%!-- phx-update="ignore": the engine sets the <audio> `src` in JS, so
-         LiveView must NEVER diff this subtree — otherwise morphdom compares
-         against the server markup (which has no src), strips the src, and the
-         audio stops mid-play (looked like a cutoff + flipped to "muted" when
-         switching tracks). Ignoring it keeps the stream alive across every
-         render and navigation. --%>
+  LiveView must NEVER diff this subtree — otherwise morphdom compares
+  against the server markup (which has no src), strips the src, and the
+  audio stops mid-play (looked like a cutoff + flipped to "muted" when
+  switching tracks). Ignoring it keeps the stream alive across every
+  render and navigation. --%>
     <%!-- `hidden`: this is the audio ENGINE, never a visible control. Without it,
-         the <audio> (no `controls`) can still render a small replaced-element
-         sliver in some browsers — a block in the body flow ABOVE the app, which
-         showed as a white gap at the top of every page. Audio plays fine while
-         display:none, so hiding it costs nothing and reclaims the space. --%>
-    <div id="ambient" phx-hook="AmbientAudio" phx-update="ignore" data-channel="activity" class="hidden">
+  the <audio> (no `controls`) can still render a small replaced-element
+  sliver in some browsers — a block in the body flow ABOVE the app, which
+  showed as a white gap at the top of every page. Audio plays fine while
+  display:none, so hiding it costs nothing and reclaims the space. --%>
+    <div
+      id="ambient"
+      phx-hook="AmbientAudio"
+      phx-update="ignore"
+      data-channel="activity"
+      class="hidden"
+    >
       <audio id="ambient-el" preload="none"></audio>
     </div>
     {@inner_content}

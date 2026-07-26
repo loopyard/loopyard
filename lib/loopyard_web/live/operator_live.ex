@@ -171,7 +171,11 @@ defmodule LoopyardWeb.OperatorLive do
 
       _ ->
         stub = %{id: socket.assigns.agent_id, status: :idle}
-        socket |> assign(:selected_agent, stub) |> assign(:agents, [stub]) |> assign(:messages, [])
+
+        socket
+        |> assign(:selected_agent, stub)
+        |> assign(:agents, [stub])
+        |> assign(:messages, [])
     end
   end
 
@@ -489,7 +493,8 @@ defmodule LoopyardWeb.OperatorLive do
   # Ambient play/pause/volume command from the operator's `music` tool → push to
   # this client's AmbientAudio engine (which applies it; the sound pill reflects).
   def handle_info(%Events.Aural.Command{action: action, value: value}, socket),
-    do: {:noreply, push_event(socket, "aural_command", %{action: to_string(action), value: value})}
+    do:
+      {:noreply, push_event(socket, "aural_command", %{action: to_string(action), value: value})}
 
   # Streamed model reasoning → the thinking bubble.
   def handle_info(
@@ -505,11 +510,18 @@ defmodule LoopyardWeb.OperatorLive do
 
   # Streamed tool/exec output → upsert one build message via the shared StreamBuffer.
   def handle_info(
-        %Events.ChatAgentMessage.StreamOutput{agent_id: id, data: data, title: title, msg_id: msg_id},
+        %Events.ChatAgentMessage.StreamOutput{
+          agent_id: id,
+          data: data,
+          title: title,
+          msg_id: msg_id
+        },
         socket
       )
       when id == socket.assigns.selected_id do
-    stream_buffer = StreamBuffer.append(socket.assigns.stream_buffer, data, title: title, msg_id: msg_id)
+    stream_buffer =
+      StreamBuffer.append(socket.assigns.stream_buffer, data, title: title, msg_id: msg_id)
+
     messages = StreamBuffer.upsert_message(stream_buffer, socket.assigns.messages)
 
     {:noreply,
@@ -565,7 +577,11 @@ defmodule LoopyardWeb.OperatorLive do
   def render(assigns) do
     # Badge on the mobile "For you" tab: how many blocking items are waiting.
     assigns =
-      assign(assigns, :needs_count, Enum.sum(Enum.map(assigns.attention_groups, &length(&1.items))))
+      assign(
+        assigns,
+        :needs_count,
+        Enum.sum(Enum.map(assigns.attention_groups, &length(&1.items)))
+      )
 
     ~H"""
     <div
@@ -577,14 +593,14 @@ defmodule LoopyardWeb.OperatorLive do
         <.breadcrumbs crumbs={[{"Loopyard", "/"}, {"Operator", nil}]} />
         <:actions>
           <%!-- No "Needs you" pill — the rail shows blocking items right there.
-               Sound is a player docked at the bottom of the rail. --%>
+    Sound is a player docked at the bottom of the rail. --%>
         </:actions>
       </Nav.bar>
 
       <%!-- Mobile only: chat ⇄ rail toggle. Both panes are co-equal but can't
-           share a phone screen, so show one at a time. Hidden on lg+ (both show). --%>
+    share a phone screen, so show one at a time. Hidden on lg+ (both show). --%>
       <%!-- Finger-sized tabs: this bar is mobile-only, so padding is sized for
-           touch (py-4, text-base ≈ 48px target), not for a pointer. --%>
+    touch (py-4, text-base ≈ 48px target), not for a pointer. --%>
       <div class="lg:hidden flex-none flex border-b border-zinc-200 dark:border-zinc-800 text-base">
         <button
           type="button"
@@ -639,9 +655,9 @@ defmodule LoopyardWeb.OperatorLive do
           />
         </div>
         <%!-- Desktop (lg+): the "for you" rail — co-equal with the chat. Leads
-             with NEEDS YOU (blocking questions/approvals, grouped by workspace,
-             answered inline) then WORKING (dispatched jobs + progress). The
-             operator curates this; the chat is where you talk about it. --%>
+    with NEEDS YOU (blocking questions/approvals, grouped by workspace,
+    answered inline) then WORKING (dispatched jobs + progress). The
+    operator curates this; the chat is where you talk about it. --%>
         <aside class={[
           "flex-none flex-col border-l border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/40",
           "w-full lg:w-72 xl:w-80",
@@ -696,7 +712,7 @@ defmodule LoopyardWeb.OperatorLive do
       <button
         type="button"
         phx-click="collapse_attention"
-        class="focus-ring self-start inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 mb-1 chat-sub font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60"
+        class="focus-ring self-start inline-flex items-center gap-1.5 rounded-sm px-2.5 py-2 mb-1 chat-sub font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60"
       >
         ← For you
       </button>
@@ -707,7 +723,7 @@ defmodule LoopyardWeb.OperatorLive do
     </div>
     <div :if={is_nil(@expanded)} class="flex flex-col">
       <%!-- Blocking items (action required), grouped by workspace — no header,
-           the groups speak for themselves and lead the rail. --%>
+    the groups speak for themselves and lead the rail. --%>
       <section :if={@groups != []} class="p-3 space-y-3">
         <div :for={g <- @groups} class="space-y-1.5">
           <div class="flex items-baseline gap-1.5 px-1">
@@ -724,14 +740,14 @@ defmodule LoopyardWeb.OperatorLive do
 
           <div :for={item <- g.items}>
             <%!-- Compact row — the full card is a wall in a rail. Tap to expand
-                 it full-pane; answering settles it there, back returns here. --%>
+    it full-pane; answering settles it there, back returns here. --%>
             <button
               :if={item.kind in [:question, :secret] and item.msg}
               type="button"
               phx-click="expand_attention"
               phx-value-agent={item.agent_id}
               phx-value-msg={item.msg.id}
-              class="focus-ring flex w-full items-center gap-2 rounded-lg px-2.5 py-3 lg:py-2 text-left bg-brand-paper dark:bg-brand-ink border border-orange-300/60 dark:border-orange-500/30 hover:border-orange-400 dark:hover:border-orange-500/60 transition-colors"
+              class="focus-ring flex w-full items-center gap-2 rounded-sm px-2.5 py-3 lg:py-2 text-left bg-brand-paper dark:bg-brand-ink border border-orange-300/60 dark:border-orange-500/30 hover:border-orange-400 dark:hover:border-orange-500/60 transition-colors"
             >
               <span class="flex-1 min-w-0 truncate chat-sub text-zinc-800 dark:text-zinc-100">
                 {attention_summary(item)}
@@ -743,7 +759,7 @@ defmodule LoopyardWeb.OperatorLive do
             <.link
               :if={item.kind == :approval or (item.kind != :question and is_nil(item.msg))}
               navigate={item.path}
-              class="focus-ring flex items-center gap-2 rounded-lg px-2.5 py-2 bg-brand-paper dark:bg-brand-ink border border-zinc-200 dark:border-zinc-800 hover:border-violet-300 dark:hover:border-violet-500/40"
+              class="focus-ring flex items-center gap-2 rounded-sm px-2.5 py-2 bg-brand-paper dark:bg-brand-ink border border-zinc-200 dark:border-zinc-800 hover:border-violet-300 dark:hover:border-violet-500/40"
             >
               <span class="flex-1 min-w-0 truncate text-sm text-zinc-700 dark:text-zinc-200">
                 {item.label}
@@ -757,8 +773,8 @@ defmodule LoopyardWeb.OperatorLive do
       </section>
 
       <%!-- IN MOTION — what's actually RUNNING right now, prominent. Delta sits
-           INLINE next to the name (not floated across the rail), so it reads as
-           one line. The row taps through to the workspace agent (the weeds). --%>
+    INLINE next to the name (not floated across the rail), so it reads as
+    one line. The row taps through to the workspace agent (the weeds). --%>
       <section class="p-3 border-t border-zinc-200 dark:border-zinc-800">
         <div class="text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500 px-1 pb-1.5">
           In motion
@@ -773,7 +789,7 @@ defmodule LoopyardWeb.OperatorLive do
           phx-value-project={i.project_id}
           phx-value-agent={i.agent_id}
           title={"#{i.project_name} · #{i.workspace_name} — #{state_label(i.state)}"}
-          class="group flex items-center gap-2.5 rounded-lg px-2.5 py-3 lg:py-1.5 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+          class="group flex items-center gap-2.5 rounded-sm px-2.5 py-3 lg:py-1.5 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
         >
           <.workspace_identity
             project={i.project_name}
@@ -794,8 +810,8 @@ defmodule LoopyardWeb.OperatorLive do
         </div>
 
         <%!-- WRAPPED work, grouped by how long ago (Recently / Past hour / Today
-             / Earlier). Full size + full opacity at every age — recency reads
-             from the section label, not from dimming rows away. --%>
+    / Earlier). Full size + full opacity at every age — recency reads
+    from the section label, not from dimming rows away. --%>
         <div :for={{label, items} <- @done_buckets} class="mt-3">
           <div class="text-[11px] font-medium uppercase tracking-wide text-zinc-400/80 dark:text-zinc-600 px-1 pb-1">
             {label}
@@ -807,7 +823,7 @@ defmodule LoopyardWeb.OperatorLive do
             phx-value-project={i.project_id}
             phx-value-agent={i.agent_id}
             title={"#{i.project_name} · #{i.workspace_name} — done"}
-            class="group flex items-center gap-2 rounded-lg px-2.5 py-3 lg:py-1.5 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+            class="group flex items-center gap-2 rounded-sm px-2.5 py-3 lg:py-1.5 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
           >
             <.workspace_identity
               project={i.project_name}
@@ -873,11 +889,11 @@ defmodule LoopyardWeb.OperatorLive do
 
           <div class="flex-1 min-w-0">
             <%!-- Track name is the "change it" affordance: tap → the full /sound
-                 UI (picker). The chevron signals it's tappable. --%>
+    UI (picker). The chevron signals it's tappable. --%>
             <.link
               navigate={~p"/sound"}
               title="Change the track"
-              class="focus-ring group -mx-1 inline-flex max-w-full items-center gap-1 rounded px-1 py-0.5 hover:bg-zinc-200/60 dark:hover:bg-zinc-700/60 transition-colors"
+              class="focus-ring group -mx-1 inline-flex max-w-full items-center gap-1 rounded-sm px-1 py-0.5 hover:bg-zinc-200/60 dark:hover:bg-zinc-700/60 transition-colors"
             >
               <span class="text-sm font-medium text-zinc-700 dark:text-zinc-200 truncate">
                 {@track_name}
@@ -909,7 +925,6 @@ defmodule LoopyardWeb.OperatorLive do
     </div>
     """
   end
-
 
   defp state_label(:needs_you), do: "needs you"
   defp state_label(:done), do: "done"

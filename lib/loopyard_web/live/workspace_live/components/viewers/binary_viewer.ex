@@ -10,7 +10,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Viewers.BinaryViewer do
   def binary_viewer(assigns) do
     ~H"""
     <div class="flex flex-col items-center justify-center p-8 text-center">
-      <div class="w-12 h-12 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mb-3">
+      <div class="w-12 h-12 rounded-sm bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mb-3">
         <svg
           xmlns="http://www.w3.org/2000/svg"
           viewBox="0 0 16 16"

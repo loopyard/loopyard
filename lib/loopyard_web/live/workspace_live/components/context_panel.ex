@@ -60,8 +60,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
 
     ~H"""
     <%!-- STICKY HERO: the selected agent's identity + LIVE state, pinned to the
-         top of the detail zone so scrolling the sections below never loses which
-         agent you're on. Status word flush-right; model · tokens · cost inline. --%>
+    top of the detail zone so scrolling the sections below never loses which
+    agent you're on. Status word flush-right; model · tokens · cost inline. --%>
     <.detail_hero
       eyebrow="Agent"
       name={@agent.name}
@@ -70,21 +70,22 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
       status_class={"#{@hs.bg} #{@hs.text}"}
     >
       <:facts>
-        {short_model(@agent[:model]) || "default"}
-        · {if @estimating?, do: "~"}{compact_number(@total_tokens)} tok
+        {short_model(@agent[:model]) || "default"} · {if @estimating?, do: "~"}{compact_number(
+          @total_tokens
+        )} tok
         · ${Float.round((@agent[:total_cost_usd] || 0.0) * 1.0, 2)}
       </:facts>
     </.detail_hero>
 
     <%!-- Loud consequence card ONLY for problem states (rate-limit / auth /
-         reconnecting) — the calm "Ready/Asleep" status now lives in the hero. --%>
+    reconnecting) — the calm "Ready/Asleep" status now lives in the hero. --%>
     <.harness_status agent={@agent} />
 
     <.claude_usage agent={@agent} live_token_est={@live_token_est} />
 
     <%!-- Only the numbers not shown anywhere else: errors (a real signal) + how
-         long it's been running / idle. The chat is the record of turns / tool
-         calls / messages — no vanity counts. --%>
+    long it's been running / idle. The chat is the record of turns / tool
+    calls / messages — no vanity counts. --%>
     <.section label="Activity">
       <.info_row
         label="Errors"
@@ -102,8 +103,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     <.docker_context agent={@agent} />
 
     <%!-- STICKY FOOTER: a full "Restart agent" (escape hatch for a wedged harness
-         or a dropped/changed MCP tool — reloads tools, keeps the conversation),
-         then the destructive "Remove agent" set apart below the divider. --%>
+    or a dropped/changed MCP tool — reloads tools, keeps the conversation),
+    then the destructive "Remove agent" set apart below the divider. --%>
     <.action_bar>
       <:main>
         <.control_btn
@@ -130,7 +131,6 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     """
   end
 
-
   # Prominent, color-coded harness state — the one place to glance at to know
   # whether it's safe to send, working, waiting, or in a bad state (rate-limited,
   # auth expired, reconnecting, offline). The bad states are loud on purpose: the
@@ -144,10 +144,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
 
     ~H"""
     <%!-- ONLY the loud consequence card, for problem states (rate-limited, auth
-         expired, reconnecting) — the calm "Ready/Asleep/Working" status now lives
-         in the sticky hero, so there's no redundant one-liner here anymore. --%>
+    expired, reconnecting) — the calm "Ready/Asleep/Working" status now lives
+    in the sticky hero, so there's no redundant one-liner here anymore. --%>
     <div :if={@loud?} class="px-3 pt-3 pb-1">
-      <div class={["flex items-center gap-2.5 rounded-lg px-2.5 py-2", @hs.bg]}>
+      <div class={["flex items-center gap-2.5 rounded-sm px-2.5 py-2", @hs.bg]}>
         <span class={["w-2 h-2 rounded-full flex-none", @hs.dot, @hs.pulse]}></span>
         <div class="min-w-0">
           <div class={["text-sm font-semibold leading-tight", @hs.text]}>{@hs.label}</div>
@@ -202,7 +202,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
       # Genuinely disconnected while it should be active (e.g. session died
       # mid-recovery) — this one IS reconnecting.
       alive? == false ->
-        bad("Reconnecting", "the connection dropped — reconnecting; your messages will queue and send")
+        bad(
+          "Reconnecting",
+          "the connection dropped — reconnecting; your messages will queue and send"
+        )
 
       agent[:auth_error] ->
         bad("Sign-in expired", "your Claude login expired — reconnect it on the Workstation page")
@@ -308,7 +311,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
 
     ~H"""
     <%!-- Just Mode + Container. Volume is already in the switcher's Volumes
-         list, and the Workspace id is redundant (you're in it). --%>
+    list, and the Workspace id is redundant (you're in it). --%>
     <.section :if={@ctx.container} label="Docker">
       <.info_row
         label="Mode"
@@ -346,9 +349,9 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
     ~H"""
     <.section label="Usage">
       <%!-- Model is a SWITCHER, not a label: pick the CLI alias here and the
-           live session flips via ACP session/set_model (persisted for future
-           restarts). Options are the CLI's stable aliases; the row shows the
-           resolved human name as the current selection. --%>
+    live session flips via ACP session/set_model (persisted for future
+    restarts). Options are the CLI's stable aliases; the row shows the
+    resolved human name as the current selection. --%>
       <div class="flex items-center justify-between gap-3 px-2 min-h-7 md:min-h-5 text-sm">
         <span class="text-zinc-500 dark:text-zinc-400 flex-none">Model</span>
         <form phx-change="set_agent_model" class="flex-none">
@@ -356,11 +359,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ContextPanel do
           <select
             name="model"
             aria-label="Agent model"
-            class="focus-ring rounded-md border-0 bg-transparent py-0 pl-1 pr-6 text-sm font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer hover:text-violet-600 dark:hover:text-violet-400"
+            class="focus-ring rounded-sm border-0 bg-transparent py-0 pl-1 pr-6 text-sm font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer hover:text-violet-600 dark:hover:text-violet-400"
           >
             <%!-- The container CLI's set_model passes FULL model ids through, so
-                 we offer the latest frontier models by id — not just the
-                 adapter's stale default/opus/haiku aliases. --%>
+    we offer the latest frontier models by id — not just the
+    adapter's stale default/opus/haiku aliases. --%>
             <option value="" disabled selected={true}>
               {short_model(@agent[:model]) || "default"}
             </option>
