@@ -66,6 +66,15 @@ The three destinations get fixed icons, used everywhere they're named:
 
 Old URLs keep working throughout — this is chrome + grouping, not route churn.
 
+## Native trajectory
+
+The mode nav is deliberately shaped like an iOS tab bar: a future native
+wrapper renders Workspaces / Operator / System as three glass tab buttons over
+the same three roots — no IA change needed. Keep the modes URL-rooted
+(`/workspaces`, `/operator`, `/system`) and self-contained so the wrapper can
+treat each as a tab's root view; safe-area handling already exists (pb-safe /
+safe-area-*).
+
 ## Non-goals
 
 - No per-page redesigns beyond the chrome (bands/cards/type stay as shipped).
