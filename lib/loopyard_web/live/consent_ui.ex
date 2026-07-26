@@ -125,6 +125,15 @@ defmodule LoopyardWeb.Live.ConsentUI do
 
   defp settle(socket, :ok), do: {:halt, socket}
 
+  defp settle(socket, :noop),
+    do:
+      {:halt,
+       put_flash(
+         socket,
+         :info,
+         "Nothing selected yet — tap an option (or type your own), then Answer."
+       )}
+
   defp settle(socket, {:error, :not_found}),
     do: {:halt, put_flash(socket, :info, "That question was already answered.")}
 end

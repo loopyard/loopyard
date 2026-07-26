@@ -157,12 +157,27 @@ defmodule Loopyard.Harness.Questions do
   drafted (an empty commit is not a skip; Skip is explicit).
   """
   def commit_draft(qid, q_id) when is_binary(qid) and is_binary(q_id) do
-    with_entry(qid, fn entry ->
-      case Map.get(entry[:selections] || %{}, q_id, []) do
-        [] -> entry
-        drafted -> entry |> put_selection(q_id, drafted) |> mark_done(q_id)
-      end
-    end)
+    committed = :counters.new(1, [])
+
+    result =
+      with_entry(qid, fn entry ->
+        case Map.get(entry[:selections] || %{}, q_id, []) do
+          [] ->
+            entry
+
+          drafted ->
+            :counters.add(committed, 1, 1)
+            entry |> put_selection(q_id, drafted) |> mark_done(q_id)
+        end
+      end)
+
+    cond do
+      result != :ok -> result
+      :counters.get(committed, 1) > 0 -> :ok
+      # Nothing drafted: tell the caller so the UI can say "pick one first"
+      # instead of a silent no-op that reads as a broken button.
+      true -> :noop
+    end
   end
 
   @doc "Confirm a multi-select question's current draft (possibly empty = skip) as its answer."
@@ -219,8 +234,16 @@ defmodule Loopyard.Harness.Questions do
   # Find the pending :question card carrying this question_id across agents and
   # reconstruct a waiterless broker entry from its durable state.
   defp rebuild_entry(qid) do
-    Enum.find_value(ChatAgent.list_agents(), fn %{id: aid} = st ->
+    # Pure-ETS summaries (list_agents/0 pays a 500ms GenServer call per live
+    # agent — inside a LiveView handle_event that blocked the LV for seconds
+    # under load). Card status/selections are written through to ETS on every
+    # update, so the summary is fresh enough to rebuild from.
+    Enum.find_value(ChatAgent.list_agent_summaries(), fn %{id: aid} = st ->
+      # Tail-capped like Attention.line/0: pending cards live near the tail,
+      # and this runs inside a LiveView handle_event — a full-fleet full-history
+      # scan on a stale card id blocked the LV for seconds under load.
       (Map.get(st, :messages) || [])
+      |> Enum.take(-200)
       |> Enum.find(
         &(&1[:role] == :question and &1[:question_id] == qid and &1[:status] == :pending)
       )

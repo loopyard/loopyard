@@ -45,6 +45,23 @@ defmodule LoopyardWeb.Live.WorkspaceLive.QuestionCardTest do
     assert html =~ "Hold off"
   end
 
+  test "the commit action is the question footer, not inside the Other row" do
+    html = render_component(&Cards.question_card/1, %{msg: pending_msg()})
+
+    # ONE form wraps the whole question — option taps draft, the footer commits.
+    assert length(String.split(html, ~s(phx-submit="answer_question_text"))) == 2
+
+    # The Other row is just a draftable text input — no button lives inside it.
+    [_, after_other] = String.split(html, ~s(placeholder="Other…"), parts: 2)
+    [other_row_tail, _] = String.split(after_other, "</div>", parts: 2)
+    refute other_row_tail =~ "<button"
+
+    # The footer (after the Other row) carries Skip + the Answer submit.
+    assert after_other =~ ~s(type="submit")
+    assert after_other =~ "Skip"
+    assert after_other =~ "Answer"
+  end
+
   test "pending card offers Skip, Other free text, and the chat hint" do
     html = render_component(&Cards.question_card/1, %{msg: pending_msg()})
 

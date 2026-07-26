@@ -111,7 +111,9 @@ defmodule Loopyard.Attention do
   defp card_kind(_), do: nil
 
   defp agent_summaries do
-    Loopyard.ChatAgent.list_agents()
+    # Pure-ETS read — list_agents/0 freshens each summary with a 500ms
+    # GenServer call per agent, which this every-rail-tick scan must not pay.
+    Loopyard.ChatAgent.list_agent_summaries()
   rescue
     _ -> []
   catch

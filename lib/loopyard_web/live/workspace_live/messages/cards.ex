@@ -119,7 +119,19 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
     a radio/check dot. Single-select: one click settles. Multi-select:
     clicks TOGGLE (draft broadcast to all viewers); the dot fills and
     the button below confirms. --%>
-      <div :if={@msg.status == :pending && !locked?(@msg, @q)} class="flex flex-col gap-0.5">
+      <%!-- PENDING is ONE form: option taps DRAFT (type="button"), the Other
+    row is just another draftable row (its text input belongs to this
+    form), and the question's single commit action lives in the footer —
+    Answer (submit: typed text wins, else the drafted option) next to
+    Skip. The commit button never sits inside an option row; that read
+    as "Answer the Other text" and buried the hierarchy. --%>
+      <form
+        :if={@msg.status == :pending && !locked?(@msg, @q)}
+        phx-submit="answer_question_text"
+        class="flex flex-col gap-0.5"
+      >
+        <input type="hidden" name="question_id" value={@msg.question_id} />
+        <input type="hidden" name="q" value={@q.id} />
         <button
           :for={o <- @q.options}
           type="button"
@@ -162,16 +174,10 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           </span>
         </button>
 
-        <%!-- "Other" IS an option row: a blank inline textbox at the end of
-                 the stack, same row grammar as the options — click in, type,
-                 return submits (answers just this question). No separate
-                 free-text section, no competing Answer button. --%>
-        <form
-          phx-submit="answer_question_text"
-          class="group/opt flex w-full items-center gap-3 rounded-sm px-3 py-1 bg-zinc-500/[0.06] dark:bg-white/[0.05] focus-within:bg-orange-500/10 dark:focus-within:bg-orange-500/10 transition-colors"
-        >
-          <input type="hidden" name="question_id" value={@msg.question_id} />
-          <input type="hidden" name="q" value={@q.id} />
+        <%!-- "Other" is another draftable row: same grammar as the options —
+    click in, type your own answer. Enter or the footer's Answer
+    submits it (typed text wins over a drafted option). --%>
+        <div class="group/opt flex w-full items-center gap-3 rounded-sm px-3 py-1 bg-zinc-500/[0.06] dark:bg-white/[0.05] focus-within:bg-orange-500/10 dark:focus-within:bg-orange-500/10 transition-colors">
           <span
             aria-hidden="true"
             class="flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full border-2 border-zinc-300 dark:border-zinc-600 group-focus-within/opt:border-orange-400"
@@ -181,30 +187,17 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
             name="text"
             autocomplete="off"
             placeholder="Other…"
-            class="chat-sub min-w-0 flex-1 border-0 bg-transparent px-0 py-1.5 font-medium text-zinc-900 dark:text-zinc-100 placeholder-zinc-500 dark:placeholder-zinc-400 focus:outline-none focus:ring-0"
+            class="chat-sub min-w-0 flex-1 border-0 bg-transparent px-0 py-2 font-medium text-zinc-900 dark:text-zinc-100 placeholder-zinc-500 dark:placeholder-zinc-400 focus:outline-none focus:ring-0"
           />
-          <button
-            type="submit"
-            class="focus-ring chat-sub flex-none inline-flex items-center rounded-sm bg-orange-700 hover:bg-orange-800 text-white font-medium px-3.5 py-1.5 transition-colors"
-          >
-            Answer
-          </button>
-        </form>
+        </div>
 
-        <%!-- Quiet footer: confirm (multi) + Skip, out of the answer path. --%>
-        <div class="mt-1.5 flex items-center justify-end gap-x-4">
-          <button
-            :if={@q[:multi]}
-            type="button"
-            phx-click="confirm_question"
-            phx-value-question_id={@msg.question_id}
-            phx-value-q={@q.id}
-            class="focus-ring chat-sub inline-flex items-center rounded-sm bg-orange-700 hover:bg-orange-800 text-white font-medium px-3.5 py-1.5 transition-colors"
-          >
-            {if draft_count(@msg, @q) > 0,
-              do: "Done (#{draft_count(@msg, @q)} selected)",
-              else: "None of these"}
-          </button>
+        <%!-- The question's footer: Skip (quiet, left) — the ONE commit action
+    (right). Single-select: Answer submits the form. Multi: Done
+    confirms the toggled draft. --%>
+        <div class={[
+          "mt-2 flex items-center",
+          (@q[:multi] && "justify-end") || "justify-between"
+        ]}>
           <button
             :if={!@q[:multi]}
             type="button"
@@ -215,8 +208,27 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
           >
             Skip
           </button>
+          <button
+            :if={!@q[:multi]}
+            type="submit"
+            class="focus-ring chat-sub flex-none inline-flex items-center rounded-sm bg-orange-700 hover:bg-orange-800 text-white font-medium px-4 py-2 transition-colors"
+          >
+            Answer
+          </button>
+          <button
+            :if={@q[:multi]}
+            type="button"
+            phx-click="confirm_question"
+            phx-value-question_id={@msg.question_id}
+            phx-value-q={@q.id}
+            class="focus-ring chat-sub flex-none inline-flex items-center rounded-sm bg-orange-700 hover:bg-orange-800 text-white font-medium px-4 py-2 transition-colors"
+          >
+            {if draft_count(@msg, @q) > 0,
+              do: "Done (#{draft_count(@msg, @q)} selected)",
+              else: "None of these"}
+          </button>
         </div>
-      </div>
+      </form>
 
       <%!-- SETTLED: same rows (no layout jump), chosen lit emerald with a
     filled check, the rest quietly dimmed but legible. Durable
