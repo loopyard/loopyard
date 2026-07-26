@@ -26,7 +26,7 @@ defmodule LoopyardWeb.Components.StreamCard do
   def band(assigns) do
     ~H"""
     <div class={[
-      "-mx-4 md:-mx-6 2xl:-mx-4 px-4 md:px-6 lg:px-8 pt-4 md:pt-5 pb-4 md:pb-5 border-l-2 ",
+      "-mx-4 md:-mx-6 2xl:-mx-4 px-4 md:px-6 lg:px-8 pt-4 md:pt-5 pb-4 md:pb-5",
       band_tone(@tone),
       @class
     ]}>
@@ -35,14 +35,16 @@ defmodule LoopyardWeb.Components.StreamCard do
     """
   end
 
+  # The left line MEANS "live — waiting on you / the active turn". Settled
+  # receipts (:neutral) carry no line: the wash alone is the receipt.
   defp band_tone(:needs_you),
-    do: "bg-orange-50/70 dark:bg-orange-950/15 border-orange-400 dark:border-orange-500/60"
+    do: "border-l-2 bg-orange-50/70 dark:bg-orange-950/15 border-orange-400 dark:border-orange-500/60"
 
   defp band_tone(:you),
-    do: "bg-violet-100 dark:bg-[#2b2348] border-violet-500 dark:border-violet-400"
+    do: "border-l-2 bg-violet-100 dark:bg-[#2b2348] border-violet-500 dark:border-violet-400"
 
   defp band_tone(:neutral),
-    do: "bg-zinc-500/[0.06] dark:bg-white/[0.045] border-zinc-300 dark:border-zinc-600"
+    do: "bg-zinc-500/[0.06] dark:bg-white/[0.045]"
 
   attr :project, :string, default: nil
   attr :workspace, :string, default: nil
