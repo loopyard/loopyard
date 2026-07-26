@@ -73,9 +73,46 @@ defmodule Loopyard.Attention do
   # --- internals ---
 
   defp raw_items do
-    Enum.map(Questions.pending_all(), fn {id, e} -> {:question, id, e} end) ++
-      Enum.map(SecretRequests.pending_all(), fn {id, e} -> {:secret, id, e} end) ++
-      Enum.map(Approvals.pending_all(), fn {id, e} -> {:approval, id, e} end)
+    ets =
+      Enum.map(Questions.pending_all(), fn {id, e} -> {:question, id, e} end) ++
+        Enum.map(SecretRequests.pending_all(), fn {id, e} -> {:secret, id, e} end) ++
+        Enum.map(Approvals.pending_all(), fn {id, e} -> {:approval, id, e} end)
+
+    # UNION with pending CARDS from the durable message store: broker entries
+    # are ephemeral (waiter pruning, restarts), but the card is the truth —
+    # "For you" must show every open question even when its entry is gone.
+    seen = MapSet.new(ets, fn {_k, _id, e} -> {e.agent_id, e[:msg_id]} end)
+
+    cards =
+      for %{id: aid} = st <- agent_summaries(),
+          msg <- Map.get(st, :messages) || [],
+          msg[:status] == :pending,
+          kind = card_kind(msg[:role]),
+          kind != nil,
+          not MapSet.member?(seen, {aid, msg[:id]}) do
+        {kind, msg[:question_id] || msg[:approval_id] || msg[:request_id] || msg[:id],
+         %{
+           agent_id: aid,
+           msg_id: msg[:id],
+           questions: msg[:questions] || [],
+           name: msg[:name]
+         }}
+      end
+
+    ets ++ cards
+  end
+
+  defp card_kind(:question), do: :question
+  defp card_kind(:secret_request), do: :secret
+  defp card_kind(:approval), do: :approval
+  defp card_kind(_), do: nil
+
+  defp agent_summaries do
+    Loopyard.ChatAgent.list_agents()
+  rescue
+    _ -> []
+  catch
+    _, _ -> []
   end
 
   defp decorate({kind, id, entry}, states, ws_lookup) do

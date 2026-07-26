@@ -167,14 +167,77 @@ defmodule Loopyard.Harness.Questions do
         })
 
         if length(entry[:done] || []) >= length(entry.questions) do
-          send(entry.waiter, {:answered, qid, entry[:selections] || %{}})
+          if is_pid(entry[:waiter]) and Process.alive?(entry.waiter) do
+            send(entry.waiter, {:answered, qid, entry[:selections] || %{}})
+          else
+            # Waiter long gone (queued model): the answer still REACHES the
+            # agent — resolve the card and enqueue the selections as a message.
+            deliver_late_answer(qid, entry)
+          end
         end
 
         :ok
 
       _ ->
-        {:error, :not_found}
+        # No broker entry (pruned/restart) but the CARD is durable — rebuild
+        # the entry from the pending message so answering always works.
+        case rebuild_entry(qid) do
+          nil ->
+            {:error, :not_found}
+
+          entry ->
+            :ets.insert(@table, {qid, entry})
+            with_entry(qid, fun)
+        end
     end
+  end
+
+  # Find the pending :question card carrying this question_id across agents and
+  # reconstruct a waiterless broker entry from its durable state.
+  defp rebuild_entry(qid) do
+    Enum.find_value(ChatAgent.list_agents(), fn %{id: aid} = st ->
+      (Map.get(st, :messages) || [])
+      |> Enum.find(&(&1[:role] == :question and &1[:question_id] == qid and &1[:status] == :pending))
+      |> case do
+        nil ->
+          nil
+
+        msg ->
+          %{
+            agent_id: aid,
+            msg_id: msg.id,
+            questions: msg[:questions] || [],
+            selections: msg[:selections] || %{},
+            done: msg[:done] || [],
+            waiter: nil
+          }
+      end
+    end)
+  rescue
+    _ -> nil
+  catch
+    _, _ -> nil
+  end
+
+  defp deliver_late_answer(qid, entry) do
+    update_msg(entry.agent_id, entry.msg_id, %{status: :answered})
+    :ets.delete(@table, qid)
+
+    answer_text =
+      (entry[:selections] || %{})
+      |> Enum.map_join("; ", fn {q_id, labels} ->
+        q = Enum.find(entry.questions, &(&1.id == q_id))
+        "#{(q && q.prompt) || q_id}: #{Enum.join(labels, ", ")}"
+      end)
+
+    ChatAgent.enqueue_message(
+      entry.agent_id,
+      "Answer to your earlier question — " <> answer_text
+    )
+  rescue
+    _ -> :ok
+  catch
+    _, _ -> :ok
   end
 
   defp put_selection(entry, q_id, labels),
