@@ -60,6 +60,14 @@ defmodule LoopyardWeb.DesignSystemTest do
     assert missing == [], "templates reference hooks missing from app.js: #{inspect(missing)}"
   end
 
+  test "the in-between-state baseline exists (phx-*-loading styled)" do
+    css = File.read!("assets/css/app.css")
+
+    assert String.contains?(css, ".phx-click-loading") and
+             String.contains?(css, ".phx-submit-loading"),
+           "every user input needs its in-flight state — the global phx-*-loading rules are the floor"
+  end
+
   test "the old Brand module path is gone (it lives in packages/brand)" do
     offenders =
       for {path, src} <- web_sources(),

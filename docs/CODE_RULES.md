@@ -557,3 +557,14 @@ Every addressable thing gets a PATH, mirroring the existing grammar
 for OPTIONS on a resource (filters, legacy fallbacks), never for identity.
 Before adding a `?thing=id` param, add the route. A URL should read like it
 means something when pasted into a chat — that's the test.
+
+## Every input shows its in-between state
+
+Between "the user acted" and "the server processed it" there is always a
+window — usually milliseconds, sometimes seconds (busy LiveView, waking
+agent). The app must SHOW that window, never freeze through it. The floor is
+global: `.phx-click-loading` / `.phx-submit-loading` styles in app.css dim +
+lock any element with an in-flight event. High-traffic inputs get richer
+optimistic UI on top (the composer's instant clear + #send-echo). When adding
+an input, ask: what does the user see 500ms after acting if the server is
+slow? "Nothing changed" is a bug.

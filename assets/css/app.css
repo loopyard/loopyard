@@ -72,6 +72,29 @@
   }
 }
 
+/* ── IN-BETWEEN STATES (the input-feedback baseline) ─────────────────────────
+   Phoenix stamps `phx-click-loading` / `phx-submit-loading` on any element
+   whose event is in flight. Styling them ONCE here gives every button, option
+   row, and form in the app an instant "the server has it" state — the moment
+   you click, before anything is processed. Never gate visible feedback on the
+   LiveView round-trip (see CODE_RULES "optimistic sends"): this is the floor
+   for everything that doesn't have a richer optimistic UI of its own. */
+.phx-click-loading {
+  opacity: 0.55;
+  pointer-events: none;
+  cursor: progress;
+  transition: opacity 0.12s ease;
+}
+.phx-submit-loading {
+  opacity: 0.65;
+  cursor: progress;
+}
+.phx-submit-loading button,
+.phx-submit-loading input,
+.phx-submit-loading textarea {
+  pointer-events: none;
+}
+
 /* Respect reduced-motion preference — disable all non-essential motion. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
