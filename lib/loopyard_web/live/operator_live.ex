@@ -758,7 +758,7 @@ defmodule LoopyardWeb.OperatorLive do
             </button>
             <.link
               :if={item.kind == :approval or (item.kind != :question and is_nil(item.msg))}
-              navigate={item.path}
+              navigate={(item.msg && "/messages/#{item.agent_id}/#{item.msg.id}") || item.path}
               class="focus-ring flex items-center gap-2 rounded-sm px-2.5 py-2 bg-brand-paper dark:bg-brand-ink border border-zinc-200 dark:border-zinc-800 hover:border-violet-300 dark:hover:border-violet-500/40"
             >
               <span class="flex-1 min-w-0 truncate text-sm text-zinc-700 dark:text-zinc-200">

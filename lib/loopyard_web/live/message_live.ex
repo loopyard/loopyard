@@ -38,7 +38,30 @@ defmodule LoopyardWeb.MessageLive do
      # prompt already exists (historical).
      |> assign(:closed?, mode == :single or turn_closed?(agent_id, anchor))
      |> assign(:streaming_text, "")
-     |> assign(:raw_url, LoopyardWeb.OutputController.raw_url(agent_id, msg_id))}
+     |> assign(:raw_url, LoopyardWeb.OutputController.raw_url(agent_id, msg_id))
+     # "Open in chat" — the workspace chat this message lives in, anchored at the
+     # message (best-effort: the transcript is windowed; recent messages jump).
+     |> assign(:chat_path, chat_path(agent_id, msg_id))
+     # The mini-app cards on this page are LIVE and answerable — same broker +
+     # hook as the chat. Durable single-question view, per the design language.
+     |> LoopyardWeb.Live.ConsentUI.attach(secret_scope: agent_workspace(agent_id))}
+  end
+
+  defp agent_workspace(agent_id) do
+    case Loopyard.ChatAgent.get_state(agent_id) do
+      %{workspace_id: ws} -> ws
+      _ -> nil
+    end
+  end
+
+  defp chat_path(agent_id, msg_id) do
+    case Loopyard.ChatAgent.get_state(agent_id) do
+      %{workspace_id: ws, project_id: proj} when is_binary(ws) ->
+        "/projects/#{proj || ws}/workspaces/#{ws}/agents/#{agent_id}#mr-#{msg_id}"
+
+      _ ->
+        "/operator"
+    end
   end
 
   # Is there already a NEXT user turn after this one? Then it's historical (no
@@ -52,6 +75,14 @@ defmodule LoopyardWeb.MessageLive do
     msgs
     |> Enum.drop(start + 1)
     |> Enum.any?(&(&1[:role] == :user))
+  end
+
+  # Approve/Deny works on the permalink too — same semantics as the chat.
+  @impl true
+  def handle_event("decide_approval", %{"approval_id" => id, "decision" => decision}, socket) do
+    decision = if decision == "approve", do: :approve, else: :deny
+    Loopyard.Harness.Approvals.decide(id, decision)
+    {:noreply, socket}
   end
 
   # --- streaming: append new messages of THIS turn, accumulate live text ---
@@ -132,6 +163,12 @@ defmodule LoopyardWeb.MessageLive do
           <span class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse"></span> live
         </span>
         <:actions>
+          <.link
+            navigate={@chat_path}
+            class="chat-meta font-medium text-violet-600 dark:text-violet-400 hover:underline mr-3"
+          >
+            Open in chat →
+          </.link>
           <a
             :if={@raw_url}
             href={@raw_url}
@@ -222,14 +259,16 @@ defmodule LoopyardWeb.MessageLive do
     """
   end
 
-  def turn_msg(%{msg: %{role: role}} = assigns)
-      when role in [:question, :approval, :secret_request] do
-    ~H"""
-    <div class="rounded-sm border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
-      Needs your input — answer it in the live chat.
-    </div>
-    """
-  end
+  # The REAL cards, live and answerable (ConsentUI is attached in mount) — the
+  # permalink is the durable "singular view" of a question/approval/secret.
+  def turn_msg(%{msg: %{role: :question}} = assigns),
+    do: LoopyardWeb.Live.WorkspaceLive.Messages.Cards.question_card(assigns)
+
+  def turn_msg(%{msg: %{role: :approval}} = assigns),
+    do: LoopyardWeb.Live.WorkspaceLive.Messages.Cards.approval_card(assigns)
+
+  def turn_msg(%{msg: %{role: :secret_request}} = assigns),
+    do: LoopyardWeb.Live.WorkspaceLive.Messages.Cards.secret_card(assigns)
 
   def turn_msg(assigns), do: ~H""
 end
