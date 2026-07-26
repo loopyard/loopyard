@@ -600,8 +600,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     agent works. --%>
       <%!-- pb-safe: the composer clears the home indicator in a standalone PWA
     while keeping its normal padding in the browser. --%>
-      <div class="flex-none border-t border-zinc-200 dark:border-zinc-700/80 pb-safe">
-        <div class="w-full max-w-2xl mx-auto px-3 pt-3 md:px-4 md:pt-4 space-y-2">
+      <div class="flex-none pb-safe">
+        <div class="w-full max-w-2xl mx-auto px-3 md:px-4">
           <%!-- The queue is ONE card: a single "You" band (one name, one state) with
     every pending line INSIDE it, each line cancelable by its own ✕. Reads
     as one prompt-in-waiting — exactly how the transcript groups a batch —
@@ -611,7 +611,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     below — the ✕'s are gone because it's no longer editable. --%>
           <div
             :if={(@agent[:pending_count] || 0) > 0}
-            class="-mx-3 md:-mx-4 2xl:-mx-4 -mt-3 md:-mt-4 2xl:mt-0  bg-violet-100 dark:bg-[#2b2348] px-4 md:px-6 lg:px-8 pt-3 pb-3"
+            class="-mx-3 md:-mx-4 2xl:-mx-4 2xl:mt-2 2xl:rounded-xl bg-violet-100 dark:bg-[#2b2348] px-4 md:px-6 lg:px-8 pt-3 pb-3"
           >
             <div class="flex items-baseline justify-between gap-2 mb-1.5">
               <div class="flex items-baseline gap-2 min-w-0">
@@ -669,7 +669,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
     so it never needs a sentence or an alarm. --%>
           <div
             :if={(@agent[:context_utilization] || 0.0) >= 0.92}
-            class="flex items-center gap-1.5 text-sm text-zinc-500 dark:text-zinc-400"
+            class="flex items-center gap-1.5 my-2 text-sm text-zinc-500 dark:text-zinc-400"
           >
             <span class="flex-none">🗜</span>
             <span class="min-w-0">Compacting…</span>
@@ -677,7 +677,11 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.Chat do
           <%!-- The composer IS the input: the whole bottom bar (border-t above)
     reads as one big submission unit — no inner boxed textarea, no big
     filled button. Just the caret and a quiet violet arrow. --%>
-          <div id="chat-form-wrapper" phx-update="ignore">
+          <%!-- The composer divider: just ABOVE the message box, BELOW the queued
+             card — the queue reads as part of the stream; the line belongs to
+             the input. Full-bleed to the pane edges. --%>
+        <div class="border-t border-zinc-200 dark:border-zinc-700/80 -mx-3 md:-mx-4 mb-2"></div>
+        <div id="chat-form-wrapper" phx-update="ignore">
             <form
               id="chat-form"
               phx-submit="send_message"
