@@ -39,7 +39,7 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
     Mark sized w-5 to match the breadcrumb logo exactly. --%>
           <Brand.logo mark_class="w-5 h-5 flex-none" wordmark_class="text-base tracking-tight" />
         </.link>
-        <LoopyardWeb.Components.Common.operator_link id="operator-global" class="mr-1.5" />
+        <LoopyardWeb.Components.Common.mode_nav active={:workspaces} class="mr-1.5" />
       </div>
 
       <%!-- The SAME grouped list the /workspaces page and the mobile switcher use,

@@ -592,6 +592,7 @@ defmodule LoopyardWeb.OperatorLive do
       <Nav.bar height="h-14" gap="gap-3">
         <.breadcrumbs crumbs={[{"Loopyard", "/"}, {"Operator", nil}]} />
         <:actions>
+          <LoopyardWeb.Components.Common.mode_nav active={:operator} />
           <%!-- No "Needs you" pill — the rail shows blocking items right there.
     Sound is a player docked at the bottom of the rail. --%>
         </:actions>

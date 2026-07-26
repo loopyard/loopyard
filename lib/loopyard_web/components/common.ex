@@ -458,6 +458,62 @@ defmodule LoopyardWeb.Components.Common do
   violet tint while the operator's bed is playing — the operator "is live" cue.
   Give each placement a unique `id`.
   """
+  @doc """
+  The MODE NAV — the app's two modes + the System click-off, per
+  plans/ia-two-modes.md. Three fixed icons, used identically everywhere:
+  Workspaces (2×2 grid) ⇄ Operator (the trefoil — the operator is loopyard's
+  mind, the brand mark is its face), and System (gear, quiet).
+  """
+  attr :active, :atom, default: nil, values: [nil, :workspaces, :operator, :system]
+  attr :class, :string, default: nil
+
+  def mode_nav(assigns) do
+    ~H"""
+    <nav class={["flex items-center gap-0.5", @class]} aria-label="Mode">
+      <.link
+        navigate="/workspaces"
+        aria-label="Workspaces"
+        title="Workspaces — the work"
+        class={mode_btn(@active == :workspaces)}
+      >
+        <svg viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5" aria-hidden="true">
+          <path d="M3 3.5A1.5 1.5 0 0 1 4.5 2h3A1.5 1.5 0 0 1 9 3.5v3A1.5 1.5 0 0 1 7.5 8h-3A1.5 1.5 0 0 1 3 6.5v-3ZM3 13.5A1.5 1.5 0 0 1 4.5 12h3A1.5 1.5 0 0 1 9 13.5v3A1.5 1.5 0 0 1 7.5 18h-3A1.5 1.5 0 0 1 3 16.5v-3ZM11 3.5A1.5 1.5 0 0 1 12.5 2h3A1.5 1.5 0 0 1 17 3.5v3A1.5 1.5 0 0 1 15.5 8h-3A1.5 1.5 0 0 1 11 6.5v-3ZM11 13.5a1.5 1.5 0 0 1 1.5-1.5h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3a1.5 1.5 0 0 1-1.5-1.5v-3Z" />
+        </svg>
+      </.link>
+      <.link
+        navigate="/operator"
+        aria-label="Operator"
+        title="Operator — run and watch everything from here"
+        class={mode_btn(@active == :operator)}
+      >
+        <Brand.mark class="w-5 h-5" />
+      </.link>
+      <.link
+        navigate="/system"
+        aria-label="System"
+        title="System — health, ports, secrets, remote"
+        class={mode_btn(@active == :system)}
+      >
+        <svg viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5" aria-hidden="true">
+          <path
+            fill-rule="evenodd"
+            d="M7.84 1.804A1 1 0 0 1 8.82 1h2.36a1 1 0 0 1 .98.804l.331 1.652a6.993 6.993 0 0 1 1.929 1.115l1.598-.54a1 1 0 0 1 1.186.447l1.18 2.044a1 1 0 0 1-.205 1.251l-1.267 1.113a7.047 7.047 0 0 1 0 2.228l1.267 1.113a1 1 0 0 1 .206 1.25l-1.18 2.045a1 1 0 0 1-1.187.447l-1.598-.54a6.993 6.993 0 0 1-1.929 1.115l-.33 1.652a1 1 0 0 1-.98.804H8.82a1 1 0 0 1-.98-.804l-.331-1.652a6.993 6.993 0 0 1-1.929-1.115l-1.598.54a1 1 0 0 1-1.186-.447l-1.18-2.044a1 1 0 0 1 .205-1.251l1.267-1.114a7.05 7.05 0 0 1 0-2.227L1.821 7.773a1 1 0 0 1-.206-1.25l1.18-2.045a1 1 0 0 1 1.187-.447l1.598.54A6.992 6.992 0 0 1 7.51 3.456l.33-1.652ZM10 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"
+            clip-rule="evenodd"
+          />
+        </svg>
+      </.link>
+    </nav>
+    """
+  end
+
+  defp mode_btn(true),
+    do:
+      "flex-none inline-flex items-center justify-center w-11 h-11 md:w-9 md:h-9 rounded-sm text-violet-600 dark:text-violet-400 bg-violet-500/10"
+
+  defp mode_btn(false),
+    do:
+      "flex-none inline-flex items-center justify-center w-11 h-11 md:w-9 md:h-9 rounded-sm text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
+
   attr :id, :string, default: "operator-link"
   attr :class, :string, default: nil
 
