@@ -24,18 +24,12 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Messages.Cards do
   """
   def question_card(assigns) do
     ~H"""
-    <%!-- A PENDING question pins to the top of the scroll (above the prompt
-         band's z-20) — the thing that needs you stays in view while you scroll
-         the context. Resolves → unpins and flows normally. --%>
-    <div class={["py-2", @msg.status == :pending && "sticky top-0 z-30"]}>
+    <div class="py-2">
       <%!-- Quiet decision panel: a light amber WASH signals "needs you" (amber,
            NOT violet — violet is the "You" message colour). Options sit on white
            rows so they stay distinct on the tint. Reads top-down: label ›
            question (hero) › the options, each anchored by a radio/check dot. --%>
-      <LoopyardWeb.Components.StreamCard.band
-        tone={(@msg.status == :pending && :needs_you) || :neutral}
-        class={@msg.status == :pending && "backdrop-blur-md"}
-      >
+      <LoopyardWeb.Components.StreamCard.band tone={(@msg.status == :pending && :needs_you) || :neutral}>
           <%!-- Card anatomy (every stream card): identity chip TOP-LEFT (which
                project·workspace this is about — the canonical design-language
                badge), the card's label TOP-RIGHT opposite it; actions live at
