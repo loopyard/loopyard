@@ -12,8 +12,8 @@ defmodule LoopyardWeb.OutputController do
       {_mode, msgs, _anchor} ->
         text =
           msgs
-          |> Enum.map(& &1[:content])
-          |> Enum.filter(&(is_binary(&1) and &1 != ""))
+          |> Enum.map(&Loopyard.CardText.render/1)
+          |> Enum.filter(&(&1 != ""))
           |> Enum.join("\n\n")
 
         conn

@@ -754,6 +754,35 @@ Hooks.DetailLevel = {
   }
 }
 
+// ShareSheet — the native share affordance for focused/share views. Click:
+// data-share="sheet" opens the OS share sheet (navigator.share — iOS/macOS pass
+// title+url to Messages/AirDrop/etc), falling back to copying the URL;
+// data-share="url" copies the URL outright. Generalized: any element with this
+// hook + data attributes works.
+Hooks.ShareSheet = {
+  mounted() {
+    this.el.addEventListener("click", async (e) => {
+      e.preventDefault()
+      const url = this.el.dataset.url || window.location.href
+      const title = this.el.dataset.title || document.title
+      const mode = this.el.dataset.share || "sheet"
+      if (mode === "sheet" && navigator.share) {
+        try { await navigator.share({title, url}) } catch (_) {}
+        return
+      }
+      try {
+        await navigator.clipboard.writeText(url)
+        this.flash("Copied link")
+      } catch (_) {}
+    })
+  },
+  flash(text) {
+    const prev = this.el.dataset.flashPrev ?? (this.el.dataset.flashPrev = this.el.innerHTML)
+    this.el.textContent = text
+    setTimeout(() => { this.el.innerHTML = prev }, 1200)
+  }
+}
+
 Hooks.ChatForm = {
   mounted() {
     const ta = this.el.querySelector("#chat-input")

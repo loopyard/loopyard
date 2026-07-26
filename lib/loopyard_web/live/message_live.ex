@@ -12,6 +12,7 @@ defmodule LoopyardWeb.MessageLive do
 
   alias Loopyard.Events
   alias LoopyardWeb.Components.Nav
+  import LoopyardWeb.Components.Icon
 
   @behaviour Loopyard.Events.ChatAgentMessage.Subscriber
 
@@ -165,17 +166,52 @@ defmodule LoopyardWeb.MessageLive do
         <:actions>
           <.link
             navigate={@chat_path}
-            class="chat-meta font-medium text-violet-600 dark:text-violet-400 hover:underline mr-3"
+            class="chat-meta font-medium text-violet-600 dark:text-violet-400 hover:underline mr-2"
           >
             Open in chat →
           </.link>
-          <a
-            :if={@raw_url}
-            href={@raw_url}
-            class="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+          <%!-- SHARING affordances: the OS share sheet (iOS/macOS hand the link
+               to Messages/AirDrop/…), copy the markdown, copy the link. --%>
+          <button
+            type="button"
+            id="share-sheet"
+            phx-hook="ShareSheet"
+            data-share="sheet"
+            class="focus-ring tap-target chat-meta inline-flex items-center gap-1 rounded-sm px-2 py-1 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
+            title="Share…"
           >
-            raw text
-          </a>
+            <svg viewBox="0 0 16 16" fill="currentColor" class="w-3.5 h-3.5" aria-hidden="true">
+              <path
+                d="M8.75 1.75a.75.75 0 0 0-1.5 0v6.59L5.3 6.24a.75.75 0 1 0-1.1 1.02l3.25 3.5a.75.75 0 0 0 1.1 0l3.25-3.5a.75.75 0 1 0-1.1-1.02l-1.95 2.1V1.75Z"
+                transform="rotate(180 8 6.5)"
+              />
+              <path d="M2.5 9.75a.75.75 0 0 0-1.5 0v2.5A2.75 2.75 0 0 0 3.75 15h8.5A2.75 2.75 0 0 0 15 12.25v-2.5a.75.75 0 0 0-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25h-8.5c-.69 0-1.25-.56-1.25-1.25v-2.5Z" />
+            </svg>
+            Share
+          </button>
+          <button
+            :if={@raw_url}
+            type="button"
+            id="copy-share-text"
+            phx-hook="CopySource"
+            data-source={@raw_url}
+            data-copy="fetch"
+            class="focus-ring tap-target chat-meta inline-flex items-center gap-1 rounded-sm px-2 py-1 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors cursor-pointer"
+            title="Copy the markdown"
+          >
+            <.icon name={:copy} class="w-3.5 h-3.5 copy-icon" />
+            <.icon name={:check} class="w-3.5 h-3.5 check-icon hidden" /> Copy text
+          </button>
+          <button
+            type="button"
+            id="copy-share-url"
+            phx-hook="ShareSheet"
+            data-share="url"
+            class="focus-ring tap-target chat-meta inline-flex items-center gap-1 rounded-sm px-2 py-1 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
+            title="Copy the link"
+          >
+            Copy link
+          </button>
         </:actions>
       </Nav.bar>
 
