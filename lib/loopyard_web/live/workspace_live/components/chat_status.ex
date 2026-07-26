@@ -117,7 +117,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
          and completed messages above it. --%>
     <div class="flex items-center gap-2.5 py-3">
       <span class={["flex-none", @text_class]} aria-hidden="true">
-        <LoopyardWeb.Components.Brand.mark animated class="w-5 h-5" />
+        <Brand.mark animated class="w-5 h-5" />
       </span>
       <span class={["text-sm font-semibold flex-none", @text_class]}>{@word}…</span>
       <span
@@ -231,7 +231,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatStatus do
     ~H"""
     <div class="flex items-center gap-2.5 rounded-xl bg-violet-50 dark:bg-violet-500/10 border border-violet-200/70 dark:border-violet-500/20 px-3.5 py-2">
       <span class="flex-none text-violet-500 dark:text-violet-400" aria-hidden="true">
-        <LoopyardWeb.Components.Brand.mark animated class="w-4 h-4" />
+        <Brand.mark animated class="w-4 h-4" />
       </span>
       <span class="text-sm font-medium text-violet-600 dark:text-violet-300 flex-none">{@word}…</span>
       <span

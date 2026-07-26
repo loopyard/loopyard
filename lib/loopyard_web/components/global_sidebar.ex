@@ -37,7 +37,7 @@ defmodule LoopyardWeb.Components.GlobalSidebar do
         >
           <%!-- Official trefoil mark + lowercase wordmark (loopyard.ai/branding).
                Mark sized w-5 to match the breadcrumb logo exactly. --%>
-          <LoopyardWeb.Components.Brand.logo mark_class="w-5 h-5 flex-none" wordmark_class="text-base tracking-tight" />
+          <Brand.logo mark_class="w-5 h-5 flex-none" wordmark_class="text-base tracking-tight" />
         </.link>
         <LoopyardWeb.Components.Common.operator_link id="operator-global" class="mr-1.5" />
       </div>

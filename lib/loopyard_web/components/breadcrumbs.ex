@@ -55,7 +55,7 @@ defmodule LoopyardWeb.Components.Breadcrumbs do
                   aria-label="loopyard home"
                   class="focus-ring rounded inline-flex items-center text-zinc-900 dark:text-zinc-100 hover:opacity-70 transition-opacity"
                 >
-                  <LoopyardWeb.Components.Brand.logo
+                  <Brand.logo
                     mark_class="w-5 h-5 flex-none"
                     wordmark_class="text-lg md:text-base tracking-tight"
                   />

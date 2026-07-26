@@ -11,8 +11,12 @@ module.exports = {
     // Aural is a Mix path dep — its source lives in packages/, not
     // deps/ (Mix doesn't symlink path deps). Remote consumers using
     // git+sparse would point at ../deps/aural/lib instead.
-    "../packages/aural/lib/**/*.{ex,heex}"
+    "../packages/aural/lib/**/*.{ex,heex}",
+    "../packages/brand/lib/**/*.{ex,heex}"
   ],
+  // Brand tokens (colors.brand.*) — the shared palette, same preset the
+  // marketing site consumes. See packages/brand/tailwind.preset.js.
+  presets: [require("../packages/brand/tailwind.preset")],
   theme: {
     extend: {
       // Raise the FLOOR of the type scale app-wide. Overriding these steps here

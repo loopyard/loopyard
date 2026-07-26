@@ -2,7 +2,7 @@
 @import "tailwindcss/components";
 @import "tailwindcss/utilities";
 @import "@xterm/xterm/css/xterm.css";
-@import "./brand.css";
+@import "../../packages/brand/assets/brand.css";
 
 /* Accessibility — design tokens
  *

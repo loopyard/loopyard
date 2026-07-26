@@ -1,4 +1,4 @@
-defmodule LoopyardWeb.Components.Brand do
+defmodule Brand do
   @moduledoc """
   The Loopyard brand mark + wordmark, per the guidelines at loopyard.ai/branding.
 
