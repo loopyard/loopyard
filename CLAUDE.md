@@ -359,6 +359,65 @@ the **operator icon** (`Common.operator_link`) → `/operator`; the operator is 
 ambient presence, and its own thinking/idle drives the Aural continuous activity
 level (`Aural.Channel.set_activity/2`).
 
+## Attention & the Reviewer (questions that never get lost)
+
+**Relevance is card state, not waiter liveness.** A question/approval/secret is
+"waiting" while its CARD (role `:question`/`:approval`/`:secret_request`,
+`status: :pending`) is in the message store. Broker ETS entries are ephemeral
+(waiter pruning, restarts); `Attention.line/0` UNIONS pending cards from agent
+summaries with broker entries, so "For you" can never lose an item. Answering
+an orphaned card works: `Questions.with_entry` rebuilds the broker entry from
+the card, and a completed waiterless answer resolves the card + enqueues the
+selections to the agent (`deliver_late_answer`).
+
+**Three surfaces, three jobs:** the chat shows cards inline as they happen; the
+operator rail LISTS what's waiting (flame mini-rows nested under each
+workspace's "In motion" row, capped at 3 + "+N more"; the operator's own asks
+lead the rail); the **Reviewer** (`/review`, `ReviewLive`) clears the backlog —
+ONE decision per slide (a multi-question ask fans out per question),
+prev/next, answer → settled beat → auto-advance, `?workspace=` scopes,
+`?q=agent:msg` deep-links. Approvals decide through the ONE shared
+`LoopyardWeb.Live.ApprovalActions` (both models: blocking waiter or durable
+queued card). `Cards.question_block/1` is the per-question atom shared by the
+chat card and the Reviewer.
+
+**Sharing is a different mode from reviewing.** `/messages/:agent/:msg` =
+share/permalink: a user-prompt anchor shows the whole TURN (streaming), any
+other anchor shows the single message; the header offers OS share sheet
+(`ShareSheet` hook), Copy text, Copy link. `Loopyard.CardText` renders cards
+as paste-ready markdown for `/raw` (questions → checklists with the chosen
+answer). `LoopyardWeb.Components.FocusedView` is the shared full-screen shell
+(prominent project·workspace subject header) for Reviewer/share/future digests.
+
+## Design system (see also packages/brand)
+
+- **IA: two modes + System** (`plans/ia-two-modes.md`): Workspaces ⇄ Operator,
+  System as the click-off. `Common.mode_nav` renders the three fixed icons
+  (grid / trefoil / gear) on every shell; keep the three roots URL-rooted —
+  they're the future native tab bar.
+- **Brand**: `packages/brand` is the source of truth (mark + motion +
+  `colors.brand.*` Tailwind preset). One job per color: paper/ink grounds,
+  iris (violet) = interactive/"you", flame (≡ orange-600) = blocked-on-a-human
+  ONLY, moss confirms, amber = transitional caution, rose alarms.
+- **Chat type scale**: THREE tokens — `chat-body` / `chat-sub` / `chat-meta`
+  (fontSize tokens in tailwind.config.js; `.chat-*` classes @apply them).
+  Never ad-hoc text sizes in chat surfaces.
+- **Sharp editorial geometry**: surfaces square, controls `rounded-sm`,
+  circles `rounded-full`. The grouped-corner/rail apparatus was deliberately
+  deleted — do not reintroduce position tricks composed across siblings.
+- **Bands**: `StreamCard.band/header` is the mini-app card anatomy (tone by
+  meaning, identity chip top-left, label top-right, actions bottom). The
+  composer queue band mirrors the prompt band; the divider sits between queue
+  and input.
+- **Composer contract** (documented at the ChatForm hook head): desktop Enter
+  sends / Shift+Enter newlines; mobile Enter newlines; ⌘/⌃+Enter always sends.
+  Send is OPTIMISTIC (instant clear + `#send-echo` band; ack swaps in the real
+  queue band; failure restores the box). The composer DOM persists across
+  reconnects — hooks must wire-once.
+- **Guardrails**: `test/loopyard_web/design_system_test.exs` fails the build on
+  drift (radii, indigo, amber-in-needs-you, type-scale bypass, missing hooks,
+  old Brand path). Extend it when a new rule earns enforcement.
+
 ## Docs
 
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — System design, supervisor tree, container model, data flow
@@ -466,7 +525,14 @@ Two ways in:
 | `PortRegistry` | Global port pool, proxy lifecycle, Observer reconciliation |
 | `PortExposer` | Per-port TCP proxy GenServer (loopback ↔ network toggle) |
 | `PortStore` | JSON persistence for port assignments (`ports.json`) |
-| `Tools.Container` | MCP toolkit — lists 22 tool modules |
+| `Tools.Container` | MCP toolkit — one file per tool (incl. propose_fork/integrate/delete/rename, ask_user, request_secret, recall_conversation) |
+| `Loopyard.Attention` | The durable "waiting on the human" line (cards ∪ broker) feeding rail/Reviewer/dashboard |
+| `Loopyard.CardText` | Cards → paste-ready markdown (share/raw) |
+| `LoopyardWeb.ReviewLive` | `/review` — one-decision-per-slide Reviewer |
+| `LoopyardWeb.Components.FocusedView` | Full-screen focused-view shell (subject header + slide column) |
+| `LoopyardWeb.Components.StreamCard` | Mini-app card anatomy (band + header) |
+| `LoopyardWeb.Live.ApprovalActions` | The ONE Approve/Deny (blocking + queued models) |
+| `Brand` (packages/brand) | Mark + motion + color tokens — brand as code |
 | `Tools.Container.Helpers` | Shared tool helpers (resolve_container, validate_path) |
 | `Loopyard.Tool` | Macro for defining tool modules |
 | `Loopyard.MCP` | ACP MCP bridge entry — builds the `mcpServers` spec + container-reachable base URL |

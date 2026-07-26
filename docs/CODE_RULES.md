@@ -524,3 +524,27 @@ StreamHandler stamps the harness's `toolCallId` as `tool_id` on both the
 fallback for messages persisted before `tool_id` existed). Any new code
 that needs "which call produced this result" goes through that helper —
 never walk the message list positionally.
+
+
+## Design system (hard-won, enforced by design_system_test.exs)
+
+- **Derive shape from data; never compose position/shape across siblings.**
+  The active-turn rail and grouped band corners both died of this: three
+  elements that had to stay pixel-aligned across breakpoints. If a visual
+  needs N elements to agree, redesign it to need one.
+- **One job per color** (packages/brand/README.md): flame (orange) means
+  blocked-on-a-human and nothing else; amber is transitional caution; never
+  interchange them. Iris is the violet family — the indigo experiment is
+  reverted and guarded.
+- **Chat text uses the three tokens** (chat-body/sub/meta) — never text-lg /
+  text-base in chat renderers. "Slightly different sizes" is how the stream
+  turned into a jumble twice.
+- **Hooks on phx-update="ignore" DOM must wire-once** (element persists across
+  LiveView reconnects; mounted() re-runs → duplicated listeners). Guard with
+  `el.dataset.wired`.
+- **Sends are optimistic** — never gate visible feedback on a LiveView ack
+  (the LV can be seconds behind on a busy stream). Clear/echo instantly,
+  reconcile on ack, restore on failure.
+- **Never run `mix compile`/`mix test` (dev env) against the live checkout** —
+  the dev server shares it; verify via curl. `MIX_ENV=test mix test <file>` is
+  OK (separate build dir), one suite at a time.
