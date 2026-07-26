@@ -477,12 +477,18 @@ Two ways in:
 
 ## packages/
 
-In-repo Mix packages extracted for reuse outside loopyard. Today's
-only inhabitant is `:aural` — the cerebral audio bed feeding
-`/aural` here and on the marketing site (loopyard.ai). Loopyard
-pulls it via `path: "packages/aural"`; the marketing site pulls
-via `git+sparse:` so it doesn't need a sibling checkout. New
-extractions go here when something starts pulling its weight as
+In-repo Mix packages extracted for reuse outside loopyard. Loopyard
+pulls them via `path:`; the marketing site pulls via `git+sparse:` so
+it doesn't need a sibling checkout. Inhabitants:
+
+- `:aural` — the cerebral audio bed feeding `/aural` here and on the
+  marketing site (loopyard.ai).
+- `:brand` — the brand as code: `Brand.mark/logo` (trefoil), the
+  thinking-mark motion CSS, and the palette as a Tailwind preset
+  (`colors.brand.*`). The ONE source of truth for brand; the site's
+  `/branding` page is the showroom. See packages/brand/README.md.
+
+New extractions go here when something starts pulling its weight as
 its own thing.
 
 ## Stack
