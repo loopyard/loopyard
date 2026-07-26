@@ -33,7 +33,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.QuestionCardTest do
     html = render_component(&Cards.question_card/1, %{msg: pending_msg()})
 
     # Full-width row (label is primary, whole row is the tap target).
-    assert html =~ "w-full text-left"
+    assert html =~ "w-full"
+    assert html =~ "text-left"
     # Description is tightly bound under its label (subordinate via spacing).
     assert html =~ "mt-0.5"
 
@@ -90,8 +91,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.QuestionCardTest do
     # q2 still interactive: its options are buttons.
     assert html =~ "answer_question"
     assert html =~ "Which repos?"
-    # progress header
-    assert html =~ "1/2 answered"
+    # progress counter in the header (tabular "answered/total")
+    assert html =~ "1/2"
   end
 
   test "a skipped question shows a Skipped receipt, not answered" do

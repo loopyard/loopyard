@@ -33,6 +33,7 @@ defmodule Loopyard.Tools.ContainerTest do
            edit multi_edit grep glob probe_http tree inspect_service read_files
            docker_compose workspace_info volumes file_url app_url git file_info
            ask_user propose_fork propose_integrate propose_delete_workspace
+           propose_rename propose_peering send_to_workspace recall_conversation
            request_secret)
 
       assert MapSet.size(tool_names) == length(expected)

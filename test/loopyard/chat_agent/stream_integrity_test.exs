@@ -244,16 +244,21 @@ defmodule Loopyard.ChatAgent.StreamIntegrityTest do
 
       # Threshold-1 semantics: the wedge counts as a CLI death, which
       # immediately recycles (compact → fresh session, counter re-armed to 0).
-      # The observable outcome is the quiet recycle note + no resume id.
+      # A 10-minute wedge is the "took a while" case, so it DOES get a chat
+      # line — but the recycle itself is silent (success isn't news).
       assert_receive %Loopyard.Events.ChatAgentMessage.Message{
                        agent_id: ^id,
-                       msg: %{role: :system, content: "Recycled the harness" <> _}
+                       msg: %{role: :system, content: "CLI went unresponsive" <> _}
                      },
                      1_000
 
-      state = :sys.get_state(pid)
+      state = wait_for_recycle(pid)
       assert state.claude_session_id == nil
       assert Map.get(state, :midturn_crashes, 0) == 0
+
+      refute_received %Loopyard.Events.ChatAgentMessage.Message{
+        msg: %{role: :system, content: "Recycled the harness" <> _}
+      }
     end
   end
 
@@ -280,18 +285,18 @@ defmodule Loopyard.ChatAgent.StreamIntegrityTest do
 
       send(pid, {:stream_error, id, ref, "CLI session exited: {:port_exit, 1}"})
 
-      assert_receive %Loopyard.Events.ChatAgentMessage.Message{
-                       agent_id: ^id,
-                       msg: %{role: :system, content: "Recycled the harness" <> _}
-                     },
-                     1_000
-
+      # The recycle is SILENT in chat — EventLog carries it; the outcome
+      # (fresh session, breaker re-armed) is the observable contract.
       assert_receive %Loopyard.Events.ChatAgent.StatusChanged{id: ^id, status: :idle}, 1_000
 
-      state = :sys.get_state(pid)
+      state = wait_for_recycle(pid)
       # Fresh session — the poisoned resume id is dropped; breaker re-armed.
       assert state.claude_session_id == nil
       assert Map.get(state, :midturn_crashes) == 0
+
+      refute_received %Loopyard.Events.ChatAgentMessage.Message{
+        msg: %{role: :system, content: "Recycled the harness" <> _}
+      }
     end
 
     test "second CLI-exit crash compacts: fresh session, counter reset", %{id: id} do
@@ -311,20 +316,19 @@ defmodule Loopyard.ChatAgent.StreamIntegrityTest do
 
       send(pid, {:stream_error, id, ref, "CLI session exited: {:port_exit, 1}"})
 
-      assert_receive %Loopyard.Events.ChatAgentMessage.Message{
-                       agent_id: ^id,
-                       msg: %{role: :system, content: "Recycled the harness" <> _}
-                     },
-                     1_000
-
-      # Wait for the compaction cast to finish (status broadcast lands after).
+      # Silent recycle: wait for the compaction cast to finish (status
+      # broadcast lands after), then assert the outcome — no chat line.
       assert_receive %Loopyard.Events.ChatAgent.StatusChanged{id: ^id, status: :idle}, 1_000
 
-      state = :sys.get_state(pid)
+      state = wait_for_recycle(pid)
       # Fresh session — resume id dropped so the new CLI does NOT reload the
       # bloated history; breaker re-armed.
       assert state.claude_session_id == nil
       assert Map.get(state, :midturn_crashes) == 0
+
+      refute_received %Loopyard.Events.ChatAgentMessage.Message{
+        msg: %{role: :system, content: "Recycled the harness" <> _}
+      }
     end
 
     test "clean turn completion re-arms the breaker", %{id: id} do
@@ -526,6 +530,20 @@ defmodule Loopyard.ChatAgent.StreamIntegrityTest do
       # confirm the drop indirectly: the stop handler logged a line
       # via EventLog (no easy direct assertion without a log tap — the
       # key guarantee is 'didn't crash'.)
+    end
+  end
+
+  # The recycle path is async (compact → fresh session). Poll until the
+  # resume id is dropped instead of racing a broadcast that no longer exists
+  # (the recycle chat message was silenced — success isn't news).
+  defp wait_for_recycle(pid, attempts \\ 50) do
+    state = :sys.get_state(pid)
+
+    if state.claude_session_id == nil or attempts == 0 do
+      state
+    else
+      Process.sleep(20)
+      wait_for_recycle(pid, attempts - 1)
     end
   end
 end

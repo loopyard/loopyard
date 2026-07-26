@@ -3,6 +3,13 @@ defmodule Loopyard.ChatAgent.PromptTest do
 
   alias Loopyard.ChatAgent.Prompt
 
+  # Growth tripwire, not a hard CLI limit (ARG_MAX is orders of magnitude
+  # higher). Re-baselined 6000 → 7000 in Jul 2026 after deliberate feature
+  # copy landed (git-as-a-tool guidance, questions round-trip). If a change
+  # trips this, decide: is the growth bought intentionally? Then re-baseline
+  # with a note. Otherwise trim the prompt.
+  @prompt_budget 7000
+
   describe "build_system_prompt/2" do
     test "default agent includes agent ID, container info, and the unified body" do
       prompt = Prompt.build_system_prompt("test-id", bind_mount: "/tmp/project")
@@ -25,15 +32,15 @@ defmodule Loopyard.ChatAgent.PromptTest do
       prompt =
         Prompt.build_system_prompt("test-id", bind_mount: "/tmp/project")
 
-      assert String.length(prompt) <= 6000
+      assert String.length(prompt) <= @prompt_budget
     end
 
     test "setup agent prompt stays under CLI argument limit" do
       prompt =
         Prompt.build_system_prompt("test-id", bind_mount: "/tmp/project")
 
-      assert String.length(prompt) <= 6000,
-             "Setup prompt is #{String.length(prompt)} chars, max is 6000."
+      assert String.length(prompt) <= @prompt_budget,
+             "Setup prompt is #{String.length(prompt)} chars, max is #{@prompt_budget}."
     end
 
     test "container agent prompt with workspace stays under limit" do
@@ -53,7 +60,7 @@ defmodule Loopyard.ChatAgent.PromptTest do
 
       assert prompt =~ "test-project"
       assert prompt =~ "Rails app"
-      assert String.length(prompt) <= 6000
+      assert String.length(prompt) <= @prompt_budget
     end
 
     test "container agent with service stays under limit" do
@@ -72,7 +79,7 @@ defmodule Loopyard.ChatAgent.PromptTest do
           service_name: "postgres"
         )
 
-      assert String.length(prompt) <= 6000
+      assert String.length(prompt) <= @prompt_budget
     end
 
     test "service agent prompt includes service name and container" do

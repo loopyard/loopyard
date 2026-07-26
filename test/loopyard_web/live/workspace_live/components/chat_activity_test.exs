@@ -118,8 +118,8 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatActivityTest do
       ]
 
       html = render_component(&Chat.thinking_indicator/1, %{messages: msgs, word: "Working"})
-      assert html =~ "overloaded"
-      assert html =~ "Stop and resend"
+      assert html =~ "servers are busy"
+      assert html =~ "retrying automatically"
     end
 
     test "flags a generic upstream 5xx as a retry too" do
@@ -129,7 +129,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.Components.ChatActivityTest do
       ]
 
       html = render_component(&Chat.thinking_indicator/1, %{messages: msgs, word: "Working"})
-      assert html =~ "temporary server error"
+      assert html =~ "retrying automatically"
     end
 
     test "no retry hint on a normal turn" do

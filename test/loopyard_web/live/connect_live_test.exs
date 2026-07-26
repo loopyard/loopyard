@@ -12,7 +12,7 @@ defmodule LoopyardWeb.ConnectLiveTest do
         assert html =~ "http://"
         assert html =~ "Stop exposing"
       else
-        assert html =~ "Remote access"
+        assert html =~ "Private"
         assert html =~ "Expose endpoint"
       end
     end

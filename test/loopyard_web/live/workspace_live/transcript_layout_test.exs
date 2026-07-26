@@ -34,7 +34,7 @@ defmodule LoopyardWeb.Live.WorkspaceLive.TranscriptLayoutTest do
     # (The faint spine lives on the run wrapper in chat_panel, not the message.)
     refute html =~ "rounded-2xl"
     refute html =~ "bg-zinc-100 dark:bg-zinc-800"
-    assert html =~ "leading-relaxed"
+    assert html =~ "markdown-body"
     assert html =~ "On it."
   end
 

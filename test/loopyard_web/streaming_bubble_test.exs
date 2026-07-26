@@ -4,20 +4,23 @@ defmodule LoopyardWeb.StreamingBubbleTest do
 
   alias LoopyardWeb.Live.WorkspaceLive.Messages
 
-  test "streamdown renders live markdown and remends an unclosed tail construct" do
+  test "streaming bubble is a client-rendered shell (StreamMarkdown owns the markdown)" do
     html =
       render_component(&Messages.streaming_bubble/1,
         streaming_text:
           "## Heading\n\nA para with **bold**, `code`.\n\n- one\n- two\n\nUNCLOSED **bold at the tail"
       )
 
-    assert html =~ "<h2"
-    assert html =~ "<strong>bold</strong>"
-    assert html =~ "<code>code</code>"
-    assert html =~ "<li"
-    # Remend: the dangling "**bold at the tail" renders as bold, not raw asterisks.
-    assert html =~ "at the tail"
-    refute html =~ "**bold at the tail"
+    # Markdown (incl. tail remending) renders CLIENT-side: the server ships an
+    # empty phx-update="ignore" shell the StreamMarkdown hook fills from delta
+    # pushes — re-rendering server HTML per delta re-diffed the whole bubble.
+    assert html =~ ~s(phx-hook="StreamMarkdown")
+    assert html =~ ~s(phx-update="ignore")
+    assert html =~ "data-stream-blocks"
+    assert html =~ "data-stream-tail"
+    # No server-rendered markdown or raw text leaks into the shell.
+    refute html =~ "<h2"
+    refute html =~ "bold at the tail"
   end
 
   test "empty streaming_text renders without crashing" do
