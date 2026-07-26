@@ -182,6 +182,7 @@ defmodule LoopyardWeb.SystemLive do
         <.beam_section beam={@beam} />
         <.drilldown_section counts={@counts} />
         <.log_section logs={@logs} />
+        <.destinations_section />
         <.reboot_section />
       </div>
     </.page_shell>
@@ -195,6 +196,27 @@ defmodule LoopyardWeb.SystemLive do
   # The one deliberate destructive control on /system: reboot the whole runtime.
   # Lives at the BOTTOM as a confirmed danger-zone card (NOT a scary top-right
   # button) — you have to scroll past everything and confirm to hit it.
+  # The rest of the System mode — destinations that used to be top-level
+  # (plans/ia-two-modes.md): remote access + ambient sound settings.
+  defp destinations_section(assigns) do
+    ~H"""
+    <section class="space-y-1.5">
+      <h2 class="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Also in System</h2>
+      <div class="flex flex-wrap gap-x-6 gap-y-1.5">
+        <.link
+          navigate="/remote/"
+          class="chat-sub text-violet-600 dark:text-violet-400 hover:underline"
+        >
+          Remote access →
+        </.link>
+        <.link navigate="/sound" class="chat-sub text-violet-600 dark:text-violet-400 hover:underline">
+          Ambient sound →
+        </.link>
+      </div>
+    </section>
+    """
+  end
+
   defp reboot_section(assigns) do
     ~H"""
     <section class="space-y-3">

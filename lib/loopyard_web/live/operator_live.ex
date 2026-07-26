@@ -444,7 +444,7 @@ defmodule LoopyardWeb.OperatorLive do
     # Grouped by how long ago they wrapped — Recently / Past hour / Today /
     # Earlier — instead of one list dimmed by age. Calmer, and readable (no fade).
     |> assign(:done_buckets, bucket_done(done, now))
-    # Header count = ALL blocking items (matches /queue, which the button opens);
+    # Header count = ALL blocking items (same line the /review queue works);
     # the rail groups exclude the operator's own (those show in the chat).
     |> assign(:needs_you_count, length(line))
   end
@@ -823,6 +823,14 @@ defmodule LoopyardWeb.OperatorLive do
             </span>
           </div>
         </div>
+        <%!-- Workstations — the operator's own identities/creds live in this
+             mode (plans/ia-two-modes.md). A quiet footer destination. --%>
+        <.link
+          navigate="/workstations"
+          class="mt-4 flex items-center gap-2 -mx-1 px-1 py-2 chat-meta text-zinc-500 dark:text-zinc-400 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
+        >
+          Workstations →
+        </.link>
       </section>
     </div>
     """

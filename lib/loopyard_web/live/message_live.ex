@@ -43,6 +43,7 @@ defmodule LoopyardWeb.MessageLive do
      # "Open in chat" — the workspace chat this message lives in, anchored at the
      # message (best-effort: the transcript is windowed; recent messages jump).
      |> assign(:chat_path, chat_path(agent_id, msg_id))
+     |> assign(:subject, subject(agent_id, turn))
      # The mini-app cards on this page are LIVE and answerable — same broker +
      # hook as the chat. Durable single-question view, per the design language.
      |> LoopyardWeb.Live.ConsentUI.attach(secret_scope: agent_workspace(agent_id))}
@@ -53,6 +54,28 @@ defmodule LoopyardWeb.MessageLive do
       %{workspace_id: ws} -> ws
       _ -> nil
     end
+  end
+
+  # Resolve the share page's subject (project · workspace + an honest light).
+  defp subject(agent_id, turn) do
+    with %{workspace_id: ws_id} when is_binary(ws_id) <- Loopyard.ChatAgent.get_state(agent_id),
+         %{} = ws <- Loopyard.WorkspaceRegistry.get_workspace(ws_id) do
+      project = Loopyard.ProjectRegistry.get_project(ws[:project_id])
+
+      pending? = Enum.any?(turn, &(&1[:status] == :pending))
+
+      %{
+        project: (project && project.name) || ws[:name] || "workspace",
+        workspace: ws[:name],
+        state: (pending? && :needs_you) || :done
+      }
+    else
+      _ -> %{project: "Operator", workspace: nil, state: :done}
+    end
+  rescue
+    _ -> nil
+  catch
+    _, _ -> nil
   end
 
   defp chat_path(agent_id, msg_id) do
@@ -219,6 +242,15 @@ defmodule LoopyardWeb.MessageLive do
     document. A read-only per-role view (interactive cards link into the
     live chat), streaming the whole exchange until the next turn. --%>
       <div :if={@turn != []} class="mx-auto w-full max-w-3xl px-4 md:px-6 py-6 space-y-4">
+        <%!-- The focused-view subject: WHOSE work this is, unmistakably —
+             the share surface must name its source as prominently as the
+             Reviewer does. --%>
+        <LoopyardWeb.Components.FocusedView.subject
+          :if={@subject}
+          project={@subject.project}
+          workspace={@subject.workspace}
+          state={@subject.state}
+        />
         <.turn_msg :for={m <- @turn} msg={m} agent_id={@agent_id} />
 
         <%!-- In-flight assistant text (before it commits as a message). --%>

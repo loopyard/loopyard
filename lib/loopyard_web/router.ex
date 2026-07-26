@@ -46,7 +46,6 @@ defmodule LoopyardWeb.Router do
       live "/operator", OperatorLive, :index
       # The town hall — every blocking question/secret/approval across all agents
       # in one tear-out line. Self-decaying (Loopyard.Attention).
-      live "/queue", QueueLive, :index
       live "/review", ReviewLive, :index
       live "/review/:agent_id/:msg_id", ReviewLive, :item
       live "/projects/:project_id/workspaces/:workspace_id/review", ReviewLive, :workspace

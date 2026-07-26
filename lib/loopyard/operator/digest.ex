@@ -341,7 +341,7 @@ defmodule Loopyard.Operator.Digest do
   defp wake_text_awaiting(w) do
     "[auto-notify] The task you're watching in workspace \"#{w.name}\" is WAITING ON " <>
       "INPUT — it asked a question and is blocked until answered. Point the user to it " <>
-      "(the /queue town hall, or its workspace chat) so it can keep going. Still " <>
+      "(the /review queue, or its workspace chat) so it can keep going. Still " <>
       "watching — I'll tell you when it finishes."
   end
 

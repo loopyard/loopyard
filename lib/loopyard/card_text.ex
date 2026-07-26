@@ -41,6 +41,11 @@ defmodule Loopyard.CardText do
     "### Secret request\n\n`#{msg[:name]}`#{why(msg)}" <> status_line(msg)
   end
 
+  def render(%{role: :embed} = msg) do
+    "▸ Embedded workspace: **#{msg[:label] || "workspace"}** — " <>
+      "/projects/#{msg[:project_id]}/workspaces/#{msg[:workspace_id]}/agents/#{msg[:agent_id]}"
+  end
+
   def render(%{content: content}) when is_binary(content), do: content
   def render(_), do: ""
 
